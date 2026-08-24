@@ -106,6 +106,7 @@
         <button data-route="jobs" onclick="go('jobs')">Jobs</button>
         <button data-route="assets" onclick="go('assets')">Assets</button>
         <button data-route="systems" onclick="go('systems')">Systems</button>
+        <button data-route="compliance" onclick="go('compliance')">Compliance</button>
         <button data-route="policy" onclick="go('policy')">Policy</button>
         <button data-route="container" onclick="go('container')">Container</button>
         <button data-route="drift" onclick="go('drift')">Drift</button>
@@ -121,7 +122,7 @@
 <script>
 const API = '/api/v1';
 let TOKEN = localStorage.getItem('cs_token') || '';
-let state = { route: 'home', scanId: null, findingId: null, jobId: null };
+let state = { route: 'home', scanId: null, findingId: null, jobId: null, assetId: null, systemId: null };
 
 async function api(path, opts={}) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
@@ -157,7 +158,7 @@ function logout() {
 }
 
 function go(route, extra={}) {
-  state = Object.assign({ route: 'home', scanId: null, findingId: null, jobId: null }, { route }, extra);
+  state = Object.assign({ route: 'home', scanId: null, findingId: null, jobId: null, assetId: null, systemId: null }, { route }, extra);
   document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.route === route));
   render();
 }
@@ -178,7 +179,10 @@ async function render() {
     if (state.route === 'drift') return renderDrift(el);
     if (state.route === 'findings') return renderFindings(el);
     if (state.route === 'assets') return renderAssets(el);
+    if (state.route === 'asset') return renderAsset(el);
     if (state.route === 'systems') return renderSystems(el);
+    if (state.route === 'system') return renderSystem(el);
+    if (state.route === 'compliance') return renderCompliance(el);
     if (state.route === 'policy') return renderPolicy(el);
     if (state.route === 'container') return renderContainer(el);
   } catch (e) {
@@ -359,7 +363,7 @@ async function renderAssets(el) {
   const data = await api('/assets?page_size=100');
   el.innerHTML = `<div class="top"><h2>Crypto assets</h2><p class="muted">Deduplicated across scanners. VERIFIED means two scanners agreed.</p></div>
     <div class="card"><table><thead><tr><th>Algo</th><th>Purpose</th><th>Location</th><th>Confidence</th><th>Sources</th></tr></thead>
-    <tbody>${(data.assets||[]).map(a => `<tr>
+    <tbody>${(data.assets||[]).map(a => `<tr onclick="go('asset',{assetId:'${a.id}'})" style="cursor:pointer">
       <td class="mono">${a.algorithm}</td><td>${a.purpose||'—'}</td>
       <td class="mono">${a.file_path}:${a.line_number}</td>
       <td>${badge(a.confidence)}</td><td class="muted">${(a.scanner_ids||[]).join(', ')||'—'} ${(a.extra&&a.extra.dedup_key)?('<div class="mono">'+a.extra.dedup_key.slice(0,12)+'…</div>'):''}</td>
@@ -372,11 +376,97 @@ async function renderSystems(el) {
   el.innerHTML = `<div class="top"><div><h2>Systems</h2><p class="muted">Simple inventory and dependency edges. Full graphs are Part 3.</p></div>
     <button class="btn" onclick="createSystem()">Add system</button></div>
     <div class="card"><table><thead><tr><th>Name</th><th>Owner</th><th>Env</th><th>Scopes</th></tr></thead>
-    <tbody>${(data.systems||[]).map(s => `<tr>
+    <tbody>${(data.systems||[]).map(s => `<tr onclick="go('system',{systemId:'${s.id}'})" style="cursor:pointer">
       <td>${s.name}</td><td>${s.owner||'—'}</td><td>${s.environment||'—'}</td>
       <td class="mono">${(s.compliance_scopes||[]).join(', ')||'—'}</td>
     </tr>`).join('') || '<tr><td colspan=4 class="muted">No systems registered.</td></tr>'}
     </tbody></table></div>`;
+}
+
+async function renderAsset(el) {
+  const a = await api('/assets/' + state.assetId);
+  el.innerHTML = `<div class="top"><div><h2>${a.algorithm}${a.mode ? '/'+a.mode : ''}</h2>
+    <p class="muted mono">${a.file_path}:${a.line_number}</p></div>
+    <div class="row">
+      <button class="btn secondary" onclick="downloadJson('/cbom/custom', 'cbom-asset-${a.id}.json', {method:'POST', body: JSON.stringify({asset_ids:[a.id]})})">Export CBOM</button>
+      <button class="btn secondary" onclick="go('assets')">Back</button>
+    </div></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <div class="label">Asset</div>
+        <p>Purpose ${a.purpose || 'n/a'} · Confidence ${badge(a.confidence)} · Occurrences ${a.occurrence_count || 1}</p>
+        <p>Hardcoded key ${a.is_hardcoded_key ? badge('FAIL') : badge('PASS')}</p>
+        <div class="label">Scanners</div>
+        <p class="muted">${(a.scanner_ids||[]).join(', ') || '—'}</p>
+        <div class="label">Libraries</div>
+        <p class="muted">${(a.libraries||[]).join(', ') || '—'}</p>
+      </div>
+      <div class="card">
+        <div class="label">Evidence links</div>
+        ${(a.evidence_ids||[]).map(id => `<p class="mono"><a href="#" onclick="go('finding',{findingId:'${id}'});return false;">${id}</a></p>`).join('') || '<p class="muted">None</p>'}
+        <div class="label">Dedup key</div>
+        <p class="mono">${(a.extra&&a.extra.dedup_key)||'—'}</p>
+      </div>
+    </div>`;
+}
+
+async function renderSystem(el) {
+  const s = await api('/systems/' + state.systemId);
+  el.innerHTML = `<div class="top"><div><h2>${s.name}</h2>
+    <p class="muted">${s.description || s.environment || ''}</p></div>
+    <div class="row">
+      <button class="btn secondary" onclick="downloadJson('/cbom/system/${s.id}', 'cbom-system-${s.id}.json')">Export CBOM</button>
+      <button class="btn secondary" onclick="go('systems')">Back</button>
+    </div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Owner</div><div class="value" style="font-size:18px">${s.owner||'—'}</div></div>
+      <div class="card"><div class="label">Environment</div><div class="value" style="font-size:18px">${s.environment||'—'}</div></div>
+      <div class="card"><div class="label">Scopes</div><div class="value" style="font-size:14px">${(s.compliance_scopes||[]).join(', ')||'—'}</div></div>
+      <div class="card"><div class="label">Assets</div><div class="value">${(s.assets||[]).length}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Assets in this system</div>
+    <table><thead><tr><th>Algo</th><th>Location</th><th>Confidence</th></tr></thead>
+    <tbody>${(s.assets||[]).map(a => `<tr onclick="go('asset',{assetId:'${a.id}'})" style="cursor:pointer">
+      <td class="mono">${a.algorithm}</td><td class="mono">${a.file_path}:${a.line_number}</td>
+      <td>${badge(a.confidence)}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No linked assets</td></tr>'}
+    </tbody></table></div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Dependencies</div>
+    <table><thead><tr><th>Child</th><th>Relation</th></tr></thead>
+    <tbody>${(s.dependencies||[]).map(d => `<tr><td class="mono">${d.child_id}</td><td>${d.relation||'depends-on'}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">No edges</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function renderCompliance(el) {
+  const policy = await api('/policy/rules');
+  const findings = await api('/findings?page_size=200');
+  const byStandard = {};
+  (policy.rules||[]).forEach(r => {
+    const key = r.standard_reference || 'Internal';
+    byStandard[key] = byStandard[key] || { rules: 0, fail: 0, pass: 0 };
+    byStandard[key].rules += 1;
+  });
+  (findings.findings||[]).forEach(f => {
+    (f.policy_evaluation?.rules_evaluated||[]).forEach(r => {
+      const key = (policy.rules||[]).find(x => x.rule_id === r.rule_id)?.standard_reference || 'Internal';
+      byStandard[key] = byStandard[key] || { rules: 0, fail: 0, pass: 0 };
+      if (r.evaluation_result === 'FAIL') byStandard[key].fail += 1;
+      if (r.evaluation_result === 'PASS') byStandard[key].pass += 1;
+    });
+  });
+  el.innerHTML = `<div class="top"><h2>Compliance by standard</h2>
+    <p class="muted">${policy.counts?.enabled||0} enabled rules. Advanced standards apply only when a system has matching scopes.</p></div>
+    <div class="card"><table><thead><tr><th>Standard</th><th>Rules</th><th>Pass evals</th><th>Fail evals</th></tr></thead>
+    <tbody>${Object.entries(byStandard).map(([name, row]) => `<tr>
+      <td>${name}</td><td>${row.rules}</td><td>${row.pass}</td><td>${row.fail}</td></tr>`).join('')}</tbody></table></div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Catalogue</div>
+    <table><thead><tr><th>ID</th><th>Name</th><th>Severity</th><th>Standard</th></tr></thead>
+    <tbody>${(policy.rules||[]).map(r => `<tr>
+      <td class="mono">${r.rule_id}</td><td>${r.rule_name}</td>
+      <td>${badge(r.severity)}</td><td class="muted">${r.standard_reference||''}</td>
+    </tr>`).join('')}</tbody></table></div>`;
 }
 
 async function createSystem() {

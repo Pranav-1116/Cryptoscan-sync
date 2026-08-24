@@ -1,72 +1,66 @@
-"""
-Pipeline Stage 2: Static code scanning.
-Runs the crypto scanner on the cloned repository.
-"""
+"""Pipeline stage: static multi-language scan."""
+
 from __future__ import annotations
 
-import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
-
-from scanner.core.scanner import Scanner
-from scanner.config.scanner_config import ScannerConfig
 
 from worker.pipeline.pipeline_runner import PipelineContext
 
 logger = logging.getLogger(__name__)
 
 
+def execute(ctx: PipelineContext) -> PipelineContext:
+    from scanner.core.scanner import Scanner
+    from worker.pipeline.stage_language_detect import execute as detect_languages
+
+    detect_languages(ctx)
+    scanner = Scanner(exclude_test_dirs=True)
+    scan_result = scanner.scan(
+        root_path=ctx.repo_path,
+        scan_id=ctx.scan_id,
+        target_type="GIT_REPOSITORY"
+        if "://" in ctx.target_repo and not ctx.target_repo.startswith(("local://", "file://"))
+        else "LOCAL_DIRECTORY",
+        target_location=ctx.target_repo,
+        target_commit=ctx.target_commit,
+        target_branch=ctx.target_branch,
+    )
+    findings = []
+    for finding in scan_result.findings:
+        if hasattr(finding, "model_dump"):
+            findings.append(finding.model_dump(mode="json"))
+        elif isinstance(finding, dict):
+            findings.append(finding)
+        else:
+            findings.append({"raw": str(finding)})
+    ctx.findings = findings
+    stats = scan_result.statistics.model_dump(mode="json") if hasattr(scan_result, "statistics") else {}
+    ctx.scan_meta = {
+        **dict(ctx.scan_meta or {}),
+        "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),
+        "scan_start": getattr(scan_result, "scan_start", datetime.now(timezone.utc).isoformat()),
+        "scan_end": getattr(scan_result, "scan_end", None),
+        "scanner_id": getattr(scan_result, "scanner_id", "static-java-scanner-v0.1"),
+        "scanner_version": getattr(scan_result, "scanner_version", "0.1.0"),
+        "target_type": getattr(getattr(scan_result, "scan_target", None), "type", "LOCAL_DIRECTORY"),
+        "target_location": ctx.target_repo,
+        "target_commit": ctx.target_commit,
+        "target_branch": ctx.target_branch,
+        "operator": ctx.triggered_by,
+        "statistics": stats,
+    }
+    output = Path(ctx.workspace_dir) / f"scan-results-{ctx.job_id}.json"
+    try:
+        output.write_text(__import__("json").dumps({"findings": findings, **ctx.scan_meta}, indent=2), encoding="utf-8")
+        ctx.scan_meta["scan_results_file"] = str(output)
+    except OSError:
+        pass
+    logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
+    return ctx
+
+
 class StageScan:
-    """Scan stage: run static scanner."""
-
-    async def execute(self, ctx: PipelineContext) -> PipelineContext:
-        """
-        Run scanner on cloned repo.
-        Output: scan-results-{timestamp}.json
-
-        Returns: Updated context with scan_results_file path.
-        """
-        logger.info(
-            "scan_start",
-            extra={
-                "job_id": ctx.job_id,
-                "repo_path": ctx.repo_path,
-            },
-        )
-
-        try:
-            scanner_config = ScannerConfig(
-                source_dir=ctx.repo_path,
-                exclude_dirs=["node_modules", ".git", "test", "tests", ".venv"],
-                include_languages=["java", "python", "go", "rust", "javascript"],
-            )
-
-            scanner = Scanner(config=scanner_config)
-            scan_result = await scanner.scan()
-
-            # Write findings to JSON
-            output_file = Path(ctx.workspace_dir) / f"scan-results-{ctx.job_id}.json"
-            with open(output_file, "w") as f:
-                json.dump(scan_result.model_dump(), f, indent=2)
-
-            logger.info(
-                "scan_complete",
-                extra={
-                    "job_id": ctx.job_id,
-                    "findings_count": scan_result.statistics.total_findings,
-                    "files_scanned": scan_result.statistics.files_scanned,
-                    "output": str(output_file),
-                },
-            )
-
-            return ctx.update(scan_results_file=str(output_file))
-
-        except Exception as exc:
-            logger.exception(
-                "scan_failed",
-                extra={
-                    "job_id": ctx.job_id,
-                    "error": str(exc),
-                },
-            )
-            raise
+    def execute(self, ctx: PipelineContext) -> PipelineContext:
+        return execute(ctx)

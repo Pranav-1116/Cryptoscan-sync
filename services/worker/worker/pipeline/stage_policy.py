@@ -1,94 +1,51 @@
-"""
-Pipeline Stage 6: Policy evaluation.
-Evaluates all findings against compliance rules.
-"""
+"""Pipeline stage: evaluate policy rules."""
+
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
-from policy.core.engine import PolicyEngine
-from database.db.repositories.evidence_repository import EvidenceRepository
-
+from worker.config.settings import get_settings
 from worker.pipeline.pipeline_runner import PipelineContext
 
 logger = logging.getLogger(__name__)
 
 
+def execute(ctx: PipelineContext, session) -> PipelineContext:
+    from sqlalchemy import select
+
+    from db.models.evidence_record import EvidenceRecord
+    from policy.core.engine import PolicyEngine
+
+    settings = get_settings()
+    rules_dir = settings.POLICY_RULES_DIR or str(Path(__file__).resolve().parents[3] / "policy" / "rule_definitions")
+    engine = PolicyEngine(rules_dir)
+    rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == ctx.scan_id)).scalars())
+    for row in rows:
+        finding_data = dict(row.finding_data or {})
+        if ctx.compliance_scopes and not finding_data.get("compliance_scopes"):
+            finding_data["compliance_scopes"] = list(ctx.compliance_scopes)
+            row.finding_data = finding_data
+        payload = {
+            "id": row.id,
+            "evidence_id": row.id,
+            "algorithm": row.algorithm,
+            "key_size": row.key_size,
+            "mode": row.mode,
+            "purpose": row.purpose,
+            "is_hardcoded_key": row.is_hardcoded_key,
+            "normalized_crypto": row.normalized_crypto or {},
+            "finding_data": finding_data,
+            "compliance_scopes": ctx.compliance_scopes or finding_data.get("compliance_scopes") or [],
+        }
+        evaluation = engine.evaluate(payload)
+        row.policy_evaluation = evaluation.model_dump(mode="json")
+        row.compliance_status = evaluation.overall_status
+    session.flush()
+    logger.info("stage_policy_done", extra={"count": len(rows)})
+    return ctx
+
+
 class StagePolicy:
-    """Policy stage: evaluate compliance."""
-
-    async def execute(self, ctx: PipelineContext) -> PipelineContext:
-        """
-        For each evidence record:
-        1. Apply all active policy rules
-        2. Compute compliance_status (PASS/WARN/FAIL)
-        3. Store policy_evaluation JSONB
-
-        Returns: Updated context.
-        """
-        if not ctx.scan_id:
-            raise ValueError("scan_id not set")
-
-        logger.info(
-            "policy_start",
-            extra={
-                "job_id": ctx.job_id,
-                "scan_id": ctx.scan_id,
-            },
-        )
-
-        try:
-            from database.db.connection.session import AsyncSessionFactory
-
-            async with AsyncSessionFactory() as db:
-                evidence_repo = EvidenceRepository(db)
-                engine = PolicyEngine()
-
-                # Fetch all evidence records
-                evidence_records, _ = await evidence_repo.list_by_scan(
-                    scan_id=ctx.scan_id,
-                    offset=0,
-                    limit=10000,
-                )
-
-                compliant_count = 0
-                non_compliant_count = 0
-
-                for record in evidence_records:
-                    # Evaluate
-                    policy_result = engine.evaluate(record)
-
-                    # Update DB
-                    await evidence_repo.update_policy_evaluation(
-                        evidence_id=record.evidence_id,
-                        policy_evaluation=policy_result.model_dump(),
-                        compliance_status=policy_result.overall_status,
-                    )
-
-                    if policy_result.overall_status == "PASS":
-                        compliant_count += 1
-                    else:
-                        non_compliant_count += 1
-
-                logger.info(
-                    "policy_complete",
-                    extra={
-                        "job_id": ctx.job_id,
-                        "scan_id": ctx.scan_id,
-                        "compliant": compliant_count,
-                        "non_compliant": non_compliant_count,
-                    },
-                )
-
-                return ctx.update()
-
-        except Exception as exc:
-            logger.exception(
-                "policy_failed",
-                extra={
-                    "job_id": ctx.job_id,
-                    "scan_id": ctx.scan_id,
-                    "error": str(exc),
-                },
-            )
-            raise
+    def execute(self, ctx: PipelineContext, session) -> PipelineContext:
+        return execute(ctx, session)

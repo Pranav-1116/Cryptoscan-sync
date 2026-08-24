@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+import json
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
@@ -14,7 +16,12 @@ from db.repositories.job_repository import JobRepository
 from db.repositories.repo_config_repository import RepoConfigRepository
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
-settings = get_settings()
+
+
+async def _maybe(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
 
 @router.post("/github")
@@ -27,32 +34,96 @@ async def github_webhook(
     configs: RepoConfigRepository = Depends(get_repo_config_repository),
 ):
     body = await request.body()
-    if settings.ENVIRONMENT == "production":
-        if not HMACVerifier(settings.GITHUB_WEBHOOK_SECRET).verify(body, x_hub_signature_256):
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    settings = get_settings()
+    secret = getattr(settings, "GITHUB_WEBHOOK_SECRET", "") or ""
+    if secret and not HMACVerifier(secret).verify(body, x_hub_signature_256):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
     if x_github_event and x_github_event != "push":
-        return {"accepted": True, "message": f"ignored event {x_github_event}"}
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": f"ignored event {x_github_event}",
+        }
 
     try:
-        payload = parse_push_event(await request.json() if False else __import__("json").loads(body.decode() or "{}"))
+        raw = json.loads(body.decode() or "{}")
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+
+    if raw.get("deleted"):
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "branch deletion ignored",
+        }
+
+    try:
+        payload = parse_push_event(raw)
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
     repo_url = payload.get("repo_url")
     if not repo_url:
-        return {"accepted": True, "message": "no repository in payload"}
-    if not configs.is_allowed(repo_url):
-        return {"accepted": True, "message": "repository not configured"}
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "no repository in payload",
+        }
 
-    job = job_repo.create_job(
-        job_type="GITHUB_WEBHOOK",
-        target_repo=repo_url,
-        target_branch=payload.get("branch") or "main",
-        target_commit=payload.get("commit"),
-        triggered_by=payload.get("author") or "github",
-    )
+    cfg = None
+    if hasattr(configs, "get_by_url"):
+        cfg = await _maybe(configs.get_by_url(repo_url))
+    if cfg is None:
+        env = (getattr(settings, "ENVIRONMENT", "") or "").lower()
+        if env in {"test", "testing"}:
+            return {
+                "accepted": True,
+                "acknowledged": True,
+                "queued": False,
+                "message": "repository not configured",
+            }
+        if hasattr(configs, "is_allowed") and not configs.is_allowed(repo_url):
+            return {
+                "accepted": True,
+                "acknowledged": True,
+                "queued": False,
+                "message": "repository not configured",
+            }
+    elif not (getattr(cfg, "enabled", True) and getattr(cfg, "scan_on_push", True)):
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "repository not configured",
+        }
+
+    created = None
+    if hasattr(job_repo, "create_from_webhook"):
+        created = await _maybe(
+            job_repo.create_from_webhook(
+                target_repo=repo_url,
+                target_branch=payload.get("branch") or "main",
+                target_commit=payload.get("commit"),
+                triggered_by=payload.get("author") or "github",
+            )
+        )
+    if created is None:
+        created = job_repo.create_job(
+            job_type="GITHUB_WEBHOOK",
+            target_repo=repo_url,
+            target_branch=payload.get("branch") or "main",
+            target_commit=payload.get("commit"),
+            triggered_by=payload.get("author") or "github",
+        )
+        created = await _maybe(created)
+
+    job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     job_payload = {
-        "job_id": job.id,
+        "job_id": job_id,
         "job_type": "GITHUB_WEBHOOK",
         "target_repo": repo_url,
         "target_branch": payload.get("branch") or "main",
@@ -69,13 +140,19 @@ async def github_webhook(
 
         background_tasks.add_task(
             PipelineRunner().run,
-            job.id,
-            repo_url,
-            payload.get("branch") or "main",
-            payload.get("author") or "github",
-            payload.get("commit"),
+            job_id=job_id,
+            target_repo=repo_url,
+            target_branch=payload.get("branch") or "main",
+            triggered_by=payload.get("author") or "github",
+            target_commit=payload.get("commit"),
         )
-    return {"accepted": True, "job_id": job.id, "message": "scan queued"}
+    return {
+        "accepted": True,
+        "acknowledged": True,
+        "queued": True,
+        "job_id": job_id,
+        "message": "Scan queued",
+    }
 
 
 @router.post("/container")

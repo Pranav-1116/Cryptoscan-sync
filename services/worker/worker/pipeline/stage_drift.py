@@ -1,136 +1,83 @@
-"""
-Pipeline Stage 7: Drift detection.
-Compares current scan findings against approved baseline.
-"""
+"""Pipeline stage: compare the current scan to the approved baseline."""
+
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List
-
-from drift.core.comparator import DriftComparator
-from database.db.repositories.baseline_repository import BaselineRepository
-from database.db.repositories.drift_repository import DriftRepository
-from database.db.repositories.evidence_repository import EvidenceRepository
+from datetime import datetime, timezone
 
 from worker.pipeline.pipeline_runner import PipelineContext
 
 logger = logging.getLogger(__name__)
 
 
-class StageDrift:
-    """Drift stage: detect changes from baseline."""
+def execute(ctx: PipelineContext, session) -> PipelineContext:
+    from sqlalchemy import select
 
-    async def execute(self, ctx: PipelineContext) -> PipelineContext:
-        """
-        1. Find active baseline for this system
-        2. Load baseline findings
-        3. Compare current findings
-        4. Create drift event records
-        5. Store in DB
+    from db.models.drift_event import DriftEvent
+    from db.models.evidence_record import EvidenceRecord
+    from db.repositories.baseline_repository import BaselineRepository
+    from drift.core.detector import DriftDetector
 
-        Returns: Updated context with drift_events.
-        """
-        if not ctx.scan_id:
-            raise ValueError("scan_id not set")
+    baseline = BaselineRepository(session).get_active(ctx.target_repo)
+    if baseline is None:
+        logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
+        return ctx
 
-        logger.info(
-            "drift_start",
-            extra={
-                "job_id": ctx.job_id,
-                "scan_id": ctx.scan_id,
-                "repo": ctx.target_repo,
-            },
-        )
+    def as_findings(scan_id: str) -> list[dict]:
+        rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)).scalars())
+        return [
+            {
+                "algorithm": r.algorithm,
+                "key_size": r.key_size,
+                "mode": r.mode,
+                "purpose": r.purpose,
+                "file_path": r.file_path,
+                "line_number": r.line_number,
+                "compliance_status": r.compliance_status,
+                "is_hardcoded_key": r.is_hardcoded_key,
+            }
+            for r in rows
+        ]
 
-        try:
-            from database.db.connection.session import AsyncSessionFactory
-
-            async with AsyncSessionFactory() as db:
-                baseline_repo = BaselineRepository(db)
-                evidence_repo = EvidenceRepository(db)
-                drift_repo = DriftRepository(db)
-
-                # Find baseline for this system/environment
-                baseline = await baseline_repo.get_active(
-                    system_identifier=ctx.target_repo,
-                    environment="production",
-                )
-
-                if baseline is None:
-                    logger.info(
-                        "no_baseline_for_drift",
-                        extra={
-                            "job_id": ctx.job_id,
-                            "repo": ctx.target_repo,
-                        },
-                    )
-                    return ctx.update(drift_events=[])
-
-                # Load baseline findings
-                baseline_findings, _ = await evidence_repo.list_by_scan(
-                    scan_id=str(baseline.approved_scan_id),
-                    offset=0,
-                    limit=10000,
-                )
-
-                # Load current findings
-                current_findings, _ = await evidence_repo.list_by_scan(
-                    scan_id=ctx.scan_id,
-                    offset=0,
-                    limit=10000,
-                )
-
-                # Detect drift
-                comparator = DriftComparator()
-                drift_events = comparator.compare(
-                    baseline_findings=baseline_findings,
-                    current_findings=current_findings,
-                )
-
-                # Store drift events
-                stored_events: List[Dict[str, Any]] = []
-                for drift in drift_events:
-                    event = await drift_repo.create(
-                        baseline_id=baseline.baseline_id,
-                        current_scan_id=ctx.scan_id,
-                        drift_type=drift["type"],
-                        severity=drift["severity"],
-                        drift_details=drift["details"],
-                    )
-                    stored_events.append(
-                        {
-                            "drift_id": event.drift_id,
-                            "type": event.drift_type,
-                            "severity": event.severity,
-                        }
-                    )
-
-                logger.info(
-                    "drift_complete",
-                    extra={
-                        "job_id": ctx.job_id,
-                        "scan_id": ctx.scan_id,
-                        "drift_count": len(stored_events),
-                        "critical": sum(
-                            1 for e in stored_events if e["severity"] == "CRITICAL"
-                        ),
-                    },
-                )
-
-                return ctx.update(
-                    baseline_id=str(baseline.baseline_id),
-                    drift_events=stored_events,
-                )
-
-        except Exception as exc:
-            logger.exception(
-                "drift_failed",
-                extra={
-                    "job_id": ctx.job_id,
-                    "scan_id": ctx.scan_id,
-                    "error": str(exc),
-                },
+    detection = DriftDetector().detect_drift(
+        baseline_findings=as_findings(baseline.approved_scan_id),
+        current_findings=as_findings(ctx.scan_id or ""),
+        baseline_scan_id=baseline.approved_scan_id,
+        current_scan_id=ctx.scan_id or "",
+    )
+    now = datetime.now(timezone.utc)
+    events = []
+    for change in detection.changes:
+        details = {
+            "change_type": change.change_type,
+            "reason": change.reason,
+            "algorithm": change.affected_algorithm,
+        }
+        session.add(
+            DriftEvent(
+                baseline_id=baseline.id,
+                current_scan_id=ctx.scan_id or "",
+                detected_at=now,
+                drift_type=change.change_type,
+                severity=change.severity,
+                drift_details=details,
+                resolution_status="OPEN",
             )
-            # Don't re-raise — drift detection is non-critical
-            logger.warning("drift_stage_non_critical", extra={"job_id": ctx.job_id})
-            return ctx.update(drift_events=[])
+        )
+        events.append(
+            {
+                "drift_type": change.change_type,
+                "severity": change.severity,
+                "reason": change.reason,
+                "algorithm": change.affected_algorithm,
+            }
+        )
+    ctx.drift_events = events
+    session.flush()
+    logger.info("stage_drift_done", extra={"events": len(events)})
+    return ctx
+
+
+class StageDrift:
+    def execute(self, ctx: PipelineContext, session) -> PipelineContext:
+        return execute(ctx, session)

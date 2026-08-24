@@ -1,0 +1,26 @@
+rule_id: "FIPS140-003"
+rule_name: "FIPS 140-3 — SHA-1 must not be used for new signatures"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "FIPS 140-3 / SP 800-131A"
+description: >
+  SHA-1 is not approved for digital signature generation in FIPS mode.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "FIPS"
+      - "FIPS-140-3"
+    if_purpose:
+      - "SIGNING"
+    forbidden_algorithms:
+      - "SHA-1"
+      - "SHA1"
+      - "SHA1WITHRSA"
+evaluation:
+  result_template: "FAIL"
+  message_template: "FIPS 140-3 does not approve SHA-1 for new signatures"
+remediation: >
+  Sign with SHA-256, SHA-384, SHA-512, or SHA-3 family hashes.
+enabled: true

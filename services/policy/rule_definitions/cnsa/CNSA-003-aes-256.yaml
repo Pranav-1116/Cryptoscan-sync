@@ -1,0 +1,26 @@
+rule_id: "CNSA-003"
+rule_name: "CNSA 2.0 — AES-256 is required for symmetric encryption"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NSA CNSA 2.0"
+description: >
+  Symmetric encryption in CNSA scope must use AES-256 (or an approved AEAD).
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "CNSA"
+      - "CNSA-2.0"
+    if_purpose:
+      - "ENCRYPTION"
+      - "DECRYPTION"
+    if_algorithms:
+      - "AES"
+    min_key_size: 256
+evaluation:
+  result_template: "FAIL"
+  message_template: "CNSA 2.0 requires AES-256 for symmetric encryption"
+remediation: >
+  Configure AES with a 256-bit key and an authenticated mode such as GCM.
+enabled: true

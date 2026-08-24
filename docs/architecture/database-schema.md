@@ -1,13 +1,19 @@
 # Database schema
 
-Tables created by `init_db()` (and Alembic 0001–0009):
+Core Part 1 tables:
 
-- `scans` — one row per scan session (`id` UUID string)
-- `evidence_records` — one row per finding, FK `scans.id`
-- `scan_jobs` — queue metadata
+- `scans` — one row per pipeline run
+- `evidence_records` — hashed findings, policy JSON, normalized crypto
+- `scan_jobs` — queue / inline job progress + logs
 - `baselines` — approved scan per target
-- `drift_events` — changes vs baseline
-- `repo_configurations` — webhook allow-list
-- `verification_log` — load-time integrity notes
+- `drift_events` — NEW / REMOVED / CHANGED / UPGRADED
 
-SQLite uses `JSON`. PostgreSQL uses the same columns (JSON, not JSONB) so the ORM stays portable.
+Part 2 tables:
+
+- `crypto_assets` + `crypto_asset_evidence` — deduplicated inventory
+- `systems` + `system_assets` + `system_dependencies` — simple inventory
+- `container_scans` + `vulnerabilities` — image-root results
+- `repo_configs` — per-repo webhook settings
+
+SQLite is the local stand-in (`data/cryptoscan.db`). Production is Postgres
+via Compose; JSONB columns degrade to JSON on SQLite.

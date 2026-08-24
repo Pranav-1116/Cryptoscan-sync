@@ -70,7 +70,7 @@ class TestWebhookEndpoint:
         )
 
         response = await client.post(
-            "/webhooks/github",
+            "/api/v1/webhooks/github",
             content=raw_payload,
             headers={
                 "X-GitHub-Event": "push",
@@ -94,7 +94,7 @@ class TestWebhookEndpoint:
     ):
         """Invalid HMAC signature should be rejected with 401."""
         response = await client.post(
-            "/webhooks/github",
+            "/api/v1/webhooks/github",
             content=raw_payload,
             headers={
                 "X-GitHub-Event": "push",
@@ -113,7 +113,7 @@ class TestWebhookEndpoint:
     ):
         """Missing X-Hub-Signature-256 header should return 401."""
         response = await client.post(
-            "/webhooks/github",
+            "/api/v1/webhooks/github",
             content=raw_payload,
             headers={
                 "X-GitHub-Event": "push",
@@ -134,7 +134,7 @@ class TestWebhookEndpoint:
         mock_repo_config_repo.get_by_url = AsyncMock(return_value=None)
 
         response = await client.post(
-            "/webhooks/github",
+            "/api/v1/webhooks/github",
             content=raw_payload,
             headers={
                 "X-GitHub-Event": "push",
@@ -158,7 +158,7 @@ class TestWebhookEndpoint:
     ):
         """Non-push events (ping, pull_request) should be acknowledged but not scanned."""
         response = await client.post(
-            "/webhooks/github",
+            "/api/v1/webhooks/github",
             content=raw_payload,
             headers={
                 "X-GitHub-Event": "ping",
@@ -184,7 +184,7 @@ class TestWebhookEndpoint:
         sig = _sign_payload(raw, WEBHOOK_SECRET)
 
         response = await client.post(
-            "/webhooks/github",
+            "/api/v1/webhooks/github",
             content=raw,
             headers={
                 "X-GitHub-Event": "push",

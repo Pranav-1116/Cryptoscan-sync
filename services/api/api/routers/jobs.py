@@ -19,6 +19,8 @@ def _to_status(job, job_id: str | None = None) -> JobStatusResponse:
     started_at = getattr(job, "started_at", None)
     completed_at = getattr(job, "completed_at", None)
     progress = getattr(job, "progress", None)
+    if not isinstance(progress, dict):
+        progress = getattr(job, "metadata", None)
     return JobStatusResponse(
         job_id=str(job_pk),
         status=job.status,

@@ -111,6 +111,21 @@ class EmailAlerter:
             "drift_alert_logged",
             extra={"target": target_repo, "events": events},
         )
+        if self._config is None:
+            return
+        body = "\n".join(
+            [
+                f"CryptoScan drift alert for {target_repo}",
+                "",
+                *[f"- {item.get('severity', 'INFO')}: {item.get('algorithm') or item.get('drift_type') or item}" for item in events],
+            ]
+        )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"[CryptoScan] Drift detected in {target_repo}"
+        msg["From"] = f"{self._config.from_name} <{self._config.from_address}>"
+        msg["To"] = self._config.from_address
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        self._send_smtp(msg, [self._config.from_address])
 
     def _build_message(self, alert: EmailAlert) -> MIMEMultipart:
         """Build multipart email message with HTML and plain text."""

@@ -26,7 +26,7 @@ class TestTriggerEndpoint:
         mock_job_repo.create = AsyncMock(return_value=mock_job)
 
         response = await authenticated_client.post(
-            "/api/scans/trigger",
+            "/api/v1/scans/trigger",
             json={
                 "repo_url": "https://github.com/org/payment-api",
                 "branch": "main",
@@ -47,7 +47,7 @@ class TestTriggerEndpoint:
     ):
         """Invalid repo URL should return 422."""
         response = await authenticated_client.post(
-            "/api/scans/trigger",
+            "/api/v1/scans/trigger",
             json={
                 "repo_url": "not-a-valid-url",
                 "branch": "main",
@@ -62,7 +62,7 @@ class TestTriggerEndpoint:
     ):
         """Unauthenticated trigger request should return 401."""
         response = await client.post(
-            "/api/scans/trigger",
+            "/api/v1/scans/trigger",
             json={
                 "repo_url": "https://github.com/org/payment-api",
                 "branch": "main",
@@ -95,7 +95,7 @@ class TestTriggerEndpoint:
         mock_job.metadata = {"current_stage": "scan", "stages_complete": 2}
         mock_job_repo.get_by_id = AsyncMock(return_value=mock_job)
 
-        response = await authenticated_client.get("/api/jobs/test-job-uuid-123")
+        response = await authenticated_client.get("/api/v1/jobs/test-job-uuid-123")
 
         assert response.status_code == 200
         body = response.json()

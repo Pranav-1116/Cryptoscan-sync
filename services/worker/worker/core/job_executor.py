@@ -15,11 +15,11 @@ class JobExecutor:
         self.runner = PipelineRunner()
 
     def execute(self, job: ScanJob) -> bool:
-        result = self.runner.run(
+        scan_id = self.runner.run(
             job_id=job.job_id,
             target_repo=job.target_repo,
             target_branch=job.target_branch,
             target_commit=job.target_commit,
             triggered_by=job.triggered_by,
         )
-        return bool(result.get("success"))
+        return bool(scan_id)

@@ -1,0 +1,32 @@
+rule_id: "NIST131A-004"
+rule_name: "NIST SP 800-131A — ECDSA remains approved for signatures"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "MEDIUM"
+standard_reference: "NIST SP 800-131A Rev. 2"
+description: >
+  ECDSA with an approved curve is acceptable for digital signatures.
+  This rule only applies when the purpose is SIGNING or VERIFICATION.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "NIST-131A"
+      - "NIST SP 800-131A"
+      - "FIPS"
+    if_purpose:
+      - "SIGNING"
+      - "VERIFICATION"
+    require_algorithms:
+      - "ECDSA"
+      - "ED25519"
+      - "EDDSA"
+      - "RSA"
+      - "SHA256WITHRSA"
+      - "SHA256WITHECDSA"
+evaluation:
+  result_template: "FAIL"
+  message_template: "NIST SP 800-131A does not approve {algorithm} for signatures"
+remediation: >
+  Use ECDSA (P-256 or stronger), Ed25519, or RSA-2048+ with SHA-256 for signatures.
+enabled: true

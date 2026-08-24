@@ -11,6 +11,8 @@ from typing import Optional
 from scanner.config.scanner_config import ScannerConfig
 from scanner.core.file_discovery import FileDiscovery
 from scanner.core.language_detector import detect_languages_in_repo
+from scanner.core.scan_context import ScanContext
+from scanner.detectors.java.jar_string_scanner import scan_jar
 from scanner.git.git_client import GitClient
 from scanner.models.raw_finding import GitContext, RawFinding
 from scanner.models.scan_result import ScanResult, ScanTarget
@@ -69,6 +71,16 @@ class Scanner:
             git_meta = None
 
         languages = detect_languages_in_repo(path)
+        context = ScanContext(
+            root_path=path,
+            scan_id=scan_id,
+            target_type=target_type,
+            target_location=location,
+            target_commit=target_commit,
+            target_branch=target_branch,
+            languages=languages,
+            exclude_test_dirs=self.exclude_test_dirs,
+        )
         source_files = list(self.file_discovery.discover(path))
         findings: list[RawFinding] = []
         parse_errors: list[dict] = []

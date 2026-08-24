@@ -15,13 +15,13 @@ from db.repositories.job_repository import JobRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["trigger"])
-settings = get_settings()
 
 
 def _publish_job(payload: dict) -> None:
     try:
         from worker.core.job_consumer import enqueue_job
 
+        settings = get_settings()
         enqueue_job(payload, redis_url=settings.REDIS_URL, queue_name=settings.SCAN_JOB_QUEUE_KEY)
     except Exception:
         logger.exception("queue_publish_failed")
@@ -67,6 +67,7 @@ async def trigger_manual_scan(
         "triggered_by": current_user,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
     }
+    settings = get_settings()
     if settings.REDIS_URL:
         background_tasks.add_task(_publish_job, payload)
     else:

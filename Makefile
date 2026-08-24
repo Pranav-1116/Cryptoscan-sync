@@ -27,7 +27,7 @@ worker:
 	$(PY) -m worker.main
 
 test:
-	@for d in services/policy/tests services/evidence/tests services/normalization/tests services/scanner/tests services/database/tests/unit services/drift/tests services/worker/tests/unit services/api/tests/unit services/deduplication/tests services/cbom/tests services/container_scanner/tests; do \
+	@for d in services/policy/tests services/evidence/tests services/normalization/tests services/scanner/tests services/database/tests/unit services/drift/tests services/worker/tests/unit services/api/tests/unit services/api/tests/integration services/deduplication/tests services/cbom/tests services/container_scanner/tests; do \
 		echo "===== $$d ====="; \
 		$(PY) -m pytest -q $$d || exit 1; \
 	done
