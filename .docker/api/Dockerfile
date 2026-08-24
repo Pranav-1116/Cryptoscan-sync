@@ -15,7 +15,7 @@ COPY demo /app/demo
 COPY scripts /app/scripts
 COPY .env.example /app/.env.example
 
-ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker
+ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker:/app/services/deduplication:/app/services/cbom:/app/services/container_scanner
 ENV PYTHONUNBUFFERED=1
 ENV CRYPTOSCAN_ROOT=/app
 

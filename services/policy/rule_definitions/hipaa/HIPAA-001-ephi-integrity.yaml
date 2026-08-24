@@ -1,0 +1,27 @@
+rule_id: "HIPAA-001"
+rule_name: "HIPAA Security Rule — weak crypto must not protect ePHI"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "45 CFR 164.312(a)(2)(iv) / 164.312(e)(2)(ii)"
+description: >
+  Electronic protected health information must not be protected with broken algorithms.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "HIPAA"
+      - "EPHI"
+    forbidden_algorithms:
+      - "DES"
+      - "3DES"
+      - "RC4"
+      - "MD5"
+      - "SHA-1"
+      - "SHA1"
+evaluation:
+  result_template: "FAIL"
+  message_template: "{algorithm} is not acceptable for ePHI protection"
+remediation: >
+  Use AES-256-GCM for confidentiality and SHA-256 (or stronger) for integrity of ePHI.
+enabled: true

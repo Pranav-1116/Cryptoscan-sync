@@ -98,11 +98,15 @@
 
   <div id="app-view" class="app hidden">
     <aside class="sidebar">
-      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v0.1 · Part 1</small></div></div>
+      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v1.0 · Part 2</small></div></div>
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
         <button data-route="new" onclick="go('new')">New scan</button>
+        <button data-route="assets" onclick="go('assets')">Assets</button>
+        <button data-route="systems" onclick="go('systems')">Systems</button>
+        <button data-route="policy" onclick="go('policy')">Policy</button>
+        <button data-route="container" onclick="go('container')">Container</button>
         <button data-route="drift" onclick="go('drift')">Drift</button>
         <button data-route="findings" onclick="go('findings')">Findings</button>
       </nav>
@@ -171,6 +175,10 @@ async function render() {
     if (state.route === 'job') return renderJob(el);
     if (state.route === 'drift') return renderDrift(el);
     if (state.route === 'findings') return renderFindings(el);
+    if (state.route === 'assets') return renderAssets(el);
+    if (state.route === 'systems') return renderSystems(el);
+    if (state.route === 'policy') return renderPolicy(el);
+    if (state.route === 'container') return renderContainer(el);
   } catch (e) {
     el.innerHTML = `<div class="card"><h2>Error</h2><p class="err">${e.message}</p></div>`;
   }
@@ -273,7 +281,7 @@ function renderNew(el) {
   el.innerHTML = `<div class="top"><h2>Start a scan</h2></div>
     <div class="card" style="max-width:640px">
       <label class="muted">Repository URL or local path</label>
-      <input id="repo" value="local://demo/vulnerable-app" />
+      <input id="repo" value="local://demo/polyglot-app" />
       <div style="height:10px"></div>
       <label class="muted">Branch</label>
       <input id="branch" value="main" />
@@ -318,6 +326,80 @@ async function renderDrift(el) {
 async function ack(id) {
   await api('/drift/' + id + '/acknowledge', { method: 'POST', body: '{}' });
   renderDrift(document.getElementById('main'));
+}
+
+async function renderAssets(el) {
+  const data = await api('/assets?page_size=100');
+  el.innerHTML = `<div class="top"><h2>Crypto assets</h2><p class="muted">Deduplicated across scanners. VERIFIED means two scanners agreed.</p></div>
+    <div class="card"><table><thead><tr><th>Algo</th><th>Purpose</th><th>Location</th><th>Confidence</th><th>Sources</th></tr></thead>
+    <tbody>${(data.assets||[]).map(a => `<tr>
+      <td class="mono">${a.algorithm}</td><td>${a.purpose||'—'}</td>
+      <td class="mono">${a.file_path}:${a.line_number}</td>
+      <td>${badge(a.confidence)}</td><td class="muted">${(a.scanner_ids||[]).join(', ')||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan=5 class="muted">No assets yet. Run a scan.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function renderSystems(el) {
+  const data = await api('/systems?page_size=50');
+  el.innerHTML = `<div class="top"><div><h2>Systems</h2><p class="muted">Simple inventory and dependency edges. Full graphs are Part 3.</p></div>
+    <button class="btn" onclick="createSystem()">Add system</button></div>
+    <div class="card"><table><thead><tr><th>Name</th><th>Owner</th><th>Env</th><th>Scopes</th></tr></thead>
+    <tbody>${(data.systems||[]).map(s => `<tr>
+      <td>${s.name}</td><td>${s.owner||'—'}</td><td>${s.environment||'—'}</td>
+      <td class="mono">${(s.compliance_scopes||[]).join(', ')||'—'}</td>
+    </tr>`).join('') || '<tr><td colspan=4 class="muted">No systems registered.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function createSystem() {
+  const name = prompt('System name', 'payments-api');
+  if (!name) return;
+  await api('/systems', { method: 'POST', body: JSON.stringify({
+    name, owner: 'security', environment: 'prod', compliance_scopes: ['PCI-DSS']
+  })});
+  renderSystems(document.getElementById('main'));
+}
+
+async function renderPolicy(el) {
+  const data = await api('/policy/rules');
+  el.innerHTML = `<div class="top"><h2>Policy catalogue</h2><p class="muted">${data.counts?.enabled||0} enabled rules. Advanced standards apply only with matching scopes.</p></div>
+    <div class="card"><table><thead><tr><th>ID</th><th>Name</th><th>Severity</th><th>Type</th><th>Standard</th></tr></thead>
+    <tbody>${(data.rules||[]).map(r => `<tr>
+      <td class="mono">${r.rule_id}</td><td>${r.rule_name}</td>
+      <td>${badge(r.severity)}</td><td>${r.condition_type}</td>
+      <td class="muted">${r.standard_reference||''}</td>
+    </tr>`).join('')}</tbody></table></div>`;
+}
+
+async function renderContainer(el) {
+  const data = await api('/container/scans');
+  const vulns = await api('/vulns?page_size=50');
+  el.innerHTML = `<div class="top"><h2>Container inventory</h2>
+    <button class="btn" onclick="scanContainer()">Scan filesystem</button></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Recent container scans</div>
+        <table><thead><tr><th>Target</th><th>Pkgs</th><th>Libs</th><th>CVEs</th></tr></thead>
+        <tbody>${(data.scans||[]).map(s => `<tr>
+          <td class="mono">${s.target}</td><td>${s.package_count}</td>
+          <td>${s.library_count}</td><td>${s.vuln_count}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">None yet</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="card"><div class="label">Vulnerabilities</div>
+        <table><thead><tr><th>CVE</th><th>Package</th><th>Sev</th></tr></thead>
+        <tbody>${(vulns.vulnerabilities||[]).map(v => `<tr>
+          <td class="mono">${v.cve}</td><td>${v.package}</td><td>${badge(v.severity)}</td>
+        </tr>`).join('') || '<tr><td colspan=3 class="muted">No CVEs stored</td></tr>'}
+        </tbody></table>
+      </div>
+    </div>`;
+}
+
+async function scanContainer() {
+  const path = prompt('Filesystem path to scan', '/home/user/CryproScan/demo/polyglot-app');
+  if (!path) return;
+  await api('/container/scan', { method: 'POST', body: JSON.stringify({ path })});
+  renderContainer(document.getElementById('main'));
 }
 
 async function renderFindings(el) {

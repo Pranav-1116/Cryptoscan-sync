@@ -626,3 +626,8 @@ class JavaParser:
             findings.append(finding)
 
         return findings
+
+
+def parse_java_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
+    """Module-level helper used by the multi-language runner."""
+    return JavaParser(repo_root=repo_root).parse_file(file_path)

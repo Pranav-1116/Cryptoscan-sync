@@ -1,0 +1,90 @@
+"""Cross-scanner cryptographic asset deduplication."""
+
+from __future__ import annotations
+
+from collections import defaultdict
+from typing import Any
+
+
+def _get(finding: dict[str, Any], *path: str, default: Any = None) -> Any:
+    current: Any = finding
+    for key in path:
+        if not isinstance(current, dict):
+            return default
+        current = current.get(key)
+    return default if current is None else current
+
+
+def identity_key(finding: dict[str, Any]) -> tuple:
+    algorithm = str(
+        _get(finding, "crypto", "algorithm")
+        or finding.get("algorithm")
+        or "UNKNOWN"
+    ).upper()
+    purpose = str(_get(finding, "crypto", "purpose") or finding.get("purpose") or "UNKNOWN").upper()
+    file_path = str(_get(finding, "source", "file_path") or finding.get("file_path") or "")
+    line = int(_get(finding, "source", "line_number") or finding.get("line_number") or 0)
+    return algorithm, purpose, file_path, line
+
+
+def _confidence_rank(value: str | None) -> int:
+    return {"LOW": 1, "MEDIUM": 2, "HIGH": 3, "VERIFIED": 4}.get(str(value or "").upper(), 0)
+
+
+class DeduplicationEngine:
+    """Collapse findings that describe the same crypto use from multiple scanners."""
+
+    def merge(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        groups: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
+        for finding in findings:
+            groups[identity_key(finding)].append(finding)
+
+        assets: list[dict[str, Any]] = []
+        for key, members in groups.items():
+            algorithm, purpose, file_path, line = key
+            scanners = sorted(
+                {
+                    str(item.get("scanner_id") or _get(item, "metadata", "library") or "unknown")
+                    for item in members
+                }
+            )
+            confidences = [
+                str(_get(item, "metadata", "confidence") or item.get("confidence") or "LOW")
+                for item in members
+            ]
+            best = max(confidences, key=_confidence_rank)
+            if len({item.get("scanner_id") for item in members if item.get("scanner_id")}) >= 2:
+                best = "VERIFIED"
+            evidence_ids = [
+                item.get("finding_id") or item.get("evidence_id") or item.get("id")
+                for item in members
+            ]
+            libraries = sorted(
+                {
+                    str(_get(item, "metadata", "library") or item.get("library"))
+                    for item in members
+                    if _get(item, "metadata", "library") or item.get("library")
+                }
+            )
+            hardcoded = any(
+                bool(_get(item, "metadata", "is_hardcoded_key") or item.get("is_hardcoded_key"))
+                for item in members
+            )
+            assets.append(
+                {
+                    "algorithm": algorithm,
+                    "purpose": purpose,
+                    "file_path": file_path,
+                    "line_number": line,
+                    "confidence": best,
+                    "scanner_ids": scanners,
+                    "libraries": libraries,
+                    "evidence_ids": [eid for eid in evidence_ids if eid],
+                    "occurrence_count": len(members),
+                    "is_hardcoded_key": hardcoded,
+                    "mode": _get(members[0], "crypto", "mode") or members[0].get("mode"),
+                    "key_size": _get(members[0], "crypto", "key_size") or members[0].get("key_size"),
+                    "source_language": _get(members[0], "source", "language"),
+                }
+            )
+        return sorted(assets, key=lambda item: (item["file_path"], item["line_number"], item["algorithm"]))

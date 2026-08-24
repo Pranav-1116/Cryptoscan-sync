@@ -1,0 +1,23 @@
+"""Local cryptographic-library vulnerabilities."""
+
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+from api.dependencies import get_current_user, get_db_session
+from db.repositories.vulnerability_repository import VulnerabilityRepository
+
+router = APIRouter(prefix="/vulns", tags=["vulnerabilities"])
+
+
+@router.get("")
+def list_vulns(
+    package: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    rows, total = VulnerabilityRepository(db).list_vulns(package=package, page=page, page_size=page_size)
+    return {"vulnerabilities": [row.to_dict() for row in rows], "total_count": total, "page": page, "page_size": page_size}

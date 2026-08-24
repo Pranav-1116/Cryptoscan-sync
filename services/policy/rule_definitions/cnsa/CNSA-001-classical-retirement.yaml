@@ -1,0 +1,41 @@
+rule_id: "CNSA-001"
+rule_name: "CNSA 2.0 — classical public-key algorithms retire after 2025"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NSA CNSA 2.0"
+description: >
+  RSA, ECDSA and ECDH used for signing or key exchange must be replaced with CNSA 2.0
+  algorithms after 2025-01-01.
+condition:
+  type: "TIMELINE"
+  parameters:
+    required_scopes:
+      - "CNSA"
+      - "CNSA-2.0"
+    if_purpose:
+      - "SIGNING"
+      - "VERIFICATION"
+      - "KEY_EXCHANGE"
+      - "KEY_GENERATION"
+    retired_algorithms:
+      - "RSA"
+      - "ECDSA"
+      - "ECDH"
+      - "SHA256WITHRSA"
+    approved_algorithms:
+      - "ML-KEM"
+      - "ML-DSA"
+      - "SLH-DSA"
+      - "LMS"
+      - "XMSS"
+    warn_after: "2024-01-01"
+    after: "2025-01-01"
+    after_result: "FAIL"
+    message: "CNSA 2.0 retires this classical public-key algorithm after 2025-01-01"
+evaluation:
+  result_template: "FAIL"
+  message_template: "CNSA 2.0 requires a post-quantum replacement"
+remediation: >
+  Migrate signing to ML-DSA or SLH-DSA and key establishment to ML-KEM.
+enabled: true

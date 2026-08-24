@@ -10,10 +10,11 @@ from typing import Optional
 
 from scanner.config.scanner_config import ScannerConfig
 from scanner.core.file_discovery import FileDiscovery
+from scanner.core.language_detector import detect_languages_in_repo
 from scanner.git.git_client import GitClient
-from scanner.models.raw_finding import RawFinding
-from scanner.models.scan_result import ScanResult, ScanStatistics, ScanTarget
-from scanner.parsers.java_parser import JavaParser
+from scanner.models.raw_finding import GitContext, RawFinding
+from scanner.models.scan_result import ScanResult, ScanTarget
+from scanner.registry.language_scanners import scan_file
 
 logger = logging.getLogger(__name__)
 
@@ -67,37 +68,40 @@ class Scanner:
         except Exception:
             git_meta = None
 
-        parser = JavaParser(repo_root=path)
-        java_files = list(self.file_discovery.discover(path))
+        languages = detect_languages_in_repo(path)
+        source_files = list(self.file_discovery.discover(path))
         findings: list[RawFinding] = []
         parse_errors: list[dict] = []
 
-        for java_file in java_files:
-            try:
-                file_findings = parser.parse_file(java_file)
-                if git_meta:
-                    from scanner.models.raw_finding import GitContext
+        git_ctx = None
+        if git_meta:
+            git_ctx = GitContext(
+                commit_hash=git_meta.commit_hash,
+                commit_author=git_meta.commit_author,
+                commit_timestamp=git_meta.commit_timestamp,
+                branch=git_meta.branch,
+                repository_url=git_meta.repository_url,
+                commit_message=git_meta.commit_message,
+            )
 
-                    ctx = GitContext(
-                        commit_hash=git_meta.commit_hash,
-                        commit_author=git_meta.commit_author,
-                        commit_timestamp=git_meta.commit_timestamp,
-                        branch=git_meta.branch,
-                        repository_url=git_meta.repository_url,
-                        commit_message=git_meta.commit_message,
-                    )
+        for source_file in source_files:
+            try:
+                file_findings = scan_file(source_file, path)
+                if git_ctx:
                     for finding in file_findings:
-                        finding.git_context = ctx
+                        finding.git_context = git_ctx
                 findings.extend(file_findings)
             except Exception as exc:
-                logger.warning("parse_error", extra={"file": str(java_file), "error": str(exc)})
-                parse_errors.append({"file": str(java_file), "error": str(exc)})
+                logger.warning("parse_error", extra={"file": str(source_file), "error": str(exc)})
+                parse_errors.append({"file": str(source_file), "error": str(exc)})
 
+        scanner_id = "static-multi-scanner-v1.0" if set(languages) - {"JAVA"} else "static-java-scanner-v0.1"
+        scanner_version = "1.0.0" if scanner_id.endswith("v1.0") else "0.1.0"
         result = ScanResult(
             scan_id=scan_id,
             scan_start=started.isoformat(),
-            scanner_id="static-java-scanner-v0.1",
-            scanner_version="0.1.0",
+            scanner_id=scanner_id,
+            scanner_version=scanner_version,
             scan_target=ScanTarget(
                 type=target_type,
                 location=location,
@@ -108,14 +112,20 @@ class Scanner:
             parse_errors=parse_errors,
             status="COMPLETED",
         )
-        result.statistics.files_scanned = len(java_files)
+        result.statistics.files_scanned = len(source_files)
         result.statistics.files_with_errors = len(parse_errors)
         result.finalize()
         logger.info(
             "scan_completed",
-            extra={"scan_id": scan_id, "findings": len(findings), "files": len(java_files)},
+            extra={
+                "scan_id": scan_id,
+                "findings": len(findings),
+                "files": len(source_files),
+                "languages": languages,
+            },
         )
         return result
 
 
 CryptoScanner = Scanner
+MultiLanguageScanner = Scanner

@@ -28,12 +28,19 @@ def init_db(engine=None) -> None:
     """Create all tables. Safe to call on every startup."""
     from db.models import (  # noqa: F401 — register models
         baseline,
+        container_scan,
+        crypto_asset,
+        crypto_asset_evidence,
         drift_event,
         evidence_record,
         repo_configuration,
         scan,
         scan_job,
+        system,
+        system_asset,
+        system_dependency,
         verification_log,
+        vulnerability,
     )
 
     engine = engine or get_engine()

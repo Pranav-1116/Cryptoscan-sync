@@ -15,7 +15,26 @@ from api.config.settings import APISettings, get_settings
 from api.middleware.auth_middleware import AuthMiddleware
 from api.middleware.logging_middleware import LoggingMiddleware
 from api.middleware.request_id_middleware import RequestIDMiddleware
-from api.routers import auth, baselines, drift, export, findings, health, jobs, repo_configs, scans, stats, trigger, webhooks
+from api.routers import (
+    assets,
+    auth,
+    baselines,
+    cbom,
+    container,
+    drift,
+    export,
+    findings,
+    health,
+    jobs,
+    policy,
+    repo_configs,
+    scans,
+    stats,
+    systems,
+    trigger,
+    vulns,
+    webhooks,
+)
 from api.security.exceptions import AuthenticationError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -95,6 +114,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(repo_configs.router, prefix=prefix)
     app.include_router(health.router, prefix=prefix)
     app.include_router(export.router, prefix=prefix)
+    app.include_router(assets.router, prefix=prefix)
+    app.include_router(systems.router, prefix=prefix)
+    app.include_router(cbom.router, prefix=prefix)
+    app.include_router(container.router, prefix=prefix)
+    app.include_router(vulns.router, prefix=prefix)
+    app.include_router(policy.router, prefix=prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
     dashboard_html = Path(__file__).resolve().parents[2] / "dashboard" / "index.html"

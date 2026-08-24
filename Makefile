@@ -3,7 +3,7 @@
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 PY := $(ROOT)/.venv/bin/python
 export CRYPTOSCAN_ROOT := $(ROOT)
-export PYTHONPATH := $(ROOT)/shared/shared_config:$(ROOT)/shared/shared_logging:$(ROOT)/shared/shared_models:$(ROOT)/services/api:$(ROOT)/services/database:$(ROOT)/services/scanner:$(ROOT)/services/evidence:$(ROOT)/services/normalization:$(ROOT)/services/policy:$(ROOT)/services/drift:$(ROOT)/services/worker
+export PYTHONPATH := $(ROOT)/shared/shared_config:$(ROOT)/shared/shared_logging:$(ROOT)/shared/shared_models:$(ROOT)/services/api:$(ROOT)/services/database:$(ROOT)/services/scanner:$(ROOT)/services/evidence:$(ROOT)/services/normalization:$(ROOT)/services/policy:$(ROOT)/services/drift:$(ROOT)/services/worker:$(ROOT)/services/deduplication:$(ROOT)/services/cbom:$(ROOT)/services/container_scanner
 
 help:
 	@echo "make setup  - create venv and install deps"
@@ -27,7 +27,7 @@ worker:
 	$(PY) -m worker.main
 
 test:
-	@for d in services/policy/tests services/evidence/tests services/normalization/tests services/scanner/tests services/database/tests/unit services/drift/tests services/worker/tests/unit services/api/tests/unit; do \
+	@for d in services/policy/tests services/evidence/tests services/normalization/tests services/scanner/tests services/database/tests/unit services/drift/tests services/worker/tests/unit services/api/tests/unit services/deduplication/tests services/cbom/tests services/container_scanner/tests; do \
 		echo "===== $$d ====="; \
 		$(PY) -m pytest -q $$d || exit 1; \
 	done

@@ -41,9 +41,22 @@ DEFAULT_TEST_DIRS = frozenset({
 })
 
 
+DEFAULT_SOURCE_EXTENSIONS = (
+    ".java",
+    ".py",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".ts",
+    ".tsx",
+    ".cs",
+)
+
+
 class FileDiscovery:
     """
-    Discovers Java source files in a directory tree.
+    Discovers source files in a directory tree.
     
     Implements configurable exclusion of:
     - Build output directories
@@ -57,11 +70,13 @@ class FileDiscovery:
         exclude_dirs: frozenset[str] | None = None,
         exclude_test_dirs: bool = False,
         max_file_size_mb: float = 10.0,
+        extensions: tuple[str, ...] | None = None,
     ):
         self._excluded_dirs = exclude_dirs or DEFAULT_EXCLUDED_DIRS
         if exclude_test_dirs:
             self._excluded_dirs = self._excluded_dirs | DEFAULT_TEST_DIRS
         self._max_file_size_bytes = int(max_file_size_mb * 1024 * 1024)
+        self._extensions = tuple(extensions) if extensions else DEFAULT_SOURCE_EXTENSIONS
 
     def discover(self, root_path: Path) -> Iterator[Path]:
         """
@@ -94,7 +109,7 @@ class FileDiscovery:
             current_dir = Path(dirpath)
 
             for filename in filenames:
-                if not filename.endswith(".java"):
+                if not filename.lower().endswith(self._extensions):
                     continue
 
                 file_path = current_dir / filename

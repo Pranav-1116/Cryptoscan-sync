@@ -1,0 +1,36 @@
+rule_id: "FIPS140-001"
+rule_name: "FIPS 140-3 — only approved algorithms in FIPS mode"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "FIPS 140-3 / IG"
+description: >
+  Systems operating in FIPS mode may only use CMVP-approved algorithms.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "FIPS"
+      - "FIPS-140-3"
+    require_algorithms:
+      - "AES"
+      - "SHA-256"
+      - "SHA-384"
+      - "SHA-512"
+      - "SHA3-256"
+      - "SHA3-384"
+      - "SHA3-512"
+      - "HMAC-SHA256"
+      - "HMAC-SHA384"
+      - "HMAC-SHA512"
+      - "RSA"
+      - "ECDSA"
+      - "SHA256WITHRSA"
+      - "PBKDF2"
+      - "TLS"
+evaluation:
+  result_template: "FAIL"
+  message_template: "{algorithm} is not on the FIPS-approved algorithm list"
+remediation: >
+  Disable non-approved algorithms or run the component outside FIPS mode with compensating controls.
+enabled: true

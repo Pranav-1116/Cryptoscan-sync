@@ -22,6 +22,9 @@ sys.path[:0] = [
     str(ROOT / "services" / "policy"),
     str(ROOT / "services" / "drift"),
     str(ROOT / "services" / "worker"),
+    str(ROOT / "services" / "deduplication"),
+    str(ROOT / "services" / "cbom"),
+    str(ROOT / "services" / "container_scanner"),
 ]
 
 

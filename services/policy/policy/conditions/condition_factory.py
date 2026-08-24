@@ -11,7 +11,9 @@ from policy.conditions.algorithm_in_list import AlgorithmInListCondition
 from policy.conditions.algorithm_mode_whitelist import AlgorithmModeWhitelistCondition
 from policy.conditions.base_condition import BaseCondition
 from policy.conditions.boolean_flag import BooleanFlagCondition
+from policy.conditions.complex_condition import ComplexCondition
 from policy.conditions.key_size_minimum import KeySizeMinimumCondition
+from policy.conditions.timeline_condition import TimelineCondition
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,8 @@ _CONDITION_REGISTRY: dict[str, type[BaseCondition]] = {
     "KEY_SIZE_MINIMUM": KeySizeMinimumCondition,
     "ALGORITHM_MODE_WHITELIST": AlgorithmModeWhitelistCondition,
     "BOOLEAN_FLAG": BooleanFlagCondition,
+    "COMPLEX": ComplexCondition,
+    "TIMELINE": TimelineCondition,
 }
 
 

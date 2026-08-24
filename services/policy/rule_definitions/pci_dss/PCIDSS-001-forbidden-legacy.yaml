@@ -1,0 +1,28 @@
+rule_id: "PCIDSS-001"
+rule_name: "PCI-DSS 4.0 — forbidden payment-card algorithms"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "CRITICAL"
+standard_reference: "PCI-DSS 4.0 req. 4.2.1 / 3.5"
+description: >
+  DES, 3DES, RC4, MD5 and SHA-1 must not protect account data in PCI-DSS scope.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "PCI-DSS"
+      - "PCI-DSS-4.0"
+      - "PAN"
+    forbidden_algorithms:
+      - "DES"
+      - "3DES"
+      - "RC4"
+      - "MD5"
+      - "SHA-1"
+      - "SHA1"
+evaluation:
+  result_template: "FAIL"
+  message_template: "PCI-DSS forbids {algorithm} for account-data protection"
+remediation: >
+  Replace legacy ciphers with AES-256-GCM (or CCM) and hash with SHA-256 or stronger.
+enabled: true

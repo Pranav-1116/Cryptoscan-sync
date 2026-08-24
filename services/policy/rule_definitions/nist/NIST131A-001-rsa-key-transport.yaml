@@ -1,0 +1,26 @@
+rule_id: "NIST131A-001"
+rule_name: "NIST SP 800-131A — RSA key transport is disallowed"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NIST SP 800-131A Rev. 2"
+description: >
+  RSA encryption used as a key-transport / key-exchange mechanism is disallowed.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "NIST-131A"
+      - "NIST SP 800-131A"
+      - "FIPS"
+    if_purpose:
+      - "KEY_EXCHANGE"
+      - "ENCRYPTION"
+    forbidden_algorithms:
+      - "RSA"
+evaluation:
+  result_template: "FAIL"
+  message_template: "NIST SP 800-131A disallows RSA key transport"
+remediation: >
+  Use ECDH, X25519, or a NIST-approved KEM instead of RSA encryption for key establishment.
+enabled: true

@@ -32,6 +32,7 @@ class PipelineContext:
     evidence_records: list[dict[str, Any]] = field(default_factory=list)
     manifest: dict[str, Any] = field(default_factory=dict)
     drift_events: list[dict[str, Any]] = field(default_factory=list)
+    container_result: dict[str, Any] = field(default_factory=dict)
     current_stage: str = ""
 
     def update(self, **kwargs) -> "PipelineContext":
@@ -189,7 +190,41 @@ class PipelineRunner:
             "operator": ctx.triggered_by,
             "statistics": stats,
         }
+        self._container(ctx)
         logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
+
+    def _container(self, ctx: PipelineContext) -> None:
+        root = Path(ctx.repo_path)
+        if not root.exists():
+            return
+        markers = {"dockerfile", "requirements.txt", "package.json", "pom.xml", "go.mod"}
+        has_manifest = False
+        has_binary = False
+        for path in root.rglob("*"):
+            if not path.is_file():
+                continue
+            name = path.name.lower()
+            if name in markers or path.suffix.lower() == ".csproj":
+                has_manifest = True
+            if path.suffix.lower() == ".jar" or name.startswith("libcrypto"):
+                has_binary = True
+            if has_manifest or has_binary:
+                break
+        if not has_manifest and not has_binary:
+            return
+        try:
+            from container_scanner.core.scanner import ContainerScanner
+        except Exception:
+            logger.debug("container_scanner_unavailable")
+            return
+        result = ContainerScanner().scan_filesystem(root, scan_id=ctx.scan_id)
+        ctx.container_result = result
+        ctx.findings.extend(result.get("findings") or [])
+        ctx.scan_meta["container"] = {
+            "packages": len(result.get("packages") or []),
+            "libraries": len(result.get("libraries") or []),
+            "vulnerabilities": len(result.get("vulnerabilities") or []),
+        }
 
     def _evidence(self, ctx: PipelineContext) -> None:
         from evidence.core.pipeline import EvidencePipeline
@@ -215,6 +250,26 @@ class PipelineRunner:
             scan_id=ctx.scan_id,
         )
         ctx.scan_id = scan.id
+        if ctx.container_result:
+            try:
+                from db.models.container_scan import ContainerScan
+                from db.repositories.vulnerability_repository import VulnerabilityRepository
+
+                result = ctx.container_result
+                session.add(
+                    ContainerScan(
+                        scan_id=scan.id,
+                        target=str(Path(ctx.repo_path)),
+                        package_count=len(result.get("packages") or []),
+                        library_count=len(result.get("libraries") or []),
+                        vuln_count=len(result.get("vulnerabilities") or []),
+                        result=result,
+                    )
+                )
+                if result.get("vulnerabilities"):
+                    VulnerabilityRepository(session).replace_for_scan(scan.id, result["vulnerabilities"])
+            except Exception:
+                logger.debug("container_scan_persist_skipped", exc_info=True)
         session.flush()
         logger.info("stage_load_done", extra={"scan_id": scan.id})
 
@@ -276,7 +331,34 @@ class PipelineRunner:
             row.policy_evaluation = evaluation.model_dump(mode="json")
             row.compliance_status = evaluation.overall_status
         session.flush()
+        self._dedup(ctx, session, rows)
         logger.info("stage_policy_done", extra={"count": len(rows)})
+
+    def _dedup(self, ctx: PipelineContext, session, rows) -> None:
+        try:
+            from deduplication.core.engine import DeduplicationEngine
+            from db.repositories.asset_repository import AssetRepository
+        except Exception:
+            logger.debug("dedup_unavailable")
+            return
+        findings = []
+        for row in rows:
+            payload = dict(row.finding_data or {})
+            payload["evidence_id"] = row.id
+            payload["finding_id"] = row.id
+            payload["algorithm"] = row.algorithm
+            payload["purpose"] = row.purpose
+            payload["mode"] = row.mode
+            payload["key_size"] = row.key_size
+            payload["file_path"] = row.file_path
+            payload["line_number"] = row.line_number
+            payload["is_hardcoded_key"] = row.is_hardcoded_key
+            payload["confidence"] = row.confidence
+            findings.append(payload)
+        assets = DeduplicationEngine().merge(findings)
+        AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
+        session.flush()
+        logger.info("stage_dedup_done", extra={"assets": len(assets)})
 
     def _drift(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select

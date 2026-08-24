@@ -1,0 +1,46 @@
+{
+  "advisories": [
+    {
+      "cve": "CVE-2022-3602",
+      "package": "openssl",
+      "affected": "<3.0.7",
+      "severity": "HIGH",
+      "summary": "X.509 email address buffer overflow"
+    },
+    {
+      "cve": "CVE-2022-3786",
+      "package": "openssl",
+      "affected": "<3.0.7",
+      "severity": "HIGH",
+      "summary": "X.509 email address variable-length overflow"
+    },
+    {
+      "cve": "CVE-2023-0286",
+      "package": "openssl",
+      "affected": "<3.0.8",
+      "severity": "HIGH",
+      "summary": "X.400 address type confusion in X.509 GeneralName"
+    },
+    {
+      "cve": "CVE-2013-1445",
+      "package": "pycrypto",
+      "affected": "*",
+      "severity": "MEDIUM",
+      "summary": "PyCrypto PRNG is not fork-safe"
+    },
+    {
+      "cve": "CVE-2023-46233",
+      "package": "crypto-js",
+      "affected": "<4.2.0",
+      "severity": "HIGH",
+      "summary": "crypto-js PBKDF2 defaults to a weak SHA-1 configuration"
+    },
+    {
+      "cve": "CVE-2018-0495",
+      "package": "libsodium",
+      "affected": "<1.0.16",
+      "severity": "MEDIUM",
+      "summary": "ECDSA timing side channel"
+    }
+  ]
+}
