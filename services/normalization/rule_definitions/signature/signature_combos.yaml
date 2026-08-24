@@ -1,0 +1,97 @@
+# ============================================================
+# Signature Algorithm Combination Rules
+# CryptoScan Platform — Normalization Rule Definitions
+# Version: 1.0
+# Standard Reference: FIPS 186-5
+# ============================================================
+
+---
+rule_id: "NORM-SHA256WITHRSA"
+version: "1.0"
+description: "SHA-256 with RSA signature — PKCS#1 v1.5"
+raw_patterns:
+  - "SHA256withRSA"
+  - "SHA256WithRSA"
+  - "SHA256WITHRSA"
+  - "SHA-256withRSA"
+  - "sha256WithRSAEncryption"
+  - "1.2.840.113549.1.1.11"
+normalized_output:
+  algorithm: "RSA"
+  algorithm_family: "signature"
+  standard_name: "SHA256withRSA"
+  mode: null
+  padding: "PKCS1Padding"
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 256
+  purpose: "signing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 186-5"
+  fips_status: "FIPS-186-5"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-DSA-65"
+  iana_id: "rsa-sha256"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:rsa:sha256"
+
+---
+rule_id: "NORM-SHA1WITHRSA"
+version: "1.0"
+description: "SHA-1 with RSA — deprecated"
+raw_patterns:
+  - "SHA1withRSA"
+  - "SHA1WithRSA"
+  - "SHA-1withRSA"
+  - "sha1WithRSAEncryption"
+  - "1.2.840.113549.1.1.5"
+normalized_output:
+  algorithm: "RSA"
+  algorithm_family: "signature"
+  standard_name: "SHA1withRSA"
+  mode: null
+  padding: "PKCS1Padding"
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 160
+  purpose: "signing"
+  nist_designation: "DEPRECATED"
+  nist_reference: "NIST SP 800-131A Rev 2 — SHA-1 deprecated"
+  fips_status: "NON-FIPS"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-DSA-65"
+  iana_id: null
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:rsa:sha1"
+
+---
+rule_id: "NORM-ECDSA-SHA256"
+version: "1.0"
+description: "ECDSA with SHA-256 — approved"
+raw_patterns:
+  - "SHA256withECDSA"
+  - "SHA256WithECDSA"
+  - "ECDSA"
+  - "EC"
+  - "1.2.840.10045.4.3.2"
+normalized_output:
+  algorithm: "ECDSA"
+  algorithm_family: "signature"
+  standard_name: "ECDSA-SHA256"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 256
+  purpose: "signing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 186-5"
+  fips_status: "FIPS-186-5"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-DSA-65"
+  iana_id: "ecdsa-sha256"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:ecdsa:sha256"

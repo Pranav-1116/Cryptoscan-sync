@@ -1,0 +1,142 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: cryptoscan-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cryptoscan}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cryptoscan_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-cryptoscan}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d
+      - ./infra/postgres/postgres.conf:/etc/postgresql/postgresql.conf
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cryptoscan}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cryptoscan-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: cryptoscan-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redis_data:/data
+      - ./infra/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - cryptoscan-net
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: ../../.docker/api/Dockerfile
+    container_name: cryptoscan-api
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-dev-secret-key-change-in-prod}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-dev-webhook-secret}
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-alerts@cryptoscan.local}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-security@example.com}
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/api:/app
+      - ./services/shared:/shared
+    networks:
+      - cryptoscan-net
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./services/worker
+      dockerfile: ../../.docker/worker/Dockerfile
+    container_name: cryptoscan-worker
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+      - REDIS_URL=redis://redis:6379/0
+      - SCANNER_SERVICE_PATH=/scanner
+      - WORKSPACE_BASE_PATH=/tmp/cryptoscan-workspaces
+      - SMTP_HOST=${SMTP_HOST:-localhost}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - ALERT_EMAIL_FROM=${ALERT_EMAIL_FROM:-alerts@cryptoscan.local}
+      - ALERT_EMAIL_TO=${ALERT_EMAIL_TO:-security@example.com}
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/worker:/app
+      - ./services/scanner:/scanner
+      - ./services/shared:/shared
+      - /tmp/cryptoscan-workspaces:/tmp/cryptoscan-workspaces
+    networks:
+      - cryptoscan-net
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./services/dashboard
+      dockerfile: ../../.docker/dashboard/Dockerfile
+    container_name: cryptoscan-dashboard
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+    networks:
+      - cryptoscan-net
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./.docker/nginx
+      dockerfile: Dockerfile
+    container_name: cryptoscan-nginx
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+      - dashboard
+    networks:
+      - cryptoscan-net
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  cryptoscan-net:
+    driver: bridge

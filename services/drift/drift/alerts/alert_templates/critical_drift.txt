@@ -1,0 +1,66 @@
+CryptoScan Platform — CRITICAL Drift Alert
+==========================================
+
+⚠️  CRITICAL crypto drift detected in {{ system_identifier }}
+
+Scan ID: {{ scan_id }}
+Detected: {{ drift_summary.detected_at if drift_summary.detected_at else "Now" }}
+
+DRIFT SUMMARY
+-------------
+  CRITICAL : {{ drift_summary.critical }}
+  HIGH     : {{ drift_summary.high }}
+  MEDIUM   : {{ drift_summary.medium }}
+  INFO     : {{ drift_summary.info }}
+  ─────────────────────────────────────
+  TOTAL    : {{ total_events }}
+
+  New crypto detected  : {{ new_crypto_count }}
+  Crypto removed       : {{ removed_crypto_count }}
+
+{% if critical_events %}
+CRITICAL EVENTS ({{ critical_events | length }} shown)
+------------------------------------------------------
+{% for event in critical_events %}
+[{{ loop.index }}] Type    : {{ event.drift_type }}
+    Algorithm: {{ event.drift_details.get('algorithm', 'Unknown') }}
+    Location : {{ event.drift_details.get('location', 'Unknown') }}
+    Message  : {{ event.drift_details.get('message', '') }}
+    Status   : {{ event.resolution_status }}
+
+{% endfor %}
+{% endif %}
+{% if high_events %}
+HIGH SEVERITY EVENTS ({{ high_events | length }} shown)
+-------------------------------------------------------
+{% for event in high_events %}
+[{{ loop.index }}] Type    : {{ event.drift_type }}
+    Algorithm: {{ event.drift_details.get('algorithm', 'Unknown') }}
+    Location : {{ event.drift_details.get('location', 'Unknown') }}
+
+{% endfor %}
+{% endif %}
+
+IMMEDIATE ACTIONS REQUIRED
+--------------------------
+1. Review the drift events listed above
+2. Determine if the change was intentional
+3. If NOT intentional: revert the change immediately
+4. If intentional: acknowledge drift and update baseline
+5. SLA: 4 hours to resolve or escalate to CISO
+
+VIEW FULL REPORT
+----------------
+Dashboard : {{ dashboard_url }}
+Scan      : {{ scan_url }}
+
+ACKNOWLEDGE DRIFT
+-----------------
+To acknowledge this drift via API:
+  POST {{ dashboard_url | replace('/drift', '') }}/api/drift/<drift_id>/acknowledge
+
+──────────────────────────────────────────────────────────────────
+This is an automated alert from CryptoScan Platform.
+DO NOT REPLY to this email — use the dashboard to respond.
+Alert generated at: {{ drift_summary.detected_at if drift_summary.detected_at else "N/A" }}
+──────────────────────────────────────────────────────────────────

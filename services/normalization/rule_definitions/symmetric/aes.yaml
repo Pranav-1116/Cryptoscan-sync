@@ -1,0 +1,138 @@
+# ============================================================
+# AES Normalization Rules
+# CryptoScan Platform — Normalization Rule Definitions
+# Version: 1.0
+# Standard Reference: FIPS 197, NIST SP 800-38A/B/C/D/F
+# ============================================================
+
+---
+rule_id: "NORM-AES-GCM-256"
+version: "1.0"
+description: "AES-256 in GCM mode (AEAD)"
+raw_patterns:
+  - "AES/GCM/NoPadding"
+  - "AES_256/GCM/NoPadding"
+  - "AES-256-GCM"
+  - "AES256GCM"
+normalized_output:
+  algorithm: "AES"
+  algorithm_family: "symmetric"
+  standard_name: "AES-256-GCM"
+  mode: "GCM"
+  padding: "NoPadding"
+  key_size: 256
+  iv_size: 96
+  tag_size: 128
+  purpose: "encryption"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 197, NIST SP 800-38D"
+  fips_status: "FIPS-197"
+  quantum_vulnerable: false
+  iana_id: "aes256-gcm"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:aes:gcm:256"
+
+---
+rule_id: "NORM-AES-GCM-128"
+version: "1.0"
+description: "AES-128 in GCM mode (AEAD)"
+raw_patterns:
+  - "AES/GCM/NoPadding/128"
+  - "AES_128/GCM/NoPadding"
+  - "AES-128-GCM"
+  - "AES128GCM"
+normalized_output:
+  algorithm: "AES"
+  algorithm_family: "symmetric"
+  standard_name: "AES-128-GCM"
+  mode: "GCM"
+  padding: "NoPadding"
+  key_size: 128
+  iv_size: 96
+  tag_size: 128
+  purpose: "encryption"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 197, NIST SP 800-38D"
+  fips_status: "FIPS-197"
+  quantum_vulnerable: false
+  iana_id: "aes128-gcm"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:aes:gcm:128"
+
+---
+rule_id: "NORM-AES-CBC-256"
+version: "1.0"
+description: "AES-256 in CBC mode — approved with IV, avoid for new code"
+raw_patterns:
+  - "AES/CBC/PKCS5Padding"
+  - "AES/CBC/PKCS7Padding"
+  - "AES-256-CBC"
+  - "AES_256_CBC"
+normalized_output:
+  algorithm: "AES"
+  algorithm_family: "symmetric"
+  standard_name: "AES-256-CBC"
+  mode: "CBC"
+  padding: "PKCS5Padding"
+  key_size: 256
+  iv_size: 128
+  tag_size: null
+  purpose: "encryption"
+  nist_designation: "ACCEPTABLE"
+  nist_reference: "FIPS 197, NIST SP 800-38A"
+  fips_status: "FIPS-197"
+  quantum_vulnerable: false
+  iana_id: "aes256-cbc"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:aes:cbc:256"
+
+---
+rule_id: "NORM-AES-ECB"
+version: "1.0"
+description: "AES in ECB mode — deprecated, no IV, patterns exposed"
+raw_patterns:
+  - "AES/ECB/PKCS5Padding"
+  - "AES/ECB/NoPadding"
+  - "AES-ECB"
+  - "AES_ECB"
+normalized_output:
+  algorithm: "AES"
+  algorithm_family: "symmetric"
+  standard_name: "AES-ECB"
+  mode: "ECB"
+  padding: "PKCS5Padding"
+  key_size: null
+  iv_size: null
+  tag_size: null
+  purpose: "encryption"
+  nist_designation: "DEPRECATED"
+  nist_reference: "NIST SP 800-38A (withdrawn for most uses)"
+  fips_status: "FIPS-197"
+  quantum_vulnerable: false
+  iana_id: null
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:aes:ecb"
+
+---
+rule_id: "NORM-AES-GENERIC"
+version: "1.0"
+description: "AES with unspecified mode — confidence MEDIUM, mode unknown"
+raw_patterns:
+  - "AES"
+normalized_output:
+  algorithm: "AES"
+  algorithm_family: "symmetric"
+  standard_name: "AES"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  purpose: null
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 197"
+  fips_status: "FIPS-197"
+  quantum_vulnerable: false
+  iana_id: null
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:aes"

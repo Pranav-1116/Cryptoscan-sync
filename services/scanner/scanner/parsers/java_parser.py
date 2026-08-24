@@ -1,0 +1,581 @@
+"""
+Java source code parser using regex-based AST analysis.
+
+This module wraps the Eclipse JDT Java parser (called via subprocess)
+or uses a pure-Python regex fallback for simpler cases.
+
+Architecture:
+  - Primary: Eclipse JDT via JAR subprocess call (production)
+  - Fallback: Regex-based pattern matching (development/testing)
+
+The regex approach is used in Part 1 MVP. JDT integration is additive.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import structlog
+
+from scanner.extractors.algorithm_extractor import parse_transformation
+from scanner.extractors.confidence_calculator import calculate_confidence
+from scanner.extractors.snippet_extractor import extract_snippet
+from scanner.models.enums import ApiType, Purpose, Confidence
+from scanner.models.raw_finding import (
+    RawFinding,
+    SourceLocation,
+    CryptoInfo,
+    FindingMetadata,
+)
+
+logger = structlog.get_logger(__name__)
+
+# ============================================================
+# Regex Patterns for Java Crypto API Detection
+# ============================================================
+
+# Pattern 1: Cipher.getInstance("AES/GCM/NoPadding")
+CIPHER_GETINSTANCE = re.compile(
+    r"""Cipher\.getInstance\s*\(\s*["']([^"']+)["']\s*[,)]""",
+    re.MULTILINE
+)
+CIPHER_GETINSTANCE_VAR = re.compile(
+    r"""Cipher\.getInstance\s*\(\s*(\w+)\s*[,)]""",
+    re.MULTILINE
+)
+
+# Pattern 2: MessageDigest.getInstance("SHA-256")
+MESSAGEDIGEST_GETINSTANCE = re.compile(
+    r"""MessageDigest\.getInstance\s*\(\s*["']([^"']+)["']\s*[,)]""",
+    re.MULTILINE
+)
+MESSAGEDIGEST_GETINSTANCE_VAR = re.compile(
+    r"""MessageDigest\.getInstance\s*\(\s*(\w+)\s*[,)]""",
+    re.MULTILINE
+)
+
+# Pattern 3: KeyGenerator.getInstance("AES")
+KEYGENERATOR_GETINSTANCE = re.compile(
+    r"""KeyGenerator\.getInstance\s*\(\s*["']([^"']+)["']\s*[,)]""",
+    re.MULTILINE
+)
+KEYGENERATOR_GETINSTANCE_VAR = re.compile(
+    r"""KeyGenerator\.getInstance\s*\(\s*(\w+)\s*[,)]""",
+    re.MULTILINE
+)
+
+# Pattern 4: Signature.getInstance("SHA256withRSA")
+SIGNATURE_GETINSTANCE = re.compile(
+    r"""Signature\.getInstance\s*\(\s*["']([^"']+)["']\s*[,)]""",
+    re.MULTILINE
+)
+SIGNATURE_GETINSTANCE_VAR = re.compile(
+    r"""Signature\.getInstance\s*\(\s*(\w+)\s*[,)]""",
+    re.MULTILINE
+)
+
+# Pattern 5: SecretKeySpec(key, "AES") — potential hardcoded key
+SECRETKEYSPEC_LITERAL = re.compile(
+    r"""new\s+SecretKeySpec\s*\(\s*(?:new\s+byte\[\]\s*\{[^}]+\}|"[^"]*"\.getBytes[^)]*\)|[^,]+)\s*,\s*["']([^"']+)["']\s*\)""",
+    re.MULTILINE | re.DOTALL
+)
+
+# Detect hardcoded byte arrays: new byte[]{0x01, 0x02, ...}
+HARDCODED_BYTE_ARRAY = re.compile(
+    r"""new\s+SecretKeySpec\s*\(\s*new\s+byte\[\]\s*\{([^}]+)\}""",
+    re.MULTILINE | re.DOTALL
+)
+
+# Detect string-based keys: "mySecretKey".getBytes()
+HARDCODED_STRING_KEY = re.compile(
+    r"""new\s+SecretKeySpec\s*\(\s*"([^"]+)"\.getBytes""",
+    re.MULTILINE
+)
+
+# KeyGenerator init size: kg.init(256)
+KEYGENERATOR_INIT = re.compile(
+    r"""\.init\s*\(\s*(\d+)\s*[,)]""",
+    re.MULTILINE
+)
+
+# Method context detection
+METHOD_DECLARATION = re.compile(
+    r"""(?:public|private|protected|static|final|synchronized|\s)+\s+\w[\w<>,\s]*\s+(\w+)\s*\([^)]*\)\s*(?:throws[^{]*)?\s*\{""",
+    re.MULTILINE
+)
+
+# Class declaration
+CLASS_DECLARATION = re.compile(
+    r"""(?:public|private|protected|abstract|final|static|\s)*\s+(?:class|interface|enum)\s+(\w+)""",
+    re.MULTILINE
+)
+
+# Package declaration
+PACKAGE_DECLARATION = re.compile(r"""^\s*package\s+([\w.]+)\s*;""", re.MULTILINE)
+
+# Try-catch block detection (simple heuristic)
+TRY_CATCH = re.compile(r"""\btry\s*\{""", re.MULTILINE)
+
+
+@dataclass
+class ParseContext:
+    """Context extracted from a Java file for enriching findings."""
+    file_path: Path
+    package: Optional[str] = None
+    class_name: Optional[str] = None
+    source_lines: list[str] = field(default_factory=list)
+
+
+class JavaParser:
+    """
+    Regex-based Java source code parser for crypto API detection.
+    
+    Implements the 5 detector patterns defined in the MVP spec.
+    Uses line-by-line analysis for accurate line number extraction.
+    """
+
+    def __init__(self, repo_root: Optional[Path] = None):
+        self._repo_root = repo_root
+
+    def parse_file(self, file_path: Path) -> list[RawFinding]:
+        """
+        Parse a single Java file and return all crypto findings.
+        
+        Args:
+            file_path: Absolute path to the .java file
+            
+        Returns:
+            List of RawFinding objects (may be empty)
+        """
+        log = logger.bind(file=str(file_path))
+
+        try:
+            source = file_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as e:
+            log.error("cannot_read_file", error=str(e))
+            return []
+
+        source_lines = source.splitlines()
+        context = self._extract_file_context(file_path, source, source_lines)
+
+        findings: list[RawFinding] = []
+
+        # Run all detectors
+        findings.extend(self._detect_cipher(source, source_lines, context))
+        findings.extend(self._detect_message_digest(source, source_lines, context))
+        findings.extend(self._detect_key_generator(source, source_lines, context))
+        findings.extend(self._detect_signature(source, source_lines, context))
+        findings.extend(self._detect_hardcoded_keys(source, source_lines, context))
+
+        log.debug("file_parsed", findings_count=len(findings))
+        return findings
+
+    def _extract_file_context(
+        self, file_path: Path, source: str, source_lines: list[str]
+    ) -> ParseContext:
+        """Extract package and class name from source."""
+        context = ParseContext(file_path=file_path, source_lines=source_lines)
+
+        package_match = PACKAGE_DECLARATION.search(source)
+        if package_match:
+            context.package = package_match.group(1)
+
+        class_match = CLASS_DECLARATION.search(source)
+        if class_match:
+            class_name = class_match.group(1)
+            context.class_name = (
+                f"{context.package}.{class_name}" if context.package else class_name
+            )
+
+        return context
+
+    def _get_line_number(self, source: str, match_start: int) -> int:
+        """Get 1-indexed line number for a match position."""
+        return source[:match_start].count("\n") + 1
+
+    def _get_method_at_line(self, source: str, line_number: int) -> Optional[str]:
+        """Find the method name containing the given line (best effort)."""
+        # Find all method declarations before this line
+        source_to_line = "\n".join(source.splitlines()[:line_number])
+        matches = list(METHOD_DECLARATION.finditer(source_to_line))
+        if matches:
+            return matches[-1].group(1)
+        return None
+
+    def _is_in_try_catch(self, source: str, match_start: int) -> bool:
+        """Check if position is inside a try block (heuristic)."""
+        preceding = source[:match_start]
+        try_count = len(TRY_CATCH.findall(preceding))
+        close_brace_count = preceding.count("}")
+        # Simple heuristic: more opens than closes suggests we're in a try
+        return try_count > 0 and try_count > (close_brace_count // 3)
+
+    def _make_relative_path(self, file_path: Path) -> str:
+        """Return path relative to repo root if available."""
+        if self._repo_root:
+            try:
+                return str(file_path.relative_to(self._repo_root))
+            except ValueError:
+                pass
+        return str(file_path)
+
+    def _build_finding(
+        self,
+        *,
+        file_path: Path,
+        source: str,
+        source_lines: list[str],
+        match_start: int,
+        context: ParseContext,
+        api_type: str,
+        algorithm: Optional[str],
+        mode: Optional[str] = None,
+        padding: Optional[str] = None,
+        key_size: Optional[int] = None,
+        purpose: str,
+        library: str,
+        is_string_literal: bool,
+        is_hardcoded_key: bool = False,
+        hardcoded_key_length: Optional[int] = None,
+        variable_name: Optional[str] = None,
+        raw_transformation: Optional[str] = None,
+        is_from_local_variable: bool = False,
+    ) -> RawFinding:
+        """Build a complete RawFinding from detection results."""
+        line_number = self._get_line_number(source, match_start)
+        method_name = self._get_method_at_line(source, line_number)
+        in_try_catch = self._is_in_try_catch(source, match_start)
+        snippet = extract_snippet(file_path, line_number)
+        relative_path = self._make_relative_path(file_path)
+
+        confidence_result = calculate_confidence(
+            is_string_literal=is_string_literal,
+            is_from_local_variable=is_from_local_variable,
+            is_hardcoded=is_hardcoded_key,
+        )
+
+        return RawFinding(
+            source=SourceLocation(
+                file_path=relative_path,
+                line_number=line_number,
+                method_name=method_name,
+                class_name=context.class_name,
+                code_snippet=snippet,
+                variable_name=variable_name,
+                is_in_try_catch=in_try_catch,
+            ),
+            crypto=CryptoInfo(
+                api_type=api_type,
+                algorithm=algorithm,
+                mode=mode,
+                padding=padding,
+                key_size=key_size,
+                purpose=purpose,
+                raw_transformation=raw_transformation,
+            ),
+            metadata=FindingMetadata(
+                confidence=confidence_result.level.value,
+                confidence_reason=confidence_result.reason,
+                library=library,
+                is_hardcoded_key=is_hardcoded_key,
+                hardcoded_key_length=hardcoded_key_length,
+            ),
+        )
+
+    # ============================================================
+    # Pattern 1: javax.crypto.Cipher
+    # ============================================================
+
+    def _detect_cipher(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        """Detect Cipher.getInstance() calls."""
+        findings = []
+
+        # String literal matches (HIGH confidence)
+        for match in CIPHER_GETINSTANCE.finditer(source):
+            transformation = match.group(1)
+            parsed = parse_transformation(transformation)
+
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.CIPHER_INSTANCE.value,
+                algorithm=parsed.algorithm,
+                mode=parsed.mode,
+                padding=parsed.padding,
+                purpose=Purpose.ENCRYPTION.value,
+                library="javax.crypto",
+                is_string_literal=True,
+                raw_transformation=transformation,
+            )
+            findings.append(finding)
+
+        # Variable matches (MEDIUM confidence) - avoid double-counting
+        literal_positions = {m.start() for m in CIPHER_GETINSTANCE.finditer(source)}
+        for match in CIPHER_GETINSTANCE_VAR.finditer(source):
+            if match.start() in literal_positions:
+                continue
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.CIPHER_INSTANCE.value,
+                algorithm=None,  # Cannot determine from variable
+                purpose=Purpose.ENCRYPTION.value,
+                library="javax.crypto",
+                is_string_literal=False,
+                is_from_local_variable=True,
+                variable_name=match.group(1),
+            )
+            findings.append(finding)
+
+        return findings
+
+    # ============================================================
+    # Pattern 2: java.security.MessageDigest
+    # ============================================================
+
+    def _detect_message_digest(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        """Detect MessageDigest.getInstance() calls."""
+        findings = []
+
+        for match in MESSAGEDIGEST_GETINSTANCE.finditer(source):
+            algorithm_str = match.group(1)
+            parsed = parse_transformation(algorithm_str)
+
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.MESSAGE_DIGEST.value,
+                algorithm=parsed.algorithm,
+                purpose=Purpose.HASHING.value,
+                library="java.security",
+                is_string_literal=True,
+                raw_transformation=algorithm_str,
+            )
+            findings.append(finding)
+
+        # Variable matches
+        literal_positions = {m.start() for m in MESSAGEDIGEST_GETINSTANCE.finditer(source)}
+        for match in MESSAGEDIGEST_GETINSTANCE_VAR.finditer(source):
+            if match.start() in literal_positions:
+                continue
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.MESSAGE_DIGEST.value,
+                algorithm=None,
+                purpose=Purpose.HASHING.value,
+                library="java.security",
+                is_string_literal=False,
+                is_from_local_variable=True,
+            )
+            findings.append(finding)
+
+        return findings
+
+    # ============================================================
+    # Pattern 3: javax.crypto.KeyGenerator
+    # ============================================================
+
+    def _detect_key_generator(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        """Detect KeyGenerator.getInstance() calls."""
+        findings = []
+
+        for match in KEYGENERATOR_GETINSTANCE.finditer(source):
+            algorithm_str = match.group(1)
+            parsed = parse_transformation(algorithm_str)
+
+            # Try to find associated .init(keysize) call after this position
+            subsequent_source = source[match.end():match.end() + 500]  # Look ahead 500 chars
+            key_size = None
+            init_match = KEYGENERATOR_INIT.search(subsequent_source)
+            if init_match:
+                try:
+                    key_size = int(init_match.group(1))
+                except ValueError:
+                    pass
+
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.KEY_GENERATOR.value,
+                algorithm=parsed.algorithm,
+                key_size=key_size,
+                purpose=Purpose.KEY_GENERATION.value,
+                library="javax.crypto",
+                is_string_literal=True,
+                raw_transformation=algorithm_str,
+            )
+            findings.append(finding)
+
+        # Variable matches
+        literal_positions = {m.start() for m in KEYGENERATOR_GETINSTANCE.finditer(source)}
+        for match in KEYGENERATOR_GETINSTANCE_VAR.finditer(source):
+            if match.start() in literal_positions:
+                continue
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.KEY_GENERATOR.value,
+                algorithm=None,
+                purpose=Purpose.KEY_GENERATION.value,
+                library="javax.crypto",
+                is_string_literal=False,
+                is_from_local_variable=True,
+            )
+            findings.append(finding)
+
+        return findings
+
+    # ============================================================
+    # Pattern 4: java.security.Signature
+    # ============================================================
+
+    def _detect_signature(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        """Detect Signature.getInstance() calls."""
+        findings = []
+
+        for match in SIGNATURE_GETINSTANCE.finditer(source):
+            algorithm_str = match.group(1)
+            parsed = parse_transformation(algorithm_str)
+
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.SIGNATURE.value,
+                algorithm=parsed.algorithm,
+                purpose=Purpose.SIGNING.value,
+                library="java.security",
+                is_string_literal=True,
+                raw_transformation=algorithm_str,
+            )
+            findings.append(finding)
+
+        # Variable matches
+        literal_positions = {m.start() for m in SIGNATURE_GETINSTANCE.finditer(source)}
+        for match in SIGNATURE_GETINSTANCE_VAR.finditer(source):
+            if match.start() in literal_positions:
+                continue
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.SIGNATURE.value,
+                algorithm=None,
+                purpose=Purpose.SIGNING.value,
+                library="java.security",
+                is_string_literal=False,
+                is_from_local_variable=True,
+            )
+            findings.append(finding)
+
+        return findings
+
+    # ============================================================
+    # Pattern 5: Hardcoded Keys (SecretKeySpec)
+    # ============================================================
+
+    def _detect_hardcoded_keys(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        """
+        Detect hardcoded cryptographic keys in SecretKeySpec constructors.
+        
+        IMPORTANT: We detect the PRESENCE of hardcoded keys but do NOT
+        extract the actual key value (security principle).
+        """
+        findings = []
+
+        # Check for hardcoded byte arrays: new SecretKeySpec(new byte[]{...}, "AES")
+        for match in HARDCODED_BYTE_ARRAY.finditer(source):
+            # Count bytes to estimate key length
+            byte_content = match.group(1)
+            byte_count = len([b for b in byte_content.split(",") if b.strip()])
+            key_length_bits = byte_count * 8
+
+            # Find the algorithm - search for pattern around match
+            surrounding = source[match.start():match.start() + 200]
+            algo_match = SECRETKEYSPEC_LITERAL.search(surrounding)
+            algorithm = algo_match.group(1) if algo_match else None
+            parsed = parse_transformation(algorithm) if algorithm else None
+
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.HARDCODED_KEY.value,
+                algorithm=parsed.algorithm if parsed else algorithm,
+                purpose=Purpose.KEY_GENERATION.value,
+                library="javax.crypto",
+                is_string_literal=True,
+                is_hardcoded_key=True,
+                hardcoded_key_length=key_length_bits,
+                raw_transformation=algorithm,
+            )
+            findings.append(finding)
+
+        # Check for string-based keys: new SecretKeySpec("myKey".getBytes(), "AES")
+        for match in HARDCODED_STRING_KEY.finditer(source):
+            key_string_length = len(match.group(1))
+            key_length_bits = key_string_length * 8  # ASCII approximation
+
+            surrounding = source[match.start():match.start() + 200]
+            algo_match = SECRETKEYSPEC_LITERAL.search(surrounding)
+            algorithm = algo_match.group(1) if algo_match else None
+            parsed = parse_transformation(algorithm) if algorithm else None
+
+            finding = self._build_finding(
+                file_path=context.file_path,
+                source=source,
+                source_lines=source_lines,
+                match_start=match.start(),
+                context=context,
+                api_type=ApiType.HARDCODED_KEY.value,
+                algorithm=parsed.algorithm if parsed else algorithm,
+                purpose=Purpose.KEY_GENERATION.value,
+                library="javax.crypto",
+                is_string_literal=True,
+                is_hardcoded_key=True,
+                hardcoded_key_length=key_length_bits,
+                raw_transformation=algorithm,
+            )
+            findings.append(finding)
+
+        return findings

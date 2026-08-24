@@ -1,0 +1,91 @@
+# ============================================================
+# SHA-2 Family Normalization Rules
+# CryptoScan Platform — Normalization Rule Definitions
+# Version: 1.0
+# Standard Reference: FIPS 180-4
+# ============================================================
+
+---
+rule_id: "NORM-SHA256"
+version: "1.0"
+description: "SHA-256 — approved hash function"
+raw_patterns:
+  - "SHA-256"
+  - "SHA256"
+  - "SHA2-256"
+  - "SHA_256"
+  - "2.16.840.1.101.3.4.2.1"
+normalized_output:
+  algorithm: "SHA2"
+  algorithm_family: "hash"
+  standard_name: "SHA-256"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 256
+  purpose: "hashing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 180-4"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: false
+  iana_id: "sha-256"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha2:256"
+
+---
+rule_id: "NORM-SHA512"
+version: "1.0"
+description: "SHA-512 — approved hash function"
+raw_patterns:
+  - "SHA-512"
+  - "SHA512"
+  - "SHA2-512"
+  - "SHA_512"
+  - "2.16.840.1.101.3.4.2.3"
+normalized_output:
+  algorithm: "SHA2"
+  algorithm_family: "hash"
+  standard_name: "SHA-512"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 512
+  purpose: "hashing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 180-4"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: false
+  iana_id: "sha-512"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha2:512"
+
+---
+rule_id: "NORM-SHA384"
+version: "1.0"
+description: "SHA-384 — approved hash function"
+raw_patterns:
+  - "SHA-384"
+  - "SHA384"
+  - "SHA2-384"
+normalized_output:
+  algorithm: "SHA2"
+  algorithm_family: "hash"
+  standard_name: "SHA-384"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 384
+  purpose: "hashing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 180-4"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: false
+  iana_id: "sha-384"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha2:384"

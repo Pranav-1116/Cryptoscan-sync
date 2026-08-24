@@ -1,0 +1,87 @@
+# ============================================================
+# RSA Normalization Rules
+# CryptoScan Platform — Normalization Rule Definitions
+# Version: 1.0
+# Standard Reference: FIPS 186-5, NIST SP 800-131A Rev 2
+# ============================================================
+
+---
+rule_id: "NORM-RSA-4096"
+version: "1.0"
+description: "RSA-4096 — currently approved, quantum vulnerable"
+raw_patterns:
+  - "RSA-4096"
+  - "RSA4096"
+normalized_output:
+  algorithm: "RSA"
+  algorithm_family: "asymmetric"
+  standard_name: "RSA-4096"
+  mode: null
+  padding: null
+  key_size: 4096
+  iv_size: null
+  tag_size: null
+  purpose: null
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 186-5, NIST SP 800-131A Rev 2"
+  fips_status: "FIPS-186-5"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-KEM-1024"
+  iana_id: "rsa"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:rsa:4096"
+
+---
+rule_id: "NORM-RSA-2048"
+version: "1.0"
+description: "RSA-2048 — minimum approved, quantum vulnerable"
+raw_patterns:
+  - "RSA-2048"
+  - "RSA2048"
+normalized_output:
+  algorithm: "RSA"
+  algorithm_family: "asymmetric"
+  standard_name: "RSA-2048"
+  mode: null
+  padding: null
+  key_size: 2048
+  iv_size: null
+  tag_size: null
+  purpose: null
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 186-5 — minimum through 2030"
+  fips_status: "FIPS-186-5"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-KEM-768"
+  iana_id: "rsa"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:rsa:2048"
+
+---
+rule_id: "NORM-RSA-GENERIC"
+version: "1.0"
+description: "RSA with unspecified key size"
+raw_patterns:
+  - "RSA"
+  - "RSA/ECB/PKCS1Padding"
+  - "RSA/ECB/OAEPWithSHA-256AndMGF1Padding"
+  - "RSA/ECB/OAEPWithSHA-1AndMGF1Padding"
+  - "RSA/NONE/PKCS1Padding"
+normalized_output:
+  algorithm: "RSA"
+  algorithm_family: "asymmetric"
+  standard_name: "RSA"
+  mode: null
+  padding: "PKCS1Padding"
+  key_size: null
+  iv_size: null
+  tag_size: null
+  purpose: null
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 186-5"
+  fips_status: "FIPS-186-5"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-KEM-768"
+  iana_id: "rsa"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:rsa"

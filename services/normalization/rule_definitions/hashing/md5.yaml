@@ -1,0 +1,36 @@
+# ============================================================
+# MD5 Normalization Rules
+# CryptoScan Platform — Normalization Rule Definitions
+# Version: 1.0
+# Status: DISALLOWED for security purposes
+# Standard Reference: NIST SP 800-131A Rev 2
+# ============================================================
+
+---
+rule_id: "NORM-MD5"
+version: "1.0"
+description: "MD5 — cryptographically broken, collision attacks demonstrated"
+raw_patterns:
+  - "MD5"
+  - "MD5withRSA"
+  - "MD5/RSA"
+  - "1.2.840.113549.2.5"
+normalized_output:
+  algorithm: "MD5"
+  algorithm_family: "hash"
+  standard_name: "MD5"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: 128
+  purpose: "hashing"
+  nist_designation: "DISALLOWED"
+  nist_reference: "NIST SP 800-131A Rev 2 — Not approved for security"
+  fips_status: "NON-FIPS"
+  quantum_vulnerable: true
+  pqc_replacement: "SHA-256"
+  iana_id: null
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:md5"

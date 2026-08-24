@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "shared-logging"
+version = "0.1.0"
+description = "Shared structured logging for CryptoScan Platform"
+authors = ["CryptoScan Team"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.4.0"
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
