@@ -47,3 +47,10 @@ class JobStatusResponse(BaseModel):
     started_at: str | None = None
     completed_at: str | None = None
     progress: dict | None = None
+
+
+class JobLogsResponse(BaseModel):
+    job_id: str
+    status: str
+    logs: list[dict] = Field(default_factory=list)
+    progress: dict | None = None

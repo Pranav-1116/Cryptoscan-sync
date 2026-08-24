@@ -144,6 +144,29 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 mapped = HASHLIB_ALGOS.get(algo.lower(), algo.upper())
                 self._hash(node, mapped)
 
+        if self._is_hmac_call(func):
+            digest = self._hmac_digest(node)
+            self._add(
+                node,
+                api_type="MAC",
+                algorithm=f"HMAC-{digest}",
+                purpose="MAC_GENERATION",
+                library="hmac",
+                raw_transformation=func,
+            )
+
+        if self._is_cipher_ctor(func):
+            algo, mode = self._cryptography_cipher(node)
+            self._add(
+                node,
+                api_type="CIPHER_INSTANCE",
+                algorithm=algo,
+                mode=mode,
+                purpose="ENCRYPTION",
+                library="cryptography",
+                raw_transformation=func,
+            )
+
         if func.endswith("Fernet.generate_key") or func.endswith("Fernet"):
             self._add(
                 node,
@@ -154,10 +177,8 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 library="cryptography.fernet",
                 raw_transformation="Fernet",
             )
-        if func.endswith("AES.new") or func.endswith("AESGCM") or "algorithms.AES" in func:
-            mode = None
-            if func.endswith("AESGCM") or "AESGCM" in func:
-                mode = "GCM"
+        if func.endswith("AES.new") or func.endswith("AESGCM"):
+            mode = "GCM" if "AESGCM" in func else _mode_from_node(node)
             self._add(
                 node,
                 api_type="CIPHER_INSTANCE",
@@ -244,6 +265,48 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 self._hash(node, algo, library="cryptography")
         self.generic_visit(node)
 
+    def _is_hmac_call(self, func: str) -> bool:
+        if func.endswith("hmac.new") or func.endswith("hmac.digest") or func.endswith("hmac.compare_digest"):
+            return func.endswith("hmac.new") or func.endswith("hmac.digest")
+        imported = self._aliases.get(func.split(".")[0], "")
+        return imported.startswith("hmac") and func.endswith(("new", "digest"))
+
+    def _hmac_digest(self, node: ast.Call) -> str:
+        digest = None
+        if len(node.args) >= 3:
+            digest = _dotted(node.args[2]) or _string_literal(node.args[2])
+        for kw in node.keywords:
+            if kw.arg in {"digestmod", "digest"}:
+                digest = _dotted(kw.value) or _string_literal(kw.value)
+        name = (digest or "sha256").split(".")[-1].lower()
+        return HASHLIB_ALGOS.get(name, name.upper().replace("_", "-"))
+
+    def _is_cipher_ctor(self, func: str) -> bool:
+        if func.endswith("Cipher") or func == "Cipher":
+            imported = self._aliases.get("Cipher", "")
+            return "cryptography" in imported or func.endswith("Cipher")
+        return False
+
+    def _cryptography_cipher(self, node: ast.Call) -> tuple[str, str | None]:
+        algo = "UNKNOWN"
+        mode = None
+        if node.args:
+            first = node.args[0]
+            first_name = _dotted(first.func if isinstance(first, ast.Call) else first)
+            if "AES" in first_name:
+                algo = "AES"
+            elif "TripleDES" in first_name or "DES3" in first_name:
+                algo = "3DES"
+            elif first_name.endswith("DES") or ".DES" in first_name:
+                algo = "DES"
+            elif "ChaCha20" in first_name:
+                algo = "ChaCha20"
+        if len(node.args) > 1:
+            second = node.args[1]
+            second_name = _dotted(second.func if isinstance(second, ast.Call) else second)
+            mode = _mode_from_name(second_name)
+        return algo, mode
+
     def _is_hashlib(self, name: str, func: str) -> bool:
         if func.endswith(f"hashlib.{name}"):
             return True
@@ -326,6 +389,23 @@ def _dict_kw(node: ast.Call, name: str) -> Optional[str]:
             return _string_literal(kw.value)
         if kw.arg == "algorithm":
             return _string_literal(kw.value)
+    return None
+
+
+def _mode_from_name(name: str) -> Optional[str]:
+    upper = (name or "").upper()
+    for mode in ("GCM", "CCM", "CTR", "CBC", "ECB", "CFB", "OFB"):
+        if mode in upper:
+            return mode
+    return None
+
+
+def _mode_from_node(node: ast.Call) -> Optional[str]:
+    if len(node.args) > 1:
+        return _mode_from_name(_dotted(node.args[1]) or _string_literal(node.args[1]) or "")
+    for kw in node.keywords:
+        if kw.arg in {"mode", "MODE"}:
+            return _mode_from_name(_dotted(kw.value) or _string_literal(kw.value) or "")
     return None
 
 

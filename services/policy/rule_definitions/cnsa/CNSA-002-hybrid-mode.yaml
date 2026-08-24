@@ -1,0 +1,33 @@
+rule_id: "CNSA-002"
+rule_name: "CNSA 2.0 — classical public-key use requires a hybrid construction"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NSA CNSA 2.0 hybrid guidance"
+description: >
+  RSA, ECDSA and ECDH may remain only when combined with a CNSA 2.0
+  post-quantum algorithm (hybrid mode). Pure classical use is a finding.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "CNSA"
+      - "CNSA-2.0"
+    if_purpose:
+      - "SIGNING"
+      - "VERIFICATION"
+      - "KEY_EXCHANGE"
+      - "KEY_GENERATION"
+    forbidden_algorithms:
+      - "RSA"
+      - "ECDSA"
+      - "ECDH"
+      - "SHA256WITHRSA"
+    allow_if_true: "hybrid_mode"
+evaluation:
+  result_template: "FAIL"
+  message_template: "CNSA 2.0 requires a hybrid PQ+classical construction"
+remediation: >
+  Pair the classical algorithm with ML-KEM or ML-DSA (hybrid_mode=true) or
+  retire it entirely.
+enabled: true

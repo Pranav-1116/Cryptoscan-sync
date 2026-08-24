@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from deduplication.core.keys import dedup_key, identity_tuple
+
 
 def _get(finding: dict[str, Any], *path: str, default: Any = None) -> Any:
     current: Any = finding
@@ -16,15 +18,7 @@ def _get(finding: dict[str, Any], *path: str, default: Any = None) -> Any:
 
 
 def identity_key(finding: dict[str, Any]) -> tuple:
-    algorithm = str(
-        _get(finding, "crypto", "algorithm")
-        or finding.get("algorithm")
-        or "UNKNOWN"
-    ).upper()
-    purpose = str(_get(finding, "crypto", "purpose") or finding.get("purpose") or "UNKNOWN").upper()
-    file_path = str(_get(finding, "source", "file_path") or finding.get("file_path") or "")
-    line = int(_get(finding, "source", "line_number") or finding.get("line_number") or 0)
-    return algorithm, purpose, file_path, line
+    return identity_tuple(finding)
 
 
 def _confidence_rank(value: str | None) -> int:
@@ -84,7 +78,9 @@ class DeduplicationEngine:
                     "is_hardcoded_key": hardcoded,
                     "mode": _get(members[0], "crypto", "mode") or members[0].get("mode"),
                     "key_size": _get(members[0], "crypto", "key_size") or members[0].get("key_size"),
-                    "source_language": _get(members[0], "source", "language"),
+                    "source_language": _get(members[0], "source", "language")
+                    or members[0].get("source_language"),
+                    "dedup_key": dedup_key(members[0]),
                 }
             )
         return sorted(assets, key=lambda item: (item["file_path"], item["line_number"], item["algorithm"]))

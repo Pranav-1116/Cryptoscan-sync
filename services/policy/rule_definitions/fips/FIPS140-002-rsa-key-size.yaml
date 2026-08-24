@@ -1,0 +1,23 @@
+rule_id: "FIPS140-002"
+rule_name: "FIPS 140-3 — RSA keys must be at least 2048 bits"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "FIPS 140-3 / SP 800-131A"
+description: >
+  RSA keys shorter than 2048 bits are not approved for FIPS mode.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "FIPS"
+      - "FIPS-140-3"
+    if_algorithms:
+      - "RSA"
+    min_key_size: 2048
+evaluation:
+  result_template: "FAIL"
+  message_template: "RSA key size is below the FIPS 2048-bit minimum"
+remediation: >
+  Generate RSA-2048 or RSA-3072 keys, or migrate to ECDSA / ML-DSA.
+enabled: true

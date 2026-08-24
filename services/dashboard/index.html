@@ -103,6 +103,7 @@
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
         <button data-route="new" onclick="go('new')">New scan</button>
+        <button data-route="jobs" onclick="go('jobs')">Jobs</button>
         <button data-route="assets" onclick="go('assets')">Assets</button>
         <button data-route="systems" onclick="go('systems')">Systems</button>
         <button data-route="policy" onclick="go('policy')">Policy</button>
@@ -173,6 +174,7 @@ async function render() {
     if (state.route === 'finding') return renderFinding(el);
     if (state.route === 'new') return renderNew(el);
     if (state.route === 'job') return renderJob(el);
+    if (state.route === 'jobs') return renderJobs(el);
     if (state.route === 'drift') return renderDrift(el);
     if (state.route === 'findings') return renderFindings(el);
     if (state.route === 'assets') return renderAssets(el);
@@ -234,6 +236,8 @@ async function renderScan(el) {
       <button class="btn secondary" onclick="verifyScan('${sc.scan_id}')">Verify chain</button>
       <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/cbom', 'cbom-${sc.scan_id}.json')">Export CBOM</button>
       <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/export', 'scan-${sc.scan_id}.json')">Export JSON</button>
+      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/export.csv', 'scan-${sc.scan_id}.csv')">Export CSV</button>
+      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/verification-script', 'verify-${sc.scan_id}.py')">Verifier</button>
       <button class="btn secondary" onclick="go('scans')">Back</button>
     </div></div>
     <div class="grid cards">
@@ -298,14 +302,37 @@ async function startScan() {
   go('job', { jobId: data.job_id });
 }
 
+async function renderJobs(el) {
+  const data = await api('/jobs?limit=30');
+  el.innerHTML = `<div class="top"><h2>Jobs</h2><button class="btn" onclick="go('new')">New scan</button></div>
+    <div class="card"><table><thead><tr><th>Status</th><th>Repo</th><th>Stage</th><th>Scan</th></tr></thead>
+    <tbody>${(data.jobs||[]).map(j => `<tr onclick="go('job',{jobId:'${j.job_id}'})" style="cursor:pointer">
+      <td>${badge(j.status)}</td><td class="mono">${j.target_repo||'—'}</td>
+      <td class="muted">${j.progress?.current_stage || '—'}</td>
+      <td class="mono">${(j.scan_id||'').slice(0,8) || '—'}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">No jobs yet</td></tr>'}
+    </tbody></table></div>`;
+}
+
 async function renderJob(el) {
   const job = await api('/jobs/' + state.jobId);
-  el.innerHTML = `<div class="top"><h2>Job ${job.status}</h2></div>
+  let logs = [];
+  try {
+    const payload = await api('/jobs/' + state.jobId + '/logs');
+    logs = payload.logs || [];
+  } catch (e) { logs = []; }
+  const stages = (job.progress && job.progress.stages) || [];
+  el.innerHTML = `<div class="top"><h2>Job ${job.status}</h2>
+    <button class="btn secondary" onclick="go('jobs')">All jobs</button></div>
     <div class="card">
-      <p>Status ${badge(job.status)}</p>
+      <p>Status ${badge(job.status)} · stage <b>${job.progress?.current_stage || '—'}</b> · ${job.progress?.percent ?? 0}%</p>
       <p class="mono">${job.target_repo}</p>
       <p class="muted">${job.error_message || ''}</p>
+      <div class="row" style="flex-wrap:wrap;margin:12px 0">${stages.map(s => `${badge(s.state)} ${s.name}`).join(' &nbsp; ') || ''}</div>
       ${job.scan_id ? `<button class="btn" onclick="go('scan',{scanId:'${job.scan_id}'})">View findings</button>` : '<p class="muted">Refreshing…</p>'}
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Logs</div>
+      <pre class="snippet">${escapeHtml((logs.slice(-40).map(l => `${l.ts||''} [${l.stage||l.event||''}] ${l.message||''}`).join('\n')) || 'No logs yet')}</pre>
     </div>`;
   if (job.status === 'QUEUED' || job.status === 'RUNNING') setTimeout(() => { if (state.route==='job') renderJob(el); }, 1500);
 }
@@ -335,7 +362,7 @@ async function renderAssets(el) {
     <tbody>${(data.assets||[]).map(a => `<tr>
       <td class="mono">${a.algorithm}</td><td>${a.purpose||'—'}</td>
       <td class="mono">${a.file_path}:${a.line_number}</td>
-      <td>${badge(a.confidence)}</td><td class="muted">${(a.scanner_ids||[]).join(', ')||'—'}</td>
+      <td>${badge(a.confidence)}</td><td class="muted">${(a.scanner_ids||[]).join(', ')||'—'} ${(a.extra&&a.extra.dedup_key)?('<div class="mono">'+a.extra.dedup_key.slice(0,12)+'…</div>'):''}</td>
     </tr>`).join('') || '<tr><td colspan=5 class="muted">No assets yet. Run a scan.</td></tr>'}
     </tbody></table></div>`;
 }

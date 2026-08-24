@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import csv
+import io
+
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from api.dependencies import get_current_user, get_evidence_repository, get_scan_repository
 from db.repositories.evidence_repository import EvidenceRepository
@@ -42,6 +45,80 @@ def export_scan(
         "exported_by": user,
     }
     return JSONResponse(payload)
+
+
+@router.get("/scans/{scan_id}/export.csv")
+def export_scan_csv(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+):
+    scan = scans.get_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    rows = evidence.get_all_for_scan(scan_id)
+    buffer = io.StringIO()
+    writer = csv.DictWriter(
+        buffer,
+        fieldnames=[
+            "evidence_id",
+            "scan_id",
+            "algorithm",
+            "mode",
+            "key_size",
+            "purpose",
+            "file_path",
+            "line_number",
+            "confidence",
+            "compliance_status",
+            "is_hardcoded_key",
+            "content_hash",
+        ],
+    )
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(
+            {
+                "evidence_id": row.id,
+                "scan_id": row.scan_id,
+                "algorithm": row.algorithm,
+                "mode": row.mode or "",
+                "key_size": row.key_size or "",
+                "purpose": row.purpose or "",
+                "file_path": row.file_path,
+                "line_number": row.line_number,
+                "confidence": row.confidence,
+                "compliance_status": row.compliance_status or "",
+                "is_hardcoded_key": row.is_hardcoded_key,
+                "content_hash": row.content_hash,
+            }
+        )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="scan-{scan_id}.csv"'},
+    )
+
+
+@router.get("/scans/{scan_id}/verification-script")
+def export_verification_script(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+):
+    scan = scans.get_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    from evidence.scripts.verification_script_generator import generate_verification_script
+
+    script = generate_verification_script(scan_id=scan_id, records=evidence.get_all_for_scan(scan_id))
+    return Response(
+        content=script,
+        media_type="text/x-python",
+        headers={"Content-Disposition": f'attachment; filename="verify-{scan_id}.py"'},
+    )
 
 
 @router.get("/scans/{scan_id}/cbom")

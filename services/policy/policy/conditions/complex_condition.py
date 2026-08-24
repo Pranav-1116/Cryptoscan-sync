@@ -5,35 +5,38 @@ from __future__ import annotations
 from typing import Any
 
 from policy.conditions.base_condition import BaseCondition, EvaluationOutcome
+from policy.core.scope_resolver import as_scope_list, missing_scopes_message, scopes_apply
 
 
 def _as_list(value: Any) -> list[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [value]
-    return [str(item) for item in value]
+    return as_scope_list(value)
 
 
 def _scopes(evidence: dict[str, Any]) -> set[str]:
-    raw = (
-        evidence.get("compliance_scopes")
-        or evidence.get("scopes")
-        or (evidence.get("finding_data") or {}).get("compliance_scopes")
-        or []
-    )
-    return {str(item).upper() for item in _as_list(raw)}
+    from policy.core.scope_resolver import evidence_scopes
+
+    return evidence_scopes(evidence)
+
+
+def _truthy_flag(evidence: dict[str, Any], name: str) -> bool:
+    if not name:
+        return False
+    finding = evidence.get("finding_data") if isinstance(evidence.get("finding_data"), dict) else {}
+    extra = evidence.get("extra") if isinstance(evidence.get("extra"), dict) else {}
+    for source in (evidence, finding, extra):
+        if source.get(name) in {True, "true", "True", 1, "1", "yes"}:
+            return True
+    return False
 
 
 class ComplexCondition(BaseCondition):
     CONDITION_TYPE = "COMPLEX"
 
     def evaluate(self, evidence_data: dict[str, Any], params: dict[str, Any]) -> EvaluationOutcome:
-        required = {item.upper() for item in _as_list(params.get("required_scopes"))}
-        if required and not (required & _scopes(evidence_data)):
+        if not scopes_apply(evidence_data, params.get("required_scopes")):
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
-                message=f"Finding is outside required scopes {sorted(required)}",
+                message=missing_scopes_message(params.get("required_scopes")),
             )
 
         algorithm = str(evidence_data.get("algorithm") or "").upper()
@@ -45,6 +48,23 @@ class ComplexCondition(BaseCondition):
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
                 message=f"Purpose {purpose or 'UNKNOWN'} is outside {sorted(if_purpose)}",
+            )
+        if_algorithms = {item.upper() for item in _as_list(params.get("if_algorithms"))}
+        if if_algorithms and algorithm not in if_algorithms:
+            return EvaluationOutcome(
+                result="NOT_APPLICABLE",
+                message=f"Algorithm {algorithm or 'UNKNOWN'} is outside {sorted(if_algorithms)}",
+            )
+        allow_flag = str(params.get("allow_if_true") or "").strip()
+        if allow_flag and _truthy_flag(evidence_data, allow_flag):
+            return EvaluationOutcome(
+                result="PASS",
+                message=f"Control waived because {allow_flag} is set",
+            )
+        if params.get("require_purpose") and purpose in {"", "UNKNOWN", "NONE"}:
+            return EvaluationOutcome(
+                result="FAIL",
+                message="A documented cryptographic purpose is required",
             )
 
         forbidden = {item.upper() for item in _as_list(params.get("forbidden_algorithms"))}

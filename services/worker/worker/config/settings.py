@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     NORMALIZATION_RULES_DIR: str = ""
     ALERT_EMAIL_TO: str = ""
     SMTP_HOST: str = ""
+    GITHUB_TOKEN: str = ""
+    DASHBOARD_URL: str = ""
 
     @property
     def queue_key(self) -> str:

@@ -10,6 +10,13 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from container_scanner.core.versioning import version_matches
+from container_scanner.fingerprints.repository import FingerprintRepository
+from container_scanner.parsers.os_packages import (
+    parse_apk_installed,
+    parse_dpkg_status,
+    parse_rpm_qa,
+    parse_site_packages,
+)
 from container_scanner.parsers.package_parsers import (
     parse_csproj,
     parse_gomod,
@@ -33,6 +40,7 @@ class ContainerScanner:
     def __init__(self, fingerprint_db: dict | None = None, cve_db: dict | None = None):
         self.fingerprints = fingerprint_db or _load_json("fingerprint_db.json")
         self.cves = cve_db or _load_json("cve_db.json")
+        self.catalog = FingerprintRepository(self.fingerprints)
 
     def scan_filesystem(self, root: str | Path, *, scan_id: str | None = None) -> dict[str, Any]:
         root_path = Path(root)
@@ -72,6 +80,14 @@ class ContainerScanner:
                 yield from parse_csproj(path)
             elif name == "go.mod":
                 yield from parse_gomod(path)
+            elif path.as_posix().endswith("/var/lib/dpkg/status") or name == "dpkg-status":
+                yield from parse_dpkg_status(path)
+            elif path.as_posix().endswith("/lib/apk/db/installed") or name in {"apk-installed", "installed"}:
+                if "apk" in path.as_posix() or name == "apk-installed":
+                    yield from parse_apk_installed(path)
+            elif name in {"rpm-packages.txt", "rpm-qa.txt"}:
+                yield from parse_rpm_qa(path)
+        yield from parse_site_packages(root)
 
     def _discover_binaries(self, root: Path) -> Iterable[dict[str, Any]]:
         for path in root.rglob("*"):
@@ -80,21 +96,29 @@ class ContainerScanner:
             suffix = path.suffix.lower()
             rel = str(path.relative_to(root))
             if suffix == ".jar":
-                yield {"type": "jar", "path": rel, "name": path.stem.lower()}
+                info = self.catalog.match_binary(path.name)
+                yield {
+                    "type": "jar",
+                    "path": rel,
+                    "name": path.stem.lower(),
+                    "library": (info or {}).get("vendor") and self.catalog.canonical(path.name),
+                    "algorithms": list((info or {}).get("algorithms") or []),
+                }
             elif "site-packages" in path.parts and suffix == ".so":
                 yield {"type": "native-extension", "path": rel, "name": path.stem.lower()}
             elif path.name.lower() in {"libcrypto.so", "libssl.so", "libcrypto.so.3", "libssl.so.3"}:
-                yield {"type": "shared-library", "path": rel, "name": path.name.lower()}
+                info = self.catalog.match_binary(path.name)
+                yield {
+                    "type": "shared-library",
+                    "path": rel,
+                    "name": path.name.lower(),
+                    "library": "openssl",
+                    "algorithms": list((info or {}).get("algorithms") or ["AES", "RSA", "SHA-256"]),
+                }
 
     def _fingerprint(self, package: dict[str, Any]) -> dict[str, Any] | None:
-        catalog = self.fingerprints.get("libraries") or {}
-        aliases = {
-            "bcpkix-jdk18on": "bouncycastle",
-            "bcprov-jdk18on": "bouncycastle",
-            "pyjwt": "pyjwt",
-        }
-        name = aliases.get((package.get("name") or "").lower(), (package.get("name") or "").lower())
-        info = catalog.get(name)
+        name = self.catalog.canonical(package.get("name"))
+        info = self.catalog.lookup(name)
         if info is None:
             return None
         return {

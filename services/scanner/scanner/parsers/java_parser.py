@@ -79,6 +79,16 @@ SIGNATURE_GETINSTANCE_VAR = re.compile(
     re.MULTILINE
 )
 
+# Pattern 6: Mac.getInstance("HmacSHA256")
+MAC_GETINSTANCE = re.compile(
+    r"""Mac\.getInstance\s*\(\s*["']([^"']+)["']\s*[,)]""",
+    re.MULTILINE,
+)
+MAC_GETINSTANCE_VAR = re.compile(
+    r"""Mac\.getInstance\s*\(\s*(\w+)\s*[,)]""",
+    re.MULTILINE,
+)
+
 # Pattern 5: SecretKeySpec(key, "AES") — potential hardcoded key
 SECRETKEYSPEC_LITERAL = re.compile(
     r"""new\s+(?:[\w.]+\.)?SecretKeySpec\s*\(\s*(?:new\s+byte\[\]\s*\{[^}]+\}|"[^"]*"\.getBytes[^)]*\)|[^,]+)\s*,\s*["']([^"']+)["']\s*\)""",
@@ -184,6 +194,7 @@ class JavaParser:
         findings.extend(self._detect_key_generator(source, source_lines, context))
         findings.extend(self._detect_key_pair_generator(source, source_lines, context))
         findings.extend(self._detect_signature(source, source_lines, context))
+        findings.extend(self._detect_mac(source, source_lines, context))
         findings.extend(self._detect_hardcoded_keys(source, source_lines, context))
 
         log.debug("file_parsed", findings_count=len(findings))
@@ -551,6 +562,55 @@ class JavaParser:
             )
             findings.append(finding)
 
+        return findings
+
+    # ============================================================
+    # Pattern 6: javax.crypto.Mac
+    # ============================================================
+
+    def _detect_mac(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        """Detect Mac.getInstance() HMAC constructions."""
+        findings = []
+        for match in MAC_GETINSTANCE.finditer(source):
+            algorithm_str = match.group(1)
+            parsed = parse_transformation(algorithm_str)
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.MAC.value,
+                    algorithm=parsed.algorithm,
+                    purpose=Purpose.MAC_GENERATION.value,
+                    library="javax.crypto",
+                    is_string_literal=True,
+                    raw_transformation=algorithm_str,
+                )
+            )
+        literal_positions = {m.start() for m in MAC_GETINSTANCE.finditer(source)}
+        for match in MAC_GETINSTANCE_VAR.finditer(source):
+            if match.start() in literal_positions:
+                continue
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.MAC.value,
+                    algorithm=None,
+                    purpose=Purpose.MAC_GENERATION.value,
+                    library="javax.crypto",
+                    is_string_literal=False,
+                    is_from_local_variable=True,
+                    variable_name=match.group(1),
+                )
+            )
         return findings
 
     # ============================================================

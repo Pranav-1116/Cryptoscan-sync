@@ -34,6 +34,9 @@ class PipelineContext:
     drift_events: list[dict[str, Any]] = field(default_factory=list)
     container_result: dict[str, Any] = field(default_factory=dict)
     current_stage: str = ""
+    logs: list[dict[str, Any]] = field(default_factory=list)
+    compliance_scopes: list[str] = field(default_factory=list)
+    system_id: str | None = None
 
     def update(self, **kwargs) -> "PipelineContext":
         for key, value in kwargs.items():
@@ -89,28 +92,36 @@ class PipelineRunner:
         )
         stage = "init"
         try:
-            self._set_job_status(session, job_id, "RUNNING")
-            stage = "clone"
+            self._advance(session, ctx, "clone", status="RUNNING")
+            self._post_github(ctx, "pending", "CryptoScan pipeline running")
             self._clone(ctx)
             stage = "scan"
+            self._advance(session, ctx, "scan")
             self._scan(ctx)
             stage = "evidence"
+            self._advance(session, ctx, "evidence", extra={"findings": len(ctx.findings)})
             self._evidence(ctx)
             stage = "load"
+            self._advance(session, ctx, "load")
             self._load(ctx, session)
             stage = "normalize"
+            self._advance(session, ctx, "normalize")
             self._normalize(ctx, session)
             stage = "policy"
+            self._advance(session, ctx, "policy")
             self._policy(ctx, session)
             stage = "drift"
+            self._advance(session, ctx, "drift")
             self._drift(ctx, session)
             stage = "alert"
+            self._advance(session, ctx, "alert")
             self._alert(ctx)
             if owns_session:
                 session.commit()
             else:
                 session.flush()
-            self._set_job_status(session, job_id, "COMPLETED", scan_id=ctx.scan_id)
+            self._advance(session, ctx, "alert", status="COMPLETED")
+            self._post_github(ctx, "success", f"Scan completed ({len(ctx.findings)} findings)")
             if owns_session:
                 session.commit()
             return ctx.scan_id
@@ -119,7 +130,8 @@ class PipelineRunner:
             if owns_session:
                 session.rollback()
             try:
-                self._set_job_status(session, job_id, "FAILED", error_message=str(exc))
+                self._advance(session, ctx, stage, status="FAILED", message=str(exc))
+                self._post_github(ctx, "failure", f"Pipeline failed at {stage}")
                 if owns_session:
                     session.commit()
             except Exception:
@@ -139,6 +151,56 @@ class PipelineRunner:
             JobRepository(session).update_status(job_id, status, **kwargs)
         except Exception:
             logger.debug("job_status_update_skipped", extra={"job_id": job_id, "status": status})
+
+    def _advance(
+        self,
+        session,
+        ctx: PipelineContext,
+        stage: str,
+        *,
+        status: str = "RUNNING",
+        message: str = "",
+        extra: dict[str, Any] | None = None,
+    ) -> None:
+        from worker.pipeline.progress import build_progress, utcnow
+
+        ctx.current_stage = stage
+        entry = {
+            "ts": utcnow(),
+            "stage": stage,
+            "level": "ERROR" if status == "FAILED" else "INFO",
+            "message": message or stage,
+        }
+        if extra:
+            entry["extra"] = extra
+        ctx.logs.append(entry)
+        progress = build_progress(current_stage=stage, status=status, logs=ctx.logs, extra={"scan_id": ctx.scan_id})
+        kwargs: dict[str, Any] = {"progress": progress}
+        if ctx.scan_id:
+            kwargs["scan_id"] = ctx.scan_id
+        if status == "FAILED" and message:
+            kwargs["error_message"] = message
+        self._set_job_status(session, ctx.job_id, status, **kwargs)
+
+    def _post_github(self, ctx: PipelineContext, state: str, description: str) -> None:
+        token = getattr(settings, "GITHUB_TOKEN", "") or ""
+        if not token:
+            return
+        try:
+            from api.github.status_poster import post_pipeline_status
+
+            dashboard = getattr(settings, "DASHBOARD_URL", "") or ""
+            target = f"{dashboard}/#job/{ctx.job_id}" if dashboard else ""
+            post_pipeline_status(
+                token=token,
+                repo_url=ctx.target_repo,
+                commit=ctx.target_commit,
+                state=state,
+                description=description,
+                target_url=target,
+            )
+        except Exception:
+            logger.debug("github_status_skipped", exc_info=True)
 
     def _clone(self, ctx: PipelineContext) -> None:
         dest = Path(ctx.workspace_dir) / "repo"
@@ -315,7 +377,12 @@ class PipelineRunner:
         )
         engine = PolicyEngine(rules_dir)
         rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == ctx.scan_id)).scalars())
+        self._resolve_system(ctx, session)
         for row in rows:
+            finding_data = dict(row.finding_data or {})
+            if ctx.compliance_scopes and not finding_data.get("compliance_scopes"):
+                finding_data["compliance_scopes"] = list(ctx.compliance_scopes)
+                row.finding_data = finding_data
             payload = {
                 "id": row.id,
                 "evidence_id": row.id,
@@ -325,7 +392,8 @@ class PipelineRunner:
                 "purpose": row.purpose,
                 "is_hardcoded_key": row.is_hardcoded_key,
                 "normalized_crypto": row.normalized_crypto or {},
-                "finding_data": row.finding_data or {},
+                "finding_data": finding_data,
+                "compliance_scopes": ctx.compliance_scopes or finding_data.get("compliance_scopes") or [],
             }
             evaluation = engine.evaluate(payload)
             row.policy_evaluation = evaluation.model_dump(mode="json")
@@ -356,9 +424,41 @@ class PipelineRunner:
             payload["confidence"] = row.confidence
             findings.append(payload)
         assets = DeduplicationEngine().merge(findings)
-        AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
+        stored = AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
+        self._link_system_assets(ctx, session, stored)
         session.flush()
         logger.info("stage_dedup_done", extra={"assets": len(assets)})
+
+    def _resolve_system(self, ctx: PipelineContext, session) -> None:
+        try:
+            from db.repositories.system_repository import SystemRepository
+            from worker.pipeline.progress import system_name_from_repo
+        except Exception:
+            logger.debug("system_repo_unavailable")
+            return
+        name = system_name_from_repo(ctx.target_repo)
+        system = SystemRepository(session).get_or_create(
+            name,
+            owner=ctx.triggered_by,
+            environment="dev" if ctx.target_repo.startswith(("local://", "file://", "/")) else "prod",
+            description=ctx.target_repo,
+        )
+        ctx.system_id = system.id
+        ctx.compliance_scopes = list(system.compliance_scopes or [])
+        logger.info("stage_systems_resolved", extra={"system": name, "scopes": ctx.compliance_scopes})
+
+    def _link_system_assets(self, ctx: PipelineContext, session, assets) -> None:
+        if not ctx.system_id:
+            self._resolve_system(ctx, session)
+        if not ctx.system_id:
+            return
+        try:
+            from db.repositories.system_repository import SystemRepository
+        except Exception:
+            return
+        repo = SystemRepository(session)
+        for asset in assets:
+            repo.attach_asset(ctx.system_id, asset.id)
 
     def _drift(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select

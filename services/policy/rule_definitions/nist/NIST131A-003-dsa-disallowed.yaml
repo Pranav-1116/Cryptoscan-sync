@@ -1,0 +1,24 @@
+rule_id: "NIST131A-003"
+rule_name: "NIST SP 800-131A — DSA is disallowed"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NIST SP 800-131A Rev. 2"
+description: >
+  DSA is disallowed for digital signature generation. Use RSA (>=2048), ECDSA,
+  or a NIST-approved post-quantum algorithm.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "NIST-131A"
+      - "NIST SP 800-131A"
+      - "FIPS"
+    forbidden_algorithms:
+      - "DSA"
+evaluation:
+  result_template: "FAIL"
+  message_template: "DSA is disallowed by NIST SP 800-131A"
+remediation: >
+  Replace DSA with ECDSA (P-256 or stronger), RSA-2048+, or ML-DSA.
+enabled: true

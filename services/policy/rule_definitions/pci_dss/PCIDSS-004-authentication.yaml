@@ -1,0 +1,31 @@
+rule_id: "PCIDSS-004"
+rule_name: "PCI-DSS 4.0 — authentication secrets must use a modern KDF"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "PCI-DSS 4.0 req. 8.3.2"
+description: >
+  Passwords and authentication secrets in PCI scope must be protected with
+  PBKDF2, scrypt, bcrypt, or Argon2 — not a raw hash.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "PCI-DSS"
+      - "PCI-DSS-4.0"
+      - "PAN"
+    if_purpose:
+      - "PASSWORD_HASHING"
+    require_algorithms:
+      - "PBKDF2"
+      - "SCRYPT"
+      - "BCRYPT"
+      - "ARGON2"
+      - "ARGON2ID"
+evaluation:
+  result_template: "FAIL"
+  message_template: "PCI-DSS 8.3.2 forbids raw hashes for authentication secrets"
+remediation: >
+  Replace MD5/SHA-1/SHA-256 password storage with bcrypt, scrypt, Argon2, or
+  PBKDF2 with a work factor that meets current PCI guidance.
+enabled: true

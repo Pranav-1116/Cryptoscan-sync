@@ -181,13 +181,60 @@ class DriftDetector:
         current_index = {fp.to_signature(): fp for fp in current_fps}
         baseline_semantic = {fp.to_semantic_signature(): fp for fp in baseline_fps}
         current_semantic = {fp.to_semantic_signature(): fp for fp in current_fps}
+        baseline_loc = {(fp.file_path, fp.line_number): fp for fp in baseline_fps}
+        current_loc = {(fp.file_path, fp.line_number): fp for fp in current_fps}
 
         result = DriftDetectionResult(
             baseline_scan_id=baseline_scan_id,
             current_scan_id=current_scan_id,
         )
 
+        changed_locations: set[tuple[str, int]] = set()
+        weak = {"DES", "3DES", "RC4", "MD5", "SHA-1", "SHA1", "RC2"}
+        for loc, baseline_fp in baseline_loc.items():
+            current_fp = current_loc.get(loc)
+            if current_fp is None:
+                continue
+            algo_changed = baseline_fp.algorithm != current_fp.algorithm
+            mode_changed = (baseline_fp.mode or "") != (current_fp.mode or "")
+            key_changed = baseline_fp.key_size != current_fp.key_size
+            if not (algo_changed or mode_changed or key_changed):
+                continue
+            if algo_changed or mode_changed:
+                result.changes.append(
+                    DriftChange(
+                        change_type="CHANGED",
+                        baseline_fingerprint=baseline_fp,
+                        current_fingerprint=current_fp,
+                        severity="CRITICAL" if current_fp.algorithm in weak else "HIGH",
+                        reason=(
+                            f"Crypto changed at {loc[0]}:{loc[1]}: "
+                            f"{baseline_fp.algorithm}/{baseline_fp.mode or '-'} "
+                            f"→ {current_fp.algorithm}/{current_fp.mode or '-'}"
+                        ),
+                    )
+                )
+                changed_locations.add(loc)
+            elif baseline_fp.key_size and current_fp.key_size:
+                upgraded = current_fp.key_size > baseline_fp.key_size
+                result.changes.append(
+                    DriftChange(
+                        change_type="UPGRADED" if upgraded else "DOWNGRADED",
+                        baseline_fingerprint=baseline_fp,
+                        current_fingerprint=current_fp,
+                        severity="INFO" if upgraded else "CRITICAL",
+                        reason=(
+                            f"{baseline_fp.algorithm} key size "
+                            f"{'upgraded' if upgraded else 'DOWNGRADED'}: "
+                            f"{baseline_fp.key_size} → {current_fp.key_size}"
+                        ),
+                    )
+                )
+                changed_locations.add(loc)
+
         for sig, baseline_fp in baseline_index.items():
+            if (baseline_fp.file_path, baseline_fp.line_number) in changed_locations:
+                continue
             if sig not in current_index:
                 semantic_sig = baseline_fp.to_semantic_signature()
                 if semantic_sig in current_semantic:
@@ -219,6 +266,8 @@ class DriftDetector:
                     )
 
         for sig, current_fp in current_index.items():
+            if (current_fp.file_path, current_fp.line_number) in changed_locations:
+                continue
             if sig not in baseline_index:
                 semantic_sig = current_fp.to_semantic_signature()
                 if semantic_sig not in baseline_semantic:

@@ -95,6 +95,10 @@ class PolicyEvaluation(BaseModel):
     rules_warned: int = Field(default=0, ge=0)
     rules_passed: int = Field(default=0, ge=0)
     rules_skipped: int = Field(default=0, ge=0)
+    has_critical_failure: bool = Field(
+        default=False,
+        description="True when any FAIL result has CRITICAL severity (CRITICAL_FAIL).",
+    )
 
     @classmethod
     def build(
@@ -132,6 +136,9 @@ class PolicyEvaluation(BaseModel):
             rules_warned=len(warned),
             rules_passed=len(passed),
             rules_skipped=len(skipped),
+            has_critical_failure=any(
+                "CRITICAL" in str(getattr(item.severity, "value", item.severity)).upper() for item in failed
+            ),
         )
 
     def failed_rule_ids(self) -> list[str]:

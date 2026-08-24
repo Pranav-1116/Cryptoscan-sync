@@ -6,7 +6,8 @@ from datetime import date, datetime
 from typing import Any
 
 from policy.conditions.base_condition import BaseCondition, EvaluationOutcome
-from policy.conditions.complex_condition import _as_list, _scopes
+from policy.conditions.complex_condition import _as_list
+from policy.core.scope_resolver import missing_scopes_message, scopes_apply
 
 
 def _parse_day(value: Any) -> date | None:
@@ -25,11 +26,10 @@ class TimelineCondition(BaseCondition):
     CONDITION_TYPE = "TIMELINE"
 
     def evaluate(self, evidence_data: dict[str, Any], params: dict[str, Any]) -> EvaluationOutcome:
-        required = {item.upper() for item in _as_list(params.get("required_scopes"))}
-        if required and not (required & _scopes(evidence_data)):
+        if not scopes_apply(evidence_data, params.get("required_scopes")):
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
-                message=f"Finding is outside required scopes {sorted(required)}",
+                message=missing_scopes_message(params.get("required_scopes")),
             )
 
         algorithm = str(evidence_data.get("algorithm") or "").upper()

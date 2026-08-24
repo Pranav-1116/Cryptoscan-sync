@@ -24,6 +24,30 @@ class SystemRepository(BaseRepository[System]):
     def get_by_name(self, name: str) -> System | None:
         return self.session.execute(select(System).where(System.name == name)).scalar_one_or_none()
 
+    def get_or_create(
+        self,
+        name: str,
+        *,
+        owner: str | None = None,
+        environment: str | None = None,
+        description: str | None = None,
+        compliance_scopes: list[str] | None = None,
+    ) -> System:
+        existing = self.get_by_name(name)
+        if existing:
+            if description and not existing.description:
+                existing.description = description
+            self.session.flush()
+            return existing
+        row = System(
+            name=name,
+            owner=owner,
+            environment=environment,
+            description=description,
+            compliance_scopes=compliance_scopes or [],
+        )
+        return self.create(row)
+
     def attach_asset(self, system_id: str, asset_id: str) -> SystemAsset:
         existing = self.session.execute(
             select(SystemAsset).where(SystemAsset.system_id == system_id, SystemAsset.asset_id == asset_id)

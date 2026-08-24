@@ -76,3 +76,42 @@ async def github_webhook(
             payload.get("commit"),
         )
     return {"accepted": True, "job_id": job.id, "message": "scan queued"}
+
+
+@router.post("/container")
+@router.post("/ecr")
+async def container_registry_webhook(
+    request: Request,
+    user: str | None = None,
+):
+    """Accept a registry push event. Scans an already-unpacked image root only."""
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    path = payload.get("path") or payload.get("image_root") or payload.get("repository")
+    image = payload.get("image") or payload.get("repository") or payload.get("detail", {}).get("repository-name")
+    if not path:
+        return {
+            "accepted": True,
+            "scanned": False,
+            "message": "no unpacked image_root/path supplied; image pull is out of scope",
+            "image": image,
+        }
+    from pathlib import Path
+
+    target = Path(str(path))
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="Container filesystem not found")
+    from container_scanner.core.scanner import ContainerScanner
+
+    result = ContainerScanner().scan_filesystem(target)
+    return {
+        "accepted": True,
+        "scanned": True,
+        "image": image,
+        "packages": len(result.get("packages") or []),
+        "libraries": len(result.get("libraries") or []),
+        "vulnerabilities": len(result.get("vulnerabilities") or []),
+        "scan_id": result.get("scan_id"),
+    }

@@ -1,0 +1,24 @@
+rule_id: "PCIDSS-003"
+rule_name: "PCI-DSS 4.0 — cryptographic inventory must name a purpose"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "MEDIUM"
+standard_reference: "PCI-DSS 4.0 req. 12.3.3 / 4.2.2"
+description: >
+  Cardholder-data environments must maintain an inventory of cryptographic
+  algorithms with a documented business purpose.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "PCI-DSS"
+      - "PCI-DSS-4.0"
+      - "PAN"
+    require_purpose: true
+evaluation:
+  result_template: "FAIL"
+  message_template: "PCI-DSS 4.2.2 requires a documented cryptographic purpose"
+remediation: >
+  Tag the finding with ENCRYPTION, HASHING, SIGNING, KEY_EXCHANGE, or
+  PASSWORD_HASHING so the inventory can be attested.
+enabled: true
