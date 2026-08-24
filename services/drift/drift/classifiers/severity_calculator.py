@@ -47,6 +47,42 @@ class SeverityCalculator:
             "ECDSA": 0,
         }
     
+    def calculate_for_new_crypto(self, fingerprint, **kwargs) -> Severity:
+        record = fingerprint if isinstance(fingerprint, dict) else None
+        algorithm = (
+            (record.get("algorithm") if record is not None else getattr(fingerprint, "algorithm", None))
+            or "UNKNOWN"
+        )
+        key_size = record.get("key_size") if record is not None else getattr(fingerprint, "key_size", None)
+        hardcoded = (
+            bool(record.get("is_hardcoded_key"))
+            if record is not None
+            else bool(getattr(fingerprint, "is_hardcoded_key", False))
+        )
+        compliance = record.get("compliance_status") if record is not None else None
+        if hardcoded:
+            return Severity.CRITICAL
+        weak = {"DES", "3DES", "MD5", "SHA1", "SHA-1", "RC4", "ECB"}
+        if compliance == "FAIL" or str(algorithm).upper() in weak:
+            return Severity.CRITICAL
+        if compliance == "PASS":
+            return Severity.MEDIUM
+        return self.calculate_severity(str(algorithm), "NEW", key_size)
+
+    def calculate_for_removed_crypto(self, fingerprint, **kwargs) -> Severity:
+        record = fingerprint if isinstance(fingerprint, dict) else None
+        algorithm = (
+            (record.get("algorithm") if record is not None else getattr(fingerprint, "algorithm", None))
+            or "UNKNOWN"
+        )
+        key_size = record.get("key_size") if record is not None else getattr(fingerprint, "key_size", None)
+        compliance = record.get("compliance_status") if record is not None else None
+        if compliance == "FAIL":
+            return Severity.INFO
+        if compliance == "PASS":
+            return Severity.MEDIUM
+        return self.calculate_severity(str(algorithm), "REMOVED", key_size)
+
     def calculate_severity(
         self,
         algorithm: str,
@@ -84,12 +120,8 @@ class SeverityCalculator:
             # New weak crypto = critical
             if base_score >= 3:
                 return Severity.CRITICAL
-            # New unknown = medium
-            elif base_score >= 2:
-                return Severity.MEDIUM
-            # New strong = info
-            else:
-                return Severity.INFO
+            # New unknown or newly introduced approved crypto = medium
+            return Severity.MEDIUM
         
         elif change_type == "DOWNGRADED":
             # Always critical

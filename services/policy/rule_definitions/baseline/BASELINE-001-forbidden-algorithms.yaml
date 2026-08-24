@@ -1,0 +1,26 @@
+rule_id: "BASELINE-001"
+rule_name: "Forbidden Cryptographic Algorithms"
+version: "1.0"
+effective_date: "2024-01-01"
+severity: "CRITICAL"
+standard_reference: "Internal Security Baseline / NIST SP 800-131A"
+description: >
+  DES, 3DES, RC4, MD5 and SHA-1 are forbidden for new or existing production code.
+  These algorithms are cryptographically broken or deprecated.
+condition:
+  type: "ALGORITHM_IN_LIST"
+  parameters:
+    algorithm_list:
+      - "DES"
+      - "3DES"
+      - "RC4"
+      - "MD5"
+      - "SHA-1"
+      - "SHA1"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Algorithm {algorithm} is forbidden"
+remediation: >
+  Replace DES/3DES with AES-256-GCM, RC4 with ChaCha20-Poly1305 or AES-GCM,
+  and MD5/SHA-1 with SHA-256 or SHA-512.
+enabled: true

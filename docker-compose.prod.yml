@@ -1,0 +1,12 @@
+services:
+  api:
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+  worker:
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+  nginx:
+    ports:
+      - "80:80"

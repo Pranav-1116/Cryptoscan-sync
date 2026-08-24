@@ -1,0 +1,24 @@
+[project]
+name = "cryptoscan-api"
+version = "0.1.0"
+description = "CryptoScan REST API"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    "sqlalchemy>=2.0.25",
+    "pydantic-settings>=2.1.0",
+    "python-multipart>=0.0.9",
+    "itsdangerous>=2.1.2",
+    "httpx>=0.26.0",
+]
+
+[project.scripts]
+cryptoscan-api = "api.main:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["api*"]

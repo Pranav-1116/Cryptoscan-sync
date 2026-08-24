@@ -46,6 +46,9 @@ class FamilyEnricher:
         Returns:
             Enriched object with family classification
         """
+        if normalized.algorithm_family and normalized.algorithm_family != "unknown":
+            return normalized
+
         if not normalized.algorithm:
             normalized.algorithm_family = 'unknown'
             return normalized

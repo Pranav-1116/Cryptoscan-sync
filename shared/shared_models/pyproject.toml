@@ -1,16 +1,13 @@
-[tool.poetry]
-name = "cryptoscan-shared-models"
+[project]
+name = "shared-models"
 version = "0.1.0"
-description = "Shared Pydantic models for CryptoScan services"
-authors = ["CryptoScan Team"]
-
-[tool.poetry.dependencies]
-python = "^3.11"
-pydantic = "^2.5.0"
-
-[tool.poetry.dev-dependencies]
-pytest = "^7.4.0"
+description = "Shared Pydantic models for CryptoScan"
+requires-python = ">=3.11"
+dependencies = ["pydantic>=2.5.0"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["shared_models*"]

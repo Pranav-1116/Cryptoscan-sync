@@ -8,6 +8,9 @@ from ..models.normalized_crypto import NormalizedCrypto
 
 
 class PatternMatcher:
+    def __init__(self, registry=None):
+        self._registry = registry
+
     """
     Matches and parses algorithm transformation strings.
     
@@ -45,6 +48,8 @@ class PatternMatcher:
                 padding=self._normalize_padding(padding),
                 algorithm_family=self._infer_family(algorithm),
                 standard_name=raw_algorithm,
+                normalization_confidence="MEDIUM",
+                raw_input=raw_algorithm,
             )
         
         # Try algorithm/mode pattern
@@ -59,6 +64,8 @@ class PatternMatcher:
                 padding=None,
                 algorithm_family=self._infer_family(algorithm),
                 standard_name=raw_algorithm,
+                normalization_confidence="MEDIUM",
+                raw_input=raw_algorithm,
             )
         
         return None

@@ -66,8 +66,12 @@ class EvidenceVerifier:
         
         computed_content_hash = ContentHasher.compute_hash(record.finding)
         if computed_content_hash != record.content_hash:
+            finding_id = ""
+            if isinstance(record.finding, dict):
+                finding_id = str(record.finding.get("finding_id") or "")
             result.add_error(
-                f"Content hash mismatch for evidence {record.evidence_id}. "
+                f"Content hash mismatch for evidence {record.evidence_id} "
+                f"(finding {finding_id or 'unknown'}, position {record.chain_position}). "
                 f"Expected: {record.content_hash}, Got: {computed_content_hash}. "
                 f"TAMPER DETECTED."
             )

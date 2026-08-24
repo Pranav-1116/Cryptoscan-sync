@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CryptoScan — Cryptographic Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-elev: #121a2f;
+      --bg-card: #161f38;
+      --line: #243154;
+      --text: #e8eefc;
+      --muted: #8b97b8;
+      --accent: #3ee0c5;
+      --accent-2: #7aa2ff;
+      --fail: #ff5d73;
+      --warn: #f5c14a;
+      --pass: #3ee0c5;
+      --crit: #ff5d73;
+      --high: #ff8a4a;
+      --info: #7aa2ff;
+      --shadow: 0 18px 50px rgba(0,0,0,.35);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: "IBM Plex Sans", system-ui, sans-serif; }
+    a { color: var(--accent-2); text-decoration: none; }
+    button, input, select { font-family: inherit; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    .sidebar { background: #0d1428; border-right: 1px solid var(--line); padding: 22px 16px; }
+    .brand { display: flex; gap: 10px; align-items: center; margin-bottom: 28px; }
+    .logo { width: 36px; height: 36px; border-radius: 10px; background: linear-gradient(135deg,#3ee0c5,#7aa2ff); }
+    .brand h1 { font-size: 16px; margin: 0; letter-spacing: .04em; }
+    .brand small { color: var(--muted); display: block; font-size: 11px; }
+    .nav button { width: 100%; text-align: left; background: transparent; border: 0; color: var(--muted);
+      padding: 10px 12px; border-radius: 10px; cursor: pointer; margin-bottom: 4px; font-size: 14px; }
+    .nav button.active, .nav button:hover { background: #1a2544; color: var(--text); }
+    .main { padding: 28px 32px 60px; }
+    .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 22px; }
+    .top h2 { margin: 0; font-size: 26px; }
+    .muted { color: var(--muted); }
+    .grid { display: grid; gap: 14px; }
+    .cards { grid-template-columns: repeat(4, 1fr); }
+    .card { background: var(--bg-card); border: 1px solid var(--line); border-radius: var(--radius);
+      padding: 16px 18px; box-shadow: var(--shadow); }
+    .card .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+    .card .value { font-size: 28px; font-weight: 700; margin-top: 6px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line); font-size: 13px; }
+    th { color: var(--muted); font-weight: 500; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+    tr:hover td { background: #1a2442; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .FAIL, .CRITICAL { background: #3a1520; color: var(--fail); }
+    .PASS { background: #10332d; color: var(--pass); }
+    .WARN { background: #3a3014; color: var(--warn); }
+    .HIGH { background: #3a2314; color: var(--high); }
+    .MEDIUM { background: #2a2440; color: #c5b8ff; }
+    .INFO, .QUEUED { background: #18233f; color: var(--info); }
+    .COMPLETED, .RUNNING { background: #10332d; color: var(--pass); }
+    .btn { background: var(--accent); color: #04241d; border: 0; border-radius: 10px; padding: 9px 14px;
+      font-weight: 600; cursor: pointer; }
+    .btn.secondary { background: #243154; color: var(--text); }
+    .btn.danger { background: var(--fail); color: white; }
+    input, select, textarea { background: #0e162c; border: 1px solid var(--line); color: var(--text);
+      border-radius: 10px; padding: 10px 12px; width: 100%; }
+    .row { display: flex; gap: 10px; align-items: center; }
+    .login { min-height: 100vh; display: grid; place-items: center; background:
+      radial-gradient(900px 400px at 20% 0%, #1b2b55, transparent), var(--bg); }
+    .login-card { width: 400px; background: var(--bg-card); border: 1px solid var(--line); border-radius: 18px; padding: 32px; }
+    pre { background: #0a1020; border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow: auto;
+      font-size: 12px; line-height: 1.45; }
+    .snippet { color: #c5d4ff; }
+    .err { color: var(--fail); margin-top: 8px; }
+    .hidden { display: none !important; }
+    @media (max-width: 1100px) { .app { grid-template-columns: 1fr; } .cards { grid-template-columns: 1fr 1fr; } .sidebar { display: none; } }
+  </style>
+</head>
+<body>
+  <div id="login-view" class="login">
+    <div class="login-card">
+      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>Deterministic crypto intelligence</small></div></div>
+      <p class="muted">Sign in to review scans, findings, and drift.</p>
+      <label class="muted">Username</label>
+      <input id="username" value="admin" />
+      <div style="height:10px"></div>
+      <label class="muted">Password</label>
+      <input id="password" type="password" value="cryptoscan" />
+      <div style="height:16px"></div>
+      <button class="btn" style="width:100%" onclick="login()">Enter platform</button>
+      <div id="login-error" class="err"></div>
+    </div>
+  </div>
+
+  <div id="app-view" class="app hidden">
+    <aside class="sidebar">
+      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v0.1 · Part 1</small></div></div>
+      <nav class="nav">
+        <button data-route="home" class="active" onclick="go('home')">Overview</button>
+        <button data-route="scans" onclick="go('scans')">Scans</button>
+        <button data-route="new" onclick="go('new')">New scan</button>
+        <button data-route="drift" onclick="go('drift')">Drift</button>
+        <button data-route="findings" onclick="go('findings')">Findings</button>
+      </nav>
+      <div style="margin-top:40px">
+        <button class="btn secondary" style="width:100%" onclick="logout()">Sign out</button>
+      </div>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+
+<script>
+const API = '/api/v1';
+let TOKEN = localStorage.getItem('cs_token') || '';
+let state = { route: 'home', scanId: null, findingId: null, jobId: null };
+
+async function api(path, opts={}) {
+  const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
+  if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  const res = await fetch(API + path, Object.assign({}, opts, { headers }));
+  if (res.status === 401) { logout(); throw new Error('Unauthorized'); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail || res.statusText);
+  return data;
+}
+
+async function login() {
+  try {
+    const data = await api('/auth/login', { method: 'POST', body: JSON.stringify({
+      username: document.getElementById('username').value,
+      password: document.getElementById('password').value
+    })});
+    TOKEN = data.token;
+    localStorage.setItem('cs_token', TOKEN);
+    document.getElementById('login-view').classList.add('hidden');
+    document.getElementById('app-view').classList.remove('hidden');
+    go('home');
+  } catch (e) {
+    document.getElementById('login-error').textContent = e.message;
+  }
+}
+
+function logout() {
+  TOKEN = '';
+  localStorage.removeItem('cs_token');
+  document.getElementById('app-view').classList.add('hidden');
+  document.getElementById('login-view').classList.remove('hidden');
+}
+
+function go(route, extra={}) {
+  state = Object.assign({ route: 'home', scanId: null, findingId: null, jobId: null }, { route }, extra);
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+  render();
+}
+
+function badge(v) { return `<span class="badge ${v || ''}">${v || '—'}</span>`; }
+
+async function render() {
+  const el = document.getElementById('main');
+  el.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    if (state.route === 'home') return renderHome(el);
+    if (state.route === 'scans') return renderScans(el);
+    if (state.route === 'scan') return renderScan(el);
+    if (state.route === 'finding') return renderFinding(el);
+    if (state.route === 'new') return renderNew(el);
+    if (state.route === 'job') return renderJob(el);
+    if (state.route === 'drift') return renderDrift(el);
+    if (state.route === 'findings') return renderFindings(el);
+  } catch (e) {
+    el.innerHTML = `<div class="card"><h2>Error</h2><p class="err">${e.message}</p></div>`;
+  }
+}
+
+async function renderHome(el) {
+  const s = await api('/stats/summary');
+  const scans = await api('/scans?page_size=8');
+  el.innerHTML = `
+    <div class="top"><div><h2>Cryptographic posture</h2><p class="muted">Deterministic inventory — policy is never decided by AI.</p></div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Scans</div><div class="value">${s.total_scans}</div></div>
+      <div class="card"><div class="label">Findings</div><div class="value">${s.total_findings}</div></div>
+      <div class="card"><div class="label">Compliant</div><div class="value" style="color:var(--pass)">${s.compliant}</div></div>
+      <div class="card"><div class="label">Non-compliant</div><div class="value" style="color:var(--fail)">${s.non_compliant}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns: 1.2fr .8fr">
+      <div class="card">
+        <div class="label">Recent scans</div>
+        <table><thead><tr><th>Target</th><th>Status</th><th>When</th></tr></thead>
+        <tbody>${(scans.scans||[]).map(sc => `<tr onclick="go('scan',{scanId:'${sc.scan_id}'})" style="cursor:pointer">
+          <td class="mono">${sc.target_location}</td><td>${badge(sc.status)}</td>
+          <td class="muted">${(sc.scan_start||'').replace('T',' ').slice(0,19)}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No scans yet</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="card">
+        <div class="label">Open drift</div>
+        <p>Critical ${s.open_drift?.CRITICAL||0} · High ${s.open_drift?.HIGH||0} · Medium ${s.open_drift?.MEDIUM||0}</p>
+        <div class="label">Algorithms</div>
+        <table><tbody>${(s.algorithms||[]).slice(0,8).map(a => `<tr><td>${a.algorithm}</td><td>${a.total}</td><td>${a.compliance_pct}%</td></tr>`).join('') || '<tr><td class="muted">None yet</td></tr>'}</tbody></table>
+      </div>
+    </div>`;
+}
+
+async function renderScans(el) {
+  const data = await api('/scans?page_size=50');
+  el.innerHTML = `<div class="top"><h2>Scans</h2><button class="btn" onclick="go('new')">New scan</button></div>
+    <div class="card"><table><thead><tr><th>Target</th><th>Branch</th><th>Status</th><th>Findings</th><th>When</th></tr></thead>
+    <tbody>${(data.scans||[]).map(sc => `<tr onclick="go('scan',{scanId:'${sc.scan_id}'})" style="cursor:pointer">
+      <td class="mono">${sc.target_location}</td><td>${sc.target_branch||'—'}</td>
+      <td>${badge(sc.status)}</td><td>${sc.statistics?.total_findings ?? '—'}</td>
+      <td class="muted">${(sc.scan_start||'').replace('T',' ').slice(0,19)}</td></tr>`).join('') || '<tr><td colspan=5 class="muted">No scans</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function renderScan(el) {
+  const sc = await api('/scans/' + state.scanId);
+  const f = await api(`/scans/${state.scanId}/findings?page_size=100`);
+  el.innerHTML = `<div class="top"><div><h2>Scan detail</h2><p class="muted mono">${sc.target_location}</p></div>
+    <div class="row">
+      <button class="btn secondary" onclick="approveBaseline('${sc.scan_id}')">Approve baseline</button>
+      <button class="btn secondary" onclick="verifyScan('${sc.scan_id}')">Verify chain</button>
+      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/cbom', 'cbom-${sc.scan_id}.json')">Export CBOM</button>
+      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/export', 'scan-${sc.scan_id}.json')">Export JSON</button>
+      <button class="btn secondary" onclick="go('scans')">Back</button>
+    </div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Status</div><div class="value" style="font-size:18px">${badge(sc.status)}</div></div>
+      <div class="card"><div class="label">Findings</div><div class="value">${sc.statistics?.total_findings ?? f.total_count}</div></div>
+      <div class="card"><div class="label">Commit</div><div class="value" style="font-size:14px" class="mono">${(sc.target_commit||'—').slice(0,12)}</div></div>
+      <div class="card"><div class="label">Operator</div><div class="value" style="font-size:16px">${sc.operator}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Findings</div>
+    <table><thead><tr><th>Algo</th><th>Mode</th><th>Location</th><th>Line</th><th>Status</th></tr></thead>
+    <tbody>${(f.findings||[]).map(x => `<tr onclick="go('finding',{findingId:'${x.evidence_id}',scanId:'${state.scanId}'})" style="cursor:pointer">
+      <td class="mono">${x.algorithm}</td><td>${x.mode||'—'}</td><td class="mono">${x.file_path}</td>
+      <td>${x.line_number}</td><td>${badge(x.compliance_status)}</td></tr>`).join('') || '<tr><td colspan=5 class="muted">No findings</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function renderFinding(el) {
+  const x = await api('/findings/' + state.findingId);
+  const snippet = x.finding_data?.source?.code_snippet || 'No snippet';
+  const rules = x.policy_evaluation?.rules_evaluated || [];
+  el.innerHTML = `<div class="top"><div><h2>${x.algorithm}${x.mode ? '/'+x.mode : ''}</h2>
+    <p class="muted mono">${x.file_path}:${x.line_number}</p></div>
+    <button class="btn secondary" onclick="go('scan',{scanId:'${x.scan_id}'})">Back to scan</button></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <div class="label">Crypto</div>
+        <p>Algorithm <b>${x.algorithm}</b> · Key ${x.key_size || 'n/a'} · Mode ${x.mode || 'n/a'} · Purpose ${x.purpose || 'n/a'}</p>
+        <p>Confidence ${badge(x.confidence)} · Hardcoded key ${x.is_hardcoded_key ? badge('FAIL') : badge('PASS')}</p>
+        <div class="label">Compliance</div><p>${badge(x.compliance_status)}</p>
+        ${rules.map(r => `<p>${badge(r.evaluation_result)} <b>${r.rule_id}</b> — ${r.message}</p>`).join('')}
+      </div>
+      <div class="card">
+        <div class="label">Evidence integrity</div>
+        <p class="mono">content ${x.content_hash}</p>
+        <p class="mono">chain ${x.chain_hash}</p>
+        <p>Verified length ${x.content_hash?.length === 64 ? '✅' : '❌'}</p>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Code snippet</div><pre class="snippet">${escapeHtml(snippet)}</pre></div>`;
+}
+
+function renderNew(el) {
+  el.innerHTML = `<div class="top"><h2>Start a scan</h2></div>
+    <div class="card" style="max-width:640px">
+      <label class="muted">Repository URL or local path</label>
+      <input id="repo" value="local://demo/vulnerable-app" />
+      <div style="height:10px"></div>
+      <label class="muted">Branch</label>
+      <input id="branch" value="main" />
+      <p class="muted">Use <span class="mono">local://demo/vulnerable-app</span> for the bundled sample, or any git URL.</p>
+      <button class="btn" onclick="startScan()">Start scan</button>
+      <div id="scan-msg" class="muted"></div>
+    </div>`;
+}
+
+async function startScan() {
+  const repo = document.getElementById('repo').value;
+  const branch = document.getElementById('branch').value;
+  const data = await api('/scans/trigger', { method: 'POST', body: JSON.stringify({ repo_url: repo, branch })});
+  go('job', { jobId: data.job_id });
+}
+
+async function renderJob(el) {
+  const job = await api('/jobs/' + state.jobId);
+  el.innerHTML = `<div class="top"><h2>Job ${job.status}</h2></div>
+    <div class="card">
+      <p>Status ${badge(job.status)}</p>
+      <p class="mono">${job.target_repo}</p>
+      <p class="muted">${job.error_message || ''}</p>
+      ${job.scan_id ? `<button class="btn" onclick="go('scan',{scanId:'${job.scan_id}'})">View findings</button>` : '<p class="muted">Refreshing…</p>'}
+    </div>`;
+  if (job.status === 'QUEUED' || job.status === 'RUNNING') setTimeout(() => { if (state.route==='job') renderJob(el); }, 1500);
+}
+
+async function renderDrift(el) {
+  const data = await api('/drift?page_size=50');
+  el.innerHTML = `<div class="top"><h2>Drift events</h2></div>
+    <div class="card"><table><thead><tr><th>Severity</th><th>Type</th><th>Details</th><th>Status</th><th></th></tr></thead>
+    <tbody>${(data.events||[]).map(e => `<tr>
+      <td>${badge(e.severity)}</td><td>${e.drift_type}</td>
+      <td>${e.drift_details?.reason || e.drift_details?.algorithm || ''}</td>
+      <td>${badge(e.resolution_status)}</td>
+      <td>${e.resolution_status==='OPEN' ? `<button class="btn secondary" onclick="ack('${e.drift_id}')">Acknowledge</button>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan=5 class="muted">No drift events. Approve a baseline, then scan again.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function ack(id) {
+  await api('/drift/' + id + '/acknowledge', { method: 'POST', body: '{}' });
+  renderDrift(document.getElementById('main'));
+}
+
+async function renderFindings(el) {
+  const data = await api('/findings?page_size=100');
+  el.innerHTML = `<div class="top"><h2>Findings</h2></div>
+    <div class="card"><table><thead><tr><th>Algo</th><th>Location</th><th>Status</th><th>Scan</th></tr></thead>
+    <tbody>${(data.findings||[]).map(x => `<tr onclick="go('finding',{findingId:'${x.evidence_id}',scanId:'${x.scan_id}'})" style="cursor:pointer">
+      <td class="mono">${x.algorithm}</td><td class="mono">${x.file_path}:${x.line_number}</td>
+      <td>${badge(x.compliance_status)}</td><td class="mono">${(x.scan_id||'').slice(0,8)}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">No findings</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function approveBaseline(scanId) {
+  await api('/baselines/approve', { method: 'POST', body: JSON.stringify({ scan_id: scanId, notes: 'Approved from dashboard' })});
+  alert('Baseline approved. Future scans of this target will report drift.');
+}
+
+async function verifyScan(scanId) {
+  try {
+    const data = await api('/scans/' + scanId + '/verify');
+    alert('Evidence chain ' + data.result + ' — ' + data.records + ' records, intact=' + data.chain_intact);
+  } catch (e) {
+    alert('Verify failed: ' + e.message);
+  }
+}
+
+async function downloadJson(path, filename) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+  const res = await fetch(API + path, { headers });
+  if (!res.ok) {
+    alert('Export failed: ' + res.statusText);
+    return;
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+
+if (TOKEN) {
+  document.getElementById('login-view').classList.add('hidden');
+  document.getElementById('app-view').classList.remove('hidden');
+  go('home');
+}
+</script>
+</body>
+</html>

@@ -49,6 +49,8 @@ class RuleLoader:
         logger.info(f"Found {len(yaml_files)} rule files")
         
         for yaml_file in yaml_files:
+            if yaml_file.name.startswith("_") or yaml_file.parent.name.startswith("_"):
+                continue
             try:
                 rule = self.load_rule_from_file(yaml_file)
                 rules.append(rule)

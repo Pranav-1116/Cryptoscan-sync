@@ -1,0 +1,20 @@
+name: Docker build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".docker/**"
+      - "docker-compose.yml"
+      - "services/**"
+      - "requirements.txt"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -f .docker/api/Dockerfile -t cryptoscan-api:ci .
+      - name: Build worker image
+        run: docker build -f .docker/worker/Dockerfile -t cryptoscan-worker:ci .

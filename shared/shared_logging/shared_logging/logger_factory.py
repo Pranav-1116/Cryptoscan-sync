@@ -1,100 +1,36 @@
-"""
-Logger Factory
-Creates structured JSON loggers
-"""
+"""Structured JSON logging factory."""
+
+from __future__ import annotations
+
 import logging
 import sys
-from typing import Optional
-import json
-from datetime import datetime
+
+import structlog
 
 
-class JSONFormatter(logging.Formatter):
-    """
-    JSON formatter for structured logging
-    """
-    
-    def format(self, record: logging.LogRecord) -> str:
-        """Format log record as JSON"""
-        log_data = {
-            "timestamp": datetime.utcnow().isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "message": record.getMessage(),
-            "module": record.module,
-            "function": record.funcName,
-            "line": record.lineno
-        }
-        
-        # Add context if available
-        if hasattr(record, 'request_id'):
-            log_data['request_id'] = record.request_id
-        
-        if hasattr(record, 'scan_id'):
-            log_data['scan_id'] = record.scan_id
-        
-        if hasattr(record, 'job_id'):
-            log_data['job_id'] = record.job_id
-        
-        # Add exception info if present
-        if record.exc_info:
-            log_data['exception'] = self.formatException(record.exc_info)
-        
-        # Add extra fields
-        if hasattr(record, 'extra_data'):
-            log_data.update(record.extra_data)
-        
-        return json.dumps(log_data)
+def configure_logging(level: str = "INFO", json_output: bool = False) -> None:
+    numeric = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(format="%(message)s", stream=sys.stdout, level=numeric)
 
-
-def create_logger(
-    name: str,
-    level: str = "INFO",
-    json_format: bool = True
-) -> logging.Logger:
-    """
-    Create structured logger
-    
-    Args:
-        name: Logger name
-        level: Log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-        json_format: Use JSON formatter (True for production)
-    
-    Returns:
-        Configured logger
-    """
-    logger = logging.getLogger(name)
-    logger.setLevel(getattr(logging, level.upper()))
-    
-    # Remove existing handlers
-    logger.handlers.clear()
-    
-    # Create console handler
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(getattr(logging, level.upper()))
-    
-    # Set formatter
-    if json_format:
-        formatter = JSONFormatter()
+    processors: list = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
+    if json_output or not sys.stdout.isatty():
+        processors.append(structlog.processors.JSONRenderer())
     else:
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-        )
-    
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    
-    # Prevent propagation to root logger
-    logger.propagate = False
-    
-    return logger
+        processors.append(structlog.dev.ConsoleRenderer())
+
+    structlog.configure(
+        processors=processors,
+        wrapper_class=structlog.make_filtering_bound_logger(numeric),
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
 
 
-def get_logger(name: str) -> logging.Logger:
-    """
-    Get existing logger or create new one
-    """
-    logger = logging.getLogger(name)
-    if not logger.handlers:
-        return create_logger(name)
-    return logger
+def create_logger(name: str = "cryptoscan", json_format: bool | None = None, **kwargs):
+    return structlog.get_logger(name)

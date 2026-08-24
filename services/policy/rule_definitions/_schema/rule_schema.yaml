@@ -1,0 +1,10 @@
+title: CryptoScan Policy Rule Schema
+type: object
+required: [rule_id, rule_name, condition, remediation]
+properties:
+  rule_id: { type: string }
+  rule_name: { type: string }
+  condition:
+    type: object
+    required: [type, parameters]
+  remediation: { type: string }

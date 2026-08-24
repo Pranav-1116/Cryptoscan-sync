@@ -1,0 +1,10 @@
+<!doctype html>
+<html>
+<body style="font-family:sans-serif">
+  <h1>CRITICAL cryptographic drift</h1>
+  <p>System: {{ system_identifier }}</p>
+  <p>Scan: {{ scan_id }}</p>
+  <p>Critical events: {{ drift_summary.critical if drift_summary else critical_events|length }}</p>
+  <p><a href="{{ dashboard_url }}">Open CryptoScan</a></p>
+</body>
+</html>

@@ -1,213 +1,106 @@
-"""
-Repository for evidence_records table operations.
-"""
-from typing import List, Optional, Dict, Any
-from sqlalchemy import select, and_, func
+"""Evidence repository."""
+
+from __future__ import annotations
+
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
-from .base_repository import BaseRepository
-from ..models.evidence_record import EvidenceRecord
+
+from db.models.evidence_record import EvidenceRecord
+from db.repositories.base_repository import BaseRepository
 
 
 class EvidenceRepository(BaseRepository[EvidenceRecord]):
-    """
-    Repository for EvidenceRecord model with custom query methods.
-    """
-    
     def __init__(self, session: Session):
         super().__init__(EvidenceRecord, session)
-    
-    def get_by_scan_id(
+
+    def list_for_scan(
         self,
         scan_id: str,
-        order_by_position: bool = True
-    ) -> List[EvidenceRecord]:
-        """
-        Get all evidence records for a scan.
-        
-        Args:
-            scan_id: Scan UUID
-            order_by_position: Whether to order by chain_position
-            
-        Returns:
-            List of evidence records
-        """
+        *,
+        algorithm: str | None = None,
+        compliance_status: str | None = None,
+        hardcoded_only: bool = False,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[EvidenceRecord], int]:
         stmt = select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)
-        
-        if order_by_position:
-            stmt = stmt.order_by(EvidenceRecord.chain_position)
-        
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    def get_chain_for_verification(self, scan_id: str) -> List[EvidenceRecord]:
-        """
-        Get evidence chain ordered by position for verification.
-        
-        Args:
-            scan_id: Scan UUID
-            
-        Returns:
-            Ordered list of evidence records
-        """
-        return self.get_by_scan_id(scan_id, order_by_position=True)
-    
-    def get_by_algorithm(
+        count_stmt = select(func.count()).select_from(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)
+        if algorithm:
+            stmt = stmt.where(EvidenceRecord.algorithm == algorithm)
+            count_stmt = count_stmt.where(EvidenceRecord.algorithm == algorithm)
+        if compliance_status:
+            stmt = stmt.where(EvidenceRecord.compliance_status == compliance_status)
+            count_stmt = count_stmt.where(EvidenceRecord.compliance_status == compliance_status)
+        if hardcoded_only:
+            stmt = stmt.where(EvidenceRecord.is_hardcoded_key.is_(True))
+            count_stmt = count_stmt.where(EvidenceRecord.is_hardcoded_key.is_(True))
+        total = int(self.session.execute(count_stmt).scalar_one())
+        stmt = (
+            stmt.order_by(EvidenceRecord.chain_position)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(self.session.execute(stmt).scalars().all()), total
+
+    def list_all(
         self,
-        algorithm: str,
-        limit: int = 100
-    ) -> List[EvidenceRecord]:
-        """
-        Get evidence records by algorithm.
-        
-        Args:
-            algorithm: Algorithm name (e.g., 'DES', 'AES')
-            limit: Maximum results
-            
-        Returns:
-            List of evidence records
-        """
+        *,
+        algorithm: str | None = None,
+        compliance_status: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[EvidenceRecord], int]:
+        stmt = select(EvidenceRecord)
+        count_stmt = select(func.count()).select_from(EvidenceRecord)
+        if algorithm:
+            stmt = stmt.where(EvidenceRecord.algorithm == algorithm)
+            count_stmt = count_stmt.where(EvidenceRecord.algorithm == algorithm)
+        if compliance_status:
+            stmt = stmt.where(EvidenceRecord.compliance_status == compliance_status)
+            count_stmt = count_stmt.where(EvidenceRecord.compliance_status == compliance_status)
+        total = int(self.session.execute(count_stmt).scalar_one())
+        stmt = (
+            stmt.order_by(EvidenceRecord.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(self.session.execute(stmt).scalars().all()), total
+
+    def get_by_scan(self, scan_id: str) -> list[EvidenceRecord]:
+        return self.get_all_for_scan(scan_id)
+
+    def get_all_for_scan(self, scan_id: str) -> list[EvidenceRecord]:
         stmt = (
             select(EvidenceRecord)
-            .where(EvidenceRecord.algorithm == algorithm)
-            .limit(limit)
-        )
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    def get_hardcoded_keys(self, scan_id: Optional[str] = None) -> List[EvidenceRecord]:
-        """
-        Get all hardcoded key findings.
-        
-        Args:
-            scan_id: Optional scan ID to filter by
-            
-        Returns:
-            List of hardcoded key findings
-        """
-        stmt = select(EvidenceRecord).where(EvidenceRecord.is_hardcoded_key == True)
-        
-        if scan_id:
-            stmt = stmt.where(EvidenceRecord.scan_id == scan_id)
-        
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    def get_by_confidence(
-        self,
-        confidence: str,
-        scan_id: Optional[str] = None
-    ) -> List[EvidenceRecord]:
-        """
-        Get evidence records by confidence level.
-        
-        Args:
-            confidence: Confidence level (HIGH, MEDIUM, LOW)
-            scan_id: Optional scan ID to filter by
-            
-        Returns:
-            List of evidence records
-        """
-        stmt = select(EvidenceRecord).where(EvidenceRecord.confidence == confidence)
-        
-        if scan_id:
-            stmt = stmt.where(EvidenceRecord.scan_id == scan_id)
-        
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    def get_by_file_path(
-        self,
-        file_path: str,
-        scan_id: Optional[str] = None
-    ) -> List[EvidenceRecord]:
-        """
-        Get evidence records for a specific file.
-        
-        Args:
-            file_path: File path
-            scan_id: Optional scan ID to filter by
-            
-        Returns:
-            List of evidence records
-        """
-        stmt = select(EvidenceRecord).where(EvidenceRecord.file_path == file_path)
-        
-        if scan_id:
-            stmt = stmt.where(EvidenceRecord.scan_id == scan_id)
-        
-        result = self.session.execute(stmt)
-        return list(result.scalars().all())
-    
-    def count_by_algorithm(self, scan_id: str) -> Dict[str, int]:
-        """
-        Count findings grouped by algorithm.
-        
-        Args:
-            scan_id: Scan UUID
-            
-        Returns:
-            Dictionary mapping algorithm -> count
-        """
-        stmt = (
-            select(
-                EvidenceRecord.algorithm,
-                func.count(EvidenceRecord.evidence_id)
-            )
-            .where(EvidenceRecord.scan_id == scan_id)
-            .group_by(EvidenceRecord.algorithm)
-        )
-        
-        result = self.session.execute(stmt)
-        return {algorithm: count for algorithm, count in result.all()}
-    
-    def bulk_insert_with_transaction(
-        self,
-        evidence_records: List[EvidenceRecord]
-    ) -> List[EvidenceRecord]:
-        """
-        Bulk insert evidence records in a single transaction.
-        
-        Args:
-            evidence_records: List of evidence records to insert
-            
-        Returns:
-            List of inserted records with IDs
-        """
-        return self.create_many(evidence_records)
-    
-    def verify_chain_integrity_db(self, scan_id: str) -> bool:
-        """
-        Verify chain integrity by checking sequential positions in DB.
-        
-        Args:
-            scan_id: Scan UUID
-            
-        Returns:
-            True if chain positions are sequential, False otherwise
-        """
-        stmt = (
-            select(EvidenceRecord.chain_position)
             .where(EvidenceRecord.scan_id == scan_id)
             .order_by(EvidenceRecord.chain_position)
         )
-        
-        result = self.session.execute(stmt)
-        positions = [pos for (pos,) in result.all()]
-        
-        # Check if positions are 0, 1, 2, 3, ..., N-1
-        expected = list(range(len(positions)))
-        return positions == expected
-    
-    def get_by_content_hash(self, content_hash: str) -> Optional[EvidenceRecord]:
-        """
-        Get evidence record by content hash (for deduplication).
-        
-        Args:
-            content_hash: SHA-256 content hash
-            
-        Returns:
-            Evidence record or None if not found
-        """
-        stmt = select(EvidenceRecord).where(EvidenceRecord.content_hash == content_hash)
-        result = self.session.execute(stmt)
-        return result.scalar_one_or_none()
+        return list(self.session.execute(stmt).scalars().all())
+
+    def algorithm_breakdown(self) -> list[dict]:
+        stmt = select(
+            EvidenceRecord.algorithm,
+            func.count().label("total"),
+            func.sum(
+                case((EvidenceRecord.compliance_status == "PASS", 1), else_=0)
+            ).label("compliant"),
+            func.sum(
+                case((EvidenceRecord.compliance_status == "FAIL", 1), else_=0)
+            ).label("failed"),
+        ).group_by(EvidenceRecord.algorithm)
+        rows = self.session.execute(stmt).all()
+        result = []
+        for row in rows:
+            total = int(row.total or 0)
+            compliant = int(row.compliant or 0)
+            failed = int(row.failed or 0)
+            result.append(
+                {
+                    "algorithm": row.algorithm,
+                    "total": total,
+                    "compliant": compliant,
+                    "failed": failed,
+                    "compliance_pct": round((compliant / total) * 100, 1) if total else 0,
+                }
+            )
+        return sorted(result, key=lambda x: x["total"], reverse=True)

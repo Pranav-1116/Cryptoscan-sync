@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class GitContext(BaseModel):
@@ -53,6 +53,8 @@ class FindingMetadata(BaseModel):
 class RawFinding(BaseModel):
     """Scanner output model - one per cryptographic API call detected."""
 
+    model_config = {"extra": "allow"}
+
     finding_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     scan_timestamp: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -64,6 +66,41 @@ class RawFinding(BaseModel):
     crypto: CryptoInfo
     metadata: FindingMetadata
     git_context: Optional[GitContext] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_flat_constructor(cls, data):
+        if not isinstance(data, dict):
+            return data
+        if "source" in data or "crypto" in data:
+            return data
+        if "file_path" not in data and "algorithm" not in data:
+            return data
+        return {
+            "source": {
+                "file_path": data.get("file_path") or "unknown",
+                "line_number": int(data.get("line_number") or 0),
+                "class_name": data.get("class_name"),
+                "method_name": data.get("method_name"),
+                "code_snippet": data.get("code_snippet"),
+            },
+            "crypto": {
+                "api_type": data.get("api_type") or "UNKNOWN",
+                "algorithm": data.get("algorithm"),
+                "mode": data.get("mode"),
+                "padding": data.get("padding"),
+                "key_size": data.get("key_size"),
+                "purpose": data.get("purpose"),
+                "raw_transformation": data.get("raw_transformation"),
+            },
+            "metadata": {
+                "confidence": data.get("confidence") or "LOW",
+                "confidence_reason": data.get("confidence_reason") or "flat-constructor",
+                "is_hardcoded_key": bool(data.get("is_hardcoded_key")),
+                "library": data.get("library"),
+            },
+            **{k: v for k, v in data.items() if k in {"finding_id", "scan_timestamp", "scanner_id", "scanner_version", "git_context"}},
+        }
 
     def to_canonical_dict(self) -> dict[str, Any]:
         """
@@ -88,7 +125,7 @@ class RawFinding(BaseModel):
 def _sort_dict_recursively(obj: Any) -> Any:
     """Recursively sort all dictionary keys alphabetically."""
     if isinstance(obj, dict):
-        return {k: _sort_dict_recursively(v) for k in sorted(obj.keys())}
+        return {k: _sort_dict_recursively(obj[k]) for k in sorted(obj.keys())}
     if isinstance(obj, list):
         return [_sort_dict_recursively(item) for item in obj]
     return obj

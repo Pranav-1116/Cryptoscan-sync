@@ -129,13 +129,16 @@ class DriftEvent(BaseModel):
         algorithm: str,
         location: str,
         baseline_state: dict[str, Any] | None = None,
+        severity: DriftSeverity = DriftSeverity.INFO,
     ) -> "DriftEvent":
         """Factory: create a REMOVED_CRYPTO drift event."""
+        if not isinstance(severity, DriftSeverity):
+            severity = DriftSeverity(getattr(severity, "value", severity))
         return cls(
             baseline_id=baseline_id,
             current_scan_id=current_scan_id,
             drift_type=DriftType.REMOVED_CRYPTO,
-            severity=DriftSeverity.INFO,
+            severity=severity,
             drift_details={
                 "algorithm": algorithm,
                 "location": location,

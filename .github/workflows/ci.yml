@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: |
+          python -m pip install -U pip
+          python -m venv .venv
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install pytest-asyncio
+      - name: Unit and service tests
+        env:
+          DATABASE_URL: sqlite:///:memory:
+          ENVIRONMENT: test
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/shared/shared_config:${{ github.workspace }}/shared/shared_logging:${{ github.workspace }}/shared/shared_models:${{ github.workspace }}/services/api:${{ github.workspace }}/services/database:${{ github.workspace }}/services/scanner:${{ github.workspace }}/services/evidence:${{ github.workspace }}/services/normalization:${{ github.workspace }}/services/policy:${{ github.workspace }}/services/drift:${{ github.workspace }}/services/worker
+        run: |
+          .venv/bin/python -m pytest -q services/policy/tests
+          .venv/bin/python -m pytest -q services/evidence/tests
+          .venv/bin/python -m pytest -q services/normalization/tests
+          .venv/bin/python -m pytest -q services/scanner/tests
+          .venv/bin/python -m pytest -q services/database/tests/unit
+          .venv/bin/python -m pytest -q services/drift/tests
+          .venv/bin/python -m pytest -q services/worker/tests/unit
+          .venv/bin/python -m pytest -q services/api/tests/unit

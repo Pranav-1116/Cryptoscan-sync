@@ -23,11 +23,10 @@ class CBOMEnricher:
         Returns:
             Enriched object with CBOM fields
         """
-        # CBOM component type
-        normalized.cbom_component_type = 'cryptographic-asset'
-        
-        # CBOM algorithm reference (URN format)
-        normalized.cbom_algorithm_ref = self._generate_cbom_urn(normalized)
+        if not normalized.cbom_component_type:
+            normalized.cbom_component_type = 'cryptographic-asset'
+        if not normalized.cbom_algorithm_ref:
+            normalized.cbom_algorithm_ref = self._generate_cbom_urn(normalized)
         
         return normalized
     
@@ -49,3 +48,6 @@ class CBOMEnricher:
             parts.append(str(normalized.key_size))
         
         return ':'.join(parts)
+
+
+CbomEnricher = CBOMEnricher

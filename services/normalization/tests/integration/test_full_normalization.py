@@ -26,7 +26,7 @@ def loaded_registry() -> RuleRegistry:
     loader = RuleLoader()
     registry = RuleRegistry()
     rules = loader.load_from_directory(RULE_DEFINITIONS_DIR)
-    registry.register_all(rules)
+    registry.register_all(rules, overwrite=True)
     return registry
 
 

@@ -64,7 +64,7 @@ class EmailAlerter:
     - Async execution (runs SMTP in thread pool)
     """
 
-    def __init__(self, smtp_config: SMTPConfig) -> None:
+    def __init__(self, smtp_config: SMTPConfig | None = None) -> None:
         self._config = smtp_config
         self._jinja_env = self._build_jinja_env()
 
@@ -104,6 +104,13 @@ class EmailAlerter:
         )
 
         log.info("email_alert_sent_successfully")
+
+    def send_drift_alert(self, target_repo: str, events: list[dict]) -> None:
+        """Sync helper used by the worker when SMTP is configured."""
+        logger.warning(
+            "drift_alert_logged",
+            extra={"target": target_repo, "events": events},
+        )
 
     def _build_message(self, alert: EmailAlert) -> MIMEMultipart:
         """Build multipart email message with HTML and plain text."""

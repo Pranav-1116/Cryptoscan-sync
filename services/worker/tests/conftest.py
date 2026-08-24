@@ -9,7 +9,16 @@ from unittest.mock import MagicMock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from database.db.models.base import Base
+from db.models.base import Base
+from db.models import (  # noqa: F401 — register metadata
+    baseline,
+    drift_event,
+    evidence_record,
+    repo_configuration,
+    scan,
+    scan_job,
+    verification_log,
+)
 
 
 @pytest.fixture

@@ -1,87 +1,52 @@
-"""
-Worker Process Entry Point
-Consumes scan jobs and executes pipeline
-"""
+"""Worker process entrypoint."""
+
+from __future__ import annotations
+
 import logging
 import signal
 import sys
-from typing import Optional
 
-from shared_logging.logger_factory import create_logger
-from .config.settings import Settings
-from .core.job_consumer import JobConsumer, ScanJob
-from .core.job_executor import JobExecutor
-from database.db.connection.session import SessionLocal
+from worker.config.settings import Settings
+from worker.core.job_consumer import JobConsumer, ScanJob
+from worker.core.job_executor import JobExecutor
 
-# Setup logging
-logger = create_logger("cryptoscan-worker")
+logger = logging.getLogger("cryptoscan-worker")
 
 
 class Worker:
-    """
-    Main worker class
-    Handles graceful shutdown
-    """
-    
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.consumer: Optional[JobConsumer] = None
+        self.consumer: JobConsumer | None = None
         self.running = True
-    
+
     def signal_handler(self, signum, frame):
-        """Handle shutdown signals"""
-        logger.info(f"Received signal {signum}. Shutting down gracefully...")
+        logger.info("shutdown_signal", extra={"signal": signum})
         self.running = False
         if self.consumer:
             self.consumer.stop()
-    
+
     def run(self):
-        """
-        Main worker loop
-        """
-        # Register signal handlers
+        from db.connection.session import init_db
+
+        init_db()
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
-        
-        logger.info("Starting CryptoScan Worker")
-        logger.info(f"Redis URL: {self.settings.REDIS_URL}")
-        logger.info(f"Queue: {self.settings.QUEUE_NAME}")
-        
         self.consumer = JobConsumer(
             redis_url=self.settings.REDIS_URL,
-            queue_name=self.settings.QUEUE_NAME,
-            timeout=5
+            queue_name=self.settings.queue_key,
         )
-        
-        def job_handler(job: ScanJob):
-            """Handler called for each job"""
-            db = SessionLocal()
-            try:
-                executor = JobExecutor(
-                    db_session=db,
-                    workspace_base=self.settings.WORKSPACE_BASE
-                )
-                executor.execute(job)
-            finally:
-                db.close()
-        
-        # Start consuming
-        try:
-            self.consumer.consume(handler=job_handler)
-        except KeyboardInterrupt:
-            logger.info("Interrupted by user")
-        except Exception as e:
-            logger.error(f"Worker crashed: {e}", exc_info=True)
-            sys.exit(1)
-        
-        logger.info("Worker stopped")
+        executor = JobExecutor()
+
+        def handle(job: ScanJob):
+            executor.execute(job)
+
+        self.consumer.consume(handler=handle)
 
 
 def main():
-    """Entry point"""
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = Settings()
-    worker = Worker(settings)
-    worker.run()
+    Worker(settings).run()
 
 
 if __name__ == "__main__":

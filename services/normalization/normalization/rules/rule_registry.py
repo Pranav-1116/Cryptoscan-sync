@@ -109,8 +109,13 @@ class RuleRegistry:
         Returns:
             Matching NormalizationRule or None.
         """
+        if raw_algorithm is None:
+            return None
+        key = raw_algorithm.strip().upper()
+        if not key:
+            return None
         with self._lock:
-            return self._rules_by_pattern.get(raw_algorithm.upper())
+            return self._rules_by_pattern.get(key)
 
     def lookup_by_id(self, rule_id: str) -> Optional[NormalizationRule]:
         """Return rule by rule_id or None."""

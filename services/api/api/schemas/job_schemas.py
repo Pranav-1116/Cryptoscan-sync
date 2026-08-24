@@ -1,89 +1,49 @@
-"""
-Pydantic schemas for scan job request/response models.
-"""
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, Field, field_validator
 
 
 class TriggerScanRequest(BaseModel):
-    """Request body for POST /api/scans/trigger."""
+    repo_url: str = Field(..., min_length=1)
+    branch: Optional[str] = "main"
+    commit: Optional[str] = None
+    scan_type: Optional[str] = "GIT_REPOSITORY"
 
-    repo_url: HttpUrl = Field(
-        description="Git repository URL to scan",
-        examples=["https://github.com/org/payment-api"],
-    )
-    branch: Optional[str] = Field(
-        default="main",
-        description="Branch to scan (defaults to 'main')",
-        max_length=200,
-    )
-    commit: Optional[str] = Field(
-        default=None,
-        description="Specific commit hash (defaults to HEAD of branch)",
-        max_length=40,
-    )
-
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "repo_url": "https://github.com/org/payment-api",
-                "branch": "main",
-                "commit": None,
-            }
-        }
-    }
+    @field_validator("repo_url")
+    @classmethod
+    def validate_repo_url(cls, value: str) -> str:
+        raw = value.strip()
+        if not raw:
+            raise ValueError("repo_url is required")
+        ok = (
+            raw.startswith(("http://", "https://", "git@", "local://", "file://", "/"))
+            or raw.startswith("ssh://")
+            or raw.endswith(".git")
+        )
+        if not ok:
+            raise ValueError("repo_url must be a git URL, local:// path, or absolute path")
+        return raw
 
 
 class TriggerScanResponse(BaseModel):
-    """Response for POST /api/scans/trigger."""
-
     job_id: str
     status: str
     created_at: str
     message: str
 
 
-class JobProgressDetail(BaseModel):
-    """Progress detail for a running job."""
-
-    current_stage: str
-    stages_complete: int
-    total_stages: int = 8
-    findings_count: Optional[int] = None
-
-
 class JobStatusResponse(BaseModel):
-    """Response for GET /api/jobs/{job_id}."""
-
     job_id: str
     status: str
-    job_type: str
-    target_repo: str
-    target_branch: Optional[str]
-    target_commit: Optional[str]
-    triggered_by: str
-    created_at: str
-    started_at: Optional[str]
-    completed_at: Optional[str]
-    scan_id: Optional[str]
-    error_message: Optional[str]
-    progress: Optional[JobProgressDetail]
-
-
-class JobLogsResponse(BaseModel):
-    """Response for GET /api/jobs/{job_id}/logs."""
-
-    job_id: str
-    logs: List[str]
-
-
-class JobListResponse(BaseModel):
-    """Paginated list of jobs."""
-
-    items: List[JobStatusResponse]
-    total: int
-    page: int
-    page_size: int
+    job_type: str | None = None
+    target_repo: str | None = None
+    target_branch: str | None = None
+    target_commit: str | None = None
+    scan_id: str | None = None
+    error_message: str | None = None
+    created_at: str | None = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    progress: dict | None = None

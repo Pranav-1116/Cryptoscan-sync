@@ -1,129 +1,69 @@
-"""
-Repository cloner: clones Git repos safely with timeout and validation.
-"""
+"""Clone or copy a scan target into the workspace."""
+
 from __future__ import annotations
 
-import asyncio
 import logging
+import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class RepoCloner:
-    """
-    Safely clones Git repositories with timeout and error handling.
-    """
-
-    CLONE_TIMEOUT = 300  # 5 minutes
-    MAX_REPO_SIZE_MB = 500
-
-    async def clone(
+    def clone(
         self,
         repo_url: str,
         branch: str,
         target_path: str,
+        commit: str | None = None,
         depth: int = 1,
     ) -> str:
-        """
-        Clone repository to target path.
+        dest = Path(target_path)
+        dest.parent.mkdir(parents=True, exist_ok=True)
 
-        Args:
-            repo_url: Git repository URL
-            branch: Branch to clone
-            target_path: Local directory path
-            depth: Shallow clone depth (1 = only latest commit)
+        local = self._as_local_path(repo_url)
+        if local is not None:
+            if dest.exists():
+                shutil.rmtree(dest)
+            shutil.copytree(local, dest, ignore=shutil.ignore_patterns(".git", "node_modules", "__pycache__"))
+            return commit or "local"
 
-        Returns: Commit hash of cloned HEAD
-
-        Raises:
-            CloneError: If clone fails or times out
-        """
-        logger.info(
-            "repo_clone_start",
-            extra={
-                "repo": repo_url,
-                "branch": branch,
-                "target": target_path,
-            },
-        )
-
-        try:
-            Path(target_path).parent.mkdir(parents=True, exist_ok=True)
-
-            # Clone with shallow history (faster, smaller)
-            cmd = [
-                "git",
-                "clone",
-                "--single-branch",
-                "--branch", branch,
-                "--depth", str(depth),
-                repo_url,
-                target_path,
-            ]
-
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(),
-                    timeout=self.CLONE_TIMEOUT,
-                )
-            except asyncio.TimeoutError:
-                proc.kill()
-                raise TimeoutError(
-                    f"Clone timeout after {self.CLONE_TIMEOUT}s for {repo_url}"
-                )
-
-            if proc.returncode != 0:
-                raise RuntimeError(
-                    f"Clone failed: {stderr.decode() if stderr else 'unknown error'}"
-                )
-
-            # Verify clone
-            repo_path = Path(target_path)
-            if not (repo_path / ".git").exists():
-                raise RuntimeError(f"Clone did not produce .git directory")
-
-            # Get commit hash
-            commit_hash = await self._get_head_commit(target_path)
-
-            logger.info(
-                "repo_clone_success",
-                extra={
-                    "repo": repo_url,
-                    "commit": commit_hash,
-                },
-            )
-
-            return commit_hash
-
-        except Exception as exc:
-            logger.exception(
-                "repo_clone_failed",
-                extra={"repo": repo_url, "error": str(exc)},
-            )
-            raise
-
-    async def _get_head_commit(self, repo_path: str) -> str:
-        """Get the commit hash of HEAD."""
-        cmd = ["git", "-C", repo_path, "rev-parse", "HEAD"]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
-        stdout, stderr = await proc.communicate()
-
+        cmd = ["git", "clone", "--depth", str(depth)]
+        if branch:
+            cmd.extend(["--branch", branch, "--single-branch"])
+        cmd.extend([repo_url, str(dest)])
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if proc.returncode != 0:
-            raise RuntimeError(f"Failed to get HEAD commit: {stderr.decode()}")
+            raise RuntimeError(f"git clone failed: {proc.stderr.strip()}")
+        if commit:
+            checkout = subprocess.run(
+                ["git", "-C", str(dest), "checkout", commit],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if checkout.returncode != 0:
+                raise RuntimeError(f"git checkout failed: {checkout.stderr.strip()}")
+        head = subprocess.run(
+            ["git", "-C", str(dest), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return (head.stdout or commit or "unknown").strip()
 
-        return stdout.decode().strip()
+    def _as_local_path(self, repo_url: str) -> Path | None:
+        raw = repo_url
+        if raw.startswith("local://"):
+            raw = raw[len("local://") :]
+        elif raw.startswith("file://"):
+            raw = raw[len("file://") :]
+        path = Path(raw)
+        if not path.is_absolute():
+            from shared_config.env_loader import repo_root
+
+            path = repo_root() / raw
+        if path.exists() and path.is_dir():
+            return path
+        return None

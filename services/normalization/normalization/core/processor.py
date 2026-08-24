@@ -78,14 +78,19 @@ class NormalizationProcessor:
         parse_mode: str = "exact"
 
         # ── Step 2: Pattern match (compound strings) ──────────────────
+        pattern_hit = None
         if matched_rule is None:
-            matched_rule = self._pattern_matcher.match(raw_stripped)
-            if matched_rule is not None:
+            pattern_hit = self._pattern_matcher.match(raw_stripped)
+            if isinstance(pattern_hit, NormalizationRule):
+                matched_rule = pattern_hit
+                confidence = "MEDIUM"
+                parse_mode = "pattern"
+            elif isinstance(pattern_hit, NormalizedCrypto):
                 confidence = "MEDIUM"
                 parse_mode = "pattern"
 
         # ── Step 3: Fallback ──────────────────────────────────────────
-        if matched_rule is None:
+        if matched_rule is None and not isinstance(pattern_hit, NormalizedCrypto):
             result = self._fallback_handler.handle(
                 raw_algorithm=raw_stripped,
                 purpose=purpose,
@@ -99,46 +104,50 @@ class NormalizationProcessor:
             )
             return result
 
-        # ── Step 4: Build base NormalizedCrypto from rule ─────────────
-        output = matched_rule.normalized_output.copy()
+        # ── Step 4: Build base NormalizedCrypto from rule or pattern ──
+        if isinstance(pattern_hit, NormalizedCrypto) and matched_rule is None:
+            normalized = pattern_hit
+            if key_size is not None and normalized.key_size is None:
+                normalized.key_size = key_size
+            if purpose is not None and normalized.purpose is None:
+                normalized.purpose = purpose
+            normalized.raw_input = raw_stripped
+            normalized.normalization_confidence = confidence
+            normalized.normalization_version = normalization_version
+            normalized.normalization_timestamp = timestamp
+        else:
+            output = matched_rule.normalized_output.copy()
+            if key_size is not None and output.get("key_size") is None:
+                output["key_size"] = key_size
+            if purpose is not None and output.get("purpose") is None:
+                output["purpose"] = purpose
+            output["raw_input"] = raw_stripped
+            output["normalization_confidence"] = confidence
+            output["normalization_version"] = normalization_version
+            output["normalization_timestamp"] = timestamp
+            output["needs_human_review"] = False
+            output["review_reason"] = None
+            try:
+                normalized = NormalizedCrypto.model_validate(output)
+            except Exception as exc:
+                logger.error(
+                    "NormalizedCrypto model validation failed for '%s': %s",
+                    raw_stripped,
+                    exc,
+                )
+                return self._fallback_handler.handle(
+                    raw_algorithm=raw_stripped,
+                    purpose=purpose,
+                    key_size=key_size,
+                    normalization_version=normalization_version,
+                    timestamp=timestamp,
+                )
 
-        # Merge scanner-provided hints (scanner wins for key_size if rule
-        # has null and scanner has a concrete value)
-        if key_size is not None and output.get("key_size") is None:
-            output["key_size"] = key_size
-
-        if purpose is not None and output.get("purpose") is None:
-            output["purpose"] = purpose
-
-        output["raw_input"] = raw_stripped
-        output["normalization_confidence"] = confidence
-        output["normalization_version"] = normalization_version
-        output["normalization_timestamp"] = timestamp
-        output["needs_human_review"] = False
-        output["review_reason"] = None
-
-        # ── Step 5: Apply enrichers ───────────────────────────────────
-        output = self._nist_enricher.enrich(output)
-        output = self._iana_enricher.enrich(output)
-        output = self._cbom_enricher.enrich(output)
-        output = self._family_enricher.enrich(output)
-
-        try:
-            normalized = NormalizedCrypto.model_validate(output)
-        except Exception as exc:
-            logger.error(
-                "NormalizedCrypto model validation failed for '%s': %s",
-                raw_stripped,
-                exc,
-            )
-            # Degrade gracefully to fallback
-            return self._fallback_handler.handle(
-                raw_algorithm=raw_stripped,
-                purpose=purpose,
-                key_size=key_size,
-                normalization_version=normalization_version,
-                timestamp=timestamp,
-            )
+        # ── Step 5: Apply enrichers (do not clobber rule values) ──────
+        normalized = self._nist_enricher.enrich(normalized)
+        normalized = self._iana_enricher.enrich(normalized)
+        normalized = self._cbom_enricher.enrich(normalized)
+        normalized = self._family_enricher.enrich(normalized)
 
         logger.debug(
             "Normalization complete",

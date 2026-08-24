@@ -1,87 +1,26 @@
-"""
-Repository Configuration Repository
-CRUD operations for repo configurations
-"""
-import logging
-from typing import Optional, List
+"""Repo configuration repository."""
+
+from __future__ import annotations
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from ..models.repo_configuration import RepoConfiguration
-from .base_repository import BaseRepository
-
-logger = logging.getLogger(__name__)
+from db.models.repo_configuration import RepoConfiguration
+from db.repositories.base_repository import BaseRepository
 
 
 class RepoConfigRepository(BaseRepository[RepoConfiguration]):
-    """Repository for RepoConfiguration model"""
-    
-    def __init__(self, db: Session):
-        super().__init__(RepoConfiguration, db)
-    
-    def create(
-        self,
-        repo_url: str,
-        repo_name: str,
-        enabled: bool = True,
-        scan_on_push: bool = True,
-        scan_on_pr: bool = False,
-        notification_emails: Optional[List[str]] = None
-    ) -> RepoConfiguration:
-        """Create repository configuration"""
-        config = RepoConfiguration(
-            repo_url=repo_url,
-            repo_name=repo_name,
-            enabled=enabled,
-            scan_on_push=scan_on_push,
-            scan_on_pr=scan_on_pr,
-            notification_emails=notification_emails or []
-        )
-        
-        self.db.add(config)
-        self.db.commit()
-        self.db.refresh(config)
-        
-        logger.info(f"Created repo config for {repo_name}")
-        return config
-    
-    def get_by_repo_url(self, repo_url: str) -> Optional[RepoConfiguration]:
-        """Get config by repository URL"""
-        return self.db.query(RepoConfiguration)\
-            .filter(RepoConfiguration.repo_url == repo_url)\
-            .first()
-    
-    def get_enabled_repos(self) -> List[RepoConfiguration]:
-        """Get all enabled repository configurations"""
-        return self.db.query(RepoConfiguration)\
-            .filter(RepoConfiguration.enabled == True)\
-            .all()
-    
-    def update_baseline(
-        self,
-        repo_url: str,
-        baseline_scan_id: str
-    ):
-        """Update baseline scan for repository"""
-        config = self.get_by_repo_url(repo_url)
-        if not config:
-            raise ValueError(f"Repo config not found for {repo_url}")
-        
-        config.baseline_scan_id = baseline_scan_id
-        self.db.commit()
-        logger.info(f"Updated baseline for {repo_url}")
-    
-    def is_scan_enabled(self, repo_url: str, event_type: str) -> bool:
-        """
-        Check if scanning is enabled for repo/event
-        event_type: 'push' or 'pull_request'
-        """
-        config = self.get_by_repo_url(repo_url)
-        if not config or not config.enabled:
-            return False
-        
-        if event_type == "push":
-            return config.scan_on_push
-        elif event_type == "pull_request":
-            return config.scan_on_pr
-        
-        return False
+    def __init__(self, session: Session):
+        super().__init__(RepoConfiguration, session)
+
+    def get_by_url(self, repo_url: str) -> RepoConfiguration | None:
+        stmt = select(RepoConfiguration).where(RepoConfiguration.repo_url == repo_url)
+        return self.session.execute(stmt).scalar_one_or_none()
+
+    def is_allowed(self, repo_url: str) -> bool:
+        cfg = self.get_by_url(repo_url)
+        if cfg is None:
+            # Allow all in development when no configs exist
+            any_cfg = self.session.execute(select(RepoConfiguration).limit(1)).scalar_one_or_none()
+            return any_cfg is None
+        return bool(cfg.enabled and cfg.scan_on_push)

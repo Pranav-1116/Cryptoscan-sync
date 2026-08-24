@@ -170,7 +170,7 @@ class NormalizedCrypto(BaseModel):
     def validate_nist_designation(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return v
-        allowed = {"APPROVED", "ACCEPTABLE", "DEPRECATED", "DISALLOWED", "UNKNOWN"}
+        allowed = {"APPROVED", "ACCEPTABLE", "ALLOWED_LEGACY", "DEPRECATED", "DISALLOWED", "UNKNOWN"}
         if v not in allowed:
             raise ValueError(f"nist_designation must be one of {allowed}")
         return v

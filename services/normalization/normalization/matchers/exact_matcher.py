@@ -1,47 +1,34 @@
-"""
-Exact match normalization matcher.
-"""
-from typing import Optional, List
-from ..models.normalization_rule import NormalizationRule
-from ..models.normalized_crypto import NormalizedCrypto
+"""Exact string matcher."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from normalization.models.normalization_rule import NormalizationRule
 
 
 class ExactMatcher:
-    """
-    Performs exact string matching for normalization.
-    
-    Fast O(1) lookup using dictionary.
-    """
-    
-    def __init__(self, rules: List[NormalizationRule]):
-        """
-        Initialize exact matcher.
-        
-        Args:
-            rules: List of normalization rules
-        """
-        # Build lookup dictionary for O(1) access
-        self.rule_map = {
-            rule.pattern.upper(): rule
-            for rule in rules
-        }
-    
-    def match(self, raw_algorithm: str) -> Optional[NormalizedCrypto]:
-        """
-        Attempt exact match normalization.
-        
-        Args:
-            raw_algorithm: Raw algorithm string
-            
-        Returns:
-            NormalizedCrypto if exact match found, None otherwise
-        """
-        # Case-insensitive lookup
-        key = raw_algorithm.upper()
-        
-        rule = self.rule_map.get(key)
-        
-        if rule:
-            return NormalizedCrypto(**rule.output)
-        
-        return None
+    def __init__(self, rules):
+        self._registry = None
+        if hasattr(rules, "lookup_by_pattern"):
+            self._registry = rules
+            self.rule_map = {}
+        else:
+            if hasattr(rules, "all_rules"):
+                rules = list(rules.all_rules())
+            self.rule_map = {}
+            for rule in rules:
+                patterns = list(getattr(rule, "raw_patterns", None) or [])
+                if getattr(rule, "pattern", None):
+                    patterns.append(rule.pattern)
+                for pattern in patterns:
+                    if pattern:
+                        self.rule_map[str(pattern).upper()] = rule
+
+    def match(self, raw_algorithm: str) -> Optional[NormalizationRule]:
+        if not raw_algorithm or not str(raw_algorithm).strip():
+            return None
+        key = str(raw_algorithm).strip()
+        if self._registry is not None:
+            return self._registry.lookup_by_pattern(key)
+        return self.rule_map.get(key.upper())

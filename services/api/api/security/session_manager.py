@@ -1,102 +1,65 @@
-"""
-Session Management
-Simple session-based auth (Month 3 MVP)
-"""
+"""HMAC-signed session tokens."""
+
+from __future__ import annotations
+
 import hashlib
 import hmac
 import json
 import time
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Optional
-from dataclasses import dataclass
 
-
-@dataclass
-class Session:
-    username: str
-    created_at: float
-    expires_at: float
+from api.config.settings import get_settings
 
 
 class SessionManager:
-    """
-    Simple HMAC-signed session manager
-    Session format: base64(json({username, exp})).hmac_signature
-    """
-    
-    def __init__(self, secret: str, ttl_seconds: int = 86400):
-        self.secret = secret.encode()
-        self.ttl = ttl_seconds
-    
-    def create_session(self, username: str) -> str:
-        """
-        Create new session token
-        Returns: signed session token
-        """
+    def __init__(self, secret: str | None = None, ttl_seconds: int | None = None):
+        settings = get_settings()
+        self.secret = (secret or settings.SECRET_KEY).encode()
+        self.ttl = ttl_seconds or int(settings.SESSION_EXPIRE_HOURS * 3600)
+
+    def create_session(self, username: str, **kwargs) -> str:
         now = time.time()
-        session_data = {
+        payload = {
             "username": username,
+            "roles": kwargs.get("roles") or ["admin"],
             "created_at": now,
-            "expires_at": now + self.ttl
+            "expires_at": now + self.ttl,
         }
-        
-        # Encode session data
-        import base64
-        session_json = json.dumps(session_data)
-        session_b64 = base64.b64encode(session_json.encode()).decode()
-        
-        # Generate HMAC signature
-        signature = hmac.new(
-            self.secret,
-            session_b64.encode(),
-            hashlib.sha256
-        ).hexdigest()
-        
-        # Token format: data.signature
-        return f"{session_b64}.{signature}"
-    
+        raw = urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        sig = hmac.new(self.secret, raw.encode(), hashlib.sha256).hexdigest()
+        return f"{raw}.{sig}"
+
     def validate_session(self, token: str) -> Optional[str]:
-        """
-        Validate session token
-        Returns: username if valid, None otherwise
-        """
+        data = self._decode(token)
+        return data["username"] if data else None
+
+    def get_session(self, token: str):
+        return _SessionView(self._decode(token)) if self._decode(token) else None
+
+    def validate_api_token(self, token: str) -> Optional[str]:
+        return self.validate_session(token)
+
+    def invalidate_session(self, token: str) -> None:
+        return None
+
+    def _decode(self, token: str) -> dict | None:
         try:
-            # Split token
-            parts = token.split(".")
-            if len(parts) != 2:
+            raw, sig = token.split(".", 1)
+            expected = hmac.new(self.secret, raw.encode(), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(sig, expected):
                 return None
-            
-            session_b64, signature = parts
-            
-            # Verify HMAC signature
-            expected_sig = hmac.new(
-                self.secret,
-                session_b64.encode(),
-                hashlib.sha256
-            ).hexdigest()
-            
-            if not hmac.compare_digest(signature, expected_sig):
+            pad = "=" * (-len(raw) % 4)
+            data = json.loads(urlsafe_b64decode(raw + pad).decode())
+            if time.time() > data.get("expires_at", 0):
                 return None
-            
-            # Decode session data
-            import base64
-            session_json = base64.b64decode(session_b64).decode()
-            session_data = json.loads(session_json)
-            
-            # Check expiration
-            if time.time() > session_data["expires_at"]:
-                return None
-            
-            return session_data["username"]
-        
+            return data
         except Exception:
             return None
-    
-    def refresh_session(self, token: str) -> Optional[str]:
-        """
-        Refresh session (extend TTL)
-        Returns: new token if valid, None otherwise
-        """
-        username = self.validate_session(token)
-        if username:
-            return self.create_session(username)
-        return None
+
+
+class _SessionView:
+    def __init__(self, data: dict):
+        self.username = data["username"]
+        self.roles = data.get("roles") or []
+        self.expires_at = data.get("expires_at")

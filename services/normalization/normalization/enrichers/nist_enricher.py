@@ -46,6 +46,9 @@ class NISTEnricher:
         Returns:
             Enriched object with NIST designation
         """
+        if normalized.nist_designation:
+            return normalized
+
         algorithm = normalized.algorithm.upper()
         
         # Determine NIST status
@@ -54,8 +57,8 @@ class NISTEnricher:
         elif algorithm in self.NIST_DEPRECATED:
             nist_designation = 'DEPRECATED'
         elif algorithm in self.NIST_ALLOWED_LEGACY:
-            nist_designation = 'ALLOWED_LEGACY'
-        elif algorithm in self.NIST_APPROVED:
+            nist_designation = 'ACCEPTABLE'
+        elif algorithm in self.NIST_APPROVED or algorithm in {'SHA2', 'SHA3', 'AES'}:
             nist_designation = 'APPROVED'
         else:
             nist_designation = 'UNKNOWN'
@@ -65,14 +68,14 @@ class NISTEnricher:
             if normalized.key_size < 2048:
                 nist_designation = 'DISALLOWED'
             elif normalized.key_size == 2048:
-                nist_designation = 'ALLOWED_LEGACY'
+                nist_designation = 'ACCEPTABLE'
             else:
                 nist_designation = 'APPROVED'
         
         normalized.nist_designation = nist_designation
         
         # Add FIPS status
-        if nist_designation in ('APPROVED', 'ALLOWED_LEGACY'):
+        if nist_designation in ('APPROVED', 'ACCEPTABLE', 'ALLOWED_LEGACY'):
             normalized.fips_status = self._get_fips_standard(algorithm)
         
         return normalized
@@ -90,3 +93,6 @@ class NISTEnricher:
         }
         
         return fips_mapping.get(algorithm.upper(), 'N/A')
+
+
+NistEnricher = NISTEnricher

@@ -1,4 +1,4 @@
-"""ScanResult model - complete output of a scan session."""
+"""ScanResult model — complete output of a scan session."""
 
 from __future__ import annotations
 
@@ -6,21 +6,19 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from scanner.models.raw_finding import RawFinding
 
 
 class ScanTarget(BaseModel):
-    """What was scanned."""
-    type: str  # GIT_REPOSITORY or LOCAL_DIRECTORY
-    location: str  # URL or path
+    type: str = "LOCAL_DIRECTORY"
+    location: str = ""
     commit: Optional[str] = None
     branch: Optional[str] = None
 
 
 class ScanStatistics(BaseModel):
-    """Aggregated statistics from the scan."""
     files_scanned: int = 0
     files_with_crypto: int = 0
     files_skipped: int = 0
@@ -33,28 +31,28 @@ class ScanStatistics(BaseModel):
 
 
 class ScanResult(BaseModel):
-    """Complete result of a scan session."""
+    model_config = ConfigDict(extra="allow")
 
     scan_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    scan_start: str = Field(
-        default_factory=lambda: datetime.now(timezone.utc).isoformat()
-    )
+    scan_start: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     scan_end: Optional[str] = None
     scanner_version: str = "0.1.0"
     scanner_id: str = "static-java-scanner-v0.1"
-
-    scan_target: ScanTarget
+    scan_target: ScanTarget = Field(default_factory=ScanTarget)
     statistics: ScanStatistics = Field(default_factory=ScanStatistics)
     findings: list[RawFinding] = Field(default_factory=list)
-
-    # Errors encountered during scan (but scan continued)
     parse_errors: list[dict] = Field(default_factory=list)
+    status: str = "COMPLETED"
+    error_message: Optional[str] = None
 
     def finalize(self) -> None:
-        """Set scan_end and compute final statistics."""
-        from datetime import timezone
-        self.scan_end = datetime.now(timezone.utc).isoformat()
-
+        end = datetime.now(timezone.utc)
+        self.scan_end = end.isoformat()
+        try:
+            start = datetime.fromisoformat(self.scan_start.replace("Z", "+00:00"))
+            self.statistics.duration_seconds = (end - start).total_seconds()
+        except ValueError:
+            self.statistics.duration_seconds = 0.0
         self.statistics.total_findings = len(self.findings)
         self.statistics.high_confidence = sum(
             1 for f in self.findings if f.metadata.confidence == "HIGH"
@@ -65,5 +63,17 @@ class ScanResult(BaseModel):
         self.statistics.low_confidence = sum(
             1 for f in self.findings if f.metadata.confidence == "LOW"
         )
-        files_with_crypto = set(f.source.file_path for f in self.findings)
-        self.statistics.files_with_crypto = len(files_with_crypto)
+        self.statistics.files_with_crypto = len({f.source.file_path for f in self.findings})
+        self.statistics.files_with_errors = len(self.parse_errors)
+
+    @property
+    def scan_completed(self) -> bool:
+        return self.status == "COMPLETED"
+
+    @property
+    def files_scanned(self) -> int:
+        return self.statistics.files_scanned
+
+    @property
+    def duration_seconds(self) -> float:
+        return self.statistics.duration_seconds

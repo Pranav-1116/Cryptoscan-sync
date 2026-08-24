@@ -1,4 +1,11 @@
+# CryptoScan — Part 1 is runnable
 
+**Local:** `python scripts/seed_demo.py` then `bash scripts/run_api.sh`.  
+**Login:** `admin` / `cryptoscan`. **Docs:** [RUN.md](RUN.md).  
+**Docker:** `docker compose up --build`.
+
+The vision document below is the product north star. The working loop is:
+scan Java → evidence chain → SQLite/Postgres → normalize → 4 baseline policies → drift → API → dashboard.
 
 ---
 

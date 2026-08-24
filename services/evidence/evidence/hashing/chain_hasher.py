@@ -27,6 +27,18 @@ class ChainHasher:
     """
     
     @staticmethod
+    def compute_chain_hash(
+        content_hash: str,
+        previous_chain_hash: Optional[str] = None,
+        scan_session_id: Optional[str] = None,
+    ) -> str:
+        if previous_chain_hash is None:
+            chain_input = f"{content_hash}{scan_session_id or ''}"
+        else:
+            chain_input = f"{content_hash}{previous_chain_hash}"
+        return hashlib.sha256(chain_input.encode("utf-8")).hexdigest()
+
+    @staticmethod
     def compute_chain(
         content_hashes: List[str],
         scan_session_id: str

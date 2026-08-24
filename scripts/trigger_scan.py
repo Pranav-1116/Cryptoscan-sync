@@ -1,126 +1,86 @@
 #!/usr/bin/env python3
-"""
-CLI Script: Trigger Manual Scan
-Triggers a scan job and queues it
-"""
-import sys
+"""Trigger a scan via the running API or inline pipeline."""
+
+from __future__ import annotations
+
 import argparse
-import uuid
 import json
+import os
+import sys
 from pathlib import Path
-from datetime import datetime
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-from database.db.connection.session import SessionLocal
-from database.db.repositories.job_repository import JobRepository
-from worker.core.job_consumer import JobConsumer, ScanJob
-from shared_logging.logger_factory import create_logger
-from api.config.settings import Settings
-
-logger = create_logger("trigger-scan", json_format=False)
-
-
-def trigger_scan(
-    repo_url: str,
-    branch: str,
-    commit: str = None,
-    triggered_by: str = "manual-cli"
-):
-    """
-    Trigger a scan job
-    """
-    settings = Settings()
-    db = SessionLocal()
-    
-    try:
-        # Generate job ID
-        job_id = str(uuid.uuid4())
-        
-        # Create job record
-        job_repo = JobRepository(db)
-        job = job_repo.create(
-            job_id=job_id,
-            job_type="MANUAL",
-            target_repo=repo_url,
-            target_branch=branch,
-            target_commit=commit,
-            triggered_by=triggered_by
-        )
-        
-        logger.info(f"Created scan job: {job_id}")
-        
-        # Queue job
-        consumer = JobConsumer(
-            redis_url=settings.REDIS_URL,
-            queue_name="scan-jobs"
-        )
-        
-        scan_job = ScanJob(
-            job_id=job_id,
-            job_type="MANUAL",
-            target_repo=repo_url,
-            target_commit=commit,
-            target_branch=branch,
-            triggered_by=triggered_by,
-            created_at=datetime.utcnow().isoformat()
-        )
-        
-        success = consumer.publish_job(scan_job)
-        
-        if success:
-            logger.info(f"✅ Job queued successfully")
-            logger.info(f"   Job ID: {job_id}")
-            logger.info(f"   Repository: {repo_url}")
-            logger.info(f"   Branch: {branch}")
-            if commit:
-                logger.info(f"   Commit: {commit}")
-            
-            print(f"\nJob ID: {job_id}")
-            print(f"Monitor status: GET /api/jobs/{job_id}")
-        else:
-            logger.error("Failed to queue job")
-            sys.exit(1)
-        
-    except Exception as e:
-        logger.error(f"Failed to trigger scan: {e}", exc_info=True)
-        sys.exit(1)
-    finally:
-        db.close()
+ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [
+    str(ROOT / "shared" / "shared_config"),
+    str(ROOT / "shared" / "shared_logging"),
+    str(ROOT / "shared" / "shared_models"),
+    str(ROOT / "services" / "api"),
+    str(ROOT / "services" / "database"),
+    str(ROOT / "services" / "scanner"),
+    str(ROOT / "services" / "evidence"),
+    str(ROOT / "services" / "normalization"),
+    str(ROOT / "services" / "policy"),
+    str(ROOT / "services" / "drift"),
+    str(ROOT / "services" / "worker"),
+]
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Trigger a manual scan job"
-    )
-    parser.add_argument(
-        "repo_url",
-        help="Repository URL to scan"
-    )
-    parser.add_argument(
-        "--branch",
-        default="main",
-        help="Branch to scan (default: main)"
-    )
-    parser.add_argument(
-        "--commit",
-        help="Specific commit to scan (default: HEAD of branch)"
-    )
-    parser.add_argument(
-        "--triggered-by",
-        default="manual-cli",
-        help="Who triggered this scan (default: manual-cli)"
-    )
-    
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Trigger a CryptoScan job")
+    parser.add_argument("repo_url")
+    parser.add_argument("--branch", default="main")
+    parser.add_argument("--commit")
+    parser.add_argument("--triggered-by", default="manual-cli")
+    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8000"))
+    parser.add_argument("--inline", action="store_true", help="Run the pipeline in-process")
     args = parser.parse_args()
-    
-    trigger_scan(
-        repo_url=args.repo_url,
-        branch=args.branch,
-        commit=args.commit,
-        triggered_by=args.triggered_by
+
+    if args.inline:
+        from db.connection.session import SessionLocal, init_db
+        from db.repositories.job_repository import JobRepository
+        from worker.pipeline.pipeline_runner import PipelineRunner
+
+        init_db()
+        session = SessionLocal()
+        try:
+            job = JobRepository(session).create_job(
+                job_type="MANUAL",
+                target_repo=args.repo_url,
+                target_branch=args.branch,
+                target_commit=args.commit,
+                triggered_by=args.triggered_by,
+            )
+            session.commit()
+            job_id = job.id
+        finally:
+            session.close()
+        scan_id = PipelineRunner().run(
+            job_id=job_id,
+            target_repo=args.repo_url,
+            target_branch=args.branch,
+            target_commit=args.commit,
+            triggered_by=args.triggered_by,
+        )
+        print(json.dumps({"job_id": job_id, "scan_id": scan_id}, indent=2))
+        return
+
+    import httpx
+
+    login = httpx.post(
+        f"{args.api}/api/v1/auth/login",
+        json={"username": os.environ.get("ADMIN_USERNAME", "admin"), "password": os.environ.get("ADMIN_PASSWORD", "cryptoscan")},
+        timeout=30,
     )
+    login.raise_for_status()
+    token = login.json()["token"]
+    response = httpx.post(
+        f"{args.api}/api/v1/scans/trigger",
+        json={"repo_url": args.repo_url, "branch": args.branch, "commit": args.commit},
+        headers={"Authorization": f"Bearer {token}"},
+        timeout=30,
+    )
+    response.raise_for_status()
+    print(json.dumps(response.json(), indent=2))
 
 
 if __name__ == "__main__":

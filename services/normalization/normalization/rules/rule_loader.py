@@ -1,121 +1,75 @@
-"""
-Rule loader - loads normalization rules from YAML files.
-"""
+"""Load normalization rules from YAML (single-doc or multi-doc)."""
+
+from __future__ import annotations
+
 import logging
 from pathlib import Path
-from typing import List, Dict, Any
+
 import yaml
-from ..models.normalization_rule import NormalizationRule
+
+from normalization.models.normalization_rule import NormalizationRule
 
 logger = logging.getLogger(__name__)
 
 
 class RuleLoader:
-    """
-    Loads normalization rules from YAML files.
-    
-    Rules are organized by algorithm family in separate files:
-    - symmetric/aes.yaml
-    - asymmetric/rsa.yaml
-    - hashing/sha2.yaml
-    etc.
-    """
-    
-    def __init__(self, rules_directory: str):
-        """
-        Initialize rule loader.
-        
-        Args:
-            rules_directory: Path to rule_definitions directory
-        """
-        self.rules_directory = Path(rules_directory)
-        
+    def __init__(self, rules_directory: str | Path | None = None):
+        self.rules_directory = Path(rules_directory) if rules_directory else None
+
+    def load_from_directory(self, directory: str | Path) -> list[NormalizationRule]:
+        self.rules_directory = Path(directory)
+        return self.load_all_rules()
+
+    def load_all_rules(self) -> list[NormalizationRule]:
+        if self.rules_directory is None:
+            raise ValueError("Rules directory not set")
         if not self.rules_directory.exists():
             raise ValueError(f"Rules directory not found: {self.rules_directory}")
-    
-    def load_all_rules(self) -> List[NormalizationRule]:
-        """
-        Load all normalization rules from YAML files.
-        
-        Returns:
-            List of normalization rules
-        """
-        all_rules = []
-        
-        # Walk through all YAML files
+        all_rules: list[NormalizationRule] = []
         for yaml_file in self.rules_directory.rglob("*.yaml"):
-            logger.info(f"Loading rules from {yaml_file}")
-            
-            try:
-                rules = self._load_rules_from_file(yaml_file)
-                all_rules.extend(rules)
-            except Exception as e:
-                logger.error(f"Failed to load {yaml_file}: {e}")
-                raise
-        
-        logger.info(f"Loaded {len(all_rules)} total normalization rules")
+            if yaml_file.name.startswith("_") or yaml_file.name.lower() == "readme.yaml":
+                continue
+            all_rules.extend(self._load_rules_from_file(yaml_file))
+        logger.info("normalization_rules_loaded", extra={"count": len(all_rules)})
         return all_rules
-    
-    def _load_rules_from_file(self, yaml_file: Path) -> List[NormalizationRule]:
-        """
-        Load rules from a single YAML file.
-        
-        Args:
-            yaml_file: Path to YAML file
-            
-        Returns:
-            List of rules from this file
-        """
-        with open(yaml_file) as f:
-            data = yaml.safe_load(f)
-        
-        if not isinstance(data, dict):
-            raise ValueError(f"Invalid YAML structure in {yaml_file}")
-        
-        rules = []
-        
-        # YAML format:
-        # rules:
-        #   - pattern: "DES"
-        #     output:
-        #       algorithm: "DES"
-        #       key_size: 56
-        #       ...
-        
-        for rule_data in data.get('rules', []):
-            rule = NormalizationRule(
-                pattern=rule_data['pattern'],
-                output=rule_data['output'],
-                description=rule_data.get('description', ''),
-                source_file=str(yaml_file.name),
-            )
-            rules.append(rule)
-        
+
+    def _load_rules_from_file(self, yaml_file: Path) -> list[NormalizationRule]:
+        text = yaml_file.read_text(encoding="utf-8")
+        documents = list(yaml.safe_load_all(text))
+        rules: list[NormalizationRule] = []
+        for data in documents:
+            if not data:
+                continue
+            if isinstance(data, dict) and "rules" in data:
+                for rule_data in data["rules"]:
+                    rules.extend(self._from_entry(rule_data, yaml_file))
+                continue
+            if isinstance(data, dict):
+                rules.extend(self._from_entry(data, yaml_file))
         return rules
-    
-    def validate_rules(self, rules: List[NormalizationRule]) -> bool:
-        """
-        Validate that rules are well-formed.
-        
-        Args:
-            rules: List of rules to validate
-            
-        Returns:
-            True if all rules are valid
-            
-        Raises:
-            ValueError: If any rule is invalid
-        """
+
+    def _from_entry(self, data: dict, yaml_file: Path) -> list[NormalizationRule]:
+        output = data.get("normalized_output") or data.get("output") or {}
+        patterns = list(data.get("raw_patterns") or [])
+        if data.get("pattern") and data["pattern"] not in patterns:
+            patterns.insert(0, data["pattern"])
+        if not patterns or not output.get("algorithm"):
+            return []
+        return [
+            NormalizationRule(
+                rule_id=data.get("rule_id", ""),
+                version=str(data.get("version") or "1.0"),
+                description=data.get("description", ""),
+                source_file=yaml_file.name,
+                raw_patterns=[str(p) for p in patterns],
+                normalized_output=dict(output),
+                pattern=str(patterns[0]),
+                output=dict(output),
+            )
+        ]
+
+    def validate_rules(self, rules: list[NormalizationRule]) -> bool:
         for rule in rules:
-            # Check required fields
-            if not rule.pattern:
-                raise ValueError("Rule missing pattern field")
-            
-            if not rule.output:
-                raise ValueError(f"Rule {rule.pattern} missing output field")
-            
-            # Check output has required algorithm field
-            if 'algorithm' not in rule.output:
-                raise ValueError(f"Rule {rule.pattern} output missing 'algorithm' field")
-        
+            if not rule.raw_patterns or "algorithm" not in (rule.normalized_output or rule.output):
+                raise ValueError(f"Invalid rule: {rule}")
         return True

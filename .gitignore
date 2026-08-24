@@ -1,0 +1,55 @@
+# Secrets and local env
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.test
+
+# Data and workspaces
+/data/
+*.db
+*.sqlite
+*.sqlite3
+/tmp/
+workspaces/
+.scanner-output/
+scan-output/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Node / dashboard
+node_modules/
+services/dashboard/dist/
+services/dashboard/.vite/
+
+# Java / JDT
+services/scanner/jdt/target/
+services/scanner/jdt/build/
+*.class
+*.jar
+!services/scanner/jdt/lib/*.jar
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Logs
+*.log
+logs/

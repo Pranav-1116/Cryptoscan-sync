@@ -1,157 +1,80 @@
-"""
-Manual scan trigger router.
-Allows authenticated users to trigger on-demand scans.
-"""
+"""Manual scan trigger."""
+
 from __future__ import annotations
 
-import json
+import inspect
 import logging
-from typing import Annotated
+from datetime import datetime, timezone
 
-import redis.asyncio as aioredis
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from api.config.settings import get_settings
-from api.dependencies import get_current_user, get_db_session, get_job_repository
-from api.schemas.job_schemas import (
-    JobStatusResponse,
-    TriggerScanRequest,
-    TriggerScanResponse,
-)
-from db.models.scan_job import JobStatus, JobType
+from api.dependencies import get_current_user, get_job_repository
+from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
 from db.repositories.job_repository import JobRepository
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/scans", tags=["scan-trigger"])
+router = APIRouter(tags=["trigger"])
 settings = get_settings()
 
 
-@router.post(
-    "/trigger",
-    response_model=TriggerScanResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Trigger a manual scan",
-)
+def _publish_job(payload: dict) -> None:
+    try:
+        from worker.core.job_consumer import enqueue_job
+
+        enqueue_job(payload, redis_url=settings.REDIS_URL, queue_name=settings.SCAN_JOB_QUEUE_KEY)
+    except Exception:
+        logger.exception("queue_publish_failed")
+
+
+def _run_inline(payload: dict) -> None:
+    from worker.pipeline.pipeline_runner import PipelineRunner
+
+    PipelineRunner().run(
+        job_id=payload["job_id"],
+        target_repo=payload["target_repo"],
+        target_branch=payload["target_branch"],
+        target_commit=payload.get("target_commit"),
+        triggered_by=payload["triggered_by"],
+    )
+
+
+@router.post("/scans/trigger", response_model=TriggerScanResponse, status_code=status.HTTP_202_ACCEPTED)
 async def trigger_manual_scan(
     request_body: TriggerScanRequest,
     background_tasks: BackgroundTasks,
-    current_user: Annotated[str, Depends(get_current_user)],
+    current_user: str = Depends(get_current_user),
     job_repo: JobRepository = Depends(get_job_repository),
-) -> TriggerScanResponse:
-    """
-    Trigger an on-demand scan for a Git repository.
-
-    The scan runs asynchronously. Poll /api/jobs/{job_id} for status.
-
-    Authentication: Required (Bearer token or session cookie)
-    """
-    # Validate repo URL format
-    if not request_body.repo_url.startswith(("https://", "http://", "git@")):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="repo_url must be a valid Git repository URL",
-        )
-
-    job = await job_repo.create(
-        job_type=JobType.MANUAL,
-        target_repo=str(request_body.repo_url),
+):
+    created = job_repo.create(
+        job_type="MANUAL",
+        target_repo=request_body.repo_url,
         target_branch=request_body.branch or "main",
         target_commit=request_body.commit,
         triggered_by=current_user,
     )
+    if inspect.isawaitable(created):
+        created = await created
 
-    logger.info(
-        "manual_scan_triggered",
-        extra={
-            "job_id": str(job.job_id),
-            "repo": str(request_body.repo_url),
-            "triggered_by": current_user,
-        },
-    )
-
-    # Publish to Redis queue
-    background_tasks.add_task(
-        _publish_to_queue,
-        job_id=str(job.job_id),
-        job_type=JobType.MANUAL.value,
-        target_repo=str(request_body.repo_url),
-        target_branch=request_body.branch or "main",
-        target_commit=request_body.commit,
-        triggered_by=current_user,
-    )
+    job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
+    created_at = getattr(created, "created_at", None)
+    payload = {
+        "job_id": job_id,
+        "job_type": "MANUAL",
+        "target_repo": request_body.repo_url,
+        "target_branch": request_body.branch or "main",
+        "target_commit": request_body.commit,
+        "triggered_by": current_user,
+        "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+    }
+    if settings.REDIS_URL:
+        background_tasks.add_task(_publish_job, payload)
+    else:
+        background_tasks.add_task(_run_inline, payload)
 
     return TriggerScanResponse(
-        job_id=str(job.job_id),
-        status=JobStatus.QUEUED.value,
-        created_at=job.created_at.isoformat(),
-        message=f"Scan queued. Poll /api/jobs/{job.job_id} for status.",
+        job_id=str(job_id),
+        status=getattr(created, "status", None) or "QUEUED",
+        created_at=created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        message=f"Scan queued. Poll /api/v1/jobs/{job_id} for status.",
     )
-
-
-@router.get(
-    "/trigger/{job_id}/cancel",
-    status_code=status.HTTP_200_OK,
-    summary="Cancel a queued scan job",
-)
-async def cancel_scan_job(
-    job_id: str,
-    current_user: Annotated[str, Depends(get_current_user)],
-    job_repo: JobRepository = Depends(get_job_repository),
-) -> dict:
-    """
-    Cancel a queued (not yet running) scan job.
-    Running jobs cannot be cancelled.
-    """
-    job = await job_repo.get_by_id(job_id)
-    if job is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Job {job_id} not found",
-        )
-
-    if job.status != JobStatus.QUEUED:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Job {job_id} cannot be cancelled (status: {job.status})",
-        )
-
-    await job_repo.update_status(
-        job_id=job_id,
-        status=JobStatus.CANCELLED,
-        error_message=f"Cancelled by {current_user}",
-    )
-
-    return {"job_id": job_id, "cancelled": True}
-
-
-async def _publish_to_queue(
-    job_id: str,
-    job_type: str,
-    target_repo: str,
-    target_branch: str,
-    target_commit: str | None,
-    triggered_by: str,
-) -> None:
-    """Publish scan job to Redis queue."""
-    try:
-        redis_client = aioredis.from_url(
-            settings.REDIS_URL,
-            encoding="utf-8",
-            decode_responses=True,
-        )
-        async with redis_client as r:
-            await r.lpush(
-                settings.SCAN_JOB_QUEUE_KEY,
-                json.dumps({
-                    "job_id": job_id,
-                    "job_type": job_type,
-                    "target_repo": target_repo,
-                    "target_branch": target_branch,
-                    "target_commit": target_commit,
-                    "triggered_by": triggered_by,
-                }),
-            )
-        logger.info("job_published_to_queue", extra={"job_id": job_id})
-    except Exception as exc:
-        logger.exception("queue_publish_failed", extra={"job_id": job_id, "error": str(exc)})

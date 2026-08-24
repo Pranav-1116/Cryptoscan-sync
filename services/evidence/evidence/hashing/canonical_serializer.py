@@ -46,7 +46,7 @@ class CanonicalSerializer:
             default=CanonicalSerializer._json_serializer
         )
         
-        return canonical_json
+        return canonical_json.encode("utf-8")
     
     @staticmethod
     def serialize_to_bytes(data: Dict[str, Any]) -> bytes:
@@ -59,8 +59,8 @@ class CanonicalSerializer:
         Returns:
             UTF-8 encoded bytes
         """
-        canonical_str = CanonicalSerializer.serialize(data)
-        return canonical_str.encode('utf-8')
+        encoded = CanonicalSerializer.serialize(data)
+        return encoded if isinstance(encoded, bytes) else encoded.encode("utf-8")
     
     @staticmethod
     def _clean_data(obj: Any) -> Any:

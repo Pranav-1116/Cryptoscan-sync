@@ -16,7 +16,10 @@ logger = structlog.get_logger(__name__)
 class JsonWriter:
     """Writes scan results to JSON files."""
 
-    def write(self, result: ScanResult, output_dir: Path) -> Path:
+    def __init__(self, output_path: Path | None = None):
+        self.output_path = Path(output_path) if output_path else None
+
+    def write(self, result: ScanResult, output_dir: Path | None = None) -> Path:
         """
         Write scan result to a JSON file.
         
@@ -29,8 +32,13 @@ class JsonWriter:
         Returns:
             Path to the written file
         """
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"scan-results-{result.scan_id}.json"
+        if output_dir is None and self.output_path is not None:
+            output_path = self.output_path
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+        else:
+            dest = Path(output_dir or "./scan-output")
+            dest.mkdir(parents=True, exist_ok=True)
+            output_path = dest / f"scan-results-{result.scan_id}.json"
 
         data = result.model_dump(mode="json")
 
@@ -51,3 +59,6 @@ class JsonWriter:
         data = result.model_dump(mode="json")
         json.dump(data, sys.stdout, indent=2, ensure_ascii=False)
         sys.stdout.write("\n")
+
+
+JSONWriter = JsonWriter

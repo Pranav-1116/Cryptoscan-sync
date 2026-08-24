@@ -1,0 +1,20 @@
+---
+rule_id: "NORM-RC4"
+version: "1.0"
+description: "RC4 stream cipher — broken"
+raw_patterns:
+  - "RC4"
+  - "ARCFOUR"
+  - "ARC4"
+normalized_output:
+  algorithm: "RC4"
+  algorithm_family: "symmetric"
+  standard_name: "RC4"
+  purpose: "encryption"
+  nist_designation: "DISALLOWED"
+  nist_reference: "RFC 7465"
+  fips_status: "NON-FIPS"
+  quantum_vulnerable: true
+  iana_id: "rc4"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:rc4"

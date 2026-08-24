@@ -1,43 +1,29 @@
-"""
-Baseline ORM Model
-Approved baseline scans for drift detection
-"""
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Boolean
-from sqlalchemy.dialects.postgresql import UUID
-import uuid
+"""Approved baseline for drift detection."""
+
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 
-from .base import Base
+from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.models.base import BaseModel
 
 
-class Baseline(Base):
-    """
-    Baseline Model
-    Represents an approved baseline scan
-    """
+class Baseline(BaseModel):
     __tablename__ = "baselines"
-    
-    baseline_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    
-    # System identification
-    system_identifier = Column(String(200), nullable=False, index=True)  # repo URL
-    environment = Column(String(50), nullable=False)  # prod, staging, dev
-    
-    # Approved scan
-    approved_scan_id = Column(UUID(as_uuid=True), ForeignKey("scans.scan_id"), nullable=False)
-    
-    # Approval metadata
-    approved_by = Column(String(100), nullable=False)
-    approved_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
-    # Status
-    status = Column(String(20), nullable=False, default="ACTIVE")  # ACTIVE, SUPERSEDED
-    
-    # Notes
-    notes = Column(Text, nullable=True)
-    
-    # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
-    def __repr__(self):
-        return f"<Baseline {self.baseline_id} system={self.system_identifier} status={self.status}>"
+
+    system_identifier: Mapped[str] = mapped_column(String(400), nullable=False, index=True)
+    environment: Mapped[str] = mapped_column(String(50), nullable=False, default="default")
+    approved_scan_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("scans.id", ondelete="CASCADE"), nullable=False
+    )
+    approved_by: Mapped[str] = mapped_column(String(100), nullable=False)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    @property
+    def baseline_id(self) -> str:
+        return self.id

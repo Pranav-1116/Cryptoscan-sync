@@ -1,0 +1,17 @@
+rule_id: "BASELINE-002"
+rule_name: "Minimum RSA Key Size"
+version: "1.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NIST SP 800-131A Rev. 2"
+description: "RSA keys smaller than 2048 bits are not permitted."
+condition:
+  type: "KEY_SIZE_MINIMUM"
+  parameters:
+    algorithm: "RSA"
+    minimum_key_size: 2048
+evaluation:
+  result_template: "FAIL"
+  message_template: "RSA key size {key_size} is below 2048 bits"
+remediation: "Generate a new RSA key of at least 2048 bits (4096 preferred) or migrate to ECDSA / ML-DSA."
+enabled: true

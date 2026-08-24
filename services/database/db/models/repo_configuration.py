@@ -1,42 +1,26 @@
-"""
-RepoConfiguration ORM Model
-Per-repository scan configuration
-"""
-from sqlalchemy import Column, String, DateTime, Boolean, ARRAY, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
-import uuid
-from datetime import datetime
+"""Which repositories should be scanned on webhook."""
 
-from .base import Base
+from __future__ import annotations
+
+from typing import Optional
+
+from sqlalchemy import Boolean, JSON, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.models.base import BaseModel
 
 
-class RepoConfiguration(Base):
-    """
-    Repository Configuration Model
-    Defines which repos to scan and how
-    """
+class RepoConfiguration(BaseModel):
     __tablename__ = "repo_configurations"
-    
-    config_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    
-    # Repository
-    repo_url = Column(String(500), nullable=False, unique=True, index=True)
-    repo_name = Column(String(200), nullable=False)
-    
-    # Scan settings
-    enabled = Column(Boolean, nullable=False, default=True)
-    scan_on_push = Column(Boolean, nullable=False, default=True)
-    scan_on_pr = Column(Boolean, nullable=False, default=False)
-    
-    # Baseline
-    baseline_scan_id = Column(UUID(as_uuid=True), ForeignKey("scans.scan_id"), nullable=True)
-    
-    # Notifications
-    notification_emails = Column(ARRAY(String), nullable=True)
-    
-    # Timestamps
-    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    def __repr__(self):
-        return f"<RepoConfiguration {self.repo_name} enabled={self.enabled}>"
+
+    repo_url: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    repo_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    scan_on_push: Mapped[bool] = mapped_column(Boolean, default=True)
+    scan_on_pr: Mapped[bool] = mapped_column(Boolean, default=True)
+    baseline_scan_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    notification_emails: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
+    @property
+    def config_id(self) -> str:
+        return self.id

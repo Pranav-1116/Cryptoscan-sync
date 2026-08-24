@@ -1,122 +1,66 @@
-"""
-Drift Repository
-CRUD operations for drift events
-"""
-import logging
-from typing import Optional, List
-from datetime import datetime
+"""Drift event repository."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 
-from ..models.drift_event import DriftEvent
-from .base_repository import BaseRepository
-
-logger = logging.getLogger(__name__)
+from db.models.drift_event import DriftEvent
+from db.repositories.base_repository import BaseRepository
 
 
 class DriftRepository(BaseRepository[DriftEvent]):
-    """Repository for DriftEvent model"""
-    
-    def __init__(self, db: Session):
-        super().__init__(DriftEvent, db)
-    
-    def create(
+    def __init__(self, session: Session):
+        super().__init__(DriftEvent, session)
+
+    def list_events(
         self,
-        baseline_id: str,
-        current_scan_id: str,
-        drift_type: str,
-        severity: str,
-        drift_details: dict
-    ) -> DriftEvent:
-        """Create drift event"""
-        event = DriftEvent(
-            baseline_id=baseline_id,
-            current_scan_id=current_scan_id,
-            drift_type=drift_type,
-            severity=severity,
-            drift_details=drift_details,
-            resolution_status="OPEN"
-        )
-        
-        self.db.add(event)
-        self.db.commit()
-        self.db.refresh(event)
-        
-        logger.info(f"Created drift event {event.drift_id} severity={severity}")
-        return event
-    
-    def get_by_scan(self, scan_id: str) -> List[DriftEvent]:
-        """Get drift events for scan"""
-        return self.db.query(DriftEvent)\
-            .filter(DriftEvent.current_scan_id == scan_id)\
-            .all()
-    
-    def get_open_events(
-        self,
-        severity: Optional[str] = None
-    ) -> List[DriftEvent]:
-        """Get open drift events"""
-        query = self.db.query(DriftEvent)\
-            .filter(DriftEvent.resolution_status == "OPEN")
-        
+        *,
+        severity: str | None = None,
+        status: str | None = None,
+        scan_id: str | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> tuple[list[DriftEvent], int]:
+        stmt = select(DriftEvent)
+        count_stmt = select(func.count()).select_from(DriftEvent)
         if severity:
-            query = query.filter(DriftEvent.severity == severity)
-        
-        return query.order_by(DriftEvent.detected_at.desc()).all()
-    
-    def acknowledge(
-        self,
-        drift_id: str,
-        acknowledged_by: str,
-        notes: Optional[str] = None
-    ):
-        """Acknowledge drift event"""
-        event = self.get_by_id(drift_id)
-        if not event:
-            raise ValueError(f"Drift event {drift_id} not found")
-        
-        event.resolution_status = "ACKNOWLEDGED"
-        event.resolved_by = acknowledged_by
-        event.resolved_at = datetime.utcnow()
-        event.resolution_notes = notes
-        
-        self.db.commit()
-        logger.info(f"Acknowledged drift event {drift_id}")
-    
-    def resolve(
-        self,
-        drift_id: str,
-        resolved_by: str,
-        notes: Optional[str] = None
-    ):
-        """Resolve drift event"""
-        event = self.get_by_id(drift_id)
-        if not event:
-            raise ValueError(f"Drift event {drift_id} not found")
-        
-        event.resolution_status = "RESOLVED"
-        event.resolved_by = resolved_by
-        event.resolved_at = datetime.utcnow()
-        event.resolution_notes = notes
-        
-        self.db.commit()
-        logger.info(f"Resolved drift event {drift_id}")
-    
-    def mark_false_positive(
-        self,
-        drift_id: str,
-        marked_by: str,
-        notes: Optional[str] = None
-    ):
-        """Mark as false positive"""
-        event = self.get_by_id(drift_id)
-        if not event:
-            raise ValueError(f"Drift event {drift_id} not found")
-        
-        event.resolution_status = "FALSE_POSITIVE"
-        event.resolved_by = marked_by
-        event.resolved_at = datetime.utcnow()
-        event.resolution_notes = notes
-        
-        self.db.commit()
-        logger.info(f"Marked drift event {drift_id} as false positive")
+            stmt = stmt.where(DriftEvent.severity == severity)
+            count_stmt = count_stmt.where(DriftEvent.severity == severity)
+        if status:
+            stmt = stmt.where(DriftEvent.resolution_status == status)
+            count_stmt = count_stmt.where(DriftEvent.resolution_status == status)
+        if scan_id:
+            stmt = stmt.where(DriftEvent.current_scan_id == scan_id)
+            count_stmt = count_stmt.where(DriftEvent.current_scan_id == scan_id)
+        total = int(self.session.execute(count_stmt).scalar_one())
+        stmt = (
+            stmt.order_by(desc(DriftEvent.detected_at))
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        return list(self.session.execute(stmt).scalars().all()), total
+
+    def open_counts_by_severity(self) -> dict[str, int]:
+        stmt = (
+            select(DriftEvent.severity, func.count())
+            .where(DriftEvent.resolution_status == "OPEN")
+            .group_by(DriftEvent.severity)
+        )
+        counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "INFO": 0}
+        for severity, count in self.session.execute(stmt):
+            counts[str(severity)] = int(count)
+        return counts
+
+    def acknowledge(self, drift_id: str, user: str, notes: str | None = None) -> DriftEvent | None:
+        return self.update(
+            drift_id,
+            {
+                "resolution_status": "ACKNOWLEDGED",
+                "resolved_by": user,
+                "resolved_at": datetime.now(timezone.utc),
+                "resolution_notes": notes,
+            },
+        )

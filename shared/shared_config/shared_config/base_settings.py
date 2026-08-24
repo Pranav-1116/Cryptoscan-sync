@@ -1,47 +1,28 @@
-"""
-Base Settings
-Common Pydantic Settings base class
-"""
-from pydantic_settings import BaseSettings as PydanticBaseSettings
-from typing import Optional
+"""Shared Pydantic settings base used by every CryptoScan service."""
+
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings as PydanticBaseSettings, SettingsConfigDict
 
 
 class BaseSettings(PydanticBaseSettings):
-    """
-    Base settings class with common configuration
-    All service settings should inherit from this
-    """
-    
-    # Database
-    DATABASE_URL: str = "postgresql://cryptoscan:cryptoscan@localhost:5432/cryptoscan"
-    DATABASE_POOL_SIZE: int = 20
-    DATABASE_MAX_OVERFLOW: int = 10
-    
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
-    
-    # Logging
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="allow",
+        case_sensitive=False,
+    )
+
+    DATABASE_URL: str = "sqlite:///./data/cryptoscan.db"
+    REDIS_URL: str = ""
     LOG_LEVEL: str = "INFO"
-    LOG_JSON: bool = True
-    
-    # Environment
-    ENVIRONMENT: str = "development"  # development, staging, production
-    
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
-        extra = "allow"  # Allow extra fields from env
+    ENVIRONMENT: str = "development"
+    SECRET_KEY: str = "dev-cryptoscan-secret-key-change-in-production-32"
 
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
 
-def get_database_url(settings: BaseSettings) -> str:
-    """
-    Get database URL with proper formatting
-    """
-    return settings.DATABASE_URL
-
-
-def is_production(settings: BaseSettings) -> bool:
-    """
-    Check if running in production
-    """
-    return settings.ENVIRONMENT.lower() == "production"
+    @property
+    def is_development(self) -> bool:
+        return not self.is_production

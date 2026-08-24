@@ -85,6 +85,18 @@ class GitClient:
             log.error("clone_failed", error=str(e))
             raise RuntimeError(f"Failed to clone {repo_url}: {e}") from e
 
+    def extract_context(self, repo_path: str | Path, repo_url: str = "") -> dict:
+        """Compatibility helper used by older callers."""
+        meta = self.get_metadata(Path(repo_path), repo_url or str(repo_path))
+        return {
+            "commit_hash": meta.commit_hash,
+            "commit_author": meta.commit_author,
+            "commit_timestamp": meta.commit_timestamp,
+            "branch": meta.branch,
+            "repository_url": meta.repository_url,
+            "commit_message": meta.commit_message,
+        }
+
     def get_metadata(self, repo_path: Path, repo_url: str) -> GitMetadata:
         """
         Extract Git metadata from a cloned repository.

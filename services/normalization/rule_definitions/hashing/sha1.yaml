@@ -1,0 +1,21 @@
+---
+rule_id: "NORM-SHA1"
+version: "1.0"
+description: "SHA-1 — deprecated for signatures and new integrity uses"
+raw_patterns:
+  - "SHA-1"
+  - "SHA1"
+  - "SHA"
+normalized_output:
+  algorithm: "SHA-1"
+  algorithm_family: "hash"
+  standard_name: "SHA-1"
+  output_bits: 160
+  purpose: "hashing"
+  nist_designation: "DEPRECATED"
+  nist_reference: "FIPS 180-4 / NIST SP 800-131A"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: true
+  iana_id: "sha-1"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha1"

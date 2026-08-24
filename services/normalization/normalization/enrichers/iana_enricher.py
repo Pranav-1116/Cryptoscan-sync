@@ -33,6 +33,9 @@ class IANAEnricher:
         Returns:
             Enriched object with IANA ID
         """
+        if normalized.iana_id:
+            return normalized
+
         # Create lookup key
         key = (
             normalized.algorithm.upper() if normalized.algorithm else None,
@@ -62,3 +65,6 @@ class IANAEnricher:
             parts.append(normalized.mode.lower())
         
         return '-'.join(parts)
+
+
+IanaEnricher = IANAEnricher

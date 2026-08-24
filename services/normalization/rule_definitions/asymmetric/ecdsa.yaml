@@ -1,0 +1,22 @@
+---
+rule_id: "NORM-ECDSA"
+version: "1.0"
+description: "ECDSA signatures"
+raw_patterns:
+  - "ECDSA"
+  - "SHA256withECDSA"
+  - "SHA384withECDSA"
+  - "SHA512withECDSA"
+normalized_output:
+  algorithm: "ECDSA"
+  algorithm_family: "asymmetric"
+  standard_name: "ECDSA"
+  purpose: "signing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 186-4"
+  fips_status: "FIPS-186-4"
+  quantum_vulnerable: true
+  pqc_replacement: "ML-DSA-65"
+  iana_id: "ecdsa"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:ecdsa"

@@ -6,7 +6,7 @@ from pathlib import Path
 import tempfile
 import shutil
 from scanner.models.scan_result import ScanResult
-from scanner.core.scanner import CryptoScanner
+from scanner.core.scanner import CryptoScanner, Scanner  # noqa: F401
 from scanner.config.scanner_config import ScannerConfig
 
 
@@ -72,7 +72,7 @@ public class HardcodedKey {
     private static final byte[] KEY = {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16};
     
     public void badPractice() {
-        SecretKeySpec keySpec = new SecretKeySpec(KEY, "AES");
+        SecretKeySpec keySpec = new SecretKeySpec(new byte[] {1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}, "AES");
         // CRITICAL: Hardcoded key!
     }
 }

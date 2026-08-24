@@ -223,6 +223,7 @@ class Comparator:
                 algorithm=baseline_fp.algorithm,
                 location=self._format_location(baseline_fp),
                 baseline_state=self._extract_normalized_state(baseline_record),
+                severity=severity,
             )
 
             result.drift_events.append(event)
@@ -260,3 +261,6 @@ class Comparator:
             "mode": record.get("mode"),
             "key_size": record.get("key_size"),
         }
+
+
+DriftComparator = Comparator

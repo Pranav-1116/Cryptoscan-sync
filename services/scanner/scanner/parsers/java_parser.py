@@ -81,19 +81,19 @@ SIGNATURE_GETINSTANCE_VAR = re.compile(
 
 # Pattern 5: SecretKeySpec(key, "AES") — potential hardcoded key
 SECRETKEYSPEC_LITERAL = re.compile(
-    r"""new\s+SecretKeySpec\s*\(\s*(?:new\s+byte\[\]\s*\{[^}]+\}|"[^"]*"\.getBytes[^)]*\)|[^,]+)\s*,\s*["']([^"']+)["']\s*\)""",
+    r"""new\s+(?:[\w.]+\.)?SecretKeySpec\s*\(\s*(?:new\s+byte\[\]\s*\{[^}]+\}|"[^"]*"\.getBytes[^)]*\)|[^,]+)\s*,\s*["']([^"']+)["']\s*\)""",
     re.MULTILINE | re.DOTALL
 )
 
 # Detect hardcoded byte arrays: new byte[]{0x01, 0x02, ...}
 HARDCODED_BYTE_ARRAY = re.compile(
-    r"""new\s+SecretKeySpec\s*\(\s*new\s+byte\[\]\s*\{([^}]+)\}""",
+    r"""new\s+(?:[\w.]+\.)?SecretKeySpec\s*\(\s*new\s+byte\[\]\s*\{([^}]+)\}""",
     re.MULTILINE | re.DOTALL
 )
 
 # Detect string-based keys: "mySecretKey".getBytes()
 HARDCODED_STRING_KEY = re.compile(
-    r"""new\s+SecretKeySpec\s*\(\s*"([^"]+)"\.getBytes""",
+    r"""new\s+(?:[\w.]+\.)?SecretKeySpec\s*\(\s*"([^"]+)"\.getBytes""",
     re.MULTILINE
 )
 
@@ -101,6 +101,16 @@ HARDCODED_STRING_KEY = re.compile(
 KEYGENERATOR_INIT = re.compile(
     r"""\.init\s*\(\s*(\d+)\s*[,)]""",
     re.MULTILINE
+)
+
+# KeyPairGenerator.getInstance("RSA") + initialize(2048)
+KEYPAIRGENERATOR_GETINSTANCE = re.compile(
+    r"""KeyPairGenerator\.getInstance\s*\(\s*["']([^"']+)["']\s*[,)]""",
+    re.MULTILINE,
+)
+KEYPAIRGENERATOR_INIT = re.compile(
+    r"""\.initialize\s*\(\s*(\d+)\s*[,)]""",
+    re.MULTILINE,
 )
 
 # Method context detection
@@ -158,7 +168,10 @@ class JavaParser:
             source = file_path.read_text(encoding="utf-8", errors="replace")
         except OSError as e:
             log.error("cannot_read_file", error=str(e))
-            return []
+            raise
+
+        if source.count("{") != source.count("}"):
+            raise ValueError(f"unbalanced braces in {file_path}")
 
         source_lines = source.splitlines()
         context = self._extract_file_context(file_path, source, source_lines)
@@ -169,6 +182,7 @@ class JavaParser:
         findings.extend(self._detect_cipher(source, source_lines, context))
         findings.extend(self._detect_message_digest(source, source_lines, context))
         findings.extend(self._detect_key_generator(source, source_lines, context))
+        findings.extend(self._detect_key_pair_generator(source, source_lines, context))
         findings.extend(self._detect_signature(source, source_lines, context))
         findings.extend(self._detect_hardcoded_keys(source, source_lines, context))
 
@@ -453,6 +467,39 @@ class JavaParser:
             )
             findings.append(finding)
 
+        return findings
+
+    def _detect_key_pair_generator(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        findings = []
+        for match in KEYPAIRGENERATOR_GETINSTANCE.finditer(source):
+            algorithm_str = match.group(1)
+            parsed = parse_transformation(algorithm_str)
+            subsequent = source[match.end() : match.end() + 400]
+            key_size = None
+            init_match = KEYPAIRGENERATOR_INIT.search(subsequent)
+            if init_match:
+                try:
+                    key_size = int(init_match.group(1))
+                except ValueError:
+                    pass
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_PAIR_GENERATOR.value,
+                    algorithm=parsed.algorithm,
+                    key_size=key_size,
+                    purpose=Purpose.KEY_GENERATION.value,
+                    library="java.security",
+                    is_string_literal=True,
+                    raw_transformation=algorithm_str,
+                )
+            )
         return findings
 
     # ============================================================

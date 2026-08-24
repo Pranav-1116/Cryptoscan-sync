@@ -25,6 +25,23 @@ class ContentHasher:
     ALGORITHM = "sha256"
     
     @staticmethod
+    def compute_batch(findings: list) -> Dict[str, str]:
+        """Hash a list of finding dicts keyed by finding_id."""
+        import uuid
+
+        result: Dict[str, str] = {}
+        for finding in findings:
+            if not isinstance(finding, dict):
+                if hasattr(finding, "model_dump"):
+                    finding = finding.model_dump(mode="json")
+                else:
+                    finding = dict(finding)
+            finding_id = finding.get("finding_id") or str(uuid.uuid4())
+            finding["finding_id"] = finding_id
+            result[finding_id] = ContentHasher.compute_hash(finding)
+        return result
+
+    @staticmethod
     def compute_hash(data: Dict[str, Any]) -> str:
         """
         Compute SHA-256 hash of data.

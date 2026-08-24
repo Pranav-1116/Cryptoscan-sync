@@ -8,7 +8,10 @@ from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-import pytest_asyncio
+try:
+    import pytest_asyncio
+except ImportError:  # pragma: no cover
+    pytest_asyncio = None
 from httpx import ASGITransport, AsyncClient
 
 from api.config.settings import get_settings
@@ -147,7 +150,13 @@ def app(
     return application
 
 
-@pytest_asyncio.fixture
+def _async_fixture(func):
+    if pytest_asyncio is not None:
+        return pytest_asyncio.fixture(func)
+    return pytest.fixture(func)
+
+
+@_async_fixture
 async def client(app) -> AsyncGenerator[AsyncClient, None]:
     """Unauthenticated async test client."""
     async with AsyncClient(
@@ -157,7 +166,7 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
 
-@pytest_asyncio.fixture
+@_async_fixture
 async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
     """Authenticated async test client (mocked auth)."""
     from api import dependencies

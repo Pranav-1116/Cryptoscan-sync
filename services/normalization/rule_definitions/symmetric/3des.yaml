@@ -1,0 +1,26 @@
+---
+rule_id: "NORM-3DES"
+version: "1.0"
+description: "Triple DES — deprecated"
+raw_patterns:
+  - "3DES"
+  - "DESede"
+  - "DESEDE"
+  - "TripleDES"
+  - "DESede/CBC/PKCS5Padding"
+  - "DESede/ECB/PKCS5Padding"
+normalized_output:
+  algorithm: "3DES"
+  algorithm_family: "symmetric"
+  standard_name: "3DES"
+  mode: null
+  padding: null
+  key_size: 168
+  purpose: "encryption"
+  nist_designation: "DISALLOWED"
+  nist_reference: "NIST SP 800-131A Rev. 2"
+  fips_status: "NON-FIPS"
+  quantum_vulnerable: true
+  iana_id: "des-ede3"
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:3des"

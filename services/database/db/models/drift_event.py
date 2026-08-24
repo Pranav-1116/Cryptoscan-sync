@@ -1,44 +1,34 @@
-"""
-DriftEvent ORM Model
-Detected drift from baseline
-"""
-from sqlalchemy import Column, String, DateTime, Text, ForeignKey, Integer
-from sqlalchemy.dialects.postgresql import UUID, JSONB
-import uuid
+"""Drift event ORM model."""
+
+from __future__ import annotations
+
 from datetime import datetime
+from typing import Optional
 
-from .base import Base
+from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.models.base import BaseModel
 
 
-class DriftEvent(Base):
-    """
-    Drift Event Model
-    Records detected drift from baseline
-    """
+class DriftEvent(BaseModel):
     __tablename__ = "drift_events"
-    
-    drift_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    
-    # Baseline reference
-    baseline_id = Column(UUID(as_uuid=True), ForeignKey("baselines.baseline_id"), nullable=False, index=True)
-    
-    # Current scan
-    current_scan_id = Column(UUID(as_uuid=True), ForeignKey("scans.scan_id"), nullable=False, index=True)
-    
-    # Detection
-    detected_at = Column(DateTime, nullable=False, default=datetime.utcnow)
-    
-    # Drift details
-    drift_type = Column(String(50), nullable=False)  # NEW_CRYPTO, REMOVED_CRYPTO
-    severity = Column(String(20), nullable=False, index=True)  # CRITICAL, HIGH, MEDIUM, INFO
-    
-    drift_details = Column(JSONB, nullable=False)  # Full drift data
-    
-    # Resolution tracking
-    resolution_status = Column(String(50), nullable=False, default="OPEN")  # OPEN, ACKNOWLEDGED, FALSE_POSITIVE, RESOLVED
-    resolved_by = Column(String(100), nullable=True)
-    resolved_at = Column(DateTime, nullable=True)
-    resolution_notes = Column(Text, nullable=True)
-    
-    def __repr__(self):
-        return f"<DriftEvent {self.drift_id} type={self.drift_type} severity={self.severity}>"
+
+    baseline_id: Mapped[Optional[str]] = mapped_column(
+        String(36), ForeignKey("baselines.id", ondelete="SET NULL"), nullable=True
+    )
+    current_scan_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    detected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    drift_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM")
+    drift_details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    resolution_status: Mapped[str] = mapped_column(String(50), nullable=False, default="OPEN")
+    resolved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    @property
+    def drift_id(self) -> str:
+        return self.id

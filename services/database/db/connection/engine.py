@@ -1,21 +1,19 @@
-"""
-SQLAlchemy engine factory for CryptoScan database connections.
+"""SQLAlchemy engine factory — PostgreSQL in production, SQLite locally."""
 
-Provides connection pooling, SSL support, and health checking
-for production PostgreSQL connections.
-"""
 from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote_plus
 
 from sqlalchemy import Engine, create_engine, event, text
-from sqlalchemy.exc import OperationalError
-from sqlalchemy.pool import QueuePool
+from sqlalchemy.pool import QueuePool, StaticPool
 
 logger = logging.getLogger(__name__)
+
+_ENGINE: Engine | None = None
 
 
 def build_database_url(
@@ -26,212 +24,100 @@ def build_database_url(
     password: str,
     ssl_mode: str = "prefer",
 ) -> str:
-    """
-    Build a PostgreSQL connection URL with proper encoding.
-
-    Args:
-        host: Database host.
-        port: Database port.
-        database: Database name.
-        username: Database user.
-        password: Database password (will be URL-encoded).
-        ssl_mode: PostgreSQL SSL mode.
-
-    Returns:
-        Fully formed PostgreSQL connection URL.
-    """
     encoded_password = quote_plus(password)
     return (
         f"postgresql+psycopg2://{username}:{encoded_password}"
-        f"@{host}:{port}/{database}"
-        f"?sslmode={ssl_mode}"
+        f"@{host}:{port}/{database}?sslmode={ssl_mode}"
     )
+
+
+def _normalize_url(database_url: str) -> str:
+    if database_url.startswith("postgres://"):
+        return "postgresql+psycopg2://" + database_url[len("postgres://") :]
+    if database_url.startswith("postgresql://") and "+psycopg2" not in database_url:
+        return "postgresql+psycopg2://" + database_url[len("postgresql://") :]
+    return database_url
 
 
 def create_db_engine(
     database_url: str | None = None,
     *,
-    pool_size: int = 10,
-    max_overflow: int = 20,
-    pool_timeout: int = 30,
-    pool_recycle: int = 3600,
-    pool_pre_ping: bool = True,
     echo: bool = False,
-    echo_pool: bool = False,
     application_name: str = "cryptoscan",
-    connect_timeout: int = 10,
-    statement_timeout_ms: int = 30000,
 ) -> Engine:
-    """
-    Create a production-grade SQLAlchemy engine.
-
-    Uses connection pooling with health checking. All parameters
-    can be overridden; defaults are production-appropriate.
-
-    Args:
-        database_url: Full PostgreSQL URL. Falls back to env vars.
-        pool_size: Number of connections in the pool.
-        max_overflow: Extra connections beyond pool_size.
-        pool_timeout: Seconds to wait for a connection.
-        pool_recycle: Seconds before recycling a connection.
-        pool_pre_ping: Test connections before use.
-        echo: Log all SQL statements.
-        echo_pool: Log pool events.
-        application_name: PostgreSQL application_name parameter.
-        connect_timeout: TCP connection timeout in seconds.
-        statement_timeout_ms: Max statement execution time in ms.
-
-    Returns:
-        Configured SQLAlchemy Engine.
-
-    Raises:
-        ValueError: If database URL cannot be determined.
-    """
     if database_url is None:
-        database_url = _build_url_from_env()
+        database_url = os.environ.get("DATABASE_URL", "sqlite:///./data/cryptoscan.db")
+    database_url = _normalize_url(database_url)
 
-    if not database_url:
-        raise ValueError(
-            "Database URL is required. Set DATABASE_URL environment variable "
-            "or provide database_url parameter."
+    if database_url.startswith("sqlite"):
+        # Ensure parent dir exists for file-backed sqlite
+        if database_url.startswith("sqlite:///") and ":memory:" not in database_url:
+            raw_path = database_url.replace("sqlite:///", "", 1)
+            if raw_path.startswith("./"):
+                db_path = Path(raw_path)
+            else:
+                db_path = Path(raw_path)
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        engine = create_engine(
+            database_url,
+            echo=echo,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
         )
 
-    connect_args: dict[str, Any] = {
-        "connect_timeout": connect_timeout,
-        "application_name": application_name,
-        "options": f"-c statement_timeout={statement_timeout_ms}",
-    }
+        @event.listens_for(engine, "connect")
+        def _sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.close()
 
+        return engine
+
+    connect_args: dict[str, Any] = {
+        "connect_timeout": 10,
+        "application_name": application_name,
+        "options": "-c statement_timeout=30000",
+    }
     engine = create_engine(
         database_url,
         poolclass=QueuePool,
-        pool_size=pool_size,
-        max_overflow=max_overflow,
-        pool_timeout=pool_timeout,
-        pool_recycle=pool_recycle,
-        pool_pre_ping=pool_pre_ping,
+        pool_size=10,
+        max_overflow=20,
+        pool_pre_ping=True,
+        pool_recycle=3600,
         echo=echo,
-        echo_pool=echo_pool,
         connect_args=connect_args,
-        # Ensure JSON columns are handled correctly
-        json_serializer=_json_serializer,
-        json_deserializer=_json_deserializer,
     )
-
-    # Register event listeners
-    _register_engine_events(engine)
-
-    logger.info(
-        "Database engine created",
-        extra={
-            "pool_size": pool_size,
-            "max_overflow": max_overflow,
-            "pool_pre_ping": pool_pre_ping,
-        },
-    )
-
-    return engine
-
-
-def _build_url_from_env() -> str | None:
-    """Build database URL from environment variables."""
-    # First check for direct URL
-    direct_url = os.environ.get("DATABASE_URL")
-    if direct_url:
-        # Convert postgres:// to postgresql+psycopg2://
-        if direct_url.startswith("postgres://"):
-            direct_url = "postgresql+psycopg2://" + direct_url[len("postgres://"):]
-        elif direct_url.startswith("postgresql://"):
-            direct_url = "postgresql+psycopg2://" + direct_url[len("postgresql://"):]
-        return direct_url
-
-    # Build from components
-    host = os.environ.get("DB_HOST")
-    port = os.environ.get("DB_PORT", "5432")
-    database = os.environ.get("DB_NAME")
-    username = os.environ.get("DB_USER")
-    password = os.environ.get("DB_PASSWORD", "")
-
-    if not all([host, database, username]):
-        return None
-
-    return build_database_url(
-        host=host,
-        port=int(port),
-        database=database,
-        username=username,
-        password=password,
-        ssl_mode=os.environ.get("DB_SSL_MODE", "prefer"),
-    )
-
-
-def _register_engine_events(engine: Engine) -> None:
-    """Register SQLAlchemy engine event handlers."""
 
     @event.listens_for(engine, "connect")
-    def set_pg_settings(dbapi_connection, connection_record):
-        """Set per-connection PostgreSQL settings."""
+    def _pg_settings(dbapi_connection, connection_record):
         cursor = dbapi_connection.cursor()
-        # Set timezone to UTC for consistent timestamp handling
         cursor.execute("SET TIME ZONE 'UTC'")
         cursor.close()
 
-    @event.listens_for(engine, "checkout")
-    def receive_checkout(dbapi_connection, connection_record, connection_proxy):
-        """Log connection checkouts for monitoring."""
-        logger.debug("DB connection checked out from pool")
-
-    @event.listens_for(engine, "checkin")
-    def receive_checkin(dbapi_connection, connection_record):
-        """Log connection returns to pool."""
-        logger.debug("DB connection returned to pool")
+    logger.info("database_engine_created", extra={"dialect": engine.dialect.name})
+    return engine
 
 
-def _json_serializer(obj: Any) -> str:
-    """Custom JSON serializer for SQLAlchemy."""
-    import json
-    return json.dumps(obj, default=str)
+def get_engine() -> Engine:
+    global _ENGINE
+    if _ENGINE is None:
+        _ENGINE = create_db_engine()
+    return _ENGINE
 
 
-def _json_deserializer(s: str) -> Any:
-    """Custom JSON deserializer for SQLAlchemy."""
-    import json
-    return json.loads(s)
+def set_engine(engine: Engine) -> None:
+    global _ENGINE
+    _ENGINE = engine
 
 
-def check_db_health(engine: Engine) -> dict[str, Any]:
-    """
-    Check database connectivity and basic health.
-
-    Args:
-        engine: SQLAlchemy engine to check.
-
-    Returns:
-        Dict with health status information.
-
-    Raises:
-        OperationalError: If database is unreachable.
-    """
+def check_db_health(engine: Engine | None = None) -> dict[str, Any]:
+    engine = engine or get_engine()
     try:
         with engine.connect() as conn:
-            result = conn.execute(
-                text("SELECT version(), current_database(), NOW() AT TIME ZONE 'UTC' as now")
-            )
-            row = result.fetchone()
-
-            return {
-                "status": "healthy",
-                "database": row.current_database,
-                "server_time": row.now.isoformat() if row.now else None,
-                "pg_version": row.version,
-                "pool_size": engine.pool.size(),
-                "checked_in": engine.pool.checkedin(),
-                "checked_out": engine.pool.checkedout(),
-                "overflow": engine.pool.overflow(),
-            }
-    except OperationalError as e:
-        logger.error("Database health check failed", exc_info=True)
-        return {
-            "status": "unhealthy",
-            "error": str(e),
-        }
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "dialect": engine.dialect.name}
+    except Exception as exc:
+        logger.exception("database_health_failed")
+        return {"status": "unhealthy", "error": str(exc)}

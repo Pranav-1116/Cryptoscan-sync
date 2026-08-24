@@ -1,142 +1,65 @@
-"""
-Drift Router - API endpoints for drift detection management.
+"""Drift events."""
 
-Endpoints for listing, retrieving, and managing drift events.
-"""
+from __future__ import annotations
 
-import logging
-from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 
-from fastapi import APIRouter, Request, Query, HTTPException, Depends
-
-from api.schemas.drift_schemas import (
-    DriftEventResponse,
-    DriftListResponse,
-    DriftResolutionStatus,
-    DriftAcknowledgeRequest,
-    DriftSeverity
-)
-
-logger = logging.getLogger(__name__)
+from api.dependencies import get_current_user, get_drift_repository
+from api.schemas.drift_schemas import DriftEventResponse, DriftListResponse
+from db.repositories.drift_repository import DriftRepository
 
 router = APIRouter(prefix="/drift", tags=["drift"])
 
 
-async def verify_auth(request: Request):
-    """Verify user is authenticated."""
-    if not hasattr(request.state, "user_id"):
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return request.state.user_id
+class AckBody(BaseModel):
+    notes: str | None = None
+
+
+def _to_response(row) -> DriftEventResponse:
+    return DriftEventResponse(
+        drift_id=row.id,
+        current_scan_id=row.current_scan_id,
+        baseline_id=row.baseline_id,
+        drift_type=row.drift_type,
+        severity=row.severity,
+        detected_at=row.detected_at.isoformat() if row.detected_at else None,
+        resolution_status=row.resolution_status,
+        drift_details=row.drift_details,
+        resolved_by=row.resolved_by,
+        resolution_notes=row.resolution_notes,
+    )
 
 
 @router.get("", response_model=DriftListResponse)
-async def list_drift_events(
-    request: Request,
+def list_drift(
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=1000),
-    severity: Optional[DriftSeverity] = Query(None),
-    status: Optional[DriftResolutionStatus] = Query(None),
-    system: Optional[str] = Query(None),
-    user_id: str = Depends(verify_auth)
+    page_size: int = Query(50, ge=1, le=200),
+    severity: str | None = None,
+    status: str | None = None,
+    scan_id: str | None = None,
+    user: str = Depends(get_current_user),
+    repo: DriftRepository = Depends(get_drift_repository),
 ):
-    """
-    List drift events with filtering and pagination.
-    
-    Args:
-        request: HTTP request
-        page: Page number
-        page_size: Items per page
-        severity: Filter by severity
-        status: Filter by resolution status
-        system: Filter by system
-        user_id: Authenticated user ID
-    
-    Returns:
-        DriftListResponse with paginated drift events
-    """
-    logger.info(
-        "Listing drift events",
-        extra={
-            "user_id": user_id,
-            "severity": severity,
-            "status": status,
-            "system": system,
-            "request_id": request.state.request_id
-        }
+    rows, total = repo.list_events(
+        severity=severity, status=status, scan_id=scan_id, page=page, page_size=page_size
     )
-    
-    # TODO: Implement database query with filters
     return DriftListResponse(
-        drift_events=[],
-        total_count=0,
+        events=[_to_response(r) for r in rows],
+        total_count=total,
         page=page,
         page_size=page_size,
-        critical_count=0
     )
 
 
-@router.get("/{drift_id}", response_model=DriftEventResponse)
-async def get_drift_event(
-    request: Request,
+@router.post("/{drift_id}/acknowledge", response_model=DriftEventResponse)
+def acknowledge(
     drift_id: str,
-    user_id: str = Depends(verify_auth)
+    body: AckBody | None = None,
+    user: str = Depends(get_current_user),
+    repo: DriftRepository = Depends(get_drift_repository),
 ):
-    """
-    Get drift event details.
-    
-    Args:
-        request: HTTP request
-        drift_id: Drift event ID
-        user_id: Authenticated user ID
-    
-    Returns:
-        DriftEventResponse with details
-    """
-    logger.info(
-        f"Getting drift event {drift_id}",
-        extra={
-            "user_id": user_id,
-            "drift_id": drift_id,
-            "request_id": request.state.request_id
-        }
-    )
-    
-    # TODO: Implement database query
-    raise HTTPException(status_code=404, detail="Drift event not found")
-
-
-@router.post("/{drift_id}/acknowledge")
-async def acknowledge_drift(
-    request: Request,
-    drift_id: str,
-    ack_request: DriftAcknowledgeRequest,
-    user_id: str = Depends(verify_auth)
-):
-    """
-    Acknowledge or update drift event status.
-    
-    Args:
-        request: HTTP request
-        drift_id: Drift event ID
-        ack_request: Acknowledgement request
-        user_id: Authenticated user ID
-    
-    Returns:
-        Updated drift event
-    """
-    logger.info(
-        f"Acknowledging drift {drift_id}",
-        extra={
-            "user_id": user_id,
-            "drift_id": drift_id,
-            "new_status": ack_request.resolution_status,
-            "request_id": request.state.request_id
-        }
-    )
-    
-    # TODO: Update drift status in database
-    return {
-        "message": "Drift acknowledged",
-        "drift_id": drift_id,
-        "status": ack_request.resolution_status
-    }
+    row = repo.acknowledge(drift_id, user, notes=(body.notes if body else None))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Drift event not found")
+    return _to_response(row)
