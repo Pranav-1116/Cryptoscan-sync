@@ -3,7 +3,9 @@
 **Repository:** `ZKChainForge/CryproScan`  
 **Branch:** `arena/01a034cc-cryproscan` (from `main` @ `8772dde` — “add the cores”)  
 **Date:** 2026-08-24  
-**Verdict:** A well-specified Part-1 platform skeleton with substantial isolated service code, **not a runnable product**. The folder tree matches the 15-month spec; about **61% of files are empty**; the non-empty Python/Java is internally inconsistent and cannot execute end-to-end.
+**Update (2026-08-24):** Part 1 now runs locally. Seeded scan `f180d442-5ec6-4bb2-a500-5f89bd112519` has 13 findings; dashboard+API on `:8000` (`admin`/`cryptoscan`); verify/CBOM/export work; **133** per-service tests pass. Remaining gaps: empty React `dashboard/src/**`, Postgres-only DB integration tests, JDT JAR. See `RUN.md`.
+
+**Original verdict (at `8772dde`):** A well-specified Part-1 platform skeleton with substantial isolated service code, **not a runnable product**. The folder tree matches the 15-month spec; about **61% of files are empty**; the non-empty Python/Java is internally inconsistent and cannot execute end-to-end.
 
 ---
 
