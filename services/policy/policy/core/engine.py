@@ -5,6 +5,8 @@ Loads rules from YAML, manages evaluators, and provides public API.
 """
 
 from typing import Any, Dict, Optional, List
+import hashlib
+import json
 import logging
 from pathlib import Path
 import yaml
@@ -152,4 +154,29 @@ class PolicyEngine:
             "total": len(self.rule_set.rules),
             "enabled": len(self.evaluator.enabled_rules),
             "disabled": len(self.rule_set.rules) - len(self.evaluator.enabled_rules)
+        }
+
+    def pack_hash(self) -> str:
+        """Stable SHA-256 of the enabled rule pack (id, version, condition, standard)."""
+        payload = []
+        for rule in sorted(self.rule_set.rules, key=lambda item: item.rule_id):
+            payload.append(
+                {
+                    "rule_id": rule.rule_id,
+                    "version": getattr(rule, "version", "1.0"),
+                    "enabled": bool(rule.enabled),
+                    "severity": rule.severity,
+                    "condition_type": rule.condition.type,
+                    "standard_reference": rule.standard_reference,
+                }
+            )
+        blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(blob).hexdigest()
+
+    def pack_descriptor(self) -> Dict[str, Any]:
+        return {
+            "version": self.version,
+            "pack_hash": self.pack_hash(),
+            "rule_ids": sorted(rule.rule_id for rule in self.rule_set.rules if rule.enabled),
+            "counts": self.get_rule_count(),
         }

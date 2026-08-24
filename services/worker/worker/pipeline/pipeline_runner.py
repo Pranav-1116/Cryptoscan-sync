@@ -113,6 +113,9 @@ class PipelineRunner:
             stage = "drift"
             self._advance(session, ctx, "drift")
             self._drift(ctx, session)
+            stage = "gate"
+            self._advance(session, ctx, "gate")
+            self._gate(ctx, session)
             stage = "alert"
             self._advance(session, ctx, "alert")
             self._alert(ctx)
@@ -182,7 +185,14 @@ class PipelineRunner:
             kwargs["error_message"] = message
         self._set_job_status(session, ctx.job_id, status, **kwargs)
 
-    def _post_github(self, ctx: PipelineContext, state: str, description: str) -> None:
+    def _post_github(
+        self,
+        ctx: PipelineContext,
+        state: str,
+        description: str,
+        *,
+        context: str = "cryptoscan/compliance",
+    ) -> None:
         token = getattr(settings, "GITHUB_TOKEN", "") or ""
         if not token:
             return
@@ -198,6 +208,7 @@ class PipelineRunner:
                 state=state,
                 description=description,
                 target_url=target,
+                context=context,
             )
         except Exception:
             logger.debug("github_status_skipped", exc_info=True)
@@ -527,6 +538,57 @@ class PipelineRunner:
         ctx.drift_events = events
         session.flush()
         logger.info("stage_drift_done", extra={"events": len(events)})
+
+    def _gate(self, ctx: PipelineContext, session) -> None:
+        from sqlalchemy import select
+        from sqlalchemy.orm.attributes import flag_modified
+
+        from db.models.evidence_record import EvidenceRecord
+        from db.models.scan import Scan
+        from drift.core.gate import evaluate_gate
+        from evidence.intelligence.agility import compute_agility
+        from evidence.intelligence.work_orders import build_work_orders
+
+        rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == ctx.scan_id)).scalars())
+        findings = [
+            {
+                "evidence_id": row.id,
+                "algorithm": row.algorithm,
+                "key_size": row.key_size,
+                "mode": row.mode,
+                "purpose": row.purpose,
+                "file_path": row.file_path,
+                "line_number": row.line_number,
+                "compliance_status": row.compliance_status,
+                "is_hardcoded_key": row.is_hardcoded_key,
+                "finding_data": row.finding_data or {},
+                "policy_evaluation": row.policy_evaluation or {},
+            }
+            for row in rows
+        ]
+        gate = evaluate_gate(findings, ctx.drift_events)
+        agility = compute_agility(findings)
+        orders = build_work_orders(findings)
+        ctx.scan_meta["gate"] = gate
+        ctx.scan_meta["agility"] = agility
+        scan = session.get(Scan, ctx.scan_id) if ctx.scan_id else None
+        if scan is not None:
+            stats = dict(scan.statistics or {})
+            stats["gate"] = {key: value for key, value in gate.items()}
+            stats["agility"] = agility
+            stats["work_orders"] = {
+                "total_orders": orders["total_orders"],
+                "total_sites": orders["total_sites"],
+            }
+            scan.statistics = stats
+            try:
+                flag_modified(scan, "statistics")
+            except Exception:
+                pass
+            session.flush()
+        gh_state = "success" if gate["decision"] != "FAIL" else "failure"
+        self._post_github(ctx, gh_state, gate["summary"][:140], context="cryptoscan/drift-gate")
+        logger.info("stage_gate_done", extra={"decision": gate["decision"]})
 
     def _alert(self, ctx: PipelineContext) -> None:
         critical = [e for e in ctx.drift_events if e.get("severity") in {"CRITICAL", "HIGH"}]

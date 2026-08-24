@@ -28,4 +28,9 @@ def list_rules(user: str = Depends(get_current_user)):
                 "condition_type": rule.condition.type,
             }
         )
-    return {"rules": sorted(rules, key=lambda item: item["rule_id"]), "counts": engine.get_rule_count()}
+    return {
+        "rules": sorted(rules, key=lambda item: item["rule_id"]),
+        "counts": engine.get_rule_count(),
+        "pack_hash": engine.pack_hash(),
+        "pack": engine.pack_descriptor(),
+    }

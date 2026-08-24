@@ -111,6 +111,7 @@
         <button data-route="container" onclick="go('container')">Container</button>
         <button data-route="drift" onclick="go('drift')">Drift</button>
         <button data-route="findings" onclick="go('findings')">Findings</button>
+        <button data-route="workorders" onclick="go('workorders')">Work orders</button>
       </nav>
       <div style="margin-top:40px">
         <button class="btn secondary" style="width:100%" onclick="logout()">Sign out</button>
@@ -185,6 +186,7 @@ async function render() {
     if (state.route === 'compliance') return renderCompliance(el);
     if (state.route === 'policy') return renderPolicy(el);
     if (state.route === 'container') return renderContainer(el);
+    if (state.route === 'workorders') return renderWorkOrdersHome(el);
   } catch (e) {
     el.innerHTML = `<div class="card"><h2>Error</h2><p class="err">${e.message}</p></div>`;
   }
@@ -234,21 +236,46 @@ async function renderScans(el) {
 async function renderScan(el) {
   const sc = await api('/scans/' + state.scanId);
   const f = await api(`/scans/${state.scanId}/findings?page_size=100`);
+  let agility = null, orders = null, gate = null, materials = null;
+  try { agility = await api(`/scans/${state.scanId}/agility`); } catch (e) { agility = null; }
+  try { orders = await api(`/scans/${state.scanId}/work-orders`); } catch (e) { orders = null; }
+  try { gate = await api(`/scans/${state.scanId}/gate`); } catch (e) { gate = null; }
+  try { materials = await api(`/scans/${state.scanId}/materials`); } catch (e) { materials = null; }
+  const gateDecision = gate?.decision || sc.statistics?.gate?.decision || '—';
   el.innerHTML = `<div class="top"><div><h2>Scan detail</h2><p class="muted mono">${sc.target_location}</p></div>
-    <div class="row">
+    <div class="row" style="flex-wrap:wrap">
       <button class="btn secondary" onclick="approveBaseline('${sc.scan_id}')">Approve baseline</button>
       <button class="btn secondary" onclick="verifyScan('${sc.scan_id}')">Verify chain</button>
-      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/cbom', 'cbom-${sc.scan_id}.json')">Export CBOM</button>
-      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/export', 'scan-${sc.scan_id}.json')">Export JSON</button>
-      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/export.csv', 'scan-${sc.scan_id}.csv')">Export CSV</button>
-      <button class="btn secondary" onclick="downloadJson('/scans/${sc.scan_id}/verification-script', 'verify-${sc.scan_id}.py')">Verifier</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/cbom', 'cbom-${sc.scan_id}.json')">Export CBOM</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/export', 'scan-${sc.scan_id}.json')">Export JSON</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/export.csv', 'scan-${sc.scan_id}.csv')">Export CSV</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/evidence-pack', 'evidence-pack-${sc.scan_id}.json')">Evidence pack</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/audit-pack', 'cryptoscan-audit-${sc.scan_id}.zip')">CRA/NIST zip</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/gate.sarif', 'gate-${sc.scan_id}.sarif.json')">SARIF</button>
       <button class="btn secondary" onclick="go('scans')">Back</button>
     </div></div>
     <div class="grid cards">
       <div class="card"><div class="label">Status</div><div class="value" style="font-size:18px">${badge(sc.status)}</div></div>
       <div class="card"><div class="label">Findings</div><div class="value">${sc.statistics?.total_findings ?? f.total_count}</div></div>
-      <div class="card"><div class="label">Commit</div><div class="value" style="font-size:14px" class="mono">${(sc.target_commit||'—').slice(0,12)}</div></div>
-      <div class="card"><div class="label">Operator</div><div class="value" style="font-size:16px">${sc.operator}</div></div>
+      <div class="card"><div class="label">Agility</div><div class="value">${agility ? agility.score : '—'}</div><p class="muted">${agility?.band || ''}</p></div>
+      <div class="card"><div class="label">PR gate</div><div class="value" style="font-size:18px">${badge(gateDecision)}</div><p class="muted">${gate?.summary || ''}</p></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Work orders</div>
+        <table><thead><tr><th>ID</th><th>Replace</th><th>Sites</th><th>With</th></tr></thead>
+        <tbody>${(orders?.orders||[]).map(o => `<tr>
+          <td class="mono">${o.work_order_id}</td><td>${o.algorithm} ${o.purpose}</td>
+          <td>${o.sites}</td><td class="muted">${o.replacement}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">No failing sites to migrate.</td></tr>'}
+        </tbody></table>
+      </div>
+      <div class="card"><div class="label">Materials (PEM / certs)</div>
+        <table><thead><tr><th>File</th><th>Algo</th><th>Linked source</th></tr></thead>
+        <tbody>${(materials?.materials||[]).map(m => `<tr>
+          <td class="mono">${m.file_path}</td><td>${m.algorithm||'—'}</td>
+          <td class="muted">${(m.linked_source||[]).map(s => (s.file_path||'')+':'+s.line_number).join(', ') || '—'}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No PEM/certs in this tree.</td></tr>'}
+        </tbody></table>
+      </div>
     </div>
     <div style="height:16px"></div>
     <div class="card"><div class="label">Findings</div>
@@ -388,7 +415,7 @@ async function renderAsset(el) {
   el.innerHTML = `<div class="top"><div><h2>${a.algorithm}${a.mode ? '/'+a.mode : ''}</h2>
     <p class="muted mono">${a.file_path}:${a.line_number}</p></div>
     <div class="row">
-      <button class="btn secondary" onclick="downloadJson('/cbom/custom', 'cbom-asset-${a.id}.json', {method:'POST', body: JSON.stringify({asset_ids:[a.id]})})">Export CBOM</button>
+      <button class="btn secondary" onclick="downloadFile('/cbom/custom', 'cbom-asset-${a.id}.json', {method:'POST', body: JSON.stringify({asset_ids:[a.id]})})">Export CBOM</button>
       <button class="btn secondary" onclick="go('assets')">Back</button>
     </div></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
@@ -415,7 +442,7 @@ async function renderSystem(el) {
   el.innerHTML = `<div class="top"><div><h2>${s.name}</h2>
     <p class="muted">${s.description || s.environment || ''}</p></div>
     <div class="row">
-      <button class="btn secondary" onclick="downloadJson('/cbom/system/${s.id}', 'cbom-system-${s.id}.json')">Export CBOM</button>
+      <button class="btn secondary" onclick="downloadFile('/cbom/system/${s.id}', 'cbom-system-${s.id}.json')">Export CBOM</button>
       <button class="btn secondary" onclick="go('systems')">Back</button>
     </div></div>
     <div class="grid cards">
@@ -543,10 +570,31 @@ async function verifyScan(scanId) {
   }
 }
 
-async function downloadJson(path, filename) {
-  const headers = { 'Content-Type': 'application/json' };
+async function renderWorkOrdersHome(el) {
+  const scans = await api('/scans?page_size=1');
+  const latest = (scans.scans || [])[0];
+  if (!latest) {
+    el.innerHTML = `<div class="top"><h2>Work orders</h2></div><div class="card"><p class="muted">Run a scan first.</p></div>`;
+    return;
+  }
+  const orders = await api(`/scans/${latest.scan_id}/work-orders`);
+  const agility = await api(`/scans/${latest.scan_id}/agility`);
+  el.innerHTML = `<div class="top"><div><h2>Migration work-orders</h2>
+    <p class="muted">Latest scan ${latest.target_location} · agility ${agility.score} (${agility.band})</p></div>
+    <button class="btn secondary" onclick="go('scan',{scanId:'${latest.scan_id}'})">Open scan</button></div>
+    <div class="card"><table><thead><tr><th>ID</th><th>Algo</th><th>Purpose</th><th>Sites</th><th>Replace with</th><th>Effort</th></tr></thead>
+    <tbody>${(orders.orders||[]).map(o => `<tr>
+      <td class="mono">${o.work_order_id}</td><td>${o.algorithm}</td><td>${o.purpose}</td>
+      <td>${o.sites}</td><td>${o.replacement}</td><td>${badge(o.effort === 'high' ? 'HIGH' : o.effort === 'low' ? 'INFO' : 'MEDIUM')}</td>
+    </tr>`).join('') || '<tr><td colspan=6 class="muted">Nothing to migrate on the latest scan.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function downloadFile(path, filename, opts={}) {
+  const headers = Object.assign({}, opts.headers || {});
   if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
-  const res = await fetch(API + path, { headers });
+  if (opts.body && !headers['Content-Type']) headers['Content-Type'] = 'application/json';
+  const res = await fetch(API + path, Object.assign({ headers }, opts));
   if (!res.ok) {
     alert('Export failed: ' + res.statusText);
     return;

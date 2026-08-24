@@ -18,6 +18,9 @@ Default login: `admin` / `cryptoscan`.
 - `GET /scans/{scan_id}/findings`
 - `GET /scans/{scan_id}/export` / `export.csv` / `verify` / `verification-script`
 - `GET /scans/{scan_id}/cbom`
+- `GET /scans/{scan_id}/evidence-pack` / `audit-pack` / `agility` / `work-orders` / `gate` / `gate.sarif` / `materials`
+- `POST /evidence-pack/verify` `{pack, secret?}`
+- `POST /ci/gate` `{scan_id, require_baseline?}`
 
 ## Findings, assets, systems
 

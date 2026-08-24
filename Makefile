@@ -38,6 +38,12 @@ scan:
 verify:
 	$(PY) $(ROOT)/scripts/verify_evidence.py $(SCAN_ID)
 
+verify-pack:
+	$(PY) $(ROOT)/scripts/verify_pack.py $(PACK) $(if $(SECRET),--secret $(SECRET),)
+
+gate:
+	$(PY) $(ROOT)/scripts/ci_gate.py --scan-id "$(SCAN_ID)"
+
 up:
 	docker compose up --build -d
 

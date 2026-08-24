@@ -62,6 +62,7 @@ def post_pipeline_status(
     state: str,
     description: str,
     target_url: str = "",
+    context: str = "cryptoscan/compliance",
 ) -> bool:
     parsed = parse_github_repo(repo_url)
     if not parsed or not token or not commit:
@@ -75,4 +76,5 @@ def post_pipeline_status(
         state=state,
         description=description,
         target_url=target_url,
+        context=context,
     )

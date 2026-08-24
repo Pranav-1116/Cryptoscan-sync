@@ -25,6 +25,7 @@ from api.routers import (
     export,
     findings,
     health,
+    intelligence,
     jobs,
     policy,
     repo_configs,
@@ -120,6 +121,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(container.router, prefix=prefix)
     app.include_router(vulns.router, prefix=prefix)
     app.include_router(policy.router, prefix=prefix)
+    app.include_router(intelligence.router, prefix=prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
     dashboard_html = Path(__file__).resolve().parents[2] / "dashboard" / "index.html"

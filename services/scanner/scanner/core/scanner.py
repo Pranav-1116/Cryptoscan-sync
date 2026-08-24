@@ -107,6 +107,31 @@ class Scanner:
                 logger.warning("parse_error", extra={"file": str(source_file), "error": str(exc)})
                 parse_errors.append({"file": str(source_file), "error": str(exc)})
 
+        try:
+            from scanner.detectors.materials.pem_scanner import scan_materials
+
+            material_findings = scan_materials(path, repo_root=path)
+            if git_ctx:
+                for finding in material_findings:
+                    finding.git_context = git_ctx
+            findings.extend(material_findings)
+        except Exception as exc:
+            logger.warning("material_scan_failed", extra={"error": str(exc)})
+
+        try:
+            from scanner.core.file_discovery import DEFAULT_EXCLUDED_DIRS
+
+            for jar in path.rglob("*.jar"):
+                if any(part in DEFAULT_EXCLUDED_DIRS or part.startswith(".") for part in jar.parts):
+                    continue
+                jar_findings = scan_jar(jar, path)
+                if git_ctx:
+                    for finding in jar_findings:
+                        finding.git_context = git_ctx
+                findings.extend(jar_findings)
+        except Exception as exc:
+            logger.warning("jar_scan_failed", extra={"error": str(exc)})
+
         scanner_id = "static-multi-scanner-v1.0" if set(languages) - {"JAVA"} else "static-java-scanner-v0.1"
         scanner_version = "1.0.0" if scanner_id.endswith("v1.0") else "0.1.0"
         result = ScanResult(

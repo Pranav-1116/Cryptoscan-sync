@@ -15,6 +15,7 @@ PIPELINE_STAGES = (
     "dedup",
     "systems",
     "drift",
+    "gate",
     "alert",
 )
 
