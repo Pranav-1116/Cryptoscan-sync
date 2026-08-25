@@ -22,6 +22,8 @@ def handshake(sock, hostname: str, *, timeout: float | None = None) -> dict[str,
         der = tls.getpeercert(binary_form=True)
     except Exception:
         der = None
+    from network_scanner.certificates.cert_parser import parse_der
+
     return {
         "status": "OK",
         "socket": tls,
@@ -29,5 +31,6 @@ def handshake(sock, hostname: str, *, timeout: float | None = None) -> dict[str,
         "cipher": cipher,
         "peercert": tls.getpeercert() or {},
         "der": der,
+        "certificate": parse_der(der) if der else None,
         "hostname": hostname,
     }

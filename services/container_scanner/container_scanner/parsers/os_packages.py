@@ -34,6 +34,17 @@ CANONICAL = {
     "libsodium23": "libsodium",
     "libsodium18": "libsodium",
     "libsodium": "libsodium",
+    "libmbedtls14": "mbedtls",
+    "libmbedcrypto7": "mbedtls",
+    "libmbedx509-1": "mbedtls",
+    "mbedtls": "mbedtls",
+    "libgnutls30": "gnutls",
+    "libgnutls28": "gnutls",
+    "gnutls-bin": "gnutls",
+    "libwolfssl37": "wolfssl",
+    "wolfssl": "wolfssl",
+    "libgcrypt20": "libgcrypt",
+    "libnss3": "nss",
 }
 
 

@@ -7,7 +7,7 @@ import ssl
 import uuid
 from typing import Any
 
-from network_scanner.certificates.cert_parser import from_ssl_dict, hostname_matches
+from network_scanner.certificates.cert_parser import from_ssl_dict, hostname_matches, parse_der
 from network_scanner.certificates.chain_validator import validate_chain
 from network_scanner.certificates.crl_checker import check_crl
 from network_scanner.certificates.ocsp_checker import check_ocsp
@@ -67,9 +67,33 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
                 except Exception:
                     der = None
                 peer = tls.getpeercert() or {}
-                leaf = from_ssl_dict(peer, der=der)
+                leaf = parse_der(der) if der else from_ssl_dict(peer, der=der)
+                if not leaf:
+                    leaf = from_ssl_dict(peer, der=der)
+                if peer and not leaf.get("san"):
+                    ssl_leaf = from_ssl_dict(peer, der=der)
+                    if ssl_leaf.get("san"):
+                        leaf["san"] = ssl_leaf["san"]
                 leaf["endpoint"] = f"{host}:{port}"
-                chain = validate_chain([leaf], hostname=host)
+                chain_certs = [leaf]
+                extra_ders = []
+                for getter_name in ("get_unverified_chain", "getpeercert_chain"):
+                    getter = getattr(tls, getter_name, None)
+                    if not callable(getter):
+                        continue
+                    try:
+                        extra_ders = list(getter() or [])
+                        break
+                    except Exception:
+                        extra_ders = []
+                for extra in extra_ders:
+                    parsed_extra = parse_der(extra if isinstance(extra, (bytes, bytearray)) else None)
+                    if not parsed_extra:
+                        continue
+                    if parsed_extra.get("fingerprint_sha256") == leaf.get("fingerprint_sha256"):
+                        continue
+                    chain_certs.append(parsed_extra)
+                chain = validate_chain(chain_certs, hostname=host)
                 if not hostname_matches(host, leaf) and "HOSTNAME_MISMATCH" not in chain["errors"]:
                     chain["errors"].append("HOSTNAME_MISMATCH")
                     chain["is_valid"] = False
@@ -101,7 +125,7 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
                             "purpose": "NETWORK_ENCRYPTION",
                             "raw_transformation": parsed.get("cipher_suite"),
                         },
-                        "certificates": [leaf],
+                        "certificates": chain_certs,
                         "chain_validation": chain,
                         "revocation_status": revocation,
                     }

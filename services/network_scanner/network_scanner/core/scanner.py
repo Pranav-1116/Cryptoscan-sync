@@ -176,10 +176,26 @@ class NetworkTlsScanner:
                 cert["ocsp_url"] = ocsp["urls"][0]
             if crl.get("urls"):
                 cert["crl_url"] = crl["urls"][0]
-            cert.setdefault("chain_validation", validate_chain([cert]))
+            cert.setdefault("chain_validation", self._chain_for(cert, inventory))
             ocsp_urls = extract_ocsp_urls(cert)
             crl_urls = extract_crl_urls(cert)
             if ocsp_urls and not cert.get("ocsp_url"):
                 cert["ocsp_url"] = ocsp_urls[0]
             if crl_urls and not cert.get("crl_url"):
                 cert["crl_url"] = crl_urls[0]
+
+    def _chain_for(self, cert: dict[str, Any], inventory: list[dict[str, Any]]) -> dict[str, Any]:
+        by_fp = {
+            item.get("fingerprint_sha256"): item
+            for item in inventory
+            if item.get("fingerprint_sha256")
+        }
+        chain = [cert]
+        seen = {cert.get("fingerprint_sha256")}
+        parent_id = cert.get("issuer_cert_id")
+        while parent_id and parent_id in by_fp and parent_id not in seen:
+            parent = by_fp[parent_id]
+            chain.append(parent)
+            seen.add(parent_id)
+            parent_id = parent.get("issuer_cert_id")
+        return validate_chain(chain)

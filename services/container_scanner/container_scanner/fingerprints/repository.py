@@ -26,7 +26,20 @@ ALIASES = {
     "libsodium": "libsodium",
     "libmbedcrypto": "mbedtls",
     "libmbedtls": "mbedtls",
+    "libmbedx509": "mbedtls",
     "mbedtls": "mbedtls",
+    "libgnutls": "gnutls",
+    "libgnutls30": "gnutls",
+    "libgnutls28": "gnutls",
+    "gnutls": "gnutls",
+    "libwolfssl": "wolfssl",
+    "wolfssl": "wolfssl",
+    "libboringssl": "boringssl",
+    "boringssl": "boringssl",
+    "libgcrypt": "libgcrypt",
+    "libgcrypt20": "libgcrypt",
+    "libnss3": "nss",
+    "nss": "nss",
 }
 
 
@@ -98,8 +111,18 @@ class FingerprintRepository:
             return self.lookup("openssl")
         if "libsodium" in lower:
             return self.lookup("libsodium")
-        if "mbedtls" in lower or "mbedcrypto" in lower:
+        if "mbedtls" in lower or "mbedcrypto" in lower or "mbedx509" in lower:
             return self.lookup("mbedtls")
+        if "gnutls" in lower:
+            return self.lookup("gnutls")
+        if "wolfssl" in lower:
+            return self.lookup("wolfssl")
+        if "boringssl" in lower:
+            return self.lookup("boringssl")
+        if "libgcrypt" in lower:
+            return self.lookup("libgcrypt")
+        if "libnss" in lower or lower.startswith("nss"):
+            return self.lookup("nss")
         if "bcprov" in lower or "bcpkix" in lower or "bouncycastle" in lower:
             return self.lookup("bouncycastle")
         if "commons-codec" in lower:
