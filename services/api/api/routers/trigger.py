@@ -30,13 +30,16 @@ def _publish_job(payload: dict) -> None:
 def _run_inline(payload: dict) -> None:
     from worker.pipeline.pipeline_runner import PipelineRunner
 
-    PipelineRunner().run(
-        job_id=payload["job_id"],
-        target_repo=payload["target_repo"],
-        target_branch=payload["target_branch"],
-        target_commit=payload.get("target_commit"),
-        triggered_by=payload["triggered_by"],
-    )
+    try:
+        PipelineRunner().run(
+            job_id=payload["job_id"],
+            target_repo=payload["target_repo"],
+            target_branch=payload["target_branch"],
+            target_commit=payload.get("target_commit"),
+            triggered_by=payload["triggered_by"],
+        )
+    except Exception:
+        logger.exception("inline_pipeline_failed", extra={"job_id": payload.get("job_id")})
 
 
 def enqueue_scan_job(
@@ -96,6 +99,10 @@ async def trigger_manual_scan(
     )
     if inspect.isawaitable(created):
         created = await created
+    try:
+        job_repo.session.commit()
+    except Exception:
+        logger.debug("job_commit_skipped", exc_info=True)
 
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     created_at = getattr(created, "created_at", None)

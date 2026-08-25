@@ -37,6 +37,7 @@ class PipelineContext:
     logs: list[dict[str, Any]] = field(default_factory=list)
     compliance_scopes: list[str] = field(default_factory=list)
     system_id: str | None = None
+    scan_persisted: bool = False
 
     def update(self, **kwargs) -> "PipelineContext":
         for key, value in kwargs.items():
@@ -179,7 +180,7 @@ class PipelineRunner:
         ctx.logs.append(entry)
         progress = build_progress(current_stage=stage, status=status, logs=ctx.logs, extra={"scan_id": ctx.scan_id})
         kwargs: dict[str, Any] = {"progress": progress}
-        if ctx.scan_id:
+        if ctx.scan_id and ctx.scan_persisted:
             kwargs["scan_id"] = ctx.scan_id
         if status == "FAILED" and message:
             kwargs["error_message"] = message
@@ -323,6 +324,7 @@ class PipelineRunner:
             scan_id=ctx.scan_id,
         )
         ctx.scan_id = scan.id
+        ctx.scan_persisted = True
         if ctx.container_result:
             try:
                 from db.models.container_scan import ContainerScan
