@@ -6,6 +6,7 @@ from db.connection.session import Base
 from db.models import (  # noqa: F401
     baseline,
     business_owner,
+    business_process,
     certificate,
     certificate_usage,
     cloud_account,
@@ -23,6 +24,7 @@ from db.models import (  # noqa: F401
     system,
     system_agility_score,
     system_asset,
+    system_business_process,
     system_dependency,
     vendor,
     vendor_crypto,

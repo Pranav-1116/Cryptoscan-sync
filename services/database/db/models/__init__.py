@@ -1,3 +1,4 @@
+from db.models.asset_system_link import AssetSystemLink
 from db.models.base import BaseModel
 from db.models.baseline import Baseline
 from db.models.business_owner import BusinessOwner
@@ -7,6 +8,7 @@ from db.models.cloud_account import CloudAccount
 from db.models.container_scan import ContainerScan
 from db.models.crypto_asset import CryptoAsset
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
+from db.models.crypto_library_fingerprint import CryptoLibraryFingerprint
 from db.models.drift_event import DriftEvent
 from db.models.evidence_record import EvidenceRecord
 from db.models.migration_project import MigrationProject
@@ -17,6 +19,7 @@ from db.models.scan_job import ScanJob
 from db.models.system import System
 from db.models.system_asset import SystemAsset
 from db.models.system_business_process import SystemBusinessProcess
+from db.models.system_business_process_map import SystemBusinessProcessMap
 from db.models.system_dependency import SystemDependency
 from db.models.certificate_usage import CertificateUsage
 from db.models.ot_device import OtCryptoFinding, OtDevice
@@ -28,6 +31,7 @@ from db.models.verification_log import VerificationLog
 from db.models.vulnerability import Vulnerability
 
 __all__ = [
+    "AssetSystemLink",
     "BaseModel",
     "Baseline",
     "BusinessOwner",
@@ -38,6 +42,7 @@ __all__ = [
     "ContainerScan",
     "CryptoAsset",
     "CryptoAssetEvidence",
+    "CryptoLibraryFingerprint",
     "DriftEvent",
     "EvidenceRecord",
     "ExceptionReview",
@@ -53,6 +58,7 @@ __all__ = [
     "SystemAgilityScore",
     "SystemAsset",
     "SystemBusinessProcess",
+    "SystemBusinessProcessMap",
     "SystemDependency",
     "SystemVendor",
     "Vendor",

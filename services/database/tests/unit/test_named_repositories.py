@@ -1,6 +1,12 @@
+from db.models.asset_system_link import AssetSystemLink
 from db.models.crypto_asset import CryptoAsset
+from db.models.crypto_library_fingerprint import CryptoLibraryFingerprint
+from db.models.system import System
+from db.models.system_asset import SystemAsset
+from db.models.system_business_process_map import SystemBusinessProcessMap
 from db.repositories.asset_evidence_link_repository import AssetEvidenceLinkRepository
 from db.repositories.business_owner_repository import BusinessOwnerRepository
+from db.repositories.business_process_repository import BusinessProcessRepository
 from db.repositories.cloud_account_repository import CloudAccountRepository
 from db.repositories.crypto_asset_repository import CryptoAssetRepository
 from db.repositories.fingerprint_repository import FingerprintRepository
@@ -34,3 +40,15 @@ def test_intelligence_named_repos(db_session):
     assert vendor.name == "Acme"
     catalog = FingerprintRepository(db_session)
     assert catalog.canonical("libssl3") == "openssl"
+    system = System(name="payments")
+    db_session.add(system)
+    db_session.flush()
+    processes = BusinessProcessRepository(db_session)
+    process = processes.create_process(name="Checkout", revenue_daily=100.0)
+    link = processes.link_process(system.id, process.id)
+    assert isinstance(link, SystemBusinessProcessMap)
+    assert system.id in processes.process_system_ids(process.id)
+    assert AssetSystemLink is SystemAsset
+    print_fp = CryptoLibraryFingerprint.from_catalog("openssl", {"vendor": "OpenSSL", "algorithms": ["AES"]})
+    assert print_fp.vendor == "OpenSSL"
+    assert print_fp.to_dict()["name"] == "openssl"

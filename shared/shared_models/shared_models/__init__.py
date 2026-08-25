@@ -1,3 +1,4 @@
+from shared_models.crypto_asset import CryptoAsset
 from shared_models.enums import (
     ApiType,
     ComplianceStatus,
@@ -11,6 +12,7 @@ from shared_models.enums import (
 )
 from shared_models.evidence import EvidenceRecordDTO
 from shared_models.finding import CryptoInfo, FindingMetadata, GitContext, RawFinding, SourceLocation
+from shared_models.vulnerability import Vulnerability
 
 __all__ = [
     "ApiType",
@@ -28,4 +30,6 @@ __all__ = [
     "GitContext",
     "RawFinding",
     "SourceLocation",
+    "CryptoAsset",
+    "Vulnerability",
 ]
