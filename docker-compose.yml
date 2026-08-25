@@ -41,8 +41,9 @@ services:
       NEO4J_server_memory_heap_max__size: 512m
       NEO4J_server_memory_pagecache_size: 256m
     volumes:
+      # Named volume only. Do not bind-mount into /import — the image chowns
+      # that path at start and a :ro host mount makes it exit 1.
       - neo4j_data:/data
-      - ./infra/neo4j/init:/var/lib/neo4j/import/init:ro
     ports:
       - "${NEO4J_HTTP_PORT:-57474}:7474"
       - "${NEO4J_BOLT_PORT:-57687}:7687"
@@ -51,7 +52,28 @@ services:
       interval: 15s
       timeout: 10s
       retries: 10
+      start_period: 40s
     networks: [cryptoscan-net]
+    restart: unless-stopped
+
+  neo4j-init:
+    image: neo4j:5.26-community
+    container_name: cryptoscan-neo4j-init
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-cryptoscan}
+    volumes:
+      - ./infra/neo4j/init:/init-cypher:ro
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        cypher-shell -a bolt://neo4j:7687 -u "${NEO4J_USER:-neo4j}" -p "${NEO4J_PASSWORD:-cryptoscan}" \
+          -f /init-cypher/01_create_constraints.cypher
+        exit 0
+    networks: [cryptoscan-net]
+    restart: "no"
 
   api:
     build:

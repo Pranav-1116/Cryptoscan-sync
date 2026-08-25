@@ -36,6 +36,16 @@ http://localhost:8088 (nginx → API + dashboard).
 Postgres `55432`, Redis `56379`, Neo4j Browser `57474` (`neo4j` / `cryptoscan`).  
 Leave `NEO4J_URI` empty in `.env` when you run `bash scripts/run_stack.sh` so CryptoScan does not touch the other project's Bolt port.
 
+If a previous `compose up` died mid-start:
+
+```bash
+docker compose down
+git pull origin arena/01a034cc-cryproscan
+docker compose up --build
+```
+
+Neo4j must not bind-mount `infra/neo4j/init` onto `/import` (the image `chown`s that directory and exits if the mount is read-only). Constraints are applied by `cryptoscan-neo4j-init` after Bolt is up.
+
 ## Production
 
 Copy `.env.example` to `.env` and replace every placeholder secret.
