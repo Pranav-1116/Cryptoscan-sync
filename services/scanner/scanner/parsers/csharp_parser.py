@@ -42,6 +42,12 @@ HARDCODED = re.compile(
 )
 BCRYPT = re.compile(r"BCrypt\.Net\.BCrypt\.(HashPassword|Verify)\s*\(", re.IGNORECASE)
 IDENTITY = re.compile(r"PasswordHasher<\w+>", re.IGNORECASE)
+NSEC_AEAD = re.compile(
+    r"\b(?:NSec\.Cryptography\.)?(AeadAlgorithm\.(ChaCha20Poly1305|Aes256Gcm|XChaCha20Poly1305)|Aes256Gcm|ChaCha20Poly1305|XChaCha20Poly1305)\b"
+)
+NSEC_HASH = re.compile(
+    r"\b(?:NSec\.Cryptography\.)?(Blake2b|Sha256|Sha512|Sha512256|HmacSha256|HmacSha512|Ed25519|X25519)\b"
+)
 
 
 def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -125,4 +131,34 @@ def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
             confidence_reason="ASP.NET Identity password hasher",
         )
         findings[-1].metadata.library = "ASP.NET Identity"
+    for match in NSEC_AEAD.finditer(source):
+        token = match.group(0)
+        algorithm = "AES"
+        mode = "GCM"
+        if "ChaCha20" in token:
+            algorithm = "ChaCha20-Poly1305"
+            mode = None
+        add(
+            match,
+            api_type="CIPHER_INSTANCE",
+            algorithm=algorithm,
+            mode=mode,
+            purpose="ENCRYPTION",
+        )
+        findings[-1].metadata.library = "NSec"
+    for match in NSEC_HASH.finditer(source):
+        name = match.group(1)
+        mapping = {
+            "Blake2b": ("MESSAGE_DIGEST", "BLAKE2b", "HASHING"),
+            "Sha256": ("MESSAGE_DIGEST", "SHA-256", "HASHING"),
+            "Sha512": ("MESSAGE_DIGEST", "SHA-512", "HASHING"),
+            "Sha512256": ("MESSAGE_DIGEST", "SHA-512/256", "HASHING"),
+            "HmacSha256": ("MAC", "HMAC-SHA256", "MAC_GENERATION"),
+            "HmacSha512": ("MAC", "HMAC-SHA512", "MAC_GENERATION"),
+            "Ed25519": ("SIGNATURE", "Ed25519", "SIGNING"),
+            "X25519": ("KEY_PAIR_GENERATOR", "X25519", "KEY_EXCHANGE"),
+        }
+        api_type, algorithm, purpose = mapping.get(name, ("MESSAGE_DIGEST", name.upper(), "HASHING"))
+        add(match, api_type=api_type, algorithm=algorithm, purpose=purpose)
+        findings[-1].metadata.library = "NSec"
     return findings

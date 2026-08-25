@@ -52,6 +52,18 @@ def list_drift(
     )
 
 
+@router.get("/digest")
+def drift_digest(
+    hours: int = Query(24, ge=1, le=168),
+    user: str = Depends(get_current_user),
+    repo: DriftRepository = Depends(get_drift_repository),
+):
+    from drift.alerts.daily_digest import build_digest, window_start
+
+    events = repo.list_since(window_start(hours=hours), page_size=500)
+    return build_digest(events, window_hours=hours)
+
+
 @router.post("/{drift_id}/acknowledge", response_model=DriftEventResponse)
 def acknowledge(
     drift_id: str,
@@ -60,6 +72,32 @@ def acknowledge(
     repo: DriftRepository = Depends(get_drift_repository),
 ):
     row = repo.acknowledge(drift_id, user, notes=(body.notes if body else None))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Drift event not found")
+    return _to_response(row)
+
+
+@router.post("/{drift_id}/resolve", response_model=DriftEventResponse)
+def resolve_drift(
+    drift_id: str,
+    body: AckBody | None = None,
+    user: str = Depends(get_current_user),
+    repo: DriftRepository = Depends(get_drift_repository),
+):
+    row = repo.resolve(drift_id, user, notes=(body.notes if body else None))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Drift event not found")
+    return _to_response(row)
+
+
+@router.post("/{drift_id}/false-positive", response_model=DriftEventResponse)
+def false_positive(
+    drift_id: str,
+    body: AckBody | None = None,
+    user: str = Depends(get_current_user),
+    repo: DriftRepository = Depends(get_drift_repository),
+):
+    row = repo.mark_false_positive(drift_id, user, notes=(body.notes if body else None))
     if row is None:
         raise HTTPException(status_code=404, detail="Drift event not found")
     return _to_response(row)

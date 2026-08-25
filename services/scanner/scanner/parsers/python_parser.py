@@ -259,6 +259,16 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 confidence="MEDIUM",
                 confidence_reason="TLS context construction",
             )
+        if self._is_insecure_random(func) and self._looks_like_key_context(node):
+            self._add(
+                node,
+                api_type="KEY_GENERATOR",
+                algorithm="PRNG",
+                purpose="KEY_GENERATION",
+                library="random",
+                confidence="MEDIUM",
+                confidence_reason="non-CSPRNG used in a key/token/nonce context; use secrets or os.urandom",
+            )
         hashes = CRYPTOGRAPHY_HASH
         for attr, algo in hashes.items():
             if func.endswith(f"hashes.{attr}"):
@@ -312,6 +322,35 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             return True
         imported = self._aliases.get(name, "")
         return imported.endswith(f"hashlib.{name}") or imported == f"hashlib.{name}"
+
+
+    def _is_insecure_random(self, func: str) -> bool:
+        tail = func.split(".")[-1]
+        if tail not in {"random", "randint", "randrange", "choice", "getrandbits", "randbytes"}:
+            return False
+        if func.startswith("secrets.") or ".secrets." in func:
+            return False
+        imported = self._aliases.get(func.split(".")[0], "")
+        if imported.startswith("secrets"):
+            return False
+        return func.startswith("random.") or imported.startswith("random") or func in {
+            "random",
+            "randint",
+            "getrandbits",
+            "randbytes",
+        }
+
+    def _looks_like_key_context(self, node: ast.AST) -> bool:
+        hay = " ".join(
+            part.lower()
+            for part in (
+                self._current_function or "",
+                self._current_class or "",
+            )
+            if part
+        )
+        markers = ("key", "token", "secret", "password", "nonce", "iv", "salt", "seed")
+        return any(marker in hay for marker in markers)
 
     def _hash(self, node: ast.AST, algorithm: str, library: str = "hashlib") -> None:
         self._add(

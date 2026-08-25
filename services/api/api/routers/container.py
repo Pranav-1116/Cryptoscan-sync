@@ -1,4 +1,4 @@
-"""On-demand container / image-root scans."""
+"""On-demand container / image / archive scans."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
 from container_scanner.core.scanner import ContainerScanner
+from container_scanner.image.puller import ImagePullError
 from db.models.container_scan import ContainerScan
 from db.repositories.vulnerability_repository import VulnerabilityRepository
 
@@ -17,23 +18,17 @@ router = APIRouter(prefix="/container", tags=["container"])
 
 
 class ContainerScanRequest(BaseModel):
-    path: str
+    path: str | None = None
+    image: str | None = None
+    archive: str | None = None
     scan_id: str | None = None
+    live_cve: bool = True
 
 
-@router.post("/scan")
-def scan_container(
-    body: ContainerScanRequest,
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
-    target = Path(body.path)
-    if not target.exists():
-        raise HTTPException(status_code=404, detail="Container filesystem not found")
-    result = ContainerScanner().scan_filesystem(target, scan_id=body.scan_id)
+def _persist(db: Session, result: dict) -> ContainerScan:
     row = ContainerScan(
         scan_id=result["scan_id"],
-        target=str(target),
+        target=str(result.get("target") or ""),
         package_count=len(result.get("packages") or []),
         library_count=len(result.get("libraries") or []),
         vuln_count=len(result.get("vulnerabilities") or []),
@@ -43,6 +38,37 @@ def scan_container(
     if result.get("vulnerabilities"):
         VulnerabilityRepository(db).replace_for_scan(result["scan_id"], result["vulnerabilities"])
     db.flush()
+    return row
+
+
+@router.post("/scan")
+def scan_container(
+    body: ContainerScanRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    if not (body.path or body.image or body.archive):
+        raise HTTPException(status_code=422, detail="path, image, or archive is required")
+    scanner = ContainerScanner(live_cve=body.live_cve)
+    try:
+        if body.archive or body.image:
+            result = scanner.scan(
+                image=body.image,
+                archive=body.archive,
+                scan_id=body.scan_id,
+            )
+        else:
+            target = Path(body.path or "")
+            if not target.exists():
+                raise HTTPException(status_code=404, detail="Container filesystem not found")
+            result = scanner.scan_filesystem(target, scan_id=body.scan_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ImagePullError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    row = _persist(db, result)
     return {"id": row.id, **result}
 
 

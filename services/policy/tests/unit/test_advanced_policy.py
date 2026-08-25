@@ -53,6 +53,38 @@ def test_fips_rejects_md5():
     assert "FIPS140-001" in result.failed_rule_ids()
 
 
+def test_complex_all_of_and_any_of():
+    from policy.conditions.complex_condition import ComplexCondition
+
+    condition = ComplexCondition()
+    all_of = condition.evaluate(
+        {"algorithm": "AES", "mode": "GCM", "purpose": "ENCRYPTION", "compliance_scopes": ["PCI-DSS"]},
+        {
+            "required_scopes": ["PCI-DSS"],
+            "operator": "ALL_OF",
+            "clauses": [
+                {"type": "ALGORITHM_IN_LIST", "parameters": {"algorithm_list": ["DES", "3DES", "RC4"]}},
+                {
+                    "type": "ALGORITHM_MODE_WHITELIST",
+                    "parameters": {"algorithm": "AES", "approved_modes": ["GCM", "CCM"]},
+                },
+            ],
+        },
+    )
+    assert all_of.result == "PASS"
+    any_of = condition.evaluate(
+        {"algorithm": "AES", "purpose": "ENCRYPTION"},
+        {
+            "operator": "ANY_OF",
+            "any_of": [
+                {"type": "ALGORITHM_IN_LIST", "parameters": {"algorithm_list": ["DES"]}},
+                {"type": "BOOLEAN_FLAG", "parameters": {"field": "is_hardcoded_key", "forbidden_value": True}},
+            ],
+        },
+    )
+    assert any_of.result == "PASS"
+
+
 def test_hipaa_rejects_sha1_for_ephi():
     result = engine().evaluate({"algorithm": "SHA-1", "purpose": "HASHING", "compliance_scopes": ["EPHI"]})
     assert "HIPAA-001" in result.failed_rule_ids()

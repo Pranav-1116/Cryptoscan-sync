@@ -34,6 +34,20 @@ secret = "s3cretKeyValue!!"
     assert any(f.metadata.is_hardcoded_key for f in findings)
 
 
+def test_python_parser_flags_insecure_random_for_keys(temp_workspace):
+    path = temp_workspace / "tokens.py"
+    path.write_text(
+        """
+import random
+
+def make_secret_key():
+    return random.getrandbits(128)
+"""
+    )
+    findings = parse_python_file(path, temp_workspace)
+    assert any(f.crypto.algorithm == "PRNG" and f.metadata.library == "random" for f in findings)
+
+
 def test_scanner_runs_python(temp_workspace):
     (temp_workspace / "app.py").write_text("from hashlib import md5\nmd5(b'x')\n")
     result = Scanner().scan(temp_workspace)

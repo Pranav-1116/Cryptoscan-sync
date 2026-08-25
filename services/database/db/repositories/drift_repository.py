@@ -55,10 +55,30 @@ class DriftRepository(BaseRepository[DriftEvent]):
         return counts
 
     def acknowledge(self, drift_id: str, user: str, notes: str | None = None) -> DriftEvent | None:
+        return self._close(drift_id, user, notes, "ACKNOWLEDGED")
+
+    def resolve(self, drift_id: str, user: str, notes: str | None = None) -> DriftEvent | None:
+        return self._close(drift_id, user, notes, "RESOLVED")
+
+    def mark_false_positive(self, drift_id: str, user: str, notes: str | None = None) -> DriftEvent | None:
+        return self._close(drift_id, user, notes, "FALSE_POSITIVE")
+
+    def list_since(self, since: datetime, *, page_size: int = 200) -> list[DriftEvent]:
+        stmt = (
+            select(DriftEvent)
+            .where(DriftEvent.detected_at >= since)
+            .order_by(desc(DriftEvent.detected_at))
+            .limit(page_size)
+        )
+        return list(self.session.execute(stmt).scalars().all())
+
+    def _close(
+        self, drift_id: str, user: str, notes: str | None, status: str
+    ) -> DriftEvent | None:
         return self.update(
             drift_id,
             {
-                "resolution_status": "ACKNOWLEDGED",
+                "resolution_status": status,
                 "resolved_by": user,
                 "resolved_at": datetime.now(timezone.utc),
                 "resolution_notes": notes,

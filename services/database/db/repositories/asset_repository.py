@@ -57,7 +57,12 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                     occurrence_count=int(item.get("occurrence_count") or 1),
                     scanner_ids=item.get("scanner_ids") or [],
                     libraries=item.get("libraries") or [],
-                    extra={"scan_id": scan_id, "dedup_key": item.get("dedup_key")},
+                    extra={
+                        "scan_id": scan_id,
+                        "dedup_key": item.get("dedup_key"),
+                        "members": item.get("members") or [],
+                        "primary_evidence_id": item.get("primary_evidence_id"),
+                    },
                 )
                 self.session.add(row)
                 self.session.flush()

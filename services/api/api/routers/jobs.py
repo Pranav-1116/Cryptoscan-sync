@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import inspect
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
 from api.dependencies import get_current_user, get_job_repository
 from api.schemas.job_schemas import JobLogsResponse, JobStatusResponse
@@ -59,6 +59,36 @@ async def get_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     return _to_status(job, job_id)
+
+
+@router.post("/{job_id}/retry")
+async def retry_job(
+    job_id: str,
+    background_tasks=None,
+    user: str = Depends(get_current_user),
+    repo: JobRepository = Depends(get_job_repository),
+):
+    from fastapi import BackgroundTasks as _BackgroundTasks
+
+    job = repo.get_by_id(job_id)
+    if inspect.isawaitable(job):
+        job = await job
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    from api.routers.trigger import enqueue_scan_job
+    from fastapi import BackgroundTasks
+
+    # FastAPI injects BackgroundTasks when annotated; keep a local fallback for tests.
+    tasks = background_tasks if isinstance(background_tasks, BackgroundTasks) else BackgroundTasks()
+    return enqueue_scan_job(
+        repo,
+        tasks,
+        repo_url=getattr(job, "target_repo", None) or "",
+        branch=getattr(job, "target_branch", None) or "main",
+        commit=getattr(job, "target_commit", None),
+        triggered_by=user,
+        job_type="RETRY",
+    )
 
 
 @router.get("/{job_id}/logs", response_model=JobLogsResponse)

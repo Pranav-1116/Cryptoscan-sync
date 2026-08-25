@@ -64,6 +64,27 @@ class DeduplicationEngine:
                 bool(_get(item, "metadata", "is_hardcoded_key") or item.get("is_hardcoded_key"))
                 for item in members
             )
+            ranked = sorted(
+                members,
+                key=lambda item: _confidence_rank(
+                    str(_get(item, "metadata", "confidence") or item.get("confidence") or "LOW")
+                ),
+                reverse=True,
+            )
+            member_rows = []
+            for index, item in enumerate(ranked):
+                member_rows.append(
+                    {
+                        "evidence_id": item.get("finding_id") or item.get("evidence_id") or item.get("id"),
+                        "scanner_id": item.get("scanner_id"),
+                        "confidence": _get(item, "metadata", "confidence") or item.get("confidence") or "LOW",
+                        "role": "PRIMARY" if index == 0 else "SUPPORTING",
+                        "file_path": _get(item, "source", "file_path") or item.get("file_path"),
+                        "line_number": _get(item, "source", "line_number") or item.get("line_number"),
+                        "library": _get(item, "metadata", "library") or item.get("library"),
+                    }
+                )
+            primary = next((row for row in member_rows if row["role"] == "PRIMARY"), None)
             assets.append(
                 {
                     "algorithm": algorithm,
@@ -81,6 +102,8 @@ class DeduplicationEngine:
                     "source_language": _get(members[0], "source", "language")
                     or members[0].get("source_language"),
                     "dedup_key": dedup_key(members[0]),
+                    "primary_evidence_id": (primary or {}).get("evidence_id"),
+                    "members": member_rows,
                 }
             )
         return sorted(assets, key=lambda item: (item["file_path"], item["line_number"], item["algorithm"]))

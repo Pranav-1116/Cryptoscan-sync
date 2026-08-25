@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
-from api.dependencies import get_current_user, get_scan_repository
+from api.dependencies import get_current_user, get_job_repository, get_scan_repository
+from api.schemas.job_schemas import TriggerScanResponse
 from api.schemas.scan_schemas import ScanListResponse, ScanResponse
+from db.repositories.job_repository import JobRepository
 from db.repositories.scan_repository import ScanRepository
 
 router = APIRouter(prefix="/scans", tags=["scans"])
@@ -58,3 +60,27 @@ def get_scan(
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     return _to_response(scan)
+
+
+@router.post("/{scan_id}/retry", response_model=TriggerScanResponse)
+def retry_scan(
+    scan_id: str,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    jobs: JobRepository = Depends(get_job_repository),
+):
+    scan = scans.get_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    from api.routers.trigger import enqueue_scan_job
+
+    return enqueue_scan_job(
+        jobs,
+        background_tasks,
+        repo_url=scan.target_location,
+        branch=scan.target_branch or "main",
+        commit=scan.target_commit,
+        triggered_by=user,
+        job_type="RETRY",
+    )

@@ -39,6 +39,10 @@ class ComplexCondition(BaseCondition):
                 message=missing_scopes_message(params.get("required_scopes")),
             )
 
+        composed = self._evaluate_clauses(evidence_data, params)
+        if composed is not None:
+            return composed
+
         algorithm = str(evidence_data.get("algorithm") or "").upper()
         purpose = str(evidence_data.get("purpose") or "").upper()
         mode = str(evidence_data.get("mode") or "").upper()
@@ -108,3 +112,56 @@ class ComplexCondition(BaseCondition):
             )
 
         return EvaluationOutcome(result="PASS", message="Complex control requirements are satisfied")
+
+    def _evaluate_clauses(
+        self, evidence_data: dict[str, Any], params: dict[str, Any]
+    ) -> EvaluationOutcome | None:
+        operator = str(params.get("operator") or "").upper()
+        clauses = params.get("clauses") or params.get("conditions")
+        if params.get("all_of"):
+            operator = "ALL_OF"
+            clauses = params.get("all_of")
+        if params.get("any_of"):
+            operator = "ANY_OF"
+            clauses = params.get("any_of")
+        if not clauses:
+            return None
+        if operator not in {"ALL_OF", "ANY_OF"}:
+            operator = "ALL_OF"
+
+        from policy.conditions.condition_factory import ConditionFactory
+
+        factory = ConditionFactory()
+        outcomes: list[EvaluationOutcome] = []
+        for clause in clauses:
+            if not isinstance(clause, dict):
+                continue
+            ctype = str(clause.get("type") or clause.get("condition_type") or "")
+            cparams = clause.get("parameters") or clause.get("params") or {}
+            if not ctype:
+                continue
+            outcomes.append(factory.create(ctype).safe_evaluate(evidence_data, cparams))
+
+        if not outcomes:
+            return EvaluationOutcome(result="NOT_APPLICABLE", message="COMPLEX clause list was empty")
+
+        votes = [item.result for item in outcomes]
+        if all(item == "NOT_APPLICABLE" for item in votes):
+            return EvaluationOutcome(
+                result="NOT_APPLICABLE",
+                message="All COMPLEX clauses were not applicable",
+            )
+        if operator == "ANY_OF":
+            if any(item == "PASS" for item in votes):
+                return EvaluationOutcome(result="PASS", message="At least one COMPLEX clause passed")
+            if any(item == "WARN" for item in votes):
+                return EvaluationOutcome(result="WARN", message="COMPLEX ANY_OF produced a warning")
+            failed = next((item for item in outcomes if item.result == "FAIL"), outcomes[0])
+            return EvaluationOutcome(result="FAIL", message=failed.message)
+        applicable = [item for item in outcomes if item.result != "NOT_APPLICABLE"]
+        failed = [item for item in applicable if item.result == "FAIL"]
+        if failed:
+            return EvaluationOutcome(result="FAIL", message=failed[0].message)
+        if any(item.result == "WARN" for item in applicable):
+            return EvaluationOutcome(result="WARN", message="COMPLEX ALL_OF produced a warning")
+        return EvaluationOutcome(result="PASS", message="All COMPLEX clauses passed")

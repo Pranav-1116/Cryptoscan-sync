@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 
 from api.config.settings import get_settings
 from api.dependencies import get_job_repository, get_repo_config_repository
-from api.github.payload_parser import parse_push_event
+from api.github.payload_parser import parse_pull_request_event, parse_push_event
 from api.security.hmac_verifier import HMACVerifier
 from db.repositories.job_repository import JobRepository
 from db.repositories.repo_config_repository import RepoConfigRepository
@@ -39,7 +39,7 @@ async def github_webhook(
     if secret and not HMACVerifier(secret).verify(body, x_hub_signature_256):
         raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
-    if x_github_event and x_github_event != "push":
+    if x_github_event and x_github_event not in {"push", "pull_request"}:
         return {
             "accepted": True,
             "acknowledged": True,
@@ -93,7 +93,23 @@ async def github_webhook(
                 "queued": False,
                 "message": "repository not configured",
             }
-    elif not (getattr(cfg, "enabled", True) and getattr(cfg, "scan_on_push", True)):
+    elif not getattr(cfg, "enabled", True):
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "repository not configured",
+        }
+    elif x_github_event == "pull_request" and not getattr(
+        cfg, "scan_on_pr", getattr(cfg, "scan_on_push", True)
+    ):
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "repository not configured",
+        }
+    elif x_github_event != "pull_request" and not getattr(cfg, "scan_on_push", True):
         return {
             "accepted": True,
             "acknowledged": True,

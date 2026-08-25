@@ -95,19 +95,68 @@ class CbomGenerator:
             el.set("bom-ref", str(item.get("bom-ref") or ""))
             n = SubElement(el, "name")
             n.text = str(item.get("name") or "UNKNOWN")
+            crypto = item.get("cryptoProperties") or {}
+            if crypto:
+                props = SubElement(el, "cryptoProperties")
+                asset_type = SubElement(props, "assetType")
+                asset_type.text = str(crypto.get("assetType") or "algorithm")
+                if crypto.get("oid"):
+                    oid = SubElement(props, "oid")
+                    oid.text = str(crypto["oid"])
+            evidence = item.get("evidence") or {}
+            if evidence.get("file"):
+                ev = SubElement(el, "evidence")
+                occ = SubElement(ev, "occurrence")
+                loc = SubElement(occ, "location")
+                loc.text = str(evidence.get("file"))
+                if evidence.get("line") is not None:
+                    line = SubElement(occ, "line")
+                    line.text = str(evidence.get("line"))
         return tostring(root, encoding="unicode")
 
     def sign(self, bom: dict[str, Any], secret: str) -> dict[str, Any]:
-        payload = json.dumps(bom, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        unsigned = self._without_signature(bom)
+        payload = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
         digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        signed = dict(bom)
+        signed = dict(unsigned)
         metadata = dict(signed.get("metadata") or {})
-        properties = list(metadata.get("properties") or [])
+        properties = [
+            item
+            for item in list(metadata.get("properties") or [])
+            if item.get("name") not in {"cryptoscan:signature", "cryptoscan:signatureAlg"}
+        ]
         properties.append({"name": "cryptoscan:signature", "value": digest})
         properties.append({"name": "cryptoscan:signatureAlg", "value": "HMAC-SHA256"})
         metadata["properties"] = properties
         signed["metadata"] = metadata
         return signed
+
+    def verify(self, bom: dict[str, Any], secret: str) -> bool:
+        props = {item.get("name"): item.get("value") for item in ((bom.get("metadata") or {}).get("properties") or [])}
+        expected = props.get("cryptoscan:signature")
+        if not expected:
+            return False
+        recomputed = self.sign(self._without_signature(bom), secret)
+        actual = {
+            item.get("name"): item.get("value")
+            for item in ((recomputed.get("metadata") or {}).get("properties") or [])
+        }.get("cryptoscan:signature")
+        return hmac.compare_digest(str(expected), str(actual or ""))
+
+    def _without_signature(self, bom: dict[str, Any]) -> dict[str, Any]:
+        cleaned = dict(bom)
+        metadata = dict(cleaned.get("metadata") or {})
+        properties = [
+            item
+            for item in list(metadata.get("properties") or [])
+            if item.get("name") not in {"cryptoscan:signature", "cryptoscan:signatureAlg"}
+        ]
+        if properties:
+            metadata["properties"] = properties
+        else:
+            metadata.pop("properties", None)
+        cleaned["metadata"] = metadata
+        return cleaned
 
     def _component(self, record: Any) -> dict[str, Any]:
         if hasattr(record, "to_dict"):
@@ -150,6 +199,25 @@ class CbomGenerator:
                 "quantumVulnerable": normalized.get("quantum_vulnerable"),
             },
             "evidence": {
+                "identity": [
+                    {
+                        "field": "bom-ref",
+                        "confidence": 1,
+                        "methods": [
+                            {
+                                "technique": "source-code-analysis",
+                                "confidence": 0.9,
+                                "value": f"{data.get('file_path')}:{data.get('line_number')}",
+                            }
+                        ],
+                    }
+                ],
+                "occurrences": [
+                    {
+                        "location": data.get("file_path"),
+                        "line": data.get("line_number"),
+                    }
+                ],
                 "file": data.get("file_path"),
                 "line": data.get("line_number"),
                 "content_hash": data.get("content_hash"),

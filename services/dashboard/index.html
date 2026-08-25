@@ -244,6 +244,8 @@ async function renderScan(el) {
   const gateDecision = gate?.decision || sc.statistics?.gate?.decision || '—';
   el.innerHTML = `<div class="top"><div><h2>Scan detail</h2><p class="muted mono">${sc.target_location}</p></div>
     <div class="row" style="flex-wrap:wrap">
+      <button class="btn secondary" onclick="retryScan('${sc.scan_id}')">Retry scan</button>
+      ${githubLink(sc.target_location, sc.target_commit)}
       <button class="btn secondary" onclick="approveBaseline('${sc.scan_id}')">Approve baseline</button>
       <button class="btn secondary" onclick="verifyScan('${sc.scan_id}')">Verify chain</button>
       <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/cbom', 'cbom-${sc.scan_id}.json')">Export CBOM</button>
@@ -376,7 +378,7 @@ async function renderDrift(el) {
       <td>${badge(e.severity)}</td><td>${e.drift_type}</td>
       <td>${e.drift_details?.reason || e.drift_details?.algorithm || ''}</td>
       <td>${badge(e.resolution_status)}</td>
-      <td>${e.resolution_status==='OPEN' ? `<button class="btn secondary" onclick="ack('${e.drift_id}')">Acknowledge</button>` : ''}</td>
+      <td>${e.resolution_status==='OPEN' ? `<button class="btn secondary" onclick="ack('${e.drift_id}')">Acknowledge</button> <button class="btn secondary" onclick="resolveDrift('${e.drift_id}')">Resolve</button> <button class="btn secondary" onclick="falsePositive('${e.drift_id}')">False positive</button>` : ''}</td>
     </tr>`).join('') || '<tr><td colspan=5 class="muted">No drift events. Approve a baseline, then scan again.</td></tr>'}
     </tbody></table></div>`;
 }
@@ -384,6 +386,40 @@ async function renderDrift(el) {
 async function ack(id) {
   await api('/drift/' + id + '/acknowledge', { method: 'POST', body: '{}' });
   renderDrift(document.getElementById('main'));
+}
+
+async function resolveDrift(id) {
+  await api('/drift/' + id + '/resolve', { method: 'POST', body: JSON.stringify({ notes: 'Resolved from dashboard' }) });
+  renderDrift(document.getElementById('main'));
+}
+
+async function falsePositive(id) {
+  await api('/drift/' + id + '/false-positive', { method: 'POST', body: JSON.stringify({ notes: 'Marked false positive' }) });
+  renderDrift(document.getElementById('main'));
+}
+
+async function retryScan(scanId) {
+  const data = await api('/scans/' + scanId + '/retry', { method: 'POST' });
+  go('job', { jobId: data.job_id });
+}
+
+function githubLink(target, commit) {
+  const url = githubBrowseUrl(target, commit);
+  if (!url) return '';
+  return `<a class="btn secondary" href="${url}" target="_blank" rel="noopener">View on GitHub</a>`;
+}
+
+function githubBrowseUrl(target, commit) {
+  if (!target) return '';
+  let raw = String(target);
+  if (raw.endsWith('.git')) raw = raw.slice(0, -4);
+  if (raw.startsWith('git@github.com:')) raw = 'https://github.com/' + raw.slice('git@github.com:'.length);
+  const marker = 'github.com/';
+  const idx = raw.indexOf(marker);
+  if (idx === -1) return '';
+  const repo = raw.slice(idx + marker.length).split('/').slice(0, 2).join('/');
+  if (!repo || repo.indexOf('/') === -1) return '';
+  return commit ? ('https://github.com/' + repo + '/tree/' + commit) : ('https://github.com/' + repo);
 }
 
 async function renderAssets(el) {
@@ -520,7 +556,7 @@ async function renderContainer(el) {
   const data = await api('/container/scans');
   const vulns = await api('/vulns?page_size=50');
   el.innerHTML = `<div class="top"><h2>Container inventory</h2>
-    <button class="btn" onclick="scanContainer()">Scan filesystem</button></div>
+    <button class="btn" onclick="scanContainer()">Scan image or filesystem</button></div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card"><div class="label">Recent container scans</div>
         <table><thead><tr><th>Target</th><th>Pkgs</th><th>Libs</th><th>CVEs</th></tr></thead>
@@ -540,9 +576,17 @@ async function renderContainer(el) {
 }
 
 async function scanContainer() {
-  const path = prompt('Filesystem path to scan', '/home/user/CryproScan/demo/polyglot-app');
-  if (!path) return;
-  await api('/container/scan', { method: 'POST', body: JSON.stringify({ path })});
+  const target = prompt('Image ref, docker-save .tar, or filesystem path', '/home/user/CryproScan/demo/polyglot-app');
+  if (!target) return;
+  let body;
+  if (target.endsWith('.tar') || target.endsWith('.tar.gz') || target.endsWith('.tgz')) {
+    body = { archive: target, live_cve: true };
+  } else if (target.startsWith('/') || target.startsWith('.') || target.startsWith('local://') || target.startsWith('file://')) {
+    body = { path: target.replace('local://', '').replace('file://', ''), live_cve: true };
+  } else {
+    body = { image: target, live_cve: true };
+  }
+  await api('/container/scan', { method: 'POST', body: JSON.stringify(body) });
   renderContainer(document.getElementById('main'));
 }
 

@@ -26,3 +26,25 @@ class C {
     rsa = next(f for f in findings if f.crypto.algorithm == "RSA")
     assert rsa.crypto.key_size == 2048
     assert any(f.metadata.is_hardcoded_key for f in findings)
+
+
+def test_csharp_parser_finds_nsec(temp_workspace):
+    path = temp_workspace / "NsecUtil.cs"
+    path.write_text(
+        """
+using NSec.Cryptography;
+class C {
+  void Run() {
+    var aead = AeadAlgorithm.ChaCha20Poly1305;
+    var mac = NSec.Cryptography.HmacSha256;
+    var sig = Ed25519;
+  }
+}
+"""
+    )
+    findings = parse_csharp_file(path, temp_workspace)
+    algos = {f.crypto.algorithm for f in findings}
+    assert "ChaCha20-Poly1305" in algos
+    assert "HMAC-SHA256" in algos
+    assert "Ed25519" in algos
+    assert all(f.metadata.library == "NSec" for f in findings)

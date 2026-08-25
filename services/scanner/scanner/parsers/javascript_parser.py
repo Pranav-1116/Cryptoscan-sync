@@ -38,6 +38,22 @@ WEBCRYPTO = re.compile(
     r"""(?:crypto\.subtle|window\.crypto\.subtle)\.(\w+)\s*\(""",
     re.IGNORECASE,
 )
+WEBCRYPTO_NAMED = re.compile(
+    r"""(?:crypto\.subtle|window\.crypto\.subtle)\.(\w+)\(\s*\{\s*name\s*:\s*['\"]([^'\"]+)['\"]""",
+    re.IGNORECASE,
+)
+WEBCRYPTO_DIGEST = re.compile(
+    r"""(?:crypto\.subtle|window\.crypto\.subtle)\.digest\(\s*['\"]([^'\"]+)['\"]""",
+    re.IGNORECASE,
+)
+FORGE_MD = re.compile(r"""forge\.md\.(md5|sha1|sha256|sha384|sha512)\b""", re.IGNORECASE)
+FORGE_CIPHER = re.compile(
+    r"""forge\.cipher\.createCipher\(\s*['\"]([^'\"]+)['\"]""",
+    re.IGNORECASE,
+)
+FORGE_RSA = re.compile(r"""forge\.pki\.rsa\.(generateKeyPair|setPublicKey|setPrivateKey)\b""", re.IGNORECASE)
+FORGE_HMAC = re.compile(r"""forge\.hmac\.(create|start)\b""", re.IGNORECASE)
+FORGE_PBKDF = re.compile(r"""forge\.pkcs5\.pbkdf2\b""", re.IGNORECASE)
 JWT_SIGN = re.compile(
     r"""jwt\.sign\s*\((?:[^;]{0,200}?algorithm\s*:\s*['"]([^'"]+)['"])?""",
     re.IGNORECASE | re.DOTALL,
@@ -140,7 +156,32 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         add(match, api_type="KEY_GENERATOR", algorithm="SCRYPT", purpose="PASSWORD_HASHING", library="node-crypto")
     for match in NODE_RANDOM.finditer(source):
         add(match, api_type="KEY_GENERATOR", algorithm="CSPRNG", purpose="KEY_GENERATION", library="node-crypto")
+    claimed_webcrypto: set[int] = set()
+    for match in WEBCRYPTO_NAMED.finditer(source):
+        method, raw_algo = match.group(1), match.group(2)
+        claimed_webcrypto.add(match.start())
+        algo, mode, purpose, api_type = _webcrypto_spec(method, raw_algo)
+        add(
+            match,
+            api_type=api_type,
+            algorithm=algo,
+            mode=mode,
+            purpose=purpose,
+            library="Web Crypto API",
+            raw_transformation=raw_algo,
+        )
+    for match in WEBCRYPTO_DIGEST.finditer(source):
+        claimed_webcrypto.add(match.start())
+        add(
+            match,
+            api_type="MESSAGE_DIGEST",
+            algorithm=HASH_MAP.get(match.group(1).lower(), match.group(1).upper()),
+            purpose="HASHING",
+            library="Web Crypto API",
+        )
     for match in WEBCRYPTO.finditer(source):
+        if match.start() in claimed_webcrypto:
+            continue
         method = match.group(1)
         purpose = {
             "encrypt": "ENCRYPTION",
@@ -160,6 +201,37 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             confidence="MEDIUM",
             confidence_reason="WebCrypto call without algorithm object inspection",
         )
+    for match in FORGE_MD.finditer(source):
+        add(
+            match,
+            api_type="MESSAGE_DIGEST",
+            algorithm=HASH_MAP.get(match.group(1).lower(), match.group(1).upper()),
+            purpose="HASHING",
+            library="node-forge",
+        )
+    for match in FORGE_CIPHER.finditer(source):
+        raw = match.group(1)
+        algo = "AES" if "AES" in raw.upper() else ("3DES" if "3DES" in raw.upper() or "DES-EDE" in raw.upper() else raw.upper())
+        mode = None
+        for item in ("GCM", "CBC", "ECB", "CFB", "OFB", "CTR"):
+            if item in raw.upper():
+                mode = item
+                break
+        add(
+            match,
+            api_type="CIPHER_INSTANCE",
+            algorithm=algo,
+            mode=mode,
+            purpose="ENCRYPTION",
+            library="node-forge",
+            raw_transformation=raw,
+        )
+    for match in FORGE_RSA.finditer(source):
+        add(match, api_type="KEY_PAIR_GENERATOR", algorithm="RSA", purpose="KEY_GENERATION", library="node-forge")
+    for match in FORGE_HMAC.finditer(source):
+        add(match, api_type="MAC", algorithm="HMAC", purpose="MAC_GENERATION", library="node-forge")
+    for match in FORGE_PBKDF.finditer(source):
+        add(match, api_type="KEY_GENERATOR", algorithm="PBKDF2", purpose="PASSWORD_HASHING", library="node-forge")
     for match in JWT_SIGN.finditer(source):
         add(
             match,
@@ -201,6 +273,42 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             )
     return findings
 
+
+
+
+def _webcrypto_spec(method: str, raw_algo: str) -> tuple[str, str | None, str, str]:
+    upper = raw_algo.upper().replace("_", "-")
+    purpose = {
+        "encrypt": "ENCRYPTION",
+        "decrypt": "DECRYPTION",
+        "sign": "SIGNING",
+        "verify": "VERIFICATION",
+        "digest": "HASHING",
+        "generateKey": "KEY_GENERATION",
+        "importKey": "KEY_GENERATION",
+        "deriveBits": "KEY_EXCHANGE",
+        "deriveKey": "KEY_EXCHANGE",
+    }.get(method, "UNKNOWN")
+    mode = None
+    if "GCM" in upper:
+        mode = "GCM"
+    elif "CBC" in upper:
+        mode = "CBC"
+    elif "CTR" in upper:
+        mode = "CTR"
+    if "AES" in upper:
+        return "AES", mode, purpose, "CIPHER_INSTANCE" if purpose in {"ENCRYPTION", "DECRYPTION"} else "KEY_GENERATOR"
+    if "RSA" in upper:
+        return "RSA", None, purpose, "KEY_PAIR_GENERATOR" if purpose == "KEY_GENERATION" else "SIGNATURE"
+    if "ECDSA" in upper or "ECDH" in upper:
+        return "ECDSA" if "ECDSA" in upper else "ECDH", None, purpose, "KEY_PAIR_GENERATOR"
+    if upper.startswith("SHA"):
+        return HASH_MAP.get(raw_algo.lower(), upper), None, "HASHING", "MESSAGE_DIGEST"
+    if "HMAC" in upper:
+        return "HMAC", None, "MAC_GENERATION", "MAC"
+    if "PBKDF2" in upper:
+        return "PBKDF2", None, "PASSWORD_HASHING", "KEY_GENERATOR"
+    return raw_algo, mode, purpose, "CIPHER_INSTANCE"
 
 def _parse_node_cipher(spec: str) -> tuple[str, str | None, int | None]:
     parts = spec.lower().replace("_", "-").split("-")

@@ -1,4 +1,4 @@
-"""Filesystem / image-root container scanner (no binary disassembly)."""
+"""Filesystem / image-root / registry-image container scanner."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-from container_scanner.core.versioning import version_matches
+from container_scanner.cve.resolver import VulnerabilityResolver
 from container_scanner.fingerprints.repository import FingerprintRepository
 from container_scanner.parsers.os_packages import (
     parse_apk_installed,
@@ -28,7 +28,17 @@ from container_scanner.parsers.package_parsers import (
 logger = logging.getLogger(__name__)
 
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
-SKIP_DIRS = {".git", "node_modules", ".venv", "__pycache__", ".mypy_cache"}
+SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    ".venv",
+    "__pycache__",
+    ".mypy_cache",
+    "proc",
+    "sys",
+    "dev",
+    "run",
+}
 
 
 def _load_json(name: str) -> dict[str, Any]:
@@ -37,26 +47,32 @@ def _load_json(name: str) -> dict[str, Any]:
 
 
 class ContainerScanner:
-    def __init__(self, fingerprint_db: dict | None = None, cve_db: dict | None = None):
+    def __init__(
+        self,
+        fingerprint_db: dict | None = None,
+        cve_db: dict | None = None,
+        *,
+        live_cve: bool | None = None,
+        resolver: VulnerabilityResolver | None = None,
+    ):
         self.fingerprints = fingerprint_db or _load_json("fingerprint_db.json")
         self.cves = cve_db or _load_json("cve_db.json")
         self.catalog = FingerprintRepository(self.fingerprints)
+        self.resolver = resolver or VulnerabilityResolver(self.cves, live=live_cve)
 
     def scan_filesystem(self, root: str | Path, *, scan_id: str | None = None) -> dict[str, Any]:
         root_path = Path(root)
         packages = list(self._discover_packages(root_path))
-        libraries = [self._fingerprint(pkg) for pkg in packages]
-        libraries = [item for item in libraries if item]
+        libraries = [item for item in (self._fingerprint(pkg) for pkg in packages) if item]
         binaries = list(self._discover_binaries(root_path))
-        vulns = []
-        for pkg in packages:
-            vulns.extend(self._lookup_cves(pkg))
+        vulns = self.resolver.lookup(packages)
         findings = self._to_findings(libraries, binaries, vulns)
         return {
             "scan_id": scan_id or str(uuid.uuid4()),
             "scanner_id": "container-scanner-v1.0",
             "scanner_version": "1.0.0",
             "target": str(root_path),
+            "target_kind": "filesystem",
             "scanned_at": datetime.now(timezone.utc).isoformat(),
             "packages": packages,
             "libraries": libraries,
@@ -65,11 +81,45 @@ class ContainerScanner:
             "findings": findings,
         }
 
+    def scan_image(
+        self,
+        reference: str,
+        *,
+        scan_id: str | None = None,
+        workdir: str | Path | None = None,
+    ) -> dict[str, Any]:
+        from container_scanner.image.puller import resolve_image
+
+        extracted = resolve_image(reference, workdir=workdir)
+        result = self.scan_filesystem(extracted.root, scan_id=scan_id)
+        result["target"] = reference
+        result["target_kind"] = extracted.source
+        result["image"] = extracted.to_dict()
+        return result
+
+    def scan(
+        self,
+        *,
+        path: str | Path | None = None,
+        image: str | None = None,
+        archive: str | None = None,
+        scan_id: str | None = None,
+        workdir: str | Path | None = None,
+    ) -> dict[str, Any]:
+        if archive:
+            return self.scan_image(str(archive), scan_id=scan_id, workdir=workdir)
+        if image:
+            return self.scan_image(image, scan_id=scan_id, workdir=workdir)
+        if path:
+            return self.scan_filesystem(path, scan_id=scan_id)
+        raise ValueError("path, image, or archive is required")
+
     def _discover_packages(self, root: Path) -> Iterable[dict[str, Any]]:
         for path in root.rglob("*"):
             if not path.is_file() or any(part in SKIP_DIRS for part in path.parts):
                 continue
             name = path.name.lower()
+            posix = path.as_posix()
             if name == "requirements.txt":
                 yield from parse_requirements(path)
             elif name == "package.json":
@@ -80,10 +130,10 @@ class ContainerScanner:
                 yield from parse_csproj(path)
             elif name == "go.mod":
                 yield from parse_gomod(path)
-            elif path.as_posix().endswith("/var/lib/dpkg/status") or name == "dpkg-status":
+            elif posix.endswith("/var/lib/dpkg/status") or name == "dpkg-status":
                 yield from parse_dpkg_status(path)
-            elif path.as_posix().endswith("/lib/apk/db/installed") or name in {"apk-installed", "installed"}:
-                if "apk" in path.as_posix() or name == "apk-installed":
+            elif posix.endswith("/lib/apk/db/installed") or name in {"apk-installed", "installed"}:
+                if "apk" in posix or name == "apk-installed":
                     yield from parse_apk_installed(path)
             elif name in {"rpm-packages.txt", "rpm-qa.txt"}:
                 yield from parse_rpm_qa(path)
@@ -131,26 +181,6 @@ class ContainerScanner:
             "deprecated": bool(info.get("deprecated")),
             "language": info.get("language"),
         }
-
-    def _lookup_cves(self, package: dict[str, Any]) -> list[dict[str, Any]]:
-        matches = []
-        name = (package.get("name") or "").lower()
-        version = package.get("version")
-        for advisory in self.cves.get("advisories") or []:
-            if str(advisory.get("package") or "").lower() != name:
-                continue
-            if version_matches(version, str(advisory.get("affected") or "*")):
-                matches.append(
-                    {
-                        "cve": advisory.get("cve"),
-                        "package": name,
-                        "version": version,
-                        "severity": advisory.get("severity"),
-                        "summary": advisory.get("summary"),
-                        "manifest": package.get("manifest"),
-                    }
-                )
-        return matches
 
     def _to_findings(
         self,
@@ -232,7 +262,7 @@ class ContainerScanner:
                     },
                     "metadata": {
                         "confidence": "HIGH",
-                        "confidence_reason": f"local CVE match {vuln.get('cve')}",
+                        "confidence_reason": f"{vuln.get('source') or 'local'} CVE match {vuln.get('cve')}",
                         "library": vuln.get("package"),
                         "is_hardcoded_key": False,
                     },

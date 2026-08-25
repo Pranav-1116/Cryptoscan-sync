@@ -26,3 +26,8 @@ def test_cbom_json_and_xml_and_signature():
     signed = generator.sign(bom, "secret")
     props = {p["name"]: p["value"] for p in signed["metadata"]["properties"]}
     assert len(props["cryptoscan:signature"]) == 64
+    assert generator.verify(signed, "secret")
+    assert not generator.verify(signed, "wrong")
+    evidence = bom["components"][0]["evidence"]
+    assert evidence["identity"][0]["field"] == "bom-ref"
+    assert evidence["occurrences"][0]["location"] == "a.py"

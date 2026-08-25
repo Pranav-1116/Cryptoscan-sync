@@ -23,3 +23,7 @@ def test_merges_same_location_across_scanners():
     assert assets[0]["confidence"] == "VERIFIED"
     assert assets[0]["occurrence_count"] == 2
     assert set(assets[0]["evidence_ids"]) == {"a", "b"}
+    roles = {row["evidence_id"]: row["role"] for row in assets[0]["members"]}
+    assert roles["a"] == "PRIMARY"
+    assert roles["b"] == "SUPPORTING"
+    assert assets[0]["primary_evidence_id"] == "a"

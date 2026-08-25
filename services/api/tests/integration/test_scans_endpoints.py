@@ -59,3 +59,18 @@ class TestScanEndpoints:
     async def test_list_scans_unauthenticated(self, client: AsyncClient):
         response = await client.get("/api/v1/scans")
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_retry_scan(
+        self,
+        authenticated_client: AsyncClient,
+        mock_scan_repo: MagicMock,
+        mock_job_repo: MagicMock,
+    ):
+        mock_scan_repo.get_by_id = MagicMock(return_value=_scan())
+        mock_job_repo.create = MagicMock(
+            return_value=SimpleNamespace(job_id="retry-1", status="QUEUED", created_at=datetime.utcnow())
+        )
+        response = await authenticated_client.post("/api/v1/scans/scan-1/retry")
+        assert response.status_code == 200
+        assert response.json()["job_id"] == "retry-1"

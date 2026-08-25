@@ -53,3 +53,25 @@ class TestDriftEndpoints:
         )
         assert response.status_code == 200
         assert response.json()["resolution_status"] == "ACKNOWLEDGED"
+
+    @pytest.mark.asyncio
+    async def test_resolve_and_false_positive(self, authenticated_client: AsyncClient, mock_drift_repo: MagicMock):
+        mock_drift_repo.resolve = MagicMock(
+            return_value=_event(resolution_status="RESOLVED", resolved_by="testuser")
+        )
+        mock_drift_repo.mark_false_positive = MagicMock(
+            return_value=_event(resolution_status="FALSE_POSITIVE", resolved_by="testuser")
+        )
+        resolved = await authenticated_client.post("/api/v1/drift/drift-1/resolve", json={"notes": "fixed"})
+        assert resolved.status_code == 200
+        assert resolved.json()["resolution_status"] == "RESOLVED"
+        fp = await authenticated_client.post("/api/v1/drift/drift-1/false-positive", json={"notes": "noise"})
+        assert fp.status_code == 200
+        assert fp.json()["resolution_status"] == "FALSE_POSITIVE"
+
+    @pytest.mark.asyncio
+    async def test_digest(self, authenticated_client: AsyncClient, mock_drift_repo: MagicMock):
+        mock_drift_repo.list_since = MagicMock(return_value=[_event()])
+        response = await authenticated_client.get("/api/v1/drift/digest")
+        assert response.status_code == 200
+        assert response.json()["total"] == 1

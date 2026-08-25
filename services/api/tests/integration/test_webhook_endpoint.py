@@ -195,3 +195,42 @@ class TestWebhookEndpoint:
 
         assert response.status_code == 200
         assert response.json()["queued"] is False
+
+    @pytest.mark.asyncio
+    async def test_pull_request_event_queues_job(
+        self,
+        client: AsyncClient,
+        mock_repo_config_repo: MagicMock,
+        mock_job_repo: MagicMock,
+    ):
+        mock_repo_config = MagicMock()
+        mock_repo_config.enabled = True
+        mock_repo_config.scan_on_push = True
+        mock_repo_config.scan_on_pr = True
+        mock_repo_config_repo.get_by_url = AsyncMock(return_value=mock_repo_config)
+        mock_job_repo.create_from_webhook = AsyncMock(return_value=MagicMock(job_id="pr-job"))
+        payload = {
+            "action": "opened",
+            "repository": GITHUB_PUSH_PAYLOAD["repository"],
+            "pull_request": {
+                "number": 7,
+                "title": "crypto",
+                "user": {"login": "ada"},
+                "head": {"sha": "a1b2c3d4e5f6789012345678901234567890abcd", "ref": "feature/pr"},
+            },
+        }
+        raw = json.dumps(payload).encode()
+        sig = _sign_payload(raw, WEBHOOK_SECRET)
+        response = await client.post(
+            "/api/v1/webhooks/github",
+            content=raw,
+            headers={
+                "X-GitHub-Event": "pull_request",
+                "X-Hub-Signature-256": sig,
+                "Content-Type": "application/json",
+            },
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["queued"] is True
+        assert body["job_id"] == "pr-job"

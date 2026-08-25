@@ -290,7 +290,7 @@ class PipelineRunner:
         except Exception:
             logger.debug("container_scanner_unavailable")
             return
-        result = ContainerScanner().scan_filesystem(root, scan_id=ctx.scan_id)
+        result = ContainerScanner(live_cve=False).scan_filesystem(root, scan_id=ctx.scan_id)
         ctx.container_result = result
         ctx.findings.extend(result.get("findings") or [])
         ctx.scan_meta["container"] = {
