@@ -23,6 +23,10 @@ ALIASES = {
     "libcrypto.so.3": "openssl",
     "libssl.so.3": "openssl",
     "openssl": "openssl",
+    "libsodium": "libsodium",
+    "libmbedcrypto": "mbedtls",
+    "libmbedtls": "mbedtls",
+    "mbedtls": "mbedtls",
 }
 
 
@@ -37,23 +41,27 @@ class FingerprintRepository:
 
     def _load_seed_hashes(self) -> dict[str, dict[str, Any]]:
         hashes: dict[str, dict[str, Any]] = {}
-        seed_dir = DATA_DIR / "seed"
-        if not seed_dir.is_dir():
-            return hashes
-        for path in seed_dir.glob("*.json"):
-            try:
-                payload = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+        seed_dirs = (
+            DATA_DIR / "seed",
+            Path(__file__).resolve().parents[1] / "fingerprint_db" / "seed_data",
+        )
+        for seed_dir in seed_dirs:
+            if not seed_dir.is_dir():
                 continue
-            library = payload.get("library") or path.stem
-            for entry in payload.get("entries") or []:
-                digest = str(entry.get("sha256") or "").lower()
-                if digest:
-                    hashes[digest] = {
-                        "library": library,
-                        "version": entry.get("version"),
-                        "file": entry.get("file"),
-                    }
+            for path in seed_dir.glob("*.json"):
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                library = payload.get("library") or path.stem
+                for entry in payload.get("entries") or []:
+                    digest = str(entry.get("sha256") or "").lower()
+                    if digest:
+                        hashes[digest] = {
+                            "library": library,
+                            "version": entry.get("version"),
+                            "file": entry.get("file"),
+                        }
         return hashes
 
     def lookup_hash(self, digest: str | None) -> dict[str, Any] | None:
@@ -90,6 +98,8 @@ class FingerprintRepository:
             return self.lookup("openssl")
         if "libsodium" in lower:
             return self.lookup("libsodium")
+        if "mbedtls" in lower or "mbedcrypto" in lower:
+            return self.lookup("mbedtls")
         if "bcprov" in lower or "bcpkix" in lower or "bouncycastle" in lower:
             return self.lookup("bouncycastle")
         if "commons-codec" in lower:

@@ -8,6 +8,7 @@
     "pynacl": {"vendor": "pyca", "algorithms": ["XSalsa20-Poly1305", "Ed25519"], "language": "PYTHON"},
     "openssl": {"vendor": "OpenSSL", "algorithms": ["AES", "RSA", "ECDSA", "SHA-256", "TLS"], "language": "C"},
     "libsodium": {"vendor": "jedisct1", "algorithms": ["X25519", "Ed25519", "ChaCha20"], "language": "C"},
+    "mbedtls": {"vendor": "Mbed-TLS", "algorithms": ["AES", "RSA", "ECDSA", "SHA-256", "TLS"], "language": "C"},
     "bouncycastle": {"vendor": "Legion of the Bouncy Castle", "algorithms": ["AES", "RSA", "SHA-256"], "language": "JAVA"},
     "commons-codec": {"vendor": "Apache", "algorithms": ["MD5", "SHA-1", "SHA-256"], "language": "JAVA"},
     "jsonwebtoken": {"vendor": "auth0", "algorithms": ["HS256", "RS256"], "language": "JAVASCRIPT"},

@@ -20,4 +20,5 @@ def test_spec_named_cbom_modules_round_trip():
     assert keys.verify(again)
     assert CbomValidator().validate(bom)["ok"]
     assert not CbomValidator().validate({"bomFormat": "nope"})["ok"]
+    assert "bomFormat must be CycloneDX" in CbomValidator().validate({"bomFormat": "nope"})["errors"]
     assert load_settings().spec_version == "1.5"

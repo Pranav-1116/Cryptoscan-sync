@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
-PRIMITIVES = {
+import json
+from pathlib import Path
+
+_MAP = Path(__file__).resolve().parents[1] / "data" / "primitive_map.json"
+_LOADED: dict[str, str] = {}
+if _MAP.is_file():
+    try:
+        data = json.loads(_MAP.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            _LOADED = {str(k).upper(): str(v) for k, v in data.items()}
+    except Exception:
+        _LOADED = {}
+
+PRIMITIVES = _LOADED or {
     "AES": "block-cipher",
     "DES": "block-cipher",
     "3DES": "block-cipher",

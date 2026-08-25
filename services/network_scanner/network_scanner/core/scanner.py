@@ -38,6 +38,7 @@ class NetworkTlsScanner:
         for candidate in (
             root_path / "config" / "network-scan-targets.yaml",
             root_path / "network-scan-targets.yaml",
+            Path(__file__).resolve().parents[1] / "config" / "scan_targets.yaml",
             Path(os.environ.get("CRYPTOSCAN_ROOT") or ".") / "config" / "network-scan-targets.yaml",
         ):
             targets.extend(load_targets(candidate))

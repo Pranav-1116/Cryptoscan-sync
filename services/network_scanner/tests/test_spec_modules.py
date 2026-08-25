@@ -22,6 +22,8 @@ def test_envoy_parser_and_inventory_helpers():
     )
     alerts = alert_expiring(merged, days=30)
     assert alerts[0]["severity"] == "HIGH"
+    assert "expires" in (alerts[0].get("body") or "").lower()
+    assert "Certificate" in (alerts[0].get("html_body") or "")
     finding = NetworkFinding.from_dict(line)
     assert finding.algorithm
     assert classify_ssl_error("wrong version number") == "PROTOCOL_VERSION_MISMATCH"

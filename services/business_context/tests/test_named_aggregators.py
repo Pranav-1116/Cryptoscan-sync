@@ -40,6 +40,7 @@ def test_named_aggregators_and_notifiers():
     assert notify_executives(assets)
     alerts = StakeholderAlerter().alert(assets)
     assert alerts
+    assert "<h2>" in (alerts[0].get("html_body") or "")
     score = PriorityScore.compute(revenue_daily=2_000_000, customer_count=10, compliance_fail=True)
     assert score.label == "P0"
     assert score.to_dict()["priority_score"] > 0

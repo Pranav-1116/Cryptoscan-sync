@@ -1,0 +1,7 @@
+{
+  "library": "libsodium",
+  "entries": [
+    {"version": "1.0.18", "file": "libsodium.so.23", "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"},
+    {"version": "1.0.19", "file": "libsodium.so.26", "sha256": "1111111111111111111111111111111111111111111111111111111111111111"}
+  ]
+}

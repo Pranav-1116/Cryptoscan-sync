@@ -47,6 +47,18 @@ def notify_stakeholders(assets: Iterable[Mapping[str, Any]], *, smtp_host: str |
             scopes=", ".join(ctx.get("compliance_scopes") or []),
         )
         exec_body = None
+        html_body = render_template(
+            "business_owner_alert.html",
+            owner_name=owners[0] if owners else "owner",
+            process_name=processes[0] if processes else "unknown process",
+            system_name=asset.get("system_id") or "system",
+            algorithm=asset.get("algorithm"),
+            file_path=asset.get("file_path"),
+            compliance_status=asset.get("compliance_status") or "FAIL",
+            revenue_daily=ctx.get("total_revenue_at_risk"),
+            customer_count=ctx.get("total_customers_at_risk"),
+            scopes=", ".join(ctx.get("compliance_scopes") or []),
+        )
         if float(ctx.get("total_revenue_at_risk") or 0) >= 1_000_000:
             exec_body = render_template(
                 "executive_alert.txt",
@@ -58,6 +70,18 @@ def notify_stakeholders(assets: Iterable[Mapping[str, Any]], *, smtp_host: str |
                 algorithm=asset.get("algorithm"),
                 compliance_status=asset.get("compliance_status") or "FAIL",
             )
+            exec_html = render_template(
+                "executive_alert.html",
+                sponsor_role="CFO",
+                process_name=processes[0] if processes else "unknown process",
+                revenue_daily=ctx.get("total_revenue_at_risk"),
+                customer_count=ctx.get("total_customers_at_risk"),
+                owner_name=owners[0] if owners else "owner",
+                algorithm=asset.get("algorithm"),
+                compliance_status=asset.get("compliance_status") or "FAIL",
+            )
+        else:
+            exec_html = None
         payload = {
             "algorithm": asset.get("algorithm"),
             "file_path": asset.get("file_path"),
@@ -65,7 +89,9 @@ def notify_stakeholders(assets: Iterable[Mapping[str, Any]], *, smtp_host: str |
             "revenue": ctx.get("total_revenue_at_risk"),
             "message": body.splitlines()[0] if body else f"P0 crypto risk: {asset.get('algorithm')}",
             "body": body,
+            "html_body": html_body,
             "executive_body": exec_body,
+            "executive_html": exec_html,
         }
         logger.warning("stakeholder_alert %s", payload.get("headline") or payload.get("algorithm"))
         sent.append(payload)

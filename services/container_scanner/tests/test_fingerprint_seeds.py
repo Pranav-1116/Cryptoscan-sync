@@ -7,3 +7,9 @@ def test_seed_hashes_are_loadable():
     assert hit is not None
     assert hit["library"] == "OpenSSL"
     assert repo.lookup_hash("missing") is None
+    sodium = repo.lookup_hash("ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")
+    assert sodium is not None
+    assert sodium["library"] == "libsodium"
+    mbedtls = repo.match_binary("libmbedtls.so.21")
+    assert mbedtls is not None
+    assert "AES" in (mbedtls.get("algorithms") or [])
