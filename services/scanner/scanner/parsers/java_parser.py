@@ -163,6 +163,18 @@ BC_PROVIDER = re.compile(
     r"""(?:Cipher|MessageDigest|KeyGenerator|Signature|Mac)\.getInstance\s*\(\s*[\"'][^\"']+[\"']\s*,\s*[\"']BC[\"']""",
     re.MULTILINE,
 )
+HOSTNAME_VERIFIER = re.compile(
+    r"""(?:setHostnameVerifier|setDefaultHostnameVerifier)\s*\(""",
+    re.MULTILINE,
+)
+ALLOW_ALL_HOSTS = re.compile(
+    r"""ALLOW_ALL_HOSTNAME_VERIFIER|NoopHostnameVerifier|TrustAll(?:Host|Trust)?""",
+    re.MULTILINE,
+)
+EMPTY_TRUST_MANAGER = re.compile(
+    r"""checkServerTrusted\s*\([^)]*\)\s*\{\s*\}""",
+    re.MULTILINE,
+)
 
 
 @dataclass
@@ -223,6 +235,7 @@ class JavaParser:
         findings.extend(self._detect_key_agreement(source, source_lines, context))
         findings.extend(self._detect_secure_random(source, source_lines, context))
         findings.extend(self._detect_pbe(source, source_lines, context))
+        findings.extend(self._detect_insecure_tls(source, source_lines, context))
         self._mark_bouncycastle(source, findings)
 
         log.debug("file_parsed", findings_count=len(findings))
@@ -834,6 +847,44 @@ class JavaParser:
                     library="javax.crypto",
                     is_string_literal=True,
                     raw_transformation="PBEKeySpec",
+                )
+            )
+        return findings
+
+    def _detect_insecure_tls(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        findings: list[RawFinding] = []
+        for match in list(HOSTNAME_VERIFIER.finditer(source)) + list(ALLOW_ALL_HOSTS.finditer(source)):
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_AGREEMENT.value,
+                    algorithm="TLS",
+                    purpose=Purpose.NETWORK_ENCRYPTION.value,
+                    library="javax.net.ssl",
+                    is_string_literal=True,
+                    raw_transformation=match.group(0)[:80],
+                )
+            )
+        for match in EMPTY_TRUST_MANAGER.finditer(source):
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_AGREEMENT.value,
+                    algorithm="TRUST-ALL",
+                    purpose=Purpose.NETWORK_ENCRYPTION.value,
+                    library="javax.net.ssl",
+                    is_string_literal=True,
+                    raw_transformation="checkServerTrusted{}",
                 )
             )
         return findings

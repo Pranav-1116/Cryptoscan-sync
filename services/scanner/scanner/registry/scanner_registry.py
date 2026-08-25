@@ -7,10 +7,12 @@ from pathlib import Path
 
 from scanner.detectors.java.jar_string_scanner import scan_jar
 from scanner.models.raw_finding import RawFinding
+from scanner.parsers.config_crypto_parser import parse_config_file
 from scanner.parsers.csharp_parser import parse_csharp_file
 from scanner.parsers.go_parser import parse_go_file
 from scanner.parsers.java_parser import parse_java_file
 from scanner.parsers.javascript_parser import parse_javascript_file
+from scanner.parsers.kotlin_parser import parse_kotlin_file
 from scanner.parsers.php_parser import parse_php_file
 from scanner.parsers.python_parser import parse_python_file
 from scanner.parsers.ruby_parser import parse_ruby_file
@@ -20,6 +22,9 @@ Parser = Callable[[Path, Path | None], list[RawFinding]]
 
 LANGUAGE_PARSERS: dict[str, Parser] = {
     "JAVA": parse_java_file,
+    "KOTLIN": parse_kotlin_file,
+    "SCALA": parse_kotlin_file,
+    "CONFIG": parse_config_file,
     "PYTHON": parse_python_file,
     "JAVASCRIPT": parse_javascript_file,
     "TYPESCRIPT": parse_javascript_file,
@@ -33,6 +38,19 @@ LANGUAGE_PARSERS: dict[str, Parser] = {
 
 EXTENSION_LANGUAGE: dict[str, str] = {
     ".java": "JAVA",
+    ".kt": "KOTLIN",
+    ".kts": "KOTLIN",
+    ".scala": "SCALA",
+    ".conf": "CONFIG",
+    ".cnf": "CONFIG",
+    ".yml": "CONFIG",
+    ".yaml": "CONFIG",
+    ".properties": "CONFIG",
+    ".env": "CONFIG",
+    ".ini": "CONFIG",
+    ".tf": "CONFIG",
+    ".tfvars": "CONFIG",
+    ".cfg": "CONFIG",
     ".py": "PYTHON",
     ".js": "JAVASCRIPT",
     ".jsx": "JAVASCRIPT",

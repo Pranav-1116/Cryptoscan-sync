@@ -8,6 +8,8 @@ from scanner.core.file_discovery import FileDiscovery
 
 LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "JAVA": (".java",),
+    "KOTLIN": (".kt", ".kts"),
+    "SCALA": (".scala",),
     "PYTHON": (".py",),
     "JAVASCRIPT": (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"),
     "CSHARP": (".cs",),
@@ -19,6 +21,7 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
 
 MARKER_FILES: dict[str, tuple[str, ...]] = {
     "JAVA": ("pom.xml", "build.gradle", "build.gradle.kts"),
+    "KOTLIN": ("settings.gradle.kts",),
     "PYTHON": ("pyproject.toml", "requirements.txt", "setup.py", "Pipfile"),
     "JAVASCRIPT": ("package.json", "tsconfig.json", "pnpm-lock.yaml", "yarn.lock"),
     "CSHARP": (".csproj", ".sln"),

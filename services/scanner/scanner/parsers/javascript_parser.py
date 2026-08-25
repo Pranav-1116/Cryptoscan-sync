@@ -72,6 +72,9 @@ CRYPTOJS = re.compile(
     r"""CryptoJS\.(AES|DES|TripleDES|MD5|SHA1|SHA256|SHA512|HmacSHA256)\b""",
     re.IGNORECASE,
 )
+TLS_MIN = re.compile(r"""minVersion\s*:\s*['\"](TLSv1(?:\.[0-3])?)['\"]""", re.IGNORECASE)
+TLS_REJECT = re.compile(r"""rejectUnauthorized\s*:\s*false""")
+TLS_SECURE_PROTO = re.compile(r"""secureProtocol\s*:\s*['\"](\w+)['\"]""", re.IGNORECASE)
 SECRET_ASSIGN = re.compile(
     r"""(?:const|let|var)\s+(secret|password|apiKey|api_key|token|privateKey)\s*=\s*['"]([^'"]{12,})['"]""",
     re.IGNORECASE,
@@ -303,6 +306,42 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             algorithm=algo_map.get(name, name),
             purpose=purpose,
             library="crypto-js",
+        )
+    for match in TLS_MIN.finditer(source):
+        raw = match.group(1)
+        algo = {"TLSv1": "TLS1.0", "TLSv1.0": "TLS1.0", "TLSv1.1": "TLS1.1", "TLSv1.2": "TLS1.2", "TLSv1.3": "TLS1.3"}.get(raw, raw)
+        add(
+            match,
+            api_type="KEY_AGREEMENT",
+            algorithm=algo,
+            purpose="NETWORK_ENCRYPTION",
+            library="node-tls",
+            raw_transformation=raw,
+        )
+    for match in TLS_REJECT.finditer(source):
+        add(
+            match,
+            api_type="KEY_AGREEMENT",
+            algorithm="TLS-UNVERIFIED",
+            purpose="NETWORK_ENCRYPTION",
+            library="node-tls",
+            confidence="HIGH",
+            confidence_reason="rejectUnauthorized-false",
+        )
+    for match in TLS_SECURE_PROTO.finditer(source):
+        raw = match.group(1)
+        algo = "TLS1.0" if raw.upper().startswith("TLSV1_METHOD") or raw.upper() == "TLSV1_METHOD" else raw
+        if "TLSV1_1" in raw.upper():
+            algo = "TLS1.1"
+        elif "TLSV1_2" in raw.upper():
+            algo = "TLS1.2"
+        add(
+            match,
+            api_type="KEY_AGREEMENT",
+            algorithm=algo,
+            purpose="NETWORK_ENCRYPTION",
+            library="node-tls",
+            raw_transformation=raw,
         )
     for match in SECRET_ASSIGN.finditer(source):
         value = match.group(2)

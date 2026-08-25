@@ -43,6 +43,9 @@ DEFAULT_TEST_DIRS = frozenset({
 
 DEFAULT_SOURCE_EXTENSIONS = (
     ".java",
+    ".kt",
+    ".kts",
+    ".scala",
     ".py",
     ".js",
     ".jsx",

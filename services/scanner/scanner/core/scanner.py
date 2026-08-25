@@ -108,6 +108,17 @@ class Scanner:
                 parse_errors.append({"file": str(source_file), "error": str(exc)})
 
         try:
+            from scanner.parsers.config_crypto_parser import scan_config_tree
+
+            config_findings = scan_config_tree(path, repo_root=path)
+            if git_ctx:
+                for finding in config_findings:
+                    finding.git_context = git_ctx
+            findings.extend(config_findings)
+        except Exception as exc:
+            logger.warning("config_scan_failed", extra={"error": str(exc)})
+
+        try:
             from scanner.detectors.materials.pem_scanner import scan_materials
 
             material_findings = scan_materials(path, repo_root=path)

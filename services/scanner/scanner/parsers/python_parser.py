@@ -254,10 +254,20 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 node,
                 api_type="KEY_AGREEMENT",
                 algorithm="TLS",
-                purpose="KEY_EXCHANGE",
+                purpose="NETWORK_ENCRYPTION",
                 library="ssl",
                 confidence="MEDIUM",
                 confidence_reason="TLS context construction",
+            )
+        if func.endswith("_create_unverified_context") or func.endswith("create_unverified_context"):
+            self._add(
+                node,
+                api_type="KEY_AGREEMENT",
+                algorithm="TLS-UNVERIFIED",
+                purpose="NETWORK_ENCRYPTION",
+                library="ssl",
+                confidence="HIGH",
+                confidence_reason="unverified-tls-context",
             )
         if self._is_insecure_random(func) and self._looks_like_key_context(node):
             self._add(
@@ -269,10 +279,32 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 confidence="MEDIUM",
                 confidence_reason="non-CSPRNG used in a key/token/nonce context; use secrets or os.urandom",
             )
-        hashes = CRYPTOGRAPHY_HASH
-        for attr, algo in hashes.items():
+        for attr, algo in CRYPTOGRAPHY_HASH.items():
             if func.endswith(f"hashes.{attr}"):
                 self._hash(node, algo, library="cryptography")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        name = _dotted(node)
+        tls_map = (
+            ("PROTOCOL_TLSv1_2", "TLS1.2"),
+            ("PROTOCOL_TLSv1_1", "TLS1.1"),
+            ("PROTOCOL_TLSv1", "TLS1.0"),
+            ("PROTOCOL_SSLv3", "SSLv3"),
+            ("PROTOCOL_SSLv23", "SSLv23"),
+            ("CERT_NONE", "TLS-CERT-NONE"),
+        )
+        for suffix, algo in tls_map:
+            if name.endswith(suffix):
+                self._add(
+                    node,
+                    api_type="KEY_AGREEMENT",
+                    algorithm=algo,
+                    purpose="NETWORK_ENCRYPTION",
+                    library="ssl",
+                    raw_transformation=suffix,
+                )
+                break
         self.generic_visit(node)
 
     def _is_hmac_call(self, func: str) -> bool:
