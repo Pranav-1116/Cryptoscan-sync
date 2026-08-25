@@ -25,7 +25,12 @@
         "apigateway:GetRestApis",
         "apigateway:GetStages",
         "secretsmanager:ListSecrets",
-        "secretsmanager:DescribeSecret"
+        "secretsmanager:DescribeSecret",
+        "ssm:DescribeParameters",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVolumes",
+        "lambda:ListFunctions",
+        "lambda:GetFunction"
       ],
       "Resource": "*"
     }

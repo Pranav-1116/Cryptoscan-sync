@@ -22,6 +22,7 @@ from api.routers import (
     auth,
     baselines,
     business,
+    business_context,
     cbom,
     cloud,
     cloud_scans,
@@ -38,7 +39,9 @@ from api.routers import (
     network_scans,
     ot,
     policy,
+    reachability,
     repo_configs,
+    runtime,
     scans,
     stats,
     systems,
@@ -146,7 +149,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(cloud.router, prefix=prefix)
     app.include_router(cloud_scans.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
+    app.include_router(reachability.router, prefix=prefix)
+    app.include_router(runtime.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
+    app.include_router(business_context.router, prefix=prefix)
     app.include_router(agility.router, prefix=prefix)
     app.include_router(exceptions.router, prefix=prefix)
     app.include_router(ot.router, prefix=prefix)

@@ -325,3 +325,56 @@ def scan_apigateway(client, *, region: str) -> list[dict[str, Any]]:
                 )
             )
     return findings
+
+
+def scan_ebs(client, *, region: str) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    volumes = as_list((_safe(client.describe_volumes, {}) or {}).get("Volumes"))
+    for vol in volumes[:80]:
+        encrypted = bool(vol.get("Encrypted"))
+        vol_id = vol.get("VolumeId") or "volume"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_EBS_VOLUME",
+                resource=vol_id,
+                algorithm="AES-256" if encrypted else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/ebs/{vol_id}",
+                issue=None if encrypted else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "kms_key_id": vol.get("KmsKeyId"),
+                    "volume_type": vol.get("VolumeType"),
+                    "state": vol.get("State"),
+                },
+            )
+        )
+    return findings
+
+
+def scan_ssm(client, *, region: str) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    params = as_list((_safe(client.describe_parameters, {}) or {}).get("Parameters"))
+    for param in params[:80]:
+        name = param.get("Name") or param.get("ARN") or "parameter"
+        ptype = param.get("Type") or "String"
+        encrypted = ptype == "SecureString"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_SSM_PARAMETER",
+                resource=name,
+                algorithm="AES-256" if encrypted else None,
+                purpose="KEY_MANAGEMENT",
+                file_path=f"aws://{region}/ssm/{name}",
+                issue=None if encrypted else "UNENCRYPTED_PARAMETER",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "type": ptype,
+                    "key_id": param.get("KeyId"),
+                    "tier": param.get("Tier"),
+                },
+            )
+        )
+    return findings

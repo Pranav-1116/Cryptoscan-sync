@@ -50,6 +50,8 @@ def scan_aws(*, regions: list[str] | None = None, session=None) -> list[dict[str
             ("secretsmanager", scanners.scan_secretsmanager),
             ("lambda", scanners.scan_lambda),
             ("apigateway", scanners.scan_apigateway),
+            ("ec2", scanners.scan_ebs),
+            ("ssm", scanners.scan_ssm),
         ):
             try:
                 client = sess.client(service, region_name=region)

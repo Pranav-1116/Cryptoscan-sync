@@ -2,11 +2,13 @@ from cloud_scanner.aws.mappers import map_acm_key, map_kms_key_spec, map_s3_sse,
 from cloud_scanner.aws.scanners import (
     scan_acm,
     scan_cloudfront,
+    scan_ebs,
     scan_elb,
     scan_kms,
     scan_lambda,
     scan_rds,
     scan_s3,
+    scan_ssm,
 )
 from cloud_scanner.iac.terraform import parse_terraform
 
@@ -157,6 +159,16 @@ def test_live_scanners_with_fake_clients():
     issues = {row.get("compliance_issue") for row in lambdas}
     assert "NO_ENV_ENCRYPTION" in issues
     assert any(row["source"]["type"] == "AWS_LAMBDA_FUNCTION" for row in lambdas)
+    ebs = scan_ebs(
+        type("Ebs", (), {"describe_volumes": lambda self: {"Volumes": [{"VolumeId": "vol-1", "Encrypted": False}]}})(),
+        region="us-east-1",
+    )
+    assert ebs[0]["compliance_issue"] == "NO_ENCRYPTION_AT_REST"
+    ssm = scan_ssm(
+        type("Ssm", (), {"describe_parameters": lambda self: {"Parameters": [{"Name": "/app/secret", "Type": "String"}]}})(),
+        region="us-east-1",
+    )
+    assert ssm[0]["compliance_issue"] == "UNENCRYPTED_PARAMETER"
 
 
 def test_terraform_covers_acm_cloudfront_and_sql(tmp_path):

@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
-ALGORITHM_OIDS = {
+import json
+from pathlib import Path
+
+_TABLE = Path(__file__).with_name("oid_table.json")
+_LOADED: dict[str, str] = {}
+if _TABLE.is_file():
+    try:
+        data = json.loads(_TABLE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            _LOADED = {str(k): str(v) for k, v in data.items()}
+    except Exception:
+        _LOADED = {}
+
+ALGORITHM_OIDS = _LOADED or {
     "AES": "2.16.840.1.101.3.4.1",
     "AES-128": "2.16.840.1.101.3.4.1.2",
     "AES-192": "2.16.840.1.101.3.4.1.22",

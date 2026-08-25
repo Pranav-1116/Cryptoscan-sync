@@ -1,0 +1,4 @@
+Certificate {subject} expires in {days_until_expiry} days.
+Fingerprint: {fingerprint}
+Endpoints: {endpoints}
+Severity: MEDIUM

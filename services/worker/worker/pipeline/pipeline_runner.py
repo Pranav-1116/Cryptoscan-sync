@@ -311,6 +311,12 @@ class PipelineRunner:
         except Exception:
             return
         network_scan(ctx)
+        try:
+            from worker.pipeline.stage_cert_inventory import execute as cert_inventory
+
+            cert_inventory(ctx)
+        except Exception:
+            logger.debug("cert_inventory_skipped", exc_info=True)
 
     def _container(self, ctx: PipelineContext) -> None:
         root = Path(ctx.repo_path)

@@ -4,14 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
-from business_context.aggregators.metrics import (
-    min_sla,
-    sum_customers,
-    sum_revenue,
-    sum_transactions,
-    union_classifications,
-    union_scopes,
-)
+from business_context.aggregators.compliance_scope_aggregator import union_classifications, union_scopes
+from business_context.aggregators.customer_aggregator import sum_customers
+from business_context.aggregators.revenue_aggregator import sum_revenue
+from business_context.aggregators.sla_aggregator import min_sla
+from business_context.aggregators.transaction_aggregator import sum_transactions
 from business_context.prioritization.scorer import priority_label, priority_score, rank_assets
 from graph_engine.core.engine import GraphEngine
 
