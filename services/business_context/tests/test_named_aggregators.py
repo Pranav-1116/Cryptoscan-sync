@@ -3,7 +3,11 @@ from business_context.aggregators.revenue_aggregator import sum_revenue
 from business_context.alerts.business_owner_notifier import notify_owners
 from business_context.alerts.executive_notifier import notify_executives
 from business_context.alerts.stakeholder_alerter import StakeholderAlerter
+from business_context.config.settings import load_settings
 from business_context.core.enrichment_runner import run_enrichment
+from business_context.models.business_context import BusinessContext
+from business_context.models.business_owner import BusinessOwner
+from business_context.models.business_process import BusinessProcess
 from business_context.prioritization.priority_score import PriorityScore
 
 
@@ -39,3 +43,8 @@ def test_named_aggregators_and_notifiers():
     score = PriorityScore.compute(revenue_daily=2_000_000, customer_count=10, compliance_fail=True)
     assert score.label == "P0"
     assert score.to_dict()["priority_score"] > 0
+    ctx = BusinessContext.from_asset(assets[0])
+    assert ctx.priority == "P0"
+    assert BusinessProcess.from_mapping(processes[0]).name == "Pay"
+    assert BusinessOwner.from_mapping({"name": "Sarah", "system_ids": ["pay"]}).name == "Sarah"
+    assert load_settings().alert_on_p0 is True

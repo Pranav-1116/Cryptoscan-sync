@@ -1,7 +1,14 @@
+from datetime import datetime, timedelta, timezone
+
 from cloud_scanner.common.certificate_finding import CertificateFinding
 from cloud_scanner.common.cloud_finding import CloudFinding
 from cloud_scanner.common.kms_key_finding import KMSKeyFinding
 from cloud_scanner.common.resource_tagger import ResourceTagger
+from cloud_scanner.config.settings import load_settings
+from cloud_scanner.core.result_submitter import ResultSubmitter
+from cloud_scanner.core.scheduler import due_accounts
+from cloud_scanner.main import main
+from cloud_scanner.models.enums import CloudProvider
 
 
 def test_named_cloud_findings_round_trip():
@@ -54,3 +61,20 @@ def test_resource_tagger_maps_system_from_tags():
     )
     assert tagged["system_id"] == "sys-1"
     assert tagged["extra"]["system_name"] == "payments"
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    due = due_accounts(
+        [{"id": "acct", "last_scan_time": (now - timedelta(days=2)).isoformat(), "scan_frequency": "daily"}],
+        now=now,
+    )
+    assert due and due[0]["due"] is True
+    submitted = ResultSubmitter(transport=lambda url, body: {"accepted": True}).submit({"findings": []})
+    assert submitted["ok"] is True
+    assert CloudProvider.AWS.value == "AWS"
+    assert load_settings().live is False
+
+
+def test_cloud_main_scans_tree(tmp_path):
+    (tmp_path / "main.tf").write_text('resource "aws_kms_key" "k" { customer_master_key_spec = "RSA_2048" }\n')
+    out = tmp_path / "out.json"
+    assert main([str(tmp_path), "-o", str(out)]) == 0
+    assert "findings" in out.read_text(encoding="utf-8")

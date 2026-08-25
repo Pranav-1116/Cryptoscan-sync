@@ -1,3 +1,4 @@
+from deduplication.config.settings import load_settings
 from deduplication.confidence.confidence_matrix import merged_confidence_from_sources
 from deduplication.fingerprinting.location_normalizer import normalize_file_path
 from deduplication.merging.asset_creator import create_asset

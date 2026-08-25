@@ -1,4 +1,7 @@
 from network_scanner.alerts.expiry_alerter import alert_expiring
+from network_scanner.config.settings import load_settings
+from network_scanner.core.scan_context import ScanContext
+from network_scanner.main import main
 from network_scanner.inventory.certificate_deduplicator import dedupe_certificates
 from network_scanner.models.network_finding import NetworkFinding
 from network_scanner.passive.envoy_log_parser import parse_envoy_line
@@ -24,3 +27,12 @@ def test_envoy_parser_and_inventory_helpers():
     assert classify_ssl_error("wrong version number") == "PROTOCOL_VERSION_MISMATCH"
     refused = connect("127.0.0.1", 1, timeout=0.2)
     assert refused["status"] in {"PORT_CLOSED", "CONNECT_ERROR", "TIMEOUT"}
+    ctx = ScanContext.for_path("/tmp", live=False)
+    assert ctx.to_dict()["target_kind"] == "filesystem"
+    assert load_settings().timeout > 0
+
+
+def test_network_main_scans_tree(tmp_path):
+    out = tmp_path / "out.json"
+    assert main([str(tmp_path), "-o", str(out)]) == 0
+    assert "scan_context" in out.read_text(encoding="utf-8")

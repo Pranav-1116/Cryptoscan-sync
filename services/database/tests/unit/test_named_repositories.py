@@ -1,5 +1,7 @@
+from db.models.asset_evidence_link import AssetEvidenceLink
 from db.models.asset_system_link import AssetSystemLink
 from db.models.crypto_asset import CryptoAsset
+from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.crypto_library_fingerprint import CryptoLibraryFingerprint
 from db.models.system import System
 from db.models.system_asset import SystemAsset
@@ -49,6 +51,7 @@ def test_intelligence_named_repos(db_session):
     assert isinstance(link, SystemBusinessProcessMap)
     assert system.id in processes.process_system_ids(process.id)
     assert AssetSystemLink is SystemAsset
+    assert AssetEvidenceLink is CryptoAssetEvidence
     print_fp = CryptoLibraryFingerprint.from_catalog("openssl", {"vendor": "OpenSSL", "algorithms": ["AES"]})
     assert print_fp.vendor == "OpenSSL"
     assert print_fp.to_dict()["name"] == "openssl"

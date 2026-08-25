@@ -1,3 +1,4 @@
+from db.models.asset_evidence_link import AssetEvidenceLink
 from db.models.asset_system_link import AssetSystemLink
 from db.models.base import BaseModel
 from db.models.baseline import Baseline
@@ -31,6 +32,7 @@ from db.models.verification_log import VerificationLog
 from db.models.vulnerability import Vulnerability
 
 __all__ = [
+    "AssetEvidenceLink",
     "AssetSystemLink",
     "BaseModel",
     "Baseline",

@@ -1,3 +1,4 @@
+from cbom.config.settings import load_settings
 from cbom.core.generator import CbomGenerator
 from cbom.serializers.xml_serializer import to_xml
 from cbom.signing.cbom_signer import sign_cbom, verify_cbom
@@ -19,3 +20,4 @@ def test_spec_named_cbom_modules_round_trip():
     assert keys.verify(again)
     assert CbomValidator().validate(bom)["ok"]
     assert not CbomValidator().validate({"bomFormat": "nope"})["ok"]
+    assert load_settings().spec_version == "1.5"
