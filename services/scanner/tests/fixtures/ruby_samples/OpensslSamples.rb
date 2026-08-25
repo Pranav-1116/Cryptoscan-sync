@@ -1,0 +1,7 @@
+Digest::MD5.hexdigest(x)
+Digest::SHA256.hexdigest(x)
+OpenSSL::Cipher.new('AES-256-GCM')
+OpenSSL::PKey::RSA.new(2048)
+OpenSSL::HMAC.hexdigest('SHA256', key, data)
+BCrypt::Password.create(password)
+ActiveSupport::MessageEncryptor.new(key)

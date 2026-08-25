@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import uuid
@@ -10,21 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from container_scanner.analyzers.analyzer_coordinator import AnalyzerCoordinator
+from container_scanner.analyzers.binary.binary_fingerprinter import hash_file
 from container_scanner.cve.resolver import VulnerabilityResolver
 from container_scanner.fingerprints.repository import FingerprintRepository
-from container_scanner.parsers.os_packages import (
-    parse_apk_installed,
-    parse_dpkg_status,
-    parse_rpm_qa,
-    parse_site_packages,
-)
-from container_scanner.parsers.package_parsers import (
-    parse_csproj,
-    parse_gomod,
-    parse_package_json,
-    parse_pom,
-    parse_requirements,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +48,7 @@ class ContainerScanner:
         self.cves = cve_db or _load_json("cve_db.json")
         self.catalog = FingerprintRepository(self.fingerprints)
         self.resolver = resolver or VulnerabilityResolver(self.cves, live=live_cve)
+        self.analyzers = AnalyzerCoordinator()
 
     def scan_filesystem(self, root: str | Path, *, scan_id: str | None = None) -> dict[str, Any]:
         root_path = Path(root)
@@ -116,42 +105,10 @@ class ContainerScanner:
         raise ValueError("path, image, or archive is required")
 
     def _discover_packages(self, root: Path) -> Iterable[dict[str, Any]]:
-        for path in root.rglob("*"):
-            if not path.is_file() or any(part in SKIP_DIRS for part in path.parts):
-                continue
-            name = path.name.lower()
-            posix = path.as_posix()
-            if name == "requirements.txt":
-                yield from parse_requirements(path)
-            elif name == "package.json":
-                yield from parse_package_json(path)
-            elif name == "pom.xml":
-                yield from parse_pom(path)
-            elif name.endswith(".csproj"):
-                yield from parse_csproj(path)
-            elif name == "go.mod":
-                yield from parse_gomod(path)
-            elif posix.endswith("/var/lib/dpkg/status") or name == "dpkg-status":
-                yield from parse_dpkg_status(path)
-            elif posix.endswith("/lib/apk/db/installed") or name in {"apk-installed", "installed"}:
-                if "apk" in posix or name == "apk-installed":
-                    yield from parse_apk_installed(path)
-            elif name in {"rpm-packages.txt", "rpm-qa.txt"}:
-                yield from parse_rpm_qa(path)
-        yield from parse_site_packages(root)
+        return self.analyzers.discover_packages(root)
 
     def _hash_file(self, path: Path) -> str | None:
-        try:
-            digest = hashlib.sha256()
-            with path.open("rb") as handle:
-                while True:
-                    chunk = handle.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    digest.update(chunk)
-            return digest.hexdigest()
-        except OSError:
-            return None
+        return hash_file(path)
 
     def _fingerprint_binary(self, path: Path, rel: str, *, kind: str, default: dict[str, Any]) -> dict[str, Any]:
         payload = dict(default)

@@ -1,5 +1,8 @@
 from scanner.core.language_detector import detect_languages_in_repo
+from scanner.detectors.java.mac_detector import MacDetector
+from scanner.detectors.python.secrets_misuse_detector import detect as detect_secrets_misuse
 from scanner.parsers.go_parser import parse_go_file
+from scanner.parsers.js_ts_parser import parse_js_ts_file
 from scanner.parsers.php_parser import parse_php_file
 from scanner.parsers.ruby_parser import parse_ruby_file
 from scanner.parsers.rust_parser import parse_rust_file
@@ -72,3 +75,14 @@ def test_registry_and_language_detect(temp_workspace):
     assert "GO" in found
     findings = scan_file(go, temp_workspace)
     assert any(f.crypto.algorithm == "MD5" for f in findings)
+
+
+def test_js_ts_parser_and_named_detectors(temp_workspace):
+    js = temp_workspace / "crypto.js"
+    js.write_text("const crypto = require('crypto');\ncrypto.createHash('md5');\n")
+    findings = parse_js_ts_file(js, temp_workspace)
+    assert any((f.crypto.algorithm or "").upper() in {"MD5"} for f in findings)
+    py = temp_workspace / "bad.py"
+    py.write_text("import random\nkey = b'1234567890abcdef'\n")
+    detect_secrets_misuse(py, temp_workspace)
+    assert MacDetector().name() == "java-mac"

@@ -27,6 +27,7 @@ from api.routers import (
     cloud,
     cloud_scans,
     container,
+    container_scans,
     drift,
     exceptions,
     export,
@@ -46,6 +47,7 @@ from api.routers import (
     stats,
     systems,
     trigger,
+    vulnerability,
     vulns,
     webhooks,
 )
@@ -141,7 +143,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
     app.include_router(container.router, prefix=prefix)
+    app.include_router(container_scans.router, prefix=prefix)
     app.include_router(vulns.router, prefix=prefix)
+    app.include_router(vulnerability.router, prefix=prefix)
     app.include_router(policy.router, prefix=prefix)
     app.include_router(intelligence.router, prefix=prefix)
     app.include_router(network.router, prefix=prefix)

@@ -19,13 +19,13 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
 
 MARKER_FILES: dict[str, tuple[str, ...]] = {
     "JAVA": ("pom.xml", "build.gradle", "build.gradle.kts"),
-    "PYTHON": ("pyproject.toml", "requirements.txt", "setup.py"),
-    "JAVASCRIPT": ("package.json", "tsconfig.json"),
+    "PYTHON": ("pyproject.toml", "requirements.txt", "setup.py", "Pipfile"),
+    "JAVASCRIPT": ("package.json", "tsconfig.json", "pnpm-lock.yaml", "yarn.lock"),
     "CSHARP": (".csproj", ".sln"),
     "GO": ("go.mod", "go.sum"),
-    "PHP": ("composer.json",),
-    "RUBY": ("Gemfile",),
-    "RUST": ("Cargo.toml",),
+    "PHP": ("composer.json", "composer.lock"),
+    "RUBY": ("Gemfile", "Gemfile.lock"),
+    "RUST": ("Cargo.toml", "Cargo.lock"),
 }
 
 

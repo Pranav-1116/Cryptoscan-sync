@@ -5,13 +5,16 @@ from sqlalchemy.orm import sessionmaker
 from db.connection.session import Base
 from db.models import (  # noqa: F401
     baseline,
+    business_owner,
     certificate,
     certificate_usage,
+    cloud_account,
     container_scan,
     crypto_asset,
     crypto_asset_evidence,
     drift_event,
     evidence_record,
+    network_scan_target,
     ot_device,
     policy_exception,
     repo_configuration,

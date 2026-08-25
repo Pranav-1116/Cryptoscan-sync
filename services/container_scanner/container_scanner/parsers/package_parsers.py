@@ -119,3 +119,66 @@ def parse_gomod(path: Path) -> list[dict[str, Any]]:
                 }
             )
     return packages
+
+
+def parse_composer(path: Path) -> list[dict[str, Any]]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except json.JSONDecodeError:
+        return []
+    packages = []
+    for section in ("require", "require-dev"):
+        for name, spec in (data.get(section) or {}).items():
+            if name == "php":
+                continue
+            packages.append(
+                {
+                    "name": str(name).lower(),
+                    "version": str(spec).lstrip("^~>=< ") if spec else None,
+                    "manager": "composer",
+                    "manifest": str(path),
+                    "section": section,
+                }
+            )
+    return packages
+
+
+def parse_gemfile(path: Path) -> list[dict[str, Any]]:
+    packages = []
+    gem = re.compile(r"""^\s*gem\s+['\"]([^'\"]+)['\"](?:\s*,\s*['\"]([^'\"]+)['\"])?""")
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        match = gem.match(line)
+        if match:
+            packages.append(
+                {
+                    "name": match.group(1).lower(),
+                    "version": match.group(2),
+                    "manager": "bundler",
+                    "manifest": str(path),
+                }
+            )
+    return packages
+
+
+def parse_cargo(path: Path) -> list[dict[str, Any]]:
+    packages = []
+    section = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            section = stripped[1:-1]
+            continue
+        if section not in {"dependencies", "dev-dependencies", "build-dependencies"}:
+            continue
+        match = re.match(r"^([A-Za-z0-9_-]+)\s*=\s*(?:\"([^\"]+)\"|\{[^}]*version\s*=\s*\"([^\"]+)\")", stripped)
+        if match:
+            packages.append(
+                {
+                    "name": match.group(1).lower(),
+                    "version": match.group(2) or match.group(3),
+                    "manager": "cargo",
+                    "manifest": str(path),
+                    "section": section,
+                }
+            )
+    return packages
