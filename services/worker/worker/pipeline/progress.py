@@ -7,6 +7,7 @@ from typing import Any
 
 PIPELINE_STAGES = (
     "clone",
+    "language_detect",
     "scan",
     "evidence",
     "load",
@@ -15,6 +16,7 @@ PIPELINE_STAGES = (
     "dedup",
     "systems",
     "graph",
+    "cbom",
     "drift",
     "gate",
     "alert",

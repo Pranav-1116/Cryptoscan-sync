@@ -1,0 +1,28 @@
+rule_id: "NIST131A-006"
+rule_name: "NIST SP 800-131A — SHA-1 transition"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "HIGH"
+standard_reference: "NIST SP 800-131A Rev. 2"
+description: >
+  SHA-1 is disallowed for digital signatures and is not acceptable for new hashing uses.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "NIST-131A"
+      - "NIST SP 800-131A"
+      - "FIPS"
+    forbidden_algorithms:
+      - "SHA-1"
+      - "SHA1"
+    if_purpose:
+      - "SIGNING"
+      - "HASHING"
+      - "VERIFICATION"
+evaluation:
+  result_template: "FAIL"
+  message_template: "NIST SP 800-131A disallows SHA-1 for {purpose}"
+remediation: >
+  Replace SHA-1 with SHA-256 or SHA-3.
+enabled: true

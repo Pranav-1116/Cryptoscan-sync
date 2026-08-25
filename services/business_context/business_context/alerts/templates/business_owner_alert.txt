@@ -1,0 +1,15 @@
+Subject: Action required: crypto risk in {process_name}
+
+Hi {owner_name},
+
+CryptoScan detected a cryptographic compliance issue in {system_name}, which you own.
+
+ISSUE:
+{algorithm} in {file_path} is {compliance_status}.
+
+BUSINESS IMPACT:
+- Revenue at risk: ${revenue_daily}/day
+- Customers affected: {customer_count}
+- Compliance: {scopes}
+
+Next step: open the asset in the dashboard and schedule remediation with the security team.

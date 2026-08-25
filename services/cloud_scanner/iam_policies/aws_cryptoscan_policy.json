@@ -1,0 +1,33 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "CryptoScanReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "kms:ListKeys",
+        "kms:DescribeKey",
+        "kms:GetKeyPolicy",
+        "kms:GetKeyRotationStatus",
+        "s3:GetBucketEncryption",
+        "s3:GetEncryptionConfiguration",
+        "s3:ListBuckets",
+        "s3:GetBucketLocation",
+        "rds:DescribeDBInstances",
+        "rds:DescribeDBClusters",
+        "elasticloadbalancing:DescribeLoadBalancers",
+        "elasticloadbalancing:DescribeListeners",
+        "elasticloadbalancing:DescribeSSLPolicies",
+        "acm:ListCertificates",
+        "acm:DescribeCertificate",
+        "cloudfront:ListDistributions",
+        "cloudfront:GetDistributionConfig",
+        "apigateway:GetRestApis",
+        "apigateway:GetStages",
+        "secretsmanager:ListSecrets",
+        "secretsmanager:DescribeSecret"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

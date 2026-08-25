@@ -34,6 +34,13 @@ NODE_SIGN = re.compile(
 NODE_PBKDF = re.compile(r"""crypto\.pbkdf2(?:Sync)?\s*\(""", re.IGNORECASE)
 NODE_SCRYPT = re.compile(r"""crypto\.scrypt(?:Sync)?\s*\(""", re.IGNORECASE)
 NODE_RANDOM = re.compile(r"""crypto\.randomBytes\s*\(""", re.IGNORECASE)
+NODE_IMPORT = re.compile(
+    r"""(?:from\s+['\"](?:node:)?crypto['\"]|require\(\s*['\"](?:node:)?crypto['\"]\))""",
+    re.IGNORECASE,
+)
+BARE_CIPHER = re.compile(r"""\bcreateCipher(?:iv)?\(\s*['\"]([^'\"]+)['\"]""", re.IGNORECASE)
+BARE_HASH = re.compile(r"""\bcreateHash\(\s*['\"]([^'\"]+)['\"]""", re.IGNORECASE)
+BARE_HMAC = re.compile(r"""\bcreateHmac\(\s*['\"]([^'\"]+)['\"]""", re.IGNORECASE)
 WEBCRYPTO = re.compile(
     r"""(?:crypto\.subtle|window\.crypto\.subtle)\.(\w+)\s*\(""",
     re.IGNORECASE,
@@ -156,6 +163,46 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         add(match, api_type="KEY_GENERATOR", algorithm="SCRYPT", purpose="PASSWORD_HASHING", library="node-crypto")
     for match in NODE_RANDOM.finditer(source):
         add(match, api_type="KEY_GENERATOR", algorithm="CSPRNG", purpose="KEY_GENERATION", library="node-crypto")
+    claimed_node = {m.start() for m in NODE_CIPHER.finditer(source)} | {
+        m.start() for m in NODE_HASH.finditer(source)
+    } | {m.start() for m in NODE_HMAC.finditer(source)}
+    if NODE_IMPORT.search(source):
+        for match in BARE_CIPHER.finditer(source):
+            if match.start() in claimed_node:
+                continue
+            algo, mode, key_size = _parse_node_cipher(match.group(1))
+            add(
+                match,
+                api_type="CIPHER_INSTANCE",
+                algorithm=algo,
+                mode=mode,
+                key_size=key_size,
+                purpose="ENCRYPTION",
+                library="node-crypto",
+                raw_transformation=match.group(1),
+            )
+        for match in BARE_HASH.finditer(source):
+            if match.start() in claimed_node:
+                continue
+            raw = match.group(1)
+            add(
+                match,
+                api_type="MESSAGE_DIGEST",
+                algorithm=HASH_MAP.get(raw.lower(), raw.upper()),
+                purpose="HASHING",
+                library="node-crypto",
+            )
+        for match in BARE_HMAC.finditer(source):
+            if match.start() in claimed_node:
+                continue
+            raw = match.group(1)
+            add(
+                match,
+                api_type="MAC",
+                algorithm=HASH_MAP.get(raw.lower(), raw.upper()),
+                purpose="MAC_GENERATION",
+                library="node-crypto",
+            )
     claimed_webcrypto: set[int] = set()
     for match in WEBCRYPTO_NAMED.finditer(source):
         method, raw_algo = match.group(1), match.group(2)

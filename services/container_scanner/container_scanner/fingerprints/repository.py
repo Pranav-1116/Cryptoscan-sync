@@ -33,6 +33,39 @@ class FingerprintRepository:
         else:
             db_path = path or (DATA_DIR / "fingerprint_db.json")
             self.data = json.loads(db_path.read_text(encoding="utf-8"))
+        self._hashes = self._load_seed_hashes()
+
+    def _load_seed_hashes(self) -> dict[str, dict[str, Any]]:
+        hashes: dict[str, dict[str, Any]] = {}
+        seed_dir = DATA_DIR / "seed"
+        if not seed_dir.is_dir():
+            return hashes
+        for path in seed_dir.glob("*.json"):
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            library = payload.get("library") or path.stem
+            for entry in payload.get("entries") or []:
+                digest = str(entry.get("sha256") or "").lower()
+                if digest:
+                    hashes[digest] = {
+                        "library": library,
+                        "version": entry.get("version"),
+                        "file": entry.get("file"),
+                    }
+        return hashes
+
+    def lookup_hash(self, digest: str | None) -> dict[str, Any] | None:
+        info = self._hashes.get((digest or "").lower())
+        if info is None:
+            return None
+        payload = dict(info)
+        catalog = self.lookup(payload.get("library"))
+        if catalog:
+            payload.setdefault("algorithms", list(catalog.get("algorithms") or []))
+            payload.setdefault("vendor", catalog.get("vendor"))
+        return payload
 
     @property
     def libraries(self) -> dict[str, Any]:

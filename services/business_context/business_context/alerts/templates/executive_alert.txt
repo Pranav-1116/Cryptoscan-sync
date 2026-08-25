@@ -1,0 +1,13 @@
+Subject: Executive notice: ${revenue_daily}/day at risk from crypto finding
+
+{sponsor_role},
+
+A P0 cryptographic finding affects a revenue-generating process.
+
+- Process: {process_name}
+- Revenue at risk: ${revenue_daily}/day
+- Customers: {customer_count}
+- Owner: {owner_name}
+- Finding: {algorithm} ({compliance_status})
+
+CFO/CTO approval may be required before a migration window is scheduled.

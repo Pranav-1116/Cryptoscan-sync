@@ -1,0 +1,13 @@
+processes:
+  - name: card-payments
+    process_type: PAYMENTS
+    revenue_daily: 125000
+    customer_count: 8400
+    executive_sponsor: CFO
+    data_classifications: [PAN, PII]
+  - name: customer-portal
+    process_type: WEB
+    revenue_daily: 18000
+    customer_count: 120000
+    executive_sponsor: CISO
+    data_classifications: [PII]

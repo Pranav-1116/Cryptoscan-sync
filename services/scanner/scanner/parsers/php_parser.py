@@ -22,6 +22,11 @@ _SIMPLE = [
     (re.compile(r"\bmcrypt_", re.IGNORECASE), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "mcrypt"),
     (re.compile(r"\bpassword_hash\s*\("), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "password_hash"),
     (re.compile(r"\bopenssl_pkey_new\s*\("), "RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
+    (re.compile(r"\bopenssl_sign\s*\("), "RSA", "SIGNATURE", "SIGNING", "openssl"),
+    (re.compile(r"\bopenssl_decrypt\s*\("), "UNKNOWN", "CIPHER_INSTANCE", "DECRYPTION", "openssl"),
+    (re.compile(r"\bsodium_crypto_secretbox"), "XSalsa20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "libsodium"),
+    (re.compile(r"\bsodium_crypto_box"), "X25519", "CIPHER_INSTANCE", "ENCRYPTION", "libsodium"),
+    (re.compile(r"\bsodium_crypto_pwhash"), "ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "libsodium"),
     (re.compile(r"\bhash_hmac\s*\("), "HMAC", "MAC", "MAC_GENERATION", "php-hash"),
 ]
 

@@ -11,7 +11,9 @@ from network_scanner.certificates.chain_validator import validate_chain
 from network_scanner.certificates.crl_checker import check_crl, extract_crl_urls
 from network_scanner.certificates.ocsp_checker import check_ocsp, extract_ocsp_urls
 from network_scanner.discovery.config_file_loader import load_targets
+from network_scanner.discovery.dns_discoverer import discover_from_tree as discover_dns
 from network_scanner.discovery.kubernetes_discoverer import discover_from_tree
+from network_scanner.passive.service_mesh_observer import discover_mesh_logs
 from network_scanner.inventory.certificate_inventory import merge_certificates
 from network_scanner.inventory.expiry_monitor import expiry_alerts
 from network_scanner.inventory.usage_tracker import usage_records
@@ -40,9 +42,11 @@ class NetworkTlsScanner:
         ):
             targets.extend(load_targets(candidate))
         targets.extend(discover_from_tree(root_path))
+        targets.extend(discover_dns(root_path))
         pem_certs = self._collect_pem(root_path)
         findings: list[dict[str, Any]] = []
         live_results: list[dict[str, Any]] = []
+        findings.extend(discover_mesh_logs(root_path))
         if self.live:
             seen = set()
             for target in targets:

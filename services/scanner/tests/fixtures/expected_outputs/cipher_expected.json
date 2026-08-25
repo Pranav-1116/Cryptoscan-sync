@@ -1,0 +1,5 @@
+{
+  "file": "CipherSamples.java",
+  "algorithms": ["DES", "AES"],
+  "modes": ["ECB", "GCM"]
+}

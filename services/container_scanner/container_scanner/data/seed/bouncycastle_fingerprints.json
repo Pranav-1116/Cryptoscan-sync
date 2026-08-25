@@ -1,0 +1,7 @@
+{
+  "library": "BouncyCastle",
+  "entries": [
+    {"version": "1.70", "file": "bcprov-jdk15on-1.70.jar", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+    {"version": "1.77", "file": "bcprov-jdk18on-1.77.jar", "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+  ]
+}

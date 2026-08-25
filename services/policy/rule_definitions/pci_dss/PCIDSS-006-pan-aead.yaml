@@ -1,0 +1,35 @@
+rule_id: "PCIDSS-006"
+rule_name: "PCI-DSS 4.0 Requirement 4.2.1 — AEAD for PAN in transit"
+version: "2.0"
+effective_date: "2024-03-31"
+severity: "HIGH"
+standard_reference: "PCI-DSS 4.0 req. 4.2.1"
+description: >
+  PAN encryption in transit must use an AEAD construction (AES-GCM / AES-CCM / ChaCha20-Poly1305)
+  with a 256-bit key.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "PCI-DSS"
+      - "PCI-DSS-4.0"
+      - "PAN"
+    if_purpose:
+      - "ENCRYPTION"
+      - "NETWORK_ENCRYPTION"
+    if_algorithms:
+      - "AES"
+      - "CHACHA20"
+      - "CHACHA20-POLY1305"
+    require_modes:
+      - "GCM"
+      - "CCM"
+      - "AEAD"
+    mode_required: true
+    min_key_size: 256
+evaluation:
+  result_template: "FAIL"
+  message_template: "PCI-DSS 4.2.1 requires AEAD encryption for PAN"
+remediation: >
+  Use AES-256-GCM or ChaCha20-Poly1305 for cardholder data in transit.
+enabled: true

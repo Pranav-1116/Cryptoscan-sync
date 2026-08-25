@@ -202,6 +202,111 @@ def parse_terraform(path: Path) -> list[dict[str, Any]]:
                     issue=None if enc else "NO_ENCRYPTION",
                 )
             )
+        elif rtype == "aws_acm_certificate":
+            key_algo = re.search(r'key_algorithm\s*=\s*"([^"]+)"', body)
+            raw = (key_algo.group(1) if key_algo else "RSA_2048").upper()
+            algo = "RSA" if "RSA" in raw else ("ECDSA" if "EC" in raw else raw)
+            bits = 2048 if "2048" in raw else (256 if "256" in raw else None)
+            findings.append(
+                cloud_finding(
+                    source_type="AWS_ACM_CERTIFICATE",
+                    resource=resource,
+                    algorithm=algo,
+                    key_size=bits,
+                    purpose="TLS_CERTIFICATE",
+                    file_path=str(path),
+                    line_number=line,
+                )
+            )
+        elif rtype == "aws_cloudfront_distribution":
+            min_proto = re.search(r'minimum_protocol_version\s*=\s*"([^"]+)"', body)
+            proto = (min_proto.group(1) if min_proto else "TLSv1").upper()
+            weak = proto in {"TLSV1", "TLSV1.1", "SSLV3", "TLSV1_2016"}
+            findings.append(
+                cloud_finding(
+                    source_type="AWS_CLOUDFRONT_DISTRIBUTION",
+                    resource=resource,
+                    algorithm="TLS1.0" if weak else "TLS",
+                    purpose="LOAD_BALANCER_TLS",
+                    file_path=str(path),
+                    line_number=line,
+                    issue="WEAK_TLS_VERSION" if weak else None,
+                    extra={"min_protocol": proto},
+                )
+            )
+        elif rtype == "aws_secretsmanager_secret":
+            findings.append(
+                cloud_finding(
+                    source_type="AWS_SECRETSMANAGER_SECRET",
+                    resource=resource,
+                    algorithm="AES-256",
+                    purpose="KEY_MANAGEMENT",
+                    file_path=str(path),
+                    line_number=line,
+                )
+            )
+        elif rtype in {"aws_api_gateway_domain_name", "aws_apigatewayv2_domain_name"}:
+            policy = re.search(r'security_policy\s*=\s*"([^"]+)"', body)
+            name_policy = (policy.group(1) if policy else "TLS_1_0").upper()
+            weak = "1_0" in name_policy or "1_1" in name_policy
+            findings.append(
+                cloud_finding(
+                    source_type="AWS_API_GATEWAY",
+                    resource=resource,
+                    algorithm="TLS1.0" if weak else "TLS",
+                    purpose="NETWORK_ENCRYPTION",
+                    file_path=str(path),
+                    line_number=line,
+                    issue="WEAK_TLS_VERSION" if weak else None,
+                    extra={"security_policy": name_policy},
+                )
+            )
+        elif rtype in {"azurerm_mssql_server", "azurerm_sql_server", "azurerm_mssql_database"}:
+            tde = re.search(r"transparent_data_encryption_enabled\s*=\s*(true|false)", body)
+            enabled = tde.group(1) != "false" if tde else True
+            findings.append(
+                cloud_finding(
+                    source_type="AZURE_SQL_DATABASE",
+                    resource=resource,
+                    algorithm="AES-256" if enabled else None,
+                    purpose="DATABASE_ENCRYPTION",
+                    file_path=str(path),
+                    line_number=line,
+                    provider="AZURE",
+                    issue=None if enabled else "NO_ENCRYPTION_AT_REST",
+                )
+            )
+        elif rtype == "azurerm_application_gateway":
+            min_tls = re.search(r'min_protocol_version\s*=\s*"([^"]+)"', body)
+            version = (min_tls.group(1) if min_tls else "TLSv1_0").upper()
+            weak = any(token in version for token in ("TLSV1_0", "TLSV1_1", "SSL"))
+            findings.append(
+                cloud_finding(
+                    source_type="AZURE_APP_GATEWAY",
+                    resource=resource,
+                    algorithm="TLS1.0" if weak else "TLS",
+                    purpose="LOAD_BALANCER_TLS",
+                    file_path=str(path),
+                    line_number=line,
+                    provider="AZURE",
+                    issue="WEAK_TLS_VERSION" if weak else None,
+                    extra={"min_protocol": version},
+                )
+            )
+        elif rtype == "google_sql_database_instance":
+            enc = "disk_encryption_configuration" in body or "encryption" in body
+            findings.append(
+                cloud_finding(
+                    source_type="GCP_CLOUD_SQL",
+                    resource=resource,
+                    algorithm="AES-256" if enc else None,
+                    purpose="DATABASE_ENCRYPTION",
+                    file_path=str(path),
+                    line_number=line,
+                    provider="GCP",
+                    issue=None if enc else "NO_ENCRYPTION_AT_REST",
+                )
+            )
         elif rtype == "google_compute_ssl_policy":
             min_tls = re.search(r'min_tls_version\s*=\s*"([^"]+)"', body)
             version = (min_tls.group(1) if min_tls else "TLS_1_0").upper()

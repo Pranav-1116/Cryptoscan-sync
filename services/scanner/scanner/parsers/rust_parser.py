@@ -23,6 +23,11 @@ _RULES = [
     (re.compile(r"\bChaCha20Poly1305\b"), "ChaCha20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "chacha20poly1305"),
     (re.compile(r"\bargon2::|\bArgon2\b"), "ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2"),
     (re.compile(r"\bbcrypt::"), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "bcrypt"),
+    (re.compile(r"\bHmac::<|\bhmac::"), "HMAC", "MAC", "MAC_GENERATION", "hmac"),
+    (re.compile(r"\bHkdf::<|\bhkdf::"), "HKDF", "KEY_GENERATOR", "KEY_GENERATION", "hkdf"),
+    (re.compile(r"\bEd25519|ed25519_dalek"), "Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "ed25519"),
+    (re.compile(r"\bx25519_dalek|\bX25519"), "X25519", "KEY_AGREEMENT", "KEY_EXCHANGE", "x25519"),
+    (re.compile(r"\bpbkdf2::"), "PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "pbkdf2"),
 ]
 
 

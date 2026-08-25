@@ -2,6 +2,7 @@ package com.cryptoscan.scanner.jdt;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 import org.eclipse.jdt.core.*;
 import org.eclipse.jdt.core.dom.*;

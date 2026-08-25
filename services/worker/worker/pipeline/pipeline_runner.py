@@ -99,6 +99,9 @@ class PipelineRunner:
             self._advance(session, ctx, "clone", status="RUNNING")
             self._post_github(ctx, "pending", "CryptoScan pipeline running")
             self._clone(ctx)
+            stage = "language_detect"
+            self._advance(session, ctx, "language_detect")
+            self._language_detect(ctx)
             stage = "scan"
             self._advance(session, ctx, "scan")
             self._scan(ctx)
@@ -120,6 +123,9 @@ class PipelineRunner:
             stage = "gate"
             self._advance(session, ctx, "gate")
             self._gate(ctx, session)
+            stage = "cbom"
+            self._advance(session, ctx, "cbom")
+            self._cbom(ctx)
             stage = "alert"
             self._advance(session, ctx, "alert")
             self._alert(ctx)
@@ -230,6 +236,16 @@ class PipelineRunner:
             ctx.target_commit = str(commit)
         logger.info("stage_clone_done", extra={"path": ctx.repo_path, "commit": ctx.target_commit})
 
+    def _language_detect(self, ctx: PipelineContext) -> None:
+        from worker.pipeline.stage_language_detect import execute as detect
+
+        detect(ctx)
+
+    def _cbom(self, ctx: PipelineContext) -> None:
+        from worker.pipeline.stage_cbom_generate import execute as generate
+
+        generate(ctx)
+
     def _scan(self, ctx: PipelineContext) -> None:
         from scanner.core.scanner import Scanner
 
@@ -254,6 +270,7 @@ class PipelineRunner:
                 findings.append({"raw": str(finding)})
         ctx.findings = findings
         stats = scan_result.statistics.model_dump(mode="json") if hasattr(scan_result, "statistics") else {}
+        languages = list((ctx.scan_meta or {}).get("languages") or [])
         ctx.scan_meta = {
             "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),
             "scan_start": getattr(scan_result, "scan_start", datetime.now(timezone.utc).isoformat()),
@@ -266,6 +283,7 @@ class PipelineRunner:
             "target_branch": ctx.target_branch,
             "operator": ctx.triggered_by,
             "statistics": stats,
+            "languages": languages,
         }
         self._container(ctx)
         self._tls(ctx)

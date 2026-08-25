@@ -141,6 +141,29 @@ PACKAGE_DECLARATION = re.compile(r"""^\s*package\s+([\w.]+)\s*;""", re.MULTILINE
 # Try-catch block detection (simple heuristic)
 TRY_CATCH = re.compile(r"""\btry\s*\{""", re.MULTILINE)
 
+# Pattern 7: SSLContext / KeyStore / KeyAgreement / SecureRandom / PBEKeySpec
+SSLCONTEXT_GETINSTANCE = re.compile(
+    r"""SSLContext\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
+    re.MULTILINE,
+)
+KEYSTORE_GETINSTANCE = re.compile(
+    r"""KeyStore\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
+    re.MULTILINE,
+)
+KEYAGREEMENT_GETINSTANCE = re.compile(
+    r"""KeyAgreement\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
+    re.MULTILINE,
+)
+SECURERANDOM_GETINSTANCE = re.compile(
+    r"""SecureRandom\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
+    re.MULTILINE,
+)
+PBEKEYSPEC = re.compile(r"""new\s+PBEKeySpec\s*\(""", re.MULTILINE)
+BC_PROVIDER = re.compile(
+    r"""(?:Cipher|MessageDigest|KeyGenerator|Signature|Mac)\.getInstance\s*\(\s*[\"'][^\"']+[\"']\s*,\s*[\"']BC[\"']""",
+    re.MULTILINE,
+)
+
 
 @dataclass
 class ParseContext:
@@ -196,6 +219,11 @@ class JavaParser:
         findings.extend(self._detect_signature(source, source_lines, context))
         findings.extend(self._detect_mac(source, source_lines, context))
         findings.extend(self._detect_hardcoded_keys(source, source_lines, context))
+        findings.extend(self._detect_tls_and_keystore(source, source_lines, context))
+        findings.extend(self._detect_key_agreement(source, source_lines, context))
+        findings.extend(self._detect_secure_random(source, source_lines, context))
+        findings.extend(self._detect_pbe(source, source_lines, context))
+        self._mark_bouncycastle(source, findings)
 
         log.debug("file_parsed", findings_count=len(findings))
         return findings
@@ -686,6 +714,137 @@ class JavaParser:
             findings.append(finding)
 
         return findings
+
+    def _detect_tls_and_keystore(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        findings: list[RawFinding] = []
+        for match in SSLCONTEXT_GETINSTANCE.finditer(source):
+            proto = match.group(1)
+            algo = proto.upper().replace(" ", "")
+            if algo in {"SSL", "SSLV3", "SSLV3.0"}:
+                algo = "SSLv3"
+            elif algo in {"TLSV1", "TLS1", "TLSV1.0"}:
+                algo = "TLS1.0"
+            elif algo in {"TLSV1.1", "TLS1.1"}:
+                algo = "TLS1.1"
+            elif algo in {"TLSV1.2", "TLS1.2"}:
+                algo = "TLS1.2"
+            elif algo in {"TLSV1.3", "TLS1.3"}:
+                algo = "TLS1.3"
+            else:
+                algo = "TLS"
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_AGREEMENT.value,
+                    algorithm=algo,
+                    purpose=Purpose.NETWORK_ENCRYPTION.value,
+                    library="javax.net.ssl",
+                    is_string_literal=True,
+                    raw_transformation=proto,
+                )
+            )
+        for match in KEYSTORE_GETINSTANCE.finditer(source):
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_GENERATOR.value,
+                    algorithm=match.group(1).upper(),
+                    purpose="KEY_GENERATION",
+                    library="java.security",
+                    is_string_literal=True,
+                    raw_transformation=match.group(1),
+                )
+            )
+        return findings
+
+    def _detect_key_agreement(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        findings: list[RawFinding] = []
+        for match in KEYAGREEMENT_GETINSTANCE.finditer(source):
+            raw = match.group(1)
+            upper = raw.upper()
+            algo = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_AGREEMENT.value,
+                    algorithm=algo,
+                    purpose="KEY_EXCHANGE",
+                    library="javax.crypto",
+                    is_string_literal=True,
+                    raw_transformation=raw,
+                )
+            )
+        return findings
+
+    def _detect_secure_random(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        findings: list[RawFinding] = []
+        for match in SECURERANDOM_GETINSTANCE.finditer(source):
+            raw = match.group(1)
+            weak = raw.upper() in {"SHA1PRNG"}
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_GENERATOR.value,
+                    algorithm="SHA1PRNG" if weak else "CSPRNG",
+                    purpose="KEY_GENERATION",
+                    library="java.security",
+                    is_string_literal=True,
+                    raw_transformation=raw,
+                )
+            )
+        return findings
+
+    def _detect_pbe(
+        self, source: str, source_lines: list[str], context: ParseContext
+    ) -> list[RawFinding]:
+        findings: list[RawFinding] = []
+        for match in PBEKEYSPEC.finditer(source):
+            findings.append(
+                self._build_finding(
+                    file_path=context.file_path,
+                    source=source,
+                    source_lines=source_lines,
+                    match_start=match.start(),
+                    context=context,
+                    api_type=ApiType.KEY_GENERATOR.value,
+                    algorithm="PBKDF2",
+                    purpose="PASSWORD_HASHING",
+                    library="javax.crypto",
+                    is_string_literal=True,
+                    raw_transformation="PBEKeySpec",
+                )
+            )
+        return findings
+
+    def _mark_bouncycastle(self, source: str, findings: list[RawFinding]) -> None:
+        bc_lines = {source[:match.start()].count("\n") + 1 for match in BC_PROVIDER.finditer(source)}
+        if not bc_lines:
+            return
+        for finding in findings:
+            if finding.source.line_number in bc_lines:
+                finding.metadata.library = "BouncyCastle"
 
 
 def parse_java_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:

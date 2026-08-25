@@ -1,0 +1,34 @@
+rule_id: "CNSA-004"
+rule_name: "CNSA 2.0 — hybrid classical + PQC during transition"
+version: "2.0"
+effective_date: "2024-01-01"
+severity: "MEDIUM"
+standard_reference: "NSA CNSA 2.0"
+description: >
+  During the transition window, key exchange should use a hybrid construction
+  (ECDHE + ML-KEM) rather than classical-only or PQC-only.
+condition:
+  type: "TIMELINE"
+  parameters:
+    required_scopes:
+      - "CNSA"
+      - "CNSA-2.0"
+    if_purpose:
+      - "KEY_EXCHANGE"
+    retired_algorithms:
+      - "RSA"
+      - "ECDH"
+    approved_algorithms:
+      - "ML-KEM"
+      - "HYBRID"
+      - "X25519MLKEM768"
+    warn_after: "2024-01-01"
+    after: "2025-01-01"
+    after_result: "FAIL"
+    message: "CNSA 2.0 expects hybrid then PQC-only key exchange"
+evaluation:
+  result_template: "WARN"
+  message_template: "Use hybrid ECDHE+ML-KEM until CNSA 2.0 enforcement"
+remediation: >
+  Deploy hybrid key exchange now; retire the classical half after the CNSA deadline.
+enabled: true

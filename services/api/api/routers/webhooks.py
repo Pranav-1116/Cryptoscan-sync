@@ -171,6 +171,10 @@ async def github_webhook(
     }
 
 
+@router.post("/acr")
+@router.post("/gcr")
+@router.post("/dockerhub")
+@router.post("/harbor")
 @router.post("/container")
 @router.post("/ecr")
 async def container_registry_webhook(

@@ -1,0 +1,12 @@
+title: CryptoScan Viewer
+description: Read Cloud KMS, Cloud Storage, Cloud SQL, and SSL policies.
+stage: GA
+includedPermissions:
+  - cloudkms.cryptoKeys.list
+  - cloudkms.cryptoKeys.get
+  - storage.buckets.list
+  - storage.buckets.get
+  - cloudsql.instances.list
+  - cloudsql.instances.get
+  - compute.sslPolicies.list
+  - compute.sslPolicies.get

@@ -1,0 +1,16 @@
+{
+  "Name": "CryptoScan Reader",
+  "IsCustom": true,
+  "Description": "Read Key Vault, Storage, SQL TDE, and Application Gateway TLS settings.",
+  "Actions": [
+    "Microsoft.KeyVault/vaults/read",
+    "Microsoft.KeyVault/vaults/keys/read",
+    "Microsoft.Storage/storageAccounts/read",
+    "Microsoft.Sql/servers/read",
+    "Microsoft.Sql/servers/databases/read",
+    "Microsoft.Sql/servers/databases/transparentDataEncryption/read",
+    "Microsoft.Network/applicationGateways/read"
+  ],
+  "NotActions": [],
+  "AssignableScopes": ["/subscriptions/{subscriptionId}"]
+}

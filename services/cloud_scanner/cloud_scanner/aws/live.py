@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from cloud_scanner.common.finding import cloud_finding
+from cloud_scanner.aws import scanners
 
 
 def live_enabled(flag: bool | None = None) -> bool:
@@ -14,61 +14,52 @@ def live_enabled(flag: bool | None = None) -> bool:
     return os.environ.get("CRYPTOSCAN_CLOUD_LIVE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def scan_aws(*, regions: list[str] | None = None) -> list[dict[str, Any]]:
+def _session():
+    import boto3  # type: ignore
+
+    return boto3.Session()
+
+
+def _regions(session, requested: list[str] | None) -> list[str]:
+    if requested:
+        return requested[:16]
     try:
-        import boto3  # type: ignore
-        from botocore.exceptions import BotoCoreError, ClientError  # type: ignore
+        names = session.get_available_regions("kms") or []
+    except Exception:
+        names = []
+    if not names:
+        names = [session.region_name or "us-east-1"]
+    return names[:8]
+
+
+def scan_aws(*, regions: list[str] | None = None, session=None) -> list[dict[str, Any]]:
+    try:
+        sess = session or _session()
     except Exception:
         return []
     findings: list[dict[str, Any]] = []
-    session = boto3.Session()
-    region_list = regions or session.get_available_regions("kms") or [session.region_name or "us-east-1"]
-    for region in region_list[:8]:
-        try:
-            kms = session.client("kms", region_name=region)
-            keys = kms.list_keys().get("Keys") or []
-            for item in keys[:50]:
-                meta = kms.describe_key(KeyId=item["KeyId"])["KeyMetadata"]
-                spec = meta.get("KeySpec") or "SYMMETRIC_DEFAULT"
-                algo = "AES-256" if "SYMMETRIC" in spec else spec
-                findings.append(
-                    cloud_finding(
-                        source_type="AWS_KMS_KEY",
-                        resource=meta.get("Arn") or item["KeyId"],
-                        algorithm=algo,
-                        purpose="KEY_MANAGEMENT",
-                        file_path=f"aws://{region}/kms/{item['KeyId']}",
-                        extra={"region": region, "scan_method": "LIVE_API", "key_state": meta.get("KeyState")},
-                    )
-                )
-        except (BotoCoreError, ClientError, Exception):
-            continue
-        try:
-            s3 = session.client("s3", region_name=region)
-            for bucket in (s3.list_buckets().get("Buckets") or [])[:50]:
-                name = bucket["Name"]
-                try:
-                    s3.get_bucket_encryption(Bucket=name)
-                    issue = None
-                    algo = "AES-256"
-                except ClientError as exc:
-                    code = (exc.response.get("Error") or {}).get("Code")
-                    if code == "ServerSideEncryptionConfigurationNotFoundError":
-                        issue = "NO_ENCRYPTION"
-                        algo = None
-                    else:
-                        continue
-                findings.append(
-                    cloud_finding(
-                        source_type="AWS_S3_BUCKET",
-                        resource=name,
-                        algorithm=algo,
-                        purpose="DATA_AT_REST_ENCRYPTION",
-                        file_path=f"aws://s3/{name}",
-                        issue=issue,
-                        extra={"region": region, "scan_method": "LIVE_API"},
-                    )
-                )
-        except (BotoCoreError, ClientError, Exception):
-            continue
+    region_list = _regions(sess, regions)
+    cloudfront_done = False
+    for region in region_list:
+        for service, fn in (
+            ("kms", scanners.scan_kms),
+            ("s3", scanners.scan_s3),
+            ("rds", scanners.scan_rds),
+            ("elbv2", scanners.scan_elb),
+            ("acm", scanners.scan_acm),
+            ("secretsmanager", scanners.scan_secretsmanager),
+            ("lambda", scanners.scan_lambda),
+            ("apigateway", scanners.scan_apigateway),
+        ):
+            try:
+                client = sess.client(service, region_name=region)
+                findings.extend(fn(client, region=region))
+            except Exception:
+                continue
+        if not cloudfront_done:
+            try:
+                findings.extend(scanners.scan_cloudfront(sess.client("cloudfront", region_name="us-east-1")))
+                cloudfront_done = True
+            except Exception:
+                cloudfront_done = True
     return findings

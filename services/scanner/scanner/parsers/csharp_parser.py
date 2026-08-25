@@ -48,6 +48,18 @@ NSEC_AEAD = re.compile(
 NSEC_HASH = re.compile(
     r"\b(?:NSec\.Cryptography\.)?(Blake2b|Sha256|Sha512|Sha512256|HmacSha256|HmacSha512|Ed25519|X25519)\b"
 )
+BOUNCY_ENGINE = re.compile(
+    r"\bnew\s+(Org\.BouncyCastle\.Crypto\.(?:Engines\.)?)?(AesEngine|DesEngine|DesEdeEngine|Rc4Engine|RsaEngine|AesFastEngine)\b"
+)
+BOUNCY_DIGEST = re.compile(
+    r"\bnew\s+(Org\.BouncyCastle\.Crypto\.Digests\.)?(MD5Digest|Sha1Digest|Sha256Digest|Sha384Digest|Sha512Digest)\b"
+)
+BOUNCY_UTIL = re.compile(
+    r"\b(?:DigestUtilities\.GetDigest|CipherUtilities\.GetCipher)\s*\(\s*[\"']([^\"']+)[\"']"
+)
+BOUNCY_TLS = re.compile(r"\bOrg\.BouncyCastle\.Crypto\.Tls\.\w+")
+RSA_SIGN = re.compile(r"\b(?:rsa|RSA)\.SignData\s*\(")
+HASH_ALG_NAME = re.compile(r"HashAlgorithmName\.(SHA256|SHA384|SHA512|SHA1|MD5)\b")
 
 
 def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -161,4 +173,48 @@ def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
         api_type, algorithm, purpose = mapping.get(name, ("MESSAGE_DIGEST", name.upper(), "HASHING"))
         add(match, api_type=api_type, algorithm=algorithm, purpose=purpose)
         findings[-1].metadata.library = "NSec"
+    for match in BOUNCY_ENGINE.finditer(source):
+        name = match.group(2)
+        mapping = {
+            "AesEngine": ("AES", "ENCRYPTION", "CIPHER_INSTANCE"),
+            "AesFastEngine": ("AES", "ENCRYPTION", "CIPHER_INSTANCE"),
+            "DesEngine": ("DES", "ENCRYPTION", "CIPHER_INSTANCE"),
+            "DesEdeEngine": ("3DES", "ENCRYPTION", "CIPHER_INSTANCE"),
+            "Rc4Engine": ("RC4", "ENCRYPTION", "CIPHER_INSTANCE"),
+            "RsaEngine": ("RSA", "ENCRYPTION", "CIPHER_INSTANCE"),
+        }
+        algorithm, purpose, api_type = mapping.get(name, (name, "ENCRYPTION", "CIPHER_INSTANCE"))
+        add(match, api_type=api_type, algorithm=algorithm, purpose=purpose)
+        findings[-1].metadata.library = "BouncyCastle"
+    for match in BOUNCY_DIGEST.finditer(source):
+        name = match.group(2)
+        mapping = {
+            "MD5Digest": "MD5",
+            "Sha1Digest": "SHA-1",
+            "Sha256Digest": "SHA-256",
+            "Sha384Digest": "SHA-384",
+            "Sha512Digest": "SHA-512",
+        }
+        add(match, api_type="MESSAGE_DIGEST", algorithm=mapping.get(name, name), purpose="HASHING")
+        findings[-1].metadata.library = "BouncyCastle"
+    for match in BOUNCY_UTIL.finditer(source):
+        raw = match.group(1).upper()
+        algo = "AES" if "AES" in raw else ("MD5" if "MD5" in raw else ("SHA-1" if "SHA1" in raw or "SHA-1" in raw else raw))
+        purpose = "HASHING" if "MD" in raw or "SHA" in raw else "ENCRYPTION"
+        add(
+            match,
+            api_type="MESSAGE_DIGEST" if purpose == "HASHING" else "CIPHER_INSTANCE",
+            algorithm=algo,
+            purpose=purpose,
+        )
+        findings[-1].metadata.library = "BouncyCastle"
+    for match in BOUNCY_TLS.finditer(source):
+        add(match, api_type="KEY_AGREEMENT", algorithm="TLS", purpose="KEY_EXCHANGE")
+        findings[-1].metadata.library = "BouncyCastle"
+    for match in RSA_SIGN.finditer(source):
+        add(match, api_type="SIGNATURE", algorithm="RSA", purpose="SIGNING")
+    for match in HASH_ALG_NAME.finditer(source):
+        name = match.group(1)
+        mapped = {"SHA256": "SHA-256", "SHA384": "SHA-384", "SHA512": "SHA-512", "SHA1": "SHA-1", "MD5": "MD5"}[name]
+        add(match, api_type="MESSAGE_DIGEST", algorithm=mapped, purpose="HASHING", confidence="MEDIUM")
     return findings

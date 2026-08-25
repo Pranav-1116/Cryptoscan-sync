@@ -14,7 +14,13 @@ def looks_like_arm(path: Path, head: str = "") -> bool:
     if "arm" in name or "azuredeploy" in name or name.endswith(".arm.json"):
         return True
     blob = head or ""
-    return "deploymentTemplate.json" in blob or "Microsoft.KeyVault" in blob or "Microsoft.Storage" in blob
+    return (
+        "deploymentTemplate.json" in blob
+        or "Microsoft.KeyVault" in blob
+        or "Microsoft.Storage" in blob
+        or "Microsoft.Sql" in blob
+        or "Microsoft.Network/applicationGateways" in blob
+    )
 
 
 def parse_arm(path: Path) -> list[dict[str, Any]]:

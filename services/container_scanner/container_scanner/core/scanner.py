@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -139,32 +140,82 @@ class ContainerScanner:
                 yield from parse_rpm_qa(path)
         yield from parse_site_packages(root)
 
+    def _hash_file(self, path: Path) -> str | None:
+        try:
+            digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                while True:
+                    chunk = handle.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+            return digest.hexdigest()
+        except OSError:
+            return None
+
+    def _fingerprint_binary(self, path: Path, rel: str, *, kind: str, default: dict[str, Any]) -> dict[str, Any]:
+        payload = dict(default)
+        digest = self._hash_file(path)
+        if digest:
+            payload["sha256"] = digest
+            hit = self.catalog.lookup_hash(digest)
+            if hit:
+                payload["library"] = hit.get("library") or payload.get("library")
+                payload["version"] = hit.get("version") or payload.get("version")
+                payload["algorithms"] = list(hit.get("algorithms") or payload.get("algorithms") or [])
+                payload["confidence"] = "HIGH"
+                payload["detection_method"] = "BINARY_FINGERPRINT"
+        payload.setdefault("type", kind)
+        payload.setdefault("path", rel)
+        payload.setdefault("name", path.name.lower())
+        return payload
+
     def _discover_binaries(self, root: Path) -> Iterable[dict[str, Any]]:
+        crypto_names = {
+            "libcrypto.so",
+            "libssl.so",
+            "libcrypto.so.1.1",
+            "libcrypto.so.3",
+            "libssl.so.1.1",
+            "libssl.so.3",
+            "libbcprov.so",
+        }
         for path in root.rglob("*"):
             if not path.is_file() or any(part in SKIP_DIRS for part in path.parts):
                 continue
             suffix = path.suffix.lower()
             rel = str(path.relative_to(root))
+            name = path.name.lower()
             if suffix == ".jar":
                 info = self.catalog.match_binary(path.name)
-                yield {
-                    "type": "jar",
-                    "path": rel,
-                    "name": path.stem.lower(),
-                    "library": (info or {}).get("vendor") and self.catalog.canonical(path.name),
-                    "algorithms": list((info or {}).get("algorithms") or []),
-                }
+                yield self._fingerprint_binary(
+                    path,
+                    rel,
+                    kind="jar",
+                    default={
+                        "name": path.stem.lower(),
+                        "library": (info or {}).get("vendor") and self.catalog.canonical(path.name),
+                        "algorithms": list((info or {}).get("algorithms") or []),
+                    },
+                )
             elif "site-packages" in path.parts and suffix == ".so":
-                yield {"type": "native-extension", "path": rel, "name": path.stem.lower()}
-            elif path.name.lower() in {"libcrypto.so", "libssl.so", "libcrypto.so.3", "libssl.so.3"}:
+                yield self._fingerprint_binary(
+                    path,
+                    rel,
+                    kind="native-extension",
+                    default={"name": path.stem.lower()},
+                )
+            elif name in crypto_names or name.startswith("libcrypto") or name.startswith("libssl"):
                 info = self.catalog.match_binary(path.name)
-                yield {
-                    "type": "shared-library",
-                    "path": rel,
-                    "name": path.name.lower(),
-                    "library": "openssl",
-                    "algorithms": list((info or {}).get("algorithms") or ["AES", "RSA", "SHA-256"]),
-                }
+                yield self._fingerprint_binary(
+                    path,
+                    rel,
+                    kind="shared-library",
+                    default={
+                        "library": "openssl",
+                        "algorithms": list((info or {}).get("algorithms") or ["AES", "RSA", "SHA-256"]),
+                    },
+                )
 
     def _fingerprint(self, package: dict[str, Any]) -> dict[str, Any] | None:
         name = self.catalog.canonical(package.get("name"))
@@ -235,9 +286,10 @@ class ContainerScanner:
                         "purpose": "UNKNOWN",
                     },
                     "metadata": {
-                        "confidence": "LOW",
-                        "confidence_reason": "binary name fingerprint (no disassembly)",
-                        "library": binary.get("name"),
+                        "confidence": binary.get("confidence") or "LOW",
+                        "confidence_reason": binary.get("detection_method")
+                        or "binary name fingerprint (no disassembly)",
+                        "library": binary.get("library") or binary.get("name"),
                         "is_hardcoded_key": False,
                     },
                 }
