@@ -23,18 +23,22 @@ class CbomGenerator:
         tool_version: str = "1.0.0",
         vulnerabilities: list[dict[str, Any]] | None = None,
         dependencies: list[dict[str, Any]] | None = None,
+        metadata_properties: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         components = [self._component(record) for record in records]
+        metadata: dict[str, Any] = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "component": {"type": "application", "name": name, "version": version},
+            "tools": [{"name": "CryptoScan", "version": tool_version}],
+        }
+        if metadata_properties:
+            metadata["properties"] = list(metadata_properties)
         bom: dict[str, Any] = {
             "bomFormat": "CycloneDX",
             "specVersion": "1.5",
             "version": 1,
             "serialNumber": f"urn:uuid:{hashlib.sha256(name.encode()).hexdigest()[:32]}",
-            "metadata": {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "component": {"type": "application", "name": name, "version": version},
-                "tools": [{"name": "CryptoScan", "version": tool_version}],
-            },
+            "metadata": metadata,
             "components": components,
         }
         if vulnerabilities:
@@ -181,7 +185,7 @@ class CbomGenerator:
         algorithm = str(data.get("algorithm") or normalized.get("standard_name") or "UNKNOWN")
         primitive = normalized.get("algorithm_family") or map_primitive(algorithm, data.get("purpose"))
         oid = lookup_oid(algorithm)
-        return {
+        component: dict[str, Any] = {
             "type": normalized.get("cbom_component_type") or "cryptographic-asset",
             "name": normalized.get("standard_name") or data.get("algorithm") or "UNKNOWN",
             "bom-ref": data.get("id") or data.get("evidence_id") or data.get("finding_id"),
@@ -225,3 +229,11 @@ class CbomGenerator:
                 "compliance_status": data.get("compliance_status"),
             },
         }
+        properties: list[dict[str, Any]] = []
+        if data.get("system_name"):
+            properties.append({"name": "cryptoscan:system", "value": str(data["system_name"])})
+        if data.get("system_id"):
+            properties.append({"name": "cryptoscan:system_id", "value": str(data["system_id"])})
+        if properties:
+            component["properties"] = properties
+        return component

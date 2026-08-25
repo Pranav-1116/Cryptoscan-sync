@@ -15,8 +15,8 @@ sys.path.insert(0, str(ROOT / "shared" / "shared_config"))
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export a CryptoScan CBOM")
-    parser.add_argument("target_id", help="scan_id or system_id")
-    parser.add_argument("--kind", choices=("scan", "system"), default="scan")
+    parser.add_argument("target_id", nargs="?", default="", help="scan_id or system_id (omit for portfolio)")
+    parser.add_argument("--kind", choices=("scan", "system", "portfolio"), default="scan")
     parser.add_argument("--format", choices=("json", "xml"), default="json")
     parser.add_argument("--signed", action="store_true")
     parser.add_argument("-o", "--output")
@@ -29,7 +29,35 @@ def main() -> None:
     session = SessionLocal()
     try:
         generator = CbomGenerator()
-        if args.kind == "scan":
+        if args.kind == "portfolio":
+            from db.repositories.asset_repository import AssetRepository
+            from db.repositories.system_repository import SystemRepository
+
+            sys_repo = SystemRepository(session)
+            systems, _ = sys_repo.list_systems(page=1, page_size=1000)
+            records = []
+            seen: set[str] = set()
+            for system in systems:
+                for asset in sys_repo.assets_for(system.id):
+                    seen.add(asset.id)
+                    data = asset.to_dict()
+                    data["system_id"] = system.id
+                    data["system_name"] = system.name
+                    records.append(data)
+            assets, _ = AssetRepository(session).list_assets(page=1, page_size=5000)
+            for asset in assets:
+                if asset.id in seen:
+                    continue
+                data = asset.to_dict()
+                data["system_name"] = "unassigned"
+                records.append(data)
+            bom = generator.from_records(
+                records,
+                name="cryptoscan-portfolio",
+                version="aggregate",
+                metadata_properties=[{"name": "cryptoscan:scope", "value": "estate"}],
+            )
+        elif args.kind == "scan":
             from db.models.scan import Scan
             from db.repositories.evidence_repository import EvidenceRepository
 

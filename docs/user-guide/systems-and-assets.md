@@ -14,9 +14,10 @@ Each asset stores `extra.dedup_key`, a SHA-256 of
 ## Auto-linking
 
 After a scan, the worker creates (or reuses) a system named after the
-repository and attaches every asset from that scan. Set
-`compliance_scopes` on the system (for example `PCI-DSS`) so scoped
-policy rules apply on the next scan.
+repository and attaches every asset from that scan. You can also ingest a
+CycloneDX CBOM (`POST /api/v1/cbom/ingest`) to register a system from an
+external bill of materials. Set `compliance_scopes` on the system (for
+example `PCI-DSS`) so scoped policy rules apply on the next scan.
 
 ## API
 

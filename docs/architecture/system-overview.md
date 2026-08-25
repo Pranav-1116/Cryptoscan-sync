@@ -39,7 +39,7 @@ Part 2 additions (this tree):
 - Multi-language static scanners (Python AST, JS/C# regex)
 - Container / image-root inventory (package manifests + JAR string scan)
 - Deduplicated asset inventory and simple systems
-- CycloneDX 1.5 CBOM, including `POST /cbom/custom`
+- CycloneDX 1.5 CBOM catalog (per-system, portfolio, ingest, diff)
 - Scoped advanced policy (PCI-DSS, NIST SP 800-131A, CNSA 2.0, FIPS, HIPAA)
 
 Still out of scope: network/runtime/cloud, full graphs, AI, OT/ICS, GitHub

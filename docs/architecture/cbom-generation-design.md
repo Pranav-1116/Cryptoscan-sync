@@ -10,8 +10,15 @@
 
 API:
 
+- `GET /api/v1/cbom` estate catalog
+- `GET /api/v1/cbom/search?q=`
+- `GET /api/v1/cbom/portfolio`
 - `GET /api/v1/cbom/scan/{scan_id}`
 - `GET /api/v1/cbom/system/{system_id}`
 - `POST /api/v1/cbom/custom` `{asset_ids, include_vulnerabilities}`
+- `POST /api/v1/cbom/ingest` `{bom, system_name?}`
+- `POST /api/v1/cbom/diff`
 
-`validate()` is a local structural check, not a download of the official XSD.
+`cbom.inventory` summarizes, searches, ingests, and diffs documents without
+a new table — systems + `crypto_assets` are the inventory. `validate()` is a
+local structural check, not a download of the official XSD.

@@ -37,8 +37,13 @@ Default login: `admin` / `cryptoscan`.
 - `GET /stats/summary`
 - `GET /container/scans` / `POST /container/scan`
 - `GET /vulns`
+- `GET /cbom` estate catalog (systems + scans + algorithm totals)
+- `GET /cbom/search?q=` find an algorithm or path across systems
+- `GET /cbom/portfolio` org-wide CycloneDX 1.5 CBOM
 - `GET /cbom/scan/{scan_id}` / `GET /cbom/system/{system_id}`
 - `POST /cbom/custom` `{asset_ids, include_vulnerabilities?}`
+- `POST /cbom/validate` `{bom}` / `POST /cbom/ingest` `{bom, system_name?}`
+- `POST /cbom/diff` `{left:{system_id|scan_id|bom}, right:{…}}`
 - `POST /webhooks/github`
 
 ## Agility, exceptions, OT, analytics, vendors

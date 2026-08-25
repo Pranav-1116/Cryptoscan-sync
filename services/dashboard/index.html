@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CryptoScan — Cryptographic Intelligence</title>
+  <title>CryptoScan — Estate CBOM</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
@@ -84,7 +84,7 @@
   <div id="login-view" class="login">
     <div class="login-card">
       <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>Deterministic crypto intelligence</small></div></div>
-      <p class="muted">Sign in to review scans, findings, and drift.</p>
+      <p class="muted">Sign in to find cryptographic bills of materials across your systems.</p>
       <form id="login-form" onsubmit="event.preventDefault(); login(); return false;">
         <label class="muted">Username</label>
         <input id="username" name="username" autocomplete="username" placeholder="admin" />
@@ -101,7 +101,7 @@
 
   <div id="app-view" class="app hidden">
     <aside class="sidebar">
-      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v1.0</small></div></div>
+      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>Estate CBOM</small></div></div>
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
@@ -109,6 +109,7 @@
         <button data-route="jobs" onclick="go('jobs')">Jobs</button>
         <button data-route="assets" onclick="go('assets')">Assets</button>
         <button data-route="systems" onclick="go('systems')">Systems</button>
+        <button data-route="cbom" onclick="go('cbom')">CBOM</button>
         <button data-route="compliance" onclick="go('compliance')">Compliance</button>
         <button data-route="policy" onclick="go('policy')">Policy</button>
         <button data-route="container" onclick="go('container')">Container</button>
@@ -156,7 +157,11 @@ async function api(path, opts={}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = data.detail;
-    const message = typeof detail === 'string' ? detail : (res.statusText || ('HTTP ' + res.status));
+    let message;
+    if (typeof detail === 'string') message = detail;
+    else if (Array.isArray(detail)) message = detail.map(d => (typeof d === 'string' ? d : (d.msg || JSON.stringify(d)))).join('; ');
+    else if (detail && typeof detail === 'object') message = detail.message || JSON.stringify(detail);
+    else message = res.statusText || ('HTTP ' + res.status);
     throw new Error(message);
   }
   return data;
@@ -213,6 +218,7 @@ async function render() {
     if (state.route === 'asset') return renderAsset(el);
     if (state.route === 'systems') return renderSystems(el);
     if (state.route === 'system') return renderSystem(el);
+    if (state.route === 'cbom') return renderCbom(el);
     if (state.route === 'compliance') return renderCompliance(el);
     if (state.route === 'policy') return renderPolicy(el);
     if (state.route === 'container') return renderContainer(el);
@@ -236,14 +242,22 @@ async function render() {
 async function renderHome(el) {
   const s = await api('/stats/summary');
   const scans = await api('/scans?page_size=8');
+  let catalog = null;
+  try { catalog = await api('/cbom'); } catch (e) { catalog = null; }
   el.innerHTML = `
-    <div class="top"><div><h2>Cryptographic posture</h2><p class="muted">Deterministic inventory — policy is never decided by AI.</p></div></div>
+    <div class="top"><div><h2>Cryptographic posture</h2><p class="muted">Find CycloneDX CBOMs on every system — policy is never decided by AI.</p></div></div>
     <div class="grid cards">
       <div class="card"><div class="label">Scans</div><div class="value">${s.total_scans}</div></div>
       <div class="card"><div class="label">Findings</div><div class="value">${s.total_findings}</div></div>
       <div class="card"><div class="label">Compliant</div><div class="value" style="color:var(--pass)">${s.compliant}</div></div>
       <div class="card"><div class="label">Non-compliant</div><div class="value" style="color:var(--fail)">${s.non_compliant}</div></div>
     </div>
+    ${catalog ? `<div style="height:16px"></div>
+    <div class="card">
+      <div class="label">Estate CBOM</div>
+      <p>${catalog.totals?.systems||0} systems · ${catalog.totals?.components||0} cryptographic components · ${catalog.totals?.quantum_vulnerable||0} quantum-vulnerable</p>
+      <button class="btn secondary" onclick="go('cbom')">Open CBOM inventory</button>
+    </div>` : ''}
     <div style="height:16px"></div>
     <div class="grid" style="grid-template-columns: 1.2fr .8fr">
       <div class="card">
@@ -484,7 +498,8 @@ async function renderAssets(el) {
 async function renderSystems(el) {
   const data = await api('/systems?page_size=50');
   el.innerHTML = `<div class="top"><div><h2>Systems</h2><p class="muted">Inventory and ownership. Blast radius lives under Graph.</p></div>
-    <button class="btn" onclick="createSystem()">Add system</button></div>
+    <div class="row"><button class="btn" onclick="createSystem()">Add system</button>
+    <button class="btn secondary" onclick="go('cbom')">Estate CBOM</button></div></div>
     <div class="card"><table><thead><tr><th>Name</th><th>Owner</th><th>Env</th><th>Scopes</th></tr></thead>
     <tbody>${(data.systems||[]).map(s => `<tr onclick="go('system',{systemId:'${s.id}'})" style="cursor:pointer">
       <td>${s.name}</td><td>${s.owner||'—'}</td><td>${s.environment||'—'}</td>
@@ -1032,6 +1047,160 @@ async function renderWorkOrdersHome(el) {
       <td>${o.sites}</td><td>${o.replacement}</td><td>${badge(o.effort === 'high' ? 'HIGH' : o.effort === 'low' ? 'INFO' : 'MEDIUM')}</td>
     </tr>`).join('') || '<tr><td colspan=6 class="muted">Nothing to migrate on the latest scan.</td></tr>'}
     </tbody></table></div>`;
+}
+
+async function renderCbom(el) {
+  const catalog = await api('/cbom');
+  const systems = catalog.systems || [];
+  const scans = catalog.scans || [];
+  const algos = Object.entries(catalog.totals?.algorithms || {}).sort((a,b) => b[1]-a[1]);
+  const options = systems.map(s => `<option value="${s.source_id}">${s.name}</option>`).join('');
+  el.innerHTML = `<div class="top"><div><h2>Estate CBOM</h2>
+    <p class="muted">CycloneDX 1.5 cryptographic bills of materials discovered on each system.</p></div>
+    <div class="row">
+      <button class="btn secondary" onclick="downloadFile('/cbom/portfolio', 'cbom-portfolio.json')">Export portfolio</button>
+      <button class="btn secondary" onclick="downloadFile('/cbom/portfolio?fmt=xml', 'cbom-portfolio.xml')">Export XML</button>
+    </div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Systems</div><div class="value">${catalog.totals?.systems||0}</div></div>
+      <div class="card"><div class="label">Components</div><div class="value">${catalog.totals?.components||0}</div></div>
+      <div class="card"><div class="label">Quantum-vulnerable</div><div class="value" style="color:var(--fail)">${catalog.totals?.quantum_vulnerable||0}</div></div>
+      <div class="card"><div class="label">PQC-ready</div><div class="value">${catalog.totals?.pqc_ready||0}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns:1.2fr .8fr">
+      <div class="card">
+        <div class="label">Find crypto across systems</div>
+        <div class="row">
+          <input id="cbom-q" placeholder="AES, RSA, ML-KEM, payments-api…" />
+          <button class="btn" onclick="searchCbom()">Search</button>
+        </div>
+        <div id="cbom-search" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <div class="label">Algorithms in inventory</div>
+        <table><tbody>${algos.slice(0,12).map(([name, n]) => `<tr><td class="mono">${name}</td><td>${n}</td></tr>`).join('') || '<tr><td class="muted">No CBOMs yet. Scan a repo or import a CycloneDX file.</td></tr>'}</tbody></table>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card">
+      <div class="label">System CBOMs</div>
+      <table><thead><tr><th>System</th><th>Env</th><th>Components</th><th>Quantum</th><th>PQC</th><th></th></tr></thead>
+      <tbody>${systems.map(s => `<tr>
+        <td><a href="#" onclick="go('system',{systemId:'${s.source_id}'});return false;">${s.name}</a></td>
+        <td>${s.environment||'—'}</td>
+        <td>${s.components}</td>
+        <td>${s.quantum_vulnerable}</td>
+        <td>${s.pqc_ready}</td>
+        <td class="row">
+          <button class="btn secondary" onclick="previewCbom('system','${s.source_id}')">Inspect</button>
+          <button class="btn secondary" onclick="downloadFile('/cbom/system/${s.source_id}', 'cbom-${s.name}.json')">JSON</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan=6 class="muted">No systems with cryptographic assets yet.</td></tr>'}
+      </tbody></table>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card">
+      <div class="label">Scan CBOMs</div>
+      <table><thead><tr><th>Target</th><th>Status</th><th>Findings</th><th></th></tr></thead>
+      <tbody>${scans.map(s => `<tr>
+        <td class="mono">${s.name}</td>
+        <td>${badge(s.status)}</td>
+        <td>${s.components??'—'}</td>
+        <td class="row">
+          <button class="btn secondary" onclick="go('scan',{scanId:'${s.source_id}'})">Scan</button>
+          <button class="btn secondary" onclick="previewCbom('scan','${s.source_id}')">Inspect</button>
+          <button class="btn secondary" onclick="downloadFile('/cbom/scan/${s.source_id}', 'cbom-scan-${s.source_id}.json')">JSON</button>
+        </td>
+      </tr>`).join('') || '<tr><td colspan=4 class="muted">No scans yet.</td></tr>'}
+      </tbody></table>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card">
+        <div class="label">Import CycloneDX CBOM</div>
+        <p class="muted">Paste a 1.4 / 1.5 / 1.6 document from Syft, cdxgen, or a vendor. Crypto components become a system.</p>
+        <input id="cbom-system-name" placeholder="System name (optional — uses metadata.component.name)" />
+        <div style="height:8px"></div>
+        <textarea id="cbom-json" rows="8" placeholder='{"bomFormat":"CycloneDX","specVersion":"1.5","components":[]}'></textarea>
+        <div style="height:8px"></div>
+        <button class="btn" onclick="ingestCbom()">Ingest CBOM</button>
+        <div id="cbom-ingest-msg" class="muted"></div>
+      </div>
+      <div class="card">
+        <div class="label">Diff two system CBOMs</div>
+        <select id="cbom-left">${options}</select>
+        <div style="height:8px"></div>
+        <select id="cbom-right">${options}</select>
+        <div style="height:8px"></div>
+        <button class="btn secondary" onclick="diffCboms()">Compare</button>
+        <div id="cbom-diff-out" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card" id="cbom-preview"><div class="label">Inspect</div><p class="muted">Open a system or scan CBOM to list cryptographic components here.</p></div>`;
+}
+
+async function searchCbom() {
+  const q = (document.getElementById('cbom-q').value || '').trim();
+  const box = document.getElementById('cbom-search');
+  if (!q) { box.innerHTML = '<p class="muted">Enter an algorithm, system, or path.</p>'; return; }
+  const data = await api('/cbom/search?q=' + encodeURIComponent(q));
+  box.innerHTML = `<table><thead><tr><th>Algo</th><th>System</th><th>Location</th><th>Q</th></tr></thead>
+    <tbody>${(data.matches||[]).map(m => `<tr>
+      <td class="mono">${m.algorithm}${m.mode ? '/'+m.mode : ''}</td>
+      <td>${m.system_name || '—'}</td>
+      <td class="mono">${m.file_path||''}${m.line_number ? ':'+m.line_number : ''}</td>
+      <td>${m.quantum_vulnerable ? badge('FAIL') : badge('PASS')}</td>
+    </tr>`).join('') || '<tr><td colspan=4 class="muted">No matches</td></tr>'}</tbody></table>
+    <p class="muted">${data.total_count||0} matches</p>`;
+}
+
+async function previewCbom(kind, id) {
+  const bom = await api('/cbom/' + kind + '/' + id);
+  const comps = bom.components || [];
+  const name = bom.metadata?.component?.name || id;
+  document.getElementById('cbom-preview').innerHTML = `<div class="label">${name} · CycloneDX ${bom.specVersion||'1.5'} · ${comps.length} components</div>
+    <table><thead><tr><th>Component</th><th>Primitive</th><th>OID</th><th>Evidence</th></tr></thead>
+    <tbody>${comps.map(c => `<tr>
+      <td class="mono">${c.name}</td>
+      <td>${c.cryptoProperties?.algorithmProperties?.primitive || '—'}</td>
+      <td class="mono">${c.cryptoProperties?.oid || '—'}</td>
+      <td class="mono">${c.evidence?.file || ''}${c.evidence?.line ? ':'+c.evidence.line : ''}</td>
+    </tr>`).join('') || '<tr><td colspan=4 class="muted">Empty CBOM</td></tr>'}</tbody></table>`;
+}
+
+async function ingestCbom() {
+  const msg = document.getElementById('cbom-ingest-msg');
+  const raw = document.getElementById('cbom-json').value || '';
+  let bom;
+  try { bom = JSON.parse(raw); } catch (e) { msg.textContent = 'Invalid JSON'; return; }
+  const name = (document.getElementById('cbom-system-name').value || '').trim();
+  try {
+    const data = await api('/cbom/ingest', { method: 'POST', body: JSON.stringify({ bom, system_name: name || undefined })});
+    msg.textContent = 'Imported ' + data.imported + ' components into ' + (data.system?.name || 'system');
+    go('cbom');
+  } catch (e) {
+    msg.textContent = e.message;
+  }
+}
+
+async function diffCboms() {
+  const left = document.getElementById('cbom-left')?.value;
+  const right = document.getElementById('cbom-right')?.value;
+  const out = document.getElementById('cbom-diff-out');
+  if (!left || !right) { out.innerHTML = '<p class="muted">Need two systems.</p>'; return; }
+  const data = await api('/cbom/diff', { method: 'POST', body: JSON.stringify({
+    left: { system_id: left }, right: { system_id: right }
+  })});
+  const row = (item) => `<tr><td class="mono">${item.algorithm}${item.mode ? '/'+item.mode : ''}</td><td>${item.key_size||'—'}</td></tr>`;
+  out.innerHTML = `<p>Added ${data.counts?.added||0} · removed ${data.counts?.removed||0} · unchanged ${data.counts?.unchanged||0}</p>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div><div class="label">Added on ${data.right?.name||'right'}</div>
+        <table><tbody>${(data.added||[]).map(row).join('') || '<tr><td class="muted">None</td></tr>'}</tbody></table></div>
+      <div><div class="label">Removed from ${data.left?.name||'left'}</div>
+        <table><tbody>${(data.removed||[]).map(row).join('') || '<tr><td class="muted">None</td></tr>'}</tbody></table></div>
+    </div>`;
 }
 
 async function downloadFile(path, filename, opts={}) {
