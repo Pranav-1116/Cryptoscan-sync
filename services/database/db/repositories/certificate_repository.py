@@ -35,6 +35,10 @@ class CertificateRepository(BaseRepository[Certificate]):
                 is_self_signed=bool(payload.get("is_self_signed")),
                 san=payload.get("san"),
                 usages=usages,
+                revocation_status=payload.get("revocation_status"),
+                revocation_method=payload.get("revocation_method"),
+                ocsp_url=payload.get("ocsp_url"),
+                crl_url=payload.get("crl_url"),
                 extra=payload.get("extra"),
             )
             return self.create(row)
@@ -43,9 +47,30 @@ class CertificateRepository(BaseRepository[Certificate]):
             if item not in merged:
                 merged.append(item)
         row.usages = merged
-        for key in ("subject", "issuer", "expiry_status", "days_until_expiry", "public_key_algorithm", "public_key_size"):
+        for key in (
+            "subject",
+            "issuer",
+            "expiry_status",
+            "days_until_expiry",
+            "public_key_algorithm",
+            "public_key_size",
+            "revocation_status",
+            "revocation_method",
+            "ocsp_url",
+            "crl_url",
+        ):
             if payload.get(key) is not None:
                 setattr(row, key, payload[key])
+        if payload.get("revocation_status") is not None:
+            row.revocation_checked_at = datetime.now(timezone.utc)
+        extra = dict(row.extra or {})
+        if payload.get("extra"):
+            extra.update(payload["extra"])
+        if payload.get("revocation"):
+            extra["revocation"] = payload["revocation"]
+        if payload.get("chain_validation"):
+            extra["chain_validation"] = payload["chain_validation"]
+        row.extra = extra or row.extra
         row.updated_at = datetime.now(timezone.utc)
         self.session.flush()
         return row

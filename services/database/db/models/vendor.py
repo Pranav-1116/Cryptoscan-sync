@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import DateTime, ForeignKey, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -16,6 +17,14 @@ class Vendor(BaseModel):
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
     criticality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     extra: Mapped[Optional[str]] = mapped_column(String(400), nullable=True)
+    vendor_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    contract_end_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    data_classifications: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    integration_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    primary_contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    security_contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    last_assessment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    extra_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
 class SystemVendor(BaseModel):

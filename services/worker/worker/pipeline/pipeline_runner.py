@@ -35,6 +35,7 @@ class PipelineContext:
     container_result: dict[str, Any] = field(default_factory=dict)
     tls_result: dict[str, Any] = field(default_factory=dict)
     cloud_result: dict[str, Any] = field(default_factory=dict)
+    ot_result: dict[str, Any] = field(default_factory=dict)
     current_stage: str = ""
     logs: list[dict[str, Any]] = field(default_factory=list)
     compliance_scopes: list[str] = field(default_factory=list)
@@ -269,7 +270,15 @@ class PipelineRunner:
         self._container(ctx)
         self._tls(ctx)
         self._cloud(ctx)
+        self._ot_findings(ctx)
         logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
+
+    def _ot_findings(self, ctx: PipelineContext) -> None:
+        try:
+            from worker.pipeline.stage_ot_scan import execute as ot_scan
+        except Exception:
+            return
+        ot_scan(ctx, session=None)
 
     def _cloud(self, ctx: PipelineContext) -> None:
         try:
@@ -366,13 +375,36 @@ class PipelineRunner:
         if ctx.tls_result and ctx.tls_result.get("certificates"):
             try:
                 from db.repositories.certificate_repository import CertificateRepository
+                from db.repositories.maturity_repository import MaturityRepository
 
                 repo = CertificateRepository(session)
+                usages = MaturityRepository(session)
                 for cert in ctx.tls_result["certificates"]:
                     if cert.get("fingerprint_sha256"):
                         repo.upsert(cert)
+                for usage in ctx.tls_result.get("usages") or []:
+                    if usage.get("fingerprint_sha256") and usage.get("location"):
+                        usages.upsert_usage(
+                            usage["fingerprint_sha256"],
+                            usage["location"],
+                            usage.get("usage_type") or "UNKNOWN",
+                        )
             except Exception:
                 logger.debug("certificate_persist_skipped", exc_info=True)
+        if ctx.ot_result and (ctx.ot_result.get("devices") or ctx.ot_result.get("findings")):
+            try:
+                from db.repositories.maturity_repository import MaturityRepository
+
+                repo = MaturityRepository(session)
+                id_by_ip = {}
+                for device in ctx.ot_result.get("devices") or []:
+                    row = repo.upsert_ot_device(device)
+                    id_by_ip[device.get("ip_address")] = row.id
+                for finding in ctx.ot_result.get("findings") or []:
+                    ip = (finding.get("device") or {}).get("ip_address")
+                    repo.add_ot_finding(id_by_ip.get(ip), finding)
+            except Exception:
+                logger.debug("ot_persist_skipped", exc_info=True)
         session.flush()
         logger.info("stage_load_done", extra={"scan_id": scan.id})
 
@@ -442,6 +474,8 @@ class PipelineRunner:
         session.flush()
         self._dedup(ctx, session, rows)
         self._graph(ctx, session)
+        self._business(ctx, session)
+        self._agility(ctx, session)
         logger.info("stage_policy_done", extra={"count": len(rows)})
 
     def _dedup(self, ctx: PipelineContext, session, rows) -> None:
@@ -468,6 +502,7 @@ class PipelineRunner:
         assets = DeduplicationEngine().merge(findings)
         stored = AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
         self._link_system_assets(ctx, session, stored)
+        self._quantum_assets(ctx, session, stored)
         session.flush()
         logger.info("stage_dedup_done", extra={"assets": len(assets)})
 
@@ -501,6 +536,54 @@ class PipelineRunner:
         repo = SystemRepository(session)
         for asset in assets:
             repo.attach_asset(ctx.system_id, asset.id)
+
+    def _graph(self, ctx: PipelineContext, session) -> None:
+        try:
+            from worker.pipeline.stage_graph_sync import execute as graph_sync
+
+            graph_sync(ctx, session=session)
+        except Exception:
+            logger.debug("graph_sync_skipped", exc_info=True)
+
+    def _business(self, ctx: PipelineContext, session) -> None:
+        try:
+            from worker.pipeline.stage_business_enrich import execute as enrich
+
+            enrich(ctx, session=session)
+        except Exception:
+            logger.debug("business_enrich_skipped", exc_info=True)
+
+    def _agility(self, ctx: PipelineContext, session) -> None:
+        try:
+            from worker.pipeline.stage_agility import execute as score
+
+            score(ctx, session=session)
+        except Exception:
+            logger.debug("agility_stage_skipped", exc_info=True)
+
+    def _quantum_assets(self, ctx: PipelineContext, session, assets) -> None:
+        try:
+            from db.models.system import System
+            from quantum.risk import score_asset
+        except Exception:
+            return
+        system = session.get(System, ctx.system_id) if ctx.system_id else None
+        system_payload = system.to_dict() if system is not None else {}
+        for asset in assets:
+            try:
+                extra = dict(asset.extra or {})
+                extra["quantum_risk"] = score_asset(
+                    {
+                        "algorithm": asset.algorithm,
+                        "key_size": asset.key_size,
+                        "purpose": asset.purpose,
+                        "file_path": asset.file_path,
+                    },
+                    system=system_payload,
+                )
+                asset.extra = extra
+            except Exception:
+                continue
 
     def _drift(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select
@@ -623,13 +706,18 @@ class PipelineRunner:
 
     def _alert(self, ctx: PipelineContext) -> None:
         critical = [e for e in ctx.drift_events if e.get("severity") in {"CRITICAL", "HIGH"}]
-        if not critical:
-            return
-        logger.warning("drift_alert", extra={"job_id": ctx.job_id, "scan_id": ctx.scan_id, "events": critical})
-        if settings.SMTP_HOST:
-            try:
-                from drift.alerts.email_alerter import EmailAlerter
+        if critical:
+            logger.warning("drift_alert", extra={"job_id": ctx.job_id, "scan_id": ctx.scan_id, "events": critical})
+            if settings.SMTP_HOST:
+                try:
+                    from drift.alerts.email_alerter import EmailAlerter
 
-                EmailAlerter().send_drift_alert(ctx.target_repo, critical)
-            except Exception:
-                logger.exception("email_alert_failed")
+                    EmailAlerter().send_drift_alert(ctx.target_repo, critical)
+                except Exception:
+                    logger.exception("email_alert_failed")
+        try:
+            from business_context.alerts.stakeholder import notify_stakeholders
+
+            notify_stakeholders(ctx.findings)
+        except Exception:
+            logger.debug("stakeholder_alert_skipped", exc_info=True)

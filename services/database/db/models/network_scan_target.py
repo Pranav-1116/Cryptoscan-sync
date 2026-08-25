@@ -19,3 +19,4 @@ class NetworkScanTarget(BaseModel):
     scan_frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="daily")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_scan_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    next_scan_time: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

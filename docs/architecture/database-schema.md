@@ -15,5 +15,15 @@ Part 2 tables:
 - `container_scans` + `vulnerabilities` — image-root results
 - `repo_configs` — per-repo webhook settings
 
+Part 3/4 tables:
+
+- `certificates` + `certificate_usages` + `network_scan_targets`
+- `cloud_accounts`, `business_processes`, `business_owners`, `vendors`
+- `system_agility_scores` — historical 6-factor scores
+- `policy_exceptions` + `exception_reviews`
+- `vendor_crypto_inventory`
+- `ot_devices` + `ot_crypto_findings`
+
 SQLite is the local stand-in (`data/cryptoscan.db`). Production is Postgres
-via Compose; JSONB columns degrade to JSON on SQLite.
+via Compose; JSONB columns degrade to JSON on SQLite. `init_db` creates
+missing tables and adds new columns without reseeding.

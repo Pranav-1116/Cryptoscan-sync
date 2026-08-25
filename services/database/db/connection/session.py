@@ -31,6 +31,7 @@ def init_db(engine=None) -> None:
         business_owner,
         business_process,
         certificate,
+        certificate_usage,
         cloud_account,
         container_scan,
         crypto_asset,
@@ -39,14 +40,18 @@ def init_db(engine=None) -> None:
         evidence_record,
         migration_project,
         network_scan_target,
+        ot_device,
+        policy_exception,
         repo_configuration,
         scan,
         scan_job,
         system,
+        system_agility_score,
         system_asset,
         system_business_process,
         system_dependency,
         vendor,
+        vendor_crypto,
         verification_log,
         vulnerability,
     )
@@ -54,6 +59,12 @@ def init_db(engine=None) -> None:
     engine = engine or get_engine()
     configure_session(engine)
     Base.metadata.create_all(bind=engine)
+    try:
+        from db.connection.schema_ensure import ensure_schema_extensions
+
+        ensure_schema_extensions(engine)
+    except Exception:
+        logger.debug("schema_extensions_skipped", exc_info=True)
     logger.info("database_schema_ready")
 
 

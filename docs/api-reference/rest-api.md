@@ -41,4 +41,16 @@ Default login: `admin` / `cryptoscan`.
 - `POST /cbom/custom` `{asset_ids, include_vulnerabilities?}`
 - `POST /webhooks/github`
 
+## Agility, exceptions, OT, analytics, vendors
+
+- `GET /agility` / `GET /systems/{id}/agility` / `POST /systems/{id}/agility/recalculate`
+- `GET /readiness`
+- `GET /exceptions` / `POST /exceptions` / `POST /exceptions/{id}/approve|reject|revoke|review`
+- `POST /exceptions/expire-due`
+- `POST /ot/scan` / `GET /ot/devices` / `GET /ot/findings`
+- `GET /analytics` / `trends` / `heatmap` / `forecast` / `recommendations` / `executive`
+- `GET /vendors/{id}/questionnaire` / `POST /vendors/{id}/questionnaire|cbom|docs`
+- `GET /vendors/{id}/risk` / `GET /vendor-risks`
+- `GET /network/due` / `POST /network/run-due` / `GET /certificates/{id}/usages`
+
 `repo_url` may be a git URL or `local://demo/polyglot-app`.

@@ -40,6 +40,29 @@ class VendorCreate(BaseModel):
     name: str
     criticality: str | None = None
     system_id: str | None = None
+    vendor_type: str | None = None
+    integration_type: str | None = None
+    data_classifications: list[str] | None = None
+    primary_contact: str | None = None
+    security_contact: str | None = None
+
+
+class QuestionnaireBody(BaseModel):
+    transit: str | None = None
+    rest: str | None = None
+    kms: str | None = None
+    pqc: str | None = None
+    cbom: str | None = None
+    rotation: str | None = None
+    vendor_name: str | None = None
+
+
+class CbomImport(BaseModel):
+    sbom: dict
+
+
+class DocsImport(BaseModel):
+    text: str
 
 
 class MigrationCreate(BaseModel):
@@ -108,10 +131,130 @@ def list_vendors(user: str = Depends(get_current_user), db: Session = Depends(ge
 @router.post("/vendors")
 def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
-    vendor = intel.create_vendor(body.name, body.criticality)
+    vendor = intel.create_vendor(
+        body.name,
+        body.criticality,
+        vendor_type=body.vendor_type,
+        integration_type=body.integration_type,
+        data_classifications=body.data_classifications,
+        primary_contact=body.primary_contact,
+        security_contact=body.security_contact,
+    )
     if body.system_id:
         intel.link_vendor(body.system_id, vendor.id)
     return vendor.to_dict()
+
+
+@router.get("/vendors/{vendor_id}/questionnaire")
+def get_questionnaire(vendor_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from vendor_intel.questionnaire import generate_questionnaire
+
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return generate_questionnaire(vendor.name)
+
+
+@router.post("/vendors/{vendor_id}/questionnaire")
+def post_questionnaire(
+    vendor_id: str, body: QuestionnaireBody, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
+):
+    from datetime import datetime, timezone
+
+    from db.repositories.maturity_repository import MaturityRepository
+    from vendor_intel.questionnaire import parse_questionnaire
+
+    intel = IntelligenceRepository(db)
+    vendor = intel.get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    parsed = parse_questionnaire(body.model_dump())
+    extra = dict(vendor.extra_json or {})
+    extra["questionnaire"] = parsed
+    intel.update_vendor(vendor_id, extra_json=extra, last_assessment_date=datetime.now(timezone.utc))
+    repo = MaturityRepository(db)
+    for item in parsed.get("inventory") or []:
+        repo.add_vendor_crypto(vendor_id, **item)
+    return parsed
+
+
+@router.post("/vendors/{vendor_id}/cbom")
+def post_vendor_cbom(
+    vendor_id: str, body: CbomImport, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
+):
+    from db.repositories.maturity_repository import MaturityRepository
+    from vendor_intel.sbom_import import import_vendor_cbom
+
+    if IntelligenceRepository(db).get_vendor(vendor_id) is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    items = import_vendor_cbom(body.sbom)
+    stored = MaturityRepository(db).replace_vendor_crypto(vendor_id, items)
+    return {"imported": len(stored), "inventory": [row.to_dict() for row in stored]}
+
+
+@router.post("/vendors/{vendor_id}/docs")
+def post_vendor_docs(
+    vendor_id: str, body: DocsImport, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
+):
+    from db.repositories.maturity_repository import MaturityRepository
+    from vendor_intel.docs_extract import extract_crypto_mentions
+
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    extracted = extract_crypto_mentions(body.text, vendor=vendor.name)
+    repo = MaturityRepository(db)
+    for item in extracted.get("inventory") or []:
+        repo.add_vendor_crypto(vendor_id, **item)
+    return extracted
+
+
+@router.get("/vendors/{vendor_id}/risk")
+def vendor_risk(vendor_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from db.repositories.maturity_repository import MaturityRepository
+    from vendor_intel.risk import score_vendor
+
+    intel = IntelligenceRepository(db)
+    vendor = intel.get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    inventory = [row.to_dict() for row in MaturityRepository(db).list_vendor_crypto(vendor_id)]
+    profile = (vendor.extra_json or {}).get("questionnaire") or {}
+    scored = score_vendor(
+        inventory=inventory,
+        classifications=vendor.data_classifications or [],
+        pqc_status=profile.get("pqc_status"),
+        cbom_provided=profile.get("cbom_provided"),
+        profile=profile,
+    )
+    scored["vendor_id"] = vendor.id
+    scored["vendor"] = vendor.name
+    scored["inventory"] = inventory
+    return scored
+
+
+@router.get("/vendor-risks")
+def vendor_risks(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from db.repositories.maturity_repository import MaturityRepository
+    from vendor_intel.risk import score_vendor
+
+    intel = IntelligenceRepository(db)
+    maturity = MaturityRepository(db)
+    rows = []
+    for vendor in intel.list_vendors():
+        inventory = [row.to_dict() for row in maturity.list_vendor_crypto(vendor.id)]
+        profile = (vendor.extra_json or {}).get("questionnaire") or {}
+        scored = score_vendor(
+            inventory=inventory,
+            classifications=vendor.data_classifications or [],
+            pqc_status=profile.get("pqc_status"),
+            cbom_provided=profile.get("cbom_provided"),
+            profile=profile,
+        )
+        scored["vendor_id"] = vendor.id
+        scored["vendor"] = vendor.name
+        rows.append(scored)
+    return {"vendors": rows, "total_count": len(rows)}
 
 
 @router.get("/migrations")

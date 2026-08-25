@@ -16,6 +16,8 @@ from api.middleware.auth_middleware import AuthMiddleware
 from api.middleware.logging_middleware import LoggingMiddleware
 from api.middleware.request_id_middleware import RequestIDMiddleware
 from api.routers import (
+    agility,
+    analytics,
     assets,
     auth,
     baselines,
@@ -24,6 +26,7 @@ from api.routers import (
     cloud,
     container,
     drift,
+    exceptions,
     export,
     findings,
     graph,
@@ -31,6 +34,7 @@ from api.routers import (
     intelligence,
     jobs,
     network,
+    ot,
     policy,
     repo_configs,
     scans,
@@ -139,6 +143,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(cloud.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
+    app.include_router(agility.router, prefix=prefix)
+    app.include_router(exceptions.router, prefix=prefix)
+    app.include_router(ot.router, prefix=prefix)
+    app.include_router(analytics.router, prefix=prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
     dashboard_html = Path(__file__).resolve().parents[2] / "dashboard" / "index.html"

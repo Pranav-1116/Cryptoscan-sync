@@ -21,5 +21,22 @@ resource "aws_lb_listener" "public" {
 }
 
 resource "google_kms_crypto_key" "archive" {
-  name = "archive"
+  name      = "archive"
+  algorithm = "GOOGLE_SYMMETRIC_ENCRYPTION"
+}
+
+resource "azurerm_key_vault_key" "payments" {
+  name     = "payments"
+  key_type = "RSA"
+  key_size = 2048
+}
+
+resource "azurerm_storage_account" "logs" {
+  name                       = "paylogs"
+  https_traffic_only_enabled = false
+}
+
+resource "google_compute_ssl_policy" "legacy" {
+  name            = "legacy"
+  min_tls_version = "TLS_1_0"
 }

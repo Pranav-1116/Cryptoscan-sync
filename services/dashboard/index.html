@@ -98,7 +98,7 @@
 
   <div id="app-view" class="app hidden">
     <aside class="sidebar">
-      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v1.0 · Part 3</small></div></div>
+      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v1.0 · Part 4</small></div></div>
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
@@ -114,6 +114,11 @@
         <button data-route="graph" onclick="go('graph')">Graph</button>
         <button data-route="business" onclick="go('business')">Business</button>
         <button data-route="quantum" onclick="go('quantum')">Quantum</button>
+        <button data-route="agility" onclick="go('agility')">Agility</button>
+        <button data-route="exceptions" onclick="go('exceptions')">Exceptions</button>
+        <button data-route="vendors" onclick="go('vendors')">Vendors</button>
+        <button data-route="ot" onclick="go('ot')">OT / ICS</button>
+        <button data-route="analytics" onclick="go('analytics')">Analytics</button>
         <button data-route="migrations" onclick="go('migrations')">Migrations</button>
         <button data-route="drift" onclick="go('drift')">Drift</button>
         <button data-route="findings" onclick="go('findings')">Findings</button>
@@ -198,6 +203,11 @@ async function render() {
     if (state.route === 'graph') return renderGraph(el);
     if (state.route === 'business') return renderBusiness(el);
     if (state.route === 'quantum') return renderQuantum(el);
+    if (state.route === 'agility') return renderAgility(el);
+    if (state.route === 'exceptions') return renderExceptions(el);
+    if (state.route === 'vendors') return renderVendors(el);
+    if (state.route === 'ot') return renderOt(el);
+    if (state.route === 'analytics') return renderAnalytics(el);
     if (state.route === 'migrations') return renderMigrations(el);
   } catch (e) {
     el.innerHTML = `<div class="card"><h2>Error</h2><p class="err">${e.message}</p></div>`;
@@ -273,7 +283,11 @@ async function renderScan(el) {
       <div class="card"><div class="label">Status</div><div class="value" style="font-size:18px">${badge(sc.status)}</div></div>
       <div class="card"><div class="label">Findings</div><div class="value">${sc.statistics?.total_findings ?? f.total_count}</div></div>
       <div class="card"><div class="label">Agility</div><div class="value">${agility ? agility.score : '—'}</div><p class="muted">${agility?.band || ''}</p></div>
-      <div class="card"><div class="label">PR gate</div><div class="value" style="font-size:18px">${badge(gateDecision)}</div><p class="muted">${gate?.summary || class="label">Work orders</div>
+      <div class="card"><div class="label">PR gate</div><div class="value" style="font-size:18px">${badge(gateDecision)}</div><p class="muted">${gate?.summary || ''}</p></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Work orders</div>
         <table><thead><tr><th>ID</th><th>Replace</th><th>Sites</th><th>With</th></tr></thead>
         <tbody>${(orders?.orders||[]).map(o => `<tr>
           <td class="mono">${o.work_order_id}</td><td>${o.algorithm} ${o.purpose}</td>
@@ -821,6 +835,139 @@ async function renderQuantum(el) {
         <td class="mono">${s.algorithm}</td><td>${s.replace_with}</td>
         <td class="mono">${s.file_path||''}:${s.line_number||''}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Nothing to suggest</td></tr>'}
       </tbody></table></div>`;
+}
+
+async function renderAgility(el) {
+  const data = await api('/agility');
+  let ready = {waves:{}};
+  try { ready = await api('/readiness'); } catch (e) { ready = {waves:{}}; }
+  el.innerHTML = `<div class="top"><div><h2>Crypto agility</h2>
+    <p class="muted">Six-factor score (config, keys, abstraction, deploy, tests, docs). Org average ${data.average||0}.</p></div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Average</div><div class="value">${data.average||0}</div></div>
+      <div class="card"><div class="label">Excellent</div><div class="value">${data.distribution?.EXCELLENT||0}</div></div>
+      <div class="card"><div class="label">Poor / critical</div><div class="value">${(data.distribution?.POOR||0)+(data.distribution?.CRITICAL||0)}</div></div>
+      <div class="card"><div class="label">Wave 1 ready</div><div class="value">${(ready.waves?.READY_NOW||[]).length}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><table><thead><tr><th>System</th><th>Score</th><th>Category</th><th>Readiness</th></tr></thead>
+    <tbody>${(data.systems||[]).map(s => `<tr>
+      <td>${s.system||s.system_id||'—'}</td><td>${s.agility_score??s.score??'—'}</td>
+      <td>${badge(s.category)}</td><td>${s.readiness_category||'—'}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">No systems scored yet. Run a scan.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function renderExceptions(el) {
+  const data = await api('/exceptions');
+  el.innerHTML = `<div class="top"><div><h2>Policy exceptions</h2>
+    <p class="muted">Formal risk acceptance with expiry. Expired exceptions return the asset to FAIL.</p></div>
+    <button class="btn" onclick="requestException()">Request exception</button></div>
+    <div class="card"><table><thead><tr><th>Status</th><th>Type</th><th>Rule</th><th>Expires</th><th></th></tr></thead>
+    <tbody>${(data.exceptions||[]).map(x => `<tr>
+      <td>${badge(x.status)}</td><td>${x.exception_type}</td>
+      <td class="mono">${x.policy_rule_id||'—'}</td>
+      <td class="muted">${(x.expiration_date||'').toString().slice(0,10)||'—'}</td>
+      <td>${x.status==='PENDING' ? `<button class="btn secondary" onclick="decideException('${x.id}','approve')">Approve</button>
+        <button class="btn secondary" onclick="decideException('${x.id}','reject')">Reject</button>` : ''}
+        ${x.status==='APPROVED' ? `<button class="btn secondary" onclick="decideException('${x.id}','revoke')">Revoke</button>` : ''}</td>
+    </tr>`).join('') || '<tr><td colspan=5 class="muted">No exceptions.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function requestException() {
+  const justification = prompt('Business justification', 'Legacy system pending Q1 replacement');
+  if (!justification) return;
+  await api('/exceptions', { method: 'POST', body: JSON.stringify({
+    justification, risk_statement: 'Acknowledged residual risk until replacement ships.',
+    exception_type: 'TEMPORARY', policy_rule_id: 'BASELINE-002'
+  })});
+  renderExceptions(document.getElementById('main'));
+}
+
+async function decideException(id, action) {
+  await api('/exceptions/' + id + '/' + action, { method: 'POST', body: JSON.stringify({ notes: action + ' from dashboard' })});
+  renderExceptions(document.getElementById('main'));
+}
+
+async function renderVendors(el) {
+  const vendors = await api('/vendors');
+  let risks = {vendors:[]};
+  try { risks = await api('/vendor-risks'); } catch (e) { risks = {vendors:[]}; }
+  const byId = Object.fromEntries((risks.vendors||[]).map(v => [v.vendor_id, v]));
+  el.innerHTML = `<div class="top"><div><h2>Vendor crypto risk</h2>
+    <p class="muted">Questionnaire, CBOM import, and documentation extraction feed a 0–100 risk score.</p></div>
+    <button class="btn" onclick="addVendor()">Add vendor</button></div>
+    <div class="card"><table><thead><tr><th>Vendor</th><th>Criticality</th><th>Risk</th><th></th></tr></thead>
+    <tbody>${(vendors.vendors||[]).map(v => `<tr>
+      <td>${v.name}</td><td>${v.criticality||'—'}</td>
+      <td>${badge(byId[v.id]?.category||'INFO')} ${byId[v.id]?.score??'—'}</td>
+      <td><button class="btn secondary" onclick="vendorQuestionnaire('${v.id}')">Questionnaire</button></td>
+    </tr>`).join('') || '<tr><td colspan=4 class="muted">No vendors yet.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function addVendor() {
+  const name = prompt('Vendor name', 'StripePayments');
+  if (!name) return;
+  await api('/vendors', { method: 'POST', body: JSON.stringify({ name, criticality: 'HIGH', vendor_type: 'PAYMENT' })});
+  renderVendors(document.getElementById('main'));
+}
+
+async function vendorQuestionnaire(id) {
+  await api('/vendors/' + id + '/questionnaire', { method: 'POST', body: JSON.stringify({
+    transit: 'TLS 1.3', rest: 'AES-256', kms: 'Cloud KMS', pqc: 'Planned', cbom: 'Yes'
+  })});
+  renderVendors(document.getElementById('main'));
+}
+
+async function renderOt(el) {
+  let devices = {devices:[]}, findings = {findings:[]};
+  try { devices = await api('/ot/devices'); } catch (e) {}
+  try { findings = await api('/ot/findings'); } catch (e) {}
+  el.innerHTML = `<div class="top"><div><h2>OT / ICS</h2>
+    <p class="muted">Passive only. CryptoScan never sends a packet onto an OT network.</p></div>
+    <button class="btn" onclick="scanOt()">Scan capture tree</button></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Devices</div>
+        <table><thead><tr><th>IP</th><th>Vendor</th><th>Type</th></tr></thead>
+        <tbody>${(devices.devices||[]).map(d => `<tr><td class="mono">${d.ip_address||'—'}</td><td>${d.vendor||'—'}</td><td>${d.device_type||'—'}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">None stored. Scan demo/ot-lab.</td></tr>'}
+        </tbody></table></div>
+      <div class="card"><div class="label">Findings</div>
+        <table><thead><tr><th>Protocol</th><th>Level</th><th>Issue</th></tr></thead>
+        <tbody>${(findings.findings||[]).map(f => `<tr><td>${f.protocol}</td><td>${badge(f.security_level||'NONE')}</td><td class="muted">${f.compliance_issue||'—'}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">None yet</td></tr>'}
+        </tbody></table></div>
+    </div>`;
+}
+
+async function scanOt() {
+  const path = prompt('Path to OT logs / JSON captures', '/home/user/CryproScan/demo/ot-lab');
+  if (!path) return;
+  await api('/ot/scan', { method: 'POST', body: JSON.stringify({ path })});
+  renderOt(document.getElementById('main'));
+}
+
+async function renderAnalytics(el) {
+  const data = await api('/analytics');
+  const exec = data.executive || {};
+  el.innerHTML = `<div class="top"><div><h2>Analytics</h2>
+    <p class="muted">${exec.summary||'Portfolio trends, heat map, PQC forecast.'}</p></div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Compliance</div><div class="value">${exec.totals?.compliance_rate??'—'}%</div></div>
+      <div class="card"><div class="label">Quantum-vulnerable</div><div class="value">${exec.totals?.quantum_vulnerable??0}</div></div>
+      <div class="card"><div class="label">Forecast</div><div class="value" style="font-size:18px">${badge(data.forecast?.status||'INFO')}</div></div>
+      <div class="card"><div class="label">Posture</div><div class="value" style="font-size:18px">${badge(exec.overall_posture||'INFO')}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Heat map</div>
+        <table><thead><tr><th>System</th><th>Unit</th><th>Cell</th></tr></thead>
+        <tbody>${(data.heatmap||[]).map(h => `<tr><td>${h.system||h.system_id}</td><td>${h.unit}</td><td>${badge(h.cell)}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No systems</td></tr>'}
+        </tbody></table></div>
+      <div class="card"><div class="label">Top recommendations</div>
+        <table><thead><tr><th>#</th><th>Action</th><th>Score</th></tr></thead>
+        <tbody>${(data.recommendations||[]).map(r => `<tr><td>${r.rank}</td><td>${r.title}</td><td>${r.priority_score}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">None</td></tr>'}
+        </tbody></table></div>
+    </div>`;
 }
 
 async function renderMigrations(el) {

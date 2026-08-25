@@ -15,6 +15,9 @@
 | deduplication      | `services/deduplication`     | Cross-scanner assets                      |
 | cbom               | `services/cbom`              | CycloneDX 1.5 export                      |
 | graph_engine       | `services/graph_engine`      | Neo4j Cypher graph + memory fallback      |
+| agility            | `services/agility`           | 6-factor agility + migration readiness    |
+| ot_scanner         | `services/ot_scanner`        | Passive OT/ICS crypto (never sends pkts)  |
+| vendor_intel       | `services/vendor_intel`      | Questionnaire, CBOM, docs, vendor risk    |
 
 Local entrypoints: `make api`, `make worker`, `make test`. Combined pytest
 across services hits `ImportPathMismatchError` because several packages ship

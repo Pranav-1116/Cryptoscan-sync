@@ -86,12 +86,42 @@ class IntelligenceRepository:
     def list_vendors(self) -> list[Vendor]:
         return list(self.session.execute(select(Vendor).order_by(Vendor.name)).scalars())
 
-    def create_vendor(self, name: str, criticality: str | None = None) -> Vendor:
+    def create_vendor(self, name: str, criticality: str | None = None, **kwargs) -> Vendor:
         existing = self.session.execute(select(Vendor).where(Vendor.name == name)).scalar_one_or_none()
         if existing:
+            if criticality and not existing.criticality:
+                existing.criticality = criticality
+            for key, value in kwargs.items():
+                if hasattr(existing, key) and value is not None:
+                    setattr(existing, key, value)
+            self.session.flush()
             return existing
-        row = Vendor(name=name, criticality=criticality)
+        allowed = {
+            "vendor_type",
+            "contract_end_date",
+            "data_classifications",
+            "integration_type",
+            "primary_contact",
+            "security_contact",
+            "extra",
+            "extra_json",
+        }
+        fields = {key: value for key, value in kwargs.items() if key in allowed}
+        row = Vendor(name=name, criticality=criticality, **fields)
         self.session.add(row)
+        self.session.flush()
+        return row
+
+    def get_vendor(self, vendor_id: str) -> Vendor | None:
+        return self.session.get(Vendor, vendor_id)
+
+    def update_vendor(self, vendor_id: str, **kwargs) -> Vendor | None:
+        row = self.get_vendor(vendor_id)
+        if row is None:
+            return None
+        for key, value in kwargs.items():
+            if hasattr(row, key) and value is not None:
+                setattr(row, key, value)
         self.session.flush()
         return row
 

@@ -135,27 +135,88 @@ def parse_terraform(path: Path) -> list[dict[str, Any]]:
                 )
             )
         elif rtype == "azurerm_key_vault_key":
+            key_type = re.search(r'key_type\s*=\s*"([^"]+)"', body)
+            key_size = re.search(r"key_size\s*=\s*(\d+)", body)
+            algo = (key_type.group(1) if key_type else "RSA").upper()
             findings.append(
                 cloud_finding(
                     source_type="AZURE_KEY_VAULT_KEY",
                     resource=resource,
-                    algorithm="RSA",
+                    algorithm=algo,
+                    key_size=int(key_size.group(1)) if key_size else None,
                     purpose="KEY_MANAGEMENT",
                     file_path=str(path),
                     line_number=line,
                     provider="AZURE",
                 )
             )
+        elif rtype == "azurerm_storage_account":
+            https = re.search(r"https_traffic_only_enabled\s*=\s*(true|false)", body) or re.search(
+                r"enable_https_traffic_only\s*=\s*(true|false)", body
+            )
+            encrypted = "encryption" in body or "infrastructure_encryption_enabled" in body
+            https_ok = https.group(1) != "false" if https else True
+            issue = None if https_ok and encrypted else ("NO_HTTPS_ONLY" if not https_ok else "NO_ENCRYPTION")
+            findings.append(
+                cloud_finding(
+                    source_type="AZURE_STORAGE_ACCOUNT",
+                    resource=resource,
+                    algorithm="AES-256" if encrypted else None,
+                    purpose="DATA_AT_REST_ENCRYPTION",
+                    file_path=str(path),
+                    line_number=line,
+                    provider="AZURE",
+                    issue=issue,
+                )
+            )
         elif rtype == "google_kms_crypto_key":
+            algo_m = re.search(r'algorithm\s*=\s*"([^"]+)"', body)
+            algo = (algo_m.group(1) if algo_m else "AES-256").upper()
+            if "RSA" in algo:
+                mapped, bits = "RSA", 2048
+            else:
+                mapped, bits = "AES-256", 256
             findings.append(
                 cloud_finding(
                     source_type="GCP_KMS_KEY",
                     resource=resource,
-                    algorithm="AES-256",
+                    algorithm=mapped,
+                    key_size=bits,
                     purpose="KEY_MANAGEMENT",
                     file_path=str(path),
                     line_number=line,
                     provider="GCP",
+                )
+            )
+        elif rtype == "google_storage_bucket":
+            enc = "encryption" in body or "default_kms_key_name" in body
+            findings.append(
+                cloud_finding(
+                    source_type="GCP_STORAGE_BUCKET",
+                    resource=resource,
+                    algorithm="AES-256" if enc else None,
+                    purpose="DATA_AT_REST_ENCRYPTION",
+                    file_path=str(path),
+                    line_number=line,
+                    provider="GCP",
+                    issue=None if enc else "NO_ENCRYPTION",
+                )
+            )
+        elif rtype == "google_compute_ssl_policy":
+            min_tls = re.search(r'min_tls_version\s*=\s*"([^"]+)"', body)
+            version = (min_tls.group(1) if min_tls else "TLS_1_0").upper()
+            weak = version in {"TLS_1_0", "TLS_1_1", "TLSV1_0", "TLSV1_1"}
+            findings.append(
+                cloud_finding(
+                    source_type="GCP_SSL_POLICY",
+                    resource=resource,
+                    algorithm="TLS1.0" if weak else "TLS",
+                    purpose="LOAD_BALANCER_TLS",
+                    file_path=str(path),
+                    line_number=line,
+                    provider="GCP",
+                    issue="WEAK_TLS_VERSION" if weak else None,
+                    extra={"min_tls_version": version},
                 )
             )
     return findings

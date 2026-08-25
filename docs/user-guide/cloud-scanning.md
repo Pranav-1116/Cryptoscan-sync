@@ -1,6 +1,10 @@
 # Cloud and IaC scanning
 
-The cloud scanner reads Terraform, CloudFormation, and Kubernetes manifests in the tree. It flags:
+The cloud scanner reads Terraform, CloudFormation, Azure ARM, and Kubernetes
+manifests in the tree. Live AWS, Azure, and GCP API calls are fail-open and
+off unless `CRYPTOSCAN_CLOUD_LIVE=1` plus the matching SDK/credentials.
+
+It flags:
 
 - S3 / RDS resources with no encryption
 - KMS key specs (AES-256, RSA-2048, …)

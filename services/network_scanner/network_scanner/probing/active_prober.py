@@ -8,6 +8,9 @@ import uuid
 from typing import Any
 
 from network_scanner.certificates.cert_parser import from_ssl_dict, hostname_matches
+from network_scanner.certificates.chain_validator import validate_chain
+from network_scanner.certificates.crl_checker import check_crl
+from network_scanner.certificates.ocsp_checker import check_ocsp
 from network_scanner.probing.cipher_suite_parser import parse_cipher_suite, tls_algorithm
 
 
@@ -65,11 +68,15 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
                 peer = tls.getpeercert() or {}
                 leaf = from_ssl_dict(peer, der=der)
                 leaf["endpoint"] = f"{host}:{port}"
-                errors: list[str] = []
-                if leaf.get("expiry_status") == "EXPIRED":
-                    errors.append("CERT_EXPIRED")
-                if not hostname_matches(host, leaf):
-                    errors.append("HOSTNAME_MISMATCH")
+                chain = validate_chain([leaf], hostname=host)
+                if not hostname_matches(host, leaf) and "HOSTNAME_MISMATCH" not in chain["errors"]:
+                    chain["errors"].append("HOSTNAME_MISMATCH")
+                    chain["is_valid"] = False
+                revocation = check_ocsp(leaf, live=False)
+                if revocation.get("status") == "UNKNOWN":
+                    crl = check_crl(leaf, live=False)
+                    if crl.get("urls") and not revocation.get("urls"):
+                        revocation = crl
                 finding.update(
                     {
                         "status": "OK",
@@ -94,7 +101,8 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
                             "raw_transformation": parsed.get("cipher_suite"),
                         },
                         "certificates": [leaf],
-                        "chain_validation": {"is_valid": not errors, "errors": errors},
+                        "chain_validation": chain,
+                        "revocation_status": revocation,
                     }
                 )
                 finding["algorithm"] = algo

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import JSON, String, Text
+from sqlalchemy import Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -18,6 +18,11 @@ class System(BaseModel):
     owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     environment: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     compliance_scopes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    current_agility_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    agility_category: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    migration_readiness_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    migration_readiness_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
     assets = relationship(
         "SystemAsset",

@@ -18,7 +18,12 @@ from db.models.system import System
 from db.models.system_asset import SystemAsset
 from db.models.system_business_process import SystemBusinessProcess
 from db.models.system_dependency import SystemDependency
+from db.models.certificate_usage import CertificateUsage
+from db.models.ot_device import OtCryptoFinding, OtDevice
+from db.models.policy_exception import ExceptionReview, PolicyException
+from db.models.system_agility_score import SystemAgilityScore
 from db.models.vendor import SystemVendor, Vendor
+from db.models.vendor_crypto import VendorCryptoInventory
 from db.models.verification_log import VerificationLog
 from db.models.vulnerability import Vulnerability
 
@@ -28,23 +33,30 @@ __all__ = [
     "BusinessOwner",
     "BusinessProcess",
     "Certificate",
+    "CertificateUsage",
     "CloudAccount",
     "ContainerScan",
     "CryptoAsset",
     "CryptoAssetEvidence",
     "DriftEvent",
     "EvidenceRecord",
+    "ExceptionReview",
     "MigrationProject",
     "NetworkScanTarget",
+    "OtCryptoFinding",
+    "OtDevice",
+    "PolicyException",
     "RepoConfiguration",
     "Scan",
     "ScanJob",
     "System",
+    "SystemAgilityScore",
     "SystemAsset",
     "SystemBusinessProcess",
     "SystemDependency",
     "SystemVendor",
     "Vendor",
+    "VendorCryptoInventory",
     "VerificationLog",
     "Vulnerability",
 ]

@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Any
 
 from cloud_scanner.aws.live import live_enabled, scan_aws
+from cloud_scanner.azure.live import scan_azure
+from cloud_scanner.gcp.live import scan_gcp
+from cloud_scanner.iac.arm import looks_like_arm, parse_arm
 from cloud_scanner.iac.cloudformation import parse_cloudformation
 from cloud_scanner.iac.kubernetes import parse_kubernetes_tree
 from cloud_scanner.iac.terraform import parse_terraform
@@ -29,13 +32,23 @@ class CloudScanner:
                 name = path.name.lower()
                 if suffix == ".tf" or name.endswith(".tf.json"):
                     findings.extend(parse_terraform(path))
-                elif suffix in {".yml", ".yaml", ".json"} and (
-                    "template" in name or "cloudformation" in name or name.endswith(".cfn.yaml") or '"AWSTemplateFormatVersion"' in _head(path)
+                    continue
+                head = _head(path)
+                if suffix == ".json" and looks_like_arm(path, head):
+                    findings.extend(parse_arm(path))
+                    continue
+                if suffix in {".yml", ".yaml", ".json"} and (
+                    "template" in name
+                    or "cloudformation" in name
+                    or name.endswith(".cfn.yaml")
+                    or '"AWSTemplateFormatVersion"' in head
                 ):
                     findings.extend(parse_cloudformation(path))
             findings.extend(parse_kubernetes_tree(root_path))
         if self.live:
             findings.extend(scan_aws())
+            findings.extend(scan_azure())
+            findings.extend(scan_gcp())
         issues = [row for row in findings if row.get("compliance_issue")]
         return {
             "scan_id": scan_id,

@@ -7,10 +7,14 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from network_scanner.certificates.cert_parser import parse_pem
+from network_scanner.certificates.chain_validator import validate_chain
+from network_scanner.certificates.crl_checker import check_crl, extract_crl_urls
+from network_scanner.certificates.ocsp_checker import check_ocsp, extract_ocsp_urls
 from network_scanner.discovery.config_file_loader import load_targets
 from network_scanner.discovery.kubernetes_discoverer import discover_from_tree
 from network_scanner.inventory.certificate_inventory import merge_certificates
 from network_scanner.inventory.expiry_monitor import expiry_alerts
+from network_scanner.inventory.usage_tracker import usage_records
 from network_scanner.probing.active_prober import probe_endpoint
 from scanner.core.file_discovery import DEFAULT_EXCLUDED_DIRS
 
@@ -55,6 +59,7 @@ class NetworkTlsScanner:
         for cert in pem_certs:
             findings.append(self._cert_finding(cert))
         inventory = merge_certificates([], [self._usage(cert) for cert in pem_certs] + self._live_certs(live_results))
+        self._attach_revocation(inventory)
         return {
             "scan_id": scan_id,
             "target_kind": "filesystem",
@@ -62,6 +67,7 @@ class NetworkTlsScanner:
             "targets": targets,
             "findings": findings,
             "certificates": inventory,
+            "usages": usage_records(inventory),
             "alerts": expiry_alerts(inventory),
             "probes": live_results,
         }
@@ -69,12 +75,14 @@ class NetworkTlsScanner:
     def scan_hosts(self, endpoints: Iterable[str], *, scan_id: str | None = None) -> dict[str, Any]:
         results = [probe_endpoint(item, timeout=self.timeout) for item in endpoints]
         inventory = merge_certificates([], self._live_certs(results))
+        self._attach_revocation(inventory)
         return {
             "scan_id": scan_id,
             "target_kind": "hosts",
             "live": True,
             "findings": results,
             "certificates": inventory,
+            "usages": usage_records(inventory),
             "alerts": expiry_alerts(inventory),
             "probes": results,
         }
@@ -150,3 +158,23 @@ class NetworkTlsScanner:
                         payload["usages"].append(endpoint)
                 out.append(payload)
         return out
+
+    def _attach_revocation(self, inventory: list[dict[str, Any]]) -> None:
+        for cert in inventory:
+            ocsp = check_ocsp(cert, live=self.live)
+            crl = check_crl(cert, live=self.live)
+            chosen = ocsp if ocsp.get("urls") else crl
+            cert["revocation_status"] = chosen.get("status")
+            cert["revocation_method"] = chosen.get("method")
+            cert["revocation"] = {"ocsp": ocsp, "crl": crl}
+            if ocsp.get("urls"):
+                cert["ocsp_url"] = ocsp["urls"][0]
+            if crl.get("urls"):
+                cert["crl_url"] = crl["urls"][0]
+            cert.setdefault("chain_validation", validate_chain([cert]))
+            ocsp_urls = extract_ocsp_urls(cert)
+            crl_urls = extract_crl_urls(cert)
+            if ocsp_urls and not cert.get("ocsp_url"):
+                cert["ocsp_url"] = ocsp_urls[0]
+            if crl_urls and not cert.get("crl_url"):
+                cert["crl_url"] = crl_urls[0]
