@@ -1,6 +1,6 @@
 # Run CryptoScan
 
-Part 2 extends the local loop: **scan Java/Python/JS/C# → optional container fingerprint → hash evidence → store → normalize → evaluate baseline + PCI/NIST/CNSA/FIPS/HIPAA (scoped) → dedupe assets → optional drift → REST API → dashboard**.
+Part 3 extends the local loop: **scan Java/Python/JS/C#/Go/PHP/Ruby/Rust → container + IaC + local certs → hash evidence → store → normalize → evaluate baseline + PCI/NIST/CNSA/FIPS/HIPAA (scoped) → dedupe assets → Neo4j (or in-process) blast-radius / business context / quantum HNDL → REST API → dashboard**.
 
 ## Local (this sandbox / a laptop)
 
@@ -27,13 +27,13 @@ Trigger another scan from the UI with:
 local://demo/vulnerable-app
 ```
 
-## Docker (Postgres + Redis + API + worker + nginx)
+## Docker (Postgres + Redis + Neo4j + API + worker + nginx)
 
 ```bash
 docker compose up --build
 ```
 
-Then http://localhost (nginx → API + dashboard).
+Then http://localhost (nginx → API + dashboard). Neo4j Browser is http://localhost:7474 (`neo4j` / `cryptoscan`). Leave `NEO4J_URI` empty in `.env` to keep the in-process graph.
 
 ## Default credentials
 

@@ -1,0 +1,20 @@
+"""Constraint / index statements applied at startup."""
+
+from __future__ import annotations
+
+CONSTRAINTS = (
+    "CREATE CONSTRAINT cryptoscan_system_id IF NOT EXISTS FOR (s:System) REQUIRE s.system_id IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_asset_id IF NOT EXISTS FOR (a:CryptoAsset) REQUIRE a.asset_id IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_process_id IF NOT EXISTS FOR (p:BusinessProcess) REQUIRE p.process_id IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_owner_id IF NOT EXISTS FOR (o:BusinessOwner) REQUIRE o.owner_id IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_scope_name IF NOT EXISTS FOR (c:ComplianceScope) REQUIRE c.standard_name IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_cert_id IF NOT EXISTS FOR (c:Certificate) REQUIRE c.cert_id IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_cloud_id IF NOT EXISTS FOR (c:CloudResource) REQUIRE c.resource_id IS UNIQUE",
+    "CREATE CONSTRAINT cryptoscan_vendor_id IF NOT EXISTS FOR (v:Vendor) REQUIRE v.vendor_id IS UNIQUE",
+)
+
+INDEXES = (
+    "CREATE INDEX cryptoscan_system_name IF NOT EXISTS FOR (s:System) ON (s.name)",
+    "CREATE INDEX cryptoscan_asset_algo IF NOT EXISTS FOR (a:CryptoAsset) ON (a.algorithm)",
+    "CREATE INDEX cryptoscan_process_name IF NOT EXISTS FOR (p:BusinessProcess) ON (p.name)",
+)

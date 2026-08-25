@@ -14,6 +14,7 @@
 | container_scanner  | `services/container_scanner` | Image-root inventory                      |
 | deduplication      | `services/deduplication`     | Cross-scanner assets                      |
 | cbom               | `services/cbom`              | CycloneDX 1.5 export                      |
+| graph_engine       | `services/graph_engine`      | Neo4j Cypher graph + memory fallback      |
 
 Local entrypoints: `make api`, `make worker`, `make test`. Combined pytest
 across services hits `ImportPathMismatchError` because several packages ship

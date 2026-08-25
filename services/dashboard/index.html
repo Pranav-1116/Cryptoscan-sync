@@ -687,13 +687,44 @@ async function scanCloudPath() {
 
 async function renderGraph(el) {
   const graph = await api('/graph');
+  const health = graph.health || await api('/graph/health');
   const priorities = await api('/priorities');
+  const backend = graph.backend || health.backend || 'memory';
+  const nodes = graph.nodes || [];
+  const edges = graph.edges || [];
+  const systems = nodes.filter(n => (n.group||n.kind) === 'System');
+  const w = 640, h = 320;
+  const placed = nodes.slice(0, 48).map((n, i, arr) => {
+    const angle = (2 * Math.PI * i) / Math.max(arr.length, 1);
+    return { ...n, x: 320 + 130 * Math.cos(angle), y: 160 + 110 * Math.sin(angle) };
+  });
+  const byId = Object.fromEntries(placed.map(n => [n.id, n]));
+  const lines = edges.filter(e => byId[e.from] && byId[e.to]).map(e => {
+    const a = byId[e.from], b = byId[e.to];
+    return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#3a4a78" stroke-width="1.4"/>`;
+  }).join('');
+  const dots = placed.map(n => `<g onclick="queryBlast('${(n.id||'').replace(/'/g, '')}')" style="cursor:pointer">
+    <circle cx="${n.x}" cy="${n.y}" r="8" fill="${n.group==='System'?'#3ee0c5':n.group==='CryptoAsset'?'#7aa2ff':n.group==='Vendor'?'#ff8a4a':'#f5c14a'}"/>
+    <text x="${n.x+10}" y="${n.y+4}" fill="#c5d4ff" font-size="10">${(n.label||n.id||'').toString().slice(0,18)}</text></g>`).join('');
   el.innerHTML = `<div class="top"><div><h2>Dependency graph</h2>
-    <p class="muted">${(graph.nodes||[]).length} nodes · ${(graph.edges||[]).length} edges. Blast radius is computed in-process (no Neo4j required).</p></div></div>
+    <p class="muted">${nodes.length} nodes · ${edges.length} edges · backend ${badge(backend === 'neo4j' ? 'PASS' : 'INFO')} ${backend}${health.ok ? '' : ' (memory fallback)'}</p></div>
+    <div class="row"><button class="btn secondary" onclick="syncGraph()">Sync Neo4j</button></div></div>
+    <div class="card" style="margin-bottom:16px">
+      <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">${lines}${dots}</svg>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="label">Blast radius</div>
+      <div class="row">
+        <select id="blast-system">${systems.map(s => `<option value="${(s.id||'').split(':').pop()}">${s.label||s.name||s.id}</option>`).join('')}</select>
+        <input id="blast-hops" type="number" min="1" max="12" value="5" style="max-width:90px" />
+        <button class="btn" onclick="runBlast()">Query</button>
+      </div>
+      <div id="blast-out" class="muted" style="margin-top:10px">Click a node or run a query. Cypher walks CALLS*1..N on Neo4j when Bolt is up.</div>
+    </div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
       <div class="card"><div class="label">Nodes</div>
         <table><thead><tr><th>Kind</th><th>Name</th></tr></thead>
-        <tbody>${(graph.nodes||[]).slice(0,40).map(n => `<tr><td>${n.group||n.kind||''}</td><td>${n.label||n.name||n.id}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">No systems yet</td></tr>'}
+        <tbody>${nodes.slice(0,40).map(n => `<tr><td>${n.group||n.kind||''}</td><td>${n.label||n.name||n.id}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">No systems yet</td></tr>'}
         </tbody></table></div>
       <div class="card"><div class="label">Prioritized assets</div>
         <table><thead><tr><th>P</th><th>Algo</th><th>Revenue/day</th></tr></thead>
@@ -703,6 +734,31 @@ async function renderGraph(el) {
           <td>${a.business_context?.total_revenue_at_risk||0}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Run a scan and add a business process.</td></tr>'}
         </tbody></table></div>
     </div>`;
+}
+
+async function syncGraph() {
+  const result = await api('/graph/sync', { method: 'POST', body: '{}' });
+  alert('Graph sync: backend=' + (result.backend || result.health?.backend) + ' nodes=' + (result.nodes || 0));
+  renderGraph(document.getElementById('main'));
+}
+
+async function queryBlast(rawId) {
+  const id = (rawId || '').split(':').pop();
+  const select = document.getElementById('blast-system');
+  if (select && id) select.value = id;
+  return runBlast();
+}
+
+async function runBlast() {
+  const systemId = document.getElementById('blast-system')?.value;
+  const hops = document.getElementById('blast-hops')?.value || 5;
+  if (!systemId) return;
+  const radius = await api('/graph/blast-radius?system_id=' + encodeURIComponent(systemId) + '&hops=' + hops);
+  const impact = await api('/graph/impact?system_id=' + encodeURIComponent(systemId));
+  document.getElementById('blast-out').innerHTML =
+    `<p>Backend ${badge(radius.backend||'INFO')} · ${radius.systems.length} downstream · revenue $${(impact.total_revenue_at_risk||0).toLocaleString()}/day · customers ${(impact.total_customers_at_risk||0).toLocaleString()}</p>
+     <p>${(radius.systems||[]).map(s => `${s.name||s.id} (${s.hops} hop)`).join(' → ') || 'No downstream systems.'}</p>
+     <p class="muted">Scopes: ${(impact.compliance_scopes||[]).join(', ') || '—'}</p>`;
 }
 
 async function renderBusiness(el) {

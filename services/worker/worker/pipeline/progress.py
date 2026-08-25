@@ -14,6 +14,7 @@ PIPELINE_STAGES = (
     "policy",
     "dedup",
     "systems",
+    "graph",
     "drift",
     "gate",
     "alert",

@@ -1,4 +1,4 @@
-"""Dependency graph and blast-radius APIs."""
+"""Dependency graph and blast-radius APIs (Neo4j when configured)."""
 
 from __future__ import annotations
 
@@ -6,18 +6,31 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
-from api.graph_builder import graph_from_db
+from api.graph_builder import collect_graph_payload, graph_from_db, sync_graph
 from business_context.core.enricher import enrich_assets
-from db.models.crypto_asset import CryptoAsset
-from db.repositories.intelligence_repository import IntelligenceRepository
-from db.repositories.system_repository import SystemRepository
+from graph_engine.core.facade import graph_health
 
 router = APIRouter(tags=["graph"])
 
 
+@router.get("/graph/health")
+def get_graph_health(user: str = Depends(get_current_user)):
+    return graph_health()
+
+
+@router.post("/graph/sync")
+def post_graph_sync(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    return sync_graph(db)
+
+
 @router.get("/graph")
 def get_graph(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    return graph_from_db(db).to_vis()
+    graph = graph_from_db(db)
+    vis = graph.to_vis()
+    health = graph_health()
+    vis["health"] = health
+    vis["backend"] = getattr(graph, "backend", vis.get("backend") or health.get("backend"))
+    return vis
 
 
 @router.get("/graph/blast-radius")
@@ -46,37 +59,42 @@ def business_impact(
     return graph_from_db(db).business_impact(start)
 
 
+@router.get("/graph/compliance")
+def compliance_inheritance(
+    system_id: str = Query(...),
+    hops: int = Query(5, ge=1, le=12),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    return graph_from_db(db).compliance_inheritance(system_id, hops=hops)
+
+
+@router.get("/graph/vendor-path")
+def vendor_path(
+    system_id: str = Query(...),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    return graph_from_db(db).vendor_path(system_id)
+
+
+@router.get("/graph/crypto")
+def crypto_inventory(
+    system_id: str = Query(...),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    return graph_from_db(db).crypto_for_system(system_id)
+
+
 @router.get("/priorities")
 def priorities(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    systems_repo = SystemRepository(db)
-    intel = IntelligenceRepository(db)
-    systems, _ = systems_repo.list_systems(page=1, page_size=200)
-    system_payloads = []
-    assets: list[dict] = []
-    edges = []
-    for system in systems:
-        linked = systems_repo.assets_for(system.id)
-        system_payloads.append(
-            {
-                "id": system.id,
-                "name": system.name,
-                "compliance_scopes": system.compliance_scopes or [],
-                "asset_ids": [asset.id for asset in linked],
-            }
-        )
-        for asset in linked:
-            payload = asset.to_dict()
-            payload["system_id"] = system.id
-            assets.append(payload)
-        for edge in systems_repo.dependencies_for(system.id):
-            edges.append({"parent_id": edge.parent_id, "child_id": edge.child_id})
-    if not assets:
-        assets = [row.to_dict() for row in db.query(CryptoAsset).limit(200).all()]
-    processes = []
-    for process in intel.list_processes():
-        item = process.to_dict()
-        item["system_ids"] = intel.process_system_ids(process.id)
-        processes.append(item)
-    owners = [row.to_dict() for row in intel.list_owners()]
-    ranked = enrich_assets(assets, systems=system_payloads, edges=edges, processes=processes, owners=owners)
+    payload = collect_graph_payload(db)
+    ranked = enrich_assets(
+        payload["assets"],
+        systems=payload["systems"],
+        edges=payload["edges"],
+        processes=payload["processes"],
+        owners=payload["owners"],
+    )
     return {"assets": ranked, "total_count": len(ranked)}

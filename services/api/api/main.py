@@ -58,6 +58,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         configure_logging(settings.LOG_LEVEL, json_output=settings.is_production)
         if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
             init_db()
+            try:
+                from graph_engine.connection.neo4j_driver import get_driver
+                from graph_engine.core.store import Neo4jGraphStore
+
+                driver = get_driver()
+                if driver is not None:
+                    Neo4jGraphStore(driver).apply_schema()
+            except Exception:
+                logger.debug("neo4j_schema_skipped", exc_info=True)
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         yield
         logger.info("cryptoscan_api_stopped")

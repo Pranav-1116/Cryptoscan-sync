@@ -267,6 +267,8 @@ class PipelineRunner:
             "statistics": stats,
         }
         self._container(ctx)
+        self._tls(ctx)
+        self._cloud(ctx)
         logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
 
     def _cloud(self, ctx: PipelineContext) -> None:
@@ -439,6 +441,7 @@ class PipelineRunner:
             row.compliance_status = evaluation.overall_status
         session.flush()
         self._dedup(ctx, session, rows)
+        self._graph(ctx, session)
         logger.info("stage_policy_done", extra={"count": len(rows)})
 
     def _dedup(self, ctx: PipelineContext, session, rows) -> None:

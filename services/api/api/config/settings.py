@@ -35,6 +35,12 @@ class APISettings(BaseSettings):
     GITHUB_WEBHOOK_SECRET: str = "dev-webhook-secret-change-me-32chars!!"
     GITHUB_TOKEN: str = ""
 
+    NEO4J_URI: str = ""
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "cryptoscan"
+    NEO4J_DATABASE: str = "neo4j"
+    ISTIO_PROMETHEUS_URL: str = ""
+
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USER: str = ""

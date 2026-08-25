@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     NORMALIZATION_RULES_DIR: str = ""
     ALERT_EMAIL_TO: str = ""
     SMTP_HOST: str = ""
+    NEO4J_URI: str = ""
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "cryptoscan"
+    NEO4J_DATABASE: str = "neo4j"
+    ISTIO_PROMETHEUS_URL: str = ""
     GITHUB_TOKEN: str = ""
     DASHBOARD_URL: str = ""
 

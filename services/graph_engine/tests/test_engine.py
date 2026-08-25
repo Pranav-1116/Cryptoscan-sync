@@ -36,3 +36,7 @@ def test_blast_radius_and_revenue():
     vis = graph.to_vis()
     assert len(vis["nodes"]) >= 4
     assert vis["edges"]
+    assert vis["backend"] == "memory"
+    assert graph.compliance_inheritance("pay")["scopes"] == ["PCI-DSS"]
+    crypto = graph.crypto_for_system("pay")
+    assert crypto["count"] == 0

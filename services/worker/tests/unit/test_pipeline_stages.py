@@ -3,6 +3,7 @@ from worker.pipeline.stage_language_detect import execute as detect
 from worker.pipeline.stage_alert import execute as alert
 from worker.pipeline.stage_cbom_generate import execute as cbom
 from worker.pipeline.stage_cloud_scan import execute as cloud
+from worker.pipeline.stage_graph_sync import execute as graph_sync
 from worker.pipeline.stage_network_scan import execute as tls
 
 
@@ -53,3 +54,8 @@ def test_cloud_and_tls_stages(tmp_path):
     ctx = tls(ctx)
     assert ctx.scan_meta.get("cloud", {}).get("resources", 0) >= 1
     assert ctx.scan_meta.get("tls", {}).get("targets", 0) >= 1
+
+
+def test_graph_sync_stage_fail_open(tmp_path):
+    ctx = graph_sync(_ctx(tmp_path), session=None)
+    assert ctx.job_id == "j1"

@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: cryptoscan-neo4j
+  labels:
+    app: cryptoscan-neo4j
+spec:
+  serviceName: cryptoscan-neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cryptoscan-neo4j
+  template:
+    metadata:
+      labels:
+        app: cryptoscan-neo4j
+    spec:
+      containers:
+        - name: neo4j
+          image: neo4j:5.26-community
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          env:
+            - name: NEO4J_AUTH
+              value: neo4j/cryptoscan
+            - name: NEO4J_server_memory_heap_max__size
+              value: 512m
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: 7687
+            initialDelaySeconds: 20
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

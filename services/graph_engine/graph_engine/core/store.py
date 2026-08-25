@@ -1,0 +1,264 @@
+"""Neo4j-backed graph store. Same query surface as GraphEngine."""
+
+from __future__ import annotations
+
+import logging
+from typing import Any, Iterable
+
+from graph_engine.builders import cypher_writes, payload
+from graph_engine.config.settings import get_graph_settings
+from graph_engine.connection.session_manager import neo4j_session
+from graph_engine.migrations.migrator import apply_migrations
+from graph_engine.queries.blast_radius import BLAST_RADIUS, ORIGIN_SYSTEM, SYSTEMS_USING_ASSET
+from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS
+from graph_engine.queries.compliance_inheritance import COMPLIANCE_INHERITANCE
+from graph_engine.queries.crypto_inventory import CRYPTO_FOR_SYSTEM
+from graph_engine.queries.reachability import COUNT_EDGES, COUNT_NODES, EXPORT_VIS, PING
+from graph_engine.queries.vendor_dependency import VENDOR_PATH
+from graph_engine.schemas.node_schemas import KIND_PREFIX
+
+logger = logging.getLogger(__name__)
+
+
+class Neo4jGraphStore:
+    backend = "neo4j"
+
+    def __init__(self, driver, database: str | None = None) -> None:
+        self.driver = driver
+        self.database = database or get_graph_settings().NEO4J_DATABASE
+
+    def _run(self, query: str, **params) -> list[Any]:
+        with neo4j_session(self.driver, self.database) as session:
+            result = session.run(query, params)
+            return list(result)
+
+    def apply_schema(self) -> dict[str, Any]:
+        with neo4j_session(self.driver, self.database) as session:
+            return apply_migrations(session.run)
+
+    def ping(self) -> bool:
+        try:
+            rows = self._run(PING)
+            record = rows[0] if rows else None
+            return bool(record and record.get("ok") == 1)
+        except Exception:
+            logger.debug("neo4j_ping_failed", exc_info=True)
+            return False
+
+    def counts(self) -> dict[str, int]:
+        nodes = 0
+        edges = 0
+        try:
+            node_rows = self._run(COUNT_NODES)
+            edge_rows = self._run(COUNT_EDGES)
+            if node_rows:
+                nodes = int(node_rows[0].get("nodes") or 0)
+            if edge_rows:
+                edges = int(edge_rows[0].get("edges") or 0)
+        except Exception:
+            logger.debug("neo4j_counts_failed", exc_info=True)
+        return {"nodes": nodes, "edges": edges}
+
+    def sync(
+        self,
+        *,
+        systems: Iterable[dict[str, Any]] = (),
+        assets: Iterable[dict[str, Any]] = (),
+        edges: Iterable[dict[str, Any]] = (),
+        processes: Iterable[dict[str, Any]] = (),
+        owners: Iterable[dict[str, Any]] = (),
+        vendors: Iterable[dict[str, Any]] = (),
+        certificates: Iterable[dict[str, Any]] = (),
+        cloud_resources: Iterable[dict[str, Any]] = (),
+    ) -> dict[str, Any]:
+        systems = list(systems)
+        assets = list(assets)
+        process_nodes, support_edges = payload.process_rows(processes)
+        owner_nodes, owned_edges = payload.owner_rows(owners)
+        scope_nodes, comply_edges = payload.scope_rows(systems)
+        vendor_nodes, vendor_edges = payload.vendor_rows(vendors)
+        cert_nodes, cert_edges = payload.cert_rows(certificates)
+        cloud_nodes, cloud_edges = payload.cloud_rows(cloud_resources)
+        batches = (
+            (cypher_writes.MERGE_SYSTEMS, payload.systems_rows(systems)),
+            (cypher_writes.MERGE_ASSETS, payload.asset_rows(assets)),
+            (cypher_writes.MERGE_PROCESSES, process_nodes),
+            (cypher_writes.MERGE_OWNERS, owner_nodes),
+            (cypher_writes.MERGE_SCOPES, scope_nodes),
+            (cypher_writes.MERGE_VENDORS, vendor_nodes),
+            (cypher_writes.MERGE_CERTS, cert_nodes),
+            (cypher_writes.MERGE_CLOUD, cloud_nodes),
+            (cypher_writes.MERGE_USES, payload.uses_rows(assets, systems)),
+            (cypher_writes.MERGE_CALLS, payload.call_rows(edges)),
+            (cypher_writes.MERGE_SUPPORTS, support_edges),
+            (cypher_writes.MERGE_OWNED_BY, owned_edges),
+            (cypher_writes.MERGE_COMPLY, comply_edges),
+            (cypher_writes.MERGE_VENDOR_EDGE, vendor_edges),
+            (cypher_writes.MERGE_SECURED_BY, cert_edges),
+            (cypher_writes.MERGE_DEPLOYED_ON, cloud_edges),
+        )
+        written = 0
+        for query, rows in batches:
+            if not rows:
+                continue
+            self._run(query, rows=rows)
+            written += len(rows)
+        counts = self.counts()
+        logger.info("neo4j_graph_synced", extra={"written": written, **counts})
+        return {"written": written, **counts, "backend": self.backend}
+
+    def _origin(self, start_id: str) -> str | None:
+        rows = self._run(ORIGIN_SYSTEM, start=start_id)
+        if rows:
+            return str(rows[0].get("id") or start_id)
+        asset_systems = self._run(SYSTEMS_USING_ASSET, start=start_id)
+        if asset_systems:
+            return str(asset_systems[0].get("id"))
+        return None
+
+    def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        origin = self._origin(start_id)
+        if origin is None:
+            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
+        rows = self._run(BLAST_RADIUS, start=origin, hops=hops)
+        systems = [
+            {
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "criticality": row.get("criticality"),
+                "hops": int(row.get("hops") or 0),
+            }
+            for row in rows
+        ]
+        return {
+            "start": origin,
+            "systems": systems,
+            "hops": hops,
+            "nodes_visited": len(systems) + 1,
+            "backend": self.backend,
+        }
+
+    def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        radius = self.blast_radius(start_id, hops=hops)
+        origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
+        system_ids = [row["id"] for row in radius["systems"] if row.get("id")]
+        if origin:
+            system_ids.append(origin)
+        if not system_ids:
+            return {
+                "start": start_id,
+                "total_revenue_at_risk": 0,
+                "total_customers_at_risk": 0,
+                "affected_processes": [],
+                "business_owners": [],
+                "compliance_scopes": [],
+                "systems": [],
+                "backend": self.backend,
+            }
+        rows = self._run(IMPACT_FROM_SYSTEMS, system_ids=system_ids)
+        record = rows[0] if rows else {}
+        revenues = [float(v or 0) for v in (record.get("revenues") or [])]
+        customers = [int(v or 0) for v in (record.get("customers") or [])]
+        processes = [name for name in (record.get("processes") or []) if name]
+        owners = [name for name in (record.get("owners") or []) if name]
+        scopes = [name for name in (record.get("scopes") or []) if name]
+        return {
+            "start": origin or start_id,
+            "total_revenue_at_risk": sum(revenues),
+            "total_customers_at_risk": sum(customers),
+            "affected_processes": processes,
+            "business_owners": owners,
+            "compliance_scopes": sorted(set(scopes)),
+            "systems": radius["systems"],
+            "backend": self.backend,
+        }
+
+    def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        radius = self.blast_radius(start_id, hops=hops)
+        origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
+        system_ids = [row["id"] for row in radius["systems"] if row.get("id")]
+        if origin:
+            system_ids.append(origin)
+        rows = self._run(COMPLIANCE_INHERITANCE, system_ids=system_ids) if system_ids else []
+        scopes = []
+        if rows:
+            scopes = [name for name in (rows[0].get("scopes") or []) if name]
+        return {"start": origin or start_id, "scopes": sorted(set(scopes)), "backend": self.backend}
+
+    def vendor_path(self, start_id: str) -> dict[str, Any]:
+        rows = self._run(VENDOR_PATH, start=start_id)
+        if not rows:
+            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend}
+        row = rows[0]
+        return {
+            "start": start_id,
+            "path": list(row.get("names") or []),
+            "hops": int(row.get("hops") or 0),
+            "vendor": row.get("vendor"),
+            "vendor_id": row.get("vendor_id"),
+            "backend": self.backend,
+        }
+
+    def crypto_for_system(self, start_id: str) -> dict[str, Any]:
+        rows = self._run(CRYPTO_FOR_SYSTEM, start=start_id)
+        assets = [
+            {
+                "id": row.get("id"),
+                "algorithm": row.get("algorithm"),
+                "purpose": row.get("purpose"),
+                "confidence": row.get("confidence"),
+                "key_size": row.get("key_size"),
+                "usage_type": row.get("usage_type"),
+            }
+            for row in rows
+        ]
+        return {"start": start_id, "assets": assets, "count": len(assets), "backend": self.backend}
+
+    def to_vis(self) -> dict[str, Any]:
+        rows = self._run(EXPORT_VIS)
+        nodes: dict[str, dict[str, Any]] = {}
+        edges: list[dict[str, Any]] = []
+        for row in rows:
+            node = _as_vis_node(row.get("n") if hasattr(row, "get") else None)
+            if node:
+                nodes[node["id"]] = node
+            other = _as_vis_node(row.get("m") if hasattr(row, "get") else None)
+            rel = row.get("r") if hasattr(row, "get") else None
+            if node and other and rel is not None:
+                label = rel.get("type") if hasattr(rel, "get") else getattr(rel, "type", None)
+                if label is None and isinstance(rel, dict):
+                    label = rel.get("label")
+                edges.append({"from": node["id"], "to": other["id"], "label": label or "RELATED"})
+                nodes[other["id"]] = other
+        return {"nodes": list(nodes.values()), "edges": edges, "backend": self.backend}
+
+
+def _as_vis_node(raw: Any) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if hasattr(raw, "items") and not isinstance(raw, dict):
+        # neo4j.graph.Node
+        labels = list(getattr(raw, "labels", []) or [])
+        props = dict(raw)
+        kind = labels[0] if labels else str(props.get("_label") or "Node")
+    elif isinstance(raw, dict):
+        props = dict(raw)
+        kind = str(props.get("_label") or props.get("kind") or "Node")
+    else:
+        return None
+    prefix = KIND_PREFIX.get(kind, kind.lower())
+    ident = (
+        props.get("system_id")
+        or props.get("asset_id")
+        or props.get("process_id")
+        or props.get("owner_id")
+        or props.get("standard_name")
+        or props.get("cert_id")
+        or props.get("resource_id")
+        or props.get("vendor_id")
+        or props.get("id")
+    )
+    node_id = props.get("id") if isinstance(props.get("id"), str) and ":" in str(props.get("id")) else f"{prefix}:{ident}"
+    label = props.get("name") or props.get("algorithm") or props.get("subject") or ident
+    cleaned = {k: v for k, v in props.items() if k not in {"id", "_label"} and not str(k).startswith("_")}
+    return {"id": node_id, "label": label, "group": kind, "kind": kind, **cleaned}

@@ -7,6 +7,8 @@ from typing import Any, Iterable
 
 
 class GraphEngine:
+    backend = "memory"
+
     def __init__(self) -> None:
         self.nodes: dict[str, dict[str, Any]] = {}
         self.out: dict[str, list[tuple[str, str]]] = defaultdict(list)
@@ -35,6 +37,7 @@ class GraphEngine:
         owners: Iterable[dict[str, Any]] = (),
         vendors: Iterable[dict[str, Any]] = (),
         certificates: Iterable[dict[str, Any]] = (),
+        cloud_resources: Iterable[dict[str, Any]] = (),
     ) -> "GraphEngine":
         for system in systems:
             sid = str(system.get("id") or system.get("system_id") or system.get("name"))
@@ -47,6 +50,9 @@ class GraphEngine:
                 criticality=system.get("criticality") or (system.get("extra") or {}).get("criticality"),
                 compliance_scopes=system.get("compliance_scopes") or [],
             )
+            for scope in system.get("compliance_scopes") or []:
+                self.add_node(f"scope:{scope}", kind="ComplianceScope", name=scope, standard_name=scope)
+                self.add_edge(f"system:{sid}", f"scope:{scope}", "MUST_COMPLY_WITH")
         for asset in assets:
             aid = str(asset.get("id") or asset.get("asset_id"))
             self.add_node(
@@ -94,12 +100,29 @@ class GraphEngine:
                 subject=cert.get("subject"),
                 expiry_status=cert.get("expiry_status"),
             )
+            for system_id in cert.get("system_ids") or []:
+                self.add_edge(f"system:{system_id}", f"cert:{cid}", "SECURED_BY")
+        for resource in cloud_resources:
+            rid = str(resource.get("id") or resource.get("resource_id") or resource.get("account_identifier") or "")
+            if not rid:
+                continue
+            self.add_node(
+                f"cloud:{rid}",
+                kind="CloudResource",
+                name=resource.get("name") or resource.get("account_identifier"),
+                cloud_provider=resource.get("cloud_provider"),
+            )
+            for system_id in resource.get("system_ids") or []:
+                self.add_edge(f"system:{system_id}", f"cloud:{rid}", "DEPLOYED_ON")
         return self
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         start = self._resolve(start_id)
         if start is None:
-            return {"start": start_id, "systems": [], "hops": 0}
+            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
+        if (self.nodes.get(start) or {}).get("kind") == "CryptoAsset":
+            users = [src for src, rel in self.incoming.get(start, []) if rel == "USES"]
+            start = users[0] if users else start
         seen: dict[str, int] = {start: 0}
         queue = deque([start])
         while queue:
@@ -124,13 +147,19 @@ class GraphEngine:
                     }
                 )
         systems.sort(key=lambda row: (row["hops"], row.get("name") or ""))
-        return {"start": start.split(":", 1)[-1], "systems": systems, "hops": hops, "nodes_visited": len(seen)}
+        return {
+            "start": start.split(":", 1)[-1],
+            "systems": systems,
+            "hops": hops,
+            "nodes_visited": len(seen),
+            "backend": self.backend,
+        }
 
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)
-        seed = self._resolve(start_id)
+        seed = self._resolve(radius["start"] or start_id)
         system_ids = {f"system:{row['id']}" for row in radius["systems"]}
-        if seed:
+        if seed and (self.nodes.get(seed) or {}).get("kind") == "System":
             system_ids.add(seed)
         revenue = 0.0
         customers = 0
@@ -159,7 +188,72 @@ class GraphEngine:
             "business_owners": owners,
             "compliance_scopes": sorted(scopes),
             "systems": radius["systems"],
+            "backend": self.backend,
         }
+
+    def compliance_inheritance(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        impact = self.business_impact(start_id, hops=hops)
+        return {"start": impact["start"], "scopes": impact["compliance_scopes"], "backend": self.backend}
+
+    def vendor_path(self, start_id: str) -> dict[str, Any]:
+        start = self._resolve(start_id)
+        if start is None:
+            return {"start": start_id, "path": [], "hops": 0, "vendor": None, "backend": self.backend}
+        parent: dict[str, str | None] = {start: None}
+        queue = deque([start])
+        found_vendor = None
+        found_at = None
+        while queue:
+            node = queue.popleft()
+            for nxt, rel in self.out.get(node, []):
+                if rel == "DEPENDS_ON_VENDOR":
+                    found_vendor = nxt
+                    found_at = node
+                    queue.clear()
+                    break
+                if rel == "CALLS" and nxt not in parent:
+                    parent[nxt] = node
+                    queue.append(nxt)
+        if not found_vendor:
+            return {"start": start.split(":", 1)[-1], "path": [], "hops": 0, "vendor": None, "backend": self.backend}
+        chain = [found_at]
+        while chain[-1] and parent.get(chain[-1]) is not None:
+            chain.append(parent[chain[-1]])
+        chain.reverse()
+        names = [(self.nodes.get(item) or {}).get("name") or item.split(":", 1)[-1] for item in chain if item]
+        vendor = self.nodes.get(found_vendor) or {}
+        names.append(vendor.get("name") or found_vendor.split(":", 1)[-1])
+        return {
+            "start": start.split(":", 1)[-1],
+            "path": names,
+            "hops": max(0, len(names) - 1),
+            "vendor": vendor.get("name"),
+            "vendor_id": found_vendor.split(":", 1)[-1],
+            "backend": self.backend,
+        }
+
+    def crypto_for_system(self, start_id: str) -> dict[str, Any]:
+        start = self._resolve(start_id)
+        assets = []
+        if start:
+            for nxt, rel in self.out.get(start, []):
+                if rel != "USES":
+                    continue
+                node = self.nodes.get(nxt) or {}
+                assets.append(
+                    {
+                        "id": nxt.split(":", 1)[-1],
+                        "algorithm": node.get("algorithm"),
+                        "purpose": node.get("purpose"),
+                        "confidence": node.get("confidence"),
+                        "key_size": node.get("key_size"),
+                        "usage_type": "DISCOVERED",
+                    }
+                )
+        return {"start": start_id, "assets": assets, "count": len(assets), "backend": self.backend}
+
+    def counts(self) -> dict[str, int]:
+        return {"nodes": len(self.nodes), "edges": sum(len(items) for items in self.out.values())}
 
     def to_vis(self) -> dict[str, Any]:
         nodes = [
@@ -170,12 +264,12 @@ class GraphEngine:
         for src, items in self.out.items():
             for dst, rel in items:
                 edges.append({"from": src, "to": dst, "label": rel})
-        return {"nodes": nodes, "edges": edges}
+        return {"nodes": nodes, "edges": edges, "backend": self.backend}
 
     def _resolve(self, raw: str) -> str | None:
         if raw in self.nodes:
             return raw
-        for prefix in ("system:", "asset:", "process:", "cert:", "vendor:"):
+        for prefix in ("system:", "asset:", "process:", "cert:", "vendor:", "owner:", "scope:", "cloud:"):
             if f"{prefix}{raw}" in self.nodes:
                 return f"{prefix}{raw}"
         for node_id, node in self.nodes.items():
