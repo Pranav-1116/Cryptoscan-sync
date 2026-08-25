@@ -10,8 +10,23 @@
 
 SQLite is the default. Leave `REDIS_URL` empty to run jobs in-process.
 
+Docker on a laptop (isolated host ports):
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+Dashboard: http://localhost:8088 — development login `admin` / `cryptoscan`.
+
 ## Production
 
-Use `docker compose up --build`. This starts Postgres 15, Redis 7, the API, the worker, and nginx on port 80.
+Do not use `.env.example` as-is. Follow `docs/admin-guide/production.md`.
 
-Set `SECRET_KEY`, `ADMIN_PASSWORD`, `GITHUB_WEBHOOK_SECRET`, and `DATABASE_URL` from a secrets manager. Never ship the development defaults.
+```bash
+cp .env.production.example .env
+python3 scripts/hash_admin_password.py
+bash scripts/deploy_prod.sh -d
+```
+
+Set `SECRET_KEY`, `ADMIN_PASSWORD_HASH`, `GITHUB_WEBHOOK_SECRET`, `POSTGRES_PASSWORD`, `NEO4J_PASSWORD`, and an explicit `CORS_ORIGINS` list from a secrets manager. Never ship the development defaults.

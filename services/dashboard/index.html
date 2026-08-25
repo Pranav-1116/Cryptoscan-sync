@@ -94,7 +94,7 @@
         <div style="height:16px"></div>
         <button class="btn" type="submit" style="width:100%">Enter platform</button>
       </form>
-      <p class="muted" style="margin-top:12px">Development login: <span class="mono">admin</span> / <span class="mono">cryptoscan</span></p>
+      <p id="dev-login-hint" class="muted hidden" style="margin-top:12px">Development login: <span class="mono">admin</span> / <span class="mono">cryptoscan</span></p>
       <div id="login-error" class="err"></div>
     </div>
   </div>
@@ -137,7 +137,11 @@
 <script>
 const API = '/api/v1';
 let TOKEN = localStorage.getItem('cs_token') || '';
+let ENV = 'development';
 let state = { route: 'home', scanId: null, findingId: null, jobId: null, assetId: null, systemId: null };
+
+function isDevEnv() { return ENV === 'development' || ENV === 'dev'; }
+function sampleTarget(devDefault) { return isDevEnv() ? devDefault : ''; }
 
 async function api(path, opts={}) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
@@ -356,19 +360,24 @@ function renderNew(el) {
   el.innerHTML = `<div class="top"><h2>Start a scan</h2></div>
     <div class="card" style="max-width:640px">
       <label class="muted">Repository URL or local path</label>
-      <input id="repo" value="local://demo/polyglot-app" />
+      <input id="repo" placeholder="https://github.com/org/repo.git" value="${sampleTarget('local://demo/polyglot-app')}" />
       <div style="height:10px"></div>
       <label class="muted">Branch</label>
       <input id="branch" value="main" />
-      <p class="muted">Use <span class="mono">local://demo/vulnerable-app</span> for the bundled sample, or any git URL.</p>
+      <p class="muted">Paste a git URL. Development only: <span class="mono">local://demo/vulnerable-app</span> is bundled in the image.</p>
       <button class="btn" onclick="startScan()">Start scan</button>
       <div id="scan-msg" class="muted"></div>
     </div>`;
 }
 
 async function startScan() {
-  const repo = document.getElementById('repo').value;
+  const repo = (document.getElementById('repo').value || '').trim();
   const branch = document.getElementById('branch').value;
+  const msg = document.getElementById('scan-msg');
+  if (!repo) {
+    if (msg) msg.textContent = 'Enter a git URL or local path.';
+    return;
+  }
   const data = await api('/scans/trigger', { method: 'POST', body: JSON.stringify({ repo_url: repo, branch })});
   go('job', { jobId: data.job_id });
 }
@@ -614,7 +623,7 @@ async function renderContainer(el) {
 }
 
 async function scanContainer() {
-  const target = prompt('Image ref, docker-save .tar, or filesystem path', 'local://demo/polyglot-app');
+  const target = prompt('Image ref, docker-save .tar, or filesystem path', sampleTarget('local://demo/polyglot-app'));
   if (!target) return;
   let body;
   if (target.endsWith('.tar') || target.endsWith('.tar.gz') || target.endsWith('.tgz')) {
@@ -675,7 +684,7 @@ async function renderTls(el) {
 }
 
 async function scanTlsPath() {
-  const path = prompt('Repository or filesystem path', 'local://demo/polyglot-app');
+  const path = prompt('Repository or filesystem path', sampleTarget('local://demo/polyglot-app'));
   if (!path) return;
   await api('/network/scan-path', { method: 'POST', body: JSON.stringify({ path, live: false })});
   renderTls(document.getElementById('main'));
@@ -701,7 +710,7 @@ async function renderCloud(el) {
 }
 
 async function scanCloudPath() {
-  const path = prompt('Path to Terraform / k8s / CloudFormation', 'local://demo/polyglot-app');
+  const path = prompt('Path to Terraform / k8s / CloudFormation', sampleTarget('local://demo/polyglot-app'));
   if (!path) return;
   const data = await api('/cloud/scan', { method: 'POST', body: JSON.stringify({ path, live: false })});
   document.getElementById('cloud-result').innerHTML = `<div class="card" style="margin-top:16px">
@@ -955,7 +964,7 @@ async function renderOt(el) {
 }
 
 async function scanOt() {
-  const path = prompt('Path to OT logs / JSON captures', 'local://demo/ot-lab');
+  const path = prompt('Path to OT logs / JSON captures', sampleTarget('local://demo/ot-lab'));
   if (!path) return;
   await api('/ot/scan', { method: 'POST', body: JSON.stringify({ path })});
   renderOt(document.getElementById('main'));
@@ -1047,11 +1056,20 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
 
-if (TOKEN) {
-  document.getElementById('login-view').classList.add('hidden');
-  document.getElementById('app-view').classList.remove('hidden');
-  go('home');
+async function boot() {
+  try {
+    const meta = await fetch('/api/v1/meta', { credentials: 'same-origin' }).then(r => r.json());
+    ENV = String(meta.environment || 'development').toLowerCase();
+    const hint = document.getElementById('dev-login-hint');
+    if (hint && isDevEnv()) hint.classList.remove('hidden');
+  } catch (e) {}
+  if (TOKEN) {
+    document.getElementById('login-view').classList.add('hidden');
+    document.getElementById('app-view').classList.remove('hidden');
+    go('home');
+  }
 }
+boot();
 </script>
 </body>
 </html>

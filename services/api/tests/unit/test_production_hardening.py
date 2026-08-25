@@ -131,6 +131,8 @@ def test_login_me_meta_and_security_headers():
         body = meta.json()
         assert body["name"] == "CryptoScan"
         assert body["version"] == "1.0.0"
+        assert "environment" in body
+        assert "docs_enabled" in body
         assert meta.headers.get("x-content-type-options") == "nosniff"
         assert meta.headers.get("x-frame-options") == "DENY"
         login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"})

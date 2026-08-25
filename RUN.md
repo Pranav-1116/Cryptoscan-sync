@@ -48,19 +48,20 @@ Neo4j must not bind-mount `infra/neo4j/init` onto `/import` (the image `chown`s 
 
 ## Production
 
-Copy `.env.example` to `.env` and replace every placeholder secret.
-
-1. Set `ENVIRONMENT=production`.
-2. Set a unique `SECRET_KEY` (≥ 32 characters).
-3. Set a strong `ADMIN_PASSWORD` or, better, `ADMIN_PASSWORD_HASH` from `python3 scripts/hash_admin_password.py`.
-4. Set `GITHUB_WEBHOOK_SECRET`, PostgreSQL, Redis, and an explicit `CORS_ORIGINS` list.
-5. Start with both compose files:
+Use a dedicated host. Do **not** run the production overlay on a laptop that already owns `:80`.
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
+cp .env.production.example .env
+python3 scripts/hash_admin_password.py    # ADMIN_PASSWORD_HASH
+openssl rand -hex 32                      # SECRET_KEY
+openssl rand -hex 24                      # GITHUB_WEBHOOK_SECRET
+# set POSTGRES_PASSWORD, NEO4J_PASSWORD, CORS_ORIGINS
+bash scripts/deploy_prod.sh -d
 ```
 
-The API refuses to start in production if demo secrets, SQLite, or `CORS_ORIGINS=*` are still configured.
+Details: `docs/admin-guide/production.md`.
+
+The API refuses to start in production if demo secrets, SQLite, or `CORS_ORIGINS=*` are still configured. Postgres/Redis/Neo4j are not published on the host.
 
 ## Development credentials
 
