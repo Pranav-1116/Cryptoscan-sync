@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Run the bundled demo scan so the dashboard has data on first boot."""
+"""Run the bundled sample scan so a fresh deploy has inventory to inspect."""
 
 from __future__ import annotations
 
 import os
 import sys
-import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +24,16 @@ sys.path[:0] = [
     str(ROOT / "services" / "deduplication"),
     str(ROOT / "services" / "cbom"),
     str(ROOT / "services" / "container_scanner"),
+    str(ROOT / "services" / "network_scanner"),
+    str(ROOT / "services" / "cloud_scanner"),
+    str(ROOT / "services" / "graph_engine"),
+    str(ROOT / "services" / "business_context"),
+    str(ROOT / "services" / "quantum"),
+    str(ROOT / "services" / "remediation"),
+    str(ROOT / "services" / "reporting"),
+    str(ROOT / "services" / "ot_scanner"),
+    str(ROOT / "services" / "vendor_intel"),
+    str(ROOT / "services" / "agility"),
 ]
 
 

@@ -11,7 +11,7 @@ python3 -m pip install -r requirements.txt
 export CRYPTOSCAN_ROOT=$PWD
 export PYTHONPATH=$PWD/shared/shared_config:$PWD/shared/shared_logging:$PWD/shared/shared_models:$PWD/services/api:$PWD/services/database:$PWD/services/scanner:$PWD/services/evidence:$PWD/services/normalization:$PWD/services/policy:$PWD/services/drift:$PWD/services/worker:$PWD/services/deduplication:$PWD/services/cbom:$PWD/services/container_scanner:$PWD/services/network_scanner:$PWD/services/cloud_scanner:$PWD/services/graph_engine:$PWD/services/business_context:$PWD/services/quantum:$PWD/services/remediation:$PWD/services/reporting
 python3 scripts/seed_demo.py
-bash scripts/run_api.sh
+bash scripts/run_stack.sh
 ```
 
 Development login is `admin` / `cryptoscan`. Open `/ui` or the dashboard container. From a scan detail page you can **Verify chain**, **Export CBOM** (CycloneDX 1.5), and **Export JSON**.

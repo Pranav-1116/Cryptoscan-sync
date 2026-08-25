@@ -21,7 +21,7 @@ seed:
 	$(PY) $(ROOT)/scripts/seed_demo.py
 
 api:
-	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'
 
 worker:
 	$(PY) -m worker.main
