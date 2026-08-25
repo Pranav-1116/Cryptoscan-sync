@@ -46,6 +46,12 @@ class Worker:
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings = Settings()
+    try:
+        settings.validate_runtime()
+    except RuntimeError as exc:
+        logger.error("worker_config_invalid", extra={"error": str(exc)})
+        sys.exit(2)
+    logger.info("cryptoscan_worker_start", extra={"env": settings.ENVIRONMENT})
     Worker(settings).run()
 
 

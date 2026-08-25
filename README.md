@@ -1,11 +1,16 @@
-# CryptoScan — Part 1 is runnable
+# CryptoScan
+
+Production cryptographic inventory and compliance platform.
+
+Deterministic scanners, hashed evidence, YAML policy, drift, and a dashboard.
+Policy is never decided by AI.
 
 **Local:** `python scripts/seed_demo.py` then `bash scripts/run_api.sh`.  
-**Login:** `admin` / `cryptoscan`. **Docs:** [RUN.md](RUN.md).  
-**Docker:** `docker compose up --build`.
+**Development login:** `admin` / `cryptoscan` (refused in production). **Docs:** [RUN.md](RUN.md).  
+**Docker (dev):** `docker compose up --build`.  
+**Docker (prod):** set secrets, then `docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build`.
 
-The vision document below is the product north star. The working loop is:
-scan Java → evidence chain → SQLite/Postgres → normalize → 4 baseline policies → drift → API → dashboard.
+The working loop is: scan source → evidence chain → SQLite/Postgres → normalize → policy → drift → API → dashboard.
 
 ---
 

@@ -1,13 +1,15 @@
-"""Worker settings."""
+"""Worker settings — one schema used everywhere."""
 
 from __future__ import annotations
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
+class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="allow", case_sensitive=False)
 
+    ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = "INFO"
     REDIS_URL: str = ""
     QUEUE_NAME: str = "cryptoscan:jobs:queue"
     SCAN_JOB_QUEUE_KEY: str = "cryptoscan:jobs:queue"
@@ -15,8 +17,11 @@ class Settings(BaseSettings):
     WORKSPACE_BASE: str = "./data/workspaces"
     WORKSPACE_BASE_PATH: str = "./data/workspaces"
     SCANNER_TIMEOUT: int = 300
-    LOG_LEVEL: str = "INFO"
+    CLONE_TIMEOUT_SECONDS: int = 300
+    SCAN_TIMEOUT_SECONDS: int = 600
+    MAX_CONCURRENT_JOBS: int = 2
     CLEANUP_WORKSPACE: bool = True
+    ALLOW_SQLITE: bool = False
     POLICY_RULES_DIR: str = ""
     NORMALIZATION_RULES_DIR: str = ""
     ALERT_EMAIL_TO: str = ""
@@ -37,6 +42,25 @@ class Settings(BaseSettings):
     def workspace_dir(self) -> str:
         return self.WORKSPACE_BASE_PATH or self.WORKSPACE_BASE
 
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
 
-def get_settings() -> Settings:
-    return Settings()
+    def validate_runtime(self) -> None:
+        if not self.is_production:
+            return
+        errors: list[str] = []
+        if self.DATABASE_URL.startswith("sqlite") and not self.ALLOW_SQLITE:
+            errors.append("DATABASE_URL must be PostgreSQL in production (or set ALLOW_SQLITE=true)")
+        if not (self.REDIS_URL or "").strip():
+            errors.append("REDIS_URL is required in production")
+        if errors:
+            raise RuntimeError("production worker configuration rejected: " + "; ".join(errors))
+
+
+def get_settings() -> WorkerSettings:
+    return WorkerSettings()
+
+
+# Back-compat alias
+Settings = WorkerSettings

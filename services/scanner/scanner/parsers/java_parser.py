@@ -8,7 +8,7 @@ Architecture:
   - Primary: Eclipse JDT via JAR subprocess call (production)
   - Fallback: Regex-based pattern matching (development/testing)
 
-The regex approach is used in Part 1 MVP. JDT integration is additive.
+Regex matching is the built-in detector. JDT integration is additive when the helper JAR is on PATH.
 """
 
 from __future__ import annotations
@@ -178,7 +178,7 @@ class JavaParser:
     """
     Regex-based Java source code parser for crypto API detection.
     
-    Implements the 5 detector patterns defined in the MVP spec.
+    Implements the Java crypto detector patterns defined in the scanner spec.
     Uses line-by-line analysis for accurate line number extraction.
     """
 

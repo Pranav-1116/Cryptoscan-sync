@@ -1,12 +1,25 @@
+# Production overlay. Requires secrets in the environment or a locked-down .env.
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build
 services:
   api:
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
+      DOCS_ENABLED: ${DOCS_ENABLED:-false}
+      CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to an explicit origin list}
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_PASSWORD_HASH: ${ADMIN_PASSWORD_HASH:-}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?set GITHUB_WEBHOOK_SECRET}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      ALLOW_SQLITE: ${ALLOW_SQLITE:-false}
+      ALLOW_INSECURE_CORS: ${ALLOW_INSECURE_CORS:-false}
   worker:
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
+      ALLOW_SQLITE: ${ALLOW_SQLITE:-false}
   nginx:
     ports:
       - "80:80"

@@ -41,7 +41,7 @@ class ReviewBody(BaseModel):
 
 
 def _sign(exception_id: str, approver: str, stamp: str) -> str:
-    secret = (get_settings().SECRET_KEY or "cryptoscan").encode("utf-8")
+    secret = get_settings().SECRET_KEY.encode("utf-8")
     return hmac.new(secret, f"{exception_id}|{approver}|{stamp}".encode("utf-8"), hashlib.sha256).hexdigest()
 
 

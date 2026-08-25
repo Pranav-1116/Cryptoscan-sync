@@ -10,11 +10,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from api.config.settings import APISettings, get_settings
+from api.config.settings import APISettings, get_settings, validate_runtime_settings
 from api.middleware.auth_middleware import AuthMiddleware
 from api.middleware.logging_middleware import LoggingMiddleware
 from api.middleware.request_id_middleware import RequestIDMiddleware
+from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     agility,
     analytics,
@@ -67,6 +69,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
         load_env()
         configure_logging(settings.LOG_LEVEL, json_output=settings.is_production)
+        validate_runtime_settings(settings)
         if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
             init_db()
             try:
@@ -86,9 +89,9 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         title="CryptoScan Intelligence Platform",
         description="Deterministic cryptographic discovery, inventory, and compliance.",
         version=settings.API_VERSION,
-        docs_url="/api/docs" if settings.DOCS_ENABLED else None,
-        redoc_url="/api/redoc" if settings.DOCS_ENABLED else None,
-        openapi_url="/api/openapi.json" if settings.DOCS_ENABLED else None,
+        docs_url="/api/docs" if settings.docs_enabled else None,
+        redoc_url="/api/redoc" if settings.docs_enabled else None,
+        openapi_url="/api/openapi.json" if settings.docs_enabled else None,
         lifespan=lifespan,
     )
     app.state.settings = settings
@@ -102,10 +105,13 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=["X-Request-ID", "X-Total-Count"],
     )
+    if settings.trusted_host_list and settings.trusted_host_list != ["*"]:
+        app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
     app.add_middleware(LoggingMiddleware)
     app.add_middleware(RequestIDMiddleware)
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         app.add_middleware(AuthMiddleware, settings=settings)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(AuthenticationError)
     async def auth_exception_handler(request: Request, exc: AuthenticationError):
@@ -124,7 +130,14 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         from db.connection.engine import check_db_health
 
         db = check_db_health()
-        return {"ready": db.get("status") == "healthy", "database": db}
+        ready = db.get("status") == "healthy"
+        return {
+            "ready": ready,
+            "status": "ok" if ready else "degraded",
+            "database": db,
+            "environment": settings.ENVIRONMENT,
+            "version": settings.API_VERSION,
+        }
 
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
