@@ -25,11 +25,16 @@ Trigger a scan of the bundled sample with `local://demo/vulnerable-app`.
 
 ## Docker (development stack)
 
+Copy `.env.example` → `.env` first. Host ports are offset so another project can keep Postgres `5432`, Redis `6379`, and Neo4j `7687`.
+
 ```bash
+cp .env.example .env
 docker compose up --build
 ```
 
-http://localhost (nginx → API + dashboard). Neo4j Browser is http://localhost:7474 (`neo4j` / `cryptoscan`). Leave `NEO4J_URI` empty in `.env` to keep the in-process graph.
+http://localhost:8088 (nginx → API + dashboard).  
+Postgres `55432`, Redis `56379`, Neo4j Browser `57474` (`neo4j` / `cryptoscan`).  
+Leave `NEO4J_URI` empty in `.env` when you run `bash scripts/run_stack.sh` so CryptoScan does not touch the other project's Bolt port.
 
 ## Production
 
