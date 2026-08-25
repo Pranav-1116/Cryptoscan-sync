@@ -192,6 +192,11 @@ def executive_summary(
         },
         "forecast": forecast or {},
         "top_recommendations": recs or [],
+        "unknown_crypto_systems": sum(
+            1
+            for row in systems
+            if str(row.get("coverage_status") or "").upper() in {"", "NO_TARGET", "NEVER_SCANNED"}
+        ),
         "summary": (
             f"Compliance {rate}%. {vulnerable} quantum-vulnerable assets. "
             f"Forecast {(forecast or {}).get('status', 'UNKNOWN')}."

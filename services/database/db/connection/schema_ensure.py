@@ -28,6 +28,16 @@ def ensure_schema_extensions(engine) -> None:
             ("migration_readiness_score", "INTEGER"),
             ("migration_readiness_category", "VARCHAR(50)"),
             ("extra", json_t),
+            ("scan_target", "TEXT"),
+            ("scan_branch", "VARCHAR(200)"),
+            ("last_scan_id", "VARCHAR(36)"),
+            ("last_scanned_at", dt),
+            ("coverage_status", "VARCHAR(20)"),
+            ("business_unit", "VARCHAR(100)"),
+            ("criticality", "VARCHAR(20)"),
+        ],
+        "scan_jobs": [
+            ("system_id", "VARCHAR(36)"),
         ],
         "vendors": [
             ("vendor_type", "VARCHAR(50)"),

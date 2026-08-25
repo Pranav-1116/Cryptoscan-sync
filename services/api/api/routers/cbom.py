@@ -5,11 +5,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, get_job_repository
 from api.schemas.cbom_schemas import CustomCbomRequest, DiffCbomRequest, IngestCbomRequest
 from cbom.generator import CbomGenerator
 from cbom.inventory import (
@@ -106,38 +107,19 @@ def _resolve_ref(db: Session, ref) -> tuple[str, str | None, list[Any]]:
 @router.get("")
 @router.get("/")
 def cbom_catalog(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    coverage: str | None = None,
+    q: str | None = None,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     sys_repo = SystemRepository(db)
-    systems, system_total = sys_repo.list_systems(page=1, page_size=500)
-    catalog: list[dict[str, Any]] = []
-    algorithm_index: dict[str, int] = {}
-    quantum_total = 0
-    component_total = 0
-    pqc_total = 0
-    for system in systems:
-        extra = system.extra or {}
-        imported = extra.get("cbom") if isinstance(extra, dict) else None
-        summary = summarize_records(
-            sys_repo.assets_for(system.id),
-            source_type="system",
-            source_id=system.id,
-            name=system.name,
-            environment=system.environment,
-            extra={
-                "owner": system.owner,
-                "imported": imported,
-            },
-        )
-        catalog.append(summary)
-        component_total += int(summary["components"])
-        quantum_total += int(summary["quantum_vulnerable"])
-        pqc_total += int(summary["pqc_ready"])
-        for algo, count in (summary.get("algorithms") or {}).items():
-            algorithm_index[algo] = algorithm_index.get(algo, 0) + int(count)
-
-    scans, scan_total = ScanRepository(db).list_scans(page=1, page_size=50)
+    systems, system_total = sys_repo.list_systems(page=page, page_size=page_size, coverage=coverage, q=q)
+    catalog = [sys_repo.catalog_row(system) for system in systems]
+    coverage_totals = sys_repo.coverage_summary()
+    algorithms = AssetRepository(db).algorithm_counts()
+    scans, scan_total = ScanRepository(db).list_scans(page=1, page_size=20)
     scan_sources = []
     for scan in scans:
         stats = scan.statistics if isinstance(scan.statistics, dict) else {}
@@ -152,21 +134,72 @@ def cbom_catalog(
                 "spec": "CycloneDX 1.5",
             }
         )
-
-    unassigned = [row for row in _located_assets(db) if not row.get("system_id")]
     return {
         "spec": "CycloneDX 1.5",
         "systems": catalog,
         "scans": scan_sources,
-        "unassigned_components": len(unassigned),
+        "page": page,
+        "page_size": page_size,
+        "coverage": coverage_totals,
         "totals": {
             "systems": system_total,
             "scans": scan_total,
-            "components": component_total,
-            "quantum_vulnerable": quantum_total,
-            "pqc_ready": pqc_total,
-            "algorithms": algorithm_index,
+            "components": sum(int(item.get("components") or 0) for item in catalog),
+            "unknown_crypto": coverage_totals.get("unknown_crypto"),
+            "with_cbom": coverage_totals.get("with_cbom"),
+            "coverage_pct": coverage_totals.get("coverage_pct"),
+            "algorithms": algorithms,
         },
+    }
+
+
+@router.get("/coverage")
+def cbom_coverage(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    return SystemRepository(db).coverage_summary()
+
+
+class ScanUncoveredRequest(BaseModel):
+    limit: int = 25
+
+
+@router.post("/scan-uncovered")
+def cbom_scan_uncovered(
+    background_tasks: BackgroundTasks,
+    body: ScanUncoveredRequest | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    jobs=Depends(get_job_repository),
+):
+    from api.routers.trigger import enqueue_scan_job
+
+    limit = min(max(int((body.limit if body else 25) or 25), 1), 100)
+    queued = []
+    skipped = []
+    for system in SystemRepository(db).list_uncovered(limit=limit):
+        target = (system.scan_target or "").strip()
+        if not target:
+            skipped.append({"id": system.id, "name": system.name, "reason": "no_target"})
+            continue
+        result = enqueue_scan_job(
+            jobs,
+            background_tasks,
+            repo_url=target,
+            branch=system.scan_branch or "main",
+            triggered_by=user,
+            job_type="COVERAGE",
+            system_id=system.id,
+        )
+        queued.append({"system_id": system.id, "name": system.name, "job_id": result.job_id})
+    remaining = max(0, int(SystemRepository(db).coverage_summary().get("scannable") or 0) - len(queued))
+    return {
+        "queued": len(queued),
+        "skipped": skipped,
+        "remaining": remaining,
+        "jobs": queued,
+        "message": f"Queued {len(queued)} scans. Cryptography stays unknown on systems that have not been scanned.",
     }
 
 
@@ -197,7 +230,8 @@ def cbom_search(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    hits = search_records(_located_assets(db), q, limit=limit)
+    located = AssetRepository(db).search_located(q, limit=limit)
+    hits = search_records(located, q, limit=limit)
     return {"query": q, "total_count": len(hits), "matches": hits}
 
 
@@ -266,6 +300,13 @@ def cbom_ingest(
     )
     for asset in stored:
         sys_repo.attach_asset(system.id, asset.id)
+    sys_repo.stamp_scan(
+        system.id,
+        scan_id=None,
+        status="CURRENT",
+        component_count=len(stored),
+        algorithms={item["algorithm"]: 1 for item in records},
+    )
     summary = summarize_records(
         stored,
         source_type="system",

@@ -24,6 +24,7 @@ class ScanJob:
     target_commit: str | None = None
     created_at: datetime | str | None = None
     job_type: str = "MANUAL"
+    system_id: str | None = None
 
 
 _MEMORY_QUEUE: Queue = Queue()
@@ -91,6 +92,7 @@ class JobConsumer:
                 "triggered_by": job.triggered_by,
                 "created_at": job.created_at.isoformat() if isinstance(job.created_at, datetime) else job.created_at,
                 "job_type": job.job_type,
+                "system_id": job.system_id,
             }
         else:
             payload = dict(job)
@@ -147,6 +149,7 @@ class JobConsumer:
             triggered_by=data.get("triggered_by") or "system",
             created_at=datetime.fromisoformat(created) if created else datetime.utcnow(),
             job_type=data.get("job_type") or "MANUAL",
+            system_id=data.get("system_id"),
         )
 
 

@@ -2,8 +2,8 @@
 
 The dashboard is a single-page app served at `/`.
 
-- **Overview** — scan counts, compliance totals, estate CBOM roll-up
-- **CBOM** — CycloneDX inventory, search, import, portfolio export, diff
+- **Overview** — estate coverage: how many systems still have unknown crypto
+- **CBOM** — coverage, scan uncovered systems, CMDB import, search, portfolio, diff
 - **Scans** — every completed or failed session
 - **Scan detail** — findings table
 - **Finding detail** — snippet, hashes, rule-by-rule evaluation

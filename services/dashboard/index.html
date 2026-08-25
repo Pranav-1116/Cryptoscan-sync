@@ -200,6 +200,10 @@ function go(route, extra={}) {
 }
 
 function badge(v) { return `<span class="badge ${v || ''}">${v || '—'}</span>`; }
+function coverageBadge(v) {
+  const map = {CURRENT:'PASS', NEVER_SCANNED:'FAIL', NO_TARGET:'WARN', STALE:'HIGH', FAILED:'FAIL'};
+  return `<span class="badge ${map[v]||'INFO'}">${v || '—'}</span>`;
+}
 
 async function render() {
   const el = document.getElementById('main');
@@ -242,22 +246,25 @@ async function render() {
 async function renderHome(el) {
   const s = await api('/stats/summary');
   const scans = await api('/scans?page_size=8');
-  let catalog = null;
-  try { catalog = await api('/cbom'); } catch (e) { catalog = null; }
+  const cov = s.coverage || {};
+  const counts = cov.counts || {};
   el.innerHTML = `
-    <div class="top"><div><h2>Cryptographic posture</h2><p class="muted">Find CycloneDX CBOMs on every system — policy is never decided by AI.</p></div></div>
+    <div class="top"><div><h2>Estate cryptographic coverage</h2>
+      <p class="muted">${cov.message || 'A bank cannot know which algorithms a system runs until that system is scanned into a CBOM.'}</p></div>
+      <button class="btn" onclick="go('cbom')">Open CBOM coverage</button></div>
     <div class="grid cards">
-      <div class="card"><div class="label">Scans</div><div class="value">${s.total_scans}</div></div>
-      <div class="card"><div class="label">Findings</div><div class="value">${s.total_findings}</div></div>
-      <div class="card"><div class="label">Compliant</div><div class="value" style="color:var(--pass)">${s.compliant}</div></div>
-      <div class="card"><div class="label">Non-compliant</div><div class="value" style="color:var(--fail)">${s.non_compliant}</div></div>
+      <div class="card"><div class="label">Systems</div><div class="value">${cov.systems||0}</div></div>
+      <div class="card"><div class="label">With a CBOM</div><div class="value" style="color:var(--pass)">${cov.with_cbom||0}</div><p class="muted">${cov.coverage_pct||0}% coverage</p></div>
+      <div class="card"><div class="label">Unknown crypto</div><div class="value" style="color:var(--fail)">${cov.unknown_crypto||0}</div><p class="muted">Never scanned or no target</p></div>
+      <div class="card"><div class="label">Ready to scan</div><div class="value">${cov.scannable||0}</div><p class="muted">Have a target, missing/stale CBOM</p></div>
     </div>
-    ${catalog ? `<div style="height:16px"></div>
-    <div class="card">
-      <div class="label">Estate CBOM</div>
-      <p>${catalog.totals?.systems||0} systems · ${catalog.totals?.components||0} cryptographic components · ${catalog.totals?.quantum_vulnerable||0} quantum-vulnerable</p>
-      <button class="btn secondary" onclick="go('cbom')">Open CBOM inventory</button>
-    </div>` : ''}
+    <div style="height:16px"></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Never scanned</div><div class="value">${counts.NEVER_SCANNED||0}</div></div>
+      <div class="card"><div class="label">No scan target</div><div class="value">${counts.NO_TARGET||0}</div></div>
+      <div class="card"><div class="label">Stale CBOM</div><div class="value">${counts.STALE||0}</div></div>
+      <div class="card"><div class="label">Failed scans</div><div class="value">${counts.FAILED||0}</div></div>
+    </div>
     <div style="height:16px"></div>
     <div class="grid" style="grid-template-columns: 1.2fr .8fr">
       <div class="card">
@@ -378,7 +385,7 @@ function renderNew(el) {
       <div style="height:10px"></div>
       <label class="muted">Branch</label>
       <input id="branch" value="main" />
-      <p class="muted">Paste a git URL. Development only: <span class="mono">local://demo/vulnerable-app</span> is bundled in the image.</p>
+      <p class="muted">A scan is mandatory to discover algorithms. The pipeline registers a system and writes its CycloneDX CBOM. Development only: <span class="mono">local://demo/vulnerable-app</span>.</p>
       <button class="btn" onclick="startScan()">Start scan</button>
       <div id="scan-msg" class="muted"></div>
     </div>`;
@@ -497,14 +504,17 @@ async function renderAssets(el) {
 
 async function renderSystems(el) {
   const data = await api('/systems?page_size=50');
-  el.innerHTML = `<div class="top"><div><h2>Systems</h2><p class="muted">Inventory and ownership. Blast radius lives under Graph.</p></div>
+  el.innerHTML = `<div class="top"><div><h2>Systems</h2><p class="muted">Register the estate. Algorithms stay unknown until each system is scanned.</p></div>
     <div class="row"><button class="btn" onclick="createSystem()">Add system</button>
     <button class="btn secondary" onclick="go('cbom')">Estate CBOM</button></div></div>
-    <div class="card"><table><thead><tr><th>Name</th><th>Owner</th><th>Env</th><th>Scopes</th></tr></thead>
-    <tbody>${(data.systems||[]).map(s => `<tr onclick="go('system',{systemId:'${s.id}'})" style="cursor:pointer">
-      <td>${s.name}</td><td>${s.owner||'—'}</td><td>${s.environment||'—'}</td>
-      <td class="mono">${(s.compliance_scopes||[]).join(', ')||'—'}</td>
-    </tr>`).join('') || '<tr><td colspan=4 class="muted">No systems registered.</td></tr>'}
+    <div class="card"><table><thead><tr><th>Name</th><th>Coverage</th><th>Scan target</th><th>Owner</th><th></th></tr></thead>
+    <tbody>${(data.systems||[]).map(s => `<tr>
+      <td onclick="go('system',{systemId:'${s.id}'})" style="cursor:pointer">${s.name}</td>
+      <td>${coverageBadge(s.coverage || s.coverage_status)}</td>
+      <td class="mono">${s.scan_target||'—'}</td>
+      <td>${s.owner||'—'}</td>
+      <td>${s.scan_target ? `<button class="btn secondary" onclick="scanSystemNow('${s.id}')">Scan</button>` : `<button class="btn secondary" onclick="setSystemTarget('${s.id}')">Set target</button>`}</td>
+    </tr>`).join('') || '<tr><td colspan=5 class="muted">No systems registered. Import a CMDB list on the CBOM page.</td></tr>'}
     </tbody></table></div>`;
 }
 
@@ -540,13 +550,14 @@ async function renderSystem(el) {
   el.innerHTML = `<div class="top"><div><h2>${s.name}</h2>
     <p class="muted">${s.description || s.environment || ''}</p></div>
     <div class="row">
+      ${s.scan_target ? `<button class="btn" onclick="scanSystemNow('${s.id}')">Scan for CBOM</button>` : `<button class="btn" onclick="setSystemTarget('${s.id}')">Set scan target</button>`}
       <button class="btn secondary" onclick="downloadFile('/cbom/system/${s.id}', 'cbom-system-${s.id}.json')">Export CBOM</button>
       <button class="btn secondary" onclick="go('systems')">Back</button>
     </div></div>
     <div class="grid cards">
+      <div class="card"><div class="label">Coverage</div><div class="value" style="font-size:18px">${coverageBadge(s.coverage_status)}</div></div>
+      <div class="card"><div class="label">Scan target</div><div class="value" style="font-size:14px">${s.scan_target||'not set'}</div></div>
       <div class="card"><div class="label">Owner</div><div class="value" style="font-size:18px">${s.owner||'—'}</div></div>
-      <div class="card"><div class="label">Environment</div><div class="value" style="font-size:18px">${s.environment||'—'}</div></div>
-      <div class="card"><div class="label">Scopes</div><div class="value" style="font-size:14px">${(s.compliance_scopes||[]).join(', ')||'—'}</div></div>
       <div class="card"><div class="label">Assets</div><div class="value">${(s.assets||[]).length}</div></div>
     </div>
     <div style="height:16px"></div>
@@ -597,10 +608,25 @@ async function renderCompliance(el) {
 async function createSystem() {
   const name = prompt('System name', 'payments-api');
   if (!name) return;
+  const scan_target = prompt('Scan target (git URL or local:// path). Leave blank if unknown.', sampleTarget('local://demo/polyglot-app'));
   await api('/systems', { method: 'POST', body: JSON.stringify({
-    name, owner: 'security', environment: 'prod', compliance_scopes: ['PCI-DSS']
+    name, owner: 'security', environment: 'prod', compliance_scopes: ['PCI-DSS'],
+    scan_target: (scan_target || '').trim() || null
   })});
   renderSystems(document.getElementById('main'));
+}
+
+async function setSystemTarget(systemId) {
+  const scan_target = prompt('Scan target (git URL or local:// path)', sampleTarget('local://demo/polyglot-app'));
+  if (!scan_target) return;
+  await api('/systems/' + systemId, { method: 'PATCH', body: JSON.stringify({ scan_target: scan_target.trim() })});
+  if (state.route === 'system') renderSystem(document.getElementById('main'));
+  else renderSystems(document.getElementById('main'));
+}
+
+async function scanSystemNow(systemId) {
+  const data = await api('/systems/' + systemId + '/scan', { method: 'POST', body: '{}' });
+  go('job', { jobId: data.job_id });
 }
 
 async function renderPolicy(el) {
@@ -1053,19 +1079,21 @@ async function renderCbom(el) {
   const catalog = await api('/cbom');
   const systems = catalog.systems || [];
   const scans = catalog.scans || [];
+  const cov = catalog.coverage || {};
+  const counts = cov.counts || {};
   const algos = Object.entries(catalog.totals?.algorithms || {}).sort((a,b) => b[1]-a[1]);
   const options = systems.map(s => `<option value="${s.source_id}">${s.name}</option>`).join('');
   el.innerHTML = `<div class="top"><div><h2>Estate CBOM</h2>
-    <p class="muted">CycloneDX 1.5 cryptographic bills of materials discovered on each system.</p></div>
+    <p class="muted">${cov.message || 'Scan every system. Algorithms are unknown until a CBOM exists.'}</p></div>
     <div class="row">
+      <button class="btn" onclick="scanUncovered()">Scan systems without a CBOM</button>
       <button class="btn secondary" onclick="downloadFile('/cbom/portfolio', 'cbom-portfolio.json')">Export portfolio</button>
-      <button class="btn secondary" onclick="downloadFile('/cbom/portfolio?fmt=xml', 'cbom-portfolio.xml')">Export XML</button>
     </div></div>
     <div class="grid cards">
-      <div class="card"><div class="label">Systems</div><div class="value">${catalog.totals?.systems||0}</div></div>
-      <div class="card"><div class="label">Components</div><div class="value">${catalog.totals?.components||0}</div></div>
-      <div class="card"><div class="label">Quantum-vulnerable</div><div class="value" style="color:var(--fail)">${catalog.totals?.quantum_vulnerable||0}</div></div>
-      <div class="card"><div class="label">PQC-ready</div><div class="value">${catalog.totals?.pqc_ready||0}</div></div>
+      <div class="card"><div class="label">With a CBOM</div><div class="value" style="color:var(--pass)">${cov.with_cbom||0}</div><p class="muted">${cov.coverage_pct||0}% of ${cov.systems||0}</p></div>
+      <div class="card"><div class="label">Unknown crypto</div><div class="value" style="color:var(--fail)">${cov.unknown_crypto||0}</div></div>
+      <div class="card"><div class="label">Never scanned</div><div class="value">${counts.NEVER_SCANNED||0}</div></div>
+      <div class="card"><div class="label">Ready to scan</div><div class="value">${cov.scannable||0}</div></div>
     </div>
     <div style="height:16px"></div>
     <div class="grid" style="grid-template-columns:1.2fr .8fr">
@@ -1085,18 +1113,18 @@ async function renderCbom(el) {
     <div style="height:16px"></div>
     <div class="card">
       <div class="label">System CBOMs</div>
-      <table><thead><tr><th>System</th><th>Env</th><th>Components</th><th>Quantum</th><th>PQC</th><th></th></tr></thead>
+      <table><thead><tr><th>System</th><th>Coverage</th><th>Target</th><th>Components</th><th></th></tr></thead>
       <tbody>${systems.map(s => `<tr>
         <td><a href="#" onclick="go('system',{systemId:'${s.source_id}'});return false;">${s.name}</a></td>
-        <td>${s.environment||'—'}</td>
+        <td>${coverageBadge(s.coverage_status)}</td>
+        <td class="mono">${s.scan_target||'—'}</td>
         <td>${s.components}</td>
-        <td>${s.quantum_vulnerable}</td>
-        <td>${s.pqc_ready}</td>
         <td class="row">
+          ${s.scan_target ? `<button class="btn secondary" onclick="scanSystemNow('${s.source_id}')">Scan</button>` : ''}
           <button class="btn secondary" onclick="previewCbom('system','${s.source_id}')">Inspect</button>
           <button class="btn secondary" onclick="downloadFile('/cbom/system/${s.source_id}', 'cbom-${s.name}.json')">JSON</button>
         </td>
-      </tr>`).join('') || '<tr><td colspan=6 class="muted">No systems with cryptographic assets yet.</td></tr>'}
+      </tr>`).join('') || '<tr><td colspan=5 class="muted">Register systems, then scan. No CBOM exists until a scan runs.</td></tr>'}
       </tbody></table>
     </div>
     <div style="height:16px"></div>
@@ -1168,6 +1196,24 @@ async function previewCbom(kind, id) {
       <td class="mono">${c.cryptoProperties?.oid || '—'}</td>
       <td class="mono">${c.evidence?.file || ''}${c.evidence?.line ? ':'+c.evidence.line : ''}</td>
     </tr>`).join('') || '<tr><td colspan=4 class="muted">Empty CBOM</td></tr>'}</tbody></table>`;
+}
+
+async function importSystemsCsv() {
+  const msg = document.getElementById('cbom-cmdb-msg');
+  const csv = (document.getElementById('cbom-cmdb').value || '').trim();
+  if (!csv) { msg.textContent = 'Paste a CSV with a header row.'; return; }
+  try {
+    const data = await api('/systems/import', { method: 'POST', body: JSON.stringify({ csv })});
+    msg.textContent = 'Registered ' + data.created + ' new, updated ' + data.updated + '. Scan them to produce CBOMs.';
+    go('cbom');
+  } catch (e) { msg.textContent = e.message; }
+}
+
+async function scanUncovered() {
+  const data = await api('/cbom/scan-uncovered', { method: 'POST', body: JSON.stringify({ limit: 25 })});
+  alert(data.message + (data.jobs && data.jobs[0] ? ' First job ' + data.jobs[0].job_id : ''));
+  if (data.jobs && data.jobs[0]) go('job', { jobId: data.jobs[0].job_id });
+  else go('cbom');
 }
 
 async function ingestCbom() {

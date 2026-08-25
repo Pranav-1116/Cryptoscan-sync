@@ -27,6 +27,7 @@ class ScanJob(BaseModel):
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     progress: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    system_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
     @property
     def job_id(self) -> str:

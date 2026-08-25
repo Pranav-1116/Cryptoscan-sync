@@ -21,5 +21,6 @@ class JobExecutor:
             target_branch=job.target_branch,
             target_commit=job.target_commit,
             triggered_by=job.triggered_by,
+            system_id=getattr(job, "system_id", None),
         )
         return bool(scan_id)

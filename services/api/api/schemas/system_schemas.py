@@ -11,6 +11,10 @@ class SystemCreateRequest(BaseModel):
     owner: Optional[str] = None
     environment: Optional[str] = None
     compliance_scopes: list[str] = Field(default_factory=list)
+    scan_target: Optional[str] = None
+    scan_branch: Optional[str] = None
+    business_unit: Optional[str] = None
+    criticality: Optional[str] = None
 
 
 class SystemResponse(BaseModel):

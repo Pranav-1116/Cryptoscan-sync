@@ -26,7 +26,9 @@ Default login: `admin` / `cryptoscan`.
 
 - `GET /findings` / `GET /findings/{evidence_id}`
 - `GET /assets` / `GET /assets/{asset_id}`
-- `GET /systems` / `POST /systems` / `GET /systems/{id}`
+- `GET /systems` / `POST /systems` / `GET /systems/{id}` / `PATCH /systems/{id}`
+- `POST /systems/import` `{csv|systems}` CMDB bulk register
+- `POST /systems/{id}/scan` queue a CBOM scan for that system
 - `POST /systems/{id}/assets` / `POST /systems/{id}/dependencies`
 
 ## Policy, drift, container, CBOM
@@ -37,7 +39,9 @@ Default login: `admin` / `cryptoscan`.
 - `GET /stats/summary`
 - `GET /container/scans` / `POST /container/scan`
 - `GET /vulns`
-- `GET /cbom` estate catalog (systems + scans + algorithm totals)
+- `GET /cbom` estate catalog (paginated; includes coverage)
+- `GET /cbom/coverage` unknown vs scanned systems
+- `POST /cbom/scan-uncovered` `{limit?}` queue scans for systems without a current CBOM
 - `GET /cbom/search?q=` find an algorithm or path across systems
 - `GET /cbom/portfolio` org-wide CycloneDX 1.5 CBOM
 - `GET /cbom/scan/{scan_id}` / `GET /cbom/system/{system_id}`

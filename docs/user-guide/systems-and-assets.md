@@ -13,11 +13,14 @@ Each asset stores `extra.dedup_key`, a SHA-256 of
 
 ## Auto-linking
 
-After a scan, the worker creates (or reuses) a system named after the
-repository and attaches every asset from that scan. You can also ingest a
-CycloneDX CBOM (`POST /api/v1/cbom/ingest`) to register a system from an
-external bill of materials. Set `compliance_scopes` on the system (for
-example `PCI-DSS`) so scoped policy rules apply on the next scan.
+Register systems from the CMDB first (`POST /api/v1/systems/import`).
+Give each a `scan_target`. Until that system is scanned, its coverage is
+`NEVER_SCANNED` or `NO_TARGET` — the algorithms are unknown.
+
+A scan (or a vendor CBOM ingest) is what produces the bill of materials
+and stamps the system `CURRENT`. After a scan the worker attaches every
+asset to that system. Set `compliance_scopes` (for example `PCI-DSS`) so
+scoped policy rules apply on the next scan.
 
 ## API
 

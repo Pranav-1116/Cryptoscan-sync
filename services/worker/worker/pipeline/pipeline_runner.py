@@ -64,6 +64,7 @@ class PipelineRunner:
         triggered_by: str | None = None,
         target_commit: str | None = None,
         workspace_dir: str | None = None,
+        system_id: str | None = None,
         **kwargs,
     ):
         if job is not None:
@@ -72,6 +73,7 @@ class PipelineRunner:
             target_branch = target_branch or getattr(job, "target_branch", None) or "main"
             triggered_by = triggered_by or getattr(job, "triggered_by", None) or "system"
             target_commit = target_commit or getattr(job, "target_commit", None)
+            system_id = system_id or getattr(job, "system_id", None)
 
         if not job_id:
             job_id = str(uuid.uuid4())
@@ -93,6 +95,7 @@ class PipelineRunner:
             triggered_by=triggered_by or "system",
             workspace_dir=str(workspace_path),
             scan_id=str(uuid.uuid4()),
+            system_id=system_id,
         )
         stage = "init"
         try:
@@ -126,6 +129,7 @@ class PipelineRunner:
             stage = "cbom"
             self._advance(session, ctx, "cbom")
             self._cbom(ctx)
+            self._stamp_coverage(ctx, session, status="CURRENT")
             stage = "alert"
             self._advance(session, ctx, "alert")
             self._alert(ctx)
@@ -140,6 +144,7 @@ class PipelineRunner:
             return ctx.scan_id
         except Exception as exc:
             logger.exception("pipeline_failed", extra={"job_id": job_id, "stage": stage})
+            self._stamp_coverage_failed(ctx, str(exc))
             if owns_session:
                 session.rollback()
             try:
@@ -537,16 +542,79 @@ class PipelineRunner:
         except Exception:
             logger.debug("system_repo_unavailable")
             return
-        name = system_name_from_repo(ctx.target_repo)
-        system = SystemRepository(session).get_or_create(
-            name,
-            owner=ctx.triggered_by,
-            environment="dev" if ctx.target_repo.startswith(("local://", "file://", "/")) else "prod",
-            description=ctx.target_repo,
-        )
+        repo = SystemRepository(session)
+        system = repo.get_by_id(ctx.system_id) if ctx.system_id else None
+        if system is None:
+            name = system_name_from_repo(ctx.target_repo)
+            system = repo.get_or_create(
+                name,
+                owner=ctx.triggered_by,
+                environment="dev" if ctx.target_repo.startswith(("local://", "file://", "/")) else "prod",
+                description=ctx.target_repo,
+                scan_target=ctx.target_repo,
+                scan_branch=ctx.target_branch,
+            )
+        if not system.scan_target:
+            system.scan_target = ctx.target_repo
+        if ctx.target_branch and not system.scan_branch:
+            system.scan_branch = ctx.target_branch
         ctx.system_id = system.id
         ctx.compliance_scopes = list(system.compliance_scopes or [])
-        logger.info("stage_systems_resolved", extra={"system": name, "scopes": ctx.compliance_scopes})
+        logger.info("stage_systems_resolved", extra={"system": system.name, "scopes": ctx.compliance_scopes})
+
+    def _stamp_coverage(self, ctx: PipelineContext, session, *, status: str = "CURRENT") -> None:
+        if not ctx.system_id:
+            self._resolve_system(ctx, session)
+        if not ctx.system_id:
+            return
+        try:
+            from collections import Counter
+
+            from db.repositories.system_repository import SystemRepository
+        except Exception:
+            return
+        algorithms: Counter[str] = Counter()
+        for record in ctx.evidence_records or ctx.findings or []:
+            if isinstance(record, dict):
+                algo = record.get("algorithm") or "UNKNOWN"
+            else:
+                algo = getattr(record, "algorithm", None) or "UNKNOWN"
+            algorithms[str(algo)] += 1
+        try:
+            SystemRepository(session).stamp_scan(
+                ctx.system_id,
+                scan_id=ctx.scan_id,
+                status=status,
+                target=ctx.target_repo,
+                branch=ctx.target_branch,
+                component_count=sum(algorithms.values()),
+                algorithms=dict(algorithms),
+            )
+        except Exception:
+            logger.debug("coverage_stamp_skipped", exc_info=True)
+
+    def _stamp_coverage_failed(self, ctx: PipelineContext, message: str) -> None:
+        if not ctx.system_id:
+            return
+        try:
+            from db.connection.session import SessionLocal
+            from db.repositories.system_repository import SystemRepository
+
+            session = SessionLocal()
+            try:
+                SystemRepository(session).stamp_scan(
+                    ctx.system_id,
+                    scan_id=ctx.scan_id,
+                    status="FAILED",
+                    target=ctx.target_repo,
+                    branch=ctx.target_branch,
+                    error=message[:500],
+                )
+                session.commit()
+            finally:
+                session.close()
+        except Exception:
+            logger.debug("coverage_fail_stamp_skipped", exc_info=True)
 
     def _link_system_assets(self, ctx: PipelineContext, session, assets) -> None:
         if not ctx.system_id:

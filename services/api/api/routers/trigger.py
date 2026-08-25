@@ -37,6 +37,7 @@ def _run_inline(payload: dict) -> None:
             target_branch=payload["target_branch"],
             target_commit=payload.get("target_commit"),
             triggered_by=payload["triggered_by"],
+            system_id=payload.get("system_id"),
         )
     except Exception:
         logger.exception("inline_pipeline_failed", extra={"job_id": payload.get("job_id")})
@@ -51,6 +52,7 @@ def enqueue_scan_job(
     commit: str | None = None,
     triggered_by: str = "system",
     job_type: str = "MANUAL",
+    system_id: str | None = None,
 ) -> TriggerScanResponse:
     created = job_repo.create(
         job_type=job_type,
@@ -58,7 +60,12 @@ def enqueue_scan_job(
         target_branch=branch or "main",
         target_commit=commit,
         triggered_by=triggered_by,
+        system_id=system_id,
     )
+    try:
+        job_repo.session.commit()
+    except Exception:
+        logger.debug("job_commit_skipped", exc_info=True)
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     created_at = getattr(created, "created_at", None)
     payload = {
@@ -69,6 +76,7 @@ def enqueue_scan_job(
         "target_commit": commit,
         "triggered_by": triggered_by,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        "system_id": system_id,
     }
     settings = get_settings()
     if settings.REDIS_URL:

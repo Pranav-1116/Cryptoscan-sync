@@ -33,6 +33,7 @@ class JobRepository(BaseRepository[ScanJob]):
             "status",
             "scan_id",
             "progress",
+            "system_id",
         }
         job = ScanJob(**{k: v for k, v in payload.items() if k in allowed})
         return super().create(job)

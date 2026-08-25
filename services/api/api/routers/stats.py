@@ -28,6 +28,13 @@ def summary(
     failed = db.execute(
         select(func.count()).select_from(EvidenceRecord).where(EvidenceRecord.compliance_status == "FAIL")
     ).scalar_one()
+    coverage = {}
+    try:
+        from db.repositories.system_repository import SystemRepository
+
+        coverage = SystemRepository(db).coverage_summary()
+    except Exception:
+        coverage = {}
     return {
         "total_scans": int(total_scans),
         "total_findings": int(total_findings),
@@ -35,4 +42,5 @@ def summary(
         "non_compliant": int(failed),
         "open_drift": DriftRepository(db).open_counts_by_severity(),
         "algorithms": EvidenceRepository(db).algorithm_breakdown(),
+        "coverage": coverage,
     }

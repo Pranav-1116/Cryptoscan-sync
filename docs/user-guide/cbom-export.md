@@ -1,55 +1,47 @@
 # Cryptographic Bill of Materials
 
-CryptoScan treats a CycloneDX 1.5 **CBOM** as the estate inventory of
-cryptographic assets. Every scanned system, imported vendor document, and
-completed scan is a CBOM source.
+A bank with a million systems does **not** know which algorithms those
+systems run. CryptoScan’s job is to turn that unknown estate into
+CycloneDX 1.5 CBOMs. **A CBOM does not exist until the system is scanned**
+(or a vendor document is ingested).
 
-## From the dashboard
+## Bank workflow
 
-Open **CBOM** to:
+1. **Register systems** from the CMDB (`POST /api/v1/systems/import` or the
+   CBOM page). Give each row a `scan_target` (git URL or `local://` path).
+2. **Coverage** (`GET /api/v1/cbom/coverage`) shows how many systems still
+   have unknown cryptography (`NEVER_SCANNED`, `NO_TARGET`).
+3. **Scan**. One system: `POST /api/v1/systems/{id}/scan`. The estate:
+   `POST /api/v1/cbom/scan-uncovered` (batches of 25, cap 100 — do not
+   enqueue a million jobs in one request).
+4. The worker discovers algorithms, writes the CBOM, and stamps the system
+   `CURRENT`. After 90 days the CBOM is `STALE` and must be scanned again.
 
-- see which systems already have a cryptographic bill of materials
-- search an algorithm (AES, RSA, ML-KEM, …) across the estate
-- inspect a system or scan CBOM without downloading it
-- export the **portfolio** CBOM (all systems in one CycloneDX document)
-- import a CycloneDX 1.4 / 1.5 / 1.6 file from Syft, cdxgen, or a vendor
-- diff two system CBOMs
+## Dashboard
 
-Scan detail still has **Export CBOM** (`cbom-<scan-id>.json`).
+**Overview** is coverage, not vanity scan counts. **CBOM** lists every
+system’s status, searches algorithms across the estate, imports CMDB CSV
+or vendor CycloneDX, and queues uncovered scans.
 
-## From the API
+## API
 
 ```
 GET  /api/v1/cbom
+GET  /api/v1/cbom/coverage
+POST /api/v1/cbom/scan-uncovered   {limit?}
 GET  /api/v1/cbom/search?q=RSA
 GET  /api/v1/cbom/portfolio
-GET  /api/v1/cbom/scan/{scan_id}?fmt=json
-GET  /api/v1/cbom/scan/{scan_id}?fmt=xml&signed=true
-GET  /api/v1/cbom/system/{system_id}
-POST /api/v1/cbom/custom          {asset_ids, include_vulnerabilities?}
-POST /api/v1/cbom/validate        {bom}
-POST /api/v1/cbom/ingest          {bom, system_name?}
-POST /api/v1/cbom/diff            {left:{system_id|scan_id|bom}, right:{…}}
-GET  /api/v1/scans/{scan_id}/cbom
+GET  /api/v1/cbom/system/{id}
+POST /api/v1/systems/import        {csv} or {systems:[…]}
+POST /api/v1/systems/{id}/scan
+PATCH /api/v1/systems/{id}         {scan_target}
 ```
 
-`GET /cbom` lists every system with component counts, algorithm mix, and
-quantum-vulnerable / PQC-ready totals. `POST /cbom/ingest` creates (or
-reuses) a system named from `metadata.component.name` and attaches the
-cryptographic components as assets.
-
-Signed exports attach an HMAC-SHA256 over the canonical JSON in
-`metadata.properties` (`cryptoscan:signature`).
-
-## From the CLI
+Import CSV header:
 
 ```
-python scripts/export_cbom.py <scan_id> --format json -o cbom.json
-python scripts/export_cbom.py <system_id> --kind system --signed
-python scripts/export_cbom.py --kind portfolio -o estate-cbom.json
+name,scan_target,owner,environment,business_unit,criticality
+payments-api,https://github.com/bank/payments.git,alice,prod,Retail,TIER-1
 ```
 
-Each component includes the algorithm OID when known, the primitive
-(block-cipher, hash, mac, pke, kdf), evidence hashes, optional
-`cryptoscan:system` properties on portfolio documents, and optional
-vulnerability / dependency sections when container findings were loaded.
+Signed exports still attach HMAC-SHA256 in `metadata.properties`.

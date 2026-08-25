@@ -19,6 +19,11 @@ API:
 - `POST /api/v1/cbom/ingest` `{bom, system_name?}`
 - `POST /api/v1/cbom/diff`
 
-`cbom.inventory` summarizes, searches, ingests, and diffs documents without
-a new table — systems + `crypto_assets` are the inventory. `validate()` is a
-local structural check, not a download of the official XSD.
+`cbom.inventory` summarizes, searches, ingests, and diffs documents.
+`cbom.coverage` is the bank-scale rule: algorithms are unknown until a
+system is scanned. Systems carry `scan_target` and `coverage_status`
+(`NO_TARGET` / `NEVER_SCANNED` / `CURRENT` / `STALE` / `FAILED`). The
+worker stamps coverage after CBOM generation. Catalog listing is
+paginated and does not walk every asset on every request.
+
+`validate()` is a local structural check, not a download of the official XSD.

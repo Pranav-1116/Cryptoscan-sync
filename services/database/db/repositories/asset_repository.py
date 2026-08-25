@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from db.models.crypto_asset import CryptoAsset
@@ -29,6 +29,37 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         total = int(self.session.execute(count_stmt).scalar_one())
         stmt = stmt.order_by(CryptoAsset.algorithm, CryptoAsset.file_path).offset((page - 1) * page_size).limit(page_size)
         return list(self.session.execute(stmt).scalars().all()), total
+
+    def algorithm_counts(self) -> dict[str, int]:
+        stmt = select(CryptoAsset.algorithm, func.count()).group_by(CryptoAsset.algorithm)
+        return {str(row[0] or "UNKNOWN"): int(row[1]) for row in self.session.execute(stmt).all()}
+
+    def search_located(self, query: str, *, limit: int = 200) -> list[dict]:
+        from db.models.system import System
+        from db.models.system_asset import SystemAsset
+
+        needle = f"%{query.lower()}%"
+        stmt = (
+            select(CryptoAsset, System)
+            .outerjoin(SystemAsset, SystemAsset.asset_id == CryptoAsset.id)
+            .outerjoin(System, System.id == SystemAsset.system_id)
+            .where(
+                or_(
+                    func.lower(CryptoAsset.algorithm).like(needle),
+                    func.lower(func.coalesce(CryptoAsset.mode, "")).like(needle),
+                    func.lower(CryptoAsset.file_path).like(needle),
+                    func.lower(func.coalesce(System.name, "")).like(needle),
+                )
+            )
+            .limit(limit)
+        )
+        hits = []
+        for asset, system in self.session.execute(stmt).all():
+            data = asset.to_dict()
+            data["system_id"] = system.id if system is not None else None
+            data["system_name"] = system.name if system is not None else "unassigned"
+            hits.append(data)
+        return hits
 
     def replace_for_scan(self, scan_id: str, assets: list[dict]) -> list[CryptoAsset]:
         existing = list(self.session.execute(select(CryptoAsset)).scalars())

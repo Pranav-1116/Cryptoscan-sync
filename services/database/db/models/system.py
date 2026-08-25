@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Integer, JSON, String, Text
+from sqlalchemy import DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -23,6 +24,13 @@ class System(BaseModel):
     migration_readiness_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     migration_readiness_category: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    scan_target: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scan_branch: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    last_scan_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    last_scanned_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    coverage_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    business_unit: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
+    criticality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     assets = relationship(
         "SystemAsset",
