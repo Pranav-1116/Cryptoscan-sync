@@ -85,13 +85,16 @@
     <div class="login-card">
       <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>Deterministic crypto intelligence</small></div></div>
       <p class="muted">Sign in to review scans, findings, and drift.</p>
-      <label class="muted">Username</label>
-      <input id="username" autocomplete="username" placeholder="Username" />
-      <div style="height:10px"></div>
-      <label class="muted">Password</label>
-      <input id="password" type="password" autocomplete="current-password" />
-      <div style="height:16px"></div>
-      <button class="btn" style="width:100%" onclick="login()">Enter platform</button>
+      <form id="login-form" onsubmit="event.preventDefault(); login(); return false;">
+        <label class="muted">Username</label>
+        <input id="username" name="username" autocomplete="username" placeholder="admin" />
+        <div style="height:10px"></div>
+        <label class="muted">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" />
+        <div style="height:16px"></div>
+        <button class="btn" type="submit" style="width:100%">Enter platform</button>
+      </form>
+      <p class="muted" style="margin-top:12px">Development login: <span class="mono">admin</span> / <span class="mono">cryptoscan</span></p>
       <div id="login-error" class="err"></div>
     </div>
   </div>
@@ -139,12 +142,17 @@ let state = { route: 'home', scanId: null, findingId: null, jobId: null, assetId
 async function api(path, opts={}) {
   const headers = Object.assign({ 'Content-Type': 'application/json' }, opts.headers || {});
   if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
-  const res = await fetch(API + path, Object.assign({}, opts, { headers }));
+  let res;
+  try {
+    res = await fetch(API + path, Object.assign({ credentials: 'same-origin' }, opts, { headers }));
+  } catch (e) {
+    throw new Error('Cannot reach API at ' + API + path);
+  }
   if (res.status === 401 && path !== '/auth/login') { logout(); throw new Error('Unauthorized'); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = data.detail;
-    const message = typeof detail === 'string' ? detail : res.statusText;
+    const message = typeof detail === 'string' ? detail : (res.statusText || ('HTTP ' + res.status));
     throw new Error(message);
   }
   return data;
@@ -839,7 +847,7 @@ async function renderQuantum(el) {
       <p class="muted">${rem.disclaimer||''}</p>
       <table><thead><tr><th>Algo</th><th>Replace with</th><th>Where</th></tr></thead>
       <tbody>${(rem.suggestions||[]).slice(0,30).map(s => `<tr>
-        <td class="mono">${s.algorithm}</td><td>${s.replace_wit{s.replace_with}</td>
+        <td class="mono">${s.algorithm}</td><td>${s.replace_with || '—'}</td>
         <td class="mono">${s.file_path||''}:${s.line_number||''}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Nothing to suggest</td></tr>'}
       </tbody></table></div>`;
 }
