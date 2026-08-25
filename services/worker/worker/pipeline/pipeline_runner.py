@@ -33,6 +33,8 @@ class PipelineContext:
     manifest: dict[str, Any] = field(default_factory=dict)
     drift_events: list[dict[str, Any]] = field(default_factory=list)
     container_result: dict[str, Any] = field(default_factory=dict)
+    tls_result: dict[str, Any] = field(default_factory=dict)
+    cloud_result: dict[str, Any] = field(default_factory=dict)
     current_stage: str = ""
     logs: list[dict[str, Any]] = field(default_factory=list)
     compliance_scopes: list[str] = field(default_factory=list)
@@ -267,6 +269,20 @@ class PipelineRunner:
         self._container(ctx)
         logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
 
+    def _cloud(self, ctx: PipelineContext) -> None:
+        try:
+            from worker.pipeline.stage_cloud_scan import execute as cloud_scan
+        except Exception:
+            return
+        cloud_scan(ctx)
+
+    def _tls(self, ctx: PipelineContext) -> None:
+        try:
+            from worker.pipeline.stage_network_scan import execute as network_scan
+        except Exception:
+            return
+        network_scan(ctx)
+
     def _container(self, ctx: PipelineContext) -> None:
         root = Path(ctx.repo_path)
         if not root.exists():
@@ -345,6 +361,16 @@ class PipelineRunner:
                     VulnerabilityRepository(session).replace_for_scan(scan.id, result["vulnerabilities"])
             except Exception:
                 logger.debug("container_scan_persist_skipped", exc_info=True)
+        if ctx.tls_result and ctx.tls_result.get("certificates"):
+            try:
+                from db.repositories.certificate_repository import CertificateRepository
+
+                repo = CertificateRepository(session)
+                for cert in ctx.tls_result["certificates"]:
+                    if cert.get("fingerprint_sha256"):
+                        repo.upsert(cert)
+            except Exception:
+                logger.debug("certificate_persist_skipped", exc_info=True)
         session.flush()
         logger.info("stage_load_done", extra={"scan_id": scan.id})
 

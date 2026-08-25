@@ -19,14 +19,18 @@ from api.routers import (
     assets,
     auth,
     baselines,
+    business,
     cbom,
+    cloud,
     container,
     drift,
     export,
     findings,
+    graph,
     health,
     intelligence,
     jobs,
+    network,
     policy,
     repo_configs,
     scans,
@@ -122,6 +126,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(vulns.router, prefix=prefix)
     app.include_router(policy.router, prefix=prefix)
     app.include_router(intelligence.router, prefix=prefix)
+    app.include_router(network.router, prefix=prefix)
+    app.include_router(cloud.router, prefix=prefix)
+    app.include_router(graph.router, prefix=prefix)
+    app.include_router(business.router, prefix=prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
     dashboard_html = Path(__file__).resolve().parents[2] / "dashboard" / "index.html"

@@ -1,0 +1,5 @@
+targets:
+  - endpoint: api.payment.example.com:443
+    system_id: payment-api
+    scan_frequency: daily
+    enabled: true

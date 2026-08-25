@@ -11,6 +11,10 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "PYTHON": (".py",),
     "JAVASCRIPT": (".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"),
     "CSHARP": (".cs",),
+    "GO": (".go",),
+    "PHP": (".php",),
+    "RUBY": (".rb",),
+    "RUST": (".rs",),
 }
 
 MARKER_FILES: dict[str, tuple[str, ...]] = {
@@ -18,6 +22,10 @@ MARKER_FILES: dict[str, tuple[str, ...]] = {
     "PYTHON": ("pyproject.toml", "requirements.txt", "setup.py"),
     "JAVASCRIPT": ("package.json", "tsconfig.json"),
     "CSHARP": (".csproj", ".sln"),
+    "GO": ("go.mod", "go.sum"),
+    "PHP": ("composer.json",),
+    "RUBY": ("Gemfile",),
+    "RUST": ("Cargo.toml",),
 }
 
 

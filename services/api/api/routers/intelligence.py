@@ -30,6 +30,9 @@ from evidence.intelligence.work_orders import build_work_orders
 from evidence.pack.audit_zip import build_audit_zip
 from evidence.pack.evidence_pack import build_evidence_pack, verify_evidence_pack
 from policy.core.engine import PolicyEngine
+from quantum.risk import analyze_quantum_risk
+from remediation.engine import suggest_remediations
+from reporting.compliance_report import render_html, render_json
 from scanner.detectors.materials.pem_scanner import join_materials_to_source
 
 router = APIRouter(tags=["intelligence"])
@@ -253,4 +256,70 @@ def get_audit_pack(
         content=blob,
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="cryptoscan-audit-{scan_id}.zip"'},
+    )
+
+
+@router.get("/scans/{scan_id}/quantum")
+def get_quantum(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+):
+    _require_scan(scan_id, scans)
+    return analyze_quantum_risk(_findings(scan_id, evidence))
+
+
+@router.get("/scans/{scan_id}/remediation")
+def get_remediation(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+):
+    _require_scan(scan_id, scans)
+    return suggest_remediations(_findings(scan_id, evidence))
+
+
+@router.get("/scans/{scan_id}/report")
+def get_report(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+    drift: DriftRepository = Depends(get_drift_repository),
+):
+    scan = _require_scan(scan_id, scans)
+    findings = _findings(scan_id, evidence)
+    report = render_json(
+        scan=scan_to_dict(scan),
+        findings=findings,
+        agility=compute_agility(findings),
+        quantum=analyze_quantum_risk(findings),
+        gate=evaluate_gate(findings, _drift_events(scan_id, drift)),
+    )
+    return report
+
+
+@router.get("/scans/{scan_id}/report.html")
+def get_report_html(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+    drift: DriftRepository = Depends(get_drift_repository),
+):
+    scan = _require_scan(scan_id, scans)
+    findings = _findings(scan_id, evidence)
+    report = render_json(
+        scan=scan_to_dict(scan),
+        findings=findings,
+        agility=compute_agility(findings),
+        quantum=analyze_quantum_risk(findings),
+        gate=evaluate_gate(findings, _drift_events(scan_id, drift)),
+    )
+    return Response(
+        content=render_html(report),
+        media_type="text/html",
+        headers={"Content-Disposition": f'attachment; filename="cryptoscan-report-{scan_id}.html"'},
     )

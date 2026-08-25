@@ -98,7 +98,7 @@
 
   <div id="app-view" class="app hidden">
     <aside class="sidebar">
-      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v1.0 · Part 2</small></div></div>
+      <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>v1.0 · Part 3</small></div></div>
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
@@ -109,6 +109,12 @@
         <button data-route="compliance" onclick="go('compliance')">Compliance</button>
         <button data-route="policy" onclick="go('policy')">Policy</button>
         <button data-route="container" onclick="go('container')">Container</button>
+        <button data-route="tls" onclick="go('tls')">TLS / certs</button>
+        <button data-route="cloud" onclick="go('cloud')">Cloud / IaC</button>
+        <button data-route="graph" onclick="go('graph')">Graph</button>
+        <button data-route="business" onclick="go('business')">Business</button>
+        <button data-route="quantum" onclick="go('quantum')">Quantum</button>
+        <button data-route="migrations" onclick="go('migrations')">Migrations</button>
         <button data-route="drift" onclick="go('drift')">Drift</button>
         <button data-route="findings" onclick="go('findings')">Findings</button>
         <button data-route="workorders" onclick="go('workorders')">Work orders</button>
@@ -187,6 +193,12 @@ async function render() {
     if (state.route === 'policy') return renderPolicy(el);
     if (state.route === 'container') return renderContainer(el);
     if (state.route === 'workorders') return renderWorkOrdersHome(el);
+    if (state.route === 'tls') return renderTls(el);
+    if (state.route === 'cloud') return renderCloud(el);
+    if (state.route === 'graph') return renderGraph(el);
+    if (state.route === 'business') return renderBusiness(el);
+    if (state.route === 'quantum') return renderQuantum(el);
+    if (state.route === 'migrations') return renderMigrations(el);
   } catch (e) {
     el.innerHTML = `<div class="card"><h2>Error</h2><p class="err">${e.message}</p></div>`;
   }
@@ -254,17 +266,14 @@ async function renderScan(el) {
       <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/evidence-pack', 'evidence-pack-${sc.scan_id}.json')">Evidence pack</button>
       <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/audit-pack', 'cryptoscan-audit-${sc.scan_id}.zip')">CRA/NIST zip</button>
       <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/gate.sarif', 'gate-${sc.scan_id}.sarif.json')">SARIF</button>
+      <button class="btn secondary" onclick="downloadFile('/scans/${sc.scan_id}/report.html', 'report-${sc.scan_id}.html')">Compliance report</button>
       <button class="btn secondary" onclick="go('scans')">Back</button>
     </div></div>
     <div class="grid cards">
       <div class="card"><div class="label">Status</div><div class="value" style="font-size:18px">${badge(sc.status)}</div></div>
       <div class="card"><div class="label">Findings</div><div class="value">${sc.statistics?.total_findings ?? f.total_count}</div></div>
       <div class="card"><div class="label">Agility</div><div class="value">${agility ? agility.score : '—'}</div><p class="muted">${agility?.band || ''}</p></div>
-      <div class="card"><div class="label">PR gate</div><div class="value" style="font-size:18px">${badge(gateDecision)}</div><p class="muted">${gate?.summary || ''}</p></div>
-    </div>
-    <div style="height:16px"></div>
-    <div class="grid" style="grid-template-columns:1fr 1fr">
-      <div class="card"><div class="label">Work orders</div>
+      <div class="card"><div class="label">PR gate</div><div class="value" style="font-size:18px">${badge(gateDecision)}</div><p class="muted">${gate?.summary || class="label">Work orders</div>
         <table><thead><tr><th>ID</th><th>Replace</th><th>Sites</th><th>With</th></tr></thead>
         <tbody>${(orders?.orders||[]).map(o => `<tr>
           <td class="mono">${o.work_order_id}</td><td>${o.algorithm} ${o.purpose}</td>
@@ -612,6 +621,170 @@ async function verifyScan(scanId) {
   } catch (e) {
     alert('Verify failed: ' + e.message);
   }
+}
+
+async function renderTls(el) {
+  const certs = await api('/certificates');
+  const targets = await api('/network/targets');
+  el.innerHTML = `<div class="top"><div><h2>TLS & certificates</h2>
+    <p class="muted">Inventory from PEM files and optional live probes. Live probes stay off unless you ask.</p></div>
+    <div class="row"><button class="btn" onclick="scanTlsPath()">Scan tree</button>
+    <button class="btn secondary" onclick="probeHost()">Probe host</button></div></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Certificates</div>
+        <table><thead><tr><th>Subject</th><th>Algo</th><th>Expiry</th></tr></thead>
+        <tbody>${(certs.certificates||[]).map(c => `<tr>
+          <td class="mono">${c.subject||c.fingerprint_sha256||'—'}</td>
+          <td>${c.public_key_algorithm||'—'}</td>
+          <td>${badge(c.expiry_status||'UNKNOWN')} ${c.days_until_expiry??'—'}d</td></tr>`).join('') || '<tr><td colspan=3 class="muted">None stored yet</td></tr>'}
+        </tbody></table></div>
+      <div class="card"><div class="label">Scan targets</div>
+        <table><thead><tr><th>Endpoint</th><th>Freq</th></tr></thead>
+        <tbody>${(targets.targets||[]).map(t => `<tr><td class="mono">${t.endpoint}</td><td>${t.scan_frequency||'daily'}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">Add config/network-scan-targets.yaml or probe a host.</td></tr>'}
+        </tbody></table></div>
+    </div>`;
+}
+
+async function scanTlsPath() {
+  const path = prompt('Repository or filesystem path', '/home/user/CryproScan/demo/polyglot-app');
+  if (!path) return;
+  await api('/network/scan-path', { method: 'POST', body: JSON.stringify({ path, live: false })});
+  renderTls(document.getElementById('main'));
+}
+
+async function probeHost() {
+  const host = prompt('host:port', 'example.com:443');
+  if (!host) return;
+  await api('/network/scan', { method: 'POST', body: JSON.stringify({ hosts: [host], live: true })});
+  renderTls(document.getElementById('main'));
+}
+
+async function renderCloud(el) {
+  const accounts = await api('/cloud/accounts');
+  el.innerHTML = `<div class="top"><div><h2>Cloud / IaC</h2>
+    <p class="muted">Terraform, CloudFormation and Kubernetes are parsed locally. Live AWS/Azure/GCP stays opt-in.</p></div>
+    <button class="btn" onclick="scanCloudPath()">Scan IaC tree</button></div>
+    <div class="card"><div class="label">Registered accounts</div>
+      <table><thead><tr><th>Provider</th><th>Account</th><th>Enabled</th></tr></thead>
+      <tbody>${(accounts.accounts||[]).map(a => `<tr><td>${badge(a.cloud_provider)}</td><td class="mono">${a.account_identifier}</td><td>${a.enabled}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No live cloud accounts. IaC scan does not need one.</td></tr>'}
+      </tbody></table></div>
+    <div id="cloud-result"></div>`;
+}
+
+async function scanCloudPath() {
+  const path = prompt('Path to Terraform / k8s / CloudFormation', '/home/user/CryproScan/demo/polyglot-app');
+  if (!path) return;
+  const data = await api('/cloud/scan', { method: 'POST', body: JSON.stringify({ path, live: false })});
+  document.getElementById('cloud-result').innerHTML = `<div class="card" style="margin-top:16px">
+    <div class="label">Last scan</div>
+    <p>${data.resources||0} resources · ${data.issues||0} issues · ${(data.providers||[]).join(', ')||'—'}</p>
+    <table><thead><tr><th>Resource</th><th>Algo</th><th>Issue</th></tr></thead>
+    <tbody>${(data.findings||[]).map(f => `<tr>
+      <td class="mono">${(f.metadata&&f.metadata.resource)||f.file_path}</td>
+      <td>${f.algorithm}</td><td>${f.compliance_issue?badge('FAIL')+' '+f.compliance_issue:badge('PASS')}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+
+async function renderGraph(el) {
+  const graph = await api('/graph');
+  const priorities = await api('/priorities');
+  el.innerHTML = `<div class="top"><div><h2>Dependency graph</h2>
+    <p class="muted">${(graph.nodes||[]).length} nodes · ${(graph.edges||[]).length} edges. Blast radius is computed in-process (no Neo4j required).</p></div></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Nodes</div>
+        <table><thead><tr><th>Kind</th><th>Name</th></tr></thead>
+        <tbody>${(graph.nodes||[]).slice(0,40).map(n => `<tr><td>${n.group||n.kind||''}</td><td>${n.label||n.name||n.id}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">No systems yet</td></tr>'}
+        </tbody></table></div>
+      <div class="card"><div class="label">Prioritized assets</div>
+        <table><thead><tr><th>P</th><th>Algo</th><th>Revenue/day</th></tr></thead>
+        <tbody>${(priorities.assets||[]).slice(0,20).map(a => `<tr>
+          <td>${badge(a.business_context?.priority||'P2')}</td>
+          <td class="mono">${a.algorithm}</td>
+          <td>${a.business_context?.total_revenue_at_risk||0}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Run a scan and add a business process.</td></tr>'}
+        </tbody></table></div>
+    </div>`;
+}
+
+async function renderBusiness(el) {
+  const processes = await api('/business/processes');
+  const owners = await api('/business/owners');
+  el.innerHTML = `<div class="top"><div><h2>Business context</h2>
+    <p class="muted">Revenue and owners are attached to systems, then inherited by crypto assets.</p></div>
+    <div class="row"><button class="btn" onclick="addProcess()">Add process</button>
+    <button class="btn secondary" onclick="addOwner()">Add owner</button></div></div>
+    <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Processes</div>
+        <table><thead><tr><th>Name</th><th>$/day</th><th>Customers</th></tr></thead>
+        <tbody>${(processes.processes||[]).map(p => `<tr>
+          <td>${p.name}</td><td>${p.revenue_daily||0}</td><td>${p.customer_count||0}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">None yet</td></tr>'}
+        </tbody></table></div>
+      <div class="card"><div class="label">Owners</div>
+        <table><thead><tr><th>Name</th><th>Role</th></tr></thead>
+        <tbody>${(owners.owners||[]).map(o => `<tr><td>${o.name}</td><td class="muted">${o.role||'—'}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">None yet</td></tr>'}
+        </tbody></table></div>
+    </div>`;
+}
+
+async function addProcess() {
+  const name = prompt('Process name', 'Payment Processing');
+  if (!name) return;
+  await api('/business/processes', { method: 'POST', body: JSON.stringify({
+    name, revenue_daily: 2100000, customer_count: 1800000, executive_sponsor: 'CFO', process_type: 'REVENUE_GENERATING'
+  })});
+  renderBusiness(document.getElementById('main'));
+}
+
+async function addOwner() {
+  const name = prompt('Owner name', 'Sarah Chen');
+  if (!name) return;
+  await api('/business/owners', { method: 'POST', body: JSON.stringify({ name, role: 'VP Payments', email: 'sarah@example.com' })});
+  renderBusiness(document.getElementById('main'));
+}
+
+async function renderQuantum(el) {
+  const scans = await api('/scans?page_size=1');
+  const latest = (scans.scans || [])[0];
+  if (!latest) {
+    el.innerHTML = `<div class="top"><h2>Quantum risk</h2></div><div class="card"><p class="muted">Run a scan first.</p></div>`;
+    return;
+  }
+  const q = await api(`/scans/${latest.scan_id}/quantum`);
+  const rem = await api(`/scans/${latest.scan_id}/remediation`);
+  el.innerHTML = `<div class="top"><div><h2>Quantum / HNDL</h2>
+    <p class="muted">${q.summary||''}</p></div>
+    <button class="btn secondary" onclick="go('scan',{scanId:'${latest.scan_id}'})">Open scan</button></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">HNDL</div><div class="value">${badge(q.overall_hndl_risk)}</div></div>
+      <div class="card"><div class="label">Vulnerable sites</div><div class="value">${q.vulnerable_count||0}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Remediation suggestions</div>
+      <p class="muted">${rem.disclaimer||''}</p>
+      <table><thead><tr><th>Algo</th><th>Replace with</th><th>Where</th></tr></thead>
+      <tbody>${(rem.suggestions||[]).slice(0,30).map(s => `<tr>
+        <td class="mono">${s.algorithm}</td><td>${s.replace_with}</td>
+        <td class="mono">${s.file_path||''}:${s.line_number||''}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Nothing to suggest</td></tr>'}
+      </tbody></table></div>`;
+}
+
+async function renderMigrations(el) {
+  const data = await api('/migrations');
+  el.innerHTML = `<div class="top"><div><h2>Migration projects</h2></div>
+    <button class="btn" onclick="addMigration()">New project</button></div>
+    <div class="card"><table><thead><tr><th>Name</th><th>From → to</th><th>Status</th><th>%</th></tr></thead>
+    <tbody>${(data.projects||[]).map(p => `<tr>
+      <td>${p.name}</td><td class="mono">${p.algorithm_from||'—'} → ${p.algorithm_to||'—'}</td>
+      <td>${badge(p.status)}</td><td>${p.progress||0}</td></tr>`).join('') || '<tr><td colspan=4 class="muted">No migration projects yet.</td></tr>'}
+    </tbody></table></div>`;
+}
+
+async function addMigration() {
+  const name = prompt('Project name', 'Payment API PQC');
+  if (!name) return;
+  await api('/migrations', { method: 'POST', body: JSON.stringify({
+    name, algorithm_from: 'RSA', algorithm_to: 'ML-KEM-768', status: 'PLANNED', progress: 0
+  })});
+  renderMigrations(document.getElementById('main'));
 }
 
 async function renderWorkOrdersHome(el) {

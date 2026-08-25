@@ -85,6 +85,11 @@ def test_complex_all_of_and_any_of():
     assert any_of.result == "PASS"
 
 
+def test_weak_tls_fails_baseline():
+    result = engine().evaluate({"algorithm": "TLS1.0", "purpose": "NETWORK_ENCRYPTION"})
+    assert "BASELINE-005" in result.failed_rule_ids() or "BASELINE-001" in result.failed_rule_ids()
+
+
 def test_hipaa_rejects_sha1_for_ephi():
     result = engine().evaluate({"algorithm": "SHA-1", "purpose": "HASHING", "compliance_scopes": ["EPHI"]})
     assert "HIPAA-001" in result.failed_rule_ids()

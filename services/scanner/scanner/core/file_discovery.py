@@ -51,6 +51,10 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".ts",
     ".tsx",
     ".cs",
+    ".go",
+    ".php",
+    ".rb",
+    ".rs",
 )
 
 
