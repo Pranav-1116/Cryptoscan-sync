@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: cryptoscan-postgres
+    hostname: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-cryptoscan}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cryptoscan_secret}
@@ -11,11 +12,14 @@ services:
     ports:
       - "${POSTGRES_PORT:-55432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cryptoscan}"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cryptoscan} -d ${POSTGRES_DB:-cryptoscan}"]
+      interval: 5s
       timeout: 5s
-      retries: 5
-    networks: [cryptoscan-net]
+      retries: 12
+      start_period: 10s
+    networks:
+      cryptoscan-net:
+        aliases: [postgres, cryptoscan-postgres]
 
   redis:
     image: redis:7-alpine
@@ -98,6 +102,7 @@ services:
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
+      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
     depends_on:
       postgres:
         condition: service_healthy
@@ -105,12 +110,16 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+    links:
+      - postgres
+      - redis
+      - neo4j
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 15s
       timeout: 5s
       retries: 8
-      start_period: 25s
+      start_period: 120s
     networks: [cryptoscan-net]
     restart: unless-stopped
 
@@ -130,6 +139,7 @@ services:
       NEO4J_USER: ${NEO4J_USER:-neo4j}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
+      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
     depends_on:
       postgres:
         condition: service_healthy
@@ -137,6 +147,10 @@ services:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+    links:
+      - postgres
+      - redis
+      - neo4j
     networks: [cryptoscan-net]
     restart: unless-stopped
 

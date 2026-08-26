@@ -19,6 +19,14 @@ docker compose up --build
 
 Dashboard: http://localhost:8088 — development login `admin` / `cryptoscan`.
 
+If the API logs `could not translate host name "postgres"`:
+
+- That hostname exists only on the Compose network `cryptoscan-net`. Docker’s
+  restart policy can start `cryptoscan-api` before Postgres has joined DNS.
+- Recreate on one network: `docker compose down && docker compose up --build`.
+- Do not start `docker-compose.prod.yml` without `docker-compose.yml`.
+- A process on the laptop must use `127.0.0.1:55432`, not `postgres`.
+
 ## Production
 
 Do not use `.env.example` as-is. Follow `docs/admin-guide/production.md`.

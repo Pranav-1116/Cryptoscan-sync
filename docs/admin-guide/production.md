@@ -28,6 +28,10 @@ Equivalent:
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
 ```
 
+Never start the overlay file alone. `DATABASE_URL` uses hostname `postgres`, which only
+resolves on the Compose network from the base file. If the API logs
+`could not translate host name "postgres"`, recreate: `docker compose down && bash scripts/deploy_prod.sh -d`.
+
 Nginx listens on `${NGINX_PORT:-80}`. Postgres, Redis, and Neo4j are **not** published on the host.
 
 ## 3. Health
