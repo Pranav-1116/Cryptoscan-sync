@@ -10,6 +10,8 @@ proxy strips the prefix). Interactive docs: `/api/docs`.
 
 Default login: `admin` / `cryptoscan`.
 
+`GET /discovery/plugins` lists registered source scanners (`static-java-scanner`, `static-python-scanner`, `static-js-scanner`, `static-csharp-scanner`).
+
 ## Scans and jobs
 
 - `POST /scans/trigger` `{repo_url, branch?}` → 202 `{job_id}`

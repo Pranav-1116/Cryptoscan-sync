@@ -48,3 +48,24 @@ class C {
     assert "HMAC-SHA256" in algos
     assert "Ed25519" in algos
     assert all(f.metadata.library == "NSec" for f in findings)
+
+
+def test_csharp_ignores_commented_aes(temp_workspace):
+    path = temp_workspace / "Comments.cs"
+    path.write_text(
+        """
+using System.Security.Cryptography;
+class C {
+  void Run() {
+    // Aes.Create();
+    /* DES.Create(); */
+    SHA256.Create();
+  }
+}
+"""
+    )
+    findings = parse_csharp_file(path, temp_workspace)
+    algos = {f.crypto.algorithm for f in findings}
+    assert "SHA-256" in algos
+    assert "AES" not in algos
+    assert "DES" not in algos

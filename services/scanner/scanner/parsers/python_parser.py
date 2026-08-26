@@ -69,6 +69,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         self.repo_root = repo_root
         self.findings: list[RawFinding] = []
         self._aliases: dict[str, str] = {}
+        self._locals: dict[str, str] = {}
         self._current_function: Optional[str] = None
         self._current_class: Optional[str] = None
 
@@ -93,9 +94,12 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
         prev = self._current_function
+        prev_locals = self._locals
         self._current_function = node.name
+        self._locals = dict(prev_locals)
         self.generic_visit(node)
         self._current_function = prev
+        self._locals = prev_locals
 
     visit_AsyncFunctionDef = visit_FunctionDef
 
@@ -104,6 +108,8 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         if value:
             for target in node.targets:
                 name = _name_of(target)
+                if name:
+                    self._locals[name] = value
                 if name and name.lower() in WEAK_SECRET_NAMES and looks_like_secret(value):
                     self._add(
                         node,
@@ -139,7 +145,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                     break
 
         if "hashlib.new" in func:
-            algo = _string_arg(node, 0)
+            algo = _string_arg(node, 0) or self._resolve_name(node, 0)
             if algo:
                 mapped = HASHLIB_ALGOS.get(algo.lower(), algo.upper())
                 self._hash(node, mapped)
@@ -383,6 +389,14 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         )
         markers = ("key", "token", "secret", "password", "nonce", "iv", "salt", "seed")
         return any(marker in hay for marker in markers)
+
+    def _resolve_name(self, node: ast.Call, index: int) -> Optional[str]:
+        if len(node.args) <= index:
+            return None
+        arg = node.args[index]
+        if isinstance(arg, ast.Name):
+            return self._locals.get(arg.id)
+        return None
 
     def _hash(self, node: ast.AST, algorithm: str, library: str = "hashlib") -> None:
         self._add(

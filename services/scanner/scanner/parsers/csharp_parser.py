@@ -64,9 +64,12 @@ HASH_ALG_NAME = re.compile(r"HashAlgorithmName\.(SHA256|SHA384|SHA512|SHA1|MD5)\
 
 def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
-        source = file_path.read_text(encoding="utf-8", errors="replace")
+        raw_source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    from scanner.parsers.c_like import strip_c_like_comments
+
+    source = strip_c_like_comments(raw_source)
     findings: list[RawFinding] = []
 
     def add(match: re.Match, **kwargs) -> None:

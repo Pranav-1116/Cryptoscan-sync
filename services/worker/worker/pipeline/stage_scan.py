@@ -57,6 +57,13 @@ def execute(ctx: PipelineContext) -> PipelineContext:
         ctx.scan_meta["scan_results_file"] = str(output)
     except OSError:
         pass
+    try:
+        from scanner.core.plugin import observations_from_findings
+
+        ctx.scan_meta["observations"] = observations_from_findings(findings, scan_id=ctx.scan_id)
+        ctx.scan_meta["observation_count"] = len(ctx.scan_meta["observations"])
+    except Exception:
+        ctx.scan_meta["observation_count"] = len(findings)
     logger.info("stage_scan_done", extra={"findings": len(ctx.findings)})
     return ctx
 

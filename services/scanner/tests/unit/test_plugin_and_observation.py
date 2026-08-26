@@ -1,13 +1,23 @@
-from scanner.core.plugin import JavaSourcePlugin, registered_plugins
+from scanner.core.plugin import JavaSourcePlugin, plugin_catalog, registered_plugins
 from shared_models.observation import CryptoObservation, observation_from_raw_finding
 
 
-def test_java_plugin_is_registered():
+def test_source_plugins_are_registered():
     plugins = registered_plugins()
     assert "static-java-scanner" in plugins
+    assert "static-python-scanner" in plugins
+    assert "static-js-scanner" in plugins
+    assert "static-csharp-scanner" in plugins
     plugin = JavaSourcePlugin()
     assert "java" in plugin.capabilities()
     assert plugin.health_check()["ok"] is True
+    ids = {row["plugin_id"] for row in plugin_catalog()}
+    assert ids == {
+        "static-java-scanner",
+        "static-python-scanner",
+        "static-js-scanner",
+        "static-csharp-scanner",
+    }
 
 
 def test_observation_from_raw_finding():

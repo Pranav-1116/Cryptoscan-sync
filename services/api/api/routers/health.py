@@ -20,3 +20,13 @@ def meta():
         "environment": settings.ENVIRONMENT,
         "docs_enabled": settings.docs_enabled,
     }
+
+
+@router.get("/discovery/plugins")
+def discovery_plugins():
+    try:
+        from scanner.core.plugin import plugin_catalog
+
+        return {"plugins": plugin_catalog()}
+    except Exception:
+        return {"plugins": []}

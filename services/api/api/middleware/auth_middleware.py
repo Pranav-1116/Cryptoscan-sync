@@ -17,6 +17,7 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/auth/login",
     "/api/v1/meta",
     "/api/v1/healthz",
+    "/api/v1/discovery",
     "/api/v1/webhooks",
     "/assets",
     "/favicon",

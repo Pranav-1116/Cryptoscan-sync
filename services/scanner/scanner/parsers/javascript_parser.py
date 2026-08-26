@@ -92,9 +92,12 @@ HASH_MAP = {
 
 def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
-        source = file_path.read_text(encoding="utf-8", errors="replace")
+        raw_source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    from scanner.parsers.c_like import strip_c_like_comments
+
+    source = strip_c_like_comments(raw_source)
     findings: list[RawFinding] = []
     language = "TYPESCRIPT" if file_path.suffix.lower() in {".ts", ".tsx"} else "JAVASCRIPT"
 
@@ -357,9 +360,8 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
                 confidence="MEDIUM",
                 confidence_reason="high-entropy secret assignment",
             )
+    findings.extend(_resolved_node_calls(file_path, repo_root, source, language, findings))
     return findings
-
-
 
 
 def _webcrypto_spec(method: str, raw_algo: str) -> tuple[str, str | None, str, str]:
@@ -395,6 +397,71 @@ def _webcrypto_spec(method: str, raw_algo: str) -> tuple[str, str | None, str, s
     if "PBKDF2" in upper:
         return "PBKDF2", None, "PASSWORD_HASHING", "KEY_GENERATOR"
     return raw_algo, mode, purpose, "CIPHER_INSTANCE"
+
+def _resolved_node_calls(file_path: Path, repo_root, source: str, language: str, existing: list[RawFinding]) -> list[RawFinding]:
+    """createHash(name) when name is a local string constant."""
+    try:
+        from scanner.parsers.java_ast import extract_calls, tokenize
+    except Exception:
+        return []
+    seen = {(f.source.line_number, f.crypto.algorithm, f.crypto.api_type) for f in existing}
+    tokens = tokenize(source)
+    calls, locals_map = extract_calls(tokens)
+    extra: list[RawFinding] = []
+    specs = {
+        "createCipheriv": ("CIPHER_INSTANCE", "ENCRYPTION", True),
+        "createCipher": ("CIPHER_INSTANCE", "ENCRYPTION", True),
+        "createDecipheriv": ("CIPHER_INSTANCE", "DECRYPTION", True),
+        "createDecipher": ("CIPHER_INSTANCE", "DECRYPTION", True),
+        "createHash": ("MESSAGE_DIGEST", "HASHING", False),
+        "createHmac": ("MAC", "MAC_GENERATION", False),
+        "createSign": ("SIGNATURE", "SIGNING", False),
+    }
+    for call in calls:
+        spec = specs.get(call.name)
+        if spec is None or not call.args:
+            continue
+        arg = call.args[0]
+        if not isinstance(arg, dict):
+            continue
+        raw = None
+        if arg.get("strings"):
+            raw = str(arg["strings"][0])
+        else:
+            for ident in arg.get("idents") or []:
+                if ident in locals_map:
+                    raw = locals_map[ident]
+                    break
+        if not raw:
+            continue
+        api_type, purpose, cipher = spec
+        if cipher:
+            algo, mode, key_size = _parse_node_cipher(raw)
+        else:
+            algo, mode, key_size = HASH_MAP.get(raw.lower(), raw.upper()), None, None
+        line = source[: int(arg.get("offset") or call.offset)].count("\n") + 1
+        key = (line, algo, api_type)
+        if key in seen:
+            continue
+        seen.add(key)
+        extra.append(
+            make_finding(
+                file_path=file_path,
+                repo_root=repo_root,
+                line_number=line,
+                language=language,
+                scanner_id=SCANNER_ID,
+                api_type=api_type,
+                algorithm=algo,
+                mode=mode,
+                key_size=key_size,
+                purpose=purpose,
+                library="node-crypto",
+                raw_transformation=raw,
+            )
+        )
+    return extra
+
 
 def _parse_node_cipher(spec: str) -> tuple[str, str | None, int | None]:
     parts = spec.lower().replace("_", "-").split("-")

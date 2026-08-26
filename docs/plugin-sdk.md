@@ -1,4 +1,4 @@
-# Plugin SDK (Phase 1)
+# Plugin SDK
 
 CryptoScan discovers cryptography through **plugins**. A plugin never writes
 policy and never mutates customer infrastructure.
@@ -21,7 +21,7 @@ Implement `scanner.core.plugin.DiscoveryPlugin`:
 
 | Field / method | Meaning |
 |---|---|
-| `plugin_id` | Stable id, e.g. `static-java-scanner` |
+| `plugin_id` | Stable id: `static-java-scanner`, `static-python-scanner`, `static-js-scanner`, `static-csharp-scanner` |
 | `plugin_version` | Semver string stamped on evidence |
 | `capabilities()` | `source_code`, `java`, `filesystem`, … |
 | `discover(target)` | Read-only collection |

@@ -59,9 +59,10 @@ Added this slice: `scripts/bootstrap-local.sh`, `scripts/zelnx` (evidence verify
 | Requirement | Implementation |
 |---|---|
 | Java AST, not regex-only | `scanner/parsers/java_ast.py` walks tokens/invocations; comments ignored; local string constants resolved. Regex remains a fail-open fallback. |
+| Python / JS / C# plugins | Same `DiscoveryPlugin` contract. Python uses stdlib `ast` (local `hashlib.new(name)` resolved). JS/C# strip comments before regex and resolve JS locals. |
 | Parse errors do not abort the scan | `Scanner.scan` already isolates per file; AST does not require balanced braces. |
 | Canonical observation | `shared_models.observation.CryptoObservation` |
-| Plugin contract | `scanner.core.plugin.DiscoveryPlugin` + `JavaSourcePlugin` |
+| Plugin contract | `scanner.core.plugin.DiscoveryPlugin` + Java/Python/JS/C# source plugins |
 | Evidence hash + chain | Existing `ContentHasher` / `ChainHasher` |
 | Verify command | `scripts/zelnx verify-evidence-chain --scan-id` → `VALID` / `INVALID` / `BROKEN_AT_SEQUENCE` |
 | Findings + scan API + dashboard | Already present |

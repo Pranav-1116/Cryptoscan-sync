@@ -46,3 +46,22 @@ forge.pki.rsa.generateKeyPair({bits: 2048});
     assert "node-forge" in libs
     aes = next(f for f in findings if f.crypto.algorithm == "AES" and f.metadata.library == "Web Crypto API")
     assert aes.crypto.mode == "GCM"
+
+
+def test_javascript_ignores_commented_crypto_and_resolves_locals(temp_workspace):
+    path = temp_workspace / "locals.js"
+    path.write_text(
+        """
+const crypto = require('crypto');
+// crypto.createHash('md5');
+const algo = 'aes-256-gcm';
+crypto.createCipheriv(algo, key, iv);
+"""
+    )
+    findings = parse_javascript_file(path, temp_workspace)
+    algos = {f.crypto.algorithm for f in findings}
+    assert "AES" in algos
+    assert "MD5" not in algos
+    aes = next(f for f in findings if f.crypto.algorithm == "AES")
+    assert aes.crypto.mode == "GCM"
+    assert aes.crypto.key_size == 256

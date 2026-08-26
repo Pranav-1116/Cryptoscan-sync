@@ -48,6 +48,21 @@ def make_secret_key():
     assert any(f.crypto.algorithm == "PRNG" and f.metadata.library == "random" for f in findings)
 
 
+def test_python_resolves_hashlib_new_local(temp_workspace):
+    path = temp_workspace / "dyn.py"
+    path.write_text(
+        """
+import hashlib
+
+def digest(data):
+    name = "md5"
+    return hashlib.new(name, data).digest()
+"""
+    )
+    findings = parse_python_file(path, temp_workspace)
+    assert any(f.crypto.algorithm == "MD5" for f in findings)
+
+
 def test_scanner_runs_python(temp_workspace):
     (temp_workspace / "app.py").write_text("from hashlib import md5\nmd5(b'x')\n")
     result = Scanner().scan(temp_workspace)
