@@ -21,7 +21,7 @@ Implement `scanner.core.plugin.DiscoveryPlugin`:
 
 | Field / method | Meaning |
 |---|---|
-| `plugin_id` | Stable id: `static-java-scanner`, `static-python-scanner`, `static-js-scanner`, `static-csharp-scanner` |
+| `plugin_id` | Stable id: `static-{java,python,js,csharp,go,php,ruby,rust,kotlin,config}-scanner` |
 | `plugin_version` | Semver string stamped on evidence |
 | `capabilities()` | `source_code`, `java`, `filesystem`, … |
 | `discover(target)` | Read-only collection |

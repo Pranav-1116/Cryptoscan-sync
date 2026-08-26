@@ -90,9 +90,12 @@ def _map_hash(raw: str) -> str:
 
 def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
-        text = file_path.read_text(encoding="utf-8", errors="replace")
+        raw = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    from scanner.parsers.c_like import strip_php_comments
+
+    text = strip_php_comments(raw)
     findings: list[RawFinding] = []
     claimed: set[tuple[int, str]] = set()
 
@@ -205,4 +208,71 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
                 purpose=purpose,
                 library=library,
             )
+    findings.extend(_resolved_php_calls(file_path, repo_root, text, claimed))
     return findings
+
+
+def _resolved_php_calls(
+    file_path: Path,
+    repo_root: Path | None,
+    source: str,
+    claimed: set[tuple[int, str]],
+) -> list[RawFinding]:
+    """openssl_encrypt($data, $cipher) / hash($name) when the name is a local string."""
+    try:
+        from scanner.parsers.java_ast import extract_calls, tokenize
+    except Exception:
+        return []
+    calls, locals_map = extract_calls(tokenize(source))
+    extra: list[RawFinding] = []
+    specs = {
+        "openssl_encrypt": ("CIPHER_INSTANCE", "ENCRYPTION", True, "openssl"),
+        "openssl_decrypt": ("CIPHER_INSTANCE", "DECRYPTION", True, "openssl"),
+        "hash": ("MESSAGE_DIGEST", "HASHING", False, "php-hash"),
+        "hash_hmac": ("MAC", "MAC_GENERATION", False, "php-hash"),
+    }
+    for call in calls:
+        spec = specs.get(call.name.lower())
+        if spec is None or not call.args:
+            continue
+        api_type, purpose, cipher, library = spec
+        arg = call.args[1] if cipher and len(call.args) > 1 else call.args[0]
+        if not isinstance(arg, dict):
+            continue
+        raw = None
+        if arg.get("strings"):
+            raw = str(arg["strings"][0])
+        else:
+            for ident in arg.get("idents") or []:
+                if ident in locals_map:
+                    raw = locals_map[ident]
+                    break
+        if not raw:
+            continue
+        if cipher:
+            algo, mode, key_size = _split_openssl(raw)
+        else:
+            mapped = _map_hash(raw)
+            algo, mode, key_size = (f"HMAC-{mapped}" if api_type == "MAC" else mapped), None, None
+        line = source[: int(arg.get("offset") or call.offset)].count("\n") + 1
+        key = (line, str(algo))
+        if key in claimed:
+            continue
+        claimed.add(key)
+        extra.append(
+            make_finding(
+                file_path=file_path,
+                repo_root=repo_root,
+                line_number=line,
+                language="PHP",
+                scanner_id=SCANNER_ID,
+                api_type=api_type,
+                algorithm=algo,
+                mode=mode,
+                key_size=key_size,
+                purpose=purpose,
+                library=library,
+                raw_transformation=raw,
+            )
+        )
+    return extra

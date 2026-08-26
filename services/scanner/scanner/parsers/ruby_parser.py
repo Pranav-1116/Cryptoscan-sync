@@ -41,9 +41,12 @@ _RSA_BITS = re.compile(r"OpenSSL::PKey::RSA\.new\(\s*(\d+)")
 
 def parse_ruby_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
-        text = file_path.read_text(encoding="utf-8", errors="replace")
+        raw = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    from scanner.parsers.c_like import strip_ruby_comments
+
+    text = strip_ruby_comments(raw)
     findings: list[RawFinding] = []
     seen: set[tuple[int, str]] = set()
 

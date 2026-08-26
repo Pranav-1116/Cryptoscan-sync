@@ -164,3 +164,94 @@ class CSharpSourcePlugin(FilesystemLanguagePlugin):
         from scanner.parsers.csharp_parser import parse_csharp_file
 
         return parse_csharp_file
+
+
+@register_plugin
+class GoSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-go-scanner"
+    language = "go"
+    extensions = (".go",)
+
+    @property
+    def parser(self):
+        from scanner.parsers.go_parser import parse_go_file
+
+        return parse_go_file
+
+
+@register_plugin
+class PhpSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-php-scanner"
+    language = "php"
+    extensions = (".php",)
+
+    @property
+    def parser(self):
+        from scanner.parsers.php_parser import parse_php_file
+
+        return parse_php_file
+
+
+@register_plugin
+class RubySourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-ruby-scanner"
+    language = "ruby"
+    extensions = (".rb",)
+
+    @property
+    def parser(self):
+        from scanner.parsers.ruby_parser import parse_ruby_file
+
+        return parse_ruby_file
+
+
+@register_plugin
+class RustSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-rust-scanner"
+    language = "rust"
+    extensions = (".rs",)
+
+    @property
+    def parser(self):
+        from scanner.parsers.rust_parser import parse_rust_file
+
+        return parse_rust_file
+
+
+@register_plugin
+class KotlinSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-kotlin-scanner"
+    language = "kotlin"
+    extensions = (".kt", ".kts", ".scala")
+
+    @property
+    def parser(self):
+        from scanner.parsers.kotlin_parser import parse_kotlin_file
+
+        return parse_kotlin_file
+
+
+@register_plugin
+class ConfigSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-config-scanner"
+    language = "config"
+    extensions = (".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg")
+
+    def discover(self, target: str, **kwargs: Any) -> list[Any]:
+        from scanner.parsers.config_crypto_parser import parse_config_file, scan_config_tree
+
+        root = _root(target)
+        if not root.exists():
+            return []
+        try:
+            if root.is_file():
+                return parse_config_file(root, root.parent)
+            return scan_config_tree(root, root)
+        except Exception:
+            return []
+
+    @property
+    def parser(self):
+        from scanner.parsers.config_crypto_parser import parse_config_file
+
+        return parse_config_file

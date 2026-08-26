@@ -51,9 +51,12 @@ _RSA_BITS = re.compile(r"RsaPrivateKey::new\([^,]+,\s*(\d+)")
 
 def parse_rust_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
-        text = file_path.read_text(encoding="utf-8", errors="replace")
+        raw = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    from scanner.parsers.c_like import strip_c_like_comments
+
+    text = strip_c_like_comments(raw)
     findings: list[RawFinding] = []
     seen: set[tuple[int, str]] = set()
     for pattern, algo, api_type, purpose, library, mode in _RULES:

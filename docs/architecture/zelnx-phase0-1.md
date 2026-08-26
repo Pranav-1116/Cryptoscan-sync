@@ -60,6 +60,7 @@ Added this slice: `scripts/bootstrap-local.sh`, `scripts/zelnx` (evidence verify
 |---|---|
 | Java AST, not regex-only | `scanner/parsers/java_ast.py` walks tokens/invocations; comments ignored; local string constants resolved. Regex remains a fail-open fallback. |
 | Python / JS / C# plugins | Same `DiscoveryPlugin` contract. Python uses stdlib `ast` (local `hashlib.new(name)` resolved). JS/C# strip comments before regex and resolve JS locals. |
+| Go / PHP / Ruby / Rust / Kotlin / config | Same contract. C-like and hash comments stripped; PHP resolves local `openssl_encrypt` / `hash` names. Kotlin reuses the Java AST walker. |
 | Parse errors do not abort the scan | `Scanner.scan` already isolates per file; AST does not require balanced braces. |
 | Canonical observation | `shared_models.observation.CryptoObservation` |
 | Plugin contract | `scanner.core.plugin.DiscoveryPlugin` + Java/Python/JS/C# source plugins |

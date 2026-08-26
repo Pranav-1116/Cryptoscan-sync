@@ -8,6 +8,12 @@ def test_source_plugins_are_registered():
     assert "static-python-scanner" in plugins
     assert "static-js-scanner" in plugins
     assert "static-csharp-scanner" in plugins
+    assert "static-go-scanner" in plugins
+    assert "static-php-scanner" in plugins
+    assert "static-ruby-scanner" in plugins
+    assert "static-rust-scanner" in plugins
+    assert "static-kotlin-scanner" in plugins
+    assert "static-config-scanner" in plugins
     plugin = JavaSourcePlugin()
     assert "java" in plugin.capabilities()
     assert plugin.health_check()["ok"] is True
@@ -17,6 +23,12 @@ def test_source_plugins_are_registered():
         "static-python-scanner",
         "static-js-scanner",
         "static-csharp-scanner",
+        "static-go-scanner",
+        "static-php-scanner",
+        "static-ruby-scanner",
+        "static-rust-scanner",
+        "static-kotlin-scanner",
+        "static-config-scanner",
     }
 
 

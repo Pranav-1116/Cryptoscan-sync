@@ -10,7 +10,7 @@ proxy strips the prefix). Interactive docs: `/api/docs`.
 
 Default login: `admin` / `cryptoscan`.
 
-`GET /discovery/plugins` lists registered source scanners (`static-java-scanner`, `static-python-scanner`, `static-js-scanner`, `static-csharp-scanner`).
+`GET /discovery/plugins` lists registered source scanners (`static-java-scanner`, `static-python-scanner`, `static-js-scanner`, `static-csharp-scanner`, `static-go-scanner`, `static-php-scanner`, `static-ruby-scanner`, `static-rust-scanner`, `static-kotlin-scanner`, `static-config-scanner`). Operator CLI: `scripts/zelnx plugins`.
 
 ## Scans and jobs
 

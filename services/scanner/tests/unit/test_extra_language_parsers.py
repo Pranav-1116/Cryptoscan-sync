@@ -68,6 +68,45 @@ def test_ruby_and_rust_parsers(temp_workspace):
     assert {f.crypto.algorithm for f in rust} >= {"MD5", "AES"}
 
 
+def test_go_php_ruby_rust_ignore_comments_and_php_locals(temp_workspace):
+    go = temp_workspace / "comments.go"
+    go.write_text(
+        """
+package main
+func main() {
+  // md5.Sum(nil)
+  /* des.NewCipher(key) */
+  aes.NewGCM(block)
+}
+"""
+    )
+    php = temp_workspace / "comments.php"
+    php.write_text(
+        """<?php
+$cipher = 'AES-256-CBC';
+# md5($password);
+openssl_encrypt($data, $cipher, $key);
+"""
+    )
+    rb = temp_workspace / "comments.rb"
+    rb.write_text("# Digest::MD5.hexdigest(x)\nOpenSSL::Cipher.new('AES-256-GCM')\n")
+    rs = temp_workspace / "comments.rs"
+    rs.write_text("// let d = Md5::digest(b\"x\");\nlet a = Aes256Gcm::new(&key);\n")
+    go_algos = {f.crypto.algorithm for f in parse_go_file(go, temp_workspace)}
+    php_algos = {f.crypto.algorithm for f in parse_php_file(php, temp_workspace)}
+    ruby_algos = {f.crypto.algorithm for f in parse_ruby_file(rb, temp_workspace)}
+    rust_algos = {f.crypto.algorithm for f in parse_rust_file(rs, temp_workspace)}
+    assert go_algos == {"AES"}
+    assert "MD5" not in go_algos and "DES" not in go_algos
+    assert "AES" in php_algos
+    assert "MD5" not in php_algos
+    aes = next(f for f in parse_php_file(php, temp_workspace) if f.crypto.algorithm == "AES")
+    assert aes.crypto.mode == "CBC"
+    assert aes.crypto.key_size == 256
+    assert ruby_algos == {"AES"}
+    assert rust_algos == {"AES"}
+
+
 def test_registry_and_language_detect(temp_workspace):
     go = temp_workspace / "a.go"
     go.write_text("package p\nfunc f() { md5.Sum(nil) }\n")

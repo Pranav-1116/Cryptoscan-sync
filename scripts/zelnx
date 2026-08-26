@@ -8,13 +8,18 @@ case "$cmd" in
   verify-evidence-chain)
     exec python3 "$ROOT/scripts/verify_evidence_chain.py" "$@"
     ;;
+  plugins)
+    exec python3 "$ROOT/scripts/list_discovery_plugins.py" "$@"
+    ;;
   ""|-h|--help|help)
     echo "usage: zelnx verify-evidence-chain --scan-id <id>"
+    echo "       zelnx plugins"
     exit 0
     ;;
   *)
     echo "unknown command: $cmd" >&2
     echo "usage: zelnx verify-evidence-chain --scan-id <id>" >&2
+    echo "       zelnx plugins" >&2
     exit 2
     ;;
 esac
