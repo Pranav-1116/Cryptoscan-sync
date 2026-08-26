@@ -200,12 +200,9 @@ class JavaParser:
     def parse_file(self, file_path: Path) -> list[RawFinding]:
         """
         Parse a single Java file and return all crypto findings.
-        
-        Args:
-            file_path: Absolute path to the .java file
-            
-        Returns:
-            List of RawFinding objects (may be empty)
+
+        Primary path is the token/AST walker. Regex detectors remain as
+        fail-open fallback so a single unreadable construct cannot drop the file.
         """
         log = logger.bind(file=str(file_path))
 
@@ -215,15 +212,50 @@ class JavaParser:
             log.error("cannot_read_file", error=str(e))
             raise
 
-        if source.count("{") != source.count("}"):
-            raise ValueError(f"unbalanced braces in {file_path}")
-
         source_lines = source.splitlines()
         context = self._extract_file_context(file_path, source, source_lines)
+        try:
+            from scanner.parsers.java_ast import extract_crypto_events
 
+            findings = [
+                self._finding_from_event(event, source, source_lines, context) for event in extract_crypto_events(source)
+            ]
+            findings.extend(self._detect_insecure_tls(source, source_lines, context))
+            self._mark_bouncycastle(source, findings)
+            log.debug("file_parsed_ast", findings_count=len(findings))
+            return findings
+        except Exception as exc:
+            log.warning("java_ast_fallback", error=str(exc))
+            return self._parse_with_regex(file_path, source, source_lines, context, log)
+
+    def _finding_from_event(self, event, source: str, source_lines: list[str], context: ParseContext) -> RawFinding:
+        return self._build_finding(
+            file_path=context.file_path,
+            source=source,
+            source_lines=source_lines,
+            match_start=event.start,
+            context=context,
+            api_type=event.api_type,
+            algorithm=event.algorithm,
+            mode=event.mode,
+            padding=event.padding,
+            key_size=event.key_size,
+            purpose=event.purpose,
+            library=event.library,
+            is_string_literal=event.is_string_literal,
+            is_hardcoded_key=event.is_hardcoded_key,
+            hardcoded_key_length=event.hardcoded_key_length,
+            variable_name=event.variable_name,
+            raw_transformation=event.raw_transformation,
+            is_from_local_variable=event.is_from_local_variable,
+        )
+
+    def _parse_with_regex(
+        self, file_path: Path, source: str, source_lines: list[str], context: ParseContext, log
+    ) -> list[RawFinding]:
+        if source.count("{") != source.count("}"):
+            raise ValueError(f"unbalanced braces in {file_path}")
         findings: list[RawFinding] = []
-
-        # Run all detectors
         findings.extend(self._detect_cipher(source, source_lines, context))
         findings.extend(self._detect_message_digest(source, source_lines, context))
         findings.extend(self._detect_key_generator(source, source_lines, context))
@@ -237,7 +269,6 @@ class JavaParser:
         findings.extend(self._detect_pbe(source, source_lines, context))
         findings.extend(self._detect_insecure_tls(source, source_lines, context))
         self._mark_bouncycastle(source, findings)
-
         log.debug("file_parsed", findings_count=len(findings))
         return findings
 

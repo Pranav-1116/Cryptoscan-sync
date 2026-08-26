@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# CryptoScan operator CLI. Phase 1: evidence chain verification.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cmd="${1:-}"
+shift || true
+case "$cmd" in
+  verify-evidence-chain)
+    exec python3 "$ROOT/scripts/verify_evidence_chain.py" "$@"
+    ;;
+  ""|-h|--help|help)
+    echo "usage: zelnx verify-evidence-chain --scan-id <id>"
+    exit 0
+    ;;
+  *)
+    echo "unknown command: $cmd" >&2
+    echo "usage: zelnx verify-evidence-chain --scan-id <id>" >&2
+    exit 2
+    ;;
+esac

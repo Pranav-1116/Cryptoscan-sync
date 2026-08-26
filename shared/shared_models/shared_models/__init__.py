@@ -12,6 +12,7 @@ from shared_models.enums import (
 )
 from shared_models.evidence import EvidenceRecordDTO
 from shared_models.finding import CryptoInfo, FindingMetadata, GitContext, RawFinding, SourceLocation
+from shared_models.observation import CryptoObservation, observation_from_raw_finding
 from shared_models.vulnerability import Vulnerability
 
 __all__ = [
@@ -30,6 +31,8 @@ __all__ = [
     "GitContext",
     "RawFinding",
     "SourceLocation",
+    "CryptoObservation",
+    "observation_from_raw_finding",
     "CryptoAsset",
     "Vulnerability",
 ]

@@ -9,7 +9,7 @@ Git URL or local:// path
         │
         ▼
  ┌──────────────┐     language detect (Java / Python / JS / C#)
- │   Scanner    │──── regex + stdlib `ast` (no tree-sitter / Roslyn required)
+ │   Scanner    │──── Java token/AST walker + stdlib `ast` (no tree-sitter / JDT / Roslyn required)
  └──────┬───────┘
         │ RawFinding
         ▼
