@@ -740,28 +740,51 @@ async function probeHost() {
 
 async function renderCloud(el) {
   const accounts = await api('/cloud/accounts');
+  let plan = {jobs:[]};
+  try { plan = await api('/estate/campaigns?limit=25'); } catch (e) { plan = {jobs:[]}; }
   el.innerHTML = `<div class="top"><div><h2>Cloud / IaC</h2>
-    <p class="muted">Terraform, CloudFormation and Kubernetes are parsed locally. Live AWS/Azure/GCP stays opt-in.</p></div>
-    <button class="btn" onclick="scanCloudPath()">Scan IaC tree</button></div>
+    <p class="muted">Terraform, CloudFormation and Kubernetes persist as systems. Live AWS/Azure/GCP stays opt-in and is one job per account, not per key.</p></div>
+    <div class="row">
+      <button class="btn" onclick="scanCloudPath()">Inventory IaC tree</button>
+      <button class="btn secondary" onclick="queueLiveCloud()">Queue live inventory</button>
+      <button class="btn secondary" onclick="startEstateCampaign()">Coverage campaign</button>
+    </div></div>
     <div class="card"><div class="label">Registered accounts</div>
       <table><thead><tr><th>Provider</th><th>Account</th><th>Enabled</th></tr></thead>
-      <tbody>${(accounts.accounts||[]).map(a => `<tr><td>${badge(a.cloud_provider)}</td><td class="mono">${a.account_identifier}</td><td>${a.enabled}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No live cloud accounts. IaC scan does not need one.</td></tr>'}
+      <tbody>${(accounts.accounts||[]).map(a => `<tr><td>${badge(a.cloud_provider)}</td><td class="mono">${a.account_identifier}</td><td>${a.enabled}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">No live cloud accounts. IaC inventory does not need one.</td></tr>'}
       </tbody></table></div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Next campaign (preview)</div>
+      <p class="muted">${plan.message || 'One CLOUD job per account.'} Planned ${plan.planned||0}.</p>
+      <table><thead><tr><th>Type</th><th>Target</th><th>Members</th></tr></thead>
+      <tbody>${(plan.jobs||[]).map(j => `<tr><td>${badge(j.job_type)}</td><td class="mono">${j.target}</td><td>${j.members||1}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Nothing scannable.</td></tr>'}</tbody></table>
+    </div>
     <div id="cloud-result"></div>`;
 }
 
 async function scanCloudPath() {
   const path = prompt('Path to Terraform / k8s / CloudFormation', sampleTarget('local://demo/polyglot-app'));
   if (!path) return;
-  const data = await api('/cloud/scan', { method: 'POST', body: JSON.stringify({ path, live: false })});
+  const data = await api('/cloud/inventory', { method: 'POST', body: JSON.stringify({ path, live: false, persist: true })});
+  const ingested = data.ingested || {};
   document.getElementById('cloud-result').innerHTML = `<div class="card" style="margin-top:16px">
-    <div class="label">Last scan</div>
-    <p>${data.resources||0} resources · ${data.issues||0} issues · ${(data.providers||[]).join(', ')||'—'}</p>
-    <table><thead><tr><th>Resource</th><th>Algo</th><th>Issue</th></tr></thead>
-    <tbody>${(data.findings||[]).map(f => `<tr>
-      <td class="mono">${(f.metadata&&f.metadata.resource)||f.file_path}</td>
-      <td>${f.algorithm}</td><td>${f.compliance_issue?badge('FAIL')+' '+f.compliance_issue:badge('PASS')}</td></tr>`).join('')}
-    </tbody></table></div>`;
+    <div class="label">Inventory</div>
+    <p>${data.resources||0} resources · ${ingested.systems||0} systems persisted · ${data.issues||0} issues</p>
+    <p class="muted">${ingested.message || data.message || ''}</p></div>`;
+}
+
+async function queueLiveCloud() {
+  if (!confirm('Queue one live CLOUD job? This calls AWS/Azure/GCP APIs only if credentials exist. It does not clone git.')) return;
+  const data = await api('/cloud/inventory', { method: 'POST', body: JSON.stringify({ live: true, persist: true, enqueue: true })});
+  if (data.queued && data.queued.job_id) go('job', { jobId: data.queued.job_id });
+  else alert(data.message || 'Queued');
+}
+
+async function startEstateCampaign() {
+  const data = await api('/estate/campaigns', { method: 'POST', body: JSON.stringify({ limit: 25 })});
+  alert(data.message || ('Queued ' + (data.queued||0)));
+  if (data.jobs && data.jobs[0] && data.jobs[0].job_id) go('job', { jobId: data.jobs[0].job_id });
+  else go('cloud');
 }
 
 async function renderGraph(el) {

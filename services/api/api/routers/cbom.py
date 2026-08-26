@@ -175,31 +175,42 @@ def cbom_scan_uncovered(
 ):
     from api.routers.trigger import enqueue_scan_job
 
+    from cloud_scanner.estate import CAMPAIGN_LOOKAHEAD, plan_campaign
+
     limit = min(max(int((body.limit if body else 25) or 25), 1), 100)
+    lookahead = min(max(limit * 40, 200), CAMPAIGN_LOOKAHEAD)
+    planned = plan_campaign(SystemRepository(db).list_uncovered(limit=lookahead), limit=limit)
     queued = []
     skipped = []
-    for system in SystemRepository(db).list_uncovered(limit=limit):
-        target = (system.scan_target or "").strip()
+    for item in planned:
+        target = (item.get("target") or "").strip()
         if not target:
-            skipped.append({"id": system.id, "name": system.name, "reason": "no_target"})
+            skipped.append({"id": item.get("system_id"), "name": item.get("name"), "reason": "no_target"})
             continue
         result = enqueue_scan_job(
             jobs,
             background_tasks,
             repo_url=target,
-            branch=system.scan_branch or "main",
+            branch=item.get("branch") or "main",
             triggered_by=user,
-            job_type="COVERAGE",
-            system_id=system.id,
+            job_type=item.get("job_type") or "COVERAGE",
+            system_id=item.get("system_id"),
         )
-        queued.append({"system_id": system.id, "name": system.name, "job_id": result.job_id})
+        queued.append({**item, "job_id": result.job_id})
     remaining = max(0, int(SystemRepository(db).coverage_summary().get("scannable") or 0) - len(queued))
+    git_n = sum(1 for item in queued if item.get("job_type") != "CLOUD")
+    cloud_n = sum(1 for item in queued if item.get("job_type") == "CLOUD")
     return {
         "queued": len(queued),
+        "git_jobs": git_n,
+        "cloud_jobs": cloud_n,
         "skipped": skipped,
         "remaining": remaining,
         "jobs": queued,
-        "message": f"Queued {len(queued)} scans. Cryptography stays unknown on systems that have not been scanned.",
+        "message": (
+            f"Queued {git_n} git scans and {cloud_n} cloud account inventories. "
+            "Cryptography stays unknown on systems that have not been scanned."
+        ),
     }
 
 

@@ -32,9 +32,22 @@ def _regions(session, requested: list[str] | None) -> list[str]:
     return names[:8]
 
 
-def scan_aws(*, regions: list[str] | None = None, session=None) -> list[dict[str, Any]]:
+def scan_aws(*, regions: list[str] | None = None, session=None, role_arn: str | None = None) -> list[dict[str, Any]]:
     try:
-        sess = session or _session()
+        sess = session
+        if sess is None and role_arn:
+            from cloud_scanner.aws.auth.iam_role_assumer import assume_role
+
+            creds = assume_role(role_arn)
+            if creds:
+                import boto3  # type: ignore
+
+                sess = boto3.Session(
+                    aws_access_key_id=creds.get("AccessKeyId"),
+                    aws_secret_access_key=creds.get("SecretAccessKey"),
+                    aws_session_token=creds.get("SessionToken"),
+                )
+        sess = sess or _session()
     except Exception:
         return []
     findings: list[dict[str, Any]] = []

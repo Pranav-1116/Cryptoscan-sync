@@ -31,6 +31,7 @@ from api.routers import (
     container,
     container_scans,
     drift,
+    estate,
     exceptions,
     export,
     findings,
@@ -165,6 +166,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(network_scans.router, prefix=prefix)
     app.include_router(cloud.router, prefix=prefix)
     app.include_router(cloud_scans.router, prefix=prefix)
+    app.include_router(estate.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(runtime.router, prefix=prefix)

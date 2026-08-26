@@ -35,6 +35,8 @@ def ensure_schema_extensions(engine) -> None:
             ("coverage_status", "VARCHAR(20)"),
             ("business_unit", "VARCHAR(100)"),
             ("criticality", "VARCHAR(20)"),
+            ("cloud_provider", "VARCHAR(20)"),
+            ("cloud_account", "VARCHAR(200)"),
         ],
         "scan_jobs": [
             ("system_id", "VARCHAR(36)"),
@@ -71,3 +73,18 @@ def ensure_schema_extensions(engine) -> None:
                     conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
                 except Exception:
                     logger.debug("schema_add_column_skipped", extra={"table": table, "column": name}, exc_info=True)
+        _ensure_indexes(conn)
+
+
+def _ensure_indexes(conn) -> None:
+    statements = (
+        "CREATE INDEX IF NOT EXISTS ix_systems_coverage_status ON systems (coverage_status)",
+        "CREATE INDEX IF NOT EXISTS ix_systems_business_unit ON systems (business_unit)",
+        "CREATE INDEX IF NOT EXISTS ix_systems_cloud_provider ON systems (cloud_provider)",
+        "CREATE INDEX IF NOT EXISTS ix_systems_cloud_account ON systems (cloud_account)",
+    )
+    for statement in statements:
+        try:
+            conn.execute(text(statement))
+        except Exception:
+            logger.debug("schema_index_skipped", extra={"sql": statement}, exc_info=True)

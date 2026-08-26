@@ -77,6 +77,19 @@ class IntelligenceRepository:
     def list_cloud_accounts(self) -> list[CloudAccount]:
         return list(self.session.execute(select(CloudAccount)).scalars())
 
+    def get_cloud_account(self, account_id: str) -> CloudAccount | None:
+        return self.session.get(CloudAccount, account_id)
+
+    def find_cloud_account(self, provider: str | None, identifier: str | None) -> CloudAccount | None:
+        from sqlalchemy import func
+
+        stmt = select(CloudAccount)
+        if provider:
+            stmt = stmt.where(func.upper(CloudAccount.cloud_provider) == provider.upper())
+        if identifier:
+            stmt = stmt.where(CloudAccount.account_identifier == identifier)
+        return self.session.execute(stmt.limit(1)).scalar_one_or_none()
+
     def create_cloud_account(self, **kwargs) -> CloudAccount:
         row = CloudAccount(**kwargs)
         self.session.add(row)

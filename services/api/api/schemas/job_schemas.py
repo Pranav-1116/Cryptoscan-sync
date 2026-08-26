@@ -20,10 +20,11 @@ class TriggerScanRequest(BaseModel):
         ok = (
             raw.startswith(("http://", "https://", "git@", "local://", "file://", "/"))
             or raw.startswith("ssh://")
+            or raw.startswith(("cloud://", "aws://", "azure://", "gcp://"))
             or raw.endswith(".git")
         )
         if not ok:
-            raise ValueError("repo_url must be a git URL, local:// path, or absolute path")
+            raise ValueError("repo_url must be a git URL, local:// path, cloud:// target, or absolute path")
         return raw
 
 

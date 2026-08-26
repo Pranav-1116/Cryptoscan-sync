@@ -35,6 +35,19 @@ resource "google_kms_crypto_key" "k" {
     assert any(row["metadata"]["cloud_provider"] == "GCP" for row in findings)
 
 
+def test_scan_live_is_explicit_and_fail_open(tmp_path, monkeypatch):
+    from cloud_scanner.core import scanner as scanner_mod
+
+    monkeypatch.setattr(scanner_mod, "scan_aws", lambda **kwargs: [{"algorithm": "AES", "metadata": {"cloud_provider": "AWS"}}])
+    monkeypatch.setattr(scanner_mod, "scan_azure", lambda **kwargs: [])
+    monkeypatch.setattr(scanner_mod, "scan_gcp", lambda **kwargs: [])
+    offline = CloudScanner(live=False).scan_filesystem(tmp_path)
+    assert offline["live"] is False
+    live = CloudScanner(live=False).scan_live(providers=["AWS"])
+    assert live["live"] is True
+    assert live["resources"] == 1
+
+
 def test_cloud_scanner_walks_tree(tmp_path):
     (tmp_path / "infra").mkdir()
     (tmp_path / "infra" / "bucket.tf").write_text('resource "aws_s3_bucket" "x" { bucket = "x" }\n')

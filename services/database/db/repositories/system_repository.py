@@ -43,6 +43,7 @@ class SystemRepository(BaseRepository[System]):
         coverage: str | None = None,
         q: str | None = None,
         business_unit: str | None = None,
+        cloud_provider: str | None = None,
     ) -> tuple[list[System], int]:
         stmt = select(System)
         count_stmt = select(func.count()).select_from(System)
@@ -51,6 +52,8 @@ class SystemRepository(BaseRepository[System]):
             conds.append(self._coverage_clause(coverage))
         if business_unit:
             conds.append(System.business_unit == business_unit)
+        if cloud_provider:
+            conds.append(func.upper(func.coalesce(System.cloud_provider, "")) == cloud_provider.upper())
         if q:
             needle = f"%{q.lower()}%"
             conds.append(
@@ -103,6 +106,8 @@ class SystemRepository(BaseRepository[System]):
         scan_branch: str | None = None,
         business_unit: str | None = None,
         criticality: str | None = None,
+        cloud_provider: str | None = None,
+        cloud_account: str | None = None,
     ) -> System:
         existing = self.get_by_name(name)
         if existing:
@@ -114,6 +119,10 @@ class SystemRepository(BaseRepository[System]):
                     existing.coverage_status = initial_status(scan_target)
             if scan_branch and not existing.scan_branch:
                 existing.scan_branch = scan_branch
+            if cloud_provider and not getattr(existing, "cloud_provider", None):
+                existing.cloud_provider = cloud_provider
+            if cloud_account and not getattr(existing, "cloud_account", None):
+                existing.cloud_account = cloud_account
             self.session.flush()
             return existing
         row = System(
@@ -126,6 +135,8 @@ class SystemRepository(BaseRepository[System]):
             scan_branch=scan_branch,
             business_unit=business_unit,
             criticality=criticality,
+            cloud_provider=cloud_provider,
+            cloud_account=cloud_account,
             coverage_status=initial_status(scan_target),
         )
         return self.create(row)
@@ -145,9 +156,21 @@ class SystemRepository(BaseRepository[System]):
                 scan_branch=item.get("scan_branch"),
                 business_unit=item.get("business_unit"),
                 criticality=item.get("criticality"),
+                cloud_provider=item.get("cloud_provider"),
+                cloud_account=item.get("cloud_account"),
             )
             return existing, created
-        for field in ("owner", "environment", "description", "scan_target", "scan_branch", "business_unit", "criticality"):
+        for field in (
+            "owner",
+            "environment",
+            "description",
+            "scan_target",
+            "scan_branch",
+            "business_unit",
+            "criticality",
+            "cloud_provider",
+            "cloud_account",
+        ):
             value = item.get(field)
             if value and not getattr(existing, field, None):
                 setattr(existing, field, value)
@@ -195,13 +218,19 @@ class SystemRepository(BaseRepository[System]):
         stmt = select(SystemDependency).where(SystemDependency.parent_id == system_id)
         return list(self.session.execute(stmt).scalars().all())
 
-    def list_uncovered(self, *, limit: int = 25) -> list[System]:
-        stmt = (
-            select(System)
-            .where(self._coverage_clause("SCANNABLE"))
-            .order_by(func.coalesce(System.criticality, "ZZZ"), System.name)
-            .limit(limit)
-        )
+    def list_uncovered(
+        self,
+        *,
+        limit: int = 25,
+        business_unit: str | None = None,
+        cloud_provider: str | None = None,
+    ) -> list[System]:
+        stmt = select(System).where(self._coverage_clause("SCANNABLE"))
+        if business_unit:
+            stmt = stmt.where(System.business_unit == business_unit)
+        if cloud_provider:
+            stmt = stmt.where(func.upper(func.coalesce(System.cloud_provider, "")) == cloud_provider.upper())
+        stmt = stmt.order_by(func.coalesce(System.criticality, "ZZZ"), System.name).limit(limit)
         return list(self.session.execute(stmt).scalars().all())
 
     def coverage_summary(self, *, stale_days: int = STALE_DAYS) -> dict[str, Any]:
@@ -292,6 +321,8 @@ class SystemRepository(BaseRepository[System]):
             "owner": system.owner,
             "business_unit": system.business_unit,
             "criticality": system.criticality,
+            "cloud_provider": getattr(system, "cloud_provider", None),
+            "cloud_account": getattr(system, "cloud_account", None),
             "scan_target": system.scan_target,
             "scan_branch": system.scan_branch,
             "coverage_status": status,

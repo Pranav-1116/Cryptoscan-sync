@@ -46,9 +46,8 @@ class CloudScanner:
                     findings.extend(parse_cloudformation(path))
             findings.extend(parse_kubernetes_tree(root_path))
         if self.live:
-            findings.extend(scan_aws())
-            findings.extend(scan_azure())
-            findings.extend(scan_gcp())
+            live = self.scan_live(scan_id=scan_id)
+            findings.extend(live.get("findings") or [])
         issues = [row for row in findings if row.get("compliance_issue")]
         return {
             "scan_id": scan_id,
@@ -57,6 +56,53 @@ class CloudScanner:
             "resources": len(findings),
             "issues": len(issues),
             "providers": sorted({(row.get("metadata") or {}).get("cloud_provider") for row in findings if row.get("metadata")}),
+        }
+
+    def scan_live(
+        self,
+        *,
+        providers: list[str] | None = None,
+        regions: list[str] | None = None,
+        role_arn: str | None = None,
+        azure_subscription: str | None = None,
+        gcp_project: str | None = None,
+        scan_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Call cloud APIs. Never implied by constructing CloudScanner()."""
+        wanted = {str(item).upper() for item in (providers or ["AWS", "AZURE", "GCP"])}
+        findings: list[dict[str, Any]] = []
+        errors: list[dict[str, str]] = []
+        if "AWS" in wanted:
+            try:
+                findings.extend(scan_aws(regions=regions, role_arn=role_arn))
+            except Exception as exc:
+                errors.append({"provider": "AWS", "error": str(exc)[:200]})
+        if "AZURE" in wanted:
+            try:
+                findings.extend(scan_azure(subscription_id=azure_subscription))
+            except Exception as exc:
+                errors.append({"provider": "AZURE", "error": str(exc)[:200]})
+        if "GCP" in wanted:
+            try:
+                findings.extend(scan_gcp(project=gcp_project))
+            except Exception as exc:
+                errors.append({"provider": "GCP", "error": str(exc)[:200]})
+        issues = [row for row in findings if row.get("compliance_issue")]
+        seen = sorted(
+            {
+                str((row.get("metadata") or {}).get("cloud_provider"))
+                for row in findings
+                if (row.get("metadata") or {}).get("cloud_provider")
+            }
+        )
+        return {
+            "scan_id": scan_id,
+            "live": True,
+            "findings": findings,
+            "resources": len(findings),
+            "issues": len(issues),
+            "providers": seen,
+            "errors": errors,
         }
 
 

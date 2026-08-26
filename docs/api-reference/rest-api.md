@@ -62,4 +62,17 @@ Default login: `admin` / `cryptoscan`.
 - `GET /vendors/{id}/risk` / `GET /vendor-risks`
 - `GET /network/due` / `POST /network/run-due` / `GET /certificates/{id}/usages`
 
-`repo_url` may be a git URL or `local://demo/polyglot-app`.
+`repo_url` may be a git URL, `local://demo/polyglot-app`, or a `cloud://aws/<account>` target.
+
+## Cloud estate
+
+Live AWS/Azure/GCP APIs never run unless `live=true` or `CRYPTOSCAN_CLOUD_LIVE` is set. Registering an account is not a scan.
+
+- `POST /cloud/scan` `{path, live?}` IaC preview (no persist)
+- `POST /cloud/inventory` `{path?, live?, persist?, account_id?}` persist IaC as systems; `live=true` queues **one CLOUD job per account**
+- `POST /cloud/accounts/{id}/inventory` `{live?}` same, for a registered account
+- `GET /cloud/accounts` / `POST /cloud/accounts`
+- `POST /estate/campaigns` `{limit? 25..100, dry_run?, include_cloud?, include_git?}` coverage campaign
+- `GET /estate/campaigns` preview the same plan
+
+Campaigns never enqueue a job per KMS key. Cloud systems share one `CLOUD` job per provider account. Worker skips git clone for `job_type=CLOUD`.

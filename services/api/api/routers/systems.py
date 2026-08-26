@@ -24,6 +24,8 @@ class SystemCreate(BaseModel):
     scan_branch: str | None = None
     business_unit: str | None = None
     criticality: str | None = None
+    cloud_provider: str | None = None
+    cloud_account: str | None = None
 
 
 class AttachAsset(BaseModel):
@@ -47,12 +49,18 @@ def list_systems(
     coverage: str | None = None,
     q: str | None = None,
     business_unit: str | None = None,
+    cloud_provider: str | None = None,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     repo = SystemRepository(db)
     rows, total = repo.list_systems(
-        page=page, page_size=page_size, coverage=coverage, q=q, business_unit=business_unit
+        page=page,
+        page_size=page_size,
+        coverage=coverage,
+        q=q,
+        business_unit=business_unit,
+        cloud_provider=cloud_provider,
     )
     return {
         "systems": [{**row.to_dict(), **{"coverage": repo.catalog_row(row).get("coverage_status")}} for row in rows],
@@ -85,6 +93,8 @@ def create_system(
             scan_branch=body.scan_branch,
             business_unit=body.business_unit,
             criticality=body.criticality,
+            cloud_provider=body.cloud_provider,
+            cloud_account=body.cloud_account,
             coverage_status=initial_status(body.scan_target),
         )
     )
@@ -132,6 +142,8 @@ class SystemUpdate(BaseModel):
     criticality: str | None = None
     description: str | None = None
     compliance_scopes: list[str] | None = None
+    cloud_provider: str | None = None
+    cloud_account: str | None = None
 
 
 @router.patch("/{system_id}")

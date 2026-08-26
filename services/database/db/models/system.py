@@ -31,6 +31,8 @@ class System(BaseModel):
     coverage_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     business_unit: Mapped[Optional[str]] = mapped_column(String(100), nullable=True, index=True)
     criticality: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    cloud_provider: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
+    cloud_account: Mapped[Optional[str]] = mapped_column(String(200), nullable=True, index=True)
 
     assets = relationship(
         "SystemAsset",

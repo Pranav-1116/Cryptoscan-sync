@@ -28,9 +28,27 @@ def _publish_job(payload: dict) -> None:
 
 
 def _run_inline(payload: dict) -> None:
-    from worker.pipeline.pipeline_runner import PipelineRunner
-
     try:
+        from cloud_scanner.estate import should_run_cloud_job
+
+        if should_run_cloud_job(payload):
+            from worker.core.job_consumer import ScanJob
+            from worker.pipeline.cloud_job import run_cloud_job
+
+            run_cloud_job(
+                ScanJob(
+                    job_id=payload["job_id"],
+                    target_repo=payload["target_repo"],
+                    target_branch=payload.get("target_branch") or "main",
+                    triggered_by=payload.get("triggered_by") or "system",
+                    target_commit=payload.get("target_commit"),
+                    job_type=payload.get("job_type") or "CLOUD",
+                    system_id=payload.get("system_id"),
+                )
+            )
+            return
+        from worker.pipeline.pipeline_runner import PipelineRunner
+
         PipelineRunner().run(
             job_id=payload["job_id"],
             target_repo=payload["target_repo"],
@@ -54,6 +72,10 @@ def enqueue_scan_job(
     job_type: str = "MANUAL",
     system_id: str | None = None,
 ) -> TriggerScanResponse:
+    from cloud_scanner.estate import is_cloud_target
+
+    if is_cloud_target(repo_url) and str(job_type).upper() != "CLOUD":
+        job_type = "CLOUD"
     created = job_repo.create(
         job_type=job_type,
         target_repo=repo_url,
@@ -98,8 +120,11 @@ async def trigger_manual_scan(
     current_user: str = Depends(get_current_user),
     job_repo: JobRepository = Depends(get_job_repository),
 ):
+    from cloud_scanner.estate import is_cloud_target
+
+    job_type = "CLOUD" if is_cloud_target(request_body.repo_url) else "MANUAL"
     created = job_repo.create(
-        job_type="MANUAL",
+        job_type=job_type,
         target_repo=request_body.repo_url,
         target_branch=request_body.branch or "main",
         target_commit=request_body.commit,
@@ -116,7 +141,7 @@ async def trigger_manual_scan(
     created_at = getattr(created, "created_at", None)
     payload = {
         "job_id": job_id,
-        "job_type": "MANUAL",
+        "job_type": job_type,
         "target_repo": request_body.repo_url,
         "target_branch": request_body.branch or "main",
         "target_commit": request_body.commit,
