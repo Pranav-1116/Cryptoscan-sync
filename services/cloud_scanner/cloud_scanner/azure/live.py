@@ -20,8 +20,14 @@ def live_enabled(flag: bool | None = None) -> bool:
     return os.environ.get("CRYPTOSCAN_CLOUD_LIVE", "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def scan_azure(*, subscription_id: str | None = None) -> list[dict[str, Any]]:
+def scan_azure(*, subscription_id: str | None = None, telemetry=None) -> list[dict[str, Any]]:
     sub = subscription_id or os.environ.get("AZURE_SUBSCRIPTION_ID") or os.environ.get("CRYPTOSCAN_AZURE_SUBSCRIPTION")
+    if telemetry is not None:
+        telemetry.providers_attempted.add("AZURE")
+    if not sub:
+        if telemetry is not None:
+            telemetry.record_error("AZURE", "subscription", "global", RuntimeError("no subscription id configured"))
+        return []
     if not sub:
         return []
     try:
@@ -38,18 +44,32 @@ def scan_azure(*, subscription_id: str | None = None) -> list[dict[str, Any]]:
         except Exception:
             return []
     findings: list[dict[str, Any]] = []
-    findings.extend(_with_client(lambda: _key_vaults(cred, sub), []))
-    findings.extend(_with_client(lambda: _storage(cred, sub), []))
-    findings.extend(_with_client(lambda: _sql(cred, sub), []))
-    findings.extend(_with_client(lambda: _app_gateways(cred, sub), []))
-    findings.extend(_with_client(lambda: _front_doors(cred, sub), []))
+    for service, call in (
+        ("keyvault", lambda: _key_vaults(cred, sub)),
+        ("storage", lambda: _storage(cred, sub)),
+        ("sql", lambda: _sql(cred, sub)),
+        ("appgateway", lambda: _app_gateways(cred, sub)),
+        ("frontdoor", lambda: _front_doors(cred, sub)),
+    ):
+        if telemetry is not None:
+            ok, value, error = _with_client(call)
+            if ok:
+                findings.extend(value)
+                telemetry.record_resources(len(value))
+            else:
+                telemetry.record_error("AZURE", service, sub, error)
+        else:
+            findings.extend(_with_client(call, []))
     return findings
 
 
-def _with_client(call, default):
+def _with_client(call, default=None):
+    """With telemetry: returns (ok, value, error). Legacy: fail-open default."""
     try:
-        return call()
-    except Exception:
+        return True, call(), None
+    except Exception as exc:
+        if default is None:
+            return False, None, exc
         return default
 
 

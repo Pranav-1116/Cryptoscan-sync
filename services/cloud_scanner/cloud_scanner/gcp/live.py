@@ -8,15 +8,29 @@ from typing import Any
 from cloud_scanner.gcp.scanners import scan_cloud_kms, scan_cloud_sql, scan_gcs, scan_load_balancer
 
 
-def scan_gcp(*, project: str | None = None) -> list[dict[str, Any]]:
+def scan_gcp(*, project: str | None = None, telemetry=None) -> list[dict[str, Any]]:
     project_id = project or os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
+    if telemetry is not None:
+        telemetry.providers_attempted.add("GCP")
     if not project_id:
+        if telemetry is not None:
+            telemetry.record_error("GCP", "project", "global", RuntimeError("no project id configured"))
         return []
     findings: list[dict[str, Any]] = []
-    findings.extend(_kms(project_id))
-    findings.extend(_storage(project_id))
-    findings.extend(_sql(project_id))
-    findings.extend(_ssl_policies(project_id))
+    for service, call in (
+        ("kms", lambda: _kms(project_id)),
+        ("storage", lambda: _storage(project_id)),
+        ("sql", lambda: _sql(project_id)),
+        ("loadbalancer", lambda: _ssl_policies(project_id)),
+    ):
+        try:
+            value = call()
+            findings.extend(value)
+            if telemetry is not None:
+                telemetry.record_resources(len(value))
+        except Exception as exc:
+            if telemetry is not None:
+                telemetry.record_error("GCP", service, project_id, exc)
     return findings
 
 

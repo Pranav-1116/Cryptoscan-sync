@@ -20,6 +20,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--submit", action="store_true", default=settings.submit_results)
     args = parser.parse_args(argv)
 
+    settings.validate_for_production()
     result = CloudScanner(live=args.live).scan_filesystem(args.path)
     if args.submit:
         result["submit"] = ResultSubmitter(api_url=settings.api_url).submit(result)
@@ -28,6 +29,14 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.output).write_text(text, encoding="utf-8")
     else:
         print(text)
+    live_scan = result.get("live_scan") or {}
+    if live_scan.get("status") == "FAILED":
+        print(
+            f"cloud scan FAILED: {live_scan.get('error_count', 0)} errors, "
+            "0 resources — refusing to report an empty success",
+            file=__import__("sys").stderr,
+        )
+        return 2
     return 0
 
 

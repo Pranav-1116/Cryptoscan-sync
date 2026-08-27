@@ -32,7 +32,33 @@ def _regions(session, requested: list[str] | None) -> list[str]:
     return names[:8]
 
 
-def scan_aws(*, regions: list[str] | None = None, session=None, role_arn: str | None = None) -> list[dict[str, Any]]:
+def scan_aws(
+    *,
+    regions: list[str] | None = None,
+    session=None,
+    role_arn: str | None = None,
+    telemetry=None,
+) -> list[dict[str, Any]]:
+    return scan_aws_detailed(regions=regions, session=session, role_arn=role_arn, telemetry=telemetry)["findings"]
+
+
+def scan_aws_detailed(
+    *,
+    regions: list[str] | None = None,
+    session=None,
+    role_arn: str | None = None,
+    telemetry=None,
+) -> dict[str, Any]:
+    """Live AWS scan with telemetry: what ran, what failed, what truncated.
+
+    Provider-level failures (no credentials, no boto3) are recorded and
+    reported — never silently turned into an empty success."""
+    from cloud_scanner.core.reliability import ScanTelemetry
+
+    tele: ScanTelemetry | None = telemetry
+    if tele is None:
+        tele = ScanTelemetry()
+    tele.providers_attempted.add("AWS")
     try:
         sess = session
         if sess is None and role_arn:
@@ -48,8 +74,10 @@ def scan_aws(*, regions: list[str] | None = None, session=None, role_arn: str | 
                     aws_session_token=creds.get("SessionToken"),
                 )
         sess = sess or _session()
-    except Exception:
-        return []
+    except Exception as exc:  # includes missing boto3 / credentials
+        tele.record_error("AWS", "session", "global", exc)
+        return {"findings": [], "provider": "AWS", "regions": []}
+
     findings: list[dict[str, Any]] = []
     region_list = _regions(sess, regions)
     cloudfront_done = False
@@ -68,13 +96,16 @@ def scan_aws(*, regions: list[str] | None = None, session=None, role_arn: str | 
         ):
             try:
                 client = sess.client(service, region_name=region)
-                findings.extend(fn(client, region=region))
-            except Exception:
+                findings.extend(fn(client, region=region, telemetry=tele))
+            except Exception as exc:
+                tele.record_error("AWS", service, region, exc)
                 continue
         if not cloudfront_done:
+            cloudfront_done = True
             try:
-                findings.extend(scanners.scan_cloudfront(sess.client("cloudfront", region_name="us-east-1")))
-                cloudfront_done = True
-            except Exception:
-                cloudfront_done = True
-    return findings
+                findings.extend(
+                    scanners.scan_cloudfront(sess.client("cloudfront", region_name="us-east-1"), telemetry=tele)
+                )
+            except Exception as exc:
+                tele.record_error("AWS", "cloudfront", "global", exc)
+    return {"findings": findings, "provider": "AWS", "regions": region_list}

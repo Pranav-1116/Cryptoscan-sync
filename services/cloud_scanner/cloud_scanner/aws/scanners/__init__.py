@@ -1,4 +1,13 @@
-"""AWS service scanners. Accept injected clients so unit tests do not need boto3."""
+"""AWS service scanners. Accept injected clients so unit tests do not need boto3.
+
+Enterprise semantics:
+- list calls are paginated to ``max_items`` (cap recorded as a truncation,
+  never silently dropped);
+- transient (throttle) failures are retried, permanent failures are
+  recorded as telemetry errors;
+- ``telemetry`` is optional; without it behaviour degrades to the legacy
+  fail-open mode.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +22,11 @@ from cloud_scanner.aws.mappers import (
     weak_tls_protocols,
 )
 from cloud_scanner.common.finding import cloud_finding
+from cloud_scanner.core.reliability import ScanTelemetry, call_with_retry
 
 ClientFactory = Callable[[str, str], Any]
+
+DEFAULT_MAX_ITEMS = 500
 
 
 def _safe(call, default=None):
@@ -24,10 +36,85 @@ def _safe(call, default=None):
         return default
 
 
-def scan_kms(client, *, region: str) -> list[dict[str, Any]]:
+def _dig(response: Any, items_key: str) -> list:
+    """Support dotted paths, e.g. 'DistributionList.Items'."""
+    current = response
+    for part in items_key.split("."):
+        if not isinstance(current, dict):
+            return []
+        current = current.get(part)
+    return current if isinstance(current, list) else []
+
+
+def _list(
+    client,
+    method_name: str,
+    *,
+    items_key: str,
+    telemetry: ScanTelemetry | None,
+    service: str,
+    region: str,
+    max_items: int | None = None,
+    **extra_kwargs,
+):
+    """Paginated + retried list call. Falls back to a single unpaged call for
+    injected test clients that page differently; telemetry-first."""
+    method = getattr(client, method_name)
+    cap = max_items or (telemetry.max_resources if telemetry else DEFAULT_MAX_ITEMS)
+    if telemetry:
+        telemetry.providers_attempted.add("AWS")
+    ok, value, error = call_with_retry(lambda: method(**extra_kwargs))
+    if not ok:
+        # Retry once more with pagination kwargs omitted (some fakes reject them).
+        ok, value, error = call_with_retry(lambda: method())
+    if not ok:
+        if telemetry:
+            telemetry.record_error("AWS", service, region, error)
+        return []
+    # If the API pages, walk it.
+    response = value or {}
+    items = _dig(response, items_key)
+    token = next(
+        (str(response[key]) for key in ("NextToken", "NextMarker", "Marker") if isinstance(response, dict) and response.get(key)),
+        None,
+    )
+    collected = [i for i in (items or []) if isinstance(i, dict)]
+    dropped_at_cap = False
+    while token and len(collected) < cap:
+        paged_kwargs = dict(extra_kwargs)
+        for key in ("NextToken", "Marker"):
+            paged_kwargs.setdefault(key, token)
+            break
+        ok, value, error = call_with_retry(lambda: method(**paged_kwargs))
+        if not ok:
+            if telemetry:
+                telemetry.record_error("AWS", service, region, error)
+            break
+        response = value or {}
+        page = [i for i in (_dig(response, items_key) or []) if isinstance(i, dict)]
+        if not page:
+            break
+        for item in page:
+            if len(collected) >= cap:
+                dropped_at_cap = True
+                break
+            collected.append(item)
+        token = next(
+            (str(response[key]) for key in ("NextToken", "NextMarker", "Marker") if isinstance(response, dict) and response.get(key)),
+            None,
+        )
+    if len(collected) >= cap and (token or dropped_at_cap):
+        if telemetry:
+            telemetry.record_truncation("AWS", service, region, cap)
+    if telemetry:
+        telemetry.record_resources(len(collected))
+    return collected
+
+
+def scan_kms(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    keys = as_list((_safe(client.list_keys, {}) or {}).get("Keys"))
-    for item in keys[:80]:
+    keys = _list(client, "list_keys", items_key="Keys", telemetry=telemetry, service="kms", region=region)
+    for item in keys:
         key_id = item.get("KeyId")
         if not key_id:
             continue
@@ -60,10 +147,10 @@ def scan_kms(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_s3(client, *, region: str) -> list[dict[str, Any]]:
+def scan_s3(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    buckets = as_list((_safe(client.list_buckets, {}) or {}).get("Buckets"))
-    for bucket in buckets[:80]:
+    buckets = _list(client, "list_buckets", items_key="Buckets", telemetry=telemetry, service="s3", region="global")
+    for bucket in buckets:
         name = bucket.get("Name")
         if not name:
             continue
@@ -106,10 +193,10 @@ def scan_s3(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_rds(client, *, region: str) -> list[dict[str, Any]]:
+def scan_rds(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    instances = as_list((_safe(client.describe_db_instances, {}) or {}).get("DBInstances"))
-    for db in instances[:80]:
+    instances = _list(client, "describe_db_instances", items_key="DBInstances", telemetry=telemetry, service="rds", region=region)
+    for db in instances:
         encrypted = bool(db.get("StorageEncrypted"))
         findings.append(
             cloud_finding(
@@ -132,10 +219,10 @@ def scan_rds(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_elb(client, *, region: str) -> list[dict[str, Any]]:
+def scan_elb(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    balancers = as_list((_safe(client.describe_load_balancers, {}) or {}).get("LoadBalancers"))
-    for lb in balancers[:40]:
+    balancers = _list(client, "describe_load_balancers", items_key="LoadBalancers", telemetry=telemetry, service="elbv2", region=region)
+    for lb in balancers:
         arn = lb.get("LoadBalancerArn")
         listeners = as_list(
             (_safe(lambda: client.describe_listeners(LoadBalancerArn=arn), {}) or {}).get("Listeners")
@@ -177,10 +264,10 @@ def scan_elb(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_acm(client, *, region: str) -> list[dict[str, Any]]:
+def scan_acm(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    summaries = as_list((_safe(client.list_certificates, {}) or {}).get("CertificateSummaryList"))
-    for item in summaries[:80]:
+    summaries = _list(client, "list_certificates", items_key="CertificateSummaryList", telemetry=telemetry, service="acm", region=region)
+    for item in summaries:
         arn = item.get("CertificateArn")
         if not arn:
             continue
@@ -214,10 +301,22 @@ def scan_acm(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_cloudfront(client, *, region: str = "global") -> list[dict[str, Any]]:
+def scan_cloudfront(client, *, region: str = "global", telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    items = as_list(((_safe(client.list_distributions, {}) or {}).get("DistributionList") or {}).get("Items"))
-    for dist in items[:40]:
+    items = _list(
+        client,
+        "list_distributions",
+        items_key="DistributionList.Items",
+        telemetry=telemetry,
+        service="cloudfront",
+        region="global",
+    )
+    items = [
+        dist
+        for dist in items
+        if isinstance(dist, dict)
+    ]
+    for dist in items:
         viewer = dist.get("ViewerCertificate") or {}
         proto = (viewer.get("MinimumProtocolVersion") or "TLSv1").upper()
         weak = any(token in proto for token in ("SSL", "TLSV1", "TLSV1.1", "TLSV1_0", "TLSV1_1")) and "TLSV1.2" not in proto and "TLSV1.3" not in proto
@@ -242,10 +341,10 @@ def scan_cloudfront(client, *, region: str = "global") -> list[dict[str, Any]]:
     return findings
 
 
-def scan_secretsmanager(client, *, region: str) -> list[dict[str, Any]]:
+def scan_secretsmanager(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    secrets = as_list((_safe(client.list_secrets, {}) or {}).get("SecretList"))
-    for secret in secrets[:80]:
+    secrets = _list(client, "list_secrets", items_key="SecretList", telemetry=telemetry, service="secretsmanager", region=region)
+    for secret in secrets:
         name = secret.get("Name") or secret.get("ARN")
         kms = secret.get("KmsKeyId")
         findings.append(
@@ -266,10 +365,10 @@ def scan_secretsmanager(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_lambda(client, *, region: str) -> list[dict[str, Any]]:
+def scan_lambda(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    functions = as_list((_safe(client.list_functions, {}) or {}).get("Functions"))
-    for fn in functions[:80]:
+    functions = _list(client, "list_functions", items_key="Functions", telemetry=telemetry, service="lambda", region=region)
+    for fn in functions:
         name = fn.get("FunctionName") or fn.get("FunctionArn") or "lambda"
         env = fn.get("Environment") or {}
         kms = fn.get("KMSKeyArn") or env.get("KMSKeyArn")
@@ -300,10 +399,10 @@ def scan_lambda(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_apigateway(client, *, region: str) -> list[dict[str, Any]]:
+def scan_apigateway(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    apis = as_list((_safe(client.get_rest_apis, {}) or {}).get("items"))
-    for api in apis[:40]:
+    apis = _list(client, "get_rest_apis", items_key="items", telemetry=telemetry, service="apigateway", region=region)
+    for api in apis:
         api_id = api.get("id")
         stages = as_list((_safe(lambda: client.get_stages(restApiId=api_id), {}) or {}).get("item"))
         for stage in stages or [{"stageName": "default"}]:
@@ -327,10 +426,10 @@ def scan_apigateway(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_ebs(client, *, region: str) -> list[dict[str, Any]]:
+def scan_ebs(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    volumes = as_list((_safe(client.describe_volumes, {}) or {}).get("Volumes"))
-    for vol in volumes[:80]:
+    volumes = _list(client, "describe_volumes", items_key="Volumes", telemetry=telemetry, service="ec2", region=region)
+    for vol in volumes:
         encrypted = bool(vol.get("Encrypted"))
         vol_id = vol.get("VolumeId") or "volume"
         findings.append(
@@ -353,7 +452,7 @@ def scan_ebs(client, *, region: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_ssm(client, *, region: str) -> list[dict[str, Any]]:
+def scan_ssm(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     params = as_list((_safe(client.describe_parameters, {}) or {}).get("Parameters"))
     for param in params[:80]:
