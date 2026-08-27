@@ -37,6 +37,20 @@ def scan_ot(body: OtScanRequest, user: str = Depends(get_current_user), db: Sess
     return result
 
 
+class OtMetricsRequest(BaseModel):
+    report: dict  # an OT scan result
+
+
+@router.post("/metrics")
+def render_ot_metrics(body: OtMetricsRequest, user: str = Depends(get_current_user)):
+    """Render an OT scan result as Prometheus text (format 0.0.4)."""
+    from fastapi.responses import Response
+
+    from ot_scanner.reports.metrics import CONTENT_TYPE, render_prometheus
+
+    return Response(content=render_prometheus(body.report), media_type=CONTENT_TYPE)
+
+
 @router.get("/devices")
 def list_devices(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     rows = MaturityRepository(db).list_ot_devices()

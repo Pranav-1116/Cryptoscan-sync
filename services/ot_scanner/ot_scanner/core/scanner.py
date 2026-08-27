@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ot_scanner.core.safety import OtSafetyError, forbid, send_packet
-from ot_scanner.protocols import dnp3, iec61850, modbus, opcua
+from ot_scanner.protocols import dnp3, iec61850, modbus, opcua, s7comm
 
 OUI = {
     "00:1B:1B": "Siemens",
@@ -135,6 +135,12 @@ class OtPassiveScanner:
                 proto = "modbus"
             elif port == "20000" or "dnp3" in raw.lower():
                 proto = "dnp3"
+            elif "goose" in raw.lower():
+                proto = "goose"
+            elif "sampledvalues" in raw.lower().replace("-", "").replace("_", ""):
+                proto = "sv"
+            elif "s7" in raw.lower():
+                proto = "s7comm"
             elif port == "102" or "61850" in raw.lower():
                 proto = "iec61850"
         if not proto:
@@ -156,6 +162,10 @@ class OtPassiveScanner:
                 analysis = modbus.analyze(record)
             elif "dnp" in proto:
                 analysis = dnp3.analyze(record)
+            elif "goose" in proto or proto == "sv" or "sampled" in proto:
+                analysis = iec61850.analyze(record)
+            elif "s7" in proto:
+                analysis = s7comm.analyze(record)
             elif "61850" in proto or "iec" in proto:
                 analysis = iec61850.analyze(record)
             else:
@@ -202,14 +212,19 @@ class OtPassiveScanner:
             }
             findings.append(finding)
         unencrypted = [row for row in findings if not row.get("has_crypto")]
+        from ot_scanner.reports.posture import build_ot_posture, build_ot_telemetry
+
+        device_rows = list(devices.values())
         return {
             "scan_id": scan_id,
             "mode": self.mode,
             "packets_sent": self.packets_emitted,
-            "devices": list(devices.values()),
+            "devices": device_rows,
             "findings": findings,
             "device_count": len(devices),
             "unencrypted": len(unencrypted),
+            "risk_report": build_ot_posture(findings=findings, devices=device_rows),
+            "ot_telemetry": build_ot_telemetry(records=len(records), findings=findings, devices=device_rows),
             "warning": "OT findings are PASSIVE OBSERVATIONS. Confidence: MEDIUM.",
         }
 

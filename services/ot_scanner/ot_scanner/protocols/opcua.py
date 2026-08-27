@@ -28,9 +28,14 @@ def analyze(record: dict[str, Any]) -> dict[str, Any]:
     else:
         crypto = {"encryption": "UNKNOWN", "signing": "UNKNOWN", "policy": policy}
     mode_u = mode.upper().replace(" ", "")
+    weak_policy = "BASIC128RSA15" in key or ("BASIC256" in key and "SHA256" not in key)
     if mode_u in {"0", "0X00", "NONE"}:
         level, issue = "NONE", "OT_UNENCRYPTED_TRAFFIC"
         crypto = dict(POLICIES["NONE"])
+    elif weak_policy:
+        # Basic128RSA15: RSA-1024 + HMAC-SHA1; Basic256: HMAC-SHA1 — deprecated
+        # since OPC-UA part 7 (2015), still accepted by many PLCs
+        level, issue = ("SIGN" if mode_u in {"1", "0X01", "SIGN"} else "ENCRYPT"), "OT_WEAK_CRYPTO_POLICY"
     elif mode_u in {"1", "0X01", "SIGN"}:
         level, issue = "SIGN", None
     else:
