@@ -23,6 +23,9 @@ Exit code 0 when every selected target PASSES or cleanly SKIPs (with reason);
 1 on any FAIL. Full JSON report written to burn_in_report.json.
 """
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
 import hashlib
@@ -31,7 +34,6 @@ import json
 import os
 import socket
 import ssl
-import sys
 import threading
 import time
 import urllib.error
@@ -40,19 +42,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-for pkg in (
-    "shared/shared_config", "shared/shared_logging", "shared/shared_models",
-    "services/api", "services/database", "services/scanner", "services/evidence",
-    "services/normalization", "services/policy", "services/drift", "services/worker",
-    "services/deduplication", "services/cbom", "services/container_scanner",
-    "services/network_scanner", "services/cloud_scanner", "services/graph_engine",
-    "services/business_context", "services/quantum", "services/remediation",
-    "services/reporting", "services/ot_scanner", "services/vendor_intel", "services/agility",
-):
-    sys.path.insert(0, str(ROOT / pkg))
-os.environ.setdefault("CRYPTOSCAN_ROOT", str(ROOT))
-
 RESULTS: list[dict] = []
 
 

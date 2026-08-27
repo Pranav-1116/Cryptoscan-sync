@@ -1,3 +1,15 @@
+from shared_models.canonical import (
+    b64url_decode,
+    b64url_encode,
+    canonical_bytes,
+    canonical_json,
+    constant_time_eq,
+    exclude_fields,
+    hmac_sha256,
+    sha256_digest,
+    sha256_hex,
+)
+from shared_models.chrono import aware, epoch_seconds, iso_utc, parse_iso, utcnow
 from shared_models.crypto_asset import CryptoAsset
 from shared_models.enums import (
     ApiType,
@@ -16,6 +28,20 @@ from shared_models.observation import CryptoObservation, observation_from_raw_fi
 from shared_models.vulnerability import Vulnerability
 
 __all__ = [
+    "aware",
+    "b64url_decode",
+    "b64url_encode",
+    "canonical_bytes",
+    "canonical_json",
+    "constant_time_eq",
+    "epoch_seconds",
+    "exclude_fields",
+    "hmac_sha256",
+    "iso_utc",
+    "parse_iso",
+    "sha256_digest",
+    "sha256_hex",
+    "utcnow",
     "ApiType",
     "ComplianceStatus",
     "Confidence",

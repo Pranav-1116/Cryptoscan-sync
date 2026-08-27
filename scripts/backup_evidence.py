@@ -12,6 +12,9 @@ Usage:
     python scripts/backup_evidence.py --out /secure/backups --verify
 """
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
 import hashlib
@@ -19,7 +22,6 @@ import json
 import os
 import sqlite3
 import subprocess
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -71,9 +73,6 @@ def backup_postgres(database_url: str, out: Path) -> Path:
 
 def verify_chain_against_sqlite(backup_file: Path) -> tuple[int, int]:
     """Re-run evidence hash verification on the backup copy; returns (pass, fail)."""
-    for pkg in ("shared/shared_config", "shared/shared_logging", "shared/shared_models",
-                "services/database", "services/evidence", "services/api"):
-        sys.path.insert(0, str(ROOT / pkg))
     from sqlalchemy import create_engine
 
     from db.connection.session import configure_session, SessionLocal

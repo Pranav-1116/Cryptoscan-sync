@@ -2,17 +2,15 @@
 """Print VALID, INVALID, or BROKEN_AT_SEQUENCE for a stored scan chain."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [
-    str(ROOT / "services" / "database"),
-    str(ROOT / "services" / "evidence"),
-]
 
 
 def main(argv: list[str] | None = None) -> int:

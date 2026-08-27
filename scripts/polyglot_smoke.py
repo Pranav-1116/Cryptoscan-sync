@@ -5,32 +5,14 @@ Used by .github/workflows/scanner-tests.yml. Fails (exit 1) if any expected
 algorithm family is missing from the scan results.
 """
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import os
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-for pkg in (
-    "shared/shared_config",
-    "shared/shared_logging",
-    "shared/shared_models",
-    "services/api",
-    "services/database",
-    "services/scanner",
-    "services/evidence",
-    "services/normalization",
-    "services/policy",
-    "services/drift",
-    "services/worker",
-    "services/deduplication",
-    "services/cbom",
-):
-    sys.path.insert(0, str(ROOT / pkg))
-
-os.environ.setdefault("CRYPTOSCAN_ROOT", str(ROOT))
-
 from worker.pipeline.pipeline_runner import PipelineRunner  # noqa: E402
 
 

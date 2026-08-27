@@ -2,39 +2,13 @@
 """Run the bundled sample scan so a fresh deploy has inventory to inspect."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
 
-import os
-import sys
+bootstrap()
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-os.environ.setdefault("CRYPTOSCAN_ROOT", str(ROOT))
-sys.path[:0] = [
-    str(ROOT / "shared" / "shared_config"),
-    str(ROOT / "shared" / "shared_logging"),
-    str(ROOT / "shared" / "shared_models"),
-    str(ROOT / "services" / "api"),
-    str(ROOT / "services" / "database"),
-    str(ROOT / "services" / "scanner"),
-    str(ROOT / "services" / "evidence"),
-    str(ROOT / "services" / "normalization"),
-    str(ROOT / "services" / "policy"),
-    str(ROOT / "services" / "drift"),
-    str(ROOT / "services" / "worker"),
-    str(ROOT / "services" / "deduplication"),
-    str(ROOT / "services" / "cbom"),
-    str(ROOT / "services" / "container_scanner"),
-    str(ROOT / "services" / "network_scanner"),
-    str(ROOT / "services" / "cloud_scanner"),
-    str(ROOT / "services" / "graph_engine"),
-    str(ROOT / "services" / "business_context"),
-    str(ROOT / "services" / "quantum"),
-    str(ROOT / "services" / "remediation"),
-    str(ROOT / "services" / "reporting"),
-    str(ROOT / "services" / "ot_scanner"),
-    str(ROOT / "services" / "vendor_intel"),
-    str(ROOT / "services" / "agility"),
-]
 
 
 def main() -> None:

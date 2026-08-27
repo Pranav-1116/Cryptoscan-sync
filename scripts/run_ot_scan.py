@@ -2,13 +2,15 @@
 """Passive OT/ICS crypto scan of a capture tree. Never sends packets."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import json
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "services" / "ot_scanner"))
 
 from ot_scanner.core.scanner import OtPassiveScanner  # noqa: E402
 

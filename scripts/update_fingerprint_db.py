@@ -2,15 +2,16 @@
 """Merge seed hash files into the container fingerprint catalog."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "services" / "container_scanner" / "container_scanner" / "data"
-sys.path.insert(0, str(ROOT / "services" / "container_scanner"))
 
 
 def main() -> None:

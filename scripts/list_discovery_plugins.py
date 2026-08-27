@@ -2,16 +2,14 @@
 """Print the registered DiscoveryPlugin catalog."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import json
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [
-    str(ROOT / "services" / "scanner"),
-    str(ROOT / "shared" / "shared_models"),
-]
 
 
 def main(argv: list[str] | None = None) -> int:

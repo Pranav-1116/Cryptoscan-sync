@@ -2,14 +2,14 @@
 """Seed business processes used by impact scoring."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "services" / "database"))
-sys.path.insert(0, str(ROOT / "shared" / "shared_config"))
 
 DEFAULT = ROOT / "config" / "business-processes.yaml"
 

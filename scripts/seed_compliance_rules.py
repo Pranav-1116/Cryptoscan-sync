@@ -2,12 +2,13 @@
 """Load and validate every policy YAML rule in the pack."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
 
-import sys
+bootstrap()
+
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "services" / "policy"))
 
 RULES = ROOT / "services" / "policy" / "rule_definitions"
 

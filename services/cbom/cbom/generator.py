@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import json
 from datetime import datetime, timezone
 from typing import Any
-from base64 import urlsafe_b64encode
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from cbom.mappers.oid_lookup import lookup_oid
 from cbom.mappers.primitive_mapper import map_primitive
-
-
-
-def _b64url(data: bytes) -> bytes:
-    return urlsafe_b64encode(data).rstrip(b"=")
+from shared_models.canonical import (
+    b64url_decode,
+    b64url_encode,
+    canonical_bytes,
+    canonical_json,
+    constant_time_eq,
+    hmac_sha256,
+)
 
 
 class CbomGenerator:
@@ -132,11 +133,11 @@ class CbomGenerator:
         RFC 7515 verifier can validate it independently of CryptoScan.
         """
         unsigned = self._without_signature(bom)
-        payload = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        header = json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8")
-        signing_input = b".".join([_b64url(header), _b64url(payload)])
-        signature = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
-        jws = signing_input.decode("ascii") + "." + _b64url(signature).decode("ascii")
+        payload = canonical_bytes(unsigned)
+        header = canonical_json({"alg": "HS256", "typ": "JWT"}).encode("utf-8")
+        signing_input = f"{b64url_encode(header)}.{b64url_encode(payload)}".encode("ascii")
+        signature = hmac_sha256(secret, signing_input)
+        jws = signing_input.decode("ascii") + "." + b64url_encode(signature)
 
         signed = dict(unsigned)
         metadata = dict(signed.get("metadata") or {})
@@ -157,22 +158,17 @@ class CbomGenerator:
         if jws:
             try:
                 header_b64, payload_b64, sig_b64 = str(jws).split(".")
-                from base64 import urlsafe_b64decode
-
-                def _pad(chunk: str) -> str:
-                    return chunk + "=" * (-len(chunk) % 4)
-
-                header = json.loads(urlsafe_b64decode(_pad(header_b64)))
+                header = json.loads(b64url_decode(header_b64))
                 if header.get("alg") != "HS256":
                     return False
                 signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-                expected_sig = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
-                actual_sig = urlsafe_b64decode(_pad(sig_b64))
-                unsigned = json.loads(urlsafe_b64decode(_pad(payload_b64)))
+                expected_sig = hmac_sha256(secret, signing_input)
+                actual_sig = b64url_decode(sig_b64)
+                unsigned = json.loads(b64url_decode(payload_b64))
                 # The JWS payload must be the BOM itself (minus signature props).
                 canonical = self._without_signature(bom)
-                return hmac.compare_digest(actual_sig, expected_sig) and unsigned == json.loads(
-                    json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                return constant_time_eq(actual_sig, expected_sig) and unsigned == json.loads(
+                    canonical_json(canonical)
                 )
             except Exception:
                 return False
@@ -180,11 +176,8 @@ class CbomGenerator:
         expected = props.get("cryptoscan:signature")
         if not expected:
             return False
-        payload = json.dumps(
-            self._without_signature(bom), sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-        digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(str(expected), digest)
+        digest = hmac_sha256(secret, canonical_bytes(self._without_signature(bom))).hex()
+        return constant_time_eq(str(expected), digest)
 
     def _without_signature(self, bom: dict[str, Any]) -> dict[str, Any]:
         cleaned = dict(bom)

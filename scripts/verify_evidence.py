@@ -2,13 +2,14 @@
 """Re-verify content hashes stored for a scan."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [str(ROOT / "services" / "database"), str(ROOT / "services" / "evidence")]
 
 
 def main() -> None:

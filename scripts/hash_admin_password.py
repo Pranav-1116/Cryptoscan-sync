@@ -2,13 +2,15 @@
 """Print a PBKDF2 hash for ADMIN_PASSWORD_HASH."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import getpass
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "services" / "api"))
 
 from api.security.passwords import hash_password  # noqa: E402
 

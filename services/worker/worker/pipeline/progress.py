@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Any
 
 PIPELINE_STAGES = (
@@ -24,7 +23,10 @@ PIPELINE_STAGES = (
 
 
 def utcnow() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    """ISO-8601 UTC timestamp (shared_models.chrono contract)."""
+    from shared_models.chrono import iso_utc
+
+    return iso_utc()
 
 
 def build_progress(

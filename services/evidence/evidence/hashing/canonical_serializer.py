@@ -3,7 +3,6 @@ Canonical JSON serializer for deterministic hashing.
 Ensures identical content always produces identical hash.
 """
 
-import json
 from typing import Any, Dict
 import logging
 
@@ -37,16 +36,11 @@ class CanonicalSerializer:
         # Remove runtime-only fields
         cleaned = CanonicalSerializer._clean_data(data)
         
-        # Sort keys recursively and serialize
-        canonical_json = json.dumps(
-            cleaned,
-            sort_keys=True,
-            separators=(',', ':'),  # No spaces
-            ensure_ascii=False,
-            default=CanonicalSerializer._json_serializer
-        )
-        
-        return canonical_json.encode("utf-8")
+        # Shared canonical form (shared_models.canonical) keeps evidence
+        # hashes interoperable with CBOM signatures and fingerprints.
+        from shared_models.canonical import canonical_bytes
+
+        return canonical_bytes(cleaned, default=CanonicalSerializer._json_serializer)
     
     @staticmethod
     def serialize_to_bytes(data: Dict[str, Any]) -> bytes:

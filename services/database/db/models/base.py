@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import DateTime, String, func
 from sqlalchemy.orm import Mapped, mapped_column
@@ -14,7 +14,10 @@ __all__ = ["Base", "BaseModel", "utcnow", "new_id"]
 
 
 def utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    """Aware UTC now (shared_models.chrono contract)."""
+    from shared_models.chrono import utcnow as _utcnow
+
+    return _utcnow()
 
 
 def new_id() -> str:

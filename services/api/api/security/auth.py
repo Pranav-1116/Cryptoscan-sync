@@ -36,12 +36,10 @@ _FAILURES: dict[str, list[float]] = defaultdict(list)
 
 
 def _aware(dt: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes — assume UTC."""
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt
+    """SQLite returns naive datetimes — assume UTC (shared_models.chrono)."""
+    from shared_models.chrono import aware
+
+    return aware(dt)
 
 
 class AuthService:

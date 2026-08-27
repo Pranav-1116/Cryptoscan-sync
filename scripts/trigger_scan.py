@@ -2,30 +2,16 @@
 """Trigger a scan via the running API or inline pipeline."""
 
 from __future__ import annotations
+from _bootstrap import bootstrap  # noqa: E402
+
+bootstrap()
 
 import argparse
 import json
 import os
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path[:0] = [
-    str(ROOT / "shared" / "shared_config"),
-    str(ROOT / "shared" / "shared_logging"),
-    str(ROOT / "shared" / "shared_models"),
-    str(ROOT / "services" / "api"),
-    str(ROOT / "services" / "database"),
-    str(ROOT / "services" / "scanner"),
-    str(ROOT / "services" / "evidence"),
-    str(ROOT / "services" / "normalization"),
-    str(ROOT / "services" / "policy"),
-    str(ROOT / "services" / "drift"),
-    str(ROOT / "services" / "worker"),
-    str(ROOT / "services" / "deduplication"),
-    str(ROOT / "services" / "cbom"),
-    str(ROOT / "services" / "container_scanner"),
-]
 
 
 def main() -> None:
