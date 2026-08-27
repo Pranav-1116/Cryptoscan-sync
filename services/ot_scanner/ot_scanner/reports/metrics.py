@@ -63,6 +63,17 @@ def render_prometheus(payload: dict[str, Any] | None) -> str:
         out += _family("cryptoscan_ot_devices", "OT devices observed", [(None, payload.get("device_count", 0))])
         out += _family("cryptoscan_ot_unencrypted_observations", "Unencrypted protocol observations", [(None, payload.get("unencrypted", 0))])
     out += _family("cryptoscan_ot_packets_sent", "Packets sent by the passive OT scanner (always 0)", [(None, 0)])
+    zones = payload.get("zones") if isinstance(payload.get("zones"), dict) else None
+    if zones:
+        out += _family("cryptoscan_ot_zones", "Observed /24 zones (IEC 62443 approximation)", [(None, zones.get("zone_count", 0))])
+        out += _family(
+            "cryptoscan_ot_cross_zone_unencrypted_flows",
+            "Unencrypted flows crossing zone boundaries",
+            [(None, zones.get("cross_zone_unencrypted", 0))],
+        )
+    observations = payload.get("observation_summary") if isinstance(payload.get("observation_summary"), list) else None
+    if observations is not None:
+        out += _family("cryptoscan_ot_distinct_observations", "Deduplicated (device, protocol, issue) observations", [(None, len(observations))])
     if telemetry:
         active = str(telemetry.get("status") or "SKIPPED")
         out += _family(

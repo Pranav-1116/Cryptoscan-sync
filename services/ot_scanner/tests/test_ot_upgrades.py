@@ -6,7 +6,7 @@ import json
 
 from ot_scanner.core.scanner import OtPassiveScanner
 from ot_scanner.main import main as cli_main
-from ot_scanner.protocols import iec61850, opcua, s7comm
+from ot_scanner.protocols import opcua, s7comm
 from ot_scanner.reports.metrics import render_prometheus
 from ot_scanner.reports.posture import build_ot_posture, build_ot_telemetry
 

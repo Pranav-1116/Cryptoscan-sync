@@ -43,6 +43,10 @@ def build_ot_posture(*, findings: list[dict[str, Any]], devices: list[dict[str, 
         if finding.get("vulnerabilities") and device.get("ip_address"):
             ips_with_cves.add(str(device["ip_address"]))
 
+    from ot_scanner.reports.zones import cross_zone_flows
+
+    cross_zone = cross_zone_flows(findings)
+
     unencrypted_safety = sum(
         1
         for finding in findings
@@ -59,6 +63,8 @@ def build_ot_posture(*, findings: list[dict[str, Any]], devices: list[dict[str, 
         issues.append("OT_WEAK_CRYPTO")
     if unencrypted > unencrypted_safety:
         issues.append("OT_UNENCRYPTED_TRAFFIC")
+    if cross_zone:
+        issues.append("OT_CROSS_ZONE_UNENCRYPTED")
 
     fail_issues = {"OT_DEVICE_WITH_CVES", "OT_UNENCRYPTED_SAFETY_CRITICAL"}
     posture = "FAIL" if fail_issues & set(issues) else ("WARN" if issues else "PASS")
@@ -70,6 +76,10 @@ def build_ot_posture(*, findings: list[dict[str, Any]], devices: list[dict[str, 
             "OT_UNENCRYPTED_SAFETY_CRITICAL": f"{unencrypted_safety} unencrypted observation(s) on SAFETY_CRITICAL devices",
             "OT_WEAK_CRYPTO": f"{weak} observation(s) using weak crypto (SHA-1 MACs / RSA-1024 / legacy policies)",
             "OT_UNENCRYPTED_TRAFFIC": f"{unencrypted} unencrypted observation(s) on non-safety devices",
+            "OT_CROSS_ZONE_UNENCRYPTED": (
+                f"{len(cross_zone)} unencrypted flow(s) crossing zone boundaries "
+                "(IEC 62443 conduits uncontrolled)"
+            ),
         }[issues[0]]
 
     return {
@@ -83,6 +93,7 @@ def build_ot_posture(*, findings: list[dict[str, Any]], devices: list[dict[str, 
         "unencrypted_safety_critical": unencrypted_safety,
         "weak_crypto_observations": weak,
         "devices_with_cves": sorted(ips_with_cves),
+        "cross_zone_unencrypted_flows": len(cross_zone),
         "device_count": len(devices),
     }
 

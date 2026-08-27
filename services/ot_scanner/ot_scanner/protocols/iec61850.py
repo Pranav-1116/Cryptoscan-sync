@@ -5,6 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 
+def _multicast_note(record: dict[str, Any]) -> dict[str, Any]:
+    """IEC 61850 assigns dedicated multicast MACs: 01:0C:CD:01 (GOOSE), 01:0C:CD:04 (SV)."""
+    mac = str(record.get("dst_mac") or record.get("dstmac") or "").upper()
+    if mac.startswith("01:0C:CD"):
+        return {"multicast": True, "multicast_mac": mac}
+    return {}
+
+
 def analyze(record: dict[str, Any]) -> dict[str, Any]:
     proto = str(record.get("protocol") or "").lower()
     if "goose" in proto:
@@ -19,6 +27,7 @@ def analyze(record: dict[str, Any]) -> dict[str, Any]:
             "compliance_issue": "OT_UNENCRYPTED_GOOSE",
             "confidence": "MEDIUM",
             "note": "GOOSE tripping frames carry no native security; segmentation is the only control.",
+            **_multicast_note(record),
         }
     if proto in {"sv", "sampled-values", "sampledvalues"} or "sampled" in proto:
         return {
@@ -30,6 +39,7 @@ def analyze(record: dict[str, Any]) -> dict[str, Any]:
             "compliance_issue": "OT_UNENCRYPTED_SV",
             "confidence": "MEDIUM",
             "note": "Sampled Values streams are unauthenticated by design; network segmentation required.",
+            **_multicast_note(record),
         }
     tls = str(record.get("tls") or "").lower() in {"1", "true", "yes", "on"}
     if tls:

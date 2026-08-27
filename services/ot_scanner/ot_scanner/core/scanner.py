@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from ot_scanner.core.safety import OtSafetyError, forbid, send_packet
-from ot_scanner.protocols import dnp3, iec61850, modbus, opcua, s7comm
+from ot_scanner.protocols import dnp3, enip, iec104, iec61850, modbus, mqtt, opcua, profinet, s7comm
 
 OUI = {
     "00:1B:1B": "Siemens",
@@ -25,6 +25,15 @@ CVE_TABLE = (
         "cve": "CVE-2020-15782",
         "cvss": 9.1,
         "summary": "Hardcoded encryption key in firmware",
+    },
+    {
+        # CISA ICSA-15-202-01: EN100 module V4.24 or prior; fixed in V4.25
+        "vendor": "Siemens",
+        "product": "SIPROTEC",
+        "max_exclusive": "4.25",
+        "cve": "CVE-2015-5374",
+        "cvss": 7.8,
+        "summary": "Remote DoS via crafted UDP/50000 packets (EN100 Ethernet module)",
     },
 )
 
@@ -81,12 +90,13 @@ class OtPassiveScanner:
         if stripped.startswith("{") or stripped.startswith("["):
             return self._parse_json(stripped, path)
         out = []
-        for line in text.splitlines():
+        for lineno, line in enumerate(text.splitlines(), start=1):
             if len(out) >= MAX_RECORDS:
                 break
             rec = self._parse_line(line)
             if rec:
                 rec["source_file"] = str(path)
+                rec["source_line"] = lineno
                 out.append(rec)
         return out
 
@@ -128,6 +138,9 @@ class OtPassiveScanner:
             return None
         proto = (fields.get("proto") or fields.get("protocol") or "").lower()
         port = fields.get("port") or ""
+        port_proto = {"44818": "ethernetip", "2222": "ethernetip", "2404": "iec104", "1883": "mqtt", "8883": "mqtt"}.get(port)
+        if not proto and port_proto:
+            proto = port_proto
         if not proto:
             if port == "4840" or "opcua" in raw.lower() or "opc-ua" in raw.lower():
                 proto = "opcua"
@@ -141,6 +154,14 @@ class OtPassiveScanner:
                 proto = "sv"
             elif "s7" in raw.lower():
                 proto = "s7comm"
+            elif "ethernet-ip" in raw.lower() or "ethernetip" in raw.lower() or "enip" in raw.lower():
+                proto = "ethernetip"
+            elif "iec-104" in raw.lower() or "iec104" in raw.lower() or "60870" in raw.lower():
+                proto = "iec104"
+            elif "profinet" in raw.lower():
+                proto = "profinet"
+            elif "mqtt" in raw.lower():
+                proto = "mqtt"
             elif port == "102" or "61850" in raw.lower():
                 proto = "iec61850"
         if not proto:
@@ -166,6 +187,14 @@ class OtPassiveScanner:
                 analysis = iec61850.analyze(record)
             elif "s7" in proto:
                 analysis = s7comm.analyze(record)
+            elif "ethernet" in proto or proto in {"enip", "cip"}:
+                analysis = enip.analyze(record)
+            elif "104" in proto or "60870" in proto:
+                analysis = iec104.analyze(record)
+            elif "profinet" in proto or proto == "pnio":
+                analysis = profinet.analyze(record)
+            elif "mqtt" in proto:
+                analysis = mqtt.analyze(record)
             elif "61850" in proto or "iec" in proto:
                 analysis = iec61850.analyze(record)
             else:
@@ -200,6 +229,7 @@ class OtPassiveScanner:
                     "src_ip": ip,
                     "dst_ip": record.get("dst_ip") or record.get("dst"),
                     "file_path": record.get("source_file"),
+                    "line": record.get("source_line"),
                     "language": "OT",
                 },
                 "device": device,
@@ -213,8 +243,34 @@ class OtPassiveScanner:
             findings.append(finding)
         unencrypted = [row for row in findings if not row.get("has_crypto")]
         from ot_scanner.reports.posture import build_ot_posture, build_ot_telemetry
+        from ot_scanner.reports.zones import derive_zones
 
         device_rows = list(devices.values())
+        summary: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for finding in findings:
+            src = finding.get("source") or {}
+            key = (
+                str((finding.get("device") or {}).get("ip_address")),
+                str(finding.get("protocol")),
+                str(finding.get("compliance_issue")),
+            )
+            entry = summary.get(key)
+            if entry is None:
+                entry = {
+                    "device": key[0],
+                    "protocol": key[1],
+                    "compliance_issue": finding.get("compliance_issue"),
+                    "unencrypted": not finding.get("has_crypto"),
+                    "observations": 0,
+                    "first_source": {"file": src.get("file_path"), "line": src.get("line")},
+                    "last_source": {"file": src.get("file_path"), "line": src.get("line")},
+                }
+                summary[key] = entry
+            entry["observations"] += 1
+            entry["last_source"] = {"file": src.get("file_path"), "line": src.get("line")}
+        observation_summary = sorted(
+            summary.values(), key=lambda row: (-row["observations"], row["device"], row["protocol"])
+        )
         return {
             "scan_id": scan_id,
             "mode": self.mode,
@@ -225,6 +281,8 @@ class OtPassiveScanner:
             "unencrypted": len(unencrypted),
             "risk_report": build_ot_posture(findings=findings, devices=device_rows),
             "ot_telemetry": build_ot_telemetry(records=len(records), findings=findings, devices=device_rows),
+            "zones": derive_zones(findings),
+            "observation_summary": observation_summary,
             "warning": "OT findings are PASSIVE OBSERVATIONS. Confidence: MEDIUM.",
         }
 
@@ -248,6 +306,12 @@ class OtPassiveScanner:
             return "RTU"
         if "Modbus" in protocol:
             return "PLC"
+        if "EtherNet" in protocol or "PROFINET" in protocol:
+            return "PLC"
+        if protocol.startswith("IEC-104"):
+            return "RTU"
+        if protocol == "MQTT":
+            return "GATEWAY"
         return "OT"
 
 
@@ -269,7 +333,7 @@ def lookup_cves(device: dict[str, Any]) -> list[dict[str, Any]]:
 def _version_lt(current: str, exclusive_max: str) -> bool:
     def parts(value: str) -> list[int]:
         nums = re.findall(r"\d+", value)
-        return [int(item) for item in nums[:3]] or [0]
+        return ([int(item) for item in nums[:3]] + [0, 0, 0])[:3]
 
     return parts(current) < parts(exclusive_max)
 
