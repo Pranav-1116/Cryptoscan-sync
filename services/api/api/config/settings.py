@@ -5,13 +5,13 @@ from __future__ import annotations
 from functools import lru_cache
 
 from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
 
-WEAK_SECRET_KEYS = {
-    "dev-cryptoscan-secret-key-change-in-production-32",
-    "change-me-to-a-random-64-character-secret-key-please",
-    "change-this-secret-in-production-32chars",
-}
+from shared_config.base_settings import KNOWN_WEAK_SECRETS, BaseSettings
+
+# Canonical weak-secret registry lives in shared_config; re-exported here for
+# the production gate below.
+WEAK_SECRET_KEYS = set(KNOWN_WEAK_SECRETS)
 WEAK_PASSWORDS = {"", "cryptoscan", "admin", "password", "changeme", "secret"}
 WEAK_WEBHOOK_SECRETS = {
     "dev-webhook-secret-change-me-32chars!!",
@@ -20,6 +20,9 @@ WEAK_WEBHOOK_SECRETS = {
 
 
 class APISettings(BaseSettings):
+    """API settings — inherits env/log-level validation and secret redaction
+    from shared_config.BaseSettings (enterprise base)."""
+
     model_config = SettingsConfigDict(env_file=".env", extra="allow", case_sensitive=False)
 
     HOST: str = "0.0.0.0"
@@ -71,13 +74,9 @@ class APISettings(BaseSettings):
             return ["*"]
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
-    @property
-    def is_production(self) -> bool:
-        return self.ENVIRONMENT.lower() == "production"
+    # is_production / redacted() / validate_for_production() come from the
+    # shared enterprise base.
 
-    @property
-    def is_test(self) -> bool:
-        return self.ENVIRONMENT.lower() in {"test", "testing"}
 
     @property
     def docs_enabled(self) -> bool:

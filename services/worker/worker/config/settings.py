@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import SettingsConfigDict
+
+from shared_config.base_settings import BaseSettings
 
 
 class WorkerSettings(BaseSettings):
+    """Worker settings — inherits env/log-level validation and secret
+    redaction from shared_config.BaseSettings (enterprise base)."""
+
     model_config = SettingsConfigDict(env_file=".env", extra="allow", case_sensitive=False)
 
     ENVIRONMENT: str = "development"
