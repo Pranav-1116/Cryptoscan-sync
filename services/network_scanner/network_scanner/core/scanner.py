@@ -89,9 +89,18 @@ class NetworkTlsScanner:
         sni: str | None = None,
         starttls: str | bool | None = None,
         workers: int | None = None,
+        scan_versions: bool = False,
+        scan_ciphers: bool = False,
     ) -> dict[str, Any]:
         endpoint_list = [str(item) for item in endpoints if str(item).strip()]
-        results = self._probe_all(endpoint_list, sni=sni, starttls=starttls, workers=workers)
+        results = self._probe_all(
+            endpoint_list,
+            sni=sni,
+            starttls=starttls,
+            workers=workers,
+            scan_versions=scan_versions,
+            scan_ciphers=scan_ciphers,
+        )
         inventory = merge_certificates([], self._live_certs(results))
         self._attach_revocation(inventory)
         return {
@@ -113,17 +122,22 @@ class NetworkTlsScanner:
         sni: str | None = None,
         starttls: str | bool | None = None,
         workers: int | None = None,
+        scan_versions: bool = False,
+        scan_ciphers: bool = False,
     ) -> list[dict[str, Any]]:
         """Probe endpoints in parallel (bounded); failures never stop the rest."""
         if not endpoints:
             return []
         worker_count = max(1, min(workers or self.workers, len(endpoints)))
         if worker_count == 1:
-            return [self._safe_probe(item, sni=sni, starttls=starttls) for item in endpoints]
+            return [
+                self._safe_probe(item, sni=sni, starttls=starttls, scan_versions=scan_versions, scan_ciphers=scan_ciphers)
+                for item in endpoints
+            ]
         by_endpoint: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(max_workers=worker_count) as pool:
             futures = {
-                pool.submit(self._safe_probe, item, sni=sni, starttls=starttls): item
+                pool.submit(self._safe_probe, item, sni=sni, starttls=starttls, scan_versions=scan_versions, scan_ciphers=scan_ciphers): item
                 for item in endpoints
             }
             for future in as_completed(futures):
@@ -132,9 +146,24 @@ class NetworkTlsScanner:
         # keep input order for deterministic reports
         return [by_endpoint[item] for item in endpoints if item in by_endpoint]
 
-    def _safe_probe(self, endpoint: str, *, sni: str | None = None, starttls: str | bool | None = None) -> dict[str, Any]:
+    def _safe_probe(
+        self,
+        endpoint: str,
+        *,
+        sni: str | None = None,
+        starttls: str | bool | None = None,
+        scan_versions: bool = False,
+        scan_ciphers: bool = False,
+    ) -> dict[str, Any]:
         try:
-            return probe_endpoint(endpoint, timeout=self.timeout, sni=sni, starttls=starttls)
+            return probe_endpoint(
+                endpoint,
+                timeout=self.timeout,
+                sni=sni,
+                starttls=starttls,
+                scan_versions=scan_versions,
+                scan_ciphers=scan_ciphers,
+            )
         except Exception as exc:  # noqa: BLE001 — one endpoint must not sink the scan
             return {
                 "finding_id": endpoint,
@@ -276,8 +305,10 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
         issues = row.get("policy_issues") or []
         if "WEAK_TLS_VERSION" in issues:
             weak_versions += 1
-        if "DISALLOWED_CIPHER" in issues or "WEAK_CIPHER_SUITE" in issues:
+        if "DISALLOWED_CIPHER" in issues or "WEAK_CIPHER_SUITE" in issues or "DISALLOWED_CIPHER_ACCEPTED" in issues:
             weak_suites += 1
+        if "WEAK_TLS_VERSION_ACCEPTED" in issues:
+            weak_versions += 1
     probed = len(results)
     ok = statuses.get("OK", 0)
     if probed == 0:

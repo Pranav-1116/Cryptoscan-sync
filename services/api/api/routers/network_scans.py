@@ -22,6 +22,8 @@ class HostScanRequest(BaseModel):
     sni: str | None = None
     starttls: str | None = None
     workers: int | None = None
+    scan_versions: bool = False
+    scan_ciphers: bool = False
 
 
 @router.post("")
@@ -34,7 +36,11 @@ def trigger_network_scan(
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
     result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
-        body.hosts, sni=body.sni, starttls=body.starttls
+        body.hosts,
+        sni=body.sni,
+        starttls=body.starttls,
+        scan_versions=body.scan_versions,
+        scan_ciphers=body.scan_ciphers,
     )
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)

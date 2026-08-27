@@ -209,7 +209,7 @@ def test_policy_issues_ordering():
 def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
     import network_scanner.core.scanner as scanner_mod
 
-    def slow_probe(endpoint, *, timeout=5.0, sni=None, starttls=None, check_http=True):
+    def slow_probe(endpoint, *, timeout=5.0, sni=None, starttls=None, check_http=True, **kwargs):
         time.sleep(0.3)
         return {"endpoint": endpoint, "status": "OK", "policy_issues": [], "metadata": {}}
 
@@ -226,7 +226,7 @@ def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
 def test_scan_hosts_telemetry_verdicts(monkeypatch):
     import network_scanner.core.scanner as scanner_mod
 
-    def fake_probe(endpoint, *, timeout=5.0, sni=None, starttls=None, check_http=True):
+    def fake_probe(endpoint, *, timeout=5.0, sni=None, starttls=None, check_http=True, **kwargs):
         if endpoint.startswith("weak"):
             return {"endpoint": endpoint, "status": "OK", "policy_issues": ["WEAK_TLS_VERSION", "DISALLOWED_CIPHER"], "metadata": {}}
         if endpoint.startswith("dead"):

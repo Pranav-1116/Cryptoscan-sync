@@ -27,6 +27,8 @@ class HostScanRequest(BaseModel):
     sni: str | None = None
     starttls: str | None = None  # auto | smtp | imap | pop3 | ftp | ldap | postgresql | off
     workers: int | None = None
+    scan_versions: bool = False
+    scan_ciphers: bool = False
 
 
 class TargetCreate(BaseModel):
@@ -112,6 +114,44 @@ def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_
     return result
 
 
+class SubnetDiscoverRequest(BaseModel):
+    cidr: str
+    ports: list[int] = Field(default_factory=lambda: [443, 8443])
+    timeout: float = 1.5
+    scan: bool = True
+    scan_versions: bool = False
+    scan_ciphers: bool = False
+    workers: int | None = None
+
+
+@router.post("/network/discover")
+def discover_subnet_endpoints(
+    body: SubnetDiscoverRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Sweep a CIDR for open TLS ports and optionally scan each endpoint."""
+    from network_scanner.discovery.subnet_discoverer import discover_subnet
+
+    result = discover_subnet(body.cidr, body.ports or [443, 8443], timeout=body.timeout)
+    if body.scan and result.get("endpoints"):
+        scanned = NetworkTlsScanner(live=True, workers=body.workers).scan_hosts(
+            result["endpoints"],
+            scan_versions=body.scan_versions,
+            scan_ciphers=body.scan_ciphers,
+        )
+        result["scan"] = {
+            "probe_telemetry": scanned.get("probe_telemetry"),
+            "certificates": scanned.get("certificates"),
+            "alerts": scanned.get("alerts"),
+        }
+        repo = CertificateRepository(db)
+        for cert in scanned.get("certificates") or []:
+            if cert.get("fingerprint_sha256"):
+                repo.upsert(cert)
+    return result
+
+
 @router.get("/certificates/{cert_id}/usages")
 def certificate_usages(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)
@@ -149,7 +189,11 @@ def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), d
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
     result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
-        body.hosts, sni=body.sni, starttls=body.starttls
+        body.hosts,
+        sni=body.sni,
+        starttls=body.starttls,
+        scan_versions=body.scan_versions,
+        scan_ciphers=body.scan_ciphers,
     )
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)

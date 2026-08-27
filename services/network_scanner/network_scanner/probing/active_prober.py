@@ -41,6 +41,8 @@ def probe_endpoint(
     sni: str | None = None,
     starttls: str | bool | None = None,
     check_http: bool = True,
+    scan_versions: bool = False,
+    scan_ciphers: bool = False,
 ) -> dict[str, Any]:
     host, port = _split_endpoint(endpoint)
     finding: dict[str, Any] = {
@@ -68,6 +70,10 @@ def probe_endpoint(
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+    try:
+        context.set_alpn_protocols(["h2", "http/1.1"])
+    except (ssl.SSLError, NotImplementedError):
+        pass
     starttls_protocol = _resolve_starttls(starttls, port)
     if starttls_protocol == "none":
         starttls_protocol = None
@@ -143,6 +149,28 @@ def probe_endpoint(
                     },
                     hsts=headers,
                 )
+                alpn = None
+                try:
+                    alpn = tls.selected_alpn_protocol()
+                except (ssl.SSLError, NotImplementedError, ValueError):
+                    alpn = None
+                if scan_versions:
+                    from network_scanner.probing.version_floor import probe_version_floor
+
+                    floor = probe_version_floor(host, port, ip=ip, timeout=min(timeout, 4.0), sni=sni)
+                    finding["version_floor"] = floor
+                    if floor.get("weak_accepted"):
+                        issues.append("WEAK_TLS_VERSION_ACCEPTED")
+                if scan_ciphers:
+                    from network_scanner.probing.cipher_probe import probe_weak_ciphers
+
+                    weak = probe_weak_ciphers(host, port, ip=ip, timeout=min(timeout, 4.0), sni=sni)
+                    finding["weak_cipher_probe"] = weak
+                    if weak.get("disallowed_accepted"):
+                        issues.append("DISALLOWED_CIPHER_ACCEPTED")
+                    if weak.get("cbc_accepted"):
+                        issues.append("CBC_ACCEPTED")
+                issues = sorted(set(issues), key=lambda issue: _issue_rank(issue))
                 finding.update(
                     {
                         "status": "OK",
@@ -167,6 +195,7 @@ def probe_endpoint(
                             "raw_transformation": parsed.get("cipher_suite"),
                             "status": verdict["status"],
                             "quantum_impact": verdict["quantum_impact"],
+                            "alpn": alpn,
                         },
                         "compliance_issue": headline_issue(issues),
                         "policy_issues": issues,
@@ -186,10 +215,16 @@ def probe_endpoint(
         finding["status"] = "PORT_CLOSED"
         finding["metadata"]["confidence"] = "LOW"
     except ssl.SSLError as exc:
-        finding["status"] = "TLS_ERROR"
+        error_type = _classify_ssl_error(exc)
         finding["error"] = str(exc)
-        finding["error_type"] = _classify_ssl_error(exc)
-        finding["metadata"]["confidence"] = "MEDIUM"
+        finding["error_type"] = error_type
+        if error_type == "MTLS_REQUIRED":
+            # the server demanded a client certificate: a fact, not a failure
+            finding["status"] = "MTLS_REQUIRED"
+            finding["metadata"]["confidence"] = "HIGH"
+        else:
+            finding["status"] = "TLS_ERROR"
+            finding["metadata"]["confidence"] = "MEDIUM"
     except OSError as exc:
         finding["status"] = "CONNECT_ERROR"
         finding["error"] = str(exc)
@@ -213,10 +248,24 @@ def _resolve_starttls(starttls: str | bool | None, port: int) -> str | None:
 
 def _classify_ssl_error(exc: ssl.SSLError) -> str:
     text = str(exc).lower()
+    compact = text.replace("_", " ")
+    if "certificate required" in compact or "peer did not return a certificate" in compact:
+        return "MTLS_REQUIRED"
     if "version" in text or "protocol" in text:
         return "PROTOCOL_VERSION_MISMATCH"
     if "cipher" in text:
         return "CIPHER_SUITE_MISMATCH"
+    if "handshake failure" in compact:
+        # NOTE: servers that require a client certificate often send this
+        # generic alert instead of certificate_required — treat as a TLS
+        # mismatch, mTLS detection relies on the explicit alert when present
+        return "HANDSHAKE_FAILURE"
     if "certificate" in text or "verify" in text:
         return "CERTIFICATE_VERIFY_FAILED"
     return "TLS_ERROR"
+
+
+def _issue_rank(issue: str) -> int:
+    from network_scanner.probing.cipher_suite_parser import _ISSUE_ORDER
+
+    return _ISSUE_ORDER.get(issue, 99) - (100 if issue.endswith("_ACCEPTED") else 0)
