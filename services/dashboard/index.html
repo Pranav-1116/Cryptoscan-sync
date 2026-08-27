@@ -785,56 +785,277 @@ async function startEstateCampaign() {
   else go('cloud');
 }
 
+// ---------- Interactive dependency graph ----------
+// Force-directed layout + click-to-highlight connected systems.
+// No external libraries: deterministic seeded layout, SVG pan/zoom,
+// BFS neighbor highlighting with hop distances.
+
+const GV_WIDTH = 960, GV_HEIGHT = 560, GV_MAX_NODES = 140;
+const GV_COLORS = { System:'#3ee0c5', CryptoAsset:'#7aa2ff', Vendor:'#ff8a4a', BusinessProcess:'#b07aff', Certificate:'#ffd166', Owner:'#ff6b9d', Scope:'#f5c14a', CloudResource:'#f5c14a' };
+let graphState = { layout: null, transform: { k: 1, x: 0, y: 0 }, selected: null, hopLimit: 2 };
+
+function gvColor(n) { return GV_COLORS[n.group || n.kind] || '#8fa3c8'; }
+function gvShort(id) { return (id || '').includes(':') ? (id || '').split(':').slice(1).join(':') : (id || ''); }
+
+function graphLayout(nodes, edges) {
+  // Mulberry32 PRNG — same graph always renders the same way.
+  let seed = 0x9E3779B9;
+  const rnd = () => {
+    seed |= 0; seed = seed + 0x6D2B79F5 | 0;
+    let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+  const idx = new Map(nodes.map((n, i) => [n.id, i]));
+  const pos = nodes.map((n, i) => {
+    const a = (2 * Math.PI * i) / Math.max(nodes.length, 1) + rnd() * 0.6;
+    const r = 0.30 + rnd() * 0.16;
+    return { x: GV_WIDTH / 2 + GV_WIDTH * 0.44 * r * Math.cos(a),
+             y: GV_HEIGHT / 2 + GV_HEIGHT * 0.44 * r * Math.sin(a), vx: 0, vy: 0 };
+  });
+  const es = edges
+    .map(e => [idx.get(e.from), idx.get(e.to)])
+    .filter(p => p[0] !== undefined && p[1] !== undefined && p[0] !== p[1]);
+  for (let it = 0; it < 180; it++) {
+    for (let i = 0; i < pos.length; i++) for (let j = i + 1; j < pos.length; j++) {
+      let dx = pos[i].x - pos[j].x, dy = pos[i].y - pos[j].y;
+      const d2 = dx * dx + dy * dy || 0.01;
+      if (d2 > 120000) continue;
+      const d = Math.sqrt(d2), f = 2200 / d2;
+      dx /= d; dy /= d;
+      pos[i].vx += dx * f; pos[i].vy += dy * f;
+      pos[j].vx -= dx * f; pos[j].vy -= dy * f;
+    }
+    for (const [a, b] of es) {
+      const dx = pos[b].x - pos[a].x, dy = pos[b].y - pos[a].y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      const f = (d - 120) * 0.02, ux = dx / d, uy = dy / d;
+      pos[a].vx += ux * f; pos[a].vy += uy * f;
+      pos[b].vx -= ux * f; pos[b].vy -= uy * f;
+    }
+    for (const p of pos) {
+      p.vx += (GV_WIDTH / 2 - p.x) * 0.0025; p.vy += (GV_HEIGHT / 2 - p.y) * 0.0025;
+      p.x += Math.max(-14, Math.min(14, p.vx)); p.y += Math.max(-14, Math.min(14, p.vy));
+      p.vx *= 0.85; p.vy *= 0.85;
+      p.x = Math.max(24, Math.min(GV_WIDTH - 24, p.x));
+      p.y = Math.max(24, Math.min(GV_HEIGHT - 24, p.y));
+    }
+  }
+  return pos;
+}
+
+function gvNeighbors(nodes, edges) {
+  const adj = new Map(nodes.map(n => [n.id, []]));
+  for (const e of edges) {
+    if (adj.has(e.from) && adj.has(e.to)) {
+      adj.get(e.from).push(e.to);
+      adj.get(e.to).push(e.from);
+    }
+  }
+  return adj;
+}
+
+// BFS up to hopLimit; returns { ids: Set, hops: Map<id, number> }.
+function gvReach(adj, startId, hopLimit) {
+  const hops = new Map([[startId, 0]]);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift();
+    const d = hops.get(cur);
+    if (d >= hopLimit) continue;
+    for (const nxt of adj.get(cur) || []) {
+      if (!hops.has(nxt)) { hops.set(nxt, d + 1); queue.push(nxt); }
+    }
+  }
+  return { ids: new Set(hops.keys()), hops };
+}
+
+function gvApplyView() {
+  const world = document.getElementById('gv-world');
+  if (!world || !graphState.layout) return;
+  const { k, x, y } = graphState.transform;
+  world.setAttribute('transform', `translate(${x} ${y}) scale(${k})`);
+}
+
+function gvApplyHighlight() {
+  const svg = document.getElementById('gv-svg');
+  if (!svg || !graphState.layout) return;
+  const { ids } = graphState.reach || { ids: null };
+  svg.querySelectorAll('[data-node]').forEach(el => {
+    const on = !ids || ids.has(el.dataset.node);
+    el.style.opacity = on ? '1' : '0.12';
+    el.setAttribute('stroke', el.dataset.node === graphState.selected ? '#ffffff' : 'none');
+    el.setAttribute('stroke-width', el.dataset.node === graphState.selected ? '2.5' : '0');
+  });
+  svg.querySelectorAll('[data-edge]').forEach(el => {
+    const [a, b] = el.dataset.edge.split('→');
+    const on = !ids || (ids.has(a) && ids.has(b));
+    el.style.opacity = on ? '1' : '0.06';
+  });
+  svg.querySelectorAll('[data-elabel]').forEach(el => {
+    const [a, b] = el.dataset.elabel.split('→');
+    el.style.display = (!ids || (ids.has(a) && ids.has(b))) ? '' : 'none';
+  });
+}
+
+function gvSelect(nodeId) {
+  graphState.selected = nodeId;
+  const limit = graphState.hopLimit;
+  graphState.reach = nodeId
+    ? gvReach(graphState.adj, nodeId, limit === 'all' ? 99 : limit)
+    : null;
+  gvApplyHighlight();
+  gvRenderDetails();
+  // Keep the blast-radius panel in sync when a System is selected.
+  const raw = nodeId ? gvShort(nodeId) : '';
+  const select = document.getElementById('blast-system');
+  if (select && raw && [...select.options].some(o => o.value === raw)) {
+    select.value = raw;
+    runBlast();
+  }
+}
+
+function gvRenderDetails() {
+  const box = document.getElementById('gv-details');
+  if (!box) return;
+  const id = graphState.selected;
+  if (!id || !graphState.layout) { box.innerHTML = '<span class="muted">Click a node to highlight everything connected to it.</span>'; return; }
+  const node = graphState.byId[id] || {};
+  const reach = graphState.reach || { hops: new Map() };
+  const kindOf = nid => (graphState.byId[nid] || {}).group || (graphState.byId[nid] || {}).kind || '';
+  const systems = [...reach.hops.entries()].filter(([nid]) => kindOf(nid) === 'System' && nid !== id)
+    .sort((a, b) => a[1] - b[1]);
+  const assets = [...reach.hops.entries()].filter(([nid]) => kindOf(nid) === 'CryptoAsset' && nid !== id);
+  const others = reach.hops.size - 1 - systems.length - assets.length;
+  box.innerHTML = `<div class="label">${node.group || node.kind || 'Node'}</div>
+    <div style="font-weight:600;margin:4px 0 8px">${node.label || gvShort(id)}</div>
+    <p class="muted" style="margin:0 0 8px">Within ${graphState.hopLimit === 'all' ? 'all' : graphState.hopLimit} hop${graphState.hopLimit === 1 ? '' : 's'}:</p>
+    <p style="margin:0 0 4px"><span style="color:${GV_COLORS.System}">●</span> ${systems.length} connected system${systems.length === 1 ? '' : 's'}</p>
+    <p style="margin:0 0 4px"><span style="color:${GV_COLORS.CryptoAsset}">●</span> ${assets.length} crypto asset${assets.length === 1 ? '' : 's'}</p>
+    ${others > 0 ? `<p style="margin:0 0 4px" class="muted">+ ${others} related nodes</p>` : ''}
+    <div style="margin-top:8px" class="mono muted">${id}</div>
+    ${systems.length ? `<div class="label" style="margin-top:10px">Connected systems</div>
+      <table><tbody>${systems.slice(0, 12).map(([nid, h]) =>
+        `<tr><td>${(graphState.byId[nid] || {}).label || gvShort(nid)}</td><td class="muted">${h} hop${h === 1 ? '' : 's'}</td></tr>`).join('')}
+        ${systems.length > 12 ? `<tr><td colspan=2 class="muted">+ ${systems.length - 12} more</td></tr>` : ''}</tbody></table>` : ''}`;
+}
+
 async function renderGraph(el) {
   const graph = await api('/graph');
   const health = graph.health || await api('/graph/health');
   const priorities = await api('/priorities');
   const backend = graph.backend || health.backend || 'memory';
-  const nodes = graph.nodes || [];
+  const allNodes = graph.nodes || [];
   const edges = graph.edges || [];
-  const systems = nodes.filter(n => (n.group||n.kind) === 'System');
-  const w = 640, h = 320;
-  const placed = nodes.slice(0, 48).map((n, i, arr) => {
-    const angle = (2 * Math.PI * i) / Math.max(arr.length, 1);
-    return { ...n, x: 320 + 130 * Math.cos(angle), y: 160 + 110 * Math.sin(angle) };
-  });
-  const byId = Object.fromEntries(placed.map(n => [n.id, n]));
+  const nodes = allNodes.slice(0, GV_MAX_NODES);
+  const truncated = allNodes.length - nodes.length;
+  const systems = nodes.filter(n => (n.group || n.kind) === 'System');
+
+  if (!graphState.layout || graphState.layoutKey !== nodes.length + ':' + edges.length) {
+    graphState.layout = graphLayout(nodes, edges);
+    graphState.layoutKey = nodes.length + ':' + edges.length;
+    graphState.transform = { k: 1, x: 0, y: 0 };
+    graphState.selected = null;
+    graphState.reach = null;
+  }
+  graphState.adj = gvNeighbors(nodes, edges);
+  graphState.byId = Object.fromEntries(nodes.map(n => [n.id, n]));
+
+  const pos = graphState.layout;
+  const byId = graphState.byId;
   const lines = edges.filter(e => byId[e.from] && byId[e.to]).map(e => {
-    const a = byId[e.from], b = byId[e.to];
-    return `<line x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#3a4a78" stroke-width="1.4"/>`;
+    const a = pos[nodes.findIndex(n => n.id === e.from)], b = pos[nodes.findIndex(n => n.id === e.to)];
+    if (!a || !b) return '';
+    return `<line data-edge="${e.from}→${e.to}" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}" stroke="#3a4a78" stroke-width="1.4"/>`;
   }).join('');
-  const dots = placed.map(n => `<g onclick="queryBlast('${(n.id||'').replace(/'/g, '')}')" style="cursor:pointer">
-    <circle cx="${n.x}" cy="${n.y}" r="8" fill="${n.group==='System'?'#3ee0c5':n.group==='CryptoAsset'?'#7aa2ff':n.group==='Vendor'?'#ff8a4a':'#f5c14a'}"/>
-    <text x="${n.x+10}" y="${n.y+4}" fill="#c5d4ff" font-size="10">${(n.label||n.id||'').toString().slice(0,18)}</text></g>`).join('');
+  const labels = edges.filter(e => byId[e.from] && byId[e.to]).map(e => {
+    const ia = nodes.findIndex(n => n.id === e.from), ib = nodes.findIndex(n => n.id === e.to);
+    const a = pos[ia], b = pos[ib];
+    if (!a || !b || !e.label) return '';
+    return `<text data-elabel="${e.from}→${e.to}" x="${(a.x + b.x) / 2}" y="${(a.y + b.y) / 2 - 3}" fill="#7d8fbf" font-size="9" text-anchor="middle" style="display:none">${e.label}</text>`;
+  }).join('');
+  const dots = nodes.map((n, i) => {
+    const p = pos[i];
+    const r = (n.group || n.kind) === 'System' ? 9 : 7;
+    return `<g style="cursor:pointer" data-nodeg="${n.id}">
+      <circle data-node="${n.id}" cx="${p.x}" cy="${p.y}" r="${r}" fill="${gvColor(n)}" stroke="none"/>
+      <text x="${p.x + r + 4}" y="${p.y + 3.5}" fill="#c5d4ff" font-size="10">${(n.label || gvShort(n.id) || '').toString().slice(0, 22)}</text></g>`;
+  }).join('');
+  const legend = Object.entries(GV_COLORS).filter(([k]) => nodes.some(n => (n.group || n.kind) === k))
+    .map(([k, c]) => `<span style="margin-right:14px"><span style="color:${c}">●</span> ${k}</span>`).join('');
+
   el.innerHTML = `<div class="top"><div><h2>Dependency graph</h2>
-    <p class="muted">${nodes.length} nodes · ${edges.length} edges · backend ${badge(backend === 'neo4j' ? 'PASS' : 'INFO')} ${backend}${health.ok ? '' : ' (memory fallback)'}</p></div>
-    <div class="row"><button class="btn secondary" onclick="syncGraph()">Sync Neo4j</button></div></div>
+    <p class="muted">${allNodes.length} nodes · ${edges.length} edges · backend ${badge(backend === 'neo4j' ? 'PASS' : 'INFO')} ${backend}${health.ok ? '' : ' (memory fallback)'}${truncated > 0 ? ` · showing first ${GV_MAX_NODES}` : ''}</p></div>
+    <div class="row"><button class="btn secondary" onclick="syncGraph()">Sync Neo4j</button>
+      <button class="btn secondary" onclick="gvClear()">Clear selection</button></div></div>
     <div class="card" style="margin-bottom:16px">
-      <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">${lines}${dots}</svg>
-    </div>
-    <div class="card" style="margin-bottom:16px">
-      <div class="label">Blast radius</div>
-      <div class="row">
-        <select id="blast-system">${systems.map(s => `<option value="${(s.id||'').split(':').pop()}">${s.label||s.name||s.id}</option>`).join('')}</select>
-        <input id="blast-hops" type="number" min="1" max="12" value="5" style="max-width:90px" />
-        <button class="btn" onclick="runBlast()">Query</button>
+      <div class="row" style="justify-content:space-between;margin-bottom:8px">
+        <div class="row">${legend}</div>
+        <div class="row"><span class="muted">Highlight hops</span>
+          <select id="gv-hops" onchange="graphState.hopLimit=this.value==='all'?'all':parseInt(this.value,10);gvSelect(graphState.selected)">
+            <option value="1">1</option><option value="2" selected>2</option><option value="3">3</option><option value="all">all</option>
+          </select></div>
       </div>
-      <div id="blast-out" class="muted" style="margin-top:10px">Click a node or run a query. Cypher walks CALLS*1..N on Neo4j when Bolt is up.</div>
+      <svg id="gv-svg" viewBox="0 0 ${GV_WIDTH} ${GV_HEIGHT}" width="100%" height="${GV_HEIGHT}" style="background:#0c1428;border-radius:8px;touch-action:none">
+        <g id="gv-world">${lines}${labels}${dots}</g>
+      </svg>
+      <p class="muted" style="margin:8px 0 0">Click a node → highlights every connected system within the hop limit. Drag to pan · scroll to zoom.</p>
     </div>
     <div class="grid" style="grid-template-columns:1fr 1fr">
+      <div class="card"><div class="label">Selection</div><div id="gv-details" style="min-height:80px"><span class="muted">Click a node to highlight everything connected to it.</span></div>
+        <div class="label" style="margin-top:14px">Blast radius</div>
+        <div class="row">
+          <select id="blast-system">${systems.map(s => `<option value="${gvShort(s.id)}">${s.label || s.name || s.id}</option>`).join('')}</select>
+          <input id="blast-hops" type="number" min="1" max="12" value="5" style="max-width:90px" />
+          <button class="btn" onclick="runBlast()">Query</button>
+        </div>
+        <div id="blast-out" class="muted" style="margin-top:10px">Click a node or run a query. Cypher walks CALLS*1..N on Neo4j when Bolt is up.</div>
+      </div>
       <div class="card"><div class="label">Nodes</div>
         <table><thead><tr><th>Kind</th><th>Name</th></tr></thead>
-        <tbody>${nodes.slice(0,40).map(n => `<tr><td>${n.group||n.kind||''}</td><td>${n.label||n.name||n.id}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">No systems yet</td></tr>'}
-        </tbody></table></div>
-      <div class="card"><div class="label">Prioritized assets</div>
+        <tbody>${nodes.slice(0, 40).map(n => `<tr><td>${n.group || n.kind || ''}</td><td>${n.label || n.name || n.id}</td></tr>`).join('') || '<tr><td colspan=2 class="muted">No systems yet</td></tr>'}
+        </tbody></table>
+        <div class="label" style="margin-top:14px">Prioritized assets</div>
         <table><thead><tr><th>P</th><th>Algo</th><th>Revenue/day</th></tr></thead>
-        <tbody>${(priorities.assets||[]).slice(0,20).map(a => `<tr>
-          <td>${badge(a.business_context?.priority||'P2')}</td>
+        <tbody>${(priorities.assets || []).slice(0, 20).map(a => `<tr>
+          <td>${badge(a.business_context?.priority || 'P2')}</td>
           <td class="mono">${a.algorithm}</td>
-          <td>${a.business_context?.total_revenue_at_risk||0}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Run a scan and add a business process.</td></tr>'}
+          <td>${a.business_context?.total_revenue_at_risk || 0}</td></tr>`).join('') || '<tr><td colspan=3 class="muted">Run a scan and add a business process.</td></tr>'}
         </tbody></table></div>
     </div>`;
+
+  gvApplyView();
+  gvApplyHighlight();
+
+  // Pan (drag) and zoom (wheel).
+  const svg = document.getElementById('gv-svg');
+  let drag = null, moved = 0;
+  svg.addEventListener('pointerdown', ev => {
+    drag = { x: ev.clientX, y: ev.clientY, tx: graphState.transform.x, ty: graphState.transform.y };
+    moved = 0; svg.setPointerCapture(ev.pointerId);
+  });
+  svg.addEventListener('pointermove', ev => {
+    if (!drag) return;
+    const dx = ev.clientX - drag.x, dy = ev.clientY - drag.y;
+    moved = Math.max(moved, Math.abs(dx) + Math.abs(dy));
+    if (moved > 4) { graphState.transform.x = drag.tx + dx; graphState.transform.y = drag.ty + dy; gvApplyView(); }
+  });
+  svg.addEventListener('pointerup', () => { drag = null; });
+  svg.addEventListener('wheel', ev => {
+    ev.preventDefault();
+    const k = Math.max(0.4, Math.min(4, graphState.transform.k * (ev.deltaY < 0 ? 1.12 : 0.89)));
+    graphState.transform.k = k; gvApplyView();
+  }, { passive: false });
+
+  // Click-to-highlight via event delegation (no inline id escaping).
+  svg.addEventListener('click', ev => {
+    if (moved > 4) return;
+    const g = ev.target.closest('[data-nodeg]');
+    gvSelect(g ? g.dataset.nodeg : null);
+  });
 }
+
+function gvClear() { graphState.selected = null; graphState.reach = null; gvApplyHighlight(); gvRenderDetails(); }
 
 async function syncGraph() {
   const result = await api('/graph/sync', { method: 'POST', body: '{}' });
@@ -848,7 +1069,6 @@ async function queryBlast(rawId) {
   if (select && id) select.value = id;
   return runBlast();
 }
-
 async function runBlast() {
   const systemId = document.getElementById('blast-system')?.value;
   const hops = document.getElementById('blast-hops')?.value || 5;

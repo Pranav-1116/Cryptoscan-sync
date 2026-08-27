@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
 
@@ -316,7 +317,7 @@ def cbom_ingest(
         scan_id=None,
         status="CURRENT",
         component_count=len(stored),
-        algorithms={item["algorithm"]: 1 for item in records},
+        algorithms=dict(Counter(item["algorithm"] for item in records)),
     )
     summary = summarize_records(
         stored,

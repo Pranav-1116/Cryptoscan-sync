@@ -575,11 +575,7 @@ class PipelineRunner:
             return
         algorithms: Counter[str] = Counter()
         for record in ctx.evidence_records or ctx.findings or []:
-            if isinstance(record, dict):
-                algo = record.get("algorithm") or "UNKNOWN"
-            else:
-                algo = getattr(record, "algorithm", None) or "UNKNOWN"
-            algorithms[str(algo)] += 1
+            algorithms[self._record_algorithm(record)] += 1
         try:
             SystemRepository(session).stamp_scan(
                 ctx.system_id,
@@ -592,6 +588,31 @@ class PipelineRunner:
             )
         except Exception:
             logger.debug("coverage_stamp_skipped", exc_info=True)
+
+    @staticmethod
+    def _record_algorithm(record) -> str:
+        """Extract the algorithm name from a finding-shaped record.
+
+        Handles the three shapes that reach coverage stamping:
+        RawFinding dumps (``crypto.algorithm``), EvidenceRecord dumps
+        (``finding.crypto.algorithm`` / ``finding.algorithm``), and flat
+        dicts from auxiliary scanners (``algorithm``).
+        """
+        if not isinstance(record, dict):
+            return str(getattr(record, "algorithm", "") or "UNKNOWN")
+        crypto = record.get("crypto")
+        if isinstance(crypto, dict) and crypto.get("algorithm"):
+            return str(crypto["algorithm"])
+        finding = record.get("finding")
+        if isinstance(finding, dict):
+            inner = finding.get("crypto")
+            if isinstance(inner, dict) and inner.get("algorithm"):
+                return str(inner["algorithm"])
+            if finding.get("algorithm"):
+                return str(finding["algorithm"])
+        if record.get("algorithm"):
+            return str(record["algorithm"])
+        return "UNKNOWN"
 
     def _stamp_coverage_failed(self, ctx: PipelineContext, message: str) -> None:
         if not ctx.system_id:

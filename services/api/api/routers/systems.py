@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, get_job_repository
 from db.models.system import System
+from db.repositories.asset_repository import AssetRepository
 from db.repositories.job_repository import JobRepository
 from db.repositories.system_repository import SystemRepository
 
@@ -227,7 +228,11 @@ def attach_asset(
     repo = SystemRepository(db)
     if repo.get_by_id(system_id) is None:
         raise HTTPException(status_code=404, detail="System not found")
-    link = repo.attach_asset(system_id, body.asset_id)
+    # Graph node ids ("asset:<uuid>") are accepted alongside raw asset ids.
+    asset_id = body.asset_id.removeprefix("asset:")
+    if AssetRepository(db).get_by_id(asset_id) is None:
+        raise HTTPException(status_code=404, detail=f"Asset not found: {asset_id}")
+    link = repo.attach_asset(system_id, asset_id)
     return link.to_dict()
 
 
