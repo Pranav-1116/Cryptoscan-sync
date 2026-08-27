@@ -206,6 +206,25 @@ def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
     }
 
 
+class AlertDispatchRequest(BaseModel):
+    certificates: list[dict] = Field(default_factory=list)  # cert inventory rows
+    notification_state: dict[str, str] = Field(default_factory=dict)  # fingerprint -> last-notified ISO
+    days: int = 30
+
+
+@router.post("/network/alerts/dispatch")
+def dispatch_expiry_alerts(body: AlertDispatchRequest, user: str = Depends(get_current_user)):
+    """Escalate expiry alerts (cooldown-aware) and fan out to configured channels.
+
+    Webhook target + secret come from the environment
+    (CRYPTOSCAN_ALERT_WEBHOOK_URL / _SECRET / _TIMEOUT / _RETRIES); the
+    updated notification_state is returned for the caller to persist.
+    """
+    from network_scanner.alerts.escalation import route_alerts
+
+    return route_alerts(body.certificates, state=body.notification_state, days=body.days)
+
+
 @router.get("/certificates/{cert_id}/usages")
 def certificate_usages(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)

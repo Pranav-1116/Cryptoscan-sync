@@ -30,6 +30,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ssh", action="store_true", help="Treat the target as an SSH host (ssh-keyscan + TOFU drift)")
     parser.add_argument("--known-host-keys", default=None, metavar="JSON",
                         help="Baseline {endpoint: {key_type: fingerprint}} for --ssh drift detection")
+    parser.add_argument("--route-alerts", default=None, metavar="FILE",
+                        help="Escalate + dispatch expiry alerts from a scan result JSON (or cert list)")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -63,9 +65,27 @@ def main(argv: list[str] | None = None) -> int:
         result["scan_context"] = {"mode": "subnet-discovery", "cidr": args.discover, "ports": ports}
         _emit(result, args.output)
         return 0
+    if args.route_alerts:
+        import json as _json
+
+        from network_scanner.alerts.escalation import route_alerts
+
+        payload = _json.loads(Path(args.route_alerts).read_text())
+        certs = payload.get("certificates") if isinstance(payload, dict) else payload
+        state = {}
+        state_path = Path(args.route_alerts).with_suffix(".alertstate.json")
+        if state_path.exists():
+            state = _json.loads(state_path.read_text() or "{}")
+        routed = route_alerts(certs or [], state=state)
+        state_path.write_text(_json.dumps(routed["notification_state"], indent=2))
+        routed["notification_state_path"] = str(state_path)
+        _emit(routed, args.output)
+        return 0
     target = args.target
-    if not target:
+    if not target and not args.ssh:
         parser.error("target (host:port or path) or --discover CIDR is required")
+    if not target and args.ssh:
+        parser.error("--ssh requires a target host ([host]:port)")
     if args.ssh:
         import json as _json
 
