@@ -127,8 +127,14 @@ class NetworkTlsScanner:
         *,
         scan_id: str | None = None,
         known_host_keys: dict[str, dict[str, str]] | None = None,
+        include_kex: bool = False,
     ) -> dict[str, Any]:
-        """SSH host-key scan + TOFU drift against caller-supplied baselines."""
+        """SSH host-key scan + TOFU drift against caller-supplied baselines.
+
+        ``include_kex`` also reads each server's KEXINIT algorithm offer and
+        merges weak-algorithm issues into the finding (policy_issues is a
+        set-deduped list; host-key and offer issues coexist).
+        """
         from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
 
         baselines = known_host_keys or {}
@@ -148,6 +154,24 @@ class NetworkTlsScanner:
                     "policy_issues": [],
                     "key_drift": None,
                 }
+            if include_kex:
+                try:
+                    from network_scanner.probing.ssh_kex import probe_ssh_kex_offer
+
+                    offer = probe_ssh_kex_offer(host, port, timeout=self.timeout)
+                    finding["kex_offer"] = offer
+                    merged = list(finding.get("policy_issues") or [])
+                    merged.extend(offer.get("policy_issues") or [])
+                    finding["policy_issues"] = sorted(set(merged))
+                    if merged and not finding.get("compliance_issue"):
+                        finding["compliance_issue"] = finding["policy_issues"][0]
+                except Exception as exc:  # noqa: BLE001 — offer probe must not sink the scan
+                    finding["kex_offer"] = {
+                        "endpoint": endpoint,
+                        "status": "PROBE_ERROR",
+                        "detail": f"{type(exc).__name__}: {exc}"[:200],
+                        "policy_issues": [],
+                    }
             findings.append(finding)
             drift = finding.get("key_drift") or {}
             if drift.get("observed"):

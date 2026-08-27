@@ -28,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--frequency", default="daily", choices=["hourly", "daily", "weekly", "monthly"],
                         help="Scan frequency for --register records")
     parser.add_argument("--ssh", action="store_true", help="Treat the target as an SSH host (ssh-keyscan + TOFU drift)")
+    parser.add_argument("--ssh-kex", action="store_true", help="With --ssh: also read the server's KEXINIT algorithm offer")
     parser.add_argument("--known-host-keys", default=None, metavar="JSON",
                         help="Baseline {endpoint: {key_type: fingerprint}} for --ssh drift detection")
     parser.add_argument("--route-alerts", default=None, metavar="FILE",
@@ -84,15 +85,15 @@ def main(argv: list[str] | None = None) -> int:
     target = args.target
     if not target and not args.ssh:
         parser.error("target (host:port or path) or --discover CIDR is required")
-    if not target and args.ssh:
+    if not target and (args.ssh or args.ssh_kex):
         parser.error("--ssh requires a target host ([host]:port)")
-    if args.ssh:
+    if args.ssh or args.ssh_kex:
         import json as _json
 
         baselines = {}
         if args.known_host_keys:
             baselines = _json.loads(Path(args.known_host_keys).read_text() or "{}")
-        result = scanner.scan_ssh_hosts([target], known_host_keys=baselines)
+        result = scanner.scan_ssh_hosts([target], known_host_keys=baselines, include_kex=args.ssh_kex)
         result["scan_context"] = {"mode": "ssh-host-keys", "target": target}
         _emit(result, args.output)
         return 0

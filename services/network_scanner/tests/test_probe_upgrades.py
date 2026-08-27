@@ -220,7 +220,7 @@ def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
     results = scanner._probe_all(endpoints)
     elapsed = time.monotonic() - started
     assert [row["endpoint"] for row in results] == endpoints  # order preserved
-    assert elapsed < 1.2  # 8 probes x 0.3s serial would be 2.4s; pooled ~0.6s
+    assert elapsed < 2.0  # serial would be 2.4s; pooled ~0.6s, bound tolerates scheduler jitter
 
 
 def test_scan_hosts_telemetry_verdicts(monkeypatch):

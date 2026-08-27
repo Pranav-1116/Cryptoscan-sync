@@ -177,6 +177,8 @@ def discover_subnet_endpoints(
 class SshScanRequest(BaseModel):
     hosts: list[str] = Field(default_factory=list)
     timeout: float = 8.0
+    include_kex: bool = False  # also read each server's KEXINIT algorithm offer
+    strict_kex: bool = False  # flag legacy (sha1/umac-64/ssh-rsa) offers too
     # baseline {endpoint: {key_type: fingerprint}} for TOFU drift; updated map is returned
     known_host_keys: dict[str, dict[str, str]] = Field(default_factory=dict)
 
@@ -184,6 +186,7 @@ class SshScanRequest(BaseModel):
 @router.post("/network/ssh-scan")
 def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
     """SSH host-key scan with optional TOFU baselines (no DB state kept)."""
+    from network_scanner.probing.ssh_kex import probe_ssh_kex_offer
     from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
 
     if not body.hosts:
@@ -195,6 +198,13 @@ def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
         host, port = split_ssh_target(item)
         endpoint = f"{host}:{port}"
         finding = scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint))
+        if body.include_kex:
+            offer = probe_ssh_kex_offer(host, port, timeout=body.timeout, strict=body.strict_kex)
+            finding["kex_offer"] = offer
+            merged = list(finding.get("policy_issues") or []) + list(offer.get("policy_issues") or [])
+            finding["policy_issues"] = sorted(set(merged))
+            if merged and not finding.get("compliance_issue"):
+                finding["compliance_issue"] = finding["policy_issues"][0]
         findings.append(finding)
         drift = finding.get("key_drift") or {}
         if drift.get("observed"):

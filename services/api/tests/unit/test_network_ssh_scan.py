@@ -76,3 +76,42 @@ async def test_ssh_scan_requires_hosts():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/network/ssh-scan", json={"hosts": []})
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_ssh_scan_includes_kex_offer(monkeypatch):
+    import network_scanner.probing.ssh_kex as kex_module
+    import network_scanner.probing.ssh_keyscan as ssh_module
+
+    def fake_keyscan(host, port, *, timeout=8.0, baseline=None):
+        return _fake_finding(f"{host}:{port}")
+
+    def fake_kex(host, port, *, timeout=8.0, strict=False):
+        return {
+            "endpoint": f"{host}:{port}",
+            "status": "OK",
+            "method": "ssh-kexinit",
+            "server_banner": "SSH-2.0-OpenSSH_9.2",
+            "ciphers": ["aes128-ctr", "3des-cbc"],
+            "macs": ["hmac-sha2-256-etm@openssh.com"],
+            "weak": {"weak_ciphers": ["3des-cbc"], "weak_macs": [], "weak_kex": []},
+            "legacy": {"legacy_macs": [], "legacy_host_keys": [], "legacy_kex": []},
+            "policy_issues": ["SSH_WEAK_CIPHER_OFFERED"],
+        }
+
+    monkeypatch.setattr(ssh_module, "scan_ssh_host_keys", fake_keyscan)
+    monkeypatch.setattr(kex_module, "probe_ssh_kex_offer", fake_kex)
+
+    app = create_app()
+    app.dependency_overrides[get_current_user] = lambda: "testuser"
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.post(
+            "/api/v1/network/ssh-scan",
+            json={"hosts": ["10.0.0.5"], "include_kex": True},
+        )
+    assert response.status_code == 200
+    finding = response.json()["findings"][0]
+    assert finding["kex_offer"]["weak"]["weak_ciphers"] == ["3des-cbc"]
+    assert "SSH_WEAK_CIPHER_OFFERED" in finding["policy_issues"]
+    assert response.json()["ssh_probe_telemetry"]["ssh_weak_algorithm_offers"] == 1

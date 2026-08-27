@@ -230,22 +230,26 @@ def scan_ssh_host_keys(
 def ssh_probe_telemetry(findings: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate SSH findings — same honest-verdict style as TLS telemetry."""
     statuses: dict[str, int] = {}
-    weak = changed = 0
+    weak = changed = weak_offers = 0
+    _WEAK_HOST_KEY_ISSUES = {"SSH_DSS_HOST_KEY", "SSH_RSA_HOST_KEY", "SSH_WEAK_HOST_KEY"}
+    _WEAK_OFFER_ISSUES = {"SSH_WEAK_CIPHER_OFFERED", "SSH_WEAK_MAC_OFFERED", "SSH_WEAK_KEX_OFFERED"}
     for row in findings:
         status = str(row.get("status") or "UNKNOWN")
         statuses[status] = statuses.get(status, 0) + 1
         issues = row.get("policy_issues") or []
-        if any(issue in {"SSH_DSS_HOST_KEY", "SSH_RSA_HOST_KEY", "SSH_WEAK_HOST_KEY"} for issue in issues):
+        if any(issue in _WEAK_HOST_KEY_ISSUES for issue in issues):
             weak += 1
         if "SSH_HOST_KEY_CHANGED" in issues:
             changed += 1
+        if any(issue in _WEAK_OFFER_ISSUES for issue in issues):
+            weak_offers += 1
     probed = len(findings)
     ok = statuses.get("OK", 0)
     if probed == 0:
         verdict = "SKIPPED"
     elif ok == 0:
         verdict = "FAILED"
-    elif ok < probed or weak or changed:
+    elif ok < probed or weak or changed or weak_offers:
         verdict = "PARTIAL"
     else:
         verdict = "OK"
@@ -256,4 +260,5 @@ def ssh_probe_telemetry(findings: list[dict[str, Any]]) -> dict[str, Any]:
         "statuses": statuses,
         "ssh_weak_host_keys": weak,
         "ssh_host_key_changes": changed,
+        "ssh_weak_algorithm_offers": weak_offers,
     }
