@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from agility.readiness import readiness_from_system
 from agility.roadmap import build_roadmap, portfolio_trend
+from agility.simulation import available_actions, simulate_improvements
+from agility.system_score import pqc_exposure
+from agility.trajectory import analyze_history
 from agility.system_score import calculate_agility_score
 from api.dependencies import get_current_user, get_db_session
 from db.models.system import System
@@ -130,6 +134,92 @@ def agility_roadmap(user: str = Depends(get_current_user), db: Session = Depends
             }
         )
     return build_roadmap(entries)
+
+
+@router.get("/systems/{system_id}/agility/history")
+def agility_history(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Saved score rows over time + trajectory classification."""
+    system = db.get(System, system_id)
+    if system is None:
+        raise HTTPException(status_code=404, detail="System not found")
+    rows = MaturityRepository(db).agility_history(system_id)
+    history = [
+        {
+            "calculated_at": row.calculated_at.isoformat() if row.calculated_at else None,
+            "agility_score": row.agility_score,
+            "category": row.category,
+            "readiness_score": row.readiness_score,
+            "readiness_category": row.readiness_category,
+            "factor_scores": row.factor_scores,
+            "calculation_version": row.calculation_version,
+        }
+        for row in rows
+    ]
+    return {
+        "system_id": system_id,
+        "system": system.name,
+        "count": len(history),
+        "history": history,
+        "trajectory": analyze_history(history),
+    }
+
+
+class AgilitySimulateRequest(BaseModel):
+    actions: list[str] = []
+
+
+@router.post("/systems/{system_id}/agility/simulate")
+def agility_simulate(
+    body: AgilitySimulateRequest, system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
+):
+    """What-if projection through the real scoring engine. Nothing is persisted."""
+    system = db.get(System, system_id)
+    if system is None:
+        raise HTTPException(status_code=404, detail="System not found")
+    result = simulate_improvements(_evidence_for(db, system_id), system.to_dict(), body.actions)
+    result["available_actions"] = available_actions()
+    result["system_id"] = system_id
+    result["system"] = system.name
+    return result
+
+
+@router.get("/agility/pqc")
+def agility_pqc(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Portfolio-wide post-quantum exposure, computed live from crypto assets."""
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
+    per_system = []
+    total_vulnerable_sites = 0
+    vulnerable_algorithms: set[str] = set()
+    hybrid_systems = 0
+    for system in systems:
+        repo = SystemRepository(db)
+        evidence = _evidence_for(db, system.id)
+        if not evidence:
+            continue
+        exposure = pqc_exposure(evidence, system.to_dict())
+        total_vulnerable_sites += exposure["quantum_vulnerable_sites"]
+        vulnerable_algorithms.update(exposure["quantum_vulnerable_algorithms"])
+        if exposure["hybrid_support"]:
+            hybrid_systems += 1
+        per_system.append(
+            {
+                "system_id": system.id,
+                "system": system.name,
+                "quantum_vulnerable_sites": exposure["quantum_vulnerable_sites"],
+                "quantum_vulnerable_algorithms": exposure["quantum_vulnerable_algorithms"],
+                "hybrid_support": exposure["hybrid_support"],
+                "sites": len(evidence),
+            }
+        )
+    per_system.sort(key=lambda row: (-row["quantum_vulnerable_sites"], row["system"]))
+    return {
+        "systems": per_system,
+        "total_systems_with_assets": len(per_system),
+        "total_quantum_vulnerable_sites": total_vulnerable_sites,
+        "quantum_vulnerable_algorithms": sorted(vulnerable_algorithms),
+        "hybrid_systems": hybrid_systems,
+        "note": "computed live from crypto assets; asymmetric algorithms require PQC migration",
+    }
 
 
 @router.get("/readiness")

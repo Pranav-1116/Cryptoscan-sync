@@ -100,6 +100,19 @@ class MaturityRepository:
             .limit(1)
         ).scalar_one_or_none()
 
+    def agility_history(self, system_id: str, *, limit: int = 20) -> list[SystemAgilityScore]:
+        """Score rows for a system, chronological (ascending)."""
+        rows = list(
+            self.session.execute(
+                select(SystemAgilityScore)
+                .where(SystemAgilityScore.system_id == system_id)
+                .order_by(SystemAgilityScore.calculated_at.desc())
+                .limit(limit)
+            ).scalars()
+        )
+        rows.reverse()
+        return rows
+
     def list_agility(self) -> list[SystemAgilityScore]:
         return list(
             self.session.execute(
