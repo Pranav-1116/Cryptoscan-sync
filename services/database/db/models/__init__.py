@@ -14,6 +14,7 @@ from db.models.drift_event import DriftEvent
 from db.models.evidence_record import EvidenceRecord
 from db.models.migration_project import MigrationProject
 from db.models.network_scan_target import NetworkScanTarget
+from db.models.network_scan_run import NetworkScanRun
 from db.models.repo_configuration import RepoConfiguration
 from db.models.scan import Scan
 from db.models.scan_job import ScanJob
@@ -51,6 +52,7 @@ __all__ = [
     "EvidenceRecord",
     "ExceptionReview",
     "MigrationProject",
+    "NetworkScanRun",
     "NetworkScanTarget",
     "OtCryptoFinding",
     "OtDevice",

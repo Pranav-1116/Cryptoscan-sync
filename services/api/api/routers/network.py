@@ -12,6 +12,7 @@ from api.dependencies import get_current_user, get_db_session
 from db.repositories.certificate_repository import CertificateRepository
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
+from db.repositories.scan_run_repository import ScanRunRepository
 from network_scanner.certificates.crl_checker import check_crl
 from network_scanner.certificates.ocsp_checker import check_ocsp
 from network_scanner.core.scanner import NetworkTlsScanner
@@ -32,6 +33,7 @@ class HostScanRequest(BaseModel):
     check_renegotiation: bool = False
     check_chain_sent: bool = False
     live_revocation: bool = False
+    persist_run: bool = True  # store the run so /network/drift/latest can diff it later
 
 
 class TargetCreate(BaseModel):
@@ -263,6 +265,71 @@ def render_metrics(body: MetricsRenderRequest, user: str = Depends(get_current_u
     return Response(content=render_prometheus(body.report), media_type=CONTENT_TYPE)
 
 
+@router.get("/network/runs")
+def list_scan_runs(
+    limit: int = 20,
+    target_kind: str | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Stored scan runs, newest first (metadata only — no result payloads)."""
+    rows = ScanRunRepository(db).list_runs(limit=limit, target_kind=target_kind)
+    return {
+        "runs": [row.to_dict(exclude={"result"}) for row in rows],
+        "total": ScanRunRepository(db).count_runs(target_kind=target_kind),
+    }
+
+
+@router.get("/network/runs/{run_id}")
+def get_scan_run(run_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Fetch one stored scan run (full result payload)."""
+    row = ScanRunRepository(db).get_run(run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return row.to_dict()
+
+
+@router.get("/network/runs/{run_id}/metrics")
+def scan_run_metrics(run_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Prometheus text for one stored run."""
+    from fastapi.responses import Response
+
+    from network_scanner.reports.metrics import CONTENT_TYPE, render_prometheus
+
+    row = ScanRunRepository(db).get_run(run_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="run not found")
+    return Response(content=render_prometheus(row.result or {}), media_type=CONTENT_TYPE)
+
+
+@router.get("/network/drift/latest")
+def latest_scan_drift(
+    target_kind: str = "hosts",
+    expiry_warn_days: int = 7,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Drift between the two most recent stored runs — no caller bookkeeping."""
+    from network_scanner.reports.scan_drift import diff_scans
+
+    runs = ScanRunRepository(db).latest_runs(count=2, target_kind=target_kind)
+    if len(runs) < 2:
+        return {
+            "verdict": "UNCHANGED",
+            "change_count": 0,
+            "severity_counts": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0},
+            "summary": {},
+            "headline": None,
+            "changes": [],
+            "detail": f"only {len(runs)} stored run(s) for target_kind={target_kind}; drift needs two",
+        }
+    current, previous = runs[0], runs[1]
+    report = diff_scans(previous.result or {}, current.result or {}, expiry_warn_days=expiry_warn_days)
+    report["previous_run_id"] = previous.id
+    report["current_run_id"] = current.id
+    return report
+
+
 @router.get("/certificates/{cert_id}/usages")
 def certificate_usages(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)
@@ -309,6 +376,11 @@ def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), d
         check_chain_sent=body.check_chain_sent,
         live_revocation=body.live_revocation,
     )
+    if body.persist_run:
+        try:
+            result["run_id"] = ScanRunRepository(db).create_run(result).id
+        except Exception as exc:  # noqa: BLE001 — storage must not sink the scan
+            result["storage_error"] = f"{type(exc).__name__}: {exc}"[:200]
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
     for cert in result.get("certificates") or []:

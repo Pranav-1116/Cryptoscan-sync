@@ -15,6 +15,7 @@ from db.models import (  # noqa: F401
     crypto_asset_evidence,
     drift_event,
     evidence_record,
+    network_scan_run,
     network_scan_target,
     ot_device,
     policy_exception,
