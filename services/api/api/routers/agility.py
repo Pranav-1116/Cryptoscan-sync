@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from agility.readiness import readiness_from_system
+from agility.roadmap import build_roadmap, portfolio_trend
 from agility.system_score import calculate_agility_score
 from api.dependencies import get_current_user, get_db_session
 from db.models.system import System
@@ -63,12 +64,23 @@ def list_agility(user: str = Depends(get_current_user), db: Session = Depends(ge
             rows.append(item)
         else:
             rows.append(_score_system(db, system))
+    repo = MaturityRepository(db)
+    for row in rows:
+        previous = repo.previous_agility(str(row.get("system_id") or ""))
+        if previous is not None:
+            row["previous_agility_score"] = previous.agility_score
+            row["score_delta"] = int(row.get("agility_score") or 0) - previous.agility_score
     scores = [int(row.get("agility_score") or 0) for row in rows]
     avg = round(sum(scores) / len(scores), 1) if scores else 0
     dist = {"EXCELLENT": 0, "GOOD": 0, "MODERATE": 0, "POOR": 0, "CRITICAL": 0}
     for row in rows:
         dist[str(row.get("category") or "CRITICAL")] = dist.get(str(row.get("category") or "CRITICAL"), 0) + 1
-    return {"systems": rows, "average": avg, "distribution": dist}
+    return {
+        "systems": rows,
+        "average": avg,
+        "distribution": dist,
+        "trend": portfolio_trend(rows),
+    }
 
 
 @router.get("/systems/{system_id}/agility")
@@ -90,6 +102,34 @@ def recalculate(system_id: str, user: str = Depends(get_current_user), db: Sessi
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     return _score_system(db, system)
+
+
+@router.get("/agility/roadmap")
+def agility_roadmap(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Deterministic migration sequencing across the portfolio."""
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
+    entries = []
+    for system in systems:
+        latest = MaturityRepository(db).latest_agility(system.id)
+        if latest is None:
+            _score_system(db, system)  # populates history; use the fresh row
+            latest = MaturityRepository(db).latest_agility(system.id)
+        if latest is None:
+            continue
+        readiness = latest.readiness if isinstance(latest.readiness, dict) else {}
+        entries.append(
+            {
+                "system_id": system.id,
+                "system": system.name,
+                "agility_score": latest.agility_score,
+                "agility_category": latest.category,
+                "readiness_score": latest.readiness_score,
+                "readiness_category": latest.readiness_category,
+                "wave": readiness.get("wave"),
+                "dependency_count": len(SystemRepository(db).dependencies_for(system.id)),
+            }
+        )
+    return build_roadmap(entries)
 
 
 @router.get("/readiness")

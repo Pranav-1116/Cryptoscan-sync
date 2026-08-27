@@ -186,6 +186,110 @@ def score_documentation(system: Mapping[str, Any] | None) -> int:
     return score
 
 
+FACTOR_META = (
+    ("factor1", "Algorithm Configurability", 30),
+    ("factor2", "Key Management", 30),
+    ("factor3", "Abstraction Layer", 25),
+    ("factor4", "Deployment Architecture", 25),
+    ("factor5", "Testing", 35),
+    ("factor6", "Documentation", 35),
+)
+
+# Post-quantum relevance (indicator only — never feeds the agility score):
+# Shor breaks every deployed asymmetric construction; symmetric hashes/MACs
+# and block ciphers only lose half their security margin to Grover.
+QUANTUM_VULNERABLE_TOKENS = (
+    "rsa", "ec", "ecc", "ecdh", "ecdsa", "ed25519", "ed448", "dsa", "dh",
+    "diffie", "hellman", "x25519", "secp", "elliptic", "p-256", "p-384",
+)
+QUANTUM_RESISTANT_TOKENS = ("aes", "hmac", "sha", "chacha", "poly1305", "salsa")
+HYBRID_TOKENS = ("ml-kem", "mlkem", "kyber", "dilithium", "falcon", "sphincs", "hqc", "composite", "hybrid")
+
+
+def classify_quantum(algorithm: str) -> str:
+    """Classify an algorithm name: QUANTUM_VULNERABLE / QUANTUM_RESISTANT / UNKNOWN."""
+    token = str(algorithm or "").lower()
+    if not token:
+        return "UNKNOWN"
+    if any(word in token for word in QUANTUM_VULNERABLE_TOKENS):
+        return "QUANTUM_VULNERABLE"
+    if any(word in token for word in QUANTUM_RESISTANT_TOKENS):
+        return "QUANTUM_RESISTANT"
+    return "UNKNOWN"
+
+
+def pqc_exposure(evidence: list[Mapping[str, Any]], system: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Post-quantum exposure indicators from observed algorithms.
+
+    Honest by design: hybrid_support is None (unknown) when no hybrid/PQC
+    signal exists — absence of evidence is not evidence of absence.
+    """
+    vulnerable: set[str] = set()
+    resistant: set[str] = set()
+    unknown: set[str] = set()
+    vulnerable_sites = 0
+    for row in evidence:
+        algorithm = str(row.get("algorithm") or "")
+        verdict = classify_quantum(algorithm)
+        if verdict == "QUANTUM_VULNERABLE":
+            vulnerable.add(algorithm)
+            vulnerable_sites += 1
+        elif verdict == "QUANTUM_RESISTANT":
+            resistant.add(algorithm)
+        else:
+            unknown.add(algorithm)
+    blob = " ".join(_library(row) for row in evidence) + " " + _text_blob(system)
+    hybrid_signals = sorted({token for token in HYBRID_TOKENS if token in blob}) or None
+    return {
+        "quantum_vulnerable_sites": vulnerable_sites,
+        "quantum_vulnerable_algorithms": sorted(vulnerable),
+        "quantum_resistant_algorithms": sorted(resistant),
+        "unknown_algorithms": sorted(unknown - {""}),
+        "hybrid_signals": hybrid_signals,
+        "hybrid_support": bool(hybrid_signals) if hybrid_signals else None,
+        "note": "indicators only: asymmetric crypto needs PQC migration, symmetric only widens key/MAC sizes",
+    }
+
+
+def collect_signals(evidence: list[Mapping[str, Any]], system: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """Deterministic audit trail of the inputs each factor scored against."""
+    paths = [_path(row) for row in evidence]
+    reasons = [_reason(row) for row in evidence]
+    libraries = {lib for row in evidence if (lib := _library(row))}
+    algos = [str(row.get("algorithm") or "") for row in evidence if row.get("algorithm")]
+    extra = (system or {}).get("extra") or {}
+    blob = _text_blob(system)
+    return {
+        "total_sites": len(evidence),
+        "distinct_algorithms": sorted({a for a in algos}),
+        "max_algorithm_reuse": max((algos.count(a) for a in set(algos)), default=0),
+        "config_file_hits": sum(1 for path in paths if path.endswith(CONFIG_SUFFIXES) or "/config/" in path),
+        "hardcoded_key_sites": sum(1 for row in evidence if row.get("is_hardcoded_key")),
+        "hardcoded_reason_sites": sum(1 for reason in reasons if any(t in reason for t in HARDCODED_REASONS)),
+        "factory_reason_sites": sum(1 for reason in reasons if any(t in reason for t in FACTORY_REASONS)),
+        "distinct_libraries": sorted(libraries),
+        "wrapper_hits": sum(1 for path in paths if any(name in path.replace("\\", "/") for name in WRAPPER_NAMES)),
+        "kms_hint": next((hint for hint in KMS_HINTS if hint in " ".join(libraries) + " " + blob), None),
+        "test_hits": sum(1 for path in paths if any(token in path for token in TEST_TOKENS)),
+        "crypto_test_hits": sum(
+            1
+            for path in paths
+            if any(token in path for token in TEST_TOKENS) and any(word in path for word in CRYPTO_WORDS)
+        ),
+        "hot_reload": bool(extra.get("hot_reload")) or any(token in blob for token in HOT_RELOAD),
+        "doc_flags": sorted(
+            flag
+            for flag, present in (
+                ("has_crypto_docs", extra.get("has_crypto_docs") or extra.get("has_crypto_change_procedure")),
+                ("has_crypto_inventory_docs", extra.get("has_crypto_inventory_docs")),
+                ("has_dr_plan", extra.get("has_dr_plan")),
+            )
+            if present
+        ),
+        "secrets_in_git": bool(extra.get("secrets_in_git")),
+    }
+
+
 def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
     recs: list[dict[str, str]] = []
     if factors["factor1"] < 15:
@@ -196,6 +300,8 @@ def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
                 "recommendation": "Move algorithm selection to a config file",
                 "effort": "MEDIUM",
                 "impact": "+20 agility points",
+                "factor_key": "factor1",
+                "impact_points": 20,
             }
         )
     if factors["factor2"] < 0:
@@ -207,6 +313,8 @@ def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
                 "effort": "HIGH",
                 "impact": "+30 agility points",
                 "urgency": "CRITICAL",
+                "factor_key": "factor2",
+                "impact_points": 30,
             }
         )
     if factors["factor3"] < 10:
@@ -217,6 +325,8 @@ def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
                 "recommendation": "Introduce a CryptoService wrapper",
                 "effort": "HIGH",
                 "impact": "+25 agility points",
+                "factor_key": "factor3",
+                "impact_points": 25,
             }
         )
     if factors["factor4"] < 10:
@@ -227,6 +337,8 @@ def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
                 "recommendation": "Use Kubernetes ConfigMaps/Secrets or external config",
                 "effort": "LOW",
                 "impact": "+15 agility points",
+                "factor_key": "factor4",
+                "impact_points": 15,
             }
         )
     if factors["factor5"] < 10:
@@ -237,6 +349,8 @@ def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
                 "recommendation": "Add a parameterized crypto test suite",
                 "effort": "MEDIUM",
                 "impact": "+15 agility points",
+                "factor_key": "factor5",
+                "impact_points": 15,
             }
         )
     if factors["factor6"] < 10:
@@ -247,6 +361,8 @@ def _recommendations(factors: dict[str, int]) -> list[dict[str, str]]:
                 "recommendation": "Document algorithm and key rotation steps",
                 "effort": "LOW",
                 "impact": "+15 agility points",
+                "factor_key": "factor6",
+                "impact_points": 15,
             }
         )
     return recs
@@ -269,7 +385,20 @@ def calculate_agility_score(
     score = normalize_score(raw)
     meta = categorize_score(score)
     recs = _recommendations(factors)
-    estimated = min(100, score + sum(20 if "20" in r.get("impact", "") else 15 if "15" in r.get("impact", "") else 25 if "25" in r.get("impact", "") else 30 if "30" in r.get("impact", "") else 0 for r in recs))
+    estimated = min(100, score + sum(int(r.get("impact_points") or 0) for r in recs))
+    factor_details = []
+    for key, name, maximum in FACTOR_META:
+        value = factors[key]
+        ratio = (value / maximum) if maximum else 0.0
+        if value < 0 or ratio < 0.33:
+            status = "CRITICAL"
+        elif ratio < 0.66:
+            status = "AT_RISK"
+        else:
+            status = "OK"
+        factor_details.append(
+            {"key": key, "name": name, "score": value, "maximum": maximum, "utilization": round(max(0.0, ratio), 3), "status": status}
+        )
     return {
         "agility_score": score,
         "score": score,
@@ -279,6 +408,9 @@ def calculate_agility_score(
         "factor_scores": factors,
         "recommendations": recs,
         "estimated_final_score": estimated,
-        "calculation_version": "agility-v1.0",
+        "factor_details": factor_details,
+        "factor_signals": collect_signals(rows, system),
+        "pqc_exposure": pqc_exposure(rows, system),
+        "calculation_version": "agility-v1.1",
         "total_sites": len(rows),
     }

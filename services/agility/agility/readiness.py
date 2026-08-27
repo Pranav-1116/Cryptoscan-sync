@@ -63,11 +63,47 @@ def assess_readiness(
         category = "BLOCKED"
         recommendation = "Cannot migrate until blockers are resolved"
         wave = 3
+    blockers: list[dict[str, str]] = []
+    if change_freeze:
+        blockers.append({"code": "FROZEN_CHANGE_WINDOW", "detail": "a change freeze is active; no migration window until it lifts"})
+    if agility_factor < 0.4:
+        blockers.append({"code": "AGILITY_TOO_LOW", "detail": f"agility {int(agility_factor * 100)}/100: crypto is too scattered to migrate safely"})
+    if not has_crypto_tests and agility_factor < 0.6:
+        blockers.append({"code": "NO_CRYPTO_TEST_SAFETY_NET", "detail": "no crypto-specific tests to catch regressions during migration"})
+    if dependency_count > 10:
+        blockers.append({"code": "DEPENDENCY_SPRAWL", "detail": f"{dependency_count} dependencies amplify blast radius of any crypto change"})
+
+    prep_checklist: list[str] = []
+    if category != "READY_NOW":
+        if not has_crypto_tests:
+            prep_checklist.append("build a parameterized crypto test suite (known-answer vectors per algorithm)")
+        if not has_general_tests:
+            prep_checklist.append("establish a general regression test baseline before touching crypto")
+        if dependency_count > 3:
+            prep_checklist.append("map and reduce crypto-relevant dependencies (downstream consumers of keys/ciphertexts)")
+        if agility_factor < 0.6:
+            prep_checklist.append("centralize crypto behind one wrapper/config seam (raises factor 1/3 scores)")
+        if team_capacity != "HIGH":
+            prep_checklist.append("secure dedicated (not fractional) engineering capacity for the migration window")
+        if change_freeze:
+            prep_checklist.append("schedule the migration window after the freeze lifts")
+
+    effort_bands = {
+        "READY_NOW": (0, 1),
+        "READY_WITH_PREP": (2, 4),
+        "NOT_READY": (8, 12),
+        "BLOCKED": (12, 26),
+    }
+    weeks_min, weeks_max = effort_bands[category]
+
     return {
         "readiness_score": score,
         "readiness_category": category,
         "recommendation": recommendation,
         "wave": wave,
+        "blockers": blockers,
+        "prep_checklist": prep_checklist,
+        "estimated_effort_weeks": {"min": weeks_min, "max": weeks_max, "estimate": True},
         "factors": {
             "agility": round(agility_factor, 3),
             "dependencies": dependency_factor,

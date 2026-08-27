@@ -90,6 +90,16 @@ class MaturityRepository:
             .limit(1)
         ).scalar_one_or_none()
 
+    def previous_agility(self, system_id: str) -> SystemAgilityScore | None:
+        """Second-newest score for a system (for trend deltas), or None."""
+        return self.session.execute(
+            select(SystemAgilityScore)
+            .where(SystemAgilityScore.system_id == system_id)
+            .order_by(SystemAgilityScore.calculated_at.desc())
+            .offset(1)
+            .limit(1)
+        ).scalar_one_or_none()
+
     def list_agility(self) -> list[SystemAgilityScore]:
         return list(
             self.session.execute(
