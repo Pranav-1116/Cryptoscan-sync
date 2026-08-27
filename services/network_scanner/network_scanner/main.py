@@ -35,6 +35,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Escalate + dispatch expiry alerts from a scan result JSON (or cert list)")
     parser.add_argument("--diff-scans", nargs=2, metavar=("OLD", "NEW"),
                         help="Diff two scan result JSON files into a drift report")
+    parser.add_argument("--metrics", default=None, metavar="FILE",
+                        help="Render a scan/SSH/drift result JSON as Prometheus text")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -67,6 +69,18 @@ def main(argv: list[str] | None = None) -> int:
             )
         result["scan_context"] = {"mode": "subnet-discovery", "cidr": args.discover, "ports": ports}
         _emit(result, args.output)
+        return 0
+    if args.metrics:
+        import json as _json
+
+        from network_scanner.reports.metrics import render_prometheus
+
+        payload = _json.loads(Path(args.metrics).read_text())
+        text = render_prometheus(payload)
+        if args.output:
+            Path(args.output).write_text(text)
+        else:
+            print(text, end="")
         return 0
     if args.diff_scans:
         import json as _json

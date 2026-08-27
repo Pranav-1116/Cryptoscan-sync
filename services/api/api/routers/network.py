@@ -249,6 +249,20 @@ def scan_drift(body: ScanDriftRequest, user: str = Depends(get_current_user)):
     return diff_scans(body.previous, body.current, expiry_warn_days=body.expiry_warn_days)
 
 
+class MetricsRenderRequest(BaseModel):
+    report: dict  # scan result, SSH scan, or drift report
+
+
+@router.post("/network/metrics")
+def render_metrics(body: MetricsRenderRequest, user: str = Depends(get_current_user)):
+    """Render scan/SSH/drift telemetry as Prometheus text (format 0.0.4)."""
+    from fastapi.responses import Response
+
+    from network_scanner.reports.metrics import CONTENT_TYPE, render_prometheus
+
+    return Response(content=render_prometheus(body.report), media_type=CONTENT_TYPE)
+
+
 @router.get("/certificates/{cert_id}/usages")
 def certificate_usages(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)
