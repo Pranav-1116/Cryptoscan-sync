@@ -65,11 +65,15 @@ class ContainerScanner:
         secrets = scan_filesystem_for_secrets(root_path)
         findings = self._to_findings(libraries, binaries, vulns)
         findings.extend(secret_findings(secrets))
+        from container_scanner.image.distro import fingerprint_base_image
+
+        distro = fingerprint_base_image(root_path)
         risk = build_risk_report(
             libraries=libraries,
             binaries=binaries,
             vulnerabilities=vulns,
             secrets=secrets,
+            distro=distro,
         )
         telemetry = build_scan_telemetry(
             packages=packages,
@@ -92,6 +96,7 @@ class ContainerScanner:
             "vulnerabilities": vulns,
             "findings": findings,
             "secrets": secrets,
+            "distro": distro,
             "risk_report": risk,
             "scan_telemetry": telemetry,
         }

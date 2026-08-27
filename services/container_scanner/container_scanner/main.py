@@ -35,6 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--github-advisory", action="store_true", default=settings.github_advisory)
     parser.add_argument("--image", action="store_true", help="Treat target as a registry image even if a path exists")
     parser.add_argument("--sbom", metavar="OUT", help="Also write a CycloneDX 1.5 SBOM to this path")
+    parser.add_argument("--spdx", metavar="OUT", help="Also write an SPDX 2.3 SBOM to this path")
     parser.add_argument("--diff-scans", nargs=2, metavar=("OLD", "NEW"),
                         help="Diff two scan result JSON files and exit (no scan runs)")
     parser.add_argument("--metrics", metavar="FILE",
@@ -101,12 +102,25 @@ def main(argv: list[str] | None = None) -> int:
 
         Path(args.sbom).write_text(json.dumps(build_sbom(result), indent=2), encoding="utf-8")
         print(f"# sbom written to {args.sbom}", file=sys.stderr)
+    if args.spdx:
+        from container_scanner.reports.spdx import build_spdx
+
+        Path(args.spdx).write_text(json.dumps(build_spdx(result), indent=2), encoding="utf-8")
+        print(f"# spdx written to {args.spdx}", file=sys.stderr)
     text = json.dumps(result, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")
     else:
         print(text)
     risk = result.get("risk_report") or {}
+    distro = result.get("distro") or {}
+    if distro.get("id"):
+        eol = distro.get("eol") or {}
+        print(
+            f"# distro: {distro.get('id')} {distro.get('version') or distro.get('version_id') or ''} "
+            f"eol={eol.get('status') or 'UNKNOWN'}".strip(),
+            file=sys.stderr,
+        )
     print(
         f"# kind={result.get('target_kind')} packages={len(result.get('packages') or [])} "
         f"libraries={len(result.get('libraries') or [])} "

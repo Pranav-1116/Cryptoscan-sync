@@ -160,3 +160,21 @@ async def test_inline_sbom_endpoint(app_db):
         )
     assert response.status_code == 200
     assert "pkg:pypi/cryptography@41.0.7" in [c.get("purl") for c in response.json()["components"]]
+
+
+@pytest.mark.asyncio
+async def test_stored_scan_spdx(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        found = await client.get("/api/v1/container/scans/scan-old/spdx")
+        missing = await client.get("/api/v1/container/scans/nope/spdx")
+    assert found.status_code == 200
+    doc = found.json()
+    assert doc["spdxVersion"] == "SPDX-2.3" and doc["dataLicense"] == "CC0-1.0"
+    purls = [
+        ref["referenceLocator"]
+        for pkg in doc["packages"]
+        for ref in pkg.get("externalRefs", [])
+    ]
+    assert "pkg:pypi/openssl@3.0.7" in purls
+    assert missing.status_code == 404

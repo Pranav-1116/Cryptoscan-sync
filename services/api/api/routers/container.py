@@ -116,6 +116,17 @@ def container_scan_sbom(scan_id: str, user: str = Depends(get_current_user), db:
     return build_sbom(row.result or {})
 
 
+@router.get("/scans/{scan_id}/spdx")
+def container_scan_spdx(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """SPDX 2.3 SBOM for a stored scan."""
+    from container_scanner.reports.spdx import build_spdx
+
+    row = _run_by_scan_id(db, scan_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return build_spdx(row.result or {})
+
+
 @router.get("/scans/{scan_id}/metrics")
 def container_scan_metrics(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Prometheus text for a stored scan."""

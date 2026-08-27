@@ -48,8 +48,10 @@ def build_risk_report(
     binaries: list[dict[str, Any]] | None = None,
     vulnerabilities: list[dict[str, Any]] | None = None,
     secrets: list[dict[str, Any]] | None = None,
+    distro: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Grade one scan's outputs into a posture verdict + policy issues."""
+    distro = distro or {}
     libraries = libraries or []
     binaries = binaries or []
     vulnerabilities = vulnerabilities or []
@@ -81,6 +83,7 @@ def build_risk_report(
             severity_counts["UNKNOWN"] += 1
     vulnerable_packages = sorted({str(v.get("package")) for v in vulnerabilities if v.get("package")})
 
+    eol = distro.get("eol") or {}
     key_secrets = [s for s in secrets if s.get("confidence") == "HIGH"]
     secret_kinds = sorted({str(s.get("kind")) for s in secrets})
 
@@ -91,6 +94,12 @@ def build_risk_report(
         issues.append("DISALLOWED_ALGORITHM")
     if severity_counts["CRITICAL"]:
         issues.append("CRITICAL_CVE_PRESENT")
+    if distro:
+        eol = distro.get("eol") or {}
+        if eol.get("status") == "EOL":
+            issues.append("EOL_BASE_IMAGE")
+        if distro.get("manager_mismatch"):
+            issues.append("DISTRO_MANAGER_MISMATCH")
     if deprecated_libraries:
         issues.append("DEPRECATED_CRYPTO_LIBRARY")
     if deprecated_algorithms or restricted:
@@ -113,6 +122,14 @@ def build_risk_report(
             "HARDCODED_PRIVATE_KEY": f"{len(key_secrets)} hardcoded private key(s): {secret_kinds}",
             "DISALLOWED_ALGORITHM": f"disallowed algorithms in use: {', '.join(disallowed)}",
             "CRITICAL_CVE_PRESENT": f"{severity_counts['CRITICAL']} critical CVE(s): {', '.join(vulnerable_packages[:4])}",
+            "EOL_BASE_IMAGE": (
+                f"base image {distro.get('name')} {distro.get('version_id')} is EOL "
+                f"({eol.get('days_past_eol')} days past end of support)"
+            ),
+            "DISTRO_MANAGER_MISMATCH": (
+                f"os-release says {distro.get('id')} but package DBs found: "
+                f"{', '.join(distro.get('package_managers_present') or []) or 'none'}"
+            ),
             "DEPRECATED_CRYPTO_LIBRARY": f"deprecated/abandoned crypto libraries: {', '.join(deprecated_libraries)}",
             "DEPRECATED_ALGORITHM": f"deprecated algorithms: {', '.join(deprecated_algorithms + restricted)}",
             "HIGH_CVE_PRESENT": f"{severity_counts['HIGH']} high-severity CVE(s)",
@@ -122,6 +139,7 @@ def build_risk_report(
     return {
         "posture": posture,
         "policy_issues": issues,
+        "distro": distro,
         "headline": headline,
         "algorithm_verdicts": verdicts,
         "disallowed_algorithms": disallowed,
