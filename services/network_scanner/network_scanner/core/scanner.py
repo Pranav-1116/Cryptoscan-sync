@@ -91,6 +91,8 @@ class NetworkTlsScanner:
         workers: int | None = None,
         scan_versions: bool = False,
         scan_ciphers: bool = False,
+        check_renegotiation: bool = False,
+        check_chain_sent: bool = False,
     ) -> dict[str, Any]:
         endpoint_list = [str(item) for item in endpoints if str(item).strip()]
         results = self._probe_all(
@@ -100,6 +102,8 @@ class NetworkTlsScanner:
             workers=workers,
             scan_versions=scan_versions,
             scan_ciphers=scan_ciphers,
+            check_renegotiation=check_renegotiation,
+            check_chain_sent=check_chain_sent,
         )
         inventory = merge_certificates([], self._live_certs(results))
         self._attach_revocation(inventory)
@@ -124,6 +128,8 @@ class NetworkTlsScanner:
         workers: int | None = None,
         scan_versions: bool = False,
         scan_ciphers: bool = False,
+        check_renegotiation: bool = False,
+        check_chain_sent: bool = False,
     ) -> list[dict[str, Any]]:
         """Probe endpoints in parallel (bounded); failures never stop the rest."""
         if not endpoints:
@@ -131,13 +137,30 @@ class NetworkTlsScanner:
         worker_count = max(1, min(workers or self.workers, len(endpoints)))
         if worker_count == 1:
             return [
-                self._safe_probe(item, sni=sni, starttls=starttls, scan_versions=scan_versions, scan_ciphers=scan_ciphers)
+                self._safe_probe(
+                    item,
+                    sni=sni,
+                    starttls=starttls,
+                    scan_versions=scan_versions,
+                    scan_ciphers=scan_ciphers,
+                    check_renegotiation=check_renegotiation,
+                    check_chain_sent=check_chain_sent,
+                )
                 for item in endpoints
             ]
         by_endpoint: dict[str, dict[str, Any]] = {}
         with ThreadPoolExecutor(max_workers=worker_count) as pool:
             futures = {
-                pool.submit(self._safe_probe, item, sni=sni, starttls=starttls, scan_versions=scan_versions, scan_ciphers=scan_ciphers): item
+                pool.submit(
+                    self._safe_probe,
+                    item,
+                    sni=sni,
+                    starttls=starttls,
+                    scan_versions=scan_versions,
+                    scan_ciphers=scan_ciphers,
+                    check_renegotiation=check_renegotiation,
+                    check_chain_sent=check_chain_sent,
+                ): item
                 for item in endpoints
             }
             for future in as_completed(futures):
@@ -154,6 +177,8 @@ class NetworkTlsScanner:
         starttls: str | bool | None = None,
         scan_versions: bool = False,
         scan_ciphers: bool = False,
+        check_renegotiation: bool = False,
+        check_chain_sent: bool = False,
     ) -> dict[str, Any]:
         try:
             return probe_endpoint(
@@ -163,6 +188,8 @@ class NetworkTlsScanner:
                 starttls=starttls,
                 scan_versions=scan_versions,
                 scan_ciphers=scan_ciphers,
+                check_renegotiation=check_renegotiation,
+                check_chain_sent=check_chain_sent,
             )
         except Exception as exc:  # noqa: BLE001 — one endpoint must not sink the scan
             return {
@@ -299,6 +326,7 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate probe outcomes — mirrors cloud_scanner's honest verdicts."""
     statuses: dict[str, int] = {}
     weak_versions = weak_suites = 0
+    insecure_reneg = client_reneg = chain_issues = 0
     for row in results:
         status = str(row.get("status") or "UNKNOWN")
         statuses[status] = statuses.get(status, 0) + 1
@@ -309,13 +337,19 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
             weak_suites += 1
         if "WEAK_TLS_VERSION_ACCEPTED" in issues:
             weak_versions += 1
+        if "INSECURE_RENEGOTIATION_ENABLED" in issues:
+            insecure_reneg += 1
+        if "CLIENT_RENEGOTIATION_ACCEPTED" in issues:
+            client_reneg += 1
+        if any(issue.startswith("CHAIN_") for issue in issues):
+            chain_issues += 1
     probed = len(results)
     ok = statuses.get("OK", 0)
     if probed == 0:
         verdict = "SKIPPED"
     elif ok == 0:
         verdict = "FAILED"
-    elif ok < probed or weak_versions or weak_suites:
+    elif ok < probed or weak_versions or weak_suites or insecure_reneg or client_reneg or chain_issues:
         verdict = "PARTIAL"
     else:
         verdict = "OK"
@@ -326,6 +360,9 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
         "statuses": statuses,
         "weak_tls_versions": weak_versions,
         "weak_cipher_suites": weak_suites,
+        "insecure_renegotiation": insecure_reneg,
+        "client_renegotiation_accepted": client_reneg,
+        "chain_order_issues": chain_issues,
     }
 
 

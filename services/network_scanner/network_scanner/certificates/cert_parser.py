@@ -80,6 +80,24 @@ def fingerprint_der(der: bytes) -> str:
     return hashlib.sha256(der).hexdigest()
 
 
+def pem_to_der(pem: str | None) -> bytes | None:
+    """Decode the first PEM CERTIFICATE block to DER bytes."""
+    import base64
+    import re as _re
+
+    if not pem:
+        return None
+    match = _re.search(
+        r"-----BEGIN CERTIFICATE-----(.+?)-----END CERTIFICATE-----", pem, _re.DOTALL
+    )
+    if not match:
+        return None
+    try:
+        return base64.b64decode("".join(match.group(1).split()))
+    except Exception:  # noqa: BLE001 — malformed PEM: caller treats as absent
+        return None
+
+
 def normalize_dn(value: str | None) -> str:
     """Collapse OpenSSL ``CN = foo, O = bar`` spacing so issuer/subject compare."""
     text = (value or "").strip()

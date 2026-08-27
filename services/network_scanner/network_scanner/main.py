@@ -20,6 +20,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scan", action="store_true", help="Scan discovered endpoints immediately")
     parser.add_argument("--scan-versions", action="store_true", help="Probe the TLS version floor per endpoint")
     parser.add_argument("--scan-ciphers", action="store_true", help="Probe weak-cipher acceptance per endpoint")
+    parser.add_argument("--check-renegotiation", action="store_true", help="Probe RFC 5746 secure + client-initiated renegotiation")
+    parser.add_argument("--check-chain", action="store_true", help="Fetch and analyze the certificate chain as sent")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -39,6 +41,8 @@ def main(argv: list[str] | None = None) -> int:
                 result["endpoints"],
                 scan_versions=args.scan_versions,
                 scan_ciphers=args.scan_ciphers,
+                check_renegotiation=args.check_renegotiation,
+                check_chain_sent=args.check_chain,
             )
             result["scan"] = {key: scanned[key] for key in ("probe_telemetry", "certificates", "alerts") if key in scanned}
         result["scan_context"] = {"mode": "subnet-discovery", "cidr": args.discover, "ports": ports}
@@ -56,6 +60,8 @@ def main(argv: list[str] | None = None) -> int:
             starttls=args.starttls if args.starttls != "auto" else "auto",
             scan_versions=args.scan_versions,
             scan_ciphers=args.scan_ciphers,
+            check_renegotiation=args.check_renegotiation,
+            check_chain_sent=args.check_chain,
         )
     else:
         context = ScanContext.for_path(target, live=args.live, timeout=settings.timeout)

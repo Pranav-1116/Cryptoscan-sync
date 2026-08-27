@@ -29,6 +29,8 @@ class HostScanRequest(BaseModel):
     workers: int | None = None
     scan_versions: bool = False
     scan_ciphers: bool = False
+    check_renegotiation: bool = False
+    check_chain_sent: bool = False
 
 
 class TargetCreate(BaseModel):
@@ -121,6 +123,8 @@ class SubnetDiscoverRequest(BaseModel):
     scan: bool = True
     scan_versions: bool = False
     scan_ciphers: bool = False
+    check_renegotiation: bool = False
+    check_chain_sent: bool = False
     workers: int | None = None
 
 
@@ -139,6 +143,8 @@ def discover_subnet_endpoints(
             result["endpoints"],
             scan_versions=body.scan_versions,
             scan_ciphers=body.scan_ciphers,
+            check_renegotiation=body.check_renegotiation,
+            check_chain_sent=body.check_chain_sent,
         )
         result["scan"] = {
             "probe_telemetry": scanned.get("probe_telemetry"),

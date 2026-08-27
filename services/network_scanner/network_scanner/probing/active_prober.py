@@ -43,6 +43,8 @@ def probe_endpoint(
     check_http: bool = True,
     scan_versions: bool = False,
     scan_ciphers: bool = False,
+    check_renegotiation: bool = False,
+    check_chain_sent: bool = False,
 ) -> dict[str, Any]:
     host, port = _split_endpoint(endpoint)
     finding: dict[str, Any] = {
@@ -170,6 +172,23 @@ def probe_endpoint(
                         issues.append("DISALLOWED_CIPHER_ACCEPTED")
                     if weak.get("cbc_accepted"):
                         issues.append("CBC_ACCEPTED")
+                if check_renegotiation:
+                    from network_scanner.probing.renegotiation import probe_renegotiation
+
+                    reneg = probe_renegotiation(host, port, ip=ip, sni=sni, timeout=min(timeout, 5.0))
+                    finding["renegotiation"] = reneg
+                    if reneg.get("secure_renegotiation") == "NOT_SUPPORTED":
+                        issues.append("INSECURE_RENEGOTIATION_ENABLED")
+                    if reneg.get("client_renegotiation") == "ACCEPTED":
+                        issues.append("CLIENT_RENEGOTIATION_ACCEPTED")
+                if check_chain_sent:
+                    from network_scanner.certificates.chain_order import probe_chain_sent
+
+                    sent = probe_chain_sent(host, port, ip=ip, sni=sni, timeout=min(timeout, 5.0))
+                    finding["chain_sent"] = sent
+                    for issue in sent.get("issues") or []:
+                        if issue != "CHAIN_UNAVAILABLE":
+                            issues.append(issue)
                 issues = sorted(set(issues), key=lambda issue: _issue_rank(issue))
                 finding.update(
                     {
