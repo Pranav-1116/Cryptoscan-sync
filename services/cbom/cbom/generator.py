@@ -40,11 +40,13 @@ class CbomGenerator:
         }
         if metadata_properties:
             metadata["properties"] = list(metadata_properties)
+        digest = hashlib.sha256(name.encode()).hexdigest()[:32]
+        uuid_text = f"{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
         bom: dict[str, Any] = {
             "bomFormat": "CycloneDX",
             "specVersion": "1.5",
             "version": 1,
-            "serialNumber": f"urn:uuid:{hashlib.sha256(name.encode()).hexdigest()[:32]}",
+            "serialNumber": f"urn:uuid:{uuid_text}",
             "metadata": metadata,
             "components": components,
         }
@@ -59,12 +61,19 @@ class CbomGenerator:
                 }
                 for item in vulnerabilities
             ]
+        root_ref = None
         if dependencies:
             bom["dependencies"] = dependencies
         elif components:
+            bom_metadata = dict(bom.get("metadata") or {})
+            meta_component = dict(bom_metadata.get("component") or {})
+            root_ref = str(meta_component.get("bom-ref") or f"root:{name}")
+            meta_component["bom-ref"] = root_ref
+            bom_metadata["component"] = meta_component
+            bom["metadata"] = bom_metadata
             bom["dependencies"] = [
                 {
-                    "ref": str(((bom.get("metadata") or {}).get("component") or {}).get("name") or name),
+                    "ref": root_ref,
                     "dependsOn": [str(item.get("bom-ref")) for item in components if item.get("bom-ref")],
                 }
             ]
@@ -125,16 +134,21 @@ class CbomGenerator:
                     line.text = str(evidence.get("line"))
         return tostring(root, encoding="unicode")
 
-    def sign(self, bom: dict[str, Any], secret: str) -> dict[str, Any]:
+    def sign(self, bom: dict[str, Any], secret: str, *, key_id: str | None = None) -> dict[str, Any]:
         """Sign with a standards-compliant JWS (HS256, RFC 7515 compact form).
 
         The JWS is stored as the `cryptoscan:jws` metadata property and covers
         the canonical JSON of the BOM without signature properties, so any
         RFC 7515 verifier can validate it independently of CryptoScan.
+        ``key_id`` is embedded as the JWS ``kid`` header so verification can
+        pick the right key after rotation.
         """
         unsigned = self._without_signature(bom)
         payload = canonical_bytes(unsigned)
-        header = canonical_json({"alg": "HS256", "typ": "JWT"}).encode("utf-8")
+        header_fields: dict[str, Any] = {"alg": "HS256", "typ": "JWT"}
+        if key_id:
+            header_fields["kid"] = key_id
+        header = canonical_json(header_fields).encode("utf-8")
         signing_input = f"{b64url_encode(header)}.{b64url_encode(payload)}".encode("ascii")
         signature = hmac_sha256(secret, signing_input)
         jws = signing_input.decode("ascii") + "." + b64url_encode(signature)
@@ -152,32 +166,97 @@ class CbomGenerator:
         signed["metadata"] = metadata
         return signed
 
-    def verify(self, bom: dict[str, Any], secret: str) -> bool:
+    def verify(self, bom: dict[str, Any], secret: str | dict[str, str]) -> bool:
+        """True iff the BOM carries a valid signature (JWS, or legacy HMAC)."""
+        return self.verify_report(bom, secret)["ok"]
+
+    def verify_report(
+        self, bom: dict[str, Any], secret: str | dict[str, str]
+    ) -> dict[str, Any]:
+        """Structured verification result: what was checked and what failed.
+
+        ``secret`` is either the current HMAC secret or a keyring mapping
+        ``kid -> secret`` (used first when the JWS carries a ``kid``).
+        """
         props = {item.get("name"): item.get("value") for item in ((bom.get("metadata") or {}).get("properties") or [])}
         jws = props.get("cryptoscan:jws")
+        keyring = secret if isinstance(secret, dict) else None
+        primary = secret if isinstance(secret, str) else (keyring or {}).get("primary", "")
+
+        def report(ok: bool, algorithm: str, checks: list[dict[str, Any]], error: str | None, key_id: Any = None):
+            return {
+                "ok": ok,
+                "algorithm": algorithm,
+                "key_id": key_id,
+                "checks": checks,
+                "error": error,
+            }
+
         if jws:
+            checks: list[dict[str, Any]] = []
             try:
-                header_b64, payload_b64, sig_b64 = str(jws).split(".")
+                parts = str(jws).split(".")
+                if len(parts) != 3:
+                    checks.append({"name": "jws_format", "ok": False, "detail": f"{len(parts)} segments"})
+                    return report(False, "JWS-HS256", checks, "malformed JWS: expected header.payload.signature")
+                checks.append({"name": "jws_format", "ok": True, "detail": "3 segments"})
+                header_b64, payload_b64, sig_b64 = parts
                 header = json.loads(b64url_decode(header_b64))
-                if header.get("alg") != "HS256":
-                    return False
+                alg = header.get("alg")
+                if alg != "HS256":
+                    checks.append({"name": "algorithm", "ok": False, "detail": f"alg={alg}"})
+                    return report(False, "JWS-HS256", checks, f"unsupported JWS algorithm: {alg}")
+                checks.append({"name": "algorithm", "ok": True, "detail": "HS256"})
+
+                kid = header.get("kid")
+                if keyring is not None and kid:
+                    key = keyring.get(str(kid), "")
+                    if not key:
+                        checks.append({"name": "key_resolution", "ok": False, "detail": f"kid={kid} not in keyring"})
+                        return report(False, "JWS-HS256", checks, f"unknown key id: {kid}", key_id=kid)
+                    checks.append({"name": "key_resolution", "ok": True, "detail": f"kid={kid}"})
+                else:
+                    key = primary
+                    checks.append({"name": "key_resolution", "ok": bool(key), "detail": "primary key" if key else "no key"})
+                    if not key:
+                        return report(False, "JWS-HS256", checks, "no signing key provided", key_id=kid)
+
                 signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
-                expected_sig = hmac_sha256(secret, signing_input)
+                expected_sig = hmac_sha256(key, signing_input)
                 actual_sig = b64url_decode(sig_b64)
+                signature_ok = constant_time_eq(actual_sig, expected_sig)
+                checks.append({"name": "signature", "ok": signature_ok})
                 unsigned = json.loads(b64url_decode(payload_b64))
                 # The JWS payload must be the BOM itself (minus signature props).
                 canonical = self._without_signature(bom)
-                return constant_time_eq(actual_sig, expected_sig) and unsigned == json.loads(
-                    canonical_json(canonical)
-                )
-            except Exception:
-                return False
+                payload_ok = unsigned == json.loads(canonical_json(canonical))
+                checks.append({"name": "payload_matches_bom", "ok": payload_ok})
+                if not signature_ok and not payload_ok:
+                    error = "signature invalid and payload does not match the BOM"
+                elif not signature_ok:
+                    error = "signature does not verify (wrong key or tampered header)"
+                elif not payload_ok:
+                    error = "payload does not match the BOM (tampered content)"
+                else:
+                    error = None
+                return report(signature_ok and payload_ok, "JWS-HS256", checks, error, key_id=kid)
+            except Exception as exc:
+                return report(False, "JWS-HS256", checks, f"verification error: {exc}")
+
         # Legacy format (pre-JWS): bare HMAC-SHA256 hex digest property.
         expected = props.get("cryptoscan:signature")
+        checks = [{"name": "legacy_property_present", "ok": bool(expected)}]
         if not expected:
-            return False
-        digest = hmac_sha256(secret, canonical_bytes(self._without_signature(bom))).hex()
-        return constant_time_eq(str(expected), digest)
+            return report(False, "legacy-hmac-sha256", checks, "no signature properties on BOM")
+        digest = hmac_sha256(primary, canonical_bytes(self._without_signature(bom))).hex()
+        digest_ok = constant_time_eq(str(expected), digest)
+        checks.append({"name": "signature", "ok": digest_ok})
+        return report(
+            digest_ok,
+            "legacy-hmac-sha256",
+            checks,
+            None if digest_ok else "legacy HMAC digest mismatch",
+        )
 
     def _without_signature(self, bom: dict[str, Any]) -> dict[str, Any]:
         cleaned = dict(bom)

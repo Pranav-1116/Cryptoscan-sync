@@ -7,6 +7,7 @@ from _bootstrap import bootstrap  # noqa: E402
 bootstrap()
 
 import argparse
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,7 +84,16 @@ def main() -> None:
                 version=system.environment or "unknown",
             )
         if args.signed:
-            bom = generator.sign(bom, "cryptoscan-dev")
+            from cbom.signing.key_manager import KeyManager
+
+            manager = KeyManager()
+            if manager.ephemeral:
+                print(
+                    "WARNING: CRYPTOSCAN_CBOM_SECRET not set - signing with an "
+                    "ephemeral key; the signature will not verify after this run.",
+                    file=sys.stderr,
+                )
+            bom = manager.sign(bom)
         text = generator.to_xml(bom) if args.format == "xml" else generator.to_json(bom)
         if args.output:
             Path(args.output).write_text(text, encoding="utf-8")

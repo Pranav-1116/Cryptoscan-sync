@@ -37,8 +37,22 @@ def _render(bom: dict, fmt: str, signed: bool):
     if signed:
         from api.config.settings import get_settings
 
-        secret = getattr(get_settings(), "SECRET_KEY", None) or "cryptoscan-dev"
-        bom = generator.sign(bom, secret)
+        # CBOM signing key: dedicated secret when configured, else the API's
+        # own SECRET_KEY (production gate already rejects weak values).
+        # Never a hardcoded fallback.
+        import os
+
+        secret = os.environ.get("CRYPTOSCAN_CBOM_SECRET") or getattr(
+            get_settings(), "SECRET_KEY", ""
+        )
+        key_id = os.environ.get("CRYPTOSCAN_CBOM_KEY_ID") or None
+        if not secret:
+            raise HTTPException(
+                status_code=503,
+                detail="CBOM signing requested but no signing key is configured "
+                "(set CRYPTOSCAN_CBOM_SECRET)",
+            )
+        bom = generator.sign(bom, secret, key_id=key_id)
     if fmt == "xml":
         return Response(content=generator.to_xml(bom), media_type="application/xml")
     return JSONResponse(bom)
