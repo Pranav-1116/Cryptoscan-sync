@@ -84,3 +84,68 @@ def tls_algorithm(version: str | None) -> str:
     if raw in {"TLSV1.3", "TLS1.3"}:
         return "TLS1.3"
     return "TLS"
+
+
+# --------------------------------------------------------------------------- #
+# shared-registry verdicts + policy issues
+# --------------------------------------------------------------------------- #
+
+DEPRECATED_TLS_VERSIONS = {"SSLv3", "TLS1.0", "TLS1.1"}
+DISALLOWED_BULK_CIPHERS = {"3DES", "DES", "RC4", "NULL", "RC2", "IDEA", "EXPORT"}
+
+#: issue severity order (first match wins as the headline compliance_issue)
+_ISSUE_ORDER = {
+    "DISALLOWED_CIPHER": 0,
+    "WEAK_TLS_VERSION": 1,
+    "WEAK_CIPHER_SUITE": 2,
+    "CBC_MODE": 3,
+    "NO_HSTS": 4,
+}
+
+
+def registry_verdict(cipher_suite: str | None) -> dict[str, Any]:
+    """Algorithm-registry verdict for a negotiated suite (tolerant import)."""
+    try:
+        from shared_models.algorithm_registry import parse_algorithm
+
+        info = parse_algorithm(str(cipher_suite or "TLS"))
+        bulk = next((c for c in info.components if c.get("role") == "bulk_cipher"), None)
+        return {
+            "status": info.status,
+            "key_size": info.key_size,
+            "quantum_impact": info.quantum_impact,
+            "algorithm": (bulk or info.to_dict()).get("algorithm") or info.canonical,
+        }
+    except Exception:  # noqa: BLE001 — degrade to UNKNOWN, never crash a probe
+        return {"status": "UNKNOWN", "key_size": None, "quantum_impact": None, "algorithm": None}
+
+
+def policy_issues(crypto: dict[str, Any] | None, *, hsts: dict[str, Any] | None = None) -> list[str]:
+    """Compliance issues for a negotiated TLS session.
+
+    ``crypto`` is the finding's crypto block (tls_version, cipher_suite,
+    encryption, mode, status...); ``hsts`` the optional header facts.
+    """
+    crypto = crypto or {}
+    issues: list[str] = []
+    version = str(crypto.get("tls_version") or "").replace("TLSv", "TLS").replace("SSLv", "SSL")
+    if version in {"TLS1.0", "TLS1.1", "SSL3.0", "SSL3", "SSL2.0"} or version in DEPRECATED_TLS_VERSIONS:
+        issues.append("WEAK_TLS_VERSION")
+    encryption = str(crypto.get("encryption_algorithm") or "").upper()
+    if any(bad in encryption for bad in DISALLOWED_BULK_CIPHERS):
+        issues.append("DISALLOWED_CIPHER")
+    status = str(crypto.get("status") or "")
+    if status in {"DISALLOWED", "DEPRECATED"} and "DISALLOWED_CIPHER" not in issues:
+        issues.append("WEAK_CIPHER_SUITE")
+    if str(crypto.get("encryption_mode") or "").upper() == "CBC" and "CHACHA" not in encryption:
+        issues.append("CBC_MODE")
+    if hsts is not None and not (hsts.get("hsts") or {}).get("present", False):
+        issues.append("NO_HSTS")
+    return sorted(set(issues), key=lambda issue: _ISSUE_ORDER.get(issue, 99))
+
+
+def headline_issue(issues: list[str]) -> str | None:
+    """Most severe issue for the finding's compliance_issue field."""
+    if not issues:
+        return None
+    return sorted(issues, key=lambda issue: _ISSUE_ORDER.get(issue, 99))[0]

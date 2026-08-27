@@ -19,6 +19,9 @@ class HostScanRequest(BaseModel):
     hosts: list[str] = Field(default_factory=list)
     live: bool = True
     timeout: float = 5.0
+    sni: str | None = None
+    starttls: str | None = None
+    workers: int | None = None
 
 
 @router.post("")
@@ -30,7 +33,9 @@ def trigger_network_scan(
 ):
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
-    result = NetworkTlsScanner(live=True, timeout=body.timeout).scan_hosts(body.hosts)
+    result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
+        body.hosts, sni=body.sni, starttls=body.starttls
+    )
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
     for cert in result.get("certificates") or []:

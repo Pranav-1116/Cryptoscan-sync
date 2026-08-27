@@ -24,6 +24,9 @@ class HostScanRequest(BaseModel):
     hosts: list[str] = Field(default_factory=list)
     live: bool = True
     timeout: float = 5.0
+    sni: str | None = None
+    starttls: str | None = None  # auto | smtp | imap | pop3 | ftp | ldap | postgresql | off
+    workers: int | None = None
 
 
 class TargetCreate(BaseModel):
@@ -145,7 +148,9 @@ def check_revocation(cert_id: str, user: str = Depends(get_current_user), db: Se
 def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
-    result = NetworkTlsScanner(live=True, timeout=body.timeout).scan_hosts(body.hosts)
+    result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
+        body.hosts, sni=body.sni, starttls=body.starttls
+    )
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
     for cert in result.get("certificates") or []:

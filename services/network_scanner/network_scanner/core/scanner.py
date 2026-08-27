@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -28,9 +29,10 @@ def live_tls_enabled(flag: bool | None = None) -> bool:
 
 
 class NetworkTlsScanner:
-    def __init__(self, *, live: bool | None = None, timeout: float = 5.0):
+    def __init__(self, *, live: bool | None = None, timeout: float = 5.0, workers: int | None = None):
         self.live = live_tls_enabled(live)
         self.timeout = timeout
+        self.workers = workers or _default_workers()
 
     def scan_filesystem(self, root: str | Path, *, scan_id: str | None = None) -> dict[str, Any]:
         root_path = Path(root)
@@ -50,6 +52,7 @@ class NetworkTlsScanner:
         findings.extend(discover_mesh_logs(root_path))
         if self.live:
             seen = set()
+            probe_list: list[str] = []
             for target in targets:
                 endpoint = target.get("endpoint")
                 if not endpoint or endpoint in seen:
@@ -58,9 +61,9 @@ class NetworkTlsScanner:
                 # Skip obviously non-routable k8s service names unless they have a dot
                 if ":" in endpoint and "." not in endpoint.split(":")[0] and not endpoint[0].isdigit():
                     continue
-                result = probe_endpoint(endpoint, timeout=self.timeout)
-                live_results.append(result)
-                findings.append(result)
+                probe_list.append(endpoint)
+            live_results = self._probe_all(probe_list)
+            findings.extend(live_results)
         for cert in pem_certs:
             findings.append(self._cert_finding(cert))
         inventory = merge_certificates([], [self._usage(cert) for cert in pem_certs] + self._live_certs(live_results))
@@ -75,10 +78,20 @@ class NetworkTlsScanner:
             "usages": usage_records(inventory),
             "alerts": expiry_alerts(inventory),
             "probes": live_results,
+            "probe_telemetry": probe_telemetry(live_results),
         }
 
-    def scan_hosts(self, endpoints: Iterable[str], *, scan_id: str | None = None) -> dict[str, Any]:
-        results = [probe_endpoint(item, timeout=self.timeout) for item in endpoints]
+    def scan_hosts(
+        self,
+        endpoints: Iterable[str],
+        *,
+        scan_id: str | None = None,
+        sni: str | None = None,
+        starttls: str | bool | None = None,
+        workers: int | None = None,
+    ) -> dict[str, Any]:
+        endpoint_list = [str(item) for item in endpoints if str(item).strip()]
+        results = self._probe_all(endpoint_list, sni=sni, starttls=starttls, workers=workers)
         inventory = merge_certificates([], self._live_certs(results))
         self._attach_revocation(inventory)
         return {
@@ -90,7 +103,48 @@ class NetworkTlsScanner:
             "usages": usage_records(inventory),
             "alerts": expiry_alerts(inventory),
             "probes": results,
+            "probe_telemetry": probe_telemetry(results),
         }
+
+    def _probe_all(
+        self,
+        endpoints: list[str],
+        *,
+        sni: str | None = None,
+        starttls: str | bool | None = None,
+        workers: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Probe endpoints in parallel (bounded); failures never stop the rest."""
+        if not endpoints:
+            return []
+        worker_count = max(1, min(workers or self.workers, len(endpoints)))
+        if worker_count == 1:
+            return [self._safe_probe(item, sni=sni, starttls=starttls) for item in endpoints]
+        by_endpoint: dict[str, dict[str, Any]] = {}
+        with ThreadPoolExecutor(max_workers=worker_count) as pool:
+            futures = {
+                pool.submit(self._safe_probe, item, sni=sni, starttls=starttls): item
+                for item in endpoints
+            }
+            for future in as_completed(futures):
+                row = future.result()
+                by_endpoint[str(row.get("endpoint") or futures[future])] = row
+        # keep input order for deterministic reports
+        return [by_endpoint[item] for item in endpoints if item in by_endpoint]
+
+    def _safe_probe(self, endpoint: str, *, sni: str | None = None, starttls: str | bool | None = None) -> dict[str, Any]:
+        try:
+            return probe_endpoint(endpoint, timeout=self.timeout, sni=sni, starttls=starttls)
+        except Exception as exc:  # noqa: BLE001 — one endpoint must not sink the scan
+            return {
+                "finding_id": endpoint,
+                "scanner_id": "network-tls-scanner-v1.0",
+                "endpoint": endpoint,
+                "status": "PROBE_ERROR",
+                "error": f"{type(exc).__name__}: {exc}"[:300],
+                "metadata": {"confidence": "LOW", "scan_method": "ACTIVE_PROBE"},
+                "certificates": [],
+            }
 
     def _collect_pem(self, root: Path) -> list[dict[str, Any]]:
         certs: list[dict[str, Any]] = []
@@ -113,6 +167,7 @@ class NetworkTlsScanner:
 
     def _cert_finding(self, cert: dict[str, Any]) -> dict[str, Any]:
         algo = cert.get("public_key_algorithm") or "UNKNOWN"
+        verdict = certificate_verdict(cert)
         return {
             "finding_id": cert.get("fingerprint_sha256"),
             "scanner_id": "network-tls-scanner-v1.0",
@@ -133,12 +188,16 @@ class NetworkTlsScanner:
                 "key_size": cert.get("public_key_size"),
                 "purpose": "CERTIFICATE",
             },
+            "compliance_issue": verdict.get("compliance_issue"),
+            "policy_issues": verdict.get("policy_issues"),
             "metadata": {
                 "confidence": "HIGH",
                 "library": "x509",
                 "expiry_status": cert.get("expiry_status"),
                 "days_until_expiry": cert.get("days_until_expiry"),
                 "fingerprint": cert.get("fingerprint_sha256"),
+                "status": verdict.get("status"),
+                "quantum_impact": verdict.get("quantum_impact"),
             },
             "certificates": [cert],
         }
@@ -199,3 +258,72 @@ class NetworkTlsScanner:
             seen.add(parent_id)
             parent_id = parent.get("issuer_cert_id")
         return validate_chain(chain)
+
+def _default_workers() -> int:
+    try:
+        return max(1, int(os.environ.get("CRYPTOSCAN_TLS_WORKERS") or 8))
+    except ValueError:
+        return 8
+
+
+def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate probe outcomes — mirrors cloud_scanner's honest verdicts."""
+    statuses: dict[str, int] = {}
+    weak_versions = weak_suites = 0
+    for row in results:
+        status = str(row.get("status") or "UNKNOWN")
+        statuses[status] = statuses.get(status, 0) + 1
+        issues = row.get("policy_issues") or []
+        if "WEAK_TLS_VERSION" in issues:
+            weak_versions += 1
+        if "DISALLOWED_CIPHER" in issues or "WEAK_CIPHER_SUITE" in issues:
+            weak_suites += 1
+    probed = len(results)
+    ok = statuses.get("OK", 0)
+    if probed == 0:
+        verdict = "SKIPPED"
+    elif ok == 0:
+        verdict = "FAILED"
+    elif ok < probed or weak_versions or weak_suites:
+        verdict = "PARTIAL"
+    else:
+        verdict = "OK"
+    return {
+        "status": verdict,
+        "probed": probed,
+        "ok": ok,
+        "statuses": statuses,
+        "weak_tls_versions": weak_versions,
+        "weak_cipher_suites": weak_suites,
+    }
+
+
+def certificate_verdict(cert: dict[str, Any]) -> dict[str, Any]:
+    """Registry verdict for a certificate's key + signature algorithm."""
+    issues: list[str] = []
+    status = "UNKNOWN"
+    quantum_impact = None
+    try:
+        from shared_models.algorithm_registry import parse_algorithm
+
+        key_info = parse_algorithm(
+            f"{cert.get('public_key_algorithm') or 'RSA'}-{cert.get('public_key_size') or ''}".rstrip("-")
+            if cert.get("public_key_size")
+            else str(cert.get("public_key_algorithm") or "RSA")
+        )
+        status = key_info.status
+        quantum_impact = key_info.quantum_impact
+        if status == "DISALLOWED":
+            issues.append("WEAK_CERTIFICATE_KEY")
+        sig = str(cert.get("signature_algorithm") or "").lower()
+        if sig.startswith("sha1") or sig.startswith("md5"):
+            issues.append("WEAK_SIGNATURE_ALGORITHM")
+            status = "DISALLOWED" if status != "DISALLOWED" else status
+    except Exception:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+        pass
+    return {
+        "status": status,
+        "quantum_impact": quantum_impact,
+        "policy_issues": issues,
+        "compliance_issue": issues[0] if issues else None,
+    }

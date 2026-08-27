@@ -17,13 +17,22 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("target", help="Filesystem path or host:port")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
+    parser.add_argument("--sni", default=None, help="Override SNI for the probe")
+    parser.add_argument("--starttls", default=None,
+                        help="STARTTLS protocol: auto|smtp|imap|pop3|ftp|ldap|postgresql|off (default: auto for known ports)")
+    parser.add_argument("--workers", type=int, default=None, help="Parallel probes (default 8)")
     args = parser.parse_args(argv)
 
-    scanner = NetworkTlsScanner(live=args.live, timeout=settings.timeout)
+    scanner = NetworkTlsScanner(live=args.live, timeout=settings.timeout, workers=args.workers)
     target = args.target
     if ":" in target and not Path(target).exists():
         context = ScanContext.for_hosts(target, live=True, timeout=settings.timeout)
-        result = scanner.scan_hosts([target], scan_id=context.scan_id)
+        result = scanner.scan_hosts(
+            [target],
+            scan_id=context.scan_id,
+            sni=args.sni,
+            starttls=args.starttls if args.starttls != "auto" else "auto",
+        )
     else:
         context = ScanContext.for_path(target, live=args.live, timeout=settings.timeout)
         result = scanner.scan_filesystem(target, scan_id=context.scan_id)

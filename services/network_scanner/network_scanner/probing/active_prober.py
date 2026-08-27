@@ -11,7 +11,15 @@ from network_scanner.certificates.cert_parser import from_ssl_dict, hostname_mat
 from network_scanner.certificates.chain_validator import validate_chain
 from network_scanner.certificates.crl_checker import check_crl
 from network_scanner.certificates.ocsp_checker import check_ocsp
-from network_scanner.probing.cipher_suite_parser import parse_cipher_suite, tls_algorithm
+from network_scanner.probing.cipher_suite_parser import (
+    headline_issue,
+    parse_cipher_suite,
+    policy_issues,
+    registry_verdict,
+    tls_algorithm,
+)
+from network_scanner.probing.http_headers import check_http_headers
+from network_scanner.probing.starttls import negotiate_starttls, protocol_for_port
 
 
 def _split_endpoint(endpoint: str) -> tuple[str, int]:
@@ -26,7 +34,14 @@ def _split_endpoint(endpoint: str) -> tuple[str, int]:
     return raw, 443
 
 
-def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = None) -> dict[str, Any]:
+def probe_endpoint(
+    endpoint: str,
+    *,
+    timeout: float = 5.0,
+    sni: str | None = None,
+    starttls: str | bool | None = None,
+    check_http: bool = True,
+) -> dict[str, Any]:
     host, port = _split_endpoint(endpoint)
     finding: dict[str, Any] = {
         "finding_id": str(uuid.uuid4()),
@@ -35,7 +50,7 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
         "status": "OK",
         "source": {"type": "NETWORK_ENDPOINT", "file_path": f"tls://{host}:{port}", "line_number": 0, "language": "TLS"},
         "crypto": {"purpose": "NETWORK_ENCRYPTION", "algorithm": "TLS"},
-        "metadata": {"confidence": "HIGH", "scan_method": "ACTIVE_PROBE", "library": "stdlib-ssl"},
+        "metadata": {"confidence": "HIGH", "scan_method": "ACTIVE_PROBE", "library": "stdlib-ssl", "starttls": None},
         "certificates": [],
         "chain_validation": {"is_valid": False, "errors": []},
         "revocation_status": {"method": None, "status": "UNKNOWN"},
@@ -53,8 +68,20 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.check_hostname = False
     context.verify_mode = ssl.CERT_NONE
+    starttls_protocol = _resolve_starttls(starttls, port)
+    if starttls_protocol == "none":
+        starttls_protocol = None
     try:
         with socket.create_connection((ip or host, port), timeout=timeout) as raw:
+            if starttls_protocol:
+                upgrade = negotiate_starttls(raw, starttls_protocol, timeout=timeout)
+                if not upgrade.get("ok"):
+                    finding["status"] = "STARTTLS_REFUSED"
+                    finding["error"] = upgrade.get("detail")
+                    finding["metadata"]["starttls"] = starttls_protocol
+                    finding["metadata"]["confidence"] = "MEDIUM"
+                    return finding
+                finding["metadata"]["starttls"] = starttls_protocol
             with context.wrap_socket(raw, server_hostname=sni or host) as tls:
                 version = tls.version()
                 cipher = tls.cipher() or (None, None, None)
@@ -101,6 +128,21 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
                     crl = check_crl(leaf, live=False)
                     if crl.get("urls") and not revocation.get("urls"):
                         revocation = crl
+                verdict = registry_verdict(parsed.get("cipher_suite"))
+                parsed.setdefault("status", verdict["status"])
+                headers = None
+                if check_http and not starttls_protocol:
+                    headers = check_http_headers(tls, sni or host, timeout=min(timeout, 4.0))
+                issues = policy_issues(
+                    {
+                        "tls_version": version,
+                        "cipher_suite": parsed.get("cipher_suite"),
+                        "encryption_algorithm": parsed.get("encryption"),
+                        "encryption_mode": parsed.get("mode"),
+                        "status": verdict["status"],
+                    },
+                    hsts=headers,
+                )
                 finding.update(
                     {
                         "status": "OK",
@@ -123,13 +165,20 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
                             "mode": parsed.get("mode"),
                             "purpose": "NETWORK_ENCRYPTION",
                             "raw_transformation": parsed.get("cipher_suite"),
+                            "status": verdict["status"],
+                            "quantum_impact": verdict["quantum_impact"],
                         },
+                        "compliance_issue": headline_issue(issues),
+                        "policy_issues": issues,
+                        "algorithm_verdict": verdict,
+                        "http_headers": headers,
                         "certificates": chain_certs,
                         "chain_validation": chain,
                         "revocation_status": revocation,
                     }
                 )
                 finding["algorithm"] = algo
+                finding["policy_issues"] = issues
     except TimeoutError:
         finding["status"] = "TIMEOUT"
         finding["metadata"]["confidence"] = "LOW"
@@ -146,6 +195,20 @@ def probe_endpoint(endpoint: str, *, timeout: float = 5.0, sni: str | None = Non
         finding["error"] = str(exc)
         finding["metadata"]["confidence"] = "LOW"
     return finding
+
+
+def _resolve_starttls(starttls: str | bool | None, port: int) -> str | None:
+    """None/False -> plain TLS; 'auto' -> by port; named protocol wins."""
+    if starttls is None or starttls is False:
+        return None
+    if starttls is True:
+        return protocol_for_port(port) or "none"
+    text = str(starttls).lower().strip()
+    if text in {"auto", "port", "detect"}:
+        return protocol_for_port(port) or "none"
+    if text in {"off", "no", "none", "false", "0"}:
+        return None
+    return text
 
 
 def _classify_ssl_error(exc: ssl.SSLError) -> str:
