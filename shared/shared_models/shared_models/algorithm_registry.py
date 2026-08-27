@@ -303,7 +303,18 @@ def _mode_of(stripped: str) -> str | None:
     return None
 
 
+_TLS13_SUITES = {
+    "TLSAES128GCMSHA256": ("AES-128-GCM", 128, "SHA-256"),
+    "TLSAES256GCMSHA384": ("AES-256-GCM", 256, "SHA-384"),
+    "TLSCHACHA20POLY1305SHA256": ("ChaCha20-Poly1305", 256, "SHA-256"),
+    "TLSAES128CCMSHA256": ("AES-128-CCM", 128, "SHA-256"),
+    "TLSAES128CCM8SHA256": ("AES-128-CCM8", 128, "SHA-256"),
+}
+
+
 def _looks_like_tls_suite(stripped: str) -> bool:
+    if stripped in _TLS13_SUITES:
+        return True
     return stripped.startswith("TLS") and "WITH" in stripped
 
 
@@ -315,6 +326,23 @@ def _parse_tls_suite(raw: str, stripped: str) -> AlgorithmInfo:
         entry = parse_algorithm(part).to_dict()
         entry["role"] = role
         components.append(entry)
+
+    if stripped in _TLS13_SUITES:
+        cipher, bits, mac = _TLS13_SUITES[stripped]
+        add(cipher, "bulk_cipher")
+        add(mac, "mac")
+        return AlgorithmInfo(
+            raw=raw,
+            canonical=raw.strip(),
+            family="tls-suite",
+            status=ALLOWED,
+            key_size=bits,
+            parameter_kind=KEY_BITS,
+            mode="GCM" if "GCM" in cipher else ("CCM" if "CCM" in cipher else None),
+            quantum_impact="grover",
+            notes=f"TLS 1.3 suite ({cipher})",
+            components=tuple(components),
+        )
 
     for kx, parts in _TLS_KX_PARTS.items():
         if stripped.startswith("TLS" + kx) or ("_" + kx + "_") in raw.upper() or kx in stripped[len("TLS"): len("TLS") + len(kx) + 1]:
@@ -360,10 +388,16 @@ def _parse_tls_suite(raw: str, stripped: str) -> AlgorithmInfo:
         status = ALLOWED
 
     key_size = None
-    if "AES128" in stripped or "CHACHA20" in stripped:
+    if "AES128" in stripped or "CHACHA20" in stripped or "RC4" in stripped or "SEED" in stripped or "IDEA" in stripped:
         key_size = 128
-    elif "AES256" in stripped:
+    elif "AES256" in stripped or "CAMELLIA256" in stripped or "ARIA256" in stripped:
         key_size = 256
+    elif "3DES" in stripped or "DESEDE" in stripped:
+        key_size = 168
+    elif "WITHDES" in stripped:
+        key_size = 56
+    elif "CAMELLIA128" in stripped or "ARIA128" in stripped:
+        key_size = 128
 
     return AlgorithmInfo(
         raw=raw,
@@ -476,9 +510,18 @@ def parse_algorithm(raw: str) -> AlgorithmInfo:
         )
 
     # -- 4) elliptic-curve names: nistp256 / ECDSA-P384 / prime256v1 - #
-    curve = re.search(r"(?:ECDSA|ECDH|EC)?(?:NISTP|SECP)?P?(256|384|521)$", stripped)
-    if "NISTP" in stripped or re.search(r"ECDSA?P(256|384|521)$", stripped) or re.search(r"ECDHP(256|384|521)$", stripped) or (curve and stripped not in _FAMILIES and stripped not in _ALIASES):
-        bits = int(curve.group(1)) if curve else 256
+    curve = re.fullmatch(r"P(256|384|521)", stripped)
+    curveish = (
+        curve
+        or "NISTP" in stripped
+        or "SECP" in stripped
+        or "PRIME" in stripped
+        or re.search(r"ECDSAP?(256|384|521)$", stripped)
+        or re.search(r"ECDHP?(256|384|521)$", stripped)
+    )
+    if curveish and stripped not in _FAMILIES and stripped not in _ALIASES:
+        m_curve = re.search(r"(256|384|521)", stripped)
+        bits = int(m_curve.group(1)) if m_curve else 256
         is_dh = "ECDH" in stripped or "X25519" in stripped
         fam = _FAMILIES.get("ECDH" if is_dh else "ECDSA")
         return AlgorithmInfo(
