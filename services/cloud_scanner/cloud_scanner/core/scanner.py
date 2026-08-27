@@ -45,18 +45,29 @@ class CloudScanner:
                 ):
                     findings.extend(parse_cloudformation(path))
             findings.extend(parse_kubernetes_tree(root_path))
+        live_scan = None
         if self.live:
             live = self.scan_live(scan_id=scan_id)
             findings.extend(live.get("findings") or [])
+            live_scan = live.get("live_scan")
         issues = [row for row in findings if row.get("compliance_issue")]
-        return {
+        result = {
             "scan_id": scan_id,
             "live": self.live,
             "findings": findings,
             "resources": len(findings),
             "issues": len(issues),
-            "providers": sorted({(row.get("metadata") or {}).get("cloud_provider") for row in findings if row.get("metadata")}),
+            "providers": sorted(
+                {
+                    str((row.get("metadata") or {}).get("cloud_provider"))
+                    for row in findings
+                    if (row.get("metadata") or {}).get("cloud_provider")
+                }
+            ),
         }
+        if live_scan is not None:
+            result["live_scan"] = live_scan
+        return result
 
     def scan_live(
         self,

@@ -20,16 +20,34 @@ def _session():
     return boto3.Session()
 
 
-def _regions(session, requested: list[str] | None) -> list[str]:
+def _max_regions(env_name: str, default: int) -> int:
+    try:
+        return max(1, int(os.environ.get(env_name) or default))
+    except ValueError:
+        return default
+
+
+def _regions(session, requested: list[str] | None, telemetry=None) -> list[str]:
+    """Region list with recorded truncation — dropped regions are never silent."""
     if requested:
-        return requested[:16]
+        cap = _max_regions("CRYPTOSCAN_CLOUD_MAX_REGIONS_REQUESTED", 16)
+        if len(requested) > cap:
+            if telemetry:
+                telemetry.record_truncation("AWS", "regions", "requested", cap)
+            return requested[:cap]
+        return requested
     try:
         names = session.get_available_regions("kms") or []
     except Exception:
         names = []
     if not names:
         names = [session.region_name or "us-east-1"]
-    return names[:8]
+    cap = _max_regions("CRYPTOSCAN_CLOUD_MAX_REGIONS", 8)
+    if len(names) > cap:
+        if telemetry:
+            telemetry.record_truncation("AWS", "regions", "discovered", cap)
+        return names[:cap]
+    return names
 
 
 def scan_aws(
@@ -79,7 +97,7 @@ def scan_aws_detailed(
         return {"findings": [], "provider": "AWS", "regions": []}
 
     findings: list[dict[str, Any]] = []
-    region_list = _regions(sess, regions)
+    region_list = _regions(sess, regions, telemetry=tele)
     cloudfront_done = False
     for region in region_list:
         for service, fn in (
@@ -93,6 +111,12 @@ def scan_aws_detailed(
             ("apigateway", scanners.scan_apigateway),
             ("ec2", scanners.scan_ebs),
             ("ssm", scanners.scan_ssm),
+            ("dynamodb", scanners.scan_dynamodb),
+            ("sqs", scanners.scan_sqs),
+            ("sns", scanners.scan_sns),
+            ("opensearch", scanners.scan_opensearch),
+            ("eks", scanners.scan_eks),
+            ("redshift", scanners.scan_redshift),
         ):
             try:
                 client = sess.client(service, region_name=region)

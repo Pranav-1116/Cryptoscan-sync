@@ -78,7 +78,7 @@ def _list(
         (str(response[key]) for key in ("NextToken", "NextMarker", "Marker") if isinstance(response, dict) and response.get(key)),
         None,
     )
-    collected = [i for i in (items or []) if isinstance(i, dict)]
+    collected = [i for i in (items or []) if isinstance(i, (dict, str)) and i]
     dropped_at_cap = False
     while token and len(collected) < cap:
         paged_kwargs = dict(extra_kwargs)
@@ -91,7 +91,7 @@ def _list(
                 telemetry.record_error("AWS", service, region, error)
             break
         response = value or {}
-        page = [i for i in (_dig(response, items_key) or []) if isinstance(i, dict)]
+        page = [i for i in (_dig(response, items_key) or []) if isinstance(i, (dict, str)) and i]
         if not page:
             break
         for item in page:
@@ -454,8 +454,15 @@ def scan_ebs(client, *, region: str, telemetry: ScanTelemetry | None = None) -> 
 
 def scan_ssm(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
-    params = as_list((_safe(client.describe_parameters, {}) or {}).get("Parameters"))
-    for param in params[:80]:
+    params = _list(
+        client,
+        "describe_parameters",
+        items_key="Parameters",
+        telemetry=telemetry,
+        service="ssm",
+        region=region,
+    )
+    for param in params:
         name = param.get("Name") or param.get("ARN") or "parameter"
         ptype = param.get("Type") or "String"
         encrypted = ptype == "SecureString"
@@ -477,3 +484,238 @@ def scan_ssm(client, *, region: str, telemetry: ScanTelemetry | None = None) -> 
             )
         )
     return findings
+
+
+def scan_dynamodb(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """DynamoDB tables: SSE status + KMS key (AWS-owned vs customer CMK)."""
+    findings: list[dict[str, Any]] = []
+    tables = _list(
+        client,
+        "list_tables",
+        items_key="TableNames",
+        telemetry=telemetry,
+        service="dynamodb",
+        region=region,
+    )
+    for name in tables:
+        table_name = name if isinstance(name, str) else str(named_of(name))
+        desc = _safe(lambda n=table_name: client.describe_table(TableName=n).get("Table", {}), {}) or {}
+        sse = desc.get("SSEDescription") or {}
+        sse_on = bool(sse.get("Status") == "ENABLED")
+        kms = sse.get("KMSMasterKeyArn")
+        findings.append(
+            cloud_finding(
+                source_type="AWS_DYNAMODB_TABLE",
+                resource=table_name,
+                algorithm="AES-256" if sse_on else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/dynamodb/{table_name}",
+                issue=None if sse_on else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "sse_enabled": sse_on,
+                    "sse_status": sse.get("Status"),
+                    "kms_key_id": kms,
+                    "cmk": bool(kms),
+                },
+            )
+        )
+    return findings
+
+
+def scan_sqs(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """SQS queues: server-side encryption (SSE-SHA256/SSE-KMS)."""
+    findings: list[dict[str, Any]] = []
+    queues = _list(
+        client,
+        "list_queues",
+        items_key="QueueUrls",
+        telemetry=telemetry,
+        service="sqs",
+        region=region,
+    )
+    for url in queues:
+        queue_url = url if isinstance(url, str) else str(url)
+        name = queue_url.rsplit("/", 1)[-1] if "/" in queue_url else queue_url
+        attrs = (
+            _safe(lambda u=queue_url: client.get_queue_attributes(
+                QueueUrl=u, AttributeNames=["SqsManagedSseEnabled", "KmsMasterKeyId"]
+            ).get("Attributes", {}), {}) or {}
+        )
+        kms = attrs.get("KmsMasterKeyId")
+        managed_sse = str(attrs.get("SqsManagedSseEnabled", "false")).lower() == "true"
+        encrypted = bool(kms) or managed_sse
+        findings.append(
+            cloud_finding(
+                source_type="AWS_SQS_QUEUE",
+                resource=name or queue_url,
+                algorithm="AES-256" if encrypted else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/sqs/{name}",
+                issue=None if encrypted else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "kms_key_id": kms,
+                    "sse_managed": managed_sse,
+                },
+            )
+        )
+    return findings
+
+
+def scan_sns(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """SNS topics: server-side encryption (KMS)."""
+    findings: list[dict[str, Any]] = []
+    topics = _list(
+        client,
+        "list_topics",
+        items_key="Topics",
+        telemetry=telemetry,
+        service="sns",
+        region=region,
+    )
+    for topic in topics:
+        arn = topic.get("TopicArn") or "topic"
+        name = arn.rsplit(":", 1)[-1] if ":" in arn else arn
+        attrs = (
+            _safe(lambda a=arn: client.get_topic_attributes(TopicArn=a).get("Attributes", {}), {}) or {}
+        )
+        kms = attrs.get("KmsMasterKeyId")
+        findings.append(
+            cloud_finding(
+                source_type="AWS_SNS_TOPIC",
+                resource=arn,
+                algorithm="AES-256" if kms else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/sns/{name}",
+                issue=None if kms else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "kms_key_id": kms,
+                },
+            )
+        )
+    return findings
+
+
+def scan_opensearch(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """OpenSearch domains: encryption at rest + minimum TLS version."""
+    findings: list[dict[str, Any]] = []
+    domains = _list(
+        client,
+        "list_domain_names",
+        items_key="DomainNames",
+        telemetry=telemetry,
+        service="opensearch",
+        region=region,
+    )
+    for entry in domains:
+        name = entry.get("DomainName") if isinstance(entry, dict) else str(entry)
+        desc = _safe(lambda n=name: (client.describe_domain(DomainName=n) or {}).get("DomainStatus", {}), {}) or {}
+        enc = desc.get("EncryptionAtRestOptions") or {}
+        encrypted = bool(enc.get("Enabled"))
+        tls = (desc.get("DomainEndpointOptions") or {}).get("TLSSecurityPolicy") or "Policy-Min-TLS-1-0-2019-07"
+        weak_tls = "1-0" in tls or "1_0" in tls
+        issue = None
+        if not encrypted:
+            issue = "NO_ENCRYPTION_AT_REST"
+        elif weak_tls:
+            issue = "WEAK_TLS_VERSION"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_OPENSEARCH_DOMAIN",
+                resource=name,
+                algorithm="AES-256" if encrypted else ("TLS1.0" if weak_tls else "TLS"),
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/opensearch/{name}",
+                issue=issue,
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "encryption_at_rest": encrypted,
+                    "kms_key_id": enc.get("KmsKeyId"),
+                    "tls_security_policy": tls,
+                },
+            )
+        )
+    return findings
+
+
+def scan_eks(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """EKS clusters: Kubernetes secrets envelope encryption via KMS."""
+    findings: list[dict[str, Any]] = []
+    clusters = _list(
+        client,
+        "list_clusters",
+        items_key="clusters",
+        telemetry=telemetry,
+        service="eks",
+        region=region,
+    )
+    for name in clusters:
+        cluster_name = name if isinstance(name, str) else str(name)
+        desc = _safe(lambda n=cluster_name: (client.describe_cluster(name=n) or {}).get("cluster", {}), {}) or {}
+        enc = desc.get("encryptionConfig") or []
+        kms = next((str((item.get("provider") or {}).get("keyArn") or "") for item in enc if item.get("provider")), "")
+        findings.append(
+            cloud_finding(
+                source_type="AWS_EKS_CLUSTER",
+                resource=cluster_name,
+                algorithm="AES-256" if kms else None,
+                purpose="KEY_MANAGEMENT",
+                file_path=f"aws://{region}/eks/{cluster_name}",
+                issue=None if kms else "NO_ENV_ENCRYPTION",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "secrets_encryption_kms": kms or None,
+                    "kubernetes_version": desc.get("version"),
+                },
+            )
+        )
+    return findings
+
+
+def scan_redshift(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Redshift clusters: storage encryption (KMS or CloudHSM)."""
+    findings: list[dict[str, Any]] = []
+    clusters = _list(
+        client,
+        "describe_clusters",
+        items_key="Clusters",
+        telemetry=telemetry,
+        service="redshift",
+        region=region,
+    )
+    for cluster in clusters:
+        encrypted = bool(cluster.get("Encrypted"))
+        kms = cluster.get("KmsKeyId")
+        hsm = bool(cluster.get("HsmClientCertificateIdentifier"))
+        name = cluster.get("ClusterIdentifier") or "redshift"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_REDSHIFT_CLUSTER",
+                resource=name,
+                algorithm="AES-256" if encrypted else None,
+                purpose="DATABASE_ENCRYPTION",
+                file_path=f"aws://{region}/redshift/{name}",
+                issue=None if encrypted else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "encrypted": encrypted,
+                    "kms_key_id": kms,
+                    "hsm_backed": hsm,
+                },
+            )
+        )
+    return findings
+
+
+def named_of(item: Any) -> str:
+    if isinstance(item, dict):
+        return str(item.get("Name") or item.get("name") or next(iter(item.values()), "resource"))
+    return str(item)

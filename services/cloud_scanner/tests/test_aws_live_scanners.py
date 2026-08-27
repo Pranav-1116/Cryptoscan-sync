@@ -2,12 +2,18 @@ from cloud_scanner.aws.mappers import map_acm_key, map_kms_key_spec, map_s3_sse,
 from cloud_scanner.aws.scanners import (
     scan_acm,
     scan_cloudfront,
+    scan_dynamodb,
     scan_ebs,
+    scan_eks,
     scan_elb,
     scan_kms,
     scan_lambda,
+    scan_opensearch,
+    scan_redshift,
     scan_rds,
     scan_s3,
+    scan_sns,
+    scan_sqs,
     scan_ssm,
 )
 from cloud_scanner.iac.terraform import parse_terraform
@@ -193,3 +199,132 @@ resource "google_sql_database_instance" "db" { name = "db" }
     assert "GCP_CLOUD_SQL" in types
     assert any(row.get("compliance_issue") == "WEAK_TLS_VERSION" for row in findings)
     assert any(row.get("compliance_issue") == "NO_ENCRYPTION_AT_REST" for row in findings)
+
+
+# -------------------------------------------------------------------------- #
+# new service scanners: dynamodb / sqs / sns / opensearch / eks / redshift
+# -------------------------------------------------------------------------- #
+
+
+class _DynamoDB:
+    def list_tables(self, **kwargs):
+        return {"TableNames": ["orders"], **kwargs}
+
+    def describe_table(self, TableName):
+        if TableName == "orders":
+            return {"Table": {"SSEDescription": {"Status": "ENABLED", "KMSMasterKeyArn": "arn:aws:kms:...:key/cm"}}}
+        return {"Table": {}}
+
+
+class _Sqs:
+    def list_queues(self, **kwargs):
+        return {"QueueUrls": ["https://sqs.us-east-1.amazonaws.com/1/payments", "https://sqs.us-east-1.amazonaws.com/1/plain"]}
+
+    def get_queue_attributes(self, QueueUrl, AttributeNames):
+        if "plain" in QueueUrl:
+            return {"Attributes": {}}
+        return {"Attributes": {"KmsMasterKeyId": "alias/aws/sqs"}}
+
+
+class _Sns:
+    def list_topics(self, **kwargs):
+        return {"Topics": [{"TopicArn": "arn:aws:sns:us-east-1:1:alerts"}]}
+
+    def get_topic_attributes(self, TopicArn):
+        return {"Attributes": {"KmsMasterKeyId": "alias/aws/sns"}}
+
+
+class _OpenSearch:
+    def list_domain_names(self, **kwargs):
+        return {"DomainNames": [{"DomainName": "audit"}, {"DomainName": "legacy"}]}
+
+    def describe_domain(self, DomainName):
+        if DomainName == "audit":
+            return {
+                "DomainStatus": {
+                    "EncryptionAtRestOptions": {"Enabled": True, "KmsKeyId": "arn:aws:kms:...:key/k"},
+                    "DomainEndpointOptions": {"TLSSecurityPolicy": "Policy-Min-TLS-1-2-2019-07"},
+                }
+            }
+        return {
+            "DomainStatus": {
+                "EncryptionAtRestOptions": {"Enabled": False},
+                "DomainEndpointOptions": {"TLSSecurityPolicy": "Policy-Min-TLS-1-0-2019-07"},
+            }
+        }
+
+
+class _Eks:
+    def list_clusters(self, **kwargs):
+        return {"clusters": ["banking"]}
+
+    def describe_cluster(self, name):
+        return {"cluster": {"version": "1.30", "encryptionConfig": [{"provider": {"keyArn": "arn:aws:kms:...:key/eks"}}]}}
+
+
+class _Redshift:
+    def describe_clusters(self, **kwargs):
+        return {
+            "Clusters": [
+                {"ClusterIdentifier": "warehouse", "Encrypted": True, "KmsKeyId": "arn:aws:kms:...:key/rs"},
+                {"ClusterIdentifier": "legacy", "Encrypted": False},
+            ]
+        }
+
+
+def test_scan_dynamodb_reports_sse_and_cmk():
+    rows = scan_dynamodb(_DynamoDB(), region="us-east-1")
+    assert rows[0]["source"]["type"] == "AWS_DYNAMODB_TABLE"
+    assert rows[0]["algorithm"] == "AES-256"
+    assert rows[0]["compliance_issue"] is None
+    assert rows[0]["metadata"]["cmk"] is True
+
+
+def test_scan_sqs_flags_unencrypted_queue():
+    rows = scan_sqs(_Sqs(), region="us-east-1")
+    by_resource = {row["crypto"]["raw_transformation"]: row for row in rows}
+    assert by_resource["payments"]["compliance_issue"] is None
+    assert by_resource["plain"]["compliance_issue"] == "NO_ENCRYPTION_AT_REST"
+
+
+def test_scan_sns_reports_kms_topic():
+    rows = scan_sns(_Sns(), region="us-east-1")
+    assert rows[0]["source"]["type"] == "AWS_SNS_TOPIC"
+    assert rows[0]["algorithm"] == "AES-256"
+
+
+def test_scan_opensearch_flags_unencrypted_and_weak_tls():
+    rows = scan_opensearch(_OpenSearch(), region="us-east-1")
+    by_resource = {row["crypto"]["raw_transformation"]: row for row in rows}
+    assert by_resource["audit"]["compliance_issue"] is None
+    assert by_resource["legacy"]["compliance_issue"] == "NO_ENCRYPTION_AT_REST"
+
+
+def test_scan_eks_reports_secrets_encryption_kms():
+    rows = scan_eks(_Eks(), region="us-east-1")
+    assert rows[0]["source"]["type"] == "AWS_EKS_CLUSTER"
+    assert rows[0]["metadata"]["secrets_encryption_kms"].endswith("key/eks")
+
+
+def test_scan_redshift_flags_unencrypted_cluster():
+    rows = scan_redshift(_Redshift(), region="us-east-1")
+    by_resource = {row["crypto"]["raw_transformation"]: row for row in rows}
+    assert by_resource["warehouse"]["compliance_issue"] is None
+    assert by_resource["legacy"]["compliance_issue"] == "NO_ENCRYPTION_AT_REST"
+
+
+def test_scan_ssm_walks_pages():
+    class PagedSsm:
+        def __init__(self):
+            self.calls = 0
+
+        def describe_parameters(self, **kwargs):
+            self.calls += 1
+            if kwargs.get("NextToken") == "t1":
+                return {"Parameters": [{"Name": "/app/p2", "Type": "SecureString"}]}
+            return {"Parameters": [{"Name": "/app/p1", "Type": "String"}], "NextToken": "t1"}
+
+    rows = scan_ssm(PagedSsm(), region="us-east-1")
+    assert {row["crypto"]["raw_transformation"] for row in rows} == {"/app/p1", "/app/p2"}
+    issues = [row for row in rows if row["compliance_issue"]]
+    assert issues[0]["compliance_issue"] == "UNENCRYPTED_PARAMETER"

@@ -16,6 +16,7 @@ from cloud_scanner.core.reliability import (
     MAX_RETRIES,
     ScanTelemetry,
     call_with_retry,
+    cap_items,
     is_throttle_error,
     paginate,
 )
@@ -351,3 +352,74 @@ def test_non_production_never_gated(monkeypatch):
     for name in ("AWS_ACCESS_KEY_ID", "AZURE_SUBSCRIPTION_ID", "GOOGLE_CLOUD_PROJECT"):
         monkeypatch.delenv(name, raising=False)
     load_settings().validate_for_production()  # must not raise
+
+
+# --------------------------------------------------------------------------
+# cap_items + region truncation + filesystem telemetry propagation
+# --------------------------------------------------------------------------
+
+
+def test_cap_items_records_truncation_only_when_dropped():
+    telemetry = ScanTelemetry(max_resources=3)
+    kept = cap_items([1, 2, 3], telemetry=telemetry, provider="AWS", service="s3", region="r")
+    assert kept == [1, 2, 3]
+    assert telemetry.truncations == []
+    trimmed = cap_items([1, 2, 3, 4, 5], telemetry=telemetry, provider="AWS", service="s3", region="r")
+    assert trimmed == [1, 2, 3]
+    assert telemetry.truncations == [{"provider": "AWS", "service": "s3", "region": "r", "cap": "3"}]
+
+
+def test_cap_items_without_telemetry_uses_default():
+    items = list(range(10))
+    assert cap_items(items, telemetry=None, provider="AWS", service="s3", region="r", default=4) == items[:4]
+
+
+def test_discovered_region_cap_records_truncation(monkeypatch):
+    from cloud_scanner.aws.live import _regions
+
+    class Session:
+        @staticmethod
+        def get_available_regions(service):
+            return [f"us-fake-{i}" for i in range(10)]
+
+    telemetry = ScanTelemetry()
+    regions = _regions(Session(), None, telemetry=telemetry)
+    assert len(regions) == 8  # default discovered cap
+    assert telemetry.truncations == [{"provider": "AWS", "service": "regions", "region": "discovered", "cap": "8"}]
+
+    monkeypatch.setenv("CRYPTOSCAN_CLOUD_MAX_REGIONS", "12")
+    telemetry2 = ScanTelemetry()
+    assert len(_regions(Session(), None, telemetry2)) == 10  # all regions fit
+    assert telemetry2.truncations == []
+
+
+def test_requested_region_cap_records_truncation(monkeypatch):
+    from cloud_scanner.aws.live import _regions
+
+    requested = [f"eu-fake-{i}" for i in range(20)]
+    telemetry = ScanTelemetry()
+    regions = _regions(None, requested, telemetry=telemetry)
+    assert len(regions) == 16  # default requested cap
+    assert telemetry.truncations == [{"provider": "AWS", "service": "regions", "region": "requested", "cap": "16"}]
+
+
+def test_scan_filesystem_propagates_live_scan_telemetry(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        CloudScanner,
+        "scan_live",
+        lambda self, **kwargs: {
+            "findings": [{"algorithm": "AES", "metadata": {"cloud_provider": "AWS"}}],
+            "resources": 1,
+            "live_scan": {"enabled": True, "status": "PARTIAL", "resources_scanned": 1, "errors": [], "truncations": [], "error_count": 0, "truncation_count": 0},
+        },
+    )
+    result = CloudScanner(live=True).scan_filesystem(tmp_path)
+    assert result["live"] is True
+    assert result["live_scan"]["status"] == "PARTIAL"
+    assert result["resources"] == 1
+
+
+def test_scan_filesystem_offline_has_no_live_scan_block(tmp_path):
+    result = CloudScanner(live=False).scan_filesystem(tmp_path)
+    assert result["live"] is False
+    assert "live_scan" not in result

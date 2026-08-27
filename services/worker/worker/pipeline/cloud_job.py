@@ -22,6 +22,33 @@ def run_cloud_job(job: ScanJob) -> bool:
         session.commit()
         result = _scan(session, job)
         findings = result.get("findings") or []
+        live_scan = result.get("live_scan") or {}
+        if live_scan.get("status") == "FAILED":
+            # Configured but every call errored — report failure, never an
+            # empty success, and do not stamp systems CURRENT from nothing.
+            first = (live_scan.get("errors") or [{}])[0]
+            summary = (
+                f"live scan FAILED: {live_scan.get('error_count', 0)} errors, "
+                f"0 resources ({first.get('provider', '?')}/{first.get('service', '?')}: {first.get('error', '')[:120]})"
+            )
+            jobs.update_status(
+                job.job_id,
+                "FAILED",
+                error_message=summary[:500],
+                progress={
+                    "current_stage": "cloud_inventory",
+                    "percent": 100,
+                    "status": "FAILED",
+                    "cloud": {
+                        "resources": 0,
+                        "systems": 0,
+                        "live_scan": live_scan,
+                    },
+                },
+            )
+            session.commit()
+            logger.warning("cloud_job_live_scan_failed", extra={"job_id": job.job_id})
+            return False
         ingested = ingest_findings(
             session,
             findings,
@@ -52,6 +79,7 @@ def run_cloud_job(job: ScanJob) -> bool:
                     "resources": result.get("resources") or 0,
                     "systems": ingested.get("systems") or 0,
                     "errors": result.get("errors") or [],
+                    "live_scan": live_scan or None,
                 },
             },
         )

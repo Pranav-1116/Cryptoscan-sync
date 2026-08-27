@@ -6,6 +6,7 @@ from typing import Any
 
 from cloud_scanner.common.finding import cloud_finding
 from cloud_scanner.common.objects import attr, iter_records, named, safe
+from cloud_scanner.core.reliability import ScanTelemetry, cap_items
 
 
 def _records(client: Any, *path: str) -> list[Any]:
@@ -46,7 +47,7 @@ def _algo_name(key: Any) -> str:
     return str(attr(algo, "name", default="") or algo)
 
 
-def scan_cloud_kms(client: Any, *, project: str, location: str = "global") -> list[dict[str, Any]]:
+def scan_cloud_kms(client: Any, *, project: str, location: str = "global", telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     keys: list[Any] = []
     if isinstance(client, list):
@@ -56,7 +57,7 @@ def scan_cloud_kms(client: Any, *, project: str, location: str = "global") -> li
         if hasattr(client, "list_key_rings"):
             rings = iter_records(safe(lambda: client.list_key_rings(request={"parent": parent}), []))
             if rings:
-                for ring in rings[:20]:
+                for ring in cap_items(rings, telemetry=telemetry, provider="GCP", service="kms-keyrings", region=location):
                     ring_name = named(ring) or attr(ring, "name") or parent
                     keys.extend(
                         iter_records(safe(lambda r=ring_name: client.list_crypto_keys(request={"parent": r}), []))
@@ -67,7 +68,7 @@ def scan_cloud_kms(client: Any, *, project: str, location: str = "global") -> li
             keys = iter_records(safe(lambda: client.list_crypto_keys(request={"parent": parent}), []))
     else:
         keys = _records(client, "list")
-    for key in keys[:40]:
+    for key in cap_items(keys, telemetry=telemetry, provider="GCP", service="kms", region=location):
         name = named(key) or str(attr(key, "name", default="key") or "key")
         algo_name = _algo_name(key)
         algo, bits = map_gcp_kms_algorithm(algo_name)
@@ -100,12 +101,12 @@ def scan_cloud_kms(client: Any, *, project: str, location: str = "global") -> li
     return findings
 
 
-def scan_gcs(client: Any, *, project: str) -> list[dict[str, Any]]:
+def scan_gcs(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     buckets = _records(client, "list_buckets")
     if not buckets and hasattr(client, "list_buckets"):
         buckets = iter_records(safe(client.list_buckets, []))
-    for bucket in buckets[:40]:
+    for bucket in cap_items(buckets, telemetry=telemetry, provider="GCP", service="storage", region=project):
         name = named(bucket, "bucket")
         kms_name = attr(bucket, "default_kms_key_name", "defaultKmsKeyName", "kms_key_name")
         findings.append(
@@ -127,7 +128,7 @@ def scan_gcs(client: Any, *, project: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_cloud_sql(client: Any, *, project: str) -> list[dict[str, Any]]:
+def scan_cloud_sql(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     items: list[Any] = []
     if isinstance(client, list):
@@ -139,7 +140,7 @@ def scan_cloud_sql(client: Any, *, project: str) -> list[dict[str, Any]]:
         items = iter_records((payload or {}).get("items") if isinstance(payload, dict) else payload)
     else:
         items = _records(client, "list")
-    for inst in items[:30]:
+    for inst in cap_items(items, telemetry=telemetry, provider="GCP", service="sql", region=project):
         name = named(inst, "sql") if not isinstance(inst, dict) else (inst.get("name") or "sql")
         if isinstance(inst, dict):
             settings = inst.get("settings") or {}
@@ -167,7 +168,7 @@ def scan_cloud_sql(client: Any, *, project: str) -> list[dict[str, Any]]:
     return findings
 
 
-def scan_load_balancer(client: Any, *, project: str) -> list[dict[str, Any]]:
+def scan_load_balancer(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     items: list[Any] = []
     if isinstance(client, list):
@@ -178,7 +179,7 @@ def scan_load_balancer(client: Any, *, project: str) -> list[dict[str, Any]]:
         items = iter_records((payload or {}).get("items") if isinstance(payload, dict) else payload)
     else:
         items = _records(client, "list")
-    for policy in items[:30]:
+    for policy in cap_items(items, telemetry=telemetry, provider="GCP", service="sslpolicy", region=project):
         if isinstance(policy, dict):
             name = policy.get("name") or "ssl-policy"
             version = (policy.get("minTlsVersion") or policy.get("min_tls_version") or "TLS_1_2").upper()
@@ -196,6 +197,129 @@ def scan_load_balancer(client: Any, *, project: str) -> list[dict[str, Any]]:
                 provider="GCP",
                 issue="WEAK_TLS_VERSION" if weak else None,
                 extra={"project": project, "scan_method": "LIVE_API", "min_tls_version": version},
+            )
+        )
+    return findings
+
+
+def scan_secret_manager(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Secret Manager secrets: CMEK + replication status."""
+    findings: list[dict[str, Any]] = []
+    secrets: list[Any] = []
+    if isinstance(client, list):
+        secrets = client
+    elif hasattr(client, "list_secrets"):
+        parent = f"projects/{project}"
+        secrets = iter_records(safe(lambda: client.list_secrets(request={"parent": parent}), []))
+    else:
+        secrets = _records(client, "list")
+    for secret in cap_items(secrets, telemetry=telemetry, provider="GCP", service="secretmanager", region=project):
+        name = named(secret) or str(attr(secret, "name", default="secret") or "secret")
+        short = name.rsplit("/", 1)[-1]
+        if isinstance(secret, dict):
+            replication = secret.get("replication") or {}
+            kms = str(replication.get("customerManagedEncryption", {}).get("kmsKeyName") or "")
+        else:
+            repl = attr(secret, "replication") or {}
+            cme = attr(repl, "customer_managed_encryption", "customerManagedEncryption") or {}
+            kms = str(attr(cme, "kms_key_name", "kmsKeyName") or "")
+        findings.append(
+            cloud_finding(
+                source_type="GCP_SECRET_MANAGER_SECRET",
+                resource=short,
+                algorithm="AES-256" if kms else "AES-256-GCM",
+                purpose="KEY_MANAGEMENT",
+                file_path=f"gcp://secretmanager/{short}",
+                provider="GCP",
+                extra={
+                    "project": project,
+                    "scan_method": "LIVE_API",
+                    "customer_managed_key": bool(kms),
+                    "kms_key_name": kms or None,
+                },
+            )
+        )
+    return findings
+
+
+def scan_pubsub(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Pub/Sub topics: CMEK encryption of message payloads."""
+    findings: list[dict[str, Any]] = []
+    topics: list[Any] = []
+    if isinstance(client, list):
+        topics = client
+    elif hasattr(client, "list_topics"):
+        parent = f"projects/{project}"
+        topics = iter_records(safe(lambda: client.list_topics(request={"project": parent}), []))
+    else:
+        topics = _records(client, "list")
+    for topic in cap_items(topics, telemetry=telemetry, provider="GCP", service="pubsub", region=project):
+        name = named(topic) or str(attr(topic, "name", default="topic") or "topic")
+        short = name.rsplit("/", 1)[-1]
+        if isinstance(topic, dict):
+            kms = str((topic.get("kms_key_name") or topic.get("kmsKeyName")) or "")
+        else:
+            kms = str(attr(topic, "kms_key_name", "kmsKeyName") or "")
+        findings.append(
+            cloud_finding(
+                source_type="GCP_PUBSUB_TOPIC",
+                resource=short,
+                algorithm="AES-256" if kms else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"gcp://pubsub/{short}",
+                provider="GCP",
+                issue=None if kms else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "project": project,
+                    "scan_method": "LIVE_API",
+                    "kms_key_name": kms or None,
+                },
+            )
+        )
+    return findings
+
+
+def scan_gke(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """GKE clusters: application-layer secrets encryption via Cloud KMS."""
+    findings: list[dict[str, Any]] = []
+    clusters: list[Any] = []
+    if isinstance(client, list):
+        clusters = client
+    elif hasattr(client, "projects"):
+        # googleapiclient Resource (attributes) or lightweight injected fakes
+        # (callable factories) — walk projects().locations().clusters() either way.
+        parent = f"projects/{project}/locations/-"
+        projects = client.projects() if callable(client.projects) else client.projects
+        locations = projects.locations() if callable(projects.locations) else projects.locations
+        cluster_api = locations.clusters() if callable(locations.clusters) else locations.clusters
+        listed = cluster_api.list(parent=parent)
+        payload = listed.execute() if hasattr(listed, "execute") else listed
+        clusters = iter_records((payload or {}).get("clusters") if isinstance(payload, dict) else payload)
+    else:
+        clusters = _records(client, "list")
+    for cluster in cap_items(clusters, telemetry=telemetry, provider="GCP", service="gke", region=project):
+        name = named(cluster, "cluster")
+        if isinstance(cluster, dict):
+            enc = (cluster.get("encryptionConfig") or {}).get("keyName") or ""
+            version = cluster.get("initialClusterVersion")
+        else:
+            enc = str(attr(attr(cluster, "encryption_config", "encryptionConfig"), "key_name", "keyName") or "")
+            version = attr(cluster, "initial_cluster_version", "initialClusterVersion")
+        findings.append(
+            cloud_finding(
+                source_type="GCP_GKE_CLUSTER",
+                resource=name,
+                algorithm="AES-256" if enc else None,
+                purpose="KEY_MANAGEMENT",
+                file_path=f"gcp://gke/{name}",
+                provider="GCP",
+                issue=None if enc else "NO_ENV_ENCRYPTION",
+                extra={
+                    "project": project,
+                    "scan_method": "LIVE_API",
+                    "secrets_encryption_kms": enc or None,
+                    "gke_version": version,
+                },
             )
         )
     return findings

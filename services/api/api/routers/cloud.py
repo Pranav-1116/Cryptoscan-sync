@@ -181,6 +181,7 @@ def _inventory(
         "queued": _queued_payload(queued),
         "ingested": ingested,
         "live_errors": (live_result or {}).get("errors") if live_result else None,
+        "live_scan": (live_result or {}).get("live_scan") if live_result else None,
         "message": (
             "IaC findings persist as systems when persist=true. "
             "Live APIs never run unless live=true, and default to one queued CLOUD job per account."

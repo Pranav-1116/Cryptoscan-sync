@@ -7,8 +7,11 @@ from typing import Any
 
 from cloud_scanner.azure.scanners import (
     scan_app_gateway,
+    scan_cosmosdb,
     scan_front_door,
     scan_key_vault,
+    scan_redis,
+    scan_servicebus,
     scan_sql,
     scan_storage,
 )
@@ -50,6 +53,9 @@ def scan_azure(*, subscription_id: str | None = None, telemetry=None) -> list[di
         ("sql", lambda: _sql(cred, sub)),
         ("appgateway", lambda: _app_gateways(cred, sub)),
         ("frontdoor", lambda: _front_doors(cred, sub)),
+        ("cosmosdb", lambda: _cosmosdb(cred, sub)),
+        ("redis", lambda: _redis(cred, sub)),
+        ("servicebus", lambda: _servicebus(cred, sub)),
     ):
         if telemetry is not None:
             ok, value, error = _with_client(call)
@@ -111,6 +117,30 @@ def _app_gateways(cred, sub: str) -> list[dict[str, Any]]:
     except Exception:
         return []
     return scan_app_gateway(NetworkManagementClient(cred, sub), subscription=sub)
+
+
+def _cosmosdb(cred, sub: str) -> list[dict[str, Any]]:
+    try:
+        from azure.mgmt.cosmosdb import CosmosDBManagementClient  # type: ignore
+    except Exception:
+        return []
+    return scan_cosmosdb(CosmosDBManagementClient(cred, sub), subscription=sub)
+
+
+def _redis(cred, sub: str) -> list[dict[str, Any]]:
+    try:
+        from azure.mgmt.redis import RedisManagementClient  # type: ignore
+    except Exception:
+        return []
+    return scan_redis(RedisManagementClient(cred, sub), subscription=sub)
+
+
+def _servicebus(cred, sub: str) -> list[dict[str, Any]]:
+    try:
+        from azure.mgmt.servicebus import ServiceBusManagementClient  # type: ignore
+    except Exception:
+        return []
+    return scan_servicebus(ServiceBusManagementClient(cred, sub), subscription=sub)
 
 
 def _front_doors(cred, sub: str) -> list[dict[str, Any]]:

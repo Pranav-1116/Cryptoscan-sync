@@ -5,7 +5,15 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from cloud_scanner.gcp.scanners import scan_cloud_kms, scan_cloud_sql, scan_gcs, scan_load_balancer
+from cloud_scanner.gcp.scanners import (
+    scan_cloud_kms,
+    scan_cloud_sql,
+    scan_gcs,
+    scan_gke,
+    scan_load_balancer,
+    scan_pubsub,
+    scan_secret_manager,
+)
 
 
 def scan_gcp(*, project: str | None = None, telemetry=None) -> list[dict[str, Any]]:
@@ -22,6 +30,9 @@ def scan_gcp(*, project: str | None = None, telemetry=None) -> list[dict[str, An
         ("storage", lambda: _storage(project_id)),
         ("sql", lambda: _sql(project_id)),
         ("loadbalancer", lambda: _ssl_policies(project_id)),
+        ("secretmanager", lambda: _secrets(project_id)),
+        ("pubsub", lambda: _pubsub(project_id)),
+        ("gke", lambda: _gke(project_id)),
     ):
         try:
             value = call()
@@ -57,6 +68,33 @@ def _sql(project_id: str) -> list[dict[str, Any]]:
         from googleapiclient.discovery import build  # type: ignore
 
         return scan_cloud_sql(build("sqladmin", "v1beta4", cache_discovery=False), project=project_id)
+    except Exception:
+        return []
+
+
+def _secrets(project_id: str) -> list[dict[str, Any]]:
+    try:
+        from google.cloud import secretmanager  # type: ignore
+
+        return scan_secret_manager(secretmanager.SecretManagerServiceClient(), project=project_id)
+    except Exception:
+        return []
+
+
+def _pubsub(project_id: str) -> list[dict[str, Any]]:
+    try:
+        from google.cloud import pubsub_v1  # type: ignore
+
+        return scan_pubsub(pubsub_v1.PublisherClient(), project=project_id)
+    except Exception:
+        return []
+
+
+def _gke(project_id: str) -> list[dict[str, Any]]:
+    try:
+        from googleapiclient.discovery import build  # type: ignore
+
+        return scan_gke(build("container", "v1", cache_discovery=False), project=project_id)
     except Exception:
         return []
 

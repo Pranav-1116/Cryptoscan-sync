@@ -14,6 +14,15 @@ from urllib.parse import urlparse
 
 CLOUD_SCHEMES = frozenset({"cloud", "aws", "azure", "gcp"})
 GIT_PREFIXES = ("http://", "https://", "git@", "ssh://", "local://", "file://", "/")
+def _resource_cap() -> int:
+    import os
+
+    try:
+        return max(1, int(os.environ.get("CRYPTOSCAN_CLOUD_MAX_ESTATE") or RESOURCE_CAP))
+    except ValueError:
+        return RESOURCE_CAP
+
+
 RESOURCE_CAP = 2000
 CAMPAIGN_LOOKAHEAD = 2000
 
@@ -205,7 +214,7 @@ def ingest_findings(
     scan_id: str | None = None,
     account: str | None = None,
     stamp: bool = True,
-    limit: int = 2000,
+    limit: int | None = None,
 ) -> dict[str, Any]:
     """Upsert one system + asset per cryptographic cloud resource."""
     from db.repositories.asset_repository import AssetRepository
@@ -215,7 +224,8 @@ def ingest_findings(
     asset_repo = AssetRepository(session)
     created = 0
     updated = 0
-    truncated = len(findings) > int(limit)
+    limit = int(limit or _resource_cap())
+    truncated = len(findings) > limit
     stored_ids: list[str] = []
     algorithms: Counter[str] = Counter()
     for finding in findings[: int(limit)]:

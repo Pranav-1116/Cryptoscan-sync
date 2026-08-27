@@ -102,6 +102,25 @@ def paginate(
             return collected, truncated
 
 
+def cap_items(
+    items: list,
+    *,
+    telemetry: "ScanTelemetry | None",
+    provider: str,
+    service: str,
+    region: str,
+    default: int = 500,
+) -> list:
+    """Apply the resource cap to a record list, recording a truncation when
+    items are actually dropped — a cap may never silently shrink an estate."""
+    cap = telemetry.max_resources if telemetry else default
+    if len(items) <= cap:
+        return items
+    if telemetry:
+        telemetry.record_truncation(provider, service, region, cap)
+    return items[:cap]
+
+
 class ScanTelemetry:
     """Aggregated live-scan telemetry across providers/services/regions."""
 

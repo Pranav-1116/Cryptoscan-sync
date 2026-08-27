@@ -2,8 +2,11 @@ from types import SimpleNamespace
 
 from cloud_scanner.azure.scanners import (
     scan_app_gateway,
+    scan_cosmosdb,
     scan_front_door,
     scan_key_vault,
+    scan_redis,
+    scan_servicebus,
     scan_sql,
     scan_storage,
 )
@@ -79,3 +82,80 @@ def test_azure_gateway_and_front_door_weak_tls():
     assert fd[0]["compliance_issue"] == "WEAK_TLS_VERSION"
     flagged = issues_of(gw + fd)
     assert summary(flagged)["issues"] >= 2
+
+
+# -------------------------------------------------------------------------- #
+# new scanners: cosmosdb / redis / servicebus + telemetry-aware caps
+# -------------------------------------------------------------------------- #
+
+
+class _Cosmos:
+    class database_accounts:
+        @staticmethod
+        def list():
+            return [
+                SimpleNamespace(name="core", key_vault_key_uri="https://kv/keys/cmk"),
+                SimpleNamespace(name="edge", key_vault_key_uri=None),
+            ]
+
+
+class _Redis:
+    class redis:
+        @staticmethod
+        def list_by_subscription():
+            return [
+                SimpleNamespace(name="cache-prod", enable_non_ssl_port=False, minimum_tls_version="1.2"),
+                SimpleNamespace(name="cache-old", enable_non_ssl_port=True, minimum_tls_version="1.0"),
+            ]
+
+
+class _ServiceBus:
+    class namespaces:
+        @staticmethod
+        def list():
+            return [
+                SimpleNamespace(name="payments", key_vault_properties={"keyUri": "https://kv/keys/sb"}, minimum_tls_version="1.2"),
+                SimpleNamespace(name="legacy", key_vault_properties=None, minimum_tls_version="1.0"),
+            ]
+
+
+def test_scan_cosmosdb_reports_cmk():
+    rows = scan_cosmosdb(_Cosmos(), subscription="sub-1")
+    assert len(rows) == 2
+    assert all(row["source"]["type"] == "AZURE_COSMOSDB_ACCOUNT" for row in rows)
+    cmk = {row["metadata"]["customer_managed_key"] for row in rows}
+    assert cmk == {True, False}
+
+
+def test_scan_redis_flags_non_ssl_and_weak_tls():
+    rows = scan_redis(_Redis(), subscription="sub-1")
+    by_name = {row["metadata"]["file_path"].rsplit("/", 1)[-1] if False else row["crypto"]["raw_transformation"]: row for row in rows}
+    assert by_name["cache-prod"]["compliance_issue"] is None
+    assert by_name["cache-old"]["compliance_issue"] == "NO_HTTPS_ONLY"
+
+
+def test_scan_servicebus_flags_weak_tls():
+    rows = scan_servicebus(_ServiceBus(), subscription="sub-1")
+    by_name = {row["crypto"]["raw_transformation"]: row for row in rows}
+    assert by_name["payments"]["compliance_issue"] is None
+    assert by_name["legacy"]["compliance_issue"] == "WEAK_TLS_VERSION"
+
+
+def test_azure_caps_record_truncation_instead_of_silent_drop():
+    from cloud_scanner.core.reliability import ScanTelemetry
+
+    accounts = [SimpleNamespace(name=f"st{i:03d}", location="eastus") for i in range(30)]
+
+    class _Many:
+        class storage_accounts:
+            @staticmethod
+            def list():
+                return accounts
+
+    telemetry = ScanTelemetry(max_resources=10)
+    rows = scan_storage(_Many(), subscription="sub-1", telemetry=telemetry)
+    assert len(rows) == 10
+    assert telemetry.truncations == [
+        {"provider": "AZURE", "service": "storage", "region": "sub-1", "cap": "10"}
+    ]
+    assert telemetry.status() == "PARTIAL"
