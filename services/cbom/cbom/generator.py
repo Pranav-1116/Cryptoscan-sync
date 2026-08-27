@@ -98,16 +98,37 @@ class CbomGenerator:
         return json.dumps(bom, indent=2, ensure_ascii=False)
 
     def to_xml(self, bom: dict[str, Any]) -> str:
+        """CycloneDX 1.5 XML serialization with full CBOM fidelity:
+        cryptoProperties (assetType/oid/nistDesignation/quantumVulnerable/
+        primitive), evidence, metadata properties (incl. cryptoscan:jws),
+        dependencies and vulnerabilities."""
         root = Element("bom")
         root.set("xmlns", "http://cyclonedx.org/schema/bom/1.5")
         root.set("version", str(bom.get("version") or 1))
+        if bom.get("serialNumber"):
+            root.set("serialNumber", str(bom["serialNumber"]))
+
+        meta = bom.get("metadata") or {}
         metadata = SubElement(root, "metadata")
         ts = SubElement(metadata, "timestamp")
-        ts.text = str((bom.get("metadata") or {}).get("timestamp") or "")
+        ts.text = str(meta.get("timestamp") or "")
         component = SubElement(metadata, "component")
-        component.set("type", "application")
+        component.set("type", str((meta.get("component") or {}).get("type") or "application"))
+        if (meta.get("component") or {}).get("bom-ref"):
+            component.set("bom-ref", str(meta["component"]["bom-ref"]))
         name = SubElement(component, "name")
-        name.text = str(((bom.get("metadata") or {}).get("component") or {}).get("name") or "target")
+        name.text = str((meta.get("component") or {}).get("name") or "target")
+        if (meta.get("component") or {}).get("version"):
+            version_el = SubElement(component, "version")
+            version_el.text = str(meta["component"]["version"])
+        for prop in meta.get("properties") or []:
+            if not isinstance(prop, dict):
+                continue
+            props_el = SubElement(metadata, "properties")
+            prop_el = SubElement(props_el, "property")
+            prop_el.set("name", str(prop.get("name") or ""))
+            prop_el.text = str(prop.get("value") or "")
+
         components_el = SubElement(root, "components")
         for item in bom.get("components") or []:
             el = SubElement(components_el, "component")
@@ -123,6 +144,18 @@ class CbomGenerator:
                 if crypto.get("oid"):
                     oid = SubElement(props, "oid")
                     oid.text = str(crypto["oid"])
+                algo_props = crypto.get("algorithmProperties") or {}
+                primitive = algo_props.get("primitive")
+                if primitive:
+                    prim = SubElement(props, "algorithmProperties")
+                    prim_el = SubElement(prim, "primitive")
+                    prim_el.text = str(primitive)
+                if crypto.get("nistDesignation"):
+                    nist = SubElement(props, "nistDesignation")
+                    nist.text = str(crypto["nistDesignation"])
+                if crypto.get("quantumVulnerable") is not None:
+                    qv = SubElement(props, "quantumVulnerable")
+                    qv.text = "true" if crypto["quantumVulnerable"] else "false"
             evidence = item.get("evidence") or {}
             if evidence.get("file"):
                 ev = SubElement(el, "evidence")
@@ -132,6 +165,36 @@ class CbomGenerator:
                 if evidence.get("line") is not None:
                     line = SubElement(occ, "line")
                     line.text = str(evidence.get("line"))
+
+        dependencies = bom.get("dependencies") or []
+        if dependencies:
+            deps_el = SubElement(root, "dependencies")
+            for dep in dependencies:
+                if not isinstance(dep, dict):
+                    continue
+                dep_el = SubElement(deps_el, "dependency")
+                dep_el.set("ref", str(dep.get("ref") or ""))
+                for child in dep.get("dependsOn") or []:
+                    child_el = SubElement(deps_el, "dependency")
+                    child_el.set("ref", str(child))
+
+        vulnerabilities = bom.get("vulnerabilities") or []
+        if vulnerabilities:
+            vulns_el = SubElement(root, "vulnerabilities")
+            for vuln in vulnerabilities:
+                if not isinstance(vuln, dict):
+                    continue
+                vuln_el = SubElement(vulns_el, "vulnerability")
+                vuln_el.set("ref", str(vuln.get("id") or ""))
+                if vuln.get("id"):
+                    vid = SubElement(vuln_el, "id")
+                    vid.text = str(vuln["id"])
+                ratings = vuln.get("ratings") or []
+                if ratings:
+                    rating_el = SubElement(vuln_el, "ratings")
+                    score_el = SubElement(rating_el, "severity")
+                    score_el.text = str((ratings[0] or {}).get("severity") or "unknown")
+
         return tostring(root, encoding="unicode")
 
     def sign(self, bom: dict[str, Any], secret: str, *, key_id: str | None = None) -> dict[str, Any]:

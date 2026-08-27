@@ -262,6 +262,8 @@ class SystemRepository(BaseRepository[System]):
         branch: str | None = None,
         component_count: int = 0,
         algorithms: dict[str, int] | None = None,
+        posture_score: int | None = None,
+        posture_grade: str | None = None,
         error: str | None = None,
     ) -> System | None:
         system = self.get_by_id(system_id)
@@ -283,6 +285,8 @@ class SystemRepository(BaseRepository[System]):
             "stamped_at": now.isoformat(),
             "component_count": int(component_count),
             "algorithms": algorithms or {},
+            "posture_score": posture_score,
+            "posture_grade": posture_grade,
             "status": status,
             "source": "scan",
         }

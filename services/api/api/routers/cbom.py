@@ -301,6 +301,62 @@ def cbom_validate(
     }
 
 
+@router.get("/assess/portfolio")
+def cbom_assess_portfolio(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Estate-wide crypto posture: every system with assets, assessed and
+    ranked worst-first, plus an aggregate estate score."""
+    from cbom.assessment import assess_cbom
+
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=1000)
+    results = []
+    for system in systems:
+        assets = SystemRepository(db).assets_for(system.id)
+        if not assets:
+            continue
+        records = []
+        for asset in assets:
+            data = asset.to_dict() if hasattr(asset, "to_dict") else {"algorithm": "UNKNOWN"}
+            data["system_id"] = system.id
+            data["system_name"] = system.name
+            records.append(data)
+        bom = CbomGenerator().from_records(records, name=system.name)
+        report = assess_cbom(bom)
+        results.append(
+            {
+                "system_id": system.id,
+                "name": system.name,
+                "environment": system.environment,
+                "components": report["subject"]["components"],
+                "score": report["score"],
+                "grade": report["grade"],
+                "findings": len(report["findings"]),
+                "disallowed": report["summary"]["designations"].get("DISALLOWED", 0),
+                "quantum_vulnerable": len(report["summary"]["quantum_vulnerable_algorithms"]),
+                "top_recommendation": report["recommendations"][0] if report["recommendations"] else None,
+            }
+        )
+    results.sort(key=lambda r: (r["score"], r["name"]))
+    estate_score = round(sum(r["score"] for r in results) / len(results)) if results else None
+    estate_grade = (
+        "A" if estate_score is None or estate_score >= 90
+        else "B" if estate_score >= 75
+        else "C" if estate_score >= 60
+        else "D" if estate_score >= 40
+        else "F"
+    )
+    return {
+        "estate": {
+            "score": estate_score,
+            "grade": None if estate_score is None else estate_grade,
+            "systems_assessed": len(results),
+        },
+        "systems": results,
+    }
+
+
 @router.post("/verify")
 def cbom_verify(
     body: IngestCbomRequest,

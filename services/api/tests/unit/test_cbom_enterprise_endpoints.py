@@ -39,9 +39,9 @@ def test_clean_cbom_scores_A():
 
 
 def test_broken_algorithms_score_D_with_findings():
-    # 3 DISALLOWED algorithms x -15 = 55 -> D (F is reserved for worse).
+    # 3 DISALLOWED x 15 x 1.33 concentration = ~40 -> D.
     report = assess_cbom(_bom(_records("MD5", "DES", "RC4")))
-    assert report["score"] == 55
+    assert report["score"] == 40
     assert report["grade"] == "D"
     names = {f["algorithm"] for f in report["findings"]}
     assert {"MD5", "DES", "RC4"} <= names
@@ -241,3 +241,95 @@ def test_asymmetric_family_guidance_never_missing():
     assert any("ML-KEM" in r for r in report["recommendations"])
     for finding in report["findings"]:
         assert finding["recommendation"], f"no guidance for {finding['algorithm']}"
+
+
+# --------------------------------------------------------------------------- #
+# Estate portfolio ranking + XML fidelity
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_portfolio_assessment_ranks_worst_first(monkeypatch):
+    from db.models import crypto_asset as ca, system as sysmod, system_asset as sa
+    from db.models.base import Base
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "test-webhook-secret-abc123")
+    monkeypatch.setenv("SECRET_KEY", SECRET)
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    get_settings.cache_clear()
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+    with TestSession() as db:
+        good = sysmod.System(name="clean-service", environment="prod")
+        bad = sysmod.System(name="legacy-service", environment="prod")
+        a1 = ca.CryptoAsset(algorithm="AES", purpose="ENCRYPTION", file_path="a.java", line_number=1)
+        a2 = ca.CryptoAsset(algorithm="MD5", purpose="HASHING", file_path="b.java", line_number=2)
+        db.add_all([good, bad, a1, a2])
+        db.flush()
+        db.add_all([sa.SystemAsset(system_id=good.id, asset_id=a1.id), sa.SystemAsset(system_id=bad.id, asset_id=a2.id)])
+        db.commit()
+
+    application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: "testuser"
+
+    def _session():
+        session = TestSession()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    application.dependency_overrides[get_db_session] = _session
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/cbom/assess/portfolio")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["estate"]["systems_assessed"] == 2
+    names = [r["name"] for r in body["systems"]]
+    assert names[0] == "legacy-service", "worst system must rank first"
+    grades = {r["name"]: r["grade"] for r in body["systems"]}
+    # MD5-only service: 15 x (1 + 100% concentration) = 30 -> 70 -> C.
+    assert grades["legacy-service"] == "C"
+    assert grades["clean-service"] == "A"
+    legacy = body["systems"][0]
+    assert legacy["disallowed"] == 1
+
+
+def test_xml_export_carries_full_cbom_fidelity():
+    from xml.etree import ElementTree
+
+    bom = _bom(_records("MD5", "RSA"))
+    # Raw records carry no normalization; give one component posture fields
+    # so the serializer's fidelity is what's under test.
+    for component in bom["components"]:
+        if str(component.get("name")).upper().startswith("MD5"):
+            component["cryptoProperties"]["nistDesignation"] = "DISALLOWED"
+            component["cryptoProperties"]["quantumVulnerable"] = False
+    signed = CbomGenerator().sign(bom, SECRET, key_id="k-xml")
+    xml_text = CbomGenerator().to_xml(signed)
+    root = ElementTree.fromstring(xml_text)
+    ns = {"c": "http://cyclonedx.org/schema/bom/1.5"}
+
+    assert root.get("serialNumber") == signed["serialNumber"]
+    crypto = root.findall(".//c:cryptoProperties", ns)
+    assert crypto, "cryptoProperties must survive XML export"
+    nist = [el.text for el in root.findall(".//c:nistDesignation", ns)]
+    quantum = [el.text for el in root.findall(".//c:quantumVulnerable", ns)]
+    assert nist or quantum, f"posture fields missing from XML (nist={nist}, quantum={quantum})"
+    # Signature must survive so XML consumers can verify too.
+    prop_names = [el.get("name") for el in root.findall(".//c:property", ns)]
+    assert "cryptoscan:jws" in prop_names
+    # Dependencies (root ref -> components) present.
+    deps = root.findall(".//c:dependency", ns)
+    assert deps

@@ -150,12 +150,15 @@ def assess_cbom(bom: dict[str, Any]) -> dict[str, Any]:
         if item["quantum"]:
             quantum_families.add(item["primitive"])
 
-    # Score deductions per algorithm (not per occurrence — 100 AES usages
-    # are one decision, not 100).
+    # Score deductions per algorithm, scaled by concentration: an algorithm
+    # that dominates the estate is a bigger problem than a stray occurrence
+    # (multiplier = 1 + share of components using it).
+    total_components = max(len(classified), 1)
     for name, entry in per_algorithm.items():
         designation = entry["designation"]
         if designation in PENALTIES:
-            score -= PENALTIES[designation]
+            concentration = 1 + (entry["occurrences"] / total_components)
+            score -= PENALTIES[designation] * concentration
             recommendation = LEGACY_REPLACEMENTS.get(name.upper()) or _pqc_guidance(entry["primitive"])
             severity = (
                 "high" if designation == "DISALLOWED" else "medium" if designation != "UNKNOWN" else "info"
@@ -183,7 +186,7 @@ def assess_cbom(bom: dict[str, Any]) -> dict[str, Any]:
             )
 
     score -= QUANTUM_FAMILY_PENALTY * len(quantum_families)
-    score = max(0, min(100, score))
+    score = int(round(max(0, min(100, score))))
 
     grade = "A" if score >= 90 else "B" if score >= 75 else "C" if score >= 60 else "D" if score >= 40 else "F"
 

@@ -14,6 +14,10 @@ from worker.workspace.repo_cloner import RepoCloner
 from worker.workspace.workspace_manager import WorkspaceManager
 
 logger = logging.getLogger(__name__)
+
+
+def ctx_name(scan_id: str) -> str:
+    return f"scan:{scan_id}"
 settings = get_settings()
 
 
@@ -576,6 +580,7 @@ class PipelineRunner:
         algorithms: Counter[str] = Counter()
         for record in ctx.evidence_records or ctx.findings or []:
             algorithms[self._record_algorithm(record)] += 1
+        posture = self._scan_posture(session, ctx.scan_id)
         try:
             SystemRepository(session).stamp_scan(
                 ctx.system_id,
@@ -585,9 +590,48 @@ class PipelineRunner:
                 branch=ctx.target_branch,
                 component_count=sum(algorithms.values()),
                 algorithms=dict(algorithms),
+                posture_score=posture.get("score"),
+                posture_grade=posture.get("grade"),
             )
         except Exception:
             logger.debug("coverage_stamp_skipped", exc_info=True)
+
+    def _scan_posture(self, session, scan_id: str | None) -> dict[str, Any]:
+        """Assess scan posture from the normalized evidence rows (the same
+        source of truth the CBOM generator uses)."""
+        if not scan_id:
+            return {}
+        try:
+            from cbom.assessment import assess_cbom
+            from cbom.generator import CbomGenerator
+            from db.models.evidence_record import EvidenceRecord
+            from sqlalchemy import select as _select
+        except Exception:
+            return {}
+        try:
+            rows = list(
+                session.execute(_select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)).scalars()
+            )
+            if not rows:
+                return {}
+            records = [
+                {
+                    "algorithm": row.algorithm,
+                    "mode": row.mode,
+                    "key_size": row.key_size,
+                    "file_path": getattr(row, "file_path", None) or "scan",
+                    "line_number": getattr(row, "line_number", 0) or 0,
+                    "normalized_crypto": row.normalized_crypto,
+                    "id": getattr(row, "evidence_id", None) or getattr(row, "id", None),
+                }
+                for row in rows
+            ]
+            bom = CbomGenerator().from_records(records, name=ctx_name(scan_id))
+            report = assess_cbom(bom)
+            return {"score": report["score"], "grade": report["grade"]}
+        except Exception:
+            logger.debug("posture_stamp_skipped", exc_info=True)
+            return {}
 
     @staticmethod
     def _record_algorithm(record) -> str:

@@ -1318,11 +1318,14 @@ async function renderWorkOrdersHome(el) {
 
 async function renderCbom(el) {
   const catalog = await api('/cbom');
+  let posture = null;
+  try { posture = await api('/cbom/assess/portfolio'); } catch (e) { posture = null; }
   const systems = catalog.systems || [];
   const scans = catalog.scans || [];
   const cov = catalog.coverage || {};
   const counts = cov.counts || {};
   const algos = Object.entries(catalog.totals?.algorithms || {}).sort((a,b) => b[1]-a[1]);
+  const gradeColor = g => ({A:'#3ee0c5',B:'#8fe388',C:'#f5c14a',D:'#ff8a4a',F:'#ff5f6d'}[g] || '#8fa3c8');
   const options = systems.map(s => `<option value="${s.source_id}">${s.name}</option>`).join('');
   el.innerHTML = `<div class="top"><div><h2>Estate CBOM</h2>
     <p class="muted">${cov.message || 'Scan every system. Algorithms are unknown until a CBOM exists.'}</p></div>
@@ -1335,8 +1338,25 @@ async function renderCbom(el) {
       <div class="card"><div class="label">Unknown crypto</div><div class="value" style="color:var(--fail)">${cov.unknown_crypto||0}</div></div>
       <div class="card"><div class="label">Never scanned</div><div class="value">${counts.NEVER_SCANNED||0}</div></div>
       <div class="card"><div class="label">Ready to scan</div><div class="value">${cov.scannable||0}</div></div>
+      <div class="card"><div class="label">Estate posture</div>
+        <div class="value" style="color:${gradeColor(posture?.estate?.grade)}">
+          ${posture?.estate?.grade || '—'}${posture?.estate?.score != null ? ` · ${posture.estate.score}` : ''}</div>
+        <p class="muted">${posture?.estate?.systems_assessed || 0} systems assessed</p></div>
     </div>
     <div style="height:16px"></div>
+    ${posture && (posture.systems || []).length ? `
+    <div class="card" style="margin-bottom:16px">
+      <div class="label">Crypto posture — worst systems first</div>
+      <table><thead><tr><th>Grade</th><th>System</th><th>Score</th><th>Broken</th><th>Quantum</th><th>Priority action</th></tr></thead>
+      <tbody>${posture.systems.map(r => `<tr>
+        <td><span class="badge" style="background:${gradeColor(r.grade)}22;color:${gradeColor(r.grade)}">${r.grade}</span></td>
+        <td>${r.name}</td>
+        <td>${r.score}</td>
+        <td>${r.disallowed || '—'}</td>
+        <td>${r.quantum_vulnerable || '—'}</td>
+        <td class="muted">${(r.top_recommendation || '—').toString().slice(0, 80)}</td>
+      </tr>`).join('')}</tbody></table>
+    </div>` : ''}
     <div class="grid" style="grid-template-columns:1.2fr .8fr">
       <div class="card">
         <div class="label">Find crypto across systems</div>
