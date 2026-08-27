@@ -66,12 +66,16 @@ def main(argv: list[str] | None = None) -> int:
         Path(args.output).write_text(text, encoding="utf-8")
     else:
         print(text)
+    risk = result.get("risk_report") or {}
     print(
         f"# kind={result.get('target_kind')} packages={len(result.get('packages') or [])} "
         f"libraries={len(result.get('libraries') or [])} "
-        f"cves={len(result.get('vulnerabilities') or [])}",
+        f"cves={len(result.get('vulnerabilities') or [])} "
+        f"secrets={len(result.get('secrets') or [])} posture={risk.get('posture') or '?'}",
         file=sys.stderr,
     )
+    if risk.get("headline"):
+        print(f"# risk: {risk['headline']}", file=sys.stderr)
     return 0
 
 

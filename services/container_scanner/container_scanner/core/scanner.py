@@ -11,8 +11,14 @@ from typing import Any, Iterable
 
 from container_scanner.analyzers.analyzer_coordinator import AnalyzerCoordinator
 from container_scanner.analyzers.binary.binary_fingerprinter import hash_file
+from container_scanner.analyzers.secrets.secret_scanner import (
+    scan_filesystem_for_secrets,
+    secret_findings,
+)
+from container_scanner.core.telemetry import build_scan_telemetry
 from container_scanner.cve.resolver import VulnerabilityResolver
 from container_scanner.fingerprints.repository import FingerprintRepository
+from container_scanner.reports.risk import build_risk_report
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +62,23 @@ class ContainerScanner:
         libraries = [item for item in (self._fingerprint(pkg) for pkg in packages) if item]
         binaries = list(self._discover_binaries(root_path))
         vulns = self.resolver.lookup(packages)
+        secrets = scan_filesystem_for_secrets(root_path)
         findings = self._to_findings(libraries, binaries, vulns)
+        findings.extend(secret_findings(secrets))
+        risk = build_risk_report(
+            libraries=libraries,
+            binaries=binaries,
+            vulnerabilities=vulns,
+            secrets=secrets,
+        )
+        telemetry = build_scan_telemetry(
+            packages=packages,
+            libraries=libraries,
+            binaries=binaries,
+            vulnerabilities=vulns,
+            secrets=secrets,
+            files_scanned=self._count_files(root_path),
+        )
         return {
             "scan_id": scan_id or str(uuid.uuid4()),
             "scanner_id": "container-scanner-v1.0",
@@ -69,6 +91,9 @@ class ContainerScanner:
             "binaries": binaries,
             "vulnerabilities": vulns,
             "findings": findings,
+            "secrets": secrets,
+            "risk_report": risk,
+            "scan_telemetry": telemetry,
         }
 
     def scan_image(
@@ -103,6 +128,16 @@ class ContainerScanner:
         if path:
             return self.scan_filesystem(path, scan_id=scan_id)
         raise ValueError("path, image, or archive is required")
+
+    def _count_files(self, root: Path) -> int:
+        try:
+            return sum(
+                1
+                for path in root.rglob("*")
+                if path.is_file() and not any(part in SKIP_DIRS for part in path.parts)
+            )
+        except OSError:  # pragma: no cover — unreadable tree: count is unknown
+            return 0
 
     def _discover_packages(self, root: Path) -> Iterable[dict[str, Any]]:
         return self.analyzers.discover_packages(root)
