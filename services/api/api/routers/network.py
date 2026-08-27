@@ -122,6 +122,8 @@ class SubnetDiscoverRequest(BaseModel):
     ports: list[int] = Field(default_factory=lambda: [443, 8443])
     timeout: float = 1.5
     scan: bool = True
+    register: bool = False  # upsert discovered endpoints into the due-scan rotation
+    scan_frequency: str = "daily"  # hourly | daily | weekly | monthly
     scan_versions: bool = False
     scan_ciphers: bool = False
     check_renegotiation: bool = False
@@ -140,6 +142,17 @@ def discover_subnet_endpoints(
     from network_scanner.discovery.subnet_discoverer import discover_subnet
 
     result = discover_subnet(body.cidr, body.ports or [443, 8443], timeout=body.timeout)
+    if body.register:
+        from network_scanner.discovery.registration import register_targets
+
+        intel = IntelligenceRepository(db)
+        existing = {row.endpoint for row in intel.list_targets()}
+        result["registration"] = register_targets(
+            intel,
+            result.get("endpoints") or [],
+            scan_frequency=body.scan_frequency,
+            existing=existing,
+        )
     if body.scan and result.get("endpoints"):
         scanned = NetworkTlsScanner(live=True, workers=body.workers).scan_hosts(
             result["endpoints"],

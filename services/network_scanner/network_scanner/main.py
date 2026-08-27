@@ -23,6 +23,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--check-renegotiation", action="store_true", help="Probe RFC 5746 secure + client-initiated renegotiation")
     parser.add_argument("--check-chain", action="store_true", help="Fetch and analyze the certificate chain as sent")
     parser.add_argument("--live-revocation", action="store_true", help="Live OCSP query + CRL fetch/lookup per endpoint")
+    parser.add_argument("--register", action="store_true",
+                        help="With --discover: emit scheduler-ready target records in the JSON output")
+    parser.add_argument("--frequency", default="daily", choices=["hourly", "daily", "weekly", "monthly"],
+                        help="Scan frequency for --register records")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -47,6 +51,12 @@ def main(argv: list[str] | None = None) -> int:
                 live_revocation=args.live_revocation,
             )
             result["scan"] = {key: scanned[key] for key in ("probe_telemetry", "certificates", "alerts") if key in scanned}
+        if args.register:
+            from network_scanner.discovery.registration import build_target_records
+
+            result["registered_targets"] = build_target_records(
+                result.get("endpoints") or [], scan_frequency=args.frequency
+            )
         result["scan_context"] = {"mode": "subnet-discovery", "cidr": args.discover, "ports": ports}
         _emit(result, args.output)
         return 0
