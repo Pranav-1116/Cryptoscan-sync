@@ -174,6 +174,38 @@ def discover_subnet_endpoints(
     return result
 
 
+class SshScanRequest(BaseModel):
+    hosts: list[str] = Field(default_factory=list)
+    timeout: float = 8.0
+    # baseline {endpoint: {key_type: fingerprint}} for TOFU drift; updated map is returned
+    known_host_keys: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+
+@router.post("/network/ssh-scan")
+def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
+    """SSH host-key scan with optional TOFU baselines (no DB state kept)."""
+    from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
+
+    if not body.hosts:
+        raise HTTPException(status_code=400, detail="hosts required")
+    baselines = body.known_host_keys or {}
+    findings = []
+    updated: dict[str, dict[str, str]] = dict(baselines)
+    for item in body.hosts:
+        host, port = split_ssh_target(item)
+        endpoint = f"{host}:{port}"
+        finding = scan_ssh_host_keys(host, port, timeout=body.timeout, baseline=baselines.get(endpoint))
+        findings.append(finding)
+        drift = finding.get("key_drift") or {}
+        if drift.get("observed"):
+            updated[endpoint] = {str(k): str(v) for k, v in drift["observed"].items()}
+    return {
+        "findings": findings,
+        "ssh_probe_telemetry": ssh_probe_telemetry(findings),
+        "known_host_keys": updated,
+    }
+
+
 @router.get("/certificates/{cert_id}/usages")
 def certificate_usages(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)

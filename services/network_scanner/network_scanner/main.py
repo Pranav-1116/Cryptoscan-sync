@@ -27,6 +27,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="With --discover: emit scheduler-ready target records in the JSON output")
     parser.add_argument("--frequency", default="daily", choices=["hourly", "daily", "weekly", "monthly"],
                         help="Scan frequency for --register records")
+    parser.add_argument("--ssh", action="store_true", help="Treat the target as an SSH host (ssh-keyscan + TOFU drift)")
+    parser.add_argument("--known-host-keys", default=None, metavar="JSON",
+                        help="Baseline {endpoint: {key_type: fingerprint}} for --ssh drift detection")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -63,6 +66,16 @@ def main(argv: list[str] | None = None) -> int:
     target = args.target
     if not target:
         parser.error("target (host:port or path) or --discover CIDR is required")
+    if args.ssh:
+        import json as _json
+
+        baselines = {}
+        if args.known_host_keys:
+            baselines = _json.loads(Path(args.known_host_keys).read_text() or "{}")
+        result = scanner.scan_ssh_hosts([target], known_host_keys=baselines)
+        result["scan_context"] = {"mode": "ssh-host-keys", "target": target}
+        _emit(result, args.output)
+        return 0
     if ":" in target and not Path(target).exists():
         context = ScanContext.for_hosts(target, live=True, timeout=settings.timeout)
         result = scanner.scan_hosts(

@@ -121,6 +121,45 @@ class NetworkTlsScanner:
             "probe_telemetry": probe_telemetry(results),
         }
 
+    def scan_ssh_hosts(
+        self,
+        endpoints: Iterable[str],
+        *,
+        scan_id: str | None = None,
+        known_host_keys: dict[str, dict[str, str]] | None = None,
+    ) -> dict[str, Any]:
+        """SSH host-key scan + TOFU drift against caller-supplied baselines."""
+        from network_scanner.probing.ssh_keyscan import scan_ssh_host_keys, split_ssh_target, ssh_probe_telemetry
+
+        baselines = known_host_keys or {}
+        findings: list[dict[str, Any]] = []
+        updated: dict[str, dict[str, str]] = dict(baselines)
+        for item in endpoints:
+            host, port = split_ssh_target(str(item))
+            endpoint = f"{host}:{port}"
+            try:
+                finding = scan_ssh_host_keys(host, port, timeout=self.timeout, baseline=baselines.get(endpoint))
+            except Exception as exc:  # noqa: BLE001 — one host must not sink the scan
+                finding = {
+                    "endpoint": endpoint,
+                    "status": "PROBE_ERROR",
+                    "detail": f"{type(exc).__name__}: {exc}"[:300],
+                    "keys": [],
+                    "policy_issues": [],
+                    "key_drift": None,
+                }
+            findings.append(finding)
+            drift = finding.get("key_drift") or {}
+            if drift.get("observed"):
+                updated[endpoint] = {str(k): str(v) for k, v in drift["observed"].items()}
+        return {
+            "scan_id": scan_id,
+            "target_kind": "ssh-hosts",
+            "findings": findings,
+            "ssh_probe_telemetry": ssh_probe_telemetry(findings),
+            "known_host_keys": updated,
+        }
+
     def _probe_all(
         self,
         endpoints: list[str],
