@@ -10,6 +10,7 @@ from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.fingerprint_repository import FingerprintRepository
 from db.repositories.job_repository import JobRepository
 from db.repositories.network_scan_target_repository import NetworkScanTargetRepository
+from db.repositories.runtime_finding_repository import RuntimeFindingRepository
 from db.repositories.repo_config_repository import RepoConfigRepository
 from db.repositories.scan_repository import ScanRepository
 from db.repositories.vendor_repository import VendorRepository
@@ -28,6 +29,7 @@ __all__ = [
     "FingerprintRepository",
     "JobRepository",
     "NetworkScanTargetRepository",
+    "RuntimeFindingRepository",
     "RepoConfigRepository",
     "ScanRepository",
     "VendorRepository",

@@ -72,3 +72,4 @@ __all__ = [
     "VerificationLog",
     "Vulnerability",
 ]
+from db.models.runtime_finding import RuntimeFinding  # noqa: E402,F401

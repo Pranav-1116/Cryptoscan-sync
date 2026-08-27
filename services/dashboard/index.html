@@ -113,6 +113,8 @@
         <button data-route="container" onclick="go('container')">Container</button>
         <button data-route="tls" onclick="go('tls')">TLS / certs</button>
         <button data-route="cloud" onclick="go('cloud')">Cloud / IaC</button>
+        <button data-route="runtime" onclick="go('runtime')">Runtime</button>
+        <button data-route="algorithms" onclick="go('algorithms')">Algorithms</button>
         <button data-route="graph" onclick="go('graph')">Graph</button>
         <button data-route="business" onclick="go('business')">Business</button>
         <button data-route="quantum" onclick="go('quantum')">Quantum</button>
@@ -227,6 +229,8 @@ async function render() {
     if (state.route === 'workorders') return renderWorkOrdersHome(el);
     if (state.route === 'tls') return renderTls(el);
     if (state.route === 'cloud') return renderCloud(el);
+    if (state.route === 'runtime') return renderRuntime(el);
+    if (state.route === 'algorithms') return renderAlgorithms(el);
     if (state.route === 'graph') return renderGraph(el);
     if (state.route === 'business') return renderBusiness(el);
     if (state.route === 'quantum') return renderQuantum(el);
@@ -401,6 +405,23 @@ async function startScan() {
   go('job', { jobId: data.job_id });
 }
 
+function liveScanCard(job) {
+  const cloud = job.progress && job.progress.cloud;
+  const ls = cloud && cloud.live_scan;
+  if (!ls) return '';
+  const errs = (ls.errors || []).slice(0, 6).map(e => `<tr><td class="mono">${e.account ? e.account + ' · ' : ''}${e.provider}/${e.service}${e.region && e.region !== 'global' ? '/' + e.region : ''}</td><td class="mono">${e.code || ''}</td><td class="muted">${(e.error || '').slice(0, 90)}</td></tr>`).join('');
+  const accounts = (cloud.accounts || []).slice(0, 12).map(a => `<tr><td class="mono">${a.account_id || '—'}</td><td>${verdictBadge(a.status)}</td><td>${a.resources || 0}</td></tr>`).join('');
+  return `<div style="height:16px"></div>
+    <div class="card"><div class="label">Live scan telemetry</div>
+      <p>Verdict ${verdictBadge(ls.status)} · ${ls.resources_scanned || cloud.resources || 0} resources scanned
+        ${cloud.accounts_discovered ? ` · ${cloud.accounts_discovered} accounts discovered` : ''}
+        ${ls.error_count ? ` · <span style="color:var(--fail)">${ls.error_count} errors</span>` : ''}
+        ${ls.truncation_count ? ` · ${ls.truncation_count} truncations` : ''}</p>
+      ${accounts ? `<table><thead><tr><th>Account</th><th>Verdict</th><th>Resources</th></tr></thead><tbody>${accounts}</tbody></table>` : ''}
+      ${errs ? `<div class="label" style="margin-top:12px">Errors</div><table><tbody>${errs}</tbody></table>` : ''}
+    </div>`;
+}
+
 async function renderJobs(el) {
   const data = await api('/jobs?limit=30');
   el.innerHTML = `<div class="top"><h2>Jobs</h2><button class="btn" onclick="go('new')">New scan</button></div>
@@ -429,6 +450,7 @@ async function renderJob(el) {
       <div class="row" style="flex-wrap:wrap;margin:12px 0">${stages.map(s => `${badge(s.state)} ${s.name}`).join(' &nbsp; ') || ''}</div>
       ${job.scan_id ? `<button class="btn" onclick="go('scan',{scanId:'${job.scan_id}'})">View findings</button>` : '<p class="muted">Refreshing…</p>'}
     </div>
+    ${liveScanCard(job)}
     <div style="height:16px"></div>
     <div class="card"><div class="label">Logs</div>
       <pre class="snippet">${escapeHtml((logs.slice(-40).map(l => `${l.ts||''} [${l.stage||l.event||''}] ${l.message||''}`).join('\n')) || 'No logs yet')}</pre>
@@ -745,6 +767,8 @@ async function renderCloud(el) {
     <div class="row">
       <button class="btn" onclick="scanCloudPath()">Inventory IaC tree</button>
       <button class="btn secondary" onclick="queueLiveCloud()">Queue live inventory</button>
+      <button class="btn secondary" onclick="discoverOrg()">Discover org…</button>
+      <button class="btn secondary" onclick="orgScan()">Org fan-out scan</button>
       <button class="btn secondary" onclick="startEstateCampaign()">Coverage campaign</button>
     </div></div>
     <div class="card"><div class="label">Registered accounts</div>
@@ -769,6 +793,132 @@ async function scanCloudPath() {
     <div class="label">Inventory</div>
     <p>${data.resources||0} resources · ${ingested.systems||0} systems persisted · ${data.issues||0} issues</p>
     <p class="muted">${ingested.message || data.message || ''}</p></div>`;
+}
+
+async function discoverOrg() {
+  const provider = prompt('Provider to enumerate (aws | azure | gcp)', 'aws');
+  if (!provider) return;
+  const body = { provider: provider.toLowerCase().trim(), enqueue: true, register: true };
+  if (body.provider === 'aws') {
+    const role = prompt('Cross-account role name installed in member accounts', 'CryptoScanCrossAccountRole');
+    if (role) body.role_name = role;
+  }
+  if (body.provider === 'gcp') {
+    const folder = prompt('GCP folder id (leave blank for whole organization)', '');
+    if (folder) body.gcp_folder = folder;
+  }
+  const data = await api('/cloud/orgs/discover', { method: 'POST', body: JSON.stringify(body) });
+  document.getElementById('cloud-result').innerHTML = `<div class="card" style="margin-top:16px">
+    <div class="label">Org discovery — ${data.provider}</div>
+    <p>${data.discovered} accounts discovered · ${data.registered} registered · ${data.already_registered} already known · ${data.jobs_enqueued} jobs queued</p>
+    ${data.truncated ? '<p class="err">Discovery truncated at the account cap — raise CRYPTOSCAN_CLOUD_ORG_MAX_ACCOUNTS.</p>' : ''}
+    <table><thead><tr><th>Account</th><th>Name</th><th>Role</th></tr></thead>
+      <tbody>${(data.accounts||[]).map(a => `<tr><td class="mono">${a.account_id}</td><td>${a.name||'—'}</td><td class="mono muted">${a.role_arn||'—'}</td></tr>`).join('')}</tbody></table>
+    ${(data.errors||[]).length ? `<p class="err">${data.errors.join(' · ')}</p>` : ''}</div>`;
+}
+
+async function orgScan() {
+  const provider = prompt('Provider (aws | azure | gcp)', 'aws');
+  if (!provider) return;
+  const body = { provider: provider.toLowerCase().trim() };
+  if (body.provider === 'gcp') {
+    const folder = prompt('GCP folder or organization id (optional)', '');
+    if (folder) body.gcp_folder = folder;
+  }
+  const data = await api('/cloud/orgs/scan', { method: 'POST', body: JSON.stringify(body) });
+  if (data.queued && data.queued.job_id) go('job', { jobId: data.queued.job_id });
+  else alert('Queued org scan for ' + (data.target || provider));
+}
+
+function verdictBadge(v) {
+  const map = { OK: 'PASS', PARTIAL: 'WARN', FAILED: 'FAIL', SKIPPED: 'INFO', DISALLOWED: 'FAIL', DEPRECATED: 'WARN', RESTRICTED: 'WARN', ALLOWED: 'PASS', UNKNOWN: 'INFO' };
+  return `<span class="badge ${map[v] || 'INFO'}">${v || '—'}</span>`;
+}
+
+async function renderRuntime(el) {
+  const data = await api('/scans/runtime-findings?limit=100');
+  const sum = data.summary || {};
+  const weak = (data.findings || []).filter(f => f.weak_tls);
+  el.innerHTML = `<div class="top"><div><h2>Runtime crypto</h2>
+    <p class="muted">Production traffic (TLS tap) and process-level library observations, ingested from runtime agents.</p></div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Observations</div><div class="value">${sum.total_findings || 0}</div><p class="muted">${sum.observations_last_24h || 0} in the last 24h</p></div>
+      <div class="card"><div class="label">Weak / disallowed</div><div class="value" style="color:var(--fail)">${sum.weak_findings || 0}</div><p class="muted">TLS 1.0/1.1, dead suites, EOL libraries</p></div>
+      <div class="card"><div class="label">Hosts reporting</div><div class="value">${sum.hosts || 0}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="grid" style="grid-template-columns: 1fr 1fr">
+      <div class="card"><div class="label">Top negotiated suites</div>
+        <table><tbody>${(sum.top_cipher_suites || []).map(r => `<tr><td class="mono">${r.cipher_suite}</td><td>${r.observations}</td></tr>`).join('') || '<tr><td class="muted">No sessions yet</td></tr>'}</tbody></table></div>
+      <div class="card"><div class="label">Top algorithms observed</div>
+        <table><tbody>${(sum.top_algorithms || []).map(r => `<tr><td>${r.algorithm}</td><td>${r.observations}</td></tr>`).join('') || '<tr><td class="muted">None yet</td></tr>'}</tbody></table></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Recent observations</div>
+      <table><thead><tr><th>Kind</th><th>Host</th><th>Process</th><th>TLS</th><th>Suite / library</th><th>Key</th><th>Verdict</th><th>Seen</th></tr></thead>
+      <tbody>${(data.findings || []).map(f => `<tr>
+        <td>${f.kind === 'tls-library-risk' ? 'library' : 'session'}</td>
+        <td class="mono">${f.hostname || '—'}</td>
+        <td>${f.process_name || '—'}</td>
+        <td>${f.tls_version || '—'}</td>
+        <td class="mono">${f.cipher_suite || (f.extra && f.extra.library ? f.extra.library + ' ' + (f.extra.library_version || '') : '—')}</td>
+        <td>${f.key_size ? f.key_size + 'b' : '—'}</td>
+        <td>${verdictBadge(f.status)}</td>
+        <td class="muted">×${f.observation_count || 1}</td></tr>`).join('') || '<tr><td colspan=8 class="muted">No runtime findings yet — run the runtime agent (cryptoscan-runtime once --submit).</td></tr>'}
+      </tbody></table></div>`;
+}
+
+async function renderAlgorithms(el) {
+  let data = { algorithms: [], counts_by_status: {}, families: [] };
+  try { data = await api('/algorithms?'); } catch (e) {}
+  const counts = data.counts_by_status || {};
+  el.innerHTML = `<div class="top"><div><h2>Algorithm registry</h2>
+    <p class="muted">Every algorithm the platform recognizes, with key size, NIST status and quantum impact.</p></div></div>
+    <div class="grid cards">
+      <div class="card"><div class="label">Catalog</div><div class="value">${(data.algorithms || []).length}</div></div>
+      <div class="card"><div class="label">Disallowed</div><div class="value" style="color:var(--fail)">${counts.DISALLOWED || 0}</div></div>
+      <div class="card"><div class="label">Deprecated</div><div class="value" style="color:var(--warn)">${counts.DEPRECATED || 0}</div></div>
+      <div class="card"><div class="label">Post-quantum</div><div class="value" style="color:var(--pass)">${(data.algorithms || []).filter(a => (a.family || '').includes('pqc')).length}</div></div>
+    </div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Parse any algorithm name</div>
+      <div class="row"><input id="algo-input" placeholder="AES-256 · RS256 · TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 · des-ede3-cbc" style="flex:1;padding:8px">
+      <button class="btn" onclick="parseAlgo()">Parse</button></div>
+      <div id="algo-result" style="margin-top:12px"></div></div>
+    <div style="height:16px"></div>
+    <div class="card"><div class="label">Catalog</div>
+      <input id="algo-filter" placeholder="Filter by name, family or status…" style="width:100%;padding:8px;margin-bottom:10px" oninput="filterAlgoRows()">
+      <table id="algo-table"><thead><tr><th>Algorithm</th><th>Family</th><th>Key</th><th>Status</th><th>Quantum</th><th>Notes</th></tr></thead>
+      <tbody>${(data.algorithms || []).map(a => `<tr class="algo-row" data-hay="${(a.algorithm + ' ' + a.family + ' ' + a.status + ' ' + (a.notes || '')).toLowerCase()}">
+        <td class="mono">${a.algorithm}</td><td>${a.family}</td>
+        <td>${a.key_size ? a.key_size + 'b ' + (a.parameter_kind === 'digest_bits' ? 'digest' : a.parameter_kind === 'curve_bits' ? 'curve' : 'key') : (a.allowed_key_sizes || []).join('/') ? (a.allowed_key_sizes || []).join('/') + 'b' : '—'}</td>
+        <td>${verdictBadge(a.status)}</td>
+        <td>${a.quantum_impact === 'shor' ? '<span class="badge FAIL">shor</span>' : a.quantum_impact === 'grover' ? '<span class="badge WARN">grover</span>' : '—'}</td>
+        <td class="muted">${a.notes || ''}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+async function parseAlgo() {
+  const name = document.getElementById('algo-input').value.trim();
+  if (!name) return;
+  const out = await api('/algorithms/parse?name=' + encodeURIComponent(name));
+  const comps = (out.components || []).map(c => `${c.role}: ${c.algorithm}${c.key_size ? ' (' + c.key_size + 'b)' : ''}`).join(' · ');
+  document.getElementById('algo-result').innerHTML = `<table><tbody>
+    <tr><td>Raw</td><td class="mono">${out.raw}</td></tr>
+    <tr><td>Canonical</td><td><b>${out.algorithm}</b></td></tr>
+    <tr><td>Family</td><td>${out.family}</td></tr>
+    <tr><td>Key size</td><td>${out.key_size ? out.key_size + ' bits (' + (out.parameter_kind || 'key_bits') + ')' : '—'}</td></tr>
+    <tr><td>Status</td><td>${verdictBadge(out.status)}</td></tr>
+    <tr><td>Quantum</td><td>${out.quantum_impact || '—'}${out.quantum_vulnerable ? ' (quantum-vulnerable)' : ''}</td></tr>
+    ${comps ? `<tr><td>Components</td><td>${comps}</td></tr>` : ''}
+    ${out.notes ? `<tr><td>Notes</td><td class="muted">${out.notes}</td></tr>` : ''}
+  </tbody></table>`;
+}
+
+function filterAlgoRows() {
+  const needle = document.getElementById('algo-filter').value.toLowerCase();
+  document.querySelectorAll('.algo-row').forEach(row => {
+    row.style.display = row.dataset.hay.includes(needle) ? '' : 'none';
+  });
 }
 
 async function queueLiveCloud() {
