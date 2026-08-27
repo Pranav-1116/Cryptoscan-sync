@@ -158,6 +158,11 @@ def _extract_oci_layout(
 
 def _public_config(config: dict[str, Any]) -> dict[str, Any]:
     cfg = config.get("config") if isinstance(config.get("config"), dict) else {}
+    history = [
+        {"created_by": str(entry.get("created_by") or "")[:200], "empty_layer": bool(entry.get("empty_layer"))}
+        for entry in (config.get("history") or [])
+        if isinstance(entry, dict)
+    ]
     return {
         "architecture": config.get("architecture"),
         "os": config.get("os"),
@@ -166,6 +171,7 @@ def _public_config(config: dict[str, Any]) -> dict[str, Any]:
         "cmd": list(cfg.get("Cmd") or []),
         "working_dir": cfg.get("WorkingDir"),
         "user": cfg.get("User"),
+        "history": history,
     }
 
 

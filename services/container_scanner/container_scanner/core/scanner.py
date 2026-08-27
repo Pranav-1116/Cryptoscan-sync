@@ -115,6 +115,18 @@ class ContainerScanner:
         result["target"] = reference
         result["target_kind"] = extracted.source
         result["image"] = extracted.to_dict()
+        from container_scanner.image.layer_attribution import attribute_artifacts
+
+        attribution = attribute_artifacts(
+            extracted.root,
+            packages=result.get("packages"),
+            binaries=result.get("binaries"),
+            secrets=result.get("secrets"),
+            layer_ids=extracted.layers or None,
+            config=extracted.config,
+        )
+        if attribution is not None:
+            result["layer_attribution"] = attribution
         return result
 
     def scan(
