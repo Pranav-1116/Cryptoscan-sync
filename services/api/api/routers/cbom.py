@@ -12,7 +12,12 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, get_job_repository
-from api.schemas.cbom_schemas import CustomCbomRequest, DiffCbomRequest, IngestCbomRequest
+from api.schemas.cbom_schemas import (
+    CbomRef,
+    CustomCbomRequest,
+    DiffCbomRequest,
+    IngestCbomRequest,
+)
 from cbom.generator import CbomGenerator
 from cbom.inventory import (
     bom_system_name,
@@ -30,6 +35,27 @@ from db.repositories.system_repository import SystemRepository
 from db.repositories.vulnerability_repository import VulnerabilityRepository
 
 router = APIRouter(prefix="/cbom", tags=["cbom"])
+
+
+def _server_keyring() -> dict[str, str]:
+    """Verification keyring: dedicated CBOM keys when configured, else the
+    API's own SECRET_KEY as primary. Secrets never travel in request bodies."""
+    import os
+
+    from api.config.settings import get_settings
+
+    from cbom.config.settings import parse_retired_secrets
+
+    primary = os.environ.get("CRYPTOSCAN_CBOM_SECRET") or getattr(
+        get_settings(), "SECRET_KEY", ""
+    )
+    ring = parse_retired_secrets(os.environ.get("CRYPTOSCAN_CBOM_RETIRED_SECRETS", ""))
+    kid = os.environ.get("CRYPTOSCAN_CBOM_KEY_ID")
+    if kid and primary:
+        ring.setdefault(kid, primary)
+    else:
+        ring.setdefault("primary", primary)
+    return ring
 
 
 def _render(bom: dict, fmt: str, signed: bool):
@@ -275,6 +301,49 @@ def cbom_validate(
     }
 
 
+@router.post("/verify")
+def cbom_verify(
+    body: IngestCbomRequest,
+    user: str = Depends(get_current_user),
+):
+    """Verify a CBOM's signature against the server-side keyring.
+
+    Returns the full check-by-check report (never a bare boolean) plus
+    structural validation — suitable for audit trails.
+    """
+    if not body.bom:
+        raise HTTPException(status_code=422, detail="bom is required")
+    report = CbomGenerator().verify_report(body.bom, _server_keyring())
+    document = validate_document(body.bom)
+    return {
+        "signature": report,
+        "document": document,
+        "ok": report["ok"] and document["ok"],
+        "name": bom_system_name(body.bom),
+    }
+
+
+@router.post("/assess")
+def cbom_assess(
+    ref: CbomRef,
+    user: str = Depends(get_current_user),
+):
+    """Crypto-posture assessment (score/grade/findings/recommendations) for an
+    inline CBOM, a scan, or a system. The DB session is resolved lazily so
+    inline-BOM assessments stay dependency-free."""
+    from cbom.assessment import assess_cbom
+
+    if ref.bom is not None:
+        return assess_cbom(ref.bom)
+    db = next(get_db_session())  # type: ignore[arg-type]
+    try:
+        name, _source_id, records = _resolve_ref(db, ref)
+        bom = CbomGenerator().from_records(records, name=name)
+        return assess_cbom(bom)
+    finally:
+        db.close()
+
+
 @router.post("/ingest")
 def cbom_ingest(
     body: IngestCbomRequest,
@@ -284,6 +353,19 @@ def cbom_ingest(
     check = validate_document(body.bom)
     if not check["ok"]:
         raise HTTPException(status_code=422, detail="; ".join(check["errors"]))
+    # A signed CBOM must verify before it enters inventory — a tampered
+    # import would poison the estate with attacker-chosen components.
+    props = {
+        item.get("name")
+        for item in ((body.bom.get("metadata") or {}).get("properties") or [])
+    }
+    if props & {"cryptoscan:jws", "cryptoscan:signature"}:
+        signature = CbomGenerator().verify_report(body.bom, _server_keyring())
+        if not signature["ok"]:
+            raise HTTPException(
+                status_code=422,
+                detail=f"CBOM signature verification failed: {signature['error']}",
+            )
     records = records_from_bom(body.bom)
     if not records:
         raise HTTPException(status_code=422, detail="No cryptographic components in document")
