@@ -45,7 +45,7 @@ def upgrade():
         sa.Column('status', sa.VARCHAR(20), nullable=False, server_default='RUNNING'),
         
         # Statistics (JSONB for flexibility)
-        sa.Column('statistics', postgresql.JSONB, nullable=True),
+        sa.Column('statistics', sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=True),
         
         # Integrity
         sa.Column('manifest_hash', sa.VARCHAR(64), nullable=True),
@@ -68,7 +68,8 @@ def upgrade():
     )
     
     # Add comment to table
-    op.execute("""
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("""
         COMMENT ON TABLE scans IS 
         'Scan sessions - one record per complete scan execution'
     """)

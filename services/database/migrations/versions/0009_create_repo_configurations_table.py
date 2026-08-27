@@ -27,7 +27,7 @@ def upgrade() -> None:
         sa.Column('scan_on_push', sa.Boolean, nullable=False, server_default='true'),
         sa.Column('scan_on_pr', sa.Boolean, nullable=False, server_default='false'),
         sa.Column('baseline_scan_id', postgresql.UUID(as_uuid=True), nullable=True),
-        sa.Column('notification_emails', postgresql.ARRAY(sa.String), nullable=True),
+        sa.Column('notification_emails', sa.JSON().with_variant(postgresql.ARRAY(sa.String()), "postgresql"), nullable=True),
         sa.Column('created_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
         sa.Column('updated_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
         

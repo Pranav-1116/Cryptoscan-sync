@@ -52,10 +52,10 @@ def upgrade():
         sa.Column('is_hardcoded_key', sa.BOOLEAN, nullable=False, server_default='false'),
         
         # Full finding data (immutable JSONB)
-        sa.Column('finding_data', postgresql.JSONB, nullable=False),
+        sa.Column('finding_data', sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False),
         
         # Provenance metadata
-        sa.Column('provenance', postgresql.JSONB, nullable=True),
+        sa.Column('provenance', sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=True),
         
         # Timestamps
         sa.Column('created_at', sa.TIMESTAMP(timezone=True), nullable=False,
@@ -94,23 +94,26 @@ def upgrade():
         ['algorithm']
     )
     
-    op.create_index(
-        'idx_evidence_hardcoded_key',
-        'evidence_records',
-        ['is_hardcoded_key'],
-        postgresql_where=sa.text('is_hardcoded_key = true')
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_index(
+            'idx_evidence_hardcoded_key',
+            'evidence_records',
+            ['is_hardcoded_key'],
+            postgresql_where=sa.text('is_hardcoded_key = true')
+        )
     
     # GIN index for JSONB queries
-    op.create_index(
-        'idx_evidence_finding_data_gin',
-        'evidence_records',
-        ['finding_data'],
-        postgresql_using='gin'
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_index(
+            'idx_evidence_finding_data_gin',
+            'evidence_records',
+            ['finding_data'],
+            postgresql_using='gin'
+        )
     
     # Add table comment
-    op.execute("""
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute("""
         COMMENT ON TABLE evidence_records IS 
         'Evidence records with cryptographic integrity proofs. Immutable after creation.'
     """)

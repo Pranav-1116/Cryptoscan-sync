@@ -6,7 +6,7 @@ Create Date: 2024-01-15 00:05:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects import postgresql
 
 revision = "0005"
 down_revision = "0004"
@@ -18,7 +18,7 @@ def upgrade() -> None:
     # Add policy evaluation columns
     op.add_column(
         "evidence_records",
-        sa.Column("policy_evaluation", JSONB, nullable=True),
+        sa.Column("policy_evaluation", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=True),
     )
     op.add_column(
         "evidence_records",
@@ -60,18 +60,20 @@ def upgrade() -> None:
         "evidence_records",
         ["compliance_status"],
     )
-    op.create_index(
-        "idx_evidence_policy_fail",
-        "evidence_records",
-        ["compliance_status"],
-        postgresql_where=sa.text("compliance_status = 'FAIL'"),
-    )
-    op.create_index(
-        "idx_evidence_policy_evaluation_gin",
-        "evidence_records",
-        ["policy_evaluation"],
-        postgresql_using="gin",
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_index(
+            "idx_evidence_policy_fail",
+            "evidence_records",
+            ["compliance_status"],
+            postgresql_where=sa.text("compliance_status = 'FAIL'"),
+        )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_index(
+            "idx_evidence_policy_evaluation_gin",
+            "evidence_records",
+            ["policy_evaluation"],
+            postgresql_using="gin",
+        )
     op.create_index(
         "idx_evidence_highest_severity",
         "evidence_records",
@@ -79,11 +81,12 @@ def upgrade() -> None:
     )
 
     # CHECK constraint for compliance_status
-    op.create_check_constraint(
-        "ck_compliance_status",
-        "evidence_records",
-        "compliance_status IN ('PENDING', 'PASS', 'WARN', 'FAIL')",
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_check_constraint(
+            "ck_compliance_status",
+            "evidence_records",
+            "compliance_status IN ('PENDING', 'PASS', 'WARN', 'FAIL')",
+        )
 
 
 def downgrade() -> None:

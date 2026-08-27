@@ -6,7 +6,7 @@ Create Date: 2024-01-15 00:04:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects import postgresql
 
 revision = "0004"
 down_revision = "0003"
@@ -15,10 +15,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # Add normalized_crypto JSONB column
+    # Add normalized_crypto sa.JSON().with_variant(postgresql.JSONB(), "postgresql") column
     op.add_column(
         "evidence_records",
-        sa.Column("normalized_crypto", JSONB, nullable=True),
+        sa.Column("normalized_crypto", sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=True),
     )
 
     # Add normalization metadata columns for fast filtering
@@ -67,25 +67,28 @@ def upgrade() -> None:
         "evidence_records",
         ["normalization_status"],
     )
-    op.create_index(
-        "idx_evidence_requires_review",
-        "evidence_records",
-        ["requires_review"],
-        postgresql_where=sa.text("requires_review = true"),
-    )
-    op.create_index(
-        "idx_evidence_normalized_crypto_gin",
-        "evidence_records",
-        ["normalized_crypto"],
-        postgresql_using="gin",
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_index(
+            "idx_evidence_requires_review",
+            "evidence_records",
+            ["requires_review"],
+            postgresql_where=sa.text("requires_review = true"),
+        )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_index(
+            "idx_evidence_normalized_crypto_gin",
+            "evidence_records",
+            ["normalized_crypto"],
+            postgresql_using="gin",
+        )
 
     # Add CHECK constraint for normalization_status
-    op.create_check_constraint(
-        "ck_normalization_status",
-        "evidence_records",
-        "normalization_status IN ('PENDING', 'NORMALIZED', 'UNKNOWN', 'FAILED')",
-    )
+    if op.get_bind().dialect.name == "postgresql":
+        op.create_check_constraint(
+            "ck_normalization_status",
+            "evidence_records",
+            "normalization_status IN ('PENDING', 'NORMALIZED', 'UNKNOWN', 'FAILED')",
+        )
 
 
 def downgrade() -> None:

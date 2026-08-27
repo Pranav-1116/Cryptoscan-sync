@@ -11,6 +11,15 @@ def healthz():
     return {"status": "ok", "database": check_db_health()}
 
 
+@router.get("/healthz/schema")
+def healthz_schema():
+    """Schema drift report: models vs the live database."""
+    from db.connection.engine import engine
+    from db.connection.schema_ensure import schema_drift_report
+
+    return schema_drift_report(engine)
+
+
 @router.get("/meta")
 def meta():
     settings = get_settings()

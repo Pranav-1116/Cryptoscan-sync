@@ -26,7 +26,7 @@ def upgrade() -> None:
         sa.Column('detected_at', sa.DateTime, nullable=False, server_default=sa.func.now()),
         sa.Column('drift_type', sa.String(50), nullable=False),
         sa.Column('severity', sa.String(20), nullable=False, index=True),
-        sa.Column('drift_details', postgresql.JSONB, nullable=False),
+        sa.Column('drift_details', sa.JSON().with_variant(postgresql.JSONB(), "postgresql"), nullable=False),
         sa.Column('resolution_status', sa.String(50), nullable=False, server_default='OPEN'),
         sa.Column('resolved_by', sa.String(100), nullable=True),
         sa.Column('resolved_at', sa.DateTime, nullable=True),
