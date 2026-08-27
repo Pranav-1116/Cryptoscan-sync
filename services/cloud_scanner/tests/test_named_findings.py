@@ -78,3 +78,32 @@ def test_cloud_main_scans_tree(tmp_path):
     out = tmp_path / "out.json"
     assert main([str(tmp_path), "-o", str(out)]) == 0
     assert "findings" in out.read_text(encoding="utf-8")
+
+
+def test_cloud_findings_carry_key_sizes():
+    from cloud_scanner.common.finding import cloud_finding
+
+    des = cloud_finding(
+        source_type="AWS_KMS_KEY",
+        resource="legacy-key",
+        algorithm="DES",
+        purpose="KEY_MANAGEMENT",
+        file_path="aws://us-east-1/kms/legacy",
+    )
+    assert des["key_size"] == 56
+    aes = cloud_finding(
+        source_type="AWS_KMS_KEY",
+        resource="data-key",
+        algorithm="AES-256",
+        purpose="KEY_MANAGEMENT",
+        file_path="aws://us-east-1/kms/data",
+    )
+    assert aes["key_size"] == 256
+    triple = cloud_finding(
+        source_type="AWS_KMS_KEY",
+        resource="old-key",
+        algorithm="3DES",
+        purpose="KEY_MANAGEMENT",
+        file_path="aws://us-east-1/kms/old",
+    )
+    assert triple["key_size"] == 168

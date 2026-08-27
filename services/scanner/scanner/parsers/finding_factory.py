@@ -31,6 +31,21 @@ def make_finding(
     class_name: Optional[str] = None,
     raw_transformation: Optional[str] = None,
 ) -> RawFinding:
+    # Algorithm registry enrichment: every finding leaves with its key size
+    # (AES-256 -> 256, DES -> 56, RSA -> min 2048 guidance) even when the
+    # parser could not extract one from the call site.
+    try:
+        from shared_models.algorithm_registry import parse_algorithm
+
+        info = parse_algorithm(str(raw_transformation or algorithm or ""))
+        if info.recognized:
+            if key_size is None:
+                key_size = info.key_size
+            if mode is None and info.mode:
+                mode = info.mode
+    except Exception:
+        pass
+
     relative = str(file_path)
     if repo_root:
         try:

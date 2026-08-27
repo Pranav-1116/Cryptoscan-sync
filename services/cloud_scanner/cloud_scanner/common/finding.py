@@ -20,6 +20,17 @@ def cloud_finding(
     key_size: int | None = None,
     mode: str | None = None,
 ) -> dict[str, Any]:
+    # Algorithm registry enrichment: resource findings carry key sizes too
+    # (AES-256 -> 256 bits, DES -> 56, 3DES -> 168) even when the cloud API
+    # did not report one.
+    try:
+        from shared_models.algorithm_registry import infer_key_size
+
+        if key_size is None:
+            key_size = infer_key_size(algorithm)
+    except Exception:
+        pass
+
     finding_id = str(uuid.uuid4())
     return {
         "finding_id": finding_id,

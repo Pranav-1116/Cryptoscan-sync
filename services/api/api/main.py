@@ -53,6 +53,7 @@ from api.routers import (
     vulnerability,
     vulns,
     webhooks,
+    algorithms,
 )
 from api.routers import metrics as metrics_router
 from api.security.exceptions import AuthenticationError, ValidationError
@@ -163,6 +164,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(health.router, prefix=prefix)
     app.include_router(export.router, prefix=prefix)
     app.include_router(assets.router, prefix=prefix)
+    app.include_router(algorithms.router, prefix=prefix)
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
     app.include_router(container.router, prefix=prefix)
