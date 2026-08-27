@@ -5,7 +5,6 @@ import pytest
 from pathlib import Path
 import tempfile
 import shutil
-from scanner.models.scan_result import ScanResult
 from scanner.core.scanner import CryptoScanner, Scanner  # noqa: F401
 from scanner.config.scanner_config import ScannerConfig
 

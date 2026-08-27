@@ -47,11 +47,15 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
         *,
         algorithm: str | None = None,
         compliance_status: str | None = None,
+        scan_id: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[EvidenceRecord], int]:
         stmt = select(EvidenceRecord)
         count_stmt = select(func.count()).select_from(EvidenceRecord)
+        if scan_id:
+            stmt = stmt.where(EvidenceRecord.scan_id == scan_id)
+            count_stmt = count_stmt.where(EvidenceRecord.scan_id == scan_id)
         if algorithm:
             stmt = stmt.where(EvidenceRecord.algorithm == algorithm)
             count_stmt = count_stmt.where(EvidenceRecord.algorithm == algorithm)

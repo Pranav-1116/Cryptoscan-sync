@@ -2,7 +2,6 @@
 Evidence record data model.
 Represents a single finding with cryptographic integrity proofs.
 """
-from dataclasses import dataclass, field
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field
 

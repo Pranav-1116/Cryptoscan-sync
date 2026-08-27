@@ -36,18 +36,20 @@ class JobConsumer:
         redis_url: str = "",
         queue_name: str = "cryptoscan:jobs:queue",
         poll_interval_seconds: int = 2,
+        allow_memory_fallback: bool = True,
         **kwargs,
     ):
         self.redis_url = redis_url
         self.queue_name = queue_name
         self.poll_interval_seconds = poll_interval_seconds
+        self.allow_memory_fallback = allow_memory_fallback
         self._stop = threading.Event()
         self.redis_client = None
         self._connect_redis()
 
     def _connect_redis(self) -> None:
         if not self.redis_url:
-            self.redis_client = None
+            self._handle_redis_unavailable("REDIS_URL not configured", phase="startup")
             return
         try:
             import redis
@@ -62,8 +64,20 @@ class JobConsumer:
             self.redis_client = client
             logger.info("redis_connected", extra={"queue": self.queue_name})
         except Exception as exc:
-            logger.warning("redis_unavailable", extra={"error": str(exc)})
-            self.redis_client = None
+            self._handle_redis_unavailable(str(exc), phase="startup")
+
+    def _handle_redis_unavailable(self, reason: str, *, phase: str) -> None:
+        """Redis configured but unreachable.
+
+        Production fails closed — a silently degraded queue loses jobs the API
+        believes are enqueued. Development/test keeps the in-process fallback.
+        """
+        self.redis_client = None
+        if not self.allow_memory_fallback:
+            raise RuntimeError(
+                f"Redis unavailable during {phase} and memory fallback is disabled: {reason}"
+            )
+        logger.warning("redis_unavailable_memory_fallback", extra={"error": reason, "phase": phase})
 
     def stop(self) -> None:
         self._stop.set()
@@ -126,8 +140,7 @@ class JobConsumer:
                 if item:
                     raw = item[1]
             except Exception as exc:
-                logger.warning("redis_pop_failed", extra={"error": str(exc)})
-                self.redis_client = None
+                self._handle_redis_unavailable(str(exc), phase="pop")
                 return None
         else:
             try:

@@ -1,0 +1,41 @@
+"""HTTP route handlers exposing scans, findings, policies, evidence, stats.
+
+Modules:
+- agility: System-level 6-factor agility and migration readiness
+- analytics: Advanced analytics over stored assets, findings, and systems
+- assets: Deduplicated cryptographic assets
+- auth: Authentication routes: login/logout, user management (admin), audit trail
+- baselines: Baseline approval
+- business: Business processes, owners, vendors, and migration projects
+- business_context: Business-context summary and impact aliases
+- cbom: CycloneDX 1.5 CBOM catalog, export, ingest, and comparison
+- certificates: Certificate inventory endpoints (spec-named router)
+- cloud: Cloud / IaC crypto scan and estate inventory
+- cloud_scans: Cloud-scan job listing and trigger aliases
+- container: On-demand container / image / archive scans
+- container_scans: Spec-named container scan endpoints (`/container-scans`)
+- drift: Drift events
+- estate: Estate coverage campaigns. One CLOUD job per account, not per resource
+- exceptions: Policy exception request / approval / review / expiration
+- export: CBOM export and integrity verification
+- findings: Findings endpoints
+- graph: Dependency graph and blast-radius APIs (Neo4j when configured)
+- health
+- intelligence: Evidence packs, CI gate, agility, work-orders, materials, CRA/NIST zip
+- jobs: Job status, listing, and logs
+- metrics: Prometheus metrics endpoint (text exposition format, no external client lib)
+- network: TLS probe, certificate inventory, and scan targets
+- network_scans: Network-scan job listing and trigger aliases
+- ot: OT/ICS passive scan and inventory
+- policy: Policy rule catalogue (read-only)
+- reachability: Blast-radius and reachability analysis
+- repo_configs: Repository configuration CRUD
+- runtime: Ingest runtime (eBPF / mesh) crypto findings without requiring a kernel agent
+- scans: Scan list and detail
+- stats: Dashboard summary stats
+- systems: System inventory, CMDB import, and per-system scan
+- trigger: Manual scan trigger
+- vulnerability: Spec-named vulnerability endpoints (`/vulnerabilities`)
+- vulns: Local cryptographic-library vulnerabilities
+- webhooks: GitHub webhook receiver
+"""

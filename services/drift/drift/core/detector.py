@@ -284,6 +284,44 @@ class DriftDetector:
                         )
                     )
 
+        # Weak-algorithm spread: a *new occurrence* of an algorithm that already
+        # existed in the baseline is suppressed by the semantic-signature check
+        # above (noise reduction). For broken/deprecated algorithms that silence
+        # is dangerous — flag the spread as a single aggregated event.
+        baseline_semantic_counts: dict[str, int] = {}
+        current_semantic_counts: dict[str, int] = {}
+        for fp in baseline_fps:
+            baseline_semantic_counts[fp.to_semantic_signature()] = (
+                baseline_semantic_counts.get(fp.to_semantic_signature(), 0) + 1
+            )
+        for fp in current_fps:
+            current_semantic_counts[fp.to_semantic_signature()] = (
+                current_semantic_counts.get(fp.to_semantic_signature(), 0) + 1
+            )
+        spread_reported: set[str] = set()
+        for sig, count in current_semantic_counts.items():
+            base_count = baseline_semantic_counts.get(sig, 0)
+            # Only flag spread of an algorithm that already existed (base_count >= 1).
+            # Entirely-new algorithms are handled by the NEW path above.
+            if count <= base_count or base_count == 0 or sig in spread_reported:
+                continue
+            sample = current_semantic.get(sig)
+            if sample is None or sample.algorithm not in weak:
+                continue
+            spread_reported.add(sig)
+            result.changes.append(
+                DriftChange(
+                    change_type="NEW",
+                    baseline_fingerprint=None,
+                    current_fingerprint=sample,
+                    severity="HIGH",
+                    reason=(
+                        f"Weak algorithm spread: {sample.algorithm} occurrences grew "
+                        f"{base_count} → {count} (e.g. {sample.file_path}:{sample.line_number})"
+                    ),
+                )
+            )
+
         for semantic_sig, baseline_fp in baseline_semantic.items():
             if semantic_sig in current_semantic:
                 current_fp = current_semantic[semantic_sig]

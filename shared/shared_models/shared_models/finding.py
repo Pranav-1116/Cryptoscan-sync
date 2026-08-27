@@ -116,7 +116,7 @@ class RawFinding(BaseModel):
 
 def _sort_dict_recursively(obj: Any) -> Any:
     if isinstance(obj, dict):
-        return {k: _sort_dict_recursively(v) for k in sorted(obj.keys())}
+        return {k: _sort_dict_recursively(obj[k]) for k in sorted(obj.keys())}
     if isinstance(obj, list):
         return [_sort_dict_recursively(item) for item in obj]
     return obj

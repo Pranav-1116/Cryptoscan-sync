@@ -2,10 +2,9 @@
 Integration Test: Full Pipeline Execution
 """
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from worker.pipeline.pipeline_runner import PipelineRunner
-from worker.core.job_consumer import ScanJob
 
 
 @pytest.mark.integration

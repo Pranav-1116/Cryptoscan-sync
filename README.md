@@ -12,6 +12,21 @@ Policy is never decided by AI.
 
 The working loop is: scan source → evidence chain → SQLite/Postgres → normalize → policy → drift → API → dashboard.
 
+## Operations (production hardening, 2026-08-26)
+
+| Capability | Where |
+|---|---|
+| **CI** — lint + 23 test suites + E2E seed smoke + polyglot detection matrix + Postgres migration up/down + Docker builds | `.github/workflows/` |
+| **Multi-user auth** — `users` / `user_sessions` / `audit_log` tables, roles (`admin`/`auditor`/`viewer`), persistent lockout, server-side token revocation, admin user management (`GET/POST/PATCH /api/v1/auth/users`), audit trail (`GET /api/v1/auth/audit`) | `services/api/api/security/`, `services/database/db/models/user.py`, migration `0019` |
+| **RBAC** — scan trigger + baseline approve + drift ack/resolve require auditor/admin; reads need any role | `api/dependencies.py` (`require_roles`) |
+| **Concurrent worker** — `MAX_CONCURRENT_JOBS` thread pool with backpressure and graceful drain | `services/worker/worker/core/pool.py` |
+| **Burn-in harness** — proves external integrations: signed GitHub webhook round-trip, live TLS probe, SMTP delivery, Neo4j, cloud, container | `python scripts/burn_in.py --target all` |
+| **Backup/restore** — SHA-256 manifests, online SQLite snapshot, Postgres dump, chain re-verification on the backup | `scripts/backup_evidence.py`, `scripts/restore_evidence.py`, [runbook](docs/admin-guide/backup-restore.md) |
+| **Metrics** — Prometheus `/metrics` (scans, findings by status, open drift, queued jobs) + Grafana dashboard | `api/routers/metrics.py`, `infra/monitoring/` |
+| **Kubernetes** — API + worker manifests (probes, resources, non-root, secrets) | `k8s/app/`, [k8s/README.md](k8s/README.md) |
+
+First boot bootstraps the `admin` user from `ADMIN_USERNAME`/`ADMIN_PASSWORD[_HASH]`; afterwards manage accounts through the API. Production startup fails closed on demo secrets, plaintext admin passwords, SQLite, and wildcard CORS.
+
 ---
 
 # ⚙️ FOUNDATIONAL ARCHITECTURE PRINCIPLE

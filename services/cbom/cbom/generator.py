@@ -7,10 +7,16 @@ import hmac
 import json
 from datetime import datetime, timezone
 from typing import Any
+from base64 import urlsafe_b64encode
 from xml.etree.ElementTree import Element, SubElement, tostring
 
 from cbom.mappers.oid_lookup import lookup_oid
 from cbom.mappers.primitive_mapper import map_primitive
+
+
+
+def _b64url(data: bytes) -> bytes:
+    return urlsafe_b64encode(data).rstrip(b"=")
 
 
 class CbomGenerator:
@@ -119,33 +125,66 @@ class CbomGenerator:
         return tostring(root, encoding="unicode")
 
     def sign(self, bom: dict[str, Any], secret: str) -> dict[str, Any]:
+        """Sign with a standards-compliant JWS (HS256, RFC 7515 compact form).
+
+        The JWS is stored as the `cryptoscan:jws` metadata property and covers
+        the canonical JSON of the BOM without signature properties, so any
+        RFC 7515 verifier can validate it independently of CryptoScan.
+        """
         unsigned = self._without_signature(bom)
         payload = json.dumps(unsigned, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-        digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        header = json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode("utf-8")
+        signing_input = b".".join([_b64url(header), _b64url(payload)])
+        signature = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+        jws = signing_input.decode("ascii") + "." + _b64url(signature).decode("ascii")
+
         signed = dict(unsigned)
         metadata = dict(signed.get("metadata") or {})
         properties = [
             item
             for item in list(metadata.get("properties") or [])
-            if item.get("name") not in {"cryptoscan:signature", "cryptoscan:signatureAlg"}
+            if item.get("name") not in {"cryptoscan:jws", "cryptoscan:signature", "cryptoscan:signatureAlg"}
         ]
-        properties.append({"name": "cryptoscan:signature", "value": digest})
-        properties.append({"name": "cryptoscan:signatureAlg", "value": "HMAC-SHA256"})
+        properties.append({"name": "cryptoscan:jws", "value": jws})
+        properties.append({"name": "cryptoscan:signatureAlg", "value": "JWS-HS256"})
         metadata["properties"] = properties
         signed["metadata"] = metadata
         return signed
 
     def verify(self, bom: dict[str, Any], secret: str) -> bool:
         props = {item.get("name"): item.get("value") for item in ((bom.get("metadata") or {}).get("properties") or [])}
+        jws = props.get("cryptoscan:jws")
+        if jws:
+            try:
+                header_b64, payload_b64, sig_b64 = str(jws).split(".")
+                from base64 import urlsafe_b64decode
+
+                def _pad(chunk: str) -> str:
+                    return chunk + "=" * (-len(chunk) % 4)
+
+                header = json.loads(urlsafe_b64decode(_pad(header_b64)))
+                if header.get("alg") != "HS256":
+                    return False
+                signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
+                expected_sig = hmac.new(secret.encode("utf-8"), signing_input, hashlib.sha256).digest()
+                actual_sig = urlsafe_b64decode(_pad(sig_b64))
+                unsigned = json.loads(urlsafe_b64decode(_pad(payload_b64)))
+                # The JWS payload must be the BOM itself (minus signature props).
+                canonical = self._without_signature(bom)
+                return hmac.compare_digest(actual_sig, expected_sig) and unsigned == json.loads(
+                    json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+                )
+            except Exception:
+                return False
+        # Legacy format (pre-JWS): bare HMAC-SHA256 hex digest property.
         expected = props.get("cryptoscan:signature")
         if not expected:
             return False
-        recomputed = self.sign(self._without_signature(bom), secret)
-        actual = {
-            item.get("name"): item.get("value")
-            for item in ((recomputed.get("metadata") or {}).get("properties") or [])
-        }.get("cryptoscan:signature")
-        return hmac.compare_digest(str(expected), str(actual or ""))
+        payload = json.dumps(
+            self._without_signature(bom), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        digest = hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(str(expected), digest)
 
     def _without_signature(self, bom: dict[str, Any]) -> dict[str, Any]:
         cleaned = dict(bom)
@@ -153,7 +192,7 @@ class CbomGenerator:
         properties = [
             item
             for item in list(metadata.get("properties") or [])
-            if item.get("name") not in {"cryptoscan:signature", "cryptoscan:signatureAlg"}
+            if item.get("name") not in {"cryptoscan:jws", "cryptoscan:signature", "cryptoscan:signatureAlg"}
         ]
         if properties:
             metadata["properties"] = properties

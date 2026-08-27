@@ -7,7 +7,6 @@ import hashlib
 import logging
 from typing import List, Optional
 
-from .content_hasher import ContentHasher
 
 logger = logging.getLogger(__name__)
 

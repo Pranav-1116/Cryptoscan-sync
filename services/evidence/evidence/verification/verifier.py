@@ -2,7 +2,7 @@
 Main evidence verification engine.
 Verifies integrity of evidence records and manifests.
 """
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any
 from ..hashing.content_hasher import ContentHasher
 from ..hashing.chain_hasher import ChainHasher
 from ..models.evidence_record import EvidenceRecord

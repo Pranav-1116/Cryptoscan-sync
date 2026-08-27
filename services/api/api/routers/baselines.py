@@ -5,7 +5,13 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.dependencies import get_baseline_repository, get_current_user, get_scan_repository
+from api.dependencies import (
+    get_baseline_repository,
+    get_current_user,
+    get_db_session,
+    require_auditor,
+    get_scan_repository,
+)
 from db.repositories.baseline_repository import BaselineRepository
 from db.repositories.scan_repository import ScanRepository
 
@@ -21,9 +27,10 @@ class ApproveBody(BaseModel):
 @router.post("/approve")
 def approve(
     body: ApproveBody,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_auditor),
     baselines: BaselineRepository = Depends(get_baseline_repository),
     scans: ScanRepository = Depends(get_scan_repository),
+    db=Depends(get_db_session),
 ):
     scan = scans.get_by_id(body.scan_id)
     if scan is None:
@@ -37,6 +44,19 @@ def approve(
         notes=body.notes,
         environment=body.environment,
     )
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        UserRepository(db).audit(
+            user,
+            "baseline.approve",
+            target_type="scan",
+            target_id=str(scan.id),
+            detail={"system_identifier": scan.target_location, "environment": body.environment},
+        )
+        db.commit()
+    except Exception:
+        pass
     return {
         "baseline_id": baseline.id,
         "system_identifier": baseline.system_identifier,

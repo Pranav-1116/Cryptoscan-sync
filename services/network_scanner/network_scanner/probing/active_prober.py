@@ -12,7 +12,6 @@ from network_scanner.certificates.chain_validator import validate_chain
 from network_scanner.certificates.crl_checker import check_crl
 from network_scanner.certificates.ocsp_checker import check_ocsp
 from network_scanner.probing.cipher_suite_parser import parse_cipher_suite, tls_algorithm
-from network_scanner.probing.ssl_error_classifier import classify_ssl_error
 
 
 def _split_endpoint(endpoint: str) -> tuple[str, int]:

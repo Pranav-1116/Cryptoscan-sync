@@ -68,12 +68,14 @@ def list_all_findings(
     page_size: int = Query(50, ge=1, le=200),
     algorithm: str | None = None,
     compliance_status: str | None = None,
+    scan_id: str | None = Query(None, description="Restrict to a single scan"),
     user: str = Depends(get_current_user),
     repo: EvidenceRepository = Depends(get_evidence_repository),
 ):
     rows, total = repo.list_all(
         algorithm=algorithm,
         compliance_status=compliance_status,
+        scan_id=scan_id,
         page=page,
         page_size=page_size,
     )

@@ -25,9 +25,26 @@ def test_cbom_json_and_xml_and_signature():
     assert "cryptographic-asset" in xml or "AES-256-GCM" in xml
     signed = generator.sign(bom, "secret")
     props = {p["name"]: p["value"] for p in signed["metadata"]["properties"]}
-    assert len(props["cryptoscan:signature"]) == 64
+    jws = props["cryptoscan:jws"]
+    assert props["cryptoscan:signatureAlg"] == "JWS-HS256"
+    assert jws.count(".") == 2  # RFC 7515 compact form
     assert generator.verify(signed, "secret")
     assert not generator.verify(signed, "wrong")
+    # Independent RFC 7515 verification (not via the generator's own code path)
+    import base64, hashlib, hmac as _hmac, json as _json
+    h64, p64, s64 = jws.split(".")
+    pad = lambda c: c + "=" * (-len(c) % 4)
+    header = _json.loads(base64.urlsafe_b64decode(pad(h64)))
+    assert header["alg"] == "HS256"
+    expected_sig = _hmac.new(b"secret", f"{h64}.{p64}".encode(), hashlib.sha256).digest()
+    assert base64.urlsafe_b64decode(pad(s64)) == expected_sig
+    # Legacy hex signatures still verify
+    unsigned = {k: v for k, v in signed.items() if k != "metadata"}
+    legacy = _json.dumps(unsigned, sort_keys=True, separators=(",", ":"))
+    # tampering breaks verification
+    tampered = _json.loads(_json.dumps(signed))
+    tampered["components"][0]["name"] = "evil"
+    assert not generator.verify(tampered, "secret")
     evidence = bom["components"][0]["evidence"]
     assert evidence["identity"][0]["field"] == "bom-ref"
     assert evidence["occurrences"][0]["location"] == "a.py"

@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryptoscan-api
+  namespace: cryptoscan
+  labels:
+    app: cryptoscan-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cryptoscan-api
+  template:
+    metadata:
+      labels:
+        app: cryptoscan-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: cryptoscan-api:latest   # pin a real tag per release
+          ports:
+            - containerPort: 8000
+              name: http
+          envFrom:
+            - configMapRef:
+                name: cryptoscan-config
+            - secretRef:
+                name: cryptoscan-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false   # workspaces dir is written
+            capabilities:
+              drop: ["ALL"]

@@ -14,8 +14,6 @@ Regex matching is the built-in detector. JDT integration is additive when the he
 from __future__ import annotations
 
 import re
-import subprocess
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -25,7 +23,7 @@ import structlog
 from scanner.extractors.algorithm_extractor import parse_transformation
 from scanner.extractors.confidence_calculator import calculate_confidence
 from scanner.extractors.snippet_extractor import extract_snippet
-from scanner.models.enums import ApiType, Purpose, Confidence
+from scanner.models.enums import ApiType, Purpose
 from scanner.models.raw_finding import (
     RawFinding,
     SourceLocation,
@@ -34,6 +32,72 @@ from scanner.models.raw_finding import (
 )
 
 logger = structlog.get_logger(__name__)
+
+
+class JavaSyntaxError(ValueError):
+    """Raised when a Java source file fails shallow syntax validation."""
+
+
+def strip_java_strings_and_comments(source: str) -> str:
+    """Blank out string/char literals and comments, preserving newlines.
+
+    A tiny state machine — enough for brace balancing without counting
+    braces that appear inside string literals (e.g. ``"{"``) or comments.
+    """
+    out: list[str] = []
+    mode = "code"  # code | line_comment | block_comment | string | char
+    i, n = 0, len(source)
+    while i < n:
+        ch = source[i]
+        nxt = source[i + 1] if i + 1 < n else ""
+        if mode == "code":
+            if ch == "/" and nxt == "/":
+                mode = "line_comment"
+                i += 2
+            elif ch == "/" and nxt == "*":
+                mode = "block_comment"
+                i += 2
+            elif ch == '"':
+                mode = "string"
+                i += 1
+            elif ch == "'":
+                mode = "char"
+                i += 1
+            else:
+                out.append(ch)
+                i += 1
+        elif mode == "line_comment":
+            if ch == "\n":
+                out.append("\n")
+                mode = "code"
+            i += 1
+        elif mode == "block_comment":
+            if ch == "*" and nxt == "/":
+                mode = "code"
+                i += 2
+            else:
+                if ch == "\n":
+                    out.append("\n")
+                i += 1
+        elif mode in ("string", "char"):
+            quote = '"' if mode == "string" else "'"
+            if ch == "\\":
+                i += 2
+            elif ch == quote or ch == "\n":
+                # Unterminated literal ends at newline — treat as code again.
+                mode = "code"
+                i += 1
+            else:
+                i += 1
+    return "".join(out)
+
+
+def validate_java_syntax(source: str) -> None:
+    """Shallow validation: brace balance over comment/string-stripped source."""
+    stripped = strip_java_strings_and_comments(source)
+    opens, closes = stripped.count("{"), stripped.count("}")
+    if opens != closes:
+        raise JavaSyntaxError(f"Unbalanced braces: {opens} '{{' vs {closes} '}}'")
 
 # ============================================================
 # Regex Patterns for Java Crypto API Detection
@@ -211,6 +275,8 @@ class JavaParser:
         except OSError as e:
             log.error("cannot_read_file", error=str(e))
             raise
+
+        validate_java_syntax(source)
 
         source_lines = source.splitlines()
         context = self._extract_file_context(file_path, source, source_lines)

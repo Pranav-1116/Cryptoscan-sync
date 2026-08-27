@@ -12,7 +12,6 @@ from drift.classifiers.drift_type_classifier import DriftTypeClassifier
 from drift.classifiers.severity_calculator import SeverityCalculator
 from drift.core.comparator import Comparator
 from drift.fingerprinting.inventory_builder import CryptoInventory, InventoryBuilder
-from drift.fingerprinting.fingerprinter import Fingerprint, Fingerprinter
 from drift.models.drift_event import DriftType, DriftSeverity
 
 

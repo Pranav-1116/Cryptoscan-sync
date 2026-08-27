@@ -4,7 +4,6 @@ Policy Engine Settings - Configuration management.
 Loads settings from environment variables with validation.
 """
 
-from typing import Optional
 import logging
 from pathlib import Path
 from pydantic import BaseSettings, Field, validator

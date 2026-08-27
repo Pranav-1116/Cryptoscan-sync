@@ -8,7 +8,6 @@ from __future__ import annotations
 import pytest
 from pathlib import Path
 
-from normalization.core.engine import NormalizationEngine
 from normalization.core.processor import NormalizationProcessor
 from normalization.models.normalized_crypto import NormalizedCrypto
 from normalization.rules.rule_loader import RuleLoader

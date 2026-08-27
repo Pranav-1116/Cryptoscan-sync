@@ -7,7 +7,7 @@ walks invocations and constructors, and resolves local string constants.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from scanner.extractors.algorithm_extractor import parse_transformation

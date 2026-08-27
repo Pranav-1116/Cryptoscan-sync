@@ -9,9 +9,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
 
-import pytest
 from sqlalchemy import text
 
 from db.loader.post_load_verifier import PostLoadVerifier

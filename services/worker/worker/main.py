@@ -9,6 +9,7 @@ import sys
 from worker.config.settings import Settings
 from worker.core.job_consumer import JobConsumer, ScanJob
 from worker.core.job_executor import JobExecutor
+from worker.core.pool import WorkerPool
 
 logger = logging.getLogger("cryptoscan-worker")
 
@@ -17,6 +18,7 @@ class Worker:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.consumer: JobConsumer | None = None
+        self.pool: WorkerPool | None = None
         self.running = True
 
     def signal_handler(self, signum, frame):
@@ -34,13 +36,35 @@ class Worker:
         self.consumer = JobConsumer(
             redis_url=self.settings.REDIS_URL,
             queue_name=self.settings.queue_key,
+            # Production must not silently degrade to an in-process queue:
+            # jobs published by the API would be lost across processes.
+            allow_memory_fallback=not self.settings.is_production,
         )
         executor = JobExecutor()
+        concurrency = max(1, int(getattr(self.settings, "MAX_CONCURRENT_JOBS", 1)))
+        self.pool = WorkerPool(handler=executor.execute, max_workers=concurrency)
+        logger.info(
+            "cryptoscan_worker_pool",
+            extra={"max_concurrent_jobs": concurrency},
+        )
 
         def handle(job: ScanJob):
-            executor.execute(job)
+            self.pool.submit(job)
 
-        self.consumer.consume(handler=handle)
+        try:
+            self.consumer.consume(handler=handle)
+        finally:
+            # Graceful shutdown: wait for in-flight scans to finish.
+            if self.pool:
+                logger.info("worker_draining", extra={"active": self.pool.stats.active})
+                self.pool.shutdown(wait=True)
+                logger.info(
+                    "worker_stopped",
+                    extra={
+                        "completed": self.pool.stats.completed,
+                        "failed": self.pool.stats.failed,
+                    },
+                )
 
 
 def main():

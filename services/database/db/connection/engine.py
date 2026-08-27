@@ -9,7 +9,7 @@ from typing import Any
 from urllib.parse import quote_plus
 
 from sqlalchemy import Engine, create_engine, event, text
-from sqlalchemy.pool import QueuePool, StaticPool
+from sqlalchemy.pool import NullPool, QueuePool, StaticPool
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +58,14 @@ def create_db_engine(
             else:
                 db_path = Path(raw_path)
             db_path.parent.mkdir(parents=True, exist_ok=True)
+        in_memory = ":memory:" in database_url
         engine = create_engine(
             database_url,
             echo=echo,
             connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
+            # File-backed SQLite + multi-threaded workers: one connection per
+            # checkout (WAL allows concurrent readers); :memory: must share one.
+            poolclass=StaticPool if in_memory else NullPool,
         )
 
         @event.listens_for(engine, "connect")
@@ -70,6 +73,7 @@ def create_db_engine(
             cursor = dbapi_connection.cursor()
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
             cursor.close()
 
         return engine

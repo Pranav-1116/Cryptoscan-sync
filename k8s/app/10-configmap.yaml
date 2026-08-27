@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cryptoscan-config
+  namespace: cryptoscan
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  DOCS_ENABLED: "false"
+  NEO4J_URI: ""            # set to bolt://neo4j.neo4j.svc:7687 to enable the graph
+  NEO4J_DATABASE: "neo4j"
+  SCAN_JOB_QUEUE_KEY: "cryptoscan:jobs:queue"
+  MAX_CONCURRENT_JOBS: "4"
+  SESSION_EXPIRE_HOURS: "24"
+  LOGIN_MAX_FAILURES: "8"
+  LOGIN_LOCKOUT_SECONDS: "900"

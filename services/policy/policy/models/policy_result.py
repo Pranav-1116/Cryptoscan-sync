@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Literal, Optional
-from uuid import UUID
 
 from pydantic import BaseModel, Field, computed_field
 

@@ -9,9 +9,8 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-import yaml
 
-from policy.models.policy_rule import PolicyRule, PolicyRuleSet, RuleType
+from policy.models.policy_rule import PolicyRule, PolicyRuleSet
 from policy.models.policy_result import PolicyEvaluation
 from policy.core.evaluator import PolicyEvaluator
 from policy.rules.rule_loader import RuleLoader

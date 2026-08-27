@@ -28,11 +28,13 @@ from db.models.policy_exception import ExceptionReview, PolicyException
 from db.models.system_agility_score import SystemAgilityScore
 from db.models.vendor import SystemVendor, Vendor
 from db.models.vendor_crypto import VendorCryptoInventory
+from db.models.user import AuditLog, User, UserSession
 from db.models.verification_log import VerificationLog
 from db.models.vulnerability import Vulnerability
 
 __all__ = [
     "AssetEvidenceLink",
+    "AuditLog",
     "AssetSystemLink",
     "BaseModel",
     "Baseline",
@@ -63,6 +65,8 @@ __all__ = [
     "SystemBusinessProcessMap",
     "SystemDependency",
     "SystemVendor",
+    "User",
+    "UserSession",
     "Vendor",
     "VendorCryptoInventory",
     "VerificationLog",

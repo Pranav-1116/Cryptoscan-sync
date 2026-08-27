@@ -54,6 +54,7 @@ from api.routers import (
     vulns,
     webhooks,
 )
+from api.routers import metrics as metrics_router
 from api.security.exceptions import AuthenticationError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,14 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                     Neo4jGraphStore(driver).apply_schema()
             except Exception:
                 logger.debug("neo4j_schema_skipped", exc_info=True)
+            try:
+                from db.connection.session import SessionLocal
+                from api.security.auth import AuthService
+
+                with SessionLocal() as session:
+                    AuthService(session=session).bootstrap_admin()
+            except Exception:
+                logger.warning("admin_bootstrap_skipped", exc_info=True)
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         yield
         logger.info("cryptoscan_api_stopped")
@@ -176,6 +185,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(exceptions.router, prefix=prefix)
     app.include_router(ot.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
+    app.include_router(metrics_router.router)  # /metrics (no /api prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
     dashboard_html = Path(__file__).resolve().parents[2] / "dashboard" / "index.html"

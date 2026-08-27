@@ -6,6 +6,8 @@
 !.env.test
 
 # Data and workspaces
+/backups/
+burn_in_report.json
 /data/
 *.db
 *.sqlite

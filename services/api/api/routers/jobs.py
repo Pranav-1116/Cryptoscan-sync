@@ -68,7 +68,6 @@ async def retry_job(
     user: str = Depends(get_current_user),
     repo: JobRepository = Depends(get_job_repository),
 ):
-    from fastapi import BackgroundTasks as _BackgroundTasks
 
     job = repo.get_by_id(job_id)
     if inspect.isawaitable(job):
@@ -76,7 +75,6 @@ async def retry_job(
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found")
     from api.routers.trigger import enqueue_scan_job
-    from fastapi import BackgroundTasks
 
     # FastAPI injects BackgroundTasks when annotated; keep a local fallback for tests.
     tasks = background_tasks if isinstance(background_tasks, BackgroundTasks) else BackgroundTasks()

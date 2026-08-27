@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cryptoscan-worker
+  namespace: cryptoscan
+  labels:
+    app: cryptoscan-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cryptoscan-worker
+  template:
+    metadata:
+      labels:
+        app: cryptoscan-worker
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: worker
+          image: cryptoscan-worker:latest   # pin a real tag per release
+          command: ["python", "-m", "worker.main"]
+          envFrom:
+            - configMapRef:
+                name: cryptoscan-config
+            - secretRef:
+                name: cryptoscan-secrets
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+      # Scans clone repos and can spike CPU; give the pod a generous termination
+      # grace period so in-flight pipelines can finish.
+      terminationGracePeriodSeconds: 120

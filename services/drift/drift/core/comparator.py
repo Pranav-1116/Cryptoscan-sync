@@ -16,7 +16,7 @@ import structlog
 from drift.classifiers.drift_type_classifier import DriftTypeClassifier
 from drift.classifiers.severity_calculator import SeverityCalculator
 from drift.fingerprinting.inventory_builder import CryptoInventory
-from drift.models.drift_event import DriftEvent, DriftSeverity, DriftType
+from drift.models.drift_event import DriftEvent, DriftType
 from drift.models.drift_summary import DriftSummary
 
 logger = structlog.get_logger(__name__)

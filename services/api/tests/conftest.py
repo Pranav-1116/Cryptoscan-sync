@@ -175,6 +175,9 @@ async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[dependencies.get_current_user] = (
         lambda: "testuser"
     )
+    # Role-gated dependencies default to the same test user (admin powers).
+    app.dependency_overrides[dependencies.require_admin] = lambda: "testuser"
+    app.dependency_overrides[dependencies.require_auditor] = lambda: "testuser"
 
     async with AsyncClient(
         transport=ASGITransport(app=app),

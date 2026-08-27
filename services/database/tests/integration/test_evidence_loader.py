@@ -10,11 +10,10 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from db.loader.evidence_loader import EvidenceLoader

@@ -1,0 +1,522 @@
+{
+  "$defs": {
+    "CryptoInfo": {
+      "properties": {
+        "algorithm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Algorithm"
+        },
+        "api_type": {
+          "title": "Api Type",
+          "type": "string"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Size"
+        },
+        "mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mode"
+        },
+        "padding": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Padding"
+        },
+        "purpose": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Purpose"
+        },
+        "raw_transformation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Raw Transformation"
+        }
+      },
+      "required": [
+        "api_type"
+      ],
+      "title": "CryptoInfo",
+      "type": "object"
+    },
+    "FindingMetadata": {
+      "properties": {
+        "confidence": {
+          "title": "Confidence",
+          "type": "string"
+        },
+        "confidence_reason": {
+          "title": "Confidence Reason",
+          "type": "string"
+        },
+        "hardcoded_key_length": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hardcoded Key Length"
+        },
+        "is_hardcoded_key": {
+          "default": false,
+          "title": "Is Hardcoded Key",
+          "type": "boolean"
+        },
+        "library": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Library"
+        }
+      },
+      "required": [
+        "confidence",
+        "confidence_reason"
+      ],
+      "title": "FindingMetadata",
+      "type": "object"
+    },
+    "GitContext": {
+      "properties": {
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
+        },
+        "commit_author": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Author"
+        },
+        "commit_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Hash"
+        },
+        "commit_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Message"
+        },
+        "commit_timestamp": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Timestamp"
+        },
+        "repository_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Repository Url"
+        }
+      },
+      "title": "GitContext",
+      "type": "object"
+    },
+    "RawFinding": {
+      "additionalProperties": true,
+      "description": "Scanner output model - one per cryptographic API call detected.",
+      "properties": {
+        "crypto": {
+          "$ref": "#/$defs/CryptoInfo"
+        },
+        "finding_id": {
+          "title": "Finding Id",
+          "type": "string"
+        },
+        "git_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GitContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "metadata": {
+          "$ref": "#/$defs/FindingMetadata"
+        },
+        "scan_timestamp": {
+          "title": "Scan Timestamp",
+          "type": "string"
+        },
+        "scanner_id": {
+          "default": "static-java-scanner-v0.1",
+          "title": "Scanner Id",
+          "type": "string"
+        },
+        "scanner_version": {
+          "default": "0.1.0",
+          "title": "Scanner Version",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/SourceLocation"
+        }
+      },
+      "required": [
+        "source",
+        "crypto",
+        "metadata"
+      ],
+      "title": "RawFinding",
+      "type": "object"
+    },
+    "ScanStatistics": {
+      "properties": {
+        "duration_seconds": {
+          "default": 0.0,
+          "title": "Duration Seconds",
+          "type": "number"
+        },
+        "files_scanned": {
+          "default": 0,
+          "title": "Files Scanned",
+          "type": "integer"
+        },
+        "files_skipped": {
+          "default": 0,
+          "title": "Files Skipped",
+          "type": "integer"
+        },
+        "files_with_crypto": {
+          "default": 0,
+          "title": "Files With Crypto",
+          "type": "integer"
+        },
+        "files_with_errors": {
+          "default": 0,
+          "title": "Files With Errors",
+          "type": "integer"
+        },
+        "high_confidence": {
+          "default": 0,
+          "title": "High Confidence",
+          "type": "integer"
+        },
+        "low_confidence": {
+          "default": 0,
+          "title": "Low Confidence",
+          "type": "integer"
+        },
+        "medium_confidence": {
+          "default": 0,
+          "title": "Medium Confidence",
+          "type": "integer"
+        },
+        "total_findings": {
+          "default": 0,
+          "title": "Total Findings",
+          "type": "integer"
+        }
+      },
+      "title": "ScanStatistics",
+      "type": "object"
+    },
+    "ScanTarget": {
+      "properties": {
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit"
+        },
+        "location": {
+          "default": "",
+          "title": "Location",
+          "type": "string"
+        },
+        "type": {
+          "default": "LOCAL_DIRECTORY",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "ScanTarget",
+      "type": "object"
+    },
+    "SourceLocation": {
+      "properties": {
+        "class_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class Name"
+        },
+        "code_snippet": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Code Snippet"
+        },
+        "column_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column Number"
+        },
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "is_in_try_catch": {
+          "default": false,
+          "title": "Is In Try Catch",
+          "type": "boolean"
+        },
+        "language": {
+          "default": "JAVA",
+          "title": "Language",
+          "type": "string"
+        },
+        "line_number": {
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "method_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Method Name"
+        },
+        "type": {
+          "default": "SOURCE_CODE",
+          "title": "Type",
+          "type": "string"
+        },
+        "variable_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Variable Name"
+        }
+      },
+      "required": [
+        "file_path",
+        "line_number"
+      ],
+      "title": "SourceLocation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "error_message": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Message"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/RawFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "parse_errors": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Parse Errors",
+      "type": "array"
+    },
+    "scan_end": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scan End"
+    },
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "scan_start": {
+      "title": "Scan Start",
+      "type": "string"
+    },
+    "scan_target": {
+      "$ref": "#/$defs/ScanTarget"
+    },
+    "scanner_id": {
+      "default": "static-java-scanner-v0.1",
+      "title": "Scanner Id",
+      "type": "string"
+    },
+    "scanner_version": {
+      "default": "0.1.0",
+      "title": "Scanner Version",
+      "type": "string"
+    },
+    "statistics": {
+      "$ref": "#/$defs/ScanStatistics"
+    },
+    "status": {
+      "default": "COMPLETED",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "title": "ScanResult",
+  "type": "object"
+}

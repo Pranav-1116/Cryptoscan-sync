@@ -5,7 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
-from api.dependencies import get_current_user, get_drift_repository
+from api.dependencies import get_current_user, get_db_session, get_drift_repository, require_auditor
 from api.schemas.drift_schemas import DriftEventResponse, DriftListResponse
 from db.repositories.drift_repository import DriftRepository
 
@@ -64,16 +64,31 @@ def drift_digest(
     return build_digest(events, window_hours=hours)
 
 
+def _audit(db, actor: str, action: str, drift_id: str, body) -> None:
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        UserRepository(db).audit(
+            actor, action, target_type="drift_event", target_id=drift_id,
+            detail={"notes": body.notes if body else None},
+        )
+        db.commit()
+    except Exception:
+        pass
+
+
 @router.post("/{drift_id}/acknowledge", response_model=DriftEventResponse)
 def acknowledge(
     drift_id: str,
     body: AckBody | None = None,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_auditor),
     repo: DriftRepository = Depends(get_drift_repository),
+    db=Depends(get_db_session),
 ):
     row = repo.acknowledge(drift_id, user, notes=(body.notes if body else None))
     if row is None:
         raise HTTPException(status_code=404, detail="Drift event not found")
+    _audit(db, user, "drift.acknowledge", drift_id, body)
     return _to_response(row)
 
 
@@ -81,12 +96,14 @@ def acknowledge(
 def resolve_drift(
     drift_id: str,
     body: AckBody | None = None,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_auditor),
     repo: DriftRepository = Depends(get_drift_repository),
+    db=Depends(get_db_session),
 ):
     row = repo.resolve(drift_id, user, notes=(body.notes if body else None))
     if row is None:
         raise HTTPException(status_code=404, detail="Drift event not found")
+    _audit(db, user, "drift.resolve", drift_id, body)
     return _to_response(row)
 
 
@@ -94,10 +111,12 @@ def resolve_drift(
 def false_positive(
     drift_id: str,
     body: AckBody | None = None,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_auditor),
     repo: DriftRepository = Depends(get_drift_repository),
+    db=Depends(get_db_session),
 ):
     row = repo.mark_false_positive(drift_id, user, notes=(body.notes if body else None))
     if row is None:
         raise HTTPException(status_code=404, detail="Drift event not found")
+    _audit(db, user, "drift.false_positive", drift_id, body)
     return _to_response(row)

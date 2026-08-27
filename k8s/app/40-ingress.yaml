@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cryptoscan
+  namespace: cryptoscan
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Optional: lock down to your IP ranges
+    # nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["cryptoscan.example.com"]
+      secretName: cryptoscan-tls
+  rules:
+    - host: cryptoscan.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cryptoscan-api
+                port:
+                  number: 80

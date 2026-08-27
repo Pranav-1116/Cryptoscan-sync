@@ -10,7 +10,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 
 from api.config.settings import get_settings
 from api.dependencies import get_job_repository, get_repo_config_repository
-from api.github.payload_parser import parse_pull_request_event, parse_push_event
+from api.github.payload_parser import parse_push_event
 from api.security.hmac_verifier import HMACVerifier
 from db.repositories.job_repository import JobRepository
 from db.repositories.repo_config_repository import RepoConfigRepository
@@ -138,6 +138,16 @@ async def github_webhook(
         created = await _maybe(created)
 
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
+    # Commit the job BEFORE scheduling the background task: FastAPI runs
+    # dependency teardown (which commits) only AFTER background tasks, so an
+    # inline pipeline would otherwise race the uncommitted INSERT and hit
+    # "database is locked" (SQLite) or read a missing job.
+    try:
+        session = getattr(job_repo, "session", None)
+        if session is not None:
+            session.commit()
+    except Exception:
+        pass
     job_payload = {
         "job_id": job_id,
         "job_type": "GITHUB_WEBHOOK",

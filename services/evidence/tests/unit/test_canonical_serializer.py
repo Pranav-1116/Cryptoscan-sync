@@ -1,7 +1,6 @@
 """
 Unit tests for canonical JSON serialization.
 """
-import pytest
 from evidence.hashing.canonical_serializer import CanonicalSerializer
 
 

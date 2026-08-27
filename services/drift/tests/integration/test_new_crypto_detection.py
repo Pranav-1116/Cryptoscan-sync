@@ -11,7 +11,7 @@ from uuid import uuid4
 import pytest
 
 from drift.alerts.alert_dispatcher import AlertDispatcher
-from drift.alerts.email_alerter import EmailAlerter, SMTPConfig
+from drift.alerts.email_alerter import EmailAlerter
 from drift.classifiers.drift_type_classifier import DriftTypeClassifier
 from drift.classifiers.severity_calculator import SeverityCalculator
 from drift.core.comparator import Comparator
@@ -21,7 +21,7 @@ from drift.fingerprinting.inventory_builder import InventoryBuilder
 from drift.models.drift_event import DriftSeverity, DriftType
 
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 
 def make_evidence_record(

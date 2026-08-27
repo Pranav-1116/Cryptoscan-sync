@@ -54,6 +54,7 @@ def init_db(engine=None) -> None:
         system_asset,
         system_business_process,
         system_dependency,
+        user,
         vendor,
         vendor_crypto,
         verification_log,

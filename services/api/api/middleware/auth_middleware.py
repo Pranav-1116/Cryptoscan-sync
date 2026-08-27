@@ -1,16 +1,26 @@
-"""Optional JWT/session gate. Login, health, webhooks, and static assets stay open."""
+"""Session gate middleware.
+
+Login, health, webhooks, and static assets stay open. Every other /api route
+requires a valid HMAC token that has NOT been revoked in the session store
+(production-strict; dev/test degrade gracefully when the store is missing).
+"""
 
 from __future__ import annotations
+
+import logging
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from api.security.session_manager import SessionManager
 
+logger = logging.getLogger(__name__)
+
 
 UNPROTECTED_PREFIXES = (
     "/health",
     "/ready",
+    "/metrics",
     "/api/docs",
     "/api/redoc",
     "/api/openapi.json",
@@ -22,6 +32,16 @@ UNPROTECTED_PREFIXES = (
     "/assets",
     "/favicon",
 )
+
+
+def _store_allows(token: str, username: str) -> bool:
+    """True unless the token is revoked/expired or the user is disabled."""
+    try:
+        from api.dependencies import _session_store_allows
+
+        return _session_store_allows(token, username)
+    except Exception:  # pragma: no cover
+        return True
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -52,6 +72,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Invalid token", "error_code": "INVALID_TOKEN"},
+            )
+        if not _store_allows(token, username):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Session revoked", "error_code": "SESSION_REVOKED"},
             )
         request.state.user_id = username
         return await call_next(request)

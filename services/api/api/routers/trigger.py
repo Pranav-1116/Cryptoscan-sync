@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from api.config.settings import get_settings
-from api.dependencies import get_current_user, get_job_repository
+from api.dependencies import get_job_repository, require_auditor
 from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
 from db.repositories.job_repository import JobRepository
 
@@ -117,7 +117,7 @@ def enqueue_scan_job(
 async def trigger_manual_scan(
     request_body: TriggerScanRequest,
     background_tasks: BackgroundTasks,
-    current_user: str = Depends(get_current_user),
+    current_user: str = Depends(require_auditor),
     job_repo: JobRepository = Depends(get_job_repository),
 ):
     from cloud_scanner.estate import is_cloud_target
