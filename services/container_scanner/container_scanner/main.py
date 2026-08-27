@@ -29,12 +29,47 @@ def build_scanner(*, live_cve: bool, github_advisory: bool) -> ContainerScanner:
 def main(argv: list[str] | None = None) -> int:
     settings = load_settings()
     parser = argparse.ArgumentParser(description="Scan a container image or filesystem for crypto packages")
-    parser.add_argument("target", help="Filesystem path, docker-save .tar, or registry image reference")
+    parser.add_argument("target", nargs="?", default=None, help="Filesystem path, docker-save .tar, or registry image reference")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live-cve", action="store_true", default=settings.live_cve)
     parser.add_argument("--github-advisory", action="store_true", default=settings.github_advisory)
     parser.add_argument("--image", action="store_true", help="Treat target as a registry image even if a path exists")
+    parser.add_argument("--sbom", metavar="OUT", help="Also write a CycloneDX 1.5 SBOM to this path")
+    parser.add_argument("--diff-scans", nargs=2, metavar=("OLD", "NEW"),
+                        help="Diff two scan result JSON files and exit (no scan runs)")
+    parser.add_argument("--metrics", metavar="FILE",
+                        help="Render a scan/drift result JSON as Prometheus text and exit")
     args = parser.parse_args(argv)
+    if not args.target and not (args.diff_scans or args.metrics):
+        parser.error("target is required unless --diff-scans or --metrics is used")
+
+    if args.diff_scans or args.metrics:
+        import json as _json
+
+        if args.diff_scans:
+            from container_scanner.reports.scan_drift import diff_scans
+
+            old_path, new_path = args.diff_scans
+            report = diff_scans(_json.loads(Path(old_path).read_text()), _json.loads(Path(new_path).read_text()))
+            report["diff_of"] = [old_path, new_path]
+            text = _json.dumps(report, indent=2)
+            if args.output:
+                Path(args.output).write_text(text, encoding="utf-8")
+            else:
+                print(text)
+            print(
+                f"# drift={report['verdict']} changes={report['change_count']} headline={report['headline']}",
+                file=sys.stderr,
+            )
+            return 0
+        from container_scanner.reports.metrics import render_prometheus
+
+        text = render_prometheus(_json.loads(Path(args.metrics).read_text()))
+        if args.output:
+            Path(args.output).write_text(text, encoding="utf-8")
+        else:
+            print(text, end="")
+        return 0
 
     scanner = build_scanner(live_cve=args.live_cve, github_advisory=args.github_advisory)
     target = args.target
@@ -61,6 +96,11 @@ def main(argv: list[str] | None = None) -> int:
             print(str(exc), file=sys.stderr)
             return 1
     result["scan_context"] = context.to_dict()
+    if args.sbom:
+        from container_scanner.reports.sbom import build_sbom
+
+        Path(args.sbom).write_text(json.dumps(build_sbom(result), indent=2), encoding="utf-8")
+        print(f"# sbom written to {args.sbom}", file=sys.stderr)
     text = json.dumps(result, indent=2)
     if args.output:
         Path(args.output).write_text(text, encoding="utf-8")

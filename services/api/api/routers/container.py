@@ -72,6 +72,96 @@ def scan_container(
     return {"id": row.id, **result}
 
 
+def _previous_run_for_target(db: Session, row: ContainerScan) -> ContainerScan | None:
+    """The most recent stored scan for the same target that is OLDER than ``row``."""
+    from sqlalchemy import select
+
+    stmt = (
+        select(ContainerScan)
+        .where(ContainerScan.target == row.target)
+        .order_by(ContainerScan.created_at.desc(), ContainerScan.id.desc())
+    )
+    rows = list(db.execute(stmt).scalars())
+    ids = [item.id for item in rows]
+    if row.id not in ids:
+        return None
+    older = rows[ids.index(row.id) + 1 :]
+    return older[0] if older else None
+
+
+def _run_by_scan_id(db: Session, scan_id: str) -> ContainerScan | None:
+    from sqlalchemy import select
+
+    stmt = select(ContainerScan).where(ContainerScan.scan_id == scan_id).limit(1)
+    return db.execute(stmt).scalars().first()
+
+
+@router.get("/scans/{scan_id}")
+def get_container_scan(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Fetch one stored container scan (full result payload)."""
+    row = _run_by_scan_id(db, scan_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return {"id": row.id, **(row.result or {})}
+
+
+@router.get("/scans/{scan_id}/sbom")
+def container_scan_sbom(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """CycloneDX 1.5 SBOM for a stored scan."""
+    from container_scanner.reports.sbom import build_sbom
+
+    row = _run_by_scan_id(db, scan_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return build_sbom(row.result or {})
+
+
+@router.get("/scans/{scan_id}/metrics")
+def container_scan_metrics(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Prometheus text for a stored scan."""
+    from fastapi.responses import Response
+
+    from container_scanner.reports.metrics import CONTENT_TYPE, render_prometheus
+
+    row = _run_by_scan_id(db, scan_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="scan not found")
+    return Response(content=render_prometheus(row.result or {}), media_type=CONTENT_TYPE)
+
+
+@router.get("/scans/{scan_id}/drift")
+def container_scan_drift(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Drift between this stored scan and the previous one for the same target."""
+    from container_scanner.reports.scan_drift import diff_scans
+
+    row = _run_by_scan_id(db, scan_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="scan not found")
+    previous = _previous_run_for_target(db, row)
+    if previous is None:
+        return {
+            "verdict": "UNCHANGED",
+            "change_count": 0,
+            "severity_counts": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0},
+            "summary": {},
+            "headline": None,
+            "changes": [],
+            "detail": "no earlier stored scan for this target; drift needs two",
+        }
+    report = diff_scans(previous.result or {}, row.result or {})
+    report["previous_scan_id"] = previous.scan_id
+    report["current_scan_id"] = row.scan_id
+    return report
+
+
+@router.post("/sbom")
+def render_sbom(body: dict, user: str = Depends(get_current_user)):
+    """CycloneDX SBOM from an inline scan result (no storage round-trip)."""
+    from container_scanner.reports.sbom import build_sbom
+
+    return build_sbom(body.get("result") or body)
+
+
 @router.get("/scans")
 def list_container_scans(
     user: str = Depends(get_current_user),
