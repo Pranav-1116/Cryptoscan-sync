@@ -26,6 +26,7 @@ class HostScanRequest(BaseModel):
     scan_ciphers: bool = False
     check_renegotiation: bool = False
     check_chain_sent: bool = False
+    live_revocation: bool = False
 
 
 @router.post("")
@@ -45,6 +46,7 @@ def trigger_network_scan(
         scan_ciphers=body.scan_ciphers,
         check_renegotiation=body.check_renegotiation,
         check_chain_sent=body.check_chain_sent,
+        live_revocation=body.live_revocation,
     )
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)

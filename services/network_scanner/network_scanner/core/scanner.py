@@ -93,6 +93,7 @@ class NetworkTlsScanner:
         scan_ciphers: bool = False,
         check_renegotiation: bool = False,
         check_chain_sent: bool = False,
+        live_revocation: bool = False,
     ) -> dict[str, Any]:
         endpoint_list = [str(item) for item in endpoints if str(item).strip()]
         results = self._probe_all(
@@ -104,6 +105,7 @@ class NetworkTlsScanner:
             scan_ciphers=scan_ciphers,
             check_renegotiation=check_renegotiation,
             check_chain_sent=check_chain_sent,
+            live_revocation=live_revocation,
         )
         inventory = merge_certificates([], self._live_certs(results))
         self._attach_revocation(inventory)
@@ -130,6 +132,7 @@ class NetworkTlsScanner:
         scan_ciphers: bool = False,
         check_renegotiation: bool = False,
         check_chain_sent: bool = False,
+        live_revocation: bool = False,
     ) -> list[dict[str, Any]]:
         """Probe endpoints in parallel (bounded); failures never stop the rest."""
         if not endpoints:
@@ -145,6 +148,7 @@ class NetworkTlsScanner:
                     scan_ciphers=scan_ciphers,
                     check_renegotiation=check_renegotiation,
                     check_chain_sent=check_chain_sent,
+                    live_revocation=live_revocation,
                 )
                 for item in endpoints
             ]
@@ -160,6 +164,7 @@ class NetworkTlsScanner:
                     scan_ciphers=scan_ciphers,
                     check_renegotiation=check_renegotiation,
                     check_chain_sent=check_chain_sent,
+                    live_revocation=live_revocation,
                 ): item
                 for item in endpoints
             }
@@ -179,6 +184,7 @@ class NetworkTlsScanner:
         scan_ciphers: bool = False,
         check_renegotiation: bool = False,
         check_chain_sent: bool = False,
+        live_revocation: bool = False,
     ) -> dict[str, Any]:
         try:
             return probe_endpoint(
@@ -190,6 +196,7 @@ class NetworkTlsScanner:
                 scan_ciphers=scan_ciphers,
                 check_renegotiation=check_renegotiation,
                 check_chain_sent=check_chain_sent,
+                live_revocation=live_revocation,
             )
         except Exception as exc:  # noqa: BLE001 — one endpoint must not sink the scan
             return {
@@ -326,7 +333,7 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate probe outcomes — mirrors cloud_scanner's honest verdicts."""
     statuses: dict[str, int] = {}
     weak_versions = weak_suites = 0
-    insecure_reneg = client_reneg = chain_issues = 0
+    insecure_reneg = client_reneg = chain_issues = revoked = 0
     for row in results:
         status = str(row.get("status") or "UNKNOWN")
         statuses[status] = statuses.get(status, 0) + 1
@@ -343,13 +350,15 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
             client_reneg += 1
         if any(issue.startswith("CHAIN_") for issue in issues):
             chain_issues += 1
+        if "CERT_REVOKED" in issues:
+            revoked += 1
     probed = len(results)
     ok = statuses.get("OK", 0)
     if probed == 0:
         verdict = "SKIPPED"
     elif ok == 0:
         verdict = "FAILED"
-    elif ok < probed or weak_versions or weak_suites or insecure_reneg or client_reneg or chain_issues:
+    elif ok < probed or weak_versions or weak_suites or insecure_reneg or client_reneg or chain_issues or revoked:
         verdict = "PARTIAL"
     else:
         verdict = "OK"
@@ -363,6 +372,7 @@ def probe_telemetry(results: list[dict[str, Any]]) -> dict[str, Any]:
         "insecure_renegotiation": insecure_reneg,
         "client_renegotiation_accepted": client_reneg,
         "chain_order_issues": chain_issues,
+        "revoked_certificates": revoked,
     }
 
 

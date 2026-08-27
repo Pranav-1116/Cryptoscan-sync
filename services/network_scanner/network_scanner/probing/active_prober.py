@@ -45,6 +45,7 @@ def probe_endpoint(
     scan_ciphers: bool = False,
     check_renegotiation: bool = False,
     check_chain_sent: bool = False,
+    live_revocation: bool = False,
 ) -> dict[str, Any]:
     host, port = _split_endpoint(endpoint)
     finding: dict[str, Any] = {
@@ -131,11 +132,18 @@ def probe_endpoint(
                 if not hostname_matches(host, leaf) and "HOSTNAME_MISMATCH" not in chain["errors"]:
                     chain["errors"].append("HOSTNAME_MISMATCH")
                     chain["is_valid"] = False
-                revocation = check_ocsp(leaf, live=False)
-                if revocation.get("status") == "UNKNOWN":
-                    crl = check_crl(leaf, live=False)
-                    if crl.get("urls") and not revocation.get("urls"):
-                        revocation = crl
+                revoked_live = False
+                if live_revocation:
+                    from network_scanner.certificates.revocation_live import check_revocation_live
+
+                    revocation = check_revocation_live(leaf, chain_certs, timeout=min(timeout, 6.0))
+                    revoked_live = revocation.get("status") == "REVOKED"
+                else:
+                    revocation = check_ocsp(leaf, live=False)
+                    if revocation.get("status") == "UNKNOWN":
+                        crl = check_crl(leaf, live=False)
+                        if crl.get("urls") and not revocation.get("urls"):
+                            revocation = crl
                 verdict = registry_verdict(parsed.get("cipher_suite"))
                 parsed.setdefault("status", verdict["status"])
                 headers = None
@@ -151,6 +159,8 @@ def probe_endpoint(
                     },
                     hsts=headers,
                 )
+                if revoked_live:
+                    issues.append("CERT_REVOKED")
                 alpn = None
                 try:
                     alpn = tls.selected_alpn_protocol()

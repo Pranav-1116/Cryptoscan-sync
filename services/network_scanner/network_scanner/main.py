@@ -22,6 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scan-ciphers", action="store_true", help="Probe weak-cipher acceptance per endpoint")
     parser.add_argument("--check-renegotiation", action="store_true", help="Probe RFC 5746 secure + client-initiated renegotiation")
     parser.add_argument("--check-chain", action="store_true", help="Fetch and analyze the certificate chain as sent")
+    parser.add_argument("--live-revocation", action="store_true", help="Live OCSP query + CRL fetch/lookup per endpoint")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -43,6 +44,7 @@ def main(argv: list[str] | None = None) -> int:
                 scan_ciphers=args.scan_ciphers,
                 check_renegotiation=args.check_renegotiation,
                 check_chain_sent=args.check_chain,
+                live_revocation=args.live_revocation,
             )
             result["scan"] = {key: scanned[key] for key in ("probe_telemetry", "certificates", "alerts") if key in scanned}
         result["scan_context"] = {"mode": "subnet-discovery", "cidr": args.discover, "ports": ports}
@@ -62,6 +64,7 @@ def main(argv: list[str] | None = None) -> int:
             scan_ciphers=args.scan_ciphers,
             check_renegotiation=args.check_renegotiation,
             check_chain_sent=args.check_chain,
+            live_revocation=args.live_revocation,
         )
     else:
         context = ScanContext.for_path(target, live=args.live, timeout=settings.timeout)

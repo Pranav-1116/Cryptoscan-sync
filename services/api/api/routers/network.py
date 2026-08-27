@@ -31,6 +31,7 @@ class HostScanRequest(BaseModel):
     scan_ciphers: bool = False
     check_renegotiation: bool = False
     check_chain_sent: bool = False
+    live_revocation: bool = False
 
 
 class TargetCreate(BaseModel):
@@ -125,6 +126,7 @@ class SubnetDiscoverRequest(BaseModel):
     scan_ciphers: bool = False
     check_renegotiation: bool = False
     check_chain_sent: bool = False
+    live_revocation: bool = False
     workers: int | None = None
 
 
@@ -145,6 +147,7 @@ def discover_subnet_endpoints(
             scan_ciphers=body.scan_ciphers,
             check_renegotiation=body.check_renegotiation,
             check_chain_sent=body.check_chain_sent,
+            live_revocation=body.live_revocation,
         )
         result["scan"] = {
             "probe_telemetry": scanned.get("probe_telemetry"),
@@ -200,6 +203,9 @@ def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), d
         starttls=body.starttls,
         scan_versions=body.scan_versions,
         scan_ciphers=body.scan_ciphers,
+        check_renegotiation=body.check_renegotiation,
+        check_chain_sent=body.check_chain_sent,
+        live_revocation=body.live_revocation,
     )
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
