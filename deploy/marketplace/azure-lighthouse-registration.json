@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-08-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "description": "CryptoScan Lighthouse registration (manual/marketplace fallback). Deploy at SUBSCRIPTION scope. Grants the CryptoScan managing tenant read-only crypto inventory roles via Azure Lighthouse - no credentials exchanged.",
+  "parameters": {
+    "ManagedByTenantId": {
+      "type": "string",
+      "metadata": { "description": "CryptoScan partner tenant id" }
+    },
+    "PrincipalId": {
+      "type": "string",
+      "metadata": { "description": "CryptoScan scanner principal (user/app/group) in the managing tenant" }
+    },
+    "RegistrationDefinitionId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Optional marketplace offer registration definition id; when set only the assignment is created" }
+    }
+  },
+  "variables": {
+    "readerRole": "acdd72a7-3385-48ef-bd42-f606fba81ae7",
+    "securityReaderRole": "39bc4728-9386-4de3-bba6-366c425dba20",
+    "definitionName": "[concat('cryptoscan-', uniqueString(subscription().id))]"
+  },
+  "resources": [
+    {
+      "condition": "[empty(parameters('RegistrationDefinitionId'))]",
+      "type": "Microsoft.ManagedServices/registrationDefinitions",
+      "apiVersion": "2022-10-01",
+      "name": "[variables('definitionName')]",
+      "properties": {
+        "registrationDefinitionName": "CryptoScan crypto inventory (read-only)",
+        "description": "Read-only crypto inventory for CryptoScan: Reader + Security Reader",
+        "managedByTenantId": "[parameters('ManagedByTenantId')]",
+        "authorizations": [
+          {
+            "principalId": "[parameters('PrincipalId')]",
+            "roleDefinitionId": "[variables('readerRole')]",
+            "principalIdDisplayName": "CryptoScan Reader"
+          },
+          {
+            "principalId": "[parameters('PrincipalId')]",
+            "roleDefinitionId": "[variables('securityReaderRole')]",
+            "principalIdDisplayName": "CryptoScan Security Reader"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.ManagedServices/registrationAssignments",
+      "apiVersion": "2022-10-01",
+      "name": "[concat('cryptoscan-assign-', uniqueString(subscription().id))]",
+      "properties": {
+        "registrationDefinitionId": "[if(empty(parameters('RegistrationDefinitionId')), resourceId('Microsoft.ManagedServices/registrationDefinitions', variables('definitionName')), parameters('RegistrationDefinitionId'))]"
+      }
+    }
+  ],
+  "outputs": {
+    "AssignmentId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.ManagedServices/registrationAssignments', concat('cryptoscan-assign-', uniqueString(subscription().id)))]"
+    }
+  }
+}

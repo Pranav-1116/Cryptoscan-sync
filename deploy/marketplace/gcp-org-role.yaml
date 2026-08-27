@@ -1,0 +1,30 @@
+# CryptoScan least-privilege org role (gcloud iam roles create --file=...)
+title: CryptoScan Scanner
+description: Read-only crypto inventory for the CryptoScan platform
+stage: GA
+includedPermissions:
+  # org / project discovery
+  - resourcemanager.projects.get
+  - resourcemanager.projects.list
+  - resourcemanager.folders.get
+  - resourcemanager.folders.list
+  # Cloud KMS
+  - cloudkms.keyrings.list
+  - cloudkms.cryptoKeys.list
+  - cloudkms.cryptoKeys.getIamPolicy
+  # Storage / SQL / compute TLS policies
+  - storage.buckets.list
+  - storage.buckets.get
+  - cloudsql.instances.list
+  - cloudsql.instances.get
+  - compute.sslPolicies.list
+  - compute.sslPolicies.get
+  # GKE secrets-encryption config
+  - container.clusters.list
+  - container.clusters.get
+  # Secret Manager / Pub/Sub CMEK state
+  - secretmanager.secrets.list
+  - secretmanager.secrets.get
+  - secretmanager.secrets.getIamPolicy
+  - pubsub.topics.list
+  - pubsub.topics.get

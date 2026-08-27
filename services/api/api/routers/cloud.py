@@ -29,6 +29,18 @@ class CloudInventoryRequest(BaseModel):
     regions: list[str] | None = None
 
 
+class CloudOrgDiscoverRequest(BaseModel):
+    provider: str  # aws | azure | gcp
+    role_name: str | None = None  # AWS cross-account role installed per member
+    management_account_id: str | None = None  # informational label for the org
+    gcp_folder: str | None = None
+    gcp_organization: str | None = None
+    regions: list[str] | None = None
+    max_accounts: int | None = None
+    enqueue: bool = True  # enqueue one CLOUD job per discovered account
+    register: bool = True  # persist accounts in the cloud account inventory
+
+
 class CloudAccountCreate(BaseModel):
     cloud_provider: str
     account_identifier: str
@@ -76,6 +88,115 @@ def create_account(body: CloudAccountCreate, user: str = Depends(get_current_use
         enabled=body.enabled,
     )
     return row.to_dict()
+
+
+@router.post("/orgs/discover")
+def discover_org(
+    body: CloudOrgDiscoverRequest,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    jobs: JobRepository = Depends(get_job_repository),
+):
+    """Enumerate an entire org (AWS Organizations / Azure tenant / GCP folder)
+    and register + enqueue every discovered account. Requires org-level
+    credentials in the API host environment (partner mode)."""
+    from cloud_scanner.org.enumerators import enumerate_org
+
+    provider = str(body.provider or "").lower().strip()
+    if provider not in {"aws", "azure", "gcp"}:
+        raise HTTPException(status_code=400, detail="provider must be aws, azure or gcp")
+
+    kwargs: dict = {"max_accounts": body.max_accounts} if body.max_accounts else {}
+    if provider == "aws" and body.role_name:
+        kwargs["role_name"] = body.role_name
+    if provider == "gcp":
+        if body.gcp_folder:
+            kwargs["folder"] = body.gcp_folder
+        if body.gcp_organization:
+            kwargs["organization"] = body.gcp_organization
+    discovery = enumerate_org(provider, **kwargs)
+    if discovery.get("errors") and not discovery.get("accounts"):
+        raise HTTPException(status_code=502, detail={"message": "org enumeration failed", "errors": discovery["errors"][:5]})
+
+    intel = IntelligenceRepository(db)
+    registered, existing_rows = 0, 0
+    queued = []
+    for account in discovery.get("accounts") or []:
+        account_id = str(account.get("account_id") or "").strip()
+        if not account_id:
+            continue
+        if intel.find_cloud_account(provider, account_id) is None:
+            intel.create_cloud_account(
+                cloud_provider=provider.upper(),
+                account_identifier=account_id,
+                role_arn=account.get("role_arn"),
+                regions=body.regions,
+                enabled=True,
+            )
+            registered += 1
+        else:
+            existing_rows += 1
+        if body.enqueue:
+            from api.routers.trigger import enqueue_scan_job as _enqueue
+
+            queued.append(
+                _enqueue(
+                    jobs,
+                    background_tasks,
+                    repo_url=f"cloud://{provider}/{account_id}",
+                    triggered_by=user,
+                    job_type="CLOUD",
+                )
+            )
+    db.commit()
+    return {
+        "provider": provider,
+        "discovered": len(discovery.get("accounts") or []),
+        "truncated": bool(discovery.get("truncated")),
+        "registered": registered,
+        "already_registered": existing_rows,
+        "jobs_enqueued": len(queued),
+        "errors": discovery.get("errors") or [],
+        "accounts": [
+            {"account_id": a.get("account_id"), "name": a.get("name"), "status": a.get("status"), "role_arn": a.get("role_arn")}
+            for a in (discovery.get("accounts") or [])[:100]
+        ],
+        "message": (
+            "Org enumerated. Accounts registered and one CLOUD job enqueued each. "
+            "Use /cloud/orgs/scan for a single fan-out job instead."
+        ),
+    }
+
+
+@router.post("/orgs/scan")
+def scan_org_endpoint(
+    body: CloudOrgDiscoverRequest,
+    background_tasks: BackgroundTasks,
+    user: str = Depends(get_current_user),
+    jobs: JobRepository = Depends(get_job_repository),
+):
+    """Enqueue ONE org-level job (cloud://<provider>-org/<id>) — the worker
+    enumerates and scans all accounts in parallel with a rate budget."""
+    from api.routers.trigger import enqueue_scan_job
+
+    provider = str(body.provider or "").lower().strip()
+    if provider not in {"aws", "azure", "gcp"}:
+        raise HTTPException(status_code=400, detail="provider must be aws, azure or gcp")
+    ident = (
+        (body.gcp_folder or body.gcp_organization or body.management_account_id)
+        if provider == "gcp"
+        else body.management_account_id
+    )
+    target = f"cloud://{provider}-org/{ident}" if ident else f"cloud://{provider}-org"
+    queued = enqueue_scan_job(
+        jobs,
+        background_tasks,
+        repo_url=target,
+        triggered_by=user,
+        job_type="CLOUD",
+    )
+    return {"queued": _queued_payload(queued), "target": target}
 
 
 @router.post("/inventory")

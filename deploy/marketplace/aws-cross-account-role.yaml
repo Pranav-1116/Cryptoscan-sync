@@ -1,0 +1,76 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  CryptoScan cross-account scanning role (marketplace install).
+  Grants the CryptoScan partner account read-only crypto inventory access
+  to this account, plus org enumeration when installed in the management
+  account. Least privilege: discovery and metadata reads only — no access
+  to encrypted data or key material.
+
+Parameters:
+  CryptoScanAccountId:
+    Type: String
+    Description: The CryptoScan partner AWS account ID (trusted principal)
+    AllowedPattern: "^[0-9]{12}$"
+  ExternalId:
+    Type: String
+    Description: External id issued by CryptoScan for this customer (confused-deputy protection)
+    MinLength: 2
+    MaxLength: 1224
+  RoleName:
+    Type: String
+    Default: CryptoScanCrossAccountRole
+    Description: Role name CryptoScan assumes in every member account
+
+Resources:
+  CryptoScanRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub arn:aws:iam::${CryptoScanAccountId}:root
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Ref ExternalId
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/SecurityAudit
+      Policies:
+        - PolicyName: CryptoScanCryptoInventory
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CryptoInventoryReads
+                Effect: Allow
+                Action:
+                  - ssm:DescribeParameters
+                  - secretsmanager:ListSecrets
+                  - dynamodb:DescribeTable
+                  - dynamodb:ListTables
+                  - sqs:GetQueueAttributes
+                  - sqs:ListQueues
+                  - sns:GetTopicAttributes
+                  - sns:ListTopics
+                  - eks:DescribeCluster
+                  - eks:ListClusters
+                  - redshift:DescribeClusters
+                  - opensearch:DescribeDomain
+                  - opensearch:ListDomainNames
+                Resource: "*"
+              - Sid: OrgEnumerationManagementAccountOnly
+                Effect: Allow
+                Action:
+                  - organizations:ListAccounts
+                  - organizations:DescribeAccount
+                Resource: "*"
+
+Outputs:
+  RoleArn:
+    Description: Cross-account role CryptoScan assumes (use as role_name in org discovery)
+    Value: !GetAtt CryptoScanRole.Arn
+  StackName:
+    Description: This stack's name for marketplace tracking
+    Value: !Ref AWS::StackName

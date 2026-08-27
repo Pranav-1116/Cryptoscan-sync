@@ -13,6 +13,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 CLOUD_SCHEMES = frozenset({"cloud", "aws", "azure", "gcp"})
+ORG_PREFIXES = ("aws-org://", "azure-org://", "gcp-org://")
+ORG_PROVIDERS = frozenset({"aws-org", "azure-org", "gcp-org"})
 GIT_PREFIXES = ("http://", "https://", "git@", "ssh://", "local://", "file://", "/")
 def _resource_cap() -> int:
     import os
@@ -31,7 +33,7 @@ def is_cloud_target(target: str | None) -> bool:
     text = str(target or "").strip().lower()
     if not text:
         return False
-    if text.startswith(("aws://", "azure://", "gcp://", "cloud://")):
+    if text.startswith(("aws://", "azure://", "gcp://", "cloud://")) or text.startswith(ORG_PREFIXES):
         return True
     if text.startswith(GIT_PREFIXES):
         return False
@@ -53,6 +55,25 @@ def should_run_cloud_job(job: Any) -> bool:
     return job_type.upper() == "CLOUD" or is_cloud_target(target)
 
 
+def is_org_target(target: str | None) -> bool:
+    """True for org/folder/tenant-level targets (fan-out scans)."""
+    text = str(target or "").strip().lower()
+    if text.startswith("cloud://"):
+        text = text[len("cloud://"):]
+    return text.startswith(ORG_PREFIXES) or text.startswith(tuple(p + "/" for p in ORG_PROVIDERS))
+
+
+def org_provider(target: str | None) -> str | None:
+    """'aws-org', 'azure-org' or 'gcp-org' for org targets, else None."""
+    text = str(target or "").strip().lower()
+    if text.startswith("cloud://"):
+        text = text[len("cloud://"):]
+    if not is_org_target(text):
+        return None
+    head = text.split("://", 1)[0]
+    return head if head in ORG_PROVIDERS else head.split("/", 1)[0]
+
+
 def parse_cloud_target(target: str | None) -> tuple[str, str | None]:
     text = str(target or "").strip()
     if text.startswith("cloud://"):
@@ -64,8 +85,13 @@ def parse_cloud_target(target: str | None) -> tuple[str, str | None]:
         scheme, rest = "cloud", text
     parts = [part for part in rest.split("/") if part]
     scheme_l = scheme.lower()
+    if scheme_l in ORG_PROVIDERS:
+        # org identifiers may be multi-segment (gcp folders/<id>)
+        return scheme_l, "/".join(parts) if parts else None
     if scheme_l in {"aws", "azure", "gcp"}:
         return scheme_l, parts[0] if parts else None
+    if parts and parts[0].lower() in ORG_PROVIDERS:
+        return parts[0].lower(), "/".join(parts[1:]) if len(parts) > 1 else None
     if parts and parts[0].lower() in {"aws", "azure", "gcp"}:
         provider = parts[0].lower()
         return provider, parts[1] if len(parts) > 1 else None

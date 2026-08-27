@@ -15,8 +15,12 @@ class JobExecutor:
         self.runner = PipelineRunner()
 
     def execute(self, job: ScanJob) -> bool:
-        from cloud_scanner.estate import should_run_cloud_job
+        from cloud_scanner.estate import is_org_target, should_run_cloud_job
 
+        if is_org_target(job.target_repo):
+            from worker.pipeline.org_job import run_org_job
+
+            return run_org_job(job)
         if should_run_cloud_job(job):
             from worker.pipeline.cloud_job import run_cloud_job
 
