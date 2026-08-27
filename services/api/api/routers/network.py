@@ -235,6 +235,20 @@ def dispatch_expiry_alerts(body: AlertDispatchRequest, user: str = Depends(get_c
     return route_alerts(body.certificates, state=body.notification_state, days=body.days)
 
 
+class ScanDriftRequest(BaseModel):
+    previous: dict  # scan_hosts-shaped result (findings + certificates)
+    current: dict
+    expiry_warn_days: int = 7
+
+
+@router.post("/network/scan/drift")
+def scan_drift(body: ScanDriftRequest, user: str = Depends(get_current_user)):
+    """What changed between two scans: regressions, expiries, downgrades."""
+    from network_scanner.reports.scan_drift import diff_scans
+
+    return diff_scans(body.previous, body.current, expiry_warn_days=body.expiry_warn_days)
+
+
 @router.get("/certificates/{cert_id}/usages")
 def certificate_usages(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)

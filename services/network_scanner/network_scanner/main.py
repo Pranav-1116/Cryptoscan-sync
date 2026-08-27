@@ -33,6 +33,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Baseline {endpoint: {key_type: fingerprint}} for --ssh drift detection")
     parser.add_argument("--route-alerts", default=None, metavar="FILE",
                         help="Escalate + dispatch expiry alerts from a scan result JSON (or cert list)")
+    parser.add_argument("--diff-scans", nargs=2, metavar=("OLD", "NEW"),
+                        help="Diff two scan result JSON files into a drift report")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
@@ -65,6 +67,16 @@ def main(argv: list[str] | None = None) -> int:
             )
         result["scan_context"] = {"mode": "subnet-discovery", "cidr": args.discover, "ports": ports}
         _emit(result, args.output)
+        return 0
+    if args.diff_scans:
+        import json as _json
+
+        from network_scanner.reports.scan_drift import diff_scans
+
+        old_path, new_path = args.diff_scans
+        report = diff_scans(_json.loads(Path(old_path).read_text()), _json.loads(Path(new_path).read_text()))
+        report["diff_of"] = [old_path, new_path]
+        _emit(report, args.output)
         return 0
     if args.route_alerts:
         import json as _json
