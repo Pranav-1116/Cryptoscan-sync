@@ -5,6 +5,7 @@ Modules:
 - pipeline_runner: 8-stage scan pipeline (sync)
 - progress: Named pipeline stages used for job progress reporting
 - stage_agility: Score the resolved system with the 6-factor agility + readiness engines
+- stage_quantum: Scan-level quantum report + PQC migration plan into scan statistics
 - stage_alert: Pipeline stage: notify on high/critical drift
 - stage_business_enrich: Persist business_context onto crypto_assets.extra after the graph is known
 - stage_cbom_generate: Optional pipeline stage: write a CycloneDX CBOM for the scan

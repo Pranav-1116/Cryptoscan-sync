@@ -127,6 +127,9 @@ class PipelineRunner:
             stage = "drift"
             self._advance(session, ctx, "drift")
             self._drift(ctx, session)
+            stage = "quantum"
+            self._advance(session, ctx, "quantum")
+            self._quantum(ctx, session)
             stage = "gate"
             self._advance(session, ctx, "gate")
             self._gate(ctx, session)
@@ -694,6 +697,14 @@ class PipelineRunner:
         for asset in assets:
             repo.attach_asset(ctx.system_id, asset.id)
 
+    def _quantum(self, ctx: PipelineContext, session) -> None:
+        try:
+            from worker.pipeline.stage_quantum import execute as quantum_stage
+
+            quantum_stage(ctx, session=session)
+        except Exception:
+            logger.debug("quantum_stage_skipped", exc_info=True)
+
     def _graph(self, ctx: PipelineContext, session) -> None:
         try:
             from worker.pipeline.stage_graph_sync import execute as graph_sync
@@ -862,6 +873,19 @@ class PipelineRunner:
         logger.info("stage_gate_done", extra={"decision": gate["decision"]})
 
     def _alert(self, ctx: PipelineContext) -> None:
+        quantum = ctx.scan_meta.get("quantum") or {}
+        mosca_verdict = (quantum.get("mosca") or {}).get("verdict")
+        if quantum.get("overall_hndl_risk") == "CRITICAL" or mosca_verdict in {"ALREADY_LATE", "AT_RISK"}:
+            logger.warning(
+                "quantum_migration_alert",
+                extra={
+                    "job_id": ctx.job_id,
+                    "scan_id": ctx.scan_id,
+                    "hndl": quantum.get("overall_hndl_risk"),
+                    "mosca": mosca_verdict,
+                    "wave1_sites": quantum.get("wave1_sites"),
+                },
+            )
         critical = [e for e in ctx.drift_events if e.get("severity") in {"CRITICAL", "HIGH"}]
         if critical:
             logger.warning("drift_alert", extra={"job_id": ctx.job_id, "scan_id": ctx.scan_id, "events": critical})
