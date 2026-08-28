@@ -2,11 +2,15 @@ from graph_engine.queries.blast_radius import BLAST_RADIUS, ORIGIN_SYSTEM, SYSTE
 from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS
 from graph_engine.queries.compliance_inheritance import COMPLIANCE_INHERITANCE
 from graph_engine.queries.crypto_inventory import CRYPTO_FOR_SYSTEM
+from graph_engine.queries.dependents import DEPENDENTS, SHORTEST_PATH_DOWNSTREAM, SHORTEST_PATH_UPSTREAM
+from graph_engine.queries.hotspots import CRYPTO_HOTSPOTS
 from graph_engine.queries.reachability import COUNT_EDGES, COUNT_NODES, EXPORT_VIS, PING
 from graph_engine.queries.vendor_dependency import VENDOR_PATH
 
 __all__ = [
     "BLAST_RADIUS",
+    "CRYPTO_HOTSPOTS",
+    "DEPENDENTS",
     "COMPLIANCE_INHERITANCE",
     "COUNT_EDGES",
     "COUNT_NODES",
@@ -15,6 +19,8 @@ __all__ = [
     "IMPACT_FROM_SYSTEMS",
     "ORIGIN_SYSTEM",
     "PING",
+    "SHORTEST_PATH_DOWNSTREAM",
+    "SHORTEST_PATH_UPSTREAM",
     "SYSTEMS_USING_ASSET",
     "VENDOR_PATH",
 ]

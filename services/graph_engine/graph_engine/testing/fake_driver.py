@@ -10,6 +10,7 @@ import re
 from collections import deque
 from typing import Any, Iterable
 
+from graph_engine.core.engine import QUANTUM_VULNERABLE_RE
 from graph_engine.schemas.node_schemas import IDENTITY_PROPERTY, KIND_PREFIX
 
 
@@ -142,6 +143,10 @@ class FakeSession:
             "merge_secured_by": self._merge_secured,
             "merge_deployed_on": self._merge_deployed,
             "blast_radius": self._blast,
+            "dependents": self._dependents,
+            "shortest_path_downstream": self._shortest_path_downstream,
+            "shortest_path_upstream": self._shortest_path_upstream,
+            "crypto_hotspots": self._crypto_hotspots,
             "systems_using_asset": self._systems_using_asset,
             "origin_system": self._origin,
             "business_impact": self._impact,
@@ -287,6 +292,107 @@ class FakeSession:
                 }
             )
         rows.sort(key=lambda row: (row["hops"], row.get("name") or ""))
+        return rows
+
+    def _dependents(self, params):
+        start = self.graph.find_system(str(params.get("start") or ""))
+        if not start:
+            return []
+        hops = int(params.get("hops") or 5)
+        seen: dict[str, int] = {start["system_id"]: 0}
+        queue = deque([start["system_id"]])
+        while queue:
+            current = queue.popleft()
+            depth = seen[current]
+            if depth >= hops:
+                continue
+            for _label, prev in self.graph.incoming("System", current, "CALLS"):
+                if prev not in seen:
+                    seen[prev] = depth + 1
+                    queue.append(prev)
+        rows = []
+        for sid, depth in seen.items():
+            if depth == 0:
+                continue
+            node = self.graph.get("System", sid) or {}
+            rows.append(
+                {"id": sid, "name": node.get("name"), "criticality": node.get("criticality"), "hops": depth}
+            )
+        rows.sort(key=lambda row: (row["hops"], row.get("name") or ""))
+        return rows
+
+    def _shortest_path_downstream(self, params):
+        return self._shortest_path(params, upstream=False)
+
+    def _shortest_path_upstream(self, params):
+        return self._shortest_path(params, upstream=True)
+
+    def _shortest_path(self, params, *, upstream: bool):
+        start = self.graph.find_system(str(params.get("start") or ""))
+        target = self.graph.find_system(str(params.get("target") or ""))
+        if not start or not target:
+            return []
+        start_id, target_id = start["system_id"], target["system_id"]
+        if start_id == target_id:
+            return [{"names": [start.get("name") or start_id], "hops": 0}]
+        parent: dict[str, str | None] = {start_id: None}
+        queue = deque([start_id])
+        found = False
+        while queue and not found:
+            current = queue.popleft()
+            step = (
+                self.graph.incoming("System", current, "CALLS")
+                if upstream
+                else self.graph.outgoing("System", current, "CALLS")
+            )
+            for _label, nxt in step:
+                if nxt in parent:
+                    continue
+                parent[nxt] = current
+                if nxt == target_id:
+                    found = True
+                    break
+                queue.append(nxt)
+        if not found:
+            return []
+        chain = [target_id]
+        while parent.get(chain[-1]) is not None:
+            chain.append(parent[chain[-1]])
+        chain.reverse()
+        names = []
+        for sid in chain:
+            node = self.graph.get("System", sid) or {}
+            names.append(node.get("name") or sid)
+        return [{"names": names, "hops": len(names) - 1}]
+
+    def _crypto_hotspots(self, _params):
+        rows = []
+        for (label, key), node in self.graph.nodes.items():
+            if label != "System":
+                continue
+            algorithms = []
+            for _label, asset_key in self.graph.outgoing("System", key, "USES"):
+                asset = self.graph.get("CryptoAsset", asset_key) or {}
+                if asset.get("algorithm"):
+                    algorithms.append(str(asset["algorithm"]))
+            if not algorithms:
+                continue
+            vulnerable = sorted({a for a in algorithms if QUANTUM_VULNERABLE_RE.search(a)})
+            rows.append(
+                {
+                    "system_id": node.get("system_id") or key,
+                    "name": node.get("name"),
+                    "criticality": node.get("criticality"),
+                    "total_assets": len(algorithms),
+                    "quantum_vulnerable_assets": len(
+                        [a for a in algorithms if QUANTUM_VULNERABLE_RE.search(a)]
+                    ),
+                    "vulnerable_algorithms": vulnerable,
+                }
+            )
+        rows.sort(
+            key=lambda row: (-row["quantum_vulnerable_assets"], -row["total_assets"], row.get("name") or "")
+        )
         return rows
 
     def _impact(self, params):

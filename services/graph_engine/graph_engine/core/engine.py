@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
+
+# Word-boundary tokens: classifies "RSA-2048"/"ECDSA-P256" as quantum-vulnerable
+# while leaving "AES-128-ECB" alone ("EC" must not match inside "ECB").
+QUANTUM_VULNERABLE_RE = re.compile(
+    r"\b(rsa|ec|ecc|ecdh|ecdsa|dsa|dh|x25519|ed25519|ed448|diffie|hellman|secp[a-z0-9]*|elliptic)\b",
+    re.IGNORECASE,
+)
 
 
 class GraphEngine:
@@ -231,6 +239,155 @@ class GraphEngine:
             "vendor_id": found_vendor.split(":", 1)[-1],
             "backend": self.backend,
         }
+
+    def dependents(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        """Reverse blast radius: everything upstream that depends on this node."""
+        start = self._resolve(start_id)
+        if start is None:
+            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
+        if (self.nodes.get(start) or {}).get("kind") == "CryptoAsset":
+            users = [src for src, rel in self.incoming.get(start, []) if rel == "USES"]
+            start = users[0] if users else start
+        seen: dict[str, int] = {start: 0}
+        queue = deque([start])
+        while queue:
+            node = queue.popleft()
+            depth = seen[node]
+            if depth >= hops:
+                continue
+            for prev, _rel in self.incoming.get(node, []):
+                if prev not in seen:
+                    seen[prev] = depth + 1
+                    queue.append(prev)
+        systems = []
+        for node_id, depth in seen.items():
+            node = self.nodes.get(node_id) or {}
+            if node.get("kind") == "System" and node_id != start:
+                systems.append(
+                    {
+                        "id": node_id.split(":", 1)[-1],
+                        "name": node.get("name"),
+                        "criticality": node.get("criticality"),
+                        "hops": depth,
+                    }
+                )
+        systems.sort(key=lambda row: (row["hops"], row.get("name") or ""))
+        return {
+            "start": start.split(":", 1)[-1],
+            "systems": systems,
+            "hops": hops,
+            "nodes_visited": len(seen),
+            "backend": self.backend,
+        }
+
+    def shortest_path(self, start_id: str, target_id: str, *, direction: str = "downstream") -> dict[str, Any]:
+        """Shortest CALLS path between two systems. Honest when unreachable."""
+        start = self._resolve(start_id)
+        target = self._resolve(target_id)
+        resolved_start = start is not None
+        resolved_target = target is not None
+        names: list[str] = []
+        path_hops = None
+        if resolved_start and resolved_target:
+            adjacency = self.out if direction != "upstream" else self.incoming
+            if start == target:
+                names = [self._display(start)]
+                path_hops = 0
+            else:
+                parent: dict[str, str | None] = {start: None}
+                queue = deque([start])
+                found = False
+                while queue and not found:
+                    node = queue.popleft()
+                    for nxt, rel in adjacency.get(node, []):
+                        if rel != "CALLS" or nxt in parent:
+                            continue
+                        parent[nxt] = node
+                        if nxt == target:
+                            found = True
+                            break
+                        queue.append(nxt)
+                if found:
+                    chain = [target]
+                    while parent.get(chain[-1]) is not None:
+                        chain.append(parent[chain[-1]])  # type: ignore[arg-type]
+                    chain.reverse()
+                    names = [self._display(item) for item in chain]
+                    path_hops = len(names) - 1
+        return {
+            "start": self._display(start) if resolved_start else start_id,
+            "target": self._display(target) if resolved_target else target_id,
+            "direction": "upstream" if direction == "upstream" else "downstream",
+            "resolved_start": resolved_start,
+            "resolved_target": resolved_target,
+            "reachable": path_hops is not None,
+            "hops": path_hops,
+            "path": names,
+            "backend": self.backend,
+        }
+
+    def crypto_hotspots(self) -> dict[str, Any]:
+        """Systems ranked by quantum-vulnerable crypto concentration."""
+        rows = []
+        for node_id, node in self.nodes.items():
+            if node.get("kind") != "System":
+                continue
+            algorithms = [
+                (self.nodes.get(nxt) or {}).get("algorithm")
+                for nxt, rel in self.out.get(node_id, [])
+                if rel == "USES"
+            ]
+            algorithms = [algo for algo in algorithms if algo]
+            if not algorithms:
+                continue
+            vulnerable = sorted({str(a) for a in algorithms if QUANTUM_VULNERABLE_RE.search(str(a))})
+            rows.append(
+                {
+                    "system_id": node_id.split(":", 1)[-1],
+                    "name": node.get("name"),
+                    "criticality": node.get("criticality"),
+                    "total_assets": len(algorithms),
+                    "quantum_vulnerable_assets": sum(
+                        1 for a in algorithms if QUANTUM_VULNERABLE_RE.search(str(a))
+                    ),
+                    "vulnerable_algorithms": vulnerable,
+                }
+            )
+        rows.sort(key=lambda row: (-row["quantum_vulnerable_assets"], -row["total_assets"], row.get("name") or ""))
+        return {
+            "hotspots": rows,
+            "count": len(rows),
+            "systems_with_assets": len(rows),
+            "ranking": "quantum_vulnerable desc, total assets desc, name",
+            "backend": self.backend,
+        }
+
+    def diff(self, other: "GraphEngine") -> dict[str, Any]:
+        """Structural diff self -> other (other is the newer state)."""
+        my_nodes = set(self.nodes)
+        other_nodes = set(other.nodes)
+        my_edges = {(src, dst, rel) for src, items in self.out.items() for dst, rel in items}
+        other_edges = {(src, dst, rel) for src, items in other.out.items() for dst, rel in items}
+        nodes_added = sorted(other_nodes - my_nodes)
+        nodes_removed = sorted(my_nodes - other_nodes)
+        edges_added = sorted(other_edges - my_edges)
+        edges_removed = sorted(my_edges - other_edges)
+        return {
+            "nodes_added": nodes_added,
+            "nodes_removed": nodes_removed,
+            "edges_added": edges_added,
+            "edges_removed": edges_removed,
+            "counts": {
+                "nodes_added": len(nodes_added),
+                "nodes_removed": len(nodes_removed),
+                "edges_added": len(edges_added),
+                "edges_removed": len(edges_removed),
+            },
+            "changed": bool(nodes_added or nodes_removed or edges_added or edges_removed),
+        }
+
+    def _display(self, node_id: str) -> str:
+        return str((self.nodes.get(node_id) or {}).get("name") or node_id.split(":", 1)[-1])
 
     def crypto_for_system(self, start_id: str) -> dict[str, Any]:
         start = self._resolve(start_id)

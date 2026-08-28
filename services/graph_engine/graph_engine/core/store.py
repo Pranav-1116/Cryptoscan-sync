@@ -13,6 +13,8 @@ from graph_engine.queries.blast_radius import BLAST_RADIUS, ORIGIN_SYSTEM, SYSTE
 from graph_engine.queries.business_impact import IMPACT_FROM_SYSTEMS
 from graph_engine.queries.compliance_inheritance import COMPLIANCE_INHERITANCE
 from graph_engine.queries.crypto_inventory import CRYPTO_FOR_SYSTEM
+from graph_engine.queries.dependents import DEPENDENTS, SHORTEST_PATH_DOWNSTREAM, SHORTEST_PATH_UPSTREAM
+from graph_engine.queries.hotspots import CRYPTO_HOTSPOTS
 from graph_engine.queries.reachability import COUNT_EDGES, COUNT_NODES, EXPORT_VIS, PING
 from graph_engine.queries.vendor_dependency import VENDOR_PATH
 from graph_engine.schemas.node_schemas import KIND_PREFIX
@@ -135,6 +137,77 @@ class Neo4jGraphStore:
             "systems": systems,
             "hops": hops,
             "nodes_visited": len(systems) + 1,
+            "backend": self.backend,
+        }
+
+    def dependents(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
+        origin = self._origin(start_id)
+        if origin is None:
+            return {"start": start_id, "systems": [], "hops": hops, "nodes_visited": 0, "backend": self.backend}
+        rows = self._run(DEPENDENTS, start=origin, hops=hops)
+        systems = [
+            {
+                "id": row.get("id"),
+                "name": row.get("name"),
+                "criticality": row.get("criticality"),
+                "hops": int(row.get("hops") or 0),
+            }
+            for row in rows
+        ]
+        return {
+            "start": origin,
+            "systems": systems,
+            "hops": hops,
+            "nodes_visited": len(systems) + 1,
+            "backend": self.backend,
+        }
+
+    def shortest_path(self, start_id: str, target_id: str, *, direction: str = "downstream") -> dict[str, Any]:
+        origin = self._origin(start_id)
+        target = self._origin(target_id)
+        resolved_start = origin is not None
+        resolved_target = target is not None
+        names: list[str] = []
+        path_hops = None
+        if resolved_start and resolved_target:
+            query = SHORTEST_PATH_UPSTREAM if direction == "upstream" else SHORTEST_PATH_DOWNSTREAM
+            rows = self._run(query, start=origin, target=target)
+            if rows and rows[0].get("names"):
+                names = [str(item) for item in rows[0]["names"]]
+                path_hops = int(rows[0].get("hops") or (len(names) - 1))
+        return {
+            "start": origin if resolved_start else start_id,
+            "target": target if resolved_target else target_id,
+            "direction": "upstream" if direction == "upstream" else "downstream",
+            "resolved_start": resolved_start,
+            "resolved_target": resolved_target,
+            "reachable": path_hops is not None,
+            "hops": path_hops,
+            "path": names,
+            "backend": self.backend,
+        }
+
+    def crypto_hotspots(self) -> dict[str, Any]:
+        rows = self._run(CRYPTO_HOTSPOTS)
+        hotspots = [
+            {
+                "system_id": row.get("system_id") or row.get("id"),
+                "name": row.get("name"),
+                "criticality": row.get("criticality"),
+                "total_assets": int(row.get("total_assets") or 0),
+                "quantum_vulnerable_assets": int(row.get("quantum_vulnerable_assets") or 0),
+                "vulnerable_algorithms": sorted({str(a) for a in row.get("vulnerable_algorithms") or []}),
+            }
+            for row in rows
+        ]
+        hotspots.sort(
+            key=lambda row: (-row["quantum_vulnerable_assets"], -row["total_assets"], row.get("name") or "")
+        )
+        return {
+            "hotspots": hotspots,
+            "count": len(hotspots),
+            "systems_with_assets": len(hotspots),
+            "ranking": "quantum_vulnerable desc, total assets desc, name",
             "backend": self.backend,
         }
 

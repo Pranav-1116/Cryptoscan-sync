@@ -78,6 +78,42 @@ def vendor_path(
     return graph_from_db(db).vendor_path(system_id)
 
 
+@router.get("/graph/dependents")
+def graph_dependents(
+    system_id: str = Query(...),
+    hops: int = Query(5, ge=1, le=12),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Reverse blast radius: upstream systems that depend on this one."""
+    result = graph_from_db(db).dependents(system_id, hops=hops)
+    if result["nodes_visited"] == 0:
+        raise HTTPException(status_code=404, detail="System not found in graph")
+    return result
+
+
+@router.get("/graph/path")
+def graph_path(
+    system_id: str = Query(...),
+    target_id: str = Query(...),
+    direction: str = Query("downstream", pattern="^(downstream|upstream)$"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Shortest CALLS path between two systems (200 with reachable=false when none)."""
+    result = graph_from_db(db).shortest_path(system_id, target_id, direction=direction)
+    if not result["resolved_start"] or not result["resolved_target"]:
+        missing = system_id if not result["resolved_start"] else target_id
+        raise HTTPException(status_code=404, detail=f"System not found in graph: {missing}")
+    return result
+
+
+@router.get("/graph/hotspots")
+def graph_hotspots(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Systems ranked by quantum-vulnerable crypto concentration."""
+    return graph_from_db(db).crypto_hotspots()
+
+
 @router.get("/graph/crypto")
 def crypto_inventory(
     system_id: str = Query(...),
