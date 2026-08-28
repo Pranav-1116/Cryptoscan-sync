@@ -114,6 +114,24 @@ def graph_hotspots(user: str = Depends(get_current_user), db: Session = Depends(
     return graph_from_db(db).crypto_hotspots()
 
 
+@router.get("/graph/cycles")
+def graph_cycles(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Strongly-connected dependency cycles (must be migrated together)."""
+    return graph_from_db(db).find_cycles()
+
+
+@router.get("/graph/certificates/exposure")
+def graph_certificate_exposure(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Expiring/expired certificates mapped to systems and revenue at risk."""
+    return graph_from_db(db).certificate_exposure()
+
+
+@router.get("/graph/stats")
+def graph_stats(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Graph composition + hygiene (orphans, unlinked assets)."""
+    return graph_from_db(db).graph_stats()
+
+
 @router.get("/graph/crypto")
 def crypto_inventory(
     system_id: str = Query(...),

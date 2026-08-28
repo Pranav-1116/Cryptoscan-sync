@@ -146,3 +146,85 @@ async def test_hotspots_endpoint_ranks_payment_first(app_db):
     assert top["quantum_vulnerable_assets"] == 2
     assert top["vulnerable_algorithms"] == ["ECDSA-P256", "RSA-2048"]
     assert body["hotspots"][1]["quantum_vulnerable_assets"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# cycles + stats endpoints (second graph fixture with a dependency cycle)
+# --------------------------------------------------------------------------- #
+
+@pytest.fixture()
+def app_db_cyclic():
+    from sqlalchemy.pool import StaticPool
+
+    engine = create_engine(
+        "sqlite:///:memory:",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
+    session = Session()
+
+    application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: "testuser"
+
+    def _session():
+        yield session
+
+    application.dependency_overrides[get_db_session] = _session
+
+    session.add_all(
+        [
+            System(id="sys-web", name="web-frontend"),
+            System(id="sys-pay", name="payment-api"),
+            System(id="sys-db", name="customer-db"),
+            System(id="sys-lonely", name="forgotten-service"),  # orphan: no deps, no assets
+        ]
+    )
+    session.flush()
+    repo = SystemRepository(session)
+    repo.add_dependency("sys-web", "sys-pay")
+    repo.add_dependency("sys-pay", "sys-db")
+    repo.add_dependency("sys-db", "sys-web")  # cycle
+    try:
+        yield application
+    finally:
+        session.close()
+        engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_cycles_endpoint_reports_scc(app_db_cyclic):
+    transport = ASGITransport(app=app_db_cyclic)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/graph/cycles")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert set(body["cycles"][0]["members"]) == {"system:sys-web", "system:sys-pay", "system:sys-db"}
+    assert "migration" in body["note"]
+
+
+@pytest.mark.asyncio
+async def test_stats_endpoint_flags_orphans(app_db_cyclic):
+    transport = ASGITransport(app=app_db_cyclic)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/graph/stats")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["systems"] == 4
+    assert body["edges_by_relation"]["CALLS"] == 3
+    assert body["orphan_systems"] == ["system:sys-lonely"]
+    assert body["nodes_by_kind"]["System"] == 4
+
+
+@pytest.mark.asyncio
+async def test_certificate_exposure_endpoint_empty_ok(app_db_cyclic):
+    transport = ASGITransport(app=app_db_cyclic)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/graph/certificates/exposure")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["at_risk"] == []
+    assert body["totals"]["certs_at_risk"] == 0
+    assert body["totals"]["certs_unknown_status"] == 0

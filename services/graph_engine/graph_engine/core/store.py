@@ -211,6 +211,27 @@ class Neo4jGraphStore:
             "backend": self.backend,
         }
 
+    def find_cycles(self) -> dict[str, Any]:
+        from graph_engine.core.analytics import find_cycles
+
+        result = find_cycles(self.to_vis())
+        result["backend"] = self.backend
+        return result
+
+    def certificate_exposure(self) -> dict[str, Any]:
+        from graph_engine.core.analytics import certificate_exposure
+
+        result = certificate_exposure(self.to_vis())
+        result["backend"] = self.backend
+        return result
+
+    def graph_stats(self) -> dict[str, Any]:
+        from graph_engine.core.analytics import graph_stats
+
+        result = graph_stats(self.to_vis())
+        result["backend"] = self.backend
+        return result
+
     def business_impact(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         radius = self.blast_radius(start_id, hops=hops)
         origin = radius["start"] if radius["nodes_visited"] else self._origin(start_id)
