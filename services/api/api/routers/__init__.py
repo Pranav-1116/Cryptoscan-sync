@@ -28,6 +28,7 @@ Modules:
 - network_scans: Network-scan job listing and trigger aliases
 - ot: OT/ICS passive scan and inventory
 - policy: Policy rule catalogue (read-only)
+- quantum: PQC migration plan (workstreams, waves) and Mosca inequality
 - reachability: Blast-radius and reachability analysis
 - repo_configs: Repository configuration CRUD
 - runtime: Ingest runtime (eBPF / mesh) crypto findings without requiring a kernel agent

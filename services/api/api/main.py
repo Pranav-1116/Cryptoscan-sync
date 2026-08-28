@@ -43,6 +43,7 @@ from api.routers import (
     network_scans,
     ot,
     policy,
+    quantum,
     reachability,
     repo_configs,
     runtime,
@@ -172,6 +173,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(vulns.router, prefix=prefix)
     app.include_router(vulnerability.router, prefix=prefix)
     app.include_router(policy.router, prefix=prefix)
+    app.include_router(quantum.router, prefix=prefix)
     app.include_router(intelligence.router, prefix=prefix)
     app.include_router(network.router, prefix=prefix)
     app.include_router(network_scans.router, prefix=prefix)
