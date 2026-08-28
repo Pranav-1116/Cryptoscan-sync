@@ -11,9 +11,11 @@ from pydantic import BaseModel, Field
 from api.config.settings import get_settings
 from api.dependencies import (
     get_current_user,
+    get_db_session,
     get_drift_repository,
     get_evidence_repository,
     get_scan_repository,
+    require_auditor,
 )
 from api.intelligence.payloads import (
     drift_to_dict,
@@ -21,6 +23,8 @@ from api.intelligence.payloads import (
     is_material,
     scan_to_dict,
 )
+from sqlalchemy.orm import Session
+
 from db.repositories.drift_repository import DriftRepository
 from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.scan_repository import ScanRepository
@@ -257,6 +261,74 @@ def get_audit_pack(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="cryptoscan-audit-{scan_id}.zip"'},
     )
+
+
+@router.get("/scans/{scan_id}/transfer")
+def export_scan_transfer(
+    scan_id: str,
+    user: str = Depends(require_auditor),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+):
+    """Export this scan + evidence as a digest-verified transfer payload."""
+    from shared_models.chrono import iso_utc
+
+    from evidence.pack.scan_transfer import export_transfer
+
+    scan = _require_scan(scan_id, scans)
+    rows = evidence.get_all_for_scan(scan_id)
+    records = []
+    for row in rows:
+        item = evidence_to_dict(row)
+        item["previous_hash"] = getattr(row, "previous_hash", None)
+        item["provenance"] = getattr(row, "provenance", None)
+        records.append(item)
+    scan_payload = scan_to_dict(scan)
+    scan_payload["scan_start"] = iso_utc(scan.scan_start) if getattr(scan, "scan_start", None) else None
+    scan_payload["scan_end"] = iso_utc(scan.scan_end) if getattr(scan, "scan_end", None) else None
+    return export_transfer(scan=scan_payload, records=records)
+
+
+@router.post("/scans/import")
+def import_scan_transfer(
+    body: dict,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Verify and import a transfer payload from another instance.
+
+    Idempotent: a scan_id that already exists is reported, never duplicated.
+    """
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.scan import Scan
+    from evidence.pack.scan_transfer import SCAN_FIELDS, records_for_import, verify_transfer
+    from shared_models.chrono import parse_iso, utcnow
+
+    verdict = verify_transfer(body)
+    if not verdict["valid"]:
+        raise HTTPException(
+            status_code=400,
+            detail={"message": "transfer verification failed", "errors": verdict["errors"]},
+        )
+    scan_id = str(verdict["scan_id"])
+    if db.get(Scan, scan_id) is not None:
+        return {"imported": False, "reason": "scan_already_present", "scan_id": scan_id, "records": 0}
+    scan_payload = body.get("scan") or {}
+    column_values = {}
+    for field in SCAN_FIELDS:
+        value = scan_payload.get(field)
+        if value is None:
+            continue
+        column_values[field] = parse_iso(value) if field in {"scan_start", "scan_end"} else value
+    scan = Scan(id=scan_id, **column_values)
+    if scan.scan_start is None:
+        scan.scan_start = utcnow()  # honest fallback: verification passed but no start recorded
+    db.add(scan)
+    db.flush()
+    for row in records_for_import(body):
+        db.add(EvidenceRecord(scan_id=scan_id, **row))
+    db.flush()
+    return {"imported": True, "scan_id": scan_id, "records": verdict["record_count"], "verification": verdict}
 
 
 @router.get("/scans/{scan_id}/quantum")
