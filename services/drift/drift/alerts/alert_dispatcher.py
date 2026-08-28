@@ -16,6 +16,7 @@ from uuid import UUID, uuid4
 import structlog
 
 from drift.alerts.email_alerter import EmailAlerter, EmailAlert
+from drift.alerts.webhook_alerter import WebhookAlert, WebhookAlerter
 from drift.models.drift_summary import DriftSummary
 from drift.models.drift_event import DriftEvent
 
@@ -130,8 +131,8 @@ class AlertDispatcher:
     Routes drift alerts to appropriate channels based on severity.
 
     Severity routing:
-    - CRITICAL: email (immediate)
-    - HIGH: email (immediate)
+    - CRITICAL: email (immediate) + signed webhook (Slack/Teams/Jira)
+    - HIGH: email (immediate) + signed webhook
     - MEDIUM: log only (included in digest)
     - INFO: log only
     """
@@ -141,12 +142,15 @@ class AlertDispatcher:
         email_alerter: EmailAlerter,
         max_retries: int = 3,
         retry_delay: float = 1.0,
+        webhook_alerter: WebhookAlerter | None = None,
     ) -> None:
         self._email_alerter = email_alerter
+        self._webhook_alerter = webhook_alerter
         self._max_retries = max_retries
         self._retry_delay = retry_delay
         self._circuit_breakers: dict[AlertChannel, CircuitBreaker] = {
             AlertChannel.EMAIL: CircuitBreaker(),
+            AlertChannel.WEBHOOK: CircuitBreaker(),
         }
         self._dispatch_history: list[AlertRecord] = []
 
@@ -235,9 +239,13 @@ class AlertDispatcher:
 
         if drift_summary.critical > 0:
             channels.append((AlertChannel.EMAIL, "CRITICAL"))
+            if self._webhook_configured():
+                channels.append((AlertChannel.WEBHOOK, "CRITICAL"))
 
         elif drift_summary.high > 0:
             channels.append((AlertChannel.EMAIL, "HIGH"))
+            if self._webhook_configured():
+                channels.append((AlertChannel.WEBHOOK, "HIGH"))
 
         # Medium and info go to log only (digest email handled separately)
         if drift_summary.medium > 0 or drift_summary.info > 0:
@@ -284,6 +292,16 @@ class AlertDispatcher:
                 status=AlertStatus.SKIPPED,
                 dispatched_at=datetime.now(timezone.utc),
                 metadata={"reason": "log_only_severity"},
+            )
+
+        if channel == AlertChannel.WEBHOOK:
+            return await self._dispatch_webhook_with_retry(
+                alert_id=alert_id,
+                severity_reason=severity_reason,
+                drift_summary=drift_summary,
+                drift_events=drift_events,
+                scan_id=scan_id,
+                system_identifier=system_identifier,
             )
 
         if channel == AlertChannel.EMAIL:
@@ -428,6 +446,112 @@ class AlertDispatcher:
         return AlertRecord(
             alert_id=alert_id,
             channel=AlertChannel.EMAIL,
+            severity=severity_reason,
+            system_identifier=system_identifier,
+            scan_id=scan_id,
+            status=AlertStatus.FAILED,
+            dispatched_at=datetime.now(timezone.utc),
+            retry_count=self._max_retries,
+            error_message=str(last_error),
+        )
+
+    def _webhook_configured(self) -> bool:
+        return bool(self._webhook_alerter is not None and self._webhook_alerter.configured)
+
+    async def _dispatch_webhook_with_retry(
+        self,
+        alert_id: UUID,
+        severity_reason: str,
+        drift_summary: DriftSummary,
+        drift_events: list[DriftEvent],
+        scan_id: UUID,
+        system_identifier: str,
+    ) -> AlertRecord:
+        """Send signed webhook alert with exponential backoff retry."""
+
+        cb = self._circuit_breakers[AlertChannel.WEBHOOK]
+
+        if cb.is_open:
+            logger.warning("webhook_circuit_breaker_open", system_identifier=system_identifier)
+            return AlertRecord(
+                alert_id=alert_id,
+                channel=AlertChannel.WEBHOOK,
+                severity=severity_reason,
+                system_identifier=system_identifier,
+                scan_id=scan_id,
+                status=AlertStatus.SKIPPED,
+                dispatched_at=datetime.now(timezone.utc),
+                metadata={"reason": "circuit_breaker_open"},
+            )
+
+        if not self._webhook_configured():
+            return AlertRecord(
+                alert_id=alert_id,
+                channel=AlertChannel.WEBHOOK,
+                severity=severity_reason,
+                system_identifier=system_identifier,
+                scan_id=scan_id,
+                status=AlertStatus.SKIPPED,
+                dispatched_at=datetime.now(timezone.utc),
+                metadata={"reason": "no_webhook_url_configured"},
+            )
+
+        critical_events = [e for e in drift_events if e.severity == "CRITICAL"]
+        high_events = [e for e in drift_events if e.severity == "HIGH"]
+        webhook_alert = WebhookAlert(
+            severity=severity_reason,
+            system_identifier=system_identifier,
+            scan_id=scan_id,
+            drift_summary=drift_summary,
+            critical_events=critical_events[:10],
+            high_events=high_events[:10],
+        )
+
+        last_error: Exception | None = None
+        for attempt in range(self._max_retries):
+            try:
+                await self._webhook_alerter.send(webhook_alert)
+                cb.record_success()
+                logger.info(
+                    "webhook_alert_sent",
+                    alert_id=str(alert_id),
+                    severity=severity_reason,
+                    attempt=attempt + 1,
+                )
+                return AlertRecord(
+                    alert_id=alert_id,
+                    channel=AlertChannel.WEBHOOK,
+                    severity=severity_reason,
+                    system_identifier=system_identifier,
+                    scan_id=scan_id,
+                    status=AlertStatus.SENT,
+                    dispatched_at=datetime.now(timezone.utc),
+                    retry_count=attempt,
+                    metadata={"attempt": attempt + 1},
+                )
+            except Exception as exc:
+                last_error = exc
+                cb.record_failure()
+                logger.warning(
+                    "webhook_alert_attempt_failed",
+                    alert_id=str(alert_id),
+                    attempt=attempt + 1,
+                    max_retries=self._max_retries,
+                    error=str(exc),
+                )
+                if attempt < self._max_retries - 1:
+                    await asyncio.sleep(self._retry_delay * (2**attempt))
+
+        logger.error(
+            "webhook_alert_failed_all_retries",
+            alert_id=str(alert_id),
+            severity=severity_reason,
+            system_identifier=system_identifier,
+            error=str(last_error),
+        )
+        return AlertRecord(
+            alert_id=alert_id,
+            channel=AlertChannel.WEBHOOK,
             severity=severity_reason,
             system_identifier=system_identifier,
             scan_id=scan_id,

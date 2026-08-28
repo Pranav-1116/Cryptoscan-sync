@@ -26,6 +26,9 @@ api:
 worker:
 	$(PY) -m worker.main
 
+lock:
+	@echo "# Pinning to the exact versions the test gate ran against"; 	$(PY) -m pip freeze --exclude-editable | grep -vE '^(pip|setuptools|wheel)==' > requirements.lock.txt; 	echo "wrote requirements.lock.txt ($$(wc -l < requirements.lock.txt) pins)"
+
 test:
 	@for d in services/policy/tests services/evidence/tests services/normalization/tests services/scanner/tests services/database/tests/unit services/drift/tests services/worker/tests/unit services/api/tests/unit services/api/tests/integration services/deduplication/tests services/cbom/tests services/container_scanner/tests services/network_scanner/tests services/cloud_scanner/tests services/runtime/tests services/graph_engine/tests services/business_context/tests services/quantum/tests services/remediation/tests services/reporting/tests services/ot_scanner/tests services/vendor_intel/tests services/agility/tests shared/shared_models/tests; do \
 		echo "===== $$d ====="; \
