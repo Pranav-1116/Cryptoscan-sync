@@ -183,6 +183,14 @@ _FAMILIES: dict[str, _Family] = {
     "ML-DSA-87": _Family("ML-DSA-87", "signature-pqc", ALLOWED, key_size=2592, parameter_kind=KEY_BITS, notes="FIPS 204 level 5"),
     "SLH-DSA-128S": _Family("SLH-DSA-128S", "signature-pqc", ALLOWED, key_size=64, parameter_kind=KEY_BITS, notes="FIPS 205 (SPHINCS+)"),
     "KYBER": _Family("Kyber", "kem-pqc", RESTRICTED, notes="pre-standardization name — prefer ML-KEM"),
+    # -- protocol versions (SP 800-52r2) ---------------------------------- #
+    "TLS 1.0": _Family("TLS 1.0", "protocol", DISALLOWED, notes="disallowed protocol version (SP 800-52r2)"),
+    "TLS 1.1": _Family("TLS 1.1", "protocol", DISALLOWED, notes="disallowed protocol version (SP 800-52r2)"),
+    "TLS 1.2": _Family("TLS 1.2", "protocol", DEPRECATED, notes="allowed today; prefer TLS 1.3"),
+    "TLS 1.3": _Family("TLS 1.3", "protocol", ALLOWED, notes="preferred protocol version"),
+    "SSL 3.0": _Family("SSL 3.0", "protocol", DISALLOWED, notes="broken (POODLE)"),
+    "DTLS 1.0": _Family("DTLS 1.0", "protocol", DISALLOWED, notes="disallowed protocol version"),
+    "DTLS 1.2": _Family("DTLS 1.2", "protocol", DEPRECATED, notes="allowed today; prefer DTLS 1.3"),
     "DILITHIUM": _Family("Dilithium", "signature-pqc", RESTRICTED, notes="pre-standardization name — prefer ML-DSA"),
     # -- curves (key_size = curve bits) ------------------------------------- #
     "P-256": _Family("P-256", "ec-curve", ALLOWED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
@@ -232,6 +240,13 @@ _ALIASES: dict[str, str] = {
     "RSAOAEP": "RSA-OAEP", "RSAOAEP256": "RSA-OAEP",
     # PQC aliases
     "MLKEM512": "ML-KEM-512", "MLKEM768": "ML-KEM-768", "MLKEM1024": "ML-KEM-1024",
+    "TLSV1.0": "TLS 1.0", "TLSV1": "TLS 1.0", "TLS10": "TLS 1.0",
+    "TLSV1.1": "TLS 1.1", "TLSV11": "TLS 1.1",
+    "TLSV1.2": "TLS 1.2", "TLSV12": "TLS 1.2",
+    "TLSV1.3": "TLS 1.3", "TLSV13": "TLS 1.3",
+    "SSLV3": "SSL 3.0", "SSL3": "SSL 3.0", "SSL30": "SSL 3.0",
+    "DTLS1.0": "DTLS 1.0", "DTLS10": "DTLS 1.0",
+    "DTLS1.2": "DTLS 1.2", "DTLS12": "DTLS 1.2",
     "KYBER512": "KYBER", "KYBER768": "KYBER", "KYBER1024": "KYBER",
     "MLDSA44": "ML-DSA-44", "MLDSA65": "ML-DSA-65", "MLDSA87": "ML-DSA-87",
     "DILITHIUM2": "DILITHIUM", "DILITHIUM3": "DILITHIUM", "DILITHIUM5": "DILITHIUM",

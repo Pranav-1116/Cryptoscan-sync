@@ -150,3 +150,26 @@ def test_parse_empty_is_safe():
     info = parse_algorithm("")
     assert info.recognized is False
     assert parse_algorithm("   ").status == UNKNOWN
+
+
+def test_protocol_versions_have_registry_entries():
+    from shared_models.algorithm_registry import parse_algorithm
+
+    cases = {
+        "TLS 1.0": "DISALLOWED",
+        "TLS1.0": "DISALLOWED",
+        "TLSv1.1": "DISALLOWED",
+        "TLS 1.2": "DEPRECATED",
+        "TLSv1.3": "ALLOWED",
+        "SSLv3": "DISALLOWED",
+        "DTLS 1.0": "DISALLOWED",
+        "DTLS1.2": "DEPRECATED",
+    }
+    for name, status in cases.items():
+        info = parse_algorithm(name)
+        assert info.family == "protocol", name
+        assert info.status == status, name
+        assert info.recognized is True, name
+    # suites still parse as suites, not protocol versions
+    suite = parse_algorithm("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
+    assert suite.family == "tls-suite"

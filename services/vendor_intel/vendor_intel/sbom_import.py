@@ -32,13 +32,22 @@ def import_vendor_cbom(sbom: dict[str, Any]) -> list[dict[str, Any]]:
                 "key_size": int(param) if str(param).isdigit() else None,
                 "mode": str(mode).upper() if mode else None,
                 "key_management": key_mgmt,
-                "pqc_ready": algorithm.upper().startswith(("ML-KEM", "ML-DSA", "SLH-DSA", "KYBER")),
+                "pqc_ready": _is_pqc(algorithm),
                 "discovery_method": "SBOM",
                 "confidence": "HIGH",
                 "source_document": sbom.get("serialNumber") or sbom.get("bomFormat"),
             }
         )
     return out
+
+
+def _is_pqc(algorithm: str) -> bool:
+    try:
+        from shared_models.quantum_classify import quantum_verdict
+
+        return quantum_verdict(algorithm)["verdict"] == "PQC_RESISTANT"
+    except Exception:
+        return algorithm.upper().startswith(("ML-KEM", "ML-DSA", "SLH-DSA", "KYBER", "DILITHIUM", "FALCON"))
 
 
 def _algorithm(name: str, primitive: str, param: Any, mode: Any) -> str:
