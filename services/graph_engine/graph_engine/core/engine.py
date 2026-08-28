@@ -17,6 +17,20 @@ QUANTUM_VULNERABLE_RE = re.compile(
 class GraphEngine:
     backend = "memory"
 
+    @classmethod
+    def from_vis(cls, vis: dict[str, Any]) -> "GraphEngine":
+        """Load a graph from any backend's vis export (nodes + edges)."""
+        engine = cls()
+        for node in vis.get("nodes") or []:
+            node_id = str(node.get("id") or "")
+            if not node_id:
+                continue
+            props = {k: v for k, v in node.items() if k not in {"id", "group", "kind", "label"}}
+            engine.add_node(node_id, kind=str(node.get("kind") or node.get("group") or "Node"), **props)
+        for edge in vis.get("edges") or []:
+            engine.add_edge(str(edge.get("from") or ""), str(edge.get("to") or ""), str(edge.get("label") or "RELATED"))
+        return engine
+
     def __init__(self) -> None:
         self.nodes: dict[str, dict[str, Any]] = {}
         self.out: dict[str, list[tuple[str, str]]] = defaultdict(list)

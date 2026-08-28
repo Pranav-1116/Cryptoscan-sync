@@ -5,10 +5,15 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
+from agility.roadmap import wave_for
 from api.dependencies import get_current_user, get_db_session
 from api.graph_builder import collect_graph_payload, graph_from_db, sync_graph
 from business_context.core.enricher import enrich_assets
+from db.repositories.maturity_repository import MaturityRepository
+from db.repositories.system_repository import SystemRepository
+from graph_engine.core.drift import graph_drift
 from graph_engine.core.facade import graph_health
+from graph_engine.core.migration import merge_cycle_constraints
 
 router = APIRouter(tags=["graph"])
 
@@ -130,6 +135,51 @@ def graph_certificate_exposure(user: str = Depends(get_current_user), db: Sessio
 def graph_stats(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Graph composition + hygiene (orphans, unlinked assets)."""
     return graph_from_db(db).graph_stats()
+
+
+@router.get("/graph/drift")
+def get_graph_drift(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Is the persisted Neo4j graph behind the relational inventory?"""
+    from graph_engine.connection.neo4j_driver import get_driver
+
+    return graph_drift(collect_graph_payload(db), driver=get_driver())
+
+
+@router.get("/graph/migration-waves")
+def graph_migration_waves(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Readiness waves constrained by dependency cycles: cycle members are
+    held to the most conservative wave among their group."""
+    graph = graph_from_db(db)
+    cycles = graph.find_cycles()["cycles"]
+    repo = MaturityRepository(db)
+    entries = []
+    unscored = 0
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=500)
+    for system in systems:
+        latest = repo.latest_agility(system.id)
+        rationale = None
+        if latest and latest.readiness_category:
+            wave = wave_for(latest.readiness_category)
+            rationale = f"readiness {latest.readiness_score or 0}/100 ({latest.readiness_category})"
+        else:
+            unscored += 1
+            wave = 3
+            rationale = "no agility score yet"
+        entries.append(
+            {
+                "system_id": system.id,
+                "name": system.name,
+                "wave": wave,
+                "readiness_category": latest.readiness_category if latest else None,
+                "readiness_score": latest.readiness_score if latest else None,
+                "agility_score": latest.agility_score if latest else None,
+                "unscored": not (latest and latest.readiness_category),
+                "rationale": rationale,
+            }
+        )
+    result = merge_cycle_constraints(entries, cycles)
+    result["unscored_systems"] = unscored
+    return result
 
 
 @router.get("/graph/crypto")

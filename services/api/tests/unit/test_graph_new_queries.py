@@ -228,3 +228,46 @@ async def test_certificate_exposure_endpoint_empty_ok(app_db_cyclic):
     assert body["at_risk"] == []
     assert body["totals"]["certs_at_risk"] == 0
     assert body["totals"]["certs_unknown_status"] == 0
+
+
+# --------------------------------------------------------------------------- #
+# drift + migration-waves endpoints
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_drift_endpoint_honest_without_neo4j(app_db_cyclic):
+    transport = ASGITransport(app=app_db_cyclic)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/graph/drift")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["checked"] is False
+    assert body["reason"] == "neo4j_unavailable"
+
+
+@pytest.mark.asyncio
+async def test_migration_waves_endpoint_holds_cycle_together(app_db_cyclic):
+    from db.repositories.maturity_repository import MaturityRepository
+
+    session = app_db_cyclic.dependency_overrides[get_db_session]().__next__()
+    repo = MaturityRepository(session)
+    # web+pay ready now; db blocked — the cycle must hold web/pay back to wave 3
+    repo.save_agility("sys-web", {"agility_score": 80, "category": "GOOD", "readiness_score": 90, "readiness_category": "READY_NOW"})
+    repo.save_agility("sys-pay", {"agility_score": 75, "category": "GOOD", "readiness_score": 82, "readiness_category": "READY_NOW"})
+    repo.save_agility("sys-db", {"agility_score": 10, "category": "CRITICAL", "readiness_score": 15, "readiness_category": "BLOCKED"})
+
+    transport = ASGITransport(app=app_db_cyclic)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/graph/migration-waves")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["cycle_groups"] == 1
+    assert body["systems_bumped"] == ["sys-pay", "sys-web"]
+    wave3 = body["waves"]["3"]
+    assert {row["system_id"] for row in wave3} == {"sys-web", "sys-pay", "sys-db", "sys-lonely"}
+    assert all(row["cycle_group"] == "cycle-1" for row in wave3 if row["system_id"] != "sys-lonely")
+    # unscored orphan lands in wave 3, flagged
+    lonely = next(row for row in wave3 if row["system_id"] == "sys-lonely")
+    assert lonely["unscored"] is True
+    assert "no agility score yet" in lonely["rationale"]
+    assert body["unscored_systems"] == 1
