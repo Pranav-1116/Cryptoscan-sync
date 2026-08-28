@@ -56,6 +56,42 @@ def _dump(payload: Any) -> bytes:
     return json.dumps(payload, indent=2, default=str).encode("utf-8")
 
 
+def controls_coverage(evidence_pack: Mapping[str, Any]) -> dict[str, Any]:
+    """Per-standard control coverage from the pack's policy evaluations.
+
+    Auditors get one rollup file: which standards were evaluated, how many
+    control checks passed/failed, and which rule ids were involved. The
+    policy engine remains the only source of compliance truth — this file
+    only aggregates what it already decided.
+    """
+    standards: dict[str, dict[str, Any]] = {}
+    for row in evidence_pack.get("records") or []:
+        evaluation = row.get("policy_evaluation") or {}
+        for rule in evaluation.get("rules_evaluated") or []:
+            key = str(rule.get("standard_reference") or "Internal")
+            entry = standards.setdefault(key, {"pass": 0, "fail": 0, "requirements": set()})
+            result = str(rule.get("evaluation_result") or "").upper()
+            if result == "FAIL":
+                entry["fail"] += 1
+            elif result == "PASS":
+                entry["pass"] += 1
+            if rule.get("rule_id"):
+                entry["requirements"].add(str(rule["rule_id"]))
+    rendered = {
+        key: {**value, "requirements": sorted(value["requirements"])}
+        for key, value in sorted(standards.items())
+    }
+    return {
+        "standards": rendered,
+        "standard_count": len(rendered),
+        "totals": {
+            "pass": sum(item["pass"] for item in rendered.values()),
+            "fail": sum(item["fail"] for item in rendered.values()),
+        },
+        "note": "Derived from policy evaluations in the evidence pack; the policy engine is the source of compliance truth.",
+    }
+
+
 def build_audit_zip(
     *,
     evidence_pack: Mapping[str, Any],
@@ -73,6 +109,7 @@ def build_audit_zip(
         archive.writestr("README.txt", README + f"\nIssued: {issued}\n")
         archive.writestr("verify_pack.py", STANDALONE_VERIFIER_SOURCE)
         archive.writestr("evidence-pack.json", _dump(evidence_pack))
+        archive.writestr("controls-coverage.json", _dump(controls_coverage(evidence_pack)))
         if cbom is not None:
             archive.writestr("cbom.json", _dump(cbom))
         if work_orders is not None:

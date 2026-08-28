@@ -7,6 +7,8 @@ attaches to one) and is stamped CURRENT only after that scan.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import hashlib
 from collections import Counter
 from typing import Any
@@ -109,6 +111,80 @@ def campaign_group_key(system: Any) -> tuple[str, str]:
     tagged = _attr(system, "cloud_account") or account or ""
     tagged_provider = str(_attr(system, "cloud_provider") or provider or "aws").lower()
     return tagged_provider, str(tagged)
+
+
+def plan_due_scans(
+    systems: list[Any],
+    *,
+    interval_days: int = 7,
+    limit: int = 25,
+    now: Any | None = None,
+    include_cloud: bool = True,
+    include_git: bool = True,
+) -> dict[str, Any]:
+    """Continuous-monitoring planner: which systems are due for a re-scan?
+
+    Due means never scanned, or last scanned before ``interval_days``.
+    Never-scanned systems come first, then the stalest. Fresh systems are
+    counted, not queued. Pure function — the caller (cron or endpoint)
+    decides what to enqueue.
+    """
+    from datetime import datetime, timezone
+
+    from shared_models.chrono import aware
+
+    now = aware(now) or datetime.now(timezone.utc)
+    floor = now - timedelta(days=max(0, int(interval_days)))
+    due: list[tuple[Any, int, dict[str, Any]]] = []
+    fresh = 0
+    eligible = 0
+    for order, system in enumerate(systems):
+        target = str(_attr(system, "scan_target") or "").strip()
+        if not target:
+            continue
+        cloud = is_cloud_target(target)
+        if cloud and not include_cloud:
+            continue
+        if not cloud and not include_git:
+            continue
+        eligible += 1
+        last = aware(_attr(system, "last_scanned_at"))
+        if last is None:
+            sort_key = datetime.min.replace(tzinfo=timezone.utc)
+            reason = "never_scanned"
+        elif last < floor:
+            sort_key = last
+            reason = f"stale: last scanned {(now - last).days}d ago (interval {interval_days}d)"
+        else:
+            fresh += 1
+            continue
+        due.append(
+            (
+                sort_key,
+                order,
+                {
+                    "job_type": "CLOUD" if cloud else "SYSTEM",
+                    "target": target,
+                    "provider": "cloud" if cloud else None,
+                    "system_id": _attr(system, "id"),
+                    "name": _attr(system, "name"),
+                    "branch": _attr(system, "scan_branch") or "main",
+                    "reason": reason,
+                    "last_scanned_at": last.isoformat() if last else None,
+                },
+            )
+        )
+    due.sort(key=lambda item: (item[0], item[1]))
+    cap = max(1, min(int(limit or 25), 100))
+    jobs = [row for _key, _order, row in due[:cap]]
+    return {
+        "jobs": jobs,
+        "due": len(due),
+        "fresh": fresh,
+        "eligible": eligible,
+        "queued_cap": min(len(jobs), cap),
+        "interval_days": int(interval_days),
+    }
 
 
 def plan_campaign(

@@ -6,7 +6,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, get_job_repository
+from api.dependencies import get_current_user, get_db_session, require_auditor, get_job_repository
 from cloud_scanner.estate import CAMPAIGN_LOOKAHEAD, plan_campaign
 from db.repositories.job_repository import JobRepository
 from db.repositories.system_repository import SystemRepository
@@ -41,6 +41,73 @@ def _plan(db: Session, body: CampaignRequest) -> list[dict]:
         include_cloud=body.include_cloud,
         providers=body.providers,
     )
+
+
+@router.get("/scans/due")
+def preview_due_scans(
+    interval_days: int = Query(7, ge=1, le=365),
+    limit: int = Query(25, ge=1, le=100),
+    include_cloud: bool = True,
+    include_git: bool = True,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Continuous monitoring: which systems are due for a re-scan right now."""
+    from cloud_scanner.estate import plan_due_scans
+
+    systems, _total = SystemRepository(db).list_systems(page=1, page_size=500)
+    return {
+        "dry_run": True,
+        **plan_due_scans(
+            systems, interval_days=interval_days, limit=limit,
+            include_cloud=include_cloud, include_git=include_git,
+        ),
+    }
+
+
+@router.post("/scans/run-due")
+def run_due_scans(
+    background_tasks: BackgroundTasks,
+    interval_days: int = Query(7, ge=1, le=365),
+    limit: int = Query(25, ge=1, le=100),
+    dry_run: bool = False,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+    jobs: JobRepository = Depends(get_job_repository),
+):
+    """Enqueue the overdue re-scans (cron entrypoint). Role: auditor+."""
+    from api.routers.trigger import enqueue_scan_job
+    from cloud_scanner.estate import plan_due_scans
+
+    systems, _total = SystemRepository(db).list_systems(page=1, page_size=500)
+    plan = plan_due_scans(systems, interval_days=interval_days, limit=limit)
+    if dry_run:
+        return {"dry_run": True, "queued": 0, **plan}
+    queued = []
+    for item in plan["jobs"]:
+        result = enqueue_scan_job(
+            jobs,
+            background_tasks,
+            repo_url=item["target"],
+            branch=item.get("branch") or "main",
+            triggered_by=f"scheduler:{user}",
+            job_type=item["job_type"],
+            system_id=item.get("system_id"),
+        )
+        queued.append({**item, "job_id": result.job_id})
+    return {
+        "dry_run": False,
+        "queued": len(queued),
+        "triggered_by": f"scheduler:{user}",
+        "jobs": queued,
+        "due": plan["due"],
+        "fresh": plan["fresh"],
+        "interval_days": plan["interval_days"],
+        "message": (
+            f"Queued {len(queued)} overdue re-scans ({plan['fresh']} systems fresh, skipped). "
+            "Call from cron for continuous monitoring."
+        ),
+    }
 
 
 @router.get("/campaigns")
