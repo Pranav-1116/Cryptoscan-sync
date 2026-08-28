@@ -16,6 +16,7 @@ from normalization.enrichers.nist_enricher import NistEnricher
 from normalization.matchers.exact_matcher import ExactMatcher
 from normalization.matchers.fallback_handler import FallbackHandler
 from normalization.matchers.pattern_matcher import PatternMatcher
+from normalization.core.registry_bridge import resolve_key_size
 from normalization.models.normalization_rule import NormalizationRule
 from normalization.models.normalized_crypto import NormalizedCrypto
 from normalization.rules.rule_registry import RuleRegistry
@@ -51,6 +52,8 @@ class NormalizationProcessor:
         *,
         purpose: Optional[str] = None,
         key_size: Optional[int] = None,
+        mode: Optional[str] = None,
+        padding: Optional[str] = None,
         normalization_version: str = "1.0",
     ) -> NormalizedCrypto:
         """
@@ -62,6 +65,8 @@ class NormalizationProcessor:
             purpose: Optional cryptographic purpose hint from scanner
                      (e.g., "encryption", "hashing").
             key_size: Optional key size in bits from scanner context.
+            mode: Optional mode of operation hint (e.g., "GCM").
+            padding: Optional padding scheme hint from scanner context.
             normalization_version: Version of normalization rules applied.
 
         Returns:
@@ -98,6 +103,10 @@ class NormalizationProcessor:
                 normalization_version=normalization_version,
                 timestamp=timestamp,
             )
+            if mode and not result.mode:
+                result.mode = str(mode).upper()
+            if padding and not result.padding:
+                result.padding = padding
             logger.warning(
                 "Algorithm could not be normalized, flagged for review: '%s'",
                 raw_stripped,
@@ -107,8 +116,13 @@ class NormalizationProcessor:
         # ── Step 4: Build base NormalizedCrypto from rule or pattern ──
         if isinstance(pattern_hit, NormalizedCrypto) and matched_rule is None:
             normalized = pattern_hit
-            if key_size is not None and normalized.key_size is None:
-                normalized.key_size = key_size
+            normalized.key_size = resolve_key_size(
+                normalized.key_size, raw_stripped, key_size
+            )
+            if mode is not None and not normalized.mode:
+                normalized.mode = str(mode).upper()
+            if padding is not None and not normalized.padding:
+                normalized.padding = padding
             if purpose is not None and normalized.purpose is None:
                 normalized.purpose = purpose
             normalized.raw_input = raw_stripped
@@ -117,8 +131,13 @@ class NormalizationProcessor:
             normalized.normalization_timestamp = timestamp
         else:
             output = matched_rule.normalized_output.copy()
-            if key_size is not None and output.get("key_size") is None:
-                output["key_size"] = key_size
+            output["key_size"] = resolve_key_size(
+                output.get("key_size"), raw_stripped, key_size
+            )
+            if mode is not None and not output.get("mode"):
+                output["mode"] = str(mode).upper()
+            if padding is not None and not output.get("padding"):
+                output["padding"] = padding
             if purpose is not None and output.get("purpose") is None:
                 output["purpose"] = purpose
             output["raw_input"] = raw_stripped

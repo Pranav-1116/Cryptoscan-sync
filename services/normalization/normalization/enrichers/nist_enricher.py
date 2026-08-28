@@ -50,7 +50,21 @@ class NISTEnricher:
             return normalized
 
         algorithm = normalized.algorithm.upper()
-        
+
+        # Registry-first: the shared algorithm registry is authoritative
+        # for status and minimum key size. The legacy tables below only
+        # decide when the registry does not recognize the name (they
+        # also disagreed with each other: DES/RC4/MD5 sat in both the
+        # DISALLOWED and DEPRECATED sets).
+        from normalization.core.registry_bridge import nist_designation
+
+        designation = nist_designation(normalized.algorithm, normalized.key_size)
+        if designation:
+            normalized.nist_designation = designation
+            if designation in ('APPROVED', 'ACCEPTABLE', 'ALLOWED_LEGACY'):
+                normalized.fips_status = self._get_fips_standard(algorithm)
+            return normalized
+
         # Determine NIST status
         if algorithm in self.NIST_DISALLOWED:
             nist_designation = 'DISALLOWED'

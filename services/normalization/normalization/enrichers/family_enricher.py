@@ -1,6 +1,7 @@
 """
-Algorithm family classifier.
+Algorithm family classifier (registry-first).
 """
+from ..core.registry_bridge import model_family
 from ..models.normalized_crypto import NormalizedCrypto
 
 
@@ -8,7 +9,9 @@ class FamilyEnricher:
     """
     Enriches normalized crypto with algorithm family classification.
     
-    Families: symmetric, asymmetric, hash, mac, kdf, pqc
+    Families: symmetric, asymmetric, hash, mac, kdf, key-agreement,
+    signature — the model-allowed vocabulary. The registry decides;
+    the legacy tables below only cover names the registry misses.
     """
     
     SYMMETRIC_ALGORITHMS = {
@@ -32,8 +35,13 @@ class FamilyEnricher:
         'PBKDF2', 'HKDF', 'SCRYPT', 'ARGON2', 'BCRYPT'
     }
     
-    PQC_ALGORITHMS = {
-        'CRYSTALS-KYBER', 'CRYSTALS-DILITHIUM', 'FALCON', 'SPHINCS+'
+    # Pre-standard PQC project names -> model-allowed families (the old
+    # 'pqc' value was never in the model's allowed set)
+    PQC_KEM_ALGORITHMS = {
+        'CRYSTALS-KYBER', 'KYBER', 'NEWHOPE', 'SABER', 'NTRU'
+    }
+    PQC_SIGNATURE_ALGORITHMS = {
+        'CRYSTALS-DILITHIUM', 'DILITHIUM', 'FALCON', 'SPHINCS+', 'SPHINCS'
     }
     
     def enrich(self, normalized: NormalizedCrypto) -> NormalizedCrypto:
@@ -54,26 +62,27 @@ class FamilyEnricher:
             return normalized
         
         algorithm = normalized.algorithm.upper()
-        
-        # Classify by algorithm
-        if algorithm in self.SYMMETRIC_ALGORITHMS:
-            family = 'symmetric'
-        elif algorithm in self.ASYMMETRIC_ALGORITHMS:
-            family = 'asymmetric'
-        elif algorithm in self.HASH_ALGORITHMS:
-            family = 'hash'
-        elif algorithm in self.MAC_ALGORITHMS:
-            family = 'mac'
-        elif algorithm in self.KDF_ALGORITHMS:
-            family = 'kdf'
-        elif algorithm in self.PQC_ALGORITHMS:
-            family = 'pqc'
-        else:
-            # Check for common patterns
-            if 'SHA' in algorithm or 'MD' in algorithm:
-                family = 'hash'
-            elif 'HMAC' in algorithm:
+
+        # Registry-first: canonical family for anything it knows
+        family = model_family(normalized.algorithm)
+        if not family:
+            # Legacy tables for names the registry does not recognize
+            if algorithm in self.SYMMETRIC_ALGORITHMS:
+                family = 'symmetric'
+            elif algorithm in self.ASYMMETRIC_ALGORITHMS:
+                family = 'asymmetric'
+            elif algorithm in self.MAC_ALGORITHMS or 'HMAC' in algorithm:
                 family = 'mac'
+            elif algorithm in self.KDF_ALGORITHMS:
+                family = 'kdf'
+            elif algorithm in self.PQC_KEM_ALGORITHMS:
+                family = 'key-agreement'
+            elif algorithm in self.PQC_SIGNATURE_ALGORITHMS:
+                family = 'signature'
+            elif algorithm in self.HASH_ALGORITHMS:
+                family = 'hash'
+            elif 'SHA' in algorithm or 'MD' in algorithm:
+                family = 'hash'
             else:
                 family = 'unknown'
         

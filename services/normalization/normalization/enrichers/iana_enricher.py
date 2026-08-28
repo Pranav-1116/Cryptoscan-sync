@@ -48,9 +48,9 @@ class IANAEnricher:
         
         if iana_id:
             normalized.iana_id = iana_id
-        else:
-            # Generate synthetic ID
-            normalized.iana_id = self._generate_synthetic_id(normalized)
+        # No entry: leave iana_id unset. The field claims a real IANA
+        # registry identifier; a generated slug was indistinguishable
+        # from a genuine registration downstream.
         
         return normalized
     
