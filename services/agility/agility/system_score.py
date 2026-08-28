@@ -195,27 +195,26 @@ FACTOR_META = (
     ("factor6", "Documentation", 35),
 )
 
-# Post-quantum relevance (indicator only — never feeds the agility score):
-# Shor breaks every deployed asymmetric construction; symmetric hashes/MACs
-# and block ciphers only lose half their security margin to Grover.
-QUANTUM_VULNERABLE_TOKENS = (
-    "rsa", "ec", "ecc", "ecdh", "ecdsa", "ed25519", "ed448", "dsa", "dh",
-    "diffie", "hellman", "x25519", "secp", "elliptic", "p-256", "p-384",
-)
-QUANTUM_RESISTANT_TOKENS = ("aes", "hmac", "sha", "chacha", "poly1305", "salsa")
+# Post-quantum relevance (indicator only — never feeds the agility score).
+# Classification itself lives in shared_models.quantum_classify — the
+# registry-backed single classifier shared by every service.
 HYBRID_TOKENS = ("ml-kem", "mlkem", "kyber", "dilithium", "falcon", "sphincs", "hqc", "composite", "hybrid")
+
+_SHARED_VERDICT_TO_LABEL = {
+    "SHOR_VULNERABLE": "QUANTUM_VULNERABLE",
+    "GROVER_MARGINAL": "QUANTUM_RESISTANT",  # marginal sizing is not Shor breakage
+    "QUANTUM_RESISTANT": "QUANTUM_RESISTANT",
+    "PQC_RESISTANT": "QUANTUM_RESISTANT",
+}
 
 
 def classify_quantum(algorithm: str) -> str:
     """Classify an algorithm name: QUANTUM_VULNERABLE / QUANTUM_RESISTANT / UNKNOWN."""
-    token = str(algorithm or "").lower()
-    if not token:
-        return "UNKNOWN"
-    if any(word in token for word in QUANTUM_VULNERABLE_TOKENS):
-        return "QUANTUM_VULNERABLE"
-    if any(word in token for word in QUANTUM_RESISTANT_TOKENS):
-        return "QUANTUM_RESISTANT"
-    return "UNKNOWN"
+    try:
+        from shared_models.quantum_classify import quantum_verdict
+    except Exception:  # shared_models unavailable: honest UNKNOWN, never a guess
+        return "UNKNOWN" if not str(algorithm or "") else "UNKNOWN"
+    return _SHARED_VERDICT_TO_LABEL.get(quantum_verdict(algorithm)["verdict"], "UNKNOWN")
 
 
 def pqc_exposure(evidence: list[Mapping[str, Any]], system: Mapping[str, Any] | None = None) -> dict[str, Any]:

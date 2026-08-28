@@ -25,9 +25,24 @@ from shared_models.enums import (
 from shared_models.evidence import EvidenceRecordDTO
 from shared_models.finding import CryptoInfo, FindingMetadata, GitContext, RawFinding, SourceLocation
 from shared_models.observation import CryptoObservation, observation_from_raw_finding
+from shared_models.quantum_classify import (
+    GROVER_MARGINAL,
+    PQC_RESISTANT,
+    QUANTUM_RESISTANT,
+    SHOR_VULNERABLE,
+    UNKNOWN,
+    is_shor_vulnerable,
+    quantum_verdict,
+    summarize_verdicts,
+)
 from shared_models.vulnerability import Vulnerability
 
 __all__ = [
+    "GROVER_MARGINAL",
+    "PQC_RESISTANT",
+    "QUANTUM_RESISTANT",
+    "SHOR_VULNERABLE",
+    "UNKNOWN",
     "aware",
     "b64url_decode",
     "b64url_encode",
@@ -61,4 +76,8 @@ __all__ = [
     "observation_from_raw_finding",
     "CryptoAsset",
     "Vulnerability",
+    "is_shor_vulnerable",
+    "quantum_verdict",
+    "summarize_verdicts",
 ]
+

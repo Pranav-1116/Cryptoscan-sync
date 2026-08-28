@@ -10,7 +10,7 @@ import re
 from collections import deque
 from typing import Any, Iterable
 
-from graph_engine.core.engine import QUANTUM_VULNERABLE_RE
+from graph_engine.core.engine import _is_shor_vulnerable
 from graph_engine.schemas.node_schemas import IDENTITY_PROPERTY, KIND_PREFIX
 
 
@@ -377,16 +377,14 @@ class FakeSession:
                     algorithms.append(str(asset["algorithm"]))
             if not algorithms:
                 continue
-            vulnerable = sorted({a for a in algorithms if QUANTUM_VULNERABLE_RE.search(a)})
+            vulnerable = sorted({a for a in algorithms if _is_shor_vulnerable(a)})
             rows.append(
                 {
                     "system_id": node.get("system_id") or key,
                     "name": node.get("name"),
                     "criticality": node.get("criticality"),
                     "total_assets": len(algorithms),
-                    "quantum_vulnerable_assets": len(
-                        [a for a in algorithms if QUANTUM_VULNERABLE_RE.search(a)]
-                    ),
+                    "quantum_vulnerable_assets": len([a for a in algorithms if _is_shor_vulnerable(a)]),
                     "vulnerable_algorithms": vulnerable,
                 }
             )

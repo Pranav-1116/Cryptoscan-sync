@@ -6,12 +6,21 @@ import re
 from collections import defaultdict, deque
 from typing import Any, Iterable
 
-# Word-boundary tokens: classifies "RSA-2048"/"ECDSA-P256" as quantum-vulnerable
-# while leaving "AES-128-ECB" alone ("EC" must not match inside "ECB").
+# Word-boundary tokens: kept for backward compatibility (token-level matching).
+# New code must use shared_models.quantum_classify.is_shor_vulnerable — the
+# registry-backed single classifier (better: JOSE/TLS-suite/curve aware).
 QUANTUM_VULNERABLE_RE = re.compile(
     r"\b(rsa|ec|ecc|ecdh|ecdsa|dsa|dh|x25519|ed25519|ed448|diffie|hellman|secp[a-z0-9]*|elliptic)\b",
     re.IGNORECASE,
 )
+
+
+def _is_shor_vulnerable(algorithm: str | None) -> bool:
+    try:
+        from shared_models.quantum_classify import is_shor_vulnerable
+    except Exception:  # shared_models not on path: fall back to the token matcher
+        return bool(algorithm and QUANTUM_VULNERABLE_RE.search(str(algorithm)))
+    return is_shor_vulnerable(algorithm)
 
 
 class GraphEngine:
@@ -354,16 +363,14 @@ class GraphEngine:
             algorithms = [algo for algo in algorithms if algo]
             if not algorithms:
                 continue
-            vulnerable = sorted({str(a) for a in algorithms if QUANTUM_VULNERABLE_RE.search(str(a))})
+            vulnerable = sorted({str(a) for a in algorithms if _is_shor_vulnerable(str(a))})
             rows.append(
                 {
                     "system_id": node_id.split(":", 1)[-1],
                     "name": node.get("name"),
                     "criticality": node.get("criticality"),
                     "total_assets": len(algorithms),
-                    "quantum_vulnerable_assets": sum(
-                        1 for a in algorithms if QUANTUM_VULNERABLE_RE.search(str(a))
-                    ),
+                    "quantum_vulnerable_assets": sum(1 for a in algorithms if _is_shor_vulnerable(str(a))),
                     "vulnerable_algorithms": vulnerable,
                 }
             )
