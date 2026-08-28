@@ -6,12 +6,20 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, get_job_repository
+from api.dependencies import get_current_user, get_db_session, get_job_repository, require_admin
 from cloud_scanner.core.scanner import CloudScanner
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.job_repository import JobRepository
 
 router = APIRouter(prefix="/cloud", tags=["cloud"])
+
+
+@router.get("/credentials/status")
+def cloud_credentials_status(admin: str = Depends(require_admin)):
+    """Which cloud credential source each SDK would use (admin only, no secrets)."""
+    from cloud_scanner.auth.diagnostics import credential_status
+
+    return credential_status()
 
 
 class CloudScanRequest(BaseModel):
