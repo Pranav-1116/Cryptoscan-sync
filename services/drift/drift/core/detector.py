@@ -190,7 +190,13 @@ class DriftDetector:
         )
 
         changed_locations: set[tuple[str, int]] = set()
-        weak = {"DES", "3DES", "RC4", "MD5", "SHA-1", "SHA1", "RC2"}
+        from drift.core.algorithm_policy import is_weak
+
+        def _weak(fp: CryptoFingerprint) -> bool:
+            # registry-backed: catches RSA-1024 (key-size policy), AES-…-ECB
+            # (mode weakening) and legacy spellings the old name set missed
+            return is_weak(fp.algorithm, key_size=fp.key_size, mode=fp.mode)
+
         for loc, baseline_fp in baseline_loc.items():
             current_fp = current_loc.get(loc)
             if current_fp is None:
@@ -206,7 +212,7 @@ class DriftDetector:
                         change_type="CHANGED",
                         baseline_fingerprint=baseline_fp,
                         current_fingerprint=current_fp,
-                        severity="CRITICAL" if current_fp.algorithm in weak else "HIGH",
+                        severity="CRITICAL" if _weak(current_fp) else "HIGH",
                         reason=(
                             f"Crypto changed at {loc[0]}:{loc[1]}: "
                             f"{baseline_fp.algorithm}/{baseline_fp.mode or '-'} "
@@ -306,7 +312,7 @@ class DriftDetector:
             if count <= base_count or base_count == 0 or sig in spread_reported:
                 continue
             sample = current_semantic.get(sig)
-            if sample is None or sample.algorithm not in weak:
+            if sample is None or not _weak(sample):
                 continue
             spread_reported.add(sig)
             result.changes.append(

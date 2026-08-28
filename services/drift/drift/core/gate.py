@@ -88,8 +88,10 @@ def evaluate_gate(
     for finding in findings:
         algo = _algo(finding)
         purpose = _purpose(finding)
+        from drift.core.algorithm_policy import finding_is_weak
+
         failed = _status(finding) == "FAIL"
-        weak = algo in WEAK_ALGORITHMS
+        weak = finding_is_weak(finding)
         if finding.get("is_hardcoded_key") and purpose in BLOCKING_PURPOSES:
             blocking.append(
                 {
@@ -150,7 +152,10 @@ def evaluate_gate(
                 }
             )
             continue
-        if dtype in BLOCKING_DRIFT and (purpose in BLOCKING_PURPOSES or algo in WEAK_ALGORITHMS - WEAK_HASH_ONLY):
+        if dtype in BLOCKING_DRIFT and (
+            purpose in BLOCKING_PURPOSES
+            or (finding_is_weak(event) and algo not in WEAK_HASH_ONLY)
+        ):
             blocking.append(
                 {
                     "code": f"DRIFT_{dtype}",

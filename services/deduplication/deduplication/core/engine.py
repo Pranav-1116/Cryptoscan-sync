@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from deduplication.core.keys import dedup_key, identity_tuple
+from deduplication.core.keys import canonical_dedup_key, canonical_identity_tuple, dedup_key, identity_tuple
 
 
 def _get(finding: dict[str, Any], *path: str, default: Any = None) -> Any:
@@ -28,14 +28,33 @@ def _confidence_rank(value: str | None) -> int:
 class DeduplicationEngine:
     """Collapse findings that describe the same crypto use from multiple scanners."""
 
-    def merge(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def merge(
+        self, findings: list[dict[str, Any]], *, canonical: bool = True
+    ) -> list[dict[str, Any]]:
+        return self.merge_with_stats(findings, canonical=canonical)["assets"]
+
+    def merge_with_stats(
+        self, findings: list[dict[str, Any]], *, canonical: bool = True
+    ) -> dict[str, Any]:
+        """Deduplicate and report how well the collapse worked.
+
+        canonical=True (default) groups on the registry-canonical identity
+        (algorithm family + key size), so "RSA-2048" from scanner A merges
+        with "rsa_2048" from scanner B. canonical=False preserves the
+        legacy raw-string identity.
+        """
+        key_fn = canonical_identity_tuple if canonical else identity_key
         groups: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
         for finding in findings:
-            groups[identity_key(finding)].append(finding)
+            groups[key_fn(finding)].append(finding)
 
         assets: list[dict[str, Any]] = []
         for key, members in groups.items():
-            algorithm, purpose, file_path, line = key
+            if canonical:
+                algorithm, purpose, group_key_size, file_path, line = key
+            else:
+                algorithm, purpose, file_path, line = key
+                group_key_size = None
             scanners = sorted(
                 {
                     str(item.get("scanner_id") or _get(item, "metadata", "library") or "unknown")
@@ -98,12 +117,31 @@ class DeduplicationEngine:
                     "occurrence_count": len(members),
                     "is_hardcoded_key": hardcoded,
                     "mode": _get(members[0], "crypto", "mode") or members[0].get("mode"),
-                    "key_size": _get(members[0], "crypto", "key_size") or members[0].get("key_size"),
+                    "key_size": _get(members[0], "crypto", "key_size")
+                    or members[0].get("key_size")
+                    or group_key_size,
                     "source_language": _get(members[0], "source", "language")
                     or members[0].get("source_language"),
-                    "dedup_key": dedup_key(members[0]),
+                    "dedup_key": (canonical_dedup_key if canonical else dedup_key)(members[0]),
+                    "identity": "canonical" if canonical else "raw",
                     "primary_evidence_id": (primary or {}).get("evidence_id"),
                     "members": member_rows,
                 }
             )
-        return sorted(assets, key=lambda item: (item["file_path"], item["line_number"], item["algorithm"]))
+        assets = sorted(assets, key=lambda item: (item["file_path"], item["line_number"], item["algorithm"]))
+        multi_scanner_groups = sum(1 for members in groups.values() if len({m.get("scanner_id") for m in members if m.get("scanner_id")}) >= 2)
+        verified = sum(1 for asset in assets if asset["confidence"] == "VERIFIED")
+        stats = {
+            "findings_in": len(findings),
+            "assets_out": len(assets),
+            "duplicate_findings_collapsed": max(0, len(findings) - len(assets)),
+            "collapse_rate": round(1 - (len(assets) / len(findings)), 3) if findings else 0.0,
+            "groups": len(groups),
+            "multi_scanner_groups": multi_scanner_groups,
+            "verified_assets": verified,
+            "cross_scanner_verification_rate": round(verified / len(assets), 3) if assets else 0.0,
+            "distinct_algorithms": len({asset["algorithm"] for asset in assets}),
+            "largest_group": max((len(members) for members in groups.values()), default=0),
+            "identity_mode": "canonical" if canonical else "raw",
+        }
+        return {"assets": assets, "stats": stats}

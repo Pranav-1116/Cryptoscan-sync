@@ -62,8 +62,9 @@ class SeverityCalculator:
         compliance = record.get("compliance_status") if record is not None else None
         if hardcoded:
             return Severity.CRITICAL
-        weak = {"DES", "3DES", "MD5", "SHA1", "SHA-1", "RC4", "ECB"}
-        if compliance == "FAIL" or str(algorithm).upper() in weak:
+        from drift.core.algorithm_policy import is_weak
+
+        if compliance == "FAIL" or is_weak(str(algorithm), key_size=key_size):
             return Severity.CRITICAL
         if compliance == "PASS":
             return Severity.MEDIUM
@@ -107,7 +108,12 @@ class SeverityCalculator:
         # Factor 1: Algorithm strength
         algo_upper = algorithm.upper()
         
-        if algo_upper in self.weak_algorithms:
+        from drift.core.algorithm_policy import weakness_score
+
+        registry_score = weakness_score(algo_upper, key_size=key_size)
+        if registry_score:
+            base_score += registry_score
+        elif algo_upper in self.weak_algorithms:
             base_score += self.weak_algorithms[algo_upper]
         elif algo_upper in self.strong_algorithms:
             base_score += self.strong_algorithms[algo_upper]

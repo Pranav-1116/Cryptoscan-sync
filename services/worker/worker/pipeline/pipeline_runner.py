@@ -535,10 +535,25 @@ class PipelineRunner:
             payload["is_hardcoded_key"] = row.is_hardcoded_key
             payload["confidence"] = row.confidence
             findings.append(payload)
-        assets = DeduplicationEngine().merge(findings)
+        merged = DeduplicationEngine().merge_with_stats(findings)
+        assets = merged["assets"]
+        ctx.scan_meta["dedup"] = merged["stats"]
         stored = AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
         self._link_system_assets(ctx, session, stored)
         self._quantum_assets(ctx, session, stored)
+        try:
+            from sqlalchemy.orm.attributes import flag_modified
+
+            from db.models.scan import Scan
+
+            scan = session.get(Scan, ctx.scan_id) if ctx.scan_id else None
+            if scan is not None:
+                stats = dict(scan.statistics or {})
+                stats["dedup"] = merged["stats"]
+                scan.statistics = stats
+                flag_modified(scan, "statistics")
+        except Exception:
+            logger.debug("dedup_stats_not_persisted", exc_info=True)
         session.flush()
         logger.info("stage_dedup_done", extra={"assets": len(assets)})
 
