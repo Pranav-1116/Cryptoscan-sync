@@ -28,7 +28,10 @@ def upgrade() -> None:
         sa.Column("last_run_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("next_run_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_by", sa.String(100), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
+
     op.create_table(
         "report_snapshots",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -42,7 +45,10 @@ def upgrade() -> None:
         sa.Column("emailed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("email_status", sa.String(20), nullable=True),
         sa.Column("email_detail", sa.String(500), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
+
 
 
 def downgrade() -> None:

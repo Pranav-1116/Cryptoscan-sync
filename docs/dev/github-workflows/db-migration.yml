@@ -1,0 +1,92 @@
+name: DB Migration Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "services/database/**"
+      - ".github/workflows/db-migration.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "services/database/**"
+      - ".github/workflows/db-migration.yml"
+
+concurrency:
+  group: db-migration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  migrate-postgres:
+    name: Alembic up/down on PostgreSQL 15
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: cryptoscan
+          POSTGRES_PASSWORD: cryptoscan_ci
+          POSTGRES_DB: cryptoscan
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U cryptoscan"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGPASSWORD: cryptoscan_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run all migrations up
+        working-directory: services/database
+        env:
+          DATABASE_URL: postgresql+psycopg2://cryptoscan:cryptoscan_ci@localhost:55432/cryptoscan
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+        run: alembic -c migrations/alembic.ini upgrade head
+      - name: Verify expected tables exist
+        env:
+          DATABASE_URL: postgresql+psycopg2://cryptoscan:cryptoscan_ci@localhost:55432/cryptoscan
+        run: |
+          psql -h localhost -p 55432 -U cryptoscan -d cryptoscan -tAc "
+            SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename" > tables.txt
+          for t in scans evidence_records baselines drift_events scan_jobs crypto_assets users; do
+            grep -qx "$t" tables.txt || { echo "missing table: $t"; cat tables.txt; exit 1; }
+          done
+          echo "All expected tables present:"
+          cat tables.txt
+      - name: Run migrations back down (baseline)
+        working-directory: services/database
+        env:
+          DATABASE_URL: postgresql+psycopg2://cryptoscan:cryptoscan_ci@localhost:55432/cryptoscan
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+        run: alembic -c migrations/alembic.ini downgrade base
+
+  db-unit:
+    name: Database unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run database unit tests
+        env:
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/shared/shared_config:${{ github.workspace }}/shared/shared_logging:${{ github.workspace }}/shared/shared_models:${{ github.workspace }}/services/api:${{ github.workspace }}/services/database:${{ github.workspace }}/services/scanner:${{ github.workspace }}/services/evidence:${{ github.workspace }}/services/normalization:${{ github.workspace }}/services/policy:${{ github.workspace }}/services/drift:${{ github.workspace }}/services/worker:${{ github.workspace }}/services/deduplication:${{ github.workspace }}/services/cbom:${{ github.workspace }}/services/container_scanner:${{ github.workspace }}/services/network_scanner:${{ github.workspace }}/services/cloud_scanner:${{ github.workspace }}/services/graph_engine:${{ github.workspace }}/services/business_context:${{ github.workspace }}/services/quantum:${{ github.workspace }}/services/remediation:${{ github.workspace }}/services/reporting:${{ github.workspace }}/services/ot_scanner:${{ github.workspace }}/services/vendor_intel:${{ github.workspace }}/services/agility
+        run: python -m pytest -q services/database/tests/unit -p no:cacheprovider

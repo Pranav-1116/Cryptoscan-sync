@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install ruff
+        run: python -m pip install --quiet "ruff>=0.1.14"
+      - name: Ruff check
+        run: ruff check services/ shared/ scripts/ --select F401,F811,F821,E9
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Run per-service test suites
+        env:
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+        run: |
+          export PYTHONPATH="$CRYPTOSCAN_ROOT/shared/shared_config:$CRYPTOSCAN_ROOT/shared/shared_logging:$CRYPTOSCAN_ROOT/shared/shared_models:$CRYPTOSCAN_ROOT/services/api:$CRYPTOSCAN_ROOT/services/database:$CRYPTOSCAN_ROOT/services/scanner:$CRYPTOSCAN_ROOT/services/evidence:$CRYPTOSCAN_ROOT/services/normalization:$CRYPTOSCAN_ROOT/services/policy:$CRYPTOSCAN_ROOT/services/drift:$CRYPTOSCAN_ROOT/services/worker:$CRYPTOSCAN_ROOT/services/deduplication:$CRYPTOSCAN_ROOT/services/cbom:$CRYPTOSCAN_ROOT/services/container_scanner:$CRYPTOSCAN_ROOT/services/network_scanner:$CRYPTOSCAN_ROOT/services/cloud_scanner:$CRYPTOSCAN_ROOT/services/graph_engine:$CRYPTOSCAN_ROOT/services/business_context:$CRYPTOSCAN_ROOT/services/quantum:$CRYPTOSCAN_ROOT/services/remediation:$CRYPTOSCAN_ROOT/services/reporting:$CRYPTOSCAN_ROOT/services/ot_scanner:$CRYPTOSCAN_ROOT/services/vendor_intel:$CRYPTOSCAN_ROOT/services/agility"
+          status=0
+          for d in \
+            services/policy/tests services/evidence/tests services/normalization/tests \
+            services/scanner/tests services/database/tests/unit services/drift/tests \
+            services/worker/tests/unit services/api/tests/unit services/api/tests/integration \
+            services/deduplication/tests services/cbom/tests services/container_scanner/tests \
+            services/network_scanner/tests services/cloud_scanner/tests services/graph_engine/tests \
+            services/business_context/tests services/quantum/tests services/remediation/tests \
+            services/reporting/tests services/ot_scanner/tests services/vendor_intel/tests \
+            services/agility/tests shared/shared_models/tests; do
+            echo "===== $d ====="
+            python -m pytest -q "$d" -p no:cacheprovider || status=1
+          done
+          exit $status
+
+  e2e-smoke:
+    name: E2E smoke (seed → verify → CBOM)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+      - name: Seed demo scan
+        env:
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+          PYTHONPATH: ${{ github.workspace }}/shared/shared_config:${{ github.workspace }}/shared/shared_logging:${{ github.workspace }}/shared/shared_models:${{ github.workspace }}/services/api:${{ github.workspace }}/services/database:${{ github.workspace }}/services/scanner:${{ github.workspace }}/services/evidence:${{ github.workspace }}/services/normalization:${{ github.workspace }}/services/policy:${{ github.workspace }}/services/drift:${{ github.workspace }}/services/worker:${{ github.workspace }}/services/deduplication:${{ github.workspace }}/services/cbom:${{ github.workspace }}/services/container_scanner:${{ github.workspace }}/services/network_scanner:${{ github.workspace }}/services/cloud_scanner:${{ github.workspace }}/services/graph_engine:${{ github.workspace }}/services/business_context:${{ github.workspace }}/services/quantum:${{ github.workspace }}/services/remediation:${{ github.workspace }}/services/reporting:${{ github.workspace }}/services/ot_scanner:${{ github.workspace }}/services/vendor_intel:${{ github.workspace }}/services/agility
+        run: |
+          python scripts/seed_demo.py 2>&1 | tee seed.log
+          grep -q "seed_ok" seed.log
+      - name: Verify evidence chain
+        env:
+          CRYPTOSCAN_ROOT: ${{ github.workspace }}
+        run: |
+          SCAN_ID=$(grep -o 'scan_id=[0-9a-f-]*' seed.log | head -1 | cut -d= -f2)
+          test -n "$SCAN_ID" && python scripts/verify_evidence.py "$SCAN_ID" 2>&1 | tee verify.log
+          if grep -q FAIL verify.log; then echo "Evidence chain verification failed"; exit 1; fi

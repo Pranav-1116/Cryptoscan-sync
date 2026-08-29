@@ -29,10 +29,11 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-    from db.connection.session import SessionLocal
+    from db.connection.session import SessionLocal, configure_session
     from worker.monitor.engine import MonitorEngine
     from worker.monitor.loop import MonitorLoop, install_signal_handlers
 
+    configure_session()  # bind SessionLocal to the configured database engine
     loop = MonitorLoop(
         MonitorEngine,
         session_factory=SessionLocal,

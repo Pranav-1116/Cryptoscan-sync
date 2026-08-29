@@ -30,7 +30,10 @@ def upgrade() -> None:
         sa.Column("consecutive_failures", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("last_error", sa.Text(), nullable=True),
         sa.Column("created_by", sa.String(100), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
+
     op.create_table(
         "monitor_events",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -39,7 +42,10 @@ def upgrade() -> None:
         sa.Column("event_type", sa.String(30), nullable=False, index=True),
         sa.Column("detail", sa.Text(), nullable=True),
         sa.Column("payload", sa.JSON(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
+
 
 
 def downgrade() -> None:

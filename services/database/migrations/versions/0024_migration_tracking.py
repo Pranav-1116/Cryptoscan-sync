@@ -34,7 +34,10 @@ def upgrade() -> None:
         sa.Column("external_ref", sa.String(300), nullable=True, index=True),
         sa.Column("due_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column("completed_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
+
     op.create_table(
         "migration_milestones",
         sa.Column("id", sa.String(36), primary_key=True),
@@ -43,7 +46,10 @@ def upgrade() -> None:
         sa.Column("target_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column("status", sa.String(20), nullable=False, server_default="PLANNED"),
         sa.Column("notes", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
+
 
 
 def downgrade() -> None:
