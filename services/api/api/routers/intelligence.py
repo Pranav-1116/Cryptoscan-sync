@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Literal
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
@@ -39,6 +41,11 @@ from remediation.engine import suggest_remediations
 from reporting.compliance_report import render_html, render_json
 from scanner.detectors.materials.pem_scanner import join_materials_to_source
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 router = APIRouter(tags=["intelligence"])
 
 
@@ -53,6 +60,8 @@ class VerifyPackRequest(BaseModel):
 class CiGateRequest(BaseModel):
     scan_id: str
     require_baseline: bool = False
+    # standard | strict | lenient (see drift.core.gate.apply_gate_profile)
+    profile: Literal["standard", "strict", "lenient"] = "standard"
 
 
 def _policy_engine() -> PolicyEngine:
@@ -131,12 +140,23 @@ def get_work_orders(
     return build_work_orders(_findings(scan_id, evidence))
 
 
-def _gate_for(scan_id: str, scans, evidence, drift, require_baseline: bool = False) -> dict:
+def _gate_for(
+    scan_id: str,
+    scans,
+    evidence,
+    drift,
+    require_baseline: bool = False,
+    profile: str = "standard",
+) -> dict:
     scan = _require_scan(scan_id, scans)
     findings = _findings(scan_id, evidence)
     events = _drift_events(scan_id, drift)
     stored = (scan.statistics or {}).get("gate") if isinstance(scan.statistics, dict) else None
     gate = evaluate_gate(findings, events, require_baseline=require_baseline)
+    if profile and profile.lower() != "standard":
+        from drift.core.gate import apply_gate_profile
+
+        gate = apply_gate_profile(gate, profile)
     if stored and not events and isinstance(stored, dict) and stored.get("decision"):
         # Prefer freshly computed; stored is a hint only.
         gate.setdefault("stored", stored)
@@ -174,12 +194,57 @@ def get_gate_sarif(
 @router.post("/ci/gate")
 def ci_gate(
     body: CiGateRequest,
+    request: Request,
     user: str = Depends(get_current_user),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
     drift: DriftRepository = Depends(get_drift_repository),
+    db=Depends(get_db_session),
 ):
-    return _gate_for(body.scan_id, scans, evidence, drift, require_baseline=body.require_baseline)
+    """Evaluate the CI gate under a policy profile and record the outcome.
+
+    Recording is fail-open: if the trail cannot be written the decision is
+    still returned — CI never breaks because of the log.
+    """
+    gate = _gate_for(
+        body.scan_id, scans, evidence, drift,
+        require_baseline=body.require_baseline, profile=body.profile,
+    )
+    gate["recorded"] = False
+    try:
+        from db.repositories.gate_evaluation_repository import GateEvaluationRepository
+
+        scan = scans.get_by_id(body.scan_id)
+        GateEvaluationRepository(db).record(
+            scan_id=body.scan_id,
+            decision=str(gate.get("decision") or "UNKNOWN"),
+            profile=str(gate.get("profile") or body.profile or "standard"),
+            blocking_count=len(gate.get("blocking") or []),
+            warning_count=len(gate.get("warnings") or []),
+            target_location=getattr(scan, "target_location", None),
+            actor=user,
+        )
+        db.commit()
+        gate["recorded"] = True
+    except Exception:
+        logger.debug("gate_evaluation_not_recorded", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    return gate
+
+
+@router.get("/ci/gate-evaluations")
+def ci_gate_evaluations(
+    days: int = 30,
+    user: str = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """Blocked-deployments roll-up over recorded CI gate calls."""
+    from db.repositories.gate_evaluation_repository import GateEvaluationRepository
+
+    return GateEvaluationRepository(db).stats(days=min(max(1, days), 365))
 
 
 @router.get("/scans/{scan_id}/materials")
@@ -353,43 +418,67 @@ def get_remediation(
     return suggest_remediations(_findings(scan_id, evidence))
 
 
-@router.get("/scans/{scan_id}/report")
-def get_report(
-    scan_id: str,
-    user: str = Depends(get_current_user),
-    scans: ScanRepository = Depends(get_scan_repository),
-    evidence: EvidenceRepository = Depends(get_evidence_repository),
-    drift: DriftRepository = Depends(get_drift_repository),
-):
+def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requirements: str | None):
     scan = _require_scan(scan_id, scans)
     findings = _findings(scan_id, evidence)
-    report = render_json(
+    pack_hash = None
+    try:
+        pack_hash = _policy_engine().pack_hash()
+    except Exception:
+        logger.debug("policy_pack_hash_unavailable", exc_info=True)
+    return render_json(
         scan=scan_to_dict(scan),
         findings=findings,
         agility=compute_agility(findings),
         quantum=analyze_quantum_risk(findings),
         gate=evaluate_gate(findings, _drift_events(scan_id, drift)),
+        template_id=template,
+        selected_requirements=[r.strip() for r in (requirements or "").split(",") if r.strip()] or None,
+        policy_pack_hash=pack_hash,
     )
-    return report
+
+
+@router.get("/scans/{scan_id}/report")
+def get_report(
+    scan_id: str,
+    template: str | None = None,
+    requirements: str | None = None,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+    drift: DriftRepository = Depends(get_drift_repository),
+):
+    """Compliance report; add ?template=<id> for a requirement-by-requirement
+    evaluation with attestation and a tamper-detection hash.
+    ?template=custom&requirements=4.2.1,CC6.1 selects individual requirements.
+    """
+    try:
+        return _rendered_report(scan_id, scans, evidence, drift, template, requirements)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/report-templates")
+def list_report_templates(user: str = Depends(get_current_user)):
+    from reporting.report_templates import template_metadata
+
+    return {"templates": template_metadata()}
 
 
 @router.get("/scans/{scan_id}/report.html")
 def get_report_html(
     scan_id: str,
+    template: str | None = None,
+    requirements: str | None = None,
     user: str = Depends(get_current_user),
     scans: ScanRepository = Depends(get_scan_repository),
     evidence: EvidenceRepository = Depends(get_evidence_repository),
     drift: DriftRepository = Depends(get_drift_repository),
 ):
-    scan = _require_scan(scan_id, scans)
-    findings = _findings(scan_id, evidence)
-    report = render_json(
-        scan=scan_to_dict(scan),
-        findings=findings,
-        agility=compute_agility(findings),
-        quantum=analyze_quantum_risk(findings),
-        gate=evaluate_gate(findings, _drift_events(scan_id, drift)),
-    )
+    try:
+        report = _rendered_report(scan_id, scans, evidence, drift, template, requirements)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return Response(
         content=render_html(report),
         media_type="text/html",

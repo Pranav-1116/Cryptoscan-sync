@@ -15,6 +15,9 @@ def render_json(
     agility: dict[str, Any] | None = None,
     quantum: dict[str, Any] | None = None,
     gate: dict[str, Any] | None = None,
+    template_id: str | None = None,
+    selected_requirements: list[str] | None = None,
+    policy_pack_hash: str | None = None,
 ) -> dict[str, Any]:
     rows = list(findings)
     by_status = Counter(str(row.get("compliance_status") or "UNKNOWN").upper() for row in rows)
@@ -26,7 +29,7 @@ def render_json(
                 by_standard[str(key)]["fail"] += 1
             elif str(rule.get("evaluation_result") or "").upper() == "PASS":
                 by_standard[str(key)]["pass"] += 1
-    return {
+    report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scan": scan,
         "totals": {
@@ -41,6 +44,22 @@ def render_json(
         "gate": gate,
         "disclaimer": "Compliance status is determined only by the policy engine.",
     }
+    if template_id:
+        from reporting.report_templates import attestation_block, canonical_hash, evaluate_template
+
+        report["template_evaluation"] = evaluate_template(
+            rows, template_id, requirements=selected_requirements
+        )
+        report["attestation"] = attestation_block(
+            scan=scan,
+            policy_pack_hash=policy_pack_hash,
+            evidence_count=len(rows),
+        )
+        # hash covers the body; re-deriving it must reproduce the same value
+        report["report_hash"] = canonical_hash(
+            {key: value for key, value in report.items() if key != "report_hash"}
+        )
+    return report
 
 
 def render_html(report: dict[str, Any]) -> str:
@@ -69,5 +88,35 @@ td,th {{ border-bottom:1px solid #243154; padding:8px; text-align:left; }}
 <table><thead><tr><th>Standard</th><th>Pass</th><th>Fail</th></tr></thead><tbody>
 {''.join(rows) or '<tr><td colspan=3 class="muted">No evaluations</td></tr>'}
 </tbody></table>
+{_render_template_section(report)}
 <p class="muted">{html.escape(str(report.get('disclaimer') or ''))}</p>
 </body></html>"""
+
+
+def _render_template_section(report: dict[str, Any]) -> str:
+    evaluation = report.get("template_evaluation")
+    if not evaluation:
+        return ""
+    meta = evaluation.get("template") or {}
+    summary = evaluation.get("summary") or {}
+    req_rows = []
+    for requirement in evaluation.get("requirements") or []:
+        status = str(requirement.get("status"))
+        req_rows.append(
+            f"<tr><td>{html.escape(str(requirement.get('id')))}</td>"
+            f"<td>{html.escape(str(requirement.get('title')))}</td>"
+            f"<td>{status}</td>"
+            f"<td>{requirement.get('evaluated', 0)} rule results ({requirement.get('failing', 0)} failing)</td></tr>"
+        )
+    attestation = report.get("attestation") or {}
+    return f"""
+<h2>{html.escape(str(meta.get('name') or 'Template evaluation'))}</h2>
+<p>{summary.get('pass', 0)}/{summary.get('total', 0)} requirements pass ·
+{summary.get('fail', 0)} violations · {summary.get('not_evaluated', 0)} not evaluated ·
+<strong>{summary.get('compliant_pct', 0)}% compliant</strong></p>
+<table><thead><tr><th>Requirement</th><th>Title</th><th>Status</th><th>Evidence</th></tr></thead><tbody>
+{''.join(req_rows)}
+</tbody></table>
+<p class="muted">Report hash (SHA-256, canonical JSON): <code>{html.escape(str(report.get('report_hash') or ''))}</code></p>
+<p class="muted">Attestation: {html.escape(str(attestation.get('statement') or ''))}</p>
+"""

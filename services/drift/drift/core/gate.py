@@ -179,6 +179,16 @@ def evaluate_gate(
                     **loc,
                 }
             )
+        elif dtype == "DOWNGRADED":
+            # A downgrade (e.g. RSA-2048 -> RSA-512) is CRITICAL in drift
+            # semantics — it must block, not fall through silently.
+            blocking.append(
+                {
+                    "code": "DRIFT_DOWNGRADED",
+                    "message": event.get("reason") or f"Downgraded {algo} {purpose}".strip(),
+                    **loc,
+                }
+            )
 
     if blocking:
         decision = "FAIL"
@@ -257,3 +267,98 @@ def _sarif_result(item: Mapping[str, Any], *, level: str) -> dict[str, Any]:
             }
         ],
     }
+
+
+# --------------------------------------------------------------------------- #
+# CI policy profiles (Week 49-50): one gate, three enforcement postures
+# --------------------------------------------------------------------------- #
+
+GATE_PROFILES = ("standard", "strict", "lenient")
+
+# Codes that block even under the lenient profile: key material in source
+# and cryptographic downgrades are never advisory.
+_ALWAYS_BLOCKING_CODES = {"HARDCODED_KEY", "DRIFT_DOWNGRADED"}
+
+
+def apply_gate_profile(gate: dict[str, Any], profile: str = "standard") -> dict[str, Any]:
+    """Return a copy of the gate adjusted to an enforcement profile.
+
+    standard — the evaluated decision, unchanged (default).
+    strict   — warnings block too: any non-PASS outcome fails the build.
+    lenient  — only always-critical codes (hardcoded keys, downgrades)
+               block; everything else is reported as a warning.
+
+    The input gate is never mutated; the result carries the profile name.
+    """
+    profile = (profile or "standard").lower()
+    if profile not in GATE_PROFILES:
+        raise ValueError(f"unknown gate profile '{profile}' (expected one of {GATE_PROFILES})")
+
+    adjusted = dict(gate)
+    blocking = [dict(item) for item in gate.get("blocking") or []]
+    warnings = [dict(item) for item in gate.get("warnings") or []]
+
+    if profile == "strict":
+        blocking.extend(warnings)
+        warnings = []
+    elif profile == "lenient":
+        keep = [item for item in blocking if str(item.get("code")) in _ALWAYS_BLOCKING_CODES]
+        demoted = [item for item in blocking if str(item.get("code")) not in _ALWAYS_BLOCKING_CODES]
+        warnings = demoted + warnings
+        blocking = keep
+
+    if blocking:
+        decision = "FAIL"
+    elif warnings:
+        decision = "WARN"
+    else:
+        decision = "PASS"
+
+    adjusted["blocking"] = blocking
+    adjusted["warnings"] = warnings
+    adjusted["decision"] = decision
+    adjusted["profile"] = profile
+    adjusted["summary"] = (
+        f"{profile}: {decision}: {len(blocking)} blocking, {len(warnings)} warning"
+    )
+    return adjusted
+
+
+def render_pr_comment(gate: Mapping[str, Any]) -> str:
+    """Markdown summary suitable for posting on a pull request."""
+
+    def _cell(value: Any) -> str:
+        return str(value if value not in (None, "") else "—").replace("|", "\\|")
+
+    decision = str(gate.get("decision") or "UNKNOWN")
+    icon = {"PASS": "✅", "WARN": "⚠️", "FAIL": "❌"}.get(decision, "❓")
+    lines = [
+        f"### {icon} CryptoScan gate: {decision}",
+        "",
+        f"{_cell(gate.get('summary') or 'no summary')}"
+        + (f" · profile `{gate.get('profile')}`" if gate.get("profile") else ""),
+        "",
+    ]
+    blocking = gate.get("blocking") or []
+    if blocking:
+        lines += [
+            "| Blocking | Location |",
+            "|---|---|",
+        ]
+        for item in blocking[:25]:
+            location = _cell(item.get("file_path") or "unknown")
+            if item.get("line_number"):
+                location += f":{_cell(item['line_number'])}"
+            lines.append(f"| `{_cell(item.get('code'))}` {_cell(item.get('message'))} | {location} |")
+        if len(blocking) > 25:
+            lines.append(f"| … {len(blocking) - 25} more | |")
+        lines.append("")
+    warnings = gate.get("warnings") or []
+    if warnings:
+        lines.append(f"**{len(warnings)} warning(s)** — not blocking under the current profile.")
+        lines.append("")
+    lines.append(
+        f"_Deterministic evaluation · scan `{_cell(gate.get('scan_id'))}` · "
+        "policy is the only source of pass/fail._"
+    )
+    return "\n".join(lines)

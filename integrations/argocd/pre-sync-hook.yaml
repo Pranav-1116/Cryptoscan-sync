@@ -1,0 +1,28 @@
+# ArgoCD pre-sync hook: block a sync when the CryptoScan gate fails.
+# The gate CLI exits 1 on FAIL, which fails the hook and halts the sync.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: cryptoscan-gate-presync
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/hook-delete-policy: HookSucceeded
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: gate
+          image: python:3.12-alpine
+          env:
+            - name: CRYPTOSCAN_API
+              value: http://cryptoscan.internal:8000/api/v1
+            - name: CRYPTOSCAN_TOKEN
+              valueFrom:
+                secretKeyRef: { name: cryptoscan-ci, key: token }
+          command: ["sh", "-c"]
+          args:
+            - |
+              wget -qO ci_gate.py "$CRYPTOSCAN_API/../../scripts/raw/ci_gate.py" || true
+              python3 ci_gate.py --scan-id "$SCAN_ID" --profile standard

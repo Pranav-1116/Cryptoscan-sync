@@ -1,0 +1,62 @@
+# CryptoScan CI gate as a reusable GitHub Action (composite).
+# Blocks the PR on FAIL and exposes a PR-comment markdown as step output.
+#
+# The gate CLI (scripts/ci_gate.py) is stdlib-only. Either vendor it into
+# the calling repository or pin a raw URL of this repo with --cli-url.
+#
+# Usage in a workflow:
+#   - uses: your-org/CryproScan/integrations/github/action.yml@v1
+#     with:
+#       scan-id: ${{ steps.scan.outputs.scan_id }}
+#       token:   ${{ secrets.CRYPTOSCAN_TOKEN }}
+#       profile: strict
+name: 'cryptoscan-gate'
+description: 'Deterministic cryptographic policy gate — blocks merges on weak/hardcoded crypto'
+inputs:
+  scan-id:
+    description: 'Scan id to evaluate (from a previous scan step)'
+    required: true
+  token:
+    description: 'CryptoScan API token'
+    required: true
+  api:
+    description: 'CryptoScan API base'
+    default: 'http://cryptoscan.internal:8000/api/v1'
+  profile:
+    description: 'standard | strict | lenient'
+    default: 'standard'
+  cli-url:
+    description: 'Pinned raw URL of ci_gate.py (omit if vendored in the repo)'
+    default: ''
+outputs:
+  comment:
+    description: 'PR-comment markdown (post it with github-script or actions/github-script)'
+    value: ${{ steps.gate.outputs.comment }}
+runs:
+  using: 'composite'
+  steps:
+    - id: gate
+      shell: bash
+      run: |
+        set -euo pipefail
+        CLI=""
+        if [ -n "${{ inputs.cli-url }}" ]; then
+          curl -fsSL -o /tmp/ci_gate.py "${{ inputs.cli-url }}"
+          CLI=/tmp/ci_gate.py
+        elif [ -f "$GITHUB_WORKSPACE/ci_gate.py" ]; then
+          CLI="$GITHUB_WORKSPACE/ci_gate.py"
+        elif [ -f "$GITHUB_WORKSPACE/scripts/ci_gate.py" ]; then
+          CLI="$GITHUB_WORKSPACE/scripts/ci_gate.py"
+        else
+          echo "ci_gate.py not found: vendor it in the repo or set cli-url to a pinned raw URL" >&2
+          exit 2
+        fi
+        rc=0
+        {
+          echo "comment<<CRYPTOSCAN_EOF"
+          python3 "$CLI" --scan-id "${{ inputs.scan-id }}" \
+            --api "${{ inputs.api }}" --token "${{ inputs.token }}" \
+            --profile "${{ inputs.profile }}" --format pr-comment || rc=$?
+          echo "CRYPTOSCAN_EOF"
+        } >> "$GITHUB_OUTPUT"
+        exit $rc

@@ -1,0 +1,30 @@
+// CryptoScan CI gate in a Jenkins declarative pipeline.
+// The gate exits 1 on FAIL, so the stage fails and the build is blocked.
+pipeline {
+  agent any
+  parameters {
+    string(name: 'SCAN_ID', defaultValue: '', description: 'CryptoScan scan id')
+    choice(name: 'PROFILE', choices: ['standard', 'strict', 'lenient'], defaultValue: 'standard')
+  }
+  environment {
+    CRYPTOSCAN_API   = 'http://cryptoscan.internal:8000/api/v1'
+    CRYPTOSCAN_TOKEN = credentials('cryptoscan-token')
+  }
+  stages {
+    stage('cryptoscan gate') {
+      steps {
+        sh '''
+          python3 scripts/ci_gate.py \
+            --scan-id "$SCAN_ID" \
+            --api "$CRYPTOSCAN_API" --token "$CRYPTOSCAN_TOKEN" \
+            --profile "$PROFILE" \
+            --sarif cryptoscan.sarif.json
+        '''
+      }
+      post {
+        always { archiveArtifacts artifacts: 'cryptoscan.sarif.json', allowEmptyArchive: true }
+        failure { echo 'CryptoScan gate FAILED this build — weak or hardcoded crypto detected.' }
+      }
+    }
+  }
+}

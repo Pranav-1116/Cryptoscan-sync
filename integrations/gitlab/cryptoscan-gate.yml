@@ -1,0 +1,18 @@
+# CryptoScan CI gate as a GitLab CI job.
+# ci_gate.py is stdlib-only; fetch it from your pinned CryptoScan ref.
+cryptoscan:gate:
+  stage: test
+  variables:
+    CRYPTOSCAN_API: "http://cryptoscan.internal:8000/api/v1"
+    PROFILE: "standard"
+  script:
+    - >
+      python3 ci_gate.py --scan-id "$SCAN_ID"
+      --api "$CRYPTOSCAN_API" --token "$CRYPTOSCAN_TOKEN"
+      --profile "$PROFILE" --format pr-comment > gate-comment.md
+    - cat gate-comment.md
+  artifacts:
+    when: always
+    paths: [gate-comment.md]
+    reports:
+      sast: cryptoscan.sarif.json
