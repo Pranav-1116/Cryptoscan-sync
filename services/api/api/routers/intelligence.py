@@ -426,7 +426,7 @@ def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requ
         pack_hash = _policy_engine().pack_hash()
     except Exception:
         logger.debug("policy_pack_hash_unavailable", exc_info=True)
-    return render_json(
+    report = render_json(
         scan=scan_to_dict(scan),
         findings=findings,
         agility=compute_agility(findings),
@@ -436,6 +436,33 @@ def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requ
         selected_requirements=[r.strip() for r in (requirements or "").split(",") if r.strip()] or None,
         policy_pack_hash=pack_hash,
     )
+    report = _maybe_sign_report(report)
+    return report
+
+
+def _maybe_sign_report(report: dict) -> dict:
+    """Attach a real RS256 signature when REPORT_SIGNING_KEY is configured.
+
+    No key configured -> the report carries no signature (honest absence,
+    never an HMAC dressed up as a signature). Key configured but unusable ->
+    the failure is reported on the report itself, not swallowed.
+    """
+    settings = get_settings()
+    signing_key = (getattr(settings, "REPORT_SIGNING_KEY", "") or "").strip()
+    if not signing_key:
+        return report
+    try:
+        from reporting.signing import sign_report
+
+        return sign_report(
+            report,
+            signing_key,
+            key_id=(getattr(settings, "REPORT_SIGNING_KEY_ID", "") or "").strip() or None,
+        )
+    except Exception:
+        logger.warning("report_signing_failed", exc_info=True)
+        report["signature"] = {"alg": None, "error": "signing failed — see server logs"}
+        return report
 
 
 @router.get("/scans/{scan_id}/report")
@@ -456,6 +483,22 @@ def get_report(
         return _rendered_report(scan_id, scans, evidence, drift, template, requirements)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+class ReportVerifyBody(BaseModel):
+    report: dict
+    public_key: str  # PEM (public) — issuer-published key
+
+
+@router.post("/report/verify")
+def verify_report_signature(
+    body: ReportVerifyBody,
+    user: str = Depends(get_current_user),
+):
+    """Verify a report's PKI signature against the issuer's public key (offline-verifiable too)."""
+    from reporting.signing import verify_report
+
+    return verify_report(body.report, body.public_key)
 
 
 @router.get("/report-templates")

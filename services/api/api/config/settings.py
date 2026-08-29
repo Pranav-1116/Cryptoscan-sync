@@ -35,6 +35,12 @@ class APISettings(BaseSettings):
     DOCS_ENABLED: bool | None = None
 
     SECRET_KEY: str = "dev-cryptoscan-secret-key-change-in-production-32"
+
+    # PKI report signing (W55-56): optional path to an RSA private key (PEM).
+    # When set, /scans/{id}/report carries a real RS256 signature; when unset
+    # the signature stays null — we never downgrade to HMAC-and-call-it-signed.
+    REPORT_SIGNING_KEY: str = ""
+    REPORT_SIGNING_KEY_ID: str = ""
     SESSION_EXPIRE_HOURS: int = 24
     COOKIE_SECURE: bool | None = None
     ADMIN_USERNAME: str = "admin"

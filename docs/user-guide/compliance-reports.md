@@ -52,3 +52,37 @@ Each templated report contains:
 - **Scheduling**: quarterly/automated generation is an ops cron away —
   the endpoint is deterministic and side-effect free. See
   `docs/admin-guide/production.md` for the recommended scheduler pattern.
+
+## PKI signing (bring your own key)
+
+Set `REPORT_SIGNING_KEY` to a path holding an RSA private key (PEM), and
+optionally `REPORT_SIGNING_KEY_ID` (embedded as the JWS-style `kid`):
+
+```bash
+openssl genrsa -out /etc/cryptoscan/report-signing.pem 2048
+REPORT_SIGNING_KEY=/etc/cryptoscan/report-signing.pem \
+REPORT_SIGNING_KEY_ID=ciso-2026 ./scripts/run_api.sh
+```
+
+Every `GET /scans/{id}/report` then carries a **real RSASSA-PKCS1v15-SHA256
+signature** over the canonical JSON of the report body:
+
+```json
+"signature": {"alg": "RS256", "key_id": "ciso-2026", "value": "<base64url>", ...}
+```
+
+Verification needs **no CryptoScan code** — plain OpenSSL validates it:
+
+```bash
+python -m reporting.signing canonicalize report.json > body.json
+openssl base64 -d -A -in sig.b64 -out report.sig
+openssl dgst -sha256 -verify pub.pem -signature report.sig body.json
+```
+
+Or in-band: `POST /api/v1/report/verify` with `{report, public_key}`.
+
+When no key is configured the signature is simply absent — never an HMAC in
+disguise. The key can live in an HSM-backed file or be swapped via rotation
+(`key_id` tells verifiers which public key to use). Production deployments
+should use a key issued by their own PKI; generating one with `openssl` above
+is for pre-production.
