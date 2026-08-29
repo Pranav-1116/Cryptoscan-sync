@@ -48,6 +48,7 @@ from api.routers import (
     quantum,
     reachability,
     remediation,
+    report_schedules,
     repo_configs,
     runtime,
     scans,
@@ -188,6 +189,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)
+    app.include_router(report_schedules.router, prefix=prefix)
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)

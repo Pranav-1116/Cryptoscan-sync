@@ -86,3 +86,38 @@ disguise. The key can live in an HSM-backed file or be swapped via rotation
 (`key_id` tells verifiers which public key to use). Production deployments
 should use a key issued by their own PKI; generating one with `openssl` above
 is for pre-production.
+
+## Scheduled reports and immutable snapshots (items 7–8)
+
+Reports no longer exist only at request time:
+
+```bash
+# create a quarterly PCI report over the payments repo, mailed to auditors
+curl -s -X POST $API/api/v1/report-schedules -H "Authorization: Bearer $T" \
+  -H 'Content-Type: application/json' -d '{
+    "name": "Quarterly PCI report",
+    "template_id": "pci-dss-4.0",
+    "frequency": "quarterly",            # or "monthly"
+    "scan_target": "https://github.com/org/payments.git",
+    "recipients": ["auditor@corp.example.com"]}'
+
+# what cron calls — generates every due schedule now
+curl -s -X POST $API/api/v1/report-schedules/run-due -H "Authorization: Bearer $T"
+```
+
+Each run:
+
+1. picks the **latest completed scan** of `scan_target` (none yet → honest
+   `SKIPPED_NO_SCAN`, never a report over stale or missing data);
+2. renders the template exactly as `GET /scans/{id}/report` would — including
+   the tamper hash and the PKI signature when `REPORT_SIGNING_KEY` is set;
+3. stores an **immutable snapshot** (`report_snapshots`) — the audit artifact
+   stays byte-identical even as live findings change;
+4. emails it when `SMTP_HOST` is configured; otherwise records
+   `SKIPPED_NO_SMTP`. Every outcome is stored on the snapshot row.
+
+`GET /report-snapshots` lists; `GET /report-snapshots/{id}` returns the stored
+report with its snapshot metadata. Schedules reschedule +30/+91 days after
+each run; `PATCH /report-schedules/{id}` pauses, `DELETE` removes (snapshots
+survive, keeping the schedule name). Live SMTP delivery is proven by
+`scripts/burn_in.py --target smtp`, not by unit tests.
