@@ -15,6 +15,7 @@ from db.models.evidence_record import EvidenceRecord
 from db.models.gate_evaluation import GateEvaluation
 from db.models.migration_project import MigrationMilestone, MigrationProject, MigrationTask
 from db.models.report_snapshot import ReportSchedule, ReportSnapshot
+from db.models.monitor import MonitorEvent, MonitorTarget
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.network_scan_run import NetworkScanRun
 from db.models.repo_configuration import RepoConfiguration
@@ -58,6 +59,8 @@ __all__ = [
     "MigrationProject",
     "ReportSchedule",
     "ReportSnapshot",
+    "MonitorEvent",
+    "MonitorTarget",
     "MigrationTask",
     "NetworkScanRun",
     "NetworkScanTarget",

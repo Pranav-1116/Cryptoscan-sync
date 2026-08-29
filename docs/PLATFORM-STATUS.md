@@ -31,6 +31,15 @@ passing (`make test`, exit 0)**, 26 database migrations (0001–0026).
 | 57–58 | Hardening: MFA (RFC 6238 TOTP + recovery codes), lockout, RBAC, rate limiting, tamper-evident audit, security headers, prod config fail-closed | Partial (honest) | Migration 0022 (MFA), 0025 (audit chain); `RateLimitMiddleware`; `GET /auth/audit/{verify,export}` (WORM-ready JSONL); OIDC SSO verification (`POST /auth/oidc`, bring-your-own-IdP). RBAC ships 3 roles (admin/auditor/viewer), not the spec's 8. **Not claimed:** mTLS, WAF/DDoS, multi-AZ/DR, Prometheus/ELK/Jaeger, 7-year WORM storage — infrastructure, deployed by you (see `docs/admin-guide/hardening.md`) |
 | 59–60 | Performance & polish: measured scan benchmark, hot-path composite indexes, gzip, estate CSV export | Partial (honest) | `scripts/benchmark_scan.py` (10k files in 59.1 s vs 300 s budget, regression-caught history in `docs/admin-guide/performance.md`); migration 0026 indexes; `GET /export/findings.csv` with honest truncation headers. **Not claimed:** Redis caching, materialized views/partitioning, GraphQL, PWA/frontend polish, Lighthouse, uptime numbers |
 
+## Beyond the plan: live monitoring (24/7)
+
+Not in the original W37–60 plan — added later as `scripts/run_monitor.py`:
+watch-list daemon (network endpoints probed live every interval, cloud via
+`scan_live`, repos via the job pipeline, containers via image scan), failure
+backoff, alert-once semantics, BLOCKED-honesty for unscannable targets, event
+feed, `GET /monitor/status` + dashboard "Live monitor" view (5 s refresh).
+Migration 0028. See `docs/user-guide/live-monitoring.md`.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

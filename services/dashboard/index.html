@@ -102,6 +102,7 @@
       <div class="brand"><div class="logo"></div><div><h1>CryptoScan</h1><small>Estate CBOM</small></div></div>
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
+        <button data-route="monitor" onclick="go('monitor')">Live monitor</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
         <button data-route="new" onclick="go('new')">New scan</button>
         <button data-route="jobs" onclick="go('jobs')">Jobs</button>
@@ -206,9 +207,11 @@ function coverageBadge(v) {
 }
 
 async function render() {
+  if (window.__monitorPoll) { clearInterval(window.__monitorPoll); window.__monitorPoll = null; }
   const el = document.getElementById('main');
   el.innerHTML = '<p class="muted">Loading…</p>';
   try {
+    if (state.route === 'monitor') return renderMonitor(el);
     if (state.route === 'home') return renderHome(el);
     if (state.route === 'scans') return renderScans(el);
     if (state.route === 'scan') return renderScan(el);
@@ -420,6 +423,79 @@ function liveScanCard(job) {
       ${accounts ? `<table><thead><tr><th>Account</th><th>Verdict</th><th>Resources</th></tr></thead><tbody>${accounts}</tbody></table>` : ''}
       ${errs ? `<div class="label" style="margin-top:12px">Errors</div><table><tbody>${errs}</tbody></table>` : ''}
     </div>`;
+}
+
+const MONITOR_STATUS_BADGE = { OK: 'PASS', DEGRADED: 'WARN', FAILING: 'FAIL', BLOCKED: 'FAIL', PAUSED: 'INFO', PENDING: 'QUEUED' };
+
+async function renderMonitor(el) {
+  async function paint() {
+    const status = await api('/monitor/status');
+    const targets = (await api('/monitor/targets')).targets;
+    const o = status.overview;
+    const counts = Object.entries(o.by_status || {}).map(([k, v]) => badge(`${k} ${v}`)).join(' ');
+    el.innerHTML = `
+    <h2>Live monitor <span class="muted">(24/7)</span></h2>
+    <div class="card"><div class="label">Estate under watch</div>
+      <p><b>${o.targets_total}</b> targets (${o.enabled} enabled) — status: ${counts || '—'}</p>
+      <p class="muted">Daemon: ${escapeHtml(o.daemon)} · updated ${new Date().toLocaleTimeString()} (auto-refresh 5s)</p>
+    </div>
+    ${status.needs_attention.length ? `
+    <div class="card"><div class="label">Needs attention</div>
+      <table><thead><tr><th>Target</th><th>Status</th><th>Why</th></tr></thead><tbody>
+        ${status.needs_attention.map(t => `<tr><td>${escapeHtml(t.name)}</td><td>${badge(MONITOR_STATUS_BADGE[t.status] || 'INFO')}</td><td class="mono">${escapeHtml(t.last_error || (t.last_summary?.issues || []).join(', ') || '—')}</td></tr>`).join('')}
+      </tbody></table></div>` : ''}
+    <div class="card"><div class="label">Watch list</div>
+      <table><thead><tr><th>Name</th><th>Type</th><th>Interval</th><th>Status</th><th>Last scan</th><th>Next scan</th><th></th></tr></thead><tbody>
+      ${targets.map(t => `<tr>
+        <td>${escapeHtml(t.name)}</td><td>${escapeHtml(t.target_type)}</td><td>${Math.round(t.interval_seconds / 60)}m</td>
+        <td>${badge(MONITOR_STATUS_BADGE[t.status] || 'INFO')} ${t.enabled ? '' : '<span class="badge INFO">paused</span>'}</td>
+        <td>${t.last_scan_at ? new Date(t.last_scan_at).toLocaleString() : '—'}</td>
+        <td>${t.next_scan_at ? new Date(t.next_scan_at).toLocaleString() : '—'}</td>
+        <td>${t.enabled ? `<button class="btn secondary" onclick="monitorScanNow('${t.id}')">Scan now</button> <button class="btn secondary" onclick="monitorToggle('${t.id}', false)">Pause</button>` : `<button class="btn secondary" onclick="monitorToggle('${t.id}', true)">Resume</button>`} <button class="btn danger" onclick="monitorDelete('${t.id}')">Remove</button></td>
+      </tr>`).join('') || '<tr><td colspan="7" class="muted">Nothing watched yet — add an endpoint below.</td></tr>'}
+      </tbody></table></div>
+    <div class="card"><div class="label">Add a watch target</div>
+      <p><input id="mon-name" placeholder="name (e.g. Payments edge)" style="width:180px">
+         <select id="mon-type"><option>NETWORK</option><option>CLOUD</option><option>REPO</option><option>CONTAINER</option></select>
+         <input id="mon-endpoints" placeholder="endpoints, comma separated (host:port)" style="width:320px">
+         <select id="mon-interval"><option value="300">5 min</option><option value="900" selected>15 min</option><option value="3600">1 h</option><option value="86400">1 day</option></select>
+         <button class="btn" onclick="monitorAdd()">Watch</button></p>
+      <p class="muted">NETWORK probes TLS live (no credentials needed). CLOUD needs provider + account in config; REPO/CONTAINER run through the scan pipeline.</p>
+    </div>
+    <div class="card"><div class="label">Recent events</div>
+      <table><tbody>${status.recent_events.map(e => `<tr><td class="mono">${e.created_at ? new Date(e.created_at).toLocaleTimeString() : ''}</td><td>${badge(e.event_type === 'ALERT' ? 'HIGH' : e.event_type === 'SCAN_OK' ? 'PASS' : e.event_type === 'SCAN_DEGRADED' ? 'WARN' : 'INFO')}</td><td>${escapeHtml(e.target_name)}</td><td class="mono">${escapeHtml(e.detail || '')}</td></tr>`).join('') || '<tr><td class="muted">No events yet.</td></tr>'}</tbody></table>
+    </div>`;
+  }
+  await paint();
+  window.__monitorPoll = setInterval(async () => {
+    if (state.route !== 'monitor') { clearInterval(window.__monitorPoll); window.__monitorPoll = null; return; }
+    try { await paint(); } catch (e) { /* transient — next tick retries */ }
+  }, 5000);
+}
+
+async function monitorAdd() {
+  const name = document.getElementById('mon-name').value.trim();
+  const type = document.getElementById('mon-type').value;
+  const endpoints = document.getElementById('mon-endpoints').value.split(',').map(x => x.trim()).filter(Boolean);
+  const interval = parseInt(document.getElementById('mon-interval').value, 10);
+  const config = type === 'NETWORK' ? { endpoints } : {};
+  await api('/monitor/targets', { method: 'POST', body: JSON.stringify({ name, target_type: type, config, interval_seconds: interval }) });
+  go('monitor');
+}
+
+async function monitorScanNow(id) {
+  await api('/monitor/targets/' + id + '/scan-now', { method: 'POST' });
+  go('monitor');
+}
+
+async function monitorToggle(id, enabled) {
+  await api('/monitor/targets/' + id, { method: 'PATCH', body: JSON.stringify({ enabled }) });
+  go('monitor');
+}
+
+async function monitorDelete(id) {
+  await api('/monitor/targets/' + id, { method: 'DELETE' });
+  go('monitor');
 }
 
 async function renderJobs(el) {

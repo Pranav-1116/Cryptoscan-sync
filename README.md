@@ -29,6 +29,7 @@ The working loop is: scan source → evidence chain → SQLite/Postgres → norm
 | **Compliance reporting** — 6 templates, requirement-by-requirement from policy evidence, attestation + canonical SHA-256 hash (PKI honestly absent) | `GET /api/v1/scans/{id}/report[.html]`, `GET /api/v1/report-templates` |
 | **Rate limiting + tamper-evident audit** — login 5/min/IP, scans 100/min/user; audit hash chain with verify + WORM-ready export | `api/middleware/rate_limit.py`, `GET /api/v1/auth/audit/{verify,export}` |
 | **Platform status matrix** — every planned capability (W37–60) vs. what ships, gaps named honestly | [docs/PLATFORM-STATUS.md](docs/PLATFORM-STATUS.md) |
+| **Live monitoring (24/7)** — watch-list daemon re-scans network/cloud/repo/container targets on intervals; backoff, alert-once, BLOCKED-honesty; live status API + dashboard view | `scripts/run_monitor.py`, `GET /api/v1/monitor/status`, [guide](docs/user-guide/live-monitoring.md) |
 
 First boot bootstraps the `admin` user from `ADMIN_USERNAME`/`ADMIN_PASSWORD[_HASH]`; afterwards manage accounts through the API. Production startup fails closed on demo secrets, plaintext admin passwords, SQLite, and wildcard CORS.
 

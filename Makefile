@@ -35,6 +35,12 @@ test:
 		$(PY) -m pytest -q $$d || exit 1; \
 	done
 
+monitor:
+	$(PY) $(ROOT)/scripts/run_monitor.py
+
+monitor-once:
+	$(PY) $(ROOT)/scripts/run_monitor.py --once
+
 scan:
 	$(PY) $(ROOT)/scripts/trigger_scan.py "$(REPO)" --inline
 
