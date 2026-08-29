@@ -30,6 +30,7 @@ class User:
     user_id: str
     username: str
     roles: list[str]
+    mfa_enabled: bool = False
 
 
 _FAILURES: dict[str, list[float]] = defaultdict(list)
@@ -152,7 +153,12 @@ class AuthService:
         repo.reset_failures(candidate)
         repo.audit(candidate, "auth.login", ip=client_key)
         self.session.commit()
-        return User(user_id=user.id, username=user.username, roles=user.role_list)
+        return User(
+            user_id=user.id,
+            username=user.username,
+            roles=user.role_list,
+            mfa_enabled=bool(user.mfa_enabled),
+        )
 
     # -- Legacy env path (no DB) --------------------------------------------
 

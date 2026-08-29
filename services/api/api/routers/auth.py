@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -10,9 +11,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.config.settings import get_settings
-from api.dependencies import get_db_session, require_admin
+from api.dependencies import get_current_user, get_db_session, require_admin
+from api.security import totp
 from api.security.auth import AuthService, AuthenticationError
-from api.security.passwords import hash_password
+from api.security.passwords import hash_password, verify_password
 from api.security.session_manager import SessionManager
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -29,6 +31,24 @@ class LoginResponse(BaseModel):
     roles: list[str] = Field(default_factory=list)
     token: str
     session_expires_at: datetime
+    # MFA second factor: when mfa_required is true no session was issued;
+    # exchange mfa_token + a TOTP/recovery code at /auth/login/mfa
+    mfa_required: bool = False
+    mfa_token: str | None = None
+
+
+class MfaLoginRequest(BaseModel):
+    mfa_token: str = Field(..., min_length=10)
+    code: str = Field(..., min_length=4, max_length=16)
+
+
+class MfaEnableRequest(BaseModel):
+    code: str = Field(..., min_length=4, max_length=12)
+
+
+class MfaDisableRequest(BaseModel):
+    password: str = Field(..., min_length=1)
+    code: str = Field(..., min_length=4, max_length=16)
 
 
 class UserCreateRequest(BaseModel):
@@ -116,6 +136,30 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         except AuthenticationError as exc2:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc2.message) from exc2
 
+    # Second factor gate: password alone must never mint a session for
+    # an MFA-enabled account. The challenge token is purpose-scoped and
+    # expires in 5 minutes.
+    if getattr(user, "mfa_enabled", False):
+        manager = SessionManager()
+        mfa_token = manager.create_mfa_challenge(user.username)
+        try:
+            _user_repo(db).audit(user.username, "auth.mfa_challenge_issued", ip=client)
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        return LoginResponse(
+            message="MFA code required",
+            username=user.username,
+            roles=roles,
+            token="",
+            session_expires_at=datetime.now(timezone.utc) + timedelta(seconds=300),
+            mfa_required=True,
+            mfa_token=mfa_token,
+        )
+
     manager = SessionManager()
     token = manager.create_session(user.username, roles=roles)
     max_age = int(settings.SESSION_EXPIRE_HOURS * 3600)
@@ -184,13 +228,196 @@ def me(request: Request, db: Session = Depends(get_db_session)) -> dict:
     except Exception:  # pragma: no cover - store unavailable
         pass
     roles = session.roles
+    user = None
     try:
         user = _user_repo(db).get_by_username(session.username)
         if user is not None:
             roles = user.role_list
     except Exception:  # pragma: no cover
         pass
-    return {"username": session.username, "roles": roles}
+    mfa_enabled = bool(user.mfa_enabled) if user is not None else False
+    return {"username": session.username, "roles": roles, "mfa_enabled": mfa_enabled}
+
+# ------------------------------------------------------------------ mfa (totp)
+
+def _recovery_hash(code: str) -> str:
+    """Recovery codes are random high-entropy strings — SHA-256 lookup hash."""
+    return hashlib.sha256(code.strip().upper().encode("utf-8")).hexdigest()
+
+
+def _issue_session(response: Response, username: str, roles: list[str], client: str, db: Session) -> LoginResponse:
+    """Shared tail of login and login/mfa: token + DB session row + cookie."""
+    settings = get_settings()
+    manager = SessionManager()
+    token = manager.create_session(username, roles=roles)
+    max_age = int(settings.SESSION_EXPIRE_HOURS * 3600)
+    expires = datetime.now(timezone.utc) + timedelta(seconds=max_age)
+    try:
+        _user_repo(db).create_session(token, username, expires, ip=client)
+        db.commit()
+    except Exception:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+    response.set_cookie(
+        key="cryptoscan_session",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.cookie_secure,
+        max_age=max_age,
+        path="/",
+    )
+    return LoginResponse(
+        message="Login successful",
+        username=username,
+        roles=roles,
+        token=token,
+        session_expires_at=expires,
+    )
+
+
+@router.post("/login/mfa", response_model=LoginResponse)
+def login_mfa(
+    body: MfaLoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db_session),
+) -> LoginResponse:
+    """Second factor: exchange the short-lived challenge + TOTP/recovery code."""
+    client = request.client.host if request.client else ""
+    username = SessionManager().validate_mfa_challenge(body.mfa_token)
+    if not username:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="MFA challenge invalid or expired")
+
+    repo = _user_repo(db)
+    row = repo.get_by_username(username)
+    if row is None or not row.is_active or not row.mfa_enabled or not row.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="MFA not active for this account")
+
+    locked_until = row.locked_until
+    if locked_until is not None and locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    if locked_until is not None and locked_until > datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Account temporarily locked. Try again later.")
+
+    used_recovery = False
+    if totp.verify(row.mfa_secret, body.code):
+        ok = True
+    else:
+        ok = repo.consume_recovery_code(row.id, _recovery_hash(body.code))
+        used_recovery = ok
+
+    if not ok:
+        repo.record_failure(
+            username,
+            max_failures=get_settings().LOGIN_MAX_FAILURES,
+            lockout_seconds=get_settings().LOGIN_LOCKOUT_SECONDS,
+        )
+        repo.audit(username, "auth.login_mfa", outcome="FAILURE", ip=client, detail="bad TOTP/recovery code")
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
+
+    repo.reset_failures(username)
+    repo.audit(username, "auth.login_mfa", ip=client, detail="recovery code" if used_recovery else "totp")
+    db.commit()
+    return _issue_session(response, username, row.role_list, client, db)
+
+
+@router.post("/mfa/enroll")
+def mfa_enroll(
+    request: Request,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Start TOTP enrollment: returns the secret + otpauth:// URI (unconfirmed)."""
+    client = request.client.host if request.client else ""
+    repo = _user_repo(db)
+    row = repo.get_by_username(user)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="MFA requires a database-backed account")
+    if row.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="MFA is already enabled for this account")
+
+    secret = totp.generate_secret()
+    repo.set_mfa_secret(user, secret, enabled=False)  # pending until a code proves possession
+    repo.audit(user, "auth.mfa_enroll", ip=client)
+    db.commit()
+    return {
+        "secret": secret,
+        "otpauth_uri": totp.provisioning_uri(secret, user),
+        "digits": totp.DEFAULT_DIGITS,
+        "period": totp.DEFAULT_PERIOD,
+        "issuer": "CryptoScan",
+        "next": "Confirm with POST /auth/mfa/enable {code}",
+    }
+
+
+@router.post("/mfa/enable")
+def mfa_enable(
+    body: MfaEnableRequest,
+    request: Request,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Activate MFA by proving the authenticator works; issues recovery codes once."""
+    client = request.client.host if request.client else ""
+    repo = _user_repo(db)
+    row = repo.get_by_username(user)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="MFA requires a database-backed account")
+    if row.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="MFA is already enabled for this account")
+    if not row.mfa_secret:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enroll first (POST /auth/mfa/enroll)")
+
+    if not totp.verify(row.mfa_secret, body.code):
+        repo.audit(user, "auth.mfa_enable", outcome="FAILURE", ip=client, detail="bad confirmation code")
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid code — enrollment not activated")
+
+    repo.set_mfa_secret(user, row.mfa_secret, enabled=True)
+    codes = totp.generate_recovery_codes()
+    repo.set_recovery_codes(row.id, [_recovery_hash(code) for code in codes])  # hashes only
+    repo.audit(user, "auth.mfa_enable", ip=client)
+    db.commit()
+    return {"enabled": True, "recovery_codes": codes, "warning": "Recovery codes are shown once — store them now"}
+
+
+@router.post("/mfa/disable")
+def mfa_disable(
+    body: MfaDisableRequest,
+    request: Request,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Disable MFA: requires the password AND a valid code, then kills all sessions."""
+    client = request.client.host if request.client else ""
+    repo = _user_repo(db)
+    row = repo.get_by_username(user)
+    if row is None or not row.mfa_enabled:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="MFA is not enabled for this account")
+
+    if not verify_password(body.password, row.password_hash):
+        repo.audit(user, "auth.mfa_disable", outcome="FAILURE", ip=client, detail="bad password")
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
+
+    code_ok = (row.mfa_secret and totp.verify(row.mfa_secret, body.code)) or repo.consume_recovery_code(
+        row.id, _recovery_hash(body.code)
+    )
+    if not code_ok:
+        repo.audit(user, "auth.mfa_disable", outcome="FAILURE", ip=client, detail="bad code")
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA code")
+
+    repo.set_mfa_secret(user, None, enabled=False)
+    repo.set_recovery_codes(row.id, [])
+    repo.revoke_all_sessions(user)
+    repo.audit(user, "auth.mfa_disable", ip=client)
+    db.commit()
+    return {"disabled": True, "sessions_revoked": True}
 
 
 # ------------------------------------------------------------------ user management

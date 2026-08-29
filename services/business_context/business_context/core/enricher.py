@@ -33,21 +33,33 @@ def enrich_assets(
         sid = str(system.get("id") or "")
         for asset_id in system.get("asset_ids") or []:
             by_system[str(asset_id)] = sid
+
+    # business_impact is a function of the system alone — compute it once
+    # per system, not once per asset. A full-graph BFS per asset made this
+    # stage O(assets x graph) on every scan (measured: 170s with ~10.5k
+    # historical assets and 50 new ones).
+    no_impact = {
+        "total_revenue_at_risk": 0,
+        "total_customers_at_risk": 0,
+        "affected_processes": [],
+        "business_owners": [],
+        "compliance_scopes": [],
+    }
+    impact_cache: dict[str, dict] = {}
+
+    def _impact_for(system_id, asset_id):
+        if not system_id:
+            return no_impact
+        key = str(system_id)
+        if key not in impact_cache:
+            impact_cache[key] = graph.business_impact(key or str(asset_id))
+        return impact_cache[key]
+
     enriched = []
     for asset in assets:
         payload = dict(asset)
         system_id = payload.get("system_id") or by_system.get(str(payload.get("id") or ""))
-        impact = (
-            graph.business_impact(system_id or payload.get("id") or "")
-            if system_id
-            else {
-                "total_revenue_at_risk": 0,
-                "total_customers_at_risk": 0,
-                "affected_processes": [],
-                "business_owners": [],
-                "compliance_scopes": [],
-            }
-        )
+        impact = _impact_for(system_id, payload.get("id"))
         related_processes = [
             proc
             for proc in processes

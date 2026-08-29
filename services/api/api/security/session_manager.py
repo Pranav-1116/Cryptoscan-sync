@@ -26,16 +26,45 @@ class SessionManager:
             "created_at": now,
             "expires_at": now + self.ttl,
         }
+        return self._sign(payload)
+
+    def create_mfa_challenge(self, username: str, ttl_seconds: int = 300) -> str:
+        """Short-lived proof that the password step passed for this user.
+
+        Carries purpose="mfa_challenge" — validate_session() rejects it,
+        so a challenge token can never be used as a session token.
+        """
+        now = time.time()
+        return self._sign({
+            "username": username,
+            "purpose": "mfa_challenge",
+            "created_at": now,
+            "expires_at": now + ttl_seconds,
+        })
+
+    def validate_mfa_challenge(self, token: str) -> Optional[str]:
+        data = self._decode(token)
+        if data and data.get("purpose") == "mfa_challenge":
+            return data["username"]
+        return None
+
+    def _sign(self, payload: dict) -> str:
         raw = urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
         sig = hmac.new(self.secret, raw.encode(), hashlib.sha256).hexdigest()
         return f"{raw}.{sig}"
 
     def validate_session(self, token: str) -> Optional[str]:
         data = self._decode(token)
-        return data["username"] if data else None
+        # only purpose-less payloads are sessions; mfa challenges are not
+        if data and data.get("purpose") is None:
+            return data["username"]
+        return None
 
     def get_session(self, token: str):
-        return _SessionView(self._decode(token)) if self._decode(token) else None
+        data = self._decode(token)
+        if data and data.get("purpose") is None:
+            return _SessionView(data)
+        return None
 
     def validate_api_token(self, token: str) -> Optional[str]:
         return self.validate_session(token)

@@ -62,10 +62,26 @@ class AssetRepository(BaseRepository[CryptoAsset]):
         return hits
 
     def replace_for_scan(self, scan_id: str, assets: list[dict]) -> list[CryptoAsset]:
-        existing = list(self.session.execute(select(CryptoAsset)).scalars())
+        """Persist this scan's deduplicated assets, keyed by identity.
+
+        Assets live across scans (a re-scan refreshes matching rows; other
+        scans' rows are kept). Only rows whose file_path occurs in this
+        batch are loaded — the previous full-table load made every scan
+        slower as asset history grew (10k accumulated rows added ~50s to a
+        50-file scan).
+        """
+        paths = {str(item.get("file_path") or "") for item in assets}
+        stmt = select(CryptoAsset)
+        if paths:
+            conditions = [CryptoAsset.file_path.in_(sorted(paths))]
+            if "" in paths:  # NULL paths keyed to "" in the identity tuple
+                conditions.append(CryptoAsset.file_path.is_(None))
+            stmt = stmt.where(or_(*conditions))
+        existing = list(self.session.execute(stmt).scalars())
         # Keep assets from other scans; we key by identity and refresh
         by_key = {(a.algorithm, a.purpose or "", a.file_path, a.line_number): a for a in existing}
         stored: list[CryptoAsset] = []
+        pending_links: list[tuple[CryptoAsset, list]] = []
         for item in assets:
             key = (
                 item["algorithm"],
@@ -96,7 +112,6 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                     },
                 )
                 self.session.add(row)
-                self.session.flush()
             else:
                 row.confidence = item.get("confidence") or row.confidence
                 row.occurrence_count = int(item.get("occurrence_count") or row.occurrence_count)
@@ -107,15 +122,25 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                 if item.get("dedup_key"):
                     extra["dedup_key"] = item.get("dedup_key")
                 row.extra = extra
-            for evidence_id in item.get("evidence_ids") or []:
-                exists = self.session.execute(
-                    select(CryptoAssetEvidence).where(
-                        CryptoAssetEvidence.asset_id == row.id,
-                        CryptoAssetEvidence.evidence_id == evidence_id,
-                    )
-                ).scalar_one_or_none()
-                if exists is None:
-                    self.session.add(CryptoAssetEvidence(asset_id=row.id, evidence_id=evidence_id))
+            pending_links.append((row, list(item.get("evidence_ids") or [])))
             stored.append(row)
+        self.session.flush()  # single flush assigns ids for the new rows
+
+        # one bulk query instead of one SELECT per (asset, evidence) pair
+        asset_ids = [row.id for row, _ in pending_links]
+        wanted = {(row.id, eid) for _, eids in pending_links for eid in eids}
+        existing_pairs: set[tuple] = set()
+        if asset_ids and wanted:
+            rows = self.session.execute(
+                select(CryptoAssetEvidence.asset_id, CryptoAssetEvidence.evidence_id).where(
+                    CryptoAssetEvidence.asset_id.in_(asset_ids),
+                    CryptoAssetEvidence.evidence_id.in_([eid for _, eids in pending_links for eid in eids]),
+                )
+            ).all()
+            existing_pairs = {(a, e) for a, e in rows}
+        for row, eids in pending_links:
+            for evidence_id in eids:
+                if (row.id, evidence_id) not in existing_pairs:
+                    self.session.add(CryptoAssetEvidence(asset_id=row.id, evidence_id=evidence_id))
         self.session.flush()
         return stored

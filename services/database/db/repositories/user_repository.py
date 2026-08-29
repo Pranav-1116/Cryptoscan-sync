@@ -153,6 +153,55 @@ class UserRepository:
 
     # ------------------------------------------------------------------ audit
 
+
+
+    # ---------------------------------------------------------------- mfa
+
+    def set_mfa_secret(self, username: str, secret_b32: str | None, *, enabled: bool) -> User | None:
+        user = self.get_by_username(username)
+        if user is None:
+            return None
+        user.mfa_secret = secret_b32
+        user.mfa_enabled = bool(enabled and secret_b32)
+        self.session.flush()
+        return user
+
+    def set_recovery_codes(self, user_id: str, code_hashes: list[str]) -> None:
+        from datetime import datetime, timezone
+
+        from db.models.user import MfaRecoveryCode
+
+        self.session.query(MfaRecoveryCode).filter(MfaRecoveryCode.user_id == user_id).delete()
+        now = datetime.now(timezone.utc)
+        from uuid import uuid4
+
+        for code_hash in code_hashes:
+            self.session.add(
+                MfaRecoveryCode(id=str(uuid4()), user_id=user_id, code_hash=code_hash, created_at=now)
+            )
+        self.session.flush()
+
+    def consume_recovery_code(self, user_id: str, code_hash: str) -> bool:
+        """Mark a code used exactly once; False if unknown or already spent."""
+        from datetime import datetime, timezone
+
+        from db.models.user import MfaRecoveryCode
+
+        row = (
+            self.session.query(MfaRecoveryCode)
+            .filter(
+                MfaRecoveryCode.user_id == user_id,
+                MfaRecoveryCode.code_hash == code_hash,
+                MfaRecoveryCode.used_at.is_(None),
+            )
+            .one_or_none()
+        )
+        if row is None:
+            return False
+        row.used_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return True
+
     def audit(
         self,
         actor: str,

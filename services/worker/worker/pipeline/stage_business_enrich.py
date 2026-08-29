@@ -29,8 +29,16 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
             owners=payload.get("owners") or [],
         )
         updated = 0
+        ids = [item.get("id") for item in ranked if item.get("id")]
+        rows_by_id = {}
+        for start in range(0, len(ids), 500):  # bulk fetch, not one PK query per asset
+            chunk = ids[start : start + 500]
+            from sqlalchemy import select
+
+            for row in session.execute(select(CryptoAsset).where(CryptoAsset.id.in_(chunk))).scalars():
+                rows_by_id[str(row.id)] = row
         for item in ranked:
-            row = session.get(CryptoAsset, item.get("id"))
+            row = rows_by_id.get(str(item.get("id")))
             if row is None:
                 continue
             extra = dict(row.extra or {})
