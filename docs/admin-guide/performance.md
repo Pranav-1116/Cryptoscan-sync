@@ -55,3 +55,38 @@ one machine class.
   either show up here directly.
 - The benchmark writes a real scan into the configured database; run it
   against a scratch database (`DATABASE_URL`) or delete the scan after.
+
+## Query indexes (W59-60)
+
+Five composite indexes cover the measured hot queries (declared on the models for
+fresh databases, mirrored in migration `0026` for existing deployments):
+
+| Index | Hot query |
+|---|---|
+| `evidence_records (scan_id, chain_position)` | per-scan evidence listing, chain verification |
+| `evidence_records (scan_id, compliance_status)` | failing findings per scan — remediation suggestions, migration auto-tasks, gate evidence |
+| `crypto_assets (algorithm, file_path)` | asset listing filter + ordering |
+| `systems (current_agility_score)` | agility ranking dashboards |
+| `migration_tasks (project_id, status)` | migration progress/status derivation |
+
+PostgreSQL-only tuning from the original spec that we do **not** claim here:
+partitioning (pg_partman), PgBouncer pooling, JSONB GIN indexes, and
+materialized views — those are deployment-layer choices, verified in
+`docs/admin-guide/air-gap-install.md` territory, not code this repo ships.
+
+## Response compression (W59-60)
+
+`GZipMiddleware` (minimum 1024 bytes) wraps the API. Bulk JSON (asset lists,
+template catalogs, reports) compresses ~5–10× in practice; clients that send
+`Accept-Encoding: identity` always receive plain bytes. Note: the logging /
+request-ID middleware chain re-streams responses, which removes
+`Content-Length` — in that topology every accepted-encoding response is
+compressed regardless of the 1024-byte floor.
+
+## Estate findings export (W59-60)
+
+`GET /api/v1/export/findings.csv?algorithm=&compliance_status=&scan_id=&limit=`
+— Excel-compatible CSV over all scans (honest scope: CSV, not `.xlsx`).
+Rows are capped (`limit` ≤ 50,000) so one request cannot exhaust memory;
+`X-Total-Matching`, `X-Exported-Rows`, and `X-Truncated` report the whole
+truth on every response.

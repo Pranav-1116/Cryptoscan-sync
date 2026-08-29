@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import Boolean, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -12,6 +12,9 @@ from db.models.base import BaseModel
 
 class CryptoAsset(BaseModel):
     __tablename__ = "crypto_assets"
+    __table_args__ = (
+        Index("ix_assets_algorithm_file", "algorithm", "file_path"),
+    )
 
     algorithm: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
     purpose: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, index=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -12,6 +12,10 @@ from db.models.base import BaseModel
 
 class EvidenceRecord(BaseModel):
     __tablename__ = "evidence_records"
+    __table_args__ = (
+        Index("ix_evidence_scan_chain", "scan_id", "chain_position"),
+        Index("ix_evidence_scan_status", "scan_id", "compliance_status"),
+    )
 
     scan_id: Mapped[str] = mapped_column(
         String(36), ForeignKey("scans.id", ondelete="CASCADE"), nullable=False, index=True

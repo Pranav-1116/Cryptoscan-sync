@@ -203,3 +203,75 @@ def verify_scan(
         "verified_by": user,
         "content_hasher": ContentHasher.ALGORITHM,
     }
+
+
+@router.get("/export/findings.csv")
+def export_findings_csv(
+    algorithm: str | None = None,
+    compliance_status: str | None = None,
+    scan_id: str | None = None,
+    limit: int = 10000,
+    user: str = Depends(get_current_user),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+):
+    """Estate-wide findings export (W59-60): Excel-compatible CSV over all scans.
+
+    Honest scope: CSV (not .xlsx) — it opens directly in Excel/LibreOffice and
+    stays diffable in git. Rows are capped (default 10k, max 50k) so a single
+    request cannot exhaust memory; the response reports truncation.
+    """
+    limit = max(1, min(limit, 50_000))
+    page_size = 1000
+    rows: list = []
+    page = 1
+    total = 0
+    while len(rows) < limit:
+        chunk, total = evidence.list_all(
+            algorithm=algorithm,
+            compliance_status=compliance_status,
+            scan_id=scan_id,
+            page=page,
+            page_size=page_size,
+        )
+        if not chunk:
+            break
+        rows.extend(chunk)
+        if page * page_size >= total:
+            break
+        page += 1
+    rows = rows[:limit]
+    truncated = total > len(rows)
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(
+        [
+            "evidence_id", "scan_id", "algorithm", "purpose", "mode", "key_size",
+            "file_path", "line_number", "compliance_status", "is_hardcoded_key",
+            "confidence", "created_at",
+        ]
+    )
+    for r in rows:
+        writer.writerow(
+            [
+                r.id, r.scan_id, r.algorithm, r.purpose or "", r.mode or "",
+                r.key_size if r.key_size is not None else "",
+                r.file_path or "", r.line_number or 0,
+                r.compliance_status or "", bool(r.is_hardcoded_key),
+                r.confidence or "",
+                r.created_at.isoformat() if r.created_at else "",
+            ]
+        )
+    from urllib.parse import quote
+
+    filename = quote("cryptoscan-findings.csv")
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Total-Matching": str(total),
+            "X-Exported-Rows": str(len(rows)),
+            "X-Truncated": "true" if truncated else "false",
+        },
+    )

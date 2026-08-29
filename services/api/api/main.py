@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.config.settings import APISettings, get_settings, validate_runtime_settings
+from fastapi.middleware.gzip import GZipMiddleware
 from api.middleware.auth_middleware import AuthMiddleware
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.logging_middleware import LoggingMiddleware
@@ -122,6 +123,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     if settings.trusted_host_list and settings.trusted_host_list != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
     app.add_middleware(LoggingMiddleware)
+    app.add_middleware(GZipMiddleware, minimum_size=1024)  # W59-60: compress bulky JSON payloads
     app.add_middleware(RequestIDMiddleware)
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         app.add_middleware(AuthMiddleware, settings=settings)

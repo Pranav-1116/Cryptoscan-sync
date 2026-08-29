@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text
+from sqlalchemy import DateTime, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
@@ -13,6 +13,9 @@ from db.models.base import BaseModel
 
 class System(BaseModel):
     __tablename__ = "systems"
+    __table_args__ = (
+        Index("ix_systems_agility_score", "current_agility_score"),
+    )
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

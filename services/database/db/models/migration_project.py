@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, Float, JSON, String, Text
+from sqlalchemy import DateTime, Float, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -29,6 +29,10 @@ class MigrationTask(BaseModel):
     """One concrete migration unit inside a project (asset/site to move)."""
 
     __tablename__ = "migration_tasks"
+
+    __table_args__ = (
+        Index("ix_migration_tasks_project_status", "project_id", "status"),
+    )
 
     project_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     system_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
