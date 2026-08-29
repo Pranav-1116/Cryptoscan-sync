@@ -19,6 +19,13 @@ from db.models.scan import Scan
 
 
 def _make_app():
+    import os
+
+    os.environ.setdefault("ENVIRONMENT", "test")
+    os.environ.setdefault("SECRET_KEY", "test-secret-key-for-sessions-min-32-chars")
+    from api.config.settings import get_settings
+
+    get_settings.cache_clear()
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()

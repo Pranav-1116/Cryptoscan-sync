@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from datetime import datetime
+
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
 from db.repositories.intelligence_repository import IntelligenceRepository
+from db.models.migration_project import MigrationProject
 
 router = APIRouter(tags=["business"])
 
@@ -275,3 +278,216 @@ def update_migration(
     if row is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
     return row.to_dict()
+
+
+# --------------------------------------------------- migration tracking (W53-54)
+
+
+class MigrationTaskCreate(BaseModel):
+    title: str
+    system_id: str | None = None
+    asset_id: str | None = None
+    evidence_id: str | None = None
+    algorithm_from: str | None = None
+    algorithm_to: str | None = None
+    priority: str = "P2"
+    effort: str | None = None
+    owner: str | None = None
+    external_ref: str | None = None
+    due_date: datetime | None = None
+
+
+class MigrationTaskPatch(BaseModel):
+    title: str | None = None
+    status: str | None = None
+    owner: str | None = None
+    blocked_reason: str | None = None
+    external_ref: str | None = None
+    due_date: datetime | None = None
+
+
+class AutoProjectRequest(BaseModel):
+    scan_id: str
+    name: str | None = None
+    owner: str | None = None
+    system_id: str | None = None
+
+
+class MilestoneCreate(BaseModel):
+    name: str
+    target_date: datetime | None = None
+    notes: str | None = None
+
+
+class ExternalSyncRequest(BaseModel):
+    updates: list[dict]
+
+
+def _task_repo(db: Session):
+    from db.repositories.migration_task_repository import MigrationTaskRepository
+
+    return MigrationTaskRepository(db)
+
+
+def _value_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    if "not found" in message:
+        return HTTPException(status_code=404, detail=message)
+    return HTTPException(status_code=400, detail=message)
+
+
+@router.post("/migrations/{project_id}/tasks")
+def add_migration_task(project_id: str, body: MigrationTaskCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    try:
+        row = _task_repo(db).add_task(project_id, source="MANUAL", **body.model_dump())
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    return row.to_dict()
+
+
+@router.get("/migrations/{project_id}/tasks")
+def list_migration_tasks(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    return {"tasks": [row.to_dict() for row in _task_repo(db).list_tasks(project_id)]}
+
+
+@router.patch("/migrations/tasks/{task_id}")
+def update_migration_task(task_id: str, body: MigrationTaskPatch, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    try:
+        row = _task_repo(db).update_task(task_id, **body.model_dump())
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    if row is None:
+        raise HTTPException(status_code=404, detail="Migration task not found")
+    return row.to_dict()
+
+
+@router.post("/migrations/from-scan")
+def create_migration_from_scan(body: AutoProjectRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Auto-create a migration project + tasks from a scan's remediation advice.
+
+    Tasks come from the deterministic remediation engine over the scan's
+    FAIL/WARN findings — one task per suggestion, P0–P3 ordered.
+    """
+    from db.repositories.evidence_repository import EvidenceRepository
+    from db.repositories.scan_repository import ScanRepository
+    from remediation.engine import suggest_remediations
+
+    scan = ScanRepository(db).get_by_id(body.scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    findings = [
+        {
+            "evidence_id": row.id,
+            "algorithm": row.algorithm,
+            "purpose": row.purpose,
+            "mode": row.mode,
+            "key_size": row.key_size,
+            "file_path": row.file_path,
+            "line_number": row.line_number,
+            "compliance_status": row.compliance_status,
+            "is_hardcoded_key": row.is_hardcoded_key,
+        }
+        for row in EvidenceRepository(db).get_all_for_scan(body.scan_id)
+    ]
+    suggestions = suggest_remediations(findings)
+    project = IntelligenceRepository(db).create_migration(
+        name=body.name or f"PQC migration — {scan.target_location}",
+        system_id=body.system_id,
+        status="PLANNED",
+        owner=body.owner or user,
+        notes=f"auto-generated from scan {body.scan_id}",
+    )
+    repo = _task_repo(db)
+    for suggestion in suggestions["suggestions"]:
+        location = f"{suggestion.get('file_path') or '?'}"
+        if suggestion.get("line_number"):
+            location += f":{suggestion['line_number']}"
+        repo.add_task(
+            project.id,
+            source="AUTO",
+            system_id=body.system_id,
+            evidence_id=str(suggestion.get("evidence_id") or "") or None,
+            title=f"[{suggestion['priority']}] Replace {suggestion.get('algorithm') or 'crypto'} at {location} with {suggestion['replace_with']}",
+            algorithm_from=suggestion.get("algorithm"),
+            algorithm_to=suggestion.get("replace_with"),
+            priority=suggestion["priority"],
+            effort=suggestion.get("effort"),
+            owner=body.owner or user,
+        )
+    return {
+        "project": project.to_dict(),
+        "tasks_created": suggestions["count"],
+        "by_priority": suggestions["by_priority"],
+    }
+
+
+@router.get("/migrations/{project_id}/progress")
+def migration_progress(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    if db.get(MigrationProject, project_id) is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    return _task_repo(db).progress(project_id)
+
+
+@router.get("/migrations/{project_id}/forecast")
+def migration_forecast(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    if db.get(MigrationProject, project_id) is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    return _task_repo(db).forecast(project_id)
+
+
+@router.post("/migrations/{project_id}/milestones")
+def add_milestone(project_id: str, body: MilestoneCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    try:
+        row = _task_repo(db).add_milestone(project_id, body.name, body.target_date, body.notes)
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    return row.to_dict()
+
+
+@router.get("/migrations/{project_id}/milestones")
+def list_milestones(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    return {"milestones": [row.to_dict() for row in _task_repo(db).list_milestones(project_id)]}
+
+
+@router.get("/migrations/{project_id}/export/github-issues")
+def export_github_issues(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Bulk-importable issue bodies — the honest sync boundary.
+
+    Without live GitHub/JIRA credentials this exports exactly what the
+    external tracker needs (title, body, labels); use /sync to push
+    status changes back.
+    """
+    repo = _task_repo(db)
+    project = db.get(MigrationProject, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    issues = []
+    for task in repo.list_tasks(project_id):
+        if task.status in {"DONE", "SKIPPED"}:
+            continue
+        lines = [
+            f"Replace **{task.algorithm_from or 'crypto'}** with **{task.algorithm_to or 'a modern algorithm'}**.",
+            "",
+            f"- Priority: {task.priority}",
+            f"- Effort: {task.effort or 'unknown'}",
+            f"- Status: {task.status}",
+        ]
+        if task.blocked_reason:
+            lines.append(f"- Blocked: {task.blocked_reason}")
+        lines += ["", "_Generated deterministically by CryptoScan migration tracking._"]
+        issues.append(
+            {
+                "title": task.title,
+                "body": "\n".join(lines),
+                "labels": [f"cryptoscan", f"priority-{task.priority}", f"migration-{project_id[:8]}"],
+                "external_id_hint": task.id,
+            }
+        )
+    return {"project": project.to_dict(), "issue_count": len(issues), "issues": issues}
+
+
+@router.post("/migrations/{project_id}/sync")
+def sync_migration(project_id: str, body: ExternalSyncRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    if db.get(MigrationProject, project_id) is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    return _task_repo(db).sync_external(project_id, body.updates)
