@@ -24,6 +24,11 @@ The working loop is: scan source → evidence chain → SQLite/Postgres → norm
 | **Backup/restore** — SHA-256 manifests, online SQLite snapshot, Postgres dump, chain re-verification on the backup | `scripts/backup_evidence.py`, `scripts/restore_evidence.py`, [runbook](docs/admin-guide/backup-restore.md) |
 | **Metrics** — Prometheus `/metrics` (scans, findings by status, open drift, queued jobs) + Grafana dashboard | `api/routers/metrics.py`, `infra/monitoring/` |
 | **Kubernetes** — API + worker manifests (probes, resources, non-root, secrets) | `k8s/app/`, [k8s/README.md](k8s/README.md) |
+| **CI/CD policy gates** — standard/strict/lenient profiles, GitHub/Jenkins/GitLab/ArgoCD snippets, `ci_gate.py` CLI (exit 1 blocks) | `services/drift/drift/core/gate.py`, `POST /api/v1/ci/gate`, `scripts/ci_gate.py` |
+| **Remediation & migration** — 15 rules × 4 languages of before/after fixes + 3 guides; scan → project → tasks → progress/velocity forecast; GitHub issue export/sync | `GET /api/v1/remediation/*`, `POST /api/v1/migrations/from-scan` |
+| **Compliance reporting** — 6 templates, requirement-by-requirement from policy evidence, attestation + canonical SHA-256 hash (PKI honestly absent) | `GET /api/v1/scans/{id}/report[.html]`, `GET /api/v1/report-templates` |
+| **Rate limiting + tamper-evident audit** — login 5/min/IP, scans 100/min/user; audit hash chain with verify + WORM-ready export | `api/middleware/rate_limit.py`, `GET /api/v1/auth/audit/{verify,export}` |
+| **Platform status matrix** — every planned capability (W37–60) vs. what ships, gaps named honestly | [docs/PLATFORM-STATUS.md](docs/PLATFORM-STATUS.md) |
 
 First boot bootstraps the `admin` user from `ADMIN_USERNAME`/`ADMIN_PASSWORD[_HASH]`; afterwards manage accounts through the API. Production startup fails closed on demo secrets, plaintext admin passwords, SQLite, and wildcard CORS.
 
