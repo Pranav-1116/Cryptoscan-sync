@@ -145,6 +145,15 @@ RULES: list[dict[str, Any]] = [
     },
 ]
 
+HARDCODED_KEY_RULE = {
+    "rule": "remove-hardcoded-key",
+    "replace_with": "external key management (KMS/HSM)",
+    "guidance": "Key material in source is a P0: move to a KMS/secret manager and rotate the exposed value.",
+    "category": "KEY_MANAGEMENT",
+    "priority": "P0",
+    "effort": "high",
+}
+
 MANUAL_REVIEW = {
     "rule": "manual-review",
     "replace_with": "review",
@@ -183,6 +192,8 @@ def _match_rule(algo: str) -> dict[str, Any] | None:
 
 
 def _rule_for(finding: dict[str, Any]) -> dict[str, Any] | None:
+    if finding.get("is_hardcoded_key"):
+        return HARDCODED_KEY_RULE  # key material in source beats any algorithm concern
     algo = _normalize(finding.get("algorithm"))
     if algo.startswith(PQC_PREFIXES):
         return None  # already post-quantum; only a policy FAIL would flag it
