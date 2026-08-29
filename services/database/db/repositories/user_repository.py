@@ -11,6 +11,71 @@ from sqlalchemy.orm import Session
 
 from db.models.user import AuditLog, User, UserSession, VALID_ROLES
 
+GENESIS_HASH = "0" * 64
+
+
+def _aware_iso(value) -> str:
+    """Naive datetimes (sqlite) must hash identically to aware ones."""
+    from shared_models.chrono import aware
+
+    return aware(value).isoformat() if value is not None else ""
+
+
+def audit_entry_hash(row: AuditLog, *, previous_hash: str | None) -> str:
+    """SHA-256 over the canonical entry — any later edit breaks the chain."""
+    import hashlib
+
+    canonical = "|".join(
+        [
+            str(previous_hash or GENESIS_HASH),
+            str(row.actor or ""),
+            str(row.action or ""),
+            str(row.target_type or ""),
+            str(row.target_id or ""),
+            str(row.detail or ""),
+            str(row.ip_address or ""),
+            str(row.outcome or ""),
+            _aware_iso(row.created_at),
+        ]
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def verify_audit_chain(session: Session) -> dict:
+    """Walk the chain in sequence order; report the first break honestly."""
+    rows = list(
+        session.execute(
+            select(AuditLog).where(AuditLog.chain_sequence.is_not(None)).order_by(AuditLog.chain_sequence)
+        ).scalars()
+    )
+    expected_prev = GENESIS_HASH
+    checked = 0
+    for row in rows:
+        if row.previous_hash != expected_prev:
+            return {
+                "status": "TAMPERED",
+                "checked": checked,
+                "entry_count": len(rows),
+                "break_at_sequence": row.chain_sequence,
+                "reason": "previous_hash mismatch (entry removed, reordered, or forged)",
+            }
+        if audit_entry_hash(row, previous_hash=row.previous_hash) != row.entry_hash:
+            return {
+                "status": "TAMPERED",
+                "checked": checked,
+                "entry_count": len(rows),
+                "break_at_sequence": row.chain_sequence,
+                "reason": "entry_hash mismatch (entry content modified after write)",
+            }
+        expected_prev = row.entry_hash
+        checked += 1
+    return {
+        "status": "OK",
+        "checked": checked,
+        "entry_count": len(rows),
+        "chain_head": expected_prev if rows else None,
+    }
+
 
 def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
@@ -215,7 +280,11 @@ class UserRepository:
     ) -> AuditLog:
         if isinstance(detail, (dict, list)):
             detail = json.dumps(detail, default=str)
+        from db.models.base import utcnow as _utcnow
+
+        head = self._audit_chain_head()
         row = AuditLog(
+            created_at=_utcnow(),  # hash covers a real timestamp, never the pre-flush None
             actor=actor or "unknown",
             action=action,
             target_type=target_type,
@@ -223,10 +292,29 @@ class UserRepository:
             detail=detail,
             ip_address=ip,
             outcome=outcome,
+            chain_sequence=head["sequence"] + 1,
+            previous_hash=head["entry_hash"],
         )
+        row.entry_hash = audit_entry_hash(row, previous_hash=head["entry_hash"])
         self.session.add(row)
         self.session.flush()
         return row
+
+    def _audit_chain_head(self) -> dict:
+        """Latest chained entry (sequence, entry_hash); GENESIS when empty/un-chained."""
+        row = (
+            self.session.execute(
+                select(AuditLog)
+                .where(AuditLog.chain_sequence.is_not(None))
+                .order_by(AuditLog.chain_sequence.desc())
+                .limit(1)
+            )
+            .scalars()
+            .first()
+        )
+        if row is None:
+            return {"sequence": 0, "entry_hash": GENESIS_HASH}
+        return {"sequence": row.chain_sequence, "entry_hash": row.entry_hash}
 
     def list_audit(self, *, page: int = 1, page_size: int = 50, actor: str | None = None, action: str | None = None):
         stmt = select(AuditLog).order_by(AuditLog.created_at.desc())

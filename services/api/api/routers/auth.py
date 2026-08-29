@@ -567,3 +567,85 @@ def list_audit(
             }
         )
     return {"events": events, "page": page, "page_size": page_size}
+
+
+@router.get("/audit/verify")
+def verify_audit(
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Walk the audit hash chain and report the first break (W57-58)."""
+    from db.repositories.user_repository import verify_audit_chain
+
+    return verify_audit_chain(db)
+
+
+@router.get("/audit/export")
+def export_audit(
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Immutable audit export: JSONL entries + manifest, SHA-256 over the body.
+
+    The export is the WORM/archive artifact: ship the bytes to S3/Glacier with
+    object lock, or print them for an auditor. The hash chain makes any later
+    modification of stored entries detectable against a kept export.
+    """
+    import hashlib as _hashlib
+
+    from fastapi.responses import PlainTextResponse
+
+    from db.models.user import AuditLog as _AuditLog
+    from db.repositories.user_repository import verify_audit_chain
+
+    rows = list(
+        db.query(_AuditLog)
+        .order_by(_AuditLog.created_at.asc(), _AuditLog.id.asc())
+        .all()
+    )
+    lines = []
+    for r in rows:
+        try:
+            detail = json.loads(r.detail) if r.detail and r.detail.startswith(("{", "[")) else r.detail
+        except Exception:
+            detail = r.detail
+        lines.append(
+            json.dumps(
+                {
+                    "id": r.id,
+                    "sequence": r.chain_sequence,
+                    "previous_hash": r.previous_hash,
+                    "entry_hash": r.entry_hash,
+                    "actor": r.actor,
+                    "action": r.action,
+                    "target_type": r.target_type,
+                    "target_id": r.target_id,
+                    "detail": detail,
+                    "ip_address": r.ip_address,
+                    "outcome": r.outcome,
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                },
+                default=str,
+                sort_keys=True,
+            )
+        )
+    body = "\n".join(lines) + ("\n" if lines else "")
+    digest = _hashlib.sha256(body.encode("utf-8")).hexdigest()
+    chain = verify_audit_chain(db)
+    manifest = json.dumps(
+        {
+            "format": "cryptoscan-audit-export/1",
+            "entry_count": len(rows),
+            "sha256": digest,
+            "chain_status": chain["status"],
+            "chain_checked": chain.get("checked"),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "note": "store under WORM/object-lock retention; verify with sha256 of the body",
+        },
+        sort_keys=True,
+    )
+    return PlainTextResponse(
+        content=manifest + "\n" + body,
+        media_type="application/jsonl",
+        headers={"X-Audit-Export-Sha256": digest, "X-Audit-Chain-Status": chain["status"]},
+    )

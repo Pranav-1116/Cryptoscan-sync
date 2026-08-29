@@ -62,6 +62,10 @@ class AuditLog(BaseModel):
     detail: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ip_address: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     outcome: Mapped[str] = mapped_column(String(20), nullable=False, default="SUCCESS")
+    # hash chain (W57-58): tampering with any row breaks every later entry_hash
+    chain_sequence: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    previous_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+    entry_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
 
 class MfaRecoveryCode(BaseModel):

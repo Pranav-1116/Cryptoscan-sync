@@ -14,6 +14,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from api.config.settings import APISettings, get_settings, validate_runtime_settings
 from api.middleware.auth_middleware import AuthMiddleware
+from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.logging_middleware import LoggingMiddleware
 from api.middleware.request_id_middleware import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
@@ -124,6 +125,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         app.add_middleware(AuthMiddleware, settings=settings)
+        app.add_middleware(RateLimitMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(AuthenticationError)
