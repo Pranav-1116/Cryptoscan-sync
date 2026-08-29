@@ -41,6 +41,13 @@ class APISettings(BaseSettings):
     # the signature stays null — we never downgrade to HMAC-and-call-it-signed.
     REPORT_SIGNING_KEY: str = ""
     REPORT_SIGNING_KEY_ID: str = ""
+    # OIDC SSO (verification side, bring-your-own-IdP): off until OIDC_ISSUER is set.
+    OIDC_ISSUER: str = ""
+    OIDC_CLIENT_ID: str = ""
+    OIDC_JWKS_URL: str = ""
+    OIDC_JWKS_FILE: str = ""
+    OIDC_AUTO_PROVISION: bool = False
+    OIDC_CLOCK_LEEWAY: int = 60
     SESSION_EXPIRE_HOURS: int = 24
     COOKIE_SECURE: bool | None = None
     ADMIN_USERNAME: str = "admin"

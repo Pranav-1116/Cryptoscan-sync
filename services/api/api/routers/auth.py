@@ -194,6 +194,97 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     )
 
 
+class OidcLoginRequest(BaseModel):
+    token: str = Field(..., min_length=20)  # JWT from the corporate IdP
+
+
+@router.post("/oidc", response_model=LoginResponse)
+def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db: Session = Depends(get_db_session)) -> LoginResponse:
+    """Federated login: verify an IdP-issued RS256 token, mint a CryptoScan session.
+
+    The IdP owns the credential (and its MFA); CryptoScan only maps a verified
+    subject to a local account. Roles stay local — no IdP role mapping claimed.
+    Requires OIDC_ISSUER; unknown users are rejected unless OIDC_AUTO_PROVISION
+    is on (they get the viewer role).
+    """
+    settings = get_settings()
+    client = request.client.host if request.client else ""
+    if not (settings.OIDC_ISSUER or "").strip():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC SSO not configured")
+    from api.security.oidc import OidcError, verify_id_token
+
+    try:
+        claims = verify_id_token(
+            body.token,
+            issuer=settings.OIDC_ISSUER.strip(),
+            audience=(settings.OIDC_CLIENT_ID or "").strip() or None,
+            jwks_url=(settings.OIDC_JWKS_URL or "").strip() or None,
+            jwks_file=(settings.OIDC_JWKS_FILE or "").strip() or None,
+            clock_leeway=settings.OIDC_CLOCK_LEEWAY,
+        )
+    except OidcError as exc:
+        repo = _user_repo(db)
+        try:
+            repo.audit("unknown", "auth.oidc_login", outcome="FAILURE", ip=client, detail=str(exc)[:200])
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    email = str(claims.get("email") or "").strip().lower() or None
+    username = str(claims.get("preferred_username") or claims.get("sub") or "").strip().lower()
+    if not username and email:
+        username = email.split("@")[0]
+    if not username:
+        raise HTTPException(status_code=401, detail="token carries no subject (preferred_username/sub/email)")
+
+    repo = _user_repo(db)
+    user = repo.get_by_username(username)
+    if user is None and settings.OIDC_AUTO_PROVISION:
+        import secrets
+
+        user = repo.create_user(
+            username,
+            password_hash=secrets.token_urlsafe(48),  # unguessable: password login impossible
+            roles=["viewer"],
+            display_name=str(claims.get("name") or username),
+            email=email,
+        )
+    if user is None:
+        try:
+            repo.audit(username, "auth.oidc_login", outcome="FAILURE", ip=client, detail="no local user and auto-provision disabled")
+            db.commit()
+        except Exception:
+            db.rollback()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="verified token but no local user (enable OIDC_AUTO_PROVISION or create the account)")
+    if not getattr(user, "is_active", True):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="account disabled")
+
+    roles = user.role_list
+    manager = SessionManager()
+    token = manager.create_session(user.username, roles=roles)
+    max_age = int(settings.SESSION_EXPIRE_HOURS * 3600)
+    expires = datetime.now(timezone.utc) + timedelta(seconds=max_age)
+    try:
+        repo.create_session(token, user.username, expires, ip=client)
+        repo.audit(user.username, "auth.oidc_login", ip=client, detail={"issuer": settings.OIDC_ISSUER})
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    response.set_cookie(
+        key="cryptoscan_session", value=token, httponly=True, samesite="lax",
+        secure=settings.cookie_secure, max_age=max_age, path="/",
+    )
+    return LoginResponse(
+        message="OIDC login successful",
+        username=user.username,
+        roles=roles,
+        token=token,
+        session_expires_at=expires,
+    )
+
+
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db_session)) -> dict:
     settings = get_settings()
