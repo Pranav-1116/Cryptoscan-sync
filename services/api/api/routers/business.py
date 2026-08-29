@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from datetime import datetime
+from datetime import datetime, timezone
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
@@ -66,6 +66,91 @@ class CbomImport(BaseModel):
 
 class DocsImport(BaseModel):
     text: str
+
+
+class ApiScanBody(BaseModel):
+    endpoint: str = Field(..., min_length=3)  # host[:port], port defaults to 443
+    timeout: float = 5.0
+    scan_ciphers: bool = False
+    scan_versions: bool = False
+
+
+@router.post("/vendors/{vendor_id}/api-scan")
+def vendor_api_scan(
+    vendor_id: str, body: ApiScanBody, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
+):
+    """Discovery method 1: live TLS probe of a vendor endpoint (their crypto for your data).
+
+    Observed directly on the wire, so confidence is HIGH for reachable endpoints;
+    unreachable endpoints are reported honestly and store nothing.
+    """
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+
+    from network_scanner.core.scanner import NetworkTlsScanner
+    from db.repositories.maturity_repository import MaturityRepository
+
+    result = NetworkTlsScanner(live=True, timeout=body.timeout).scan_hosts(
+        [body.endpoint], scan_ciphers=body.scan_ciphers, scan_versions=body.scan_versions
+    )
+    repo = MaturityRepository(db)
+    added = []
+    probe_summaries = []
+    for finding in result.get("findings") or []:
+        crypto = finding.get("crypto") or {}
+        meta = finding.get("metadata") or {}
+        endpoint_label = finding.get("endpoint") or body.endpoint
+        status = finding.get("status") or "UNKNOWN"
+        # a failed probe is a finding about reachability, not vendor crypto — store nothing
+        if status != "OK":
+            probe_summaries.append({"endpoint": endpoint_label, "status": status, "stored": False})
+            continue
+        algorithm = str(finding.get("algorithm") or crypto.get("algorithm") or "TLS")
+        # inventory BOTH the negotiated protocol and the cipher — the registry
+        # treats TLS1.0 as disallowed even when its cipher parses as allowed
+        algorithm_rows = [
+            (
+                str(crypto.get("algorithm") or "TLS"),
+                f"Data in transit ({endpoint_label}) — protocol",
+            ),
+            (algorithm, f"Data in transit ({endpoint_label}) — cipher"),
+        ]
+        for row_algorithm, use_case in algorithm_rows:
+            row = repo.add_vendor_crypto(
+                vendor_id,
+                crypto_use_case=use_case,
+                algorithm=row_algorithm,
+                key_size=crypto.get("key_size"),
+                mode=crypto.get("encryption_mode") or crypto.get("mode"),
+                key_management=f"key exchange: {crypto['key_exchange_algorithm']}" if crypto.get("key_exchange_algorithm") else None,
+                pqc_ready=str(crypto.get("quantum_impact") or "").upper() in {"NONE", "RESISTANT", "PQC_RESISTANT"},
+                discovery_method="API_SCAN",
+                confidence=meta.get("confidence") or "HIGH",
+                verified_at=datetime.now(timezone.utc),
+                source_document=f"tls://{endpoint_label} ({crypto.get('cipher_suite') or 'cipher unknown'})",
+            )
+            added.append(row.to_dict())
+        probe_summaries.append(
+            {
+                "endpoint": endpoint_label,
+                "status": status,
+                "stored": True,
+                "algorithm": algorithm,
+                "tls_version": crypto.get("tls_version"),
+                "cipher_suite": crypto.get("cipher_suite"),
+                "policy_issues": finding.get("policy_issues") or [],
+            }
+        )
+    return {
+        "vendor_id": vendor_id,
+        "vendor": vendor.name,
+        "endpoint": body.endpoint,
+        "inventory_added": len(added),
+        "inventory": added,
+        "probes": probe_summaries,
+        "certificates_seen": len(result.get("certificates") or []),
+    }
 
 
 class MigrationCreate(BaseModel):
