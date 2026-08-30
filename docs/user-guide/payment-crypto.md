@@ -76,6 +76,35 @@ curl …/api/v1/payment-crypto/usage
   crypto outside the HSM (or a retry storm is hammering it). Requires both
   series; with < 14 overlapping days it reports `insufficient_data`, never a guess.
 
+## 24/7 PAYMENT monitor target (feeds + transactions)
+
+The monitor daemon can run the whole loop autonomously:
+
+```json
+{
+  "name": "hsm-prod",
+  "target_type": "PAYMENT",
+  "config": {
+    "url": "https://siem.bank.example/hsm/audit",     // or "path": "/var/log/hsm/audit.log"
+    "token": "…",
+    "transactions_path": "/dw-export/tx_daily.jsonl"  // optional: {"day":"2026-08-30","count":10000000}
+  },
+  "interval_seconds": 3600
+}
+```
+
+Each sweep: poll the feed (cursor-based — nothing re-ingested), auto-inventory
+keys from lifecycle events, ingest new transaction days, run policy + usage
+analytics + correlation, and open/refresh findings. Feed errors degrade the
+target honestly (`AUDIT_FEED_ERROR:…`), never silently skip.
+
+One-shot daily push instead of a file:
+
+```bash
+curl -X POST …/api/v1/payment-crypto/transactions/bulk \
+     -d '{"series":{"2026-08-30":10000000},"source":"dw-push"}'
+```
+
 ## Connectors (audit feeds)
 
 | Connector | Config | Notes |

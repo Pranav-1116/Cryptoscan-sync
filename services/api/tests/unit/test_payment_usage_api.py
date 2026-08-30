@@ -90,6 +90,30 @@ async def test_transactions_usage_and_evaluate_merge():
 
 
 @pytest.mark.asyncio
+async def test_bulk_transaction_series_upsert():
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        rejected = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                     json={"series": {"31-02-2026": 5}})
+        assert rejected.status_code == 422
+        posted = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                   json={"series": {"2026-08-29": 10_000_000, "2026-08-30": 10_500_000},
+                                         "source": "dw-push"})
+        assert posted.status_code == 200, posted.text
+        assert posted.json()["days_ingested"] == 2
+        # upsert: same day, new count — no duplicate row
+        again = await client.post("/api/v1/payment-crypto/transactions/bulk",
+                                  json={"series": {"2026-08-30": 9_900_000}})
+        assert again.status_code == 200
+        from db.models.payment_crypto import PaymentTransactionVolume
+
+        rows = session.query(PaymentTransactionVolume).order_by(PaymentTransactionVolume.day).all()
+        assert [(row.day.isoformat(), row.transaction_count) for row in rows] == [
+            ("2026-08-29", 10_000_000), ("2026-08-30", 9_900_000)]
+
+
+@pytest.mark.asyncio
 async def test_payment_findings_flow_into_pci_report():
     """PAY-xxx findings must evaluate the new PCI requirements (integration)."""
     from reporting.compliance_report import render_json

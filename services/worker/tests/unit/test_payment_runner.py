@@ -1,7 +1,8 @@
-"""PAYMENT monitor runner: audit-trail tailing, dedupe, auto-inventory, policy."""
+"""PAYMENT monitor runner: connector feeds, transaction ingest, policy + usage."""
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from sqlalchemy import create_engine
@@ -10,7 +11,7 @@ from sqlalchemy.pool import StaticPool
 
 import db.models  # noqa: F401
 from db.connection.session import Base
-from db.models.payment_crypto import HsmEvent, PaymentKey
+from db.models.payment_crypto import HsmEvent, PaymentKey, PaymentTransactionVolume
 from worker.monitor.runners import payment_runner
 
 AUDIT = """{"occurred_at":"2026-08-30T10:00:00Z","device":"hsm-prod-1","event_type":"KEY_GENERATED","key_id":"ZMK-01","actor":"custodian-a","detail":{"algorithm":"TRIPLE_DES"}}
@@ -29,10 +30,10 @@ def _session():
     return sessionmaker(bind=engine, expire_on_commit=False)()
 
 
-def test_payment_runner_blocked_without_path():
+def test_payment_runner_blocked_without_feed():
     result = payment_runner({}, _session())
     assert "blocked_reason" in result
-    assert "path" in result["blocked_reason"]
+    assert "audit feed" in result["blocked_reason"]
 
 
 def test_payment_runner_ingests_and_flags(tmp_path: Path):
@@ -56,11 +57,63 @@ def test_payment_runner_ingests_and_flags(tmp_path: Path):
     assert "PAY-006" in summary["issues"]
     assert first["degraded"]
 
-    # second sweep: nothing new -> zero ingested, same findings, no duplicates
+    # second sweep: cursor means nothing new, no duplicates
     second = payment_runner({"path": str(audit_file)}, session)
     session.commit()
     assert second["summary"]["events_ingested"] == 0
     assert session.query(HsmEvent).count() == 7
+
+
+def test_payment_runner_appends_new_lines_only(tmp_path: Path):
+    audit_file = tmp_path / "audit.log"
+    audit_file.write_text(
+        '{"occurred_at":"2026-08-30T10:00:00Z","device":"hsm-1","event_type":"KEY_USED","key_id":"ZPK-1","detail":{"op":"PIN_VERIFY","count":10}}\n',
+        encoding="utf-8")
+    session = _session()
+    payment_runner({"path": str(audit_file)}, session)
+    audit_file.write_text(
+        audit_file.read_text()
+        + '{"occurred_at":"2026-08-30T11:00:00Z","device":"hsm-1","event_type":"KEY_USED","key_id":"ZPK-1","detail":{"op":"PIN_TRANSLATE","count":5}}\n',
+        encoding="utf-8")
+    result = payment_runner({"path": str(audit_file)}, session)
+    session.commit()
+    assert result["summary"]["events_ingested"] == 1
+    assert session.query(HsmEvent).count() == 2
+
+
+def test_payment_runner_transaction_file_and_correlation(tmp_path: Path):
+    """DW export + audit feed: transaction days ingest, correlation runs in-sweep."""
+    import json as jsonlib
+
+    audit_file = tmp_path / "audit.jsonl"
+    today = datetime.now(timezone.utc).date()
+    lines = []
+    for offset in range(18, -1, -1):  # 19 stable days + today at half rate
+        day = today - timedelta(days=offset)
+        count = 100_000 if offset else 50_000
+        lines.append(jsonlib.dumps({
+            "occurred_at": datetime(day.year, day.month, day.day, 12, tzinfo=timezone.utc).isoformat(),
+            "device": "hsm-1", "event_type": "KEY_USED", "key_id": "ZPK-1",
+            "detail": {"op": "PIN_VERIFY", "count": count},
+        }))
+    audit_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    tx_file = tmp_path / "tx_daily.jsonl"
+    tx_file.write_text("\n".join(
+        jsonlib.dumps({"day": (today - timedelta(days=offset)).isoformat(), "count": 100_000})
+        for offset in range(19, -1, -1)
+    ) + "\n", encoding="utf-8")
+
+    session = _session()
+    result = payment_runner({"path": str(audit_file), "transactions_path": str(tx_file)}, session)
+    session.commit()
+    summary = result["summary"]
+    assert summary["transaction_days_ingested"] == 20
+    assert session.query(PaymentTransactionVolume).count() == 20
+    assert summary["correlation"] in {"anomalies", "ok", "insufficient_data"}
+    assert summary["hsm_ops_90d"] == 100_000 * 18 + 50_000  # 18 stable days + today at half rate
+    if summary["correlation"] == "anomalies":
+        assert "PAY-014" in summary["issues"]  # today's 50% drop surfaces in the monitor
 
 
 def test_payment_runner_unparsable_file_degrades(tmp_path: Path):
@@ -68,4 +121,4 @@ def test_payment_runner_unparsable_file_degrades(tmp_path: Path):
     audit_file.write_text("total garbage \x00 line", encoding="utf-8")
     result = payment_runner({"path": str(audit_file)}, _session())
     assert result["degraded"]
-    assert result["issues"][0].startswith("UNPARSABLE_AUDIT_LOG:")
+    assert result["issues"][0].startswith("AUDIT_FEED_ERROR:")

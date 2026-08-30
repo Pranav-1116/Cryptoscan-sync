@@ -66,6 +66,12 @@ poll with since-cursor, rotation-safe syslog tail, labeled payShield drill
 simulator), PAY-xxx evidence wired into the PCI-DSS 4.0 report template with
 a `payment_crypto` block. Migration 0032.
 
+**Payment loop automation (Aug 30, pm)** — PAYMENT monitor runner now polls
+connector feeds (HTTP `?since=` cursor or rotation-safe file cursor), ingests
+daily transaction exports (`transactions_path`), and runs usage + correlation
+inside every sweep (PAY-011..014 fire from live data); bulk transaction push
+endpoint; dashboard usage/correlation card with ops/tx trend.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

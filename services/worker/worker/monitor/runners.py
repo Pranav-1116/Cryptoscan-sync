@@ -179,50 +179,59 @@ def container_runner(config: dict, session: Any) -> dict:
     return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
 
 
-# ----------------------------------------------------------------- payment
+# ------------------------------------------------------------------ payment
 
 def payment_runner(config: dict, session: Any) -> dict:
-    """Tail an HSM audit trail (JSONL or syslog file), ingest new events, run policy.
+    """Poll an HSM audit feed, ingest new events + transaction days, run policy.
 
-    config: {"path": "/var/log/hsm/audit.jsonl"} — whatever the SIEM collector
-    drops. Only events newer than the newest already-ingested event are stored,
-    so re-reading the file never duplicates. Without a path the target reports
-    BLOCKED with the exact fix instead of pretending to have polled the HSM.
+    config:
+      {"path": "/var/log/hsm/audit.log"}                  — syslog/JSONL tail
+                                                           (rotation-safe cursor)
+      {"url": "https://siem.example/hsm", "token": "…"}   — HTTP JSONL export
+                                                           (?since= cursor)
+      {"transactions_path": "/dw/tx_daily.jsonl"}         — optional daily
+                                                           transaction counts
+                                                           (JSONL {"day","count"}
+                                                           or CSV day,count)
+
+    Without a feed the target reports BLOCKED with the exact fix instead of
+    pretending to have polled the HSM. Every sweep also runs usage analytics
+    (dormancy / shadow keys) and crypto-per-transaction correlation, so
+    PAY-011..014 fire from live data, not just stored policy state.
     """
-    path = str(config.get("path") or config.get("jsonl_path") or "").strip()
-    if not path:
-        return {"blocked_reason": "config needs audit trail path (e.g. {'path': '/var/log/hsm/audit.jsonl'})"}
-    import os
-    if not os.path.isfile(path):
-        return {"blocked_reason": f"audit trail file not found: {path}"}
+    from datetime import timezone as _tz
 
-    from payment_crypto.auditlog import HsmAuditParser
+    from payment_crypto.connectors import connector_from_config
     from payment_crypto.policy import PaymentPolicyEngine
+    from payment_crypto.usage import TransactionCorrelator, UsageAnalyzer
     from db.models.payment_crypto import HsmEvent
-    from payment_crypto.keyblocks import parse_tr31_header
     from db.repositories.payment_crypto_repository import PaymentCryptoRepository
 
-    with open(path, encoding="utf-8", errors="replace") as handle:
-        text = handle.read()
-    parsed = HsmAuditParser().autodetect(text)
-    if not parsed.records:
-        return {"summary": {"lines": 0, "ingested": 0,
-                            "issues": [f"UNPARSABLE_AUDIT_LOG:{parsed.rejected[0]['reason'] if parsed.rejected else 'empty file'}"]},
-                "degraded": True,
-                "issues": [f"UNPARSABLE_AUDIT_LOG:{parsed.rejected[0]['reason'] if parsed.rejected else 'empty file'}"]}
+    connector = connector_from_config(config)
+    if connector is None:
+        return {"blocked_reason": "config needs an audit feed: {'path': '/var/log/hsm/audit.log'} or {'url': 'https://siem/…'}"}
 
-    latest = session.query(HsmEvent.occurred_at).order_by(HsmEvent.occurred_at.desc()).first()
-    cutoff = latest[0] if latest else None
-    if cutoff is not None and cutoff.tzinfo is None:  # sqlite returns naive datetimes
-        from datetime import timezone as _tz
+    since = None
+    if config.get("url"):
+        latest = session.query(HsmEvent.occurred_at).order_by(HsmEvent.occurred_at.desc()).first()
+        since = latest[0] if latest else None
+        if since is not None and since.tzinfo is None:  # sqlite returns naive datetimes
+            since = since.replace(tzinfo=_tz.utc)
+    polled = connector.poll(since=since) if since is not None else connector.poll()
 
-        cutoff = cutoff.replace(tzinfo=_tz.utc)
-    fresh = [record for record in parsed.records if cutoff is None or record.occurred_at > cutoff]
+    feed_errors = list(polled.errors)
+    if not polled.records and feed_errors:
+        return {"summary": {"events_ingested": 0, "issues": [f"AUDIT_FEED_ERROR:{feed_errors[0]}"]},
+                "degraded": True, "issues": [f"AUDIT_FEED_ERROR:{feed_errors[0]}"]}
+
+    fresh = polled.records
     repo = PaymentCryptoRepository(session)
     if fresh:
         repo.add_events([record.to_dict() for record in fresh])
 
         # key lifecycle events keep the inventory current without manual entry
+        from payment_crypto.keyblocks import parse_tr31_header
+
         for record in fresh:
             if record.event_type in {"KEY_GENERATED", "KEY_IMPORTED", "KEY_ROTATED"} and record.key_id:
                 existing = repo.get_key(record.key_id)
@@ -233,7 +242,6 @@ def payment_runner(config: dict, session: Any) -> dict:
                     repo.upsert_key(payload)
                     payload = {"key_id": record.key_id, "hsm_device": record.device,
                                "state": "ACTIVE", "source": "HSM_EVENT"}
-                    payload["key_id"] = f"{record.key_id}"
                 algorithm = (record.detail or {}).get("algorithm")
                 key_block = (record.detail or {}).get("key_block")
                 if key_block:
@@ -248,28 +256,80 @@ def payment_runner(config: dict, session: Any) -> dict:
                     payload["algorithm"] = str(algorithm)
                 repo.upsert_key(payload)
 
+    # optional: daily transaction counts from the data-warehouse export
+    tx_days = _ingest_transaction_file(config.get("transactions_path"), repo)
+
     keys = repo.list_keys()
-    findings = PaymentPolicyEngine().evaluate(
-        [{"key_id": k.key_id, "key_usage": k.key_usage, "algorithm": k.algorithm,
-          "key_size": k.key_size, "state": k.state, "enabled": k.enabled,
-          "activation_at": k.activation_at.isoformat() if k.activation_at else None,
-          "key_block_version": k.key_block_version, "key_block_error": k.key_block_error}
-         for k in keys],
+    key_rows = [{
+        "key_id": k.key_id, "key_usage": k.key_usage, "algorithm": k.algorithm,
+        "key_size": k.key_size, "state": k.state, "enabled": k.enabled,
+        "activation_at": k.activation_at.isoformat() if k.activation_at else None,
+        "key_block_version": k.key_block_version, "key_block_error": k.key_block_error,
+    } for k in keys]
+    event_rows = [{
+        "occurred_at": e.occurred_at.isoformat(), "device": e.device,
+        "event_type": e.event_type, "key_id": e.key_id, "detail": e.detail or {},
+    } for e in repo.recent_events(days=90)]
+
+    findings = list(PaymentPolicyEngine().evaluate(
+        key_rows,
         ceremonies=[{"key_id": c.key_id, "held_at": c.held_at.isoformat() if c.held_at else None,
                      "custodians": c.custodians or [], "dual_control": c.dual_control}
                     for c in repo.list_ceremonies()],
-        events=[{"occurred_at": e.occurred_at.isoformat(), "device": e.device,
-                 "event_type": e.event_type, "key_id": e.key_id, "detail": e.detail or {}}
-               for e in repo.recent_events(days=30)],
+        events=event_rows,
+    ))
+    usage_report = UsageAnalyzer().analyze(key_rows, event_rows)
+    correlation = TransactionCorrelator().evaluate(
+        repo.transaction_series(days=60), usage_report.get("usage_by_day") or {}
     )
-    repo.replace_findings([f.to_dict() for f in findings])
-    issues = sorted({f"{f.rule_id}" for f in findings if f.severity >= 4 or f.blocking})
+    usage_findings = list(usage_report.get("findings") or []) + list(correlation.get("findings") or [])
+    all_findings = [f.to_dict() for f in findings] + usage_findings
+    repo.replace_findings(all_findings)
+
+    issues = sorted({f["rule_id"] for f in all_findings if f.get("severity", 0) >= 4 or f.get("blocking")})
     summary = {
-        "audit_lines": len(parsed.records),
         "events_ingested": len(fresh),
+        "transaction_days_ingested": tx_days,
         "keys_tracked": len(keys),
-        "open_findings": len(findings),
-        "blocking": sum(1 for f in findings if f.blocking),
+        "hsm_ops_90d": usage_report.get("total_usage_events"),
+        "correlation": correlation.get("status"),
+        "open_findings": len(all_findings),
+        "blocking": sum(1 for f in all_findings if f.get("blocking")),
         "issues": issues,
     }
+    if feed_errors:
+        summary["feed_warnings"] = feed_errors
     return {"summary": summary, "degraded": bool(issues), "issues": issues}
+
+
+def _ingest_transaction_file(path: Any, repo) -> int:
+    """Ingest {'day','count'} JSONL or 'day,count' CSV lines; upsert = idempotent."""
+    import json as _json
+    from datetime import date as _date
+    from pathlib import Path as _Path
+
+    if not path:
+        return 0
+    file = _Path(str(path))
+    if not file.is_file():
+        return 0  # no export yet today is not an error — the feed is optional
+    days = 0
+    for line in file.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            if line.startswith("{"):
+                payload = _json.loads(line)
+                day = _date.fromisoformat(str(payload["day"])[:10])
+                count = int(payload["count"])
+            else:
+                day_text, count_text = line.split(",")[:2]
+                day = _date.fromisoformat(day_text.strip()[:10])
+                count = int(count_text.strip())
+        except (ValueError, KeyError, IndexError):
+            continue  # malformed DW line: skip honestly, do not kill the sweep
+        if count >= 0:
+            repo.upsert_transaction_volume(day, count, source="dw-export")
+            days += 1
+    return days

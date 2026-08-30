@@ -66,6 +66,11 @@ class TransactionVolumeIn(BaseModel):
     source: Optional[str] = None
 
 
+class TransactionBulkIn(BaseModel):
+    series: dict[str, int]              # {"2026-08-30": 10000000, ...}
+    source: Optional[str] = None
+
+
 class FindingStatus(BaseModel):
     status: str                          # OPEN | ACCEPTED | RESOLVED
     resolved_by: Optional[str] = None
@@ -231,6 +236,29 @@ def record_transactions(body: TransactionVolumeIn, user: str = Depends(require_a
     row = _repo(db).upsert_transaction_volume(day, body.count, source=body.source or "manual")
     db.commit()
     return {"day": row.day.isoformat(), "transaction_count": row.transaction_count}
+
+
+@router.post("/transactions/bulk")
+def record_transactions_bulk(body: TransactionBulkIn, user: str = Depends(require_auditor),
+                             db: Session = Depends(get_db_session)):
+    """Upsert a daily-transaction series (data-warehouse push, one call per day/week)."""
+    from datetime import date as _date
+
+    if not body.series:
+        raise HTTPException(status_code=422, detail="series must contain at least one day")
+    repo = _repo(db)
+    days = []
+    for day_text, count in body.series.items():
+        try:
+            day = _date.fromisoformat(str(day_text)[:10])
+        except ValueError:
+            raise HTTPException(status_code=422, detail=f"invalid ISO date key '{day_text}'")
+        if count is None or count < 0:
+            raise HTTPException(status_code=422, detail=f"count for {day_text} must be >= 0")
+        repo.upsert_transaction_volume(day, int(count), source=body.source or "bulk-push")
+        days.append(day.isoformat())
+    db.commit()
+    return {"days_ingested": len(days), "days": sorted(days)}
 
 
 @router.get("/usage")
