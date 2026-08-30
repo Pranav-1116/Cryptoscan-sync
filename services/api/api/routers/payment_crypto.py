@@ -19,6 +19,7 @@ from db.repositories.payment_crypto_repository import PaymentCryptoRepository
 from payment_crypto.auditlog import HsmAuditParser
 from payment_crypto.keyblocks import parse_tr31_header
 from payment_crypto.policy import PaymentPolicyEngine
+from payment_crypto.usage import TransactionCorrelator, UsageAnalyzer
 
 router = APIRouter(prefix="/payment-crypto", tags=["payment-crypto"])
 
@@ -57,6 +58,12 @@ class HsmEventIngest(BaseModel):
     format: str = "auto"                 # auto | jsonl | syslog | csv
     text: str
     columns: Optional[dict[str, int]] = None  # csv only: ts/device/event/key_id/actor/severity -> index
+
+
+class TransactionVolumeIn(BaseModel):
+    day: str                            # ISO date
+    count: int
+    source: Optional[str] = None
 
 
 class FindingStatus(BaseModel):
@@ -208,6 +215,39 @@ def list_hsm_events(days: int = 30, device: Optional[str] = None,
     } for row in rows]}
 
 
+# ------------------------------------------------------- usage & transactions
+
+@router.post("/transactions")
+def record_transactions(body: TransactionVolumeIn, user: str = Depends(require_auditor),
+                        db: Session = Depends(get_db_session)):
+    from datetime import date as _date
+
+    try:
+        day = _date.fromisoformat(body.day)
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"day must be an ISO date (YYYY-MM-DD), got '{body.day}'")
+    if body.count < 0:
+        raise HTTPException(status_code=422, detail="count must be >= 0")
+    row = _repo(db).upsert_transaction_volume(day, body.count, source=body.source or "manual")
+    db.commit()
+    return {"day": row.day.isoformat(), "transaction_count": row.transaction_count}
+
+
+@router.get("/usage")
+def usage(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    repo = _repo(db)
+    report = UsageAnalyzer().analyze(
+        [_serialize_key(row) for row in repo.list_keys()],
+        [{"occurred_at": row.occurred_at.isoformat(), "device": row.device,
+          "event_type": row.event_type, "key_id": row.key_id, "detail": row.detail or {}}
+         for row in repo.recent_events(days=90)],
+    )
+    report["correlation"] = TransactionCorrelator().evaluate(
+        repo.transaction_series(days=60), report.get("usage_by_day") or {}
+    )
+    return report
+
+
 # ---------------------------------------------------------------- findings
 
 @router.post("/evaluate")
@@ -226,7 +266,18 @@ def evaluate(user: str = Depends(require_auditor), db: Session = Depends(get_db_
             "detail": row.detail or {},
         } for row in repo.recent_events(days=30)],
     )
-    rows = repo.replace_findings([finding.to_dict() for finding in findings])
+    usage_report = UsageAnalyzer().analyze(
+        [_serialize_key(row) for row in repo.list_keys()],
+        [{"occurred_at": row.occurred_at.isoformat(), "device": row.device,
+          "event_type": row.event_type, "key_id": row.key_id, "detail": row.detail or {}}
+         for row in repo.recent_events(days=90)],
+    )
+    correlation = TransactionCorrelator().evaluate(
+        repo.transaction_series(days=60), usage_report.get("usage_by_day") or {}
+    )
+    usage_findings = list(usage_report.get("findings") or []) + list(correlation.get("findings") or [])
+    all_findings = [finding.to_dict() for finding in findings] + usage_findings
+    rows = repo.replace_findings(all_findings)
     db.commit()
     return {
         "evaluated": True,

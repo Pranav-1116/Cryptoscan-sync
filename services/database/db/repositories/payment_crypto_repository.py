@@ -13,6 +13,7 @@ from db.models.payment_crypto import (
     KeyCeremony,
     PaymentKey,
     PaymentPolicyFinding,
+    PaymentTransactionVolume,
 )
 
 
@@ -144,6 +145,34 @@ class PaymentCryptoRepository:
         if device:
             query = query.where(HsmEvent.device == device)
         return list(self.session.scalars(query.order_by(HsmEvent.occurred_at.desc()).limit(5000)))
+
+    # ---------------------------------------------------- transaction volume
+
+    def upsert_transaction_volume(self, day, transaction_count: int, *, source: str | None = None) -> PaymentTransactionVolume:
+        if transaction_count < 0:
+            raise ValueError("transaction_count must be >= 0")
+        row = self.session.execute(
+            select(PaymentTransactionVolume).where(PaymentTransactionVolume.day == day)
+        ).scalar_one_or_none()
+        if row is None:
+            row = PaymentTransactionVolume(day=day, transaction_count=transaction_count, source=source)
+            self.session.add(row)
+        else:
+            row.transaction_count = transaction_count
+            if source:
+                row.source = source
+        self.session.flush()
+        return row
+
+    def transaction_series(self, *, days: int = 60) -> dict:
+        from datetime import timedelta
+
+        window_start = (utcnow() - timedelta(days=days)).date()
+        rows = self.session.scalars(
+            select(PaymentTransactionVolume).where(PaymentTransactionVolume.day >= window_start)
+            .order_by(PaymentTransactionVolume.day)
+        )
+        return {row.day.isoformat(): row.transaction_count for row in rows}
 
     # -------------------------------------------------------------- findings
 

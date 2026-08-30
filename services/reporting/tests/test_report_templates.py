@@ -46,7 +46,7 @@ def test_pci_evaluation_pass_fail_and_evidence_chain():
     assert by_id["4.2.1"]["failure_locations"] == ["net/Tls.java:3"]
     assert by_id["8.3.2"]["status"] == "PASS"
     assert by_id["3.5.1"]["status"] == "NOT_EVALUATED"  # honest: nothing touched it
-    assert result["summary"]["fail"] == 1 and result["summary"]["not_evaluated"] == 2
+    assert result["summary"]["fail"] == 1 and result["summary"]["not_evaluated"] == 6  # 2 estate + 4 payment (-pay) requirements lack evidence here
 
 
 def test_custom_selection_and_rejections():

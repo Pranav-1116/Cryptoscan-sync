@@ -58,6 +58,14 @@ limits via shared Redis (honest per-replica fallback), automated quarterly
 single-process; per-identity budget enforced under 30-VU flood). Migration
 0031. See `docs/runbooks/dr-recovery.md`.
 
+**Payment usage analytics (Aug 30)** — key-usage telemetry (ops per key/day,
+dormancy PAY-011, dead-key usage PAY-012, shadow keys PAY-013), daily
+transaction-volume series + crypto-per-transaction correlation (PAY-014,
+honest `insufficient_data` under 14 days), HSM feed connectors (HTTP JSONL
+poll with since-cursor, rotation-safe syslog tail, labeled payShield drill
+simulator), PAY-xxx evidence wired into the PCI-DSS 4.0 report template with
+a `payment_crypto` block. Migration 0032.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

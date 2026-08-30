@@ -31,6 +31,14 @@ _TEMPLATES: dict[str, dict[str, Any]] = {
              "standard_substrings": ["PCI-DSS 4.0 req. 8.3.2"], "rule_prefixes": ["PCIDSS-004"]},
             {"id": "12.3.3", "title": "Crypto-agile processes for inventory and transitions",
              "standard_substrings": ["PCI-DSS 4.0 req. 12.3.3"], "rule_prefixes": ["PCIDSS-006"]},
+            {"id": "3.6.5-pay", "title": "Payment keys: split knowledge / dual control at ceremonies",
+             "standard_substrings": ["PCI-DSS 4.0 req. 3.6.5"], "rule_prefixes": ["PAY-003"]},
+            {"id": "3.7-pay-rotation", "title": "Payment keys rotated within defined windows",
+             "standard_substrings": ["PCI-DSS 4.0 req. 3.7"], "rule_prefixes": ["PAY-002"]},
+            {"id": "3.5.1-pay-inventory", "title": "HSM/payment key inventory complete and current",
+             "standard_substrings": ["PCI-DSS 4.0 req. 3.5"], "rule_prefixes": ["PAY-005", "PAY-013"]},
+            {"id": "3.6-pay-usable", "title": "Retired/compromised keys are not usable",
+             "standard_substrings": ["PCI-DSS 4.0 req. 3.6"], "rule_prefixes": ["PAY-009", "PAY-012"]},
         ],
         "source": "native",
     },
@@ -153,6 +161,7 @@ def evaluate_template(
     template_id: str,
     *,
     requirements: Iterable[str] | None = None,
+    extra_evidence: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Requirement-by-requirement evaluation from policy evidence alone."""
     if template_id == "custom":
@@ -179,6 +188,10 @@ def evaluate_template(
             meta["mapping_note"] = spec["mapping_note"]
 
     evidence = _rule_evidence(findings)
+    if extra_evidence:
+        # pre-flattened rows (e.g. payment/HSM PAY-xxx findings): same shape,
+        # attributed so auditors can trace every requirement to its source
+        evidence = evidence + [dict(row) for row in extra_evidence]
     evaluated: list[dict[str, Any]] = []
     for requirement in selected:
         matched = [row for row in evidence if _requirement_matches(row, requirement)]

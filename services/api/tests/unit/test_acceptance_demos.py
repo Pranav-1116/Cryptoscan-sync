@@ -119,7 +119,7 @@ async def test_compliance_demo_three_violations_across_full_pool():
             if requirement["id"] not in prefix_for:
                 prefix_for[requirement["id"]] = requirement["rule_prefixes"][0]
                 pool.append(requirement["id"])
-    assert len(pool) == 15
+    assert len(pool) == 19  # 15 estate + 4 payment (PAY-xxx) PCI requirements
 
     # prefixes chosen to match exactly one requirement each (many requirement
     # prefixes overlap — e.g. bare NIST131A matches the whole 131A family)
@@ -147,10 +147,12 @@ async def test_compliance_demo_three_violations_across_full_pool():
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
+        estate_pool = [rid for rid in pool if "-pay" not in rid]
+        assert len(estate_pool) == 15  # payment (-pay) requirements need HSM evidence, excluded here
         report = (
             await client.get(
                 "/api/v1/scans/scan-pci/report",
-                params={"template": "custom", "requirements": ",".join(pool)},
+                params={"template": "custom", "requirements": ",".join(estate_pool)},
             )
         ).json()
         evaluation = report["template_evaluation"]

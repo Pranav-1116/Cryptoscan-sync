@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 EVENT_TYPES = {
     "KEY_GENERATED",
     "KEY_IMPORTED",
+    "KEY_USED",
     "KEY_EXPORTED",
     "KEY_ROTATED",
     "KEY_COMPONENT_INJECTED",
@@ -50,6 +51,14 @@ EVENT_TYPES = {
 # Operator-declared meaning for free-form event codes in CSV/syslog sources.
 ALIAS_MAP = {
     "key_gen": "KEY_GENERATED",
+    "key_use": "KEY_USED",
+    "use": "KEY_USED",
+    "pin_verify": "KEY_USED",
+    "pin_translate": "KEY_USED",
+    "translate": "KEY_USED",
+    "mac_generate": "KEY_USED",
+    "cvv_check": "KEY_USED",
+    "emv_auth": "KEY_USED",
     "generate": "KEY_GENERATED",
     "key_import": "KEY_IMPORTED",
     "import": "KEY_IMPORTED",

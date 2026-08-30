@@ -18,6 +18,7 @@ def render_json(
     template_id: str | None = None,
     selected_requirements: list[str] | None = None,
     policy_pack_hash: str | None = None,
+    payment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     rows = list(findings)
     by_status = Counter(str(row.get("compliance_status") or "UNKNOWN").upper() for row in rows)
@@ -47,9 +48,26 @@ def render_json(
     if template_id:
         from reporting.report_templates import attestation_block, canonical_hash, evaluate_template
 
+        payment_evidence = []
+        if payment:
+            # PAY-xxx findings become template evidence rows; the block itself
+            # is attached verbatim so the HSM picture travels with the report
+            for finding in payment.get("findings") or []:
+                payment_evidence.append({
+                    "rule_id": finding.get("rule_id"),
+                    "standard_reference": f"Payment HSM ({finding.get('rule_id')})",
+                    "result": "FAIL",
+                    "file_path": f"payment-key:{finding.get('key_id') or '-'}",
+                    "line_number": None,
+                })
         report["template_evaluation"] = evaluate_template(
-            rows, template_id, requirements=selected_requirements
+            rows, template_id, requirements=selected_requirements,
+            extra_evidence=payment_evidence or None,
         )
+        if payment:
+            summary = dict(payment.get("summary") or {})
+            summary["open_findings"] = len(payment.get("findings") or [])
+            report["payment_crypto"] = summary
         report["attestation"] = attestation_block(
             scan=scan,
             policy_pack_hash=policy_pack_hash,

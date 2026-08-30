@@ -435,9 +435,49 @@ def _rendered_report(scan_id, scans, evidence, drift, template: str | None, requ
         template_id=template,
         selected_requirements=[r.strip() for r in (requirements or "").split(",") if r.strip()] or None,
         policy_pack_hash=pack_hash,
+        payment=_payment_crypto_block(),
     )
     report = _maybe_sign_report(report)
     return report
+
+
+def _payment_crypto_block() -> dict | None:
+    """Open payment/HSM findings + key summary for the report (best effort).
+
+    Honest absence: if the payment tables are empty the report simply carries
+    no payment section — never a guessed PASS.
+    """
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.payment_crypto_repository import PaymentCryptoRepository
+
+        session = SessionLocal()
+        try:
+            repo = PaymentCryptoRepository(session)
+            keys = repo.list_keys()
+            open_rows = [row for row in repo.list_findings(status="OPEN")]
+            if not keys and not open_rows:
+                return None
+            return {
+                "summary": {
+                    "keys_total": len(keys),
+                    "active_weak_algorithm_keys": sum(
+                        1 for key in keys
+                        if key.state == "ACTIVE"
+                        and (key.algorithm or "").upper() in {"DES", "SINGLE_DES", "TRIPLE_DES", "2KEY_TRIPLE_DES"}
+                    ),
+                    "ceremonies_total": len(repo.list_ceremonies()),
+                },
+                "findings": [{
+                    "rule_id": row.rule_id, "key_id": row.key_id, "severity": row.severity,
+                    "blocking": row.blocking, "message": row.message,
+                } for row in open_rows],
+            }
+        finally:
+            session.close()
+    except Exception:
+        logger.debug("payment_crypto_block_unavailable", exc_info=True)
+        return None
 
 
 def _maybe_sign_report(report: dict) -> dict:

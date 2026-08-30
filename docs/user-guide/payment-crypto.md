@@ -59,6 +59,35 @@ Blocking findings in the monitor summary raise a monitor `ALERT`, which fans
 out to your SIEM (CEF/UDP), a signed webhook, and email — see
 [user-guide/live-monitoring.md](live-monitoring.md) sink configuration.
 
+## Usage analytics & transaction correlation (the "10M/day" lens)
+
+Feed daily transaction counts and let the audit trail speak:
+
+```bash
+curl -X POST …/api/v1/payment-crypto/transactions      -d '{"day":"2026-08-30","count":10000000,"source":"core-banking"}'
+curl …/api/v1/payment-crypto/usage
+```
+
+- **PAY-011** ACTIVE key dormant > 90 days — retirement candidate
+- **PAY-012** a COMPROMISED/DESTROYED key was *used* — must be impossible (blocking)
+- **PAY-013** the HSM uses a key that is in no inventory — **shadow key**
+- **PAY-014** crypto-ops-per-transaction deviates > 40% from the 30-day
+  median — the classic signal that a software fallback is doing payment
+  crypto outside the HSM (or a retry storm is hammering it). Requires both
+  series; with < 14 overlapping days it reports `insufficient_data`, never a guess.
+
+## Connectors (audit feeds)
+
+| Connector | Config | Notes |
+|---|---|---|
+| `HttpJsonlConnector` | `{"url": "https://siem/…", "token": "…"}` | polls any JSONL audit export; `?since=` cursor |
+| `SyslogFileConnector` | `{"path": "/var/log/hsm/audit.log"}` | byte-offset cursor, rotation-safe |
+| `PayshieldSimulator` | — | deterministic drill data, tagged `sim=hsm-simulator` — never production evidence |
+
+PCI-DSS reports now include the payment picture: requirements 3.6.5-pay,
+3.7-pay-rotation, 3.5.1-pay-inventory and 3.6-pay-usable evaluate from
+PAY-xxx evidence, and the report carries a `payment_crypto` summary block.
+
 ## API quick reference
 
 ```bash

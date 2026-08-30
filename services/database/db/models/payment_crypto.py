@@ -9,10 +9,10 @@ and audit-trail telemetry attached.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text
+from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -73,6 +73,17 @@ class HsmEvent(BaseModel):
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="INFO")
     detail: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     raw: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class PaymentTransactionVolume(BaseModel):
+    """Daily transaction count from core banking — the denominator of the
+    crypto-per-transaction ratio (PAY-014). One row per day, upserted."""
+
+    __tablename__ = "payment_transaction_volume"
+
+    day: Mapped[date] = mapped_column(Date, nullable=False, unique=True, index=True)
+    transaction_count: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
 
 class PaymentPolicyFinding(BaseModel):

@@ -70,6 +70,7 @@ __all__ = [
     "KeyCeremony",
     "PaymentKey",
     "PaymentPolicyFinding",
+    "PaymentTransactionVolume",
     "PolicyException",
     "RepoConfiguration",
     "Scan",
@@ -97,4 +98,5 @@ from db.models.payment_crypto import (  # noqa: E402,F401
     KeyCeremony,
     PaymentKey,
     PaymentPolicyFinding,
+    PaymentTransactionVolume,
 )
