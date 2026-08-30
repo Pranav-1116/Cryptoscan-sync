@@ -415,3 +415,18 @@ tests with zero network. The live-loop suites live in
 `services/network_scanner/tests/test_live_*_*.py` (modes/scheduler/state,
 events/watchers/passive, evidence/CBOM/alerts, loop, revocation) and cover the
 whole architecture with injected fakes.
+
+### 11.7 ZELNX Cloud Discovery Engine (multi-cloud)
+
+The cloud counterpart of the live network layer: **ZELNX Cloud Discovery
+Engine** (`cloud_scanner.enterprise`) — a read-only, evidence-chained
+multi-cloud discovery engine covering all 23 spec areas (org hierarchy,
+full asset inventory, keys, certificates, PKI, encryption, network crypto,
+TLS, Kubernetes, serverless, secret references, IAM access, dependency
+graph, cross-cloud relationships, posture, PQC readiness, migration
+simulation, cost, compliance, drift, event-driven monitoring, evidence
+collection, scan modes). Fully injectable provider adapters, no live SDK
+calls implied, default mode INVENTORY_ONLY + CRYPTO_DISCOVERY.
+
+See [ZELIX-CLOUD-DISCOVERY.md](ZELIX-CLOUD-DISCOVERY.md) for the full
+architecture; CLI: `python -m cloud_scanner.main --zelix`.

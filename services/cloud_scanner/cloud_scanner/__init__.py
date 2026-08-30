@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__all__ = ["CloudScanner"]
+__all__ = ["CloudScanner", "ZelixCloudDiscoveryEngine"]
 
 
 def __getattr__(name: str):
@@ -10,4 +10,8 @@ def __getattr__(name: str):
         from cloud_scanner.core.scanner import CloudScanner
 
         return CloudScanner
+    if name == "ZelixCloudDiscoveryEngine":
+        from cloud_scanner.enterprise import ZelixCloudDiscoveryEngine
+
+        return ZelixCloudDiscoveryEngine
     raise AttributeError(name)
