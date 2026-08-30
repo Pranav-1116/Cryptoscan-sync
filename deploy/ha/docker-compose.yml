@@ -57,7 +57,7 @@ services:
       redis: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/meta',timeout=3)\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/readyz',timeout=3)\""]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -79,12 +79,16 @@ services:
 
   monitor:
     build: { context: ../.., dockerfile: deploy/ha/Dockerfile }
-    command: ["python", "scripts/run_monitor.py", "--tick-seconds", "30"]
+    command: ["python", "scripts/run_monitor.py", "--tick-seconds", "30", "--lease-ttl", "60"]
     environment: *appenv
     depends_on:
       postgres: { condition: service_healthy }
       migrate: { condition: service_completed_successfully }
-    restart: unless-stopped   # exactly one scheduler instance; container restart covers crashes
+    restart: unless-stopped
+    # The leader lease makes N replicas safe: exactly one scans, the others
+    # stand by, failover within one TTL on host/AZ loss (verified in drill.sh).
+    deploy:
+      replicas: 2
 
   nginx:
     image: nginx:1.27-alpine

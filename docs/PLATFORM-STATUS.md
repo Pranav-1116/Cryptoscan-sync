@@ -48,6 +48,16 @@ re-evaluation, `PAYMENT` monitor target, CEF/webhook/SMTP alert routing,
 HA compose stack + DR runbook, threat model + dependency audit (0 known CVEs),
 API load-test tool. Migration 0030. See `docs/user-guide/payment-crypto.md`.
 
+**Scale/HA/DR (bank gap #2)** — monitor **leader lease** (run N daemons,
+exactly one scans; SIGTERM = instant failover, hard loss = failover within
+TTL — *verified live* in this environment), Postgres streaming-replication
+overlay + `promote-replica.sh` (split-brain guarded), `/api/v1/readyz` LB
+drain endpoint (unauthenticated, 503 when DB is down), cluster-wide rate
+limits via shared Redis (honest per-replica fallback), automated quarterly
+`drill.sh`, load test re-run with throttle accounting (capacity ~1.5k rps
+single-process; per-identity budget enforced under 30-VU flood). Migration
+0031. See `docs/runbooks/dr-recovery.md`.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

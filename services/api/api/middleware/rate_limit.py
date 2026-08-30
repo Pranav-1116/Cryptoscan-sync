@@ -51,13 +51,19 @@ def _identity(request) -> str:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    def __init__(self, app, rules: dict[str, tuple[int, int]] | None = None, clock=time.monotonic):
+    def __init__(self, app, rules: dict[str, tuple[int, int]] | None = None, clock=time.monotonic,
+                 redis_client=None):
         super().__init__(app)
         self.rules = rules or DEFAULT_RULES
         self.clock = clock
+        self.redis = redis_client  # None -> in-process windows
         self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
     def _take(self, key: tuple[str, str], limit: int, window: float) -> tuple[bool, int, float]:
+        if self.redis is not None:
+            shared = self._take_shared(key, limit, window)
+            if shared is not None:
+                return shared
         now = self.clock()
         bucket = self._hits[key]
         while bucket and now - bucket[0] >= window:
@@ -67,6 +73,20 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return False, limit - len(bucket), retry_after
         bucket.append(now)
         return True, limit - len(bucket), 0.0
+
+    def _take_shared(self, key: tuple[str, str], limit: int, window: float):
+        """Cluster-wide fixed window. None -> Redis unavailable, caller falls back."""
+        identity, endpoint_class = key
+        epoch = int(self.clock() // window)
+        bucket_key = f"rl:{endpoint_class}:{identity}:{epoch}"
+        try:
+            count = self.redis.incr(bucket_key)
+            if count == 1:
+                self.redis.expire(bucket_key, int(window) + 1)
+            retry_after = window - (self.clock() % window)
+            return count <= limit, max(0, limit - count), retry_after
+        except Exception:
+            return None  # degrade to in-process limits, never error the request
 
     async def dispatch(self, request, call_next):
         path = request.url.path

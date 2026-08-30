@@ -82,6 +82,7 @@ __all__ = [
     "SystemDependency",
     "SystemVendor",
     "MfaRecoveryCode",
+    "MonitorLease",
     "User",
     "UserSession",
     "Vendor",
@@ -90,6 +91,7 @@ __all__ = [
     "Vulnerability",
 ]
 from db.models.runtime_finding import RuntimeFinding  # noqa: E402,F401
+from db.models.monitor import MonitorLease  # noqa: E402,F401
 from db.models.payment_crypto import (  # noqa: E402,F401
     HsmEvent,
     KeyCeremony,

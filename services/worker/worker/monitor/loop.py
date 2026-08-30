@@ -24,19 +24,25 @@ class MonitorLoop:
         session_factory: Callable[[], Any],
         tick_seconds: float = 30.0,
         sleep: Callable[[float], None] = time.sleep,
+        lease: Any = None,
     ):
         self.engine_factory = engine_factory
         self.session_factory = session_factory
         self.tick_seconds = tick_seconds
         self._sleep = sleep
+        self.lease = lease  # optional LeaderLease — multi-AZ: only the leader ticks
         self._stop = False
         self.ticks = 0
+        self.standby_cycles = 0
 
     def request_stop(self, *_args) -> None:
         self._stop = True
 
     def run_forever(self) -> int:
         while not self._stop:
+            if self.lease is not None and not self._heartbeat():
+                self._sleep(self.tick_seconds)
+                continue
             session = None
             try:
                 session = self.session_factory()
@@ -59,8 +65,21 @@ class MonitorLoop:
             if self._stop:
                 break
             self._sleep(self.tick_seconds)
+        if self.lease is not None and self.lease.is_leader:
+            try:
+                self.lease.release()  # graceful shutdown -> instant failover, no TTL wait
+            except Exception:
+                logger.exception("lease_release_failed")
         logger.info("monitor_stopped", extra={"ticks": self.ticks})
         return 0
+
+    def _heartbeat(self) -> bool:
+        """Renew (or step down from) the leader lease. Never kills the loop."""
+        try:
+            return self.lease.heartbeat()
+        except Exception:
+            logger.exception("lease_heartbeat_failed")  # DB gone: standby until it's back
+            return False
 
     def run_once(self) -> dict:
         """Single tick — also the cron mode (`run_monitor.py --once`)."""

@@ -43,6 +43,21 @@ class MonitorTarget(BaseModel):
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
+class MonitorLease(BaseModel):
+    """Leader lease for multi-AZ monitor daemons (exactly-one-scans).
+
+    One row per lease name; ``holder`` + ``expires_at`` decide who may tick.
+    Written via conditional UPDATE from worker.monitor.lease, not the ORM —
+    the model exists so schema parity and create_all stay exact.
+    """
+
+    __tablename__ = "monitor_leases"
+
+    name: Mapped[str] = mapped_column(String(50), nullable=False, unique=True, index=True)
+    holder: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class MonitorEvent(BaseModel):
     __tablename__ = "monitor_events"
 

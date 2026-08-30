@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -68,6 +69,19 @@ from api.security.exceptions import AuthenticationError, ValidationError
 logger = logging.getLogger(__name__)
 
 
+def _shared_rate_limit_backend():
+    """Redis client for cluster-wide rate limits; None (in-process) when unset/down."""
+    url = os.environ.get("REDIS_URL", "")
+    if not url:
+        return None
+    try:
+        import redis
+
+        return redis.Redis.from_url(url, socket_timeout=1, socket_connect_timeout=1)
+    except Exception:
+        return None
+
+
 def create_app(settings: APISettings | None = None) -> FastAPI:
     settings = settings or get_settings()
 
@@ -130,7 +144,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.add_middleware(RequestIDMiddleware)
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         app.add_middleware(AuthMiddleware, settings=settings)
-        app.add_middleware(RateLimitMiddleware)
+        app.add_middleware(RateLimitMiddleware, redis_client=_shared_rate_limit_backend())
     app.add_middleware(SecurityHeadersMiddleware)
 
     @app.exception_handler(AuthenticationError)

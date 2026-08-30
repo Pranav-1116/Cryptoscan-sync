@@ -4,14 +4,17 @@ Target service levels for the `deploy/ha` stack:
 
 | Layer | RPO | RTO | Mechanism |
 |---|---|---|---|
-| Evidence DB (Postgres) | ≤ 5 min (WAL archive) | ≤ 15 min (promote replica / restore) | `pg_basebackup` + WAL shipping; nightly `pg_dump` to object storage |
-| Monitor continuity | 0 (no data lost) | ≤ 30 s | `restart: unless-stopped`; the loop reschedules from `next_scan_at` |
-| API/dashboard | 0 | ≤ 15 min | 2+ stateless replicas behind nginx; scale up, no session affinity needed |
+| Evidence DB (Postgres) | ≈ 0 (async streaming) / ≤ 5 min (WAL archive) | ≤ 15 min (`promote-replica.sh`) | replication overlay: `pg_basebackup` clone + WAL streaming; nightly `pg_dump` off-host |
+| Monitor continuity | 0 (no data lost) | ≤ lease TTL (default 60 s; instant on SIGTERM) | **leader lease** — run 2+ daemons, exactly one scans, standby takes over automatically (**verified live**) |
+| API/dashboard | 0 | ≤ 15 min (drain via `/api/v1/readyz`) | 2+ stateless replicas behind nginx least-conn; readiness gates routing |
+| Rate limits | n/a | n/a | shared Redis budget across replicas (falls back per-replica if Redis is down) |
 | Alerting | 0 (SIEM keeps own copy) | ≤ 30 s | CEF/webhook sinks are fire-and-forget; event feed is the source of truth |
 
-> Honest limits: **multi-AZ Postgres failover and PITR are configuration you
-> must provide** (patroni / managed Postgres). This runbook covers single-host
-> HA + restore; multi-site DR uses the same backup artifacts.
+> Honest limits: **PITR and multi-*site* DR are configuration you must
+> provide** (object-storage WAL archive / managed Postgres). The replication
+> overlay ships the topology; `drill.sh` rehearses it and files the evidence.
+> Multi-AZ monitor failover, readiness drain, and cluster rate limiting are
+> implemented and were verified in this environment.
 
 ## 1. Backups (scheduled, verified)
 
@@ -62,6 +65,9 @@ python scripts/backup_evidence.py --verify ...   # chain integrity after restore
 - **DB read-only** — monitor logs failures and retries; no data is invented.
 
 ## 5. Failover drill (quarterly, PCI-style evidence)
+
+Automated: `deploy/ha/drill.sh` (API replica loss, monitor leader failover,
+DB outage honesty, backup verify). Manual equivalents:
 
 1. `docker compose stop api` → verify dashboard still serves (second replica).
 2. `docker compose stop postgres` → verify monitor survives + recovers.

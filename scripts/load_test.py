@@ -35,15 +35,19 @@ class Result:
     def __init__(self) -> None:
         self.latencies: list[float] = []
         self.errors = 0
+        self.throttled = 0
         self.requests = 0
         self.lock = threading.Lock()
 
-    def record(self, elapsed: float, ok: bool) -> None:
+    def record(self, elapsed: float, status: int) -> None:
         with self.lock:
             self.requests += 1
-            if not ok:
+            if status == 429:
+                self.throttled += 1
+            elif not 200 <= status < 500:
                 self.errors += 1
-            self.latencies.append(elapsed)
+            if status != 429:  # throttled responses are not latency-representative
+                self.latencies.append(elapsed)
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -99,7 +103,7 @@ def worker(call: Callable, result: Result, stop_at: float, scan_target_id: str |
             status, elapsed = call(f"/api/v1/monitor/targets/{scan_target_id}/scan-now", "POST")
         else:
             status, elapsed = call(path)
-        result.record(elapsed, 200 <= status < 500)
+        result.record(elapsed, status)
         iteration += 1
 
 
@@ -137,12 +141,15 @@ def main() -> int:
     wall = time.perf_counter() - started
 
     error_rate = result.errors / result.requests if result.requests else 1.0
+    # NOTE: rate limiting is active in production mode (600 req/min/identity);
+    # a high throttled_429 share means the *budget* was the ceiling, not capacity.
     print(json.dumps({
         "requests": result.requests,
         "duration_s": round(wall, 1),
         "throughput_rps": round(result.requests / wall, 1),
         "errors": result.errors,
         "error_rate": round(error_rate, 4),
+        "throttled_429": result.throttled,
         "latency_ms": {
             "p50": round(percentile(result.latencies, 0.50) * 1000, 1),
             "p90": round(percentile(result.latencies, 0.90) * 1000, 1),

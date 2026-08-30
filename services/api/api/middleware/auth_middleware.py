@@ -28,6 +28,7 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/auth/oidc",
     "/api/v1/meta",
     "/api/v1/healthz",
+    "/api/v1/readyz",  # LB readiness probes must work without credentials
     "/api/v1/discovery",
     "/api/v1/webhooks",
     "/assets",
