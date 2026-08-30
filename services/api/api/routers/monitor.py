@@ -16,10 +16,11 @@ from api.dependencies import get_current_user, get_db_session, require_auditor
 
 router = APIRouter(tags=["monitor"])
 
-VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT")
+VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT", "OT", "VENDOR")
 # Change-watch (realtime rescan-on-change) is only meaningful where a cheap
-# fingerprint probe exists: git HEAD for REPO, local image id for CONTAINER.
-WATCHABLE_TYPES = ("REPO", "CONTAINER")
+# fingerprint probe exists: git HEAD for REPO, local image id for CONTAINER,
+# OT capture-directory fingerprint for OT.
+WATCHABLE_TYPES = ("REPO", "CONTAINER", "OT")
 
 
 def _validate_config(config: dict, target_type: str) -> dict:
@@ -125,6 +126,10 @@ def create_target(
         raise HTTPException(status_code=422, detail=f"target_type must be one of {VALID_TYPES}")
     if body.target_type == "NETWORK" and not (body.config.get("endpoints") or body.config.get("endpoint")):
         raise HTTPException(status_code=422, detail="NETWORK targets need config.endpoints (['host:port', …])")
+    if body.target_type == "OT" and not (body.config.get("path") or body.config.get("directory")):
+        raise HTTPException(status_code=422, detail="OT targets need config.path (passive capture/log directory)")
+    if body.target_type == "VENDOR" and not (body.config.get("name") or "").strip():
+        raise HTTPException(status_code=422, detail="VENDOR targets need config.name (vendor name)")
     if body.interval_seconds is not None and not (60 <= body.interval_seconds <= 2_592_000):
         raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
     config = _validate_config(body.config, body.target_type)

@@ -123,6 +123,32 @@ def ingest_runtime_findings(
     db.commit()
     accepted = [to_evidence(item, body.scanner_id) for item in body.findings]
     weak = [row for row in rows if row["weak_tls"]]
+    # realtime: runtime agents are always-on — publish to the SSE stream so
+    # the live picture updates the moment findings land (not on next poll)
+    if weak:
+        try:
+            from api.events.bus import get_event_bus
+
+            get_event_bus().publish(
+                "runtime.finding",
+                {
+                    "scanner_id": body.scanner_id,
+                    "anomalies": len(weak),
+                    "accepted": len(rows),
+                    "weak": [
+                        {
+                            "host": row.get("hostname"),
+                            "process": row.get("process_name"),
+                            "algorithm": row.get("algorithm"),
+                            "status": row.get("status"),
+                        }
+                        for row in weak[:20]
+                    ],
+                },
+                source="runtime",
+            )
+        except Exception:  # noqa: BLE001 — the bus must never block ingestion
+            pass
     return {
         "accepted": len(rows),
         "persisted": stored,

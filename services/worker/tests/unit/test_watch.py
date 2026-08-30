@@ -31,6 +31,7 @@ from worker.monitor.watch import (
     ProbeResult,
     container_probe,
     git_probe,
+    ot_probe,
 )
 
 T0 = datetime(2026, 8, 29, 12, 0, 0, tzinfo=timezone.utc)
@@ -112,6 +113,41 @@ def test_container_probe_needs_reference(monkeypatch):
     monkeypatch.setattr("worker.monitor.watch.shutil.which", lambda _name: "/usr/bin/docker")
     result = container_probe({"image": " "})
     assert not result.ok and "image reference" in result.error
+
+
+# -------------------------------------------------------------- ot probe
+
+
+def test_ot_probe_fingerprints_capture_directory(tmp_path):
+    (tmp_path / "plc.log").write_text("proto=MODBUS encrypted=no\n")
+    (tmp_path / "ignored.txt").write_text("not a capture")
+    result = ot_probe({"path": str(tmp_path)})
+    assert result.ok and result.state
+    assert "plc.log" in result.state and "ignored.txt" not in result.state
+    # unchanged directory -> same fingerprint
+    result2 = ot_probe({"path": str(tmp_path)})
+    assert result2.ok and result2.state == result.state
+
+
+def test_ot_probe_change_on_new_capture(tmp_path):
+    (tmp_path / "plc.log").write_text("proto=MODBUS\n")
+    before = ot_probe({"path": str(tmp_path)})
+    (tmp_path / "hmi.jsonl").write_text('{"proto": "OPC-UA"}\n')
+    after = ot_probe({"path": str(tmp_path)})
+    assert after.ok and after.state != before.state
+    # modified capture also flips the fingerprint
+    (tmp_path / "plc.log").write_text("proto=MODBUS encrypted=no extra=1\n")
+    modified = ot_probe({"path": str(tmp_path)})
+    assert modified.state != after.state
+
+
+def test_ot_probe_missing_directory_or_captures(tmp_path):
+    assert not ot_probe({"path": "/nonexistent/ot"}).ok
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = ot_probe({"path": str(empty)})
+    assert not result.ok and "no ingestible capture" in result.error
+    assert not ot_probe({}).ok and "directory" in ot_probe({}).error
 
 
 # -------------------------------------------------------- change detector

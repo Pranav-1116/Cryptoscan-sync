@@ -47,6 +47,8 @@ DEFAULT_INTERVALS: dict[str, int] = {
     "REPO": 86_400,    # daily — source-driven (watch mode rescans on push)
     "CONTAINER": 86_400,
     "PAYMENT": 3_600,     # hourly — HSM audit trails move fast
+    "OT": 900,        # 15 min — passive capture re-scan (watch mode rescans on new captures)
+    "VENDOR": 604_800,  # weekly — vendor posture changes slowly
 }
 MAX_BACKOFF_SECONDS = 86_400
 
@@ -67,7 +69,8 @@ class MonitorEngine:
                  jitter_fraction: float = 0.0, rng: Callable[[float, float], float] | None = None,
                  watch_enabled: bool = True, probes: dict[str, Callable[..., ProbeResult]] | None = None,
                  probe_timeout: float = 10.0,
-                 session_factory: Callable[[], Any] | None = None, concurrency: int = 1):
+                 session_factory: Callable[[], Any] | None = None, concurrency: int = 1,
+                 run_reports: bool = True):
         self.session = session
         self.repo = MonitorRepository(session)
         self.runners = runners if runners is not None else _default_runners()
@@ -80,15 +83,17 @@ class MonitorEngine:
         self.probe_timeout = float(probe_timeout)
         self.session_factory = session_factory
         self.concurrency = max(1, int(concurrency))
+        self.run_reports = bool(run_reports)
 
     # ---------------------------------------------------------------- tick
 
     def tick(self) -> dict[str, Any]:
-        """Run every target that is due *or* whose watched state just changed.
+        """Run every target that is due *or* whose watched state just changed,
+        then execute any due compliance report schedules.
 
         Returns an honest per-target outcome list plus the trigger breakdown
-        (``watch_triggered`` vs ``due``) so operators can see why the daemon
-        did work.
+        (``watch_triggered`` vs ``due``) and ``report_ran`` so operators can
+        see why the daemon did work.
         """
         now = self._now()
         triggered: list[MonitorTarget] = []
@@ -103,12 +108,28 @@ class MonitorEngine:
         due = [t for t in self.repo.due(now=now) if t.id not in triggered_ids]
         ordered = triggered + due
         results = self._execute_many(ordered)
+
+        report_outcomes: list[dict[str, Any]] = []
+        if self.run_reports:
+            from worker.monitor.report_sweep import run_due_report_schedules
+
+            report_outcomes = run_due_report_schedules(self.session, on_event=self._report_event)
         return {
             "ran": len(results),
             "results": results,
             "watch_triggered": len(triggered),
             "due": len(due),
+            "report_ran": len(report_outcomes),
+            "reports": report_outcomes,
         }
+
+    # ----------------------------------------------------------- report run
+
+    def _report_event(self, event_type: str, detail: str, payload: dict) -> None:
+        """Record report outcomes as monitor events (federated to SSE)."""
+        self.repo.add_event(
+            target=None, event_type=event_type, detail=detail[:1000], payload=payload,
+        )
 
     # ------------------------------------------------------ change watching
 
@@ -304,8 +325,10 @@ def _default_runners() -> dict[str, Runner]:
         cloud_runner,
         container_runner,
         network_runner,
+        ot_runner,
         payment_runner,
         repo_runner,
+        vendor_runner,
     )
 
     return {
@@ -314,4 +337,6 @@ def _default_runners() -> dict[str, Runner]:
         "REPO": repo_runner,
         "CONTAINER": container_runner,
         "PAYMENT": payment_runner,
+        "OT": ot_runner,
+        "VENDOR": vendor_runner,
     }

@@ -38,6 +38,7 @@ class WorkerSettings(BaseSettings):
     MONITOR_WATCH_ENABLED: bool = True          # change-watch probes on every tick
     MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: float = 10.0
     MONITOR_CONCURRENCY: int = 2                # parallel scans per tick (1 = serial)
+    MONITOR_RUN_REPORTS: bool = True            # execute due compliance report schedules each tick
     NEO4J_URI: str = ""
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "cryptoscan"

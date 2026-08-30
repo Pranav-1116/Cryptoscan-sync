@@ -97,6 +97,64 @@ async def test_watch_config_validation_and_daemon_health():
 
 
 @pytest.mark.asyncio
+async def test_ot_and_vendor_targets():
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # OT target with watch -> accepted (capture-dir fingerprint probe)
+        ot = await client.post("/api/v1/monitor/targets", json={
+            "name": "plant-floor", "target_type": "OT",
+            "config": {"path": "/var/log/ot", "watch": True}})
+        assert ot.status_code == 201, ot.text
+        assert ot.json()["target_type"] == "OT"
+        # OT without a path -> 422
+        assert (await client.post("/api/v1/monitor/targets", json={
+            "name": "bad-ot", "target_type": "OT", "config": {}})).status_code == 422
+        # VENDOR target -> accepted
+        vendor = await client.post("/api/v1/monitor/targets", json={
+            "name": "acme", "target_type": "VENDOR",
+            "config": {"name": "Acme HSM", "algorithms": ["DES"]}})
+        assert vendor.status_code == 201, vendor.text
+        # VENDOR without a name -> 422
+        assert (await client.post("/api/v1/monitor/targets", json={
+            "name": "bad-vendor", "target_type": "VENDOR", "config": {}})).status_code == 422
+        # watch still rejected on NETWORK
+        assert (await client.post("/api/v1/monitor/targets", json={
+            "name": "edge", "target_type": "NETWORK",
+            "config": {"endpoints": ["h:443"], "watch": True}})).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_runtime_ingest_publishes_realtime_event(monkeypatch):
+    published: list[tuple[str, dict]] = []
+
+    class FakeBus:
+        def publish(self, event_type, payload, source=None):
+            published.append((event_type, payload))
+
+    monkeypatch.setattr("api.events.bus.get_event_bus", lambda: FakeBus())
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        resp = await client.post("/api/v1/scans/runtime-findings", json={
+            "scanner_id": "tls-tap-agent-v1",
+            "findings": [{
+                "process_name": "paymentd",
+                "hostname": "prod-1",
+                "library_name": "openssl",
+                "algorithm": "TLS1.0",
+                "cipher_suite": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+                "key_size": 1024,
+            }],
+        })
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["anomalies"] == 1
+    assert len(published) == 1
+    assert published[0][0] == "runtime.finding"
+    assert published[0][1]["anomalies"] == 1
+
+
+@pytest.mark.asyncio
 async def test_scan_now_runs_the_engine(monkeypatch):
     app, session, engine = _make_app()
     transport = ASGITransport(app=app)

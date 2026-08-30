@@ -23,7 +23,7 @@ from db.models.base import BaseModel
 TARGET_STATUSES = ("PENDING", "OK", "DEGRADED", "FAILING", "BLOCKED", "PAUSED")
 
 # Supported target types; each maps to a runner in worker.monitor.runners.
-TARGET_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT")
+TARGET_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT", "OT", "VENDOR")
 
 
 class MonitorTarget(BaseModel):

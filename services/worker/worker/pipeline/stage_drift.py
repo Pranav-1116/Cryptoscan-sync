@@ -74,6 +74,35 @@ def execute(ctx: PipelineContext, session) -> PipelineContext:
         )
     ctx.drift_events = events
     session.flush()
+    _publish_drift_events(events, ctx)
+
+def _publish_drift_events(events: list[dict], ctx: "PipelineContext") -> None:
+    """Realtime: newly detected drift goes straight to the SSE stream.
+
+    Same guarded pattern as pipeline_runner — a standalone worker process has
+    no bus, so this is a no-op there and polling covers it.
+    """
+    if not events:
+        return
+    try:
+        from api.events.bus import get_event_bus
+
+        for event in events:
+            get_event_bus().publish(
+                "drift.event",
+                {
+                    "scan_id": ctx.scan_id,
+                    "job_id": ctx.job_id,
+                    "target": ctx.target_repo,
+                    "drift_type": event["drift_type"],
+                    "severity": event["severity"],
+                    "reason": event["reason"],
+                    "algorithm": event["algorithm"],
+                },
+                source="drift",
+            )
+    except Exception:  # noqa: BLE001 — standalone worker: polling covers it
+        pass
     logger.info("stage_drift_done", extra={"events": len(events)})
     return ctx
 

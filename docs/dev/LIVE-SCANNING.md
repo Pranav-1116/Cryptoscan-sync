@@ -132,13 +132,86 @@ make monitor-once       # single sweep (cron mode)
 
 ## 6. What is and isn't realtime
 
+## 5. Target types
+
+| Type | What it watches | Watch probe? | Default interval |
+|---|---|---|---|
+| `NETWORK` | TLS endpoints (cert posture, weak TLS, cert **expiry**) | no (interval) | 15 min |
+| `CLOUD` | AWS/Azure/GCP crypto config | no (interval) | 6 h |
+| `REPO` | source repo (git HEAD) | ✅ `git ls-remote` | daily |
+| `CONTAINER` | image (local digest) | ✅ `docker inspect` | daily |
+| `PAYMENT` | HSM audit / transaction feeds | no (interval) | hourly |
+| `OT` | passive OT/ICS captures (new capture files) | ✅ capture-dir fingerprint | 15 min |
+| `VENDOR` | vendor crypto posture (score + issues) | no (interval) | weekly |
+
+`OT` targets point at a directory of passive captures (`{"path": "/var/log/ot",
+"watch": true}`) — any new or modified capture (`*.log/.otlog/.pcap.txt/.jsonl/
+.ndjson`) triggers an immediate passive re-scan. `VENDOR` targets score a vendor
+(`{"name": "Acme HSM", "algorithms": ["DES"], "sensitive": ["PCI"]}`) through
+the shared registry + quantum classifier; weak crypto surfaces as
+`VENDOR_RISK`/`VENDOR_ISSUE` alerts.
+
+## 6. Realtime event sources (SSE `/api/v1/events/stream`)
+
+| Event | Triggered by | Live in |
+|---|---|---|
+| `monitor.change_detected` | watch probe found a change | monitor daemon |
+| `monitor.scan_ok/degraded/alert` | every monitor target outcome | monitor daemon |
+| `monitor.report_generated/skipped` | due compliance report schedules | monitor daemon (report sweep) |
+| `scan.completed` | pipeline finishes a scan | worker pipeline |
+| `drift.event` | new drift detected vs baseline | pipeline stage |
+| `runtime.finding` | runtime agent ingests weak findings | API ingest |
+
+## 7. Scheduled reports now actually run
+
+`report_schedules` are executed **by the monitor daemon on every tick**: due
+schedules render against the latest completed scan, snapshot, email, advance
+`next_run_at`, and emit a `monitor.report_generated` / `monitor.report_skipped`
+event. No completed scan yet → honest `SKIPPED_NO_SCAN` (stays due, runs the
+moment a scan exists). Gate with `MONITOR_RUN_REPORTS` (default true).
+
+## 8. Configuration (env / .env)
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MONITOR_TICK_SECONDS` | 30 | daemon tick cadence (realtime feel: 15–30 s) |
+| `MONITOR_LEASE_TTL_SECONDS` | 60 | leader-lease TTL (HA failover bound) |
+| `MONITOR_JITTER_FRACTION` | 0.1 | random spread on `next_scan_at` (0 = off) — avoids fleet thundering |
+| `MONITOR_WATCH_ENABLED` | true | master switch for change-watch probes |
+| `MONITOR_WATCH_PROBE_TIMEOUT_SECONDS` | 10 | per-probe timeout (git ls-remote / docker inspect / dir walk) |
+| `MONITOR_CONCURRENCY` | 2 | parallel target scans per tick (per-target DB sessions). **Clamped to 1 on SQLite** (single writer) — use Postgres for parallel fleet scans |
+| `MONITOR_RUN_REPORTS` | true | execute due compliance report schedules each tick |
+
+## 9. Ops runbook
+
+```bash
+docker compose up -d                      # starts api, worker, monitor, …
+docker compose scale monitor=3            # HA: 3 replicas, one leader scans
+curl $API/api/v1/monitor/status           # daemon_health.alive + targets
+curl $API/api/v1/monitor/events?limit=50  # event feed (system of record)
+curl -X POST $API/api/v1/monitor/targets/{id}/scan-now   # force one target now
+curl $API/metrics | grep cryptoscan_monitor              # fleet metrics
+```
+
+Dev:
+
+```bash
+make monitor            # daemon (Ctrl+C stops; SIGTERM releases the lease)
+make monitor-once       # single sweep (cron mode)
+```
+
+## 10. What is and isn't realtime
+
 | Signal | Latency | Source |
 |---|---|---|
-| git push / image change → rescan | ≤ 1 tick (`MONITOR_TICK_SECONDS`) | watch probe |
+| git push / image change / new OT capture → rescan | ≤ 1 tick (`MONITOR_TICK_SECONDS`) | watch probe |
 | CHANGE_DETECTED → SSE Live events | ≤ 1 tick + tailer (2 s) | DB tailer → bus |
-| new TLS endpoint issue → SIEM alert | ≤ interval (default 15 min) | network runner + alert sinks |
-| cloud account drift | ≤ 6 h interval (change-watch n/a — no cheap probe yet) | cloud runner |
+| drift detected vs baseline → SSE | immediate (pipeline) | `drift.event` |
+| runtime agent weak finding → SSE | immediate (ingest) | `runtime.finding` |
+| due compliance report → generated/emailed | ≤ 1 tick | report sweep |
+| new TLS endpoint issue / cert expiry → SIEM alert | ≤ interval (default 15 min) | network runner + alert sinks |
+| cloud account drift | ≤ 6 h interval (no cheap fingerprint probe yet) | cloud runner |
 
 Registry digest watch without a local docker CLI is reported unsupported
-(honest), and cloud/network types have no fingerprint probe yet — they are
-interval-scanned. That is the documented boundary of the realtime layer.
+(honest), and cloud/network/vendor types have no fingerprint probe yet — they
+are interval-scanned. That is the documented boundary of the realtime layer.

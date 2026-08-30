@@ -27,6 +27,7 @@ import logging
 import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -122,9 +123,55 @@ def container_probe(config: dict, *, timeout: float = 10.0) -> ProbeResult:
     return ProbeResult(state=image_id, ok=True)
 
 
+# Captures that the OT scanner ingests (mirror ot_scanner.core.scanner.OT_SUFFIXES)
+OT_SUFFIXES = {".log", ".otlog", ".pcap.txt", ".jsonl", ".ndjson"}
+
+
+def ot_probe(config: dict, *, timeout: float = 10.0) -> ProbeResult:
+    """Fingerprint an OT capture/log directory: any new or modified capture is a change.
+
+    Walks the configured directory (``config.path``) and hashes
+    ``(relative_path, mtime_ns, size)`` of every file with an OT capture
+    suffix. Cheap (no content read), so it can run every tick. New captures
+    landing on the SPAN/log host trigger an immediate OT rescan.
+    """
+    path = str(config.get("path") or config.get("directory") or "").strip()
+    if not path:
+        return ProbeResult(state=None, ok=False, error="config needs OT capture directory path (e.g. {'path': '/var/log/ot'})")
+    root = Path(path)
+    if not root.is_dir():
+        return ProbeResult(state=None, ok=False, error=f"OT capture directory not found: {path}")
+    import os
+
+    entries: list[str] = []
+    try:
+        for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for name in sorted(filenames):
+                if Path(name).suffix.lower() not in OT_SUFFIXES:
+                    continue
+                p = Path(dirpath) / name
+                try:
+                    st = p.stat()
+                    entries.append(f"{p.relative_to(root)}:{st.st_mtime_ns}:{st.st_size}")
+                except OSError:
+                    continue
+    except Exception as exc:  # noqa: BLE001
+        return ProbeResult(state=None, ok=False, error=f"OT directory walk failed: {exc}")
+    if not entries:
+        return ProbeResult(state=None, ok=False, error="OT capture directory has no ingestible capture files")
+    state = "|".join(entries)
+    if len(state) > 4000:
+        import hashlib
+
+        state = hashlib.sha256(state.encode("utf-8")).hexdigest()
+    return ProbeResult(state=state, ok=True)
+
+
 WATCH_PROBES: dict[str, Callable[..., ProbeResult]] = {
     "REPO": git_probe,
     "CONTAINER": container_probe,
+    "OT": ot_probe,
 }
 
 # Verdicts returned by ChangeDetector.detect

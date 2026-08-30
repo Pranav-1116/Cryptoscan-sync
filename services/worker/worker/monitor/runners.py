@@ -46,6 +46,18 @@ def network_runner(config: dict, session: Any) -> dict:
     # certificates feed the shared inventory, exactly like POST /network-scans
     _persist_certificates(result, session)
 
+    # continuous expiry watch: certificates nearing expiry are issues, so a
+    # certificate due to roll over starts alerting within one interval window
+    try:
+        from network_scanner.inventory.expiry_monitor import expiry_alerts
+
+        days = int(config.get("expiry_alert_days", 30))
+        for alert in expiry_alerts(result.get("certificates") or [], days=days):
+            cn = alert.get("common_name") or alert.get("subject") or "?"
+            issues.append(f"CERT_EXPIRING:{cn}:{alert.get('days_left', '?')}d")
+    except Exception:
+        logger.debug("monitor_expiry_alerts_skipped", exc_info=True)
+
     summary = {
         "endpoints": len(endpoints),
         "probed_ok": ok,
@@ -347,3 +359,112 @@ def _ingest_transaction_file(path: Any, repo) -> int:
             repo.upsert_transaction_volume(day, count, source="dw-export")
             days += 1
     return days
+
+
+# ---------------------------------------------------------------------- ot
+
+def ot_runner(config: dict, session: Any) -> dict:
+    """Passive OT/ICS scan of a capture/log directory. Never sends packets.
+
+    Re-runs the same passive scanner as POST /api/v1/ot/scan over the
+    configured directory, flags unencrypted protocol traffic, weak
+    protocol/algorithm observations, and known-firmware CVEs, and persists
+    discovered devices. ``config.path`` is required.
+    """
+    path = str(config.get("path") or config.get("directory") or "").strip()
+    if not path:
+        return {"blocked_reason": "config needs OT capture directory path (e.g. {'path': '/var/log/ot'})"}
+
+    from ot_scanner.core.scanner import OtPassiveScanner
+
+    result = OtPassiveScanner().scan_filesystem(path)
+    if result.get("stopped"):
+        return {"blocked_reason": "OT scanner safety-stopped (emergency stop engaged)"}
+
+    issues: list[str] = []
+    for finding in result.get("findings") or []:
+        if not finding.get("has_crypto"):
+            device = (finding.get("device") or {})
+            ip = device.get("ip_address") if isinstance(device, dict) else str(device)
+            ip = str(ip or finding.get("src_ip") or "?")
+            protocol = str(finding.get("protocol") or "?")
+            issues.append(f"OT_UNENCRYPTED:{protocol}:{ip}")
+    for cve in result.get("cve_hits") or []:
+        issues.append(f"OT_CVE:{cve.get('cve', '?')}")
+
+    try:  # persist discovered OT devices (best-effort; scanning still succeeds)
+        from db.repositories.maturity_repository import MaturityRepository
+
+        repo = MaturityRepository(session)
+        for device in result.get("devices") or []:
+            repo.upsert_ot_device(dict(device))
+        for finding in result.get("findings") or []:
+            ip = (finding.get("device") or {}).get("ip_address")
+            row = repo.upsert_ot_device(finding.get("device") or {"ip_address": ip})
+            repo.add_ot_finding(row.id, dict(finding))
+    except Exception:
+        logger.debug("monitor_ot_persist_skipped", exc_info=True)
+
+    risk = result.get("risk_report") or {}
+    summary = {
+        "devices": int(result.get("device_count") or len(result.get("devices") or [])),
+        "unencrypted": int(result.get("unencrypted") or 0),
+        "findings": len(result.get("findings") or []),
+        "posture": risk.get("posture") or "UNKNOWN",
+        "issues": sorted(set(issues)),
+    }
+    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
+
+
+# ------------------------------------------------------------------- vendor
+
+def vendor_runner(config: dict, session: Any) -> dict:
+    """Vendor crypto posture: deterministic score + issues for weak crypto.
+
+    ``config.name`` is required; optional ``config.algorithms`` (observed or
+    disclosed inventory) and ``config.sensitive`` (PCI/PHI/PII …) feed the
+    shared registry + quantum classifier — same evidence rules as the rest
+    of the platform. No outbound probing here.
+    """
+    name = str(config.get("name") or "").strip()
+    if not name:
+        return {"blocked_reason": "config needs vendor name (e.g. {'name': 'Acme HSM', 'algorithms': ['AES-256-GCM']})"}
+
+    from vendor_intel.risk import score_vendor
+
+    inventory = [
+        {"algorithm": str(algo)}
+        for algo in (config.get("algorithms") or [])
+        if str(algo).strip()
+    ]
+    result = score_vendor(
+        inventory=inventory,
+        classifications=config.get("classifications") or [],
+        pqc_status=config.get("pqc_status"),
+        cbom_provided=config.get("cbom_provided"),
+        refuses_disclosure=bool(config.get("refuses_disclosure")),
+        long_lived_data=bool(config.get("long_lived_data")),
+    )
+    score = int(result.get("score") or 0)
+    category = str(result.get("category") or result.get("vendor_risk_category") or "UNKNOWN")
+    issues: list[str] = []
+    issue = str(result.get("issue") or "").strip()
+    # "Strong crypto" / "No crypto disclosure" are posture statements, not issues
+    if issue and issue not in {"Strong crypto", "No crypto disclosure"}:
+        issues.append(f"VENDOR_ISSUE:{issue}")
+    if score >= 50 or category.upper() in {"HIGH", "CRITICAL"}:
+        issues.append(f"VENDOR_RISK:{category}:score={score}")
+    pqc = str(result.get("pqc_status") or "")
+    if pqc and pqc.upper() in {"VULNERABLE", "SHOR_VULNERABLE"}:
+        issues.append(f"VENDOR_QUANTUM:{pqc}")
+
+    summary = {
+        "vendor": name,
+        "score": score,
+        "risk": category,
+        "issue": issue,
+        "pqc_status": pqc,
+        "issues": sorted(set(issues)),
+    }
+    degraded = bool(issues) or score >= 50
+    return {"summary": summary, "degraded": degraded, "issues": sorted(set(issues))}

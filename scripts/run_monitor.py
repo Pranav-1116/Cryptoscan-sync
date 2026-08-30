@@ -65,6 +65,7 @@ def main() -> int:
         probe_timeout=settings.MONITOR_WATCH_PROBE_TIMEOUT_SECONDS,
         session_factory=SessionLocal,
         concurrency=args.concurrency,
+        run_reports=settings.MONITOR_RUN_REPORTS,
     )
     lease = None
     if not args.no_lease:
