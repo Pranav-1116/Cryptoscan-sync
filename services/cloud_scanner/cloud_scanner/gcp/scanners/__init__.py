@@ -323,3 +323,178 @@ def scan_gke(client: Any, *, project: str, telemetry: ScanTelemetry | None = Non
             )
         )
     return findings
+
+
+def scan_cloud_dns(client: Any, *, project: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Cloud DNS managed zones: DNSSEC state + signing-key algorithms."""
+    findings: list[dict[str, Any]] = []
+    zones: list[Any] = []
+    if isinstance(client, list):
+        zones = client
+    elif hasattr(client, "managedZones"):
+        listed = client.managedZones().list(project=project)
+        payload = listed.execute() if hasattr(listed, "execute") else listed
+        zones = iter_records((payload or {}).get("managedZones") if isinstance(payload, dict) else payload)
+    else:
+        zones = _records(client, "list")
+    for zone in cap_items(zones, telemetry=telemetry, provider="GCP", service="dns", region=project):
+        if isinstance(zone, dict):
+            name = zone.get("name") or "zone"
+            dns_name = zone.get("dnsName") or ""
+            visibility = zone.get("visibility") or "public"
+            cfg = zone.get("dnssecConfig") or {}
+            state = str(cfg.get("state") or "off").lower()
+            ksk = str(cfg.get("kskAlgorithm") or cfg.get("keySigningKeyAlgorithm") or "ecdsap256sha256")
+            zsk = str(cfg.get("zskAlgorithm") or cfg.get("zoneSigningKeyAlgorithm") or "ecdsap256sha256")
+            descriptions = cfg.get("defaultKeySpecs") or []
+        else:
+            name = named(zone, "zone")
+            dns_name = str(attr(zone, "dns_name", "dnsName", default="") or "")
+            visibility = str(attr(zone, "visibility", default="public") or "public")
+            cfg = attr(zone, "dnssec_config", "dnssecConfig") or {}
+            state = str(attr(cfg, "state", default="off") or "off").lower()
+            ksk = str(attr(cfg, "ksk_algorithm", "kskAlgorithm", "key_signing_key_algorithm", default="ecdsap256sha256"))
+            zsk = str(attr(cfg, "zsk_algorithm", "zskAlgorithm", "zone_signing_key_algorithm", default="ecdsap256sha256"))
+            descriptions = iter_records(attr(cfg, "default_key_specs", "defaultKeySpecs") or [])
+        on = state == "on" or state == "transfer"
+        private = str(visibility).lower() == "private"
+        weak_algo = any(token in f"{ksk} {zsk}".lower() for token in ("rsasha1", "rsasha256"))
+        issue = None
+        if not on and not private:
+            issue = "DNSSEC_DISABLED"
+        elif weak_algo:
+            issue = "WEAK_DNSSEC_ALGORITHM"
+        findings.append(
+            cloud_finding(
+                source_type="GCP_CLOUD_DNS_ZONE",
+                resource=name,
+                algorithm="ECDSA" if on else None,
+                purpose="DNS_SIGNING",
+                file_path=f"gcp://dns/{name}",
+                provider="GCP",
+                issue=issue,
+                extra={
+                    "project": project,
+                    "scan_method": "LIVE_API",
+                    "dns_name": dns_name,
+                    "dnssec_state": state,
+                    "dnssec_enabled": on,
+                    "ksk_algorithm": ksk,
+                    "zsk_algorithm": zsk,
+                    "default_key_specs": descriptions,
+                    "visibility": visibility,
+                },
+            )
+        )
+    return findings
+
+
+def scan_memorystore(client: Any, *, project: str, location: str = "-", telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Memorystore (Redis): transit encryption mode + auth + persistence."""
+    findings: list[dict[str, Any]] = []
+    instances: list[Any] = []
+    if isinstance(client, list):
+        instances = client
+    elif hasattr(client, "projects"):
+        # discovery style: projects().locations().instances().list()
+        parent = f"projects/{project}/locations/{location}"
+        projects = client.projects() if callable(client.projects) else client.projects
+        locations = projects.locations() if callable(projects.locations) else projects.locations
+        instance_api = locations.instances() if callable(locations.instances) else locations.instances
+        listed = instance_api.list(parent=parent)
+        payload = listed.execute() if hasattr(listed, "execute") else listed
+        instances = iter_records((payload or {}).get("instances") if isinstance(payload, dict) else payload)
+    else:
+        instances = _records(client, "list")
+    for inst in cap_items(instances, telemetry=telemetry, provider="GCP", service="memorystore", region=project):
+        if isinstance(inst, dict):
+            name = (inst.get("name") or "redis").rsplit("/", 1)[-1]
+            tls_mode = str(inst.get("transitEncryptionMode") or inst.get("transit_encryption_mode") or "DISABLED").upper()
+            auth = bool(inst.get("authEnabled") or inst.get("auth_enabled"))
+            persistence = (inst.get("persistenceConfig") or inst.get("persistence_config") or {}).get("persistenceMode") or "DISABLED"
+        else:
+            name = named(inst, "redis")
+            tls_mode = str(attr(inst, "transit_encryption_mode", "transitEncryptionMode", default="DISABLED") or "DISABLED").upper()
+            auth = bool(attr(inst, "auth_enabled", "authEnabled"))
+            persistence = str(attr(attr(inst, "persistence_config", "persistenceConfig") or {}, "persistence_mode", "persistenceMode", default="DISABLED") or "DISABLED")
+        tls_on = tls_mode != "DISABLED"
+        issue = None
+        if not tls_on:
+            issue = "NO_TRANSIT_ENCRYPTION"
+        elif not auth:
+            issue = "AUTH_DISABLED"
+        findings.append(
+            cloud_finding(
+                source_type="GCP_MEMORYSTORE_REDIS",
+                resource=name,
+                algorithm="TLS" if tls_on else None,
+                purpose="TRANSPORT_ENCRYPTION",
+                file_path=f"gcp://memorystore/{name}",
+                provider="GCP",
+                issue=issue,
+                extra={
+                    "project": project,
+                    "scan_method": "LIVE_API",
+                    "transit_encryption_mode": tls_mode,
+                    "auth_enabled": auth,
+                    "persistence_mode": persistence,
+                },
+            )
+        )
+    return findings
+
+
+def scan_cloud_run(client: Any, *, project: str, location: str = "-", telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Cloud Run services: CMEK encryption key + key-revocation action + ingress."""
+    findings: list[dict[str, Any]] = []
+    services: list[Any] = []
+    if isinstance(client, list):
+        services = client
+    elif hasattr(client, "projects"):
+        parent = f"projects/{project}/locations/{location}"
+        projects = client.projects() if callable(client.projects) else client.projects
+        locations = projects.locations() if callable(projects.locations) else projects.locations
+        service_api = locations.services() if callable(locations.services) else locations.services
+        listed = service_api.list(parent=parent)
+        payload = listed.execute() if hasattr(listed, "execute") else listed
+        services = iter_records((payload or {}).get("services") if isinstance(payload, dict) else payload)
+    else:
+        services = _records(client, "list")
+    for service in cap_items(services, telemetry=telemetry, provider="GCP", service="cloudrun", region=project):
+        if isinstance(service, dict):
+            name = (service.get("name") or "service").rsplit("/", 1)[-1]
+            template = service.get("template") or {}
+            spec = template.get("spec") or {}
+            enc_key = spec.get("encryptionKey") or spec.get("encryption_key") or spec.get("clientEncryptionKey")
+            revoke = str(spec.get("encryptionKeyRevocationAction") or spec.get("encryption_key_revocation_action") or "")
+            ingress = str(service.get("ingress") or spec.get("ingress") or "")
+        else:
+            name = named(service, "service")
+            template = attr(service, "template") or {}
+            spec = attr(template, "spec") or {}
+            enc_key = attr(spec, "encryption_key", "encryptionKey", "client_encryption_key", "clientEncryptionKey")
+            revoke = str(attr(spec, "encryption_key_revocation_action", "encryptionKeyRevocationAction", default="") or "")
+            ingress = str(attr(service, "ingress", default="") or "")
+        cmek = bool(enc_key)
+        revoke_action = revoke.replace("_", " ").strip().upper()
+        issue = None if cmek else "NO_CMEK"
+        findings.append(
+            cloud_finding(
+                source_type="GCP_CLOUD_RUN_SERVICE",
+                resource=name,
+                algorithm="AES-256" if cmek else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"gcp://cloudrun/{name}",
+                provider="GCP",
+                issue=issue,
+                extra={
+                    "project": project,
+                    "scan_method": "LIVE_API",
+                    "encryption_key": enc_key,
+                    "customer_managed_key": cmek,
+                    "encryption_key_revocation_action": revoke_action,
+                    "ingress": ingress,
+                },
+            )
+        )
+    return findings

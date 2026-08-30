@@ -124,8 +124,16 @@ def create_target(
 
     if body.target_type not in VALID_TYPES:
         raise HTTPException(status_code=422, detail=f"target_type must be one of {VALID_TYPES}")
-    if body.target_type == "NETWORK" and not (body.config.get("endpoints") or body.config.get("endpoint")):
-        raise HTTPException(status_code=422, detail="NETWORK targets need config.endpoints (['host:port', …])")
+    if body.target_type == "NETWORK" and not (
+        body.config.get("endpoints")
+        or body.config.get("endpoint")
+        or body.config.get("ipsec")
+        or body.config.get("dnssec")
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="NETWORK targets need config.endpoints (['host:port', …]) or config.ipsec / config.dnssec lists",
+        )
     if body.target_type == "OT" and not (body.config.get("path") or body.config.get("directory")):
         raise HTTPException(status_code=422, detail="OT targets need config.path (passive capture/log directory)")
     if body.target_type == "VENDOR" and not (body.config.get("name") or "").strip():

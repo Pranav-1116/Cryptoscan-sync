@@ -136,7 +136,7 @@ make monitor-once       # single sweep (cron mode)
 
 | Type | What it watches | Watch probe? | Default interval |
 |---|---|---|---|
-| `NETWORK` | TLS endpoints (cert posture, weak TLS, cert **expiry**) | no (interval) | 15 min |
+| `NETWORK` | TLS endpoints (cert posture, weak TLS, cert **expiry**) + optional IPsec/IKE + DNSSEC targets | no (interval) | 15 min |
 | `CLOUD` | AWS/Azure/GCP crypto config | no (interval) | 6 h |
 | `REPO` | source repo (git HEAD) | ✅ `git ls-remote` | daily |
 | `CONTAINER` | image (local digest) | ✅ `docker inspect` | daily |
@@ -215,3 +215,86 @@ make monitor-once       # single sweep (cron mode)
 Registry digest watch without a local docker CLI is reported unsupported
 (honest), and cloud/network/vendor types have no fingerprint probe yet — they
 are interval-scanned. That is the documented boundary of the realtime layer.
+
+---
+
+## 11. Enterprise crypto surface — network + cloud coverage
+
+A full-part audit of the crypto attack surface, and what scans it today.
+Everything below is wired into the same monitor/cloud flows as the rest —
+no parallel watchers.
+
+### 11.1 Network coverage
+
+| Layer | Scanner | Status |
+|---|---|---|
+| TLS | certificates, ciphers, versions, renegotiation, revocation (live OCSP/CRL) | ✅ |
+| SSH | host keys, TOFU drift, KEXINIT algorithm offer | ✅ |
+| STARTTLS | smtp / imap / pop3 / ftp / ldap / postgresql | ✅ |
+| **IPsec / IKE VPN** | `network_scanner.probing.ipsec_probe` — one IKEv2 `SA_INIT` (UDP 500/4500), parses accepted SA proposals, flags weak transforms | ✅ **new** |
+| **DNSSEC posture** | `network_scanner.discovery.dnssec_checker` — signing status (DNSKEY/DS), weak algorithms & RSA key sizes, open zone transfer (AXFR over TCP) | ✅ **new** |
+| Subnet sweep | `subnet_discoverer` now sweeps the enterprise crypto port set: 443, 8443, 25, 465, 587, 143, 993, 110, 995, 21, 990, 636, 989, 22, 3269 | ✅ **widened** |
+| Discovery | DNS / Kubernetes / service-mesh discovery, passive Envoy + Istio logs, cert inventory + expiry alerts | ✅ |
+
+**IPsec probe semantics** — active opt-in only (never probed implicitly by TLS
+scans): one UDP packet, no handshake, no key exchange. Classifies per proposal:
+
+- `WEAK_IKE_ENCRYPTION:<name>` — DES / 3DES
+- `WEAK_IKE_MAC:<name>` — HMAC-MD5 / HMAC-SHA1
+- `WEAK_IKE_DH_GROUP:<name>` — MODP < 2048 (groups 1, 2, 5)
+- `IKE_NO_PFS` — no DH-group transform in the proposal
+
+**DNSSEC checker semantics** — raw-socket DNS (stdlib only); resolver from
+config → `CRYPTOSCAN_DNS_RESOLVER` → `/etc/resolv.conf` (never a hardcoded
+third-party resolver); `host:port` supported. Statuses `SIGNED` / `UNSIGNED` /
+`NO_ZONE` / `UNKNOWN` / `ERROR`; issues `UNSIGNED_ZONE`,
+`WEAK_DNSSEC_ALGORITHM:<algo>`, `WEAK_DNSSEC_KEY_SIZE:<bits>`,
+`ZONE_TRANSFER_EXPOSED`.
+
+**CLI**
+
+```bash
+python -m network_scanner.main --ipsec vpn-gw.example.com --ike-ports 500,4500
+python -m network_scanner.main --dnssec example.com --resolver 10.0.0.53:53
+python -m network_scanner.main --discover 10.0.0.0/24 --scan   # widened port set
+```
+
+### 11.2 Monitor configuration (NETWORK targets)
+
+```json
+{ "endpoints": ["api.example.com:443"],
+  "ipsec": ["vpn-gw.example.com"],            // optional IKE probe hosts
+  "ike_ports": "500,4500",                    // optional UDP ports
+  "dnssec": ["example.com"],                  // optional zones
+  "dns_resolver": "10.0.0.53:53",             // optional resolver for --dnssec
+  "check_zone_transfer": true,                // default true; disable for loud public resolvers
+  "expiry_alert_days": 30 }
+```
+
+Weak IKE / unsigned zones / open transfers surface as
+`WEAK_*:<endpoint>` / `UNSIGNED_ZONE` / `ZONE_TRANSFER_EXPOSED` issues in the
+same degraded→alert path as TLS issues.
+
+### 11.3 Cloud coverage (live `CRYPTOSCAN_CLOUD_LIVE=1`)
+
+| Provider | Services scanned | Added |
+|---|---|---|
+| AWS | kms, s3, rds, elbv2, acm, cloudfront, secretsmanager, lambda, apigateway, ec2/ebs, ssm, dynamodb, sqs, sns, opensearch, eks, redshift, **route53 (DNSSEC signing + KSK KMS), ecr (encryption + scan-on-push), efs (at-rest + KMS), cloudhsmv2 (cluster state)** | +4 |
+| Azure | keyvault (+keys), storage, sql (TDE), app_gateway, frontdoor, cosmosdb, redis, servicebus, **app_service (min TLS / HTTPS-only / client certs), dns (DNSSEC), acr (CMK + quarantine/trust), vpn_gateway (IKE version + IPsec policies per connection), managed_hsm (purge/soft-delete/security domain)** | +5 |
+| GCP | cloud_kms, gcs, cloud_sql, load_balancer, secret_manager, pubsub, gke, **cloud_dns (DNSSEC state + key algorithms), memorystore (transit encryption + auth), cloud_run (CMEK + revocation action)** | +3 |
+| IaC | terraform, cloudformation, kubernetes, arm | ✅ |
+
+Each provider flow keeps the reliability contract: paginated listing with
+recorded truncation, throttling retries, per-service error telemetry, and
+fail-open only when the SDK/credentials are absent (recorded, never silent).
+New scanners follow the injected-client pattern so unit tests run without
+cloud SDKs (see `services/cloud_scanner/tests/test_cloud_enterprise_scanners.py`).
+
+### 11.4 Honest boundaries
+
+- IPsec probing requires the responder to answer `SA_INIT`; silent gateways
+  report `NO_RESPONSE` (never a fabricated weak finding).
+- Zone-transfer checks can be turned off (`check_zone_transfer: false`) where
+  the resolver policy forbids AXFR probes.
+- Cloud live scans need real credentials; without them the provider is
+  recorded as an error in telemetry, not silently skipped.

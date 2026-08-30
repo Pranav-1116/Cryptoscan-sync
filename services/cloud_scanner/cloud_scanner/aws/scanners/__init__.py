@@ -719,3 +719,169 @@ def named_of(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("Name") or item.get("name") or next(iter(item.values()), "resource"))
     return str(item)
+
+
+def scan_route53(client, *, region: str = "global", telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Route 53 hosted zones: DNSSEC signing status + signing KMS key."""
+    findings: list[dict[str, Any]] = []
+    zones = _list(
+        client,
+        "list_hosted_zones",
+        items_key="HostedZones",
+        telemetry=telemetry,
+        service="route53",
+        region="global",
+    )
+    for zone in zones:
+        zone_id = str(zone.get("Id") or "").split("/")[-1]
+        name = zone.get("Name") or zone_id or "zone"
+        private = bool((zone.get("Config") or {}).get("PrivateZone"))
+        signing = False
+        kms = None
+        if zone_id:
+            try:
+                status = ((client.get_dnssec(Id=zone_id) or {}).get("Status")) or {}
+                signing = str(status.get("ServeSignature") or "").upper() == "ON"
+            except Exception:
+                signing = False
+            if signing:
+                try:
+                    keys = (client.list_dnssec_key_signing_keys(HostedZoneId=zone_id) or {}).get("KeySigningKeys") or []
+                    kms = keys[0].get("KmsArn") if keys else None
+                except Exception:
+                    kms = None
+        issue = None if signing or private else "DNSSEC_DISABLED"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_ROUTE53_ZONE",
+                resource=name,
+                algorithm="ECDSA" if signing else None,
+                purpose="DNS_SIGNING",
+                file_path=f"aws://route53/{name}",
+                issue=issue,
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "dnssec_signing": signing,
+                    "signing_kms_arn": kms,
+                    "private_zone": private,
+                    "zone_id": zone_id,
+                    "record_count": zone.get("ResourceRecordSetCount"),
+                },
+            )
+        )
+    return findings
+
+
+def scan_ecr(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """ECR repositories: encryption type (AES256 vs KMS/CMK) + image-scan posture."""
+    findings: list[dict[str, Any]] = []
+    repos = _list(
+        client,
+        "describe_repositories",
+        items_key="repositories",
+        telemetry=telemetry,
+        service="ecr",
+        region=region,
+    )
+    for repo in repos:
+        name = repo.get("repositoryName") or (repo.get("repositoryArn") or "ecr").rsplit("/", 1)[-1]
+        enc = repo.get("encryptionConfiguration") or {}
+        enc_type = enc.get("encryptionType") or "AES256"
+        kms = enc.get("kmsKey")
+        scan_on_push = bool(((repo.get("imageScanningConfiguration") or {}).get("scanOnPush")))
+        issue = None if scan_on_push else "IMAGE_SCAN_DISABLED"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_ECR_REPOSITORY",
+                resource=name,
+                algorithm="AES-256" if enc_type in ("AES256", "KMS") else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/ecr/{name}",
+                issue=issue,
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "encryption_type": enc_type,
+                    "kms_key": kms,
+                    "customer_managed_key": enc_type == "KMS",
+                    "image_scan_on_push": scan_on_push,
+                    "image_tag_mutability": repo.get("imageTagMutability"),
+                },
+            )
+        )
+    return findings
+
+
+def scan_efs(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """EFS file systems: encryption at rest + KMS key."""
+    findings: list[dict[str, Any]] = []
+    filesystems = _list(
+        client,
+        "describe_file_systems",
+        items_key="FileSystems",
+        telemetry=telemetry,
+        service="efs",
+        region=region,
+    )
+    for fs in filesystems:
+        fs_id = fs.get("FileSystemId") or "efs"
+        encrypted = bool(fs.get("Encrypted"))
+        findings.append(
+            cloud_finding(
+                source_type="AWS_EFS_FILESYSTEM",
+                resource=fs_id,
+                algorithm="AES-256" if encrypted else None,
+                purpose="DATA_AT_REST_ENCRYPTION",
+                file_path=f"aws://{region}/efs/{fs_id}",
+                issue=None if encrypted else "NO_ENCRYPTION_AT_REST",
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "kms_key_id": fs.get("KmsKeyId"),
+                    "lifecycle_state": fs.get("LifeCycleState"),
+                    "performance_mode": fs.get("PerformanceMode"),
+                    "throughput_mode": fs.get("ThroughputMode"),
+                },
+            )
+        )
+    return findings
+
+
+def scan_cloudhsm(client, *, region: str, telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """CloudHSM clusters: HSM availability state + backup policy (key-material custody)."""
+    findings: list[dict[str, Any]] = []
+    clusters = _list(
+        client,
+        "describe_clusters",
+        items_key="Clusters",
+        telemetry=telemetry,
+        service="cloudhsmv2",
+        region=region,
+    )
+    for cluster in clusters:
+        cluster_id = cluster.get("ClusterId") or "hsm"
+        state = cluster.get("State") or "UNKNOWN"
+        hsm_count = len(cluster.get("Hsms") or [])
+        issue = None if state == "ACTIVE" and hsm_count > 0 else "HSM_NOT_ACTIVE"
+        findings.append(
+            cloud_finding(
+                source_type="AWS_CLOUDHSM_CLUSTER",
+                resource=cluster_id,
+                algorithm="HSM",
+                purpose="KEY_MANAGEMENT",
+                file_path=f"aws://{region}/cloudhsm/{cluster_id}",
+                issue=issue,
+                extra={
+                    "region": region,
+                    "scan_method": "LIVE_API",
+                    "state": state,
+                    "hsm_type": cluster.get("HsmType"),
+                    "hsm_count": hsm_count,
+                    "backup_policy": cluster.get("BackupPolicy"),
+                    "security_group": cluster.get("SecurityGroup"),
+                    "certificates_uploaded": bool(cluster.get("Certificates")),
+                },
+            )
+        )
+    return findings

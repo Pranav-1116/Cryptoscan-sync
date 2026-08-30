@@ -13,7 +13,10 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-DEFAULT_PORTS = (443, 8443)
+# Crypto-relevant service ports an estate may have forgotten: HTTPS,
+# STARTTLS mail (SMTP/IMAP/POP3), LDAPS, FTPS, SMTPS/IMAPS/POP3S, SSH,
+# and secure LDAP. The address×port product is still capped (see _max_targets).
+DEFAULT_PORTS = (443, 8443, 25, 465, 587, 143, 993, 110, 995, 21, 990, 636, 989, 22, 3269)
 
 
 def _max_targets() -> int:

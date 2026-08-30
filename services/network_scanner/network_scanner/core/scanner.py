@@ -184,6 +184,79 @@ class NetworkTlsScanner:
             "known_host_keys": updated,
         }
 
+    def scan_ipsec_hosts(
+        self,
+        endpoints: Iterable[str],
+        *,
+        scan_id: str | None = None,
+        ports: Iterable[int] = (500, 4500),
+        check_transfer: bool = True,
+    ) -> dict[str, Any]:
+        """IPsec/IKE VPN posture probe: SA proposals + weak crypto classification.
+
+        One IKEv2 SA_INIT per endpoint (UDP 500 then 4500); the responder's
+        accepted transform set is parsed and weak encryption / MAC / DH group /
+        missing-PFS configurations are flagged. Active opt-in — you must pass
+        explicit endpoints. Never completes a handshake or exchanges keys.
+        """
+        from network_scanner.probing.ipsec_probe import probe_ike
+
+        findings: list[dict[str, Any]] = []
+        for item in endpoints:
+            host = str(item).split(":")[0].strip()
+            if not host:
+                continue
+            try:
+                finding = probe_ike(host, ports=ports, timeout=self.timeout)
+            except Exception as exc:  # noqa: BLE001 — one endpoint must not sink the scan
+                finding = {
+                    "endpoint": f"{host}:{list(ports)[0]}",
+                    "status": "PROBE_ERROR",
+                    "detail": f"{type(exc).__name__}: {exc}"[:300],
+                    "issues": [],
+                }
+            findings.append(finding)
+        return {
+            "scan_id": scan_id,
+            "target_kind": "ipsec-vpn",
+            "findings": findings,
+            "alerts": [],
+            "probe_telemetry": {
+                "probed": len(findings),
+                "responded": sum(1 for f in findings if f.get("status") == "OK"),
+                "weak": sum(1 for f in findings if f.get("issues")),
+            },
+        }
+
+    def scan_dnssec_zones(
+        self,
+        zones: Iterable[str],
+        *,
+        scan_id: str | None = None,
+        resolver: str | None = None,
+        check_transfer: bool = True,
+    ) -> dict[str, Any]:
+        """DNSSEC posture for a set of zones: signing status + weak algorithms."""
+        from network_scanner.discovery.dnssec_checker import scan_dnssec
+
+        results: list[dict[str, Any]] = []
+        for zone in zones:
+            try:
+                results.append(scan_dnssec(zone, resolver=resolver, timeout=self.timeout,
+                                           check_transfer=check_transfer))
+            except Exception as exc:  # noqa: BLE001
+                results.append(
+                    {"zone": str(zone), "status": "ERROR", "issues": [f"DNS_ERROR:{type(exc).__name__}"]}
+                )
+        issues_total = sorted({issue for r in results for issue in r.get("issues") or []})
+        return {
+            "scan_id": scan_id,
+            "target_kind": "dnssec",
+            "zones": results,
+            "unsigned": sum(1 for r in results if r.get("status") == "UNSIGNED"),
+            "issues": issues_total,
+        }
+
     def _probe_all(
         self,
         endpoints: list[str],

@@ -29,6 +29,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="Scan frequency for --register records")
     parser.add_argument("--ssh", action="store_true", help="Treat the target as an SSH host (ssh-keyscan + TOFU drift)")
     parser.add_argument("--ssh-kex", action="store_true", help="With --ssh: also read the server's KEXINIT algorithm offer")
+    parser.add_argument("--ipsec", action="store_true",
+                        help="Probe the target host's IPsec/IKE VPN posture (one IKEv2 SA_INIT, UDP)")
+    parser.add_argument("--ike-ports", default="500,4500", metavar="PORTS",
+                        help="UDP ports for --ipsec (comma-separated, default 500,4500)")
+    parser.add_argument("--dnssec", action="store_true",
+                        help="Check the target zone's DNSSEC posture (signing, algorithms, key sizes, AXFR)")
+    parser.add_argument("--resolver", default=None, metavar="HOST[:PORT]",
+                        help="DNS resolver for --dnssec (default: /etc/resolv.conf first nameserver)")
+    parser.add_argument("--skip-transfer-check", action="store_true",
+                        help="With --dnssec: do not probe for open zone transfers (AXFR)")
     parser.add_argument("--known-host-keys", default=None, metavar="JSON",
                         help="Baseline {endpoint: {key_type: fingerprint}} for --ssh drift detection")
     parser.add_argument("--route-alerts", default=None, metavar="FILE",
@@ -109,10 +119,25 @@ def main(argv: list[str] | None = None) -> int:
         _emit(routed, args.output)
         return 0
     target = args.target
-    if not target and not args.ssh:
+    if not target and not args.ssh and not args.ipsec and not args.dnssec:
         parser.error("target (host:port or path) or --discover CIDR is required")
     if not target and (args.ssh or args.ssh_kex):
         parser.error("--ssh requires a target host ([host]:port)")
+    if args.ipsec:
+        ports = tuple(int(p) for p in args.ike_ports.split(",") if p.strip().isdigit()) or (500, 4500)
+        result = scanner.scan_ipsec_hosts([target], ports=ports)
+        result["scan_context"] = {"mode": "ipsec-ike-probe", "target": target, "ports": list(ports)}
+        _emit(result, args.output)
+        return 0
+    if args.dnssec:
+        result = scanner.scan_dnssec_zones(
+            [target],
+            resolver=args.resolver,
+            check_transfer=not args.skip_transfer_check,
+        )
+        result["scan_context"] = {"mode": "dnssec-posture", "zone": target}
+        _emit(result, args.output)
+        return 0
     if args.ssh or args.ssh_kex:
         import json as _json
 

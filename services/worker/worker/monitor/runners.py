@@ -17,51 +17,89 @@ logger = logging.getLogger(__name__)
 # ------------------------------------------------------------------ network
 
 def network_runner(config: dict, session: Any) -> dict:
-    """Live TLS probe of a set of endpoints — needs nothing but reachability."""
+    """Live TLS probe of a set of endpoints — needs nothing but reachability.
+
+    Optional enterprise extras via config:
+    - ``config.ipsec = ["vpn-gw.example.com", …]`` — IKE/IPsec SA probe
+    - ``config.dnssec = ["example.com", …]`` — DNS/DNSSEC posture per zone
+    Each extra runs through the same scanner the manual flows use; failures
+    are data (issues), never crashes.
+    """
     endpoints = [str(e) for e in (config.get("endpoints") or []) if str(e).strip()]
     if not endpoints and config.get("endpoint"):
         endpoints = [str(config["endpoint"])]
-    if not endpoints:
+    if not endpoints and not (config.get("ipsec") or config.get("dnssec")):
         return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
 
     from network_scanner.core.scanner import NetworkTlsScanner
 
     timeout = float(config.get("timeout", 5.0))
-    result = NetworkTlsScanner(live=True, timeout=timeout).scan_hosts(endpoints)
+    scanner = NetworkTlsScanner(live=True, timeout=timeout)
     issues: list[str] = []
     ok = unreachable = 0
-    for finding in result.get("findings") or []:
-        endpoint = finding.get("endpoint") or "?"
-        if finding.get("status") != "OK":
-            unreachable += 1
-            issues.append(f"UNREACHABLE:{endpoint}:{finding.get('status')}")
-            continue
-        ok += 1
-        for issue in finding.get("policy_issues") or []:
-            issues.append(f"{issue}:{endpoint}")
-        crypto = finding.get("crypto") or {}
-        if str(crypto.get("tls_version") or "") in {"TLSv1", "TLSv1.0", "TLSv1.1"}:
-            issues.append(f"WEAK_TLS_VERSION:{endpoint}")
+    if endpoints:
+        result = scanner.scan_hosts(endpoints)
+        for finding in result.get("findings") or []:
+            endpoint = finding.get("endpoint") or "?"
+            if finding.get("status") != "OK":
+                unreachable += 1
+                issues.append(f"UNREACHABLE:{endpoint}:{finding.get('status')}")
+                continue
+            ok += 1
+            for issue in finding.get("policy_issues") or []:
+                issues.append(f"{issue}:{endpoint}")
+            crypto = finding.get("crypto") or {}
+            if str(crypto.get("tls_version") or "") in {"TLSv1", "TLSv1.0", "TLSv1.1"}:
+                issues.append(f"WEAK_TLS_VERSION:{endpoint}")
 
-    # certificates feed the shared inventory, exactly like POST /network-scans
-    _persist_certificates(result, session)
+        # certificates feed the shared inventory, exactly like POST /network-scans
+        _persist_certificates(result, session)
 
-    # continuous expiry watch: certificates nearing expiry are issues, so a
-    # certificate due to roll over starts alerting within one interval window
-    try:
-        from network_scanner.inventory.expiry_monitor import expiry_alerts
+        # continuous expiry watch: certificates nearing expiry are issues, so a
+        # certificate due to roll over starts alerting within one interval window
+        try:
+            from network_scanner.inventory.expiry_monitor import expiry_alerts
 
-        days = int(config.get("expiry_alert_days", 30))
-        for alert in expiry_alerts(result.get("certificates") or [], days=days):
-            cn = alert.get("common_name") or alert.get("subject") or "?"
-            issues.append(f"CERT_EXPIRING:{cn}:{alert.get('days_left', '?')}d")
-    except Exception:
-        logger.debug("monitor_expiry_alerts_skipped", exc_info=True)
+            days = int(config.get("expiry_alert_days", 30))
+            for alert in expiry_alerts(result.get("certificates") or [], days=days):
+                cn = alert.get("common_name") or alert.get("subject") or "?"
+                issues.append(f"CERT_EXPIRING:{cn}:{alert.get('days_left', '?')}d")
+        except Exception:
+            logger.debug("monitor_expiry_alerts_skipped", exc_info=True)
+
+    # enterprise extras: IPsec/VPN + DNSSEC posture
+    ipsec_hosts = [str(h) for h in (config.get("ipsec") or []) if str(h).strip()]
+    if ipsec_hosts:
+        try:
+            ports = tuple(
+                int(p) for p in str(config.get("ike_ports", "500,4500")).split(",") if p.strip().isdigit()
+            ) or (500, 4500)
+            vpn = scanner.scan_ipsec_hosts(ipsec_hosts, ports=ports)
+            for finding in vpn.get("findings") or []:
+                for issue in finding.get("issues") or []:
+                    issues.append(f"{issue}:{finding.get('endpoint')}")
+        except Exception:
+            logger.debug("monitor_ipsec_skipped", exc_info=True)
+
+    dnssec_zones = [str(z) for z in (config.get("dnssec") or []) if str(z).strip()]
+    if dnssec_zones:
+        try:
+            dns = scanner.scan_dnssec_zones(
+                dnssec_zones,
+                resolver=config.get("dns_resolver"),
+                check_transfer=bool(config.get("check_zone_transfer", True)),
+            )
+            for issue in dns.get("issues") or []:
+                issues.append(issue)
+        except Exception:
+            logger.debug("monitor_dnssec_skipped", exc_info=True)
 
     summary = {
         "endpoints": len(endpoints),
         "probed_ok": ok,
         "unreachable": unreachable,
+        "ipsec_targets": len(ipsec_hosts),
+        "dnssec_zones": len(dnssec_zones),
         "issues": sorted(set(issues)),
     }
     return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}

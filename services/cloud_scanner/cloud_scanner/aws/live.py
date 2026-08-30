@@ -117,6 +117,9 @@ def scan_aws_detailed(
             ("opensearch", scanners.scan_opensearch),
             ("eks", scanners.scan_eks),
             ("redshift", scanners.scan_redshift),
+            ("ecr", scanners.scan_ecr),
+            ("efs", scanners.scan_efs),
+            ("cloudhsmv2", scanners.scan_cloudhsm),
         ):
             try:
                 client = sess.client(service, region_name=region)
@@ -132,4 +135,9 @@ def scan_aws_detailed(
                 )
             except Exception as exc:
                 tele.record_error("AWS", "cloudfront", "global", exc)
+    # Route 53 + its DNSSEC signing are global (us-east-1 endpoint)
+    try:
+        findings.extend(scanners.scan_route53(sess.client("route53", region_name="us-east-1"), telemetry=tele))
+    except Exception as exc:
+        tele.record_error("AWS", "route53", "global", exc)
     return {"findings": findings, "provider": "AWS", "regions": region_list}

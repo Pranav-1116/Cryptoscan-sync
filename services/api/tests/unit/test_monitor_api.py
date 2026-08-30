@@ -43,6 +43,15 @@ async def test_target_crud_and_validation():
         no_endpoints = await client.post("/api/v1/monitor/targets", json={
             "name": "x", "target_type": "NETWORK", "config": {}})
         assert no_endpoints.status_code == 422
+        # enterprise extras: ipsec / dnssec-only NETWORK targets are valid
+        ipsec_only = await client.post("/api/v1/monitor/targets", json={
+            "name": "vpn-watch", "target_type": "NETWORK",
+            "config": {"ipsec": ["vpn-gw.example.com"], "ike_ports": "500,4500"}})
+        assert ipsec_only.status_code == 201, ipsec_only.text
+        dnssec_only = await client.post("/api/v1/monitor/targets", json={
+            "name": "zone-watch", "target_type": "NETWORK",
+            "config": {"dnssec": ["example.com"], "dns_resolver": "10.0.0.53:53"}})
+        assert dnssec_only.status_code == 201, dnssec_only.text
         bad_interval = await client.post("/api/v1/monitor/targets", json={
             "name": "x", "target_type": "NETWORK", "config": {"endpoints": ["h:443"]},
             "interval_seconds": 5})

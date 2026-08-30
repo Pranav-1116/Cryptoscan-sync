@@ -7,6 +7,7 @@ import socket
 import ssl
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -203,11 +204,13 @@ def test_parse_ocsp_output_unreachable():
 
 
 def test_parse_crl_text_and_staleness():
+    # next-update one hour in the future so the test never goes stale
+    fresh = time.strftime("%b %d %H:%M:%S %Y GMT", time.gmtime(time.time() + 3600))
     text = (
         "Revoked Certificates:\n"
         "    Serial Number: 1000\n"
         "        Revocation Date: Aug 27 14:29:53 2026 GMT\n"
-        "Next Update: Aug 30 14:29:53 2026 GMT\n"
+        f"Next Update: {fresh}\n"
     )
     parsed = parse_crl_text(text)
     assert parsed["revoked_serials"] == ["1000"]
