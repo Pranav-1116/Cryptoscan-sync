@@ -39,6 +39,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="DNS resolver for --dnssec (default: /etc/resolv.conf first nameserver)")
     parser.add_argument("--skip-transfer-check", action="store_true",
                         help="With --dnssec: do not probe for open zone transfers (AXFR)")
+    parser.add_argument("--scope", action="append", default=None, metavar="SPEC",
+                        help="Global discovery scope (repeatable): CIDR, IP range, hostname, "
+                             "domain, subdomain '*.example.com', or JSON {\"kind\": \"data_center\", ...}")
+    parser.add_argument("--mode", default=None, choices=["safe", "standard", "deep", "aggressive"],
+                        help="Active discovery mode (default: safe — low concurrency, no init probes)")
+    parser.add_argument("--authorization", default="", metavar="SCOPE",
+                        help="Authorization scope — required for deep/aggressive modes")
+    parser.add_argument("--plugin", action="append", default=None, metavar="VENDOR",
+                        help="Vendor plugin(s) for discovery (default: snmp,cisco; e.g. --plugin juniper)")
+    parser.add_argument("--passive", action="append", default=None, metavar="KIND=PATH",
+                        help="Passive source (repeatable): e.g. --passive FIREWALL_LOG=/var/log/fw.log")
     parser.add_argument("--known-host-keys", default=None, metavar="JSON",
                         help="Baseline {endpoint: {key_type: fingerprint}} for --ssh drift detection")
     parser.add_argument("--route-alerts", default=None, metavar="FILE",
@@ -119,6 +130,35 @@ def main(argv: list[str] | None = None) -> int:
         _emit(routed, args.output)
         return 0
     target = args.target
+    if args.scope:
+        import json as _json
+        from pathlib import Path as _Path
+
+        scope_specs: list = []
+        for raw in args.scope:
+            if raw.lstrip().startswith("{"):
+                scope_specs.append(_json.loads(raw))
+            elif "=" in raw and _Path(raw.split("=", 1)[1]).exists():
+                scope_specs.append(raw.split("=", 1)[1])
+            else:
+                scope_specs.append(raw)
+        passive_sources = []
+        for source in args.passive or []:
+            kind, _, path = source.partition("=")
+            passive_sources.append({"kind": kind, "name": _Path(path).name,
+                                    "lines": _Path(path).read_text(encoding="utf-8", errors="replace").splitlines()})
+        mode = (args.mode or "safe").upper()
+        result = scanner.discover_network(
+            scope_specs,
+            mode=mode,
+            authorization_scope=args.authorization,
+            plugins=args.plugin,
+            passive_sources=passive_sources,
+        )
+        result["scan_context"] = {"mode": "global-network-discovery",
+                                  "scope_specs": list(args.scope), "scan_mode": mode}
+        _emit(result, args.output)
+        return 0
     if not target and not args.ssh and not args.ipsec and not args.dnssec:
         parser.error("target (host:port or path) or --discover CIDR is required")
     if not target and (args.ssh or args.ssh_kex):

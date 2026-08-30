@@ -129,11 +129,29 @@ def create_target(
         or body.config.get("endpoint")
         or body.config.get("ipsec")
         or body.config.get("dnssec")
+        or body.config.get("scope")
     ):
         raise HTTPException(
             status_code=422,
-            detail="NETWORK targets need config.endpoints (['host:port', …]) or config.ipsec / config.dnssec lists",
+            detail="NETWORK targets need config.endpoints (['host:port', …]), config.ipsec / "
+                   "config.dnssec lists, or config.scope (global discovery CIDR/hostname/domain specs)",
         )
+    if body.target_type == "NETWORK" and body.config.get("scope"):
+        scope = body.config.get("scope")
+        if isinstance(scope, str):
+            scope = [scope]
+        if not isinstance(scope, list) or not all(isinstance(s, str) and s.strip() for s in scope):
+            raise HTTPException(
+                status_code=422,
+                detail="config.scope must be a string or a list of scope strings "
+                       "(CIDR, IP range, hostname, domain, '*.sub.example.com')",
+            )
+        mode = str(body.config.get("scan_mode", "SAFE")).upper()
+        if mode in ("DEEP", "AGGRESSIVE") and not str(body.config.get("authorization_scope", "")).strip():
+            raise HTTPException(
+                status_code=422,
+                detail=f"config.scan_mode {mode} requires config.authorization_scope",
+            )
     if body.target_type == "OT" and not (body.config.get("path") or body.config.get("directory")):
         raise HTTPException(status_code=422, detail="OT targets need config.path (passive capture/log directory)")
     if body.target_type == "VENDOR" and not (body.config.get("name") or "").strip():

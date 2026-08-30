@@ -229,3 +229,42 @@ async def test_status_overview_aggregates_the_live_picture(monkeypatch):
 
         events = (await client.get("/api/v1/monitor/events", params={"limit": 10})).json()["events"]
         assert len(events) == 2 and all(events[0]["created_at"] for e in events)
+
+
+@pytest.mark.asyncio
+async def test_network_scope_targets():
+    """Global discovery scope is a first-class NETWORK target config."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/api/v1/monitor/targets", json={
+            "name": "global-discovery", "target_type": "NETWORK",
+            "config": {"scope": ["10.0.0.0/24", "*.corp.example.com"]}})
+        assert created.status_code == 201, created.text
+        assert created.json()["config"]["scope"] == ["10.0.0.0/24", "*.corp.example.com"]
+
+        # string scope accepted
+        created = await client.post("/api/v1/monitor/targets", json={
+            "name": "dc-scope", "target_type": "NETWORK",
+            "config": {"scope": "10.10.0.0/16"}})
+        assert created.status_code == 201, created.text
+
+        # DEEP requires authorization_scope even via API
+        bad = await client.post("/api/v1/monitor/targets", json={
+            "name": "deep-no-auth", "target_type": "NETWORK",
+            "config": {"scope": ["10.0.0.0/24"], "scan_mode": "DEEP"}})
+        assert bad.status_code == 422
+        assert "authorization_scope" in bad.json()["detail"]
+
+        # DEEP with authorization passes
+        ok = await client.post("/api/v1/monitor/targets", json={
+            "name": "deep-auth", "target_type": "NETWORK",
+            "config": {"scope": ["10.0.0.0/24"], "scan_mode": "DEEP",
+                       "authorization_scope": "emirates-dc"}})
+        assert ok.status_code == 201, ok.text
+
+        # malformed scope rejected
+        bad = await client.post("/api/v1/monitor/targets", json={
+            "name": "bad-scope", "target_type": "NETWORK",
+            "config": {"scope": [123]}})
+        assert bad.status_code == 422

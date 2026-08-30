@@ -298,3 +298,42 @@ cloud SDKs (see `services/cloud_scanner/tests/test_cloud_enterprise_scanners.py`
   the resolver policy forbids AXFR probes.
 - Cloud live scans need real credentials; without them the provider is
   recorded as an error in telemetry, not silently skipped.
+
+### 11.5 Global network discovery (enterprise pipeline)
+
+`config.scope` on a NETWORK target runs the full global-discovery pipeline
+each tick — target expansion → active/vendor/passive discovery → asset
+registry → protocol detection → dependency graph → TLS + certificate
+intelligence → PQC network readiness → migration simulation → blast radius →
+geographic exposure:
+
+```json
+{ "scope": ["10.0.0.0/24", "*.corp.example.com", "10.1.2.3-10.1.2.9"],
+  "scan_mode": "SAFE",            // SAFE|STANDARD|DEEP|AGGRESSIVE (default SAFE)
+  "authorization_scope": "",      // REQUIRED for DEEP/AGGRESSIVE
+  "plugins": ["snmp", "cisco"] }  // vendor plugins to run (default snmp,cisco)
+```
+
+Scope specifiers: CIDR / IPv4-IPv6 ranges / single IPs / hostnames / domains /
+`*.sub.example.com` subdomain wildcards / internal DNS zones / DC-branch-VPN-
+MPLS-SD-WAN networks / cloud VPC-VNet / Kubernetes clusters (structured dicts:
+`{"kind": "data_center", "name": "Dubai-DC", "networks": ["10.10.0.0/16"]}`).
+
+Discovery findings (weak TLS, PSK-only tunnels, PQC migration blockers,
+probe errors) surface as issues in the same degraded→alert path. The monitor
+summary gains `scope.assets` / `scope.observations` /
+`scope.pqc_migration_required`.
+
+The same pipeline runs on demand from the CLI:
+
+```bash
+python -m network_scanner.main --scope 10.0.0.0/24 --scope '*.corp.example.com' \
+    --mode safe --plugin snmp --plugin cisco -o discovery.json
+```
+
+SAFE is the enterprise default: low concurrency, no UDP handshake-init
+probes (IKE/WireGuard/OpenVPN/DTLS), no credentialed access. DEEP/AGGRESSIVE
+raise unless an authorization scope is supplied. Credentials are vault
+references only — scan records never contain router passwords, SNMP
+communities, API tokens or private keys (enforced by the scrub contract and
+its tests).

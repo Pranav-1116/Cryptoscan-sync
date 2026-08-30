@@ -384,3 +384,19 @@ def test_cli_dnssec_zone(tmp_path):
         assert "UNSIGNED_ZONE" in data["issues"]
     finally:
         server.close()
+
+
+def test_cli_global_discovery_scope(tmp_path):
+    """--scope runs the enterprise global discovery pipeline (SAFE mode)."""
+    from network_scanner.main import main
+
+    out = tmp_path / "discovery.json"
+    rc = main(["--scope", "localhost", "--mode", "safe", "--plugin", "cisco",
+               "-o", str(out)])
+    assert rc == 0
+    data = json.loads(out.read_text())
+    assert data["target_kind"] == "global-network-discovery"
+    assert data["scan_context"]["scan_mode"] == "SAFE"
+    assert data["scan_metadata"]["scan_mode"] == "SAFE"
+    # localhost has no TLS server: the probe error is data, not a crash
+    assert data["findings"]

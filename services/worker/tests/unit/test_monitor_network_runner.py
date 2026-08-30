@@ -155,3 +155,53 @@ def test_network_runner_ipsec_and_dnssec_flags_issues():
 def test_network_runner_blocked_without_targets():
     result = network_runner({"endpoints": []}, None)
     assert "blocked_reason" in result and "endpoints" in result["blocked_reason"]
+
+
+def test_network_runner_global_discovery_scope(monkeypatch):
+    """config.scope runs the full enterprise discovery pipeline each tick and
+    surfaces its findings as monitor issues."""
+    from network_scanner.core.scanner import NetworkTlsScanner
+
+    captured = {}
+
+    def fake_discover_network(self, scope_specs, **kw):
+        captured["scope_specs"] = list(scope_specs)
+        captured["mode"] = kw.get("mode")
+        return {
+            "scope": [{"value": str(scope_specs[0])}],
+            "assets": [{"asset_identity": "10.0.0.1", "device_type": "router"}],
+            "protocol_observations": [{"asset": "10.0.0.1", "protocol": "TLS", "status": "CRYPTOGRAPHY_VERIFIED"}],
+            "tunnels": [{"tunnel_id": "t1", "pre_shared_key_used": True, "certificate_reference": None}],
+            "findings": [{"endpoint": "10.0.0.1", "policy_issues": ["WEAK_TLS_VERSION"]}],
+            "pqc_network_readiness": {
+                "by_status": {"MIGRATION_REQUIRED": 2},
+                "migration_blockers": ["HSM dependency"],
+            },
+        }
+
+    monkeypatch.setattr(NetworkTlsScanner, "discover_network", fake_discover_network)
+    result = network_runner({"scope": ["10.0.0.0/24"]}, None)
+
+    assert captured["scope_specs"] == ["10.0.0.0/24"]
+    assert captured["mode"] == "SAFE"
+    assert result["summary"]["scope"]["assets"] == 1
+    assert result["summary"]["scope"]["observations"] == 1
+    assert result["summary"]["scope"]["pqc_migration_required"] == 2
+    assert result["degraded"] is True
+    assert any("WEAK_TLS_VERSION" in issue for issue in result["issues"])
+    assert any("TUNNEL_PSK_ONLY" in issue for issue in result["issues"])
+    assert any("PQC_MIGRATION_BLOCKERS" in issue for issue in result["issues"])
+
+
+def test_network_runner_scope_config_error_surfaces_as_issue(monkeypatch):
+    """DEEP scope without authorization must degrade the target with a clear
+    issue instead of being silently swallowed."""
+    from network_scanner.core.scanner import NetworkTlsScanner
+
+    def failing_discover_network(self, scope_specs, **kw):
+        raise ValueError("scan mode DEEP requires an authorization_scope")
+
+    monkeypatch.setattr(NetworkTlsScanner, "discover_network", failing_discover_network)
+    result = network_runner({"scope": ["10.0.0.0/24"], "scan_mode": "DEEP"}, None)
+    assert result["degraded"] is True
+    assert any("SCOPE_ERROR" in issue for issue in result["issues"])

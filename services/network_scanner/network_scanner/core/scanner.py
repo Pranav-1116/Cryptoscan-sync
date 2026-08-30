@@ -257,6 +257,44 @@ class NetworkTlsScanner:
             "issues": issues_total,
         }
 
+    def discover_network(
+        self,
+        scope_specs: list[str] | list[dict],
+        *,
+        scan_id: str | None = None,
+        mode: str = "SAFE",
+        authorization_scope: str = "",
+        plugins: list[str] | None = None,
+        passive_sources: list[dict] | None = None,
+        options: dict | None = None,
+    ) -> dict:
+        """Global Network Discovery — full enterprise pipeline.
+
+        Runs target expansion, active/vendor/passive discovery, protocol
+        detection, TLS + certificate intelligence, the dependency graph, PQC
+        readiness, migration simulation, blast radius and geographic exposure.
+        ``mode`` defaults to SAFE; DEEP/AGGRESSIVE require authorization_scope.
+        """
+        from network_scanner.enterprise.engine import GlobalNetworkDiscoveryEngine
+        from network_scanner.enterprise.passive_engine import PassiveSource
+        from network_scanner.enterprise.scan_modes import ScanAuthorization, ScanMode
+
+        engine = GlobalNetworkDiscoveryEngine(
+            mode=ScanMode(mode, authorization=ScanAuthorization(authorization_scope=authorization_scope)),
+            authorization_scope=authorization_scope,
+        )
+        sources: list[PassiveSource] = []
+        for source in passive_sources or []:
+            sources.append(PassiveSource(
+                kind=str(source.get("kind") or "LOG"),
+                name=str(source.get("name") or "source"),
+                lines=list(source.get("lines") or []),
+            ))
+        report = engine.run(scope_specs, plugins=plugins, passive_sources=sources, options=options)
+        report["scan_id"] = scan_id
+        report["target_kind"] = "global-network-discovery"
+        return report
+
     def _probe_all(
         self,
         endpoints: list[str],

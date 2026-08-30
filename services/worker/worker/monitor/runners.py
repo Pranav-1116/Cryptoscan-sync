@@ -28,7 +28,7 @@ def network_runner(config: dict, session: Any) -> dict:
     endpoints = [str(e) for e in (config.get("endpoints") or []) if str(e).strip()]
     if not endpoints and config.get("endpoint"):
         endpoints = [str(config["endpoint"])]
-    if not endpoints and not (config.get("ipsec") or config.get("dnssec")):
+    if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
         return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
 
     from network_scanner.core.scanner import NetworkTlsScanner
@@ -37,6 +37,30 @@ def network_runner(config: dict, session: Any) -> dict:
     scanner = NetworkTlsScanner(live=True, timeout=timeout)
     issues: list[str] = []
     ok = unreachable = 0
+    scope_summary: dict | None = None
+
+    # Global Network Discovery scope: full enterprise pipeline (assets, protocol
+    # detection, dependency graph, PQC readiness, simulation) on each tick.
+    if config.get("scope"):
+        try:
+            discovery = scanner.discover_network(
+                [config["scope"]] if isinstance(config["scope"], str) else list(config["scope"]),
+                mode=str(config.get("scan_mode", "SAFE")).upper(),
+                authorization_scope=str(config.get("authorization_scope", "")),
+                plugins=config.get("plugins"),
+            )
+            discovery_issues = _discovery_issues(discovery)
+            issues.extend(discovery_issues)
+            scope_summary = {
+                "specs": len(discovery.get("scope") or []),
+                "assets": len(discovery.get("assets") or []),
+                "observations": len(discovery.get("protocol_observations") or []),
+                "pqc_migration_required": (discovery.get("pqc_network_readiness") or {}).get("by_status", {}).get("MIGRATION_REQUIRED", 0),
+            }
+        except Exception as exc:
+            logger.debug("monitor_network_scope_skipped", exc_info=True)
+            # config errors (e.g. DEEP without authorization) surface as issues
+            issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
     if endpoints:
         result = scanner.scan_hosts(endpoints)
         for finding in result.get("findings") or []:
@@ -102,6 +126,8 @@ def network_runner(config: dict, session: Any) -> dict:
         "dnssec_zones": len(dnssec_zones),
         "issues": sorted(set(issues)),
     }
+    if scope_summary is not None:
+        summary["scope"] = scope_summary
     return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
 
 
@@ -506,3 +532,24 @@ def vendor_runner(config: dict, session: Any) -> dict:
     }
     degraded = bool(issues) or score >= 50
     return {"summary": summary, "degraded": degraded, "issues": sorted(set(issues))}
+
+
+def _discovery_issues(discovery: dict) -> list[str]:
+    """Surface enterprise-discovery findings as monitor issues.
+
+    Weak crypto in any probe result, certificate issues, tunnel weaknesses
+    and migration-blocking PQC posture all land in the degraded->alert path.
+    """
+    issues: list[str] = []
+    for finding in discovery.get("findings") or []:
+        endpoint = finding.get("endpoint") or finding.get("device") or "?"
+        for issue in (finding.get("policy_issues") or []) + (finding.get("issues") or []):
+            issues.append(f"{issue}:{endpoint}")
+    for tunnel in discovery.get("tunnels") or []:
+        if tunnel.get("pre_shared_key_used") and not tunnel.get("certificate_reference"):
+            issues.append(f"TUNNEL_PSK_ONLY:{tunnel.get('tunnel_id')}")
+    readiness = discovery.get("pqc_network_readiness") or {}
+    blockers = readiness.get("migration_blockers") or []
+    if blockers:
+        issues.append(f"PQC_MIGRATION_BLOCKERS:{len(blockers)}")
+    return sorted(set(issues))
