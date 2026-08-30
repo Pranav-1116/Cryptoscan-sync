@@ -295,6 +295,35 @@ class NetworkTlsScanner:
         report["target_kind"] = "global-network-discovery"
         return report
 
+    def live_monitor(
+        self,
+        scope_specs: list[str] | list[dict],
+        *,
+        mode: str = "SAFE",
+        authorization_scope: str = "",
+        plugins: list[str] | None = None,
+        options: dict | None = None,
+        **live_options: Any,
+    ):
+        """Start the 24/7 Live Network Scanner loop over ``scope_specs``.
+
+        Returns a ``LiveNetworkMonitor`` whose ``cycle()`` / ``run()`` methods
+        drive the five monitoring modes.  The scan function is wired to
+        :meth:`discover_network`, so each cycle reuses the full enterprise
+        pipeline (assets, TLS/cert intel, topology, PQC, simulation).
+        """
+        from network_scanner.enterprise.live.loop import LiveNetworkMonitor
+
+        scan_fn = lambda specs, scan_mode: self.discover_network(  # noqa: E731
+            list(specs),
+            mode=scan_mode or mode,
+            authorization_scope=authorization_scope,
+            plugins=plugins,
+            options=dict(options or {}),
+        )
+        return LiveNetworkMonitor(scope_specs=scope_specs, scan_fn=scan_fn,
+                                  **live_options)
+
     def _probe_all(
         self,
         endpoints: list[str],

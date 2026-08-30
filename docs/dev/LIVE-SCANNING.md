@@ -337,3 +337,81 @@ raise unless an authorization scope is supplied. Credentials are vault
 references only — scan records never contain router passwords, SNMP
 communities, API tokens or private keys (enforced by the scrub contract and
 its tests).
+
+### 11.6 24/7 Live Network Scanner — `network_scanner.enterprise.live`
+
+The enterprise pipeline above can run as a **continuous monitoring loop** —
+`NetworkTlsScanner.live_monitor(scope_specs)` returns a `LiveNetworkMonitor`
+whose `cycle()` / `run(cycles=…)` methods drive **five monitoring modes** over
+the authorized scope:
+
+| # | Mode | What it does | Trigger |
+|---|---|---|---|
+| 1 | `REALTIME_EVENT` | raw events (SIEM/SNMP traps/streams via `options["events"]`) are normalized, attributed to assets, impact-analyzed, and answered with **targeted rescans only** — never a full restart | every event |
+| 2 | `PASSIVE` | side-effect-free observations (passive fingerprints) update asset state + CBOM | every cycle |
+| 3 | `PERIODIC_LIGHTWEIGHT` | due assets get a lightweight (SAFE) re-scan per their policy interval | scheduler |
+| 4 | `SCHEDULED_DEEP` | assets due for deep re-scan get the full DEEP pipeline (weekly by default) | scheduler |
+| 5 | `CHANGE_TRIGGERED` | TLS/cert/topology watchers diff each cycle; drift raises alerts and re-scans crypto config | change detected |
+
+**Priority scheduling.** Each asset is scored on business criticality, internet
+exposure, crypto risk, change frequency and compliance importance (weighted
+average, missing → 0, clamped 0–10) and lands in a tier with a policy cadence:
+
+| Tier | Score | Lightweight interval | Deep |
+|---|---|---|---|
+| CRITICAL | ≥ 8.0 | 60 s | 7 d |
+| HIGH | ≥ 6.0 | 300 s | 7 d |
+| STANDARD | ≥ 4.0 | 3600 s | 7 d |
+| LOW | < 4.0 | 86400 s | 7 d |
+
+The scheduler never blocks the loop and never restarts a whole scan — one
+asset changing triggers a rescan of the impacted assets plus their graph
+dependents.
+
+**Drift detection.** TLS posture is diffed against a policy floor per
+endpoint (`SSLV3` … `TLSV1.3`); dropping below the floor raises a
+`CRYPTO DRIFT` CRITICAL alert with the exact drift evidence
+(algorithm/protocol before → after), keyed for correlation.
+
+**Event-sourced CBOM.** Every change is an event; `CbomMaterializer` folds
+`ASSET_DISCOVERED / ASSET_UPDATED / TLS_CHANGED / CERTIFICATE_CHANGED /
+PASSIVE_OBSERVATION / …` events into a continuously-updated, versioned
+component bill of materials (`cbom.live()`).
+
+**Tamper-evident evidence chain.** Every network event is chained:
+`record_id = sha256(sequence ‖ content_hash)` over canonical sorted-key JSON,
+`content_hash = sha256(canonical ‖ previous_hash)`, anchored by `GENESIS_HASH`.
+`verify()` / `verify_from(sequence)` / `tail(n)` give full chain validation;
+reports expose `evidence_verified`.
+
+**Alerting.** Alerts carry severity, impact, dependencies, recommended
+actions, and a correlation key; `drain(correlate=True)` collapses related
+incidents (dedup by key + window) so steady-state noise stays quiet.
+
+**Scanner health.** The loop heartbeats every cycle and reports state
+`HEALTHY / DEGRADED / FAILED / UNREACHABLE / MAINTENANCE` with scan metrics.
+
+**Distributed edge agents.** `EdgeAgent` runs a local live monitor and syncs
+to a `ControlPlane`; when offline it keeps a durable outbox of events and
+evidence and replays it on reconnect (`sync_now` bridges the agent queue into
+the control plane). Agent state moves through
+`REGISTERED → ACTIVE → OFFLINE → SYNCING → ACTIVE`.
+
+**Wiring.** CLI: `python -m network_scanner.main --live-monitor --live-cycles N
+--scope <scope>`; API NETWORK targets accept `config.live`:
+
+```json
+{ "scope": ["10.0.0.0/24"],
+  "live": {
+    "modes": ["REALTIME_EVENT", "PASSIVE", "PERIODIC_LIGHTWEIGHT",
+              "SCHEDULED_DEEP", "CHANGE_TRIGGERED"],
+    "priority": { "business_criticality": 10, "crypto_risk": 8 }
+  } }
+```
+
+All I/O is injectable (scan function, event stream, watchers, scheduler,
+evidence, CBOM, alerts, health, clock) — the loop runs fully in memory in
+tests with zero network. The live-loop suites live in
+`services/network_scanner/tests/test_live_*_*.py` (modes/scheduler/state,
+events/watchers/passive, evidence/CBOM/alerts, loop, revocation) and cover the
+whole architecture with injected fakes.

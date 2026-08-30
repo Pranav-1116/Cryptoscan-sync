@@ -268,3 +268,48 @@ async def test_network_scope_targets():
             "name": "bad-scope", "target_type": "NETWORK",
             "config": {"scope": [123]}})
         assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_network_target_with_live_monitor_config():
+    """NETWORK targets accept config.live (modes + priority) and validate it."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        ok = await client.post("/api/v1/monitor/targets", json={
+            "name": "bank-live",
+            "target_type": "NETWORK",
+            "config": {
+                "scope": ["10.0.0.0/24"],
+                "live": {
+                    "modes": ["REALTIME_EVENT", "PASSIVE", "PERIODIC_LIGHTWEIGHT",
+                              "SCHEDULED_DEEP", "CHANGE_TRIGGERED"],
+                    "priority": {"business_criticality": 10.0, "crypto_risk": 8.0},
+                },
+            },
+        })
+        assert ok.status_code == 201
+        body = ok.json()
+        assert body["config"]["live"]["modes"][0] == "REALTIME_EVENT"
+
+        # unknown mode
+        bad_mode = await client.post("/api/v1/monitor/targets", json={
+            "name": "bad-mode", "target_type": "NETWORK",
+            "config": {"scope": ["10.0.0.0/24"], "live": {"modes": ["CONTINUOUS"]}},
+        })
+        assert bad_mode.status_code == 422
+
+        # priority component out of range
+        bad_priority = await client.post("/api/v1/monitor/targets", json={
+            "name": "bad-priority", "target_type": "NETWORK",
+            "config": {"scope": ["10.0.0.0/24"],
+                       "live": {"priority": {"business_criticality": 42}}},
+        })
+        assert bad_priority.status_code == 422
+
+        # live is not an object
+        bad_shape = await client.post("/api/v1/monitor/targets", json={
+            "name": "bad-shape", "target_type": "NETWORK",
+            "config": {"scope": ["10.0.0.0/24"], "live": "yes"},
+        })
+        assert bad_shape.status_code == 422

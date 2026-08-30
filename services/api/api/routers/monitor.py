@@ -35,7 +35,59 @@ def _validate_config(config: dict, target_type: str) -> dict:
                 detail=f"config.watch is only supported for {WATCHABLE_TYPES} (got {target_type}) — "
                        "enable change-watch on a REPO or CONTAINER target",
             )
+    if clean.get("live") is not None:
+        _validate_live_config(clean["live"], target_type)
     return clean
+
+
+def _validate_live_config(live: dict, target_type: str) -> None:
+    """Validate the 24/7 live-monitor config for a target."""
+    if not isinstance(live, dict):
+        raise HTTPException(status_code=422,
+                            detail="config.live must be an object "
+                                   "{modes: [...], priority: {...}}")
+    modes = live.get("modes")
+    if modes is not None:
+        from network_scanner.enterprise.live.modes import MONITORING_MODES
+
+        valid = set(MONITORING_MODES)
+        if not isinstance(modes, list) or not modes:
+            raise HTTPException(status_code=422,
+                                detail="config.live.modes must be a non-empty list")
+        unknown = [m for m in modes if str(m).upper() not in valid]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=f"config.live.modes contains unknown modes {unknown}; "
+                       f"valid modes: {sorted(valid)}",
+            )
+    priority = live.get("priority")
+    if priority is not None:
+        from network_scanner.enterprise.live.scheduler import PRIORITY_COMPONENTS
+
+        if not isinstance(priority, dict):
+            raise HTTPException(status_code=422,
+                                detail="config.live.priority must be an object")
+        for component, value in priority.items():
+            if component not in PRIORITY_COMPONENTS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"config.live.priority component '{component}' unknown; "
+                           f"valid components: {PRIORITY_COMPONENTS}",
+                )
+            try:
+                if not 0.0 <= float(value) <= 10.0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"config.live.priority['{component}'] must be a number in [0, 10]",
+                ) from None
+    if target_type != "NETWORK" and "scope" in live:
+        raise HTTPException(
+            status_code=422,
+            detail="config.live.scope is only valid for NETWORK targets",
+        )
 
 
 class TargetCreate(BaseModel):

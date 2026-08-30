@@ -60,6 +60,10 @@ def main(argv: list[str] | None = None) -> int:
                         help="Render a scan/SSH/drift result JSON as Prometheus text")
     parser.add_argument("-o", "--output", help="Write JSON result to this path")
     parser.add_argument("--live", action="store_true", default=settings.live)
+    parser.add_argument("--live-monitor", action="store_true",
+                        help="Run the 24/7 Live Network Scanner loop (five monitoring modes)")
+    parser.add_argument("--live-cycles", type=int, default=1, metavar="N",
+                        help="Live monitor: number of monitor cycles to run (default 1)")
     parser.add_argument("--sni", default=None, help="Override SNI for the probe")
     parser.add_argument("--starttls", default=None,
                         help="STARTTLS protocol: auto|smtp|imap|pop3|ftp|ldap|postgresql|off (default: auto for known ports)")
@@ -130,6 +134,23 @@ def main(argv: list[str] | None = None) -> int:
         _emit(routed, args.output)
         return 0
     target = args.target
+    if args.live_monitor:
+        if not args.scope:
+            parser.error("--live-monitor requires --scope (one or more scope specs)")
+        from network_scanner.enterprise.live.loop import LiveNetworkMonitor
+
+        monitor = scanner.live_monitor(
+            list(args.scope),
+            mode=(args.mode or "safe").upper(),
+            authorization_scope=args.authorization,
+            plugins=args.plugin,
+            options={"events": []},
+        )
+        monitor.run(cycles=max(1, args.live_cycles))
+        report = monitor.report()
+        report["scan_context"] = {"mode": "live-monitor", "cycles": args.live_cycles}
+        _emit(report, args.output)
+        return 0
     if args.scope:
         import json as _json
         from pathlib import Path as _Path
