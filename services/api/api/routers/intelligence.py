@@ -463,7 +463,7 @@ def _payment_crypto_block() -> dict | None:
             forecast = ExpiryForecaster().forecast(
                 [{"key_id": key.key_id, "expiry_at": key.expiry_at.isoformat() if key.expiry_at else None}
                  for key in keys],
-                ceremonies=[{"key_id": row.key_id,
+                ceremonies=[{"key_id": row.key_id, "status": row.status or "HELD",
                              "held_at": row.held_at.isoformat() if row.held_at else None}
                             for row in repo.list_ceremonies()],
             )

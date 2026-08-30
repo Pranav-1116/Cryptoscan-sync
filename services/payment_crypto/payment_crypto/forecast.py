@@ -124,6 +124,7 @@ class ExpiryForecaster:
             str(ceremony.get("key_id") or "")
             for ceremony in (ceremonies or [])
             if (_as_datetime(ceremony.get("held_at")) or self._now) >= self._now
+            and str(ceremony.get("status") or "PLANNED") != "ABANDONED"
         }
         findings = [
             {

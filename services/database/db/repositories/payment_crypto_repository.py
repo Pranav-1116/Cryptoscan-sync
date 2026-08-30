@@ -98,25 +98,50 @@ class PaymentCryptoRepository:
             select(KeyCeremony).where(KeyCeremony.ceremony_id == ceremony_id)
         ).scalar_one_or_none()
         if row is None:
+            held_at = payload.get("held_at")
+            derived = dict(payload)
+            if not derived.get("status"):
+                derived["status"] = _ceremony_status(held_at)
             row = KeyCeremony(ceremony_id=ceremony_id, **{
-                key: value for key, value in payload.items() if key != "ceremony_id"
+                key: value for key, value in derived.items() if key != "ceremony_id"
             })
             self.session.add(row)
         else:
             for field in ("key_id", "held_at", "custodians", "m_of_n", "dual_control",
-                          "location", "documented", "notes"):
+                          "location", "documented", "notes", "status"):
                 if payload.get(field) is not None:
                     setattr(row, field, payload[field])
         self.session.flush()
         return row
 
-    def list_ceremonies(self, *, key_id: Optional[str] = None) -> list[KeyCeremony]:
+    def list_ceremonies(self, *, key_id: Optional[str] = None, status: Optional[str] = None,
+                        upcoming_only: bool = False) -> list[KeyCeremony]:
         query = select(KeyCeremony)
         if key_id:
             query = query.where(KeyCeremony.key_id == key_id)
+        if status:
+            query = query.where(KeyCeremony.status == status)
+        if upcoming_only:
+            query = query.where(
+                KeyCeremony.status == "PLANNED", KeyCeremony.held_at >= utcnow()
+            )
         return list(self.session.scalars(query.order_by(KeyCeremony.held_at.desc())))
 
-    # ---------------------------------------------------------------- events
+    def update_ceremony(self, ceremony_id: str, updates: dict) -> Optional[KeyCeremony]:
+        row = self.session.execute(
+            select(KeyCeremony).where(KeyCeremony.ceremony_id == ceremony_id)
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        for field in ("key_id", "held_at", "custodians", "m_of_n", "dual_control",
+                      "location", "documented", "notes", "status"):
+            if updates.get(field) is not None:
+                setattr(row, field, updates[field])
+        if updates.get("held_at") is not None and "status" not in updates:
+            row.status = _ceremony_status(updates["held_at"])
+        self.session.flush()
+        return row
+
 
     def add_events(self, records: list[dict]) -> list[HsmEvent]:
         rows = []
@@ -220,3 +245,21 @@ class PaymentCryptoRepository:
         row.resolved_by = resolved_by
         self.session.flush()
         return row
+
+
+def _ceremony_status(held_at) -> str:
+    """A ceremony dated in the future is a booking (PLANNED); past = it happened."""
+    if isinstance(held_at, datetime) and held_at.tzinfo is None:
+        held_at = held_at.replace(tzinfo=timezone.utc)
+    if isinstance(held_at, str) and held_at:
+        try:
+            held_at = datetime.fromisoformat(held_at.replace("Z", "+00:00"))
+        except ValueError:
+            return "HELD"
+    if isinstance(held_at, datetime):
+        if held_at.tzinfo is None:
+            held_at = held_at.replace(tzinfo=timezone.utc)
+        return "PLANNED" if held_at > utcnow() else "HELD"
+    return "HELD"
+
+    # ---------------------------------------------------------------- events

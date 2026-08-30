@@ -274,7 +274,8 @@ def payment_runner(config: dict, session: Any) -> dict:
     findings = list(PaymentPolicyEngine().evaluate(
         key_rows,
         ceremonies=[{"key_id": c.key_id, "held_at": c.held_at.isoformat() if c.held_at else None,
-                     "custodians": c.custodians or [], "dual_control": c.dual_control}
+                     "custodians": c.custodians or [], "dual_control": c.dual_control,
+                     "status": c.status or "HELD", "ceremony_id": c.ceremony_id}
                     for c in repo.list_ceremonies()],
         events=event_rows,
     ))
@@ -286,7 +287,8 @@ def payment_runner(config: dict, session: Any) -> dict:
 
     forecast_report = ExpiryForecaster().forecast(
         key_rows, None,
-        ceremonies=[{"key_id": c.key_id, "held_at": c.held_at.isoformat() if c.held_at else None}
+        ceremonies=[{"key_id": c.key_id, "status": c.status or "HELD",
+                     "held_at": c.held_at.isoformat() if c.held_at else None}
                     for c in repo.list_ceremonies()],
     )
     usage_findings = (

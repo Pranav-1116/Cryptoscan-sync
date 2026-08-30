@@ -208,6 +208,16 @@ class PaymentPolicyEngine:
                 {"ceremony_count": 0},
             ))
             return findings
+        for ceremony in ceremonies:
+            status = str(ceremony.get("status") or "HELD")
+            scheduled = _as_datetime(ceremony.get("held_at"))
+            if status == "PLANNED" and scheduled is not None and scheduled < self._now:
+                findings.append(PolicyFinding(
+                    "PAY-016", 4, False, key_id,
+                    f"planned ceremony is overdue (scheduled {scheduled.date().isoformat()}, still PLANNED)",
+                    {"ceremony_id": ceremony.get("ceremony_id"),
+                     "scheduled_for": scheduled.isoformat()},
+                ))
         latest = max(ceremonies, key=lambda ceremony: str(ceremony.get("held_at") or ""))
         custodians = latest.get("custodians") or []
         dual_control = bool(latest.get("dual_control"))

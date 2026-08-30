@@ -78,6 +78,12 @@ PAY-015 (rotation inside 90d without a scheduled ceremony), `GET
 /payment-crypto/forecast`, dashboard rotation-calendar card, and the payment
 section in scheduled report emails (keys, findings, upcoming rotations).
 
+**Ceremony scheduling (Aug 30, night)** — ceremony lifecycle PLANNED/HELD/
+ABANDONED (migration 0033): future-dated bookings clear PAY-015, ABANDONED
+does not; **PAY-016** flags planned ceremonies past their date (missed
+rotation window); PATCH /ceremonies/{id}, ?upcoming=true listing, dashboard
+ceremonies card with schedule/mark-held/abandon.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

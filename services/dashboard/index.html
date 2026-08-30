@@ -510,6 +510,8 @@ async function renderPayment(el) {
   try { usage = await api('/payment-crypto/usage'); } catch (e) { usage = null; }
   let forecast = null;
   try { forecast = await api('/payment-crypto/forecast'); } catch (e) { forecast = null; }
+  let ceremonies = [];
+  try { ceremonies = (await api('/payment-crypto/ceremonies')).ceremonies; } catch (e) { ceremonies = []; }
   const sevBadge = s => badge(s >= 5 ? 'CRITICAL' : s === 4 ? 'HIGH' : s === 3 ? 'WARN' : 'INFO');
   el.innerHTML = `
     <h2>Payment crypto <span class="muted">(HSM key inventory · PCI/TR-39)</span></h2>
@@ -566,11 +568,46 @@ async function renderPayment(el) {
       </tbody></table>
       ${Object.keys(forecast.rotation_calendar || {}).length ? `<p class="muted">weekly load: ${Object.entries(forecast.rotation_calendar).slice(0, 8).map(([w, l]) => `${w.slice(5)}: <b>${l.payment_keys}k/${l.certificates}c</b>`).join(' · ')}</p>` : ''}
     </div>` : ''}
+    <div class="card"><div class="label">Ceremonies (dual control)</div>
+      <table><thead><tr><th>Ceremony</th><th>Key</th><th>When</th><th>Custodians</th><th>Status</th><th></th></tr></thead><tbody>
+        ${ceremonies.slice(0, 8).map(c => `<tr><td class="mono">${escapeHtml(c.ceremony_id)}</td>
+          <td class="mono">${escapeHtml(c.key_id || '—')}</td>
+          <td>${c.held_at ? new Date(c.held_at).toLocaleString() : '—'}</td>
+          <td>${(c.custodians || []).length}${c.m_of_n ? ' (' + escapeHtml(c.m_of_n) + ')' : ''}</td>
+          <td>${badge(c.status === 'PLANNED' ? 'INFO' : c.status === 'ABANDONED' ? 'WARN' : 'PASS')} ${c.status}
+              ${c.dual_control ? '' : ' ⚠ no dual control'}</td>
+          <td>${c.status === 'PLANNED' ? `<button class="btn secondary" onclick="ceremonyStatus('${c.ceremony_id}', 'HELD')">Mark held</button> <button class="btn secondary" onclick="ceremonyStatus('${c.ceremony_id}', 'ABANDONED')">Abandon</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No ceremonies recorded.</td></tr>'}
+      </tbody></table>
+      <p><input id="cer-id" placeholder="ceremony id (CER-2026-09)" style="width:170px">
+         <input id="cer-key" placeholder="key id" style="width:120px">
+         <input id="cer-date" type="date">
+         <input id="cer-custodians" placeholder="custodians, comma separated" style="width:220px">
+         <button class="btn" onclick="ceremonySchedule()">Schedule</button></p>
+      <p class="muted">Scheduling a future-dated ceremony clears PAY-015 for that key; a missed date fires PAY-016.</p>
+    </div>
     <div class="card"><div class="label">Recent HSM events (7 days)</div>
       <table><tbody>${events.slice(0, 15).map(e => `<tr><td class="mono">${new Date(e.occurred_at).toLocaleString()}</td>
         <td>${badge(e.severity === 'CRITICAL' ? 'CRITICAL' : e.severity === 'WARNING' ? 'WARN' : 'INFO')}</td>
         <td>${escapeHtml(e.device)}</td><td>${escapeHtml(e.event_type)}</td><td class="mono">${escapeHtml(e.key_id || '')}</td></tr>`).join('') || '<tr><td class="muted">No events.</td></tr>'}</tbody></table>
     </div>`;
+}
+
+async function ceremonySchedule() {
+  const id = document.getElementById('cer-id').value.trim();
+  const key = document.getElementById('cer-key').value.trim();
+  const date = document.getElementById('cer-date').value;
+  const custodians = document.getElementById('cer-custodians').value.split(',').map(x => x.trim()).filter(Boolean);
+  if (!id || !key || !date) { alert('ceremony id, key id and date are required'); return; }
+  await api('/payment-crypto/ceremonies', { method: 'POST', body: JSON.stringify({
+    ceremony_id: id, key_id: key, held_at: new Date(date + 'T09:00:00Z').toISOString(),
+    custodians, m_of_n: custodians.length >= 2 ? `2-of-${custodians.length}` : null,
+  }) });
+  go('payment');
+}
+
+async function ceremonyStatus(id, status) {
+  await api('/payment-crypto/ceremonies/' + id, { method: 'PATCH', body: JSON.stringify({ status }) });
+  go('payment');
 }
 
 async function paymentIngest() {

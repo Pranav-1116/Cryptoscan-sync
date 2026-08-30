@@ -132,6 +132,26 @@ TLS certificate inventory on one timeline:
 Scheduled report emails now carry the payment picture: key totals, weak
 algorithms, open/blocking findings, and the next five upcoming rotations.
 
+## Ceremony scheduling (the PAY-015 / PAY-016 loop)
+
+Ceremonies now have a lifecycle: **PLANNED** (future-dated booking) → **HELD**
+(it happened) or **ABANDONED** (cancelled).
+
+```bash
+# book the rotation ceremony for a key flagged by PAY-015
+curl -X POST …/api/v1/payment-crypto/ceremonies -d '{
+  "ceremony_id": "CER-2026-09-01", "key_id": "ZMK-PROD-01",
+  "held_at": "2026-09-10T09:00:00Z", "custodians": ["a","b","c"], "m_of_n": "2-of-3"}'
+# -> status PLANNED; PAY-015 clears for that key
+curl -X PATCH …/api/v1/payment-crypto/ceremonies/CER-2026-09-01 -d '{"status": "HELD"}'
+```
+
+- **PAY-015** clears when a *scheduled* (future-dated, not ABANDONED) ceremony exists.
+- **PAY-016** fires when a PLANNED ceremony passes its date still PLANNED — a
+  missed rotation window, reported instead of forgotten.
+- `GET /payment-crypto/ceremonies?upcoming=true` lists bookings; the dashboard
+  Payment crypto view schedules and closes ceremonies.
+
 ## API quick reference
 
 ```bash

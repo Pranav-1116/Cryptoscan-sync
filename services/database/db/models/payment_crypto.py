@@ -60,6 +60,8 @@ class KeyCeremony(BaseModel):
     location: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     documented: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # PLANNED (future-dated booking) | HELD (took place) | ABANDONED (cancelled)
+    status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="HELD")
 
 
 class HsmEvent(BaseModel):

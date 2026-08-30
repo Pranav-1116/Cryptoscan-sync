@@ -158,17 +158,30 @@ def delete_key(key_id: str, user: str = Depends(require_auditor), db: Session = 
 
 # --------------------------------------------------------------- ceremonies
 
-@router.get("/ceremonies")
-def list_ceremonies(key_id: Optional[str] = None,
-                    user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    rows = _repo(db).list_ceremonies(key_id=key_id)
-    return {"ceremonies": [{
+def _serialize_ceremony(row) -> dict:
+    return {
         "ceremony_id": row.ceremony_id, "key_id": row.key_id,
         "held_at": row.held_at.isoformat() if row.held_at else None,
         "custodians": row.custodians or [], "m_of_n": row.m_of_n,
         "dual_control": row.dual_control, "location": row.location,
-        "documented": row.documented,
-    } for row in rows]}
+        "documented": row.documented, "status": row.status or "HELD",
+    }
+
+
+@router.get("/ceremonies")
+def list_ceremonies(key_id: Optional[str] = None, upcoming: bool = False,
+                    user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    rows = _repo(db).list_ceremonies(key_id=key_id, upcoming_only=upcoming)
+    return {"ceremonies": [_serialize_ceremony(row) for row in rows]}
+
+
+class CeremonyUpdate(BaseModel):
+    held_at: Optional[str] = None
+    custodians: Optional[list[str]] = None
+    m_of_n: Optional[str] = None
+    dual_control: Optional[bool] = None
+    location: Optional[str] = None
+    status: Optional[str] = None   # PLANNED | HELD | ABANDONED
 
 
 @router.post("/ceremonies")
@@ -181,7 +194,23 @@ def upsert_ceremony(body: CeremonyUpsert, user: str = Depends(require_auditor),
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     db.commit()
-    return {"ceremony_id": row.ceremony_id, "key_id": row.key_id, "dual_control": row.dual_control}
+    return _serialize_ceremony(row)
+
+
+@router.patch("/ceremonies/{ceremony_id}")
+def update_ceremony(ceremony_id: str, body: CeremonyUpdate,
+                    user: str = Depends(require_auditor), db: Session = Depends(get_db_session)):
+    """Schedule workflow: move date, custodians, or status (PLANNED -> HELD/ABANDONED)."""
+    if body.status is not None and body.status not in {"PLANNED", "HELD", "ABANDONED"}:
+        raise HTTPException(status_code=422, detail="status must be PLANNED, HELD or ABANDONED")
+    updates = body.model_dump(exclude={"held_at"})
+    if body.held_at is not None:
+        updates["held_at"] = _to_dt(body.held_at)
+    row = _repo(db).update_ceremony(ceremony_id, updates)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Ceremony not found")
+    db.commit()
+    return _serialize_ceremony(row)
 
 
 # -------------------------------------------------------------- hsm events
@@ -288,6 +317,7 @@ def evaluate(user: str = Depends(require_auditor), db: Session = Depends(get_db_
             "key_id": row.key_id,
             "held_at": row.held_at.isoformat() if row.held_at else None,
             "custodians": row.custodians or [], "dual_control": row.dual_control,
+            "status": row.status or "HELD", "ceremony_id": row.ceremony_id,
         } for row in repo.list_ceremonies()],
         events=[{
             "occurred_at": row.occurred_at.isoformat(), "device": row.device,
@@ -306,7 +336,7 @@ def evaluate(user: str = Depends(require_auditor), db: Session = Depends(get_db_
     )
     forecast_report = ExpiryForecaster().forecast(
         [_serialize_key(row) for row in repo.list_keys()], None,
-        ceremonies=[{"key_id": row.key_id,
+        ceremonies=[{"key_id": row.key_id, "status": row.status or "HELD",
                      "held_at": row.held_at.isoformat() if row.held_at else None}
                     for row in repo.list_ceremonies()],
     )
