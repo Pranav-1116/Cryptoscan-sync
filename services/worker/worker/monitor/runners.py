@@ -282,7 +282,18 @@ def payment_runner(config: dict, session: Any) -> dict:
     correlation = TransactionCorrelator().evaluate(
         repo.transaction_series(days=60), usage_report.get("usage_by_day") or {}
     )
-    usage_findings = list(usage_report.get("findings") or []) + list(correlation.get("findings") or [])
+    from payment_crypto.forecast import ExpiryForecaster
+
+    forecast_report = ExpiryForecaster().forecast(
+        key_rows, None,
+        ceremonies=[{"key_id": c.key_id, "held_at": c.held_at.isoformat() if c.held_at else None}
+                    for c in repo.list_ceremonies()],
+    )
+    usage_findings = (
+        list(usage_report.get("findings") or [])
+        + list(correlation.get("findings") or [])
+        + list(forecast_report.get("findings") or [])
+    )
     all_findings = [f.to_dict() for f in findings] + usage_findings
     repo.replace_findings(all_findings)
 
@@ -293,6 +304,7 @@ def payment_runner(config: dict, session: Any) -> dict:
         "keys_tracked": len(keys),
         "hsm_ops_90d": usage_report.get("total_usage_events"),
         "correlation": correlation.get("status"),
+        "rotations_next_90d": forecast_report.get("upcoming_count"),
         "open_findings": len(all_findings),
         "blocking": sum(1 for f in all_findings if f.get("blocking")),
         "issues": issues,

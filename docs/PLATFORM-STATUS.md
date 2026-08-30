@@ -72,6 +72,12 @@ daily transaction exports (`transactions_path`), and runs usage + correlation
 inside every sweep (PAY-011..014 fire from live data); bulk transaction push
 endpoint; dashboard usage/correlation card with ops/tx trend.
 
+**Rotation calendar (Aug 30, evening)** — expiry forecasting across payment
+keys and the TLS certificate inventory (horizon buckets, per-ISO-week load),
+PAY-015 (rotation inside 90d without a scheduled ceremony), `GET
+/payment-crypto/forecast`, dashboard rotation-calendar card, and the payment
+section in scheduled report emails (keys, findings, upcoming rotations).
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

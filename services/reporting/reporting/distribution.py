@@ -13,12 +13,42 @@ from email.message import EmailMessage
 from typing import Any, Mapping
 
 
+def _payment_lines(report: Mapping[str, Any]) -> list[str]:
+    """Payment-crypto section for scheduled emails (absent when no data — honest)."""
+    payment = report.get("payment_crypto")
+    if not payment:
+        return []
+    summary = payment.get("summary") or {}
+    findings = payment.get("findings") or []
+    rotations = payment.get("upcoming_rotations") or []
+    lines = [
+        "Payment crypto (HSM inventory):",
+        f"  keys: {summary.get('keys_total', 0)} "
+        f"({summary.get('active_weak_algorithm_keys', 0)} ACTIVE on weak algorithms), "
+        f"ceremonies: {summary.get('ceremonies_total', 0)}, "
+        f"rotations next 90d: {summary.get('rotations_next_90d', 0)}",
+        f"  open findings: {len(findings)} "
+        f"({sum(1 for row in findings if row.get('blocking'))} blocking)",
+    ]
+    for row in findings[:5]:
+        flag = "BLOCKING " if row.get("blocking") else ""
+        lines.append(f"    {flag}{row.get('rule_id')} {row.get('key_id') or '-'}: "
+                     f"{str(row.get('message'))[:90]}")
+    if rotations:
+        lines.append("  upcoming rotations:")
+        for item in rotations[:5]:
+            lines.append(f"    {item.get('kind')} {str(item.get('reference'))[:40]} — "
+                         f"{item.get('days_left')}d ({item.get('status')})")
+    return lines
+
+
 def render_email(report: Mapping[str, Any], *, template_id: str, schedule_name: str) -> tuple[str, str]:
     """(subject, body) for a report distribution — deterministic, hash-bearing."""
     report_hash = str(report.get("report_hash") or "")
     totals = report.get("totals") or {}
     evaluation = report.get("template_evaluation") or {}
     summary = evaluation.get("summary") or {}
+
     signature = report.get("signature") or {}
     subject = (
         f"CryptoScan {template_id} report — {totals.get('findings', 0)} findings, "
@@ -34,6 +64,8 @@ def render_email(report: Mapping[str, Any], *, template_id: str, schedule_name: 
         f" — {summary.get('compliant_pct', 0.0)}% compliant",
         "",
         f"Report hash (SHA-256, canonical JSON): {report_hash}",
+        "",
+        *_payment_lines(report),
     ]
     if signature.get("value"):
         lines.append(f"PKI signature: {signature.get('alg')} (key {signature.get('key_id') or 'n/a'})")

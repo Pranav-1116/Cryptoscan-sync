@@ -508,6 +508,8 @@ async function renderPayment(el) {
   const events = (await api('/payment-crypto/hsm-events?days=7')).events;
   let usage = null;
   try { usage = await api('/payment-crypto/usage'); } catch (e) { usage = null; }
+  let forecast = null;
+  try { forecast = await api('/payment-crypto/forecast'); } catch (e) { forecast = null; }
   const sevBadge = s => badge(s >= 5 ? 'CRITICAL' : s === 4 ? 'HIGH' : s === 3 ? 'WARN' : 'INFO');
   el.innerHTML = `
     <h2>Payment crypto <span class="muted">(HSM key inventory · PCI/TR-39)</span></h2>
@@ -552,6 +554,17 @@ async function renderPayment(el) {
       <p class="muted">ops/tx, last 7 days: ${Object.entries(usage.correlation.ratio_by_day || {}).slice(-7).map(([d, r]) =>
         `${d.slice(5)} <b>${r}</b>`).join(' · ')}</p>` : ''}
       ${usage.findings?.length ? `<p class="muted">usage findings: ${usage.findings.map(f => f.rule_id).join(', ')}</p>` : ''}
+    </div>` : ''}
+    ${forecast && forecast.upcoming_count ? `
+    <div class="card"><div class="label">Rotation calendar (next ${forecast.horizon_days}d)</div>
+      <p>${Object.entries(forecast.by_status || {}).map(([k, v]) => badge(k.startsWith('EXPIRED') || k.startsWith('CRITICAL') ? 'CRITICAL' : k.startsWith('WARNING') ? 'WARN' : 'INFO') + ` ${k} ${v}`).join(' ') || '—'}
+         · ${forecast.undated_items} undated</p>
+      <table><thead><tr><th>Item</th><th>Kind</th><th>Expires</th><th>Days</th><th>Status</th></tr></thead><tbody>
+        ${forecast.upcoming.slice(0, 10).map(u => `<tr><td class="mono">${escapeHtml(u.reference)}</td>
+          <td>${escapeHtml(u.kind)}</td><td>${u.expires_at ? new Date(u.expires_at).toLocaleDateString() : '—'}</td>
+          <td>${u.days_left}</td><td>${badge(u.status.startsWith('CRITICAL') || u.status.startsWith('EXPIRED') ? 'CRITICAL' : u.status.startsWith('WARNING') ? 'WARN' : 'INFO')} ${u.status}</td></tr>`).join('')}
+      </tbody></table>
+      ${Object.keys(forecast.rotation_calendar || {}).length ? `<p class="muted">weekly load: ${Object.entries(forecast.rotation_calendar).slice(0, 8).map(([w, l]) => `${w.slice(5)}: <b>${l.payment_keys}k/${l.certificates}c</b>`).join(' · ')}</p>` : ''}
     </div>` : ''}
     <div class="card"><div class="label">Recent HSM events (7 days)</div>
       <table><tbody>${events.slice(0, 15).map(e => `<tr><td class="mono">${new Date(e.occurred_at).toLocaleString()}</td>

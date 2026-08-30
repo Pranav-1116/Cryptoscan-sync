@@ -117,6 +117,21 @@ PCI-DSS reports now include the payment picture: requirements 3.6.5-pay,
 3.7-pay-rotation, 3.5.1-pay-inventory and 3.6-pay-usable evaluate from
 PAY-xxx evidence, and the report carries a `payment_crypto` summary block.
 
+## Rotation calendar & expiry forecasting
+
+`GET /api/v1/payment-crypto/forecast` puts payment keys (`expiry_at`) and the
+TLS certificate inventory on one timeline:
+
+- horizon buckets: EXPIRED / CRITICAL_7D / WARNING_30D / NOTICE_90D / OK;
+- per-ISO-week rotation load (ceremonies are staffed work — plan them);
+- **PAY-015**: a payment key rotating inside 90 days with no *scheduled*
+  ceremony (future-dated record) — dual control must be planned before the
+  rotation, not improvised during it;
+- items without expiry dates are counted as `undated`, never guessed.
+
+Scheduled report emails now carry the payment picture: key totals, weak
+algorithms, open/blocking findings, and the next five upcoming rotations.
+
 ## API quick reference
 
 ```bash

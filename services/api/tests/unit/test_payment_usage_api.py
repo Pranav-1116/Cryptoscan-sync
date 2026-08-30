@@ -114,6 +114,30 @@ async def test_bulk_transaction_series_upsert():
 
 
 @pytest.mark.asyncio
+async def test_forecast_endpoint_includes_keys_and_certificates():
+    from datetime import timedelta
+
+    app, session, engine = _make_app()
+    from db.repositories.payment_crypto_repository import PaymentCryptoRepository
+
+    repo = PaymentCryptoRepository(session)
+    repo.upsert_key({"key_id": "ZMK-SOON", "algorithm": "AES", "state": "ACTIVE",
+                     "expiry_at": datetime.now(timezone.utc) + timedelta(days=14)})
+    session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        forecast = await client.get("/api/v1/payment-crypto/forecast")
+        assert forecast.status_code == 200, forecast.text
+        body = forecast.json()
+        assert body["upcoming_count"] >= 1
+        assert any(item["reference"] == "ZMK-SOON" for item in body["upcoming"])
+        pay015 = [f for f in body["findings"] if f["rule_id"] == "PAY-015"]
+        assert pay015 and pay015[0]["key_id"] == "ZMK-SOON"  # no ceremony scheduled
+        assert "rotation_calendar" in body
+
+
+@pytest.mark.asyncio
 async def test_payment_findings_flow_into_pci_report():
     """PAY-xxx findings must evaluate the new PCI requirements (integration)."""
     from reporting.compliance_report import render_json

@@ -19,6 +19,7 @@ from db.repositories.payment_crypto_repository import PaymentCryptoRepository
 from payment_crypto.auditlog import HsmAuditParser
 from payment_crypto.keyblocks import parse_tr31_header
 from payment_crypto.policy import PaymentPolicyEngine
+from payment_crypto.forecast import ExpiryForecaster
 from payment_crypto.usage import TransactionCorrelator, UsageAnalyzer
 
 router = APIRouter(prefix="/payment-crypto", tags=["payment-crypto"])
@@ -303,7 +304,17 @@ def evaluate(user: str = Depends(require_auditor), db: Session = Depends(get_db_
     correlation = TransactionCorrelator().evaluate(
         repo.transaction_series(days=60), usage_report.get("usage_by_day") or {}
     )
-    usage_findings = list(usage_report.get("findings") or []) + list(correlation.get("findings") or [])
+    forecast_report = ExpiryForecaster().forecast(
+        [_serialize_key(row) for row in repo.list_keys()], None,
+        ceremonies=[{"key_id": row.key_id,
+                     "held_at": row.held_at.isoformat() if row.held_at else None}
+                    for row in repo.list_ceremonies()],
+    )
+    usage_findings = (
+        list(usage_report.get("findings") or [])
+        + list(correlation.get("findings") or [])
+        + list(forecast_report.get("findings") or [])
+    )
     all_findings = [finding.to_dict() for finding in findings] + usage_findings
     rows = repo.replace_findings(all_findings)
     db.commit()
@@ -333,6 +344,32 @@ def list_findings(status: Optional[str] = None,
         "blocking": row.blocking, "message": row.message, "status": row.status,
         "evidence": row.evidence, "evaluated_at": row.evaluated_at.isoformat() if row.evaluated_at else None,
     } for row in rows]}
+
+
+@router.get("/forecast")
+def forecast(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Rotation calendar: payment keys + TLS certificates expiring on one timeline."""
+    repo = _repo(db)
+    keys = [_serialize_key(row) for row in repo.list_keys()]
+    certificates = []
+    try:
+        from db.models.certificate import Certificate
+
+        for row in db.query(Certificate).all():
+            certificates.append({
+                "subject": row.subject, "issuer": row.issuer,
+                "not_after": row.not_after.isoformat() if row.not_after else None,
+                "public_key_algorithm": row.public_key_algorithm,
+                "fingerprint": (row.fingerprint_sha256 or "")[:12],
+            })
+    except Exception:
+        certificates = []  # certificate inventory empty/unavailable — keys still forecast
+    return ExpiryForecaster().forecast(
+        keys, certificates,
+        ceremonies=[{"key_id": row.key_id,
+                     "held_at": row.held_at.isoformat() if row.held_at else None}
+                    for row in repo.list_ceremonies()],
+    )
 
 
 @router.post("/findings/{finding_id}/status")

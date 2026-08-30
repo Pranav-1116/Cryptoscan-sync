@@ -458,6 +458,15 @@ def _payment_crypto_block() -> dict | None:
             open_rows = [row for row in repo.list_findings(status="OPEN")]
             if not keys and not open_rows:
                 return None
+            from payment_crypto.forecast import ExpiryForecaster
+
+            forecast = ExpiryForecaster().forecast(
+                [{"key_id": key.key_id, "expiry_at": key.expiry_at.isoformat() if key.expiry_at else None}
+                 for key in keys],
+                ceremonies=[{"key_id": row.key_id,
+                             "held_at": row.held_at.isoformat() if row.held_at else None}
+                            for row in repo.list_ceremonies()],
+            )
             return {
                 "summary": {
                     "keys_total": len(keys),
@@ -467,7 +476,9 @@ def _payment_crypto_block() -> dict | None:
                         and (key.algorithm or "").upper() in {"DES", "SINGLE_DES", "TRIPLE_DES", "2KEY_TRIPLE_DES"}
                     ),
                     "ceremonies_total": len(repo.list_ceremonies()),
+                    "rotations_next_90d": forecast.get("upcoming_count"),
                 },
+                "upcoming_rotations": forecast.get("upcoming", [])[:5],
                 "findings": [{
                     "rule_id": row.rule_id, "key_id": row.key_id, "severity": row.severity,
                     "blocking": row.blocking, "message": row.message,
