@@ -102,6 +102,7 @@ from cloud_scanner.enterprise.live.live_graph import (
     LiveEdge,
     relation_for_event,
 )
+from cloud_scanner.enterprise.live.loop import LiveMonitoringLoop
 from cloud_scanner.enterprise.live.network_monitor import (
     NETWORK_EVENT_TYPES,
     LiveNetworkMonitor,
@@ -142,8 +143,9 @@ __all__ = [
     "LiveCloudCBOM", "LiveCloudDependencyGraph", "LiveCloudEngine",
     "LiveDrift", "LiveDriftDetector", "LiveEdge", "LiveEventSourcedCBOM",
     "LiveEvidenceChain", "LiveKeyMonitor", "LiveMigrationEvaluation",
-    "LiveNetworkMonitor", "LiveReport", "LiveSimulationEngine",
-    "LocalEventQueue", "MAINTENANCE", "MultiCloudCertificateWatcher",
+    "LiveMonitoringLoop", "LiveNetworkMonitor", "LiveReport",
+    "LiveSimulationEngine", "LocalEventQueue", "MAINTENANCE",
+    "MultiCloudCertificateWatcher",
     "NETWORK_EVENT_TYPES", "NO_CHANGE", "PQCLiveEvaluation", "PriorityEvaluation",
     "ProviderConnector", "RATE_LIMITED", "RegionalCollector", "ServerlessChange",
     "ServerlessLiveMonitor", "StateTransition", "UNEXPECTED", "UNREACHABLE",

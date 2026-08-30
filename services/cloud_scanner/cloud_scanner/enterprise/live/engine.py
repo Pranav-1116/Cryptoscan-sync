@@ -332,6 +332,10 @@ class LiveCloudEngine:
 
     # -------------------------------------------------------------------- access
 
+    @property
+    def events_processed(self) -> int:
+        return len(self.events)
+
     def show_cloud_cbom_at(self, at: str) -> LiveCloudCBOM:
         """``SHOW CLOUD CBOM AT <timestamp>`` (§18)."""
         return self.cbom.reconstruct(at=at)

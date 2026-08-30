@@ -411,6 +411,41 @@ class TestUnifiedMultiCloudFlowIntegration:
         assert "secret_material" not in serialized
 
 
+# ------------------------------------------------------------- 24/7 loop
+
+class TestLiveMonitoringLoop:
+    def test_run_once(self):
+        from cloud_scanner.enterprise.live.loop import LiveMonitoringLoop
+
+        engine = make_live_engine()
+        loop = LiveMonitoringLoop(engine, max_cycles=1)
+        report = loop.run_once()
+        assert len(loop.reports()) == 1
+        assert report.cycle == 1
+
+    def test_run_forever_respects_max_cycles(self):
+        from cloud_scanner.enterprise.live.loop import LiveMonitoringLoop
+
+        engine = make_live_engine()
+        loop = LiveMonitoringLoop(engine, max_cycles=3,
+                                  sleeper=lambda seconds: None)
+        loop.run_forever()
+        assert len(loop.reports()) == 3
+        assert loop.latest().cycle == 3
+        assert engine.events_processed >= 13 * 3
+
+    def test_on_report_callback(self):
+        from cloud_scanner.enterprise.live.loop import LiveMonitoringLoop
+
+        seen = []
+        engine = make_live_engine()
+        loop = LiveMonitoringLoop(engine, max_cycles=2,
+                                  sleeper=lambda seconds: None,
+                                  on_report=lambda report: seen.append(report.cycle))
+        loop.run_forever()
+        assert seen == [1, 2]
+
+
 # ------------------------------------------------------------------ CLI
 
 class TestLiveCLI:
