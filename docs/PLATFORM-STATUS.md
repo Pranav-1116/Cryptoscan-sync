@@ -93,6 +93,19 @@ certificate inventory, watch-list, latest PCI report with payment evidence,
 evidence chain verification) with a per-file SHA-256 manifest and honest
 NO_*.txt notes for anything absent.
 
+**First full end-to-end scan (Aug 31)** — `POST /scans/trigger` on the live
+stack scanned this repository itself (HTTPS clone of
+`ZKChainForge/CryproScan@96cd6ec`, branch `arena/01a03d0e-cryproscan`):
+940 files → 197 deduped findings (10 collapsed) → 197 evidence records with
+an intact hash chain (independently re-verified) → gate decision FAIL
+(5 blocking: DES/3DES/RC4 in `demo/` apps), quantum HNDL CRITICAL (69
+vulnerable sites), agility 67.0, 17 work orders. The audit pack now ships a
+real `compliance/pci-dss-4.0-report.json` (attestation + policy-pack hash,
+`signature: null` honestly) and `evidence/chain-verification.json` = PASS —
+no more NO_COMPLETED_SCAN placeholders. Known cosmetic defect surfaced by
+this run: dependency-manifest findings record workspace-prefixed paths
+(`data/workspaces/job-…/repo/…`) instead of repo-relative ones.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

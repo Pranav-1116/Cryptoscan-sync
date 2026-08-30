@@ -171,7 +171,10 @@ certificate inventory + renewal state, monitor watch-list, the latest
 PCI-DSS report *with payment evidence*, and the evidence chain-verification
 result. `manifest.json` carries a SHA-256 per file so an examiner can prove
 nothing changed after export. Missing pieces appear as honest `NO_*.txt`
-notes — never silently omitted.
+notes — never silently omitted. The compliance + evidence sections populate
+once a scan has completed end-to-end — trigger one with
+`POST /api/v1/scans/trigger` (`{"repo_url": "…", "branch": "…"}`, auditor)
+and poll `GET /api/v1/jobs/{job_id}`.
 
 ## API quick reference
 
