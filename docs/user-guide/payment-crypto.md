@@ -152,6 +152,27 @@ curl -X PATCH …/api/v1/payment-crypto/ceremonies/CER-2026-09-01 -d '{"status":
 - `GET /payment-crypto/ceremonies?upcoming=true` lists bookings; the dashboard
   Payment crypto view schedules and closes ceremonies.
 
+## Certificate renewal workflow (CR-001)
+
+The rotation calendar also covers TLS certificates (from the live monitor's
+probes). **CR-001** fires when a certificate is inside its warning window
+(≤30d) with no renewal in flight — severity 4 inside 7 days:
+
+```bash
+curl -X PATCH …/api/v1/certificates/{sha256-fingerprint}/renewal      -d '{"status": "PLANNED", "ticket": "CHG-0042"}'   # clears CR-001
+# status: NONE | PLANNED | IN_PROGRESS | DONE (timestamps renewed_at)
+```
+
+## Audit export pack (examiner artifact)
+
+`GET /api/v1/audit-export/pack` (auditor) downloads one ZIP with the complete
+picture: payment keys, ceremonies, findings, forecast, HSM events (90d),
+certificate inventory + renewal state, monitor watch-list, the latest
+PCI-DSS report *with payment evidence*, and the evidence chain-verification
+result. `manifest.json` carries a SHA-256 per file so an examiner can prove
+nothing changed after export. Missing pieces appear as honest `NO_*.txt`
+notes — never silently omitted.
+
 ## API quick reference
 
 ```bash

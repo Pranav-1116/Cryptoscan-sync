@@ -12,9 +12,48 @@ from db.models.certificate import Certificate
 from db.repositories.base_repository import BaseRepository
 
 
+def _as_dt(value):
+    """ISO string (scanner payload) -> aware datetime; None passes through."""
+    from datetime import datetime, timezone
+
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
 class CertificateRepository(BaseRepository[Certificate]):
     def __init__(self, session: Session):
         super().__init__(Certificate, session)
+
+    RENEWAL_STATUSES = ("NONE", "PLANNED", "IN_PROGRESS", "DONE")
+
+    def update_renewal(self, fingerprint: str, status: str, *,
+                       ticket: str | None = None, note: str | None = None) -> Certificate | None:
+        """Track the renewal workflow for one certificate (by sha256 fingerprint)."""
+        from datetime import datetime, timezone
+
+        row = self.session.execute(
+            select(Certificate).where(Certificate.fingerprint_sha256 == fingerprint)
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        if status not in self.RENEWAL_STATUSES:
+            raise ValueError(f"status must be one of {self.RENEWAL_STATUSES}")
+        row.renewal_status = status
+        if ticket is not None:
+            row.renewal_ticket = ticket
+        if note is not None:
+            row.renewal_note = note
+        if status == "DONE":
+            row.renewed_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return row
 
     def upsert(self, payload: dict[str, Any]) -> Certificate:
         fp = payload.get("fingerprint_sha256")
@@ -28,6 +67,8 @@ class CertificateRepository(BaseRepository[Certificate]):
                 subject=payload.get("subject"),
                 issuer=payload.get("issuer"),
                 serial_number=payload.get("serial_number"),
+                not_before=_as_dt(payload.get("not_before")),
+                not_after=_as_dt(payload.get("not_after")),
                 public_key_algorithm=payload.get("public_key_algorithm"),
                 public_key_size=payload.get("public_key_size"),
                 expiry_status=payload.get("expiry_status"),
@@ -50,6 +91,8 @@ class CertificateRepository(BaseRepository[Certificate]):
         for key in (
             "subject",
             "issuer",
+            "not_before",
+            "not_after",
             "expiry_status",
             "days_until_expiry",
             "public_key_algorithm",
@@ -60,7 +103,10 @@ class CertificateRepository(BaseRepository[Certificate]):
             "crl_url",
         ):
             if payload.get(key) is not None:
-                setattr(row, key, payload[key])
+                value = payload[key]
+                if key in {"not_before", "not_after"}:
+                    value = _as_dt(value)  # scanner payloads carry ISO strings
+                setattr(row, key, value)
         if payload.get("revocation_status") is not None:
             row.revocation_checked_at = datetime.now(timezone.utc)
         extra = dict(row.extra or {})

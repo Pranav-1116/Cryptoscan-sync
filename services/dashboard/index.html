@@ -561,10 +561,11 @@ async function renderPayment(el) {
     <div class="card"><div class="label">Rotation calendar (next ${forecast.horizon_days}d)</div>
       <p>${Object.entries(forecast.by_status || {}).map(([k, v]) => badge(k.startsWith('EXPIRED') || k.startsWith('CRITICAL') ? 'CRITICAL' : k.startsWith('WARNING') ? 'WARN' : 'INFO') + ` ${k} ${v}`).join(' ') || '—'}
          · ${forecast.undated_items} undated</p>
-      <table><thead><tr><th>Item</th><th>Kind</th><th>Expires</th><th>Days</th><th>Status</th></tr></thead><tbody>
+      <table><thead><tr><th>Item</th><th>Kind</th><th>Expires</th><th>Days</th><th>Status</th><th>Renewal</th></tr></thead><tbody>
         ${forecast.upcoming.slice(0, 10).map(u => `<tr><td class="mono">${escapeHtml(u.reference)}</td>
           <td>${escapeHtml(u.kind)}</td><td>${u.expires_at ? new Date(u.expires_at).toLocaleDateString() : '—'}</td>
-          <td>${u.days_left}</td><td>${badge(u.status.startsWith('CRITICAL') || u.status.startsWith('EXPIRED') ? 'CRITICAL' : u.status.startsWith('WARNING') ? 'WARN' : 'INFO')} ${u.status}</td></tr>`).join('')}
+          <td>${u.days_left}</td><td>${badge(u.status.startsWith('CRITICAL') || u.status.startsWith('EXPIRED') ? 'CRITICAL' : u.status.startsWith('WARNING') ? 'WARN' : 'INFO')} ${u.status}</td>
+          <td>${u.kind === 'CERTIFICATE' ? ((u.meta?.renewal_status && u.meta.renewal_status !== 'NONE') ? badge('INFO') + ' ' + escapeHtml(u.meta.renewal_status) : (u.meta?.fingerprint ? `<button class="btn secondary" onclick="certRenewal('${u.meta.fingerprint}')">Plan renewal</button>` : '')) : ''}</td></tr>`).join('')}
       </tbody></table>
       ${Object.keys(forecast.rotation_calendar || {}).length ? `<p class="muted">weekly load: ${Object.entries(forecast.rotation_calendar).slice(0, 8).map(([w, l]) => `${w.slice(5)}: <b>${l.payment_keys}k/${l.certificates}c</b>`).join(' · ')}</p>` : ''}
     </div>` : ''}
@@ -590,6 +591,13 @@ async function renderPayment(el) {
         <td>${badge(e.severity === 'CRITICAL' ? 'CRITICAL' : e.severity === 'WARNING' ? 'WARN' : 'INFO')}</td>
         <td>${escapeHtml(e.device)}</td><td>${escapeHtml(e.event_type)}</td><td class="mono">${escapeHtml(e.key_id || '')}</td></tr>`).join('') || '<tr><td class="muted">No events.</td></tr>'}</tbody></table>
     </div>`;
+}
+
+async function certRenewal(fingerprint) {
+  const ticket = prompt('Change ticket reference (optional):') || '';
+  await api('/certificates/' + fingerprint + '/renewal', { method: 'PATCH',
+    body: JSON.stringify({ status: 'PLANNED', ticket: ticket || null }) });
+  go('payment');
 }
 
 async function ceremonySchedule() {

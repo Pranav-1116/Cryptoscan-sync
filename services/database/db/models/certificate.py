@@ -33,3 +33,8 @@ class Certificate(BaseModel):
     ocsp_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     crl_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # Renewal workflow: NONE (not started) | PLANNED | IN_PROGRESS | DONE
+    renewal_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="NONE")
+    renewal_ticket: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    renewal_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    renewed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

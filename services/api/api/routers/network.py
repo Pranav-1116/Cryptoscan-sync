@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_auditor
 from db.repositories.certificate_repository import CertificateRepository
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
@@ -48,6 +48,12 @@ class FilesystemTlsRequest(BaseModel):
     live: bool = False
 
 
+class CertificateRenewalUpdate(BaseModel):
+    status: str                 # NONE | PLANNED | IN_PROGRESS | DONE
+    ticket: str | None = None   # change-management reference
+    note: str | None = None
+
+
 @router.get("/certificates")
 def list_certificates(
     expiring_days: int | None = None,
@@ -56,6 +62,31 @@ def list_certificates(
 ):
     rows = CertificateRepository(db).list_all(expiring_days=expiring_days)
     return {"certificates": [row.to_dict() for row in rows], "total_count": len(rows)}
+
+
+@router.patch("/certificates/{fingerprint}/renewal")
+def update_certificate_renewal(
+    fingerprint: str,
+    body: CertificateRenewalUpdate,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Renewal workflow for one certificate (sha256 fingerprint)."""
+    repo = CertificateRepository(db)
+    try:
+        row = repo.update_renewal(fingerprint, body.status, ticket=body.ticket, note=body.note)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if row is None:
+        raise HTTPException(status_code=404, detail="Certificate not found")
+    db.commit()
+    return {
+        "fingerprint_sha256": row.fingerprint_sha256,
+        "subject": row.subject,
+        "renewal_status": row.renewal_status,
+        "renewal_ticket": row.renewal_ticket,
+        "renewed_at": row.renewed_at.isoformat() if row.renewed_at else None,
+    }
 
 
 @router.get("/certificates/{cert_id}")

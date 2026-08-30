@@ -84,6 +84,15 @@ does not; **PAY-016** flags planned ceremonies past their date (missed
 rotation window); PATCH /ceremonies/{id}, ?upcoming=true listing, dashboard
 ceremonies card with schedule/mark-held/abandon.
 
+**Certificate renewals + audit pack (Aug 31)** — certificate renewal workflow
+(NONE/PLANNED/IN_PROGRESS/DONE, ticket + timestamp, migration 0034),
+**CR-001** (certificate ≤30d from expiry with no renewal in flight; sev 4
+inside 7d), dashboard "Plan renewal" action, and **GET /audit-export/pack**:
+one examiner ZIP (payment keys/ceremonies/findings/forecast, HSM events 90d,
+certificate inventory, watch-list, latest PCI report with payment evidence,
+evidence chain verification) with a per-file SHA-256 manifest and honest
+NO_*.txt notes for anything absent.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

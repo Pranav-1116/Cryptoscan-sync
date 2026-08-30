@@ -111,7 +111,9 @@ class ExpiryForecaster:
                 days_left=int((expires - self._now).total_seconds() // 86_400),
                 status=bucket((expires - self._now).total_seconds() / 86_400),
                 meta={"issuer": (cert.get("issuer") or "")[:60],
-                      "key_algorithm": cert.get("public_key_algorithm")},
+                      "key_algorithm": cert.get("public_key_algorithm"),
+                      "fingerprint": cert.get("fingerprint"),
+                      "renewal_status": cert.get("renewal_status") or "NONE"},
             ))
 
         items.sort(key=lambda item: item.expires_at)
@@ -137,6 +139,22 @@ class ExpiryForecaster:
             for item in upcoming
             if item.kind == "PAYMENT_KEY" and item.reference not in scheduled
         ]
+        # CR-001: a certificate inside its warning window with no renewal in flight
+        for item in items:
+            if item.kind != "CERTIFICATE" or item.days_left > 30 or item.days_left < -30:
+                continue
+            if (item.meta.get("renewal_status") or "NONE") not in {"NONE", ""}:
+                continue  # PLANNED / IN_PROGRESS / DONE — the workflow owns it
+            severity = 4 if item.days_left <= 7 else 3
+            findings.append({
+                "rule_id": "CR-001", "severity": severity, "blocking": False,
+                "key_id": item.reference,
+                "message": f"certificate '{item.reference}' expires in {item.days_left}d with no "
+                           f"renewal in progress",
+                "evidence": {"days_left": item.days_left, "expires_at": item.expires_at.isoformat(),
+                             "fingerprint": item.meta.get("fingerprint")},
+            })
+        findings.sort(key=lambda row: (-row["severity"], row["rule_id"], row.get("key_id") or ""))
 
         return {
             "as_of": self._now.isoformat(),

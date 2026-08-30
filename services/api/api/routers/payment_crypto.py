@@ -391,6 +391,7 @@ def forecast(user: str = Depends(get_current_user), db: Session = Depends(get_db
                 "not_after": row.not_after.isoformat() if row.not_after else None,
                 "public_key_algorithm": row.public_key_algorithm,
                 "fingerprint": (row.fingerprint_sha256 or "")[:12],
+                "renewal_status": row.renewal_status or "NONE",
             })
     except Exception:
         certificates = []  # certificate inventory empty/unavailable — keys still forecast
