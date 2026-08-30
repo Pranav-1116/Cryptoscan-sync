@@ -297,3 +297,22 @@ fast path and the enumerator contract for each discovery stage.
 
 Tests: `services/cloud_scanner/tests/test_zelix_*.py` (+ `zelix_fixtures.py`
 fake multi-cloud estate) — 174 tests covering all 23 areas with zero SDKs.
+
+## Live plane — 24/7 monitoring
+
+The 24/7 live layer (`cloud_scanner.enterprise.live`, **ZELNX Live Cloud
+Intelligence Engine**) runs continuous monitoring on top of this
+discovery engine: five monitoring layers (realtime events, audit logs,
+API state, reconciliation, change-triggered deep discovery), universal
+CloudEvent normalization, live asset state, key/certificate/network/k8s/
+serverless watchers, live drift, cross-cloud blast radius, live
+dependency graph, continuous PQC readiness, event-sourced live CBOM with
+historical reconstruction, tamper-evident evidence chains, correlated
+alerts, a configurable priority engine, multi-region regional collectors
+with resilience (durable queues, retries, DLQs, checkpointing) and
+collector health states.
+
+CLI: `python -m cloud_scanner.main --zelix-live` (demo event stream) or
+with `--zelix-live-events events.json`.  See
+[LIVE-SCANNING.md §12](LIVE-SCANNING.md) for the full 24-area spec
+mapping and tests (`tests/test_zelix_live_*.py`).

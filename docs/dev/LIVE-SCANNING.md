@@ -430,3 +430,142 @@ calls implied, default mode INVENTORY_ONLY + CRYPTO_DISCOVERY.
 
 See [ZELIX-CLOUD-DISCOVERY.md](ZELIX-CLOUD-DISCOVERY.md) for the full
 architecture; CLI: `python -m cloud_scanner.main --zelix`.
+
+## 12. ZELNX Live Cloud Intelligence Engine — 24/7 live cloud monitoring
+
+The live plane of ZELNX (`cloud_scanner.enterprise.live`) runs **24/7
+continuous monitoring** of AWS / Azure / GCP crypto estates, layered on
+the ZELNX Cloud Discovery Engine (see §11.7).  Everything is read-only:
+**no key material, no secret values, no mutation of cloud resources** —
+only metadata, observations and evidence.
+
+### 12.1 The five monitoring layers (§1)
+
+| Layer | Source | Implementation |
+|---|---|---|
+| L1 real-time events | provider event buses | `connectors.poll_events()` |
+| L2 audit / activity logs | CloudTrail / Activity Logs / Cloud Audit Logs | `connectors.poll_audit()` |
+| L3 continuous API state | resource APIs | `connectors.poll_api_state()` + per-cycle re-verification |
+| L4 periodic reconciliation | baseline scans | `connectors.reconcile()` + drift check |
+| L5 change-triggered deep discovery | only on classified changes | `deep_discovery.DeepDiscoveryPlanner` |
+
+### 12.2 Unified multi-cloud flow (§2)
+
+```
+PROVIDER EVENT CONNECTOR → UNIVERSAL CLOUD EVENT → ASSET IDENTITY
+RESOLUTION → CHANGE CLASSIFICATION → TARGETED RESCAN → UPDATE LIVE
+STATE → LIVE CBOM → DEPENDENCY GRAPH → PQC RE-EVALUATION
+```
+
+`LiveCloudEngine.cycle()` runs this flow per cycle; every step is
+evidence-backed and every exception is captured in `report.errors`
+(never a crash).
+
+### 12.3 Provider connectors (§3–§5) + universal schema (§6)
+
+`connectors.aws_connector / azure_connector / gcp_connector` accept
+injectable payload sources for all four source families.  All payloads
+are normalized by `UniversalEventNormalizer` into ONE
+`CloudEvent` shape (`event_id, provider, organization_id, account_id,
+subscription_id, project_id, resource_id, resource_type, region,
+event_type, change_type, timestamp, actor_reference, source,
+evidence_reference, confidence`), with provider-specific detail kept in
+`provider_metadata` — never lost.
+
+### 12.4 Live Cloud Asset State Engine (§7)
+
+`asset_state.LiveCloudAssetStateEngine` keeps per-resource state history:
+Current State, Previous State, First Seen, Last Seen, Last API
+Verification, Last Crypto Verification, Last Deep Discovery, Last Change,
+Monitoring Status and Evidence History (FIRST_SEEN / CHANGED /
+REVERIFIED / REMOVED transitions).
+
+### 12.5 Watchers
+
+- **§8 KMS/key monitoring** (`key_monitor.LiveKeyMonitor`): KEY_CREATED /
+  KEY_DISABLED / KEY_ENABLED / KEY_ROTATED / KEY_SCHEDULED_FOR_DELETION /
+  KEY_POLICY_CHANGED / KEY_PERMISSION_CHANGED / KEY_ALGORITHM_CHANGED /
+  KEY_PROTECTION_LEVEL_CHANGED.  Each key event computes blast radius:
+  dependencies → applications → datasets → network services → crypto
+  graph → risk.  **Never retrieves key material.**
+- **§9 Multi-cloud certificate watcher** (`cert_watcher.MultiCloudCertificateWatcher`):
+  CREATED / RENEWED / REPLACED / EXPIRED / REVOKED / ALGORITHM_CHANGED
+  across AWS ACM, Azure Key Vault and GCP Certificate Manager.
+- **§10 Network monitoring** (`network_monitor.LiveNetworkMonitor`): NEW
+  PUBLIC/PRIVATE ENDPOINT, LOAD BALANCER, TLS TERMINATION, API GATEWAY,
+  VPN, ROUTE, SECURITY POLICY, NETWORK PEERING, CROSS-CLOUD CONNECTION.
+- **§11 Kubernetes** (`workload_monitors.KubernetesLiveMonitor`):
+  EKS/AKS/GKE events → workload identity resolution → crypto dependency
+  discovery → targeted re-evaluation.
+- **§12 Serverless** (`workload_monitors.ServerlessLiveMonitor`):
+  Lambda / Functions / Cloud Functions / Cloud Run — deployment, version,
+  dependency, runtime, env-config, key-ref and cert-ref changes.
+
+### 12.6 Drift, deep discovery, cross-cloud, live graph (§13–§16)
+
+- **§13 Drift** (`drift.LiveDriftDetector`): expected vs current state →
+  NO_CHANGE / EXPECTED / APPROVED / UNEXPECTED / CRYPTO_DRIFT /
+  CRITICAL_DRIFT / ACCESS_DRIFT (encryption disabled → CRITICAL_DRIFT).
+- **§14 Event-triggered deep discovery** (`deep_discovery.DeepDiscoveryPlanner`):
+  event → classifier → impact analysis → minimal scanner set (never full
+  rescans).
+- **§15 Cross-cloud blast radius** (`deep_discovery.CrossCloudMonitor`):
+  an AWS certificate change finds Azure consumers and GCP dependencies
+  with a global impact count.
+- **§16 Live dependency graph** (`live_graph.LiveCloudDependencyGraph`):
+  typed mutable edges (USES_KEY / USES_CERTIFICATE / TERMINATES_TLS /
+  EXPOSED_BY / CONNECTS_TO / DEPENDS_ON) updated automatically by events,
+  convertible to the static discovery graph.
+
+### 12.7 PQC, CBOM, evidence, alerts (§17–§20)
+
+- **§17 Continuous PQC readiness** (`pqc_monitor.ContinuousPQCReadinessMonitor`):
+  every crypto event → algorithm → PQC status → dependency analysis →
+  compatibility → migration priority (RSA + public internet + banking =
+  HIGH/CRITICAL).
+- **§18 Event-sourced CBOM** (`cbom.LiveEventSourcedCBOM`): events →
+  event log → state transitions → materializer → live CBOM; supports
+  historical reconstruction — `SHOW CLOUD CBOM AT 2026-05-01 10:00`
+  (`engine.show_cloud_cbom_at(...)`).
+- **§19 Evidence chain** (`evidence.LiveEvidenceChain`): provider event +
+  API verification → canonical observation → content hash → previous
+  evidence hash → new record; tamper-evident (content re-hash on verify).
+- **§20 Alert correlation** (`alerts.AlertCorrelationEngine`): a root-CA
+  change impacting 400 AWS + 250 Azure + 150 GCP certificates produces
+  ONE `ROOT_CA_CHANGE` incident with per-provider impacts, not 800 alerts.
+
+### 12.8 Priority, collectors, resilience, health (§21–§24)
+
+- **§21 Priority engine** (`priority.CloudPriorityEngine`): business
+  criticality + internet exposure + crypto risk + data sensitivity +
+  compliance + change frequency; policy-configurable weights.
+- **§22 Multi-region architecture** (`collector.GlobalControlPlane` +
+  `RegionalCollector`): UAE / EU / USA collectors with local processing
+  queues and secure sync.
+- **§23 Resilience** (`collector.LocalEventQueue`): retry policies,
+  idempotency + duplicate detection, ordering, dead-letter queues,
+  checkpointing, backpressure.
+- **§24 Health** (`health.CloudScannerHealthMonitor`): heartbeat, event
+  lag, rate-limit status, API errors, auth status, queue depth, latency,
+  last reconciliation, plugin health → HEALTHY / DEGRADED /
+  RATE_LIMITED / AUTH_FAILED / EVENT_DELAYED / UNREACHABLE / FAILED /
+  MAINTENANCE.
+
+### 12.9 Running
+
+```bash
+# demo 24/7 cycle (read-only)
+python -m cloud_scanner.main --zelix-live --zelix-live-cycles 1
+
+# feed your own raw provider payloads (JSON list)
+python -m cloud_scanner.main --zelix-live \
+  --zelix-live-events /path/to/events.json \
+  --zelix-live-region EU -o live-report.json
+```
+
+### 12.10 Tests
+
+`services/cloud_scanner/tests/test_zelix_live_*.py` (4 suites, 125+
+tests) cover every area above; the full 25-suite regression includes
+them alongside the discovery suites.
+
