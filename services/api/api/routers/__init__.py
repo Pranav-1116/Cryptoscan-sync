@@ -3,6 +3,7 @@
 Modules:
 - agility: System-level 6-factor agility and migration readiness
 - analytics: Advanced analytics over stored assets, findings, and systems
+- api_keys: Machine API-key lifecycle (create/list/revoke, admin-only)
 - assets: Deduplicated cryptographic assets
 - auth: Authentication routes: login/logout, user management (admin), audit trail
 - baselines: Baseline approval
@@ -16,6 +17,7 @@ Modules:
 - container_scans: Spec-named container scan endpoints (`/container-scans`)
 - drift: Drift events
 - estate: Estate coverage campaigns. One CLOUD job per account, not per resource
+- events: Real-time SSE event stream + recent/history fallback
 - exceptions: Policy exception request / approval / review / expiration
 - export: CBOM export and integrity verification
 - findings: Findings endpoints

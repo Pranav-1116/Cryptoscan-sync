@@ -35,6 +35,7 @@ from api.routers import (
     container_scans,
     drift,
     estate,
+    events,
     exceptions,
     export,
     findings,
@@ -62,6 +63,7 @@ from api.routers import (
     vulnerability,
     vulns,
     webhooks,
+    api_keys,
     algorithms,
 )
 from api.routers import metrics as metrics_router
@@ -115,7 +117,16 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             except Exception:
                 logger.warning("admin_bootstrap_skipped", exc_info=True)
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
+        tailer_task = None
+        if settings.EVENT_TAILER_SECONDS > 0 and settings.ENVIRONMENT.lower() not in {"test", "testing"}:
+            from api.routers.events import start_event_tailer
+
+            tailer_task = start_event_tailer(settings.EVENT_TAILER_SECONDS)
+            if tailer_task is not None:
+                logger.info("event_tailer_started", extra={"interval": settings.EVENT_TAILER_SECONDS})
         yield
+        if tailer_task is not None:
+            tailer_task.cancel()
         logger.info("cryptoscan_api_stopped")
 
     app = FastAPI(
@@ -210,6 +221,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(monitor.router, prefix=prefix)
     app.include_router(payment_crypto.router, prefix=prefix)
     app.include_router(audit_export.router, prefix=prefix)
+    app.include_router(events.router, prefix=prefix)
+    app.include_router(api_keys.router, prefix=prefix)
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)

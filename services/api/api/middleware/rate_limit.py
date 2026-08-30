@@ -4,13 +4,14 @@ In-process sliding window — honest scope: single-process API deployments (the
 topology this product ships today). For multi-replica setups, front the API with
 a shared limiter (ingress/WAF) and keep these limits as the inner defense.
 
-Windows are keyed by identity (session user when known, else client IP) and by
-endpoint class, so a busy scanner cannot lock out the whole org and login
-brute-force is throttled per source.
+Windows are keyed by identity (API key or session user when known, else client
+IP) and by endpoint class, so a busy scanner cannot lock out the whole org and
+login brute-force is throttled per source.
 """
 
 from __future__ import annotations
 
+import hashlib
 import time
 from collections import defaultdict, deque
 
@@ -34,7 +35,11 @@ def _endpoint_class(method: str, path: str) -> str:
 
 
 def _identity(request) -> str:
-    """Prefer the session user (Authorization header subject), fall back to client IP."""
+    """Prefer the API key or session user, fall back to client IP."""
+    api_key = request.headers.get("x-api-key")
+    if api_key:
+        digest = hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
+        return f"apikey:{digest}"  # per-key bucket, no DB read on the hot path
     auth = request.headers.get("authorization") or ""
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip()

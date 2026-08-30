@@ -103,6 +103,8 @@
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="monitor" onclick="go('monitor')">Live monitor</button>
+        <button data-route="events" onclick="go('events')">Live events</button>
+        <button data-route="apikeys" onclick="go('apikeys')">API keys</button>
         <button data-route="payment" onclick="go('payment')">Payment crypto</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
         <button data-route="new" onclick="go('new')">New scan</button>
@@ -209,10 +211,13 @@ function coverageBadge(v) {
 
 async function render() {
   if (window.__monitorPoll) { clearInterval(window.__monitorPoll); window.__monitorPoll = null; }
+  if (state.route !== 'events' && (window.__evES || window.__evPoll)) evTeardown();
   const el = document.getElementById('main');
   el.innerHTML = '<p class="muted">Loading…</p>';
   try {
     if (state.route === 'monitor') return renderMonitor(el);
+    if (state.route === 'events') return renderEvents(el);
+    if (state.route === 'apikeys') return renderApiKeys(el);
     if (state.route === 'payment') return renderPayment(el);
     if (state.route === 'home') return renderHome(el);
     if (state.route === 'scans') return renderScans(el);
@@ -473,6 +478,122 @@ async function renderMonitor(el) {
     if (state.route !== 'monitor') { clearInterval(window.__monitorPoll); window.__monitorPoll = null; return; }
     try { await paint(); } catch (e) { /* transient — next tick retries */ }
   }, 5000);
+}
+
+// ---------------------------------------------------------------- live events
+let EV_LAST_ID = 0;
+let EV_PAUSED = false;
+
+function evRow(e) {
+  const sev = e.type.startsWith('scan.failed') || e.type.startsWith('monitor.alert') ? 'HIGH'
+    : e.type === 'scan.completed' || e.type.startsWith('monitor.scan_ok') ? 'PASS'
+    : e.type.startsWith('scan.stage') ? 'INFO' : 'WARN';
+  const p = e.payload || {};
+  const what = p.stage ? `${p.stage} (${p.status || ''})` : (p.target || p.name || p.user || '');
+  const extra = p.detail || p.message || (p.findings != null ? p.findings + ' findings' : '');
+  return `<tr><td class="mono">${e.id}</td><td class="mono">${e.ts ? e.ts.slice(11, 19) : ''}</td><td>${badge(sev)}</td><td class="mono">${escapeHtml(e.type)}</td><td class="mono">${escapeHtml(e.source || '')}</td><td>${escapeHtml(what)}</td><td>${escapeHtml(String(extra ?? ''))}</td></tr>`;
+}
+
+function evPush(list) {
+  if (EV_PAUSED || !list || !list.length) return;
+  const tbody = document.getElementById('ev-body');
+  if (!tbody) return;
+  const fresh = list.filter(e => e.id > EV_LAST_ID).sort((a, b) => b.id - a.id);
+  if (!fresh.length) return;
+  EV_LAST_ID = Math.max(EV_LAST_ID, ...fresh.map(e => e.id));
+  tbody.insertAdjacentHTML('afterbegin', fresh.map(evRow).join(''));
+  while (tbody.rows.length > 200) tbody.deleteRow(-1);
+}
+
+function evTeardown() {
+  if (window.__evES) { window.__evES.close(); window.__evES = null; }
+  if (window.__evPoll) { clearInterval(window.__evPoll); window.__evPoll = null; }
+}
+
+function evSetMode(mode, detail) {
+  const chip = document.getElementById('ev-mode');
+  if (chip) { chip.textContent = mode; chip.className = 'badge ' + (mode === 'LIVE' ? 'PASS' : mode === 'PAUSED' ? 'WARN' : 'INFO'); }
+  const note = document.getElementById('ev-note');
+  if (note) note.textContent = detail || '';
+}
+
+async function renderEvents(el) {
+  evTeardown();
+  EV_LAST_ID = 0; EV_PAUSED = false;
+  el.innerHTML = `
+    <div class="card"><div class="label">Real-time event stream <span id="ev-mode" class="badge INFO">…</span></div>
+      <p><button class="btn secondary" onclick="EV_PAUSED=!EV_PAUSED;evSetMode(EV_PAUSED?'PAUSED':'LIVE')">Pause / resume</button>
+         <button class="btn secondary" onclick="document.getElementById('ev-body').innerHTML='';EV_LAST_ID=0">Clear</button>
+         <span id="ev-note" class="muted"></span></p>
+      <table><thead><tr><th>#</th><th>time</th><th></th><th>type</th><th>source</th><th>subject</th><th>detail</th></tr></thead>
+      <tbody id="ev-body"></tbody></table>
+      <p class="muted">Server-sent events: pipeline stages, scan completions, monitor probes (tail latency ~2s), logins, API-key changes. Falls back to polling if the stream cannot be kept open.</p>
+    </div>`;
+  try {
+    const seed = await api('/events/recent?limit=50');
+    evPush(seed.events.reverse());
+    EV_LAST_ID = seed.latest_id;
+  } catch (e) { /* stream will still try */ }
+  try {
+    const es = new EventSource(API + '/events/stream?last_event_id=' + EV_LAST_ID);
+    window.__evES = es;
+    es.onopen = () => evSetMode('LIVE', 'streaming');
+    es.onmessage = (m) => { try { evPush([JSON.parse(m.data)]); } catch (e) { /* ignore */ } };
+    for (const t of ['scan.queued','scan.stage','scan.completed','scan.failed','auth.login','apikey.create','apikey.revoke',
+                     'events.subscribe','monitor.scan_ok','monitor.scan_degraded','monitor.scan_failed','monitor.blocked','monitor.alert','monitor.note'])
+      es.addEventListener(t, (m) => { try { evPush([JSON.parse(m.data)]); } catch (e) { /* ignore */ } });
+    es.onerror = () => {
+      if (es.readyState === EventSource.CLOSED) {  // cookie expired or proxy buffering — poll instead
+        evSetMode('POLLING', 'stream unavailable — polling every 3s');
+        window.__evPoll = setInterval(async () => {
+          if (state.route !== 'events') { evTeardown(); return; }
+          try { const r = await api('/events/recent?since_id=' + EV_LAST_ID); evPush(r.events); } catch (e) { /* next tick */ }
+        }, 3000);
+      }
+    };
+  } catch (e) {
+    evSetMode('POLLING', 'EventSource unavailable — polling every 3s');
+    window.__evPoll = setInterval(async () => {
+      if (state.route !== 'events') { evTeardown(); return; }
+      try { const r = await api('/events/recent?since_id=' + EV_LAST_ID); evPush(r.events); } catch (e2) { /* next tick */ }
+    }, 3000);
+  }
+}
+
+// ------------------------------------------------------------------ api keys
+async function renderApiKeys(el) {
+  const keys = await api('/api-keys');
+  el.innerHTML = `
+    <div class="card"><div class="label">Machine API keys (CI / SIEM integration)</div>
+      <p class="muted">Keys authenticate any API endpoint via the <span class="mono">X-API-Key</span> header. The raw key is shown once at creation; only a SHA-256 hash is stored.</p>
+      <div id="ak-created"></div>
+      <p><input id="ak-name" placeholder="key name (e.g. ci-pipeline)" style="width:200px">
+         <select id="ak-role"><option>viewer</option><option>auditor</option><option>admin</option></select>
+         <button class="btn" onclick="apikeyCreate()">Create key</button></p>
+      <table><thead><tr><th>name</th><th>prefix</th><th>roles</th><th>created by</th><th>last used</th><th>status</th><th></th></tr></thead><tbody>
+      ${keys.map(k => `<tr><td>${escapeHtml(k.name)}</td><td class="mono">${escapeHtml(k.key_prefix)}</td><td>${k.roles.map(r => badge(r.toUpperCase())).join(' ')}</td><td>${escapeHtml(k.created_by)}</td><td class="mono">${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'never'}</td><td>${k.active ? badge('PASS') : badge('FAIL')}${k.active ? '' : ' revoked'}</td><td>${k.active ? `<button class="btn danger" onclick="apikeyRevoke('${k.id}','${escapeHtml(k.name)}')">Revoke</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No API keys yet.</td></tr>'}
+      </tbody></table>
+      <p class="muted">Example: <span class="mono">curl -H "X-API-Key: csk_…" …/api/v1/scans</span></p>
+    </div>`;
+}
+
+async function apikeyCreate() {
+  const name = document.getElementById('ak-name').value.trim();
+  const role = document.getElementById('ak-role').value;
+  if (!name) return alert('Key name is required');
+  const created = await api('/api-keys', { method: 'POST', body: JSON.stringify({ name, roles: [role] }) });
+  document.getElementById('ak-created').innerHTML =
+    `<div class="card" style="border:1px solid var(--accent)"><div class="label">Copy this key now — it will not be shown again</div>
+     <p class="mono" style="word-break:break-all">${escapeHtml(created.raw_key)}</p></div>`;
+  const keys = await api('/api-keys');
+  const rows = keys.map(k => `<tr><td>${escapeHtml(k.name)}</td><td class="mono">${escapeHtml(k.key_prefix)}</td><td>${k.roles.map(r => badge(r.toUpperCase())).join(' ')}</td><td>${escapeHtml(k.created_by)}</td><td class="mono">${k.last_used_at ? new Date(k.last_used_at).toLocaleString() : 'never'}</td><td>${k.active ? badge('PASS') : badge('FAIL')}${k.active ? '' : ' revoked'}</td><td>${k.active ? `<button class="btn danger" onclick="apikeyRevoke('${k.id}','${escapeHtml(k.name)}')">Revoke</button>` : ''}</td></tr>`).join('');
+  document.querySelector('#main tbody').innerHTML = rows || '<tr><td colspan="7" class="muted">No API keys yet.</td></tr>';
+}
+
+async function apikeyRevoke(id, name) {
+  if (!confirm(`Revoke API key "${name}"? Requests using it will fail immediately.`)) return;
+  await api('/api-keys/' + id, { method: 'DELETE' });
+  await renderApiKeys(document.getElementById('main'));
 }
 
 async function monitorAdd() {

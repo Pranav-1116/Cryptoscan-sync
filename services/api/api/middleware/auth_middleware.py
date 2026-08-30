@@ -64,6 +64,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         header = request.headers.get("Authorization")
         if header and header.lower().startswith("bearer "):
             token = header[7:].strip()
+        if request.headers.get("x-api-key"):
+            # Machine keys are validated (SHA-256 lookup + RBAC + revocation)
+            # at the route dependencies — pass through to that enforcement.
+            return await call_next(request)
         if not token:
             return JSONResponse(
                 status_code=401,

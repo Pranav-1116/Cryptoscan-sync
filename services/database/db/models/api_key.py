@@ -1,0 +1,50 @@
+"""Machine API keys: non-interactive principals for CI pipelines and SIEM pulls.
+
+Keys are shown once at creation and stored only as SHA-256 hashes. A key carries
+its own role set (subset of the human VALID_ROLES) so a CI bot can be an auditor
+without ever owning a browser session.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+
+from sqlalchemy import DateTime, String
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.models.base import BaseModel
+from db.models.user import VALID_ROLES
+
+KEY_PREFIX = "csk_"  # raw keys look like csk_<43 urlsafe chars>
+
+
+class ApiKey(BaseModel):
+    __tablename__ = "api_keys"
+
+    name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)  # display: csk_ab12…
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False, default="admin")
+    roles: Mapped[str] = mapped_column(String(200), nullable=False, default="viewer")
+    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def role_list(self) -> list[str]:
+        return [r for r in (self.roles or "").split(",") if r]
+
+    @property
+    def is_active_key(self) -> bool:
+        from db.models.base import utcnow
+
+        if self.revoked_at is not None:
+            return False
+        if self.expires_at is not None and self.expires_at <= utcnow():
+            return False
+        return True
+
+    @staticmethod
+    def valid_roles() -> tuple[str, ...]:
+        return VALID_ROLES

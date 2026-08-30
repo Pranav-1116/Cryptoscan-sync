@@ -59,7 +59,71 @@ def _token_from_request(request: Request) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Machine API keys (X-API-Key) — CI pipelines, SIEM pulls, scripts.
+# Raw keys are looked up by SHA-256 hash; roles come from the key row itself,
+# never from the users table. last_used_at is stamped at most once a minute.
+# ---------------------------------------------------------------------------
+
+import time  # noqa: E402
+
+_API_KEY_INVALID = object()  # sentinel: header present but lookup failed
+
+_last_use_writes: dict[str, float] = {}
+_LAST_USE_MIN_INTERVAL = 60.0
+
+
+def should_stamp_last_use(key_id: str, *, now: float | None = None) -> bool:
+    moment = now if now is not None else time.monotonic()
+    last = _last_use_writes.get(key_id)
+    if last is not None and moment - last < _LAST_USE_MIN_INTERVAL:
+        return False
+    _last_use_writes[key_id] = moment
+    if len(_last_use_writes) > 10_000:  # bound the cache
+        _last_use_writes.clear()
+    return True
+
+
+def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | object:
+    """Returns (principal, roles, key_id), None (no header), or _API_KEY_INVALID."""
+    raw = request.headers.get("x-api-key")
+    if not raw:
+        return None
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.api_key_repository import ApiKeyRepository
+
+        session = SessionLocal()
+        try:
+            row = ApiKeyRepository(session).get_by_raw(raw.strip())
+            if row is None:
+                return _API_KEY_INVALID
+            key_id = row.id
+            principal = f"apikey:{row.name}"
+            roles = row.role_list
+            if should_stamp_last_use(key_id):
+                from db.repositories.api_key_repository import ApiKeyRepository as _Repo
+
+                _Repo(session).mark_used(key_id)
+                session.commit()
+            return principal, roles, key_id
+        finally:
+            session.close()
+    except Exception:  # DB unavailable — fail like the session store does
+        settings = _get_settings()
+        return _API_KEY_INVALID if settings.is_production else None
+
+
 def get_current_user(request: Request) -> str:
+    api_key = _resolve_api_key(request)
+    if api_key is _API_KEY_INVALID:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or revoked API key",
+            headers={"WWW-Authenticate": "ApiKey"},
+        )
+    if isinstance(api_key, tuple):
+        return api_key[0]
     token = _token_from_request(request)
     if token:
         username = SessionManager().validate_session(token)
@@ -153,6 +217,22 @@ def require_roles(*allowed: str):
     """
 
     def dependency(request: Request) -> str:
+        api_key = _resolve_api_key(request)
+        if api_key is _API_KEY_INVALID:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or revoked API key",
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+        if isinstance(api_key, tuple):
+            principal, key_roles, _key_id = api_key
+            # Key roles are explicit: no legacy "no roles => admin" fallback.
+            if set(key_roles) & set(allowed):
+                return principal
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key requires one of roles: {', '.join(allowed)} (has: {', '.join(key_roles) or 'none'})",
+            )
         token = _token_from_request(request)
         if not token:
             raise HTTPException(

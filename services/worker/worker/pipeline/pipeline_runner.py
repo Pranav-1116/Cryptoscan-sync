@@ -199,6 +199,7 @@ class PipelineRunner:
         if extra:
             entry["extra"] = extra
         ctx.logs.append(entry)
+        self._publish_event(ctx, stage, status, message, extra)
         progress = build_progress(current_stage=stage, status=status, logs=ctx.logs, extra={"scan_id": ctx.scan_id})
         kwargs: dict[str, Any] = {"progress": progress}
         if ctx.scan_id and ctx.scan_persisted:
@@ -206,6 +207,42 @@ class PipelineRunner:
         if status == "FAILED" and message:
             kwargs["error_message"] = message
         self._set_job_status(session, ctx.job_id, status, **kwargs)
+
+    def _publish_event(
+        self,
+        ctx: PipelineContext,
+        stage: str,
+        status: str,
+        message: str,
+        extra: dict[str, Any] | None,
+    ) -> None:
+        """Real-time stream (no-op outside the API process / when bus absent)."""
+        try:
+            from api.events.bus import get_event_bus
+
+            event_type = "scan.stage" if status == "RUNNING" else f"scan.{status.lower()}"
+            if stage == "alert" and status == "COMPLETED":
+                event_type = "scan.completed"
+                gate = (ctx.scan_meta.get("gate") or {})
+                extra = {
+                    "findings": len(ctx.findings),
+                    "gate_decision": gate.get("decision"),
+                    "blocking": (gate.get("counts") or {}).get("blocking"),
+                }
+            get_event_bus().publish(
+                event_type,
+                {
+                    "job_id": ctx.job_id,
+                    "scan_id": ctx.scan_id,
+                    "stage": stage,
+                    "status": status,
+                    "message": message or stage,
+                    "extra": extra or {},
+                },
+                source="pipeline",
+            )
+        except Exception:  # standalone worker process has no bus — polling covers it
+            pass
 
     def _post_github(
         self,

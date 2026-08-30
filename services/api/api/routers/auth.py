@@ -360,6 +360,12 @@ def _issue_session(response: Response, username: str, roles: list[str], client: 
         max_age=max_age,
         path="/",
     )
+    try:  # real-time stream: sessions issued (no token material, ever)
+        from api.events.bus import get_event_bus
+
+        get_event_bus().publish("auth.login", {"user": username, "roles": roles}, source="auth")
+    except Exception:
+        pass
     return LoginResponse(
         message="Login successful",
         username=username,

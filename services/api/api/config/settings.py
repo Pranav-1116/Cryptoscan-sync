@@ -50,6 +50,11 @@ class APISettings(BaseSettings):
     OIDC_CLOCK_LEEWAY: int = 60
     SESSION_EXPIRE_HOURS: int = 24
     COOKIE_SECURE: bool | None = None
+    # Real-time stream: how often the API tails monitor_events (written by the
+    # separate monitor process) and republishes them on the SSE stream.
+    # 0 disables the tailer. In-process events (pipeline stages, auth, API
+    # keys) are always pushed the instant they happen.
+    EVENT_TAILER_SECONDS: float = 2.0
     ADMIN_USERNAME: str = "admin"
     ADMIN_PASSWORD: str = "cryptoscan"
     ADMIN_PASSWORD_HASH: str = ""

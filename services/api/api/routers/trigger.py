@@ -105,6 +105,17 @@ def enqueue_scan_job(
         background_tasks.add_task(_publish_job, payload)
     else:
         background_tasks.add_task(_run_inline, payload)
+    try:  # real-time stream: announce the queued scan the moment it is accepted
+        from api.events.bus import get_event_bus
+
+        get_event_bus().publish(
+            "scan.queued",
+            {"job_id": str(job_id), "repo": repo_url, "branch": branch or "main",
+             "triggered_by": triggered_by},
+            source="api",
+        )
+    except Exception:
+        pass
     return TriggerScanResponse(
         job_id=str(job_id),
         status=getattr(created, "status", None) or "QUEUED",

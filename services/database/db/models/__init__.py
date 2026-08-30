@@ -100,3 +100,4 @@ from db.models.payment_crypto import (  # noqa: E402,F401
     PaymentPolicyFinding,
     PaymentTransactionVolume,
 )
+from db.models.api_key import ApiKey  # noqa: E402,F401

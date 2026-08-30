@@ -106,6 +106,20 @@ no more NO_COMPLETED_SCAN placeholders. Known cosmetic defect surfaced by
 this run: dependency-manifest findings record workspace-prefixed paths
 (`data/workspaces/job-…/repo/…`) instead of repo-relative ones.
 
+**Real-time API + machine access (Aug 31)** — the product moved from
+poll-and-refresh to push. `GET /events/stream` (SSE, Last-Event-ID resume,
+drop-oldest backpressure, heartbeat) backed by an in-process event bus:
+scan queued/stage/completed (with gate decision), monitor probe outcomes
+(federated from the separate monitor process by a 2s DB tailer — latency
+stated, not hidden), logins, API-key changes; `GET /events/recent` for
+fallback. Dashboard "Live events" view subscribes live and degrades to
+polling honestly. **Machine API keys** (`X-API-Key` on every endpoint,
+SHA-256-at-rest, shown once, own RBAC role set, immediate revocation,
+throttled `last_used_at`, admin-only management + audit trail, migration
+0035) for CI/SIEM integration; rate limiter buckets per key. Honest limits
+documented: single-process fan-out (Redis bus is the upgrade path), history
+not durable across restarts. See `docs/user-guide/realtime.md`.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM
