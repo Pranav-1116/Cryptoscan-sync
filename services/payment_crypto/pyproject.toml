@@ -1,0 +1,12 @@
+[project]
+name = "payment-crypto"
+version = "1.0.0"
+description = "Payment cryptography visibility: HSM key inventory, audit-log telemetry, TR-31 parsing, PCI/TR-39 policy"
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["payment_crypto*"]

@@ -29,6 +29,7 @@ DEFAULT_INTERVALS: dict[str, int] = {
     "CLOUD": 21_600,   # 6 h — account-level crypto config
     "REPO": 86_400,    # daily — source-driven
     "CONTAINER": 86_400,
+    "PAYMENT": 3_600,     # hourly — HSM audit trails move fast
 }
 MAX_BACKOFF_SECONDS = 86_400
 
@@ -44,11 +45,13 @@ def default_interval(target_type: str) -> int:
 
 
 class MonitorEngine:
-    def __init__(self, session: Any, *, runners: dict[str, Runner] | None = None, clock=None):
+    def __init__(self, session: Any, *, runners: dict[str, Runner] | None = None, clock=None,
+                 on_alert: Callable[[str, str, dict], None] | None = None):
         self.session = session
         self.repo = MonitorRepository(session)
         self.runners = runners if runners is not None else _default_runners()
         self._now = clock or (lambda: datetime.now(timezone.utc))
+        self._on_alert = on_alert
 
     # ---------------------------------------------------------------- tick
 
@@ -117,6 +120,11 @@ class MonitorEngine:
                 target=target, event_type="ALERT",
                 detail=f"NEW: {issue}", payload={"issue": issue},
             )
+            if self._on_alert is not None:
+                try:
+                    self._on_alert(target.name, issue, {"target_id": target.id, "issue": issue})
+                except Exception:  # noqa: BLE001 — sink failures never kill the tick
+                    logger.exception("alert_dispatch_failed")
         return self._outcome(target, target.status, new_issues=new_issues)
 
     # ------------------------------------------------------------- helpers
@@ -144,11 +152,18 @@ class MonitorEngine:
 
 
 def _default_runners() -> dict[str, Runner]:
-    from worker.monitor.runners import cloud_runner, container_runner, network_runner, repo_runner
+    from worker.monitor.runners import (
+        cloud_runner,
+        container_runner,
+        network_runner,
+        payment_runner,
+        repo_runner,
+    )
 
     return {
         "NETWORK": network_runner,
         "CLOUD": cloud_runner,
         "REPO": repo_runner,
         "CONTAINER": container_runner,
+        "PAYMENT": payment_runner,
     }

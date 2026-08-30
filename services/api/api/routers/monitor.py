@@ -16,7 +16,7 @@ from api.dependencies import get_current_user, get_db_session, require_auditor
 
 router = APIRouter(tags=["monitor"])
 
-VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER")
+VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT")
 
 
 class TargetCreate(BaseModel):

@@ -50,6 +50,7 @@ from api.routers import (
     remediation,
     report_schedules,
     monitor,
+    payment_crypto,
     repo_configs,
     runtime,
     scans,
@@ -192,6 +193,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(remediation.router, prefix=prefix)
     app.include_router(report_schedules.router, prefix=prefix)
     app.include_router(monitor.router, prefix=prefix)
+    app.include_router(payment_crypto.router, prefix=prefix)
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)

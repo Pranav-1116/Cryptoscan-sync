@@ -30,12 +30,15 @@ def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
     from db.connection.session import SessionLocal, configure_session
+    from worker.monitor.alerting import AlertRouter
     from worker.monitor.engine import MonitorEngine
     from worker.monitor.loop import MonitorLoop, install_signal_handlers
 
     configure_session()  # bind SessionLocal to the configured database engine
+    router = AlertRouter()
+    factory = lambda session: MonitorEngine(session, on_alert=router.dispatch)  # noqa: E731
     loop = MonitorLoop(
-        MonitorEngine,
+        factory,
         session_factory=SessionLocal,
         tick_seconds=args.tick_seconds,
     )

@@ -177,3 +177,99 @@ def container_runner(config: dict, session: Any) -> dict:
         "issues": sorted(set(issues)),
     }
     return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
+
+
+# ----------------------------------------------------------------- payment
+
+def payment_runner(config: dict, session: Any) -> dict:
+    """Tail an HSM audit trail (JSONL or syslog file), ingest new events, run policy.
+
+    config: {"path": "/var/log/hsm/audit.jsonl"} — whatever the SIEM collector
+    drops. Only events newer than the newest already-ingested event are stored,
+    so re-reading the file never duplicates. Without a path the target reports
+    BLOCKED with the exact fix instead of pretending to have polled the HSM.
+    """
+    path = str(config.get("path") or config.get("jsonl_path") or "").strip()
+    if not path:
+        return {"blocked_reason": "config needs audit trail path (e.g. {'path': '/var/log/hsm/audit.jsonl'})"}
+    import os
+    if not os.path.isfile(path):
+        return {"blocked_reason": f"audit trail file not found: {path}"}
+
+    from payment_crypto.auditlog import HsmAuditParser
+    from payment_crypto.policy import PaymentPolicyEngine
+    from db.models.payment_crypto import HsmEvent
+    from payment_crypto.keyblocks import parse_tr31_header
+    from db.repositories.payment_crypto_repository import PaymentCryptoRepository
+
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        text = handle.read()
+    parsed = HsmAuditParser().autodetect(text)
+    if not parsed.records:
+        return {"summary": {"lines": 0, "ingested": 0,
+                            "issues": [f"UNPARSABLE_AUDIT_LOG:{parsed.rejected[0]['reason'] if parsed.rejected else 'empty file'}"]},
+                "degraded": True,
+                "issues": [f"UNPARSABLE_AUDIT_LOG:{parsed.rejected[0]['reason'] if parsed.rejected else 'empty file'}"]}
+
+    latest = session.query(HsmEvent.occurred_at).order_by(HsmEvent.occurred_at.desc()).first()
+    cutoff = latest[0] if latest else None
+    if cutoff is not None and cutoff.tzinfo is None:  # sqlite returns naive datetimes
+        from datetime import timezone as _tz
+
+        cutoff = cutoff.replace(tzinfo=_tz.utc)
+    fresh = [record for record in parsed.records if cutoff is None or record.occurred_at > cutoff]
+    repo = PaymentCryptoRepository(session)
+    if fresh:
+        repo.add_events([record.to_dict() for record in fresh])
+
+        # key lifecycle events keep the inventory current without manual entry
+        for record in fresh:
+            if record.event_type in {"KEY_GENERATED", "KEY_IMPORTED", "KEY_ROTATED"} and record.key_id:
+                existing = repo.get_key(record.key_id)
+                payload = {"key_id": record.key_id, "hsm_device": record.device, "source": "HSM_EVENT"}
+                if record.event_type == "KEY_ROTATED" and existing is not None:
+                    payload["state"] = "EXPIRED"
+                    payload["enabled"] = False
+                    repo.upsert_key(payload)
+                    payload = {"key_id": record.key_id, "hsm_device": record.device,
+                               "state": "ACTIVE", "source": "HSM_EVENT"}
+                    payload["key_id"] = f"{record.key_id}"
+                algorithm = (record.detail or {}).get("algorithm")
+                key_block = (record.detail or {}).get("key_block")
+                if key_block:
+                    header = parse_tr31_header(str(key_block))
+                    payload["key_block_version"] = header.version_id if header.valid else None
+                    payload["key_block_error"] = "; ".join(header.errors) or None
+                    if header.valid and not header.key_usage.startswith("UNKNOWN"):
+                        payload["key_usage"] = header.key_usage
+                    if header.valid and not header.algorithm.startswith("UNKNOWN"):
+                        payload["algorithm"] = header.algorithm
+                elif algorithm:
+                    payload["algorithm"] = str(algorithm)
+                repo.upsert_key(payload)
+
+    keys = repo.list_keys()
+    findings = PaymentPolicyEngine().evaluate(
+        [{"key_id": k.key_id, "key_usage": k.key_usage, "algorithm": k.algorithm,
+          "key_size": k.key_size, "state": k.state, "enabled": k.enabled,
+          "activation_at": k.activation_at.isoformat() if k.activation_at else None,
+          "key_block_version": k.key_block_version, "key_block_error": k.key_block_error}
+         for k in keys],
+        ceremonies=[{"key_id": c.key_id, "held_at": c.held_at.isoformat() if c.held_at else None,
+                     "custodians": c.custodians or [], "dual_control": c.dual_control}
+                    for c in repo.list_ceremonies()],
+        events=[{"occurred_at": e.occurred_at.isoformat(), "device": e.device,
+                 "event_type": e.event_type, "key_id": e.key_id, "detail": e.detail or {}}
+               for e in repo.recent_events(days=30)],
+    )
+    repo.replace_findings([f.to_dict() for f in findings])
+    issues = sorted({f"{f.rule_id}" for f in findings if f.severity >= 4 or f.blocking})
+    summary = {
+        "audit_lines": len(parsed.records),
+        "events_ingested": len(fresh),
+        "keys_tracked": len(keys),
+        "open_findings": len(findings),
+        "blocking": sum(1 for f in findings if f.blocking),
+        "issues": issues,
+    }
+    return {"summary": summary, "degraded": bool(issues), "issues": issues}

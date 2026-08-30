@@ -81,6 +81,12 @@ class APISettings(BaseSettings):
     ALERT_EMAIL_FROM: str = "alerts@cryptoscan.local"
     ALERT_EMAIL_TO: str = "security@example.com"
 
+    # Live-monitor alert sinks (SIEM/webhook) — unset sinks are skipped honestly
+    ALERT_CEF_HOST: str = ""
+    ALERT_CEF_PORT: int = 514
+    ALERT_WEBHOOK_URL: str = ""
+    ALERT_WEBHOOK_SECRET: str = ""
+
     @property
     def cors_origin_list(self) -> list[str]:
         if not self.CORS_ORIGINS or self.CORS_ORIGINS.strip() == "*":

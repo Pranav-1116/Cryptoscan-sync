@@ -1,0 +1,103 @@
+# Bank-grade HA deployment CryptoScan.
+#
+#   Postgres (primary, WAL-archived)  <- persistence layer
+#   Redis                             <- job queue + rate-limit store (shared)
+#   api ×2 (scale with --scale api=N) <- stateless FastAPI + dashboard
+#   worker ×2 (scale with --scale worker=N) <- scan pipeline
+#   monitor                           <- the 24/7 loop (ONE instance; it is the scheduler)
+#   nginx                             <- TLS termination + least-conn LB + security headers
+#
+# RTO/RPO and failover procedure: docs/runbooks/dr-recovery.md
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: cryptoscan
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: cryptoscan
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cryptoscan -d cryptoscan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  migrate:
+    build: { context: ../.., dockerfile: deploy/ha/Dockerfile }
+    command: ["python", "-m", "alembic", "-c", "services/database/migrations/alembic.ini", "upgrade", "head"]
+    environment: &appenv
+      DATABASE_URL: postgresql+psycopg2://cryptoscan:${POSTGRES_PASSWORD}@postgres:5432/cryptoscan
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: production
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    build: { context: ../.., dockerfile: deploy/ha/Dockerfile }
+    command: ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+    environment: *appenv
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request;urllib.request.urlopen('http://localhost:8000/api/v1/meta',timeout=3)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  worker:
+    build: { context: ../.., dockerfile: deploy/ha/Dockerfile }
+    command: ["python", "-m", "worker.main"]
+    environment: *appenv
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    deploy:
+      replicas: 2
+
+  monitor:
+    build: { context: ../.., dockerfile: deploy/ha/Dockerfile }
+    command: ["python", "scripts/run_monitor.py", "--tick-seconds", "30"]
+    environment: *appenv
+    depends_on:
+      postgres: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped   # exactly one scheduler instance; container restart covers crashes
+
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8443:443"
+      - "8080:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # mount real certs here: ./certs/fullchain.pem + ./certs/privkey.pem
+    depends_on:
+      api: { condition: service_started }
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

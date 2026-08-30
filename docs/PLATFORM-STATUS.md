@@ -40,6 +40,14 @@ backoff, alert-once semantics, BLOCKED-honesty for unscannable targets, event
 feed, `GET /monitor/status` + dashboard "Live monitor" view (5 s refresh).
 Migration 0028. See `docs/user-guide/live-monitoring.md`.
 
+**Payment crypto (bank gap #1)** — HSM key inventory + ceremonies, audit-trail
+ingestion (JSONL/syslog/CSV, timestamp-deduped), TR-31 header parsing, 10
+PAY-xxx rules (weak algorithms, rotation, dual control, clear-key exports,
+auth storms, firmware changes, B0 blocks), risk acceptance that survives
+re-evaluation, `PAYMENT` monitor target, CEF/webhook/SMTP alert routing,
+HA compose stack + DR runbook, threat model + dependency audit (0 known CVEs),
+API load-test tool. Migration 0030. See `docs/user-guide/payment-crypto.md`.
+
 ## Platform-wide (earlier parts, for completeness)
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM

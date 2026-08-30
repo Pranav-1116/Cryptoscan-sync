@@ -66,6 +66,10 @@ __all__ = [
     "NetworkScanTarget",
     "OtCryptoFinding",
     "OtDevice",
+    "HsmEvent",
+    "KeyCeremony",
+    "PaymentKey",
+    "PaymentPolicyFinding",
     "PolicyException",
     "RepoConfiguration",
     "Scan",
@@ -86,3 +90,9 @@ __all__ = [
     "Vulnerability",
 ]
 from db.models.runtime_finding import RuntimeFinding  # noqa: E402,F401
+from db.models.payment_crypto import (  # noqa: E402,F401
+    HsmEvent,
+    KeyCeremony,
+    PaymentKey,
+    PaymentPolicyFinding,
+)

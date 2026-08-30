@@ -103,6 +103,7 @@
       <nav class="nav">
         <button data-route="home" class="active" onclick="go('home')">Overview</button>
         <button data-route="monitor" onclick="go('monitor')">Live monitor</button>
+        <button data-route="payment" onclick="go('payment')">Payment crypto</button>
         <button data-route="scans" onclick="go('scans')">Scans</button>
         <button data-route="new" onclick="go('new')">New scan</button>
         <button data-route="jobs" onclick="go('jobs')">Jobs</button>
@@ -212,6 +213,7 @@ async function render() {
   el.innerHTML = '<p class="muted">Loading…</p>';
   try {
     if (state.route === 'monitor') return renderMonitor(el);
+    if (state.route === 'payment') return renderPayment(el);
     if (state.route === 'home') return renderHome(el);
     if (state.route === 'scans') return renderScans(el);
     if (state.route === 'scan') return renderScan(el);
@@ -456,7 +458,7 @@ async function renderMonitor(el) {
       </tbody></table></div>
     <div class="card"><div class="label">Add a watch target</div>
       <p><input id="mon-name" placeholder="name (e.g. Payments edge)" style="width:180px">
-         <select id="mon-type"><option>NETWORK</option><option>CLOUD</option><option>REPO</option><option>CONTAINER</option></select>
+         <select id="mon-type"><option>NETWORK</option><option>CLOUD</option><option>REPO</option><option>CONTAINER</option><option>PAYMENT</option></select>
          <input id="mon-endpoints" placeholder="endpoints, comma separated (host:port)" style="width:320px">
          <select id="mon-interval"><option value="300">5 min</option><option value="900" selected>15 min</option><option value="3600">1 h</option><option value="86400">1 day</option></select>
          <button class="btn" onclick="monitorAdd()">Watch</button></p>
@@ -497,6 +499,61 @@ async function monitorDelete(id) {
   await api('/monitor/targets/' + id, { method: 'DELETE' });
   go('monitor');
 }
+
+
+async function renderPayment(el) {
+  const summary = await api('/payment-crypto/summary');
+  const keys = (await api('/payment-crypto/keys')).keys;
+  const findings = (await api('/payment-crypto/findings?status=OPEN')).findings;
+  const events = (await api('/payment-crypto/hsm-events?days=7')).events;
+  const sevBadge = s => badge(s >= 5 ? 'CRITICAL' : s === 4 ? 'HIGH' : s === 3 ? 'WARN' : 'INFO');
+  el.innerHTML = `
+    <h2>Payment crypto <span class="muted">(HSM key inventory · PCI/TR-39)</span></h2>
+    <div class="card"><div class="label">Key hierarchy</div>
+      <p><b>${summary.keys_total}</b> payment keys — ${Object.entries(summary.keys_by_state || {}).map(([k, v]) => `${k} ${v}`).join(' · ') || '—'}</p>
+      <p>${summary.active_weak_algorithm_keys ? badge('CRITICAL') + ` ${summary.active_weak_algorithm_keys} ACTIVE keys on deprecated algorithms` : badge('PASS') + ' no weak algorithms on active keys'}
+         · <b>${summary.open_findings}</b> open findings (${summary.blocking_findings} blocking)</p>
+      <p class="muted">Key material never enters CryptoScan — TR-31 metadata and HSM audit trails only.</p>
+    </div>
+    <div class="card"><div class="label">Keys</div>
+      <table><thead><tr><th>Key</th><th>Usage</th><th>Algorithm</th><th>State</th><th>Device</th><th>Block</th><th>Activated</th></tr></thead><tbody>
+      ${keys.map(k => `<tr><td class="mono">${escapeHtml(k.key_id)}</td><td>${escapeHtml(k.key_usage || '—')}</td>
+        <td>${escapeHtml((k.algorithm || '—') + (k.key_size ? '‑' + k.key_size : ''))}</td>
+        <td>${badge(k.state === 'ACTIVE' ? 'PASS' : k.state === 'COMPROMISED' ? 'CRITICAL' : 'WARN')} ${k.state}</td>
+        <td>${escapeHtml(k.hsm_device || '—')}</td><td class="mono">${escapeHtml(k.key_block_version || '—')}</td>
+        <td>${k.activation_at ? new Date(k.activation_at).toLocaleDateString() : '—'}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No keys yet — add one or ingest HSM audit lines below.</td></tr>'}
+      </tbody></table></div>
+    <div class="card"><div class="label">PAY findings (PCI / TR-39 / NQO)</div>
+      <table><thead><tr><th>Rule</th><th>Severity</th><th>Key</th><th>Finding</th><th></th></tr></thead><tbody>
+      ${findings.map(f => `<tr><td class="mono">${f.rule_id}</td><td>${sevBadge(f.severity)} ${f.severity}${f.blocking ? ' ⛔' : ''}</td>
+        <td class="mono">${escapeHtml(f.key_id || '—')}</td><td>${escapeHtml(f.message)}</td>
+        <td><button class="btn secondary" onclick="paymentAccept('${f.id}')">Accept risk</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No open findings.</td></tr>'}
+      </tbody></table>
+      <p><button class="btn" onclick="paymentEvaluate()">Re-run policy</button></p></div>
+    <div class="card"><div class="label">Ingest HSM audit trail</div>
+      <p><select id="pay-format"><option value="auto">auto-detect</option><option value="jsonl">JSONL</option><option value="syslog">syslog key=value</option><option value="csv">CSV (columns: ts,device,event,key_id,actor,severity)</option></select>
+         <button class="btn" onclick="paymentIngest()">Ingest</button></p>
+      <p><textarea id="pay-text" rows="4" style="width:100%" placeholder='one line per event, e.g. {"occurred_at":"2026-08-30T10:00:00Z","device":"hsm-1","event_type":"CLEAR_KEY_EXPORT","key_id":"ZMK-01"}'></textarea></p>
+    </div>
+    <div class="card"><div class="label">Recent HSM events (7 days)</div>
+      <table><tbody>${events.slice(0, 15).map(e => `<tr><td class="mono">${new Date(e.occurred_at).toLocaleString()}</td>
+        <td>${badge(e.severity === 'CRITICAL' ? 'CRITICAL' : e.severity === 'WARNING' ? 'WARN' : 'INFO')}</td>
+        <td>${escapeHtml(e.device)}</td><td>${escapeHtml(e.event_type)}</td><td class="mono">${escapeHtml(e.key_id || '')}</td></tr>`).join('') || '<tr><td class="muted">No events.</td></tr>'}</tbody></table>
+    </div>`;
+}
+
+async function paymentIngest() {
+  const format = document.getElementById('pay-format').value;
+  const text = document.getElementById('pay-text').value;
+  const body = { format, text };
+  if (format === 'csv') body.columns = { ts: 0, device: 1, event: 2, key_id: 3, actor: 4, severity: 5 };
+  const result = await api('/payment-crypto/hsm-events', { method: 'POST', body: JSON.stringify(body) });
+  alert(`ingested ${result.accepted}, rejected ${result.rejected}`);
+  go('payment');
+}
+
+async function paymentEvaluate() { await api('/payment-crypto/evaluate', { method: 'POST' }); go('payment'); }
+async function paymentAccept(id) { await api('/payment-crypto/findings/' + id + '/status', { method: 'POST', body: JSON.stringify({ status: 'ACCEPTED' }) }); go('payment'); }
 
 async function renderJobs(el) {
   const data = await api('/jobs?limit=30');
