@@ -11,23 +11,40 @@ and record an event for every outcome. Design rules for 24/7 operation:
   as BLOCKED with the exact reason — never silently skipped;
 - an ALERT fires only when a scan shows a *new* issue the previous summary did
   not have, so a steady-state weak endpoint alerts once, not every cycle.
+
+Realtime layer (enterprise live scanning):
+
+- **change watch**: targets with ``config.watch = true`` are probed every tick
+  for change (git HEAD for REPO, image id for CONTAINER). A *changed* target is
+  rescanned immediately — no waiting for the next scheduled window — and a
+  ``CHANGE_DETECTED`` event is recorded. The first observation is a baseline,
+  never an alert (see ``worker.monitor.watch``).
+- **jitter**: ``next_scan_at`` is pushed out by a random fraction of the
+  interval (``jitter_fraction``) so a large fleet of targets does not thunder
+  together every cycle. Off by default; enable via settings.
+- **bounded concurrency**: with ``concurrency > 1`` and a ``session_factory``,
+  due/watch-triggered targets run in a thread pool, each with its own fresh
+  DB session — one slow scanner cannot hold up the whole fleet.
 """
 
 from __future__ import annotations
 
 import logging
+import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 from db.models.monitor import TARGET_TYPES, MonitorTarget
 from db.repositories.monitor_repository import MonitorRepository
 
+from worker.monitor.watch import WATCH_PROBES, ChangeDetector, ProbeResult
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_INTERVALS: dict[str, int] = {
     "NETWORK": 900,    # 15 min — endpoint posture changes fast
     "CLOUD": 21_600,   # 6 h — account-level crypto config
-    "REPO": 86_400,    # daily — source-driven
+    "REPO": 86_400,    # daily — source-driven (watch mode rescans on push)
     "CONTAINER": 86_400,
     "PAYMENT": 3_600,     # hourly — HSM audit trails move fast
 }
@@ -46,21 +63,116 @@ def default_interval(target_type: str) -> int:
 
 class MonitorEngine:
     def __init__(self, session: Any, *, runners: dict[str, Runner] | None = None, clock=None,
-                 on_alert: Callable[[str, str, dict], None] | None = None):
+                 on_alert: Callable[[str, str, dict], None] | None = None,
+                 jitter_fraction: float = 0.0, rng: Callable[[float, float], float] | None = None,
+                 watch_enabled: bool = True, probes: dict[str, Callable[..., ProbeResult]] | None = None,
+                 probe_timeout: float = 10.0,
+                 session_factory: Callable[[], Any] | None = None, concurrency: int = 1):
         self.session = session
         self.repo = MonitorRepository(session)
         self.runners = runners if runners is not None else _default_runners()
         self._now = clock or (lambda: datetime.now(timezone.utc))
         self._on_alert = on_alert
+        self.jitter_fraction = max(0.0, float(jitter_fraction))
+        self._rng = rng or random.uniform
+        self.watch_enabled = bool(watch_enabled)
+        self.probes = probes if probes is not None else WATCH_PROBES
+        self.probe_timeout = float(probe_timeout)
+        self.session_factory = session_factory
+        self.concurrency = max(1, int(concurrency))
 
     # ---------------------------------------------------------------- tick
 
     def tick(self) -> dict[str, Any]:
-        """Run every due target once. Returns an honest per-target outcome list."""
-        results = []
-        for target in self.repo.due(now=self._now()):
-            results.append(self.run_target(target))
-        return {"ran": len(results), "results": results}
+        """Run every target that is due *or* whose watched state just changed.
+
+        Returns an honest per-target outcome list plus the trigger breakdown
+        (``watch_triggered`` vs ``due``) so operators can see why the daemon
+        did work.
+        """
+        now = self._now()
+        triggered: list[MonitorTarget] = []
+        if self.watch_enabled:
+            for target in self.repo.list_targets(enabled=True):
+                if self._check_watch(target) == "CHANGED":
+                    triggered.append(target)
+        if self.concurrency > 1 and self.session_factory is not None:
+            self.session.flush()  # persist watch_state so per-session workers see it
+
+        triggered_ids = {t.id for t in triggered}
+        due = [t for t in self.repo.due(now=now) if t.id not in triggered_ids]
+        ordered = triggered + due
+        results = self._execute_many(ordered)
+        return {
+            "ran": len(results),
+            "results": results,
+            "watch_triggered": len(triggered),
+            "due": len(due),
+        }
+
+    # ------------------------------------------------------ change watching
+
+    def _check_watch(self, target: MonitorTarget) -> str:
+        """Probe one watched target. Verdicts: CHANGED | UNCHANGED | UNKNOWN | NONE.
+
+        Never raises: probe failures become a (deduplicated) event and fall
+        through to the normal schedule — watching must not break scanning.
+        """
+        config = dict(target.config or {})
+        if not config.get("watch"):
+            return "NONE"
+        probe = self.probes.get(target.target_type)
+        if probe is None:
+            self._watch_unsupported(target)
+            return "NONE"
+        try:
+            result = probe(config, timeout=self.probe_timeout)
+        except Exception as exc:  # noqa: BLE001 — a probe must never kill the tick
+            return self._watch_probe_failed(target, f"{type(exc).__name__}: {exc}")
+        if not result.ok:
+            return self._watch_probe_failed(target, result.error or "probe failed")
+
+        previous = (config.get("watch_state") or {}).get("state")
+        verdict, next_state = ChangeDetector.detect(previous, result)
+        target.config = {**config, "watch_state": {"state": next_state}}
+        if verdict == "CHANGED":
+            self.repo.add_event(
+                target=target, event_type="CHANGE_DETECTED",
+                detail=f"change detected: {next_state}",
+                payload={"previous": previous, "current": next_state},
+            )
+            logger.info("monitor_change_detected", extra={"target": target.name, "state": next_state})
+            return "CHANGED"
+        return verdict
+
+    def _watch_probe_failed(self, target: MonitorTarget, error: str) -> str:
+        """Record a probe failure once per distinct error (no event spam)."""
+        config = dict(target.config or {})
+        watch_state = dict(config.get("watch_state") or {})
+        if watch_state.get("probe_error") != error:
+            self.repo.add_event(
+                target=target, event_type="WATCH_PROBE_FAILED",
+                detail=error[:500], payload={"error": error},
+            )
+            target.config = {**config, "watch_state": {**watch_state, "probe_error": error}}
+        return "UNKNOWN"
+
+    def _watch_unsupported(self, target: MonitorTarget) -> None:
+        """watch requested on a type with no probe — honest, once, documented."""
+        config = dict(target.config or {})
+        watch_state = dict(config.get("watch_state") or {})
+        if not watch_state.get("unsupported"):
+            self.repo.add_event(
+                target=target, event_type="WATCH_UNSUPPORTED",
+                detail=(
+                    f"watch is not supported for {target.target_type}; "
+                    f"supported: {sorted(self.probes)} — scheduled scans continue"
+                ),
+                payload={"supported": sorted(self.probes)},
+            )
+            target.config = {**config, "watch_state": {**watch_state, "unsupported": True}}
+
+    # ------------------------------------------------------------- run one
 
     def run_target(self, target: MonitorTarget) -> dict[str, Any]:
         now = self._now()
@@ -105,7 +217,7 @@ class MonitorEngine:
         target.consecutive_failures = 0
         target.last_error = None
         target.last_scan_at = now
-        target.next_scan_at = now + timedelta(seconds=interval)
+        target.next_scan_at = now + self._next_scan_delta(interval)
         target.last_summary = summary
         degraded = bool(result.get("degraded")) or bool(issues)
         target.status = "DEGRADED" if degraded else "OK"
@@ -127,7 +239,43 @@ class MonitorEngine:
                     logger.exception("alert_dispatch_failed")
         return self._outcome(target, target.status, new_issues=new_issues)
 
+    # ----------------------------------------------------- fleet execution
+
+    def _execute_many(self, targets: list[MonitorTarget]) -> list[dict[str, Any]]:
+        if not targets:
+            return []
+        if self.concurrency <= 1 or self.session_factory is None:
+            return [self.run_target(target) for target in targets]
+        from concurrent.futures import ThreadPoolExecutor
+
+        def _work(target_id: str) -> dict[str, Any]:
+            session = self.session_factory()
+            try:
+                engine = MonitorEngine(
+                    session, runners=self.runners, clock=self._now,
+                    on_alert=self._on_alert, jitter_fraction=self.jitter_fraction,
+                    rng=self._rng, watch_enabled=False, probes=self.probes,
+                    probe_timeout=self.probe_timeout, concurrency=1,
+                )
+                row = engine.repo.get(target_id)
+                if row is None:
+                    return {"target_id": target_id, "status": "GONE"}
+                return engine.run_target(row)
+            finally:
+                session.commit()
+                session.close()
+
+        with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
+            return list(pool.map(_work, [t.id for t in targets]))
+
     # ------------------------------------------------------------- helpers
+
+    def _next_scan_delta(self, interval: int) -> timedelta:
+        """Interval plus jitter (0 when disabled → deterministic schedules)."""
+        if self.jitter_fraction <= 0:
+            return timedelta(seconds=interval)
+        spread = max(0.0, interval * self.jitter_fraction)
+        return timedelta(seconds=interval + self._rng(0.0, spread))
 
     def _new_issues(self, target: MonitorTarget, issues: list[str]) -> list[str]:
         previous = set((target.last_summary or {}).get("issues") or [])
@@ -137,7 +285,7 @@ class MonitorEngine:
         target.status = status
         target.last_error = error
         target.last_scan_at = now
-        target.next_scan_at = now + timedelta(seconds=interval)
+        target.next_scan_at = now + self._next_scan_delta(interval)
         self.repo.add_event(target=target, event_type=event_type, detail=error)
 
     @staticmethod

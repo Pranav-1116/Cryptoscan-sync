@@ -69,6 +69,34 @@ async def test_target_crud_and_validation():
 
 
 @pytest.mark.asyncio
+async def test_watch_config_validation_and_daemon_health():
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # watch on REPO is accepted and engine-managed watch_state is stripped
+        ok = await client.post("/api/v1/monitor/targets", json={
+            "name": "payments repo", "target_type": "REPO",
+            "config": {"repo": "https://github.com/org/pay.git", "watch": True,
+                       "watch_state": {"state": "forged"}}})
+        assert ok.status_code == 201, ok.text
+        assert (ok.json()["config"] or {}).get("watch") is True
+        assert "watch_state" not in ok.json()["config"]
+
+        # watch on a non-watchable type is rejected with a clear 422
+        bad = await client.post("/api/v1/monitor/targets", json={
+            "name": "edge", "target_type": "NETWORK",
+            "config": {"endpoints": ["h:443"], "watch": True}})
+        assert bad.status_code == 422
+        assert "watch" in bad.json()["detail"] and "REPO" in bad.json()["detail"]
+
+        # status reports daemon liveness honestly (no lease row -> not observed)
+        status = (await client.get("/api/v1/monitor/status")).json()
+        daemon = status["overview"]["daemon_health"]
+        assert daemon["alive"] is False
+        assert "run_monitor.py" in daemon["script"]
+
+
+@pytest.mark.asyncio
 async def test_scan_now_runs_the_engine(monkeypatch):
     app, session, engine = _make_app()
     transport = ASGITransport(app=app)

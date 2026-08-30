@@ -31,6 +31,13 @@ class WorkerSettings(BaseSettings):
     NORMALIZATION_RULES_DIR: str = ""
     ALERT_EMAIL_TO: str = ""
     SMTP_HOST: str = ""
+    # 24/7 live-monitor daemon (scripts/run_monitor.py)
+    MONITOR_TICK_SECONDS: float = 30.0          # daemon tick cadence
+    MONITOR_LEASE_TTL_SECONDS: float = 60.0     # leader-lease TTL (multi-AZ HA)
+    MONITOR_JITTER_FRACTION: float = 0.1        # next_scan_at random spread (0 = off)
+    MONITOR_WATCH_ENABLED: bool = True          # change-watch probes on every tick
+    MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: float = 10.0
+    MONITOR_CONCURRENCY: int = 2                # parallel scans per tick (1 = serial)
     NEO4J_URI: str = ""
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "cryptoscan"

@@ -84,5 +84,37 @@ def metrics() -> Response:
         lines.append(_gauge("cryptoscan_api_db_reachable", 0, "Database reachable for metrics"))
         return Response(content="".join(lines), media_type="text/plain; version=0.0.4; charset=utf-8")
 
+    # 24/7 live-monitor fleet (best-effort — metrics must never 500)
+    try:
+        from db.models.monitor import MonitorEvent, MonitorTarget
+
+        with SessionLocal() as session:
+            targets_total = int(session.execute(select(func.count()).select_from(MonitorTarget)).scalar_one())
+            lines.append(_counter("cryptoscan_monitor_targets_total", targets_total, "Monitored targets"))
+
+            for status in ("PENDING", "OK", "DEGRADED", "FAILING", "BLOCKED", "PAUSED"):
+                n = int(
+                    session.execute(
+                        select(func.count()).select_from(MonitorTarget).where(MonitorTarget.status == status)
+                    ).scalar_one()
+                )
+                lines.append(_gauge("cryptoscan_monitor_targets_by_status", n, "Targets by status", f'status="{status}"'))
+
+            targets = list(session.execute(select(MonitorTarget)).scalars().all())
+            watch = sum(1 for t in targets if (t.config or {}).get("watch"))
+            lines.append(_gauge("cryptoscan_monitor_targets_watch_enabled", watch, "Targets with change-watch enabled"))
+
+            events_total = int(session.execute(select(func.count()).select_from(MonitorEvent)).scalar_one())
+            lines.append(_counter("cryptoscan_monitor_events_total", events_total, "Monitor events recorded"))
+
+            changes = int(
+                session.execute(
+                    select(func.count()).select_from(MonitorEvent).where(MonitorEvent.event_type == "CHANGE_DETECTED")
+                ).scalar_one()
+            )
+            lines.append(_counter("cryptoscan_monitor_changes_detected", changes, "Realtime changes detected"))
+    except Exception:
+        pass  # monitor tables may not exist on very old schemas
+
     lines.append(_gauge("cryptoscan_api_db_reachable", 1, "Database reachable for metrics"))
     return Response(content="".join(lines), media_type="text/plain; version=0.0.4; charset=utf-8")

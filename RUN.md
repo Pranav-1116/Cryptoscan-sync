@@ -23,6 +23,17 @@ make api     # dashboard + API on :8000
 
 Trigger a scan of the bundled sample with `local://demo/vulnerable-app`.
 
+**24/7 live scanning** (see `docs/dev/LIVE-SCANNING.md` for the full picture):
+
+```bash
+make monitor       # continuous daemon: change-watch + interval scanning, HA lease
+make monitor-once  # single sweep (cron mode)
+```
+
+Register targets with `POST /api/v1/monitor/targets`; add `"watch": true` in
+`config` for a REPO/CONTAINER target to rescan **immediately on change**
+(git push / image update) instead of waiting for the next interval.
+
 ## Docker (development stack)
 
 Copy `.env.example` → `.env` first. Host ports are offset so another project can keep Postgres `5432`, Redis `6379`, and Neo4j `7687`.

@@ -154,6 +154,49 @@ services:
     networks: [cryptoscan-net]
     restart: unless-stopped
 
+  monitor:
+    build:
+      context: .
+      dockerfile: .docker/worker/Dockerfile
+    container_name: cryptoscan-monitor
+    command: ["python", "scripts/run_monitor.py"]
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:-cryptoscan_secret}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+      REDIS_URL: redis://redis:6379/0
+      WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
+      CRYPTOSCAN_ROOT: /app
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: ${NEO4J_USER:-neo4j}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
+      NEO4J_DATABASE: neo4j
+      DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
+      MONITOR_TICK_SECONDS: ${MONITOR_TICK_SECONDS:-30}
+      MONITOR_LEASE_TTL_SECONDS: ${MONITOR_LEASE_TTL_SECONDS:-60}
+      MONITOR_JITTER_FRACTION: ${MONITOR_JITTER_FRACTION:-0.1}
+      MONITOR_WATCH_ENABLED: ${MONITOR_WATCH_ENABLED:-true}
+      MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: ${MONITOR_WATCH_PROBE_TIMEOUT_SECONDS:-10}
+      MONITOR_CONCURRENCY: ${MONITOR_CONCURRENCY:-2}
+      ALERT_CEF_HOST: ${ALERT_CEF_HOST:-}
+      ALERT_CEF_PORT: ${ALERT_CEF_PORT:-514}
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+      ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    links:
+      - postgres
+      - redis
+      - neo4j
+    networks: [cryptoscan-net]
+    restart: unless-stopped
+
   dashboard:
     build:
       context: .

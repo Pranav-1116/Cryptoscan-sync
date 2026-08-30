@@ -17,6 +17,24 @@ from api.dependencies import get_current_user, get_db_session, require_auditor
 router = APIRouter(tags=["monitor"])
 
 VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT")
+# Change-watch (realtime rescan-on-change) is only meaningful where a cheap
+# fingerprint probe exists: git HEAD for REPO, local image id for CONTAINER.
+WATCHABLE_TYPES = ("REPO", "CONTAINER")
+
+
+def _validate_config(config: dict, target_type: str) -> dict:
+    """Validate + sanitize a target config before it reaches the daemon."""
+    clean = dict(config or {})
+    # watch_state is engine-managed (fingerprints / probe errors) — never client-supplied
+    clean.pop("watch_state", None)
+    if clean.get("watch"):
+        if target_type not in WATCHABLE_TYPES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"config.watch is only supported for {WATCHABLE_TYPES} (got {target_type}) — "
+                       "enable change-watch on a REPO or CONTAINER target",
+            )
+    return clean
 
 
 class TargetCreate(BaseModel):
@@ -36,6 +54,37 @@ def _repo(db: Session):
     from db.repositories.monitor_repository import MonitorRepository
 
     return MonitorRepository(db)
+
+
+def _daemon_health(db: Session) -> dict:
+    """Is a monitor daemon alive *right now*? Reads the leader-lease row.
+
+    The daemon heartbeats ``monitor_leases`` (name='monitor') every tick; a
+    lease held with an unexpired ``expires_at`` is proof a daemon is running.
+    No row / expired row = nobody is watching — honest, not assumed.
+    """
+    from datetime import datetime, timezone
+
+    from sqlalchemy import select
+
+    from db.models.monitor import MonitorLease
+
+    try:
+        row = db.execute(select(MonitorLease).where(MonitorLease.name == "monitor")).scalar_one_or_none()
+    except Exception:
+        return {"alive": False, "detail": "lease table unavailable", "script": "scripts/run_monitor.py"}
+    now = datetime.now(timezone.utc)
+    if row is None or row.expires_at is None:
+        return {"alive": False, "detail": "no leader lease — daemon not observed", "script": "scripts/run_monitor.py"}
+    expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
+    alive = expires > now
+    return {
+        "alive": alive,
+        "holder": row.holder,
+        "expires_at": row.expires_at.isoformat() if row.expires_at else None,
+        "detail": "lease held" if alive else "lease expired — daemon down or failover in progress",
+        "script": "scripts/run_monitor.py",
+    }
 
 
 def _serialize(target) -> dict:
@@ -78,13 +127,14 @@ def create_target(
         raise HTTPException(status_code=422, detail="NETWORK targets need config.endpoints (['host:port', …])")
     if body.interval_seconds is not None and not (60 <= body.interval_seconds <= 2_592_000):
         raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
+    config = _validate_config(body.config, body.target_type)
     repo = _repo(db)
     if repo.get_by_name(body.name) is not None:
         raise HTTPException(status_code=409, detail=f"target '{body.name}' already exists")
     row = repo.create(
         name=body.name,
         target_type=body.target_type,
-        config=body.config,
+        config=config,
         interval_seconds=body.interval_seconds or DEFAULT_INTERVALS.get(body.target_type, default_interval(body.target_type)),
         created_by=user,
     )
@@ -108,7 +158,7 @@ def update_target(
             raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
         row.interval_seconds = body.interval_seconds
     if body.config is not None:
-        row.config = body.config
+        row.config = _validate_config(body.config, row.target_type)
     if body.enabled is not None:
         row.enabled = body.enabled
         if not body.enabled and row.status not in {"PAUSED"}:
@@ -165,6 +215,7 @@ def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(
         "enabled": sum(1 for row in targets if row.enabled),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "daemon": "scripts/run_monitor.py (this API does not run the loop)",
+        "daemon_health": _daemon_health(db),
     }
     attention = [
         _serialize(row)

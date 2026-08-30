@@ -22,16 +22,32 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
+    from worker.config.settings import WorkerSettings
+
+    settings = WorkerSettings()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="run one sweep and exit (cron mode)")
-    parser.add_argument("--tick-seconds", type=float, default=30.0, help="daemon tick cadence (default 30s)")
-    parser.add_argument("--lease-ttl", type=float, default=60.0,
-                        help="leader-lease TTL seconds (default 60) — run N daemons, exactly one scans")
+    parser.add_argument("--tick-seconds", type=float, default=settings.MONITOR_TICK_SECONDS,
+                        help=f"daemon tick cadence (default {settings.MONITOR_TICK_SECONDS}s; env MONITOR_TICK_SECONDS)")
+    parser.add_argument("--lease-ttl", type=float, default=settings.MONITOR_LEASE_TTL_SECONDS,
+                        help="leader-lease TTL seconds (env MONITOR_LEASE_TTL_SECONDS) — run N daemons, exactly one scans")
     parser.add_argument("--no-lease", action="store_true",
                         help="run without the leader lease (single-instance legacy mode)")
+    parser.add_argument("--no-watch", action="store_true",
+                        help="disable change-watch probes (interval scanning only)")
+    parser.add_argument("--concurrency", type=int, default=settings.MONITOR_CONCURRENCY,
+                        help="max parallel target scans per tick (env MONITOR_CONCURRENCY)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    # SQLite cannot take concurrent writers: clamp to serial for dev stacks
+    # (production uses Postgres via docker-compose and keeps the real concurrency).
+    if settings.DATABASE_URL.startswith("sqlite") and args.concurrency > 1:
+        logging.getLogger("monitor").warning(
+            "SQLite backend detected — clamping monitor concurrency to 1 "
+            "(use PostgreSQL for parallel fleet scans)"
+        )
+        args.concurrency = 1
 
     from db.connection.session import SessionLocal, configure_session
     from worker.monitor.alerting import AlertRouter
@@ -41,7 +57,15 @@ def main() -> int:
 
     configure_session()  # bind SessionLocal to the configured database engine
     router = AlertRouter()
-    factory = lambda session: MonitorEngine(session, on_alert=router.dispatch)  # noqa: E731
+    factory = lambda session: MonitorEngine(  # noqa: E731
+        session,
+        on_alert=router.dispatch,
+        jitter_fraction=settings.MONITOR_JITTER_FRACTION,
+        watch_enabled=settings.MONITOR_WATCH_ENABLED and not args.no_watch,
+        probe_timeout=settings.MONITOR_WATCH_PROBE_TIMEOUT_SECONDS,
+        session_factory=SessionLocal,
+        concurrency=args.concurrency,
+    )
     lease = None
     if not args.no_lease:
         bootstrap = SessionLocal()
@@ -62,7 +86,13 @@ def main() -> int:
         return 0
     install_signal_handlers(loop)
     mode = f"leader-lease ttl={args.lease_ttl}s" if lease else "no-lease (single instance)"
-    print(f"cryptoscan monitor running (tick={args.tick_seconds}s, {mode}) — Ctrl+C to stop", file=sys.stderr)
+    watch = "watch" if (settings.MONITOR_WATCH_ENABLED and not args.no_watch) else "interval-only"
+    print(
+        f"cryptoscan monitor running (tick={args.tick_seconds}s, {mode}, "
+        f"mode={watch}, concurrency={args.concurrency}, jitter={settings.MONITOR_JITTER_FRACTION}) "
+        f"— Ctrl+C to stop",
+        file=sys.stderr,
+    )
     return loop.run_forever()
 
 
