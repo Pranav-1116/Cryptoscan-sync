@@ -64,13 +64,20 @@ def _backend() -> str:
 
 
 def _read_key(key_pem: str | Path) -> bytes:
-    path = Path(key_pem)
-    if path.exists():
-        return path.read_bytes()
+    """Accept a PEM file path or inline PEM text.
+
+    Inline PEM is recognized *before* path probing: a PEM string can be
+    hundreds of characters, and if its base64 happens to contain no ``/`` it
+    forms one over-long path component that raises ``ENAMETOOLONG`` on
+    ``stat()`` (a nondeterministic failure depending on the random key).
+    """
     data = str(key_pem).encode("utf-8")
     if b"PRIVATE KEY" in data or b"PUBLIC KEY" in data:
         return data
-    raise SigningError(f"private key not found: {key_pem}")
+    path = Path(key_pem)
+    if path.exists():
+        return path.read_bytes()
+    raise SigningError(f"key not found: {key_pem}")
 
 
 def _sign_cryptography(data: bytes, private_pem: bytes) -> bytes:

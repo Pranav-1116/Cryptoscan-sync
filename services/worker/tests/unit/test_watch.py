@@ -310,10 +310,21 @@ def test_jitter_disabled_is_deterministic():
     assert target.next_scan_at == T0 + timedelta(seconds=600)
 
 
-def test_concurrent_tick_runs_all_due_targets_with_fresh_sessions():
-    # One shared in-memory engine (StaticPool): every session sees the same DB,
-    # but each worker gets its own ORM session — exactly like the daemon loop.
-    engine_sql = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+def test_concurrent_tick_runs_all_due_targets_with_fresh_sessions(tmp_path):
+    # One shared engine on a file DB with WAL + busy timeout (how production
+    # SQLite actually runs): every session sees the same DB, each worker gets
+    # its own ORM session — exactly like the daemon loop. An in-memory
+    # StaticPool DB cannot serialize concurrent commits from threads (rare
+    # sqlite3 "database is locked"/"not an error" flakes), so we use a real
+    # file DB instead.
+    db_path = tmp_path / "monitor.db"
+    engine_sql = create_engine(
+        f"sqlite:///{db_path}",
+        connect_args={"check_same_thread": False, "timeout": 15},
+    )
+    with engine_sql.connect() as conn:
+        conn.exec_driver_sql("PRAGMA journal_mode=WAL")
+        conn.exec_driver_sql("PRAGMA busy_timeout=15000")
     Base.metadata.create_all(engine_sql)
     SessionMaker = sessionmaker(bind=engine_sql, expire_on_commit=False)
     session = SessionMaker()

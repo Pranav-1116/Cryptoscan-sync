@@ -119,3 +119,35 @@ def test_signature_survives_json_roundtrip(keypair):
     signed = sign_report({"scan": {"id": "s"}, "totals": {"findings": 1}}, keypair["private"])
     transported = json.loads(json.dumps(signed))
     assert verify_report(transported, keypair["public"])["ok"] is True
+
+
+def test_inline_pem_recognized_before_path_probe(keypair):
+    """A PEM passed as text must never be probed as a filesystem path.
+
+    Regression: a random 2048-bit public-key PEM can (rarely) contain no '/'
+    in its base64, making it one over-long path component — `Path(...).exists()`
+    then raises OSError ENAMETOOLONG instead of recognizing the key material.
+    """
+    pem = keypair["public"].read_text()
+    # Sanity: this PEM is long enough to exceed the 255-byte filename limit.
+    assert len(pem) > 300
+    signature = sign_bytes(b"deterministic inline-pem check", keypair["private"])
+    assert signature["alg"] == "RS256"
+    # The inline PEM must be recognized as key material, not probed as a path.
+    result = verify_bytes(b"deterministic inline-pem check",
+                          signature["value"], pem)
+    assert result["ok"] is True
+
+
+def test_read_key_deterministic_enametoolong_regression():
+    """A '/'-free PEM string >255 chars must be treated as key text.
+
+    Before the fix, `Path(pem).exists()` raised OSError ENAMETOOLONG because
+    the whole PEM became one over-long path component (no '/' to split it).
+    """
+    from reporting.signing import _read_key
+
+    no_slash_pem = "-----BEGIN PUBLIC KEY-----\n" + "A" * 400 + "\n-----END PUBLIC KEY-----\n"
+    assert "/" not in no_slash_pem
+    assert len(no_slash_pem) > 255
+    assert _read_key(no_slash_pem) == no_slash_pem.encode("utf-8")

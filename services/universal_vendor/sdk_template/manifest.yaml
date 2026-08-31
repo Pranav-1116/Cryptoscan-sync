@@ -1,0 +1,32 @@
+# ZELNX Universal Vendor Scanner — vendor plugin manifest (spec §19)
+#
+# Copy this SDK template directory to build a new vendor plugin:
+#   cp -r sdk_template my_vendor_plugin
+# Then set your plugin_id/vendor/product and implement the discovery logic.
+#
+# Trust: third-party plugins default to `trusted: false` — they are
+# registered (inspectable) but will never auto-run in production until an
+# operator explicitly reviews and flips the flag (spec §18).
+
+plugin_id: my_vendor_product        # unique, snake_case
+vendor: MyVendor                    # vendor name (matches detection signals)
+product: MyProduct                  # product name
+category: network                   # one of: network, firewall, load_balancer,
+                                    # cloud, pki, hsm, identity, database,
+                                    # middleware, os, edr, siem, devops,
+                                    # container, kubernetes, saas
+version: "1.0.0"
+status: EXPERIMENTAL                # STABLE | BETA | EXPERIMENTAL | DEPRECATED | DISABLED
+
+supported_features:
+  - tls
+  - certificates
+  - cipher_policies
+
+minimum_version: ""                 # minimum appliance/firmware version
+api_requirements:
+  - "SSH config or API metadata"
+auth_methods:
+  - token
+
+trusted: false                      # third-party plugins default to untrusted

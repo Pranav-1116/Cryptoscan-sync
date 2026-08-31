@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MyVendor raw observation record",
+  "description": "Schema for raw records produced by the MyVendor plugin discovery methods (spec §19 schemas/).",
+  "type": "object",
+  "required": ["vendor", "product", "asset_id", "crypto_type"],
+  "properties": {
+    "vendor": { "type": "string" },
+    "product": { "type": "string" },
+    "product_version": { "type": ["string", "null"] },
+    "asset_id": { "type": "string" },
+    "crypto_type": {
+      "enum": ["algorithm", "certificate", "key", "protocol", "configuration"]
+    },
+    "algorithm": { "type": ["string", "null"] },
+    "protocol": { "type": ["string", "null"] },
+    "certificate": { "type": ["object", "null"] },
+    "configuration": { "type": ["object", "null"] },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+    "visibility": {
+      "enum": ["OBSERVED", "API_VISIBLE", "UNKNOWN", "NOT_SUPPORTED"]
+    }
+  },
+  "additionalProperties": true
+}
