@@ -65,6 +65,7 @@ from api.routers import (
     webhooks,
     api_keys,
     algorithms,
+    platform,
 )
 from api.routers import metrics as metrics_router
 from api.security.exceptions import AuthenticationError, ValidationError
@@ -230,6 +231,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(exceptions.router, prefix=prefix)
     app.include_router(ot.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
+    app.include_router(platform.router, prefix=prefix)
     app.include_router(metrics_router.router)  # /metrics (no /api prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"

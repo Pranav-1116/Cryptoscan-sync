@@ -9,6 +9,21 @@ real infrastructure or credentials.
 Measured at this commit: **221 API paths**, **23 services**, **1,233 tests
 passing (`make test`, exit 0)**, 26 database migrations (0001–0026).
 
+## Scope & honest boundaries
+
+What CryptoScan is (and is not) is a tested, versioned manifest, not prose:
+`shared/shared_models/shared_models/platform_scope.py`, served at
+`GET /api/v1/platform/scope`, enforced by
+`shared/shared_models/tests/test_platform_scope.py` (module-path and
+docstring boundary checks + evidence-whitelist leakage tests), documented in
+[docs/architecture/platform-boundaries.md](docs/architecture/platform-boundaries.md).
+
+Highlights: **read-only, evidence-chained, key *metadata* only (never key
+material)**; no general SAST / malware / SIEM behavior analytics / mainframe
+(AS/400, COBOL) / employee endpoints; cloud scanning is limited to the
+accounts/tenants the operator's credentials can see — external surface only
+via public internet scanning of configured targets.
+
 ## Part 4 — Months 10–12 (logic-4.md)
 
 | Week | Capability | Status | Where it lives |

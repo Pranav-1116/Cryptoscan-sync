@@ -12,6 +12,30 @@ Policy is never decided by AI.
 
 The working loop is: scan source → evidence chain → SQLite/Postgres → normalize → policy → drift → API → dashboard.
 
+## Scope & honest boundaries
+
+CryptoScan is an **end-to-end crypto & security-configuration platform** —
+not a universal "scan everything" tool.
+
+- ✅ **It does:** crypto inventory + security-configuration posture across
+  source trees, network/TLS, containers/IaC, cloud accounts/tenants you
+  have access to (AWS/Azure/GCP), OT/ICS (passive, zero packets), payment
+  HSM/PCI, vendor/supply-chain, plus shared evidence-chain / CBOM / graph /
+  PQC / remediation / compliance layers.
+- ❌ **It does not:** application source-code hacking (general SAST), malware
+  analysis, SIEM behavior analytics, mainframe core banking (AS/400, COBOL),
+  or employee endpoint scanning.
+- 🌐 **Cloud:** only the accounts/tenants your credentials can see — external
+  surface only via public internet scanning of configured targets.
+- 🔒 **Always:** read-only collection, evidence-chained observations, and
+  **key *metadata* only — never key material or secret values** (enforced by
+  tests; evidence packs use strict field whitelists).
+
+The boundaries are a single source of truth
+(`shared_models/platform_scope.py`), served at `GET /api/v1/platform/scope`,
+enforced by tests, and documented in
+[docs/architecture/platform-boundaries.md](docs/architecture/platform-boundaries.md).
+
 ## Operations (production hardening, 2026-08-26)
 
 | Capability | Where |
