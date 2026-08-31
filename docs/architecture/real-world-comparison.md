@@ -5,6 +5,10 @@ real products and open-source tools in each area it touches. It follows the
 platform's own rule — [platform boundaries](platform-boundaries.md): claim
 only what ships, and name gaps honestly.
 
+> **Related:** [bank-vs-zelnx.md](bank-vs-zelnx.md) compares the product
+> against what a *real bank actually runs* (its vendor estate, processes and
+> regulatory asks) rather than against competitor products.
+
 Sources are linked inline; key claims reflect publicly available vendor
 material as of 2026-08.
 
