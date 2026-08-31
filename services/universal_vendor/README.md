@@ -1,7 +1,9 @@
 # ZELNX Universal Vendor Scanner
 
 Vendor-neutral crypto + crypto-configuration discovery across every vendor
-category, per the ZELNX Universal Vendor Scanner spec (§1–§24).
+category, per the ZELNX Universal Vendor Scanner spec (§1–§24) — plus the
+**24/7 Live Vendor Engine** (`universal_vendor/live/`, spec §1–§26) that
+monitors vendor infrastructure continuously.
 
 ## What it does
 
@@ -32,7 +34,44 @@ fields are preserved verbatim in `vendor_specific` (§20) — nothing is lost.
 | `sdk.py` | §19 | plugin SDK: `manifest.yaml` parsing + package loading |
 | `plugins/` | §2–§15 | 68 bundled vendor plugins across all 16 categories |
 | `sdk_template/` | §19 | copyable third-party plugin template |
-| `tests/` | — | 114 tests covering every component |
+| `live/` | 24/7 §1–§26 | **live vendor engine** — see below |
+| `tests/` | — | 175 tests covering every component |
+
+## 24/7 Live Vendor Engine (`universal_vendor/live/`)
+
+Continuous, low-load vendor monitoring wired into the scan framework:
+
+| Module | Spec | Purpose |
+|---|---|---|
+| `monitoring.py` | §1 | seven live monitoring modes + `LiveConnector` / `LiveVendorMonitor` |
+| `events.py` | §2 | universal event gateway + `EventNormalizer` (vendor alias resolution) + canonical `UniversalVendorEvent` |
+| `state.py` | §3 | persistent per-asset live state (NEW / CHANGED / REMOVED / NO_CHANGE) |
+| `vendor_monitors.py` | §4–§8 | Cisco (NETCONF/RESTCONF/SNMPv3/telemetry), firewall, load balancer, PKI, HSM live monitors — HSM is metadata-only with a secret-material guard |
+| `cert_watcher.py` | §9 | universal certificate watcher (new/renewed/expired/revoked/algorithm/key-size/chain) |
+| `drift.py` | §10 | EXPECTED vs CURRENT drift → NO_CHANGE/EXPECTED/APPROVED/UNEXPECTED/CRYPTO_DRIFT/CRITICAL_CRYPTO_DRIFT |
+| `firmware.py` | §11 | firmware tracking with evidence-backed PQC recheck (never assumed) |
+| `fingerprint.py` | §12 | config fingerprints + crypto-relevant diff gating for deep scans |
+| `identity.py` | §13 | shared asset identity across network/vendor/cloud scanners |
+| `correlation.py` | §14, §18, §19 | vendor↔cloud edges, blast radius, one-incident alert correlation |
+| `pqc_live.py` | §15 | live PQC monitoring with six capability states + migration impact |
+| `health.py` | §20 | connector health (8 states) |
+| `offline.py` | §21 | local event queue + evidence store + secure sync for isolated networks |
+| `regions.py` | §22 | control plane + regional edges (UAE/EU/USA) that keep working offline |
+| `credentials.py` | §23 | credential references → vault → short-lived scoped access (never inside plugins) |
+| `plugin_runner.py` | §24, §25 | plugin sandbox (timeout/limits/scrubbing) + plugin lifecycle stages |
+| `cbom.py` | §26 | event-sourced live vendor CBOM (reuses `CbomGenerator` when present) |
+| `engine.py` | — | `LiveVendorEngine` orchestrator: collect → normalize → resolve → state → CBOM → graph → PQC |
+
+```python
+from universal_vendor import LiveVendorEngine
+from universal_vendor.live.vendor_monitors import CiscoLiveMonitor
+
+engine = LiveVendorEngine()
+engine.monitor.register(CiscoLiveMonitor(asset_id="r1", events=[
+    {"domain": "ipsec", "action": "modified", "detail": "esp-aes-256"},
+]))
+print(engine.tick())   # incremental 24/7 pass
+```
 
 ## Scan modes (§24)
 
@@ -91,5 +130,5 @@ manifest, plugin = load_plugin_package("my_vendor_plugin")
 ## Running tests
 
 ```bash
-python -m pytest tests/ -q   # 114 tests
+python -m pytest tests/ -q   # 175 tests (114 scan framework + 61 live engine)
 ```

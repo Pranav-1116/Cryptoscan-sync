@@ -38,10 +38,12 @@ def test_visibility_cover_spec_15():
     }
 
 
-def test_pqc_verdicts_cover_spec_22():
+def test_pqc_verdicts_cover_spec_22_and_15():
+    """§22 scan-time verdicts plus the §15 live capability state
+    PARTIALLY_SUPPORTED (e.g. PQ key exchange but no PQ signatures yet)."""
     assert {p.value for p in PqcCapability} == {
-        "PQC_SUPPORTED", "HYBRID_SUPPORTED", "ROADMAP_DECLARED",
-        "NOT_SUPPORTED", "UNKNOWN",
+        "PQC_SUPPORTED", "HYBRID_SUPPORTED", "PARTIALLY_SUPPORTED",
+        "ROADMAP_DECLARED", "NOT_SUPPORTED", "UNKNOWN",
     }
 
 

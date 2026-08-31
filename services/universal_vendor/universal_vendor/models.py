@@ -54,10 +54,16 @@ class Visibility(str, Enum):
 
 
 class PqcCapability(str, Enum):
-    """Spec §22 — vendor PQC readiness verdicts. Never inferred from a name."""
+    """Spec §22 + §15 — vendor PQC readiness verdicts. Never inferred from a name.
+
+    §22 scan-time verdicts: PQC_SUPPORTED, HYBRID_SUPPORTED, ROADMAP_DECLARED,
+    NOT_SUPPORTED, UNKNOWN. §15 live capability states add PARTIALLY_SUPPORTED
+    (e.g. PQ key exchange available but PQ signatures not yet).
+    """
 
     PQC_SUPPORTED = "PQC_SUPPORTED"
     HYBRID_SUPPORTED = "HYBRID_SUPPORTED"
+    PARTIALLY_SUPPORTED = "PARTIALLY_SUPPORTED"
     ROADMAP_DECLARED = "ROADMAP_DECLARED"
     NOT_SUPPORTED = "NOT_SUPPORTED"
     UNKNOWN = "UNKNOWN"

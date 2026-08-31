@@ -25,12 +25,14 @@ from universal_vendor.models import (
     Visibility,
 )
 from universal_vendor.plugin import UniversalVendorPlugin
+from universal_vendor.live.engine import LiveVendorEngine  # noqa: E402
 
 __all__ = [
     "ConnectionResult",
     "CryptoObservation",
     "DetectionResult",
     "LifecycleStatus",
+    "LiveVendorEngine",
     "PqcCapability",
     "ScanMode",
     "UniversalObservation",
