@@ -59,6 +59,7 @@ Nozomi, SAST), see
 | **Platform status matrix** — every planned capability (W37–60) vs. what ships, gaps named honestly | [docs/PLATFORM-STATUS.md](docs/PLATFORM-STATUS.md) |
 | **Live monitoring (24/7)** — watch-list daemon re-scans network/cloud/repo/container targets on intervals; backoff, alert-once, BLOCKED-honesty; live status API + dashboard view | `scripts/run_monitor.py`, `GET /api/v1/monitor/status`, [guide](docs/user-guide/live-monitoring.md) |
 | **Payment crypto (HSM/PCI/TR-39)** — payment-key inventory with ceremony provenance, HSM audit-trail ingestion (JSONL/syslog/CSV), TR-31 parsing, PAY-001..010 policy, PAYMENT monitor target, dashboard view | `POST /api/v1/payment-crypto/hsm-events`, [guide](docs/user-guide/payment-crypto.md) |
+| **Full-estate one-command scan** — source + containers/IaC + TLS/certs + OT (passive) through the real worker pipeline, exporting evidence pack, tamper-evident transfer, CycloneDX CBOM and compliance report (JSON/HTML/PDF) | `scripts/scan_estate.py`, `GET /api/v1/scans/{id}/report.pdf` |
 
 First boot bootstraps the `admin` user from `ADMIN_USERNAME`/`ADMIN_PASSWORD[_HASH]`; afterwards manage accounts through the API. Production startup fails closed on demo secrets, plaintext admin passwords, SQLite, and wildcard CORS.
 

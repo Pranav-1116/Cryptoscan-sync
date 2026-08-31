@@ -210,7 +210,7 @@ def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
     import network_scanner.core.scanner as scanner_mod
 
     def slow_probe(endpoint, *, timeout=5.0, sni=None, starttls=None, check_http=True, **kwargs):
-        time.sleep(0.3)
+        time.sleep(0.5)
         return {"endpoint": endpoint, "status": "OK", "policy_issues": [], "metadata": {}}
 
     monkeypatch.setattr(scanner_mod, "probe_endpoint", slow_probe)
@@ -220,7 +220,9 @@ def test_probe_all_runs_concurrently_and_keeps_order(monkeypatch):
     results = scanner._probe_all(endpoints)
     elapsed = time.monotonic() - started
     assert [row["endpoint"] for row in results] == endpoints  # order preserved
-    assert elapsed < 2.0  # serial would be 2.4s; pooled ~0.6s, bound tolerates scheduler jitter
+    # serial would be 8 * 0.5s = 4.0s; pooled ~0.6-1.0s. Bound 2.5s keeps a
+    # wide margin from serial even under loaded CI (was 2.0s and flaked at 2.26s)
+    assert elapsed < 2.5
 
 
 def test_scan_hosts_telemetry_verdicts(monkeypatch):

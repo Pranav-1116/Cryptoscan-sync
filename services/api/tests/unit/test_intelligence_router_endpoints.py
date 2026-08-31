@@ -189,3 +189,31 @@ async def test_import_rejects_tampered_payload(app_client):
     response = await app_client.post("/api/v1/scans/import",
                                      json=payload)
     assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_report_json_html_and_pdf(app_client):
+    report = await app_client.get("/api/v1/scans/scan-1/report?template=pci-dss-4.0")
+    assert report.status_code == 200
+    body = report.json()
+    assert body["scan"]["scan_id"] == "scan-1"
+    assert "totals" in body
+    assert "report_hash" in body  # present when a template evaluation is requested
+    assert "template_evaluation" in body
+
+    html = await app_client.get("/api/v1/scans/scan-1/report.html?template=pci-dss-4.0")
+    assert html.status_code == 200
+    assert html.headers["content-type"].startswith("text/html")
+    assert b"CryptoScan" in html.content
+
+    pdf = await app_client.get("/api/v1/scans/scan-1/report.pdf?template=pci-dss-4.0")
+    assert pdf.status_code == 200
+    assert pdf.headers["content-type"] == "application/pdf"
+    assert pdf.content[:5] == b"%PDF-"
+    assert pdf.headers["content-disposition"].startswith("attachment")
+
+
+@pytest.mark.asyncio
+async def test_report_pdf_missing_scan_404(app_client):
+    response = await app_client.get("/api/v1/scans/nope/report.pdf")
+    assert response.status_code == 404

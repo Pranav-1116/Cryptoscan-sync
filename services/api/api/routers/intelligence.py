@@ -578,3 +578,30 @@ def get_report_html(
         media_type="text/html",
         headers={"Content-Disposition": f'attachment; filename="cryptoscan-report-{scan_id}.html"'},
     )
+
+
+@router.get("/scans/{scan_id}/report.pdf")
+def get_report_pdf(
+    scan_id: str,
+    template: str | None = None,
+    requirements: str | None = None,
+    user: str = Depends(get_current_user),
+    scans: ScanRepository = Depends(get_scan_repository),
+    evidence: EvidenceRepository = Depends(get_evidence_repository),
+    drift: DriftRepository = Depends(get_drift_repository),
+):
+    """Deterministic PDF rendering of the compliance report (same content as
+    the JSON/HTML report; signing still applies to the JSON source of truth).
+    """
+    from reporting.pdf_export import render_report_pdf
+
+    try:
+        report = _rendered_report(scan_id, scans, evidence, drift, template, requirements)
+        payload = render_report_pdf(report)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return Response(
+        content=bytes(payload),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="cryptoscan-report-{scan_id}.pdf"'},
+    )
