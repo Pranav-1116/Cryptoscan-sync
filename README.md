@@ -35,6 +35,10 @@ The boundaries are a single source of truth
 (`shared_models/platform_scope.py`), served at `GET /api/v1/platform/scope`,
 enforced by tests, and documented in
 [docs/architecture/platform-boundaries.md](docs/architecture/platform-boundaries.md).
+For an honest feature-by-feature benchmark against real-world tools
+(Venafi/Keyfactor, SandboxAQ Cryptosense, Prowler, Trivy, testssl.sh,
+Nozomi, SAST), see
+[docs/architecture/real-world-comparison.md](docs/architecture/real-world-comparison.md).
 
 ## Operations (production hardening, 2026-08-26)
 
