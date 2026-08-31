@@ -3,7 +3,10 @@
 Vendor-neutral crypto + crypto-configuration discovery across every vendor
 category, per the ZELNX Universal Vendor Scanner spec (§1–§24) — plus the
 **24/7 Live Vendor Engine** (`universal_vendor/live/`, spec §1–§26) that
-monitors vendor infrastructure continuously.
+monitors vendor infrastructure continuously, and the **Universal Hardware
+Scanner** (`universal_vendor/hardware/`, spec §1–§25) that inventories and
+monitors physical hardware: servers, network, HSM/TPM/smart cards, storage,
+GPUs, virtualization, and OT/ICS — always read-only.
 
 ## What it does
 
@@ -35,7 +38,9 @@ fields are preserved verbatim in `vendor_specific` (§20) — nothing is lost.
 | `plugins/` | §2–§15 | 68 bundled vendor plugins across all 16 categories |
 | `sdk_template/` | §19 | copyable third-party plugin template |
 | `live/` | 24/7 §1–§26 | **live vendor engine** — see below |
-| `tests/` | — | 175 tests covering every component |
+| `hardware/` | HW §1–§25 | **universal hardware scanner** — see below |
+| `hardware/plugins/` | HW §25 | 30 hardware plugins (server/network/hsm/tpm/storage/gpu/virtualization/iot/industrial) |
+| `tests/` | — | 267 tests covering every component (scan framework + live engine + hardware scanner) |
 
 ## 24/7 Live Vendor Engine (`universal_vendor/live/`)
 
@@ -114,6 +119,65 @@ operator explicitly reviews and flips the flag.
   provider adapters (§14).
 - **EDR/SIEM are intelligence sources only** — no duplicated EDR behavior
   analytics; SIEM events feed crypto intelligence → evidence → Live CBOM.
+- **Hardware identity is never serial-dependent alone** — multi-signal
+  resolution (serial/MAC/UUID/tag/BMC/hostname/cloud) with ≥2 kinds → HIGH (§3).
+- **CPU/TPM/HSM/smart-card discovery is metadata only** — instruction-set
+  presence is a capability, not usage; secret material is refused by hard
+  assertions (§5–§8).
+- **OT/ICS scanning is passive-first**; ACTIVE/DEEP require approved scope,
+  and every scan passes the §23 safety gates (authorized scope, read-only,
+  rate limits, maintenance windows, kill switch).
+- **Cloud hardware honesty** — physical host knowledge is only reported when
+  the provider exposes it: OBSERVED / PROVIDER_DECLARED / INFERRED / UNKNOWN (§13).
+
+## Universal Hardware Scanner (`universal_vendor/hardware/`)
+
+A read-only hardware intelligence platform covering compute, network,
+security (HSM/TPM/smart card), storage, GPU and industrial/IoT hardware:
+
+| Module | Spec | Purpose |
+|---|---|---|
+| `models.py` | §1 | canonical `HardwareObservation` / `HardwareIdentity` + `HardwareType` (compute/network/security/storage/industrial), `DiscoveryMethod`, `HardwareConfidence`, `CloudVisibility`, `FirmwareComponent`, `HardwareDriftType` |
+| `plugin.py` | §25 | `UniversalHardwarePlugin` contract (detect/identify/inventory/discover_firmware/discover_crypto/discover_capabilities/collect_evidence/normalize/health_check) + registry by category/manufacturer + banner detection + secret scrubbing |
+| `discovery.py` | §2 | agent (DMI/PCI/USB/BMC) + network (SNMP/SSH/LLDP/CDP/passive) + API collectors; orchestrator merges by `asset_id`, higher confidence wins — never one source alone |
+| `fingerprint.py` | §4 | weighted multi-source fingerprinting (dmi/serial/bmc/snmp/api/firmware/mac/lldp/cdp/pci/usb/banner/cloud) → HIGH ≥1.8 / MEDIUM ≥0.9 / LOW; sha256 `FingerprintTracker` |
+| `identity.py` | §3 | multi-signal identity resolver (serial/MAC/UUID/tag/BMC/hostname/cloud) — ≥2 distinct kinds → HIGH; serial alone is never enough |
+| `cpu.py` | §5 | vendor/family/model/arch/extensions/cores/threads/microcode; AES/SHA/RNG/trusted-execution recorded as **capability**, never as usage |
+| `tpm.py` | §6 | TPM present/version/manufacturer/firmware/algorithms/PCR/secure-boot — metadata only, secret material refused; drift → `SECURITY_HARDWARE_DRIFT` |
+| `hsm_hw.py` | §7 | HSM hardware metadata + vendor HSM scanner integration + `HSM_CAPABILITY_CHANGED` / `FIRMWARE_CHANGED` / `CRYPTO_SUPPORT_CHANGED` / `CONFIGURATION_CHANGED` events; keys never extracted |
+| `smartcard.py` | §8 | smart card / secure element vendor/model/interface/firmware/algorithms/cert-references/app-deps — metadata only |
+| `firmware.py` | §9 | 11 monitored components (BIOS/UEFI/BMC/NIC/RAID/HBA/TPM/HSM/storage/appliance/GPU); change → targeted crypto re-evaluation hook |
+| `capabilities.py` | §10 | `CryptoCapabilityEngine` — supported-by-hardware strictly separate from actually-used-by-software; `CapabilityRegistry` by model |
+| `correlation.py` | §11–§13 | hardware→software chains, hardware→network (server→NIC→switch→FW→LB→app), cloud visibility OBSERVED/PROVIDER_DECLARED/INFERRED/UNKNOWN |
+| `lifecycle.py` | §14 | evidence-backed EOS/EOL/replacement/PQC; legacy HSM + no PQC + EOS → CRITICAL migration candidate; unverified → UNKNOWN |
+| `live.py` | §15–§17 | `LiveHardwareMonitor` sources, `HardwareStateEngine` (NEW/CHANGED/REMOVED + 24/7 fields), `HardwareDriftEngine` expected-vs-current |
+| `risk.py` | §18 | risk = criticality + crypto deps + age + firmware + PQC + exposure + replacement difficulty → CRITICAL ≥12 / HIGH ≥9 / MEDIUM ≥6 |
+| `hbom.py` | §19 | HBOM (hardware + firmware + security hardware) connected to CBOM/SBOM/live dependency graph |
+| `alert.py` | §21 | one root hardware change with child events — never four unrelated incidents |
+| `ot.py` | §22 | passive-first OT/ICS mode; SAFE/CAUTIOUS always allowed, ACTIVE/DEEP require approved scope |
+| `safety.py` | §23 | mandatory controls: authorized scope, exclusions, read-only, rate limits, connection limits, timeouts, vendor profiles, maintenance windows, audit log, kill switch; NEVER extract keys/secrets, bypass auth, modify configs, disable security controls |
+| `regions.py` | §24 | control plane → regional edges; offline: local durable queue → local evidence → central sync |
+| `evidence.py` (shared) | §20 | observation → canonical serialization → content hash → previous-evidence hash → chained evidence record |
+| `scanner.py` | — | `UniversalHardwareScanner` pipeline: discovery → fingerprint → evidence chain → HBOM → graph → PQC → lifecycle → risk |
+| `plugins/` | §25 | 30 concrete hardware plugins in `hardware_plugins/` by category |
+
+```python
+from universal_vendor.hardware.plugins import build_registry
+from universal_vendor.hardware.scanner import UniversalHardwareScanner
+
+scanner = UniversalHardwareScanner(plugins=build_registry())
+result = scanner.scan({
+    "dmi": {"serial": "SN-E2E", "product": "PowerEdge R740",
+            "bios_version": "2.10", "manufacturer": "Dell Inc."},
+    "bmc": {"firmware": "5.2"},
+    "cpu": {"vendor": "GenuineIntel",
+            "instruction_extensions": ["aes", "sha_ni", "rdrand"]},
+    "tpm": {"present": True, "version": "2.0",
+            "supported_algorithms": ["SHA-256", "RSA"]},
+    "asset_id": "srv-e2e",
+}, scan_id="scan-1")
+print(result["evidence_verification"]["chain_intact"], len(result["hbom"]["hardware"]))
+```
 
 ## Building a vendor plugin (§19)
 
@@ -130,5 +194,5 @@ manifest, plugin = load_plugin_package("my_vendor_plugin")
 ## Running tests
 
 ```bash
-python -m pytest tests/ -q   # 175 tests (114 scan framework + 61 live engine)
+python -m pytest tests/ -q   # 267 tests (scan framework + live engine + hardware scanner)
 ```
