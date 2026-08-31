@@ -23,7 +23,7 @@ class ExactMatcher:
                     patterns.append(rule.pattern)
                 for pattern in patterns:
                     if pattern:
-                        self.rule_map[str(pattern).upper()] = rule
+                        self.rule_map[str(pattern).strip().upper()] = rule
 
     def match(self, raw_algorithm: str) -> Optional[NormalizationRule]:
         if not raw_algorithm or not str(raw_algorithm).strip():

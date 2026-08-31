@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import ValidationError
 
 from normalization.models.normalization_rule import NormalizationRule
 
@@ -47,15 +46,16 @@ class RuleValidator:
       5. Pydantic NormalizationRule model validates successfully
     """
 
-    def validate_file(self, rule_file: Path) -> NormalizationRule:
+    def validate_file(self, rule_file: Path) -> list[NormalizationRule]:
         """
-        Parse and validate a single YAML rule file.
+        Parse and validate a YAML rule file (single- or multi-document).
 
         Args:
             rule_file: Path to the YAML rule file.
 
         Returns:
-            Validated NormalizationRule instance.
+            List of validated NormalizationRule instances — one per YAML
+            document, matching the loader's multi-document support.
 
         Raises:
             RuleValidationError: If validation fails for any reason.
@@ -66,38 +66,47 @@ class RuleValidator:
         if rule_file.suffix not in {".yaml", ".yml"}:
             raise RuleValidationError(rule_file, f"Unexpected file extension '{rule_file.suffix}'")
 
-        # Step 1: Parse YAML
+        # Step 1: Parse YAML (safe_load_all — rule files may carry several
+        # documents separated by `---`, exactly like the rule loader).
         try:
-            raw_data = yaml.safe_load(rule_file.read_text(encoding="utf-8"))
+            documents = list(yaml.safe_load_all(rule_file.read_text(encoding="utf-8")))
         except yaml.YAMLError as exc:
             raise RuleValidationError(rule_file, f"YAML parse error: {exc}") from exc
 
-        if not isinstance(raw_data, dict):
-            raise RuleValidationError(rule_file, "YAML root must be a mapping (dict)")
+        rules: list[NormalizationRule] = []
+        for raw_data in documents:
+            if raw_data is None:
+                continue
+            if not isinstance(raw_data, dict):
+                raise RuleValidationError(rule_file, "YAML document must be a mapping (dict)")
 
-        # Step 2: Required top-level keys
-        self._check_required_keys(rule_file, raw_data, _REQUIRED_KEYS)
+            # Step 2: Required top-level keys
+            self._check_required_keys(rule_file, raw_data, _REQUIRED_KEYS)
 
-        # Step 3: raw_patterns validation
-        self._validate_raw_patterns(rule_file, raw_data.get("raw_patterns"))
+            # Step 3: raw_patterns validation
+            self._validate_raw_patterns(rule_file, raw_data.get("raw_patterns"))
 
-        # Step 4: normalized_output validation
-        self._validate_normalized_output(rule_file, raw_data.get("normalized_output"))
+            # Step 4: normalized_output validation
+            self._validate_normalized_output(rule_file, raw_data.get("normalized_output"))
 
-        # Step 5: Pydantic model validation
-        try:
-            rule = NormalizationRule.model_validate(raw_data)
-        except ValidationError as exc:
-            raise RuleValidationError(
-                rule_file,
-                f"Pydantic validation failed:\n{exc}",
-            ) from exc
+            # Step 5: model validation (NormalizationRule is a dataclass — the
+            # constructor performs the same pattern/output consistency checks).
+            try:
+                rules.append(NormalizationRule(**raw_data))
+            except (TypeError, ValueError) as exc:
+                raise RuleValidationError(
+                    rule_file,
+                    f"Model validation failed:\n{exc}",
+                ) from exc
+
+        if not rules:
+            raise RuleValidationError(rule_file, "No rule documents found in file")
 
         logger.debug(
-            "Rule validated successfully",
-            extra={"rule_id": rule.rule_id, "file": rule_file.name},
+            "Rule file validated successfully",
+            extra={"count": len(rules), "file": rule_file.name},
         )
-        return rule
+        return rules
 
     def validate_directory(self, rules_dir: Path) -> list[NormalizationRule]:
         """
@@ -128,8 +137,7 @@ class RuleValidator:
 
         for rule_file in yaml_files:
             try:
-                rule = self.validate_file(rule_file)
-                rules.append(rule)
+                rules.extend(self.validate_file(rule_file))
             except RuleValidationError as exc:
                 errors.append(str(exc))
                 logger.error("Rule validation failed: %s", exc)

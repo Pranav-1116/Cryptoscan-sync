@@ -31,10 +31,14 @@ class RuleRegistry:
         self._rules_by_severity: Dict[str, List[PolicyRule]] = {
             s.value: [] for s in Severity
         }
-        
+
         for rule in self.rules:
             self._rules_by_id[rule.rule_id] = rule
-            self._rules_by_severity[rule.severity.value].append(rule)
+            # PolicyRule.severity is a plain str field; accept enums too so
+            # callers that construct with Severity members keep working.
+            severity = getattr(rule.severity, "value", None) or str(rule.severity).upper()
+            bucket = self._rules_by_severity.setdefault(severity, [])
+            bucket.append(rule)
 
     def get_rule(self, rule_id: str) -> Optional[PolicyRule]:
         """

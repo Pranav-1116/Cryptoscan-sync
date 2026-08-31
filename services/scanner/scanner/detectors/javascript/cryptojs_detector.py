@@ -1,5 +1,5 @@
 """Spec-named alias of the CryptoJS detector."""
 
-from scanner.detectors.javascript.crypto_js_detector import CryptoJsDetector, detect
+from scanner.detectors.javascript.crypto_js_detector import detect
 
-__all__ = ["CryptoJsDetector", "detect"]
+__all__ = ["detect"]

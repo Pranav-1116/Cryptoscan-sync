@@ -94,7 +94,16 @@ class RuleLoader:
         
         if not data:
             raise ValueError(f"Empty YAML file: {file_path}")
-        
+
+        # Coerce scalar types that YAML parses differently than the model
+        # expects: `version: 1.0` becomes float, `effective_date: 2024-01-01`
+        # becomes a date — both must be strings for PolicyRule.
+        if data.get("version") is not None and not isinstance(data["version"], str):
+            data["version"] = str(data["version"])
+        if data.get("effective_date") is not None and not isinstance(data["effective_date"], str):
+            data["effective_date"] = data["effective_date"].isoformat() \
+                if hasattr(data["effective_date"], "isoformat") else str(data["effective_date"])
+
         # Parse into PolicyRule (Pydantic will validate)
         rule = PolicyRule(**data)
         

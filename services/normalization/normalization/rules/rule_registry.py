@@ -93,9 +93,16 @@ class RuleRegistry:
     ) -> None:
         """Register multiple rules. Atomic: all succeed or none registered."""
         with self._lock:
-            # Validate all before registering any
-            for rule in rules:
-                self.register(rule, overwrite=overwrite)
+            snapshot_ids = dict(self._rules_by_id)
+            snapshot_patterns = dict(self._rules_by_pattern)
+            try:
+                for rule in rules:
+                    self.register(rule, overwrite=overwrite)
+            except Exception:
+                # Roll back the partial registration so the batch is atomic.
+                self._rules_by_id = snapshot_ids
+                self._rules_by_pattern = snapshot_patterns
+                raise
 
     # ── Lookup ───────────────────────────────────────────────────────
 
