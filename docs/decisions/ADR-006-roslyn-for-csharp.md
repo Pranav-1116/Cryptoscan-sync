@@ -3,6 +3,7 @@
 ## Status
 
 Deferred. Regex parser is the Part 2 implementation.
+**Updated 2026-08-31:** tree-sitter (`CRYPTOSCAN_TREE_SITTER=1`) now provides the optional deep-parse pass for C#; Roslyn (.NET SDK) remains out of scope.
 
 ## Context
 

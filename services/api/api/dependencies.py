@@ -212,9 +212,15 @@ def _user_roles(username: str, token: str | None) -> list[str]:
 def require_roles(*allowed: str):
     """Dependency factory: allow only bearers holding one of `allowed` roles.
 
-    Tokens without any known role (e.g. legacy env-admin sessions) are treated
-    as admins to stay backward compatible with single-admin deployments.
+    Roles are normalized through the 8-role catalog (api.security.rbac), so
+    legacy ``admin``/``viewer`` values are equivalent to ``superadmin``/
+    ``readonly`` everywhere. Tokens without any known role (e.g. legacy
+    env-admin sessions) are treated as admins to stay backward compatible
+    with single-admin deployments.
     """
+    from api.security.rbac import normalize_roles
+
+    allowed_norm = set(normalize_roles(list(allowed)))
 
     def dependency(request: Request) -> str:
         api_key = _resolve_api_key(request)
@@ -227,7 +233,7 @@ def require_roles(*allowed: str):
         if isinstance(api_key, tuple):
             principal, key_roles, _key_id = api_key
             # Key roles are explicit: no legacy "no roles => admin" fallback.
-            if set(key_roles) & set(allowed):
+            if set(normalize_roles(list(key_roles))) & allowed_norm:
                 return principal
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -247,8 +253,8 @@ def require_roles(*allowed: str):
                 detail="Invalid or revoked token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        roles = _user_roles(username, token)
-        if not roles or set(roles) & set(allowed):
+        roles = normalize_roles(_user_roles(username, token))
+        if not roles or set(roles) & allowed_norm:
             return username
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

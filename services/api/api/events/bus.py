@@ -67,6 +67,7 @@ class EventBus:
         self._history: deque[dict[str, Any]] = deque(maxlen=history_size)
         self._subs: list[Subscription] = []
         self._counter = itertools.count(1)
+        self._published_total = 0
 
     # ------------------------------------------------------------- publishing
 
@@ -86,6 +87,7 @@ class EventBus:
         }
         with self._lock:
             self._history.append(event)
+            self._published_total += 1
             subs = list(self._subs)
         for sub in subs:
             sub.deliver(event)
@@ -127,7 +129,12 @@ class EventBus:
                 "events_buffered": len(self._history),
                 "subscribers": len(self._subs),
                 "latest_id": self._history[-1]["id"] if self._history else 0,
+                "published_total": self._published_total,
             }
+
+    def published_total(self) -> int:
+        with self._lock:
+            return self._published_total
 
 
 _BUS: EventBus | None = None

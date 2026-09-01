@@ -869,6 +869,66 @@ class PipelineRunner:
                     "algorithm": change.affected_algorithm,
                 }
             )
+
+        # Configuration drift (Drift v2.0): first-class CONFIG_* events from
+        # crypto *settings* in deploy/config files, compared against the same
+        # approved baseline. Facts carry only normalized values — secrets are
+        # represented by length + truncated hash, never by their value.
+        try:
+            from drift.core.config_detector import detect_config_drift
+            from drift.core.config_facts import extract_config_facts
+
+            def as_config_findings(scan_id: str) -> list[dict]:
+                rows = list(
+                    session.execute(
+                        select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)
+                    ).scalars()
+                )
+                payloads = []
+                for r in rows:
+                    payload = dict(r.finding_data or {})
+                    payload.update(
+                        {
+                            "algorithm": r.algorithm,
+                            "key_size": r.key_size,
+                            "mode": r.mode,
+                            "purpose": r.purpose,
+                            "file_path": r.file_path,
+                            "line_number": r.line_number,
+                            "is_hardcoded_key": r.is_hardcoded_key,
+                        }
+                    )
+                    payloads.append(payload)
+                return payloads
+
+            baseline_facts = extract_config_facts(as_config_findings(baseline.approved_scan_id))
+            current_facts = extract_config_facts(as_config_findings(ctx.scan_id or ""))
+            for change in detect_config_drift(baseline_facts, current_facts).changes:
+                details = dict(change.to_event_dict())
+                details["change_type"] = change.change_type
+                session.add(
+                    DriftEvent(
+                        baseline_id=baseline.id,
+                        current_scan_id=ctx.scan_id or "",
+                        detected_at=now,
+                        drift_type=change.change_type,
+                        severity=change.severity,
+                        drift_details=details,
+                        resolution_status="OPEN",
+                    )
+                )
+                events.append(
+                    {
+                        "drift_type": change.change_type,
+                        "severity": change.severity,
+                        "reason": change.reason,
+                        "algorithm": change.algorithm,
+                        "config_key": change.config_key,
+                    }
+                )
+        except Exception:
+            logger.debug("config_drift_skipped", exc_info=True)
+
         ctx.drift_events = events
         session.flush()
         logger.info("stage_drift_done", extra={"events": len(events)})

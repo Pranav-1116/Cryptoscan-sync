@@ -84,7 +84,10 @@ def _sign_cryptography(data: bytes, private_pem: bytes) -> bytes:
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import padding
 
-    key = serialization.load_pem_private_key(private_pem, password=None)
+    try:
+        key = serialization.load_pem_private_key(private_pem, password=None)
+    except (ValueError, TypeError) as exc:  # garbage / truncated / wrong format
+        raise SigningError(f"could not load private key: {exc}") from exc
     return key.sign(data, padding.PKCS1v15(), hashes.SHA256())
 
 
@@ -92,7 +95,10 @@ def _verify_cryptography(data: bytes, signature: bytes, public_pem: bytes) -> No
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import padding
 
-    key = serialization.load_pem_public_key(public_pem)
+    try:
+        key = serialization.load_pem_public_key(public_pem)
+    except (ValueError, TypeError) as exc:  # garbage / truncated / wrong format
+        raise SigningError(f"could not load public key: {exc}") from exc
     key.verify(signature, data, padding.PKCS1v15(), hashes.SHA256())  # raises on mismatch
 
 

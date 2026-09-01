@@ -229,6 +229,28 @@ class CbomGenerator:
         signed["metadata"] = metadata
         return signed
 
+    def sign_jws(
+        self,
+        bom: dict[str, Any],
+        private_key,
+        alg: str = "RS256",
+        *,
+        key_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Sign with a real RFC 7515 JWS (RS256/ES256/HS256) over the
+        canonical BOM body. ``private_key`` is a PEM string/bytes or a
+        ``cryptography`` private key object."""
+        from cbom.signing.jws_signer import sign_cbom_jws
+
+        return sign_cbom_jws(bom, private_key, alg=alg, key_id=key_id)
+
+    def verify_jws(self, bom: dict[str, Any], public_key) -> tuple[bool, str]:
+        """Verify a JWS-signed BOM with a public key (or shared secret for
+        HS256). Returns (ok, error)."""
+        from cbom.signing.jws_signer import verify_cbom_jws
+
+        return verify_cbom_jws(bom, public_key)
+
     def verify(self, bom: dict[str, Any], secret: str | dict[str, str]) -> bool:
         """True iff the BOM carries a valid signature (JWS, or legacy HMAC)."""
         return self.verify_report(bom, secret)["ok"]

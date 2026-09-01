@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -60,6 +60,7 @@ class MonitorLease(BaseModel):
 
 class MonitorEvent(BaseModel):
     __tablename__ = "monitor_events"
+    __table_args__ = (Index("ix_monitor_events_created_at", "created_at"),)  # realtime replay
 
     target_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("monitor_targets.id", ondelete="SET NULL"), nullable=True, index=True

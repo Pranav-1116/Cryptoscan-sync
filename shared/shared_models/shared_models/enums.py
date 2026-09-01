@@ -56,6 +56,12 @@ class DriftType(str, Enum):
     MOVED = "MOVED"
     UPGRADED = "UPGRADED"
     DOWNGRADED = "DOWNGRADED"
+    # Configuration drift (Drift v2.0): crypto *settings* in deploy/config
+    # files (TLS versions, cipher suites, secrets, Terraform KMS specs).
+    CONFIG_ADDED = "CONFIG_ADDED"
+    CONFIG_REMOVED = "CONFIG_REMOVED"
+    CONFIG_CHANGED = "CONFIG_CHANGED"
+    CONFIG_DEGRADED = "CONFIG_DEGRADED"
 
 
 class DriftSeverity(str, Enum):

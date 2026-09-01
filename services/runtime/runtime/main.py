@@ -74,6 +74,17 @@ def _cmd_import(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_trace(args: argparse.Namespace) -> int:
+    from runtime.agent.preload_trace import trace_command
+
+    result = trace_command(args.command, log_path=args.log)
+    import json as _json
+
+    print(_json.dumps(result["findings"], indent=2))
+    print(f"# returncode={result['returncode']}", file=sys.stderr)
+    return 0
+
+
 def _cmd_once(args: argparse.Namespace) -> int:
     from runtime.agent.process_discovery import scan_processes
     from runtime.config.settings import load_settings
@@ -117,6 +128,15 @@ def build_parser() -> argparse.ArgumentParser:
     once.add_argument("--base", default=None)
     once.add_argument("--submit", action="store_true")
     once.set_defaults(func=_cmd_once)
+
+    trace = sub.add_parser(
+        "trace",
+        help="run a command under the LD_PRELOAD crypto-call tracer "
+        "(ADR-012 runtime visibility)",
+    )
+    trace.add_argument("--log", default=None, help="path to write the JSONL trace log")
+    trace.add_argument("command", nargs=argparse.REMAINDER, help="-- <command> [args...]")
+    trace.set_defaults(func=_cmd_trace)
 
     return parser
 

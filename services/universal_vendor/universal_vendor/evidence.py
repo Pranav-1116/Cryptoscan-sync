@@ -26,11 +26,20 @@ def build_evidence_chain(
     observations: Iterable[dict[str, Any]],
     *,
     scan_id: str,
+    start_index: int = 0,
+    previous_hash: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """Chain observations into tamper-evident evidence records."""
+    """Chain observations into tamper-evident evidence records.
+
+    ``start_index`` and ``previous_hash`` let callers extend an existing
+    chain incrementally (e.g. the 24/7 edge agent appending one event at a
+    time): pass the current record count and the last chain hash to keep
+    the linkage continuous. Defaults preserve the original behavior.
+    """
     records: list[dict[str, Any]] = []
-    previous: Optional[str] = None
-    for index, obs in enumerate(observations):
+    previous = previous_hash
+    for offset, obs in enumerate(observations):
+        index = start_index + offset
         body = {"index": index, "observation": obs}
         chash = content_hash(body)
         chain_input = f"{chash}{previous or scan_id}"
@@ -55,7 +64,10 @@ def verify_evidence_chain(records: Iterable[dict[str, Any]], *, scan_id: str) ->
     errors: list[str] = []
     previous: Optional[str] = None
     for index, record in enumerate(rows):
-        body = {"index": index, "observation": record.get("observation")}
+        # incremental chains store their own absolute position; use it when
+        # present so per-record appends verify against their original bodies
+        body = {"index": record.get("chain_position", index),
+                "observation": record.get("observation")}
         expected_hash = content_hash(body)
         if record.get("content_hash") != expected_hash:
             errors.append(f"content_hash mismatch at position {index}")

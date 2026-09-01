@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "CryptoScan dashboard is served as a static SPA from index.html by the API.",
   "scripts": {
-    "dev": "python3 -m http.server 3000",
+    "dev": "python3 -m http.server 3003",
     "build": "mkdir -p dist && cp index.html dist/index.html"
   }
 }

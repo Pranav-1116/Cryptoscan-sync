@@ -121,6 +121,12 @@ class CertificateRepository(BaseRepository[Certificate]):
         self.session.flush()
         return row
 
+    def get_by_fingerprint(self, fingerprint: str) -> Certificate | None:
+        """Look up one certificate by its SHA-256 fingerprint."""
+        return self.session.execute(
+            select(Certificate).where(Certificate.fingerprint_sha256 == fingerprint)
+        ).scalar_one_or_none()
+
     def list_all(self, *, expiring_days: int | None = None) -> list[Certificate]:
         rows = list(self.session.execute(select(Certificate)).scalars())
         rows.sort(key=lambda row: (row.days_until_expiry is None, row.days_until_expiry or 0))

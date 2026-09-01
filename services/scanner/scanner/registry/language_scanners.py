@@ -16,6 +16,7 @@ from scanner.parsers.php_parser import parse_php_file
 from scanner.parsers.python_parser import parse_python_file
 from scanner.parsers.ruby_parser import parse_ruby_file
 from scanner.parsers.rust_parser import parse_rust_file
+from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
 
 JAVA_EXT = {".java"}
 KOTLIN_EXT = {".kt", ".kts"}
@@ -48,7 +49,18 @@ PARSERS = (
 
 def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
     suffix = path.suffix.lower()
+    findings: list[RawFinding] = []
     for extensions, parser in PARSERS:
         if suffix in extensions:
-            return parser(path, repo_root)
-    return []
+            findings = parser(path, repo_root)
+            break
+    # Deep-parser pass (tree-sitter CST walker) — opt-in via
+    # CRYPTOSCAN_TREE_SITTER=1; adds findings, never replaces the
+    # deterministic baseline parsers.
+    if tree_sitter_enabled():
+        from scanner.parsers.tree_sitter_scanner import scan_tree_sitter_file
+
+        extra = scan_tree_sitter_file(path, repo_root)
+        if extra:
+            findings = findings + extra
+    return findings

@@ -14,7 +14,7 @@ proven against real infrastructure before production:
   container build the bundled demo image and scan it (requires Docker)
 
 Usage:
-    python scripts/burn_in.py --target github --api http://127.0.0.1:8000
+    python scripts/burn_in.py --target github --api http://127.0.0.1:8010
     python scripts/burn_in.py --target tls --host example.com --port 443
     python scripts/burn_in.py --target smtp --smtp-host 127.0.0.1 --smtp-port 1025
     python scripts/burn_in.py --target all
@@ -344,7 +344,7 @@ def main() -> int:
     parser.add_argument("--target", action="append", default=None,
                         choices=["all", "github", "tls", "smtp", "neo4j", "cloud", "container"],
                         help="repeatable; --target all runs everything")
-    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8000"))
+    parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8010"))
     parser.add_argument("--username", default=os.environ.get("ADMIN_USERNAME", "admin"))
     parser.add_argument("--password", default=os.environ.get("ADMIN_PASSWORD", "cryptoscan"))
     parser.add_argument("--webhook-secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", "dev-webhook-secret-change-me-32chars!!"))

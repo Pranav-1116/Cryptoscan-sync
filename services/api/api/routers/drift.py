@@ -38,11 +38,17 @@ def list_drift(
     severity: str | None = None,
     status: str | None = None,
     scan_id: str | None = None,
+    drift_type: str | None = Query(None, description="Filter by drift type, e.g. CONFIG_CHANGED"),
     user: str = Depends(get_current_user),
     repo: DriftRepository = Depends(get_drift_repository),
 ):
     rows, total = repo.list_events(
-        severity=severity, status=status, scan_id=scan_id, page=page, page_size=page_size
+        severity=severity,
+        status=status,
+        scan_id=scan_id,
+        drift_type=drift_type,
+        page=page,
+        page_size=page_size,
     )
     return DriftListResponse(
         events=[_to_response(r) for r in rows],

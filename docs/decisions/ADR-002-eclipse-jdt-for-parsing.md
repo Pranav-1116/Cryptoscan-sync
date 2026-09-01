@@ -3,6 +3,7 @@
 ## Status
 
 Accepted for Part 1 production path; regex fallback is the supported default.
+**Updated 2026-08-31:** an opt-in tree-sitter CST parser (`CRYPTOSCAN_TREE_SITTER=1`, `tree-sitter-scanner-v1.0`) now also covers Java alongside the regex default; the JDT/JVM runtime remains out of scope.
 
 ## Context
 

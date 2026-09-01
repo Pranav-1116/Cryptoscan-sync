@@ -228,10 +228,20 @@ class FirmwareState:
 
 @dataclass
 class HardwareState:
+    """Live 24/7 hardware state (§3 of the live spec).
+
+    The database row built from this is the current truth of the observed
+    environment; ``previous_state`` preserves the prior snapshot so every
+    change is reconstructable (and the timeline engine can replay it).
+    """
+
     asset_id: str
     manufacturer: str = ""
     model: str = ""
     device_type: str = HardwareType.OTHER.value
+    serial_reference: Optional[str] = None
+    hardware_revision: Optional[str] = None
+    agent_id: Optional[str] = None
     current_fingerprint: Optional[str] = None
     previous_fingerprint: Optional[str] = None
     first_seen: Optional[str] = None
@@ -243,11 +253,17 @@ class HardwareState:
     evidence_history: list[str] = field(default_factory=list)
     firmware: dict[str, str] = field(default_factory=dict)   # component -> version
     tpm: Optional[dict[str, Any]] = None
+    hsm: Optional[dict[str, Any]] = None
     capabilities: Optional[dict[str, Any]] = None
+    crypto_capabilities: Optional[dict[str, Any]] = None
+    previous_state: Optional[dict[str, Any]] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {"asset_id": self.asset_id, "manufacturer": self.manufacturer,
                 "model": self.model, "device_type": self.device_type,
+                "serial_reference": self.serial_reference,
+                "hardware_revision": self.hardware_revision,
+                "agent_id": self.agent_id,
                 "current_fingerprint": self.current_fingerprint,
                 "previous_fingerprint": self.previous_fingerprint,
                 "first_seen": self.first_seen, "last_seen": self.last_seen,
@@ -257,7 +273,10 @@ class HardwareState:
                 "last_change": self.last_change,
                 "evidence_history": list(self.evidence_history),
                 "firmware": dict(self.firmware),
-                "tpm": self.tpm, "capabilities": self.capabilities}
+                "tpm": self.tpm, "hsm": self.hsm,
+                "capabilities": self.capabilities,
+                "crypto_capabilities": self.crypto_capabilities,
+                "previous_state": self.previous_state}
 
 
 # ── Canonical hardware observation ─────────────────────────────────────

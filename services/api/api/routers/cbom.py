@@ -78,7 +78,26 @@ def _render(bom: dict, fmt: str, signed: bool):
                 detail="CBOM signing requested but no signing key is configured "
                 "(set CRYPTOSCAN_CBOM_SECRET)",
             )
-        bom = generator.sign(bom, secret, key_id=key_id)
+        # Asymmetric JWS (spec §23–24: real JWS, not HMAC): configure
+        # CRYPTOSCAN_CBOM_SIGN_ALG=rs256|es256 plus a PEM private key path
+        # in CRYPTOSCAN_CBOM_PRIVATE_KEY (or the PEM literal itself). Falls
+        # back to the legacy HS256 path when no private key is configured.
+        sign_alg = (os.environ.get("CRYPTOSCAN_CBOM_SIGN_ALG") or "hmac").lower()
+        private_key_path = os.environ.get("CRYPTOSCAN_CBOM_PRIVATE_KEY", "")
+        if sign_alg in {"rs256", "es256"} and private_key_path:
+            from pathlib import Path
+
+            from cbom.signing.jws_signer import SUPPORTED_ALGS
+
+            pem = (
+                private_key_path
+                if "-----BEGIN" in private_key_path
+                else Path(private_key_path).read_text(encoding="utf-8")
+            )
+            alg = "RS256" if sign_alg == "rs256" else "ES256"
+            bom = generator.sign_jws(bom, pem, alg=alg, key_id=key_id or sign_alg.upper())
+        else:
+            bom = generator.sign(bom, secret, key_id=key_id)
     if fmt == "xml":
         return Response(content=generator.to_xml(bom), media_type="application/xml")
     return JSONResponse(bom)

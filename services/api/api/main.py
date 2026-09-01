@@ -29,10 +29,12 @@ from api.routers import (
     business,
     business_context,
     cbom,
+    certificates,
     cloud,
     cloud_scans,
     container,
     container_scans,
+    crypto,
     drift,
     estate,
     events,
@@ -40,6 +42,7 @@ from api.routers import (
     export,
     findings,
     graph,
+    hardware,
     health,
     intelligence,
     jobs,
@@ -119,15 +122,21 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
                 logger.warning("admin_bootstrap_skipped", exc_info=True)
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         tailer_task = None
+        telemetry_task = None
         if settings.EVENT_TAILER_SECONDS > 0 and settings.ENVIRONMENT.lower() not in {"test", "testing"}:
-            from api.routers.events import start_event_tailer
+            from api.routers.events import start_event_tailer, start_telemetry_heartbeat
 
             tailer_task = start_event_tailer(settings.EVENT_TAILER_SECONDS)
             if tailer_task is not None:
                 logger.info("event_tailer_started", extra={"interval": settings.EVENT_TAILER_SECONDS})
+            telemetry_task = start_telemetry_heartbeat()
+            if telemetry_task is not None:
+                logger.info("telemetry_heartbeat_started")
         yield
         if tailer_task is not None:
             tailer_task.cancel()
+        if telemetry_task is not None:
+            telemetry_task.cancel()
         logger.info("cryptoscan_api_stopped")
 
     app = FastAPI(
@@ -197,6 +206,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(trigger.router, prefix=prefix)
     app.include_router(webhooks.router, prefix=prefix)
     app.include_router(repo_configs.router, prefix=prefix)
+    app.include_router(hardware.router, prefix=prefix)
+    app.include_router(crypto.router, prefix=prefix)
     app.include_router(health.router, prefix=prefix)
     app.include_router(export.router, prefix=prefix)
     app.include_router(assets.router, prefix=prefix)
@@ -212,6 +223,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(intelligence.router, prefix=prefix)
     app.include_router(network.router, prefix=prefix)
     app.include_router(network_scans.router, prefix=prefix)
+    app.include_router(certificates.router, prefix=prefix)
     app.include_router(cloud.router, prefix=prefix)
     app.include_router(cloud_scans.router, prefix=prefix)
     app.include_router(estate.router, prefix=prefix)
@@ -261,7 +273,7 @@ def run() -> None:
     uvicorn.run(
         "api.main:app",
         host=settings.API_HOST or "0.0.0.0",
-        port=int(settings.API_PORT or 8000),
+        port=int(settings.API_PORT or 8010),
         reload=False,
     )
 

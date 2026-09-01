@@ -27,8 +27,8 @@ class APISettings(BaseSettings):
 
     HOST: str = "0.0.0.0"
     API_HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    API_PORT: int = 8000
+    PORT: int = 8010
+    API_PORT: int = 8010
     ENVIRONMENT: str = "development"
     LOG_LEVEL: str = "INFO"
     API_VERSION: str = "1.0.0"

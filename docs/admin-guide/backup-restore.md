@@ -55,7 +55,7 @@ Use `--force` only for forensics on partially damaged files.
 ## Post-restore checklist
 
 1. Restart API and worker (`make api`, `make worker` or `docker compose up -d api worker`).
-2. `curl -s localhost:8000/health` → `{"status":"healthy"}`.
+2. `curl -s localhost:8010/health` → `{"status":"healthy"}`.
 3. Verify chain on recent scans: `python scripts/verify_evidence.py <scan_id>` (exit 0 = PASS).
 4. Confirm drift baselines survived: `GET /api/v1/baselines` (as admin).
 5. If Neo4j was restored/rebuilt: `python scripts/populate_graph.py`.

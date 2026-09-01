@@ -3,6 +3,7 @@
 ## Status
 
 Deferred. Regex parser is the Part 2 implementation.
+**Updated 2026-08-31:** tree-sitter shipped as an **opt-in deep parser** (`CRYPTOSCAN_TREE_SITTER=1`, `tree-sitter-scanner-v1.0`) for JS/TS and 8 further languages; the regex parser remains the default path and the RawFinding schema is unchanged.
 
 ## Context
 

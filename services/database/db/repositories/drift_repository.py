@@ -21,6 +21,7 @@ class DriftRepository(BaseRepository[DriftEvent]):
         severity: str | None = None,
         status: str | None = None,
         scan_id: str | None = None,
+        drift_type: str | None = None,
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[DriftEvent], int]:
@@ -29,6 +30,9 @@ class DriftRepository(BaseRepository[DriftEvent]):
         if severity:
             stmt = stmt.where(DriftEvent.severity == severity)
             count_stmt = count_stmt.where(DriftEvent.severity == severity)
+        if drift_type:
+            stmt = stmt.where(DriftEvent.drift_type == drift_type)
+            count_stmt = count_stmt.where(DriftEvent.drift_type == drift_type)
         if status:
             stmt = stmt.where(DriftEvent.resolution_status == status)
             count_stmt = count_stmt.where(DriftEvent.resolution_status == status)

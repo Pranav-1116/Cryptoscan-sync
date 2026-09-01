@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable
 
-DEFAULT_URL = "http://localhost:8000"
+DEFAULT_URL = "http://localhost:8010"
 
 
 class Result:

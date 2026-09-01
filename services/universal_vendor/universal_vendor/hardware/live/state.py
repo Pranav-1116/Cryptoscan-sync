@@ -27,10 +27,48 @@ from universal_vendor.hardware.models import (
 )
 from universal_vendor.hardware.tpm import TpmInfo, TpmScanner
 
+# Full canonical taxonomy (§2 of the 24/7 live-hardware spec) plus the
+# legacy names (DEVICE_ADDED / DEVICE_REMOVED) kept for backward
+# compatibility. TPM (§8) and HSM (§9) lifecycle events are included.
 _HARDWARE_EVENT_TYPES = (
-    "DEVICE_ADDED", "DEVICE_REMOVED", "FIRMWARE_CHANGED", "HARDWARE_CHANGED",
-    "TPM_CHANGED", "HSM_CHANGED", "NIC_CHANGED", "CRYPTO_CAPABILITY_CHANGED",
+    # §2 discovery / lifecycle
+    "HARDWARE_DISCOVERED", "HARDWARE_REMOVED", "HARDWARE_REPLACED",
+    "HARDWARE_CHANGED", "HARDWARE_CAPABILITY_CHANGED",
+    # §2 firmware / component changes
+    "FIRMWARE_CHANGED", "BIOS_CHANGED", "UEFI_CHANGED", "BMC_CHANGED",
+    "NIC_CHANGED", "STORAGE_CHANGED",
+    # §2 crypto capability
+    "CRYPTO_CAPABILITY_CHANGED",
+    # §8 TPM lifecycle
+    "TPM_CHANGED", "TPM_AVAILABLE", "TPM_UNAVAILABLE",
+    "TPM_CONFIGURATION_CHANGED", "TPM_FIRMWARE_CHANGED",
+    # §9 HSM lifecycle
+    "HSM_CHANGED", "HSM_ONLINE", "HSM_OFFLINE",
+    "HSM_CAPABILITY_CHANGED", "HSM_CONFIGURATION_CHANGED",
+    # legacy aliases
+    "DEVICE_ADDED", "DEVICE_REMOVED",
 )
+
+# Legacy -> canonical event names (both accepted on ingest).
+_EVENT_ALIASES = {
+    "DEVICE_ADDED": "HARDWARE_DISCOVERED",
+    "DEVICE_REMOVED": "HARDWARE_REMOVED",
+}
+
+# Events that imply the crypto surface of the device must be re-checked.
+_CRYPTO_AFFECTING_EVENTS = frozenset({
+    "CRYPTO_CAPABILITY_CHANGED", "HARDWARE_CAPABILITY_CHANGED",
+    "TPM_CHANGED", "TPM_AVAILABLE", "TPM_UNAVAILABLE",
+    "TPM_CONFIGURATION_CHANGED", "TPM_FIRMWARE_CHANGED",
+    "HSM_CHANGED", "HSM_ONLINE", "HSM_OFFLINE",
+    "HSM_CAPABILITY_CHANGED", "HSM_CONFIGURATION_CHANGED",
+    "BIOS_CHANGED", "UEFI_CHANGED", "BMC_CHANGED", "FIRMWARE_CHANGED",
+})
+
+_FIRMWARE_EVENTS = frozenset({
+    "FIRMWARE_CHANGED", "BIOS_CHANGED", "UEFI_CHANGED", "BMC_CHANGED",
+    "TPM_FIRMWARE_CHANGED",
+})
 
 
 def _now() -> str:
@@ -60,10 +98,16 @@ class LiveHardwareMonitor:
 
 
 class HardwareStateEngine:
-    """§16 — persistent 24/7 per-asset hardware state."""
+    """§16 — persistent 24/7 per-asset hardware state.
+
+    The state engine is the live source of truth: every event updates the
+    asset's current state and preserves the previous state so the database
+    reflects the *observed environment*, not a scan snapshot (§3).
+    """
 
     def __init__(self) -> None:
         self._states: dict[str, HardwareState] = {}
+        self._removed: set[str] = set()
 
     def get(self, asset_id: str) -> Optional[HardwareState]:
         return self._states.get(asset_id)
@@ -74,43 +118,91 @@ class HardwareStateEngine:
     def count(self) -> int:
         return len(self._states)
 
-    def apply_event(self, event: dict[str, Any]) -> str:
-        """Apply a hardware event; returns NEW / CHANGED / REMOVED / NO_CHANGE."""
-        event_type = event.get("event_type")
+    def apply_event(self, event: dict[str, Any],
+                    *, timestamp: Optional[str] = None) -> str:
+        """Apply a hardware event; returns NEW / CHANGED / REMOVED / NO_CHANGE.
+
+        ``timestamp`` overrides the wall clock (used by the timeline engine
+        for point-in-time reconstruction; defaults to now).
+        """
+        event_type = _EVENT_ALIASES.get(
+            str(event.get("event_type")), str(event.get("event_type")))
         assert event_type in _HARDWARE_EVENT_TYPES, f"unknown hardware event {event_type}"
         asset_id = str(event.get("asset_id") or "unknown")
-        now = _now()
+        now = timestamp or _now()
         state = self._states.get(asset_id)
 
-        if event_type == "DEVICE_REMOVED":
+        if event_type in ("HARDWARE_REMOVED", "DEVICE_REMOVED"):
             if state is None:
                 return "NO_CHANGE"
+            if asset_id in self._removed:
+                return "NO_CHANGE"  # already removed — repeated removals are no-ops
+            self._removed.add(asset_id)
             state.last_seen = now
-            state.last_change = f"DEVICE_REMOVED:{now}"
+            state.last_change = f"HARDWARE_REMOVED:{now}"
             return "REMOVED"
 
+        self._removed.discard(asset_id)  # any live event resurrects the asset
         if state is None:
             state = HardwareState(
                 asset_id=asset_id,
                 manufacturer=str(event.get("manufacturer") or ""),
                 model=str(event.get("model") or ""),
                 device_type=str(event.get("device_type") or HardwareType.OTHER.value),
+                serial_reference=event.get("serial_reference"),
+                hardware_revision=event.get("hardware_revision"),
+                agent_id=event.get("agent_id"),
                 first_seen=now, last_seen=now,
             )
             self._states[asset_id] = state
             state.last_change = f"{event_type}:{now}"
             return "NEW"
 
+        # preserve the previous state before applying the change (§3)
+        previous = {k: v for k, v in state.to_dict().items()}
+        state.previous_state = previous
         state.last_seen = now
         state.last_change = f"{event_type}:{now}"
-        if event_type == "FIRMWARE_CHANGED":
+        if event.get("agent_id"):
+            state.agent_id = event.get("agent_id")
+        if event.get("serial_reference"):
+            state.serial_reference = event.get("serial_reference")
+        if event.get("hardware_revision"):
+            state.hardware_revision = event.get("hardware_revision")
+
+        if event_type in _FIRMWARE_EVENTS or (
+                event.get("component") and event.get("version")):
+            # any event carrying component+version updates firmware state
+            # (covers HSM_CHANGED/NIC_CHANGED/... with a version, §7)
             state.last_firmware_check = now
             component = str(event.get("component") or "BIOS")
             version = str(event.get("version") or "")
-            state.firmware[component] = version
-        if event_type in ("TPM_CHANGED", "HSM_CHANGED", "NIC_CHANGED",
-                          "CRYPTO_CAPABILITY_CHANGED"):
+            if version:
+                state.firmware[component] = version
+        if event_type == "HARDWARE_REPLACED":
+            # a replacement carries a full new identity (§2)
+            if event.get("manufacturer"):
+                state.manufacturer = str(event["manufacturer"])
+            if event.get("model"):
+                state.model = str(event["model"])
+            if event.get("serial_reference"):
+                state.serial_reference = event["serial_reference"]
+            if event.get("firmware") and isinstance(event["firmware"], dict):
+                state.firmware.update({str(k): str(v) for k, v in event["firmware"].items()})
+        if event_type in _CRYPTO_AFFECTING_EVENTS:
             state.last_crypto_check = now
+            if event.get("crypto_capabilities") is not None:
+                state.crypto_capabilities = event["crypto_capabilities"]
+            if event.get("capabilities") is not None:
+                state.capabilities = event["capabilities"]
+        if event_type in ("TPM_CHANGED", "TPM_AVAILABLE", "TPM_UNAVAILABLE",
+                          "TPM_CONFIGURATION_CHANGED", "TPM_FIRMWARE_CHANGED"):
+            if event.get("tpm") is not None:
+                state.tpm = event["tpm"]
+        if event_type in ("HSM_CHANGED", "HSM_ONLINE", "HSM_OFFLINE",
+                          "HSM_CAPABILITY_CHANGED", "HSM_CONFIGURATION_CHANGED"):
+            if event.get("hsm") is not None:
+                state.hsm = event["hsm"]
         return "CHANGED"
 
     def mark_verified(self, asset_id: str, *, timestamp: Optional[str] = None) -> None:

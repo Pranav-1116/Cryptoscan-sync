@@ -8,7 +8,7 @@ dependency graph this forms a complete technology inventory.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Optional
 
 from universal_vendor.hardware.models import HardwareObservation
 
@@ -22,11 +22,20 @@ except Exception:  # pragma: no cover
 
 
 class HbomGenerator:
+    """HBOM with live versioning (§15).
+
+    Every hardware change produces a NEW document state: HBOM v100 →
+    hardware event → HBOM v101. ``snapshot()`` freezes the current document
+    and bumps the version; the snapshot history is retained so any previous
+    HBOM state is retrievable.
+    """
+
     def __init__(self) -> None:
         self._hardware: dict[str, dict[str, Any]] = {}
         self._firmware: list[dict[str, Any]] = []
         self._security_hardware: list[dict[str, Any]] = []
         self._version = 1
+        self._snapshots: list[dict[str, Any]] = []
 
     def add(self, observation: HardwareObservation) -> None:
         asset_id = observation.asset_id
@@ -76,6 +85,38 @@ class HbomGenerator:
             "firmware": self.firmware(),
             "security_hardware": self.security_hardware(),
         }
+
+    # ── §15 live versioning ───────────────────────────────────────────
+
+    def snapshot(self, *, reason: str = "", name: str = "zelinx-hbom") -> dict[str, Any]:
+        """Freeze the current HBOM as a new version and bump the counter.
+
+        Returns the snapshot (also appended to the version history).
+        """
+        document = self.to_document(name=name)
+        self._version += 1
+        snapshot = {
+            "version": document["version"],
+            "timestamp": document["timestamp"],
+            "reason": reason,
+            "document": document,
+        }
+        self._snapshots.append(snapshot)
+        return snapshot
+
+    def version_history(self) -> list[dict[str, Any]]:
+        """All frozen HBOM versions, oldest first."""
+        return list(self._snapshots)
+
+    def version(self, number: int) -> Optional[dict[str, Any]]:
+        """Retrieve a frozen HBOM version by its version number."""
+        for snapshot in self._snapshots:
+            if snapshot["version"] == number:
+                return snapshot
+        return None
+
+    def current_version(self) -> int:
+        return self._version
 
     def to_cyclonedx(self, *, name: str = "zelinx-hbom") -> dict[str, Any]:
         """Serializable CycloneDX-style document."""

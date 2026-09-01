@@ -4,10 +4,15 @@ annotated-types==0.8.0
 anyio==4.14.2
 async-timeout==5.0.1
 certifi==2026.7.22
+cffi==2.1.1
 click==8.5.0
+cryptography==50.0.1
+defusedxml==0.7.1
 dnspython==2.8.0
 email-validator==2.3.0
 fastapi==0.141.1
+fonttools==4.64.0
+fpdf2==2.8.8
 gitdb==4.0.12
 GitPython==3.1.61
 greenlet==3.5.5
@@ -23,8 +28,10 @@ Mako==1.4.1
 MarkupSafe==3.0.3
 neo4j==6.3.0
 packaging==26.3
+pillow==12.3.0
 pluggy==1.6.0
 psycopg2-binary==2.9.12
+pycparser==3.0
 pydantic==2.13.5
 pydantic-settings==2.15.0
 pydantic_core==2.46.5

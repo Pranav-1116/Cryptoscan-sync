@@ -35,7 +35,10 @@ WEAK_ALGORITHMS = {
 
 WEAK_HASH_ONLY = {"MD5", "SHA-1", "SHA1"}
 
-BLOCKING_DRIFT = {"NEW", "CHANGED", "ADDED", "MODIFIED"}
+BLOCKING_DRIFT = {"NEW", "CHANGED", "ADDED", "MODIFIED", "CONFIG_ADDED", "CONFIG_CHANGED", "CONFIG_DEGRADED"}
+# Config additions/changes block only when they are a weakening; hardening
+# (CONFIG_REMOVED, or CONFIG_CHANGED with a stronger value) is informational.
+BLOCKING_CONFIG_WEAK = {"CONFIG_ADDED", "CONFIG_CHANGED", "CONFIG_DEGRADED"}
 UPGRADE_TOKENS = {"UPGRADED", "UPGRADE", "STRENGTHENED"}
 
 
@@ -151,6 +154,28 @@ def evaluate_gate(
                     **loc,
                 }
             )
+            continue
+        if dtype in BLOCKING_CONFIG_WEAK:
+            # Config drift: the detector already graded weakening vs.
+            # hardening. CRITICAL/HIGH config drift blocks the gate; the
+            # rest is a warning.
+            severity = str(event.get("severity") or "").upper()
+            if severity in {"CRITICAL", "HIGH"}:
+                blocking.append(
+                    {
+                        "code": f"DRIFT_{dtype}",
+                        "message": event.get("reason") or f"{dtype} {algo}".strip(),
+                        **loc,
+                    }
+                )
+            else:
+                warnings.append(
+                    {
+                        "code": f"DRIFT_{dtype}",
+                        "message": event.get("reason") or f"{dtype} {algo}".strip(),
+                        **loc,
+                    }
+                )
             continue
         if dtype in BLOCKING_DRIFT and (
             purpose in BLOCKING_PURPOSES

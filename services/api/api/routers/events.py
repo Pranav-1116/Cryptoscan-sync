@@ -22,6 +22,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
 from api.dependencies import get_current_user
+from api.events import platform_events
 from api.events.bus import get_event_bus
 
 logger = logging.getLogger(__name__)
@@ -41,6 +42,37 @@ def format_sse(event: dict) -> str:
     return f"id: {event['id']}\nevent: {event['type']}\ndata: {payload}\n\n"
 
 
+def _db_backlog(limit: int = 25) -> list[dict]:
+    """Seed the stream from the durable monitor_events table when the
+    in-memory bus has no history (e.g. right after an API restart)."""
+    try:
+        from api.events.platform_events import published_event_ids
+
+        rows = _fetch_recent_monitor_events(limit=limit)
+    except Exception:
+        return []
+    already = published_event_ids()
+    out: list[dict] = []
+    for row in reversed(rows):  # oldest first
+        if row["id"] in already:
+            continue
+        out.append(
+            {
+                "id": -len(out) - 1,  # negative: synthetic, never collides with bus ids
+                "ts": row["created_at"] or "",
+                "type": f"monitor.{row['event_type'].lower()}",
+                "source": "monitor",
+                "payload": {
+                    "target": row["target_name"],
+                    "detail": row.get("detail"),
+                    "data": row.get("payload") or {},
+                    "occurred_at": row["created_at"],
+                },
+            }
+        )
+    return out
+
+
 @router.get("/stream")
 async def stream_events(
     request: Request,
@@ -53,6 +85,8 @@ async def stream_events(
         # fresh connection: start from the tail of history, not the dawn of time
         resume_id = max(0, bus.latest_id() - BACKLOG_DEFAULT)
     backlog = bus.recent(since_id=resume_id, limit=BACKLOG_DEFAULT * 2)
+    if not backlog and bus.latest_id() == 0:
+        backlog = _db_backlog(limit=BACKLOG_DEFAULT)
 
     sub = bus.subscribe()
     bus.publish("events.subscribe", {"user": user}, source="events")
@@ -98,6 +132,8 @@ def recent_events(
 ) -> dict:
     bus = get_event_bus()
     events = bus.recent(since_id=since_id, limit=limit)
+    if not events and bus.latest_id() == 0:
+        events = _db_backlog(limit=min(limit, BACKLOG_DEFAULT))
     return {
         "events": events,
         "latest_id": bus.latest_id(),
@@ -121,8 +157,10 @@ def app_state():
 # ------------------------------------------------------------------- tailer
 
 async def tail_monitor_events(interval: float = 2.0) -> None:
-    """Federate monitor_events rows (written by the separate monitor process)
-    onto the in-process bus as `monitor.*` events."""
+    """Federate monitor_events rows (written by the monitor process or by
+    direct platform publishers) onto the in-process bus as `monitor.*`
+    events. Rows that a direct publisher already delivered (shared
+    ``published_event_ids`` registry) are skipped — one row, one delivery."""
     bus = get_event_bus()
     seen: set[str] = set()
     app_state().event_tailer_running = True
@@ -132,7 +170,11 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
                 rows = _fetch_recent_monitor_events(limit=100)
             except Exception:  # DB not ready / mid-migration — retry quietly
                 rows = []
-            fresh = [r for r in rows if r["id"] not in seen]
+            try:
+                directly_published = platform_events.published_event_ids()
+            except Exception:
+                directly_published = set()
+            fresh = [r for r in rows if r["id"] not in seen and r["id"] not in directly_published]
             if fresh:
                 for row in fresh:
                     seen.add(row["id"])
@@ -148,6 +190,10 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
                     )
                 if len(seen) > 2_000:
                     seen = set(list(seen)[-1_000:])
+            try:
+                platform_events.prune_published_ids()
+            except Exception:
+                pass
             await asyncio.sleep(interval)
     finally:
         with contextlib.suppress(Exception):
@@ -187,6 +233,43 @@ def start_event_tailer(interval: float) -> asyncio.Task | None:
     try:
         task = asyncio.create_task(tail_monitor_events(interval))
         task.set_name("event-tailer")
+        return task
+    except RuntimeError:  # no running loop (sync test contexts)
+        return None
+
+
+# ------------------------------------------------------ telemetry heartbeat
+
+TELEMETRY_SECONDS = 15.0
+
+
+async def publish_telemetry(interval: float = TELEMETRY_SECONDS) -> None:
+    """Periodic `telemetry.snapshot` event so live subscribers get events/sec,
+    subscriber count and buffer depth without polling."""
+    bus = get_event_bus()
+    prev = bus.published_total()
+    while True:
+        await asyncio.sleep(interval)
+        now = bus.published_total()
+        delta = now - prev
+        prev = now
+        bus.publish(
+            "telemetry.snapshot",
+            {
+                "events_per_sec": round(delta / interval, 1),
+                "published_total": now,
+                "subscribers": bus.subscriber_count(),
+                "events_buffered": len(bus.recent(limit=10_000)),
+                "latest_id": bus.latest_id(),
+            },
+            source="telemetry",
+        )
+
+
+def start_telemetry_heartbeat(interval: float = TELEMETRY_SECONDS) -> asyncio.Task | None:
+    try:
+        task = asyncio.create_task(publish_telemetry(interval))
+        task.set_name("telemetry-heartbeat")
         return task
     except RuntimeError:  # no running loop (sync test contexts)
         return None

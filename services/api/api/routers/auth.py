@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.config.settings import get_settings
-from api.dependencies import get_current_user, get_db_session, require_admin
+from api.dependencies import get_current_user, get_db_session, require_admin, require_roles
 from api.security import totp
 from api.security.auth import AuthService, AuthenticationError
 from api.security.passwords import hash_password, verify_password
@@ -518,6 +518,53 @@ def mfa_disable(
 
 
 # ------------------------------------------------------------------ user management
+
+@router.get("/roles")
+def list_roles(
+    request: Request,
+    user: str = Depends(require_roles(
+        "admin", "auditor", "viewer", "readonly", "superadmin", "ciso",
+        "security_analyst", "developer", "business_owner", "scanner",
+    )),
+):
+    """The 8-role catalog (logic-5 W57–58) plus the permission matrix.
+
+    Any authenticated caller may read it — knowing the matrix is not a
+    privilege. Enforcement happens per endpoint via require_permission.
+    """
+    from api.dependencies import _token_from_request
+    from api.security.rbac import (
+        PERMISSION_MATRIX,
+        ROLE_CATALOG,
+        normalize_roles,
+        permissions_for_roles,
+    )
+    from api.security.session_manager import SessionManager
+
+    roles: list[str] = []
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.user_repository import UserRepository
+
+        session = SessionLocal()
+        try:
+            row = UserRepository(session).get_by_username(user)
+            roles = normalize_roles(row.role_list if row is not None else [])
+        finally:
+            session.close()
+    except Exception:  # pragma: no cover - DB unavailable
+        token = _token_from_request(request)
+        stored = SessionManager().get_session(token) if token else None
+        roles = normalize_roles(list(getattr(stored, "roles", []) or []) if stored else [])
+
+    return {
+        "roles": ROLE_CATALOG,
+        "permission_matrix": {
+            action: sorted(allowed) for action, allowed in PERMISSION_MATRIX.items()
+        },
+        "my_permissions": permissions_for_roles(roles),
+    }
+
 
 @router.get("/users", response_model=list[UserResponse])
 def list_users(

@@ -55,3 +55,9 @@ services/scanner/jdt/build/
 # Logs
 *.log
 logs/
+
+# Compiled artifacts (rebuilt on demand by runtime agent)
+*.so
+
+# delivery artifacts (bundle/patch exports — not product code)
+frontend/public/

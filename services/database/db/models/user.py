@@ -10,7 +10,22 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
 
-VALID_ROLES = ("admin", "auditor", "viewer")
+# The spec's 8-role RBAC catalog (api.security.rbac.ROLE_CATALOG) plus the
+# legacy aliases (admin -> superadmin, viewer -> readonly) that existing
+# stores and tests still carry. The DB layer cannot import from api, so the
+# catalog is duplicated here by contract.
+VALID_ROLES = (
+    "superadmin",
+    "ciso",
+    "security_analyst",
+    "developer",
+    "auditor",
+    "business_owner",
+    "scanner",
+    "readonly",
+    "admin",  # legacy alias of superadmin
+    "viewer",  # legacy alias of readonly
+)
 
 
 class User(BaseModel):

@@ -18,7 +18,7 @@ Development login is `admin` / `cryptoscan`. Open `/ui` or the dashboard contain
 
 ```bash
 make test    # per-service pytest (avoids shared `tests` package clash)
-make api     # dashboard + API on :8000
+make api     # frontend :3003 + API :8010
 ```
 
 Trigger a scan of the bundled sample with `local://demo/vulnerable-app`.
