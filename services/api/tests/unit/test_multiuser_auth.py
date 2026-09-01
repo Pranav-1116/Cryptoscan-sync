@@ -31,7 +31,8 @@ def test_bootstrap_creates_admin_once(session, monkeypatch):
     service = AuthService(session=session)
     assert service.bootstrap_admin() is True
     user = UserRepository(session).get_by_username("admin")
-    assert user is not None and user.role_list == ["admin"]
+    # canonical 8-role-catalog name (legacy alias "admin" still maps to superadmin)
+    assert user is not None and user.role_list == ["superadmin"]
     assert verify_password("cryptoscan", user.password_hash)
     # Second call is a no-op — existing users are never overwritten.
     assert service.bootstrap_admin() is False

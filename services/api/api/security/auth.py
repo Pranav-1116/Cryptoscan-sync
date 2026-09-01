@@ -84,7 +84,7 @@ class AuthService:
         repo.create_user(
             settings.ADMIN_USERNAME or "admin",
             stored,
-            roles=["admin"],
+            roles=["superadmin"],  # canonical 8-role-catalog name (legacy "admin" alias still accepted)
             display_name="Bootstrap Admin",
         )
         self.session.commit()

@@ -48,7 +48,7 @@ def test_full_login_logout_revocation_flow(sqlite_app):
     login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "cryptoscan"})
     assert login.status_code == 200
     token = login.json()["token"]
-    assert login.json()["roles"] == ["admin"]
+    assert login.json()["roles"] == ["superadmin"]
 
     me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert me.status_code == 200 and me.json()["username"] == "admin"

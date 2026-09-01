@@ -37,6 +37,7 @@ import PqcMap from "./pages/PqcMap.jsx";
 import CryptoChanges from "./pages/CryptoChanges.jsx";
 import SearchResults from "./pages/SearchResults.jsx";
 import Login from "./pages/Login.jsx";
+import Register from "./pages/Register.jsx";
 
 const PAGES: Record<string, React.ComponentType> = {
   "/": CommandCenter,
@@ -76,6 +77,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/crypto-changes": CryptoChanges,
   "/search": SearchResults,
   "/login": Login,
+  "/register": Register,
 };
 
 function useHashRoute(): string {
@@ -92,7 +94,7 @@ export default function App() {
   const route = useHashRoute();
   const Page = PAGES[route] || CommandCenter;
   const active = Object.keys(PAGES).includes(route) ? route : "/";
-  if (route === "/login") return <Page />;
+  if (route === "/login" || route === "/register") return <Page />;
   return (
     <Layout route={active}>
       <Page />

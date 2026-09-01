@@ -25,6 +25,7 @@ UNPROTECTED_PREFIXES = (
     "/api/redoc",
     "/api/openapi.json",
     "/api/v1/auth/login",
+    "/api/v1/auth/register",  # self-service registration (role pick from the 8-role catalog)
     "/api/v1/auth/oidc",
     "/api/v1/meta",
     "/api/v1/healthz",

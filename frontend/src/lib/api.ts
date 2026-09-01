@@ -20,10 +20,16 @@ export function getToken(): string | null {
   try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
 }
 
+const ROLES_KEY = "zelinx_roles";
+
+export function getRoles(): string[] {
+  try { return JSON.parse(localStorage.getItem(ROLES_KEY) || "[]"); } catch { return []; }
+}
+
 export function setToken(token: string | null): void {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
-    else localStorage.removeItem(TOKEN_KEY);
+    else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(ROLES_KEY); }
   } catch { /* storage unavailable — session only */ }
   // realtime consumers (SSE stream) reconnect when auth changes
   try {
@@ -63,7 +69,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
   }
 }
 
-export async function apiLogin(username: string, password: string): Promise<{ ok: boolean; error?: string }> {
+export async function apiLogin(username: string, password: string): Promise<{ ok: boolean; error?: string; roles?: string[] }> {
   try {
     const resp = await fetch("/api/v1/auth/login", {
       method: "POST",
@@ -75,9 +81,36 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
       const body = await resp.json().catch(() => ({}));
       return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     }
-    const body = (await resp.json()) as { token?: string };
-    if (body.token) setToken(body.token);
-    return { ok: !!body.token, error: body.token ? undefined : "no token in response" };
+    const body = (await resp.json()) as { token?: string; roles?: string[] };
+    if (body.token) {
+      setToken(body.token);
+      try { localStorage.setItem("zelinx_roles", JSON.stringify(body.roles || [])); } catch { /* ignore */ }
+    }
+    return { ok: !!body.token, error: body.token ? undefined : "no token in response", roles: body.roles };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/* Self-service registration — picks one of the 8 RBAC roles
+   (POST /api/v1/auth/register; superadmin is admin-assigned only). */
+export async function apiRegister(input: {
+  username: string;
+  password: string;
+  role: string;
+  display_name?: string;
+  email?: string;
+}): Promise<{ ok: boolean; error?: string; username?: string; roles?: string[] }> {
+  try {
+    const resp = await fetch("/api/v1/auth/register", {
+      method: "POST",
+      signal: AbortSignal.timeout(8000),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    return { ok: true, username: body.username, roles: body.roles };
   } catch (e) {
     return { ok: false, error: String(e) };
   }

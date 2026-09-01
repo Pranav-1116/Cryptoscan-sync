@@ -136,6 +136,11 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         except AuthenticationError as exc2:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc2.message) from exc2
 
+    # Canonicalize legacy role names (admin → superadmin, viewer → readonly)
+    # so callers see the 8-role catalog consistently.
+    from api.security.rbac import normalize_roles
+    roles = normalize_roles(roles)
+
     # Second factor gate: password alone must never mint a session for
     # an MFA-enabled account. The challenge token is purpose-scoped and
     # expires in 5 minutes.
@@ -192,6 +197,74 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         token=token,
         session_expires_at=expires,
     )
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=2, max_length=100)
+    password: str = Field(..., min_length=8, max_length=200)
+    role: str = "readonly"
+    display_name: str | None = None
+    email: str | None = None
+
+
+class RegisterResponse(BaseModel):
+    message: str
+    username: str
+    roles: list[str]
+
+
+#: roles that can never be self-assigned — they are granted by a platform
+#: admin via POST /auth/users (the seeded `admin` account holds superadmin).
+SELF_SERVICE_DENIED_ROLES = frozenset({"superadmin"})
+
+
+@router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
+def register(body: RegisterRequest, request: Request, db: Session = Depends(get_db_session)) -> RegisterResponse:
+    """Self-service registration — the caller picks ONE of the 8-role catalog.
+
+    superadmin is the platform-owner role and cannot be self-assigned; the
+    seeded bootstrap account `admin` holds it (alias admin → superadmin).
+    """
+    from db.models.user import VALID_ROLES
+    from api.security.rbac import ROLE_ALIASES
+
+    role = ROLE_ALIASES.get(body.role.strip().lower(), body.role.strip().lower())
+    if role not in VALID_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown role: {body.role}. Valid: {', '.join(VALID_ROLES)}",
+        )
+    if role in SELF_SERVICE_DENIED_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="superadmin is the platform-owner role and cannot be self-assigned — "
+                   "sign in with the seeded admin account or ask an admin to grant it",
+        )
+    repo = _user_repo(db)
+    if repo.get_by_username(body.username) is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+    user = repo.create_user(
+        body.username,
+        hash_password(body.password),
+        roles=[role],
+        display_name=body.display_name,
+        email=body.email,
+    )
+    repo.audit(
+        body.username,
+        "user.register",
+        target_type="user",
+        target_id=user.username,
+        detail={"roles": [role]},
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    try:
+        from api.events.bus import get_event_bus
+        get_event_bus().publish("auth.register", {"user": body.username, "role": role}, source="auth")
+    except Exception:  # pragma: no cover - bus is best-effort
+        pass
+    return RegisterResponse(message="account created", username=user.username, roles=[role])
 
 
 class OidcLoginRequest(BaseModel):
