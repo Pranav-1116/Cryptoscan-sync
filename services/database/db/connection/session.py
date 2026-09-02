@@ -33,6 +33,7 @@ def init_db(engine=None) -> None:
     from db.models import (  # noqa: F401 — register models
         api_key,
         app_setting,
+        onboarding,
         baseline,
         business_owner,
         business_process,

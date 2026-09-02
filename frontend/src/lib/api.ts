@@ -195,5 +195,85 @@ export const apiSectorComplianceMap = (
     body: JSON.stringify({ sector, findings }),
   });
 
+/* ----------------------------- onboarding ------------------------------- */
+/* Enterprise setup journey: org -> sector -> environment -> authorized scope
+   -> connections -> test access -> start discovery. Secrets are NEVER sent;
+   connectors store non-secret references only (grant access out-of-band). */
+
+export interface OnboardingOrg {
+  id: string; name: string; sector: string; onboarding_stage: string;
+  onboarding_complete?: boolean; industry?: string | null; regions?: string[];
+}
+export interface OnboardingEnv {
+  id: string; name: string; env_type: string; scan_mode: string;
+  active_probing: boolean; region?: string | null;
+}
+export interface ScopeEntryItem { id: string; kind: string; target: string }
+export interface OnboardingConn {
+  id: string; kind: string; name: string; method: string; mode: string;
+  status: string; agent_healthy?: boolean;
+  test_result?: { checks?: { check: string; ok: boolean; detail: string }[]; all_ok?: boolean } | null;
+}
+export interface OnboardingState {
+  organization: OnboardingOrg | null;
+  sector_context?: {
+    sector: string; recommended_modes?: string[]; policy_packs?: string[];
+    compliance_frameworks?: string[];
+  } | null;
+  environments: OnboardingEnv[];
+  scope: { total: number; counts: Record<string, number>; entries?: ScopeEntryItem[] };
+  connections: OnboardingConn[];
+  connected_count: number;
+  stage: string;
+  ready: boolean;
+  checklist: { step: string; label: string; done: boolean }[];
+}
+export interface DiscoveryPlan {
+  run_id: string; status: string; organization: string; sector: string;
+  environments: number;
+  plan: { domain: string; targets: number | string; mode: string }[];
+  authorized_scope: Record<string, number>;
+  connectors_used: string[];
+  next_steps: string[];
+}
+
+export const apiOnboardingState = (): Promise<ApiResult<OnboardingState>> =>
+  call("/api/v1/onboarding/state");
+
+export const apiOnboardingScope = (): Promise<ApiResult<{ total: number; counts: Record<string, number> }>> =>
+  call("/api/v1/onboarding/scope");
+
+export const apiCreateOrg = (name: string, sector: string, industry?: string): Promise<ApiResult<OnboardingOrg>> =>
+  call("/api/v1/onboarding/organization", {
+    method: "POST",
+    body: JSON.stringify({ name, sector, ...(industry ? { industry } : {}) }),
+  });
+
+export const apiAddEnv = (
+  body: { name: string; env_type: string; scan_mode?: string; active_probing?: boolean; region?: string },
+): Promise<ApiResult<OnboardingEnv>> =>
+  call("/api/v1/onboarding/environments", { method: "POST", body: JSON.stringify(body) });
+
+export const apiAddScope = (
+  kind: string, target: string, env_id?: string,
+): Promise<ApiResult<ScopeEntryItem>> =>
+  call("/api/v1/onboarding/scope", {
+    method: "POST",
+    body: JSON.stringify({ kind, target, ...(env_id ? { env_id } : {}) }),
+  });
+
+export const apiAddConnection = (body: {
+  kind: string; name: string; method?: string; mode?: string; config?: Record<string, string>; env_id?: string;
+}): Promise<ApiResult<OnboardingConn>> =>
+  call("/api/v1/onboarding/connections", { method: "POST", body: JSON.stringify(body) });
+
+export const apiTestConnection = (
+  id: string,
+): Promise<ApiResult<{ connector_id: string; status: string; all_ok: boolean; checks: { check: string; ok: boolean; detail: string }[] }>> =>
+  call(`/api/v1/onboarding/connections/${id}/test`, { method: "POST" });
+
+export const apiStartDiscovery = (): Promise<ApiResult<DiscoveryPlan>> =>
+  call("/api/v1/onboarding/discovery/start", { method: "POST" });
+
 /* React glue (useApi hook + LiveBadge) lives in apiUi.tsx */
 export { useApi, LiveBadge } from "./apiUi.jsx";

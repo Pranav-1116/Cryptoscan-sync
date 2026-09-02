@@ -7,6 +7,7 @@ import { getToken, setToken } from "../lib/api.js";
 const NAV = [
   { section: "Command center", items: [
     { to: "/", label: "Command center", icon: "◎" },
+    { to: "/onboarding", label: "Onboarding", icon: "➤" },
     { to: "/env", label: "Live environment", icon: "◉" },
     { to: "/organization", label: "Organization", icon: "◫" },
     { to: "/sectors", label: "Sector profiles", icon: "⛨" },
