@@ -168,6 +168,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         app.add_middleware(AuthMiddleware, settings=settings)
         app.add_middleware(RateLimitMiddleware, redis_client=_shared_rate_limit_backend())
     app.add_middleware(SecurityHeadersMiddleware)
+    # Innermost: runs right after the route so every successful mutating call
+    # across all services lands on the real-time bus (api.<segment>.<verb>).
+    from api.middleware.control_events import ControlEventMiddleware
+
+    app.add_middleware(ControlEventMiddleware)
 
     @app.exception_handler(AuthenticationError)
     async def auth_exception_handler(request: Request, exc: AuthenticationError):

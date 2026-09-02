@@ -1,15 +1,92 @@
+import time
+
+from db.connection.engine import check_db_health
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from api.config.settings import get_settings
-from db.connection.engine import check_db_health
 
 router = APIRouter(tags=["health"])
+
+
+def _probe(name: str, configured: bool, fn) -> dict:
+    """Run one dependency probe with an honest status:
+    ok (reachable), down (configured but failing), or skipped (not configured).
+    Each probe is timeout-bounded by the underlying client and never raises."""
+    if not configured:
+        return {"name": name, "status": "skipped", "detail": "not configured"}
+    start = time.perf_counter()
+    try:
+        detail = fn() or "ok"
+        return {"name": name, "status": "ok", "detail": detail,
+                "latency_ms": round((time.perf_counter() - start) * 1000, 1)}
+    except Exception as exc:  # a dependency outage must never 500 the health call
+        return {"name": name, "status": "down", "detail": str(exc)[:200],
+                "latency_ms": round((time.perf_counter() - start) * 1000, 1)}
+
+
+def dependency_report() -> dict:
+    """Status of every backing service the platform can use. Optional
+    dependencies report `skipped` when not configured, so the overall
+    rollup only goes `degraded` when a configured dependency is down."""
+    settings = get_settings()
+
+    def _db():
+        health = check_db_health()
+        if health.get("status") != "healthy":
+            raise RuntimeError(health.get("error", "database unhealthy"))
+        return health.get("dialect", "database")
+
+    def _redis():
+        import redis
+
+        client = redis.Redis.from_url(
+            settings.REDIS_URL, socket_timeout=1, socket_connect_timeout=1
+        )
+        try:
+            client.ping()
+            return "pong"
+        finally:
+            try:
+                client.close()
+            except Exception:
+                pass
+
+    def _neo4j():
+        from graph_engine.connection.neo4j_driver import get_driver
+
+        driver = get_driver()
+        if driver is None:
+            return "skipped"
+        driver.verify_connectivity()
+        return "connected"
+
+    checks = [
+        _probe("database", True, _db),
+        _probe("redis", bool((settings.REDIS_URL or "").strip()), _redis),
+        _probe("neo4j", bool((settings.NEO4J_URI or "").strip()), _neo4j),
+    ]
+    down = [c["name"] for c in checks if c["status"] == "down"]
+    overall = "degraded" if down else "ok"
+    return {"status": overall, "down": down, "checks": checks}
 
 
 @router.get("/healthz")
 def healthz():
     return {"status": "ok", "database": check_db_health()}
+
+
+@router.get("/healthz/dependencies")
+def healthz_dependencies():
+    """Component-level dependency health (DB / Redis / Neo4j).
+
+    Read-only and unauthenticated like the other probes; each dependency is
+    checked with a short timeout and reported as ok / down / skipped. The
+    response is 200 when the API is serving (dependencies that are *optional*
+    may be down without taking the process out), and the `status`/`down`
+    fields tell dashboards and operators what actually needs attention.
+    """
+    return dependency_report()
 
 
 @router.get("/readyz")
