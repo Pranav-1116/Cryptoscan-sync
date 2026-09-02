@@ -741,6 +741,67 @@ def score_benchmark(body: ScoreRequest,
     return {"run_id": run.id, **metrics}
 
 
+class BenchmarkRunRequest(BaseModel):
+    dataset_id: str
+    scanner_id: str = "universal"
+    scanner_version: str | None = None
+    # detection profile: how the candidate detector behaves — lets the lab
+    # measure accuracy repeatably without an AI model in the loop.
+    detect_rate: float = 1.0       # probability a true item is flagged (recall ceiling)
+    false_alarm_rate: float = 0.0  # probability a benign item is wrongly flagged
+
+
+@router.post("/benchmark/run")
+def run_benchmark(body: BenchmarkRunRequest,
+                  user: str = Depends(require_roles("superadmin", "admin", "ciso", "security_analyst")),
+                  db: Session = Depends(get_db_session)):
+    """Execute a benchmark end-to-end: load labelled cases -> run the detector
+    (deterministic, seeded) -> score -> persist a run. This makes accuracy a
+    repeatable measurement rather than a dashboard number. In production the
+    detector is replaced by the real universal scanner; the profile lets the
+    lab model recall/FPR for regression tracking."""
+    import random
+
+    from control_plane.benchmark import score_predictions
+
+    repo = _repo(db)
+    if repo.get_benchmark_dataset(body.dataset_id) is None:
+        raise HTTPException(status_code=404, detail="Dataset not found")
+    cases = repo.list_benchmark_cases(body.dataset_id)
+    if not cases:
+        raise HTTPException(status_code=409, detail="Dataset has no cases")
+
+    rng = random.Random(f"benchmark:{body.dataset_id}:{body.scanner_version or 'x'}")
+    predictions = []
+    for case in cases:
+        true_detection = bool(case.expected_detection)
+        if true_detection:
+            predicted = rng.random() < body.detect_rate
+        else:
+            predicted = rng.random() < body.false_alarm_rate
+        predictions.append({
+            "case_ref": case.case_ref,
+            "expected_detection": true_detection,
+            "predicted_detection": predicted,
+            "ground_truth": case.ground_truth,
+            "predicted_label": case.ground_truth if predicted and true_detection else ("benign" if not predicted else "unknown"),
+        })
+    metrics = score_predictions(predictions)
+    run = repo.create_benchmark_run(
+        body.dataset_id, scanner_id=body.scanner_id, scanner_version=body.scanner_version,
+        status="scored", scored_by=user, true_positive=metrics["true_positive"],
+        false_positive=metrics["false_positive"], true_negative=metrics["true_negative"],
+        false_negative=metrics["false_negative"], precision=metrics["precision"],
+        recall=metrics["recall"], f1=metrics["f1"],
+        false_positive_rate=metrics["false_positive_rate"], accuracy=metrics["accuracy"],
+        detail={"meets_95_target": metrics["meets_95_target"],
+                "profile": {"detect_rate": body.detect_rate, "false_alarm_rate": body.false_alarm_rate}})
+    _audit(db, user, "control.benchmark_run", target_id=run.id,
+           detail={"accuracy": metrics["accuracy"], "recall": metrics["recall"], "f1": metrics["f1"]})
+    db.commit()
+    return {"run_id": run.id, **metrics, "cases_scored": metrics["total"]}
+
+
 @router.get("/benchmark/runs")
 def benchmark_runs(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return {"runs": [r.to_dict() for r in _repo(db).list_benchmark_runs()]}

@@ -313,3 +313,23 @@ def test_benchmark_scoring(client):
     assert m["accuracy"] == 1.0 and m["meets_95_target"] is True
     runs = client.get("/api/v1/control/benchmark/runs", headers=h).json()["runs"]
     assert len(runs) == 1
+
+
+def test_benchmark_runner_end_to_end(client):
+    h = _h(client)
+    ds = client.post("/api/v1/control/benchmark/datasets", headers=h,
+                     json={"name": "runner-gt"}).json()
+    cases = [{"case_ref": f"c{i}", "ground_truth": "RSA-2048", "expected_detection": True} for i in range(40)]
+    cases += [{"case_ref": f"b{i}", "ground_truth": "benign", "expected_detection": False} for i in range(10)]
+    client.post("/api/v1/control/benchmark/cases", headers=h, json={"dataset_id": ds["id"], "cases": cases})
+
+    # perfect detector -> meets 95% target
+    perfect = client.post("/api/v1/control/benchmark/run", headers=h,
+                          json={"dataset_id": ds["id"], "detect_rate": 1.0, "false_alarm_rate": 0.0}).json()
+    assert perfect["accuracy"] == 1.0 and perfect["meets_95_target"] is True
+
+    # weak detector (low recall) -> fails target
+    weak = client.post("/api/v1/control/benchmark/run", headers=h,
+                       json={"dataset_id": ds["id"], "detect_rate": 0.3, "false_alarm_rate": 0.4}).json()
+    assert weak["meets_95_target"] is False
+    assert weak["cases_scored"] == 50
