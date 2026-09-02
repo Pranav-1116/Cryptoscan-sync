@@ -318,8 +318,6 @@ const deleteCall = async (path: string): Promise<{ ok: boolean; error?: string }
 export const apiDeleteScope = (id: string) => deleteCall(`/api/v1/onboarding/scope/${id}`);
 export const apiDeleteConnection = (id: string) => deleteCall(`/api/v1/onboarding/connections/${id}`);
 
-<<<<<<< HEAD
-=======
 /* ── live control-plane / enterprise surfaces (realtime environment) ── */
 
 /** Live dashboard summary from the database (scans/findings/drift/coverage). */
@@ -398,6 +396,5 @@ export async function apiWorkerTick(batch = 10): Promise<{ ok: boolean; error?: 
   }
 }
 
->>>>>>> bc8232b (feat(control-plane): enforce ABAC middleware + real SIEM/ITSM webhook delivery; live frontend wiring)
 /* React glue (useApi hook + LiveBadge) lives in apiUi.tsx */
 export { useApi, LiveBadge } from "./apiUi.jsx";

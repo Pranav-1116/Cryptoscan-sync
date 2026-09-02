@@ -22,6 +22,16 @@ def client(monkeypatch, tmp_path):
     reset_event_bus()
     from api.middleware.abac_middleware import reset_abac_cache
     reset_abac_cache()
+    # Delivery tests point webhooks at `*.example` hosts (fake HTTP layer is
+    # injected) — stub DNS so the SSRF guard treats them as public receivers.
+
+    def _fake_getaddrinfo(host, port, *a, **k):
+        return [(2, 1, 6, "", ("8.8.8.8", port or 443))]  # public resolver range → passes guard
+
+    import socket as _socket
+
+    monkeypatch.setattr(_socket, "getaddrinfo", _fake_getaddrinfo)
+
     from api.main import create_app
     from fastapi.testclient import TestClient
 
@@ -92,11 +102,17 @@ def _register_siem(client, h, endpoint):
         "endpoint": endpoint})
 
 
-def test_siem_export_records_skipped_when_endpoint_unreachable(client, monkeypatch):
-    # Point at a closed port: delivery is attempted (real HTTP), fails, and is
-    # audited — never fabricated as delivered.
+def test_siem_export_records_failed_delivery_when_endpoint_errors(client, monkeypatch):
+    # Receiver answers 5xx every time: delivery is attempted over HTTP, retried,
+    # then recorded as failed (and audited) — never fabricated as delivered.
+    import control_plane.delivery as dmod
+
+    def flaky(post, endpoint, *, content=None, headers=None, timeout=None):
+        return 503, "unavailable"
+
+    monkeypatch.setattr(dmod, "_http_post", flaky)
     h = _h(client)
-    reg = _register_siem(client, h, "http://127.0.0.1:9/hook")
+    reg = _register_siem(client, h, "http://soc.example/hook")
     assert reg.status_code == 201
     r = client.post("/api/v1/enterprise/integrations/siem/export", headers=h, json={
         "provider": "webhook",

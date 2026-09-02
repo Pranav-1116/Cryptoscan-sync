@@ -291,6 +291,13 @@ def register_integration(body: IntegrationRequest,
                          db: Session = Depends(get_db_session)):
     if body.kind not in ("cmdb", "itsm", "siem", "soar"):
         raise HTTPException(status_code=422, detail="kind must be cmdb/itsm/siem/soar")
+    if body.endpoint:
+        from control_plane.delivery import WebhookUrlError, validate_webhook_url
+
+        try:
+            validate_webhook_url(body.endpoint)
+        except WebhookUrlError as exc:
+            raise HTTPException(status_code=422, detail=f"unsafe integration endpoint: {exc}") from exc
     i = _repo(db).upsert_integration(kind=body.kind, provider=body.provider, name=body.name,
                                      endpoint=body.endpoint, config=body.config,
                                      credential_id=body.credential_id)

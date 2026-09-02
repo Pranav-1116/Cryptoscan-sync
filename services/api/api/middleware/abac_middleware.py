@@ -63,8 +63,24 @@ def reset_abac_cache() -> None:
     _grants_cache_at = 0.0
 
 
+_PROD_ENVIRONMENTS = {"production", "prod", "staging", "stage"}
+
+
 def _enforced() -> bool:
-    return os.environ.get("ABAC_ENFORCED", "").lower() in {"1", "true", "yes", "on"}
+    """Scope enforcement is fail-closed in production/staging by default.
+
+    Tenant isolation must silently no-op NEVER in a deployed environment: if
+    the platform is running in production, ABAC is ON unless an operator
+    explicitly sets ``ABAC_ENFORCED=false``. Local dev/test stay permissive
+    (and greenfield installs with no grants remain open within an env).
+    """
+    override = os.environ.get("ABAC_ENFORCED", "").strip().lower()
+    if override in {"1", "true", "yes", "on"}:
+        return True
+    if override in {"0", "false", "no", "off"}:
+        return False
+    # No explicit override: enforce in production-like environments.
+    return os.environ.get("ENVIRONMENT", "").strip().lower() in _PROD_ENVIRONMENTS
 
 
 def _load_grants_and_tenant(tenant_id: str | None):
@@ -127,6 +143,34 @@ def _resolve_principal(request) -> tuple[str | None, list[str]]:
         return principal, roles
     except Exception:  # noqa: BLE001 - anonymous / invalid: not this layer's job
         return None, []
+
+
+#: max JSON body the middleware buffers just to extract scope attributes. The
+#: route layer reads the body itself; this cap bounds middleware memory so a
+#: multi-gigabyte POST cannot exhaust the worker via the scope read.
+_MAX_SCOPE_BODY_BYTES = 256 * 1024
+
+
+async def _read_scope_body(request) -> dict | None:
+    """Extract scope attributes from a JSON body without disrupting the route.
+
+    Starlette caches the body read via ``request.body()``, so the endpoint layer
+    can still consume it afterwards. A declared ``Content-Length`` over the cap
+    means we skip the body entirely (scope falls back to query/headers) rather
+    than buffering a huge payload — a multi-gigabyte POST cannot exhaust worker
+    memory through the scope read. Malformed JSON yields no scope, never an error.
+    """
+    try:
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > _MAX_SCOPE_BODY_BYTES:
+            return None  # too large to buffer for scope; route still streams/reads it
+        raw = await request.body()
+        if not raw:
+            return None
+        parsed = json.loads(raw)
+        return parsed if isinstance(parsed, dict) else None
+    except Exception:  # noqa: BLE001 - unreadable/non-JSON/oversized: scope from query/headers
+        return None
 
 
 def _scope_from_request(request, body: dict | None):
@@ -196,14 +240,7 @@ class AbacMiddleware(BaseHTTPMiddleware):
         if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
             ctype = request.headers.get("content-type", "")
             if "application/json" in ctype:
-                try:
-                    raw = await request.body()
-                    if raw:
-                        parsed = json.loads(raw)
-                        if isinstance(parsed, dict):
-                            body_json = parsed
-                except Exception:  # noqa: BLE001 - non-JSON / unreadable: no scope from body
-                    body_json = None
+                body_json = await _read_scope_body(request)
 
         try:
             scope = _scope_from_request(request, body_json)

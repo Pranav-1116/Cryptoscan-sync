@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import control_plane.delivery as delivery_mod
+import pytest
 from control_plane.abac import (
     action_for_method,
     authorize_request,
@@ -145,6 +147,13 @@ def test_effective_scopes_lists_only_own_active_allows():
 
 
 # ------------------------------------------------------------- delivery
+@pytest.fixture(autouse=True)
+def _permissive_ssrf(monkeypatch):
+    # These tests inject a fake HTTP layer and use *.example endpoints; the SSRF
+    # guard itself is covered in services/api/tests/unit/test_security_vulns.py.
+    monkeypatch.setattr(delivery_mod, "validate_webhook_url", lambda url: url)
+
+
 def _integ(**kw):
     base = {"id": "int-1", "kind": "siem", "provider": "webhook",
             "name": "soc", "enabled": True, "endpoint": "https://soc.example/hook"}

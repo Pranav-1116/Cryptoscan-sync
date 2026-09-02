@@ -17,18 +17,113 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import logging
 import os
+import socket
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from control_plane.integrations import SIEM_EVENT_CATEGORIES, to_cef
 
 logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------- SSRF guard
+class WebhookUrlError(ValueError):
+    """Raised when a webhook endpoint is unsafe (SSRF / non-HTTP / metadata)."""
+
+
+#: well-known cloud-instance metadata hostnames that must never be reachable.
+_METADATA_HOSTNAMES = {
+    "metadata.google.internal",
+    "metadata.google.com",
+    "metadata",
+    "metadata.aws.internal",
+    "169.254.169.254.nip.io",
+}
+
+#: scheme allow-list — anything else (file://, gopher://, ftp:// …) is SSRF/abuse.
+_ALLOWED_SCHEMES = {"http", "https"}
+
+
+def _allow_private() -> bool:
+    return os.environ.get("ZELNX_WEBHOOK_ALLOW_PRIVATE", "").lower() in {"1", "true", "yes", "on"}
+
+
+def _ip_is_safe(ip: ipaddress._BaseAddress) -> bool:
+    # These ranges are never valid webhook receivers — they are the SSRF
+    # targets (cloud metadata 169.254/16, loopback, multicast, unspecified).
+    if ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_unspecified:
+        return False
+    # RFC1918 / CGNAT / reserved space: SIEM/ITSM receivers on an internal
+    # network are common in on-prem/air-gap deployments, so permitted by
+    # default but blockable via ZELNX_WEBHOOK_ALLOW_PRIVATE=false.
+    if ip.is_private or ip.is_reserved:
+        if os.environ.get("ZELNX_WEBHOOK_ALLOW_PRIVATE", "").strip().lower() in {"0", "false", "no", "off"}:
+            return False
+        return True
+    return True
+
+
+def validate_webhook_url(url: str) -> str:
+    """Validate an outbound webhook endpoint against SSRF.
+
+    Allows only http/https; blocks cloud metadata hosts, loopback, link-local
+    (169.254/16), multicast, unspecified and (unless ZELNX_WEBHOOK_ALLOW_PRIVATE
+    is set) private/reserved address space. Hostnames are resolved and every
+    resolved IP is checked (DNS-rebind hardening at request time). Raises
+    :class:`WebhookUrlError`; returns the URL unchanged when safe.
+    """
+    if not url or not isinstance(url, str):
+        raise WebhookUrlError("empty webhook endpoint")
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError as exc:
+        raise WebhookUrlError(f"unparseable webhook URL: {exc}") from exc
+
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in _ALLOWED_SCHEMES:
+        raise WebhookUrlError(f"disallowed scheme {scheme!r} (http/https only)")
+
+    host = (parsed.hostname or "").strip().lower()
+    if not host:
+        raise WebhookUrlError("webhook URL has no host")
+    if host in _METADATA_HOSTNAMES:
+        raise WebhookUrlError("blocked cloud-metadata endpoint")
+
+    # IP literal in the URL — check directly.
+    try:
+        ip = ipaddress.ip_address(host.strip("[]"))
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if not _ip_is_safe(ip):
+            raise WebhookUrlError(f"blocked non-public address {ip}")
+        return url
+
+    # Hostname — resolve and check every address; fail closed on resolution error.
+    try:
+        infos = socket.getaddrinfo(host, parsed.port or None, proto=socket.IPPROTO_TCP)
+    except (socket.gaierror, OSError) as exc:
+        raise WebhookUrlError(f"cannot resolve webhook host {host!r}: {exc}") from exc
+    for info in infos:
+        addr = info[4][0]
+        try:
+            resolved = ipaddress.ip_address(addr.split("%")[0])
+        except ValueError:
+            continue
+        if not _ip_is_safe(resolved):
+            raise WebhookUrlError(
+                f"webhook host {host!r} resolves to blocked address {resolved}"
+            )
+    return url
+
 
 #: event-type prefix -> integration kinds that consume it.
 _KIND_FOR_PREFIX = {
@@ -193,6 +288,18 @@ def deliver(
     )
     if not endpoint:
         result.error = "no endpoint configured (air-gap/outbox — event retained)"
+        return result
+
+    # SSRF guard: never POST to non-HTTP schemes, cloud metadata, loopback or
+    # (by default) private/reserved address space. Checked here in addition to
+    # registration time because config can change and DNS can rebind.
+    try:
+        validate_webhook_url(endpoint)
+    except WebhookUrlError as exc:
+        result.status = "failed"
+        result.error = f"ssrf blocked: {exc}"
+        logger.warning("webhook_ssrf_blocked integration=%s endpoint=%s",
+                       result.integration_id, endpoint)
         return result
 
     body, shaped = build_payload(integration, event)
