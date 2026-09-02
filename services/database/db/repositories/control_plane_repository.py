@@ -91,6 +91,16 @@ class ControlPlaneRepository:
         self.session.flush()
         return cred
 
+    def record_credential_access(self, credential_id: str) -> CredentialRef | None:
+        """Audit a credential lease: bump access count + last health check."""
+        cred = self.get_credential(credential_id)
+        if cred is None:
+            return None
+        cred.access_count = int(cred.access_count or 0) + 1
+        cred.last_health_check_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return cred
+
     # --------------------------------------------------------------- agents
     def enroll_agent(self, name: str, fingerprint: str, **fields) -> Agent:
         agent = Agent(name=name, enrollment_token_fingerprint=fingerprint,
@@ -145,6 +155,30 @@ class ControlPlaneRepository:
         elif target:
             agent.target_version = target
             agent.status = "upgrading"
+        self.session.flush()
+        return agent
+
+    def configure_agent(self, agent_id: str, *, config: dict | None = None,
+                        resource_limits: dict | None = None) -> Agent | None:
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            return None
+        if config is not None:
+            merged = dict(agent.config or {})
+            merged.update(config)
+            agent.config = merged
+        if resource_limits is not None:
+            merged_limits = dict(agent.resource_limits or {})
+            merged_limits.update(resource_limits)
+            agent.resource_limits = merged_limits
+        self.session.flush()
+        return agent
+
+    def rotate_agent_cert(self, agent_id: str, cert_serial: str) -> Agent | None:
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            return None
+        agent.cert_serial = cert_serial
         self.session.flush()
         return agent
 
@@ -223,6 +257,66 @@ class ControlPlaneRepository:
         self.session.add(ev)
         self.session.flush()
         return ev
+
+    def get_event(self, event_id: str) -> QueuedEvent | None:
+        return self.session.get(QueuedEvent, event_id)
+
+    def lease_next(self, worker_id: str, *, priority_rank: dict | None = None,
+                   now: datetime | None = None) -> QueuedEvent | None:
+        """Atomically lease the highest-priority due event (best-effort on
+        SQLite; row-locked on Postgres)."""
+        from control_plane.queue import next_available
+
+        now = now or datetime.now(timezone.utc)
+        rows = self.list_events("queued", limit=200)
+        chosen = next_available([r.to_dict() for r in rows], now=now)
+        if chosen is None:
+            return None
+        ev = self.session.get(QueuedEvent, chosen["id"])
+        if ev is None or ev.status != "queued":
+            return None
+        ev.status = "leased"
+        ev.leased_by = worker_id
+        ev.leased_at = now
+        ev.attempts = int(ev.attempts or 0) + 1
+        self.session.flush()
+        return ev
+
+    def complete_event(self, event_id: str) -> QueuedEvent | None:
+        ev = self.session.get(QueuedEvent, event_id)
+        if ev is None:
+            return None
+        ev.status = "completed"
+        ev.completed_at = datetime.now(timezone.utc)
+        ev.leased_by = None
+        self.session.flush()
+        return ev
+
+    def fail_event(self, event_id: str, error: str, *, now: datetime | None = None) -> QueuedEvent | None:
+        """Apply backoff/retry or dead-letter after a processing failure."""
+        from control_plane.queue import classify_after_failure
+
+        ev = self.session.get(QueuedEvent, event_id)
+        if ev is None:
+            return None
+        update = classify_after_failure(ev.to_dict(), now=now or datetime.now(timezone.utc))
+        ev.attempts = update["attempts"]
+        ev.status = update["status"]
+        ev.leased_by = None
+        ev.available_at = update["available_at"]
+        ev.last_error = (error or "")[:1000]
+        self.session.flush()
+        return ev
+
+    def cancel_event(self, event_id: str) -> bool:
+        ev = self.session.get(QueuedEvent, event_id)
+        if ev is None or ev.status not in {"queued"}:
+            return False
+        ev.status = "dead"
+        ev.last_error = "cancelled by operator"
+        ev.completed_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return True
 
     def list_events(self, status: str | None = None, limit: int = 100) -> list[QueuedEvent]:
         # priority-ordered for work queues: critical -> normal, FIFO within tier

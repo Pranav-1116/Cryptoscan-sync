@@ -208,6 +208,92 @@ def test_event_outbox_priority(client):
 
 
 # ------------------------------------------------------------- benchmark
+# ------------------------------------------------------- execution layer
+def test_credential_lease_never_returns_secret(client):
+    h = _h(client)
+    cred = client.post("/api/v1/control/credentials", headers=h, json={
+        "name": "db", "kind": "database", "vault_provider": "manual_out_of_band",
+        "secret_ref": "vault://db/ro", "least_privilege_scope": "read-only"}).json()
+    r = client.post(f"/api/v1/control/credentials/{cred['id']}/lease", headers=h,
+                    json={"require_value": False})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["leased"] is True and body["access_count"] == 1
+    # the secret value itself is never transmitted — only metadata
+    assert "value" not in body and "secret_value" not in body
+    assert body["resolvable_in_process"] is False  # out-of-band in test env
+
+
+def test_orchestrator_dispatch_complete_fail_and_cancel(client):
+    h = _h(client)
+    # enqueue two scan events, one critical
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "scan.start", "priority": "normal",
+                      "payload": {"domain": "network"}})
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "scan.start", "priority": "critical",
+                      "payload": {"domain": "cloud"}})
+    # dispatch leases critical first, routed to cloud scanner
+    d1 = client.post("/api/v1/control/orchestrator/dispatch", headers=h,
+                     json={"worker_id": "w1"}).json()
+    assert d1["leased"] is True and d1["scanner"] == "cloud_scanner" and d1["priority"] == "critical"
+    # complete it
+    assert client.post(f"/api/v1/control/orchestrator/events/{d1['event_id']}/complete",
+                       headers=h).json()["status"] == "completed"
+    # next lease -> normal event, then fail it -> backoff retry
+    d2 = client.post("/api/v1/control/orchestrator/dispatch", headers=h,
+                     json={"worker_id": "w1"}).json()
+    assert d2["leased"] is True and d2["scanner"] == "network_scanner"
+    failed = client.post(f"/api/v1/control/orchestrator/events/{d2['event_id']}/fail",
+                         headers=h, json={"error": "transient"}).json()
+    assert failed["retry"] is True and failed["attempts"] >= 1
+    # cancel a fresh queued event
+    cq = client.post("/api/v1/control/events/enqueue", headers=h,
+                     json={"event_type": "scan.start", "priority": "low", "payload": {}}).json()
+    assert client.post(f"/api/v1/control/orchestrator/events/{cq['event_id']}/cancel",
+                       headers=h).json()["cancelled"] is True
+
+
+def test_emergency_stop_blocks_orchestrator_and_trigger(client):
+    h = _h(client)
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "scan.start", "priority": "high", "payload": {"domain": "cloud"}})
+    client.post("/api/v1/control/safe-scan/emergency-stop", headers=h, json={"engaged": True})
+    # orchestrator refuses to lease
+    d = client.post("/api/v1/control/orchestrator/dispatch", headers=h, json={"worker_id": "w"})
+    assert d.json()["leased"] is False and "emergency" in d.json()["reason"]
+    # the real scan trigger also refuses
+    trig = client.post("/api/v1/scans/trigger", headers=h,
+                       json={"repo_url": "https://git.example.com/x/y.git", "branch": "main"})
+    assert trig.status_code == 409
+    # disengage -> dispatch works again
+    client.post("/api/v1/control/safe-scan/emergency-stop", headers=h, json={"engaged": False})
+
+
+def test_control_plane_health_endpoint(client):
+    h = _h(client)
+    client.post("/api/v1/control/agents/enroll", headers=h, json={"name": "a1", "region": "uae"})
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "scan.start", "priority": "normal"})
+    r = client.get("/api/v1/control/health", headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert "components" in body and "queue" in body and "fleet" in body
+    assert body["queue"]["queued"] == 1
+
+
+def test_agent_config_and_cert(client):
+    h = _h(client)
+    enr = client.post("/api/v1/control/agents/enroll", headers=h, json={"name": "a"}).json()
+    aid = enr["agent_id"]
+    cfg = client.post(f"/api/v1/control/agents/{aid}/config", headers=h,
+                      json={"resource_limits": {"cpu_max_percent": 20, "mem_mb": 512}}).json()
+    assert cfg["resource_limits"]["cpu_max_percent"] == 20
+    cert = client.post(f"/api/v1/control/agents/{aid}/cert", headers=h,
+                       json={"cert_serial": "CERT-999"}).json()
+    assert cert["cert_serial"] == "CERT-999"
+
+
 def test_benchmark_scoring(client):
     h = _h(client)
     ds = client.post("/api/v1/control/benchmark/datasets", headers=h,

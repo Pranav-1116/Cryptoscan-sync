@@ -210,6 +210,45 @@ def list_credentials(user: str = Depends(get_current_user), db: Session = Depend
     return {"credentials": out}
 
 
+class LeaseRequest(BaseModel):
+    require_value: bool = False
+
+
+@router.post("/credentials/{credential_id}/lease")
+def lease_credential_endpoint(credential_id: str, body: LeaseRequest,
+                              user: str = Depends(require_roles("superadmin", "admin", "ciso", "security_analyst", "scanner")),
+                              db: Session = Depends(get_db_session)):
+    """Lease a short-lived credential for a scanner. The secret value is NEVER
+    returned over the API — scanners resolve it out-of-band via the vault
+    adapter in their own process. This records the access (audit) and reports
+    whether the reference is resolvable and healthy."""
+    from control_plane.credentials import assess_credential
+    from control_plane.vault import VaultError, lease_credential
+
+    repo = _repo(db)
+    cred = repo.get_credential(credential_id)
+    if cred is None:
+        raise HTTPException(status_code=404, detail="Credential not found")
+    health = assess_credential(cred.to_dict())
+    if not health.healthy:
+        raise HTTPException(status_code=409, detail=f"credential not usable: {health.detail}")
+    resolvable = True
+    try:
+        lease = lease_credential(cred.to_dict(), require_value=body.require_value)
+        resolvable = lease.value is not None
+    except VaultError as exc:
+        if body.require_value:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        resolvable = False
+    repo.record_credential_access(credential_id)
+    _audit(db, user, "control.credential_leased", target_id=credential_id,
+           detail={"resolvable_in_process": resolvable})
+    db.commit()
+    return {"credential_id": credential_id, "leased": True,
+            "resolvable_in_process": resolvable, "access_count": repo.get_credential(credential_id).access_count,
+            "note": "scanner resolves secret via vault adapter; value never returned by the API"}
+
+
 @router.post("/credentials/{credential_id}/rotate")
 def rotate_credential(credential_id: str,
                       user: str = Depends(require_roles("superadmin", "admin", "ciso")),
@@ -322,6 +361,45 @@ def upgrade_agent(agent_id: str, body: AgentUpgradeRequest,
     _publish("agent.upgrade_scheduled", {"agent_id": agent_id, "action": body.action, "target": target})
     db.commit()
     return {"agent_id": agent_id, "status": updated.status, "target_version": updated.target_version}
+
+
+class AgentConfigRequest(BaseModel):
+    config: dict | None = None
+    resource_limits: dict | None = None
+
+
+@router.post("/agents/{agent_id}/config")
+def configure_agent(agent_id: str, body: AgentConfigRequest,
+                    user: str = Depends(require_roles("superadmin", "admin", "ciso")),
+                    db: Session = Depends(get_db_session)):
+    updated = _repo(db).configure_agent(agent_id, config=body.config,
+                                        resource_limits=body.resource_limits)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _audit(db, user, "control.agent_configured", target_id=agent_id,
+           detail={"has_limits": bool(body.resource_limits)})
+    db.commit()
+    return {"agent_id": agent_id, "config": updated.config,
+            "resource_limits": updated.resource_limits}
+
+
+class AgentCertRequest(BaseModel):
+    cert_serial: str
+
+
+@router.post("/agents/{agent_id}/cert")
+def rotate_agent_cert(agent_id: str, body: AgentCertRequest,
+                      user: str = Depends(require_roles("superadmin", "admin", "ciso")),
+                      db: Session = Depends(get_db_session)):
+    """Record a certificate rotation for an agent (signed-update/cert flow)."""
+    updated = _repo(db).rotate_agent_cert(agent_id, body.cert_serial)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    _audit(db, user, "control.agent_cert_rotated", target_id=agent_id,
+           detail={"cert_serial": body.cert_serial})
+    _publish("agent.cert_rotated", {"agent_id": agent_id})
+    db.commit()
+    return {"agent_id": agent_id, "cert_serial": updated.cert_serial}
 
 
 # -------------------------------------------------------------- safe scan
@@ -458,6 +536,138 @@ def event_queue(status_filter: str = "queued", limit: int = 50,
                 user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     events = _repo(db).list_events(status_filter, limit)
     return {"events": [e.to_dict() for e in events]}
+
+
+class DispatchRequest(BaseModel):
+    worker_id: str = "worker-1"
+    max_concurrency: int = 4
+
+
+@router.post("/orchestrator/dispatch")
+def dispatch(body: DispatchRequest,
+             user: str = Depends(require_roles("superadmin", "admin", "ciso", "scanner")),
+             db: Session = Depends(get_db_session)):
+    """Lease the next due, highest-priority scan event that safe-scan permits.
+
+    Applies the matching safe-scan policy (emergency stop, OT passive,
+    exclusions, auto-stop) before leasing; returns the scanner the worker
+    should invoke. Fail-closed — nothing is leased while emergency stop is
+    engaged or a policy blocks the target.
+    """
+    from control_plane.orchestrator import emergency_engaged, scanner_for_event
+    from control_plane.safety import evaluate_scan
+
+    repo = _repo(db)
+    # global emergency stop across the durable stream
+    all_events = [e.to_dict() for e in repo.list_events(None, limit=500)]
+    if emergency_engaged(all_events):
+        return {"leased": False, "reason": "emergency stop engaged", "permitted": False}
+
+    leased = repo.lease_next(body.worker_id)
+    if leased is None:
+        return {"leased": False, "reason": "no due events"}
+
+    # safety gate for scan/discovery events
+    decision_mode = None
+    if str(leased.event_type).startswith(("scan", "discovery")):
+        payload = leased.payload or {}
+        policy_row = repo.matching_policy(region=payload.get("region"),
+                                          environment=payload.get("environment"))
+        decision = evaluate_scan(policy_row.to_dict() if policy_row else None,
+                                 asset=payload.get("asset"), port=payload.get("port"),
+                                 protocol=payload.get("protocol"),
+                                 is_ot=bool(payload.get("is_ot")))
+        if not decision.permitted:
+            # do not run — release back as a soft failure for visibility
+            repo.fail_event(leased.id, f"blocked by safe-scan: {decision.reason}")
+            db.commit()
+            return {"leased": False, "permitted": False, "reason": decision.reason,
+                    "event_id": leased.id}
+        decision_mode = decision.mode
+
+    _audit(db, user, "control.event_leased", target_id=leased.id,
+           detail={"event_type": leased.event_type, "worker": body.worker_id})
+    db.commit()
+    return {"leased": True, "event_id": leased.id, "event_type": leased.event_type,
+            "payload": leased.payload, "priority": leased.priority,
+            "scanner": scanner_for_event(leased.event_type, leased.payload or {}),
+            "mode": decision_mode, "attempts": leased.attempts}
+
+
+class EventResultRequest(BaseModel):
+    error: str | None = None
+
+
+@router.post("/orchestrator/events/{event_id}/complete")
+def complete_event(event_id: str,
+                   user: str = Depends(require_roles("superadmin", "admin", "scanner")),
+                   db: Session = Depends(get_db_session)):
+    ev = _repo(db).complete_event(event_id)
+    if ev is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    _audit(db, user, "control.event_completed", target_id=event_id)
+    db.commit()
+    return {"event_id": event_id, "status": "completed"}
+
+
+@router.post("/orchestrator/events/{event_id}/fail")
+def fail_event_endpoint(event_id: str, body: EventResultRequest,
+                        user: str = Depends(require_roles("superadmin", "admin", "scanner")),
+                        db: Session = Depends(get_db_session)):
+    ev = _repo(db).fail_event(event_id, body.error or "processing failed")
+    if ev is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    _audit(db, user, "control.event_failed", target_id=event_id,
+           detail={"attempts": ev.attempts, "status": ev.status})
+    db.commit()
+    return {"event_id": event_id, "status": ev.status, "attempts": ev.attempts,
+            "retry": ev.status == "queued"}
+
+
+@router.post("/orchestrator/events/{event_id}/cancel")
+def cancel_event(event_id: str,
+                 user: str = Depends(require_roles("superadmin", "admin", "ciso")),
+                 db: Session = Depends(get_db_session)):
+    if not _repo(db).cancel_event(event_id):
+        raise HTTPException(status_code=409, detail="Event not queued or not found")
+    _audit(db, user, "control.event_cancelled", target_id=event_id)
+    _publish("scan.cancelled", {"event_id": event_id, "by": user})
+    db.commit()
+    return {"cancelled": True, "event_id": event_id}
+
+
+@router.get("/health")
+def control_health(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    """Observability: health of the control plane itself — queue, agents,
+    credentials — so operators can tell 'customer is quiet' from 'pipeline
+    stopped'."""
+    from control_plane.observability import (
+        credential_health,
+        fleet_health,
+        overall_status,
+        queue_health,
+    )
+
+    repo = _repo(db)
+    events = [e.to_dict() for e in repo.list_events(None, limit=1000)]
+    agents = []
+    for a in repo.list_agents():
+        d = a.to_dict(exclude={"enrollment_token_fingerprint"})
+        d["last_heartbeat_at"] = a.last_heartbeat_at.isoformat() if a.last_heartbeat_at else None
+        agents.append(d)
+    creds = []
+    for c in repo.list_credentials():
+        from control_plane.credentials import assess_credential
+
+        d = c.to_dict(exclude={"secret_ref"})
+        h = assess_credential(c.to_dict())
+        d["health"] = {"status": h.status, "healthy": h.healthy, "rotation_due": h.rotation_due}
+        creds.append(d)
+
+    q = queue_health(events)
+    f = fleet_health(agents)
+    cr = credential_health(creds)
+    return overall_status(queue=q, fleet=f, credentials=cr)
 
 
 # ------------------------------------------------------------- benchmark

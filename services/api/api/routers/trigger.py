@@ -7,7 +7,7 @@ import logging
 from datetime import datetime, timezone
 
 from db.repositories.job_repository import JobRepository
-from fastapi import APIRouter, BackgroundTasks, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from api.config.settings import get_settings
 from api.dependencies import get_job_repository, require_auditor
@@ -56,6 +56,37 @@ def _annotate_sector(job, sector: str, scan_mode: str | None) -> None:
         job.progress = progress
     except Exception:
         logger.debug("sector_annotation_skipped", exc_info=True)
+
+
+def _safe_scan_gate(*, region: str | None = None, environment: str | None = None,
+                    is_ot: bool = False, asset: str | None = None) -> None:
+    """Fail-closed: refuse to queue a scan when the safe-scan layer blocks it
+    (global/scope emergency stop, or an OT/policy prohibition). Reads the
+    Control Plane policies; any lookup failure fails closed for safety."""
+    try:
+        from control_plane.orchestrator import emergency_engaged
+        from control_plane.safety import evaluate_scan
+        from db.connection.session import SessionLocal
+        from db.repositories.control_plane_repository import ControlPlaneRepository
+
+        session = SessionLocal()
+        try:
+            cp = ControlPlaneRepository(session)
+            if emergency_engaged([e.to_dict() for e in cp.list_events(None, limit=500)]):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail="Scan rejected: emergency stop is engaged")
+            policy_row = cp.matching_policy(region=region, environment=environment)
+            decision = evaluate_scan(policy_row.to_dict() if policy_row else None,
+                                     asset=asset, is_ot=is_ot)
+            if not decision.permitted:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail=f"Scan rejected by safe-scan policy: {decision.reason}")
+        finally:
+            session.close()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.debug("safe_scan_gate_unavailable", exc_info=True)
 
 
 def _publish_job(payload: dict) -> None:
@@ -179,6 +210,9 @@ async def trigger_manual_scan(
     job_repo: JobRepository = Depends(get_job_repository),
 ):
     from cloud_scanner.estate import is_cloud_target
+
+    # fail-closed safe-scan gate (emergency stop / OT policy) before queuing
+    _safe_scan_gate(is_ot=bool(getattr(request_body, "is_ot", False)))
 
     job_type = "CLOUD" if is_cloud_target(request_body.repo_url) else "MANUAL"
     effective_sector = _resolve_sector(getattr(request_body, "sector", None), job_repo)

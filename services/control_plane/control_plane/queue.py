@@ -19,10 +19,17 @@ def ordering_key(event: dict) -> tuple[int, str]:
     return (PRIORITY_RANK.get(event.get("priority", "normal"), 2), str(event.get("created_at") or ""))
 
 
+def _as_aware(dt: datetime) -> datetime:
+    """Normalize a possibly-naive datetime (SQLite returns naive) to UTC."""
+    if dt is not None and dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def next_available(events: list[dict], *, now: datetime | None = None) -> dict | None:
     """Pick the highest-priority event whose availability time has arrived and
     which is not already completed/dead."""
-    now = now or datetime.now(timezone.utc)
+    now = _as_aware(now or datetime.now(timezone.utc))
     eligible = []
     for e in events:
         if e.get("status") not in {"queued"}:
@@ -33,7 +40,7 @@ def next_available(events: list[dict], *, now: datetime | None = None) -> dict |
                 avail = datetime.fromisoformat(avail.replace("Z", "+00:00"))
             except ValueError:
                 avail = None
-        if isinstance(avail, datetime) and avail > now:
+        if isinstance(avail, datetime) and _as_aware(avail) > now:
             continue
         eligible.append(e)
     if not eligible:
