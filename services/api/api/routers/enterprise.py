@@ -152,6 +152,43 @@ def compliance_evaluate(body: ComplianceEvalRequest,
     return posture
 
 
+class PipelineRequest(BaseModel):
+    findings: list[dict] | None = None  # use provided findings, else live DB
+    sector: str | None = None
+    region: str | None = None
+    limit: int = 500
+
+
+@router.post("/pipeline/evaluate")
+def run_findings_pipeline(body: PipelineRequest,
+                          user: str = Depends(require_roles("superadmin", "admin", "ciso", "security_analyst")),
+                          db: Session = Depends(get_db_session)):
+    """Run the real data flow: (live) findings -> merged policy-as-code
+    evaluation -> crypto-KB classification -> compliance control mapping.
+    Persists compliance status snapshots and returns per-finding verdicts."""
+    from control_plane.pipeline import run_pipeline
+
+    repo = _repo(db)
+    findings = body.findings if body.findings is not None else repo.live_findings(body.limit)
+    policy_docs = [d for d in repo.list_policies()
+                   if (body.sector is None or d.sector is None or d.sector == body.sector)]
+    layers = [{"id": d.name, "rules": d.rules} for d in policy_docs]
+    controls = repo.list_controls()
+    result = run_pipeline(findings, layers, controls=controls)
+    posture = result.get("posture")
+    if posture:
+        for r in posture["controls"]:
+            repo.record_compliance_status(framework=r["framework"], control_id=r["control_id"],
+                                          status=r["status"], open_findings=r["open_findings"],
+                                          evidence_count=r["evidence"],
+                                          compliance_pct=posture["compliance_pct"],
+                                          coverage_pct=posture["coverage_pct"])
+    _audit(db, user, "enterprise.pipeline_evaluated",
+           detail={"findings": result["total_findings"], "risks": result["risks"]})
+    db.commit()
+    return result
+
+
 # --------------------------------------------------------------------- ITSM
 class TicketRequest(BaseModel):
     model_config = {"extra": "forbid"}
@@ -252,13 +289,45 @@ def cmdb_resolve(body: CmdbImport,
 
     result = resolve_cmdb_assets(body.records, body.discovered)
     repo = _repo(db)
+    # persist enriched matches into the canonical asset-identity table so the
+    # business context (owner/BU/criticality/classification) is retained.
+    from control_plane.identity import resolve_identity
+    from db.repositories.control_plane_repository import ControlPlaneRepository
+
+    cp = ControlPlaneRepository(db)
+    enriched_records = []
+    for item in result["enriched"]:
+        d = item["discovered"]
+        observations = [
+            {"source": "discovery", "asset_type": d.get("asset_type"),
+             "identifiers": {k: d[k] for k in ("serial", "fqdn", "instance_id", "hardware_uuid") if d.get(k)}},
+            {"source": "cmdb", "asset_type": d.get("asset_type"),
+             "owner": item.get("owner"), "business_unit": item.get("business_unit"),
+             "criticality": item.get("criticality"), "application": item.get("application"),
+             "data_classification": item.get("data_classification"),
+             "identifiers": {k: d[k] for k in ("serial", "fqdn", "instance_id", "hardware_uuid") if d.get(k)}},
+        ]
+        fused = resolve_identity(observations)
+        attrs = fused.pop("attributes", {})
+        identity = cp.upsert_asset_identity(
+            fused["canonical_id"], asset_type=attrs.get("asset_type") or d.get("asset_type"),
+            name=d.get("fqdn") or d.get("hostname"), owner=item.get("owner"),
+            business_unit=item.get("business_unit"), criticality=item.get("criticality"),
+            application=item.get("application"),
+            data_classification=item.get("data_classification"),
+            confidence=fused["confidence"], evidence_sources=fused["evidence_sources"],
+            source_refs={"cmdb_ci": item.get("cmdb_ci")})
+        enriched_records.append(identity.canonical_id)
     integ = repo.list_integrations()
     for i in integ:
         if i.kind == "cmdb":
             repo.mark_integration_synced(i.id, "resolved")
+    _audit(db, user, "enterprise.cmdb_resolved",
+           detail={"matched": result["matched"], "persisted": len(enriched_records)})
     db.commit()
     return {"matched": result["matched"], "new_unmatched": result["new_unmatched"],
-            "cmdb_stale": result["cmdb_stale"], "enriched": result["enriched"]}
+            "cmdb_stale": result["cmdb_stale"], "enriched": result["enriched"],
+            "identities_persisted": len(enriched_records)}
 
 
 class SiemExport(BaseModel):
@@ -352,8 +421,35 @@ def crypto_kb(algorithm: str | None = None, user: str = Depends(get_current_user
 
 # --------------------------------------------------- air-gapped signed transfer
 class SignedExportRequest(BaseModel):
-    document: dict
+    document: dict | None = None
     secret: str = Field(..., min_length=8)
+    include_findings: bool = False
+    include_compliance: bool = False
+
+
+@router.post("/airgap/bundle")
+def airgap_bundle(body: SignedExportRequest,
+                  user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor")),
+                  db: Session = Depends(get_db_session)):
+    """Build a signed export carrying real platform data (findings, compliance
+    posture, controls) for controlled transfer out of an air-gapped site."""
+    from control_plane.integrations import build_signed_export
+
+    repo = _repo(db)
+    doc = dict(body.document or {})
+    if body.include_findings:
+        doc["findings"] = repo.live_findings(500)
+    if body.include_compliance:
+        controls = repo.list_controls()
+        doc["controls"] = [{"framework": c.framework, "control_id": c.control_id,
+                            "assets": c.assets} for c in controls]
+    doc["exported_by"] = user
+    pkg = build_signed_export(doc, body.secret)
+    _audit(db, user, "enterprise.airgap_bundle", detail={"content_hash": pkg["content_hash"],
+           "findings": len(doc.get("findings") or [])})
+    db.commit()
+    return {"package": pkg, "document_keys": list(doc.keys()),
+            "findings": len(doc.get("findings") or [])}
 
 
 @router.post("/airgap/export")

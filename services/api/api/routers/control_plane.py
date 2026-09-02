@@ -636,6 +636,36 @@ def cancel_event(event_id: str,
     return {"cancelled": True, "event_id": event_id}
 
 
+class WorkerTickRequest(BaseModel):
+    worker_id: str = "worker-1"
+    batch: int = 10
+
+
+@router.post("/orchestrator/tick")
+def worker_tick_endpoint(body: WorkerTickRequest,
+                         user: str = Depends(require_roles("superadmin", "admin", "scanner")),
+                         db: Session = Depends(get_db_session)):
+    """Process up to ``batch`` due queued events through safe-scan gating and
+    the deterministic handler. This is the durable queue consumer the worker
+    loop calls; it completes processed events and backoff/dead-letters failures."""
+    from control_plane.worker import worker_tick as _tick
+
+    repo = _repo(db)
+
+    def policy_provider(payload: dict):
+        row = repo.matching_policy(region=payload.get("region"), environment=payload.get("environment"))
+        return row.to_dict() if row else None
+
+    result = _tick(repo, worker_id=body.worker_id, batch=min(body.batch, 50),
+                   policy_provider=policy_provider)
+    _audit(db, user, "control.worker_tick",
+           detail={"processed": result.processed, "blocked": len(result.blocked),
+                   "failed": len(result.failed)})
+    db.commit()
+    return {"processed": result.processed, "blocked": result.blocked,
+            "failed": result.failed, "empty": result.empty, "leased": result.leased}
+
+
 @router.get("/health")
 def control_health(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Observability: health of the control plane itself — queue, agents,
@@ -667,7 +697,33 @@ def control_health(user: str = Depends(get_current_user), db: Session = Depends(
     q = queue_health(events)
     f = fleet_health(agents)
     cr = credential_health(creds)
-    return overall_status(queue=q, fleet=f, credentials=cr)
+
+    # live component checks: database + redis (never 500 if a dependency is down)
+    db_up = True
+    try:
+        from db.connection.engine import check_db_health
+
+        db_up = check_db_health().get("status") == "healthy"
+    except Exception:  # noqa: BLE001
+        db_up = False
+    redis_up = True
+    try:
+        from api.config.settings import get_settings
+
+        url = (get_settings().REDIS_URL or "").strip()
+        if url:
+            import redis as redis_client
+
+            redis_client.Redis.from_url(url, socket_connect_timeout=2).ping()
+        else:
+            redis_up = None  # not configured (SQLite/inline mode)
+    except Exception:  # noqa: BLE001
+        redis_up = False
+
+    status = overall_status(queue=q, fleet=f, credentials=cr, api_up=True, db_up=db_up)
+    status["components"]["redis"] = redis_up
+    status["redis"] = redis_up
+    return status
 
 
 # ------------------------------------------------------------- benchmark

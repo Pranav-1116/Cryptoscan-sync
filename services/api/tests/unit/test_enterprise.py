@@ -159,6 +159,80 @@ def test_crypto_kb_lookup_and_override(client):
     assert any(e["algorithm"] == "custom-cipher-x" for e in listed["entries"])
 
 
+# ------------------------------------------------- wired findings pipeline
+def test_pipeline_evaluates_supplied_findings(client):
+    h = _h(client)
+    # policy that rejects DISALLOWED status algorithms
+    client.put("/api/v1/enterprise/policies", headers=h, json={
+        "name": "no-disallowed", "layer": "organization",
+        "rules": [{"id": "r1", "path": "status", "op": "ne", "value": "DISALLOWED"}]})
+    client.post("/api/v1/enterprise/compliance/controls", headers=h, json={
+        "framework": "NIST-CSF", "control_id": "SC-12", "assets": ["a1"]})
+    out = client.post("/api/v1/enterprise/pipeline/evaluate", headers=h, json={
+        "findings": [
+            {"algorithm": "RSA", "key_size": 1024, "asset_id": "a1", "status": "DISALLOWED"},
+            {"algorithm": "ECDSA", "key_size": 256, "asset_id": "a2", "status": "ALLOWED",
+             "tls_version": "TLSv1.3"}]})
+    body = out.json()
+    assert body["total_findings"] == 2 and body["risks"] >= 1
+    assert body["posture"] is not None
+    assert any(v["is_risk"] for v in body["verdicts"])
+
+
+def test_cmdb_resolve_persists_identities(client):
+    h = _h(client)
+    client.post("/api/v1/enterprise/integrations", headers=h, json={
+        "kind": "cmdb", "provider": "servicenow", "name": "cmdb"})
+    res = client.post("/api/v1/enterprise/integrations/cmdb/resolve", headers=h, json={
+        "records": [{"serial": "S-9", "owner": "secops", "business_unit": "payments",
+                      "criticality": "tier1", "ci_id": "CI-9"}],
+        "discovered": [{"serial": "S-9", "asset_type": "hsm"}]}).json()
+    assert res["identities_persisted"] == 1
+    assets = client.get("/api/v1/control/assets", headers=h).json()["assets"]
+    persisted = [a for a in assets if "secops" == a.get("owner")]
+    assert persisted and persisted[0]["business_unit"] == "payments"
+
+
+def test_worker_tick_processes_queued_events(client):
+    h = _h(client)
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "siem.test", "priority": "normal", "payload": {"x": 1}})
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "scan.start", "priority": "high",
+                      "payload": {"domain": "cloud"}})
+    tick = client.post("/api/v1/control/orchestrator/tick", headers=h,
+                       json={"worker_id": "w1", "batch": 5}).json()
+    assert tick["processed"] == 2 and tick["failed"] == []
+    # queue drains
+    remaining = client.get("/api/v1/control/events/queue?status_filter=queued", headers=h).json()["events"]
+    assert remaining == []
+
+
+def test_worker_tick_emergency_stop_blocks(client):
+    h = _h(client)
+    client.post("/api/v1/control/events/enqueue", headers=h,
+                json={"event_type": "scan.start", "priority": "high", "payload": {"domain": "network"}})
+    client.post("/api/v1/control/safe-scan/emergency-stop", headers=h, json={"engaged": True})
+    tick = client.post("/api/v1/control/orchestrator/tick", headers=h, json={"batch": 5}).json()
+    assert tick["processed"] == 0 and tick["blocked"]
+    client.post("/api/v1/control/safe-scan/emergency-stop", headers=h, json={"engaged": False})
+
+
+def test_airgap_bundle_carries_findings(client):
+    h = _h(client)
+    bundle = client.post("/api/v1/enterprise/airgap/bundle", headers=h, json={
+        "secret": "airgap-bundle-secret", "include_findings": True}).json()
+    assert bundle["package"]["content_hash"]
+    assert "findings" in bundle["document_keys"]
+
+
+def test_control_health_includes_components(client):
+    h = _h(client)
+    r = client.get("/api/v1/control/health", headers=h).json()
+    assert "components" in r and "database" in r["components"]
+    assert r["status"] in {"ok", "degraded", "critical"}
+
+
 # ------------------------------------------------------- air-gapped transfer
 def test_signed_export_import_roundtrip_and_tamper(client):
     h = _h(client)

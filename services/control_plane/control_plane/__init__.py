@@ -41,6 +41,7 @@ from control_plane.orchestrator import (
     emergency_engaged,
     scanner_for_event,
 )
+from control_plane.pipeline import classify_finding, finding_to_target, run_pipeline
 from control_plane.policy_as_code import (
     evaluate_policy,
     merge_policy_layers,
@@ -60,6 +61,7 @@ from control_plane.safety import (
     should_auto_stop,
 )
 from control_plane.vault import VaultError, get_adapter, lease_credential
+from control_plane.worker import process_event, worker_tick
 
 __all__ = [
     "CredentialHealth",
@@ -73,11 +75,13 @@ __all__ = [
     "backoff_delay",
     "build_signed_export",
     "classify_after_failure",
+    "classify_finding",
     "confidence_from_evidence",
     "credential_health",
     "emergency_engaged",
     "evaluate_policy",
     "evaluate_scan",
+    "finding_to_target",
     "fleet_health",
     "framework_posture",
     "get_adapter",
@@ -96,15 +100,18 @@ __all__ = [
     "normalize_siem_events",
     "overall_status",
     "policy_version",
+    "process_event",
     "queue_health",
     "residency_permitted",
     "residency_violations",
     "resolve_cmdb_assets",
     "resolve_identity",
     "route_region",
+    "run_pipeline",
     "scanner_for_event",
     "score_predictions",
     "should_auto_stop",
     "ticket_state_machine",
     "to_cef",
+    "worker_tick",
 ]

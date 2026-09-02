@@ -189,3 +189,17 @@ class EnterpriseRepository:
 
     def list_kb_entries(self) -> list[CryptoKnowledgeEntry]:
         return list(self.session.execute(select(CryptoKnowledgeEntry)).scalars().all())
+
+    # ------------------------------------------------- live findings access
+    def live_findings(self, limit: int = 500) -> list[dict]:
+        """Read live scanner findings (runtime) as plain dicts for policy
+        evaluation. Works even when the runtime table is empty."""
+        try:
+            from db.models.runtime_finding import RuntimeFinding
+
+            rows = list(self.session.execute(
+                select(RuntimeFinding).order_by(RuntimeFinding.last_seen_at.desc()).limit(limit)
+            ).scalars())
+            return [r.to_dict() if hasattr(r, "to_dict") else dict(r.__dict__) for r in rows]
+        except Exception:
+            return []
