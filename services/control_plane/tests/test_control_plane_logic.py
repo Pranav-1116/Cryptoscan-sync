@@ -3,10 +3,20 @@
 from datetime import datetime, timedelta, timezone
 
 from control_plane import (
-    Scope, assess_credential, backoff_delay, classify_after_failure,
-    confidence_from_evidence, evaluate_scan, is_authorized, lease_event,
-    maintenance_window_open, next_available, resolve_identity, residency_permitted,
-    score_predictions, should_auto_stop,
+    Scope,
+    assess_credential,
+    backoff_delay,
+    classify_after_failure,
+    confidence_from_evidence,
+    evaluate_scan,
+    is_authorized,
+    lease_event,
+    maintenance_window_open,
+    next_available,
+    residency_permitted,
+    resolve_identity,
+    score_predictions,
+    should_auto_stop,
 )
 
 NOW = datetime(2026, 9, 6, 2, 30, tzinfo=timezone.utc)  # a Sunday 02:30 UTC

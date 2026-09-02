@@ -72,6 +72,7 @@ from api.routers import (
     sectors,
     onboarding,
     control_plane,
+    enterprise,
 )
 from api.routers import metrics as metrics_router
 from api.security.exceptions import AuthenticationError, ValidationError
@@ -255,6 +256,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(sectors.router, prefix=prefix)
     app.include_router(onboarding.router, prefix=prefix)
     app.include_router(control_plane.router, prefix=prefix)
+    app.include_router(enterprise.router, prefix=prefix)
     app.include_router(metrics_router.router)  # /metrics (no /api prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"

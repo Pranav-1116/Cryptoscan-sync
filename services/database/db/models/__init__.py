@@ -130,3 +130,13 @@ from db.models.control_plane import (  # noqa: E402,F401
     ScopeGrant,
     Tenant,
 )
+from db.models.enterprise import (  # noqa: E402,F401
+    ComplianceControl,
+    ComplianceStatus,
+    CryptoKnowledgeEntry,
+    Integration,
+    PolicyDocument,
+    PolicyEvaluation,
+    Region,
+    Ticket,
+)
