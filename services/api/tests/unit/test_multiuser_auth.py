@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 import pytest
-
-from sqlalchemy import create_engine
-
 from api.config.settings import get_settings
-from api.security.auth import AuthService, AuthenticationError
+from api.security.auth import AuthenticationError, AuthService
 from api.security.passwords import hash_password, verify_password
 from api.security.session_manager import SessionManager
 from db.connection.session import Base, SessionLocal, configure_session
 from db.repositories.user_repository import UserRepository
+from sqlalchemy import create_engine
 
 
 @pytest.fixture()
@@ -78,7 +76,9 @@ def test_disabled_user_cannot_authenticate(session):
     repo = UserRepository(session)
     repo.create_user("nina", hash_password("correct-horse-battery"), roles=["viewer"])
     repo.set_active("nina", False)
-    with pytest.raises(AuthenticationError, match="disabled"):
+    # Disabled/deleted accounts return the same generic message as bad
+    # credentials so usernames cannot be enumerated from the login response.
+    with pytest.raises(AuthenticationError, match="Invalid username or password"):
         AuthService(session=session).authenticate("nina", "correct-horse-battery")
 
 

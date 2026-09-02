@@ -275,3 +275,85 @@ def test_oidc_jwks_uri_scheme_and_host_pinned(monkeypatch):
     # valid, same-host https
     _validate_jwks_uri("https://sso.example.com/realms/main/protocol/openid-connect/certs",
                        "https://sso.example.com/realms/main")
+
+
+# ==================================================== OWASP: security headers
+@pytest.fixture()
+def header_client(monkeypatch, tmp_path):
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("SECRET_KEY", "prod-secret-key-32-characters-minimum")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "pbkdf2_sha256$1$x$y")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/hdr.db")
+    monkeypatch.setenv("NEO4J_URI", "")
+    monkeypatch.setenv("ALLOW_SQLITE", "true")
+    monkeypatch.setenv("ALLOW_INSECURE_CORS", "true")
+    monkeypatch.setenv("DOCS_ENABLED", "false")
+    from api.config.settings import get_settings
+    get_settings.cache_clear()
+    from db.connection import engine as engine_mod
+    engine_mod._ENGINE = None
+    from api.events.bus import reset_event_bus
+    reset_event_bus()
+    from api.main import create_app
+    from fastapi.testclient import TestClient
+
+    with TestClient(create_app()) as c:
+        yield c
+
+
+def test_security_headers_present(header_client):
+    r = header_client.get("/health")
+    assert r.headers.get("X-Content-Type-Options") == "nosniff"
+    assert r.headers.get("X-Frame-Options") == "DENY"
+    csp = r.headers.get("Content-Security-Policy", "")
+    assert "default-src 'self'" in csp and "object-src 'none'" in csp
+    assert "frame-ancestors 'none'" in csp
+    # HSTS only over HTTPS/production
+    assert "Strict-Transport-Security" in r.headers
+    assert r.headers.get("Referrer-Policy") == "no-referrer"
+
+
+# ==================================================== OWASP: user enumeration
+def test_disabled_account_does_not_leak_state(monkeypatch, tmp_path):
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-sessions-min-32-chars")
+    monkeypatch.setenv("ADMIN_USERNAME", "admin")
+    monkeypatch.setenv("ADMIN_PASSWORD", "cryptoscan")
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/enum.db")
+    monkeypatch.setenv("NEO4J_URI", "")
+    from api.config.settings import get_settings
+    get_settings.cache_clear()
+    from db.connection import engine as engine_mod
+    engine_mod._ENGINE = None
+    from api.events.bus import reset_event_bus
+    reset_event_bus()
+    from api.main import create_app
+    from fastapi.testclient import TestClient
+
+    with TestClient(create_app()) as c:
+        h = _h(c)
+        # create a user, then disable them
+        c.post("/api/v1/auth/register", headers=h, json={
+            "username": "ghosty", "password": "longenoughpassword", "role": "readonly"})
+        admin_h = c.post("/api/v1/auth/login",
+                         json={"username": "admin", "password": "cryptoscan"}).json()
+        c.patch("/api/v1/auth/users/ghosty", headers={"Authorization": f"Bearer {admin_h['token']}"},
+                json={"is_active": False})
+        # disabled account: same generic message as a bad password / unknown user
+        disabled = c.post("/api/v1/auth/login",
+                          json={"username": "ghosty", "password": "longenoughpassword"})
+        unknown = c.post("/api/v1/auth/login",
+                         json={"username": "nobody_here", "password": "longenoughpassword"})
+        assert disabled.status_code == 401 and unknown.status_code == 401
+        assert disabled.json()["detail"] == unknown.json()["detail"] == "Invalid username or password"
+
+
+# ==================================================== OWASP: batch-size caps
+def test_ingestion_batch_size_capped(monkeypatch, tmp_path):
+    import pytest as _pytest
+    from api.routers.runtime import RuntimeFindingsBody
+    from pydantic import ValidationError
+
+    with _pytest.raises(ValidationError):
+        RuntimeFindingsBody(scanner_id="s",
+                            findings=[{"hostname": f"h{i}", "kind": "tls"} for i in range(5001)])

@@ -175,10 +175,10 @@ def compliance_evaluate(body: ComplianceEvalRequest,
 
 
 class PipelineRequest(BaseModel):
-    findings: list[dict] | None = None  # use provided findings, else live DB
+    findings: list[dict] | None = Field(default=None, max_length=10000)  # supplied batch; else live DB
     sector: str | None = None
     region: str | None = None
-    limit: int = 500
+    limit: int = Field(default=500, le=10000)
 
 
 @router.post("/pipeline/evaluate")
@@ -411,7 +411,7 @@ def cmdb_resolve(body: CmdbImport,
 
 
 class SiemExport(BaseModel):
-    events: list[dict]
+    events: list[dict] = Field(max_length=10000)  # bound the export batch (OWASP A04 DoS)
     provider: str = "splunk"
 
 

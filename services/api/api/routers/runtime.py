@@ -6,9 +6,9 @@ from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
-from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["runtime"])
 
@@ -28,7 +28,9 @@ class RuntimeFinding(BaseModel):
 
 class RuntimeFindingsBody(BaseModel):
     scanner_id: str = "ebpf-runtime-agent-v1.0"
-    findings: list[RuntimeFinding] = Field(default_factory=list)
+    # Batch cap — agents stream continuously, so a single request must never be
+    # allowed to ingest an unbounded array (resource-exhaustion / DoS, OWASP A04).
+    findings: list[RuntimeFinding] = Field(default_factory=list, max_length=5000)
 
 
 def to_evidence(item: RuntimeFinding, scanner_id: str) -> dict[str, Any]:

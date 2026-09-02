@@ -12,17 +12,12 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
-
-from api.dependencies import get_current_user, get_db_session
-from api.security.rbac import require_permission
-from sqlalchemy.orm import Session
+from typing import Any
 
 from db.repositories.hardware_repository import HardwareRepository
-
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
 from universal_vendor.hardware.live import (
     HardwareEvent,
     HardwareEventType,
@@ -30,54 +25,59 @@ from universal_vendor.hardware.live import (
     LiveHardwareController,
 )
 
+from api.dependencies import get_db_session
+from api.security.rbac import require_permission
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/hardware", tags=["hardware"])
 
-_CONTROLLER: Optional[LiveHardwareController] = None
+_CONTROLLER: LiveHardwareController | None = None
 
 
 class HardwareEventRequest(BaseModel):
     event_type: HardwareEventType
     asset_id: str = ""
-    agent_id: Optional[str] = None
+    agent_id: str | None = None
     source: str = "unknown"
-    observed_at: Optional[str] = None
-    manufacturer: Optional[str] = None
-    model: Optional[str] = None
-    serial_reference: Optional[str] = None
-    hardware_revision: Optional[str] = None
-    device_type: Optional[str] = None
-    component: Optional[str] = None
-    version: Optional[str] = None
-    firmware: Optional[dict[str, Any]] = None
-    tpm: Optional[dict[str, Any]] = None
-    hsm: Optional[dict[str, Any]] = None
-    capabilities: Optional[dict[str, Any]] = None
-    crypto_capabilities: Optional[dict[str, Any]] = None
+    observed_at: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    serial_reference: str | None = None
+    hardware_revision: str | None = None
+    device_type: str | None = None
+    component: str | None = None
+    version: str | None = None
+    firmware: dict[str, Any] | None = None
+    tpm: dict[str, Any] | None = None
+    hsm: dict[str, Any] | None = None
+    capabilities: dict[str, Any] | None = None
+    crypto_capabilities: dict[str, Any] | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class HardwareEventBatchRequest(BaseModel):
-    events: list[HardwareEventRequest]
+    # Bound the batch size — a single agent POST must not carry an unbounded
+    # event array (resource-exhaustion / DoS, OWASP A04).
+    events: list[HardwareEventRequest] = Field(max_length=5000)
 
 
 class HeartbeatRequest(BaseModel):
     agent_id: str
-    last_successful_discovery: Optional[str] = None
-    last_crypto_check: Optional[str] = None
-    last_firmware_check: Optional[str] = None
+    last_successful_discovery: str | None = None
+    last_crypto_check: str | None = None
+    last_firmware_check: str | None = None
     event_queue_depth: int = 0
     event_lag_seconds: int = 0
     agent_health: str = "HEALTHY"
-    hardware_count: Optional[int] = None
-    version: Optional[str] = None
+    hardware_count: int | None = None
+    version: str | None = None
 
 
 class EdgeSyncRequest(BaseModel):
     agent_id: str
-    events: list[HardwareEventRequest] = Field(default_factory=list)
-    heartbeat: Optional[HeartbeatRequest] = None
+    events: list[HardwareEventRequest] = Field(default_factory=list, max_length=5000)
+    heartbeat: HeartbeatRequest | None = None
 
 
 def _controller() -> LiveHardwareController:
@@ -210,7 +210,7 @@ def ingest_heartbeat(
 
 @router.get("/state")
 def live_state(
-    agent_id: Optional[str] = Query(default=None),
+    agent_id: str | None = Query(default=None),
     user: str = Depends(require_permission("hardware.read")),
     db: Session = Depends(get_db_session),
 ):
@@ -236,8 +236,8 @@ def asset_state(
 
 @router.get("/timeline")
 def event_timeline(
-    asset_id: Optional[str] = Query(default=None),
-    event_type: Optional[str] = Query(default=None),
+    asset_id: str | None = Query(default=None),
+    event_type: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=500),
     user: str = Depends(require_permission("hardware.read")),
