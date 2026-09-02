@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timezone
-from typing import Any, Iterable, Mapping
+from typing import Any
 
 PKE = {"RSA", "DSA", "DH", "ECDH", "ECDSA", "ED25519", "X25519", "TLS", "TLS1.0", "TLS1.1", "TLS1.2", "TLS1.3"}
 BROKEN = {"DES", "3DES", "RC4", "MD5", "SHA-1", "SHA1", "SSLV3", "TLS1.0", "TLS1.1"}
@@ -210,6 +211,7 @@ def score_asset(
     *,
     system: Mapping[str, Any] | None = None,
     today: date | None = None,
+    sector_criticality_weight: float | None = None,
 ) -> dict[str, Any]:
     system = system or {}
     extra = system.get("extra") or {}
@@ -248,7 +250,11 @@ def score_asset(
     else:
         timeline = 1.0
     tier = str(system.get("criticality") or extra.get("criticality_tier") or extra.get("criticality") or "").upper()
-    crit = 1.5 if "1" in tier or tier in {"CRITICAL", "TIER-1"} else 1.2 if "2" in tier or tier == "HIGH" else 1.0
+    crit = 1.5 if "1" in tier or tier in {"CRITICAL", "MISSION_CRITICAL", "TIER-1", "VERY_HIGH"} else 1.2 if "2" in tier or tier in {"HIGH"} else 1.0
+    # Sector layer can supply a finer, deterministic weight (0.7..1.5) derived
+    # from the sector profile + asset signals; it overrides the coarse tier.
+    if sector_criticality_weight is not None:
+        crit = max(0.5, min(1.5, float(sector_criticality_weight)))
     score = min(
         100,
         int(
@@ -291,11 +297,44 @@ def score_asset(
     return payload
 
 
+def _sector_weight(sector: str | None, finding: Mapping[str, Any], system: Mapping[str, Any] | None) -> float | None:
+    """Derive a deterministic criticality weight from the sector profile.
+
+    Soft-imports sector_profiles (a sibling service); returns None if the
+    package is unavailable so quantum scoring still works standalone.
+    """
+    if not sector:
+        return None
+    try:
+        from sector_profiles import get_profile, risk_weight, score_criticality
+    except Exception:
+        return None
+    system = system or {}
+    extra = system.get("extra") or {}
+    asset_type = (
+        finding.get("asset_type")
+        or system.get("asset_type")
+        or system.get("name")
+        or "system"
+    )
+    signals = {
+        "environment": system.get("environment") or extra.get("environment") or "production",
+        "payment_path": bool(extra.get("payment_path")),
+        "safety_critical": bool(extra.get("safety_critical")),
+        "handles_pii": bool(extra.get("handles_pii")),
+        "internet_exposed": bool(extra.get("network_type") in {"PUBLIC_INTERNET", "INTERNET", "PUBLIC"}),
+        "downstream_count": int(extra.get("downstream_count", 0) or 0),
+    }
+    tier = score_criticality(get_profile(sector), str(asset_type), **signals)
+    return risk_weight(tier)
+
+
 def analyze_quantum_risk(
     findings: Iterable[dict[str, Any]],
     *,
     systems: Iterable[Mapping[str, Any]] | None = None,
     today: date | None = None,
+    sector: str | None = None,
 ) -> dict[str, Any]:
     system_by_id = {str(row.get("id") or ""): row for row in (systems or [])}
     rows = []
@@ -303,7 +342,8 @@ def analyze_quantum_risk(
     pqc = 0
     for finding in findings:
         system = system_by_id.get(str(finding.get("system_id") or "")) or finding.get("system")
-        info = score_asset(finding, system=system, today=today)
+        weight = _sector_weight(sector, finding, system)
+        info = score_asset(finding, system=system, today=today, sector_criticality_weight=weight)
         hndl_level = info.get("harvest_now_decrypt_later_risk") or info.get("hndl_risk") or "UNKNOWN"
         counts[hndl_level] = counts.get(hndl_level, 0) + 1
         if info.get("threat_type") == "PQC_RESISTANT":
@@ -333,6 +373,8 @@ def analyze_quantum_risk(
         "pqc_ready_count": pqc,
         "counts": counts,
         "assets": rows,
+        "sector": sector,
+        "sector_weighted": bool(sector),
         "summary": f"{vulnerable} of {len(rows)} sites are quantum-vulnerable. HNDL risk is {hndl}.",
         "calculation_version": CALC_VERSION,
     }

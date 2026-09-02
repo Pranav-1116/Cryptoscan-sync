@@ -32,6 +32,7 @@ def init_db(engine=None) -> None:
     """Create all tables. Safe to call on every startup."""
     from db.models import (  # noqa: F401 — register models
         api_key,
+        app_setting,
         baseline,
         business_owner,
         business_process,

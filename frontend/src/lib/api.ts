@@ -145,5 +145,55 @@ export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult
 export const apiEvidence = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/evidence");
 
+/* ── sector layer (universal engine + sector profiles) ─────────────── */
+
+export interface SectorProfile {
+  id: string;
+  name: string;
+  description: string;
+  policy_packs: string[];
+  compliance_frameworks: string[];
+  recommended_modes?: Array<{ id: string; name: string; ot_safe?: boolean }>;
+  critical_asset_classes?: string[];
+  required_evidence?: string[];
+  integrations?: string[];
+  environment_separation?: string[];
+  scanning_notes?: string[];
+}
+
+export const apiListSectors = (): Promise<ApiResult<{ sectors: SectorProfile[]; count: number }>> =>
+  call("/api/v1/sectors");
+
+export const apiActiveSector = (): Promise<ApiResult<{ sector: string; profile: SectorProfile }>> =>
+  call("/api/v1/sectors/organization/active");
+
+export async function apiSetActiveSector(sector: string): Promise<{ ok: boolean; error?: string; sector?: string }> {
+  try {
+    const resp = await fetch("/api/v1/sectors/organization/active", {
+      method: "PUT",
+      signal: AbortSignal.timeout(8000),
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({ sector }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    return { ok: true, sector: body.sector };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+export const apiSectorQuantumRisk = (sector?: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/sectors/quantum-risk${sector ? `?sector=${encodeURIComponent(sector)}` : ""}`);
+
+export const apiSectorComplianceMap = (
+  findings: Record<string, unknown>[],
+  sector?: string,
+): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/sectors/compliance-map", {
+    method: "POST",
+    body: JSON.stringify({ sector, findings }),
+  });
+
 /* React glue (useApi hook + LiveBadge) lives in apiUi.tsx */
 export { useApi, LiveBadge } from "./apiUi.jsx";

@@ -9,6 +9,7 @@ const NAV = [
     { to: "/", label: "Command center", icon: "◎" },
     { to: "/env", label: "Live environment", icon: "◉" },
     { to: "/organization", label: "Organization", icon: "◫" },
+    { to: "/sectors", label: "Sector profiles", icon: "⛨" },
   ]},
   { section: "Discovery", items: [
     { to: "/network", label: "Network", icon: "◈" },

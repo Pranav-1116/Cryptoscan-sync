@@ -20,6 +20,7 @@ from sector_profiles.catalog import (
     list_sectors,
     normalize_sector,
 )
+from sector_profiles.compliance import map_findings_to_frameworks
 from sector_profiles.criticality import risk_weight, score_criticality
 from sector_profiles.scan_modes import (
     OT_SAFE_MODES,
@@ -80,6 +81,7 @@ __all__ = [
     "is_ot_safe",
     "list_modes",
     "list_sectors",
+    "map_findings_to_frameworks",
     "normalize_sector",
     "recommend_modes",
     "resolve_sector_context",

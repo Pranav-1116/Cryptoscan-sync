@@ -6,15 +6,56 @@ import inspect
 import logging
 from datetime import datetime, timezone
 
+from db.repositories.job_repository import JobRepository
 from fastapi import APIRouter, BackgroundTasks, Depends, status
 
 from api.config.settings import get_settings
 from api.dependencies import get_job_repository, require_auditor
 from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
-from db.repositories.job_repository import JobRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["trigger"])
+
+
+def _resolve_sector(explicit: str | None, job_repo: JobRepository) -> str:
+    """Effective sector for a scan: explicit override else org setting else generic."""
+    if explicit:
+        try:
+            from sector_profiles import normalize_sector
+
+            return normalize_sector(explicit)
+        except Exception:
+            return "generic"
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.settings_repository import (
+            SECTOR_SETTING_KEY,
+            SettingsRepository,
+        )
+
+        session = SessionLocal()
+        try:
+            stored = SettingsRepository(session).get(SECTOR_SETTING_KEY)
+            if isinstance(stored, dict) and stored.get("sector"):
+                return str(stored["sector"])
+        finally:
+            session.close()
+    except Exception:
+        pass
+    return "generic"
+
+
+def _annotate_sector(job, sector: str, scan_mode: str | None) -> None:
+    """Stamp sector/scan_mode onto the job's progress JSON so the pipeline and
+    reports see the sector context (no schema change required)."""
+    try:
+        progress = dict(getattr(job, "progress", None) or {})
+        progress["sector"] = sector
+        if scan_mode:
+            progress["scan_mode"] = scan_mode
+        job.progress = progress
+    except Exception:
+        logger.debug("sector_annotation_skipped", exc_info=True)
 
 
 def _publish_job(payload: dict) -> None:
@@ -71,11 +112,14 @@ def enqueue_scan_job(
     triggered_by: str = "system",
     job_type: str = "MANUAL",
     system_id: str | None = None,
+    sector: str | None = None,
+    scan_mode: str | None = None,
 ) -> TriggerScanResponse:
     from cloud_scanner.estate import is_cloud_target
 
     if is_cloud_target(repo_url) and str(job_type).upper() != "CLOUD":
         job_type = "CLOUD"
+    effective_sector = _resolve_sector(sector, job_repo)
     created = job_repo.create(
         job_type=job_type,
         target_repo=repo_url,
@@ -84,6 +128,7 @@ def enqueue_scan_job(
         triggered_by=triggered_by,
         system_id=system_id,
     )
+    _annotate_sector(created, effective_sector, scan_mode)
     try:
         job_repo.session.commit()
     except Exception:
@@ -99,6 +144,8 @@ def enqueue_scan_job(
         "triggered_by": triggered_by,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
         "system_id": system_id,
+        "sector": effective_sector,
+        "scan_mode": scan_mode,
     }
     settings = get_settings()
     if settings.REDIS_URL:
@@ -134,6 +181,7 @@ async def trigger_manual_scan(
     from cloud_scanner.estate import is_cloud_target
 
     job_type = "CLOUD" if is_cloud_target(request_body.repo_url) else "MANUAL"
+    effective_sector = _resolve_sector(getattr(request_body, "sector", None), job_repo)
     created = job_repo.create(
         job_type=job_type,
         target_repo=request_body.repo_url,
@@ -141,6 +189,7 @@ async def trigger_manual_scan(
         target_commit=request_body.commit,
         triggered_by=current_user,
     )
+    _annotate_sector(created, effective_sector, getattr(request_body, "scan_mode", None))
     if inspect.isawaitable(created):
         created = await created
     try:
@@ -158,6 +207,8 @@ async def trigger_manual_scan(
         "target_commit": request_body.commit,
         "triggered_by": current_user,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        "sector": effective_sector,
+        "scan_mode": getattr(request_body, "scan_mode", None),
     }
     settings = get_settings()
     if settings.REDIS_URL:

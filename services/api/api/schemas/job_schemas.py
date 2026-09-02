@@ -10,6 +10,10 @@ class TriggerScanRequest(BaseModel):
     branch: Optional[str] = "main"
     commit: Optional[str] = None
     scan_type: Optional[str] = "GIT_REPOSITORY"
+    # Optional sector override; when omitted the organization's active sector
+    # profile (settings) is applied. Selects policy packs/criticality/modes.
+    sector: Optional[str] = None
+    scan_mode: Optional[str] = None
 
     @field_validator("repo_url")
     @classmethod

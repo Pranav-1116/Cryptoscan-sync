@@ -24,6 +24,7 @@ import WhatIf from "./pages/WhatIf.jsx";
 import Migration from "./pages/Migration.jsx";
 import Compliance from "./pages/Compliance.jsx";
 import Governance from "./pages/Governance.jsx";
+import Sectors from "./pages/Sectors.jsx";
 import Evidence from "./pages/Evidence.jsx";
 import Scanners from "./pages/Scanners.jsx";
 import Timeline from "./pages/Timeline.jsx";
@@ -64,6 +65,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/migration": Migration,
   "/compliance": Compliance,
   "/governance": Governance,
+  "/sectors": Sectors,
   "/evidence": Evidence,
   "/scanners": Scanners,
   "/timeline": Timeline,

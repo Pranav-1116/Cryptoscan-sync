@@ -101,6 +101,7 @@ from db.models.payment_crypto import (  # noqa: E402,F401
     PaymentTransactionVolume,
 )
 from db.models.api_key import ApiKey  # noqa: E402,F401
+from db.models.app_setting import AppSetting  # noqa: E402,F401
 from db.models.hardware_live import (  # noqa: E402,F401
     HardwareAgentRow,
     HardwareAsset,
