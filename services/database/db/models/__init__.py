@@ -118,3 +118,15 @@ from db.models.crypto_live import (  # noqa: E402,F401
     CryptoLiveEventRow,
     CryptoLiveState,
 )
+from db.models.control_plane import (  # noqa: E402,F401
+    Agent,
+    AssetIdentity,
+    BenchmarkCase,
+    BenchmarkDataset,
+    BenchmarkRun,
+    CredentialRef,
+    QueuedEvent,
+    SafeScanPolicy,
+    ScopeGrant,
+    Tenant,
+)

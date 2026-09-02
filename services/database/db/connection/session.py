@@ -34,6 +34,7 @@ def init_db(engine=None) -> None:
         api_key,
         app_setting,
         onboarding,
+        control_plane,
         baseline,
         business_owner,
         business_process,

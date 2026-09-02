@@ -1,0 +1,270 @@
+"""Persistence for the ZELNX Control Plane aggregate (P0).
+
+Tenants, scope grants, credential refs, agents, safe-scan policies, asset
+identities, durable queued events and benchmark datasets/runs. Write helpers
+enforce the doctrine: no secret material is ever accepted (credential rows
+store only vault locators), and grants/policies are fail-closed.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from db.models.control_plane import (
+    Agent,
+    AssetIdentity,
+    BenchmarkCase,
+    BenchmarkDataset,
+    BenchmarkRun,
+    CredentialRef,
+    QueuedEvent,
+    SafeScanPolicy,
+    ScopeGrant,
+    Tenant,
+)
+
+
+class ControlPlaneRepository:
+    def __init__(self, session: Session):
+        self.session = session
+
+    # ------------------------------------------------------------- tenants
+    def create_tenant(self, name: str, **fields) -> Tenant:
+        tenant = Tenant(name=name, **fields)
+        self.session.add(tenant)
+        self.session.flush()
+        return tenant
+
+    def get_tenant(self, tenant_id: str) -> Tenant | None:
+        return self.session.get(Tenant, tenant_id)
+
+    def list_tenants(self) -> list[Tenant]:
+        return list(self.session.execute(select(Tenant).order_by(Tenant.name)).scalars().all())
+
+    # -------------------------------------------------------- scope grants
+    def add_grant(self, **fields) -> ScopeGrant:
+        grant = ScopeGrant(**fields)
+        self.session.add(grant)
+        self.session.flush()
+        return grant
+
+    def list_grants(self, tenant_id: str | None = None) -> list[ScopeGrant]:
+        stmt = select(ScopeGrant).where(ScopeGrant.is_active.is_(True))
+        if tenant_id:
+            stmt = stmt.where((ScopeGrant.tenant_id == tenant_id) | (ScopeGrant.tenant_id.is_(None)))
+        return list(self.session.execute(stmt).scalars().all())
+
+    def set_grant_active(self, grant_id: str, active: bool) -> ScopeGrant | None:
+        grant = self.session.get(ScopeGrant, grant_id)
+        if grant is None:
+            return None
+        grant.is_active = active
+        self.session.flush()
+        return grant
+
+    # ---------------------------------------------------------- credentials
+    def create_credential(self, **fields) -> CredentialRef:
+        cred = CredentialRef(**fields)
+        self.session.add(cred)
+        self.session.flush()
+        return cred
+
+    def get_credential(self, credential_id: str) -> CredentialRef | None:
+        return self.session.get(CredentialRef, credential_id)
+
+    def list_credentials(self, tenant_id: str | None = None) -> list[CredentialRef]:
+        stmt = select(CredentialRef).order_by(CredentialRef.name)
+        if tenant_id:
+            stmt = stmt.where((CredentialRef.tenant_id == tenant_id) | (CredentialRef.tenant_id.is_(None)))
+        return list(self.session.execute(stmt).scalars().all())
+
+    def update_credential(self, credential_id: str, **fields) -> CredentialRef | None:
+        cred = self.get_credential(credential_id)
+        if cred is None:
+            return None
+        for key, value in fields.items():
+            if hasattr(cred, key) and value is not None:
+                setattr(cred, key, value)
+        self.session.flush()
+        return cred
+
+    # --------------------------------------------------------------- agents
+    def enroll_agent(self, name: str, fingerprint: str, **fields) -> Agent:
+        agent = Agent(name=name, enrollment_token_fingerprint=fingerprint,
+                      status="enrolled", **fields)
+        self.session.add(agent)
+        self.session.flush()
+        return agent
+
+    def get_agent(self, agent_id: str) -> Agent | None:
+        return self.session.get(Agent, agent_id)
+
+    def get_agent_by_fingerprint(self, fingerprint: str) -> Agent | None:
+        return self.session.execute(
+            select(Agent).where(Agent.enrollment_token_fingerprint == fingerprint)
+        ).scalars().first()
+
+    def list_agents(self, tenant_id: str | None = None) -> list[Agent]:
+        stmt = select(Agent).order_by(Agent.name)
+        if tenant_id:
+            stmt = stmt.where((Agent.tenant_id == tenant_id) | (Agent.tenant_id.is_(None)))
+        return list(self.session.execute(stmt).scalars().all())
+
+    def agent_heartbeat(self, agent_id: str, *, version: str | None = None,
+                        healthy: bool = True, link: str = "encrypted",
+                        ip: str | None = None, buffered: int | None = None) -> Agent | None:
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            return None
+        agent.last_heartbeat_at = datetime.now(timezone.utc)
+        agent.healthy = healthy
+        agent.link = link if link in {"disconnected", "connecting", "encrypted"} else "encrypted"
+        if version:
+            agent.version = version
+        if ip:
+            agent.last_seen_ip = ip
+        if buffered is not None:
+            agent.offline_events_buffered = buffered
+        if healthy and agent.status in {"enrolled", "connecting", "offline", "error"}:
+            agent.status = "connected"
+        elif not healthy and agent.status == "connected":
+            agent.status = "error"
+        self.session.flush()
+        return agent
+
+    def set_agent_target_version(self, agent_id: str, target: str | None,
+                                 action: str = "upgrade") -> Agent | None:
+        agent = self.get_agent(agent_id)
+        if agent is None:
+            return None
+        if action == "retire":
+            agent.status = "retired"
+        elif target:
+            agent.target_version = target
+            agent.status = "upgrading"
+        self.session.flush()
+        return agent
+
+    # ------------------------------------------------------- safe policies
+    def upsert_safe_policy(self, **fields) -> SafeScanPolicy:
+        region = fields.get("scope_region")
+        env = fields.get("scope_environment")
+        existing = self.session.execute(
+            select(SafeScanPolicy).where(
+                SafeScanPolicy.scope_region == region,
+                SafeScanPolicy.scope_environment == env,
+            )
+        ).scalars().first()
+        if existing:
+            for key, value in fields.items():
+                if value is not None and hasattr(existing, key):
+                    setattr(existing, key, value)
+            self.session.flush()
+            return existing
+        policy = SafeScanPolicy(**fields)
+        self.session.add(policy)
+        self.session.flush()
+        return policy
+
+    def list_safe_policies(self) -> list[SafeScanPolicy]:
+        return list(self.session.execute(
+            select(SafeScanPolicy).where(SafeScanPolicy.is_active.is_(True))
+        ).scalars().all())
+
+    def matching_policy(self, *, region: str | None = None, environment: str | None = None) -> SafeScanPolicy | None:
+        """Most specific active policy matching the scope (region+env beats
+        region-only beats global)."""
+        policies = self.list_safe_policies()
+        exact = [p for p in policies if p.scope_region == region and p.scope_environment == environment]
+        if exact:
+            return exact[0]
+        region_match = [p for p in policies if p.scope_region == region and not p.scope_environment]
+        if region_match:
+            return region_match[0]
+        glob = [p for p in policies if not p.scope_region and not p.scope_environment]
+        return glob[0] if glob else None
+
+    def set_emergency_stop(self, policy_id: str, engaged: bool) -> SafeScanPolicy | None:
+        policy = self.session.get(SafeScanPolicy, policy_id)
+        if policy is None:
+            return None
+        policy.emergency_stop = engaged
+        self.session.flush()
+        return policy
+
+    # -------------------------------------------------------- identities
+    def upsert_asset_identity(self, canonical_id: str, **fields) -> AssetIdentity:
+        existing = self.session.execute(
+            select(AssetIdentity).where(AssetIdentity.canonical_id == canonical_id)
+        ).scalars().first()
+        if existing:
+            for key, value in fields.items():
+                if value is not None and hasattr(existing, key):
+                    setattr(existing, key, value)
+            self.session.flush()
+            return existing
+        identity = AssetIdentity(canonical_id=canonical_id, **fields)
+        self.session.add(identity)
+        self.session.flush()
+        return identity
+
+    def list_asset_identities(self) -> list[AssetIdentity]:
+        return list(self.session.execute(select(AssetIdentity).order_by(AssetIdentity.canonical_id)).scalars().all())
+
+    # ------------------------------------------------------------- events
+    def enqueue(self, event_type: str, payload: dict, *, source: str = "control_plane",
+                priority: str = "normal", max_attempts: int = 5) -> QueuedEvent:
+        ev = QueuedEvent(event_type=event_type, payload=payload, source=source,
+                         priority=priority, max_attempts=max_attempts,
+                         available_at=datetime.now(timezone.utc))
+        self.session.add(ev)
+        self.session.flush()
+        return ev
+
+    def list_events(self, status: str | None = None, limit: int = 100) -> list[QueuedEvent]:
+        # priority-ordered for work queues: critical -> normal, FIFO within tier
+        rank = {"critical": 0, "high": 1, "normal": 2, "low": 3}
+        stmt = select(QueuedEvent).order_by(QueuedEvent.created_at.desc()).limit(limit)
+        if status:
+            stmt = select(QueuedEvent).where(QueuedEvent.status == status).limit(limit * 4)
+        rows = list(self.session.execute(stmt).scalars().all())
+        if status:
+            rows.sort(key=lambda e: (rank.get(e.priority, 2), e.created_at or ""))
+            rows = [e for e in rows if e.status == status][:limit]
+        return rows
+
+    # ---------------------------------------------------------- benchmark
+    def create_benchmark_dataset(self, name: str, **fields) -> BenchmarkDataset:
+        ds = BenchmarkDataset(name=name, **fields)
+        self.session.add(ds)
+        self.session.flush()
+        return ds
+
+    def get_benchmark_dataset(self, dataset_id: str) -> BenchmarkDataset | None:
+        return self.session.get(BenchmarkDataset, dataset_id)
+
+    def add_benchmark_case(self, dataset_id: str, **fields) -> BenchmarkCase:
+        case = BenchmarkCase(dataset_id=dataset_id, **fields)
+        self.session.add(case)
+        self.session.flush()
+        return case
+
+    def list_benchmark_cases(self, dataset_id: str) -> list[BenchmarkCase]:
+        return list(self.session.execute(
+            select(BenchmarkCase).where(BenchmarkCase.dataset_id == dataset_id)
+        ).scalars().all())
+
+    def create_benchmark_run(self, dataset_id: str, **fields) -> BenchmarkRun:
+        run = BenchmarkRun(dataset_id=dataset_id, **fields)
+        self.session.add(run)
+        self.session.flush()
+        return run
+
+    def list_benchmark_runs(self, dataset_id: str | None = None) -> list[BenchmarkRun]:
+        stmt = select(BenchmarkRun).order_by(BenchmarkRun.created_at.desc())
+        if dataset_id:
+            stmt = stmt.where(BenchmarkRun.dataset_id == dataset_id)
+        return list(self.session.execute(stmt).scalars().all())
