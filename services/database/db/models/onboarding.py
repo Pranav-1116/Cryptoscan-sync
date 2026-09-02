@@ -14,7 +14,9 @@ customer grants out-of-band. A strict whitelist enforces this.
 
 from __future__ import annotations
 
-from sqlalchemy import JSON, Boolean, Integer, String, Text
+from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -75,6 +77,13 @@ class Environment(BaseModel):
     scan_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="standard")
     active_probing: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    #: maintenance-window controls — active probing is only permitted inside a
+    #: declared window for safety-sensitive (OT/ICS/DR) environments.
+    maintenance_window_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: IANA tz name the window is evaluated in (e.g. "Asia/Kolkata")
+    maintenance_timezone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: list of weekly windows, e.g. [{"day":"sun","start":"01:00","duration_minutes":120}]
+    maintenance_windows: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
 class ScopeEntry(BaseModel):
@@ -108,6 +117,10 @@ class Connector(BaseModel):
     test_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     agent_id: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     agent_healthy: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    #: last heartbeat from a deployed agent (agents send normalized observations)
+    agent_last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    agent_version: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    agent_link: Mapped[str | None] = mapped_column(String(20), nullable=True, default="disconnected")  # disconnected/connecting/encrypted
 
 
 class DiscoveryRun(BaseModel):
@@ -117,7 +130,13 @@ class DiscoveryRun(BaseModel):
 
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     run_type: Mapped[str] = mapped_column(String(20), nullable=False, default="initial")  # initial/targeted/continuous
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")  # planned/running/complete
+    # planned -> running -> complete (or failed/blocked)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="planned")
+    plan: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     summary: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     assets_discovered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    targets_registered: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     triggered_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

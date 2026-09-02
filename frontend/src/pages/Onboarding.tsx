@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   apiOnboardingState, apiCreateOrg, apiAddEnv, apiAddScope,
   apiAddConnection, apiTestConnection, apiStartDiscovery, apiListSectors,
+  apiUpdateEnvironment, apiDeleteScope, apiDeleteConnection,
   type OnboardingState, type DiscoveryPlan, type SectorProfile,
 } from "../lib/api.js";
 import { Corners, Kicker } from "../components/ui.jsx";
@@ -145,7 +146,7 @@ export default function Onboarding() {
       {step === 3 && <ScopeStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
       {step === 4 && <ConnectStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
       {step === 5 && <TestStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} onNext={() => setStep(6)} />}
-      {step === 6 && <DiscoveryStep state={state} plan={plan} setPlan={setPlan} busy={busy} setBusy={setBusy} flash={flash} />}
+      {step === 6 && <DiscoveryStep state={state} plan={plan} setPlan={setPlan} busy={busy} setBusy={setBusy} flash={flash} refresh={refresh} />}
     </div>
   );
 }
@@ -259,6 +260,8 @@ function SectorStep({ state, sectors }: { state: OnboardingState | null; sectors
 }
 
 /* ---- step 3: environment ---- */
+const MW_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
+
 function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
   state: OnboardingState | null; canWrite: boolean; busy: string | null; setBusy: (b: string | null) => void;
   refresh: () => Promise<unknown>; flash: (ok: boolean, t: string) => void;
@@ -266,6 +269,10 @@ function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
   const [name, setName] = useState("");
   const [envType, setEnvType] = useState("production");
   const [scanMode, setScanMode] = useState("standard");
+  const [mwEnv, setMwEnv] = useState<string | null>(null);
+  const [mwDay, setMwDay] = useState("sun");
+  const [mwStart, setMwStart] = useState("01:00");
+  const [mwDur, setMwDur] = useState(120);
   const isOt = envType === "ot";
 
   const submit = async () => {
@@ -276,12 +283,29 @@ function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
       scan_mode: isOt ? "passive" : scanMode, active_probing: !isOt,
     });
     setBusy(null);
-    if (r.source === "live" && r.data) { setName(""); await refresh(); flash(true, `Environment created${isOt ? " — OT forces passive mode" : ""}`); }
-    else flash(false, r.error || "could not create environment");
+    if (r.source === "live" && r.data) {
+      // OT/DR environments default to maintenance-window-gated active probing
+      if (envType === "ot" && r.data.id) {
+        await apiUpdateEnvironment(r.data.id, { maintenance_window_enabled: true, maintenance_timezone: "UTC" });
+      }
+      setName(""); await refresh();
+      flash(true, `Environment created${isOt ? " — OT forces passive mode + maintenance windows" : ""}`);
+    } else flash(false, r.error || "could not create environment");
+  };
+
+  const saveWindow = async (envId: string) => {
+    setBusy("mw");
+    const r = await apiUpdateEnvironment(envId, {
+      maintenance_window_enabled: true, maintenance_timezone: "UTC",
+      maintenance_windows: [{ day: mwDay, start: mwStart, duration_minutes: Number(mwDur) }],
+    });
+    setBusy(null);
+    if (r.source === "live" && r.data) { await refresh(); setMwEnv(null); flash(true, "Maintenance window saved — active probing only inside this window"); }
+    else flash(false, r.error || "could not save maintenance window");
   };
 
   return (
-    <Section title="Step 3 · Create environment" hint="Environments group scope and set the scanning posture. Operational (OT/ICS) environments are forced to passive/no active probing — safety first.">
+    <Section title="Step 3 · Create environment" hint="Environments group scope and set the scanning posture. Operational (OT/ICS) environments are forced to passive/no active probing — safety first. Active probing, when enabled, runs only inside a declared maintenance window.">
       {isOt && <div style={{ ...warnChip, marginBottom: 14, display: "inline-block" }}>⚠ OT/ICS environment — active probing disabled, passive-only scanning; maintenance windows are respected</div>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 14, alignItems: "flex-end" }}>
         <div><label style={label}>Name</label><input style={field} value={name} placeholder="Production" onChange={(e) => setName(e.target.value)} /></div>
@@ -295,11 +319,34 @@ function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
           </select></div>
         <Btn busy={busy === "env"} disabled={!canWrite} onClick={submit}>Add environment</Btn>
       </div>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 18 }}>
+      <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
         {(state?.environments ?? []).map((e) => (
-          <span key={e.id} style={e.env_type === "ot" ? warnChip : okChip}>
-            {e.name} · {e.env_type} · {e.scan_mode}{e.env_type === "ot" ? " · no active probing" : ""}
-          </span>
+          <div key={e.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, background: "rgba(0,0,0,.2)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+              <span style={e.env_type === "ot" ? warnChip : okChip}>
+                {e.name} · {e.env_type} · {e.scan_mode}{e.env_type === "ot" ? " · no active probing" : ""}
+              </span>
+              <Btn ghost onClick={() => setMwEnv(mwEnv === e.id ? null : e.id)}>
+                {e.maintenance_window_enabled ? "Maintenance window ✓" : "Set maintenance window"}
+              </Btn>
+            </div>
+            {e.maintenance_window_enabled && e.maintenance_windows?.length ? (
+              <div className="dim" style={{ fontSize: 11.5, marginTop: 8, fontFamily: "var(--mono)" }}>
+                active probing only: {e.maintenance_windows.map((w) => `${w.day} ${w.start} +${w.duration_minutes}m`).join(", ")} ({e.maintenance_timezone || "UTC"})
+              </div>
+            ) : null}
+            {mwEnv === e.id && (
+              <div style={{ display: "grid", gridTemplateColumns: "120px 120px 120px auto", gap: 10, marginTop: 12, alignItems: "flex-end" }}>
+                <div><label style={label}>Day</label>
+                  <select style={field} value={mwDay} onChange={(ev) => setMwDay(ev.target.value)}>
+                    {MW_DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select></div>
+                <div><label style={label}>Start</label><input style={field} type="time" value={mwStart} onChange={(ev) => setMwStart(ev.target.value)} /></div>
+                <div><label style={label}>Minutes</label><input style={field} type="number" min={15} max={1440} value={mwDur} onChange={(ev) => setMwDur(Number(ev.target.value))} /></div>
+                <Btn busy={busy === "mw"} disabled={!canWrite} onClick={() => saveWindow(e.id)}>Save</Btn>
+              </div>
+            )}
+          </div>
         ))}
         {!state?.environments?.length && <span className="dim" style={{ fontSize: 12 }}>No environments yet.</span>}
       </div>
@@ -329,6 +376,13 @@ function ScopeStep({ state, canWrite, busy, setBusy, refresh, flash }: {
     else flash(false, r.error || "could not add scope (check the target format)");
   };
   const counts = state?.scope?.counts ?? {};
+  const entries = state?.scope?.entries ?? [];
+  const remove = async (id: string) => {
+    setBusy(id);
+    const r = await apiDeleteScope(id);
+    setBusy(null);
+    if (r.ok) { await refresh(); flash(true, "Scope entry removed"); } else flash(false, r.error || "could not remove");
+  };
   return (
     <Section title="Step 4 · Authorized scope" hint="The scanner only ever operates inside explicitly authorized targets. Nothing is scanned unless it is in scope.">
       <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 14, alignItems: "flex-end" }}>
@@ -346,6 +400,14 @@ function ScopeStep({ state, canWrite, busy, setBusy, refresh, flash }: {
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
         {Object.entries(counts).map(([k, n]) => <span key={k} style={n ? okChip : chip}>{k}: {n}</span>)}
         <span style={{ ...chip, color: "var(--cyan)" }}>total authorized: {state?.scope?.total ?? 0}</span>
+      </div>
+      <div style={{ display: "grid", gap: 6, marginTop: 14 }}>
+        {entries.map((e) => (
+          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", background: "rgba(0,0,0,.2)" }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}><span className="dim">[{e.kind}]</span> {e.target}</span>
+            {canWrite && <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11 }} disabled={busy === e.id} onClick={() => remove(e.id)}>{busy === e.id ? "…" : "remove"}</button>}
+          </div>
+        ))}
       </div>
     </Section>
   );
@@ -399,6 +461,17 @@ function ConnectStep({ state, canWrite, busy, setBusy, refresh, flash }: {
               <span style={c.status === "connected" ? okChip : c.status === "error" ? badChip : chip}>{c.status}</span>
             </div>
             <div className="dim" style={{ fontSize: 11.5, marginTop: 4, fontFamily: "var(--mono)" }}>{c.kind} · {c.method}</div>
+            {c.method === "agent" && (
+              <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                <span style={c.agent_healthy ? okChip : warnChip}>{c.agent_healthy ? "✓ agent healthy" : "awaiting agent"}</span>
+                {c.agent_link && <span style={c.agent_link === "encrypted" ? okChip : chip}>link: {c.agent_link}</span>}
+              </div>
+            )}
+            {canWrite && <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11, marginTop: 10 }}
+              disabled={busy === c.id} onClick={async () => {
+                setBusy(c.id); const r = await apiDeleteConnection(c.id); setBusy(null);
+                if (r.ok) { await refresh(); flash(true, "Connection removed"); } else flash(false, r.error || "could not remove");
+              }}>{busy === c.id ? "…" : "remove"}</button>}
           </div>
         ))}
       </div>
@@ -459,18 +532,20 @@ function TestStep({ state, canWrite, busy, setBusy, refresh, flash, onNext }: {
 }
 
 /* ---- step 7: start discovery ---- */
-function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash }: {
+function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash, refresh }: {
   state: OnboardingState | null; plan: DiscoveryPlan | null;
   setPlan: (p: DiscoveryPlan | null) => void; busy: string | null; setBusy: (b: string | null) => void;
-  flash: (ok: boolean, t: string) => void;
+  flash: (ok: boolean, t: string) => void; refresh: () => Promise<unknown>;
 }) {
   const otEnv = (state?.environments ?? []).some((e) => e.env_type === "ot");
   const start = async () => {
     setBusy("disc");
     const r = await apiStartDiscovery();
     setBusy(null);
-    if (r.source === "live" && r.data) { setPlan(r.data); flash(true, "Initial discovery started across authorized scope"); }
-    else flash(false, r.error || "discovery blocked — complete environments, scope and a tested connection");
+    if (r.source === "live" && r.data) {
+      setPlan(r.data); await refresh();
+      flash(true, "Discovery complete — scope registered into the engine; specialized scans auto-select from asset type");
+    } else flash(false, r.error || "discovery blocked — complete environments, scope and a tested connection");
   };
   return (
     <Section title="Step 7 · Start discovery" hint="The universal engine then takes over: asset identification → specialized scans auto-selected by asset type → evidence fusion → CBOM/HBOM → dependency graph → sector policy → risk → PQC, followed by 24/7 event-driven monitoring.">
@@ -486,7 +561,17 @@ function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash }: {
         </Btn>
       ) : (
         <div>
-          <div style={{ ...okChip, display: "inline-block", marginBottom: 14 }}>✓ Discovery run {plan.run_id.slice(0, 8)} planned over {plan.connectors_used.join(", ")}</div>
+          <div style={{ ...okChip, display: "inline-block", marginBottom: 14 }}>
+            ✓ Discovery run {plan.run_id.slice(0, 8)} complete — registered scope into the engine over {plan.connectors_used.join(", ")}
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+            <span style={chip}>~{plan.assets_estimate ?? 0} assets in scope</span>
+            {plan.registered && <>
+              <span style={okChip}>+{plan.registered.cloud_accounts} cloud account(s)</span>
+              <span style={okChip}>+{plan.registered.network_targets} network target(s)</span>
+              <span style={okChip}>+{plan.registered.repo_configs} repo config(s)</span>
+            </>}
+          </div>
           <label style={label}>Domain plan (auto-derived from scope)</label>
           <div style={{ display: "grid", gap: 8 }}>
             {plan.plan.map((d) => (

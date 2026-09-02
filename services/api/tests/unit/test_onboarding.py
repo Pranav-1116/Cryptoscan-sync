@@ -124,3 +124,81 @@ def test_duplicate_org_rejected(client):
     client.post("/api/v1/onboarding/organization", headers=h, json={"name": "One", "sector": "generic"})
     r = client.post("/api/v1/onboarding/organization", headers=h, json={"name": "Two", "sector": "generic"})
     assert r.status_code == 409
+
+
+def test_discovery_executes_and_registers_engine_targets(client):
+    h = _bootstrap(client)
+    r = client.post("/api/v1/onboarding/discovery/start", headers=h)
+    assert r.status_code == 202
+    body = r.json()
+    assert body["status"] == "complete"
+    # authorized scope is materialized into the universal engine's tables
+    assert body["registered"]["cloud_accounts"] >= 1
+    assert body["registered"]["network_targets"] >= 1
+    assert body["assets_estimate"] > 0
+    # run is persisted and retrievable
+    run = client.get(f"/api/v1/onboarding/discovery/{body['run_id']}", headers=h).json()
+    assert run["status"] == "complete"
+    runs = client.get("/api/v1/onboarding/discovery/runs", headers=h).json()["runs"]
+    assert any(x["id"] == body["run_id"] for x in runs)
+    # engine tables actually received the scope
+    from db.connection.session import SessionLocal
+    from db.repositories.cloud_account_repository import CloudAccountRepository
+    from db.repositories.network_scan_target_repository import (
+        NetworkScanTargetRepository,
+    )
+    s = SessionLocal()
+    try:
+        assert any(a.account_identifier for a in CloudAccountRepository(s).list_accounts())
+        assert any(t.endpoint == "10.10.0.0/16" for t in NetworkScanTargetRepository(s).list_targets())
+    finally:
+        s.close()
+
+
+def test_agent_heartbeat(client):
+    h = {"Authorization": f"Bearer {_admin(client)}"}
+    client.post("/api/v1/onboarding/organization", headers=h, json={"name": "OT Co", "sector": "energy"})
+    # unknown agent -> 404
+    assert client.post("/api/v1/onboarding/agent/heartbeat", headers=h,
+                       json={"agent_id": "ghost"}).status_code == 404
+    conn = client.post("/api/v1/onboarding/connections", headers=h, json={
+        "kind": "hardware", "name": "plant-agent", "method": "agent",
+        "config": {"agent_id": "agent-9", "host": "hsm-1"}}).json()
+    hb = client.post("/api/v1/onboarding/agent/heartbeat", headers=h,
+                     json={"agent_id": "agent-9", "version": "1.2.3", "healthy": True, "link": "encrypted"})
+    assert hb.status_code == 200
+    assert hb.json()["healthy"] is True
+    assert hb.json()["status"] == "connected"
+    state = client.get("/api/v1/onboarding/state", headers=h).json()
+    agent = next(c for c in state["connections"] if c["id"] == conn["id"])
+    assert agent["agent_healthy"] is True
+    assert agent["agent_link"] == "encrypted"
+
+
+def test_maintenance_window_and_ot_active_probe_lock(client):
+    h = {"Authorization": f"Bearer {_admin(client)}"}
+    client.post("/api/v1/onboarding/organization", headers=h, json={"name": "Grid", "sector": "energy"})
+    env = client.post("/api/v1/onboarding/environments", headers=h,
+                      json={"name": "ICS", "env_type": "ot"}).json()
+    upd = client.patch(f"/api/v1/onboarding/environments/{env['id']}", headers=h, json={
+        "maintenance_window_enabled": True, "maintenance_timezone": "UTC",
+        "maintenance_windows": [{"day": "sun", "start": "01:00", "duration_minutes": 120}]}).json()
+    assert upd["maintenance_window_enabled"] is True
+    assert upd["maintenance_windows"][0]["day"] == "sun"
+    # OT can never enable active probing even via PATCH
+    forced = client.patch(f"/api/v1/onboarding/environments/{env['id']}", headers=h,
+                          json={"active_probing": True}).json()
+    assert forced["active_probing"] is False
+
+
+def test_scope_and_connection_management(client):
+    h = _bootstrap(client)
+    entry = client.post("/api/v1/onboarding/scope", headers=h,
+                        json={"kind": "hardware", "target": "hsm-01"}).json()
+    rd = client.delete(f"/api/v1/onboarding/scope/{entry['id']}", headers=h)
+    assert rd.status_code == 204
+    conn = client.post("/api/v1/onboarding/connections", headers=h, json={
+        "kind": "siem", "name": "splunk", "method": "syslog", "config": {"endpoint": "https://siem"}}).json()
+    rc = client.delete(f"/api/v1/onboarding/connections/{conn['id']}", headers=h)
+    assert rc.status_code == 204
+    assert client.delete("/api/v1/onboarding/scope/does-not-exist", headers=h).status_code == 404

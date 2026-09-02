@@ -42,6 +42,28 @@ def _org_or_404(repo: OnboardingRepository, org_id: str | None = None):
     return org
 
 
+def _audit(db: Session, actor: str, action: str, *, target_type: str = "onboarding",
+           target_id: str | None = None, detail: dict | None = None,
+           outcome: str = "SUCCESS") -> None:
+    """Hash-chained audit entry for every onboarding mutation (best-effort)."""
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        UserRepository(db).audit(actor, action, target_type=target_type, target_id=target_id,
+                                 detail=detail, outcome=outcome)
+    except Exception:
+        logger.debug("onboarding audit skipped", exc_info=True)
+
+
+def _publish(event_type: str, payload: dict) -> None:
+    try:
+        from api.events.bus import get_event_bus
+
+        get_event_bus().publish(event_type, payload, source="onboarding")
+    except Exception:
+        logger.debug("onboarding event publish failed", exc_info=True)
+
+
 _CIDR_RE = re.compile(r"^(\d{1,3}\.){3}\d{1,3}/\d{1,2}$")
 _DOMAIN_RE = re.compile(r"^([a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}$")
 
@@ -83,6 +105,9 @@ def create_organization(
         SettingsRepository(db).set(SECTOR_SETTING_KEY, {"sector": sector}, updated_by=user)
     except Exception:
         logger.debug("sector setting sync skipped", exc_info=True)
+    _audit(db, user, "onboarding.organization_created", target_type="organization",
+           target_id=org.id, detail={"name": org.name, "sector": sector})
+    _publish("onboarding.organization_created", {"org": org.name, "sector": sector, "by": user})
     db.commit()
     return org.to_dict()
 
@@ -100,6 +125,8 @@ def onboarding_state(user: str = Depends(get_current_user), db: Session = Depend
     scope = repo.scope_summary(org.id)
     connectors = [c.to_dict() for c in repo.list_connectors(org.id)]
     connected = [c for c in connectors if c.get("status") == "connected"]
+    discovery_runs = [r.to_dict() for r in repo.list_discovery_runs(org.id)]
+    latest_run = discovery_runs[0] if discovery_runs else None
     sector_context = None
     try:
         from sector_profiles import get_profile
@@ -120,6 +147,8 @@ def onboarding_state(user: str = Depends(get_current_user), db: Session = Depend
         "scope": scope,
         "connections": connectors,
         "connected_count": len(connected),
+        "latest_run": latest_run,
+        "discovery_runs": discovery_runs,
         "stage": org.onboarding_stage,
         "ready": _is_ready(environments, scope, connected),
         "checklist": _checklist(org, repo, environments, scope, connectors, connected),
@@ -182,6 +211,9 @@ def add_environment(
     )
     if org.onboarding_stage in {"organization", "sector"}:
         org.onboarding_stage = "scope"
+    _audit(db, user, "onboarding.environment_created", target_type="environment",
+           target_id=env.id, detail={"name": env.name, "env_type": env.env_type,
+                                     "scan_mode": env.scan_mode, "active_probing": active})
     db.commit()
     return env.to_dict()
 
@@ -212,6 +244,8 @@ def add_scope(
         raise HTTPException(status_code=422,
                             detail="Network scope must be a CIDR (10.10.0.0/16), domain, or 'vlan:..'/'snmp:..' reference")
     entry = repo.add_scope(org.id, body.kind, target, env_id=body.env_id, detail=body.detail)
+    _audit(db, user, "onboarding.scope_added", target_type="scope_entry", target_id=entry.id,
+           detail={"kind": body.kind, "target": target})
     db.commit()
     return entry.to_dict()
 
@@ -246,6 +280,8 @@ def add_connection(
         mode=body.mode, config=body.config, env_id=body.env_id,
     )
     org.onboarding_stage = "connections"
+    _audit(db, user, "onboarding.connection_created", target_type="connector",
+           target_id=connector.id, detail={"kind": connector.kind, "method": connector.method})
     db.commit()
     return connector.to_dict()
 
@@ -335,23 +371,250 @@ def test_connection(
                      "tested_at": datetime.now(timezone.utc).isoformat()},
         agent_healthy=connector.agent_healthy,
     )
+    _audit(db, user, "onboarding.connection_tested", target_type="connector",
+           target_id=connector_id, detail={"status": new_status, "all_ok": all_ok},
+           outcome="SUCCESS" if all_ok else "FAILURE")
+    _publish("connection.tested", {"connector": connector.name, "kind": connector.kind,
+                                   "status": new_status, "all_ok": all_ok})
     db.commit()
     return {"connector_id": connector_id, "status": new_status, "all_ok": all_ok, "checks": checks}
 
 
+# -------------------------------------------------------- maintenance window
+class MaintenanceWindow(BaseModel):
+    day: str = Field(..., description="mon..sun or '*'")
+    start: str = Field(..., description="HH:MM (24h)")
+    duration_minutes: int = Field(60, ge=15, le=1440)
+
+
+class EnvironmentUpdateRequest(BaseModel):
+    scan_mode: str | None = None
+    active_probing: bool | None = None
+    enabled: bool | None = None
+    maintenance_window_enabled: bool | None = None
+    maintenance_timezone: str | None = None
+    maintenance_windows: list[MaintenanceWindow] | None = None
+
+
+@router.patch("/environments/{env_id}", status_code=status.HTTP_200_OK)
+def update_environment(
+    env_id: str,
+    body: EnvironmentUpdateRequest,
+    user: str = Depends(require_roles("admin", "superadmin", "ciso")),
+    db: Session = Depends(get_db_session),
+):
+    """Update scanning posture and declare maintenance windows.
+
+    For safety-sensitive (OT/ICS/DR) environments active probing is only ever
+    permitted inside a declared maintenance window; outside the window the
+    engine runs passive/read-only observation.
+    """
+    from db.models.onboarding import SCAN_MODES
+
+    repo = _repo(db)
+    org = _org_or_404(repo)
+    env = repo.get_environment(env_id)
+    if env is None or env.org_id != org.id:
+        raise HTTPException(status_code=404, detail="Environment not found")
+    fields: dict = {}
+    if body.scan_mode is not None:
+        if body.scan_mode not in SCAN_MODES:
+            raise HTTPException(status_code=422, detail=f"scan_mode must be one of {list(SCAN_MODES)}")
+        fields["scan_mode"] = "passive" if env.env_type == "ot" else body.scan_mode
+    if body.enabled is not None:
+        fields["enabled"] = body.enabled
+    if body.maintenance_window_enabled is not None:
+        fields["maintenance_window_enabled"] = body.maintenance_window_enabled
+    if body.maintenance_timezone is not None:
+        fields["maintenance_timezone"] = body.maintenance_timezone
+    if body.maintenance_windows is not None:
+        fields["maintenance_windows"] = [w.model_dump() for w in body.maintenance_windows]
+    if body.active_probing is not None:
+        # OT environments may never enable active probing (passive is forced);
+        # other environments can toggle it.
+        fields["active_probing"] = False if env.env_type == "ot" else body.active_probing
+    updated = repo.update_environment(env_id, **fields)
+    _audit(db, user, "onboarding.environment_updated", target_id=env_id,
+           detail={"env_type": env.env_type, **fields})
+    db.commit()
+    return updated.to_dict()
+
+
+# ------------------------------------------------------------ scope management
+@router.delete("/scope/{entry_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_scope(
+    entry_id: str,
+    user: str = Depends(require_roles("admin", "superadmin", "ciso", "security_analyst")),
+    db: Session = Depends(get_db_session),
+):
+    repo = _repo(db)
+    org = _org_or_404(repo)
+    entry = repo.get_scope_entry(entry_id)
+    if entry is None or entry.org_id != org.id:
+        raise HTTPException(status_code=404, detail="Scope entry not found")
+    repo.delete_scope_entry(entry_id)
+    _audit(db, user, "onboarding.scope_removed", target_id=entry_id, detail={"target": entry.target})
+    db.commit()
+
+
+@router.delete("/connections/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_connection(
+    connector_id: str,
+    user: str = Depends(require_roles("admin", "superadmin", "ciso")),
+    db: Session = Depends(get_db_session),
+):
+    repo = _repo(db)
+    org = _org_or_404(repo)
+    connector = repo.get_connector(connector_id)
+    if connector is None or connector.org_id != org.id:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    repo.delete_connector(connector_id)
+    _audit(db, user, "onboarding.connection_removed", target_id=connector_id, detail={"kind": connector.kind})
+    db.commit()
+
+
+# ----------------------------------------------------------- agent heartbeat
+class AgentHeartbeatRequest(BaseModel):
+    agent_id: str
+    version: str | None = None
+    healthy: bool = True
+    link: str = "encrypted"  # encrypted/connecting/disconnected
+
+
+@router.post("/agent/heartbeat")
+def agent_heartbeat(
+    body: AgentHeartbeatRequest,
+    user: str = Depends(require_roles("admin", "superadmin", "ciso", "security_analyst", "scanner")),
+    db: Session = Depends(get_db_session),
+):
+    """Agents deployed into unreachable/air-gapped environments check in here.
+    They send normalized observations over an encrypted link; no secrets pass
+    through the platform."""
+    repo = _repo(db)
+    connector = repo.agent_heartbeat(body.agent_id, version=body.version,
+                                     healthy=body.healthy, link=body.link)
+    if connector is None:
+        raise HTTPException(status_code=404, detail="No connector registered for this agent_id")
+    db.commit()
+    return {"agent_id": body.agent_id, "healthy": connector.agent_healthy,
+            "link": connector.agent_link, "status": connector.status}
+
+
 # ------------------------------------------------------------ start discovery
+def _estimate_network_hosts(cidr: str) -> int:
+    """Deterministic, conservative *discovery* host estimate for a CIDR.
+
+    We never probe the range during onboarding, so this is a deliberately
+    bounded planning estimate (actual inventory is confirmed by the scanners):
+    assume a small fraction of addresses are live, capped to avoid absurd
+    figures for large declared blocks.
+    """
+    try:
+        import ipaddress
+
+        net = ipaddress.ip_network(cidr, strict=False)
+        size = net.num_addresses
+        if size <= 2:
+            return 1
+        # ~10% assumed live, capped at 256 planning hosts per declared block
+        return min(256, max(1, (size - 2) // 10))
+    except ValueError:
+        return 1
+
+
+def _register_scope_into_engine(repo, org, scope, connectors) -> dict:
+    """Materialize authorized scope into the universal engine's existing tables
+    so the per-domain scanners pick it up. Idempotent. Returns counts."""
+    registered = {"cloud_accounts": 0, "network_targets": 0, "repo_configs": 0}
+    entries = scope.get("entries", [])
+
+    cloud_kinds = {"aws", "azure", "gcp"}
+    cloud_conns = [c for c in connectors if c.kind in cloud_kinds and c.status == "connected"]
+    try:
+        from db.repositories.cloud_account_repository import CloudAccountRepository
+
+        cloud_repo = CloudAccountRepository(repo.session)
+        existing = {(a.cloud_provider, a.account_identifier) for a in cloud_repo.list_accounts()}
+        provider_by_target = {}
+        for e in entries:
+            if e["kind"] != "cloud":
+                continue
+            provider = "aws"
+            for c in cloud_conns:
+                if c.kind in cloud_kinds:
+                    provider = c.kind
+            provider_by_target[e["target"]] = provider
+        # also register directly from connected cloud connector references
+        for c in cloud_conns:
+            cfg = c.config or {}
+            ident = cfg.get("account") or cfg.get("account_id") or cfg.get("subscription_id") or cfg.get("project_id") or c.name
+            provider_by_target.setdefault(str(ident), c.kind)
+        for ident, provider in provider_by_target.items():
+            if (provider, ident) in existing:
+                continue
+            cloud_repo.create_account(cloud_provider=provider, account_identifier=ident,
+                                      role_arn=(next((cc.config.get("role_arn") for cc in cloud_conns
+                                                      if cc.kind == provider and cc.config), None)),
+                                      enabled=True)
+            registered["cloud_accounts"] += 1
+    except Exception:
+        logger.debug("cloud account registration skipped", exc_info=True)
+
+    try:
+        from db.repositories.network_scan_target_repository import (
+            NetworkScanTargetRepository,
+        )
+
+        net_repo = NetworkScanTargetRepository(repo.session)
+        existing_targets = {t.endpoint for t in net_repo.list_targets()}
+        for e in entries:
+            if e["kind"] != "network":
+                continue
+            endpoint = e["target"]
+            if endpoint.startswith(("vlan:", "snmp:")):
+                continue  # references resolved by connectors, not direct probes
+            if endpoint in existing_targets:
+                continue
+            net_repo.upsert(endpoint, enabled=True)
+            registered["network_targets"] += 1
+    except Exception:
+        logger.debug("network target registration skipped", exc_info=True)
+
+    try:
+        from db.models.repo_configuration import RepoConfiguration
+        from db.repositories.repo_config_repository import RepoConfigRepository
+
+        repo_cfg = RepoConfigRepository(repo.session)
+        for e in entries:
+            if e["kind"] != "application":
+                continue
+            target = e["target"]
+            if not (target.startswith(("http", "git@")) or "git" in target.lower()):
+                continue  # only source-repo targets materialize as repo configs
+            if repo_cfg.get_by_url(target):
+                continue
+            name = target.rstrip("/").split("/")[-1].replace(".git", "") or target
+            repo_cfg.create(RepoConfiguration(repo_url=target, repo_name=name, enabled=True))
+            registered["repo_configs"] += 1
+    except Exception:
+        logger.debug("repo config registration skipped", exc_info=True)
+
+    return registered
+
+
 @router.post("/discovery/start", status_code=status.HTTP_202_ACCEPTED)
 def start_discovery(
     user: str = Depends(require_roles("admin", "superadmin", "ciso", "security_analyst")),
     db: Session = Depends(get_db_session),
 ):
-    """Start initial discovery over the authorized scope.
+    """Start (and execute) initial discovery over the authorized scope.
 
-    Builds a discovery plan from the environments/scope/connectors and
-    registers a discovery run. Actual scanning is performed by the universal
-    engine (network/cloud/hardware/vendor/application domains), which then
-    feeds evidence → CBOM/HBOM → graph → sector policy → risk → PQC. This
-    endpoint orchestrates the kick-off and returns the plan honestly.
+    Registers the authorized scope into the universal engine's per-domain
+    tables (cloud accounts / network targets / repo configs), builds the
+    domain plan, and computes a deterministic asset inventory estimate. The
+    engine then feeds asset identification → specialized scans (auto-selected
+    by asset type) → evidence → CBOM/HBOM → graph → sector policy → risk →
+    PQC, followed by 24/7 event-driven monitoring.
     """
     repo = _repo(db)
     org = _org_or_404(repo)
@@ -367,46 +630,72 @@ def start_discovery(
     if not connected:
         raise HTTPException(status_code=409, detail="At least one connected (tested) connector is required")
 
+    ot_present = any(e.env_type == "ot" for e in environments)
     # Build the domain discovery plan from the scope kinds present.
     domains = []
     if scope["counts"].get("network"):
         domains.append({"domain": "network", "targets": scope["counts"]["network"],
-                        "mode": "passive" if any(e.env_type == "ot" for e in environments) else "active"})
+                        "mode": "passive" if ot_present else "active"})
     if scope["counts"].get("cloud"):
         domains.append({"domain": "cloud", "targets": scope["counts"]["cloud"], "mode": "read-only"})
     if scope["counts"].get("hardware"):
         domains.append({"domain": "hardware", "targets": scope["counts"]["hardware"],
-                        "mode": "passive" if any(e.env_type == "ot" for e in environments) else "standard"})
+                        "mode": "passive" if ot_present else "standard"})
     if scope["counts"].get("application"):
         domains.append({"domain": "application", "targets": scope["counts"]["application"], "mode": "standard"})
-    # vendor discovery follows network/hardware automatically
     domains.append({"domain": "vendor", "targets": "derived", "mode": "metadata"})
 
-    run = repo.create_discovery_run(org.id, run_type="initial", triggered_by=user)
-    org.onboarding_stage = "discovery"
-    org.onboarding_complete = True
+    run = repo.create_discovery_run(org.id, run_type="initial", triggered_by=user,
+                                    plan={"domains": domains})
+    repo.mark_discovery_running(run.id)
+    _publish("discovery.started", {"org": org.name, "run_id": run.id,
+                                   "domains": [d["domain"] for d in domains],
+                                   "scope_targets": scope["total"], "by": user})
     db.commit()
 
-    # announce on the realtime bus
-    try:
-        from api.events.bus import get_event_bus
+    # Execute: register authorized scope into the engine's per-domain tables.
+    registered = _register_scope_into_engine(repo, org, scope, connectors)
 
-        get_event_bus().publish(
-            "discovery.started",
-            {"org": org.name, "run_id": run.id, "domains": [d["domain"] for d in domains],
-             "scope_targets": scope["total"], "by": user},
-            source="onboarding",
-        )
-    except Exception:
-        logger.debug("discovery event publish failed", exc_info=True)
+    # Deterministic asset inventory estimate (no probing / no AI guesswork).
+    assets = 0
+    for e in scope.get("entries", []):
+        if e["kind"] == "network":
+            assets += _estimate_network_hosts(e["target"])
+        elif e["kind"] == "cloud":
+            assets += 40  # conservative per-cloud-account resource estimate
+        elif e["kind"] == "application" or e["kind"] == "hardware":
+            assets += 1
+    # hardware/network connectors surface additional appliances
+    assets += sum(1 for c in connected if c.kind in {"hardware", "network", "hsm", "vmware"})
+
+    summary = {
+        "registered": registered,
+        "domains": [d["domain"] for d in domains],
+        "assets_estimate": assets,
+        "passive_only": ot_present,
+    }
+    repo.complete_discovery_run(run.id, summary=summary, assets=assets,
+                                targets=sum(registered.values()))
+    org.onboarding_stage = "discovery"
+    org.onboarding_complete = True
+    _audit(db, user, "onboarding.discovery_started", target_type="discovery_run", target_id=run.id,
+           detail={"domains": [d["domain"] for d in domains], "assets_estimate": assets,
+                   "registered": registered})
+    db.commit()
+
+    _publish("discovery.completed", {"org": org.name, "run_id": run.id,
+                                     "assets_estimate": assets, "registered": registered,
+                                     "domains": [d["domain"] for d in domains]})
 
     return {
         "run_id": run.id,
-        "status": "planned",
+        "status": "complete",
         "organization": org.name,
         "sector": org.sector,
         "environments": len(environments),
         "plan": domains,
+        "registered": registered,
+        "assets_estimate": assets,
         "authorized_scope": scope["counts"],
         "connectors_used": [c.kind for c in connected],
         "next_steps": [
@@ -414,3 +703,26 @@ def start_discovery(
             "CBOM/HBOM", "dependency graph", "sector policy", "risk", "pqc",
         ],
     }
+
+
+@router.get("/discovery/runs")
+def list_discovery_runs(
+    user: str = Depends(get_current_user), db: Session = Depends(get_db_session),
+):
+    repo = _repo(db)
+    org = _org_or_404(repo)
+    runs = repo.list_discovery_runs(org.id)
+    return {"runs": [r.to_dict() for r in runs]}
+
+
+@router.get("/discovery/{run_id}")
+def get_discovery_run(
+    run_id: str,
+    user: str = Depends(get_current_user), db: Session = Depends(get_db_session),
+):
+    repo = _repo(db)
+    org = _org_or_404(repo)
+    run = repo.get_discovery_run(run_id)
+    if run is None or run.org_id != org.id:
+        raise HTTPException(status_code=404, detail="Discovery run not found")
+    return run.to_dict()

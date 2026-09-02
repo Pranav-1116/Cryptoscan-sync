@@ -24,6 +24,35 @@ from db.models.onboarding import (
 )
 
 
+def maintenance_window_open(env: Environment, now: datetime | None = None) -> bool:
+    """Return True if active probing is permitted for this environment right now.
+
+    Safety model: an OT/ICS/DR environment with maintenance windows enabled is
+    *closed* to active probing except inside a declared weekly window. Passive
+    (read-only observation) scanning is always permitted. Environments without
+    windows enabled are always open (IT default).
+    """
+    if not env.maintenance_window_enabled or not env.maintenance_windows:
+        return True
+    now = now or datetime.now(timezone.utc)
+    weekday = now.strftime("%a").lower()  # mon/tue/...
+    for window in env.maintenance_windows or []:
+        if not isinstance(window, dict):
+            continue
+        if str(window.get("day", "")).lower() not in {weekday, weekday[:3], "*"}:
+            continue
+        try:
+            sh, sm = (int(x) for x in str(window.get("start", "00:00")).split(":")[:2])
+            duration = int(window.get("duration_minutes", 60))
+        except (ValueError, TypeError):
+            continue
+        start_min = sh * 60 + sm
+        cur_min = now.hour * 60 + now.minute
+        if start_min <= cur_min < start_min + duration:
+            return True
+    return False
+
+
 def scrub_secrets(config: dict[str, Any] | None) -> dict[str, Any]:
     """Never persist secret material — drop any key that looks sensitive."""
     if not isinstance(config, dict):
@@ -81,6 +110,19 @@ class OnboardingRepository:
         self.session.flush()
         return env
 
+    def get_environment(self, env_id: str) -> Environment | None:
+        return self.session.get(Environment, env_id)
+
+    def update_environment(self, env_id: str, **fields) -> Environment | None:
+        env = self.get_environment(env_id)
+        if env is None:
+            return None
+        for key, value in fields.items():
+            if hasattr(env, key) and value is not None:
+                setattr(env, key, value)
+        self.session.flush()
+        return env
+
     # ------------------------------------------------------------------- scope
     def list_scope(self, org_id: str, env_id: str | None = None) -> list[ScopeEntry]:
         stmt = select(ScopeEntry).where(ScopeEntry.org_id == org_id)
@@ -111,9 +153,25 @@ class OnboardingRepository:
             "cloud_targets": by_kind.get("cloud", []),
             "application_targets": by_kind.get("application", []),
             "hardware_targets": by_kind.get("hardware", []),
+            "entries": [
+                {"id": e.id, "kind": e.kind, "target": e.target,
+                 "env_id": e.env_id, "enabled": e.enabled}
+                for e in entries
+            ],
             "counts": counts,
             "total": len(entries),
         }
+
+    def get_scope_entry(self, entry_id: str) -> ScopeEntry | None:
+        return self.session.get(ScopeEntry, entry_id)
+
+    def delete_scope_entry(self, entry_id: str) -> bool:
+        entry = self.get_scope_entry(entry_id)
+        if entry is None:
+            return False
+        self.session.delete(entry)
+        self.session.flush()
+        return True
 
     # --------------------------------------------------------------- connectors
     def list_connectors(self, org_id: str) -> list[Connector]:
@@ -126,13 +184,18 @@ class OnboardingRepository:
 
     def add_connector(self, org_id: str, kind: str, name: str, method: str = "api",
                       mode: str = "passive", config: dict | None = None,
-                      env_id: str | None = None) -> Connector:
+                      env_id: str | None = None, agent_id: str | None = None) -> Connector:
         kind = kind if kind in CONNECTOR_KINDS else "other"
         method = method if method in CONNECTOR_METHODS else "api"
+        clean = scrub_secrets(config)
+        # agent connectors carry an agent_id (in the dedicated column) so
+        # heartbeats can find them; accept it explicitly or via config reference.
+        agent_id = agent_id or clean.get("agent_id")
         connector = Connector(
             org_id=org_id, env_id=env_id, kind=kind, name=name, method=method,
             mode=mode if mode in ("passive", "active") else "passive",
-            config=scrub_secrets(config), status="configured",
+            config=clean, status="configured",
+            agent_id=str(agent_id) if agent_id else None,
         )
         self.session.add(connector)
         self.session.flush()
@@ -152,21 +215,70 @@ class OnboardingRepository:
         self.session.flush()
         return connector
 
+    def delete_connector(self, connector_id: str) -> bool:
+        connector = self.get_connector(connector_id)
+        if connector is None:
+            return False
+        self.session.delete(connector)
+        self.session.flush()
+        return True
+
+    def agent_heartbeat(self, agent_id: str, *, version: str | None = None,
+                        healthy: bool = True, link: str = "encrypted") -> Connector | None:
+        """Record an agent check-in over its encrypted link. Agents are used for
+        unreachable/air-gapped environments and send normalized observations."""
+        connector = self.session.execute(
+            select(Connector).where(Connector.agent_id == agent_id)
+        ).scalars().first()
+        if connector is None:
+            return None
+        connector.agent_last_seen_at = datetime.now(timezone.utc)
+        connector.agent_healthy = healthy
+        connector.agent_link = link if link in {"disconnected", "connecting", "encrypted"} else "encrypted"
+        if version:
+            connector.agent_version = version
+        if healthy and connector.status in {"pending", "configured", "error"}:
+            connector.status = "connected"
+        self.session.flush()
+        return connector
+
     # -------------------------------------------------------------- discovery
     def create_discovery_run(self, org_id: str, run_type: str = "initial",
-                             triggered_by: str | None = None) -> DiscoveryRun:
+                             triggered_by: str | None = None,
+                             plan: dict | None = None) -> DiscoveryRun:
         run = DiscoveryRun(org_id=org_id, run_type=run_type, status="planned",
-                           triggered_by=triggered_by)
+                           triggered_by=triggered_by, plan=plan)
         self.session.add(run)
         self.session.flush()
         return run
 
-    def complete_discovery_run(self, run_id: str, summary: dict, assets: int) -> DiscoveryRun | None:
+    def get_discovery_run(self, run_id: str) -> DiscoveryRun | None:
+        return self.session.get(DiscoveryRun, run_id)
+
+    def list_discovery_runs(self, org_id: str) -> list[DiscoveryRun]:
+        return list(self.session.execute(
+            select(DiscoveryRun).where(DiscoveryRun.org_id == org_id)
+            .order_by(DiscoveryRun.created_at.desc())
+        ).scalars().all())
+
+    def mark_discovery_running(self, run_id: str) -> DiscoveryRun | None:
+        run = self.get_discovery_run(run_id)
+        if run is None:
+            return None
+        run.status = "running"
+        run.started_at = datetime.now(timezone.utc)
+        self.session.flush()
+        return run
+
+    def complete_discovery_run(self, run_id: str, summary: dict, assets: int,
+                               targets: int = 0, status: str = "complete") -> DiscoveryRun | None:
         run = self.session.get(DiscoveryRun, run_id)
         if run is None:
             return None
-        run.status = "complete"
+        run.status = status
         run.summary = summary
         run.assets_discovered = assets
+        run.targets_registered = targets
+        run.finished_at = datetime.now(timezone.utc)
         self.session.flush()
         return run

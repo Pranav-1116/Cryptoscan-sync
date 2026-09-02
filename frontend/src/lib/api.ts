@@ -207,11 +207,14 @@ export interface OnboardingOrg {
 export interface OnboardingEnv {
   id: string; name: string; env_type: string; scan_mode: string;
   active_probing: boolean; region?: string | null;
+  maintenance_window_enabled?: boolean; maintenance_timezone?: string | null;
+  maintenance_windows?: MaintenanceWindow[] | null;
 }
 export interface ScopeEntryItem { id: string; kind: string; target: string }
 export interface OnboardingConn {
   id: string; kind: string; name: string; method: string; mode: string;
-  status: string; agent_healthy?: boolean;
+  status: string; agent_healthy?: boolean; agent_id?: string | null;
+  agent_link?: string | null; agent_version?: string | null; agent_last_seen_at?: string | null;
   test_result?: { checks?: { check: string; ok: boolean; detail: string }[]; all_ok?: boolean } | null;
 }
 export interface OnboardingState {
@@ -228,13 +231,23 @@ export interface OnboardingState {
   ready: boolean;
   checklist: { step: string; label: string; done: boolean }[];
 }
+export interface MaintenanceWindow { day: string; start: string; duration_minutes: number }
 export interface DiscoveryPlan {
   run_id: string; status: string; organization: string; sector: string;
   environments: number;
   plan: { domain: string; targets: number | string; mode: string }[];
+  registered?: { cloud_accounts: number; network_targets: number; repo_configs: number };
+  assets_estimate?: number;
   authorized_scope: Record<string, number>;
   connectors_used: string[];
   next_steps: string[];
+}
+export interface DiscoveryRun {
+  id: string; status: string; run_type: string; assets_discovered: number;
+  targets_registered: number; summary?: Record<string, unknown> | null;
+  started_at?: string | null; finished_at?: string | null;
+  plan?: { domains?: { domain: string; targets: number | string; mode: string }[] } | null;
+  created_at: string;
 }
 
 export const apiOnboardingState = (): Promise<ApiResult<OnboardingState>> =>
@@ -274,6 +287,36 @@ export const apiTestConnection = (
 
 export const apiStartDiscovery = (): Promise<ApiResult<DiscoveryPlan>> =>
   call("/api/v1/onboarding/discovery/start", { method: "POST" });
+
+export const apiListDiscoveryRuns = (): Promise<ApiResult<{ runs: DiscoveryRun[] }>> =>
+  call("/api/v1/onboarding/discovery/runs");
+
+export const apiUpdateEnvironment = (
+  id: string,
+  body: {
+    scan_mode?: string; active_probing?: boolean; enabled?: boolean;
+    maintenance_window_enabled?: boolean; maintenance_timezone?: string;
+    maintenance_windows?: MaintenanceWindow[];
+  },
+): Promise<ApiResult<OnboardingEnv>> =>
+  call(`/api/v1/onboarding/environments/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+
+const deleteCall = async (path: string): Promise<{ ok: boolean; error?: string }> => {
+  try {
+    const resp = await fetch(path, {
+      method: "DELETE",
+      signal: AbortSignal.timeout(8000),
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+    });
+    if (!resp.ok && resp.status !== 204) return { ok: false, error: `HTTP ${resp.status}` };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+};
+
+export const apiDeleteScope = (id: string) => deleteCall(`/api/v1/onboarding/scope/${id}`);
+export const apiDeleteConnection = (id: string) => deleteCall(`/api/v1/onboarding/connections/${id}`);
 
 /* React glue (useApi hook + LiveBadge) lives in apiUi.tsx */
 export { useApi, LiveBadge } from "./apiUi.jsx";
