@@ -134,6 +134,11 @@ class AuthService:
             self.session.commit()
             raise AuthenticationError("Account temporarily locked. Try again later.")
 
+        if getattr(user, "deleted_at", None) is not None:
+            repo.audit(candidate, "auth.login", outcome="DELETED", ip=client_key)
+            self.session.commit()
+            raise AuthenticationError("Account no longer exists.")
+
         if not user.is_active:
             repo.audit(candidate, "auth.login", outcome="DISABLED", ip=client_key)
             self.session.commit()

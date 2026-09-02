@@ -84,6 +84,77 @@ def test_revoke_all_sessions(session):
     assert repo.revoke_all_sessions("frank") == 0
 
 
+def test_revoke_other_sessions_keeps_current(session):
+    repo = UserRepository(session)
+    repo.create_user("grace", hash_password("supersecret12"))
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    for t in ("keep", "other1", "other2"):
+        repo.create_session(t, "grace", exp)
+    revoked = repo.revoke_other_sessions("grace", "keep")
+    assert revoked == 2
+    # the kept session is still active ...
+    assert repo.get_session("keep").revoked_at is None
+    # ... while the others are revoked
+    assert repo.get_session("other1").revoked_at is not None
+    assert repo.get_session("other2").revoked_at is not None
+    # idempotent: nothing left to revoke except the kept one
+    assert repo.revoke_other_sessions("grace", "keep") == 0
+
+
+def test_revoke_other_sessions_is_scoped_to_user(session):
+    repo = UserRepository(session)
+    repo.create_user("heidi", hash_password("supersecret12"))
+    repo.create_user("ivan", hash_password("supersecret12"))
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    repo.create_session("heidi-tok", "heidi", exp)
+    repo.create_session("ivan-tok", "ivan", exp)
+    # revoking heidi's other sessions never touches ivan's session
+    assert repo.revoke_other_sessions("heidi", "heidi-tok") == 0
+    assert repo.get_session("ivan-tok").revoked_at is None
+
+
+def test_soft_delete_and_restore(session):
+    repo = UserRepository(session)
+    repo.create_user("kevin", hash_password("supersecret12"), roles=["developer"])
+    # delete stamps deleted_at, disables; row still exists
+    user = repo.soft_delete_user("kevin")
+    assert user.deleted_at is not None and user.is_active is False
+    assert repo.get_by_username("kevin") is not None  # row retained for audit
+    assert repo.get_by_username("kevin").is_deleted is True
+    # idempotent: deleting again keeps the original timestamp
+    first = repo.soft_delete_user("kevin").deleted_at
+    assert first == user.deleted_at
+    # list_active_users excludes it
+    assert all(u.username != "kevin" for u in repo.list_active_users())
+    # restore clears the marker and re-enables
+    restored = repo.restore_user("kevin")
+    assert restored.deleted_at is None and restored.is_active is True
+    assert any(u.username == "kevin" for u in repo.list_active_users())
+
+
+def test_soft_delete_revokes_sessions_via_active_list(session):
+    repo = UserRepository(session)
+    repo.create_user("laura", hash_password("supersecret12"))
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    repo.create_session("l1", "laura", exp)
+    repo.soft_delete_user("laura")
+    # the account is gone from active users even though the session row exists
+    assert repo.list_active_users() == []
+    assert repo.restore_user("missing") is None
+
+
+def test_count_active_sessions(session):
+    repo = UserRepository(session)
+    repo.create_user("judy", hash_password("supersecret12"))
+    exp = datetime.now(timezone.utc) + timedelta(hours=1)
+    assert repo.count_active_sessions("judy") == 0
+    repo.create_session("j1", "judy", exp)
+    repo.create_session("j2", "judy", exp)
+    assert repo.count_active_sessions("judy") == 2
+    repo.revoke_session("j1")
+    assert repo.count_active_sessions("judy") == 1
+
+
 def test_audit_roundtrip(session):
     repo = UserRepository(session)
     repo.audit("admin", "baseline.approve", target_type="scan", target_id="s-1", detail={"env": "prod"})

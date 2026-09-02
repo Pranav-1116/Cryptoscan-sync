@@ -11,9 +11,15 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.config.settings import get_settings
-from api.dependencies import get_current_user, get_db_session, require_admin, require_roles
+from api.dependencies import (
+    get_current_user,
+    get_db_session,
+    require_admin,
+    require_roles,
+)
+from api.events.auth import publish_auth
 from api.security import totp
-from api.security.auth import AuthService, AuthenticationError
+from api.security.auth import AuthenticationError, AuthService
 from api.security.passwords import hash_password, verify_password
 from api.security.session_manager import SessionManager
 
@@ -121,6 +127,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         user = AuthService(session=db).authenticate(body.username, body.password, client_key=client)
         roles = user.roles
     except AuthenticationError as exc:
+        publish_auth("login_failed", {"user": body.username, "reason": "invalid_credentials", "ip": client})
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message) from exc
     except Exception as exc:
         fallback = _auth_db_error(exc)
@@ -190,6 +197,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         max_age=max_age,
         path="/",
     )
+    publish_auth("login", {"user": user.username, "roles": roles, "mfa": False, "ip": client})
     return LoginResponse(
         message="Login successful",
         username=user.username,
@@ -226,6 +234,7 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     seeded bootstrap account `admin` holds it (alias admin → superadmin).
     """
     from db.models.user import VALID_ROLES
+
     from api.security.rbac import ROLE_ALIASES
 
     role = ROLE_ALIASES.get(body.role.strip().lower(), body.role.strip().lower())
@@ -243,12 +252,15 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
     repo = _user_repo(db)
     if repo.get_by_username(body.username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
+    email = (body.email or "").strip().lower() or None
+    if email is not None and ("@" not in email or len(email) > 320):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid email address")
     user = repo.create_user(
         body.username,
         hash_password(body.password),
         roles=[role],
-        display_name=body.display_name,
-        email=body.email,
+        display_name=(body.display_name or "").strip() or None,
+        email=email,
     )
     repo.audit(
         body.username,
@@ -259,11 +271,11 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
         ip=request.client.host if request.client else None,
     )
     db.commit()
-    try:
-        from api.events.bus import get_event_bus
-        get_event_bus().publish("auth.register", {"user": body.username, "role": role}, source="auth")
-    except Exception:  # pragma: no cover - bus is best-effort
-        pass
+    publish_auth(
+        "register",
+        {"user": body.username, "role": role, "self_service": True,
+         "ip": request.client.host if request.client else None},
+    )
     return RegisterResponse(message="account created", username=user.username, roles=[role])
 
 
@@ -372,12 +384,16 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db_se
                 db.commit()
         except Exception:
             pass  # revocation is best-effort; the token still expires naturally
+        if actor != "unknown":
+            publish_auth("logout", {"user": actor, "ip": request.client.host if request.client else None})
     response.delete_cookie("cryptoscan_session", path="/", secure=settings.cookie_secure, httponly=True, samesite="lax")
     return {"message": "Logged out successfully"}
 
 
 @router.get("/me")
 def me(request: Request, db: Session = Depends(get_db_session)) -> dict:
+    from api.security.rbac import normalize_roles, permissions_for_roles
+
     token = token_from_request(request)
     session = SessionManager().get_session(token or "")
     if not session:
@@ -393,14 +409,219 @@ def me(request: Request, db: Session = Depends(get_db_session)) -> dict:
         pass
     roles = session.roles
     user = None
+    active_sessions = None
     try:
-        user = _user_repo(db).get_by_username(session.username)
+        repo = _user_repo(db)
+        user = repo.get_by_username(session.username)
         if user is not None:
             roles = user.role_list
+            try:
+                active_sessions = repo.count_active_sessions(user.username)
+            except Exception:  # pragma: no cover - older stores lack the helper/table
+                active_sessions = None
     except Exception:  # pragma: no cover
         pass
-    mfa_enabled = bool(user.mfa_enabled) if user is not None else False
-    return {"username": session.username, "roles": roles, "mfa_enabled": mfa_enabled}
+    roles = normalize_roles(roles)
+    return {
+        "username": session.username,
+        "roles": roles,
+        "permissions": permissions_for_roles(roles),
+        "mfa_enabled": bool(user.mfa_enabled) if user is not None else False,
+        "display_name": user.display_name if user is not None else None,
+        "email": user.email if user is not None else None,
+        "is_active": bool(user.is_active) if user is not None else True,
+        "active_sessions": active_sessions,
+    }
+
+
+class MeUpdateRequest(BaseModel):
+    """Self-service profile update — a user may change only their own
+    display name and contact email. Roles, status and password are out of
+    scope here (roles/status are admin-only; password goes through
+    /auth/me/password with the old password as proof)."""
+
+    display_name: str | None = Field(None, max_length=200)
+    email: str | None = Field(None, max_length=320)
+
+
+@router.patch("/me")
+def update_me(
+    body: MeUpdateRequest,
+    request: Request,
+    username: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Update the caller's own profile (display name / email)."""
+    repo = _user_repo(db)
+    user = repo.get_by_username(username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    changes: dict = {}
+    if body.display_name is not None:
+        user.display_name = body.display_name.strip() or None
+        changes["display_name"] = user.display_name
+    if body.email is not None:
+        email = body.email.strip().lower() or None
+        if email is not None and ("@" not in email or len(email) > 320):
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid email address")
+        user.email = email
+        changes["email"] = user.email
+    db.flush()
+    repo.audit(
+        username,
+        "user.profile_update",
+        target_type="user",
+        target_id=username,
+        detail=changes,
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    publish_auth("profile_update", {"user": username, "fields": sorted(changes)})
+    return {
+        "username": user.username,
+        "display_name": user.display_name,
+        "email": user.email,
+        "roles": user.role_list,
+        "mfa_enabled": bool(user.mfa_enabled),
+    }
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=10, max_length=200)
+
+
+@router.post("/me/password")
+def change_my_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    username: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Self-service password change.
+
+    Requires the current password as proof of possession. By default the
+    caller's other sessions are revoked (the current token stays valid so
+    they are not logged out mid-request); pass ``revoke_other_sessions=false``
+    to keep every existing session alive. A ``user.password_change`` audit
+    entry and an ``auth.password_change`` realtime event are emitted.
+    """
+    client = request.client.host if request.client else None
+    repo = _user_repo(db)
+    user = repo.get_by_username(username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    if not verify_password(body.current_password, user.password_hash):
+        repo.audit(username, "user.password_change", outcome="FAILURE", ip=client, detail="bad current password")
+        db.commit()
+        publish_auth("password_change_failed", {"user": username, "ip": client})
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Current password is incorrect")
+    if verify_password(body.new_password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="New password must differ from the current password",
+        )
+    settings = get_settings()
+    if settings.is_production and body.new_password.lower() in {"", "cryptoscan", "admin", "password", "changeme", "secret"}:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="New password is too weak")
+
+    token = token_from_request(request)
+    repo.set_password(username, hash_password(body.new_password))
+    # Keep the caller's current session alive; revoke every other token so a
+    # stolen/old session cannot outlive the credential rotation.
+    revoked = repo.revoke_other_sessions(username, token or "") if token else repo.revoke_all_sessions(username)
+    repo.audit(
+        username,
+        "user.password_change",
+        target_type="user",
+        target_id=username,
+        detail={"revoked_other_sessions": revoked},
+        ip=client,
+    )
+    db.commit()
+    publish_auth("password_change", {"user": username, "revoked_other_sessions": revoked, "ip": client})
+    return {"message": "Password changed", "revoked_other_sessions": revoked}
+
+
+@router.get("/me/sessions")
+def list_my_sessions(
+    request: Request,
+    username: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """The caller's own active sessions (for self-service device audit).
+
+    Tokens are never returned — only timestamps, IP, expiry and whether the
+    row is the session making this request.
+    """
+    from db.models.user import UserSession as _Session
+    from db.repositories.user_repository import token_hash
+
+    token = token_from_request(request)
+    current_hash = token_hash(token) if token else None
+    rows = list(
+        db.query(_Session)
+        .filter(_Session.username == username, _Session.revoked_at.is_(None))
+        .order_by(_Session.created_at_ts.desc())
+        .all()
+    )
+    from shared_models.chrono import aware
+
+    now = datetime.now(timezone.utc)
+    sessions = []
+    for r in rows:
+        expires = aware(r.expires_at)
+        sessions.append(
+            {
+                "id": r.id,
+                "current": bool(current_hash and r.token_hash == current_hash),
+                "created_at": r.created_at_ts.isoformat() if r.created_at_ts else None,
+                "expires_at": expires.isoformat() if expires else None,
+                "ip_address": r.ip_address,
+                "expired": bool(expires and expires < now),
+            }
+        )
+    return {"sessions": sessions, "active_count": len(sessions)}
+
+
+class RevokeSessionsRequest(BaseModel):
+    """Log out every session except the current one (self-service)."""
+
+    include_current: bool = False
+
+
+@router.post("/me/sessions/revoke")
+def revoke_my_sessions(
+    body: RevokeSessionsRequest,
+    request: Request,
+    response: Response,
+    username: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Self-service "log out everywhere else". By default the current session
+    is kept (``include_current=false``); pass ``include_current=true`` to also
+    revoke the calling token (full sign-out on all devices)."""
+    client = request.client.host if request.client else None
+    token = token_from_request(request)
+    repo = _user_repo(db)
+    if body.include_current:
+        revoked = repo.revoke_all_sessions(username)
+        response.delete_cookie("cryptoscan_session", path="/",
+                               secure=get_settings().cookie_secure, httponly=True, samesite="lax")
+    else:
+        revoked = repo.revoke_other_sessions(username, token or "")
+    repo.audit(
+        username,
+        "auth.sessions_revoke",
+        target_type="user",
+        target_id=username,
+        detail={"revoked": revoked, "include_current": body.include_current},
+        ip=client,
+    )
+    db.commit()
+    publish_auth("sessions_revoke", {"user": username, "revoked": revoked,
+                                     "include_current": body.include_current, "ip": client})
+    return {"revoked": revoked, "include_current": body.include_current}
 
 # ------------------------------------------------------------------ mfa (totp)
 
@@ -433,12 +654,8 @@ def _issue_session(response: Response, username: str, roles: list[str], client: 
         max_age=max_age,
         path="/",
     )
-    try:  # real-time stream: sessions issued (no token material, ever)
-        from api.events.bus import get_event_bus
-
-        get_event_bus().publish("auth.login", {"user": username, "roles": roles}, source="auth")
-    except Exception:
-        pass
+    # real-time stream: sessions issued (no token material, ever)
+    publish_auth("login", {"user": username, "roles": roles, "mfa": True, "ip": client})
     return LoginResponse(
         message="Login successful",
         username=username,
@@ -641,9 +858,14 @@ def list_roles(
 
 @router.get("/users", response_model=list[UserResponse])
 def list_users(
+    include_deleted: bool = Query(False, description="Include soft-deleted accounts"),
     admin: str = Depends(require_admin),
     db: Session = Depends(get_db_session),
 ):
+    repo = _user_repo(db)
+    users = repo.list_users()
+    if not include_deleted:
+        users = [u for u in users if getattr(u, "deleted_at", None) is None]
     return [
         UserResponse(
             username=u.username,
@@ -653,8 +875,79 @@ def list_users(
             is_active=u.is_active,
             last_login_at=u.last_login_at,
         )
-        for u in _user_repo(db).list_users()
+        for u in users
     ]
+
+
+@router.delete("/users/{username}")
+def delete_user(
+    username: str,
+    request: Request,
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Soft-delete a user (compliance-safe).
+
+    The row is retained (deleted_at stamped, account disabled, all sessions
+    revoked) so the audit hash chain and historical actor references stay
+    intact and verifiable. The bootstrap superadmin account cannot be
+    removed — a platform must always retain at least one owner.
+    """
+    repo = _user_repo(db)
+    target = repo.get_by_username(username)
+    if target is None or getattr(target, "deleted_at", None) is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    from api.security.rbac import normalize_roles
+
+    if "superadmin" in normalize_roles(target.role_list):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The superadmin account cannot be deleted — revoke its other roles or disable it instead",
+        )
+    revoked = repo.revoke_all_sessions(username)
+    repo.soft_delete_user(username)
+    repo.audit(
+        admin,
+        "user.delete",
+        target_type="user",
+        target_id=username,
+        detail={"soft_delete": True, "sessions_revoked": revoked},
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    publish_auth("user_deleted", {"user": username, "by": admin, "sessions_revoked": revoked})
+    return {"deleted": True, "username": username, "sessions_revoked": revoked}
+
+
+@router.post("/users/{username}/restore", response_model=UserResponse)
+def restore_user(
+    username: str,
+    request: Request,
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Restore a soft-deleted account (clears deleted_at, re-enables)."""
+    repo = _user_repo(db)
+    user = repo.restore_user(username)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted user not found")
+    repo.audit(
+        admin,
+        "user.restore",
+        target_type="user",
+        target_id=username,
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    publish_auth("user_restored", {"user": username, "by": admin})
+    return UserResponse(
+        username=user.username,
+        display_name=user.display_name,
+        email=user.email,
+        roles=user.role_list,
+        is_active=user.is_active,
+        last_login_at=user.last_login_at,
+    )
 
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
@@ -810,10 +1103,9 @@ def export_audit(
     """
     import hashlib as _hashlib
 
-    from fastapi.responses import PlainTextResponse
-
     from db.models.user import AuditLog as _AuditLog
     from db.repositories.user_repository import verify_audit_chain
+    from fastapi.responses import PlainTextResponse
 
     rows = list(
         db.query(_AuditLog)

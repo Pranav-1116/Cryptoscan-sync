@@ -141,4 +141,5 @@ def test_login_me_meta_and_security_headers():
         me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
         assert me.status_code == 200
         assert me.json()["username"] == "admin"
-        assert "admin" in me.json()["roles"]
+        # /me canonicalizes legacy roles (admin → superadmin) per the 8-role catalog
+        assert "superadmin" in me.json()["roles"]

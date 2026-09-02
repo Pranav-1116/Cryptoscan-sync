@@ -140,6 +140,41 @@ class UserRepository:
         self.session.flush()
         return user
 
+    def soft_delete_user(self, username: str) -> User | None:
+        """Soft-delete a user (compliance-safe): mark deleted_at, disable the
+        account. The row is retained so the audit hash chain and historical
+        actor references remain verifiable. Idempotent — re-deleting an
+        already-removed account returns the row without changing the
+        original deletion timestamp. Returns None if no such user."""
+        user = self.get_by_username(username)
+        if user is None:
+            return None
+        if user.deleted_at is None:
+            user.deleted_at = datetime.now(timezone.utc)
+        user.is_active = False
+        self.session.flush()
+        return user
+
+    def restore_user(self, username: str) -> User | None:
+        """Undo a soft delete: clear deleted_at and re-enable the account."""
+        user = self.get_by_username(username)
+        if user is None or user.deleted_at is None:
+            return None
+        user.deleted_at = None
+        user.is_active = True
+        user.failed_attempts = 0
+        user.locked_until = None
+        self.session.flush()
+        return user
+
+    def list_active_users(self) -> list[User]:
+        """Users that are neither soft-deleted nor disabled (login candidates)."""
+        return list(
+            self.session.execute(
+                select(User).where(User.deleted_at.is_(None), User.is_active.is_(True))
+            ).scalars().all()
+        )
+
     def set_password(self, username: str, password_hash: str) -> User | None:
         user = self.get_by_username(username)
         if user is None:
@@ -215,6 +250,46 @@ class UserRepository:
             row.revoked_at = now
         self.session.flush()
         return len(rows)
+
+    def revoke_other_sessions(self, username: str, keep_token: str) -> int:
+        """Revoke every active session for ``username`` except ``keep_token``.
+
+        Used by self-service credential rotation: the caller's current
+        session stays valid so they are not logged out mid-request, while any
+        token on another device/browser is invalidated. Returns the count of
+        sessions revoked.
+        """
+        keep_hash = token_hash(keep_token) if keep_token else ""
+        rows = list(
+            self.session.execute(
+                select(UserSession).where(
+                    UserSession.username == username,
+                    UserSession.revoked_at.is_(None),
+                    UserSession.token_hash != keep_hash,
+                )
+            ).scalars().all()
+        )
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row.revoked_at = now
+        self.session.flush()
+        return len(rows)
+
+    def count_active_sessions(self, username: str) -> int:
+        """Number of sessions for a user that have not been revoked and have
+        not expired (expiry is best-effort here; expired rows are harmless)."""
+        from sqlalchemy import func
+
+        return int(
+            self.session.execute(
+                select(func.count())
+                .select_from(UserSession)
+                .where(
+                    UserSession.username == username,
+                    UserSession.revoked_at.is_(None),
+                )
+            ).scalar_one()
+        )
 
     # ------------------------------------------------------------------ audit
 

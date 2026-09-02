@@ -20,15 +20,18 @@ from starlette.responses import JSONResponse
 
 # endpoint class -> (limit, window_seconds)
 DEFAULT_RULES: dict[str, tuple[int, int]] = {
-    "login": (5, 60),        # /api/v1/auth/login — 5 req/min per IP
+    "login": (5, 60),          # /api/v1/auth/login — 5 req/min per IP
+    "register": (10, 3600),    # /api/v1/auth/register — 10 accounts/hour per IP (open endpoint)
     "scan_submit": (100, 60),  # POST /api/v1/scans — 100 req/min per user
-    "api": (600, 60),        # everything else under /api — 600 req/min per identity
+    "api": (600, 60),          # everything else under /api — 600 req/min per identity
 }
 
 
 def _endpoint_class(method: str, path: str) -> str:
     if path.rstrip("/") == "/api/v1/auth/login":
         return "login"
+    if method == "POST" and path.rstrip("/") == "/api/v1/auth/register":
+        return "register"
     if method == "POST" and (path == "/api/v1/scans" or path.startswith("/api/v1/scans")):
         return "scan_submit"
     return "api"
