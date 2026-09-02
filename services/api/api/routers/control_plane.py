@@ -21,7 +21,7 @@ import logging
 import secrets
 
 from db.repositories.control_plane_repository import ControlPlaneRepository
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -123,6 +123,13 @@ def create_grant(body: GrantRequest,
     _audit(db, user, "control.grant_created", target_id=grant.id,
            detail={"subject": body.subject, "actions": body.actions, "effect": body.effect})
     db.commit()
+    # New grants take effect immediately — drop the middleware's short-lived cache.
+    try:
+        from api.middleware.abac_middleware import reset_abac_cache
+
+        reset_abac_cache()
+    except Exception:
+        logger.debug("abac cache reset skipped", exc_info=True)
     return grant.to_dict()
 
 
@@ -158,6 +165,30 @@ def authorize(body: AuthzRequest,
         reason = "denied: data residency / sovereignty violation"
     return {"authorized": decision, "reason": reason,
             "residency_ok": residency}
+
+
+@router.get("/me/grants")
+def my_grants(request: Request, user: str = Depends(get_current_user),
+              db: Session = Depends(get_db_session)):
+    """The caller's own effective ABAC surface: every active allow-grant that
+    matches their username or one of their roles, so the console can show and
+    self-attest the Region→BU→Environment→Asset scope they can reach."""
+    from control_plane.abac import effective_scopes
+
+    from api.security.rbac import _caller_roles
+
+    principal, roles = _caller_roles(request)
+    repo = _repo(db)
+    grants = [g.to_dict() for g in repo.list_grants()]
+    scopes = effective_scopes(grants, username=principal, roles=roles)
+    return {"principal": principal, "roles": roles, "grants": scopes,
+            "count": len(scopes), "abac_enforced": _abac_enforced()}
+
+
+def _abac_enforced() -> bool:
+    import os
+
+    return os.environ.get("ABAC_ENFORCED", "").lower() in {"1", "true", "yes", "on"}
 
 
 # ------------------------------------------------------------- credentials
@@ -656,14 +687,77 @@ def worker_tick_endpoint(body: WorkerTickRequest,
         row = repo.matching_policy(region=payload.get("region"), environment=payload.get("environment"))
         return row.to_dict() if row else None
 
+    deliveries: list[dict] = []
+
+    def delivery_handler(event) -> None:
+        """Fan non-scan events (siem.*/itsm.*) out to registered integrations —
+        real signed HTTP delivery, each attempt audited in cp_delivery_logs."""
+        from control_plane.delivery import deliver_event_for_repo
+
+        etype = str(event.get("event_type", ""))
+        if etype.startswith(("siem", "itsm", "ticket")):
+            try:
+                deliveries.extend(
+                    deliver_event_for_repo(db, {"id": event.get("id"), **event},
+                                           sleep=lambda _s: None)
+                )
+            except Exception:
+                logger.warning("tick_delivery_failed event=%s", etype, exc_info=True)
+
     result = _tick(repo, worker_id=body.worker_id, batch=min(body.batch, 50),
-                   policy_provider=policy_provider)
+                   policy_provider=policy_provider, handler=delivery_handler)
+    delivered = sum(1 for d in deliveries if d.get("status") == "delivered")
     _audit(db, user, "control.worker_tick",
            detail={"processed": result.processed, "blocked": len(result.blocked),
-                   "failed": len(result.failed)})
+                   "failed": len(result.failed), "webhooks_delivered": delivered})
+    _publish("control.worker_tick", {"processed": result.processed,
+                                     "webhooks_delivered": delivered,
+                                     "webhook_attempts": len(deliveries)})
     db.commit()
     return {"processed": result.processed, "blocked": result.blocked,
-            "failed": result.failed, "empty": result.empty, "leased": result.leased}
+            "failed": result.failed, "empty": result.empty, "leased": result.leased,
+            "deliveries": deliveries}
+
+
+@router.get("/deliveries")
+def list_deliveries(kind: str | None = None, status_filter: str | None = None,
+                    user: str = Depends(get_current_user),
+                    db: Session = Depends(get_db_session)):
+    """Outbound webhook delivery audit trail (SIEM/ITSM/SOAR real fan-out)."""
+    logs = _repo(db).list_delivery_logs(kind=kind, status=status_filter, limit=100)
+    stats = _repo(db).delivery_stats()
+    return {"deliveries": [l.to_dict() for l in logs], "stats": stats,
+            "count": len(logs)}
+
+
+class DeliveryFlushRequest(BaseModel):
+    limit: int = 25
+
+
+@router.post("/deliveries/flush")
+def flush_deliveries(body: DeliveryFlushRequest,
+                     user: str = Depends(require_roles("superadmin", "admin", "ciso", "scanner")),
+                     db: Session = Depends(get_db_session)):
+    """Drain the durable SIEM/ITSM outbox: re-fan queued events to registered
+    integrations over real signed HTTP, with retries and a full audit trail."""
+    from control_plane.delivery import deliver_event_for_repo
+
+    repo = _repo(db)
+    events = [e.to_dict() for e in repo.list_events("queued", limit=max(1, min(body.limit, 100)))]
+    targets = [e for e in events
+               if str(e.get("event_type", "")).startswith(("siem", "itsm", "ticket"))]
+    results: list[dict] = []
+    for event in targets:
+        results.extend(deliver_event_for_repo(db, event, sleep=lambda _s: None))
+        repo.complete_event(event["id"])
+    delivered = sum(1 for r in results if r.get("status") == "delivered")
+    failed = sum(1 for r in results if r.get("status") == "failed")
+    _audit(db, user, "control.deliveries_flushed",
+           detail={"events": len(targets), "delivered": delivered, "failed": failed})
+    _publish("siem.deliveries_flushed", {"events": len(targets), "delivered": delivered})
+    db.commit()
+    return {"events_flushed": len(targets), "delivered": delivered, "failed": failed,
+            "results": results}
 
 
 @router.get("/health")

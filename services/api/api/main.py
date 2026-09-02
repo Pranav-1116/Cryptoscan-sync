@@ -171,6 +171,13 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         app.add_middleware(AuthMiddleware, settings=settings)
         app.add_middleware(RateLimitMiddleware, redis_client=_shared_rate_limit_backend())
+    # ABAC scope enforcement runs just inside the auth gate on EVERY route.
+    # It is a no-op unless ABAC_ENFORCED is set (and grants are provisioned),
+    # so test/dev installs keep working while large-bank deployments get
+    # fail-closed Region→BU→Environment→Asset isolation.
+    from api.middleware.abac_middleware import AbacMiddleware
+
+    app.add_middleware(AbacMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     # Innermost: runs right after the route so every successful mutating call
     # across all services lands on the real-time bus (api.<segment>.<verb>).

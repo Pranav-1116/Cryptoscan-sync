@@ -286,3 +286,36 @@ class BenchmarkRun(BaseModel):
     accuracy: Mapped[float | None] = mapped_column(Float, nullable=True)
     scored_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+# --------------------------------------------------------------------------- #
+# Outbound webhook delivery (SIEM / ITSM / SOAR) — real HTTP fan-out audit
+# --------------------------------------------------------------------------- #
+
+DELIVERY_STATUSES = ("delivered", "failed", "skipped")
+
+
+class DeliveryLog(BaseModel):
+    """One outbound webhook delivery attempt to a registered integration.
+
+    Records the deterministic outcome of actually POSTing a SIEM/ITSM event to
+    an external system: HTTP status, attempts, signature prefix (never the
+    secret), duration, and any error. This is the audit trail that turns
+    'event enqueued' into 'event delivered to the SOC/ticketing system'.
+    """
+
+    __tablename__ = "cp_delivery_logs"
+
+    integration_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    provider: Mapped[str] = mapped_column(String(40), nullable=False, default="webhook")
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="siem", index=True)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    event_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    endpoint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="skipped", index=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    response_excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    signature_prefix: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)

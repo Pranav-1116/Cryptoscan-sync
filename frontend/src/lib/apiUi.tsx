@@ -32,3 +32,19 @@ export function LiveBadge({ source, label }: { source: ApiSource; label?: string
     <span className="badge amber"><span className="dot" /> {label || "DEMO DATA"}</span>
   );
 }
+
+/**
+ * Polling variant of useApi — re-fetches on an interval so operations pages
+ * (integrations/delivery, scanners) reflect the running platform without a
+ * manual refresh. Complements the SSE realtime stream for request/response
+ * state (delivery logs, integration health) that the event feed does not carry.
+ */
+export function usePollingApi<T>(fn: () => Promise<ApiResult<T>>, intervalMs = 15000, deps: unknown[] = []) {
+  const r = useApi<T>(fn, deps);
+  useEffect(() => {
+    const t = setInterval(() => { void r.run(); }, intervalMs);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intervalMs, ...deps]);
+  return r;
+}

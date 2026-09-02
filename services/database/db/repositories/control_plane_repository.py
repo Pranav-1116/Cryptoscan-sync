@@ -20,6 +20,7 @@ from db.models.control_plane import (
     BenchmarkDataset,
     BenchmarkRun,
     CredentialRef,
+    DeliveryLog,
     QueuedEvent,
     SafeScanPolicy,
     ScopeGrant,
@@ -329,6 +330,48 @@ class ControlPlaneRepository:
             rows.sort(key=lambda e: (rank.get(e.priority, 2), e.created_at or ""))
             rows = [e for e in rows if e.status == status][:limit]
         return rows
+
+    # ------------------------------------------------- outbound delivery log
+    def record_delivery(self, *, result: dict, event_type: str,
+                        event_id: str | None = None) -> DeliveryLog:
+        """Persist one outbound webhook delivery outcome (audit trail)."""
+        log = DeliveryLog(
+            integration_id=result.get("integration_id"),
+            provider=result.get("provider", "webhook"),
+            kind=result.get("kind", "siem"),
+            event_type=event_type,
+            event_id=event_id,
+            endpoint=result.get("endpoint"),
+            status=result.get("status", "skipped"),
+            attempts=int(result.get("attempts") or 0),
+            http_status=result.get("http_status"),
+            response_excerpt=result.get("response_excerpt"),
+            error=result.get("error"),
+            signature_prefix=(result.get("signature") or "")[:24] or None,
+            duration_ms=result.get("duration_ms"),
+        )
+        self.session.add(log)
+        return log
+
+    def list_delivery_logs(self, *, kind: str | None = None,
+                           status: str | None = None, limit: int = 100) -> list[DeliveryLog]:
+        stmt = select(DeliveryLog).order_by(DeliveryLog.created_at.desc()).limit(limit)
+        if kind:
+            stmt = select(DeliveryLog).where(DeliveryLog.kind == kind).order_by(
+                DeliveryLog.created_at.desc()).limit(limit)
+        if status:
+            stmt = select(DeliveryLog).where(DeliveryLog.status == status).order_by(
+                DeliveryLog.created_at.desc()).limit(limit)
+        return list(self.session.execute(stmt).scalars().all())
+
+    def delivery_stats(self) -> dict:
+        from sqlalchemy import func
+
+        rows = self.session.execute(
+            select(DeliveryLog.status, func.count(DeliveryLog.id))
+            .group_by(DeliveryLog.status)
+        ).all()
+        return {status: int(count) for status, count in rows}
 
     # ---------------------------------------------------------- benchmark
     def create_benchmark_dataset(self, name: str, **fields) -> BenchmarkDataset:

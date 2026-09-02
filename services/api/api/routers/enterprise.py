@@ -42,6 +42,28 @@ def _publish(event_type: str, payload: dict) -> None:
         logger.debug("enterprise event skipped", exc_info=True)
 
 
+def _fan_out(db: Session, event_type: str, payload: dict) -> list[dict]:
+    """Best-effort real signed HTTP delivery to registered integrations.
+
+    Never raises: network failure leaves the durable queue/outbox as the
+    record of record (and /control/deliveries/flush retries). Returns the
+    per-integration delivery result dicts.
+    """
+    try:
+        from control_plane.delivery import deliver_event_for_repo
+
+        results = deliver_event_for_repo(db, {"event_type": event_type, "payload": payload},
+                                         sleep=lambda _s: None)
+        for r in results:
+            _publish("siem.delivered" if r.get("kind") == "siem" else "itsm.delivered",
+                     {"integration": r.get("integration_id"), "status": r.get("status"),
+                      "http_status": r.get("http_status"), "event": event_type})
+        return results
+    except Exception:
+        logger.warning("enterprise fan-out failed for %s", event_type, exc_info=True)
+        return []
+
+
 # ------------------------------------------------------------------ policy
 class PolicyRequest(BaseModel):
     model_config = {"extra": "forbid"}
@@ -211,8 +233,15 @@ def create_ticket(body: TicketRequest,
     _audit(db, user, "enterprise.ticket_created", target_id=t.id,
            detail={"finding_id": body.finding_id, "state": t.state})
     _publish("itsm.ticket_created", {"ticket_id": t.id, "finding_id": body.finding_id})
+    # Real outbound fan-out to registered ITSM integrations (signed HTTP POST),
+    # each attempt audited; failures never block ticket creation (outbox retains).
+    deliveries = _fan_out(db, "itsm.ticket_created",
+                          {"ticket": t.to_dict(), "finding_id": body.finding_id,
+                           "asset_id": body.asset_id, "severity": t.severity,
+                           "detail": t.title})
     db.commit()
-    return {"ticket_id": t.id, "state": t.state, "external_ref": t.external_ref}
+    return {"ticket_id": t.id, "state": t.state, "external_ref": t.external_ref,
+            "deliveries": [d.get("status") for d in deliveries]}
 
 
 class TicketTransition(BaseModel):
@@ -274,6 +303,50 @@ def register_integration(body: IntegrationRequest,
 @router.get("/integrations")
 def list_integrations(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return {"integrations": [i.to_dict(exclude={"config"}) for i in _repo(db).list_integrations()]}
+
+
+@router.post("/integrations/{integration_id}/test")
+def test_integration(integration_id: str,
+                     user: str = Depends(require_roles("superadmin", "admin", "ciso")),
+                     db: Session = Depends(get_db_session)):
+    """Send a signed ZELNX connectivity-test event to one integration over real
+    HTTP and report the deterministic result (used by the Integrations console
+    'Test connection' button). Records a cp_delivery_logs audit row."""
+    from control_plane.delivery import deliver
+
+    repo = _repo(db)
+    integ = next((i for i in repo.list_integrations() if i.id == integration_id), None)
+    if integ is None:
+        raise HTTPException(status_code=404, detail="Integration not found")
+    event = {"event_type": "siem.connectivity_test" if integ.kind in ("siem", "soar")
+             else "itsm.connectivity_test",
+             "payload": {"severity": "info", "detail": "ZELNX connectivity test",
+                         "asset": "zelnx-console", "category": "alert"}}
+    result = deliver(integ.to_dict(), event, sleep=lambda _s: None, max_attempts=2)
+    from db.repositories.control_plane_repository import ControlPlaneRepository
+
+    ControlPlaneRepository(db).record_delivery(result=result.to_dict(),
+                                               event_type=event["event_type"])
+    repo.mark_integration_synced(integ.id, result.status)
+    _audit(db, user, "enterprise.integration_tested", target_id=integ.id,
+           detail={"status": result.status, "http_status": result.http_status})
+    _publish("integrations.tested", {"integration_id": integ.id, "status": result.status})
+    db.commit()
+    return {"integration_id": integ.id, "status": result.status,
+            "http_status": result.http_status, "attempts": result.attempts,
+            "error": result.error, "signed": result.signature is not None,
+            "duration_ms": result.duration_ms}
+
+
+@router.get("/integrations/deliveries")
+def integration_deliveries(user: str = Depends(get_current_user),
+                           db: Session = Depends(get_db_session)):
+    """Recent outbound delivery results for the Integrations console."""
+    from db.repositories.control_plane_repository import ControlPlaneRepository
+
+    cp = ControlPlaneRepository(db)
+    return {"deliveries": [l.to_dict() for l in cp.list_delivery_logs(limit=50)],
+            "stats": cp.delivery_stats()}
 
 
 class CmdbImport(BaseModel):
@@ -346,9 +419,18 @@ def siem_export(body: SiemExport,
     for n in normalized:
         repo.enqueue_siem_event(n)
     _publish("siem.export", {"provider": body.provider, "count": len(normalized)})
+    # Immediate best-effort real delivery to enabled SIEM/SOAR webhooks; the
+    # queue row remains the durable record for anything not accepted now.
+    deliveries = []
+    for n in normalized[:10]:  # bound synchronous fan-out; flush handles the rest
+        deliveries.extend(_fan_out(db, "siem.finding", n.get("payload", n)))
     db.commit()
     return {"exported": len(normalized), "provider": body.provider,
-            "cef": [n["cef"] for n in normalized]}
+            "cef": [n["cef"] for n in normalized],
+            "deliveries": [{"status": d.get("status"), "http_status": d.get("http_status"),
+                            "integration_id": d.get("integration_id"),
+                            "attempts": d.get("attempts"), "error": d.get("error")}
+                           for d in deliveries]}
 
 
 # --------------------------------------------------------------- regions/DR

@@ -7,9 +7,24 @@ service persists and enforces these; the logic here is unit-tested in
 isolation per the "Deterministic Truth First" doctrine.
 """
 
+from control_plane.abac import (
+    action_for_method,
+    authorize_request,
+    effective_scopes,
+    filter_rows,
+    scope_from_payload,
+)
 from control_plane.benchmark import meets_target, score_predictions
 from control_plane.compliance import framework_posture
 from control_plane.credentials import CredentialHealth, assess_credential
+from control_plane.delivery import (
+    DeliveryResult,
+    build_payload,
+    credential_secret,
+    deliver,
+    deliver_to_all,
+    integration_matches,
+)
 from control_plane.iam import Scope, is_authorized, residency_permitted
 from control_plane.identity import (
     confidence_from_evidence,
@@ -65,6 +80,17 @@ from control_plane.worker import process_event, worker_tick
 
 __all__ = [
     "CredentialHealth",
+    "DeliveryResult",
+    "action_for_method",
+    "authorize_request",
+    "build_payload",
+    "credential_secret",
+    "deliver",
+    "deliver_to_all",
+    "effective_scopes",
+    "filter_rows",
+    "integration_matches",
+    "scope_from_payload",
     "Orchestrator",
     "OrchestratorConfig",
     "ScanDecision",

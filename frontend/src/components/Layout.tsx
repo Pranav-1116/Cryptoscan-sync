@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search.jsx";
 import { globalState } from "../data/demo.js";
-import { getToken, setToken } from "../lib/api.js";
+import { getToken, setToken, apiMyGrants } from "../lib/api.js";
 
 const NAV = [
   { section: "Command center", items: [
@@ -66,8 +66,22 @@ const NAV = [
 
 export default function Layout({ route, children }: { route: string; children: React.ReactNode }) {
   const [showSearch, setShowSearch] = useState(false);
+  const [abac, setAbac] = useState<{ enforced: boolean; grants: number } | null>(null);
   const ticker = useLiveTicker();
   const toasts = useAlertToasts();
+
+  useEffect(() => {
+    if (!getToken()) { setAbac(null); return; }
+    let alive = true;
+    const load = () => apiMyGrants().then((r) => {
+      if (alive && r.source === "live" && r.data) {
+        setAbac({ enforced: !!r.data.abac_enforced, grants: r.data.count ?? r.data.grants?.length ?? 0 });
+      }
+    }).catch(() => {});
+    void load();
+    const t = setInterval(load, 30000);
+    return () => { alive = false; clearInterval(t); };
+  }, [ticker.connected]);
 
   return (
     <div className="shell">
@@ -109,6 +123,13 @@ export default function Layout({ route, children }: { route: string; children: R
           <span className="item">scanners <b>{globalState.activeScanners}/{globalState.totalScanners}</b></span>
           <span className="item">CBOM <b>v{globalState.cbomVersion}</b></span>
           <span className="item">HBOM <b>v{globalState.hbomVersion}</b></span>
+          {abac && (
+            <span className="item" title="ABAC scope policy — Region → Business Unit → Environment → Asset">
+              ABAC <b style={{ color: abac.enforced ? "var(--green)" : "var(--amber)" }}>
+                {abac.enforced ? `ENFORCED · ${abac.grants} grants` : "off"}
+              </b>
+            </span>
+          )}
           <div className="searchbox" onClick={() => setShowSearch(true)}>
             <span>⌕</span> Search entire environment…
             <span style={{ marginLeft: "auto", fontSize: 10, border: "1px solid var(--line-strong)", borderRadius: 4, padding: "1px 6px" }}>esc</span>

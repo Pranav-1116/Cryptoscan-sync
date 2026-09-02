@@ -318,5 +318,86 @@ const deleteCall = async (path: string): Promise<{ ok: boolean; error?: string }
 export const apiDeleteScope = (id: string) => deleteCall(`/api/v1/onboarding/scope/${id}`);
 export const apiDeleteConnection = (id: string) => deleteCall(`/api/v1/onboarding/connections/${id}`);
 
+<<<<<<< HEAD
+=======
+/* ── live control-plane / enterprise surfaces (realtime environment) ── */
+
+/** Live dashboard summary from the database (scans/findings/drift/coverage). */
+export const apiStatsSummary = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/stats/summary");
+
+/** Most-recent runtime crypto findings (the live 24/7 engine). */
+export const apiRuntimeFindings = (limit = 50): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/scans/runtime-findings?limit=${limit}`);
+
+/** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
+export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
+  call("/api/v1/control/me/grants");
+
+/** Registered SIEM/ITSM/CMDB integrations. */
+export const apiIntegrations = (): Promise<ApiResult<{ integrations: Array<Record<string, unknown>> }>> =>
+  call("/api/v1/enterprise/integrations");
+
+/** Outbound webhook delivery audit trail (real SIEM/ITSM fan-out results). */
+export const apiDeliveries = (): Promise<ApiResult<{ deliveries: Array<Record<string, unknown>>; stats: Record<string, number>; count: number }>> =>
+  call("/api/v1/control/deliveries");
+
+/** Fire a signed connectivity-test event at one integration (real HTTP). */
+export async function apiTestIntegration(integrationId: string): Promise<{ ok: boolean; error?: string; status?: string; http_status?: number }> {
+  try {
+    const resp = await fetch(`/api/v1/enterprise/integrations/${integrationId}/test`, {
+      method: "POST",
+      signal: AbortSignal.timeout(15000),
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    return { ok: true, status: body.status, http_status: body.http_status };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/** Register an integration (no secrets — vault references only). */
+export const apiRegisterIntegration = (body: {
+  kind: string; provider: string; name: string; endpoint?: string; credential_id?: string;
+}): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/enterprise/integrations", { method: "POST", body: JSON.stringify(body) });
+
+/** Flush the durable SIEM/ITSM outbox — real signed HTTP delivery with retries. */
+export async function apiFlushDeliveries(limit = 25): Promise<{ ok: boolean; error?: string; delivered?: number; failed?: number; events_flushed?: number }> {
+  try {
+    const resp = await fetch("/api/v1/control/deliveries/flush", {
+      method: "POST",
+      signal: AbortSignal.timeout(30000),
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({ limit }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    return { ok: true, delivered: body.delivered, failed: body.failed, events_flushed: body.events_flushed };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/** Drive the orchestrator worker tick (drains the durable queue). */
+export async function apiWorkerTick(batch = 10): Promise<{ ok: boolean; error?: string; processed?: number }> {
+  try {
+    const resp = await fetch("/api/v1/control/orchestrator/tick", {
+      method: "POST",
+      signal: AbortSignal.timeout(30000),
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({ worker_id: "console", batch }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    return { ok: true, processed: body.processed };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+>>>>>>> bc8232b (feat(control-plane): enforce ABAC middleware + real SIEM/ITSM webhook delivery; live frontend wiring)
 /* React glue (useApi hook + LiveBadge) lives in apiUi.tsx */
 export { useApi, LiveBadge } from "./apiUi.jsx";

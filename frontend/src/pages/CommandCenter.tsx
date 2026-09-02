@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
 import { globalState, events, risk } from "../data/demo.js";
-import { apiScope, isBackendLive, ApiResult } from "../lib/api.js";
+import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, ApiResult, LiveBadge } from "../lib/api.js";
+import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 
 export default function CommandCenter() {
@@ -14,6 +15,12 @@ export default function CommandCenter() {
     void isBackendLive().then(setBackend);
     void apiScope().then(setScope);
   }, []);
+
+  // Live operational counts straight from the platform database (polled).
+  const liveStats = usePollingApi(apiStatsSummary, 15000);
+  const liveDeliveries = usePollingApi(apiDeliveries, 20000);
+  const ls = (liveStats.data ?? {}) as Record<string, number>;
+  const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
 
   /* realtime feed — live stream events when connected, demo baseline otherwise */
   const liveFeed = rt.events.filter((e) => !isSystemEvent(e.type)).slice(0, 6).map((e) => ({
@@ -44,6 +51,20 @@ export default function CommandCenter() {
       {scope.data && (
         <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "GET /api/v1/platform/scope — served by the control plane" : "demo manifest — backend offline"} className="mt">
           <Code>{JSON.stringify(scope.data, null, 2)}</Code>
+        </Panel>
+      )}
+
+      {liveStats.source === "live" && (
+        <Panel title="Live platform state" sub="GET /api/v1/stats/summary + control-plane delivery — counts from the running database" className="mt">
+          <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
+            <LiveStat label="scans" value={Number(ls.total_scans ?? 0)} />
+            <LiveStat label="findings" value={Number(ls.total_findings ?? 0)} />
+            <LiveStat label="compliant" value={Number(ls.compliant ?? 0)} tone="green" />
+            <LiveStat label="non-compliant" value={Number(ls.non_compliant ?? 0)} tone="red" />
+            <LiveStat label="webhooks delivered" value={Number(dStats.delivered ?? 0)} tone="green" />
+            <LiveStat label="webhooks failed" value={Number(dStats.failed ?? 0)} tone="red" />
+            <LiveBadge source="live" label="LIVE DB" />
+          </div>
         </Panel>
       )}
 
@@ -160,5 +181,16 @@ export default function CommandCenter() {
         </Panel>
       </div>
     </>
+  );
+}
+
+function LiveStat({ label, value, tone }: { label: string; value: number; tone?: "green" | "red" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minWidth: 120 }}>
+      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : "var(--text)" }}>
+        {value.toLocaleString()}
+      </span>
+      <span className="dim" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
+    </div>
   );
 }
