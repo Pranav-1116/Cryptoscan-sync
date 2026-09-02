@@ -23,7 +23,7 @@ COPY .env.example /app/.env.example
 
 RUN chown -R cryptoscan:cryptoscan /app
 
-ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker:/app/services/deduplication:/app/services/cbom:/app/services/container_scanner:/app/services/network_scanner:/app/services/cloud_scanner:/app/services/graph_engine:/app/services/business_context:/app/services/quantum:/app/services/remediation:/app/services/reporting:/app/services/ot_scanner:/app/services/vendor_intel:/app/services/agility:/app/services/payment_crypto:/app/services/universal_platform:/app/services/universal_crypto:/app/services/universal_vendor:/app/services/runtime
+ENV PYTHONPATH=/app/shared/shared_config:/app/shared/shared_logging:/app/shared/shared_models:/app/services/api:/app/services/database:/app/services/scanner:/app/services/evidence:/app/services/normalization:/app/services/policy:/app/services/drift:/app/services/worker:/app/services/deduplication:/app/services/cbom:/app/services/container_scanner:/app/services/network_scanner:/app/services/cloud_scanner:/app/services/graph_engine:/app/services/business_context:/app/services/quantum:/app/services/sector_profiles:/app/services/remediation:/app/services/reporting:/app/services/ot_scanner:/app/services/vendor_intel:/app/services/agility:/app/services/payment_crypto:/app/services/universal_platform:/app/services/universal_crypto:/app/services/universal_vendor:/app/services/runtime
 ENV PYTHONUNBUFFERED=1
 ENV CRYPTOSCAN_ROOT=/app
 
