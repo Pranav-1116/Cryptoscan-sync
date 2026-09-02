@@ -156,3 +156,122 @@ def test_oversized_body_does_not_crash_and_abac_still_allows_scoped(client):
                     headers=h, params={"region": "eu"},
                     json={"target": huge})
     assert r.status_code != 500
+
+
+# ================================================ unauthenticated webhooks
+class _FakeReq:
+    def __init__(self, headers=None):
+        self.headers = headers or {}
+
+
+def test_registry_webhook_rejects_unsigned_in_production(monkeypatch):
+    from api.config import settings as settings_mod
+    from api.routers import webhooks
+
+    monkeypatch.setenv("REGISTRY_WEBHOOK_SECRET", "registry-secret-with-32-chars-minimum")
+    s = settings_mod.get_settings()
+    monkeypatch.setattr(type(s), "is_production", property(lambda self: True), raising=False)
+    monkeypatch.setattr(webhooks, "get_settings", lambda: s)
+
+    from fastapi import HTTPException
+
+    req = _FakeReq()
+    with pytest.raises(HTTPException) as ei:
+        webhooks._authorize_registry_webhook(req, b'{"path":"/etc"}')
+    assert ei.value.status_code == 401
+
+
+def test_registry_webhook_accepts_valid_signature(monkeypatch):
+    from api.config import settings as settings_mod
+    from api.routers import webhooks
+
+    secret = "registry-secret-with-32-chars-minimum"
+    monkeypatch.setenv("REGISTRY_WEBHOOK_SECRET", secret)
+    s = settings_mod.get_settings()
+    monkeypatch.setattr(type(s), "is_production", property(lambda self: True), raising=False)
+    monkeypatch.setattr(webhooks, "get_settings", lambda: s)
+
+    import hashlib
+    import hmac
+
+    body = b'{"path":"/tmp/sandbox/rootfs"}'
+    sig = "sha256=" + hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    req = _FakeReq({"x-zelnx-signature": sig})
+    assert webhooks._authorize_registry_webhook(req, body) is None
+
+
+def test_registry_webhook_rejects_bad_signature(monkeypatch):
+    from api.config import settings as settings_mod
+    from api.routers import webhooks
+
+    monkeypatch.setenv("REGISTRY_WEBHOOK_SECRET", "registry-secret-with-32-chars-minimum")
+    s = settings_mod.get_settings()
+    monkeypatch.setattr(type(s), "is_production", property(lambda self: True), raising=False)
+    monkeypatch.setattr(webhooks, "get_settings", lambda: s)
+
+    from fastapi import HTTPException
+
+    req = _FakeReq({"x-zelnx-signature": "sha256=deadbeef"})
+    with pytest.raises(HTTPException) as ei:
+        webhooks._authorize_registry_webhook(req, b"{}")
+    assert ei.value.status_code == 401
+
+
+def test_safe_scan_path_blocks_protected_dirs():
+    from api.routers.webhooks import _safe_scan_path
+    from fastapi import HTTPException
+
+    for bad in ("/etc/passwd", "/proc/self/environ", "/run/secrets/db", "/sys/kernel"):
+        with pytest.raises(HTTPException) as ei:
+            _safe_scan_path(bad)
+        assert ei.value.status_code == 403
+
+
+def test_safe_scan_path_confined_to_scan_root(monkeypatch, tmp_path):
+    from api.routers.webhooks import _safe_scan_path
+    from fastapi import HTTPException
+
+    sandbox = tmp_path / "rootfs"
+    sandbox.mkdir()
+    (tmp_path / "outside").mkdir()
+    monkeypatch.setenv("SCAN_ROOT", str(sandbox))
+
+    inside = sandbox / "opt" / "app"
+    inside.mkdir(parents=True)
+    assert str(_safe_scan_path(str(inside))).startswith(str(sandbox.resolve()))
+
+    with pytest.raises(HTTPException) as ei:
+        _safe_scan_path(str(tmp_path / "outside"))
+    assert ei.value.status_code == 403
+
+
+# ================================================ session default role fail-safe
+def test_session_minted_without_roles_is_not_admin():
+    from api.security.session_manager import SessionManager
+
+    mgr = SessionManager(secret="x" * 40, ttl_seconds=600)
+    token = mgr.create_session("rookie")  # no roles passed
+    view = mgr.get_session(token)
+    assert "admin" not in view.roles
+    assert view.roles == ["readonly"]
+
+
+# ================================================ OIDC JWKS SSRF guard
+def test_oidc_jwks_uri_scheme_and_host_pinned(monkeypatch):
+    from api.security.oidc import OidcError, _validate_jwks_uri
+
+    # non-http scheme
+    with pytest.raises(OidcError):
+        _validate_jwks_uri("file:///etc/passwd", "https://sso.example.com")
+    # loopback/metadata
+    with pytest.raises(OidcError):
+        _validate_jwks_uri("http://169.254.169.254/jwks", "https://sso.example.com")
+    # host mismatch with issuer
+    with pytest.raises(OidcError):
+        _validate_jwks_uri("https://evil.example.com/jwks", "https://sso.example.com")
+    # https issuer must have https jwks
+    with pytest.raises(OidcError):
+        _validate_jwks_uri("http://sso.example.com/jwks", "https://sso.example.com")
+    # valid, same-host https
+    _validate_jwks_uri("https://sso.example.com/realms/main/protocol/openid-connect/certs",
+                       "https://sso.example.com/realms/main")

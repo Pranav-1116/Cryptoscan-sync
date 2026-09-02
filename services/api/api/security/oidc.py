@@ -33,7 +33,7 @@ import time
 import urllib.request
 from typing import Any
 
-__all__ = ["OidcError", "verify_id_token", "discover_jwks_url", "load_jwks"]
+__all__ = ["OidcError", "discover_jwks_url", "load_jwks", "verify_id_token"]
 
 
 class OidcError(Exception):
@@ -77,7 +77,40 @@ def discover_jwks_url(issuer: str, *, timeout: float = 5.0) -> str:
     jwks_uri = (document or {}).get("jwks_uri")
     if not jwks_uri:
         raise OidcError(f"OIDC discovery document at {url} has no jwks_uri")
+    _validate_jwks_uri(str(jwks_uri), issuer)
     return str(jwks_uri)
+
+
+def _validate_jwks_uri(jwks_uri: str, issuer: str) -> None:
+    """Defense-in-depth SSRF guard for the discovered JWKS endpoint.
+
+    A compromised/hostile discovery document must not point the verifier at an
+    internal address or a non-TLS URL. Only http(s) is allowed, production
+    issuers must use https, and the JWKS host must match the issuer host (an
+    IdP never legitimately serves keys from a different origin).
+    """
+    try:
+        from urllib.parse import urlparse
+
+        parsed = urlparse(jwks_uri)
+        if parsed.scheme not in {"http", "https"}:
+            raise OidcError(f"jwks_uri uses disallowed scheme {parsed.scheme!r}")
+        if not parsed.hostname:
+            raise OidcError("jwks_uri has no host")
+        # Block literal local/metadata targets outright.
+        if parsed.hostname in {"localhost", "127.0.0.1", "0.0.0.0", "::1"} or parsed.hostname.startswith("169.254."):
+            raise OidcError("jwks_uri points to a loopback/metadata address")
+        issuer_parsed = urlparse(issuer)
+        if issuer_parsed.hostname and parsed.hostname.lower() != issuer_parsed.hostname.lower():
+            raise OidcError(
+                f"jwks_uri host {parsed.hostname!r} does not match issuer host {issuer_parsed.hostname!r}"
+            )
+        if issuer.startswith("https://") and parsed.scheme != "https":
+            raise OidcError("jwks_uri must use https for an https issuer")
+    except OidcError:
+        raise
+    except Exception as exc:
+        raise OidcError(f"unvalidatable jwks_uri: {exc}") from exc
 
 
 def load_jwks(*, url: str | None = None, path: str | None = None, issuer: str | None = None) -> dict[str, Any]:
@@ -92,6 +125,9 @@ def load_jwks(*, url: str | None = None, path: str | None = None, issuer: str | 
         url = discover_jwks_url(issuer)
     if not url:
         raise OidcError("no JWKS source configured (set OIDC_JWKS_URL, OIDC_JWKS_FILE or OIDC_ISSUER)")
+    # Validate an explicitly-configured JWKS URL the same way as a discovered one.
+    if url and not issuer:
+        _validate_jwks_uri(url, url.split("/.well-known/")[0])
     now = time.monotonic()
     cached = _JWKS_CACHE.get(url)
     if cached and now - cached[0] < _JWKS_TTL_SECONDS:
