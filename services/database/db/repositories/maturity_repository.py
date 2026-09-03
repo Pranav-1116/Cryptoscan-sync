@@ -170,7 +170,13 @@ class MaturityRepository:
         now = now or _now()
         expired = []
         for row in self.list_exceptions(status="APPROVED"):
-            if row.expiration_date and row.expiration_date <= now:
+            exp = row.expiration_date
+            if exp is None:
+                continue
+            # sqlite returns naive datetimes — normalize to aware UTC before compare
+            if exp.tzinfo is None:
+                exp = exp.replace(tzinfo=timezone.utc)
+            if exp <= now:
                 row.status = "EXPIRED"
                 expired.append(row)
         self.session.flush()
