@@ -658,3 +658,20 @@ export const apiPluginDisable = (pluginPk: string) =>
 /** Acknowledge a statistical anomaly flag (human triage; deterministic flag stays on record). */
 export const apiAnomalyAck = (flagPk: string) =>
   _postAction(`/api/v1/anomaly/flags/${encodeURIComponent(flagPk)}/ack`);
+
+/** Live control-plane agent fleet (enrolled agents, version, heartbeat, health). */
+export async function apiControlAgents(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/control/agents`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`), data: [] } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.agents || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+/** Schedule a deterministic signed-update / rollback / retire for an agent. */
+export const apiAgentUpgrade = (agentId: string, action: "upgrade" | "rollback" | "retire", targetVersion?: string) =>
+  _postAction(`/api/v1/control/agents/${encodeURIComponent(agentId)}/upgrade`, { action, target_version: targetVersion });

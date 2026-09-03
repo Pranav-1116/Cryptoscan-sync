@@ -8,6 +8,7 @@ import {
   apiRunRealBenchmark, apiBenchmarkRuns,
   apiGovernanceDecide, apiLakeExportLive, apiLakeVerify,
   apiPluginEnable, apiPluginDisable, apiAnomalyAck,
+  apiControlAgents, apiAgentUpgrade,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
@@ -41,6 +42,7 @@ export default function PlatformP2() {
   const cbomVersions = usePollingApi(apiCbomVersions, 20000);
   const health = usePollingApi(apiHealthSweep, 30000);
   const benchmarkRuns = usePollingApi(apiBenchmarkRuns, 60000);
+  const agents = usePollingApi(apiControlAgents, 20000);
   const realBenchmark = useApi(apiRunRealBenchmark);
   const latestBenchmark = realBenchmark.data
     ?? ((benchmarkRuns.data ?? []).find((r) => r.scanner_id === "universal-crypto-real") as any) ?? null;
@@ -76,6 +78,8 @@ export default function PlatformP2() {
   });
   const togglePlugin = (pk: string, enable: boolean) =>
     runAction(`plugin-${pk}-${enable}`, () => (enable ? apiPluginEnable(pk) : apiPluginDisable(pk)), plugins.run);
+  const agentAction = (id: string, action: "upgrade" | "rollback" | "retire") =>
+    runAction(`agent-${id}-${action}`, () => apiAgentUpgrade(id, action), agents.run);
   const validateMigration = async () => {
     let pre: any[] = [];
     let post: any[] = [];
@@ -96,6 +100,7 @@ export default function PlatformP2() {
   const runRows = (autoRuns.data ?? []) as Array<Record<string, unknown>>;
   const ruleRows = (autoRules.data ?? []) as Array<Record<string, unknown>>;
   const cbomRows = (cbomVersions.data ?? []) as Array<Record<string, unknown>>;
+  const agentRows = (agents.data ?? []) as Array<Record<string, any>>;
   const slaData = (sla.data ?? null) as Record<string, unknown> | null;
 
   return (
@@ -387,6 +392,36 @@ export default function PlatformP2() {
               </>
             );
           })()}
+        </Panel>
+
+        <Panel title="Agent fleet" sub="control-plane agents · version vs target · heartbeat · signed-update scheduling">
+          {agentRows.length ? (
+            <Table
+              head={["name", "region", "version", "target", "health", "status", ""]}
+              rows={agentRows.slice(0, 12).map((a) => {
+                const outdated = a.target_version && a.version !== a.target_version;
+                return [
+                  <span className="mono" style={{ fontWeight: 600 }}>{String(a.name ?? a.id).slice(0, 22)}</span>,
+                  <span className="muted">{String(a.region ?? "—")}</span>,
+                  <span className="num">{String(a.version ?? "—")}</span>,
+                  <span className="num" style={{ color: outdated ? "var(--amber)" : undefined }}>{String(a.target_version ?? "—")}</span>,
+                  <Badge tone={a.healthy ? "green" : "red"}>{a.healthy ? "healthy" : "unhealthy"}</Badge>,
+                  <Badge tone={String(a.status) === "enrolled" ? "green" : "amber"}>{String(a.status ?? "?")}</Badge>,
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <button className="btn" disabled={busyId === `agent-${a.id}-upgrade`}
+                      title={outdated ? "schedule signed update to target version" : "already at target"}
+                      onClick={() => agentAction(String(a.id), "upgrade")}>
+                      {busyId === `agent-${a.id}-upgrade` ? "…" : "upgrade"}
+                    </button>
+                    <button className="btn" disabled={busyId === `agent-${a.id}-retire`}
+                      onClick={() => agentAction(String(a.id), "retire")}>
+                      {busyId === `agent-${a.id}-retire` ? "…" : "retire"}
+                    </button>
+                  </span>,
+                ];
+              })}
+            />
+          ) : <span className="muted">No agents enrolled yet. Enrolled scanners report heartbeat and version here; outdated agents are flagged for signed update.</span>}
         </Panel>
 
         <Panel
