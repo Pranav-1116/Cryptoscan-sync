@@ -34,6 +34,15 @@ from automation.blast_radius import analyze_blast_radius
 from automation.watchers.cert_expiry import assess_certificate, watch_certificates
 from automation.cbom_versioning import CbomDiff, CbomVersion, LiveCbom
 from automation.risk import base_risk, recalculate, risk_band
+from automation.health import (
+    HealthState,
+    assess_agent,
+    assess_connector,
+    assess_platform_metric,
+    watch_agents,
+    watch_connectors,
+    watch_platform,
+)
 
 __all__ = [
     "CbomDiff", "CbomVersion", "LiveCbom",
@@ -48,4 +57,7 @@ __all__ = [
     "activate_sector", "available_sectors", "normalize_sector",
     "analyze_blast_radius",
     "assess_certificate", "watch_certificates",
+    "HealthState",
+    "assess_agent", "assess_connector", "assess_platform_metric",
+    "watch_agents", "watch_connectors", "watch_platform",
 ]

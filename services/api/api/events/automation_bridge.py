@@ -32,6 +32,8 @@ EVENT_MAP = {
     "anomaly.detected": "anomaly_detected",
     "sla.breaches_present": "sla_breached",
     "ot.safety_denied": "anomaly_detected",
+    "connector_failed": "connector_failed",
+    "agent_offline": "agent_offline",
 }
 
 #: event prefixes the engine emits — never re-processed (loop prevention).

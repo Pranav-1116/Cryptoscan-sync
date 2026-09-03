@@ -565,3 +565,30 @@ export async function apiCbomVersions(): Promise<ApiResult<any[]>> {
     return { source: "live", ok: true, data: body.versions || [], latest: body.latest_version };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
+
+export async function apiHealthSweep(): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/health/sweep`, {
+      method: "POST",
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(20000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: body };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}
+
+export async function apiPostMigrationValidate(payload): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/post-migration/validate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(20000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: body };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}

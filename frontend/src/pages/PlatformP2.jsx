@@ -3,7 +3,7 @@ import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
   apiP2ApiKeys, apiOtMaintenanceWindows, apiSlaPosture, apiCredentialLeases,
-  apiAutomationRuns, apiAutomationRules, apiCbomVersions,
+  apiAutomationRuns, apiAutomationRules, apiCbomVersions, apiHealthSweep,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -35,6 +35,7 @@ export default function PlatformP2() {
   const autoRuns = usePollingApi(apiAutomationRuns, 10000);
   const autoRules = usePollingApi(apiAutomationRules, 30000);
   const cbomVersions = usePollingApi(apiCbomVersions, 20000);
+  const health = usePollingApi(apiHealthSweep, 30000);
 
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
@@ -241,6 +242,47 @@ export default function PlatformP2() {
               ])}
             />
           ) : <span className="muted">No CBOM versions yet — the engine versions the cryptographic inventory as observations change.</span>}
+        </Panel>
+
+        <Panel title="Operational health" sub="connectors + agents swept live · fixed SLO thresholds · critical targets raise alerts">
+          {(() => {
+            const h = health.data as any;
+            if (!h) return <span className="muted">Sweeping connectors and agents…</span>;
+            const conns = h.connectors?.states || {};
+            const agents = h.agents?.states || {};
+            const alerts = [...(h.connectors?.targets || []), ...(h.agents?.targets || [])]
+              .filter((t) => ["UNHEALTHY", "OFFLINE"].includes(t.state));
+            return (
+              <>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
+                  {[
+                    ["connectors total", h.connectors?.total],
+                    ["agents total", h.agents?.total],
+                    ["healthy conns", conns.HEALTHY ?? 0],
+                    ["healthy agents", agents.HEALTHY ?? 0],
+                  ].map(([k, v]) => (
+                    <Badge key={String(k)} variant="neutral">
+                      <strong className="num">{String(v ?? 0)}</strong> {k}
+                    </Badge>
+                  ))}
+                  <Badge variant={h.alert_count ? "danger" : "ok"}>
+                    {h.alert_count ? `${h.alert_count} alert(s)` : "all systems nominal"}
+                  </Badge>
+                </div>
+                {alerts.length ? (
+                  <Table
+                    head={["target", "kind", "state", "reason"]}
+                    rows={alerts.slice(0, 12).map((t) => [
+                      <span className="mono">{String(t.target_id).slice(0, 18)}</span>,
+                      <span className="muted">{t.kind}</span>,
+                      <Badge variant={t.state === "OFFLINE" ? "danger" : "warn"}>{t.state}</Badge>,
+                      <span className="muted">{(t.reasons || []).join("; ").slice(0, 70)}</span>,
+                    ])}
+                  />
+                ) : <span className="muted">No unhealthy connectors or agents. Offline agents (>180s heartbeat), stale links (>24h), and auth failures are flagged automatically.</span>}
+              </>
+            );
+          })()}
         </Panel>
       </div>
     </>

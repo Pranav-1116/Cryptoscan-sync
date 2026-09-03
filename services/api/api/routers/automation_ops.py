@@ -278,3 +278,147 @@ def risk_recalculate(body: RiskBody, user: str = Depends(get_current_user)):
             "business_services": result.affected_business_services,
             "max_band": out["max_band"], "max_score": out["max_score"]})
     return out
+
+
+# ----------------------------------------------------------------- health
+@router.post("/health/sweep")
+def health_sweep(db: Session = Depends(get_db_session),
+                 user: str = Depends(require_roles(*_ADMINS))):
+    """Assess live connectors and agent fleet; raise operational alerts.
+
+    Emits connector_failed / agent_offline events for unhealthy targets
+    (consumed by the automation bridge) and returns the full health report.
+    """
+    from automation.health import watch_agents, watch_connectors
+
+    connectors = []
+    try:
+        from db.models.onboarding import Connector
+
+        for c in db.execute(select(Connector).limit(10_000)).scalars():
+            connectors.append({
+                "id": c.id, "name": c.name, "kind": c.kind, "status": c.status,
+                "agent_link": c.agent_link, "agent_healthy": c.agent_healthy,
+                "last_tested_at": c.last_tested_at,
+                "agent_last_seen_at": c.agent_last_seen_at.isoformat()
+                if c.agent_last_seen_at else None,
+                "test_result": c.test_result,
+            })
+    except Exception:  # noqa: BLE001
+        logger.debug("connector health sweep lookup failed", exc_info=True)
+
+    agents = []
+    try:
+        from db.models.control_plane import Agent
+
+        for a in db.execute(select(Agent).limit(10_000)).scalars():
+            agents.append({
+                "id": a.id, "name": a.name, "status": a.status, "link": a.link,
+                "version": a.version, "target_version": a.target_version,
+                "healthy": a.healthy,
+                "last_heartbeat_at": a.last_heartbeat_at.isoformat()
+                if a.last_heartbeat_at else None,
+            })
+    except Exception:  # noqa: BLE001
+        logger.debug("agent health sweep lookup failed", exc_info=True)
+
+    conn_report = watch_connectors(connectors)
+    agent_report = watch_agents(agents)
+
+    for a in conn_report.alerts:
+        _publish("connector_failed" if a.kind == "connector" else "alert.raised", {
+            "target_id": a.target_id, "state": a.state.value, "reasons": a.reasons})
+        _publish("alert.raised", {"event_kind": "connector_failed",
+                                  "asset_id": a.target_id, "severity": a.severity.value,
+                                  "reasons": a.reasons})
+    for a in agent_report.alerts:
+        _publish("agent_offline", {"target_id": a.target_id, "state": a.state.value,
+                                    "reasons": a.reasons})
+
+    return {
+        "swept_by": user,
+        "connectors": conn_report.as_dict(),
+        "agents": agent_report.as_dict(),
+        "alert_count": conn_report.alert_count + agent_report.alert_count,
+    }
+
+
+# ----------------------------------------------------------------- post-migration
+class PostMigrationBody(BaseModel):
+    system_id: str | None = None
+    migration_project_id: str | None = None
+    pre_findings: list[dict] = Field(default_factory=list, max_length=200_000)
+    post_findings: list[dict] = Field(default_factory=list, max_length=200_000)
+    pre_covered_assets: list[str] = Field(default_factory=list)
+    post_covered_assets: list[str] = Field(default_factory=list)
+
+
+@router.post("/post-migration/validate", status_code=201)
+def post_migration_validate(body: PostMigrationBody,
+                            db: Session = Depends(get_db_session),
+                            user: str = Depends(require_roles(*_ADMINS))):
+    """DETECT -> ANALYZE -> VERIFY: after a migration, re-scan and verify the
+    crypto state deterministically.
+
+    Uses the governance migration validator (no AI). PASS => zero regressions:
+    emits remediation closure events (findings to close). FAIL => regressions
+    found: raises a critical alert + ticket (never auto-closes on failure).
+    """
+    from governance.migration_validate import MigrationSnapshot, validate_migration
+
+    pre = MigrationSnapshot.from_findings(body.pre_findings,
+                                          set(body.pre_covered_assets or []))
+    post = MigrationSnapshot.from_findings(body.post_findings,
+                                           set(body.post_covered_assets or []))
+    result = validate_migration(pre, post)
+    passed = bool(result.passed)
+
+    if passed:
+        # closure: each remediated finding can be auto-recommended for closure
+        # (recommend-tier; closing production tickets stays approval-gated).
+        _publish("alert.raised", {
+            "event_kind": "migration_validated", "asset_id": body.system_id,
+            "severity": "INFO",
+            "remediated": len(result.remediated),
+            "detail": f"migration verified: {len(result.remediated)} weak finding(s) remediated"})
+        for rem in result.remediated:
+            _publish("remediation.verified", {
+                "asset_id": body.system_id, "finding_key": rem.get("key"),
+                "algorithm": rem.get("algorithm")})
+    else:
+        _publish("alert.raised", {
+            "event_kind": "migration_regression", "asset_id": body.system_id,
+            "severity": "CRITICAL",
+            "regressions": result.regressions,
+            "detail": f"migration FAILED with {len(result.regressions)} regression(s)"})
+        _publish("ticket.requested", {
+            "asset_id": body.system_id, "event_kind": "migration_regression",
+            "severity": "CRITICAL", "regressions": result.regressions})
+
+    out = result.as_dict()
+    out["system_id"] = body.system_id
+    out["migration_project_id"] = body.migration_project_id
+    out["validated_by"] = user
+    out["action"] = "PASS: remediated findings cleared" if passed else \
+        "FAIL: regressions reopened; critical alert raised"
+    return out
+
+
+class PlatformHealthBody(BaseModel):
+    metrics: dict[str, float] = Field(default_factory=dict)
+
+
+@router.post("/health/platform")
+def platform_health(body: PlatformHealthBody,
+                    user: str = Depends(get_current_user)):
+    """Classify self-monitoring metrics (API/worker/queue/event/scanner) vs SLOs."""
+    from automation.health import watch_platform
+
+    report = watch_platform(body.metrics)
+    for a in report.alerts:
+        _publish("alert.raised", {"event_kind": "self_monitoring",
+                                  "asset_id": a.target_id, "severity": a.severity.value,
+                                  "metric": a.target_id, "reasons": a.reasons})
+    out = report.as_dict()
+    out["evaluated_by"] = user
+    return out
