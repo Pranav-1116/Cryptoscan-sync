@@ -464,3 +464,43 @@ export async function apiP2ApiKeys(): Promise<ApiResult<any[]>> {
     return { source: "live", ok: true, data: rows };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
+
+/* ==================================================== OT safety + SLA + leases */
+export async function apiOtMaintenanceWindows(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/ot/maintenance-windows`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.windows || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiSlaPosture(): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/sla/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({ use_live: true }),
+      signal: AbortSignal.timeout(20000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: body };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}
+
+export async function apiCredentialLeases(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/control/credential-leases`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.leases || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}

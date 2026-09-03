@@ -2,7 +2,8 @@ import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
-  apiP2ApiKeys, LiveBadge,
+  apiP2ApiKeys, apiOtMaintenanceWindows, apiSlaPosture, apiCredentialLeases,
+  LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 
@@ -27,12 +28,18 @@ export default function PlatformP2() {
   const reqs = usePollingApi(apiP2GovernanceRequests, 15000);
   const lake = usePollingApi(() => apiP2LakeBatches("primary"), 20000);
   const keys = usePollingApi(apiP2ApiKeys, 20000);
+  const windows = usePollingApi(apiOtMaintenanceWindows, 20000);
+  const sla = usePollingApi(apiSlaPosture, 20000);
+  const leases = usePollingApi(apiCredentialLeases, 20000);
 
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
   const reqRows = (reqs.data ?? []) as Array<Record<string, unknown>>;
   const batchRows = (lake.data ?? []) as Array<Record<string, unknown>>;
   const keyRows = (keys.data ?? []) as Array<Record<string, unknown>>;
+  const windowRows = (windows.data ?? []) as Array<Record<string, unknown>>;
+  const leaseRows = (leases.data ?? []) as Array<Record<string, unknown>>;
+  const slaData = (sla.data ?? null) as Record<string, unknown> | null;
 
   return (
     <>
@@ -119,6 +126,64 @@ export default function PlatformP2() {
               <span className="num" style={{ color: Number(k.denied_count) ? "var(--red)" : undefined }}>{String(k.denied_count)}</span>,
               <Badge tone={k.active ? "green" : "red"}>{k.active ? "active" : "disabled"}</Badge>,
             ]) : [[<span className="muted" key="none">No API keys provisioned yet.</span>, "", "", "", "", "", ""]]}
+          />
+        </Panel>
+
+        <Panel title="Remediation SLA posture" sub="fixed deadline-per-severity · critical-asset window halved · deterministic breach detection">
+          {slaData ? (
+            <>
+              <div className="grid cols-4" style={{ marginBottom: 10 }}>
+                {[
+                  ["breached", Number(slaData.breached ?? 0), Number(slaData.breached ?? 0) ? "red" : "green"],
+                  ["at risk", Number(slaData.at_risk ?? 0), Number(slaData.at_risk ?? 0) ? "amber" : "green"],
+                  ["on track", Number(slaData.on_track ?? 0), "green"],
+                  ["breach rate", `${Math.round(Number(slaData.breach_rate ?? 0) * 100)}%`, Number(slaData.breach_rate ?? 0) > 0 ? "red" : "green"],
+                ].map(([k, v, tone]) => (
+                  <div className="kpi" key={String(k)}>
+                    <span className="k">{String(k)}</span>
+                    <span className="v" style={{ color: `var(--${tone})` }}>{String(v)}</span>
+                  </div>
+                ))}
+              </div>
+              <Table
+                head={["finding", "severity", "state", "due", "days"]}
+                rows={((slaData.items as any[]) || []).slice(0, 8).map((it) => [
+                  <span className="mono">{String(it.finding_id).slice(0, 16)}</span>,
+                  <Badge tone="cyan">{String(it.severity)}</Badge>,
+                  <Badge tone={stateTone(String(it.state))}>{String(it.state)}</Badge>,
+                  <span className="num muted">{String(it.due_at).slice(0, 10)}</span>,
+                  it.state === "BREACHED"
+                    ? <span className="num" style={{ color: "var(--red)" }}>+{String(it.days_overdue)}d late</span>
+                    : <span className="num muted">{it.days_remaining != null ? `${String(it.days_remaining)}d left` : "—"}</span>,
+                ])}
+              />
+            </>
+          ) : <span className="muted">No SLA posture available.</span>}
+        </Panel>
+
+        <Panel title="OT maintenance windows" sub="passive-first · active ops only in approved windows · SIS never probed">
+          <Table
+            head={["window", "scope", "class", "ticket", "in effect"]}
+            rows={windowRows.length ? windowRows.slice(0, 12).map((w) => [
+              <span className="mono" style={{ fontWeight: 600 }}>{String(w.window_ref)}</span>,
+              <span className="muted">{[...(w.device_ids as string[] || []), ...(w.zones as string[] || [])].slice(0, 3).join(", ") || "—"}</span>,
+              <Badge tone="cyan">{String(w.allowed_action_class)}</Badge>,
+              <span className="mono">{String(w.change_ticket)}</span>,
+              <Badge tone={w.in_effect ? "green" : "amber"}>{w.in_effect ? "in effect" : "scheduled/closed"}</Badge>,
+            ]) : [[<span className="muted" key="none">No maintenance windows scheduled.</span>, "", "", "", ""]]}
+          />
+        </Panel>
+
+        <Panel title="Vault credential leases" sub="short-lived · scoped TTL · reference-only (no key material)">
+          <Table
+            head={["credential", "component", "TTL", "scope", "status"]}
+            rows={leaseRows.length ? leaseRows.slice(0, 12).map((l) => [
+              <span className="mono" style={{ fontWeight: 600 }}>{String(l.credential_name)}</span>,
+              <span className="mono">{String(l.component)}</span>,
+              <span className="num">{String(l.ttl_seconds)}s</span>,
+              <span className="muted">{String(l.scope ?? "—").slice(0, 28)}</span>,
+              <Badge tone={l.status === "ACTIVE" && !l.expired ? "green" : "amber"}>{l.expired ? "expired" : String(l.status)}</Badge>,
+            ]) : [[<span className="muted" key="none">No credential leases issued.</span>, "", "", "", ""]]}
           />
         </Panel>
       </div>
