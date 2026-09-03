@@ -2,7 +2,7 @@ import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
-  LiveBadge,
+  apiP2ApiKeys, LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 
@@ -26,11 +26,13 @@ export default function PlatformP2() {
   const flags = usePollingApi(apiP2AnomalyFlags, 15000);
   const reqs = usePollingApi(apiP2GovernanceRequests, 15000);
   const lake = usePollingApi(() => apiP2LakeBatches("primary"), 20000);
+  const keys = usePollingApi(apiP2ApiKeys, 20000);
 
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
   const reqRows = (reqs.data ?? []) as Array<Record<string, unknown>>;
   const batchRows = (lake.data ?? []) as Array<Record<string, unknown>>;
+  const keyRows = (keys.data ?? []) as Array<Record<string, unknown>>;
 
   return (
     <>
@@ -102,6 +104,21 @@ export default function PlatformP2() {
               <span className="mono muted">{String(b.batch_digest).slice(0, 12)}…</span>,
               <span className="mono">{String(b.chain_digest).slice(0, 12)}…</span>,
             ])}
+          />
+        </Panel>
+
+        <Panel title="Machine API keys" sub="scope + method allowlist · per-key rate quota · fail-closed">
+          <Table
+            head={["name", "scopes", "methods", "rate/min", "requests", "denied", "state"]}
+            rows={keyRows.length ? keyRows.slice(0, 12).map((k) => [
+              <span className="mono" style={{ fontWeight: 600 }}>{String(k.name)}</span>,
+              <span className="muted">{(k.scopes as string[] || []).length ? (k.scopes as string[]).join(", ") : "all endpoints"}</span>,
+              <span className="mono">{((k.allowed_methods as string[]) || []).join(" ") || "—"}</span>,
+              <span className="num">{Number(k.rate_per_minute) ? String(k.rate_per_minute) : "∞"}</span>,
+              <span className="num">{String(k.request_count)}</span>,
+              <span className="num" style={{ color: Number(k.denied_count) ? "var(--red)" : undefined }}>{String(k.denied_count)}</span>,
+              <Badge tone={k.active ? "green" : "red"}>{k.active ? "active" : "disabled"}</Badge>,
+            ]) : [[<span className="muted" key="none">No API keys provisioned yet.</span>, "", "", "", "", "", ""]]}
           />
         </Panel>
       </div>

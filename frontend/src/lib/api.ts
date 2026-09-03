@@ -451,3 +451,16 @@ export async function apiP2LakeBatches(lake = "primary"): Promise<ApiResult<any[
     return { source: "live", ok: true, data: body.batches || [], head: body.head };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
+
+export async function apiP2ApiKeys(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/api-keys`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    const rows = Array.isArray(body) ? body : body.keys || body.items || [];
+    return { source: "live", ok: true, data: rows };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
