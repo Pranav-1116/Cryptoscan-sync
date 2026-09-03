@@ -1,30 +1,75 @@
 import React, { useState } from "react";
 import { apiRegister, isBackendLive } from "../lib/api.js";
-import { Corners, Kicker } from "../components/ui.jsx";
 
-/* The 8-role catalog — mirrors services/api/api/security/rbac.py
-   ROLE_CATALOG so registration is meaningful offline too. */
+/* The 8-role catalog — mirrors services/api/api/security/rbac.py */
 const ROLE_CATALOG: Array<{ role: string; desc: string; adminOnly?: boolean }> = [
-  { role: "superadmin", desc: "Full access (platform configuration)", adminOnly: true },
   { role: "ciso", desc: "All compliance, policy and exceptions" },
   { role: "security_analyst", desc: "View findings, create exceptions" },
-  { role: "developer", desc: "View findings for own systems" },
   { role: "auditor", desc: "Read-only access to all reports" },
+  { role: "developer", desc: "View findings for own systems" },
   { role: "business_owner", desc: "View findings for owned systems" },
-  { role: "scanner", desc: "API-only (scan job submission)" },
+  { role: "scanner", desc: "API-only scan job submission" },
   { role: "readonly", desc: "Dashboard view only" },
+  { role: "superadmin", desc: "Full platform access", adminOnly: true },
 ];
 
-const inputStyle: React.CSSProperties = {
-  background: "rgba(8,12,24,.8)", border: "1px solid var(--line-strong)", borderRadius: 10,
-  color: "var(--text)", fontFamily: "var(--mono)", fontSize: 14, padding: "11px 14px",
-  outline: "none", width: "100%",
-};
+/* ── left brand / trust panel (matches sign-in) ────────────────────── */
+function BrandPanel() {
+  return (
+    <aside className="auth-brand">
+      <div className="auth-logo">
+        <span className="mark">Z</span>
+        <span>
+          ZELNX
+          <span className="tagline">CRYPTO INTELLIGENCE PLATFORM</span>
+        </span>
+      </div>
 
-/* Register — self-service account creation against the control plane
-   (POST /api/v1/auth/register). The caller picks ONE of the 8 RBAC roles;
-   superadmin is the platform-owner role and is admin-assigned only. */
+      <div className="auth-hero">
+        <h2>Request access to the crypto control plane.</h2>
+        <p>
+          Accounts are scoped by role and constrained by hierarchical
+          Region → BU → Environment → Asset policy. You will only ever see the
+          assets your role is granted.
+        </p>
+        <ul className="auth-feats">
+          <li>
+            <span className="ic">◈</span>
+            <span>
+              <b>Role-based least privilege</b>
+              <span>Eight defined roles, from read-only auditor to platform owner.</span>
+            </span>
+          </li>
+          <li>
+            <span className="ic">▤</span>
+            <span>
+              <b>Every account action audited</b>
+              <span>Registrations, grants and changes enter the hash-chained audit log.</span>
+            </span>
+          </li>
+          <li>
+            <span className="ic">⬡</span>
+            <span>
+              <b>Superadmin is assigned, not self-selected</b>
+              <span>The platform-owner role is provisioned by an administrator only.</span>
+            </span>
+          </li>
+        </ul>
+      </div>
 
+      <div className="auth-trust">
+        <span className="lbl">Governed under</span>
+        <span className="badge cyan"><span className="dot" />FIPS 140-3</span>
+        <span className="badge cyan"><span className="dot" />NIST SP 800-131A</span>
+        <span className="badge cyan"><span className="dot" />SOC 2</span>
+        <span className="badge cyan"><span className="dot" />ISO 27001</span>
+      </div>
+    </aside>
+  );
+}
+
+/* Register — self-service account creation (POST /api/v1/auth/register).
+   The caller picks one of 8 RBAC roles; superadmin is admin-assigned only. */
 export default function Register() {
   const [username, setUsername] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -44,82 +89,117 @@ export default function Register() {
     e.preventDefault();
     setError(null);
     const uname = username.trim();
-    if (uname.length < 2) return setError("username must be at least 2 characters");
-    if (password.length < 8) return setError("password must be at least 8 characters");
-    if (password !== confirm) return setError("passwords do not match");
+    if (uname.length < 2) return setError("Username must be at least 2 characters.");
+    if (password.length < 8) return setError("Password must be at least 8 characters.");
+    if (password !== confirm) return setError("Passwords do not match.");
     setBusy(true);
-    const res = await apiRegister({ username: uname, password, role, display_name: displayName.trim() || undefined, email: email.trim() || undefined });
+    const res = await apiRegister({
+      username: uname,
+      password,
+      role,
+      display_name: displayName.trim() || undefined,
+      email: email.trim() || undefined,
+    });
     setBusy(false);
     if (res.ok) {
       window.location.hash = `#/login?u=${encodeURIComponent(uname)}&r=${encodeURIComponent(role)}`;
     } else {
-      setError(res.error || "registration failed");
+      setError(res.error || "Registration failed. Please try again.");
     }
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-      <div className="frame" style={{ width: "min(560px, 100%)", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 16, padding: "34px 32px", backdropFilter: "blur(12px)" }}>
-        <Corners />
-        <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 12, display: "grid", placeItems: "center", margin: "0 auto 14px", background: "var(--grad)", color: "#fff", fontFamily: "var(--sans)", fontWeight: 800, fontSize: 26 }}>Z</div>
-          <Kicker>ZELNX console</Kicker>
-          <h1 style={{ fontSize: 24, margin: "10px 0 4px" }}>Create account</h1>
-          <p className="dim" style={{ fontSize: 13, margin: 0 }}>
-            {backendUp === null ? "probing control plane…" : backendUp ? "control plane reachable — accounts are created live" : "control plane offline — registration will be unavailable"}
-          </p>
-        </div>
+    <div className="auth">
+      <BrandPanel />
 
-        <form onSubmit={(e) => void submit(e)} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" style={inputStyle} />
-          <input placeholder="display name (optional)" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" style={inputStyle} />
-          <input placeholder="email (optional)" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" style={inputStyle} />
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <input type="password" placeholder="password (min 8)" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" style={inputStyle} />
-            <input type="password" placeholder="confirm password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" style={inputStyle} />
+      <main className="auth-panel">
+        <div className="auth-form wide">
+          <div className="auth-head">
+            <div className="kicker">Workspace onboarding</div>
+            <h1>Create account</h1>
+            <p>Register against the live control plane. Access is governed by your selected role and ABAC scope.</p>
+            <span className={`auth-status ${backendUp === null ? "" : backendUp ? "live" : "down"}`}>
+              <span className="dot" />
+              {backendUp === null
+                ? "Connecting to control plane…"
+                : backendUp
+                  ? "Control plane connected · accounts created live"
+                  : "Control plane offline · registration unavailable"}
+            </span>
           </div>
 
-          <div style={{ marginTop: 8 }}>
-            <div className="dim" style={{ fontSize: 11.5, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 8 }}>Assign role — the 8-role catalog</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              {ROLE_CATALOG.map(({ role: r, desc, adminOnly }) => {
-                const selected = role === r;
-                const disabled = !!adminOnly;
-                return (
-                  <button
-                    key={r}
-                    type="button"
-                    disabled={disabled}
-                    onClick={() => setRole(r)}
-                    title={disabled ? "superadmin is the platform-owner role — assigned by an admin (the seeded admin account holds it)" : desc}
-                    style={{
-                      textAlign: "left", cursor: disabled ? "not-allowed" : "pointer", padding: "10px 12px",
-                      borderRadius: 10, fontFamily: "var(--mono)", fontSize: 12.5, lineHeight: 1.45,
-                      background: disabled ? "rgba(8,12,24,.4)" : selected ? "rgba(34,211,238,.12)" : "rgba(8,12,24,.8)",
-                      border: selected ? "1px solid var(--cyan)" : "1px solid var(--line-strong)",
-                      color: disabled ? "var(--dim)" : "var(--text)", opacity: disabled ? 0.65 : 1,
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, color: selected ? "var(--cyan)" : disabled ? "var(--dim)" : "var(--text)" }}>
-                      {r} {adminOnly && <span style={{ fontSize: 10, color: "var(--amber)", fontWeight: 400 }}>🔒 admin-assigned</span>}
-                    </div>
-                    <div style={{ fontWeight: 400, color: "var(--dim)", fontSize: 11 }}>{desc}</div>
-                  </button>
-                );
-              })}
+          {error && <div className="auth-alert err">✕ {error}</div>}
+
+          <form onSubmit={(e) => void submit(e)}>
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="reg-user">Username</label>
+                <input id="reg-user" placeholder="e.g. j.singh" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus />
+              </div>
+              <div className="field">
+                <label htmlFor="reg-name">Display name</label>
+                <input id="reg-name" placeholder="Optional" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
+              </div>
             </div>
+
+            <div className="field">
+              <label htmlFor="reg-email">Work email</label>
+              <input id="reg-email" type="email" placeholder="Optional · used for audit & notifications" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            </div>
+
+            <div className="field-row">
+              <div className="field">
+                <label htmlFor="reg-pass">Password</label>
+                <input id="reg-pass" type="password" placeholder="Minimum 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
+              </div>
+              <div className="field">
+                <label htmlFor="reg-confirm">Confirm password</label>
+                <input id="reg-confirm" type="password" placeholder="Re-enter password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
+              </div>
+            </div>
+
+            <div className="field" style={{ marginTop: 6 }}>
+              <label>Select your role</label>
+              <div className="role-grid">
+                {ROLE_CATALOG.map(({ role: r, desc, adminOnly }) => {
+                  const selected = role === r;
+                  const disabled = !!adminOnly;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      disabled={disabled}
+                      onClick={() => setRole(r)}
+                      className={`role-opt${selected ? " sel" : ""}`}
+                      title={disabled ? "Superadmin is provisioned by an administrator only." : desc}
+                    >
+                      <div className="rname">
+                        {r}
+                        {adminOnly && <span className="lock">🔒 admin-assigned</span>}
+                      </div>
+                      <div className="rdesc">{desc}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <button className="btn primary auth-submit" type="submit" disabled={busy}>
+              {busy ? "Creating account…" : "Create account"}
+            </button>
+          </form>
+
+          <div className="auth-alt">
+            <span>Already have an account?</span>
+            <a href="#/login">Sign in</a>
           </div>
-
-          {error && <div style={{ color: "var(--red)", fontFamily: "var(--mono)", fontSize: 12 }}>✕ {error}</div>}
-          <button className="btn primary" type="submit" disabled={busy} style={{ width: "100%", padding: 12, marginTop: 6 }}>
-            {busy ? "Creating account…" : "Create account →"}
-          </button>
-        </form>
-
-        <div style={{ marginTop: 14, textAlign: "center", fontSize: 12.5 }}>
-          already have an account? <a href="#/login" className="mono" style={{ color: "var(--cyan)" }}>sign in →</a>
         </div>
-      </div>
+
+        <div className="auth-foot">
+          Registration is recorded in the hash-chained audit log.
+          <br />Accounts receive least-privilege scope under fail-closed ABAC policy.
+        </div>
+      </main>
     </div>
   );
 }
