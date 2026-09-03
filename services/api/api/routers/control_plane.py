@@ -72,6 +72,18 @@ def _reject_secret_fields(body: dict) -> None:
             )
 
 
+def _validate_ref(secret_ref: str) -> str | None:
+    """Reject a secret_ref that is malformed or smuggles inline key material."""
+    from vaultlease.lease import _REF_RE, _SECRET_VALUE_RE  # internal validators
+
+    if secret_ref and _SECRET_VALUE_RE.search(secret_ref):
+        return ("secret_ref appears to contain inline key material — store the secret in a "
+                "vault and submit only its locator (ARN/URI/name). The platform never stores secrets.")
+    if not secret_ref or not _REF_RE.match(secret_ref):
+        return "secret_ref must be a non-secret vault locator (ARN/URI/name)."
+    return None
+
+
 # ---------------------------------------------------------------- tenants
 class TenantRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=200)
@@ -215,6 +227,11 @@ def create_credential(body: CredentialRequest,
     if body.kind not in ("cloud", "network_device", "hsm", "database", "kubernetes",
                          "git", "siem", "api", "other"):
         raise HTTPException(status_code=422, detail="unknown credential kind")
+    # fail-closed: secret_ref must be a non-secret vault locator, never inline material.
+
+    ref_probe = _validate_ref(body.secret_ref)
+    if ref_probe is not None:
+        raise HTTPException(status_code=422, detail=ref_probe)
     from datetime import datetime, timezone
 
     cred = _repo(db).create_credential(
@@ -243,6 +260,9 @@ def list_credentials(user: str = Depends(get_current_user), db: Session = Depend
 
 class LeaseRequest(BaseModel):
     require_value: bool = False
+    component: str | None = None
+    scope: list[str] = []
+    ttl_seconds: int | None = None
 
 
 @router.post("/credentials/{credential_id}/lease")
@@ -251,10 +271,18 @@ def lease_credential_endpoint(credential_id: str, body: LeaseRequest,
                               db: Session = Depends(get_db_session)):
     """Lease a short-lived credential for a scanner. The secret value is NEVER
     returned over the API — scanners resolve it out-of-band via the vault
-    adapter in their own process. This records the access (audit) and reports
-    whether the reference is resolvable and healthy."""
+    adapter in their own process.
+
+    Enforces the deterministic vault-lease policy (no AI): the credential must be
+    active/fresh, the requesting component must be allowed, the requested scope
+    must be a subset of the credential's least-privilege scope, and the TTL is
+    capped. A reference-only lease row is persisted for audit and can be
+    released; it carries a vault locator and never any key material."""
+    from datetime import datetime, timezone
+
     from control_plane.credentials import assess_credential
     from control_plane.vault import VaultError, lease_credential
+    from vaultlease.lease import CredentialInfo, issue_lease
 
     repo = _repo(db)
     cred = repo.get_credential(credential_id)
@@ -263,6 +291,29 @@ def lease_credential_endpoint(credential_id: str, body: LeaseRequest,
     health = assess_credential(cred.to_dict())
     if not health.healthy:
         raise HTTPException(status_code=409, detail=f"credential not usable: {health.detail}")
+
+    # ---- deterministic lease policy gate (component / scope / TTL / freshness)
+    component = (body.component or "scanner").lower()
+    info = CredentialInfo.from_dict({
+        "name": cred.name,
+        "secret_ref": cred.secret_ref,
+        "status": cred.status,
+        "allowed_components": [],  # not stored on the model; scope still enforced
+        "scope": cred.least_privilege_scope or "",
+        "max_ttl_seconds": 900,
+        "expires_at": cred.expires_at,
+        "last_rotated_at": cred.last_rotated_at,
+        "rotation_policy_days": cred.rotation_policy_days,
+    })
+    decision = issue_lease(info, component, body.scope, ttl_seconds=body.ttl_seconds)
+    if not decision.allowed:
+        _publish("credential.lease_denied",
+                 {"credential_id": credential_id, "component": component,
+                  "reason": decision.reason, "by": user})
+        raise HTTPException(status_code=403, detail={
+            "reason": decision.reason, "rules": decision.rules,
+            "credential": cred.name})
+
     resolvable = True
     try:
         lease = lease_credential(cred.to_dict(), require_value=body.require_value)
@@ -272,12 +323,82 @@ def lease_credential_endpoint(credential_id: str, body: LeaseRequest,
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         resolvable = False
     repo.record_credential_access(credential_id)
+
+    # ---- persist a reference-only lease row for audit / release
+    from db.models.credential_lease import CredentialLease
+
+    now = datetime.now(timezone.utc)
+    lease_row = CredentialLease(
+        handle=decision.lease.handle,
+        credential_name=cred.name,
+        secret_ref=cred.secret_ref,
+        component=component,
+        scope=",".join(sorted(decision.lease.scope)) or None,
+        ttl_seconds=decision.lease.ttl_seconds,
+        issued_at=now,
+        expires_at=decision.lease.expires_at,
+        issued_by=user,
+        status="ACTIVE",
+    )
+    db.add(lease_row)
     _audit(db, user, "control.credential_leased", target_id=credential_id,
-           detail={"resolvable_in_process": resolvable})
+           detail={"resolvable_in_process": resolvable, "handle": lease_row.handle,
+                   "ttl_seconds": decision.lease.ttl_seconds, "scope": sorted(decision.lease.scope)})
     db.commit()
+    db.refresh(lease_row)
     return {"credential_id": credential_id, "leased": True,
-            "resolvable_in_process": resolvable, "access_count": repo.get_credential(credential_id).access_count,
+            "lease": lease_row.to_dict(),
+            "resolvable_in_process": resolvable,
+            "access_count": repo.get_credential(credential_id).access_count,
             "note": "scanner resolves secret via vault adapter; value never returned by the API"}
+
+
+@router.post("/credential-leases/{handle}/release")
+def release_credential_lease(handle: str,
+                             user: str = Depends(require_roles("superadmin", "admin", "ciso", "security_analyst", "scanner")),
+                             db: Session = Depends(get_db_session)):
+    """Release a short-lived credential lease immediately (fail-closed after)."""
+    from datetime import datetime, timezone
+
+    from db.models.credential_lease import CredentialLease
+    from sqlalchemy import select
+
+    row = db.execute(
+        select(CredentialLease).where(CredentialLease.handle == handle)
+    ).scalars().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="lease not found")
+    if row.status != "ACTIVE":
+        raise HTTPException(status_code=409, detail=f"lease already {row.status}")
+    row.status = "RELEASED"
+    row.released_at = datetime.now(timezone.utc)
+    _audit(db, user, "control.credential_lease_released", target_id=row.id,
+           detail={"handle": handle})
+    db.commit()
+    return {"handle": handle, "status": "RELEASED"}
+
+
+@router.get("/credential-leases")
+def list_credential_leases(user: str = Depends(require_roles("superadmin", "admin", "ciso", "auditor")),
+                           db: Session = Depends(get_db_session)):
+    from datetime import datetime, timezone
+
+    from db.models.credential_lease import CredentialLease
+    from sqlalchemy import select
+
+    rows = db.execute(
+        select(CredentialLease).order_by(CredentialLease.created_at.desc()).limit(200)
+    ).scalars().all()
+    now = datetime.now(timezone.utc)
+    out = []
+    for r in rows:
+        d = r.to_dict()
+        exp = r.expires_at
+        if exp is not None and exp.tzinfo is None:
+            exp = exp.replace(tzinfo=timezone.utc)
+        d["expired"] = bool(exp and now > exp)
+        out.append(d)
+    return {"leases": out, "total_count": len(out)}
 
 
 @router.post("/credentials/{credential_id}/rotate")
