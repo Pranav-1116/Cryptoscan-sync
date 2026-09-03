@@ -592,3 +592,30 @@ export async function apiPostMigrationValidate(payload): Promise<ApiResult<any>>
     return { source: "live", ok: true, data: body };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
 }
+
+/* ── real detection benchmark (no AI; shipping detector vs ground truth) ── */
+export async function apiRunRealBenchmark(): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/control/benchmark/run-real`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(60000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: body };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}
+
+export async function apiBenchmarkRuns(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/control/benchmark/runs`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.runs || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}

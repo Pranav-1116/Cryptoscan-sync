@@ -4,9 +4,10 @@ import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
   apiP2ApiKeys, apiOtMaintenanceWindows, apiSlaPosture, apiCredentialLeases,
   apiAutomationRuns, apiAutomationRules, apiCbomVersions, apiHealthSweep,
+  apiRunRealBenchmark, apiBenchmarkRuns,
   LiveBadge,
 } from "../lib/api.js";
-import { usePollingApi } from "../lib/apiUi.jsx";
+import { usePollingApi, useApi } from "../lib/apiUi.jsx";
 
 /* P2 enterprise platform — deterministic (no AI/ML):
    - Plugin marketplace: hash-pinned, Ed25519-signed plugins (quarantine on failure)
@@ -36,6 +37,14 @@ export default function PlatformP2() {
   const autoRules = usePollingApi(apiAutomationRules, 30000);
   const cbomVersions = usePollingApi(apiCbomVersions, 20000);
   const health = usePollingApi(apiHealthSweep, 30000);
+  const benchmarkRuns = usePollingApi(apiBenchmarkRuns, 60000);
+  const realBenchmark = useApi(apiRunRealBenchmark);
+  const latestBenchmark = realBenchmark.data
+    ?? ((benchmarkRuns.data ?? []).find((r) => r.scanner_id === "universal-crypto-real") as any) ?? null;
+  const runBenchmark = async () => {
+    await realBenchmark.run();
+    await benchmarkRuns.run();
+  };
 
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
@@ -261,11 +270,11 @@ export default function PlatformP2() {
                     ["healthy conns", conns.HEALTHY ?? 0],
                     ["healthy agents", agents.HEALTHY ?? 0],
                   ].map(([k, v]) => (
-                    <Badge key={String(k)} variant="neutral">
+                    <Badge key={String(k)} tone="cyan">
                       <strong className="num">{String(v ?? 0)}</strong> {k}
                     </Badge>
                   ))}
-                  <Badge variant={h.alert_count ? "danger" : "ok"}>
+                  <Badge tone={h.alert_count ? "red" : "green"}>
                     {h.alert_count ? `${h.alert_count} alert(s)` : "all systems nominal"}
                   </Badge>
                 </div>
@@ -275,11 +284,59 @@ export default function PlatformP2() {
                     rows={alerts.slice(0, 12).map((t) => [
                       <span className="mono">{String(t.target_id).slice(0, 18)}</span>,
                       <span className="muted">{t.kind}</span>,
-                      <Badge variant={t.state === "OFFLINE" ? "danger" : "warn"}>{t.state}</Badge>,
+                      <Badge tone={t.state === "OFFLINE" ? "red" : "amber"}>{t.state}</Badge>,
                       <span className="muted">{(t.reasons || []).join("; ").slice(0, 70)}</span>,
                     ])}
                   />
                 ) : <span className="muted">No unhealthy connectors or agents. Offline agents (>180s heartbeat), stale links (>24h), and auth failures are flagged automatically.</span>}
+              </>
+            );
+          })()}
+        </Panel>
+
+        <Panel
+          title="Detection accuracy — real benchmark"
+          sub="shipping detector scored against labelled ground truth (85 cases / 9 datasets) · no AI, no simulation"
+        >
+          <div style={{ marginBottom: 10 }}>
+            <button className="btn" onClick={() => void runBenchmark()} disabled={realBenchmark.running}>
+              {realBenchmark.running ? "running…" : "run real benchmark"}
+            </button>
+          </div>
+          {(() => {
+            const b = latestBenchmark as any;
+            if (!b) return <span className="muted">No benchmark run yet — run the real detector over the labelled datasets to measure precision/recall/F1.</span>;
+            const pct = (x: unknown) => (x == null ? "—" : `${(Number(x) * 100).toFixed(1)}%`);
+            const per = (b.detail?.per_dataset || {}) as Record<string, any>;
+            const meets = b.meets_95_target ?? b.detail?.meets_95_target;
+            return (
+              <>
+                <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginBottom: 10, alignItems: "center" }}>
+                  {[
+                    ["precision", pct(b.precision)], ["recall", pct(b.recall)],
+                    ["f1", pct(b.f1)], ["false-pos rate", pct(b.false_positive_rate)],
+                    ["accuracy", pct(b.accuracy)], ["cases", b.total_cases ?? b.detail?.total_cases ?? "—"],
+                  ].map(([k, v]) => (
+                    <Badge key={String(k)} tone="cyan">
+                      <strong className="num">{String(v)}</strong> {k}
+                    </Badge>
+                  ))}
+                  <Badge tone={meets ? "green" : "red"}>
+                    {meets ? "meets ≥95% target" : "BELOW 95% target"}
+                  </Badge>
+                </div>
+                {Object.keys(per).length > 0 && (
+                  <Table
+                    head={["dataset", "cases", "precision", "recall", "f1"]}
+                    rows={Object.entries(per).map(([name, m]: [string, any]) => [
+                      <span className="mono">{name}</span>,
+                      <span className="num">{m.cases}</span>,
+                      <span className="num">{pct(m.precision)}</span>,
+                      <span className="num">{pct(m.recall)}</span>,
+                      <span className="num" style={{ color: Number(m.f1) >= 0.95 ? "var(--green)" : "var(--red)" }}>{pct(m.f1)}</span>,
+                    ])}
+                  />
+                )}
               </>
             );
           })()}
