@@ -285,6 +285,42 @@ class TestAnomaly:
         assert r.status_code == 200
         assert isinstance(r.json()["flags"], list)
 
+    def test_posture_baseline_seal_and_drift(self, client):
+        base = client.post("/api/v1/anomaly/baseline", json={
+            "findings": [
+                {"algorithm": "AES", "key_size": 256, "file_path": "a.java"},
+                {"algorithm": "RSA", "key_size": 2048, "file_path": "b.java"},
+            ],
+        }).json()
+        assert base["weak_findings_total"] == 0
+        assert len(base["digest"]) == 64
+
+        # identical posture -> no drift
+        same = client.post("/api/v1/anomaly/baseline/drift", json={
+            "baseline": base,
+            "findings": [{"algorithm": "AES", "key_size": 256, "file_path": "c.java"}],
+        }).json()
+        assert same["drifted"] is False
+
+        # DES appears -> HIGH drift
+        drifted = client.post("/api/v1/anomaly/baseline/drift", json={
+            "baseline": base,
+            "findings": [
+                {"algorithm": "AES", "key_size": 256, "file_path": "a.java"},
+                {"algorithm": "DES", "key_size": 56, "file_path": "d.java"},
+            ],
+        }).json()
+        assert drifted["drifted"] is True
+        assert any(d["kind"] == "new_weak_algorithm" and d["severity"] == "HIGH"
+                   for d in drifted["drifts"])
+
+        # tampered baseline rejected
+        bad = dict(base)
+        bad["weak_findings_total"] = 5
+        r = client.post("/api/v1/anomaly/baseline/drift",
+                        json={"baseline": bad, "findings": []})
+        assert r.status_code == 422
+
 
 # ================================================================ governance
 class TestGovernance:

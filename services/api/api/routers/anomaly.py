@@ -209,3 +209,91 @@ def ack_flag(
     row.acknowledged_by = user
     db.commit()
     return {"id": row.id, "status": row.status, "acknowledged_by": user}
+
+
+class BaselineRequest(BaseModel):
+    findings: list[dict] = Field(default_factory=list, max_length=100_000)
+    name: str | None = None
+
+
+class DriftRequest(BaseModel):
+    baseline: dict
+    findings: list[dict] = Field(default_factory=list, max_length=100_000)
+
+
+@router.post("/baseline")
+def seal_baseline(
+    body: BaselineRequest,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst", "ciso", "auditor")),
+):
+    """Seal a deterministic cryptographic-posture baseline (SHA-256 fingerprint).
+
+    If no findings are posted, uses the LIVE stored evidence findings.
+    """
+    from anomaly.baseline import build_baseline
+
+    findings = body.findings or _live_evidence_findings(db)
+    baseline = build_baseline(findings)
+    out = baseline.to_dict()
+    out["name"] = body.name or "crypto-posture"
+    out["findings_sealed"] = len(findings)
+    out["sealed_by"] = user
+    return out
+
+
+@router.post("/baseline/drift")
+def baseline_drift(
+    body: DriftRequest,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles("admin", "superadmin", "security_analyst", "ciso", "auditor")),
+):
+    """Compare current findings (posted or LIVE) against a sealed baseline."""
+    from anomaly.baseline import baseline_from_dict, compare_baseline
+
+    try:
+        baseline = baseline_from_dict(body.baseline)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    findings = body.findings or _live_evidence_findings(db)
+    report = compare_baseline(baseline, findings)
+    out = report.to_dict()
+    out["findings_compared"] = len(findings)
+
+    # HIGH drift surfaces on the event bus (deterministic alerting, no AI)
+    if report.drifted:
+        try:
+            from api.events.bus import get_event_bus
+
+            highs = [d for d in report.drifts if d.severity == "HIGH"]
+            if highs:
+                get_event_bus().publish(
+                    "baseline.drift",
+                    {"drift_count": len(highs),
+                     "details": [d.detail for d in highs]},
+                    source="anomaly",
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug("baseline drift event publish skipped", exc_info=True)
+    return out
+
+
+def _live_evidence_findings(db: Session) -> list[dict]:
+    """Pull live stored evidence findings as posture inputs."""
+    try:
+        from db.repositories.evidence_repository import EvidenceRepository
+
+        rows = EvidenceRepository(db).list_all(limit=100_000)
+    except Exception:  # noqa: BLE001
+        logger.debug("live evidence lookup failed", exc_info=True)
+        return []
+    return [
+        {
+            "algorithm": getattr(r, "algorithm", None),
+            "key_size": getattr(r, "key_size", None),
+            "is_hardcoded_key": getattr(r, "is_hardcoded_key", None),
+            "confidence": getattr(r, "confidence", None),
+            "file_path": getattr(r, "file_path", None),
+        }
+        for r in rows
+    ]

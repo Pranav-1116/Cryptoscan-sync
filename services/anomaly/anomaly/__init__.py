@@ -10,6 +10,13 @@ from anomaly.detect import (
     rate_of_change_anomaly,
     zscore_anomaly,
 )
+from anomaly.baseline import (
+    DriftReport,
+    PostureBaseline,
+    baseline_from_dict,
+    build_baseline,
+    compare_baseline,
+)
 from anomaly.forecast import Forecast, forecast_series
 
 __all__ = [
@@ -23,4 +30,9 @@ __all__ = [
     "zscore_anomaly",
     "Forecast",
     "forecast_series",
+    "DriftReport",
+    "PostureBaseline",
+    "baseline_from_dict",
+    "build_baseline",
+    "compare_baseline",
 ]
