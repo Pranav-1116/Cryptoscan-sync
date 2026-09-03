@@ -192,14 +192,19 @@ button { font-family: inherit; }
 .ring .ring-label b { font-size: 28px; display: block; }
 .ring .ring-label span { font-family: var(--mono); font-size: 10px; letter-spacing: 0.2em; color: var(--dim); text-transform: uppercase; }
 
-/* ── layout ───────────────────────────────────────────────────────── */
-.shell { display: flex; min-height: 100vh; align-items: flex-start; }
+/* ── layout (CSS grid: pinned left sidebar + content, robustly two-column) ── */
+.shell {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 100vh;
+}
 .sidebar {
-  width: 248px; flex: 0 0 248px; padding: 16px 12px 40px;
+  grid-column: 1;
+  align-self: start;
+  padding: 16px 12px 40px;
   border-right: 1px solid var(--line);
   background: var(--bg-2);
   position: sticky; top: 0; height: 100vh; overflow-y: auto;
-  display: flex; flex-direction: column;
 }
 .sidebar .logo { flex-shrink: 0; }
 .sidebar .nav-label {
@@ -217,7 +222,11 @@ button { font-family: inherit; }
   border-left-color: var(--cyan);
   font-weight: 600;
 }
-.main { flex: 1 1 auto; min-width: 0; padding: 22px 30px 90px; }
+.main {
+  grid-column: 2;
+  min-width: 0;
+  padding: 22px 30px 90px;
+}
 
 /* ── global live header ───────────────────────────────────────────── */
 .livehead {
@@ -401,19 +410,24 @@ button { font-family: inherit; }
 }
 .demobanner .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); animation: pulse 2s infinite; flex-shrink: 0; }
 
-/* Tablets and small laptops: keep the persistent left sidebar (slightly narrower). */
-@media (max-width: 1100px) {
-  .sidebar { width: 216px; flex-basis: 216px; }
+/* Narrow tablet / split-screen: keep the left sidebar (slightly narrower). */
+@media (max-width: 980px) {
+  .shell { grid-template-columns: 200px minmax(0, 1fr); }
   .sidebar a.nav { font-size: 12.5px; }
 }
+@media (max-width: 720px) {
+  .shell { grid-template-columns: 176px minmax(0, 1fr); }
+  .main { padding: 18px 18px 80px; }
+  .livehead .searchbox { min-width: 180px; }
+}
 
-/* Phones only: collapse the sidebar to a top bar. */
-@media (max-width: 760px) {
-  .shell { flex-direction: column; }
-  .sidebar { width: 100%; flex-basis: auto; height: auto; position: static; display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
+/* Real phones only (<=560px): collapse the sidebar to a horizontal top bar. */
+@media (max-width: 560px) {
+  .shell { grid-template-columns: 1fr; }
+  .sidebar { position: static; height: auto; width: 100%; overflow-y: visible; display: flex; flex-wrap: wrap; gap: 4px; align-items: baseline; }
   .sidebar .nav-label { display: none; }
   .sidebar a.nav { font-size: 12px; padding: 5px 8px; }
-  .main { padding: 16px 14px 80px; }
+  .main { grid-column: 1; padding: 16px 14px 80px; }
   .livehead { margin: -16px -14px 16px; padding: 10px 14px; }
   .livehead .searchbox { min-width: 0; width: 100%; }
   .searchov .groups { grid-template-columns: 1fr; }
