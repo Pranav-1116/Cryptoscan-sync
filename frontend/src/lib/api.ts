@@ -675,3 +675,28 @@ export async function apiControlAgents(): Promise<ApiResult<any[]>> {
 /** Schedule a deterministic signed-update / rollback / retire for an agent. */
 export const apiAgentUpgrade = (agentId: string, action: "upgrade" | "rollback" | "retire", targetVersion?: string) =>
   _postAction(`/api/v1/control/agents/${encodeURIComponent(agentId)}/upgrade`, { action, target_version: targetVersion });
+
+/** Authorize an OT/ICS operation against live devices + approved maintenance windows.
+ *  Returns { allowed, decision, reason, ... } with HTTP 403 body carrying the deny detail. */
+export async function apiOtAuthorize(operation: string, deviceId?: string): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/ot/safety/authorize`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({ operation, device_id: deviceId || null }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    const detail = body.detail && typeof body.detail === "object" ? body.detail : body;
+    // 403 is an authoritative DENY (fail-closed) — surface the decision, not a transport error
+    if (resp.status === 403 && detail && typeof detail === "object" && "allowed" in detail) {
+      return { source: "live", ok: true, data: detail };
+    }
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`), data: null } as ApiResult<any>;
+    return { source: "live", ok: true, data: body };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}
+
+/** Cancel an approved OT maintenance window. */
+export const apiOtCancelWindow = (windowRef: string) =>
+  _postAction(`/api/v1/ot/maintenance-windows/${encodeURIComponent(windowRef)}/cancel`);

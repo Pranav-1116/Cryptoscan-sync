@@ -9,6 +9,7 @@ import {
   apiGovernanceDecide, apiLakeExportLive, apiLakeVerify,
   apiPluginEnable, apiPluginDisable, apiAnomalyAck,
   apiControlAgents, apiAgentUpgrade,
+  apiOtAuthorize, apiOtCancelWindow,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
@@ -55,6 +56,7 @@ export default function PlatformP2() {
   const [notice, setNotice] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [busyId, setBusyId] = React.useState<string>("");
   const [migration, setMigration] = React.useState<{ pre: string; post: string; result: any | null }>({ pre: "", post: "", result: null });
+  const [otGate, setOtGate] = React.useState<{ operation: string; deviceId: string; result: any | null }>({ operation: "active_probe", deviceId: "", result: null });
   const flash = (kind: "ok" | "err", text: string) => {
     setNotice({ kind, text });
     window.setTimeout(() => setNotice(null), 5000);
@@ -80,6 +82,16 @@ export default function PlatformP2() {
     runAction(`plugin-${pk}-${enable}`, () => (enable ? apiPluginEnable(pk) : apiPluginDisable(pk)), plugins.run);
   const agentAction = (id: string, action: "upgrade" | "rollback" | "retire") =>
     runAction(`agent-${id}-${action}`, () => apiAgentUpgrade(id, action), agents.run);
+  const runOtAuthorize = async () => {
+    setBusyId("ot-authorize");
+    try {
+      const res = await apiOtAuthorize(otGate.operation, otGate.deviceId || undefined);
+      if (res.ok && res.data) setOtGate((g) => ({ ...g, result: res.data }));
+      else flash("err", res.error || "OT authorization check failed");
+    } finally { setBusyId(""); }
+  };
+  const cancelWindow = (ref: string) =>
+    runAction(`ot-cancel-${ref}`, () => apiOtCancelWindow(ref), windows.run);
   const validateMigration = async () => {
     let pre: any[] = [];
     let post: any[] = [];
@@ -278,16 +290,40 @@ export default function PlatformP2() {
           ) : <span className="muted">No SLA posture available.</span>}
         </Panel>
 
-        <Panel title="OT maintenance windows" sub="passive-first · active ops only in approved windows · SIS never probed">
+        <Panel title="OT safety gate + maintenance windows" sub="passive-first · active ops only in approved windows · SIS/ESD never probed (fail-closed)">
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <select className="btn" style={{ width: "auto" }}
+              value={otGate.operation}
+              onChange={(e) => setOtGate((g) => ({ ...g, operation: e.target.value }))}>
+              {["passive_capture", "inventory", "pcap_read", "active_probe", "credentialed_scan", "firmware_pull", "firmware_push", "config_change"].map((op) => (
+                <option key={op} value={op}>{op}</option>
+              ))}
+            </select>
+            <input placeholder="device id (optional)" value={otGate.deviceId}
+              onChange={(e) => setOtGate((g) => ({ ...g, deviceId: e.target.value }))}
+              style={{ fontFamily: "monospace", fontSize: 12, padding: "6px 8px", minWidth: 200 }} />
+            <button className="btn" disabled={busyId === "ot-authorize"} onClick={() => void runOtAuthorize()}>
+              {busyId === "ot-authorize" ? "checking…" : "authorize"}
+            </button>
+            {otGate.result && (
+              <Badge tone={otGate.result.allowed ? "green" : "red"}>
+                {otGate.result.allowed ? "ALLOW" : `DENY — ${otGate.result.reason || ""}`}
+              </Badge>
+            )}
+          </div>
           <Table
-            head={["window", "scope", "class", "ticket", "in effect"]}
+            head={["window", "scope", "class", "ticket", "in effect", ""]}
             rows={windowRows.length ? windowRows.slice(0, 12).map((w) => [
               <span className="mono" style={{ fontWeight: 600 }}>{String(w.window_ref)}</span>,
               <span className="muted">{[...(w.device_ids as string[] || []), ...(w.zones as string[] || [])].slice(0, 3).join(", ") || "—"}</span>,
               <Badge tone="cyan">{String(w.allowed_action_class)}</Badge>,
               <span className="mono">{String(w.change_ticket)}</span>,
               <Badge tone={w.in_effect ? "green" : "amber"}>{w.in_effect ? "in effect" : "scheduled/closed"}</Badge>,
-            ]) : [[<span className="muted" key="none">No maintenance windows scheduled.</span>, "", "", "", ""]]}
+              <button className="btn" disabled={busyId === `ot-cancel-${w.window_ref}`}
+                onClick={() => cancelWindow(String(w.window_ref))}>
+                {busyId === `ot-cancel-${w.window_ref}` ? "…" : "cancel"}
+              </button>,
+            ]) : [[<span className="muted" key="none">No maintenance windows scheduled.</span>, "", "", "", "", ""]]}
           />
         </Panel>
 
