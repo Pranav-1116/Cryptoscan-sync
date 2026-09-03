@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
+from typing import Any
 
 from db.repositories.control_plane_repository import ControlPlaneRepository
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -1076,3 +1077,83 @@ def run_benchmark(body: BenchmarkRunRequest,
 @router.get("/benchmark/runs")
 def benchmark_runs(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return {"runs": [r.to_dict() for r in _repo(db).list_benchmark_runs()]}
+
+
+class RealBenchmarkRequest(BaseModel):
+    scanner_version: str | None = None
+    datasets: list[str] | None = None  # default: all built-in labelled datasets
+
+
+@router.post("/benchmark/run-real")
+def run_real_benchmark(body: RealBenchmarkRequest,
+                       user: str = Depends(require_roles("superadmin", "admin", "ciso", "security_analyst")),
+                       db: Session = Depends(get_db_session)):
+    """Run the REAL deterministic universal-crypto detector over the built-in
+    labelled ground-truth datasets (no simulation, no AI) and persist scored
+    runs. This backs the accuracy claim with repeatable measurements: every
+    case is actually parsed/classified by the shipping engine, then compared
+    to its expected label.
+    """
+    from universal_crypto.accuracy import CATEGORIES, AccuracyPlatform, default_detector
+
+    platform = AccuracyPlatform()
+    detector = default_detector()
+    selected = body.datasets or platform.dataset_names()
+
+    repo = _repo(db)
+    dataset = repo.get_benchmark_dataset_by_name("real-universal-crypto")
+    if dataset is None:
+        dataset = repo.create_benchmark_dataset(
+            name="real-universal-crypto",
+            description="Built-in labelled datasets scored by the real universal-crypto detector",
+            sector="crypto")
+        db.flush()
+
+    per_dataset: dict[str, Any] = {}
+    agg = {c: {"tp": 0, "fp": 0, "fn": 0, "tn": 0} for c in CATEGORIES}
+    total_cases = 0
+    for name in selected:
+        if name not in platform.dataset_names():
+            continue
+        result = platform.evaluate_dataset(name, detector)
+        metrics = result["metrics"]
+        total_cases += result["cases"]
+        for cat in CATEGORIES:
+            cm = metrics.get(cat) or {}
+            for k in ("tp", "fp", "fn", "tn"):
+                agg[cat][k] += int(cm.get(k, 0))
+        per_dataset[name] = {"cases": result["cases"], **metrics.get("overall", {})}
+
+    tp = sum(agg[c]["tp"] for c in CATEGORIES)
+    fp = sum(agg[c]["fp"] for c in CATEGORIES)
+    fn = sum(agg[c]["fn"] for c in CATEGORIES)
+    tn = sum(agg[c]["tn"] for c in CATEGORIES)
+
+    def _safe(n: int, d: int) -> float:
+        return round(n / d, 4) if d else 0.0
+
+    precision_v = _safe(tp, tp + fp)
+    recall_v = _safe(tp, tp + fn)
+    f1_v = _safe(2 * precision_v * recall_v, precision_v + recall_v)
+    fpr = _safe(fp, fp + tn)
+    accuracy = _safe(tp + tn, tp + tn + fp + fn)
+    meets = bool(accuracy >= 0.95 and recall_v >= 0.95)
+
+    run = repo.create_benchmark_run(
+        dataset.id, scanner_id="universal-crypto-real",
+        scanner_version=body.scanner_version, status="scored", scored_by=user,
+        true_positive=tp, false_positive=fp, true_negative=tn, false_negative=fn,
+        precision=precision_v, recall=recall_v, f1=f1_v,
+        false_positive_rate=fpr, accuracy=accuracy,
+        detail={"mode": "real_detector", "meets_95_target": meets,
+                "total_cases": total_cases, "per_dataset": per_dataset,
+                "confusion_by_category": agg})
+    _audit(db, user, "control.benchmark_run_real", target_id=run.id,
+           detail={"accuracy": accuracy, "precision": precision_v,
+                   "recall": recall_v, "f1": f1_v, "cases": total_cases})
+    db.commit()
+    return {"run_id": run.id, "mode": "real_detector", "total_cases": total_cases,
+            "true_positive": tp, "false_positive": fp, "true_negative": tn,
+            "false_negative": fn, "precision": precision_v, "recall": recall_v,
+            "f1": f1_v, "false_positive_rate": fpr, "accuracy": accuracy,
+            "meets_95_target": meets, "per_dataset": per_dataset}

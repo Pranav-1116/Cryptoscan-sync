@@ -386,6 +386,11 @@ class ControlPlaneRepository:
     def get_benchmark_dataset(self, dataset_id: str) -> BenchmarkDataset | None:
         return self.session.get(BenchmarkDataset, dataset_id)
 
+    def get_benchmark_dataset_by_name(self, name: str) -> BenchmarkDataset | None:
+        return self.session.execute(
+            select(BenchmarkDataset).where(BenchmarkDataset.name == name)
+        ).scalars().first()
+
     def add_benchmark_case(self, dataset_id: str, **fields) -> BenchmarkCase:
         case = BenchmarkCase(dataset_id=dataset_id, **fields)
         self.session.add(case)
