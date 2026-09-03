@@ -10,6 +10,8 @@ export interface ApiResult<T = unknown> {
   source: ApiSource;
   data: T | null;
   error?: string;
+  ok?: boolean;
+  head?: string;
 }
 
 let backendLive: boolean | null = null;
@@ -398,3 +400,54 @@ export async function apiWorkerTick(batch = 10): Promise<{ ok: boolean; error?: 
 
 /* React glue (useApi hook + LiveBadge) lives in apiUi.tsx */
 export { useApi, LiveBadge } from "./apiUi.jsx";
+
+/* ============================================================ P2 platform */
+export async function apiP2Plugins(state?: string): Promise<ApiResult<any[]>> {
+  try {
+    const q = state ? `?state=${encodeURIComponent(state)}` : "";
+    const resp = await fetch(`/api/v1/marketplace/plugins${q}`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: Array.isArray(body) ? body : body.plugins || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiP2AnomalyFlags(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch("/api/v1/anomaly/flags?limit=100", {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.flags || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiP2GovernanceRequests(status?: string): Promise<ApiResult<any[]>> {
+  try {
+    const q = status ? `?status=${encodeURIComponent(status)}` : "";
+    const resp = await fetch(`/api/v1/governance/requests${q}`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.requests || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiP2LakeBatches(lake = "primary"): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/datalake/batches?lake_id=${encodeURIComponent(lake)}`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.batches || [], head: body.head };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}

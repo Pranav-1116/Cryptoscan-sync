@@ -140,3 +140,10 @@ from db.models.enterprise import (  # noqa: E402,F401
     Region,
     Ticket,
 )
+from db.models.p2 import (  # noqa: E402,F401
+    AnomalyFlag,
+    GovernanceApproval,
+    LakeExportBatch,
+    MigrationValidation,
+    PluginPackage,
+)

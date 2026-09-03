@@ -59,6 +59,9 @@ const NAV = [
     { to: "/integrations", label: "Integrations", icon: "⇌" },
     { to: "/admin", label: "Administration", icon: "⚙" },
   ]},
+  { section: "Platform (P2)", items: [
+    { to: "/platform", label: "P2 console", icon: "⬢" },
+  ]},
   { section: "Quality", items: [
     { to: "/accuracy", label: "Accuracy", icon: "◔" },
   ]},
