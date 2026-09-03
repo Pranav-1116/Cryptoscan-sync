@@ -140,6 +140,13 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             tailer_task = start_event_tailer(settings.EVENT_TAILER_SECONDS)
             if tailer_task is not None:
                 logger.info("event_tailer_started", extra={"interval": settings.EVENT_TAILER_SECONDS})
+            try:
+                from api.events.automation_bridge import start_automation_bridge
+
+                if start_automation_bridge():
+                    logger.info("automation_bridge_started")
+            except Exception:  # noqa: BLE001
+                logger.debug("automation_bridge_start_skipped", exc_info=True)
             telemetry_task = start_telemetry_heartbeat()
             if telemetry_task is not None:
                 logger.info("telemetry_heartbeat_started")

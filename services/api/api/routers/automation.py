@@ -164,22 +164,27 @@ class EventBody(BaseModel):
     asset: dict | None = None
 
 
-@router.post("/process-event", status_code=201)
-def process_event(body: EventBody,
-                  user: str = Depends(require_roles(*(_ADMINS + ("scanner", "worker")))),
-                  db: Session = Depends(get_db_session)):
+def run_automation(db: Session, *, event_kind: str, data: dict | None = None,
+                   asset: dict | None = None, triggered_by: str = "system",
+                   persist: bool = True) -> dict:
+    """Build an automation plan for an event and (optionally) persist + fan it out.
+
+    Shared by the HTTP endpoint and the live event-bus bridge. Auto actions are
+    announced on the bus; EXECUTE/APPROVE actions open a governance approval gate
+    and are never auto-run.
+    """
     from automation.engine import build_plan
     from db.models.automation import AutomationRun
 
-    event = dict(body.data)
-    event.setdefault("asset_id", body.data.get("asset_id"))
+    data = data or {}
+    event = dict(data)
+    event.setdefault("asset_id", data.get("asset_id"))
     rules = _load_rules(db)
-    plan = build_plan(body.event_kind, event, rules, select_scanners_for=body.asset)
+    plan = build_plan(event_kind, event, rules, select_scanners_for=asset)
     pd = plan.as_dict()
 
-    # persist the run
     run = AutomationRun(
-        event_kind=body.event_kind,
+        event_kind=event_kind,
         asset_id=pd.get("asset_id"),
         scanners=pd["scanners"],
         auto_actions=pd["auto_actions"],
@@ -188,65 +193,74 @@ def process_event(body: EventBody,
         playbook=(pd["playbook"] or {}).get("id") if pd["playbook"] else None,
         needs_human=pd["needs_human"],
         recommended_tier=pd["recommended_tier"],
-        triggered_by=user,
+        triggered_by=triggered_by,
     )
-    db.add(run)
-
-    # fan out the AUTOMATIC (observe/analyze/recommend) actions deterministically
-    action_names = [a["action"] for a in pd["auto_actions"]]
-    if "create_alert" in action_names or "notify_crypto_team" in action_names:
-        _publish("alert.raised", {
-            "event_kind": body.event_kind, "asset_id": pd.get("asset_id"),
-            "severity": pd["recommended_tier"], "matched_rules": pd["matched_rules"]})
-    if "targeted_rescan" in action_names:
-        _publish("scan.targeted", {
-            "asset_id": pd.get("asset_id"), "scanners": pd["scanners"],
-            "reason": f"event {body.event_kind}"})
-    if "update_cbom" in action_names:
-        _publish("cbom.update_requested", {"asset_id": pd.get("asset_id")})
-    if "create_ticket" in action_names:
-        _publish("ticket.requested", {
-            "asset_id": pd.get("asset_id"), "event_kind": body.event_kind,
-            "severity": pd["recommended_tier"]})
-    if "add_pqc_queue" in action_names or "add_to_pqc_queue" in action_names:
-        _publish("pqc.queue_add", {"asset_id": pd.get("asset_id")})
-
-    # gated (EXECUTE/APPROVE) actions -> human approval gate (never auto-run)
     governance_ref = None
-    if pd["requires_approval"]:
-        try:
-            from governance.rules import ChangeRequest, evaluate
-            from db.models.p2 import GovernanceApproval
+    if persist:
+        db.add(run)
 
-            req = ChangeRequest(request_type="automation_action",
-                                requested_by=user,
-                                payload={"event_kind": body.event_kind,
-                                         "asset_id": pd.get("asset_id"),
-                                         "gated_actions": [a["action"] for a in pd["requires_approval"]],
-                                         "playbook": run.playbook})
-            result = evaluate(req)
-            grow = GovernanceApproval(
-                request_type="automation_action",
-                request_ref=str(pd.get("asset_id") or ""),
-                requested_by=user,
-                status="PENDING" if result.decision.name == "REQUIRES_APPROVAL" else "AUTO_APPROVED",
-                decision=None if result.decision.name == "REQUIRES_APPROVAL" else result.decision.value,
-                rationale=result.rationale,
-                policy_rules=result.rules,
-                risk_level=result.risk_level.value,
-                payload={**req.payload, "required_approvers": result.required_approvers},
-            )
-            db.add(grow)
-            db.flush()
-            governance_ref = str(grow.id)
-        except Exception:  # noqa: BLE001
-            logger.debug("governance gate creation skipped", exc_info=True)
-    run.governance_ref = governance_ref
+        action_names = [a["action"] for a in pd["auto_actions"]]
+        if "create_alert" in action_names or "notify_crypto_team" in action_names:
+            _publish("alert.raised", {
+                "event_kind": event_kind, "asset_id": pd.get("asset_id"),
+                "severity": pd["recommended_tier"], "matched_rules": pd["matched_rules"]})
+        if "targeted_rescan" in action_names:
+            _publish("scan.targeted", {
+                "asset_id": pd.get("asset_id"), "scanners": pd["scanners"],
+                "reason": f"event {event_kind}"})
+        if "update_cbom" in action_names:
+            _publish("cbom.update_requested", {"asset_id": pd.get("asset_id")})
+        if "create_ticket" in action_names:
+            _publish("ticket.requested", {
+                "asset_id": pd.get("asset_id"), "event_kind": event_kind,
+                "severity": pd["recommended_tier"]})
+        if "add_pqc_queue" in action_names or "add_to_pqc_queue" in action_names:
+            _publish("pqc.queue_add", {"asset_id": pd.get("asset_id")})
 
-    db.commit()
-    db.refresh(run)
-    out = run.to_dict()
+        if pd["requires_approval"]:
+            try:
+                from governance.rules import ChangeRequest, evaluate
+                from db.models.p2 import GovernanceApproval
+
+                req = ChangeRequest(request_type="automation_action",
+                                    requested_by=triggered_by,
+                                    payload={"event_kind": event_kind,
+                                             "asset_id": pd.get("asset_id"),
+                                             "gated_actions": [a["action"] for a in pd["requires_approval"]],
+                                             "playbook": run.playbook})
+                result = evaluate(req)
+                grow = GovernanceApproval(
+                    request_type="automation_action",
+                    request_ref=str(pd.get("asset_id") or ""),
+                    requested_by=triggered_by,
+                    status="PENDING" if result.decision.name == "REQUIRES_APPROVAL" else "AUTO_APPROVED",
+                    decision=None if result.decision.name == "REQUIRES_APPROVAL" else result.decision.value,
+                    rationale=result.rationale,
+                    policy_rules=result.rules,
+                    risk_level=result.risk_level.value,
+                    payload={**req.payload, "required_approvers": result.required_approvers},
+                )
+                db.add(grow)
+                db.flush()
+                governance_ref = str(grow.id)
+            except Exception:  # noqa: BLE001
+                logger.debug("governance gate creation skipped", exc_info=True)
+        run.governance_ref = governance_ref
+        db.flush()
+
+    out = run.to_dict() if persist else {"event_kind": event_kind}
     out["plan"] = pd
+    out["governance_ref"] = governance_ref
+    return out
+
+
+@router.post("/process-event", status_code=201)
+def process_event(body: EventBody,
+                  user: str = Depends(require_roles(*(_ADMINS + ("scanner", "worker")))),
+                  db: Session = Depends(get_db_session)):
+    out = run_automation(db, event_kind=body.event_kind, data=body.data,
+                         asset=body.asset, triggered_by=user, persist=True)
+    db.commit()
     return out
 
 
