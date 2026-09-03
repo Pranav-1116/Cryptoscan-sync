@@ -116,3 +116,38 @@ class TestCertWatch:
         body = r.json()
         assert body["source"] == "live_certificates"
         assert isinstance(body["alerts"], list)
+
+
+class TestCbomVersioning:
+    def test_cbom_versioning_and_diff(self, client):
+        # v1: two components
+        r = client.post(f"{API}/automation/cbom/versions", json={"observations": [
+            {"component_id": "app-a", "algorithm": "RSA", "key_size": 2048},
+            {"component_id": "app-b", "algorithm": "AES", "key_size": 256},
+        ]})
+        assert r.status_code == 201, r.text
+        v1 = r.json()
+        assert v1["changed"] is True and v1["version"] == 1
+
+        # identical -> no new version
+        r = client.post(f"{API}/automation/cbom/versions", json={"observations": [
+            {"component_id": "app-b", "algorithm": "AES", "key_size": 256},
+            {"component_id": "app-a", "algorithm": "RSA", "key_size": 2048},
+        ]})
+        assert r.json()["changed"] is False
+
+        # add one -> v2 with added component
+        r = client.post(f"{API}/automation/cbom/versions", json={"observations": [
+            {"component_id": "app-a", "algorithm": "RSA", "key_size": 2048},
+            {"component_id": "app-b", "algorithm": "AES", "key_size": 256},
+            {"component_id": "app-c", "algorithm": "ECDSA", "key_size": 256},
+        ]})
+        v2 = r.json()
+        assert v2["version"] == 2 and len(v2["added"]) == 1
+        assert v2["added"][0]["id"] == "app-c"
+
+        # history reflects the chain
+        hist = client.get(f"{API}/automation/cbom/versions").json()
+        assert hist["latest_version"] == 2
+        assert hist["versions"][0]["version"] == 2  # newest first
+        assert hist["versions"][1]["fingerprint"] == hist["versions"][0]["parent_fingerprint"]

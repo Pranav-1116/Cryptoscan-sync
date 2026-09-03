@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel, utcnow
@@ -75,4 +75,29 @@ class AutomationRun(BaseModel):
             "triggered_by": self.triggered_by,
             "governance_ref": self.governance_ref,
             "executed_at": self.executed_at.isoformat() if self.executed_at else None,
+        }
+
+
+class CbomVersionRow(BaseModel):
+    """Immutable, content-addressed live CBOM version (deterministic)."""
+
+    __tablename__ = "cbom_versions"
+
+    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    parent_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    component_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    components: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    added: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    removed: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_by: Mapped[str] = mapped_column(String(100), nullable=False, default="system")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id, "version": self.version, "fingerprint": self.fingerprint,
+            "parent_fingerprint": self.parent_fingerprint,
+            "component_count": self.component_count,
+            "added": self.added or [], "removed": self.removed or [],
+            "created_by": self.created_by,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
         }

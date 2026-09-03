@@ -155,3 +155,96 @@ def blast_radius(body: BlastBody, user: str = Depends(get_current_user)):
             "business_services": result.business_services,
             "reachable_nodes": result.reachable})
     return out
+
+
+# ----------------------------------------------------------------- live CBOM
+class CbomUpdateBody(BaseModel):
+    observations: list[dict] = Field(default_factory=list, max_length=200_000)
+    use_live: bool = False
+
+
+def _live_crypto_observations(db: Session) -> list[dict]:
+    """Materialize CBOM components from live evidence/crypto-assets."""
+    out: list[dict] = []
+    try:
+        from db.models.evidence_record import EvidenceRecord
+
+        rows = db.execute(select(EvidenceRecord).limit(200_000)).scalars().all()
+        for r in rows:
+            out.append({
+                "component_id": str(getattr(r, "id", "")),
+                "algorithm": getattr(r, "algorithm", None),
+                "key_size": getattr(r, "key_size", None),
+                "mode": None,
+                "library": None,
+                "library_version": None,
+                "file_path": getattr(r, "file_path", None),
+            })
+    except Exception:  # noqa: BLE001
+        logger.debug("live CBOM evidence lookup failed", exc_info=True)
+    return out
+
+
+@router.post("/cbom/versions", status_code=201)
+def cbom_update(body: CbomUpdateBody,
+                db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles(*_ADMINS))):
+    """Record a new live CBOM version from observations (or live evidence).
+
+    Creates an immutable, content-addressed version only when the canonicalized
+    component set changed; returns the added/removed diff. Change events are
+    published so the bridge can correlate (crypto_asset_detected / drift).
+    """
+    from automation.cbom_versioning import _state_fingerprint, _canon_component, _component_key
+    from db.models.automation import CbomVersionRow
+
+    observations = body.observations
+    if body.use_live or not observations:
+        observations = _live_crypto_observations(db)
+    components = [_canon_component(c) for c in observations]
+    fingerprint = _state_fingerprint(components)
+
+    prev = db.execute(
+        select(CbomVersionRow).order_by(CbomVersionRow.version.desc()).limit(1)
+    ).scalars().first()
+
+    if prev is not None and prev.fingerprint == fingerprint:
+        return {"changed": False, "version": prev.version, "fingerprint": fingerprint,
+                "added": [], "removed": [], "source": "unchanged"}
+
+    prev_comps = {_component_key(c): c for c in (prev.components or [])} if prev else {}
+    cur_comps = {_component_key(c): c for c in components}
+    added = [c for k, c in sorted(cur_comps.items()) if k not in prev_comps]
+    removed = [c for k, c in sorted(prev_comps.items()) if k not in cur_comps]
+
+    new_version = (prev.version + 1) if prev else 1
+    row = CbomVersionRow(
+        version=new_version, fingerprint=fingerprint,
+        parent_fingerprint=prev.fingerprint if prev else None,
+        component_count=len(components), components=components,
+        added=added, removed=removed, created_by=user,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+
+    if added:
+        _publish("crypto.asset_detected", {"version": new_version,
+                                           "added_count": len(added),
+                                           "algorithms": sorted({c["algorithm"] for c in added})})
+    if removed:
+        _publish("drift.detected", {"version": new_version,
+                                    "removed_count": len(removed)})
+    return {"changed": True, **row.to_dict(), "source": "live_evidence" if (body.use_live or not body.observations) else "posted"}
+
+
+@router.get("/cbom/versions")
+def cbom_history(limit: int = 20, db: Session = Depends(get_db_session),
+                 user: str = Depends(get_current_user)):
+    from db.models.automation import CbomVersionRow
+
+    rows = db.execute(
+        select(CbomVersionRow).order_by(CbomVersionRow.version.desc()).limit(min(limit, 200))
+    ).scalars().all()
+    return {"versions": [r.to_dict() for r in rows], "total_count": len(rows),
+            "latest_version": rows[0].version if rows else 0}
