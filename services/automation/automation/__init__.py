@@ -33,9 +33,11 @@ from automation.sector_activation import activate_sector, available_sectors, nor
 from automation.blast_radius import analyze_blast_radius
 from automation.watchers.cert_expiry import assess_certificate, watch_certificates
 from automation.cbom_versioning import CbomDiff, CbomVersion, LiveCbom
+from automation.risk import base_risk, recalculate, risk_band
 
 __all__ = [
     "CbomDiff", "CbomVersion", "LiveCbom",
+    "base_risk", "recalculate", "risk_band",
     "AutomationPlan", "build_plan", "known_playbooks", "known_rules_from_dicts",
     "all_playbooks", "playbook_for_event",
     "ACTIONS", "EVENT_KINDS", "AutomationRule", "RulesError",

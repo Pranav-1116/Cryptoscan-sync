@@ -151,3 +151,31 @@ class TestCbomVersioning:
         assert hist["latest_version"] == 2
         assert hist["versions"][0]["version"] == 2  # newest first
         assert hist["versions"][1]["fingerprint"] == hist["versions"][0]["parent_fingerprint"]
+
+
+class TestRiskRecalculation:
+    def test_risk_propagates_to_business_service(self, client):
+        r = client.post(f"{API}/automation/risk/recalculate", json={
+            "assets": {
+                "svc": {"type": "business_service", "criticality": "MEDIUM", "name": "Payments"},
+                "app": {"type": "application", "criticality": "HIGH"},
+                "lib": {"type": "library", "criticality": "LOW",
+                        "findings": [{"severity": "CRITICAL"}], "weak_key": True},
+            },
+            "edges": [["svc", "app"], ["app", "lib"]],
+            "changed_assets": ["lib"],
+        })
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["scores"]["lib"] > 0
+        assert body["scores"]["app"] <= body["scores"]["lib"]
+        assert "Payments" in body["business_services_affected"]
+        assert "lib" in body["recalculated"]
+
+    def test_risk_deterministic(self, client):
+        payload = {"assets": {"s": {"type": "business_service", "name": "S"},
+                              "l": {"findings": [{"severity": "HIGH"}]}},
+                   "edges": [["s", "l"]]}
+        a = client.post(f"{API}/automation/risk/recalculate", json=payload).json()
+        b = client.post(f"{API}/automation/risk/recalculate", json=payload).json()
+        assert a["scores"] == b["scores"]

@@ -248,3 +248,33 @@ def cbom_history(limit: int = 20, db: Session = Depends(get_db_session),
     ).scalars().all()
     return {"versions": [r.to_dict() for r in rows], "total_count": len(rows),
             "latest_version": rows[0].version if rows else 0}
+
+
+# ----------------------------------------------------------------- risk
+class RiskBody(BaseModel):
+    assets: dict[str, dict] = Field(default_factory=dict)
+    edges: list[list[str]] = Field(default_factory=list,
+                                   description="directed caller->callee dependency edges")
+    changed_assets: list[str] = Field(default_factory=list)
+
+
+@router.post("/risk/recalculate")
+def risk_recalculate(body: RiskBody, user: str = Depends(get_current_user)):
+    """Recalculate asset risk and propagate it up the dependency chain.
+
+    A vulnerable library lifts the application that embeds it, which lifts the
+    business service that consumes it (sections 8/12). Pure deterministic
+    arithmetic; same inputs -> same scores.
+    """
+    from automation.risk import recalculate as _recalc
+
+    edges = [(str(a), str(b)) for a, b in body.edges]
+    result = _recalc(body.assets, edges, changed_assets=body.changed_assets or None)
+    out = result.as_dict()
+    out["evaluated_by"] = user
+    if result.affected_business_services:
+        _publish("alert.raised", {
+            "event_kind": "risk_recalculated",
+            "business_services": result.affected_business_services,
+            "max_band": out["max_band"], "max_score": out["max_score"]})
+    return out
