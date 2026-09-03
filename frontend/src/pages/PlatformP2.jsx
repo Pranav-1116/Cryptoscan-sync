@@ -4,7 +4,10 @@ import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
   apiP2ApiKeys, apiOtMaintenanceWindows, apiSlaPosture, apiCredentialLeases,
   apiAutomationRuns, apiAutomationRules, apiCbomVersions, apiHealthSweep,
+  apiPostMigrationValidate,
   apiRunRealBenchmark, apiBenchmarkRuns,
+  apiGovernanceDecide, apiLakeExportLive, apiLakeVerify,
+  apiPluginEnable, apiPluginDisable, apiAnomalyAck,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
@@ -46,6 +49,43 @@ export default function PlatformP2() {
     await benchmarkRuns.run();
   };
 
+  // ── interactive deterministic action gates (human approval / verification) ──
+  const [notice, setNotice] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
+  const [busyId, setBusyId] = React.useState<string>("");
+  const [migration, setMigration] = React.useState<{ pre: string; post: string; result: any | null }>({ pre: "", post: "", result: null });
+  const flash = (kind: "ok" | "err", text: string) => {
+    setNotice({ kind, text });
+    window.setTimeout(() => setNotice(null), 5000);
+  };
+  const runAction = async (id: string, fn: () => Promise<any>, refresh?: () => Promise<unknown>) => {
+    setBusyId(id);
+    try {
+      const res = await fn();
+      if (res?.ok === false) flash("err", res.error || "action failed");
+      else { flash("ok", "action completed"); if (refresh) await refresh(); }
+    } finally { setBusyId(""); }
+  };
+  const decide = (pk: string, approve: boolean) =>
+    runAction(`gov-${pk}-${approve}`, () => apiGovernanceDecide(pk, approve), reqs.run);
+  const exportLive = () =>
+    runAction("lake-export", () => apiLakeExportLive("primary"), lake.run);
+  const verifyBatch = (pk: string) => runAction(`lake-verify-${pk}`, async () => {
+    const res = await apiLakeVerify(pk);
+    if (res.ok && res.data?.verified === false) return { ok: false, error: "chain verification FAILED (tamper detected)" };
+    return res;
+  });
+  const togglePlugin = (pk: string, enable: boolean) =>
+    runAction(`plugin-${pk}-${enable}`, () => (enable ? apiPluginEnable(pk) : apiPluginDisable(pk)), plugins.run);
+  const validateMigration = async () => {
+    let pre: any[] = [];
+    let post: any[] = [];
+    try { pre = migration.pre.trim() ? JSON.parse(migration.pre) : []; } catch { flash("err", "PRE findings must be a JSON array"); return; }
+    try { post = migration.post.trim() ? JSON.parse(migration.post) : []; } catch { flash("err", "POST findings must be a JSON array"); return; }
+    const res = await apiPostMigrationValidate({ pre_findings: pre, post_findings: post });
+    if (res.ok) { setMigration((m) => ({ ...m, result: res.data })); flash("ok", res.data?.passed ? "migration PASS — findings remediated" : "migration FAIL — regressions detected"); }
+    else flash("err", res.error || "validation failed");
+  };
+
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
   const reqRows = (reqs.data ?? []) as Array<Record<string, unknown>>;
@@ -81,52 +121,107 @@ export default function PlatformP2() {
         ))}
       </div>
 
+      {notice && (
+        <div className={`badge ${notice.kind === "ok" ? "green" : "red"}`} style={{ display: "block", marginBottom: 12, padding: "8px 12px" }}>
+          {notice.kind === "ok" ? "✓ " : "✕ "}{notice.text}
+        </div>
+      )}
+
       <div className="grid cols-2">
         <Panel title="Plugin marketplace" sub="hash-pinned · Ed25519-signed · fail-closed quarantine">
           <Table
-            head={["plugin", "version", "type", "state", "trusted"]}
+            head={["plugin", "version", "type", "state", "trusted", ""]}
             rows={pluginRows.slice(0, 12).map((p) => [
               <span className="mono" style={{ fontWeight: 600 }}>{String(p.plugin_id)}</span>,
               <span className="num">{String(p.version)}</span>,
               <Badge tone="cyan">{String(p.plugin_type)}</Badge>,
               <Badge tone={stateTone(String(p.state))}>{String(p.state)}</Badge>,
               p.trusted ? <Badge tone="green">signed</Badge> : <span className="muted">—</span>,
+              (() => {
+                const state = String(p.state);
+                const enabled = state === "ENABLED";
+                const locked = state === "QUARANTINED" || !p.trusted;
+                return (
+                  <button
+                    className="btn"
+                    disabled={locked || busyId === `plugin-${p.id}-${!enabled}`}
+                    title={locked ? "quarantined/untrusted plugins stay disabled (fail-closed)" : undefined}
+                    onClick={() => togglePlugin(String(p.id), !enabled)}
+                  >
+                    {busyId === `plugin-${p.id}-${!enabled}` ? "…" : enabled ? "disable" : "enable"}
+                  </button>
+                );
+              })(),
             ])}
           />
         </Panel>
 
-        <Panel title="Statistical anomaly flags" sub="z-score · EWMA control · rate-of-change · frequency">
+        <Panel title="Statistical anomaly flags" sub="z-score · EWMA control · rate-of-change · frequency · human triage">
           <Table
-            head={["severity", "rule", "metric", "explanation"]}
-            rows={flagRows.slice(0, 12).map((f) => [
-              <Badge tone={stateTone(String(f.severity))}>{String(f.severity)}</Badge>,
-              <span className="mono">{String(f.rule)}</span>,
-              <span className="mono">{String(f.metric)}</span>,
-              <span className="muted">{String(f.explanation)}</span>,
-            ])}
+            head={["severity", "rule", "metric", "status", ""]}
+            rows={flagRows.slice(0, 12).map((f) => {
+              const open = String(f.status ?? "OPEN") === "OPEN";
+              return [
+                <Badge tone={stateTone(String(f.severity))}>{String(f.severity)}</Badge>,
+                <span className="mono">{String(f.rule)}</span>,
+                <span className="mono">{String(f.metric)}</span>,
+                <Badge tone={open ? "red" : "green"}>{String(f.status ?? "OPEN")}</Badge>,
+                open ? (
+                  <button className="btn" disabled={busyId === `ack-${f.id}`}
+                    onClick={() => runAction(`ack-${f.id}`, () => apiAnomalyAck(String(f.id)), flags.run)}>
+                    {busyId === `ack-${f.id}` ? "…" : "acknowledge"}
+                  </button>
+                ) : <span className="muted">—</span>,
+              ];
+            })}
           />
         </Panel>
 
-        <Panel title="Governance approvals" sub="rule-based policy gates + migration validation">
+        <Panel title="Governance approvals" sub="rule-based policy gates · human approval required for changes (SoD enforced)">
           <Table
-            head={["type", "risk", "decision", "status"]}
-            rows={reqRows.slice(0, 12).map((r) => [
-              <span className="mono">{String(r.request_type)}</span>,
-              <Badge tone={stateTone(String(r.risk_level))}>{String(r.risk_level)}</Badge>,
-              <span className="mono">{String(r.decision ?? "—")}</span>,
-              <Badge tone={stateTone(String(r.status))}>{String(r.status)}</Badge>,
-            ])}
+            head={["type", "risk", "decision", "status", ""]}
+            rows={reqRows.slice(0, 12).map((r) => {
+              const pending = String(r.status) === "PENDING";
+              return [
+                <span className="mono">{String(r.request_type)}</span>,
+                <Badge tone={stateTone(String(r.risk_level))}>{String(r.risk_level)}</Badge>,
+                <span className="mono">{String(r.decision ?? "—")}</span>,
+                <Badge tone={stateTone(String(r.status))}>{String(r.status)}</Badge>,
+                pending ? (
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <button className="btn" disabled={busyId === `gov-${r.id}-true`}
+                      onClick={() => decide(String(r.id), true)}>
+                      {busyId === `gov-${r.id}-true` ? "…" : "approve"}
+                    </button>
+                    <button className="btn" disabled={busyId === `gov-${r.id}-false`}
+                      onClick={() => decide(String(r.id), false)}>
+                      {busyId === `gov-${r.id}-false` ? "…" : "deny"}
+                    </button>
+                  </span>
+                ) : <span className="muted">—</span>,
+              ];
+            })}
           />
         </Panel>
 
         <Panel title="Data-lake export chain" sub="append-only · hash-chained · tamper-evident">
+          <div style={{ marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
+            <button className="btn" disabled={busyId === "lake-export"} onClick={exportLive}>
+              {busyId === "lake-export" ? "sealing…" : "seal live evidence batch"}
+            </button>
+            {lake.head && <span className="muted mono">head: {String(lake.head).slice(0, 16)}…</span>}
+          </div>
           <Table
-            head={["batch", "records", "batch digest", "chain digest"]}
+            head={["batch", "records", "batch digest", "chain digest", ""]}
             rows={batchRows.slice(0, 12).map((b) => [
               <span className="num">#{String(b.batch_id)}</span>,
               <span className="num">{String(b.record_count)}</span>,
               <span className="mono muted">{String(b.batch_digest).slice(0, 12)}…</span>,
               <span className="mono">{String(b.chain_digest).slice(0, 12)}…</span>,
+              <button className="btn" disabled={busyId === `lake-verify-${b.id}`}
+                onClick={() => verifyBatch(String(b.id))}>
+                {busyId === `lake-verify-${b.id}` ? "…" : "verify"}
+              </button>,
             ])}
           />
         </Panel>
@@ -288,7 +383,7 @@ export default function PlatformP2() {
                       <span className="muted">{(t.reasons || []).join("; ").slice(0, 70)}</span>,
                     ])}
                   />
-                ) : <span className="muted">No unhealthy connectors or agents. Offline agents (>180s heartbeat), stale links (>24h), and auth failures are flagged automatically.</span>}
+                ) : <span className="muted">No unhealthy connectors or agents. Offline agents ({">"}180s heartbeat), stale links ({">"}24h), and auth failures are flagged automatically.</span>}
               </>
             );
           })()}
@@ -340,6 +435,44 @@ export default function PlatformP2() {
               </>
             );
           })()}
+        </Panel>
+
+        <Panel title="Post-migration verification" sub="DETECT→ANALYZE→VERIFY · deterministic weak-crypto regression check (no AI) · PASS closes findings, FAIL raises a critical ticket">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <label className="muted" style={{ fontSize: 12 }}>PRE-migration findings (JSON array)
+              <textarea
+                rows={4} style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+                placeholder='[{"id":"f1","asset_id":"a1","algorithm":"RSA","key_size":1024,"status":"DISALLOWED"}]'
+                value={migration.pre}
+                onChange={(e) => setMigration((m) => ({ ...m, pre: e.target.value }))}
+              />
+            </label>
+            <label className="muted" style={{ fontSize: 12 }}>POST-migration findings (JSON array)
+              <textarea
+                rows={4} style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+                placeholder='[{"id":"f1","asset_id":"a1","algorithm":"ECDSA","key_size":256,"status":"CURRENT"}]'
+                value={migration.post}
+                onChange={(e) => setMigration((m) => ({ ...m, post: e.target.value }))}
+              />
+            </label>
+          </div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <button className="btn" onClick={() => void validateMigration()}>validate migration</button>
+            {migration.result && (
+              <Badge tone={migration.result.passed ? "green" : "red"}>
+                {migration.result.passed ? "PASS" : "FAIL"} — {migration.result.action || ""}
+              </Badge>
+            )}
+          </div>
+          {migration.result && (
+            <div style={{ marginTop: 10 }} className="muted">
+              <span className="num" style={{ color: "var(--green)" }}>{migration.result.remediated?.length ?? 0} remediated</span>
+              {" · "}
+              <span className="num" style={{ color: migration.result.regressions?.length ? "var(--red)" : undefined }}>
+                {migration.result.regressions?.length ?? 0} regression(s)
+              </span>
+            </div>
+          )}
         </Panel>
       </div>
     </>

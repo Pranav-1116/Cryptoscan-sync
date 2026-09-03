@@ -619,3 +619,42 @@ export async function apiBenchmarkRuns(): Promise<ApiResult<any[]>> {
     return { source: "live", ok: true, data: body.runs || [] };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
+
+/* ============================================ P2 interactive action gates */
+async function _postAction(path: string, body?: unknown): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(data.detail || `HTTP ${resp.status}`), data: null } as ApiResult<any>;
+    return { source: "live", ok: true, data };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}
+
+/** Human approval gate: approve or deny a pending governance request (segregation of duties enforced server-side). */
+export const apiGovernanceDecide = (requestPk: string, approve: boolean, note = "") =>
+  _postAction(`/api/v1/governance/requests/${encodeURIComponent(requestPk)}/decide`, { approve, note });
+
+/** Seal a new hash-chained lake batch from LIVE evidence findings. */
+export const apiLakeExportLive = (lakeId = "primary", limit = 1000) =>
+  _postAction(`/api/v1/datalake/export/live`, { lake_id: lakeId, kind: "findings", limit });
+
+/** Cryptographically verify one lake batch + the whole hash chain. */
+export const apiLakeVerify = (batchPk: string) =>
+  _postAction(`/api/v1/datalake/verify/${encodeURIComponent(batchPk)}`);
+
+/** Enable a marketplace plugin (fail-closed: quarantined/untrusted stays disabled). */
+export const apiPluginEnable = (pluginPk: string) =>
+  _postAction(`/api/v1/marketplace/plugins/${encodeURIComponent(pluginPk)}/enable`, {});
+
+/** Disable a marketplace plugin. */
+export const apiPluginDisable = (pluginPk: string) =>
+  _postAction(`/api/v1/marketplace/plugins/${encodeURIComponent(pluginPk)}/disable`);
+
+/** Acknowledge a statistical anomaly flag (human triage; deterministic flag stays on record). */
+export const apiAnomalyAck = (flagPk: string) =>
+  _postAction(`/api/v1/anomaly/flags/${encodeURIComponent(flagPk)}/ack`);
