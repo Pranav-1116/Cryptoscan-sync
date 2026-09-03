@@ -134,18 +134,80 @@ class BlastBody(BaseModel):
                                    description="directed [source, target] dependency edges")
     nodes: dict[str, dict] | None = None
     max_hops: int = Field(default=12, ge=1, le=24)
+    use_live: bool = Field(default=True,
+                           description="merge edges from the live system_dependencies table")
+
+
+def _live_dependency_edges(db: Session) -> list[tuple[str, str]]:
+    """Materialize directed edges from the live dependency inventory."""
+    try:
+        from db.models.system_dependency import SystemDependency
+
+        rows = db.execute(select(SystemDependency).limit(200_000)).scalars().all()
+        return [(str(r.parent_id), str(r.child_id)) for r in rows]
+    except Exception:  # noqa: BLE001
+        logger.debug("live dependency edge lookup failed", exc_info=True)
+        return []
+
+
+def _live_system_nodes(db: Session) -> dict[str, dict]:
+    """Map live systems to node metadata (type/criticality) for layer classification."""
+    try:
+        from db.models.system import System
+
+        rows = db.execute(select(System).limit(200_000)).scalars().all()
+        nodes: dict[str, dict] = {}
+        for r in rows:
+            meta: dict = {"name": r.name}
+            for attr in ("system_type", "type", "criticality"):
+                val = getattr(r, attr, None)
+                if val is not None:
+                    meta[attr] = val
+            # name-based layer hint lets deterministic BFS classify services etc.
+            lname = str(r.name or "").lower()
+            if "service" in lname:
+                meta["type"] = "business_service"
+            elif "api" in lname or "gateway" in lname:
+                meta["type"] = "api"
+            extra = getattr(r, "extra", None) or {}
+            if isinstance(extra, dict) and extra.get("type"):
+                meta["type"] = extra["type"]
+            nodes[str(r.id)] = meta
+        return nodes
+    except Exception:  # noqa: BLE001
+        logger.debug("live system node lookup failed", exc_info=True)
+        return {}
 
 
 @router.post("/blast-radius")
-def blast_radius(body: BlastBody, user: str = Depends(get_current_user)):
-    """Deterministic downstream impact (certificates/apps/APIs/business services)."""
+def blast_radius(body: BlastBody, db: Session = Depends(get_db_session),
+                 user: str = Depends(get_current_user)):
+    """Deterministic downstream impact (certificates/apps/APIs/business services).
+
+    By default merges edges from the live ``system_dependencies`` inventory with
+    any explicitly supplied edges; the same graph always yields the same radius.
+    """
     from automation.blast_radius import analyze_blast_radius
 
-    edges = [(str(a), str(b)) for a, b in body.edges if a and b]
-    result = analyze_blast_radius(body.origin, edges, nodes=body.nodes or {},
+    edge_set: set[tuple[str, str]] = {
+        (str(a), str(b)) for a, b in body.edges if a and b
+    }
+    live_edges: list[tuple[str, str]] = []
+    nodes = dict(body.nodes or {})
+    if body.use_live:
+        live_edges = _live_dependency_edges(db)
+        edge_set.update(live_edges)
+        for nid, meta in _live_system_nodes(db).items():
+            nodes.setdefault(nid, meta)
+
+    edges = sorted(edge_set)
+    result = analyze_blast_radius(body.origin, edges, nodes=nodes,
                                   max_hops=body.max_hops)
     out = result.as_dict()
     out["evaluated_by"] = user
+    out["edge_count"] = len(edges)
+    out["live_edge_count"] = len(live_edges)
+    out["edges_source"] = "live_system_dependencies+posted" if body.use_live else "posted"
     # large blast radius on a critical change is worth an alert (deterministic)
     biz = out["impact_layers"].get("business_service", 0)
     if biz >= 1 or result.reachable >= 10:
@@ -185,21 +247,15 @@ def _live_crypto_observations(db: Session) -> list[dict]:
     return out
 
 
-@router.post("/cbom/versions", status_code=201)
-def cbom_update(body: CbomUpdateBody,
-                db: Session = Depends(get_db_session),
-                user: str = Depends(require_roles(*_ADMINS))):
-    """Record a new live CBOM version from observations (or live evidence).
-
-    Creates an immutable, content-addressed version only when the canonicalized
-    component set changed; returns the added/removed diff. Change events are
-    published so the bridge can correlate (crypto_asset_detected / drift).
-    """
-    from automation.cbom_versioning import _state_fingerprint, _canon_component, _component_key
+def cbom_version_tick(db: Session, observations: list[dict] | None = None,
+                      user: str = "system-sweep") -> dict:
+    """Idempotent CBOM versioning: append a new content-addressed version only
+    when the canonicalized component set changed. Shared by the HTTP endpoint
+    and the periodic bridge sweep (deterministic; same state -> same result)."""
+    from automation.cbom_versioning import _canon_component, _component_key, _state_fingerprint
     from db.models.automation import CbomVersionRow
 
-    observations = body.observations
-    if body.use_live or not observations:
+    if observations is None:
         observations = _live_crypto_observations(db)
     components = [_canon_component(c) for c in observations]
     fingerprint = _state_fingerprint(components)
@@ -235,7 +291,26 @@ def cbom_update(body: CbomUpdateBody,
     if removed:
         _publish("drift.detected", {"version": new_version,
                                     "removed_count": len(removed)})
-    return {"changed": True, **row.to_dict(), "source": "live_evidence" if (body.use_live or not body.observations) else "posted"}
+    return {"changed": True, **row.to_dict(), "source": "live_evidence"}
+
+
+@router.post("/cbom/versions", status_code=201)
+def cbom_update(body: CbomUpdateBody,
+                db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles(*_ADMINS))):
+    """Record a new live CBOM version from observations (or live evidence).
+
+    Creates an immutable, content-addressed version only when the canonicalized
+    component set changed; returns the added/removed diff. Change events are
+    published so the bridge can correlate (crypto_asset_detected / drift).
+    """
+    observations = body.observations
+    if body.use_live or not observations:
+        result = cbom_version_tick(db, observations=None, user=user)
+    else:
+        result = cbom_version_tick(db, observations=observations, user=user)
+        result["source"] = "posted" if result.get("changed") else result.get("source")
+    return result
 
 
 @router.get("/cbom/versions")

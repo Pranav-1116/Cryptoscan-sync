@@ -67,7 +67,7 @@ def _handle(event: dict) -> None:
                 persist=True,
             )
             db.commit()
-    except Exception:  # noqa: BLE001 — automation must never break the request path
+    except Exception:
         logger.debug("automation bridge handling failed for %s", etype, exc_info=True)
 
 
@@ -83,7 +83,7 @@ async def _consumer() -> None:
             continue
         except asyncio.CancelledError:
             break
-        except Exception:  # noqa: BLE001
+        except Exception:
             await asyncio.sleep(0.5)
 
 
@@ -97,10 +97,11 @@ async def _sweep(interval: float = 900.0) -> None:
 
             with SessionLocal() as db:
                 _cert_sweep(db)
+                _cbom_sweep(db)
                 db.commit()
         except asyncio.CancelledError:
             break
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("automation sweep tick failed", exc_info=True)
         await asyncio.sleep(interval)
 
@@ -130,12 +131,34 @@ def _cert_sweep(db) -> int:
     return len(report.alerts)
 
 
+def _cbom_sweep(db) -> bool:
+    """Version the live cryptographic inventory (idempotent).
+
+    Runs after scan-derived evidence changes; appends a new content-addressed
+    CBOM version only when the component set actually changed. Purely
+    deterministic — the versioning tick makes the change/diff decision.
+    """
+    try:
+        from api.routers.automation_ops import cbom_version_tick
+
+        result = cbom_version_tick(db, observations=None, user="system-sweep")
+        if result.get("changed"):
+            _publish_bus("cbom.versioned", {
+                "version": result.get("version"),
+                "added": len(result.get("added") or []),
+                "removed": len(result.get("removed") or [])})
+        return bool(result.get("changed"))
+    except Exception:
+        logger.debug("cbom sweep tick failed", exc_info=True)
+        return False
+
+
 def _publish_bus(event_type: str, payload: dict) -> None:
     try:
         from api.events.bus import get_event_bus
 
         get_event_bus().publish(event_type, payload, source="automation-sweep")
-    except Exception:  # noqa: BLE001
+    except Exception:
         pass
 
 
