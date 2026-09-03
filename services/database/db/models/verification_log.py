@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 
-from sqlalchemy import DateTime, ForeignKey, JSON, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -20,4 +19,6 @@ class VerificationLog(BaseModel):
     verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     verified_by: Mapped[str] = mapped_column(String(100), nullable=False)
     result: Mapped[str] = mapped_column(String(20), nullable=False)
-    details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    chain_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    content_hashes_valid: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    details: Mapped[dict | None] = mapped_column(JSON, nullable=True)

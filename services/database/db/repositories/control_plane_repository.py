@@ -322,6 +322,8 @@ class ControlPlaneRepository:
     def list_events(self, status: str | None = None, limit: int = 100) -> list[QueuedEvent]:
         # priority-ordered for work queues: critical -> normal, FIFO within tier
         rank = {"critical": 0, "high": 1, "normal": 2, "low": 3}
+        # clamp: negative LIMIT is "unlimited" in SQLite (and a DoS vector); cap result set
+        limit = max(1, min(int(limit or 100), 500))
         stmt = select(QueuedEvent).order_by(QueuedEvent.created_at.desc()).limit(limit)
         if status:
             stmt = select(QueuedEvent).where(QueuedEvent.status == status).limit(limit * 4)
@@ -355,6 +357,7 @@ class ControlPlaneRepository:
 
     def list_delivery_logs(self, *, kind: str | None = None,
                            status: str | None = None, limit: int = 100) -> list[DeliveryLog]:
+        limit = max(1, min(int(limit or 100), 500))
         stmt = select(DeliveryLog).order_by(DeliveryLog.created_at.desc()).limit(limit)
         if kind:
             stmt = select(DeliveryLog).where(DeliveryLog.kind == kind).order_by(

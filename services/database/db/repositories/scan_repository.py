@@ -16,7 +16,7 @@ class ScanRepository(BaseRepository[Scan]):
         super().__init__(Scan, session)
 
     def get_recent_scans(self, limit: int = 10) -> list[Scan]:
-        stmt = select(Scan).order_by(desc(Scan.scan_start)).limit(limit)
+        stmt = select(Scan).order_by(desc(Scan.scan_start)).limit(max(1, min(int(limit or 10), 200)))
         return list(self.session.execute(stmt).scalars().all())
 
     def list_scans(

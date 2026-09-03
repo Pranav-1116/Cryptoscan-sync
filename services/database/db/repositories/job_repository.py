@@ -81,5 +81,5 @@ class JobRepository(BaseRepository[ScanJob]):
         return self.update(job_id, values)
 
     def list_recent(self, limit: int = 20) -> list[ScanJob]:
-        stmt = select(ScanJob).order_by(desc(ScanJob.created_at)).limit(limit)
+        stmt = select(ScanJob).order_by(desc(ScanJob.created_at)).limit(max(1, min(int(limit or 20), 200)))
         return list(self.session.execute(stmt).scalars().all())

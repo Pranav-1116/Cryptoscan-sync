@@ -304,8 +304,8 @@ class TestEvidenceLoaderTransactionSafety:
         assert result.success is False
         assert "Database insertion failed" in result.error
 
-        # Verify nothing was committed
+        # Verify nothing was committed (id column is String(36))
         from db.repositories.scan_repository import ScanRepository
         repo = ScanRepository(db_session)
-        scan = repo.get_by_id(uuid.UUID(scan_id))
+        scan = repo.get_by_id(str(scan_id))
         assert scan is None
