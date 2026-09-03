@@ -45,7 +45,7 @@ export default function Admin() {
           rows={rbac.roles.map((role) => [
             <span className="mono" style={{ fontWeight: 600 }}>{role}</span>,
             ...rbac.matrix[role as keyof typeof rbac.matrix].map((v: number, i: number) => (
-              <span key={i} style={{ color: v ? "var(--green)" : "var(--faint)", textShadow: v ? "0 0 8px rgba(52,211,153,.6)" : "none" }}>{v ? "●" : "·"}</span>
+              <span key={i} style={{ color: v ? "var(--green)" : "var(--faint)" }}>{v ? "●" : "·"}</span>
             )),
           ])}
         />

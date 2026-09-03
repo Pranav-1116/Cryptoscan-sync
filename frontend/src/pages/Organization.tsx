@@ -27,7 +27,7 @@ export default function Organization() {
             <button
               key={r.id}
               className={`btn sm ${region.id === r.id ? "" : ""}`}
-              style={region.id === r.id ? { borderColor: "var(--cyan)", color: "var(--cyan)", boxShadow: "0 0 18px rgba(34,211,238,.35)" } : {}}
+              style={region.id === r.id ? { borderColor: "var(--cyan)", color: "#cfe4ff", background: "rgba(77,159,255,0.10)" } : {}}
               onClick={() => { setRegion(r); setBu(r.bu[0].id); }}
             >
               {r.flag} {r.name}

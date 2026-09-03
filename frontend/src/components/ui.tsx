@@ -83,14 +83,14 @@ export function Ring({ pct, label, sub, tone = "cyan" }: { pct: number; label: R
   const r = 62;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.min(1, Math.max(0, pct)));
-  const colors: Record<string, string> = { cyan: "#22d3ee", green: "#34d399", amber: "#fbbf24", red: "#f87171", violet: "#8b5cf6" };
+  const colors: Record<string, string> = { cyan: "#4d9fff", green: "#2fb877", amber: "#e0a329", red: "#e0564f", violet: "#7c9cff" };
   const col = colors[tone || "cyan"] || colors.cyan;
   return (
     <div className="ring">
       <svg width="150" height="150" viewBox="0 0 150 150">
-        <circle cx="75" cy="75" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="10" />
+        <circle cx="75" cy="75" r={r} fill="none" stroke="#26324b" strokeWidth="10" />
         <circle cx="75" cy="75" r={r} fill="none" stroke={col} strokeWidth="10" strokeLinecap="round"
-          strokeDasharray={c} strokeDashoffset={off} style={{ filter: `drop-shadow(0 0 8px ${col})` }} />
+          strokeDasharray={c} strokeDashoffset={off} />
       </svg>
       <div className="ring-label">
         <div>

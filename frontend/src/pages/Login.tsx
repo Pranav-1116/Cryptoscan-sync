@@ -52,10 +52,10 @@ export default function Login() {
 
   return (
     <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24 }}>
-      <div className="frame" style={{ width: "min(440px, 100%)", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 16, padding: "34px 32px", backdropFilter: "blur(12px)" }}>
+      <div className="frame" style={{ width: "min(440px, 100%)", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 12, padding: "34px 32px" }}>
         <Corners />
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, display: "grid", placeItems: "center", margin: "0 auto 14px", background: "var(--grad)", color: "#03121a", fontFamily: "var(--mono)", fontWeight: 700, fontSize: 26, boxShadow: "0 0 26px rgba(34,211,238,.5)" }}>Z</div>
+          <div style={{ width: 52, height: 52, borderRadius: 12, display: "grid", placeItems: "center", margin: "0 auto 14px", background: "var(--grad)", color: "#fff", fontFamily: "var(--sans)", fontWeight: 800, fontSize: 26 }}>Z</div>
           <Kicker>ZELNX console</Kicker>
           <h1 style={{ fontSize: 24, margin: "10px 0 4px" }}>Sign in</h1>
           <p className="dim" style={{ fontSize: 13, margin: 0 }}>

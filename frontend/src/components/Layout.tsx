@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search.jsx";
 import { globalState } from "../data/demo.js";
-import { getToken, setToken, apiMyGrants } from "../lib/api.js";
+import { getToken, setToken, getUserName, apiMyGrants } from "../lib/api.js";
 
 const NAV = [
   { section: "Command center", items: [
@@ -89,9 +89,9 @@ export default function Layout({ route, children }: { route: string; children: R
   return (
     <div className="shell">
       <aside className="sidebar">
-        <a href="#/" className="logo" style={{ display: "flex", alignItems: "center", gap: 12, fontWeight: 700, fontSize: 19, margin: "0 8px 6px" }}>
-          <span className="mark" style={{ width: 34, height: 34, borderRadius: 9, display: "grid", placeItems: "center", background: "var(--grad)", color: "#03121a", fontFamily: "var(--mono)", fontWeight: 700, boxShadow: "0 0 18px rgba(34,211,238,.5)" }}>Z</span>
-          ZELNX
+        <a href="#/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 18, letterSpacing: "0.02em", margin: "2px 8px 10px" }}>
+          <span className="mark" style={{ width: 32, height: 32, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--grad)", color: "#fff", fontFamily: "var(--sans)", fontWeight: 800 }}>Z</span>
+          <span>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 11, marginLeft: 8, letterSpacing: "0.14em" }}>CRYPTO INTELLIGENCE</span></span>
         </a>
         {NAV.map((group) => (
           <React.Fragment key={group.section}>
@@ -105,9 +105,22 @@ export default function Layout({ route, children }: { route: string; children: R
           </React.Fragment>
         ))}
         <div style={{ marginTop: 20 }}>
-          <div className="demobanner">
-            <span className="dot" />
-            <span>demo mode · deterministic data · backend: {ticker.backend === null ? "checking…" : ticker.backend ? "LIVE" : "offline"}</span>
+          <div className="demobanner" style={{
+            color: ticker.backend ? "var(--green)" : "var(--amber)",
+            borderColor: ticker.backend ? "rgba(47,184,119,0.35)" : undefined,
+            background: ticker.backend ? "rgba(47,184,119,0.07)" : undefined,
+          }}>
+            <span className="dot" style={{ background: ticker.backend ? "var(--green)" : "var(--amber)" }} />
+            <span>
+              {ticker.backend === null
+                ? "connecting to platform…"
+                : ticker.backend
+                  ? "production data · deterministic engine · no AI inference"
+                  : "offline · showing cached sample data"}
+            </span>
+          </div>
+          <div style={{ marginTop: 10, padding: "0 8px", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)", lineHeight: 1.7 }}>
+            v1.0 · policy-as-code · hash-chained audit<br />fail-closed access control
           </div>
         </div>
       </aside>
@@ -143,7 +156,7 @@ export default function Layout({ route, children }: { route: string; children: R
               title="sign out"
               onClick={() => { setToken(null); window.location.hash = "#/"; }}
             >
-              admin · sign out
+              {getUserName() || "user"} · sign out
             </button>
           ) : (
             <a href="#/login" className="btn sm">sign in</a>

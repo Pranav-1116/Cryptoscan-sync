@@ -23,15 +23,27 @@ export function getToken(): string | null {
 }
 
 const ROLES_KEY = "zelinx_roles";
+const USER_KEY = "zelinx_user";
 
 export function getRoles(): string[] {
   try { return JSON.parse(localStorage.getItem(ROLES_KEY) || "[]"); } catch { return []; }
 }
 
+export function getUserName(): string | null {
+  try { return localStorage.getItem(USER_KEY); } catch { return null; }
+}
+
+export function setUserName(name: string | null): void {
+  try {
+    if (name) localStorage.setItem(USER_KEY, name);
+    else localStorage.removeItem(USER_KEY);
+  } catch { /* ignore */ }
+}
+
 export function setToken(token: string | null): void {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
-    else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(ROLES_KEY); }
+    else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(ROLES_KEY); localStorage.removeItem(USER_KEY); }
   } catch { /* storage unavailable — session only */ }
   // realtime consumers (SSE stream) reconnect when auth changes
   try {
@@ -83,10 +95,13 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
       const body = await resp.json().catch(() => ({}));
       return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
     }
-    const body = (await resp.json()) as { token?: string; roles?: string[] };
+    const body = (await resp.json()) as { token?: string; roles?: string[]; username?: string };
     if (body.token) {
       setToken(body.token);
-      try { localStorage.setItem("zelinx_roles", JSON.stringify(body.roles || [])); } catch { /* ignore */ }
+      try {
+        localStorage.setItem("zelinx_roles", JSON.stringify(body.roles || []));
+        localStorage.setItem("zelinx_user", body.username || username);
+      } catch { /* ignore */ }
     }
     return { ok: !!body.token, error: body.token ? undefined : "no token in response", roles: body.roles };
   } catch (e) {
