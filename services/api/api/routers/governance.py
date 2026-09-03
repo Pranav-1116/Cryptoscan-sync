@@ -59,8 +59,15 @@ def submit_request(
         Decision.REQUIRES_APPROVAL: "PENDING",
         Decision.DENIED: "DENIED",
     }
+    # retain a stable reference to the target resource (e.g. plugin id) so the
+    # enforcing subsystem can pin the approval to the exact approved object.
+    request_ref = str(body.payload.get("plugin_id")
+                      or body.payload.get("scope")
+                      or body.payload.get("reference")
+                      or "") or None
     row = GovernanceApproval(
         request_type=body.request_type,
+        request_ref=request_ref,
         requested_by=user,
         status=status_map[result.decision],
         decision=result.decision.value if result.decision in (Decision.AUTO_APPROVED, Decision.DENIED) else None,
@@ -68,6 +75,7 @@ def submit_request(
         policy_rules=result.rules,
         risk_level=result.risk_level.value,
         payload={
+            **body.payload,
             "required_approvers": result.required_approvers,
             "in_maintenance_window": body.in_maintenance_window,
             "has_valid_ticket": body.has_valid_ticket,

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from marketplace.manifest import ManifestError, PluginManifest
 from marketplace.registry import (
     PluginState,
@@ -187,6 +187,14 @@ def upload_plugin(
         trusted=result.trusted,
         operator_enable=body.enable,
     )
+    # Human-approval gate: an executable plugin can never become ENABLED purely
+    # on upload, even if signed by a trusted authority. It is held at VERIFIED
+    # until a 'plugin_enable_executable' governance request is APPROVED by a
+    # separate approver and /enable is called with that approval id. Data-only
+    # plugins (rulesets) may auto-enable on upload as they contain no code.
+    _executable_upload = manifest.plugin_type in ("scanner", "ingestor", "integrator")
+    if _executable_upload and new_state == PluginState.ENABLED:
+        new_state = PluginState.VERIFIED
 
     # refuse to downgrade / clobber an ENABLED plugin with a quarantined upload
     existing_enabled = db.execute(
@@ -304,22 +312,52 @@ def _get_plugin_or_404(db: Session, plugin_pk: str):
     return row
 
 
+class EnableBody(BaseModel):
+    approval_id: str | None = None
+
+
 @router.post("/plugins/{plugin_pk}/enable", response_model=PluginOut)
 def enable_plugin(
     plugin_pk: str,
+    body: EnableBody = Body(default_factory=EnableBody),
     db: Session = Depends(get_db_session),
     user: str = Depends(require_roles(*_ADMIN)),
 ):
-    from db.models.p2 import PluginPackage
+    from db.models.p2 import GovernanceApproval, PluginPackage
 
     row = _get_plugin_or_404(db, plugin_pk)
     # fail-closed: a quarantined or untrusted executable plugin can NEVER enable
     if row.state == PluginState.QUARANTINED.value:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="plugin is quarantined and cannot be enabled")
-    if row.plugin_type in ("scanner", "ingestor", "integrator") and not row.trusted:
+    is_executable = row.plugin_type in ("scanner", "ingestor", "integrator")
+    if is_executable and not row.trusted:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT,
                             detail="executable plugin is not signed by a trusted authority")
+    # human-approval gate (policy-as-code, no AI): enabling an EXECUTABLE plugin
+    # is a HIGH-risk change requiring an APPROVED governance request whose
+    # request_ref pins this exact plugin id. Segregation of duties is enforced
+    # at the governance decide endpoint (requester cannot self-approve).
+    if is_executable:
+        approval_id = (body.approval_id if body else None)
+        if not approval_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=("enabling an executable plugin is HIGH risk: submit a "
+                        "'plugin_enable_executable' governance request referencing "
+                        f"plugin {row.plugin_id}, obtain a separate approver's approval, "
+                        "then re-call /enable with {\"approval_id\": <id>}"))
+        appr = db.get(GovernanceApproval, approval_id)
+        if appr is None or appr.status != "APPROVED":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="governance approval not found or not APPROVED")
+        if appr.request_type != "plugin_enable_executable":
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="approval is not of type plugin_enable_executable")
+        refs = {row.plugin_id, row.id}
+        if appr.request_ref not in refs and (appr.payload or {}).get("plugin_id") != row.plugin_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
+                                detail="approval does not reference this plugin id")
     # single-active: disable siblings
     for other in db.execute(
         select(PluginPackage).where(

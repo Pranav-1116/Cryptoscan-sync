@@ -141,10 +141,104 @@ class TestMarketplace:
                          "content_sha256": _sha(content)},
             "content": content,
         }).json()
-        # quarantine to bypass executable gating for the 422 check path:
+        # scanner executable -> enable blocked before evaluation reaches ruleset
         r = client.post(f"/api/v1/marketplace/plugins/{up['id']}/evaluate",
                         json={"findings": []})
         assert r.status_code in (409, 422)
+
+    def test_executable_enable_requires_governance_approval(self, client):
+        """A trusted signed executable plugin still needs an APPROVED governance
+        request (separate approver) before it can be enabled — fail-closed gate."""
+        import base64 as _b64
+
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+        from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+        from marketplace.manifest import PluginManifest
+        from marketplace.verify import sign_plugin
+
+        priv = Ed25519PrivateKey.generate()
+        pub = priv.public_key().public_bytes(encoding=Encoding.Raw,
+                                             format=PublicFormat.Raw)
+        kid = "it-ca"
+        assert client.post("/api/v1/marketplace/trusted-keys",
+                           json={"key_id": kid,
+                                 "public_key_b64": _b64.b64encode(pub).decode()}
+                           ).status_code == 201
+
+        content = "def scan(t): return []"
+        md = {"plugin_id": "zelnx.gov-gated", "version": "1.0.0",
+              "plugin_type": "scanner", "name": "gov gated",
+              "content_sha256": _sha(content), "min_platform": "1.0.0"}
+        manifest = PluginManifest.from_dict(md)
+        sig = sign_plugin(priv, manifest)
+        up = client.post("/api/v1/marketplace/plugins", json={
+            "manifest": md, "content": content, "signature": sig,
+            "signer_key_id": kid, "enable": True,
+        }).json()
+        # trusted + valid signature, but held at VERIFIED (not auto-enabled)
+        assert up["state"] == "VERIFIED"
+        assert up["trusted"] is True
+        pid = up["id"]
+
+        # enable without approval -> 403
+        r = client.post(f"/api/v1/marketplace/plugins/{pid}/enable", json={})
+        assert r.status_code == 403, "executable enable must require approval"
+
+        # submit governance request for THIS plugin
+        gr = client.post("/api/v1/governance/requests", json={
+            "request_type": "plugin_enable_executable",
+            "payload": {"plugin_id": "zelnx.gov-gated"},
+        }).json()
+        gid = gr["id"]
+        assert gr["decision"] == "REQUIRES_APPROVAL" and gr["risk_level"] == "HIGH"
+
+        # a PENDING approval still fails the gate
+        r = client.post(f"/api/v1/marketplace/plugins/{pid}/enable",
+                        json={"approval_id": gid})
+        assert r.status_code == 403
+
+        # different approver approves (admin superadmin == requester here, but the
+        # test client is the only actor; decision succeeds because in dev the
+        # session user is 'admin' for both — SoD is tested separately in
+        # governance. We simulate a distinct approver via direct DB update.)
+        from db.models.p2 import GovernanceApproval
+        from db.connection.session import SessionLocal
+        db = SessionLocal()
+        row = db.get(GovernanceApproval, gid)
+        row.status = "APPROVED"
+        row.decision = "APPROVED"
+        row.decided_by = "approver-2"
+        db.commit()
+        db.close()
+
+        r = client.post(f"/api/v1/marketplace/plugins/{pid}/enable",
+                        json={"approval_id": gid})
+        assert r.status_code == 200, r.text
+        assert r.json()["state"] == "ENABLED"
+
+        # approval referencing a DIFFERENT plugin must not enable it
+        other = client.post("/api/v1/governance/requests", json={
+            "request_type": "plugin_enable_executable",
+            "payload": {"plugin_id": "zelnx.some-other"},
+        }).json()
+        db = SessionLocal()
+        row = db.get(GovernanceApproval, other["id"])
+        row.status = "APPROVED"
+        row.decision = "APPROVED"
+        row.decided_by = "approver-2"
+        db.commit()
+        db.close()
+        up2 = client.post("/api/v1/marketplace/plugins", json={
+            "manifest": {**md, "plugin_id": "zelnx.gov-gated2",
+                         "content_sha256": _sha(content + "v2")},
+            "content": content + "v2", "signature": sign_plugin(
+                priv, PluginManifest.from_dict({**md, "plugin_id": "zelnx.gov-gated2",
+                                                "content_sha256": _sha(content + "v2")})),
+            "signer_key_id": kid,
+        }).json()
+        r = client.post(f"/api/v1/marketplace/plugins/{up2['id']}/enable",
+                        json={"approval_id": other["id"]})
+        assert r.status_code == 403, "approval must be pinned to the plugin id"
 
 
 # ================================================================ data lake
