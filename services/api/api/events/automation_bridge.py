@@ -85,15 +85,71 @@ async def _consumer() -> None:
             await asyncio.sleep(0.5)
 
 
-def start_automation_bridge() -> bool:
-    """Start the bus->automation consumer on the running loop (idempotent)."""
-    global _task
-    if _task is not None:
-        return False
+async def _sweep(interval: float = 900.0) -> None:
+    """Periodic deterministic automation sweep (cert expiry + due scans)."""
+    # first sweep shortly after start, then on the interval
+    await asyncio.sleep(5.0)
+    while True:
+        try:
+            from db.connection.session import SessionLocal
+
+            with SessionLocal() as db:
+                _cert_sweep(db)
+                db.commit()
+        except asyncio.CancelledError:
+            break
+        except Exception:  # noqa: BLE001
+            logger.debug("automation sweep tick failed", exc_info=True)
+        await asyncio.sleep(interval)
+
+
+def _cert_sweep(db) -> int:
+    """Emit certificate.expiring bus events for live certificates at threshold."""
+    from sqlalchemy import select
+
+    from automation.watchers.cert_expiry import watch_certificates
+    from db.models.certificate import Certificate
+
+    rows = db.execute(select(Certificate).limit(100_000)).scalars().all()
+    certs = [{
+        "id": r.id, "not_after": r.not_after.isoformat() if r.not_after else None,
+        "public_key_algorithm": r.public_key_algorithm,
+        "public_key_size": r.public_key_size,
+        "is_self_signed": r.is_self_signed,
+    } for r in rows]
+    report = watch_certificates(certs)
+    for alert in report.alerts:
+        _publish_bus("certificate.expiring", {
+            "cert_id": alert["cert_id"],
+            "days_remaining": alert["days_remaining"],
+            "severity": alert["severity"], "state": alert["state"],
+            "reasons": alert["reasons"],
+        })
+    return len(report.alerts)
+
+
+def _publish_bus(event_type: str, payload: dict) -> None:
+    try:
+        from api.events.bus import get_event_bus
+
+        get_event_bus().publish(event_type, payload, source="automation-sweep")
+    except Exception:  # noqa: BLE001
+        pass
+
+
+_sweep_task: asyncio.Task | None = None
+
+
+def start_automation_bridge(sweep_interval: float = 900.0) -> bool:
+    """Start the bus->automation consumer and the periodic sweep (idempotent)."""
+    global _task, _sweep_task
     try:
         loop = asyncio.get_event_loop()
-        _task = loop.create_task(_consumer())
-        return True
     except RuntimeError:
         logger.debug("automation bridge start skipped (no running loop)")
         return False
+    if _task is None:
+        _task = loop.create_task(_consumer())
+    if _sweep_task is None and sweep_interval > 0:
+        _sweep_task = loop.create_task(_sweep(sweep_interval))
+    return True

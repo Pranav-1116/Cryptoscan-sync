@@ -65,6 +65,7 @@ from api.routers import (
     systems,
     sla,
     automation,
+    automation_ops,
     trigger,
     vulnerability,
     vulns,
@@ -275,6 +276,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(ot_safety.router, prefix=prefix)
     app.include_router(sla.router, prefix=prefix)
     app.include_router(automation.router, prefix=prefix)
+    app.include_router(automation_ops.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
     app.include_router(platform.router, prefix=prefix)
     app.include_router(sectors.router, prefix=prefix)

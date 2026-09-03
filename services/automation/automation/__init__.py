@@ -29,6 +29,9 @@ from automation.safety import (
 )
 from automation.scanner_selection import select_for_many, select_scanners
 from automation.scheduling import due_assets, schedule_for_asset
+from automation.sector_activation import activate_sector, available_sectors, normalize_sector
+from automation.blast_radius import analyze_blast_radius
+from automation.watchers.cert_expiry import assess_certificate, watch_certificates
 
 __all__ = [
     "AutomationPlan", "build_plan", "known_playbooks", "known_rules_from_dicts",
@@ -38,4 +41,7 @@ __all__ = [
     "ActionTier", "classify_action", "partition_actions",
     "select_scanners", "select_for_many",
     "schedule_for_asset", "due_assets",
+    "activate_sector", "available_sectors", "normalize_sector",
+    "analyze_blast_radius",
+    "assess_certificate", "watch_certificates",
 ]
