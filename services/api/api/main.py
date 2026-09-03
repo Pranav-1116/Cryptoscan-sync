@@ -49,6 +49,7 @@ from api.routers import (
     network,
     network_scans,
     ot,
+    ot_safety,
     policy,
     quantum,
     reachability,
@@ -262,6 +263,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(agility.router, prefix=prefix)
     app.include_router(exceptions.router, prefix=prefix)
     app.include_router(ot.router, prefix=prefix)
+    app.include_router(ot_safety.router, prefix=prefix)
     app.include_router(analytics.router, prefix=prefix)
     app.include_router(platform.router, prefix=prefix)
     app.include_router(sectors.router, prefix=prefix)

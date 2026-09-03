@@ -147,3 +147,4 @@ from db.models.p2 import (  # noqa: E402,F401
     MigrationValidation,
     PluginPackage,
 )
+from db.models.ot_maintenance import OtMaintenanceWindow  # noqa: E402,F401
