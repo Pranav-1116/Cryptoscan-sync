@@ -541,3 +541,27 @@ export async function apiAutomationCapabilities(): Promise<ApiResult<any>> {
     return { source: "live", ok: true, data: body };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
 }
+
+export async function apiAutomationSectors(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/sectors`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.sectors || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiCbomVersions(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/cbom/versions?limit=20`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.versions || [], latest: body.latest_version };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}

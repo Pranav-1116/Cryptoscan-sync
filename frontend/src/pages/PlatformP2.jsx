@@ -3,7 +3,7 @@ import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
   apiP2ApiKeys, apiOtMaintenanceWindows, apiSlaPosture, apiCredentialLeases,
-  apiAutomationRuns, apiAutomationRules,
+  apiAutomationRuns, apiAutomationRules, apiCbomVersions,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -34,6 +34,7 @@ export default function PlatformP2() {
   const leases = usePollingApi(apiCredentialLeases, 20000);
   const autoRuns = usePollingApi(apiAutomationRuns, 10000);
   const autoRules = usePollingApi(apiAutomationRules, 30000);
+  const cbomVersions = usePollingApi(apiCbomVersions, 20000);
 
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
@@ -44,6 +45,7 @@ export default function PlatformP2() {
   const leaseRows = (leases.data ?? []) as Array<Record<string, unknown>>;
   const runRows = (autoRuns.data ?? []) as Array<Record<string, unknown>>;
   const ruleRows = (autoRules.data ?? []) as Array<Record<string, unknown>>;
+  const cbomRows = (cbomVersions.data ?? []) as Array<Record<string, unknown>>;
   const slaData = (sla.data ?? null) as Record<string, unknown> | null;
 
   return (
@@ -220,6 +222,25 @@ export default function PlatformP2() {
               ])}
             />
           ) : <span className="muted">No custom automation rules — playbooks run by default.</span>}
+        </Panel>
+
+        <Panel title="Live CBOM versions" sub="content-addressed · immutable versions · added/removed crypto diffed on change">
+          {cbomRows.length ? (
+            <Table
+              head={["version", "components", "added", "removed", "fingerprint"]}
+              rows={cbomRows.slice(0, 12).map((v) => [
+                <span className="num" style={{ fontWeight: 600 }}>v{String(v.version)}</span>,
+                <span className="num">{String(v.component_count)}</span>,
+                <span className="num" style={{ color: (v.added as any[] || []).length ? "var(--green)" : undefined }}>
+                  +{(v.added as any[] || []).length}
+                </span>,
+                <span className="num" style={{ color: (v.removed as any[] || []).length ? "var(--red)" : undefined }}>
+                  −{(v.removed as any[] || []).length}
+                </span>,
+                <span className="mono muted">{String(v.fingerprint).slice(0, 12)}…</span>,
+              ])}
+            />
+          ) : <span className="muted">No CBOM versions yet — the engine versions the cryptographic inventory as observations change.</span>}
         </Panel>
       </div>
     </>
