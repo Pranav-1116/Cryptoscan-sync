@@ -32,6 +32,9 @@ class ApiKeyRepository:
         created_by: str,
         roles: list[str] | None = None,
         expires_at: datetime | None = None,
+        scopes: list[str] | None = None,
+        allowed_methods: list[str] | None = None,
+        rate_per_minute: int = 0,
     ) -> tuple[ApiKey, str]:
         """Create a key; returns (row, raw_key). The raw key is shown once."""
         clean = name.strip()
@@ -48,6 +51,9 @@ class ApiKeyRepository:
             created_by=created_by[:100],
             roles=",".join(clean_roles),
             expires_at=expires_at,
+            scopes=",".join(scopes) if scopes else None,
+            allowed_methods=",".join(m.upper() for m in allowed_methods) if allowed_methods else None,
+            rate_per_minute=max(0, int(rate_per_minute or 0)),
         )
         self.session.add(row)
         self.session.flush()
@@ -87,5 +93,15 @@ class ApiKeyRepository:
         row = self.get(key_id)
         if row is None:
             return
+        row.last_used_at = datetime.now(timezone.utc)
+        self.session.flush()
+
+    def record_request(self, key_id: str, *, denied: bool = False) -> None:
+        """Best-effort lifetime usage counter increment (+ last_used stamp)."""
+        row = self.get(key_id)
+        if row is None:
+            return
+        row.request_count = int(row.request_count or 0) + (0 if denied else 1)
+        row.denied_count = int(row.denied_count or 0) + (1 if denied else 0)
         row.last_used_at = datetime.now(timezone.utc)
         self.session.flush()

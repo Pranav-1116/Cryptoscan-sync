@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -31,9 +31,29 @@ class ApiKey(BaseModel):
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # --- P2 API-key platform: endpoint scoping, method allowlist, quota ---
+    # Comma-separated allowed path prefixes (e.g. "/findings,/scans"). Empty
+    # means "all endpoints the roles allow". Stored as text for SQLite/PG parity.
+    scopes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Comma-separated allowed HTTP methods (e.g. "GET"). Empty = all methods.
+    allowed_methods: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Requests-per-minute cap (0 = no key-level cap; global limiter still applies).
+    rate_per_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Lifetime usage counters (best-effort, stamped alongside last_used_at).
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    denied_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     @property
     def role_list(self) -> list[str]:
         return [r for r in (self.roles or "").split(",") if r]
+
+    @property
+    def scopes_list(self) -> list[str]:
+        return [s.strip() for s in (self.scopes or "").split(",") if s.strip()]
+
+    @property
+    def method_list(self) -> list[str]:
+        return [m.strip().upper() for m in (self.allowed_methods or "").split(",") if m.strip()]
 
     @property
     def is_active_key(self) -> bool:

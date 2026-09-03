@@ -102,6 +102,22 @@ def _persist(db: Session, anomalies: list[dict], actor: str) -> int:
             )
         )
     db.commit()
+
+    # surface HIGH severity anomalies onto the platform event bus so the
+    # command center / alerting sees them deterministically (no AI).
+    try:
+        from api.events.bus import get_event_bus
+
+        for a in anomalies:
+            if str(a.get("severity", "")).upper() == "HIGH":
+                get_event_bus().publish(
+                    "anomaly.detected",
+                    {"rule": a["rule"], "metric": a["metric"],
+                     "severity": a["severity"], "explanation": a["explanation"]},
+                    source="anomaly",
+                )
+    except Exception:  # noqa: BLE001 — eventing must never block analysis
+        logger.debug("anomaly event publish skipped", exc_info=True)
     return len(anomalies)
 
 

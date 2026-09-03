@@ -23,7 +23,6 @@ from marketplace.manifest import ManifestError, PluginManifest
 from marketplace.registry import (
     PluginState,
     decide_state,
-    select_enable_target,
 )
 from marketplace.verify import verify_plugin
 from pydantic import BaseModel, Field
@@ -38,24 +37,77 @@ router = APIRouter(prefix="/marketplace", tags=["marketplace"])
 _ADMIN = ("admin", "superadmin")
 
 
+_TRUST_SETTING = "marketplace.trusted_keys"
+
+
 def _trusted_keys(db: Session) -> list[str]:
-    """Pinned authority keys from app settings (id:base64pub), env override."""
+    """Pinned authority keys (``id:base64pub``) from app settings + env override."""
     import os
 
     keys: list[str] = []
     env_keys = os.environ.get("MARKETPLACE_TRUSTED_KEYS", "")
     keys.extend(k.strip() for k in env_keys.split(",") if k.strip())
     try:
-        from db.models.app_setting import AppSetting
+        from db.repositories.settings_repository import SettingsRepository
 
-        row = db.execute(
-            select(AppSetting).where(AppSetting.key == "marketplace.trusted_keys")
-        ).scalar_one_or_none()
-        if row and isinstance(row.value, list):
-            keys.extend(str(k) for k in row.value)
+        stored = SettingsRepository(db).get(_TRUST_SETTING, default=[])
+        if isinstance(stored, list):
+            keys.extend(str(k) for k in stored)
     except Exception:  # noqa: BLE001
         logger.debug("trusted-keys settings lookup skipped", exc_info=True)
     return keys
+
+
+class TrustedKeyBody(BaseModel):
+    key_id: str = Field(..., min_length=1, max_length=128)
+    public_key_b64: str = Field(..., min_length=32, description="Base64 Ed25519 public key")
+
+
+@router.post("/trusted-keys", status_code=201)
+def add_trusted_key(
+    body: TrustedKeyBody,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_ADMIN)),
+):
+    """Pin a signing authority key. Executable plugins signed by this key trust."""
+    import base64
+
+    try:
+        raw = base64.b64decode(body.public_key_b64.encode("ascii"), validate=True)
+        if len(raw) != 32:  # Ed25519 public keys are exactly 32 bytes
+            raise ValueError("Ed25519 public key must decode to 32 bytes")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=f"invalid Ed25519 public key: {exc}")
+
+    from db.repositories.settings_repository import SettingsRepository
+
+    repo = SettingsRepository(db)
+    keys = [k for k in repo.get(_TRUST_SETTING, default=[]) if isinstance(k, str)]
+    entry = f"{body.key_id}:{body.public_key_b64.strip()}"
+    if entry not in keys:
+        keys = [k for k in keys if not k.startswith(body.key_id + ":")]
+        keys.append(entry)
+        repo.set(_TRUST_SETTING, keys, updated_by=user)
+        db.commit()
+    return {"added": body.key_id, "trusted_key_ids": [k.split(":", 1)[0] for k in keys]}
+
+
+@router.delete("/trusted-keys/{key_id}")
+def remove_trusted_key(
+    key_id: str,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_ADMIN)),
+):
+    from db.repositories.settings_repository import SettingsRepository
+
+    repo = SettingsRepository(db)
+    keys = [k for k in repo.get(_TRUST_SETTING, default=[]) if isinstance(k, str)]
+    remaining = [k for k in keys if not k.startswith(key_id + ":")]
+    if len(remaining) == len(keys):
+        raise HTTPException(status_code=404, detail="trusted key not found")
+    repo.set(_TRUST_SETTING, remaining, updated_by=user)
+    db.commit()
+    return {"removed": key_id, "trusted_key_ids": [k.split(":", 1)[0] for k in remaining]}
 
 
 class PluginUpload(BaseModel):
@@ -255,28 +307,51 @@ def disable_plugin(
     return _to_out(row)
 
 
-def active_plugin_content(db: Session, plugin_id: str) -> str | None:
-    """Return the content of the currently ENABLED plugin (used by scanners)."""
+def _active_row(db: Session, plugin_id: str):
+    """Return the highest-version ENABLED plugin row for an id (single active)."""
     from db.models.p2 import PluginPackage
 
     rows = list(db.execute(
-        select(PluginPackage).where(PluginPackage.plugin_id == plugin_id)
+        select(PluginPackage).where(
+            PluginPackage.plugin_id == plugin_id,
+            PluginPackage.state == PluginState.ENABLED.value,
+        )
     ).scalars())
-    candidates = [
-        r for r in rows
-        if r.state in (PluginState.ENABLED.value, PluginState.VERIFIED.value)
-    ]
-    target = select_enable_target(
-        [type("P", (), {
-            "manifest": PluginManifest.from_dict({
-                "plugin_id": r.plugin_id, "version": r.version,
-                "plugin_type": r.plugin_type, "name": r.name,
-                "content_sha256": r.content_sha256, "min_platform": r.min_platform,
-            }),
-            "state": PluginState(r.state),
-        })() for r in candidates],
-        plugin_id,
-    ) if candidates else None
-    if target is None:
+    if not rows:
         return None
-    return next((r.content for r in candidates if r.version == target.manifest.version), None)
+
+    def _v(r):
+        try:
+            return tuple(int(p) for p in (r.version.split("+")[0].split("-")[0].split(".")))
+        except ValueError:
+            return (0, 0, 0)
+
+    return max(rows, key=_v)
+
+
+@router.get("/active/{plugin_id:path}")
+def active_plugin(
+    plugin_id: str,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles("admin", "superadmin", "scanner", "developer",
+                                      "security_analyst", "ciso", "auditor")),
+):
+    """Scanner-facing: fetch the active (ENABLED) plugin payload + integrity pins.
+
+    Scanners/worker call this to load a ruleset/signature bundle. Only ENABLED
+    packages are served — never QUARANTINED/DISABLED — and the content hash is
+    returned so the caller can re-verify the payload.
+    """
+    row = _active_row(db, plugin_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="no enabled plugin for that id")
+    return {
+        "plugin_id": row.plugin_id,
+        "version": row.version,
+        "plugin_type": row.plugin_type,
+        "state": row.state,
+        "content_sha256": row.content_sha256,
+        "signer_key_id": row.signer_key_id,
+        "trusted": row.trusted,
+        "content": row.content or "",
+    }

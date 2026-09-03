@@ -102,6 +102,54 @@ def export_batch(
     }
 
 
+class LiveExportRequest(BaseModel):
+    lake_id: str = Field("primary", min_length=1, max_length=128)
+    kind: str = Field("findings", max_length=40)
+    limit: int = Field(1000, ge=1, le=10000)
+    algorithm: str | None = None
+
+
+@router.post("/export/live")
+def export_live_findings(
+    body: LiveExportRequest,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles("admin", "superadmin", "ciso", "auditor")),
+):
+    """Seal a chained lake batch from LIVE stored evidence findings.
+
+    Pulls the most recent evidence records (deterministic, ordered) and chains
+    them into the lake — so the data lake operates on platform data, not just
+    caller-supplied records.
+    """
+    from db.repositories.evidence_repository import EvidenceRepository
+
+    rows, total = EvidenceRepository(db).list_all(
+        algorithm=body.algorithm, page=1, page_size=body.limit
+    )
+    records = [
+        {
+            "evidence_id": r.id,
+            "scan_id": r.scan_id,
+            "algorithm": r.algorithm,
+            "key_size": r.key_size,
+            "confidence": r.confidence,
+            "file_path": r.file_path,
+            "line_number": r.line_number,
+            "compliance_status": r.compliance_status,
+            "content_hash": r.content_hash,
+            "chain_hash": r.chain_hash,
+        }
+        for r in rows
+    ]
+    created = export_batch(
+        ExportRequest(lake_id=body.lake_id, kind=body.kind, records=records),
+        db, user,
+    )
+    created["source"] = "live_evidence"
+    created["total_available"] = total
+    return created
+
+
 @router.get("/batches")
 def list_batches(
     lake_id: str = "primary",

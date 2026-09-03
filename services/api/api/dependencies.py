@@ -2,10 +2,6 @@
 
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
-
-from api.security.session_manager import SessionManager
 from db.connection.session import get_session
 from db.repositories.baseline_repository import BaselineRepository
 from db.repositories.drift_repository import DriftRepository
@@ -14,6 +10,10 @@ from db.repositories.job_repository import JobRepository
 from db.repositories.repo_config_repository import RepoConfigRepository
 from db.repositories.scan_repository import ScanRepository
 from db.repositories.verification_repository import VerificationRepository
+from fastapi import Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from api.security.session_manager import SessionManager
 
 
 def get_db_session():
@@ -99,6 +99,9 @@ def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | ob
             if row is None:
                 return _API_KEY_INVALID
             key_id = row.id
+            # Enforce P2 API-key platform policy: endpoint scopes, HTTP method
+            # allowlist, and per-key rate quota. Raises 403/429 on violation.
+            _authorize_key_policy(request, row, session)
             principal = f"apikey:{row.name}"
             roles = row.role_list
             if should_stamp_last_use(key_id):
@@ -109,9 +112,49 @@ def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | ob
             return principal, roles, key_id
         finally:
             session.close()
+    except HTTPException:
+        raise
     except Exception:  # DB unavailable — fail like the session store does
         settings = _get_settings()
         return _API_KEY_INVALID if settings.is_production else None
+
+
+def _authorize_key_policy(request, row, session) -> None:
+    """Scope / method / quota enforcement for a machine API key (fail-closed)."""
+    try:
+        from apikeys.policy import DenyReason, KeyPolicy, authorize
+    except Exception:  # pragma: no cover - policy package always present
+        return
+    policy = KeyPolicy.from_row(row)
+    result = authorize(
+        key_id=row.id,
+        method=request.method,
+        path=request.url.path,
+        policy=policy,
+    )
+    if result.allowed:
+        # best-effort usage accounting (no extra DB write on the hot path beyond
+        # the throttled last-use stamp; counters increment on that cadence)
+        return
+    # record the denial (best effort), then fail closed
+    try:
+        from db.repositories.api_key_repository import ApiKeyRepository as _Repo
+
+        _Repo(session).record_request(row.id, denied=True)
+        session.commit()
+    except Exception:  # pragma: no cover
+        session.rollback()
+    if result.reason is DenyReason.QUOTA:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=result.detail or "API key rate quota exceeded",
+            headers={"Retry-After": "60", "WWW-Authenticate": "ApiKey"},
+        )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=result.detail or "API key not permitted for this resource",
+        headers={"WWW-Authenticate": "ApiKey"},
+    )
 
 
 def get_current_user(request: Request) -> str:

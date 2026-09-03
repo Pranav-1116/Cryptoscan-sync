@@ -12,14 +12,14 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from db.repositories.api_key_repository import ApiKeyRepository
+from db.repositories.user_repository import UserRepository
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_db_session, require_roles
 from api.events.bus import get_event_bus
-from db.repositories.api_key_repository import ApiKeyRepository
-from db.repositories.user_repository import UserRepository
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
@@ -29,6 +29,15 @@ class ApiKeyCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     roles: list[str] = Field(default_factory=lambda: ["viewer"])
     expires_at: Optional[datetime] = None
+    scopes: list[str] = Field(
+        default_factory=list,
+        description="Allowed API path prefixes, e.g. ['/findings','/scans']. Empty = all.",
+    )
+    allowed_methods: list[str] = Field(
+        default_factory=lambda: ["GET"],
+        description="Allowed HTTP methods. Defaults to read-only GET.",
+    )
+    rate_per_minute: int = Field(0, ge=0, le=1_000_000, description="Requests/min cap; 0 = no key cap.")
 
 
 class ApiKeyOut(BaseModel):
@@ -36,6 +45,11 @@ class ApiKeyOut(BaseModel):
     name: str
     key_prefix: str
     roles: list[str]
+    scopes: list[str]
+    allowed_methods: list[str]
+    rate_per_minute: int
+    request_count: int = 0
+    denied_count: int = 0
     created_by: str
     created_at: datetime
     expires_at: Optional[datetime] = None
@@ -54,6 +68,11 @@ def _to_out(row) -> ApiKeyOut:
         name=row.name,
         key_prefix=row.key_prefix + "…",
         roles=row.role_list,
+        scopes=getattr(row, "scopes_list", []) or [],
+        allowed_methods=getattr(row, "method_list", []) or [],
+        rate_per_minute=int(getattr(row, "rate_per_minute", 0) or 0),
+        request_count=int(getattr(row, "request_count", 0) or 0),
+        denied_count=int(getattr(row, "denied_count", 0) or 0),
         created_by=row.created_by,
         created_at=row.created_at,
         expires_at=row.expires_at,
@@ -69,10 +88,26 @@ def create_api_key(
     user: str = Depends(require_roles("admin")),
     db: Session = Depends(get_db_session),
 ) -> ApiKeyCreated:
+    # validate/normalize the platform constraints deterministically
+    try:
+        from apikeys.policy import normalize_methods, normalize_rate, normalize_scopes
+
+        scopes = normalize_scopes(body.scopes)
+        methods = normalize_methods(body.allowed_methods)
+        rate = normalize_rate(body.rate_per_minute)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
     repo = ApiKeyRepository(db)
     try:
         row, raw = repo.create(
-            name=body.name, created_by=user, roles=body.roles, expires_at=body.expires_at
+            name=body.name,
+            created_by=user,
+            roles=body.roles,
+            expires_at=body.expires_at,
+            scopes=scopes,
+            allowed_methods=methods,
+            rate_per_minute=rate,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
