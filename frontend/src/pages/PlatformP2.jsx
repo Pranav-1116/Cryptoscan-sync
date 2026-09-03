@@ -10,6 +10,7 @@ import {
   apiPluginEnable, apiPluginDisable, apiAnomalyAck,
   apiControlAgents, apiAgentUpgrade,
   apiOtAuthorize, apiOtCancelWindow,
+  apiExceptions, apiExceptionDecision,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
@@ -44,6 +45,7 @@ export default function PlatformP2() {
   const health = usePollingApi(apiHealthSweep, 30000);
   const benchmarkRuns = usePollingApi(apiBenchmarkRuns, 60000);
   const agents = usePollingApi(apiControlAgents, 20000);
+  const exceptions = usePollingApi(apiExceptions, 20000);
   const realBenchmark = useApi(apiRunRealBenchmark);
   const latestBenchmark = realBenchmark.data
     ?? ((benchmarkRuns.data ?? []).find((r) => r.scanner_id === "universal-crypto-real") as any) ?? null;
@@ -92,6 +94,8 @@ export default function PlatformP2() {
   };
   const cancelWindow = (ref: string) =>
     runAction(`ot-cancel-${ref}`, () => apiOtCancelWindow(ref), windows.run);
+  const exceptionDecision = (id: string, action: "approve" | "reject" | "revoke") =>
+    runAction(`exc-${id}-${action}`, () => apiExceptionDecision(id, action), exceptions.run);
   const validateMigration = async () => {
     let pre: any[] = [];
     let post: any[] = [];
@@ -113,6 +117,7 @@ export default function PlatformP2() {
   const ruleRows = (autoRules.data ?? []) as Array<Record<string, unknown>>;
   const cbomRows = (cbomVersions.data ?? []) as Array<Record<string, unknown>>;
   const agentRows = (agents.data ?? []) as Array<Record<string, any>>;
+  const exceptionRows = (exceptions.data ?? []) as Array<Record<string, any>>;
   const slaData = (sla.data ?? null) as Record<string, unknown> | null;
 
   return (
@@ -218,6 +223,39 @@ export default function PlatformP2() {
                 ) : <span className="muted">—</span>,
               ];
             })}
+          />
+        </Panel>
+
+        <Panel title="Policy exceptions" sub="time-boxed risk acceptance · HMAC-signed approval · periodic review · auto-expire">
+          <Table
+            head={["type", "justification", "expires", "status", ""]}
+            rows={exceptionRows.length ? exceptionRows.slice(0, 12).map((x) => {
+              const st = String(x.status ?? "PENDING");
+              const exp = x.expiration_date ? new Date(x.expiration_date).toISOString().slice(0, 10) : "—";
+              return [
+                <Badge tone="cyan">{String(x.exception_type)}</Badge>,
+                <span className="muted" title={String(x.justification ?? "")}>{String(x.justification ?? "").slice(0, 38) || "—"}</span>,
+                <span className="num">{exp}</span>,
+                <Badge tone={stateTone(st)}>{st}</Badge>,
+                st === "PENDING" ? (
+                  <span style={{ display: "flex", gap: 6 }}>
+                    <button className="btn" disabled={busyId === `exc-${x.id}-approve`}
+                      onClick={() => exceptionDecision(String(x.id), "approve")}>
+                      {busyId === `exc-${x.id}-approve` ? "…" : "approve"}
+                    </button>
+                    <button className="btn" disabled={busyId === `exc-${x.id}-reject`}
+                      onClick={() => exceptionDecision(String(x.id), "reject")}>
+                      {busyId === `exc-${x.id}-reject` ? "…" : "reject"}
+                    </button>
+                  </span>
+                ) : st === "APPROVED" ? (
+                  <button className="btn" disabled={busyId === `exc-${x.id}-revoke`}
+                    onClick={() => exceptionDecision(String(x.id), "revoke")}>
+                    {busyId === `exc-${x.id}-revoke` ? "…" : "revoke"}
+                  </button>
+                ) : <span className="muted">—</span>,
+              ];
+            }) : [[<span className="muted" key="none">No policy exceptions on record.</span>, "", "", "", ""]]}
           />
         </Panel>
 

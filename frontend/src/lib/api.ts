@@ -700,3 +700,21 @@ export async function apiOtAuthorize(operation: string, deviceId?: string): Prom
 /** Cancel an approved OT maintenance window. */
 export const apiOtCancelWindow = (windowRef: string) =>
   _postAction(`/api/v1/ot/maintenance-windows/${encodeURIComponent(windowRef)}/cancel`);
+
+/** Policy exceptions (risk-acceptance lifecycle). */
+export async function apiExceptions(status?: string): Promise<ApiResult<any[]>> {
+  try {
+    const q = status ? `?status=${encodeURIComponent(status)}` : "";
+    const resp = await fetch(`/api/v1/exceptions${q}`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`), data: [] } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.exceptions || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+/** Approve / reject / revoke a policy exception (HMAC-signed server-side on approve). */
+export const apiExceptionDecision = (exceptionId: string, action: "approve" | "reject" | "revoke", notes?: string) =>
+  _postAction(`/api/v1/exceptions/${encodeURIComponent(exceptionId)}/${action}`, { notes: notes || "" });
