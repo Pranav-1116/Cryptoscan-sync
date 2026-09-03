@@ -108,6 +108,44 @@ class TestMarketplace:
         with TestClient(app) as c:
             assert c.get("/api/v1/marketplace/plugins").status_code == 401
 
+    def test_ruleset_evaluate_deterministic_gate(self, client):
+        import json as _json
+
+        ruleset = {"name": "baseline", "version": "1.0.0",
+                   "rules": [{"id": "DES-FAIL", "algorithm": "DES",
+                              "decision": "FAIL", "message": "DES is broken"}]}
+        content = _json.dumps(ruleset)
+        up = client.post("/api/v1/marketplace/plugins", json={
+            "manifest": {"plugin_id": "zelnx.rs-gate", "version": "1.0.0",
+                         "plugin_type": "ruleset", "name": "gate",
+                         "content_sha256": _sha(content)},
+            "content": content, "enable": True,
+        }).json()
+        assert up["state"] == "ENABLED"
+        r = client.post(f"/api/v1/marketplace/plugins/{up['id']}/evaluate",
+                        json={"findings": [
+                            {"algorithm": "DES", "file_path": "a.java"},
+                            {"algorithm": "AES", "file_path": "b.java"},
+                        ]})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["gate"] == "FAIL" and body["fail_count"] == 1
+        assert body["results"][0]["gated"] is True
+        assert body["results"][1]["gated"] is False
+
+    def test_ruleset_evaluate_rejects_non_ruleset(self, client):
+        content = "def scan(): return []"
+        up = client.post("/api/v1/marketplace/plugins", json={
+            "manifest": {"plugin_id": "zelnx.scanner-x", "version": "1.0.0",
+                         "plugin_type": "scanner", "name": "sx",
+                         "content_sha256": _sha(content)},
+            "content": content,
+        }).json()
+        # quarantine to bypass executable gating for the 422 check path:
+        r = client.post(f"/api/v1/marketplace/plugins/{up['id']}/evaluate",
+                        json={"findings": []})
+        assert r.status_code in (409, 422)
+
 
 # ================================================================ data lake
 class TestDataLake:

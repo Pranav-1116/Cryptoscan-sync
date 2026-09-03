@@ -233,6 +233,50 @@ def upload_plugin(
     return _to_out(row)
 
 
+class RulesetEvaluateBody(BaseModel):
+    findings: list[dict] = Field(default_factory=list, max_length=20000)
+
+
+@router.post("/plugins/{plugin_pk}/evaluate")
+def evaluate_ruleset(
+    plugin_pk: str,
+    body: RulesetEvaluateBody,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(get_current_user),
+):
+    """Run a ruleset plugin's deterministic rules over submitted findings.
+
+    Returns a CI-style gate (PASS/WARN/FAIL) with every matched rule. Only an
+    ENABLED or VERIFIED ruleset plugin may be evaluated — never a quarantined
+    payload. The ruleset is parsed from the plugin content (JSON/YAML-less JSON).
+    """
+    import json as _json
+
+    from ruleset.engine import Ruleset, RulesetEngine, RulesetError
+
+    row = _get_plugin_or_404(db, plugin_pk)
+    if row.state == PluginState.QUARANTINED.value:
+        raise HTTPException(status_code=409, detail="cannot evaluate a quarantined plugin")
+    if row.plugin_type != "ruleset":
+        raise HTTPException(status_code=422, detail="plugin is not a ruleset")
+    try:
+        data = _json.loads(row.content or "{}")
+        ruleset = Ruleset.from_dict(data)
+    except (RulesetError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=f"invalid ruleset content: {exc}")
+
+    # content pin: refuse if the stored payload does not match its hash
+    import hashlib
+
+    if hashlib.sha256((row.content or "").encode("utf-8")).hexdigest() != row.content_sha256:
+        raise HTTPException(status_code=409, detail="plugin content hash mismatch (tampered)")
+
+    summary = RulesetEngine(ruleset).evaluate_many(body.findings)
+    summary["plugin_id"] = row.plugin_id
+    summary["plugin_state"] = row.state
+    return summary
+
+
 @router.get("/plugins", response_model=list[PluginOut])
 def list_plugins(
     state: str | None = None,
