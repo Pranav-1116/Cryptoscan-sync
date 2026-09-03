@@ -504,3 +504,40 @@ export async function apiCredentialLeases(): Promise<ApiResult<any[]>> {
     return { source: "live", ok: true, data: body.leases || [] };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
+
+/* ============================================================ automation */
+export async function apiAutomationRuns(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/runs?limit=50`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.runs || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiAutomationRules(): Promise<ApiResult<any[]>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/rules`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
+    return { source: "live", ok: true, data: body.rules || [] };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
+}
+
+export async function apiAutomationCapabilities(): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/capabilities`, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: body };
+  } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
+}

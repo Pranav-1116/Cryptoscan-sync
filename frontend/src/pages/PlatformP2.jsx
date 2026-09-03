@@ -3,6 +3,7 @@ import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import {
   apiP2Plugins, apiP2AnomalyFlags, apiP2GovernanceRequests, apiP2LakeBatches,
   apiP2ApiKeys, apiOtMaintenanceWindows, apiSlaPosture, apiCredentialLeases,
+  apiAutomationRuns, apiAutomationRules,
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
@@ -31,6 +32,8 @@ export default function PlatformP2() {
   const windows = usePollingApi(apiOtMaintenanceWindows, 20000);
   const sla = usePollingApi(apiSlaPosture, 20000);
   const leases = usePollingApi(apiCredentialLeases, 20000);
+  const autoRuns = usePollingApi(apiAutomationRuns, 10000);
+  const autoRules = usePollingApi(apiAutomationRules, 30000);
 
   const pluginRows = (plugins.data ?? []) as Array<Record<string, unknown>>;
   const flagRows = (flags.data ?? []) as Array<Record<string, unknown>>;
@@ -39,6 +42,8 @@ export default function PlatformP2() {
   const keyRows = (keys.data ?? []) as Array<Record<string, unknown>>;
   const windowRows = (windows.data ?? []) as Array<Record<string, unknown>>;
   const leaseRows = (leases.data ?? []) as Array<Record<string, unknown>>;
+  const runRows = (autoRuns.data ?? []) as Array<Record<string, unknown>>;
+  const ruleRows = (autoRules.data ?? []) as Array<Record<string, unknown>>;
   const slaData = (sla.data ?? null) as Record<string, unknown> | null;
 
   return (
@@ -185,6 +190,36 @@ export default function PlatformP2() {
               <Badge tone={l.status === "ACTIVE" && !l.expired ? "green" : "amber"}>{l.expired ? "expired" : String(l.status)}</Badge>,
             ]) : [[<span className="muted" key="none">No credential leases issued.</span>, "", "", "", ""]]}
           />
+        </Panel>
+
+        <Panel title="Automation runs" sub="event-driven · auto-selected scanners · approval-gated changes">
+          {runRows.length ? (
+            <Table
+              head={["event", "asset", "scanners", "auto → gate", "human"]}
+              rows={runRows.slice(0, 12).map((r) => [
+                <span className="mono" style={{ fontWeight: 600 }}>{String(r.event_kind)}</span>,
+                <span className="mono muted">{String(r.asset_id ?? "—").slice(0, 16)}</span>,
+                <span className="num">{(r.scanners as string[] || []).length}</span>,
+                <span className="num">{(r.auto_actions as any[] || []).length} → {(r.gated_actions as any[] || []).length}</span>,
+                r.needs_human ? <Badge tone="amber">approval</Badge> : <Badge tone="green">auto</Badge>,
+              ])}
+            />
+          ) : <span className="muted">No automation runs yet.</span>}
+        </Panel>
+
+        <Panel title="Automation rules" sub="WHEN event · IF conditions · THEN actions (rule builder)">
+          {ruleRows.length ? (
+            <Table
+              head={["rule", "WHEN", "severity", "actions", "enabled"]}
+              rows={ruleRows.slice(0, 12).map((r) => [
+                <span className="mono" style={{ fontWeight: 600 }}>{String(r.rule_id)}</span>,
+                <span className="mono">{String(r.when)}</span>,
+                <Badge tone={stateTone(String(r.severity))}>{String(r.severity)}</Badge>,
+                <span className="muted">{((r.then as string[]) || []).join(", ")}</span>,
+                r.enabled ? <Badge tone="green">on</Badge> : <Badge tone="amber">off</Badge>,
+              ])}
+            />
+          ) : <span className="muted">No custom automation rules — playbooks run by default.</span>}
         </Panel>
       </div>
     </>
