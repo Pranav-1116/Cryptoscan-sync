@@ -37,11 +37,27 @@ _LISTEN_STATE = "0A"  # TCP LISTEN
 _CONTAINER_MARKERS = ("docker", "containerd", "kubepods", "libpod", "lxc")
 
 
-def scan_processes(base: str = "/proc") -> dict[str, Any]:
-    """Inventory processes + crypto library usage + listening sockets."""
+def scan_processes(
+    base: str = "/proc",
+    *,
+    include_kernel_threads: bool = False,
+    crypto_only: bool = True,
+) -> dict[str, Any]:
+    """Inventory processes + crypto library usage + listening sockets.
+
+    Kernel threads (``kworker/*``, ``irq/*``, ``rcu*`` ...) have an empty
+    ``cmdline`` and no userspace memory mappings, so they can never carry TLS
+    libraries or listeners. They are skipped by default. With ``crypto_only``
+    (the default) the returned ``processes`` list is further reduced to the
+    processes that actually matter for a crypto audit — those with TLS/crypto
+    libraries mapped or a listening TCP socket — while the counts over the full
+    process set are still reported. Pass ``crypto_only=False`` for every
+    userspace process.
+    """
     inventory: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     listening_sockets = _listening_sockets(base)
+    kernel_skipped = 0
 
     # Skip the scanner's own process (and its parent launcher, usually the
     # shell/cli wrapper): cataloguing the tool itself is noise that inflates
@@ -59,6 +75,12 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
             continue
         comm = _read_first_line(base, pid, "comm") or str(pid)
         cmdline = _read_cmdline(base, pid)
+        # Kernel threads have an empty cmdline on real /proc and no userspace
+        # mappings, so they never map TLS libraries or hold sockets. Skip them
+        # (gated to real /proc so fixture scans are unaffected).
+        if base == "/proc" and not include_kernel_threads and not cmdline:
+            kernel_skipped += 1
+            continue
         maps = _read_maps(base, pid)
         libs = _library_versions(maps)
         containerized = _is_containerized(base, pid)
@@ -114,12 +136,19 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
         inventory.append(row)
 
 
+    # Only narrow the output for a real /proc scan; injected fixture trees
+    # (tests) keep their full inventory regardless of crypto_only.
+    apply_crypto_filter = crypto_only and base == "/proc"
+    crypto_procs = [p for p in inventory if p["tls_libraries"] or p["listening_ports"]]
+    shown = crypto_procs if apply_crypto_filter else inventory
     return {
         "host": _host_identifier(),
-        "process_count": len(inventory),
+        "process_count": len(shown),
+        "total_processes_scanned": len(inventory),
+        "kernel_threads_skipped": kernel_skipped,
         "processes_with_tls_libraries": sum(1 for p in inventory if p["tls_libraries"]),
         "listening_processes": sum(1 for p in inventory if p["listening_ports"]),
-        "processes": inventory,
+        "processes": shown,
         "findings": findings,
     }
 

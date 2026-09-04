@@ -20,9 +20,13 @@ def main() -> int:
     tls_procs = [p for p in procs if p.get("tls_libraries") or p.get("listening_ports")]
 
     print(f"host: {d.get('host', '?')}")
+    kskip = d.get("kernel_threads_skipped") or 0
+    scanned = d.get("total_processes_scanned", d.get("process_count"))
     print(
-        f"processes: {d.get('process_count')}  |  TLS/crypto libs in: "
-        f"{d.get('processes_with_tls_libraries')}  |  listening: {d.get('listening_processes')}"
+        f"crypto-relevant processes: {d.get('process_count')} (of {scanned} user processes scanned"
+        + (f", {kskip} kernel threads skipped" if kskip else "") + ")"
+        f"  |  TLS/crypto libs in: {d.get('processes_with_tls_libraries')}"
+        f"  |  listening: {d.get('listening_processes')}"
     )
     print()
 
