@@ -123,44 +123,81 @@ def scan_tpm() -> dict:
 
 
 # --- HSM / PKCS#11 -----------------------------------------------------
+# A PKCS#11 *interface* is not an HSM: OpenSC provides a PKCS#11 module for
+# smart cards / secure elements, while SoftHSM is a software HSM and the
+# vendor paths below are real HSM appliances. Classify them separately so an
+# OpenSC install is never (mis)reported as an HSM.
 
-_HSM_LIB_HINTS = (
-    "/usr/lib/softhsm/libsofthsm2.so", "/usr/lib/x86_64-linux-gnu/softhsm/libsofthsm2.so",
-    "/usr/lib/opensc-pkcs11.so", "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so",
-    "/usr/lib/libCryptoki2.so", "/opt/nfast/tool/hardserver",
-    "/usr/safenet/lunaclient/bin/vtl", "/usr/local/bin/vtl",
+_HSM_VENDOR_LIBS = (
+    "/opt/nfast/tool/hardserver",          # Entrust nShield
+    "/usr/safenet/lunaclient/bin/vtl",     # Thales Luna / SafeNet
+    "/usr/local/bin/vtl",
+    "/usr/lib/libCryptoki2.so",            # SafeNet Luna
+    "/usr/local/utimaco/bin/csadm",        # Utimaco SecurityServer
 )
-_HSM_TOOLS = ("softhsm2-util", "pkcs11-tool", "p11tool", "vtl", "ctconf", "hsmstate")
+_HSM_SOFTWARE_LIBS = (
+    "/usr/lib/softhsm/libsofthsm2.so",
+    "/usr/lib/x86_64-linux-gnu/softhsm/libsofthsm2.so",
+    "/usr/lib/softhsm/libsofthsm.so",
+)
+_HSM_VENDOR_TOOLS = ("vtl", "ctconf", "hsmstate", "csadm", "nfast")
+_HSM_SOFTWARE_TOOLS = ("softhsm2-util", "softhsm-util")
+# Smart-card / generic PKCS#11 middleware (NOT an HSM):
+_PKCS11_SMARTCARD_LIBS = (
+    "/usr/lib/opensc-pkcs11.so",
+    "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so",
+)
+_PKCS11_SMARTCARD_TOOLS = ("pkcs11-tool", "opensc-tool", "p11tool", "pkcs15-tool")
 
 
 def scan_hsm() -> dict:
-    hsm = {"present": False, "interfaces": [], "evidence": []}
-    for path in _HSM_LIB_HINTS:
+    hsm = {"present": False, "kind": None, "interfaces": [], "evidence": []}
+    for path in _HSM_VENDOR_LIBS:
         if Path(path).exists():
             hsm["present"] = True
-            hsm["evidence"].append(f"library:{path}")
-            hsm["interfaces"].append("PKCS#11" if "pkcs11" in path.lower() else "HSM")
-    for tool in _HSM_TOOLS:
+            hsm["kind"] = "vendor-appliance"
+            hsm["evidence"].append(f"vendor:{path}")
+    for path in _HSM_SOFTWARE_LIBS:
+        if Path(path).exists():
+            hsm["present"] = True
+            hsm["kind"] = hsm["kind"] or "software (SoftHSM)"
+            hsm["evidence"].append(f"softhsm:{path}")
+    for tool in _HSM_VENDOR_TOOLS:
         if shutil.which(tool):
             hsm["present"] = True
+            hsm["kind"] = hsm["kind"] or "vendor-appliance"
             hsm["evidence"].append(f"tool:{tool}")
-    hsm["interfaces"] = sorted(set(hsm["interfaces"]))
+    for tool in _HSM_SOFTWARE_TOOLS:
+        if shutil.which(tool):
+            hsm["present"] = True
+            hsm["kind"] = hsm["kind"] or "software (SoftHSM)"
+            hsm["evidence"].append(f"tool:{tool}")
+    if hsm["present"]:
+        hsm["interfaces"] = ["PKCS#11"]
     return hsm
 
 
 # --- Smart card / secure element --------------------------------------
 
 def scan_smartcard() -> dict:
-    sc = {"present": False, "interface": None, "evidence": []}
+    sc = {"present": False, "interface": None, "pkcs11_middleware": [], "evidence": []}
     if shutil.which("pcscd") or Path("/usr/sbin/pcscd").exists():
-        sc["evidence"].append("pcscd daemon present")
-    if shutil.which("opensc-tool") or shutil.which("pcsc_scan"):
-        sc["present"] = True
-        sc["interface"] = "PC/SC"
-        sc["evidence"].append("PC/SC tooling present (reader presence requires pcscd + a card)")
+        sc["evidence"].append("pcscd daemon present (PC/SC resource manager)")
+    for path in _PKCS11_SMARTCARD_LIBS:
+        if Path(path).exists():
+            sc["present"] = True
+            sc["pkcs11_middleware"].append("OpenSC PKCS#11")
+            sc["evidence"].append(f"pkcs11-module:{path}")
+    for tool in _PKCS11_SMARTCARD_TOOLS:
+        if shutil.which(tool):
+            sc["present"] = True
+            sc["evidence"].append(f"tool:{tool}")
     for dev in Path("/dev").glob("pcsc*"):
         sc["present"] = True
         sc["evidence"].append(f"devnode:{dev}")
+    if sc["present"] or shutil.which("pcsc_scan"):
+        sc["interface"] = "PC/SC"
+    sc["pkcs11_middleware"] = sorted(set(sc["pkcs11_middleware"]))
     return sc
 
 
@@ -211,24 +248,28 @@ def report(d: dict) -> None:
 
     hsm = d["hsm"]
     if hsm["present"]:
-        print(f"    HSM        : present hints: {', '.join(hsm['interfaces']) or 'see evidence'}")
+        print(f"    HSM        : PRESENT ({hsm.get('kind')}) via {', '.join(hsm['interfaces'])}")
         for e in hsm["evidence"]:
             print(f"                 - {e}")
     else:
-        print("    HSM        : none detected (no PKCS#11 modules or vendor HSM tools)")
+        print("    HSM        : none detected (no SoftHSM or vendor HSM appliance)")
 
     sc = d["smartcard"]
     if sc["present"]:
-        print(f"    smart card : reader tooling present ({sc['interface'] or 'PC/SC'})")
+        mw = f"middleware={', '.join(sc['pkcs11_middleware'])}" if sc["pkcs11_middleware"] else "reader present"
+        print(f"    smart card : {sc['interface'] or 'PC/SC'} stack present ({mw})")
         for e in sc["evidence"]:
             print(f"                 - {e}")
+        print("                 (a card/reader is detected only when plugged in + pcscd running)")
     else:
-        print("    smart card : no reader/tooling detected")
+        print("    smart card : no PKCS#11/PC/SC middleware detected")
 
-    # one-line verdict
-    flags = [tpm["present"], hsm["present"], sc["present"]]
-    if tpm["present"] or hsm["present"]:
-        verdict = "dedicated crypto hardware present (metadata only — no secrets accessed)"
+    # one-line verdict — TPM/HSM are dedicated crypto hardware; a PC/SC stack
+    # alone is middleware, not an HSM.
+    if hsm["present"]:
+        verdict = "HSM present (metadata only — no secrets accessed)"
+    elif tpm["present"]:
+        verdict = "TPM 2.0 present — hardware root of trust for keys/attestation (metadata only)"
     elif cpu["aes_acceleration"] and cpu["hardware_rng"]:
         verdict = "no dedicated TPM/HSM, but CPU has AES-NI + hardware RNG (software crypto accelerated)"
     else:
