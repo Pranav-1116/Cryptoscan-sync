@@ -128,13 +128,30 @@ def main() -> int:
 
     # discovery mode
     if "cidr" in d:
+        if d.get("error"):
+            print(f"discovery error: {d['error']}")
+            return 1
+        reachable = d.get("hosts_reachable")
+        silent = d.get("hosts_silent")
+        probes = d.get("tcp_probes") or {}
         print(f"subnet {d.get('cidr')} ports {d.get('ports')}: "
               f"{d.get('open_count')} open of {d.get('candidates')} candidates "
               f"({d.get('hosts_checked')} hosts)")
+        if reachable is not None:
+            print(f"    hosts     : {reachable} answered (open/closed), {silent} silent/filtered")
+            print(f"    TCP probes: open={probes.get('open', 0)} "
+                  f"closed={probes.get('closed', 0)} "
+                  f"filtered/timeout={probes.get('filtered_timeout', 0)}")
         for ep in d.get("endpoints") or []:
             print(f"  open: {ep}")
         if not d.get("endpoints"):
-            print("  no open TLS ports — nothing to scan on this range")
+            if reachable is not None and reachable > 0:
+                print("  hosts ARE reachable but none listen on these ports — "
+                      "widen --ports or the services use plain HTTP / other ports")
+            else:
+                print("  NO hosts answered a single TCP probe — likely Wi-Fi "
+                      "AP/client isolation, a drop-all firewall, or wrong subnet.")
+                print("  check: is your gateway reachable? try the IP from 'ip route | grep default'")
         return 0
 
     findings = d.get("findings") or []
