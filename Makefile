@@ -56,8 +56,43 @@ verify-pack:
 gate:
 	$(PY) $(ROOT)/scripts/ci_gate.py --scan-id "$(SCAN_ID)"
 
-up:
-	docker compose up --build -d
+# ── Docker / Compose ─────────────────────────────────────────────────
+# Full stack: postgres + redis + neo4j + api + worker + monitor + frontend + nginx.
+#   make docker-build     build all images (no cache problems: layers cached)
+#   make docker-up        build (if needed) and start the stack detached
+#   make docker-down      stop and remove containers (keeps volumes/data)
+#   make docker-purge     stop and remove containers AND volumes (wipe data)
+#   make docker-logs      tail logs for the whole stack
+#   make docker-rebuild   force a clean rebuild of the images
+COMPOSE ?= docker compose
 
-down:
-	docker compose down
+docker-build:
+	$(COMPOSE) build
+
+docker-up:
+	$(COMPOSE) up --build -d
+
+docker-down:
+	$(COMPOSE) down
+
+docker-purge:
+	$(COMPOSE) down -v
+
+docker-rebuild:
+	$(COMPOSE) build --no-cache
+
+docker-logs:
+	$(COMPOSE) logs -f --tail=200
+
+docker-ps:
+	$(COMPOSE) ps
+
+# production stack (uses .env with strong secrets; see docker-compose.prod.yml)
+docker-up-prod:
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+
+docker-down-prod:
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml down
+
+up: docker-up
+down: docker-down
