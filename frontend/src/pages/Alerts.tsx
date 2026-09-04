@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Badge, PageHead } from "../components/ui.jsx";
-import { alerts } from "../data/demo.js";
+import { alerts } from "../data/initial.js";
 import { useRealtime, severityOf } from "../lib/realtime.js";
 
 interface AlertRow { id: string; severity: string; title: string; detail: string; ago: string; acked: boolean }
@@ -22,7 +22,7 @@ export default function Alerts() {
       acked: false,
     }));
 
-  const filtered = [...liveAlerts, ...alerts.map((a, i) => ({ ...a, id: `demo-${i}` }))]
+  const filtered = [...liveAlerts, ...alerts.map((a, i) => ({ ...a, id: `static-${i}` }))]
     .filter((a) => (filter === "all" ? true : a.severity === filter.toUpperCase()) && !acked.has(a.id + a.title))
     .slice(0, 30);
 

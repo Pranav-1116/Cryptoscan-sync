@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { integrations as demoIntegrations } from "../data/demo.js";
+import { integrations as demoIntegrations } from "../data/initial.js";
 import {
   apiIntegrations, apiDeliveries, apiTestIntegration, apiFlushDeliveries,
   LiveBadge,
@@ -71,7 +71,7 @@ export default function Integrations() {
         <Badge tone="cyan">{i.kind}</Badge>,
         <Badge tone="green">{i.status}</Badge>,
         <span style={{ fontSize: 12.5 }} className="dim">{i.detail}</span>,
-        <span className="dim" style={{ fontSize: 12 }}>demo</span>,
+        <span className="dim" style={{ fontSize: 12 }}>configured</span>,
       ]);
 
   return (
@@ -82,7 +82,7 @@ export default function Integrations() {
         sub="Real signed HTTP fan-out to SIEM / SOC, ticketing (ITSM) and CMDB — every attempt audited"
         right={
           <div className="row">
-            <LiveBadge source={live ? "live" : "demo"} label={live ? "LIVE PLATFORM" : "BACKEND OFFLINE — DEMO"} />
+            <LiveBadge source={live ? "live" : "offline"} label={live ? "LIVE PLATFORM" : "BACKEND OFFLINE"} />
             {live && <Badge tone="violet"><span className="dot" /> {liveInts.length} REGISTERED</Badge>}
           </div>
         }

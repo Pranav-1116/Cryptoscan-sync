@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { ApiResult, ApiSource } from "./api.js";
 
 export function useApi<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = []) {
-  const [result, setResult] = useState<ApiResult<T>>({ source: "demo", data: null });
+  const [result, setResult] = useState<ApiResult<T>>({ source: "offline", data: null });
   const [running, setRunning] = useState(false);
 
   const run = async () => {
@@ -29,7 +29,7 @@ export function LiveBadge({ source, label }: { source: ApiSource; label?: string
   return source === "live" ? (
     <span className="badge green"><span className="dot" /> {label || "LIVE API DATA"}</span>
   ) : (
-    <span className="badge amber"><span className="dot" /> {label || "DEMO DATA"}</span>
+    <span className="badge amber"><span className="dot" /> {label || "BACKEND OFFLINE"}</span>
   );
 }
 

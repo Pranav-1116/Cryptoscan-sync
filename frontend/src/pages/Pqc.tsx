@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Bar, Ring, Table, PageHead } from "../components/ui.jsx";
-import { pqc } from "../data/demo.js";
+import { pqc } from "../data/initial.js";
 
 export default function Pqc() {
   return (

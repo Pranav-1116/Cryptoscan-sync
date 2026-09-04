@@ -22,7 +22,7 @@ function Pill({ children, on }: { children: React.ReactNode; on?: boolean }) {
 export default function Sectors() {
   const [sectors, setSectors] = useState<SectorProfile[]>([]);
   const [active, setActive] = useState<string>("generic");
-  const [source, setSource] = useState<"live" | "demo">("demo");
+  const [source, setSource] = useState<"live" | "offline">("offline");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [roles, setRoles] = useState<string[]>([]);
@@ -68,7 +68,7 @@ export default function Sectors() {
         <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span style={{ ...chip, color: "var(--cyan)" }}>active: {active}</span>
           <span className="dim" style={{ fontSize: 11.5 }}>
-            {source === "live" ? "● live control plane" : "● demo data (control plane offline)"}
+            {source === "live" ? "● live control plane" : "● control plane offline — no live data yet"}
           </span>
           {!canSet && (
             <span className="dim" style={{ fontSize: 11.5, color: "var(--amber)" }}>

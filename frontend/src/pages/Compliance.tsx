@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { compliance } from "../data/demo.js";
+import { compliance } from "../data/initial.js";
 
 export default function Compliance() {
   return (

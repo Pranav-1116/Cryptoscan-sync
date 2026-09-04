@@ -1,6 +1,6 @@
 /* API client — probes the real backend through the Vite /api proxy and
-   reports liveness to the global header. The console runs on deterministic
-   demo data; wiring each page to /api/v1/platform/* is incremental. */
+   reports liveness to the global header. There is no offline/cached
+   dataset: when the backend is down the console shows zeros/empty. */
 
 let live: boolean | null = null;
 let checked = false;

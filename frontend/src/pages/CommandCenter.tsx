@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
-import { globalState, events, risk } from "../data/demo.js";
+import { globalState, events, risk, networkAssets, cloudResources, vendors, hardware } from "../data/initial.js";
 import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, ApiResult, LiveBadge } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
@@ -8,7 +8,7 @@ import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 export default function CommandCenter() {
   const g = globalState;
   const [backend, setBackend] = useState<boolean | null>(null);
-  const [scope, setScope] = useState<ApiResult<Record<string, unknown>>>({ source: "demo", data: null });
+  const [scope, setScope] = useState<ApiResult<Record<string, unknown>>>({ source: "offline", data: null });
   const rt = useRealtime();
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function CommandCenter() {
   const ls = (liveStats.data ?? {}) as Record<string, number>;
   const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
 
-  /* realtime feed — live stream events when connected, demo baseline otherwise */
+  /* realtime feed — shows only events streamed live from the control plane */
   const liveFeed = rt.events.filter((e) => !isSystemEvent(e.type)).slice(0, 6).map((e) => ({
     t: new Date(e.ts).toLocaleTimeString("en-GB", { hour12: false }),
     tag: e.type.replace(/^(platform|monitor|demo)\./, "").replace(/_/g, " ").slice(0, 22).toUpperCase(),
@@ -41,7 +41,7 @@ export default function CommandCenter() {
           <>
             {backend === null && <Badge>PROBING BACKEND…</Badge>}
             {backend === true && <Badge tone="green"><span className="dot" /> CONTROL PLANE: LIVE</Badge>}
-            {backend === false && <Badge tone="amber"><span className="dot" /> CONTROL PLANE: OFFLINE (DEMO DATA)</Badge>}
+            {backend === false && <Badge tone="amber"><span className="dot" /> CONTROL PLANE: OFFLINE — SIGN IN TO LOAD LIVE DATA</Badge>}
             <Badge tone="green"><span className="dot" /> ALL SCANNERS NOMINAL</Badge>
             <Badge tone="violet">PQC {g.pqcReadyPct}% READY</Badge>
           </>
@@ -49,7 +49,7 @@ export default function CommandCenter() {
       />
 
       {scope.data && (
-        <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "GET /api/v1/platform/scope — served by the control plane" : "demo manifest — backend offline"} className="mt">
+        <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "GET /api/v1/platform/scope — served by the control plane" : "no live data yet — connect the control plane"} className="mt">
           <Code>{JSON.stringify(scope.data, null, 2)}</Code>
         </Panel>
       )}
@@ -72,16 +72,16 @@ export default function CommandCenter() {
       <div className="grid cols-3" style={{ marginBottom: 16 }}>
         <Panel title="Assets" sub="total inventory">
           <div className="grad-text" style={{ fontSize: 44, fontWeight: 700 }}>{g.totalAssets.toLocaleString()}</div>
-          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>+312 this week · 611 new endpoints</div>
+          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{g.totalAssets === 0 ? "no assets discovered — run discovery" : "live inventory"}</div>
         </Panel>
         <Panel title="Crypto assets" sub="algorithms · certs · keys · libraries">
           <div className="grad-text" style={{ fontSize: 44, fontWeight: 700 }}>{g.cryptoAssets.toLocaleString()}</div>
-          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>42391 crypto assets · 184 unknown</div>
+          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{g.cryptoAssets === 0 ? "no crypto inventory yet — run a scan" : "from live scans"}</div>
         </Panel>
         <Panel title="Risks" sub="active findings">
           <div className="grad-text" style={{ fontSize: 44, fontWeight: 700 }}>{g.risks.toLocaleString()}</div>
           <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>
-            <Badge tone="red">42 CRITICAL</Badge> <Badge tone="red">184 HIGH</Badge>
+            <Badge tone="red">{g.criticalFindings} CRITICAL</Badge> <Badge tone="red">{g.highFindings} HIGH</Badge>
           </div>
         </Panel>
       </div>
@@ -104,13 +104,13 @@ export default function CommandCenter() {
             ))}
           </div>
         </Panel>
-        <Panel title="Live environment" sub="five domains, one graph">
+        <Panel title="Live environment" sub="five domains, one graph — populated by discovery">
           <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--mono)", fontSize: 13 }}>
-            <div className="spread"><span>Network</span><Badge tone="green">611 assets</Badge></div>
-            <div className="spread"><span>Cloud</span><Badge tone="green">318 resources</Badge></div>
-            <div className="spread"><span>Vendor</span><Badge tone="green">14 vendors</Badge></div>
-            <div className="spread"><span>Hardware</span><Badge tone="green">259 devices</Badge></div>
-            <div className="spread"><span>Cryptography</span><Badge tone="red">HIGH RISK</Badge></div>
+            <div className="spread"><span>Network</span><Badge tone={networkAssets.length ? "green" : ""}>{networkAssets.length} assets</Badge></div>
+            <div className="spread"><span>Cloud</span><Badge tone={cloudResources.length ? "green" : ""}>{cloudResources.length} resources</Badge></div>
+            <div className="spread"><span>Vendor</span><Badge tone={vendors.length ? "green" : ""}>{vendors.length} vendors</Badge></div>
+            <div className="spread"><span>Hardware</span><Badge tone={hardware.length ? "green" : ""}>{hardware.length} devices</Badge></div>
+            <div className="spread"><span>Cryptography</span><Badge tone={g.risks > 0 ? "red" : ""}>{g.risks > 0 ? "FINDINGS" : "no findings yet"}</Badge></div>
           </div>
         </Panel>
       </div>
@@ -155,10 +155,10 @@ export default function CommandCenter() {
 
       {/* live change alerts */}
       <div className="grid cols-2">
-        <Panel title="Live changes" sub={rt.connected ? "realtime SSE stream" : "recent events (demo)"}>
+        <Panel title="Live changes" sub={rt.connected ? "realtime SSE stream" : "no live events yet"}>
           <Feed items={feed} />
         </Panel>
-        <Panel title="Drift watch" sub={rt.connected ? "baseline vs live — updated by stream events" : "baseline vs live (demo)"}>
+        <Panel title="Drift watch" sub={rt.connected ? "baseline vs live — updated by stream events" : "baseline vs live (no baseline yet)"}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               { k: "Network", added: 1, removed: 0, detail: "sw-dc-03 joined" },

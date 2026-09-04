@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { drift } from "../data/demo.js";
+import { drift } from "../data/initial.js";
 import { apiDrift, LiveBadge, ApiResult } from "../lib/api.js";
 
 const CATS: { key: keyof typeof drift.baseline; label: string }[] = [
@@ -43,7 +43,7 @@ export default function Drift() {
             <button className="btn sm" onClick={() => void runLiveCheck()} disabled={busy}>
               {busy ? "Checking…" : "Run live drift check"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />

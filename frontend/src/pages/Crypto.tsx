@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { algorithms, protocols, libraries } from "../data/demo.js";
+import { algorithms, protocols, libraries } from "../data/initial.js";
 
 export default function Crypto() {
   const crypto = {

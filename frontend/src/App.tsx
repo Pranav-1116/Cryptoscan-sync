@@ -26,7 +26,7 @@ import Compliance from "./pages/Compliance.jsx";
 import Governance from "./pages/Governance.jsx";
 import Sectors from "./pages/Sectors.jsx";
 import Onboarding from "./pages/Onboarding.jsx";
-import PlatformP2 from "./pages/PlatformP2.tsx";
+import PlatformP2 from "./pages/PlatformP2";
 import Evidence from "./pages/Evidence.jsx";
 import Scanners from "./pages/Scanners.jsx";
 import Timeline from "./pages/Timeline.jsx";

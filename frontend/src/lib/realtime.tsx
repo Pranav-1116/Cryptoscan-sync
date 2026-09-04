@@ -1,8 +1,9 @@
 /* Realtime event store — connects the console to the backend SSE stream
    (GET /api/v1/events/stream) with Last-Event-ID resume, auto-reconnect
-   with backoff, and auth-change awareness. When the backend is unreachable
-   or unauthenticated, a deterministic simulation keeps the UI live and is
-   labelled as such (source: "sim").
+   with backoff, and auth-change awareness. There is NO simulated/fake
+   event stream: when the backend is unreachable or the user is signed out,
+   the store stays empty (source: "off") and the UI shows zeros. Real scan
+   and discovery events appear only when the platform actually emits them.
 
    Architecture per spec §42: Backend → SSE stream → frontend event store →
    relevant UI components (ticker, toasts, live pages). No polling. */
@@ -11,7 +12,6 @@ import React, {
   createContext, useCallback, useContext, useEffect, useRef, useState,
 } from "react";
 import { getToken, isBackendLive } from "./api.js";
-import { events as demoEvents, globalState } from "../data/demo.js";
 
 export interface StreamEvent {
   id: number;
@@ -28,7 +28,7 @@ export interface Telemetry {
   latestId: number;
 }
 
-export type StreamSource = "live" | "sim" | "off";
+export type StreamSource = "live" | "off";
 
 export interface RealtimeState {
   connected: boolean;
@@ -62,16 +62,6 @@ export function severityOf(type: string): "CRITICAL" | "HIGH" | "MEDIUM" | "LOW"
   return "MEDIUM";
 }
 
-export function demoEventToStream(ev: { t: string; tag: string; text: string; severity?: string }, id: number): StreamEvent {
-  return {
-    id: -id,
-    ts: new Date().toISOString(),
-    type: `demo.${ev.tag.toLowerCase()}`,
-    source: "sim",
-    payload: { detail: ev.text, demo: true, severity: ev.severity || "LOW" },
-  };
-}
-
 /** System bookkeeping events (subscribe/dropped) — hidden from UI feeds. */
 export function isSystemEvent(type: string): boolean {
   return type.startsWith("events.") || type === "telemetry.snapshot";
@@ -79,17 +69,14 @@ export function isSystemEvent(type: string): boolean {
 
 export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<RealtimeState>(EMPTY);
-  const stateRef = useRef(state);
-  stateRef.current = state;
   const lastIdRef = useRef(0);
-  const simIdx = useRef(0);
   const retryRef = useRef(0);
 
   /* ── live SSE connection ─────────────────────────────────────────── */
   const connect = useCallback(async () => {
     const token = getToken();
     if (!token) {
-      setState((s) => ({ ...s, connected: false, source: "sim", backend: s.backend }));
+      setState((s) => ({ ...s, connected: false, source: "off", backend: s.backend }));
       return;
     }
     try {
@@ -99,7 +86,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         // no signal: the stream must stay open indefinitely
       });
       if (!resp.ok || !resp.body) {
-        setState((s) => ({ ...s, connected: false, source: "sim" }));
+        setState((s) => ({ ...s, connected: false, source: "off" }));
         throw new Error(`stream http ${resp.status}`);
       }
       retryRef.current = 0;
@@ -158,10 +145,10 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
         for (const f of frames) handleFrame(f);
       }
       // stream closed by server — reconnect
-      setState((s) => ({ ...s, connected: false, source: "sim" }));
+      setState((s) => ({ ...s, connected: false, source: "off" }));
       throw new Error("stream closed");
     } catch {
-      setState((s) => ({ ...s, connected: false, source: "sim" }));
+      setState((s) => ({ ...s, connected: false, source: "off" }));
       const backoff = Math.min(1000 * 2 ** retryRef.current, MAX_BACKOFF_MS);
       retryRef.current += 1;
       setTimeout(() => void connect(), backoff);
@@ -180,26 +167,9 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("zelinx:auth", onAuth);
   }, [connect]);
 
-  /* ── deterministic simulation fallback (backend offline / signed out) */
-  useEffect(() => {
-    if (stateRef.current.source !== "sim") return;
-    const t = setInterval(() => {
-      setState((s) => {
-        if (s.source !== "sim") return s;
-        const ev = demoEvents[simIdx.current % demoEvents.length];
-        simIdx.current += 1;
-        return {
-          ...s,
-          connected: false,
-          source: "sim",
-          events: [demoEventToStream(ev, simIdx.current), ...s.events].slice(0, EVENT_CAP),
-          lastEventAt: Date.now(),
-          eps: s.eps || globalState.eventsPerSec,
-        };
-      });
-    }, 9000);
-    return () => clearInterval(t);
-  }, []);
+  // No simulated fallback: when the backend is unreachable or the user is
+  // signed out, the store stays empty (source: "off") and the console shows
+  // zeros until a real discovery/scan actually emits events.
 
   return <Ctx.Provider value={state}>{children}</Ctx.Provider>;
 }

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { risk } from "../data/demo.js";
+import { risk } from "../data/initial.js";
 import { apiRisk, LiveBadge, ApiResult } from "../lib/api.js";
 
 export default function Risk() {
@@ -28,7 +28,7 @@ export default function Risk() {
             <button className="btn sm" onClick={() => void scoreEstate()} disabled={busy}>
               {busy ? "Scoring…" : "Score estate (live)"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />

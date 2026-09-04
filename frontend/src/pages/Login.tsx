@@ -69,7 +69,8 @@ function BrandPanel() {
 }
 
 /* Login — authenticates against the control plane (POST /api/v1/auth/login).
-   When the backend is offline the console falls back to demo mode. */
+   There is no demo mode: the console requires a sign-in and shows only real
+   data from the live platform. */
 export default function Login() {
   const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
   const registered = params.get("u") || "";
@@ -119,7 +120,7 @@ export default function Login() {
                 ? "Connecting to control plane…"
                 : backendUp
                   ? "Control plane connected · live data"
-                  : "Control plane offline · demo mode available"}
+                  : "Control plane offline — sign in when reachable"}
             </span>
           </div>
 
@@ -158,12 +159,6 @@ export default function Login() {
           <div className="auth-alt">
             <span>New to the platform?</span>
             <a href="#/register">Request an account</a>
-          </div>
-
-          <div style={{ textAlign: "center", marginTop: 14 }}>
-            <a href="#/" className="mono" style={{ fontSize: 12, color: "var(--faint)" }}>
-              continue in demo mode →
-            </a>
           </div>
 
           {token && roles.length > 0 ? (

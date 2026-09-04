@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
-import { reports } from "../data/demo.js";
+import { reports } from "../data/initial.js";
 
 export default function Reports() {
   return (

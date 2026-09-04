@@ -1,7 +1,7 @@
 /* Global search — one box across the entire environment (spec §4). */
 
 import React, { useEffect, useRef, useState } from "react";
-import { search } from "../data/demo.js";
+import { search } from "../data/initial.js";
 
 export default function SearchOverlay({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");

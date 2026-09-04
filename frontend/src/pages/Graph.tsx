@@ -85,7 +85,7 @@ export default function Graph() {
                 {busy ? "Querying…" : "Blast radius (live)"}
               </button>
             )}
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />

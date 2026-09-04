@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Bar, Table, Drawer, PageHead } from "../components/ui.jsx";
-import { algorithms } from "../data/demo.js";
+import { algorithms } from "../data/initial.js";
 
 /* Algorithm explorer (spec §11) + crypto asset detail drawer (spec §12). */
 

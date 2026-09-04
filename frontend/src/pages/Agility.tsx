@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Bar, Ring, Table, PageHead } from "../components/ui.jsx";
-import { agility } from "../data/demo.js";
+import { agility } from "../data/initial.js";
 
 export default function Agility() {
   return (

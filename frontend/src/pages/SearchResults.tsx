@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Panel, PageHead } from "../components/ui.jsx";
-import { search } from "../data/demo.js";
+import { search } from "../data/initial.js";
 
 /* Full search results page — the overlay shows the top hits, this page
    shows everything for a query (spec §4). */

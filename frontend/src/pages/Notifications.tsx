@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { notificationTypes } from "../data/demo.js";
+import { notificationTypes } from "../data/initial.js";
 
 const CHANNELS = ["inApp", "email", "webhook", "siem"] as const;
 const CHANNEL_LABEL: Record<string, string> = { inApp: "in-app", email: "email", webhook: "webhook", siem: "SIEM / SOC" };

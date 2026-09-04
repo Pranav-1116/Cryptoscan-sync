@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Bar, Table, PageHead } from "../components/ui.jsx";
-import { pqc, whatif } from "../data/demo.js";
+import { pqc, whatif } from "../data/initial.js";
 
 /* PQC migration map (spec §21): current → affected applications →
    dependencies → candidate PQC → compatibility → migration complexity. */

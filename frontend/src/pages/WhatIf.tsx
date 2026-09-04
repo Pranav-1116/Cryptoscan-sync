@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { whatif, cost } from "../data/demo.js";
+import { whatif, cost } from "../data/initial.js";
 import { apiWhatIf, LiveBadge, ApiResult } from "../lib/api.js";
 
 const SCENARIOS = [
@@ -38,7 +38,7 @@ export default function WhatIf() {
         right={
           <div className="row">
             <Badge tone="green"><span className="dot" /> CONNECTED TO FEASIBILITY ENGINE</Badge>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />
@@ -61,7 +61,7 @@ export default function WhatIf() {
           migrating <span className="grad-text" style={{ fontWeight: 700 }}>{s.from}</span> → <span className="grad-text" style={{ fontWeight: 700 }}>{s.to}</span>
         </div>
         <div className="row" style={{ marginTop: 14 }}>
-          <button className="btn primary" onClick={() => simulate(false)} disabled={busy}>▶ Simulate (demo)</button>
+          <button className="btn primary" onClick={() => simulate(false)} disabled={busy}>▶ Run analysis</button>
           <button className="btn" onClick={() => void simulate(true)} disabled={busy}>{busy ? "Running engine…" : "Simulate (live engine)"}</button>
         </div>
       </Panel>

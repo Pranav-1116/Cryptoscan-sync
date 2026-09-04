@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Bar, PageHead, Drawer } from "../components/ui.jsx";
-import { certificates, certCenter } from "../data/demo.js";
+import { certificates, certCenter } from "../data/initial.js";
 
 export default function Certificates() {
   const [sel, setSel] = useState<number | null>(null);

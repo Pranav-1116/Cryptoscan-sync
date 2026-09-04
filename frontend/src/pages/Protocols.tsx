@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Tabs, PageHead } from "../components/ui.jsx";
-import { protocols } from "../data/demo.js";
+import { protocols } from "../data/initial.js";
 
 const GROUPS = ["TLS", "SSH", "IPsec", "VPN", "QUIC"];
 

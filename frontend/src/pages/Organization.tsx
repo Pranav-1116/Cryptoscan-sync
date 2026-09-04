@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Bar, Table, PageHead } from "../components/ui.jsx";
-import { organization } from "../data/demo.js";
+import { organization } from "../data/initial.js";
 import { RegionUnit } from "../types.js";
 
 /* Global organization view (spec §34): org → region → business unit →

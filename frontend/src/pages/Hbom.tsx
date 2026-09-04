@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { hardware, bomComponents, globalState } from "../data/demo.js";
+import { hardware, bomComponents, globalState } from "../data/initial.js";
 
 export default function Hbom() {
   return (

@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Tabs, Code, PageHead } from "../components/ui.jsx";
-import { bomComponents, bomDependencies, bomDiff, bomHistory, globalState } from "../data/demo.js";
+import { bomComponents, bomDependencies, bomDiff, bomHistory, globalState } from "../data/initial.js";
 import { apiBom, LiveBadge, ApiResult } from "../lib/api.js";
 
 const VIEWS = ["Overview", "Explorer", "Diff", "History", "Export"];
@@ -29,7 +29,7 @@ export default function Cbom() {
             <button className="btn sm" onClick={() => void fetchLive()} disabled={busy}>
               {busy ? "Fetching…" : "Fetch live CBOM"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />

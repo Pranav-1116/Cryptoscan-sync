@@ -1,10 +1,10 @@
 import React from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
-import { timelineRows } from "../data/demo.js";
+import { timelineRows } from "../data/initial.js";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 
-/* Global timeline (spec §39) — real stream events first when connected,
-   deterministic demo events as baseline. */
+/* Global timeline (spec §39) — shows real stream events from the
+   control plane; nothing is rendered until events arrive. */
 
 export default function Timeline() {
   const rt = useRealtime();
@@ -18,12 +18,12 @@ export default function Timeline() {
     id: e.id,
   }));
 
-  const demoRows = timelineRows.map((r, i) => ({
+  const staticRows = timelineRows.map((r, i) => ({
     t: r.t, tag: r.tag.replace(/_/g, " "), text: r.text,
     cr: r.tag === "CERT_EXPIRED", hi: r.tag.includes("CHANGED"), id: -i - 1,
   }));
 
-  const rows = liveRows.concat(demoRows).slice(0, 60);
+  const rows = liveRows.concat(staticRows).slice(0, 60);
 
   return (
     <>
@@ -34,11 +34,11 @@ export default function Timeline() {
         right={
           <div className="row">
             {rt.connected && <Badge tone="green"><span className="dot" /> LIVE STREAM · {rt.eps} EVENTS/SEC</Badge>}
-            <span className="mono faint" style={{ fontSize: 12 }}>{rt.connected ? "REAL-TIME · UTC" : "DEMO · LAST 24H"}</span>
+            <span className="mono faint" style={{ fontSize: 12 }}>{rt.connected ? "REAL-TIME · UTC" : "NO LIVE EVENTS YET"}</span>
           </div>
         }
       />
-      <Panel title={rt.connected ? "Realtime" : "Today"} sub={rt.connected ? "events as they arrive from the control plane" : "every event, in order, with its source scanner (demo)"}>
+      <Panel title={rt.connected ? "Realtime" : "Today"} sub={rt.connected ? "events as they arrive from the control plane" : "events arrive here in order from the realtime control plane"}>
         <div className="timeline">
           {rows.map((r) => (
             <div className={`tl ${r.cr ? "cr" : r.hi ? "hi" : ""}`} key={`${r.id}-${r.t}`}>

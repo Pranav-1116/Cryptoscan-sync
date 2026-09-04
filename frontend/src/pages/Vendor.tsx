@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, Bar, PageHead } from "../components/ui.jsx";
-import { vendors } from "../data/demo.js";
+import { vendors } from "../data/initial.js";
 
 export default function Vendor() {
   return (

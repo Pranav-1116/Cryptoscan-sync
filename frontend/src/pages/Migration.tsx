@@ -1,6 +1,6 @@
 import React from "react";
 import { Badge, PageHead, Panel, Table } from "../components/ui.jsx";
-import { migrationBoard, migrationDetail, globalState } from "../data/demo.js";
+import { migrationBoard, migrationDetail, globalState } from "../data/initial.js";
 
 export default function Migration() {
   return (

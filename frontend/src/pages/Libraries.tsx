@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, Bar, PageHead } from "../components/ui.jsx";
-import { libraries } from "../data/demo.js";
+import { libraries } from "../data/initial.js";
 
 export default function Libraries() {
   return (

@@ -1,14 +1,13 @@
 import React, { useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
-import { cryptoChanges } from "../data/demo.js";
+import { cryptoChanges } from "../data/initial.js";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 
 const CATS = ["ALL", "CERTIFICATE", "PROTOCOL", "LIBRARY", "PQC", "HARDWARE", "CLOUD", "NETWORK", "ALGORITHM", "PLATFORM"];
 
 /* Live crypto changes (spec §16) — the dedicated crypto event stream
-   with per-category filtering. When the SSE stream is connected the
-   real platform/monitor events stream in; offline, deterministic demo
-   events keep the page alive (source: sim). */
+   with per-category filtering. When the SSE stream is connected the real
+   platform/monitor events stream in; offline the view is empty. */
 
 function categoryOf(type: string): string {
   const t = type.toLowerCase();
@@ -36,11 +35,11 @@ export default function CryptoChanges() {
     id: e.id,
   }));
 
-  const demoRows = cryptoChanges.map((c, i) => ({
+  const staticRows = cryptoChanges.map((c, i) => ({
     t: c.t, tag: c.category, text: c.text, severity: c.severity, id: -i - 1000,
   }));
   const rows = (cat === "ALL" ? streamRows : streamRows.filter((r) => r.tag === cat))
-    .concat(cat === "ALL" ? demoRows : demoRows.filter((r) => r.tag === cat))
+    .concat(cat === "ALL" ? staticRows : staticRows.filter((r) => r.tag === cat))
     .slice(0, 40);
 
   return (
@@ -52,7 +51,7 @@ export default function CryptoChanges() {
         right={
           <div className="row">
             <Badge tone={rt.connected ? "green" : "amber"}>
-              <span className="dot" /> {rt.connected ? `STREAMING · ${rt.eps} EVENTS/SEC` : "DEMO MODE · BACKEND OFFLINE OR SIGNED OUT"}
+              <span className="dot" /> {rt.connected ? `STREAMING · ${rt.eps} EVENTS/SEC` : "AWAITING LIVE STREAM · SIGN IN & CONNECT"}
             </Badge>
           </div>
         }
@@ -64,7 +63,7 @@ export default function CryptoChanges() {
           </button>
         ))}
       </div>
-      <Panel title={cat === "ALL" ? "All crypto changes" : `${cat} changes`} sub={rt.connected ? "live SSE stream — platform + monitor events" : "deterministic demo stream (sign in to go live)"}>
+      <Panel title={cat === "ALL" ? "All crypto changes" : `${cat} changes`} sub={rt.connected ? "live SSE stream — platform + monitor events" : "no live stream yet — sign in to connect"}>
         <div className="feed">
           {rows.length === 0 && <div className="dim" style={{ padding: 16, textAlign: "center" }}>no events in this view</div>}
           {rows.map((c, i) => (

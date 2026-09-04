@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { rbac } from "../data/demo.js";
+import { rbac } from "../data/initial.js";
 import { apiSecurity, LiveBadge, ApiResult } from "../lib/api.js";
 
 export default function Admin() {
@@ -30,7 +30,7 @@ export default function Admin() {
             <button className="btn sm" onClick={() => void enforce()} disabled={busy}>
               {busy ? "Enforcing…" : "Validate scan request (live)"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />

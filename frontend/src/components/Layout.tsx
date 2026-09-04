@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search.jsx";
-import { globalState } from "../data/demo.js";
+import { globalState } from "../data/initial.js";
 import { getToken, setToken, getUserName, apiMyGrants } from "../lib/api.js";
 
 const NAV = [
@@ -115,8 +115,8 @@ export default function Layout({ route, children }: { route: string; children: R
               {ticker.backend === null
                 ? "connecting to platform…"
                 : ticker.backend
-                  ? "production data · deterministic engine · no AI inference"
-                  : "offline · showing cached sample data"}
+                  ? "live platform · deterministic engine · no AI inference"
+                  : "offline · sign in to connect to the live platform"}
             </span>
           </div>
           <div style={{ marginTop: 10, padding: "0 8px", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)", lineHeight: 1.7 }}>
@@ -128,7 +128,7 @@ export default function Layout({ route, children }: { route: string; children: R
       <main className="main">
         <div className="livehead">
           <span className="live-dot" style={ticker.connected ? undefined : { background: "var(--amber)", boxShadow: "0 0 12px var(--amber)" }} />
-          <span className="item"><b>{ticker.connected ? "LIVE" : "DEMO"}</b></span>
+          <span className="item"><b>{ticker.connected ? "LIVE" : "IDLE"}</b></span>
           <span className="item">last event <b>{ticker.ago === null ? "—" : `${ticker.ago}s`}</b> ago</span>
           <span className="item">events/sec <b>{ticker.eps || "—"}</b></span>
           {ticker.connected ? (

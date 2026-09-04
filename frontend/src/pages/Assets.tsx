@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { assets } from "../data/demo.js";
+import { assets } from "../data/initial.js";
 
 export default function Assets() {
   return (

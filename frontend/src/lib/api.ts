@@ -1,10 +1,9 @@
-/* End-to-end API bridge — every call first tries the real backend through
-   the Vite /api proxy (which forwards to the FastAPI control plane on
-   :8010), and falls back to the deterministic demo dataset when it is
-   offline. Each result is tagged with its source so pages can show
-   LIVE API vs DEMO data badges. */
+/* End-to-end API bridge — every call goes to the live backend through
+   the Vite /api proxy (FastAPI control plane on :8010). There is no demo or
+   fallback dataset: when the backend is unreachable the result is tagged
+   source:"offline" with data:null and the UI renders zeros/empty. */
 
-export type ApiSource = "live" | "demo";
+export type ApiSource = "live" | "offline";
 
 export interface ApiResult<T = unknown> {
   source: ApiSource;
@@ -76,10 +75,10 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
       headers,
       ...init,
     });
-    if (!resp.ok) return { source: "demo", data: null, error: `HTTP ${resp.status}` };
+    if (!resp.ok) return { source: "offline", data: null, error: `HTTP ${resp.status}` };
     return { source: "live", data: (await resp.json()) as T };
   } catch (e) {
-    return { source: "demo", data: null, error: String(e) };
+    return { source: "offline", data: null, error: String(e) };
   }
 }
 
@@ -577,7 +576,7 @@ export async function apiCbomVersions(): Promise<ApiResult<any[]>> {
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any[]>;
-    return { source: "live", ok: true, data: body.versions || [], latest: body.latest_version };
+    return { source: "live", ok: true, data: body.versions || [] };
   } catch (e) { return { source: "live", ok: false, error: String(e), data: [] } as ApiResult<any[]>; }
 }
 
@@ -594,7 +593,7 @@ export async function apiHealthSweep(): Promise<ApiResult<any>> {
   } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
 }
 
-export async function apiPostMigrationValidate(payload): Promise<ApiResult<any>> {
+export async function apiPostMigrationValidate(payload: Record<string, unknown>): Promise<ApiResult<any>> {
   try {
     const resp = await fetch(`/api/v1/automation/post-migration/validate`, {
       method: "POST",

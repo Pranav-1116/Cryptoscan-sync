@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Bar, Table, PageHead, Code } from "../components/ui.jsx";
-import { scanners, globalState, agents } from "../data/demo.js";
+import { scanners, globalState, agents } from "../data/initial.js";
 import { apiDiscover, LiveBadge, ApiResult } from "../lib/api.js";
 
 export default function Scanners() {
@@ -33,7 +33,7 @@ export default function Scanners() {
             <button className="btn sm" onClick={() => void runDiscovery()} disabled={busy}>
               {busy ? "Discovering…" : "Run discovery (live)"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />
@@ -88,9 +88,9 @@ export default function Scanners() {
         <Panel title="Scan policy" sub="safe by default — read-only, scoped, scheduled">
           <div className="mono" style={{ fontSize: 12.5, display: "flex", flexDirection: "column", gap: 8 }}>
             <div><span className="faint">policy:</span> SAFE · READ_ONLY</div>
-            <div><span className="faint">scope:</span> 10.0.0.0/8 · aws:123456789012 · azure:sub-pay · gcp:pay-prod</div>
-            <div><span className="faint">excluded:</span> 10.99.0.0/16 · legacy-mainframe</div>
-            <div><span className="faint">schedule:</span> sun 02:00–04:00 utc · + targeted rescans on drift</div>
+            <div><span className="faint">scope:</span> not configured — add targets in Onboarding</div>
+            <div><span className="faint">excluded:</span> none configured</div>
+            <div><span className="faint">schedule:</span> set during onboarding · targeted rescans on drift</div>
             <div><span className="faint">depth:</span> full (config · binaries · firmware)</div>
             <div><Badge tone="green">CREDENTIALS IN VAULT · NEVER STORED IN STATE</Badge></div>
           </div>

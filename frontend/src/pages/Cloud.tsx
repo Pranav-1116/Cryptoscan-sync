@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Tabs, PageHead } from "../components/ui.jsx";
-import { cloudResources } from "../data/demo.js";
+import { cloudResources } from "../data/initial.js";
 
 const PROVIDERS = ["All", "AWS", "Azure", "GCP"];
 

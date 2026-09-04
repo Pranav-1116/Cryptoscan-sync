@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { governance } from "../data/demo.js";
+import { governance } from "../data/initial.js";
 
 export default function Governance() {
   return (

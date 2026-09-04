@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { hardware, firmwareRows } from "../data/demo.js";
+import { hardware, firmwareRows } from "../data/initial.js";
 
 export default function Hardware() {
   return (

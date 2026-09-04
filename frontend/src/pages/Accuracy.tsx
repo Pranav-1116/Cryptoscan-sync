@@ -1,6 +1,6 @@
 import React from "react";
 import { Panel, Badge, Bar, Table, PageHead } from "../components/ui.jsx";
-import { accuracy, accuracyMean } from "../data/demo.js";
+import { accuracy, accuracyMean } from "../data/initial.js";
 
 /* Real benchmark numbers — the 9 datasets / 88 cases corpus that runs in
    CI. Never fabricated: precision / recall / F1 come from the labeled

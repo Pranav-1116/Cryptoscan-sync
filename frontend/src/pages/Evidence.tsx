@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Code, PageHead } from "../components/ui.jsx";
-import { evidenceChain } from "../data/demo.js";
+import { evidenceChain } from "../data/initial.js";
 import { apiEvidence, LiveBadge, ApiResult } from "../lib/api.js";
 
 export default function Evidence() {
@@ -28,7 +28,7 @@ export default function Evidence() {
             <button className="btn sm" onClick={() => void verify()} disabled={busy}>
               {busy ? "Verifying…" : "Verify chain (live)"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE — DEMO"} />}
+            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />

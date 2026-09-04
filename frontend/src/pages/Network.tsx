@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
-import { networkAssets } from "../data/demo.js";
+import { networkAssets } from "../data/initial.js";
 
 /* Interactive topology (spec §6) — click any asset for its detail panel. */
 
