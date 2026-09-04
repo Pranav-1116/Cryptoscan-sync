@@ -8,9 +8,16 @@ attached (key sizes, DISALLOWED suites, quantum impact).
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
-from shared_models.algorithm_registry import parse_algorithm
+try:  # the platform's shared algorithm registry ships richer verdicts; the
+    # agent must still run standalone on a laptop without the full repo on
+    # PYTHONPATH, so fall back to a minimal stdlib-only parser.
+    from shared_models.algorithm_registry import parse_algorithm
+except ImportError:  # pragma: no cover - exercised only outside the platform
+    def parse_algorithm(name: str) -> Any:
+        return SimpleNamespace(canonical=name or "TLS", components=[])
 
 WEAK_TLS_VERSIONS = {"SSLv3", "TLSv1.0", "TLSv1.1", "TLSv1", "SSLv2"}
 WEAK_SUITE_STATUSES = {"DISALLOWED", "DEPRECATED"}

@@ -228,6 +228,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
+    # Runtime findings MUST be registered before scans.router: scans exposes a
+    # catch-all GET /scans/{scan_id} which would otherwise shadow the static
+    # path /scans/runtime-findings (FastAPI matches routes in include order).
+    app.include_router(runtime.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(findings.router, prefix=prefix)
     app.include_router(drift.router, prefix=prefix)
@@ -267,7 +271,6 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(audit_export.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
     app.include_router(api_keys.router, prefix=prefix)
-    app.include_router(runtime.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)
     app.include_router(agility.router, prefix=prefix)

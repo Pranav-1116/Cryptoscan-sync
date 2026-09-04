@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import socket
 from typing import Any
 
 from runtime.agent.library_risk import assess_library
@@ -42,8 +43,20 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     listening_sockets = _listening_sockets(base)
 
+    # Skip the scanner's own process (and its parent launcher, usually the
+    # shell/cli wrapper): cataloguing the tool itself is noise that inflates
+    # findings. Only applied when reading the real /proc.
+    skip_pids: set[int] = set()
+    if base == "/proc":
+        skip_pids.add(os.getpid())
+        ppid = os.getppid()
+        if ppid and ppid != 1:
+            skip_pids.add(ppid)
+
     for entry in _numeric_dirs(base):
         pid = int(entry)
+        if pid in skip_pids:
+            continue
         comm = _read_first_line(base, pid, "comm") or str(pid)
         cmdline = _read_cmdline(base, pid)
         maps = _read_maps(base, pid)
@@ -79,7 +92,7 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
                 )
 
     return {
-        "host": os.environ.get("HOSTNAME", "unknown"),
+        "host": _host_identifier(),
         "process_count": len(inventory),
         "processes_with_tls_libraries": sum(1 for p in inventory if p["tls_libraries"]),
         "listening_processes": sum(1 for p in inventory if p["listening_ports"]),
@@ -91,6 +104,22 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # helpers (all tolerant of missing/permission-denied /proc entries)
 # --------------------------------------------------------------------------- #
+
+
+def _host_identifier() -> str:
+    """Best-effort hostname for this host.
+
+    HOSTNAME is exported by most shells/systemd but is not guaranteed; fall
+    back to the kernel-reported nodename, then "unknown".
+    """
+    name = os.environ.get("HOSTNAME") or os.environ.get("CRYPTOSCAN_HOSTNAME")
+    if name:
+        return name.strip() or "unknown"
+    try:
+        return socket.gethostname() or "unknown"
+    except OSError:
+        return "unknown"
+
 
 
 def _numeric_dirs(base: str) -> list[str]:

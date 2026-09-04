@@ -29,6 +29,7 @@ import Onboarding from "./pages/Onboarding.jsx";
 import PlatformP2 from "./pages/PlatformP2";
 import Evidence from "./pages/Evidence.jsx";
 import Scanners from "./pages/Scanners.jsx";
+import Runtime from "./pages/Runtime.jsx";
 import Timeline from "./pages/Timeline.jsx";
 import Reports from "./pages/Reports.jsx";
 import Integrations from "./pages/Integrations.jsx";
@@ -72,6 +73,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/platform": PlatformP2,
   "/evidence": Evidence,
   "/scanners": Scanners,
+  "/runtime": Runtime,
   "/timeline": Timeline,
   "/reports": Reports,
   "/integrations": Integrations,
