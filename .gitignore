@@ -61,3 +61,6 @@ logs/
 
 # delivery artifacts (bundle/patch exports — not product code)
 frontend/public/
+
+# Scanner output artifacts
+scan-results/
