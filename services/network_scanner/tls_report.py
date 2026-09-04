@@ -23,6 +23,27 @@ def _names(items) -> list[str]:
     return out
 
 
+def _cipher_verdict(c: dict) -> str:
+    """Derive a clear verdict from the negotiated parameters (the registry can
+    return UNKNOWN for TLS 1.3 codepoint names even when they are strong)."""
+    suite = (c.get("cipher_suite") or "").upper()
+    mode = (c.get("encryption_mode") or "").upper()
+    tls = (c.get("tls_version") or "").upper()
+    reg = (c.get("status") or "").upper()
+    weak_tokens = ("RC4", "3DES", "DES-", "NULL", "EXPORT", "MD5", "ANON")
+    if any(t in suite for t in weak_tokens):
+        return "WEAK (disallowed cipher)"
+    if "CHACHA20" in suite or mode == "GCM" or "GCM" in suite:
+        if tls >= "TLSV1.3":
+            return "STRONG (TLS 1.3 AEAD)"
+        return "OK (AEAD)"
+    if mode == "CBC" or "CBC" in suite:
+        return "REVIEW (CBC / Lucky13 hardening)"
+    if reg and reg not in ("UNKNOWN",):
+        return reg
+    return "REVIEW"
+
+
 def report(f: dict) -> None:
     endpoint = f.get("endpoint", "?")
     status = f.get("status", "?")
@@ -30,13 +51,19 @@ def report(f: dict) -> None:
     print(f"● {endpoint}  —  {status}")
 
     if status != "OK":
-        print(f"    error: {f.get('error') or 'no TLS result (DNS/timeout/refused)'}")
+        print(f"    error: {f.get('error') or 'no TLS result (DNS/timeout/refused/plain-HTTP)'}")
         return
 
+    enc_algo = c.get("encryption_algorithm") or ""
+    enc_mode = c.get("encryption_mode") or ""
+    kx = c.get("key_exchange_algorithm") or ""
+    alpn = c.get("alpn") or ""
+    cipher_desc = f"{enc_algo}-{enc_mode}" if enc_algo and enc_mode else c.get("cipher_suite")
     print(
         f"    negotiated : {c.get('tls_version')} | {c.get('cipher_suite')} "
-        f"| {c.get('encryption_algorithm')}-{c.get('key_size')}-{c.get('encryption_mode')} "
-        f"| verdict={c.get('status')}"
+        f"| {cipher_desc} key={c.get('key_size')} kx={kx or '-'}"
+        + (f" alpn={alpn}" if alpn else "")
+        + f" | verdict={_cipher_verdict(c)}"
     )
 
     vf = f.get("version_floor") or {}
@@ -78,10 +105,14 @@ def report(f: dict) -> None:
 
     rn = f.get("renegotiation") or {}
     if rn:
-        print(
-            f"    renegotiatn: secure={rn.get('secure_renegotiation')} "
-            f"client-initiated={rn.get('client_renegotiation')}"
-        )
+        tls = (c.get("tls_version") or "").upper()
+        if tls >= "TLSV1.3":
+            print("    renegotiatn: n/a (renegotiation removed in TLS 1.3)")
+        else:
+            print(
+                f"    renegotiatn: secure={rn.get('secure_renegotiation')} "
+                f"client-initiated={rn.get('client_renegotiation')}"
+            )
 
     issues = f.get("policy_issues") or []
     if issues:
