@@ -64,21 +64,24 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
         containerized = _is_containerized(base, pid)
         ports = listening_sockets.get(pid, [])
 
-        row: dict[str, Any] = {
-            "pid": pid,
-            "process_name": comm,
-            "cmdline": cmdline[:200],
-            "tls_libraries": [lib["library"] for lib in libs],
-            "library_details": libs,
-            "containerized": containerized,
-            "listening_ports": ports,
-            "runtime": _runtime_of(comm, cmdline, maps),
-        }
-        inventory.append(row)
-
+        # Resolve each library's real version (via package manager) and attach
+        # the risk verdict to the inventory entry, so callers can see ALLOWED
+        # and UNKNOWN (unmanaged/bundled) libraries too — not just risks.
+        resolved_libs: list[dict[str, Any]] = []
         for lib in libs:
             resolved = _resolve_library_version(lib)
             verdict = assess_library(lib["library"], resolved["version"])
+            enriched = {
+                **lib,
+                "version": resolved["version"] or lib.get("version"),
+                "version_source": resolved["source"],
+                "package": resolved["package"],
+                "package_version": resolved["package_version"],
+                "status": verdict["status"],
+                "library_name": verdict["library_name"],
+                "notes": verdict["notes"],
+            }
+            resolved_libs.append(enriched)
             # Emit a finding only for a *positive* risk verdict. UNKNOWN means
             # the version could not be established (unmanaged bundled lib),
             # which is an inventory observation, not a defect.
@@ -97,6 +100,19 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
                         "containerized": containerized,
                     }
                 )
+
+        row: dict[str, Any] = {
+            "pid": pid,
+            "process_name": comm,
+            "cmdline": cmdline[:200],
+            "tls_libraries": [lib["library"] for lib in resolved_libs],
+            "library_details": resolved_libs,
+            "containerized": containerized,
+            "listening_ports": ports,
+            "runtime": _runtime_of(comm, cmdline, maps),
+        }
+        inventory.append(row)
+
 
     return {
         "host": _host_identifier(),
