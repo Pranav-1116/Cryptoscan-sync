@@ -160,11 +160,13 @@ export default function Runtime() {
                 rows={findings.map((f) => {
                   const e = f.extra ?? {};
                   const lib = [e.library, e.library_version].filter(Boolean).join(" ") || f.algorithm || "—";
+                  const pkgLabel: string = e.package ? ` via ${e.package}${e.version_source ? ` (${e.version_source})` : ""}` : "";
+                  const pkg = e.package ? <span className="dim mono">{pkgLabel}</span> : null;
                   const ports = (e.listening_ports as number[] | undefined) ?? [];
                   return [
                     <span className="mono">{f.hostname}</span>,
                     <span>{f.process_name}{f.pid ? <span className="dim mono"> · {f.pid}</span> : null}</span>,
-                    <span className="mono">{lib}</span>,
+                    <span className="mono">{lib}{pkg}</span>,
                     <Badge tone={statusTone((e.library_status as string) ?? f.status)}>{(e.library_status as string) ?? f.status ?? "—"}</Badge>,
                     <span className="mono num">{ports.length ? ports.join(", ") : "—"}</span>,
                     <span className="mono">{fmtAgo(f.last_seen_at)}</span>,

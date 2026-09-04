@@ -14,8 +14,14 @@ From `/proc/<pid>/maps`, `comm`, `cmdline` and the system TCP tables:
 
 - **TLS libraries**: OpenSSL, GnuTLS, NSS/NSPR, wolfSSL, mbedTLS, BoringSSL,
   LibreSSL, plus JVM (`libjvm.so`) and Go (`crypto/tls`) runtimes.
-- **Library versions** parsed from the mapped `.so` name, with a risk verdict
+- **Library versions** resolved from the real OS package metadata (`dpkg` on
+  Debian/Parrot/Ubuntu/Kali, `rpm` on Fedora/RHEL), with a risk verdict
   (`CURRENT` / `RESTRICTED` / `DEPRECATED` / `DISALLOWED`) and EOL notes.
+  The mapped `.so` *soname* is only an ABI tag — `libgnutls.so.30` ships with
+  every modern GnuTLS 3.3–3.8 and `libssl.so.3` spans OpenSSL 3.0–3.5 — so the
+  agent never flags a library as deprecated from the soname alone; if a
+  library is unmanaged (a browser's bundled copy) it is reported as an
+  inventory observation, not a false EOL finding.
 - **Listening TCP ports** per process (potential TLS endpoints).
 - **Containerization** (docker / containerd / kubernetes / lxc markers).
 

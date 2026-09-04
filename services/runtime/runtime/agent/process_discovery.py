@@ -77,14 +77,21 @@ def scan_processes(base: str = "/proc") -> dict[str, Any]:
         inventory.append(row)
 
         for lib in libs:
-            verdict = assess_library(lib["library"], lib.get("version"))
+            resolved = _resolve_library_version(lib)
+            verdict = assess_library(lib["library"], resolved["version"])
+            # Emit a finding only for a *positive* risk verdict. UNKNOWN means
+            # the version could not be established (unmanaged bundled lib),
+            # which is an inventory observation, not a defect.
             if verdict["status"] in {"DISALLOWED", "DEPRECATED", "RESTRICTED"}:
                 findings.append(
                     {
                         "process_name": comm,
                         "pid": pid,
                         "library": lib["library"],
-                        "version": lib.get("version"),
+                        "version": resolved["version"],
+                        "version_source": resolved["source"],
+                        "package": resolved["package"],
+                        "package_version": resolved["package_version"],
                         **verdict,
                         "listening_ports": ports,
                         "containerized": containerized,
@@ -151,6 +158,36 @@ def _read_maps(base: str, pid: int) -> str:
             return handle.read()
     except OSError:
         return ""
+
+
+def _resolve_library_version(lib: dict[str, Any]) -> dict[str, Any]:
+    """Return {package, package_version, version, source} for a matched lib.
+
+    The mapped filename only carries an ABI soname (e.g. libssl.so.3,
+    libgnutls.so.30), which is *not* a release version. Prefer the real
+    upstream version owned by the OS package manager; fall back to the
+    filename-derived tag (kept only for display, treated as unversioned by the
+    risk layer) for unmanaged/bundled copies.
+    """
+    from runtime.agent.version_resolve import resolve_path
+
+    info = resolve_path(lib.get("path"))
+    if info.get("version"):
+        return {
+            "package": info["package"],
+            "package_version": info["package_version"],
+            "version": info["version"],
+            "source": info["source"],
+        }
+    # No OS-package owner (browser-bundled NSS/BoringSSL, snap/flatpak/opt).
+    # Report the filename tag for inventory but let the risk layer return
+    # UNKNOWN so no false EOL verdict is emitted.
+    return {
+        "package": None,
+        "package_version": None,
+        "version": lib.get("version"),
+        "source": lib.get("note", "filename"),
+    }
 
 
 def _library_versions(maps: str) -> list[dict[str, Any]]:
