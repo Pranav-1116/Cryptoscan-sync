@@ -39,8 +39,10 @@ const TONE: Record<string, string> = {
   DISALLOWED: "red",
   DEPRECATED: "amber",
   RESTRICTED: "amber",
+  ALLOWED: "green",
   OK: "green",
   CURRENT: "green",
+  UNKNOWN: "",
 };
 
 function statusTone(status: string | null): string {
@@ -86,6 +88,20 @@ export default function Runtime() {
     return Array.from(map.values());
   }, [findings]);
 
+  // risks first, then unknown (unmanaged), then healthy/current
+  const statusRank = (s: string | null): number =>
+    ({ DISALLOWED: 0, DEPRECATED: 1, RESTRICTED: 2, UNKNOWN: 3, ALLOWED: 4 } as Record<string, number>)[(s ?? "UNKNOWN").toUpperCase()] ?? 5;
+  const orderedFindings = useMemo(
+    () =>
+      [...findings].sort((a, b) => {
+        const sa = ((a.extra ?? {}).library_status as string) ?? a.status ?? "UNKNOWN";
+        const sb = ((b.extra ?? {}).library_status as string) ?? b.status ?? "UNKNOWN";
+        return statusRank(sa) - statusRank(sb);
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [findings],
+  );
+
   const hasData = findings.length > 0;
 
   return (
@@ -128,16 +144,27 @@ export default function Runtime() {
               </div>
               <div className="dim mono" style={{ fontSize: 12, marginTop: 6 }}>of {summary.total_findings ?? findings.length} total observations</div>
             </Panel>
-            <Panel title="Top cryptography" sub="observed algorithm families (24h)">
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                {(summary.top_algorithms ?? []).length === 0 && <span className="dim">—</span>}
-                {(summary.top_algorithms ?? []).map((a) => (
-                  <div key={a.algorithm} className="spread mono" style={{ fontSize: 12.5 }}>
-                    <span>{a.algorithm}</span>
-                    <span className="num">{a.observations}</span>
+            <Panel title="Library status" sub="verified versions across reporting hosts">
+              {(() => {
+                const byStatus = new Map<string, number>();
+                for (const f of findings) {
+                  const s = ((f.extra ?? {}).library_status as string) ?? f.status ?? "UNKNOWN";
+                  byStatus.set(s, (byStatus.get(s) ?? 0) + 1);
+                }
+                const order = ["DISALLOWED", "DEPRECATED", "RESTRICTED", "UNKNOWN", "ALLOWED"];
+                const entries = order.filter((s) => byStatus.has(s)).map((s) => [s, byStatus.get(s) ?? 0] as [string, number]);
+                if (entries.length === 0) return <span className="dim">—</span>;
+                return (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                    {entries.map(([s, n]) => (
+                      <div key={s} className="spread mono" style={{ fontSize: 12.5 }}>
+                        <Badge tone={statusTone(s)}>{s}</Badge>
+                        <span className="num">{n}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
             </Panel>
           </div>
 
@@ -153,26 +180,27 @@ export default function Runtime() {
                 ])}
               />
             </Panel>
-            <Panel title="Runtime observations" sub="click a row for full detail">
+            <Panel title="Runtime observations" sub="every verified TLS library — risks first, then unmanaged, then current (click for detail)">
               <Table
                 clickable
                 head={["host", "process", "library", "status", "port(s)", "seen"]}
-                rows={findings.map((f) => {
+                rows={orderedFindings.map((f) => {
                   const e = f.extra ?? {};
                   const lib = [e.library, e.library_version].filter(Boolean).join(" ") || f.algorithm || "—";
                   const pkgLabel: string = e.package ? ` via ${e.package}${e.version_source ? ` (${e.version_source})` : ""}` : "";
                   const pkg = e.package ? <span className="dim mono">{pkgLabel}</span> : null;
                   const ports = (e.listening_ports as number[] | undefined) ?? [];
+                  const st = (e.library_status as string) ?? f.status ?? "UNKNOWN";
                   return [
                     <span className="mono">{f.hostname}</span>,
                     <span>{f.process_name}{f.pid ? <span className="dim mono"> · {f.pid}</span> : null}</span>,
                     <span className="mono">{lib}{pkg}</span>,
-                    <Badge tone={statusTone((e.library_status as string) ?? f.status)}>{(e.library_status as string) ?? f.status ?? "—"}</Badge>,
+                    <Badge tone={statusTone(st)}>{st}</Badge>,
                     <span className="mono num">{ports.length ? ports.join(", ") : "—"}</span>,
                     <span className="mono">{fmtAgo(f.last_seen_at)}</span>,
                   ];
                 })}
-                onSelect={(i: number) => setSelected(findings[i] ?? null)}
+                onSelect={(i: number) => setSelected(orderedFindings[i] ?? null)}
               />
             </Panel>
           </div>
