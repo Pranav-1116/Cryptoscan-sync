@@ -12,7 +12,7 @@ export default function Certificates() {
         crumb="inventory / certificates"
         title="Certificates"
         sub="Inventory · expiration calendar · chains · CA relationships · algorithm · key size · trust store · usage · changes"
-        right={<Badge tone="cyan"><span className="dot" /> 7,821 CERTIFICATES</Badge>}
+        right={<Badge tone={certificates.length ? "cyan" : ""}><span className="dot" /> {certificates.length.toLocaleString()} CERTIFICATES</Badge>}
       />
       <div className="grid cols-5" style={{ marginBottom: 16 }}>
         {[
@@ -47,24 +47,22 @@ export default function Certificates() {
         />
       </Panel>
       {detail && <CertDrawer cert={detail} onClose={() => setSel(null)} />}
-      <Panel title="Expiration calendar" sub="next 90 days" className="mt">
+      <Panel title="Expiration calendar" sub="certificate lifetimes from the live inventory" className="mt">
+        {certificates.length ? (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            { cn: "api.payments.internal", days: 12, tone: "red" },
-            { cn: "pos-gw.example", days: 4, tone: "red" },
-            { cn: "db.internal", days: 88, tone: "amber" },
-            { cn: "gw.vpn.internal", days: 210, tone: "green" },
-            { cn: "payments.internal", days: 334, tone: "green" },
-          ].map((c) => (
+          {certificates.slice(0, 8).map((c) => (
             <div key={c.cn} className="spread" style={{ fontSize: 13 }}>
               <span className="mono">{c.cn}</span>
               <div style={{ flex: 1, maxWidth: 320 }}>
-                <Bar value={c.days / 365} tone={c.tone} />
+                <Bar value={Math.max(0, Math.min(1, c.days / 365))} tone={c.days < 30 ? "red" : c.days < 90 ? "amber" : "green"} />
               </div>
               <span className="mono">{c.days} days</span>
             </div>
           ))}
         </div>
+        ) : (
+          <div className="dim" style={{ fontSize: 13 }}>No certificates discovered yet — run a scan to populate the expiration calendar.</div>
+        )}
       </Panel>
     </>
   );
@@ -77,27 +75,22 @@ function CertDrawer({ cert, onClose }: { cert: { cn: string; sig: string; key: s
         <Badge>{cert.status}</Badge>
         <Badge tone={cert.days < 30 ? "red" : cert.days < 90 ? "amber" : "green"}>{cert.days} DAYS LEFT</Badge>
       </div>
-      <Panel title="Certificate chain" sub="CA relationships" frame>
+      <Panel title="Certificate" sub="parsed properties" frame>
         <div className="tree">
-          ROOT CA — root-ca.internal (RSA-4096)<br />
-          {"  └── INTERMEDIATE — org-ca.internal (RSA-3072)"}<br />
-          {"      └── "}<span className="hl">{cert.cn}</span> <span className="faint">({cert.sig})</span><br />
-          <br />
-          trust store: system.jks · anchors verified ✓
+          CN: <span className="hl">{cert.cn}</span><br />
+          signature: {cert.sig}<br />
+          key: {cert.key} · SAN entries: {cert.san}<br />
+          EKU: {cert.eku} · owner: {cert.owner}
         </div>
       </Panel>
-      <Panel title="Usage" sub="where this certificate is deployed" frame className="mt">
-        <div className="tree">
-          {"├── 3 load balancers"}<br />
-          {"├── 8 applications"}<br />
-          {"├── 2 VPN gateways"}<br />
-          {"└── 1 HSM"}
+      <Panel title="Usage" sub="where this certificate is deployed (from the dependency graph)" frame className="mt">
+        <div className="dim" style={{ fontSize: 12.5 }}>
+          Deployment edges are derived from the live CBOM dependency graph — link this certificate after a scan to see the assets that consume it.
         </div>
       </Panel>
       <Panel title="Evidence" sub="linked artifacts" frame className="mt">
         <div className="mono dim" style={{ fontSize: 12 }}>
-          ev-00921 · certificate parser · 99%<br />
-          ev-00920 · artifact scan · 99%
+          Evidence records are linked after a scan.
         </div>
         <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
       </Panel>

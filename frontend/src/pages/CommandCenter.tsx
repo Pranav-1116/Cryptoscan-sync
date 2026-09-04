@@ -161,10 +161,10 @@ export default function CommandCenter() {
         <Panel title="Drift watch" sub={rt.connected ? "baseline vs live — updated by stream events" : "baseline vs live (no baseline yet)"}>
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
-              { k: "Network", added: 1, removed: 0, detail: "sw-dc-03 joined" },
-              { k: "Cryptography", added: 1, removed: 0, detail: "ML-KEM-768 now active" },
-              { k: "Firmware", added: 0, removed: 0, detail: "fw-edge-01 PAN-OS 11.1.1 → 11.1.2" },
-              { k: "PQC readiness", added: 1, removed: 0, detail: "HYBRID_READY → PQC_READY" },
+              { k: "Network", added: 0, removed: 0, detail: "no baseline yet" },
+              { k: "Cloud", added: 0, removed: 0, detail: "no baseline yet" },
+              { k: "Cryptography", added: 0, removed: 0, detail: "no baseline yet" },
+              { k: "Firmware", added: 0, removed: 0, detail: "no baseline yet" },
             ].map((d) => (
               <div className="spread" key={d.k} style={{ fontSize: 13 }}>
                 <span>{d.k}</span>

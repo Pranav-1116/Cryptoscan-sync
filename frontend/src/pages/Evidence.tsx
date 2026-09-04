@@ -24,7 +24,7 @@ export default function Evidence() {
         sub="Finding → observation → evidence → source → timestamp → hash → previous evidence — every claim is reproducible"
         right={
           <div className="row">
-            <Badge tone="green"><span className="dot" /> EVIDENCE HEALTH 99.8%</Badge>
+            <Badge tone=""><span className="dot" /> {evidenceChain.length} EVIDENCE RECORDS</Badge>
             <button className="btn sm" onClick={() => void verify()} disabled={busy}>
               {busy ? "Verifying…" : "Verify chain (live)"}
             </button>
@@ -37,6 +37,17 @@ export default function Evidence() {
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
         </Panel>
       )}
+      {evidenceChain.length === 0 && (
+        <Panel className="mt" title="No evidence yet">
+          <div className="dim" style={{ fontSize: 13.5 }}>
+            Evidence records are produced by scans. Run discovery and a scan against your estate; each
+            finding, observation, source and dependency is recorded with a detection method, confidence
+            and an append-only hash chain (each record references the previous record's hash).
+          </div>
+        </Panel>
+      )}
+      {evidenceChain.length > 0 && (
+      <>
       <div className="grid cols-2">
         <Panel title="Evidence chain" sub="select a link to inspect it">
           <Table
@@ -59,21 +70,24 @@ export default function Evidence() {
             <div><span className="faint">confidence:</span> <Badge tone="green">{(e.confidence * 100).toFixed(0)}%</Badge></div>
             <div><span className="faint">first seen:</span> <span className="mono">{e.firstSeen}</span></div>
             <div><span className="faint">last seen:</span> <span className="mono">{e.lastSeen}</span></div>
-            <div><span className="faint">changed at:</span> <span className="mono">2026-09-01 09:41:22 UTC</span></div>
             <div><span className="faint">source hash:</span> <span className="mono">{e.hash}</span></div>
             <div><span className="faint">previous evidence:</span> {e.prev ? <a className="mono" href="#/evidence">{e.prev}</a> : <span className="faint">root of chain</span>}</div>
           </div>
         </Panel>
       </div>
       <Panel title="Integrity" sub="the chain is append-only — tampering breaks the hashes" className="mt">
-        <Code>{`ev-00921 (finding)
-  └── ev-00920 (observation)     prev: ev-00881
-        └── ev-00919 (source)    prev: ev-00880
-              └── ev-00918 (dep) prev: ev-00862
+        <Code>{`record (finding)
+  └── observation      prev: <hash>
+        └── source     prev: <hash>
+              └── dep  prev: <hash>
 
-hash(ev-00920) = sha256("observation|artifact scan|/etc/tls/payments.crt|0x0412|...")
-verify: recompute → compare → immutable audit trail`}</Code>
+hash(record) = sha256("<kind>|<method>|<location>|<evidence bytes>")
+verify: recompute each hash → compare with stored → any break fails the chain.
+
+Records appear here after the first scan.`}</Code>
       </Panel>
+      </>
+      )}
     </>
   );
 }

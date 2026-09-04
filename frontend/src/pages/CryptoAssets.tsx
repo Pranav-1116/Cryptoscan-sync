@@ -23,7 +23,7 @@ export default function CryptoAssets() {
         crumb="inventory / crypto assets"
         title="Crypto assets"
         sub="Algorithm explorer — usage, assets, quantum status, confidence. Click a row for the full asset detail."
-        right={<Badge tone="cyan"><span className="dot" /> 42,391 CRYPTO ASSETS</Badge>}
+        right={<Badge tone={algorithms.length ? "cyan" : ""}><span className="dot" /> {algorithms.length.toLocaleString()} CRYPTO ASSETS</Badge>}
       />
       <div className="tabs">
         {["all", "quantum vulnerable", "quantum safe", "critical / high"].map((t, i) => (
@@ -66,22 +66,15 @@ function DetailDrawer({ name, onClose }: { name: string; onClose: () => void }) 
         <Badge>{alg.quantum}</Badge>
         <Badge>{alg.priority} PRIORITY</Badge>
       </div>
-      <div className="tree" style={{ marginBottom: 16 }}>
-        Used by:<br />
-        {" ├── 184 applications"}<br />
-        {" ├── 42 APIs"}<br />
-        {" ├── 17 certificates"}<br />
-        {" ├── 8 load balancers"}<br />
-        {" └── 3 HSMs"}
-      </div>
-      <Panel title="Dependencies" sub="graph edges" frame>
-        {["OpenSSL 3.5.1", "JCA/JCE JDK 21", "PKCS#11 3.0"].map((d) => <Badge key={d}>{d}</Badge>)}
+      <div className="kpi" style={{ marginBottom: 8 }}><span className="k">usages</span><span className="v">{alg.usageCount.toLocaleString()}</span></div>
+      <div className="kpi" style={{ marginBottom: 8 }}><span className="k">assets</span><span className="v">{alg.assets.toLocaleString()}</span></div>
+      <div className="kpi" style={{ marginBottom: 16 }}><span className="k">in use</span><span className="v">{alg.usage ? "yes" : "no"}</span></div>
+      <Panel title="Dependencies" sub="graph edges from the CBOM">
+        <span className="dim" style={{ fontSize: 12.5 }}>Dependency edges are derived from the live CBOM — none linked to a dependency graph yet.</span>
       </Panel>
       <Panel title="Evidence" sub="linked artifacts" frame className="mt">
         <div className="mono dim" style={{ fontSize: 12 }}>
-          ev-00921 · certificate parser · 99%<br />
-          ev-00920 · artifact scan · 99%<br />
-          ev-00919 · network agent · 100%
+          Detected via {alg.library} · confidence {(alg.confidence * 100).toFixed(1)}%
         </div>
         <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
       </Panel>

@@ -4,20 +4,20 @@ import { networkAssets } from "../data/initial.js";
 
 /* Interactive topology (spec §6) — click any asset for its detail panel. */
 
-const TOPO: { id: string; label: string; x: number; y: number; kind: string }[] = [
-  { id: "internet", label: "INTERNET", x: 380, y: 30, kind: "external" },
-  { id: "fw-edge-01", label: "FIREWALL", x: 380, y: 110, kind: "firewall" },
-  { id: "rtr-core-1", label: "ROUTER", x: 380, y: 190, kind: "router" },
-  { id: "sw-dc-01", label: "SWITCH", x: 380, y: 270, kind: "switch" },
-  { id: "lb-pay-01", label: "LOAD BALANCER", x: 380, y: 350, kind: "load_balancer" },
-  { id: "app-pay-01", label: "APP SERVER", x: 230, y: 430, kind: "endpoint" },
-  { id: "db-pay-01", label: "DB SERVER", x: 530, y: 430, kind: "database" },
-  { id: "vpn-01", label: "VPN GATEWAY", x: 610, y: 190, kind: "vpn_gateway" },
-];
+/* Network topology is built from discovered network assets. It starts
+   empty and populates after network discovery runs. */
+const TOPO: { id: string; label: string; x: number; y: number; kind: string }[] = [];
 
 export default function Network() {
   const [sel, setSel] = useState<string | null>(null);
   const detail = networkAssets.find((n) => n.id === sel);
+  const c = {
+    subnets: networkAssets.filter((n) => n.kind === "subnet").length,
+    hosts: networkAssets.length,
+    routers: networkAssets.filter((n) => n.kind === "router").length,
+    firewalls: networkAssets.filter((n) => n.kind === "firewall").length,
+    vpn: networkAssets.filter((n) => n.kind === "vpn_gateway").length,
+  };
 
   return (
     <>
@@ -25,24 +25,28 @@ export default function Network() {
         crumb="discovery / network"
         title="Network"
         sub="Networks · subnets · hosts · routers · switches · firewalls · VPN · load balancers · endpoints · open services · changes"
-        right={<Badge tone="green"><span className="dot" /> SCANNER RUNNING · 611 ASSETS</Badge>}
+        right={<Badge tone={networkAssets.length ? "green" : ""}><span className="dot" /> {networkAssets.length} ASSETS</Badge>}
       />
       <div className="grid cols-5" style={{ marginBottom: 16 }}>
-        {[["subnets", "14"], ["hosts", "611"], ["routers", "8"], ["firewalls", "3"], ["vpn gateways", "6"]].map(([k, v]) => (
+        {[["subnets", c.subnets], ["hosts", c.hosts], ["routers", c.routers], ["firewalls", c.firewalls], ["vpn gateways", c.vpn]].map(([k, v]) => (
           <div className="kpi" key={k}><span className="k">{k}</span><span className="v">{v}</span></div>
         ))}
       </div>
-      <Panel title="Network topology" sub="Internet → firewall → router → switch → servers — click any node">
+      <Panel title="Network topology" sub={networkAssets.length ? "click any node for detail" : "no network assets yet — run network discovery"}>
+        {networkAssets.length === 0 ? (
+          <div style={{ minHeight: 180, display: "grid", placeItems: "center" }}>
+            <div className="frame" style={{ border: "1px dashed var(--line-strong)", borderRadius: 12, padding: "30px 38px", textAlign: "center", color: "var(--faint)", fontSize: 13.5, maxWidth: 440 }}>
+              Topology appears after discovery.<br />
+              <span className="dim">Add network scope in <a href="#/onboarding">Onboarding</a> (CIDR / IP range / domain) and run discovery — routers, switches, firewalls, VPNs, load balancers and endpoints are mapped automatically.</span>
+            </div>
+          </div>
+        ) : (
         <div className="graphwrap">
           <svg viewBox="0 0 800 500" width="100%" style={{ minWidth: 680 }}>
-            {[
-              ["internet", "fw-edge-01"], ["fw-edge-01", "rtr-core-1"], ["rtr-core-1", "sw-dc-01"],
-              ["rtr-core-1", "vpn-01"], ["sw-dc-01", "lb-pay-01"], ["lb-pay-01", "app-pay-01"],
-              ["lb-pay-01", "db-pay-01"],
-            ].map(([a, b]) => {
-              const na = TOPO.find((t) => t.id === a)!;
-              const nb = TOPO.find((t) => t.id === b)!;
-              return <path key={`${a}-${b}`} className="edge" d={`M${na.x} ${na.y + 26} L${nb.x} ${nb.y - 26}`} />;
+            {TOPO.slice(0, -1).map((node, i) => {
+              const next = TOPO[i + 1];
+              if (!next) return null;
+              return <path key={`${node.id}-${next.id}`} className="edge" d={`M${node.x} ${node.y + 26} L${next.x} ${next.y - 26}`} />;
             })}
             {TOPO.map((t) => {
               const isSel = sel === t.id;
@@ -58,6 +62,7 @@ export default function Network() {
             })}
           </svg>
         </div>
+        )}
       </Panel>
       <Panel title="Endpoints" sub="TLS · SSH · IPsec posture per endpoint" className="mt">
         <Table
@@ -80,18 +85,15 @@ export default function Network() {
             <Badge>{detail.status}</Badge>
           </div>
           <div className="tree" style={{ marginBottom: 16 }}>
-            Open services:<br />
-            {" ├── TLS 1.3 · AES-256-GCM · X25519"}<br />
-            {" ├── SSH-2 · Ed25519"}<br />
-            {" └── IPsec IKEv2 (VPN)"}
+            Crypto posture:<br />
+            {" └── "}{detail.tls}
           </div>
           <Panel title="Certificates" sub="served by this endpoint" frame>
-            {detail.certs.length ? detail.certs.map((c) => <Badge key={c} tone="cyan">{c}</Badge>) : <span className="faint" style={{ fontSize: 13 }}>none</span>}
+            {detail.certs.length ? detail.certs.map((c) => <Badge key={c} tone="cyan">{c}</Badge>) : <span className="faint" style={{ fontSize: 13 }}>none observed</span>}
           </Panel>
           <Panel title="Evidence" sub="linked artifacts" frame className="mt">
             <div className="mono dim" style={{ fontSize: 12 }}>
-              ev-00919 · network agent · 100%<br />
-              ev-00918 · port scan · 99%
+              Evidence records are linked to this endpoint after a scan.
             </div>
             <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
           </Panel>

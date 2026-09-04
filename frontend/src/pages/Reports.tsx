@@ -9,7 +9,7 @@ export default function Reports() {
         crumb="operate / reports"
         title="Reports"
         sub="Executive · technical · compliance · PQC — generated deterministically from the evidence store"
-        right={<Badge tone="green"><span className="dot" /> 4 READY</Badge>}
+        right={<Badge tone={reports.length ? "green" : ""}><span className="dot" /> {reports.length} REPORTS</Badge>}
       />
       <div className="grid cols-2">
         {reports.map((r) => (

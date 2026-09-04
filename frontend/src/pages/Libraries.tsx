@@ -9,7 +9,7 @@ export default function Libraries() {
         crumb="inventory / crypto libraries"
         title="Crypto libraries"
         sub="Library · version · applications · algorithms · vulnerabilities · PQC support · crypto provider · upgrade status"
-        right={<Badge tone="cyan"><span className="dot" /> 1,294 LIBRARIES</Badge>}
+        right={<Badge tone={libraries.length ? "cyan" : ""}><span className="dot" /> {libraries.length.toLocaleString()} LIBRARIES</Badge>}
       />
       <Panel title="Library center" sub="upgrade status tracked per library">
         <Table

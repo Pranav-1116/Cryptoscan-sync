@@ -55,14 +55,11 @@ export default function Pqc() {
         />
       </Panel>
       <Panel title="Migration map" sub="current → affected → dependencies → candidate PQC → compatibility → complexity" className="mt">
-        <div className="tree">
-          Current: RSA-2048<br />
-          {"  ↓ affected applications: 184"}<br />
-          {"  ↓ dependencies: 6 libraries · 2 HSMs · 3 cloud KMS"}<br />
-          {"  ↓ candidate PQC: ML-KEM-768 (key exchange) · ML-DSA-65 (signature)"}<br />
-          {"  ↓ compatibility: 82%"}<br />
-          {"  ↓ migration complexity: MEDIUM"}<br />
-          <a href="#/whatif" className="mono" style={{ fontSize: 12 }}>run the what-if simulator →</a>
+        <div className="dim" style={{ fontSize: 13.5 }}>
+          Migration mapping is produced by the deterministic what-if engine after a scan. Pick a current
+          algorithm and a post-quantum target to see affected applications, dependencies, candidate PQC,
+          compatibility and complexity — all derived from the live CBOM.
+          <br /><a href="#/whatif" className="mono" style={{ fontSize: 12 }}>run the what-if simulator →</a>
         </div>
       </Panel>
     </>

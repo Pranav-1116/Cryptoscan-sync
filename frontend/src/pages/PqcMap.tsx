@@ -14,16 +14,21 @@ export default function PqcMap() {
         sub="Current state → affected applications → dependencies → candidate PQC → compatibility → migration complexity"
         right={<Badge tone="violet">OVERALL READINESS {pqc.overall}%</Badge>}
       />
-      <Panel title="Migration path" sub="one deterministic pipeline from current state to PQC">
-        <div className="tree" style={{ fontSize: 13.5, lineHeight: 2.2 }}>
-          <span className="hl">Current</span>: RSA-2048 · ECDSA-P-256 · X25519 · DH-2048 (quantum vulnerable)<br />
-          {"  ↓ affected applications: 184"}<br />
-          {"  ↓ dependencies: 6 libraries · 2 HSMs · 3 cloud KMS · 4 vendors"}<br />
-          {"  ↓ candidate PQC: ML-KEM-768 (key exchange) · ML-DSA-65 (signature)"}<br />
-          {"  ↓ compatibility: "}<Badge tone="green">{whatif.compatibility}%</Badge><br />
-          {"  ↓ migration complexity: "}<Badge tone="amber">{whatif.complexity}</Badge><br />
-          {"  ↓ target: "}<Badge tone="green">PQC_READY · 100% of TLS/SSH/IPsec</Badge>
-        </div>
+      <Panel title="Migration path" sub="deterministic pipeline from a current algorithm to its PQC target">
+        {whatif.feasible ? (
+          <div className="tree" style={{ fontSize: 13.5, lineHeight: 2.2 }}>
+            <span className="hl">{whatif.current}</span> → <span className="hl">{whatif.target}</span><br />
+            {"  ↓ affected applications: "}{whatif.impact.applications}<br />
+            {"  ↓ compatibility: "}<Badge tone="green">{whatif.compatibility}%</Badge><br />
+            {"  ↓ migration complexity: "}<Badge tone="amber">{whatif.complexity}</Badge>
+          </div>
+        ) : (
+          <div className="dim" style={{ fontSize: 13.5 }}>
+            No analysis yet. Run the <a href="#/whatif">what-if simulator</a> for a current → target algorithm
+            (e.g. RSA-2048 → ML-KEM-768) to see affected applications, dependencies, compatibility and
+            complexity — all derived from the live CBOM after a scan.
+          </div>
+        )}
       </Panel>
 
       <div className="grid cols-3 mt">

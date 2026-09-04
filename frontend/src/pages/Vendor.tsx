@@ -9,7 +9,7 @@ export default function Vendor() {
         crumb="discovery / vendor"
         title="Vendor"
         sub="Vendor → model → device → firmware → configuration → crypto capabilities → protocols → certificates → risk → changes"
-        right={<Badge tone="green"><span className="dot" /> 14 VENDORS · 96 PRODUCTS</Badge>}
+        right={<Badge tone={vendors.length ? "green" : ""}><span className="dot" /> {vendors.length.toLocaleString()} VENDORS · {vendors.reduce((s,v)=>s+(v.products||0),0)} PRODUCTS</Badge>}
       />
       <Panel title="Crypto vendors" sub="product risk scored continuously">
         <Table

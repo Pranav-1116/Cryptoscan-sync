@@ -11,7 +11,7 @@ export default function Admin() {
     setBusy(true);
     const res = await apiSecurity({
       action: "validate_scan_request",
-      scope: ["10.0.0.0/8", "aws:123456789012"],
+      scope: [],
       policy: "SAFE",
     });
     setLive(res);

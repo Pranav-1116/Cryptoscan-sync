@@ -43,22 +43,31 @@ export default function Cbom() {
       {tab === 0 && (
         <div className="grid cols-2">
           <Panel title="CBOM overview" sub="components by type">
+            {bomComponents.length ? (
             <Table
               head={["type", "components"]}
-              rows={[
-                ["cryptography", <span className="num">4</span>],
-                ["library", <span className="num">3</span>],
-                ["device", <span className="num">3</span>],
-                ["application", <span className="num">2</span>],
-                ["firmware", <span className="num">1</span>],
-              ].map(([k, v]) => [<Badge tone="cyan">{k}</Badge>, v])}
+              rows={["cryptography", "library", "device", "application", "firmware", "certificate"]
+                .map((t): [string, number] => [t, bomComponents.filter((c) => c.type === t).length])
+                .filter(([, n]) => n > 0)
+                .map(([k, v]) => [<Badge tone="cyan">{k}</Badge>, <span className="num">{v}</span>])}
             />
+            ) : (
+              <div className="dim" style={{ fontSize: 13 }}>No CBOM yet — run a scan to enumerate cryptographic components and dependencies.</div>
+            )}
           </Panel>
           <Panel title="Change flow" sub="every crypto change bumps the version">
             <div className="tree">
-              CBOM v1,842<br />
-              {"  └── crypto change · 09:41:22 UTC"}<br />
-              {"      └── CBOM v1,843"}<br />
+              {bomHistory.length ? (
+                <>
+                  {bomHistory.slice(0, 4).map((h, i) => (
+                    <React.Fragment key={h.version}>
+                      {i === 0 ? "" : "  └── "}CBOM {h.version} · {h.note}<br />
+                    </React.Fragment>
+                  ))}
+                </>
+              ) : (
+                <>No versions yet — the CBOM is created on the first scan.<br /></>
+              )}
               <br />
               compare: <span className="faint">current vs previous · current vs baseline · date vs date · env vs env</span>
             </div>
@@ -81,7 +90,8 @@ export default function Cbom() {
       )}
 
       {tab === 2 && (
-        <Panel title="CBOM diff — v1842 → v1843" sub="exactly what changed">
+        <Panel title="CBOM diff" sub="exactly what changed between versions">
+          {bomDiff.added.length || bomDiff.removed.length || bomDiff.changed.length ? (
           <Table
             head={["change", "components"]}
             rows={[
@@ -90,6 +100,9 @@ export default function Cbom() {
               ["changed", bomDiff.changed.map((a) => <Badge key={a} tone="amber">~ {a}</Badge>)],
             ]}
           />
+          ) : (
+            <div className="dim" style={{ fontSize: 13 }}>No diff available — run scans to build version history, then compare current vs previous / baseline / date / environment.</div>
+          )}
         </Panel>
       )}
 
@@ -112,14 +125,12 @@ export default function Cbom() {
           <Code>{`{
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "serialNumber": "urn:uuid:7f3a9c21-d8e4-4b06-f1a9-2c55be0d81aa",
-  "version": ${globalState.cbomVersion},
-  "components": [ 14 cryptography / library / device ],
-  "dependencies": [ 8 edges ],
+  "version": ${globalState.cbomVersion || 0},
+  "components": [ ${bomComponents.length} components ],
+  "dependencies": [ ${bomDependencies.length} edges ],
   "zelinx": {
-    "accuracy": "F1 1.0 / 88 cases",
-    "generator": "deterministic engine v1.0",
-    "evidence": "ev-00921..ev-00930"
+    "generator": "deterministic engine v1.0 — no AI inference",
+    "note": "populated after a scan; fetch the live CBOM for the full export"
   }
 }`}</Code>
         </Panel>

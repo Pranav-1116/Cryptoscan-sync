@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { notificationTypes } from "../data/initial.js";
+import { notificationTypes, integrations } from "../data/initial.js";
 
 const CHANNELS = ["inApp", "email", "webhook", "siem"] as const;
 const CHANNEL_LABEL: Record<string, string> = { inApp: "in-app", email: "email", webhook: "webhook", siem: "SIEM / SOC" };
@@ -55,13 +55,15 @@ export default function Notifications() {
           </div>
         </Panel>
         <Panel title="SIEM / SOC integration" sub="events fan out to every connected system">
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--mono)", fontSize: 12.5 }}>
-            <div className="spread"><span>Splunk SIEM</span><Badge tone="green">STREAMING · CIM</Badge></div>
-            <div className="spread"><span>Microsoft Sentinel</span><Badge tone="green">STREAMING · CRITICAL ONLY</Badge></div>
-            <div className="spread"><span>IBM QRadar</span><Badge tone="green">STREAMING · DSM</Badge></div>
-            <div className="spread"><span>ServiceNow</span><Badge tone="green">INCIDENTS ON CRITICAL</Badge></div>
-            <div className="spread"><span>Webhook</span><Badge tone="green">hooks.internal/zelinx</Badge></div>
-          </div>
+          {integrations.length ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--mono)", fontSize: 12.5 }}>
+              {integrations.map((i) => (
+                <div className="spread" key={i.name}><span>{i.name}</span><Badge tone={i.status === "CONNECTED" ? "green" : "amber"}>{i.status}</Badge></div>
+              ))}
+            </div>
+          ) : (
+            <div className="dim" style={{ fontSize: 13 }}>No integrations connected yet. Configure SIEM/SOC, ticketing and webhook destinations in <a href="#/integrations">Integrations</a>.</div>
+          )}
           <a href="#/integrations" className="mono" style={{ fontSize: 12, display: "inline-block", marginTop: 12 }}>manage integrations →</a>
         </Panel>
       </div>

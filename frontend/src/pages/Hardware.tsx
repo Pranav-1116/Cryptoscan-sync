@@ -9,7 +9,7 @@ export default function Hardware() {
         crumb="discovery / hardware"
         title="Hardware"
         sub="Servers · CPU · GPU · NIC · storage · TPM · HSM · BIOS · UEFI · BMC · firmware · crypto accelerators"
-        right={<Badge tone="green"><span className="dot" /> 259 DEVICES · SCANNER NOMINAL</Badge>}
+        right={<Badge tone={hardware.length ? "green" : ""}><span className="dot" /> {hardware.length.toLocaleString()} DEVICES</Badge>}
       />
       <Panel title="HSM · TPM · secure elements · accelerators" sub="capabilities, firmware, PQC support">
         <Table
@@ -37,18 +37,19 @@ export default function Hardware() {
         />
       </Panel>
       <Panel title="Hardware timeline" sub="every change is evidence-linked" className="mt">
-        <div className="timeline">
-          {[
-            { t: "08:30", e: "Device discovered — tpm-pay-09", hi: false },
-            { t: "09:14", e: "Firmware changed — fw-edge-01 PAN-OS 11.1.2", hi: true },
-            { t: "10:22", e: "TPM changed — tpm-pay-01 PCR policy updated", hi: false },
-            { t: "11:05", e: "Crypto capability changed — hsm-pci-01 ML-KEM-768", hi: false },
-          ].map((x) => (
-            <div className={`tl ${x.hi ? "hi" : ""}`} key={x.t}>
-              <span className="mono faint">{x.t}</span> <span className="dim" style={{ fontSize: 13 }}>{x.e}</span>
-            </div>
-          ))}
-        </div>
+        {hardware.length || firmwareRows.length ? (
+          <div className="timeline">
+            {firmwareRows.slice(0, 8).map((f, i) => (
+              <div className="tl" key={`${f.device}-${i}`}>
+                <span className="dim" style={{ fontSize: 13 }}>{f.kind} {f.version} — {f.device} · {f.status}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="dim" style={{ fontSize: 13 }}>
+            No hardware events yet — hardware/HSM/TPM/BMC discoveries and firmware changes appear here after a scan.
+          </div>
+        )}
       </Panel>
     </>
   );

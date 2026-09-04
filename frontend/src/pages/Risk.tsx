@@ -67,12 +67,8 @@ export default function Risk() {
           />
           {sel >= 0 && (
             <div className="tree mt" style={{ marginTop: 14 }}>
-              Blast radius — {risk.topFindings[sel].title}:<br />
-              {" ├── 12 applications"}<br />
-              {" ├── 4 APIs"}<br />
-              {" ├── 2 load balancers"}<br />
-              {" ├── 3 cloud resources"}<br />
-              {" └── 1 HSM"}
+              Blast radius — {risk.topFindings[sel]?.title}:<br />
+              Affected assets are computed live from the dependency graph. Run a scan to populate findings and their blast radius.
             </div>
           )}
         </Panel>

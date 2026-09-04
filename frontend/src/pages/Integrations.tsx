@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { integrations as demoIntegrations } from "../data/initial.js";
+import { integrations as configuredIntegrations } from "../data/initial.js";
 import {
   apiIntegrations, apiDeliveries, apiTestIntegration, apiFlushDeliveries,
   LiveBadge,
@@ -66,7 +66,7 @@ export default function Integrations() {
           </button>,
         ];
       })
-    : demoIntegrations.map((i) => [
+    : configuredIntegrations.map((i) => [
         <span style={{ fontWeight: 600 }}>{i.name}</span>,
         <Badge tone="cyan">{i.kind}</Badge>,
         <Badge tone="green">{i.status}</Badge>,
@@ -93,6 +93,12 @@ export default function Integrations() {
           head={["integration", "kind", "last delivery", "endpoint", ""]}
           rows={rows}
         />
+        {rows.length === 0 && (
+          <div className="dim" style={{ fontSize: 13, marginTop: 12 }}>
+            No integrations registered yet. Connect a SIEM/SOC, ticketing (ITSM), CMDB or webhook
+            destination below; credentials are referenced from the vault, never stored.
+          </div>
+        )}
         {live && (
           <div className="row" style={{ marginTop: 12, gap: 10 }}>
             <button className="btn primary" disabled={busy === "flush"} onClick={() => void flush()}>

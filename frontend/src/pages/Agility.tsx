@@ -32,7 +32,7 @@ export default function Agility() {
             </div>
           </div>
         </Panel>
-        <Panel title="Hard-coded crypto" sub="the blocker — 18% of the estate">
+        <Panel title="Hard-coded crypto" sub="the blocker — flagged after a scan">
           <div className="dim" style={{ fontSize: 13.5 }}>
             Hard-coded algorithms cannot be re-configured without code changes: they are found in
             binaries, source and firmware. ZELNX flags each with its location so teams can plan the

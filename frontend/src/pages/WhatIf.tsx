@@ -85,7 +85,7 @@ export default function WhatIf() {
             </Panel>
             <Panel title="Estimated migration complexity" sub="deterministic estimate">
               <div style={{ fontSize: 26, fontWeight: 700 }} className="grad-text">{whatif.complexity}</div>
-              <div className="dim" style={{ fontSize: 12.5 }}>6 libraries · 2 HSMs · 3 cloud KMS verified</div>
+              <div className="dim" style={{ fontSize: 12.5 }}>{whatif.checks.libraries.supporting.length} libraries · {whatif.checks.hardware.pqcCapable} PQC-capable devices · {whatif.checks.cloud.pqcReadyServices} cloud services verified</div>
             </Panel>
             <Panel title="Cloud support" sub="KMS / managed services">
               {whatif.checks.cloud.services.map((c) => <Badge key={c} tone="green">{c}</Badge>)}

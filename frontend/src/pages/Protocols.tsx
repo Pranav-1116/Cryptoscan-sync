@@ -14,7 +14,7 @@ export default function Protocols() {
         crumb="inventory / protocols"
         title="Protocols"
         sub="TLS · SSH · IPsec · VPN · QUIC — version, cipher, key exchange, signature, certificate, endpoint, risk, PQC readiness"
-        right={<Badge tone="cyan"><span className="dot" /> 5,821 PROTOCOL ENDPOINTS</Badge>}
+        right={<Badge tone={protocols.length ? "cyan" : ""}><span className="dot" /> {protocols.length.toLocaleString()} PROTOCOL ENDPOINTS</Badge>}
       />
       <Tabs tabs={GROUPS} active={tab} onChange={setTab} />
       <Panel title={`${GROUPS[tab]} endpoints`} sub="risk and PQC readiness per endpoint">

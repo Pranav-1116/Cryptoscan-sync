@@ -7,30 +7,12 @@ import { apiBlast, LiveBadge, ApiResult } from "../lib/api.js";
 interface GNode { id: string; label: string; sub: string; x: number; y: number; kind: "ca" | "cert" | "infra" | "app" | "lib" | "algo"; }
 interface GEdge { from: string; to: string; }
 
-const NODES: GNode[] = [
-  { id: "rootca", label: "ROOT CA", sub: "root-ca.internal", x: 400, y: 24, kind: "ca" },
-  { id: "cert", label: "Certificate", sub: "payments.internal", x: 400, y: 96, kind: "cert" },
-  { id: "lb", label: "Load balancer", sub: "lb-pay-01", x: 400, y: 168, kind: "infra" },
-  { id: "appa", label: "App A", sub: "payments-svc", x: 250, y: 246, kind: "app" },
-  { id: "appb", label: "App B", sub: "authentication-service", x: 550, y: 246, kind: "app" },
-  { id: "openssl", label: "OpenSSL", sub: "3.5.1", x: 150, y: 322, kind: "lib" },
-  { id: "bouncy", label: "BouncyCastle", sub: "1.78", x: 350, y: 322, kind: "lib" },
-  { id: "rsa", label: "RSA-2048", sub: "QUANTUM VULNERABLE", x: 500, y: 322, kind: "algo" },
-  { id: "ecdsa", label: "ECDSA-P-256", sub: "QUANTUM VULNERABLE", x: 660, y: 322, kind: "algo" },
-];
+/* The dependency graph is built from the real CBOM produced by scans.
+   It starts empty — nodes/edges populate from the control plane once a
+   crypto BOM exists. */
+const NODES: GNode[] = [];
 
-const EDGES: GEdge[] = [
-  { from: "rootca", to: "cert" },
-  { from: "cert", to: "lb" },
-  { from: "lb", to: "appa" },
-  { from: "lb", to: "appb" },
-  { from: "appa", to: "openssl" },
-  { from: "appa", to: "bouncy" },
-  { from: "appb", to: "openssl" },
-  { from: "openssl", to: "rsa" },
-  { from: "bouncy", to: "ecdsa" },
-  { from: "appb", to: "ecdsa" },
-];
+const EDGES: GEdge[] = [];
 
 function descendants(from: string): Set<string> {
   const out = new Set<string>();
@@ -94,7 +76,15 @@ export default function Graph() {
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
         </Panel>
       )}
-      <Panel title="Graph" sub="edges are dependency edges from the CBOM">
+      <Panel title="Graph" sub={NODES.length ? "edges are dependency edges from the CBOM" : "no CBOM yet — run discovery and a scan to build the crypto dependency graph"}>
+        {NODES.length === 0 ? (
+          <div style={{ minHeight: 200, display: "grid", placeItems: "center" }}>
+            <div className="frame" style={{ border: "1px dashed var(--line-strong)", borderRadius: 12, padding: "34px 40px", textAlign: "center", color: "var(--faint)", fontSize: 13.5, maxWidth: 440 }}>
+              No dependency graph yet.<br />
+              <span className="dim">Configure your estate in <a href="#/onboarding">Onboarding</a>, then run a scan. The graph renders Root CA → certificate → infrastructure → applications → libraries → algorithms from the real CBOM.</span>
+            </div>
+          </div>
+        ) : (
         <div className="graphwrap">
           <svg viewBox="0 0 800 380" width="100%" style={{ minWidth: 700 }}>
             {EDGES.map((e) => {
@@ -118,6 +108,7 @@ export default function Graph() {
             })}
           </svg>
         </div>
+        )}
       </Panel>
 
       <div className="grid cols-2 mt">
@@ -141,11 +132,10 @@ export default function Graph() {
         <Panel title="Impact analysis" sub="evidence-linked findings on the selection">
           {sel ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div className="kpi"><span className="k">applications affected</span><span className="v">{sel === "rsa" ? 184 : Math.max(2, blast.size - 1)}</span></div>
-              <div className="kpi"><span className="k">certificates affected</span><span className="v">{sel === "rsa" ? 17 : 1}</span></div>
-              <div className="kpi"><span className="k">libraries affected</span><span className="v">{sel === "rsa" ? 6 : 1}</span></div>
-              <div className="kpi"><span className="k">quantum status</span><span className="v">{sel === "rsa" || sel === "ecdsa" ? "VULNERABLE" : "SAFE"}</span></div>
-              <a href="#/whatif" className="btn sm" style={{ alignSelf: "flex-start" }}>Simulate migration →</a>
+              <div className="kpi"><span className="k">nodes in blast radius</span><span className="v">{blast.size}</span></div>
+              <div className="kpi"><span className="k">upstream (ancestors)</span><span className="v">{upline.size}</span></div>
+              <div className="kpi"><span className="k">quantum status</span><span className="v">from live analysis</span></div>
+              <a href="#/whatif" className="btn sm" style={{ alignSelf: "flex-start" }}>Run migration analysis →</a>
             </div>
           ) : (
             <div className="dim" style={{ fontSize: 13.5 }}>Impact analysis appears once a node is selected.</div>

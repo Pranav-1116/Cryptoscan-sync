@@ -1,15 +1,15 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { algorithms, protocols, libraries } from "../data/initial.js";
+import { algorithms, protocols, libraries, certificates } from "../data/initial.js";
 
 export default function Crypto() {
   const crypto = {
-    algorithms: 18492,
-    certificates: 7821,
-    libraries: 1294,
-    protocols: 5821,
-    endpoints: 8491,
-    unknown: 184,
+    algorithms: algorithms.length,
+    certificates: certificates.length,
+    libraries: libraries.length,
+    protocols: protocols.length,
+    endpoints: protocols.length,
+    unknown: algorithms.filter((a) => a.quantum === "PQC_UNKNOWN").length,
   };
   return (
     <>
@@ -17,7 +17,7 @@ export default function Crypto() {
         crumb="discovery / cryptography"
         title="Cryptography"
         sub="The cryptographic state of the entire estate"
-        right={<Badge tone="red"><span className="dot" /> 184 UNKNOWN CRYPTO</Badge>}
+        right={<Badge tone={algorithms.length ? "" : ""}><span className="dot" /> {algorithms.length.toLocaleString()} ALGORITHMS</Badge>}
       />
       <div className="grid cols-5" style={{ marginBottom: 16 }}>
         {[

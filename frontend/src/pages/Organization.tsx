@@ -18,7 +18,7 @@ export default function Organization() {
         crumb="command center / organization"
         title="Global organization view"
         sub="Organization → region → business unit → environment → assets → crypto"
-        right={<Badge tone="green"><span className="dot" /> 4 REGIONS · 6 BUSINESS UNITS · 16 ENVIRONMENTS</Badge>}
+        right={<Badge tone={organization.length ? "green" : ""}><span className="dot" /> {organization.length} REGIONS · {organization.reduce((s,r)=>s+r.bu.length,0)} BUSINESS UNITS</Badge>}
       />
 
       <Panel title="Regions" sub="click a region to drill in">

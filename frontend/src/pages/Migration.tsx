@@ -72,20 +72,14 @@ export default function Migration() {
         </Panel>
       </div>
 
-      <Panel title="Roadmap milestones" sub="deterministic program plan" className="mt">
-        <div className="timeline">
-          {[
-            { t: "Q3", e: "Complete inventory + dependency mapping (CBOM v1843 frozen)", hi: false },
-            { t: "Q4", e: "Re-key 17 high-value certificates to ML-DSA-65 hybrid", hi: true },
-            { t: "Q1", e: "Migrate 184 applications off RSA-2048 (what-if plan executed)", hi: false },
-            { t: "Q2", e: "Retire 3DES and MD5 — remove legacy trust anchors", hi: false },
-            { t: "Q3", e: "Full PQC readiness: 100% of TLS/SSH/IPsec on ML-KEM/ML-DSA", hi: true },
-          ].map((x) => (
-            <div className={`tl ${x.hi ? "hi" : ""}`} key={x.t}>
-              <span className="mono faint">{x.t}</span> <span className="dim" style={{ fontSize: 13 }}>{x.e}</span>
-            </div>
-          ))}
-        </div>
+      <Panel title="Roadmap milestones" sub="deterministic program plan — built from migration tickets" className="mt">
+        {migrationBoard.some((col) => col.cards.length) ? (
+          <div className="dim" style={{ fontSize: 13 }}>Milestones are derived from migration tickets once a plan exists.</div>
+        ) : (
+          <div className="dim" style={{ fontSize: 13 }}>
+            No migration plan yet. Run a <a href="#/whatif">what-if analysis</a> on a target algorithm and track work on the migration board; milestones appear here as tickets move.
+          </div>
+        )}
       </Panel>
     </>
   );

@@ -8,10 +8,10 @@ export default function Assets() {
       <PageHead
         crumb="inventory / assets"
         title="Assets"
-        sub="Every asset with owner, environment, region, risk and evidence — server-side pagination ready for 100K+"
-        right={<Badge tone="green"><span className="dot" /> 125,482 TOTAL</Badge>}
+        sub="Every asset with owner, environment, region, risk and evidence — populated by discovery"
+        right={<Badge tone={assets.length ? "green" : ""}><span className="dot" /> {assets.length.toLocaleString()} TOTAL</Badge>}
       />
-      <Panel title="Asset inventory" sub="sample of the estate (server-side filters apply at scale)">
+      <Panel title="Asset inventory" sub={assets.length ? "live inventory from the control plane" : "no assets yet — run discovery to populate the estate"}>
         <Table
           head={["asset id", "type", "name", "env", "region", "owner", "risk", "evidence"]}
           rows={assets.map((a) => [

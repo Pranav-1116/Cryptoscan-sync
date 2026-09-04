@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search.jsx";
-import { globalState } from "../data/initial.js";
-import { getToken, setToken, getUserName, apiMyGrants } from "../lib/api.js";
+import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
+import { usePollingApi } from "../lib/apiUi.jsx";
 
 const NAV = [
   { section: "Command center", items: [
@@ -72,6 +72,8 @@ export default function Layout({ route, children }: { route: string; children: R
   const [abac, setAbac] = useState<{ enforced: boolean; grants: number } | null>(null);
   const ticker = useLiveTicker();
   const toasts = useAlertToasts();
+  const liveStats = usePollingApi(apiStatsSummary, 20000, []);
+  const st = ((ticker.connected || liveStats.source === "live") ? liveStats.data : null) as Record<string, number> | null;
 
   useEffect(() => {
     if (!getToken()) { setAbac(null); return; }
@@ -134,11 +136,11 @@ export default function Layout({ route, children }: { route: string; children: R
           {ticker.connected ? (
             <span className="item">stream subscribers <b>{ticker.subscribers}</b></span>
           ) : (
-            <span className="item">agents <b>{globalState.agentsHealthy}/{globalState.agentsTotal}</b> healthy</span>
+            <span className="item">agents <b>{Number(st?.agents_healthy ?? 0)}/{Number(st?.agents_total ?? 0)}</b> healthy</span>
           )}
-          <span className="item">scanners <b>{globalState.activeScanners}/{globalState.totalScanners}</b></span>
-          <span className="item">CBOM <b>v{globalState.cbomVersion}</b></span>
-          <span className="item">HBOM <b>v{globalState.hbomVersion}</b></span>
+          <span className="item">scanners <b>{Number(st?.active_scanners ?? 0)}/{Number(st?.total_scanners ?? 0)}</b></span>
+          <span className="item">scans <b>{Number(st?.total_scans ?? 0)}</b></span>
+          <span className="item">findings <b>{Number(st?.total_findings ?? 0)}</b></span>
           {abac && (
             <span className="item" title="ABAC scope policy — Region → Business Unit → Environment → Asset">
               ABAC <b style={{ color: abac.enforced ? "var(--green)" : "var(--amber)" }}>

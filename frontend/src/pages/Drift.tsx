@@ -39,7 +39,7 @@ export default function Drift() {
         sub="Baseline → current state → diff · every category watched continuously"
         right={
           <div className="row">
-            <Badge tone="red"><span className="dot" /> 3 DRIFT EVENTS</Badge>
+            <Badge tone={Object.values(drift.baseline).some((arr: string[]) => arr.length > 0) ? "green" : ""}><span className="dot" /> {Object.values(drift.baseline).some((arr: string[]) => arr.length > 0) ? "BASELINE READY" : "NO BASELINE — RUN A SCAN"}</Badge>
             <button className="btn sm" onClick={() => void runLiveCheck()} disabled={busy}>
               {busy ? "Checking…" : "Run live drift check"}
             </button>
@@ -68,22 +68,20 @@ export default function Drift() {
       <div className="grid cols-2 mt">
         <Panel title="Why drift matters" sub="deterministic change detection">
           <p className="dim" style={{ fontSize: 13.5, marginTop: 0 }}>
-            A new network device and a newly active ML-KEM-768 exchange appeared without a change
-            ticket. The control plane flagged both and re-scored the blast radius automatically —
-            nothing waits for a human to notice.
+            Baseline vs live comparison surfaces new devices, removed assets, firmware changes and
+            crypto changes. The control plane flags anything outside a change ticket and re-scores
+            the blast radius automatically — nothing waits for a human to notice.
           </p>
-          <ul className="dim" style={{ fontSize: 13.5, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-            <li>sw-dc-03 joined 10.0.2.0/24 — identity enrolled, posture scanned</li>
-            <li>ML-KEM-768 now active — PQC readiness HYBRID_READY → PQC_READY</li>
-            <li>fw-edge-01 PAN-OS 11.1.1 → 11.1.2 — targeted rescan dispatched</li>
-          </ul>
+          <p className="dim" style={{ fontSize: 13, margin: 0 }}>
+            Freeze a baseline after your first scan; drift events then appear here and in the live
+            change feed.
+          </p>
         </Panel>
         <Panel title="Next scan" sub="scheduled · read-only · evidence-backed">
           <div className="mono" style={{ fontSize: 12.5, display: "flex", flexDirection: "column", gap: 8 }}>
-            <div><span className="faint">window:</span> sun 02:00–04:00 utc</div>
+            <div><span className="faint">window:</span> set during onboarding / maintenance window</div>
             <div><span className="faint">mode:</span> SAFE / READ_ONLY</div>
-            <div><span className="faint">scope:</span> 10.0.0.0/8 · aws:123456789012 · gcp:pay-prod</div>
-            <div><span className="faint">excluded:</span> 10.99.0.0/16 · legacy-mainframe</div>
+            <div><span className="faint">scope:</span> configure targets in Onboarding</div>
             <div><Badge tone="green">POLICY COMPLIANT</Badge></div>
           </div>
         </Panel>

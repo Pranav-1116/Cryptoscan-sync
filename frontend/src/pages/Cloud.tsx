@@ -14,7 +14,7 @@ export default function Cloud() {
         crumb="discovery / cloud"
         title="Cloud"
         sub="Unified abstraction across AWS, Azure and GCP — accounts · regions · resources · certificates · KMS · load balancers · databases · Kubernetes"
-        right={<Badge tone="green"><span className="dot" /> 318 RESOURCES · 3 PROVIDERS</Badge>}
+        right={<Badge tone={cloudResources.length ? "green" : ""}><span className="dot" /> {cloudResources.length.toLocaleString()} RESOURCES · {new Set(cloudResources.map((r)=>r.provider)).size} PROVIDERS</Badge>}
       />
       <Tabs tabs={PROVIDERS} active={tab} onChange={setTab} />
       <Panel title="Cloud resources" sub="one dashboard for every provider">
