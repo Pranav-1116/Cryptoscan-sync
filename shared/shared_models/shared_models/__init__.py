@@ -32,6 +32,13 @@ from shared_models.network_registry import (
     classify_service,
     risk_severity as network_risk_severity,
 )
+from shared_models.hardware_registry import (
+    HardwareInfo,
+    catalog as hardware_catalog,
+    classify_hardware,
+    risk_severity as hardware_risk_severity,
+    tpm_verdict,
+)
 from shared_models.finding import (
     CryptoInfo,
     FindingMetadata,

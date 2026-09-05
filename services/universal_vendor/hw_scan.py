@@ -201,10 +201,95 @@ def scan_smartcard() -> dict:
     return sc
 
 
+
+# --- canonical hardware classification --------------------------------- #
+
+_HSM_VENDOR_BY_PATH = (
+    ("nfast", "nShield Connect"),
+    ("lunaclient", "Luna SA 7"),
+    ("libcryptoki2", "Luna SA 7"),
+    ("/vtl", "Luna SA 7"),
+    ("utimaco", "Utimaco SecurityServer"),
+    ("/csadm", "Utimaco SecurityServer"),
+    ("cloudhsm", "CloudHSM"),
+)
+
+
+def _hsm_vendor_label(hsm: dict) -> str | None:
+    low = " ".join(hsm.get("evidence") or []).lower()
+    for needle, label in _HSM_VENDOR_BY_PATH:
+        if needle in low:
+            return label
+    return None
+
+
+def classify_hardware_scan(d: dict) -> dict:
+    """Canonical naming + verdict for crypto-hardware signals (metadata only)."""
+    try:
+        from shared_models.hardware_registry import (
+            classify_hardware, risk_severity, tpm_verdict,
+        )
+    except Exception:
+        return {"available": False, "devices": [], "counts": {}}
+
+    devices: list[dict] = []
+
+    def add(info) -> None:
+        doc = info.to_dict()
+        doc["severity"] = risk_severity(info)
+        devices.append(doc)
+
+    tpm = d.get("tpm") or {}
+    add(tpm_verdict(tpm.get("version") if tpm.get("present") else None,
+                    present=bool(tpm.get("present"))))
+
+    hsm = d.get("hsm") or {}
+    if hsm.get("present"):
+        if str(hsm.get("kind") or "").startswith("software"):
+            add(classify_hardware("SoftHSM2", kind="hsm"))
+        else:
+            add(classify_hardware(_hsm_vendor_label(hsm) or "HSM appliance", kind="hsm"))
+
+    ext_to_kind = {
+        "AES": ("AES-NI", "cpu_feature"), "VAES": ("VAES", "cpu_feature"),
+        "SHA": ("SHA-NI", "cpu_feature"), "SHA-NI": ("SHA-NI", "cpu_feature"),
+        "RDRAND": ("RDRAND", "rng"), "RDSEED": ("RDSEED", "rng"),
+        "SGX": ("Intel SGX", "tee"), "TDX": ("TDX", "tee"),
+        "SEV": ("SEV-SNP", "tee"), "SME": ("SEV-SNP", "tee"),
+        "PCLMULQDQ": ("PCLMULQDQ", "cpu_feature"), "GFNI": ("GFNI", "cpu_feature"),
+    }
+    for ext in (d.get("cpu") or {}).get("instruction_extensions") or []:
+        if ext in ext_to_kind:
+            name, kind = ext_to_kind[ext]
+            ci = classify_hardware(name, kind=kind)
+            if ci.recognized:
+                add(ci)
+
+    if (d.get("smartcard") or {}).get("present"):
+        add(classify_hardware("Smart Card", kind="smart_card"))
+
+    counts: dict[str, int] = {}
+    for dev in devices:
+        counts[dev["status"]] = counts.get(dev["status"], 0) + 1
+    return {
+        "available": True,
+        "devices": devices,
+        "counts": counts,
+        "root_of_trust_present": any(
+            dev["category"] == "root-of-trust" and dev["status"] in ("REQUIRED", "ALLOWED")
+            for dev in devices
+        ),
+        "hardware_keystore_present": any(
+            dev["category"] == "hardware-keystore" for dev in devices
+        ),
+    }
+
+
+
 # --- orchestration + report -------------------------------------------
 
 def collect() -> dict:
-    return {
+    d = {
         "scanner": "cryptoscan-hardware",
         "host": {"hostname": platform.node(), "os": platform.platform(),
                  "architecture": platform.machine()},
@@ -213,6 +298,8 @@ def collect() -> dict:
         "hsm": scan_hsm(),
         "smartcard": scan_smartcard(),
     }
+    d["classified"] = classify_hardware_scan(d)
+    return d
 
 
 def _yesno(flag: bool) -> str:

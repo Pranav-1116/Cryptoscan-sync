@@ -35,6 +35,54 @@ router = APIRouter(prefix="/hardware", tags=["hardware"])
 _CONTROLLER: LiveHardwareController | None = None
 
 
+@router.get("/catalog")
+def hardware_catalog(
+    category: str | None = Query(default=None),
+    status: str | None = Query(default=None),
+    user: str = Depends(require_permission("hardware.read")),
+):
+    """Canonical hardware-security catalog: every TPM/HSM/secure-element/
+    enclave/accelerator the scanner can name, with verdict and attestation
+    flags. Read-only reference data for the hardware dashboards."""
+    try:
+        from shared_models.hardware_registry import catalog as hw_catalog
+    except Exception as exc:  # pragma: no cover - registry always present
+        raise HTTPException(status_code=503, detail=f"hardware registry unavailable: {exc}")
+    entries = hw_catalog()
+    if category:
+        entries = [e for e in entries if e["category"].lower() == category.lower()]
+    if status:
+        entries = [e for e in entries if e["status"].upper() == status.upper()]
+    counts: dict[str, int] = {}
+    for e in entries:
+        counts[e["status"]] = counts.get(e["status"], 0) + 1
+    return {"count": len(entries), "status_counts": counts, "devices": entries}
+
+
+class ClassifyHardwareRequest(BaseModel):
+    name: str = ""
+    kind: str = ""          # tpm | hsm | secure_element | tee | sed | bmc | rng | ...
+    manufacturer: str = ""
+    tpm_version: str | None = None
+    tpm_present: bool = True
+
+
+@router.post("/classify")
+def classify_hardware_device(
+    body: ClassifyHardwareRequest,
+    user: str = Depends(require_permission("hardware.read")),
+):
+    """Name + verdict a raw hardware string (metadata only; no secrets)."""
+    from shared_models.hardware_registry import (
+        classify_hardware, risk_severity, tpm_verdict,
+    )
+    if body.tpm_version is not None or body.kind.lower() == "tpm":
+        info = tpm_verdict(body.tpm_version, present=body.tpm_present)
+    else:
+        info = classify_hardware(body.name, kind=body.kind, manufacturer=body.manufacturer)
+    return {**info.to_dict(), "severity": risk_severity(info)}
+
+
 class HardwareEventRequest(BaseModel):
     event_type: HardwareEventType
     asset_id: str = ""
