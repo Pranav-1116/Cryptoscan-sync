@@ -24,6 +24,14 @@ from shared_models.enums import (
     ScanStatus,
 )
 from shared_models.evidence import EvidenceRecordDTO
+from shared_models.network_registry import (
+    ProtocolInfo,
+    catalog as network_catalog,
+    classify_endpoint,
+    classify_port,
+    classify_service,
+    risk_severity as network_risk_severity,
+)
 from shared_models.finding import (
     CryptoInfo,
     FindingMetadata,

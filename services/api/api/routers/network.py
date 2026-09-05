@@ -54,6 +54,40 @@ class CertificateRenewalUpdate(BaseModel):
     note: str | None = None
 
 
+@router.get("/network/protocols")
+def list_protocols(
+    category: str | None = None,
+    status: str | None = None,
+    user: str = Depends(get_current_user),
+):
+    """Canonical network protocol/service catalog: every service the scanner
+    can name, with port, transport, category, encryption and risk verdict.
+
+    Read-only reference data (used by the network dashboards); filtering by
+    ``category`` (web/mail/database/ot-ics/vpn/...) or ``status``
+    (DISALLOWED/RESTRICTED/ALLOWED/DEPRECATED).
+    """
+    try:
+        from shared_models.network_registry import catalog as protocol_catalog
+    except Exception as exc:  # pragma: no cover - registry always present
+        raise HTTPException(status_code=503, detail=f"protocol registry unavailable: {exc}")
+    entries = protocol_catalog()
+    if category:
+        cat = category.lower()
+        entries = [e for e in entries if e["category"].lower() == cat]
+    if status:
+        st = status.upper()
+        entries = [e for e in entries if e["status"].upper() == st]
+    counts: dict[str, int] = {}
+    for e in entries:
+        counts[e["status"]] = counts.get(e["status"], 0) + 1
+    return {
+        "count": len(entries),
+        "status_counts": counts,
+        "protocols": entries,
+    }
+
+
 @router.get("/certificates")
 def list_certificates(
     expiring_days: int | None = None,
@@ -152,7 +186,7 @@ def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_
 
 class SubnetDiscoverRequest(BaseModel):
     cidr: str
-    ports: list[int] = Field(default_factory=lambda: [443, 8443])
+    ports: list[int] = Field(default_factory=list)  # empty => full DEFAULT_PORTS set
     timeout: float = 1.5
     scan: bool = True
     register: bool = False  # upsert discovered endpoints into the due-scan rotation
@@ -171,10 +205,15 @@ def discover_subnet_endpoints(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Sweep a CIDR for open TLS ports and optionally scan each endpoint."""
-    from network_scanner.discovery.subnet_discoverer import discover_subnet
+    """Sweep a CIDR for open service ports and optionally scan each endpoint.
 
-    result = discover_subnet(body.cidr, body.ports or [443, 8443], timeout=body.timeout)
+    Sweeps the full crypto/risk-relevant port set (web, mail, remote admin,
+    databases, OT/ICS, legacy cleartext) by default, and names + risk-scores
+    every open service via the canonical network registry.
+    """
+    from network_scanner.discovery.subnet_discoverer import DEFAULT_PORTS, discover_subnet
+
+    result = discover_subnet(body.cidr, body.ports or list(DEFAULT_PORTS), timeout=body.timeout)
     if body.register:
         from network_scanner.discovery.registration import register_targets
 

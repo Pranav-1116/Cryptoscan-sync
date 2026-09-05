@@ -14,10 +14,56 @@ import socket
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+try:  # shared canonical protocol registry (single source of truth)
+    from shared_models.network_registry import classify_endpoint, risk_severity
+except Exception:  # pragma: no cover - registry always present in this repo
+    classify_endpoint = None  # type: ignore[assignment]
+    risk_severity = None  # type: ignore[assignment]
+
 # Crypto-relevant service ports an estate may have forgotten: HTTPS,
 # STARTTLS mail (SMTP/IMAP/POP3), LDAPS, FTPS, SMTPS/IMAPS/POP3S, SSH,
-# and secure LDAP. The address×port product is still capped (see _max_targets).
-DEFAULT_PORTS = (443, 8443, 25, 465, 587, 143, 993, 110, 995, 21, 990, 636, 989, 22, 3269)
+# secure LDAP, plus high-risk OT/ICS, DB, cache, remote-admin and legacy
+# cleartext ports so an exposed service is named and risk-scored.
+DEFAULT_PORTS = (
+    443, 8443, 80, 8080,
+    25, 465, 587, 143, 993, 110, 995, 21, 990, 636, 989, 22, 3269,
+    23, 2375, 3306, 5432, 1433, 1521, 27017, 6379, 9200, 5672, 9092, 1883, 8883,
+    445, 139, 2049, 5900, 3389, 5985, 5986, 161, 53, 389, 88, 502, 102,
+)
+
+
+def _classify_endpoint(endpoint: str) -> dict[str, Any]:
+    """Passively name+verdict an open ``host:port`` endpoint using the shared
+    network registry. Pure classification of an already-observed open port —
+    it never initiates another probe (OT/SIS/ESD stay untouched)."""
+    if classify_endpoint is None:
+        return {}
+    info = classify_endpoint(endpoint)
+    if not info.recognized:
+        return {
+            "port": info.port,
+            "protocol": None,
+            "category": "unknown",
+            "status": "UNKNOWN",
+            "encrypted": False,
+            "exposure": "unknown",
+            "severity": risk_severity(info) if risk_severity else "MEDIUM",
+            "recognized": False,
+            "notes": "unrecognized service — human review",
+        }
+    return {
+        "port": info.port,
+        "protocol": info.canonical,
+        "category": info.category,
+        "status": info.status,
+        "encrypted": info.encrypted,
+        "cleartext": info.cleartext,
+        "exposure": info.exposure,
+        "severity": risk_severity(info) if risk_severity else "MEDIUM",
+        "recognized": True,
+        "notes": info.notes,
+        "risk_reason": info.risk_reason,
+    }
 
 
 def _max_targets() -> int:
@@ -87,6 +133,21 @@ def discover_subnet(
                     probes_filtered += 1
 
     reachable = len(reachable_hosts)
+    # Passively name + risk-score every open endpoint (no extra probes).
+    services = [
+        {"endpoint": ep, "host": ep.rpartition(":")[0], **_classify_endpoint(ep)}
+        for ep in open_endpoints
+    ]
+    risk_counts: dict[str, int] = {}
+    cleartext_services = 0
+    ot_services = 0
+    for svc in services:
+        sev = str(svc.get("severity", "INFO"))
+        risk_counts[sev] = risk_counts.get(sev, 0) + 1
+        if svc.get("cleartext") or svc.get("status") == "DISALLOWED":
+            cleartext_services += 1
+        if svc.get("exposure") == "ot-safety" or svc.get("category") == "ot-ics":
+            ot_services += 1
     return {
         "cidr": cidr,
         "ports": port_list,
@@ -102,6 +163,10 @@ def discover_subnet(
         "truncated": truncated,
         "endpoints": open_endpoints,
         "open_count": len(open_endpoints),
+        "services": services,
+        "risk_counts": risk_counts,
+        "cleartext_or_disallowed": cleartext_services,
+        "ot_services": ot_services,
     }
 
 
