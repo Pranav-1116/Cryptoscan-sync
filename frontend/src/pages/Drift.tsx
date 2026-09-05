@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { drift } from "../data/initial.js";
-import { apiDrift, LiveBadge, ApiResult } from "../lib/api.js";
+import { apiDrift, apiLiveDrift, LiveBadge, ApiResult, LiveDriftResponse } from "../lib/api.js";
+import { usePollingApi } from "../lib/apiUi.jsx";
 
 const CATS: { key: keyof typeof drift.baseline; label: string }[] = [
   { key: "network", label: "Network drift" },
@@ -23,6 +24,14 @@ function diff(base: string[], live: string[]) {
 export default function Drift() {
   const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // continuous drift between consecutive real scan cycles
+  const liveCycle = usePollingApi(apiLiveDrift, 6000);
+  const cycle = (liveCycle.data ?? null) as LiveDriftResponse | null;
+  const cycleChanges = cycle?.changes ?? [];
+  const DRIFT_TONE: Record<string, "red" | "amber" | "cyan" | ""> = {
+    HIGH: "red", MEDIUM: "amber", LOW: "cyan", CRITICAL: "red",
+  };
 
   const runLiveCheck = async () => {
     setBusy(true);
@@ -47,6 +56,35 @@ export default function Drift() {
           </div>
         }
       />
+      <Panel
+        title="Live cycle drift"
+        sub={cycle?.baseline
+          ? `crypto changes between consecutive live scans${cycle?.previous_ts ? " (baseline " + new Date(cycle.previous_ts).toLocaleTimeString() + ")" : ""}`
+          : "run two or more live scans to establish a drift baseline"}
+        className="mt"
+      >
+        {liveCycle.source === "live" && cycleChanges.length > 0 && (
+          <Table
+            head={["severity", "scanner", "change", "detail", "asset"]}
+            rows={cycleChanges.map((c) => [
+              <Badge tone={DRIFT_TONE[c.severity] ?? ""}>{c.severity}</Badge>,
+              c.scanner,
+              <span style={{ fontWeight: 600 }}>{c.title}</span>,
+              <span style={{ fontSize: 12 }}>{c.detail}</span>,
+              <span className="mono" style={{ fontSize: 12 }}>{c.asset || "—"}</span>,
+            ])}
+          />
+        )}
+        {liveCycle.source === "live" && cycleChanges.length === 0 && (
+          <div className="dim" style={{ fontSize: 13 }}>
+            {cycle?.baseline ? "No crypto-relevant changes between the last two live scans." : "Awaiting a second live scan to diff against."}
+          </div>
+        )}
+        {liveCycle.source !== "live" && (
+          <div className="dim" style={{ fontSize: 13 }}>Backend offline — start the control plane to track live drift.</div>
+        )}
+      </Panel>
+
       {live?.data && (
         <Panel title="POST /api/v1/platform/drift — engine response" sub="the deterministic drift evaluation from the control plane" className="mt">
           <Code>{JSON.stringify(live.data, null, 2)}</Code>

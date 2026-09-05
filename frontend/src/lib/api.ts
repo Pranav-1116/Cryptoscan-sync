@@ -437,6 +437,19 @@ export interface LiveAlertsResponse {
 export const apiLiveAlerts = (): Promise<ApiResult<LiveAlertsResponse>> =>
   call(`/api/v1/live-scan/alerts`);
 
+export interface LiveDriftChange {
+  severity: string; scanner: string; kind: string; title: string; detail: string; asset?: string;
+}
+export interface LiveDriftResponse {
+  baseline: boolean;
+  ts: string | null;
+  previous_ts?: string | null;
+  changes: LiveDriftChange[];
+  change_count: number;
+}
+export const apiLiveDrift = (): Promise<ApiResult<LiveDriftResponse>> =>
+  call(`/api/v1/live-scan/drift`);
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

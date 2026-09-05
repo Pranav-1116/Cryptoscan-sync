@@ -139,6 +139,8 @@ class LiveScanRunner:
         self.running: bool = False
         self._started_at: float | None = None
         self._persisted: bool = False
+        self._prev_inventory: dict[str, Any] | None = None
+        self.last_drift: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ specs
     def _specs(
@@ -446,7 +448,18 @@ class LiveScanRunner:
             # page-ready inventory is small and survives a restart so the
             # Hardware/Network/Libraries dashboards show the last real scan
             try:
-                trimmed["inventory"] = self.inventory()
+                current_inv = self.inventory()
+                # drift between this cycle and the previous one
+                prev_for_drift = self._prev_inventory or self._persisted_prev_inventory()
+                drift = self.compute_drift(prev_for_drift, current_inv)
+                self.last_drift = drift
+                if drift.get("change_count"):
+                    self._publish("live_scan.drift",
+                                  {"changes": drift["change_count"],
+                                   "top": [c for c in drift["changes"][:10]]})
+                current_inv["_prev"] = prev_for_drift  # enables drift after restart
+                trimmed["inventory"] = current_inv
+                self._prev_inventory = current_inv
             except Exception:  # noqa: BLE001
                 trimmed["inventory"] = None
             self._persisted = _db_persist(trimmed)
@@ -686,7 +699,7 @@ class LiveScanRunner:
         # payloads are not persisted); fall back to the page-ready inventory
         # captured at scan time until a new cycle repopulates full data.
         if sum(counts.values()) == 0 and isinstance(snap.get("inventory"), dict):
-            return snap["inventory"]
+            return {k: v for k, v in snap["inventory"].items() if k != "_prev"}
         return built
 
     # ------------------------------------------------------------------ alerts
@@ -789,6 +802,124 @@ class LiveScanRunner:
                   for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW")}
         return {"generated_at": ts, "counts": counts, "alerts": out, "total": len(out)}
 
+
+    # ------------------------------------------------------------------ drift
+    def compute_drift(self, prev: dict[str, Any] | None,
+                      curr: dict[str, Any]) -> dict[str, Any]:
+        """Deterministically compare two page-ready inventories and report
+        crypto-relevant changes. First scan (no baseline) reports no drift."""
+        changes: list[dict[str, Any]] = []
+        if not prev:
+            return {"baseline": False, "ts": curr.get("generated_at"),
+                    "changes": changes, "change_count": 0}
+
+        def _idx(items: list[dict[str, Any]], key: str) -> dict[str, Any]:
+            return {str(i.get(key) or i.get("id") or i.get("cn")): i for i in items or []}
+
+        # hardware devices (by id)
+        ph = _idx(prev.get("hardware") or [], "id")
+        for d in curr.get("hardware") or []:
+            if d.get("id") not in ph:
+                changes.append({"severity": "MEDIUM", "scanner": "hardware",
+                                "kind": "DEVICE_ADDED",
+                                "title": f"New hardware device: {d.get('type')} {d.get('id')}",
+                                "detail": f"caps: {', '.join(d.get('caps') or [])}"})
+        for pid, d in ph.items():
+            if pid not in _idx(curr.get("hardware") or [], "id"):
+                changes.append({"severity": "HIGH", "scanner": "hardware",
+                                "kind": "DEVICE_REMOVED",
+                                "title": f"Hardware device removed: {d.get('type')} {pid}",
+                                "detail": "a previously-seen crypto device is no longer present"})
+
+        # crypto libraries (by name|version)
+        def _libkey(l: dict[str, Any]) -> str:
+            return f"{l.get('name')}|{l.get('version')}"
+        plibs = {_libkey(l): l for l in prev.get("libraries") or []}
+        clibs = {_libkey(l): l for l in curr.get("libraries") or []}
+        for k, l in clibs.items():
+            if k not in plibs:
+                sev = "HIGH" if (l.get("status") in ("DISALLOWED", "RESTRICTED")) else \
+                      "MEDIUM" if l.get("status") == "DEPRECATED" else "LOW"
+                changes.append({"severity": sev, "scanner": "runtime",
+                                "kind": "LIBRARY_ADDED",
+                                "title": f"New library in use: {l.get('name')} {l.get('version') or ''}",
+                                "detail": f"status={l.get('status')} package={l.get('package') or 'unmanaged'}",
+                                "asset": _libkey(l)})
+        for k, l in plibs.items():
+            if k not in clibs:
+                changes.append({"severity": "LOW", "scanner": "runtime",
+                                "kind": "LIBRARY_REMOVED",
+                                "title": f"Library no longer in use: {l.get('name')} {l.get('version') or ''}",
+                                "detail": f"was status={l.get('status')}", "asset": _libkey(l)})
+        # status reclassification for the same name+version (e.g. policy update
+        # marks a previously-ALLOWED library DEPRECATED). A new *version* of the
+        # same library is already covered above as LIBRARY_ADDED/REMOVED.
+        for k, l in clibs.items():
+            old = plibs.get(k)
+            if old and old.get("status") != l.get("status"):
+                sev = "HIGH" if l.get("status") in ("DISALLOWED", "RESTRICTED") else "MEDIUM"
+                changes.append({"severity": sev, "scanner": "runtime",
+                                "kind": "LIBRARY_STATUS_CHANGED",
+                                "title": f"{l.get('name')} {l.get('version')} status {old.get('status')} → {l.get('status')}",
+                                "detail": f"package {l.get('package')}", "asset": k})
+
+        # network endpoints (by id)
+        pnet = _idx(prev.get("network") or [], "id")
+        cnet = _idx(curr.get("network") or [], "id")
+        for nid, n in cnet.items():
+            old = pnet.get(nid)
+            if not old:
+                changes.append({"severity": "MEDIUM", "scanner": "network",
+                                "kind": "ENDPOINT_ADDED",
+                                "title": f"New TLS endpoint: {nid}",
+                                "detail": n.get("tls") or "", "asset": nid})
+            elif old.get("status") != n.get("status"):
+                sev = "HIGH" if n.get("status") and n["status"] != "OK" else "LOW"
+                changes.append({"severity": sev, "scanner": "network",
+                                "kind": "ENDPOINT_STATUS_CHANGED",
+                                "title": f"Endpoint posture changed: {nid}",
+                                "detail": f"{old.get('status')} → {n.get('status')}", "asset": nid})
+        for nid in pnet:
+            if nid not in cnet:
+                changes.append({"severity": "LOW", "scanner": "network",
+                                "kind": "ENDPOINT_REMOVED",
+                                "title": f"TLS endpoint gone: {nid}", "detail": "", "asset": nid})
+
+        # certificates (by cn|endpoint)
+        def _ckey(c: dict[str, Any]) -> str:
+            return f"{c.get('cn')}|{c.get('endpoint')}"
+        pcerts = {_ckey(c): c for c in prev.get("certificates") or []}
+        for c in curr.get("certificates") or []:
+            if _ckey(c) not in pcerts:
+                changes.append({"severity": "LOW", "scanner": "certificates",
+                                "kind": "CERT_OBSERVED",
+                                "title": f"Certificate observed: {c.get('cn')} ({c.get('endpoint')})",
+                                "detail": f"{c.get('sig')} · {c.get('days')}d"})
+
+        order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+        changes.sort(key=lambda c: order.get(c["severity"], 9))
+        return {"baseline": True, "ts": curr.get("generated_at"),
+                "previous_ts": prev.get("generated_at"),
+                "changes": changes, "change_count": len(changes)}
+
+    def drift(self) -> dict[str, Any]:
+        """Latest drift between consecutive live cycles (persisted-safe)."""
+        if self.last_drift:
+            return self.last_drift
+        snap = self.last_snapshot or {}
+        inv = snap.get("inventory") if isinstance(snap.get("inventory"), dict) else None
+        prev = (inv or {}).get("_prev") if inv else None
+        if prev:
+            return self.compute_drift(prev, inv or {})
+        return {"baseline": False, "changes": [], "change_count": 0}
+
+    def _persisted_prev_inventory(self) -> dict[str, Any] | None:
+        """The previous inventory stored in the persisted snapshot — lets drift
+        keep working across an API restart."""
+        snap = self.last_snapshot or {}
+        inv = snap.get("inventory") if isinstance(snap.get("inventory"), dict) else None
+        prev = (inv or {}).get("_prev")
+        return prev if isinstance(prev, dict) else None
 
     def _periodic_loop(self) -> None:
         while not self._stop.is_set():
