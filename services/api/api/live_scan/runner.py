@@ -11,6 +11,19 @@ no target, no credentials) reports an honest error instead of a fake result.
 Threading model: scans run on a single daemon worker thread (one at a time,
 never overlapping). Results are published to the process-wide EventBus, whose
 publish() is thread-safe and hops to SSE subscriber loops.
+
+Every scanner service is covered live. Hardware + runtime always run. The
+target-based services run on demand (via the /live-scan/run request fields)
+and additionally on the periodic loop when their target is configured in the
+API environment:
+  CRYPTOSCAN_LIVE_NETWORK_TARGET=host:port   (TLS probe)
+  CRYPTOSCAN_LIVE_NETWORK_FULL=1             (+ OCSP / renegotiation)
+  CRYPTOSCAN_LIVE_CONTAINER_TARGET=<path|image|tar>
+  CRYPTOSCAN_LIVE_OT_TARGET=<log file or dir>
+  CRYPTOSCAN_LIVE_SOURCE_TARGET=<source dir>       (static crypto-API scan)
+  CRYPTOSCAN_LIVE_UNIVERSAL_TARGET=<source dir>    (universal crypto scan)
+  CRYPTOSCAN_LIVE_CLOUD=1                          (read-only live cloud; needs creds)
+  CRYPTOSCAN_LIVE_INTERVAL=<seconds>               (loop interval, default 900)
 """
 
 from __future__ import annotations
@@ -19,6 +32,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import datetime, timezone
@@ -98,6 +112,8 @@ class ScannerSpec:
         periodic: bool,
         needs_target: bool = False,
         timeout: int = 300,
+        output_dir: bool = False,
+        output_glob: str = "*.json",
     ) -> None:
         self.key = key
         self.argv = argv
@@ -105,6 +121,11 @@ class ScannerSpec:
         self.periodic = periodic
         self.needs_target = needs_target
         self.timeout = timeout
+        # When True, a temp working dir is created and (after success) the
+        # newest file matching output_glob in it is read as the JSON result —
+        # for scanners that write a report file instead of printing to stdout.
+        self.output_dir = output_dir
+        self.output_glob = output_glob
 
 
 class LiveScanRunner:
@@ -145,90 +166,136 @@ class LiveScanRunner:
                 timeout=180,
             ),
         ]
-        # network: only when a target is supplied (sweeps/host probes are
-        # explicit, never run against an arbitrary network on a timer).
-        net_target = targets.get("network")
+        # Every scanner service is supported live. Target-bearing scanners
+        # run either on-demand (via targets dict) or on the periodic loop when
+        # a CRYPTOSCAN_LIVE_<SVC>_TARGET env var is configured. When a target
+        # scanner has no target at all it is omitted (no fake/empty results).
+        env = os.environ
+
+        # network: explicit host:port only — never sweep an arbitrary network on a timer
+        net_target = targets.get("network") or env.get("CRYPTOSCAN_LIVE_NETWORK_TARGET")
         if net_target:
             argv = [py, "-m", "network_scanner.main", net_target,
                     "--scan-versions", "--scan-ciphers", "--check-chain"]
-            if targets.get("network_full"):
+            if targets.get("network_full") or env.get("CRYPTOSCAN_LIVE_NETWORK_FULL"):
                 argv += ["--check-renegotiation", "--live-revocation"]
             specs.append(ScannerSpec(
                 "network", argv,
                 cwd=str(root / "services/network_scanner"),
-                periodic=False, needs_target=True, timeout=120,
+                periodic=bool(env.get("CRYPTOSCAN_LIVE_NETWORK_TARGET")),
+                needs_target=True, timeout=120,
             ))
-        ctr_target = targets.get("container")
+        ctr_target = targets.get("container") or env.get("CRYPTOSCAN_LIVE_CONTAINER_TARGET")
         if ctr_target:
             specs.append(ScannerSpec(
                 "container",
                 [py, "-m", "container_scanner.main", ctr_target],
                 cwd=str(root / "services/container_scanner"),
-                periodic=False, needs_target=True, timeout=300,
+                periodic=bool(env.get("CRYPTOSCAN_LIVE_CONTAINER_TARGET")),
+                needs_target=True, timeout=300,
             ))
-        ot_target = targets.get("ot_logs")
+        ot_target = targets.get("ot_logs") or env.get("CRYPTOSCAN_LIVE_OT_TARGET")
         if ot_target:
             specs.append(ScannerSpec(
                 "ot",
                 [py, "-m", "ot_scanner.main", ot_target],
                 cwd=str(root / "services/ot_scanner"),
-                periodic=False, needs_target=True, timeout=180,
+                periodic=bool(env.get("CRYPTOSCAN_LIVE_OT_TARGET")),
+                needs_target=True, timeout=180,
             ))
-        if targets.get("cloud_live"):
-            # Live cloud read-only scan — needs cloud credentials in the API
-            # environment (CRYPTOSCAN_CLOUD_LIVE etc.); absent creds error honestly.
+        # cloud: live read-only scan — needs cloud creds in the API env
+        if targets.get("cloud_live") or env.get("CRYPTOSCAN_LIVE_CLOUD"):
             specs.append(ScannerSpec(
                 "cloud",
                 [py, "-m", "cloud_scanner.main", ".", "--live"],
                 cwd=str(root / "services/cloud_scanner"),
-                periodic=False, needs_target=True, timeout=300,
+                periodic=bool(env.get("CRYPTOSCAN_LIVE_CLOUD")),
+                needs_target=True, timeout=300,
+            ))
+        # static source scanner (crypto API usage) — target source path
+        src_target = targets.get("source") or env.get("CRYPTOSCAN_LIVE_SOURCE_TARGET")
+        if src_target:
+            specs.append(ScannerSpec(
+                "source",
+                [py, "-m", "scanner.main", "scan", "-s", str(src_target),
+                 "--exclude-tests"],
+                cwd=str(root / "services/scanner"),
+                periodic=bool(env.get("CRYPTOSCAN_LIVE_SOURCE_TARGET")),
+                needs_target=True, timeout=600,
+                output_dir=True, output_glob="scan-results-*.json",
+            ))
+        # universal crypto scan (deterministic crypto detection across source)
+        uc_target = targets.get("universal") or env.get("CRYPTOSCAN_LIVE_UNIVERSAL_TARGET")
+        if uc_target:
+            specs.append(ScannerSpec(
+                "universal",
+                [py, "-m", "universal_crypto.cli", "scan", str(uc_target), "--json"],
+                cwd=str(root / "services/universal_crypto"),
+                periodic=bool(env.get("CRYPTOSCAN_LIVE_UNIVERSAL_TARGET")),
+                needs_target=True, timeout=600,
             ))
         if only:
             specs = [s for s in specs if s.key in only]
         return specs
 
     def _periodic_specs(self) -> list[ScannerSpec]:
-        return self._specs()  # hardware + runtime carry periodic=True
+        # include only scanners configured to repeat (host set + env targets)
+        return [s for s in self._specs() if s.periodic]
 
     # ------------------------------------------------------------------ run
     def _run_spec(self, spec: ScannerSpec) -> dict[str, Any]:
         root = _repo_root()
         env = dict(os.environ)
         env["PYTHONPATH"] = _build_pythonpath(root)
-        started = time.time()
-        try:
-            proc = subprocess.run(
-                spec.argv,
-                cwd=spec.cwd,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=spec.timeout,
-            )
-            elapsed = round(time.time() - started, 2)
-            if proc.returncode != 0:
-                return {
-                    "scanner": spec.key, "ok": False,
-                    "error": (proc.stderr or "non-zero exit").strip()[-400:],
-                    "elapsed_s": elapsed,
-                }
+
+        def _execute(out_dir: str | None) -> dict[str, Any]:
+            argv = list(spec.argv)
+            if out_dir is not None and spec.key == "source":
+                argv += ["-o", out_dir]
+            started = time.time()
             try:
-                data = json.loads(proc.stdout) if proc.stdout.strip() else {}
+                proc = subprocess.run(
+                    argv, cwd=spec.cwd, env=env, capture_output=True,
+                    text=True, timeout=spec.timeout,
+                )
+                elapsed = round(time.time() - started, 2)
+                if proc.returncode != 0:
+                    return {"scanner": spec.key, "ok": False,
+                            "error": (proc.stderr or "non-zero exit").strip()[-400:],
+                            "elapsed_s": elapsed}
+                data: dict[str, Any] = {}
+                if out_dir is not None:
+                    files = sorted(Path(out_dir).glob(spec.output_glob),
+                                   key=lambda p: p.stat().st_mtime, reverse=True)
+                    if not files:
+                        return {"scanner": spec.key, "ok": False,
+                                "error": "scanner produced no output file",
+                                "elapsed_s": elapsed}
+                    data = json.loads(files[0].read_text())
+                else:
+                    data = json.loads(proc.stdout) if proc.stdout.strip() else {}
+                return {"scanner": spec.key, "ok": True, "elapsed_s": elapsed,
+                        "summary": self._summarize(spec.key, data), "data": data}
+            except subprocess.TimeoutExpired:
+                return {"scanner": spec.key, "ok": False,
+                        "error": f"timed out after {spec.timeout}s",
+                        "elapsed_s": spec.timeout}
+            except FileNotFoundError as exc:
+                return {"scanner": spec.key, "ok": False,
+                        "error": f"scanner not found: {exc}", "elapsed_s": 0.0}
             except json.JSONDecodeError as exc:
-                return {
-                    "scanner": spec.key, "ok": False,
-                    "error": f"scanner did not emit JSON: {exc}",
-                    "elapsed_s": elapsed,
-                }
-            return {"scanner": spec.key, "ok": True, "elapsed_s": elapsed,
-                    "summary": self._summarize(spec.key, data), "data": data}
-        except subprocess.TimeoutExpired:
+                return {"scanner": spec.key, "ok": False,
+                        "error": f"scanner did not emit JSON: {exc}",
+                        "elapsed_s": round(time.time() - started, 2)}
+
+        try:
+            if spec.output_dir:
+                with tempfile.TemporaryDirectory(prefix="cryptoscan-live-") as td:
+                    return _execute(td)
+            return _execute(None)
+        except Exception as exc:  # noqa: BLE001 — never let one scanner kill the cycle
             return {"scanner": spec.key, "ok": False,
-                    "error": f"timed out after {spec.timeout}s",
-                    "elapsed_s": spec.timeout}
-        except FileNotFoundError as exc:
-            return {"scanner": spec.key, "ok": False,
-                    "error": f"scanner not found: {exc}", "elapsed_s": 0.0}
+                    "error": f"runner error: {exc}", "elapsed_s": 0.0}
 
     @staticmethod
     def _summarize(key: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -273,6 +340,26 @@ class LiveScanRunner:
             resources = data.get("resources") or data.get("assets") or []
             return {"resources": len(resources) if hasattr(resources, "__len__") else 0,
                     "findings": len(data.get("findings") or [])}
+        if key == "source":
+            # static scanner's ScanResult.statistics (or a bare findings list)
+            stats = data.get("statistics") or data.get("stats") or {}
+            findings = data.get("findings") or []
+            return {
+                "files_scanned": stats.get("files_scanned"),
+                "findings": stats.get("total_findings", len(findings)),
+                "high": stats.get("high_confidence"),
+                "medium": stats.get("medium_confidence"),
+                "low": stats.get("low_confidence"),
+            }
+        if key == "universal":
+            report = data.get("report") if isinstance(data.get("report"), dict) else data
+            qc = report.get("quantum_classifications") or {}
+            return {
+                "observations": len(report.get("observations") or []),
+                "findings": len(report.get("findings") or []),
+                "unknown_crypto": len(report.get("unknown_crypto") or []),
+                "algorithms_classified": len(qc),
+            }
         if key == "ot":
             return {"events": data.get("events_count") or len(data.get("events") or [])}
         return {}

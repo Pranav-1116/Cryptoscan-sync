@@ -30,15 +30,22 @@ class RunScanRequest(BaseModel):
     # (hardware + runtime). Target-based scanners need a value below.
     scanners: list[str] = Field(
         default_factory=lambda: ["hardware", "runtime"],
-        description="hardware | runtime | network | container | ot",
+        description=("hardware | runtime | network | container | ot | cloud "
+                     "| source | universal"),
     )
     network_target: Optional[str] = Field(
         default=None, description="host:port for a TLS probe, e.g. example.com:443")
     network_full: bool = False
-    container_target: Optional[str] = None
-    ot_logs: Optional[str] = None
+    container_target: Optional[str] = Field(
+        default=None, description="filesystem root, docker-save .tar, or registry image")
+    ot_logs: Optional[str] = Field(
+        default=None, description="OT/ICS passive log file or directory")
     cloud_live: bool = Field(
         default=False, description="run a read-only live cloud scan (needs cloud creds in env)")
+    source_target: Optional[str] = Field(
+        default=None, description="source directory for the static crypto-API scanner")
+    universal_target: Optional[str] = Field(
+        default=None, description="source path for the universal crypto scanner")
 
 
 class PeriodicRequest(BaseModel):
@@ -89,6 +96,8 @@ def run_scan(
         "container": body.container_target,
         "ot_logs": body.ot_logs,
         "cloud_live": body.cloud_live,
+        "source": body.source_target,
+        "universal": body.universal_target,
     }
     return r.start_cycle(only=body.scanners, targets=targets, trigger="manual")
 

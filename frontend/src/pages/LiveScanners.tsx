@@ -21,11 +21,28 @@ const SCANNER_LABEL: Record<string, string> = {
   container: "Container / image",
   ot: "OT / ICS (passive logs)",
   cloud: "Cloud (read-only live)",
+  source: "Static source (crypto API)",
+  universal: "Universal crypto",
 };
+
+const HOST_SCANNERS = ["hardware", "runtime"];
+// services that only run when a target/flag is supplied
+const TARGET_SCANNERS = ["network", "container", "ot", "cloud", "source", "universal"];
 
 function kv(summary: Record<string, unknown> | undefined): Array<[string, unknown]> {
   if (!summary) return [];
   return Object.entries(summary).filter(([, v]) => v !== null && v !== undefined && v !== "");
+}
+
+function TgtInput({ label, value, onChange, ph }: {
+  label: string; value: string; onChange: (v: string) => void; ph?: string;
+}) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
+      {label}
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={ph} />
+    </label>
+  );
 }
 
 export default function LiveScanners() {
@@ -35,6 +52,10 @@ export default function LiveScanners() {
   const [netTarget, setNetTarget] = useState("");
   const [netFull, setNetFull] = useState(true);
   const [cloudLive, setCloudLive] = useState(false);
+  const [containerTarget, setContainerTarget] = useState("");
+  const [otTarget, setOtTarget] = useState("");
+  const [sourceTarget, setSourceTarget] = useState("");
+  const [universalTarget, setUniversalTarget] = useState("");
   const [intervalS, setIntervalS] = useState(900);
   const [log, setLog] = useState<LogLine[]>([]);
   const logRef = useRef<LogLine[]>([]);
@@ -82,15 +103,23 @@ export default function LiveScanners() {
   }, [realtime.events]);
 
   const runNow = async () => {
-    const scanners = ["hardware", "runtime"];
+    const scanners = [...HOST_SCANNERS];
     if (netTarget.trim()) scanners.push("network");
     if (cloudLive) scanners.push("cloud");
-    pushLog("requesting scan …", "start");
+    if (containerTarget.trim()) scanners.push("container");
+    if (otTarget.trim()) scanners.push("ot");
+    if (sourceTarget.trim()) scanners.push("source");
+    if (universalTarget.trim()) scanners.push("universal");
+    pushLog(`requesting scan: ${scanners.join(", ")} …`, "start");
     const r = await apiLiveScanRun({
       scanners,
       network_target: netTarget.trim() || undefined,
       network_full: netFull,
       cloud_live: cloudLive || undefined,
+      container_target: containerTarget.trim() || undefined,
+      ot_logs: otTarget.trim() || undefined,
+      source_target: sourceTarget.trim() || undefined,
+      universal_target: universalTarget.trim() || undefined,
     });
     if (r.source === "offline") pushLog(`could not start: ${r.error || "backend unreachable"}`, "fail");
   };
@@ -108,7 +137,10 @@ export default function LiveScanners() {
   };
 
   const scannerRows = useMemo(() => {
-    const keys = new Set([...Object.keys(status?.scanners || {}), "hardware", "runtime", "network", "cloud"]);
+    const keys = new Set([
+      ...Object.keys(status?.scanners || {}),
+      ...HOST_SCANNERS, ...TARGET_SCANNERS,
+    ]);
     return Array.from(keys).map((key) => {
       const s = status?.scanners?.[key];
       return {
@@ -147,30 +179,31 @@ export default function LiveScanners() {
 
       <Panel
         title="Run a live scan"
-        sub="Hardware + runtime always run; network runs when a host:port is given."
+        sub="Hardware + runtime always run. Fill a target to include that service; leave blank to skip."
       >
-        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
-          <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
-            Network target (optional)
-            <input
-              value={netTarget}
-              onChange={(e) => setNetTarget(e.target.value)}
-              placeholder="example.com:443"
-              style={{ minWidth: 220 }}
-            />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          <TgtInput label="Network TLS target" value={netTarget} onChange={setNetTarget} ph="example.com:443" />
+          <TgtInput label="Container / image / rootfs" value={containerTarget} onChange={setContainerTarget} ph="nginx:latest or /host/rootfs" />
+          <TgtInput label="OT / ICS passive logs" value={otTarget} onChange={setOtTarget} ph="/var/log/ot  (file or dir)" />
+          <TgtInput label="Static source dir" value={sourceTarget} onChange={setSourceTarget} ph="/path/to/source" />
+          <TgtInput label="Universal crypto source" value={universalTarget} onChange={setUniversalTarget} ph="/path/to/source" />
+          <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, justifyContent: "flex-end" }}>
+            <span style={{ opacity: 0.8 }}>Options</span>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <input type="checkbox" checked={netFull} onChange={(e) => setNetFull(e.target.checked)} />
+              network full (OCSP + renegotiation)
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <input type="checkbox" checked={cloudLive} onChange={(e) => setCloudLive(e.target.checked)} />
+              cloud live (read-only, needs creds)
+            </label>
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
-            <input type="checkbox" checked={netFull} onChange={(e) => setNetFull(e.target.checked)} />
-            full (OCSP + renegotiation)
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
-            <input type="checkbox" checked={cloudLive} onChange={(e) => setCloudLive(e.target.checked)} />
-            cloud live (read-only, needs cloud creds)
-          </label>
+        </div>
+        <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap", marginTop: 14 }}>
           <button className="btn" onClick={runNow} disabled={status?.running}>
             {status?.running ? "scan running…" : "Run scan now"}
           </button>
-          <span style={{ width: 18 }} />
+          <span style={{ flex: 1 }} />
           <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 12 }}>
             Interval (s)
             <input type="number" value={intervalS} min={30}

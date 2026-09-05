@@ -369,6 +369,8 @@ export const apiLiveScanRun = (body: {
   container_target?: string;
   ot_logs?: string;
   cloud_live?: boolean;
+  source_target?: string;
+  universal_target?: string;
 }): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/live-scan/run`, { method: "POST", body: JSON.stringify(body) });
 
