@@ -570,6 +570,7 @@ class LiveScanRunner:
                 })
 
         net_assets: list[dict[str, Any]] = []
+        certificates: list[dict[str, Any]] = []
         net = _data("network")
         for f in net.get("findings") or []:
             ep = f.get("endpoint") or ""
@@ -588,6 +589,23 @@ class LiveScanRunner:
                 "cert_expiry_days": leaf.get("days_until_expiry"),
                 "chain_valid": chain.get("is_valid"),
             })
+            for i, c in enumerate(certs):
+                days = c.get("days_until_expiry")
+                certificates.append({
+                    "cn": (c.get("subject") or "").replace("CN=", "").split(",")[0] or c.get("subject"),
+                    "sig": c.get("signature_algorithm") or "?",
+                    "key": f"{(c.get('public_key_algorithm') or '?')} {c.get('public_key_size') or ''}".strip(),
+                    "days": days,
+                    "san": ", ".join(c.get("san") or []) or "—",
+                    "eku": ", ".join(c.get("extended_key_usage") or []) or ("serverAuth" if i == 0 else "CA"),
+                    "owner": c.get("issuer") or "—",
+                    "status": ("EXPIRED" if (days is not None and days < 0) else
+                               ("EXPIRING" if (days is not None and days < 30) else
+                                (c.get("expiry_status") or "VALID"))),
+                    "endpoint": ep,
+                    "chain_position": i,
+                    "chain_length": len(certs),
+                })
         # discovery sweep open endpoints
         if net.get("cidr"):
             for ep in net.get("endpoints") or []:
@@ -610,10 +628,36 @@ class LiveScanRunner:
                 entry["processes"] += 1
         libraries = list(lib_agg.values())
 
+        # runtime: processes + listeners (page-ready for Runtime hosts)
+        processes: list[dict[str, Any]] = []
+        for p in rt.get("processes") or []:
+            statuses = {d.get("status") for d in (p.get("library_details") or [])}
+            weak = bool(statuses & {"DISALLOWED", "DEPRECATED", "RESTRICTED"})
+            processes.append({
+                "pid": p.get("pid"),
+                "process": p.get("process_name"),
+                "runtime": p.get("runtime"),
+                "tls_libraries": p.get("tls_libraries") or [],
+                "listening_ports": p.get("listening_ports") or [],
+                "containerized": p.get("containerized"),
+                "status": "RISK" if weak else "OK",
+            })
+
+        cert_center = {
+            "expired": sum(1 for c in certificates if c["status"] == "EXPIRED"),
+            "expiring30": sum(1 for c in certificates if c["status"] == "EXPIRING"),
+            "weak_algorithm": sum(1 for c in certificates
+                                  if str(c.get("sig")).lower().startswith(("md5", "sha1"))),
+            "unknown_owner": sum(1 for c in certificates if not c.get("owner") or c["owner"] == "—"),
+            "total": len(certificates),
+        }
+
         counts = {
             "hardware_devices": len(devices),
             "network_assets": len(net_assets),
             "libraries": len(libraries),
+            "certificates": len(certificates),
+            "processes": len(processes),
         }
         built = {
             "generated_at": snap.get("ts"),
@@ -622,13 +666,15 @@ class LiveScanRunner:
             "hardware": devices,
             "firmware": firmware_rows,
             "network": net_assets,
+            "certificates": certificates,
+            "cert_center": cert_center,
             "libraries": libraries,
+            "processes": processes,
         }
         # After a restart the in-memory snapshot only has summaries (full
         # payloads are not persisted); fall back to the page-ready inventory
         # captured at scan time until a new cycle repopulates full data.
-        if counts["hardware_devices"] == 0 and counts["network_assets"] == 0 \
-                and counts["libraries"] == 0 and isinstance(snap.get("inventory"), dict):
+        if sum(counts.values()) == 0 and isinstance(snap.get("inventory"), dict):
             return snap["inventory"]
         return built
 

@@ -393,14 +393,27 @@ export interface LiveLibrary {
   name: string | null; version: string | null; status: string | null;
   package: string | null; processes?: number | null;
 }
+export interface LiveCertificate {
+  cn: string; sig: string; key: string; days: number | null;
+  san: string; eku: string; owner: string; status: string;
+  endpoint: string; chain_position: number; chain_length: number;
+}
+export interface LiveProcess {
+  pid: number | null; process: string | null; runtime: string | null;
+  tls_libraries: string[]; listening_ports: number[];
+  containerized: boolean | null; status: string;
+}
 export interface LiveInventory {
   generated_at: string | null;
   host: string | null;
-  counts: { hardware_devices: number; network_assets: number; libraries: number };
+  counts: { hardware_devices: number; network_assets: number; libraries: number; certificates: number; processes: number };
   hardware: LiveHardwareDevice[];
   firmware: Array<{ device: string; kind: string; version: string; status: string }>;
   network: LiveNetworkAsset[];
+  certificates: LiveCertificate[];
+  cert_center: { expired: number; expiring30: number; weak_algorithm: number; unknown_owner: number; total: number };
   libraries: LiveLibrary[];
+  processes: LiveProcess[];
 }
 export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
   call(`/api/v1/live-scan/inventory`);

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { apiRuntimeFindings, ApiResult } from "../lib/api.js";
+import { apiRuntimeFindings, apiLiveInventory, ApiResult, LiveInventory } from "../lib/api.js";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 
 /* Runtime host agents — live process-level cryptography observed on real
@@ -74,6 +74,15 @@ export default function Runtime() {
   const findings = data?.findings ?? [];
   const summary = data?.summary ?? {};
 
+  // live host inventory from the on-box runtime scanner (this platform node)
+  const liveInv = usePollingApi(
+    () => apiLiveInventory() as unknown as Promise<ApiResult<LiveInventory>>,
+    8000,
+    [],
+  );
+  const hostProcs = liveInv.data?.processes ?? [];
+  const hostLibs = liveInv.data?.libraries ?? [];
+
   const hosts = useMemo(() => {
     const map = new Map<string, { host: string; procs: Set<string>; weak: number; total: number; last: string | null }>();
     for (const f of findings) {
@@ -118,6 +127,34 @@ export default function Runtime() {
           </div>
         }
       />
+
+      {hostProcs.length > 0 && (
+        <Panel
+          title={`This node · live host crypto (${liveInv.data?.host ?? "?"})`}
+          sub="processes with TLS/crypto libraries mapped, from the live runtime scanner"
+        >
+          <div className="row" style={{ gap: 10, marginBottom: 12 }}>
+            <LiveBadge source="live" label="LIVE HOST SCAN" />
+            <Badge tone="cyan">{hostProcs.length} crypto procs</Badge>
+            <Badge>{hostLibs.length} libraries</Badge>
+            <Badge tone="green">{hostProcs.filter((p) => p.status === "OK").length} OK</Badge>
+            {hostProcs.filter((p) => p.status === "RISK").length > 0 && (
+              <Badge tone="red">{hostProcs.filter((p) => p.status === "RISK").length} RISK</Badge>
+            )}
+          </div>
+          <Table
+            head={["pid", "process", "runtime", "TLS libraries", "listening", "status"]}
+            rows={hostProcs.map((p) => [
+              <span className="num">{p.pid ?? "—"}</span>,
+              <span className="mono">{p.process}</span>,
+              p.runtime || "—",
+              <span style={{ fontSize: 12 }}>{(p.tls_libraries || []).join(", ") || "—"}</span>,
+              p.listening_ports?.length ? <Badge tone="cyan">{p.listening_ports.join(", ")}</Badge> : <span className="faint">—</span>,
+              <Badge tone={p.status === "RISK" ? "red" : "green"}>{p.status}</Badge>,
+            ])}
+          />
+        </Panel>
+      )}
 
       {!hasData ? (
         <Panel title="No runtime agents reporting yet" sub="install and run the lightweight runtime agent on a machine to see its live cryptography">
