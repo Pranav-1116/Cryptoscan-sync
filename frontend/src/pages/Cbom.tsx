@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Tabs, Code, PageHead } from "../components/ui.jsx";
 import { bomComponents, bomDependencies, bomDiff, bomHistory, globalState } from "../data/initial.js";
-import { apiBom, LiveBadge, ApiResult } from "../lib/api.js";
+import { apiBom, apiLiveBom, LiveBadge, ApiResult, LiveBomResponse } from "../lib/api.js";
+import { usePollingApi } from "../lib/apiUi.jsx";
 
 const VIEWS = ["Overview", "Explorer", "Diff", "History", "Export"];
 
@@ -9,6 +10,15 @@ export default function Cbom() {
   const [tab, setTab] = useState(0);
   const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // live CBOM assembled from the scanner cycle (algorithms/libraries/packages)
+  const liveBomRes = usePollingApi(apiLiveBom, 8000);
+  const liveBom = (liveBomRes.data ?? null) as LiveBomResponse | null;
+  const liveComponents = liveBom?.cbom.components ?? [];
+  const liveCounts = liveBom?.cbom.counts ?? {};
+  const Q_TONE: Record<string, "red" | "amber" | "green" | ""> = {
+    vulnerable: "red", broken: "red", at_risk: "amber", safe: "green",
+  };
 
   const fetchLive = async () => {
     setBusy(true);
@@ -36,6 +46,36 @@ export default function Cbom() {
       {live?.data && (
         <Panel title="GET /api/v1/platform/bom — engine response" sub="combined CycloneDX CBOM + HBOM produced by the control plane" className="mt">
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
+        </Panel>
+      )}
+      {liveBomRes.source === "live" && (
+        <Panel title="Live CBOM (from real scans)" sub={liveBom ? `generated ${liveBom.generated_at ? new Date(liveBom.generated_at).toLocaleString() : ""} · quantum verdicts from the universal classifier` : ""} className="mt">
+          <div className="grid cols-4" style={{ marginBottom: 12 }}>
+            {[["total", liveCounts.total ?? liveComponents.length], ["algorithms", liveCounts.algorithms ?? 0],
+              ["libraries/packages", (liveCounts.libraries ?? 0) + (liveCounts.packages ?? 0)],
+              ["quantum vulnerable", liveCounts.quantum_vulnerable ?? 0]].map(([k, v]) => (
+              <div className="kpi" key={k as string}><span className="k">{k}</span>
+                <span className="v" style={{ color: k === "quantum vulnerable" && Number(v) ? "var(--red)" : undefined }}>{v as number}</span></div>
+            ))}
+          </div>
+          <Table
+            head={["type", "component", "version", "source", "quantum status", "priority"]}
+            rows={liveComponents.map((c) => [
+              <Badge tone="cyan">{c.type}</Badge>,
+              <span className="mono" style={{ fontWeight: 600 }}>{c.name}</span>,
+              <span className="num">{c.version || "—"}</span>,
+              c.source,
+              c.quantum_status
+                ? <Badge tone={Q_TONE[String(c.quantum_status).toLowerCase()] ?? ""}>{c.quantum_status}</Badge>
+                : <span className="faint">{c.status || "unclassified"}</span>,
+              <span>{c.migration_priority ?? "—"}</span>,
+            ])}
+          />
+          {!liveComponents.length && (
+            <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
+              No crypto components yet — run runtime + universal/container scans in Operations → Realtime scanners.
+            </div>
+          )}
         </Panel>
       )}
       <Tabs tabs={VIEWS} active={tab} onChange={setTab} />

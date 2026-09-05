@@ -450,6 +450,20 @@ export interface LiveDriftResponse {
 export const apiLiveDrift = (): Promise<ApiResult<LiveDriftResponse>> =>
   call(`/api/v1/live-scan/drift`);
 
+export interface LiveBomComponent {
+  type: string; name: string; version: string | null; ref?: string | null;
+  quantum_status?: string | null; migration_priority?: string | null;
+  classical_status?: string | null; status?: string | null;
+  source: string; algorithms?: string[]; deprecated?: boolean; caps?: string[];
+}
+export interface LiveBomResponse {
+  generated_at: string | null;
+  cbom: { components: LiveBomComponent[]; counts: Record<string, number> };
+  hbom: { components: LiveBomComponent[]; counts: Record<string, number> };
+}
+export const apiLiveBom = (): Promise<ApiResult<LiveBomResponse>> =>
+  call(`/api/v1/live-scan/bom`);
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

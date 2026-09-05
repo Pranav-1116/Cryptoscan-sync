@@ -921,6 +921,100 @@ class LiveScanRunner:
         prev = (inv or {}).get("_prev")
         return prev if isinstance(prev, dict) else None
 
+    # ------------------------------------------------------------------ bom
+    def bom(self) -> dict[str, Any]:
+        """Cryptographic Bill of Materials (CBOM) and Hardware Bill of Materials
+        (HBOM) assembled from the live scans. Real components only; quantum
+        verdicts come from the universal crypto classifier (left null where no
+        classifier ran, rather than guessed)."""
+        snap = self.last_snapshot or {}
+        results: dict[str, Any] = snap.get("results") or {}
+
+        def _data(key: str) -> dict[str, Any]:
+            return (results.get(key) or {}).get("data") or {}
+
+        components: list[dict[str, Any]] = []
+
+        # 1. algorithms + quantum classifications from the universal scanner
+        uni = _data("universal")
+        uni_report = uni.get("report") if isinstance(uni.get("report"), dict) else uni
+        for algo, klass in (uni_report.get("quantum_classifications") or {}).items():
+            components.append({
+                "type": "algorithm", "name": algo, "version": "",
+                "ref": klass.get("quantum_status"),
+                "quantum_status": klass.get("quantum_status"),
+                "migration_priority": klass.get("migration_priority"),
+                "classical_status": klass.get("classical_status"),
+                "source": "universal",
+            })
+
+        # 2. crypto libraries observed on the host (runtime)
+        inv = self.inventory()
+        for lib in inv.get("libraries", []):
+            components.append({
+                "type": "library", "name": lib.get("name"),
+                "version": lib.get("version"), "ref": lib.get("package") or "unmanaged",
+                "quantum_status": None, "migration_priority": None,
+                "status": lib.get("status"), "source": "runtime",
+            })
+
+        # 3. crypto packages found in containers/images
+        ctr = _data("container")
+        for pkg in ctr.get("packages") or []:
+            if not isinstance(pkg, dict):
+                continue
+            name = pkg.get("name") or pkg.get("canonical_name")
+            if not name:
+                continue
+            components.append({
+                "type": "package", "name": name,
+                "version": pkg.get("version"), "ref": pkg.get("manager") or "image",
+                "quantum_status": None, "migration_priority": None,
+                "algorithms": pkg.get("algorithms") or [],
+                "deprecated": pkg.get("deprecated"), "source": "container",
+            })
+
+        # de-duplicate by (type, name, version)
+        seen: set[tuple] = set()
+        uniq: list[dict[str, Any]] = []
+        for c in components:
+            k = (c["type"], c.get("name"), c.get("version"))
+            if k in seen:
+                continue
+            seen.add(k)
+            uniq.append(c)
+
+        quantum_vulnerable = sum(
+            1 for c in uniq
+            if str(c.get("quantum_status") or "").lower() in
+            ("vulnerable", "broken", "at_risk", "deprecated"))
+
+        # HBOM: hardware devices
+        hbom_components = [
+            {"type": d.get("type"), "name": d.get("vendor") or d.get("type"),
+             "version": d.get("firmware"), "ref": d.get("host"),
+             "caps": d.get("caps"), "source": "hardware"}
+            for d in inv.get("hardware", [])
+        ]
+
+        return {
+            "generated_at": snap.get("ts"),
+            "cbom": {
+                "components": uniq,
+                "counts": {
+                    "total": len(uniq),
+                    "algorithms": sum(1 for c in uniq if c["type"] == "algorithm"),
+                    "libraries": sum(1 for c in uniq if c["type"] == "library"),
+                    "packages": sum(1 for c in uniq if c["type"] == "package"),
+                    "quantum_vulnerable": quantum_vulnerable,
+                },
+            },
+            "hbom": {
+                "components": hbom_components,
+                "counts": {"total": len(hbom_components)},
+            },
+        }
+
     def _periodic_loop(self) -> None:
         while not self._stop.is_set():
             try:

@@ -1,36 +1,46 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { hardware, bomComponents, globalState } from "../data/initial.js";
+import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { apiLiveBom, LiveBomResponse } from "../lib/api.js";
+
+/* HBOM — Hardware Bill of Materials from the live hardware scanner via
+   GET /api/v1/live-scan/bom. Empty until a live scan runs. */
 
 export default function Hbom() {
+  const res = usePollingApi(apiLiveBom, 8000);
+  const live = res.source === "live";
+  const bom = (res.data ?? null) as LiveBomResponse | null;
+  const devices = bom?.hbom.components ?? [];
+
   return (
     <>
       <PageHead
         crumb="boms / hbom"
         title="HBOM"
-        sub="Hardware Bill of Materials — hardware · components · firmware · TPM · HSM · crypto capability"
-        right={<Badge tone="green"><span className="dot" /> v{globalState.hbomVersion} · LATEST</Badge>}
+        sub="Hardware Bill of Materials — TPM · HSM · CPU crypto · secure elements · firmware · capability"
+        right={
+          <>
+            {live && <LiveBadge source="live" label="LIVE" />}
+            <Badge tone={devices.length ? "green" : ""}><span className="dot" /> {devices.length} COMPONENTS</Badge>
+          </>
+        }
       />
-      <Panel title="HBOM explorer" sub="every device with its crypto capability">
+      <Panel title="Trusted hardware layer" sub="every crypto-capable hardware device from the live scan">
         <Table
-          head={["type", "component"]}
-          rows={bomComponents.filter((c) => ["device", "firmware"].includes(c.type)).map((c) => [
-            <Badge tone="violet">{c.type}</Badge>, <span className="mono">{c.name}</span>,
-          ])}
-        />
-      </Panel>
-      <Panel title="Trusted hardware layer" sub="HSM · TPM · secure elements · accelerators" className="mt">
-        <Table
-          head={["id", "type", "vendor", "firmware", "capabilities", "status"]}
-          rows={hardware.map((h) => [
-            <span className="mono">{h.id}</span>,
+          head={["type", "vendor / component", "firmware", "capabilities", "host"]}
+          rows={devices.map((h) => [
             <Badge tone="violet">{h.type}</Badge>,
-            h.vendor,
-            <span className="num">{h.firmware}</span>,
-            <span className="row">{h.caps.map((c) => <Badge key={c} tone={c.startsWith("ML-") ? "green" : ""}>{c}</Badge>)}</span>,
-            <Badge>{h.status}</Badge>,
+            <span className="mono" style={{ fontWeight: 600 }}>{h.name}</span>,
+            <span className="num">{h.version || "—"}</span>,
+            <span className="row">{(h.caps ?? []).map((c) => <Badge key={c}>{c}</Badge>)}</span>,
+            <span className="mono">{h.ref}</span>,
           ])}
         />
+        {!devices.length && (
+          <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
+            No HBOM yet — run a live hardware scan in Operations → Realtime scanners.
+          </div>
+        )}
       </Panel>
     </>
   );

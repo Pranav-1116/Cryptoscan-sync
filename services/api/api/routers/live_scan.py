@@ -130,6 +130,13 @@ def drift(user: str = Depends(get_current_user)) -> dict[str, Any]:
     return _runner().drift()
 
 
+@router.get("/bom")
+def bom(user: str = Depends(get_current_user)) -> dict[str, Any]:
+    """CBOM (algorithms/libraries/packages + quantum verdicts) and HBOM
+    (hardware components) assembled from the live scans."""
+    return _runner().bom()
+
+
 @router.post("/stop", status_code=202)
 def stop_periodic(
     user: str = Depends(require_roles(*_OPERATORS)),
