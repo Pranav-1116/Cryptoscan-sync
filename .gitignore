@@ -64,3 +64,6 @@ frontend/public/
 
 # Scanner output artifacts
 scan-results/
+
+# local SQLite DBs
+data/
