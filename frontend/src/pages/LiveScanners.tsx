@@ -154,7 +154,7 @@ export default function LiveScanners() {
     });
   }, [status]);
 
-  const toneFor = (ok: boolean | undefined): "green" | "red" | "amber" | "" =>
+  const toneFor = (ok: boolean | null | undefined): "green" | "red" | "amber" | "" =>
     ok === true ? "green" : ok === false ? "red" : "";
 
   return (

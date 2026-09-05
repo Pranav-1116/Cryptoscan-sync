@@ -231,11 +231,11 @@ export default function CommandCenter() {
   );
 }
 
-function LiveStat({ label, value, tone }: { label: string; value: number; tone?: "green" | "red" }) {
+function LiveStat({ label, value, tone }: { label: string; value: number | string; tone?: "green" | "red" | "cyan" | "" }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", minWidth: 120 }}>
-      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : "var(--text)" }}>
-        {value.toLocaleString()}
+      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : tone === "cyan" ? "var(--cyan, var(--accent))" : "var(--text)" }}>
+        {typeof value === "number" ? value.toLocaleString() : value}
       </span>
       <span className="dim" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
     </div>

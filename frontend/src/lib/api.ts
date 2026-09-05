@@ -419,6 +419,56 @@ export interface LiveInventory {
 export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
   call(`/api/v1/live-scan/inventory`);
 
+// ── Canonical catalogs (algorithms · network protocols · hardware) ──
+export interface AlgorithmEntry {
+  algorithm: string; family: string; status: string;
+  key_size?: number | null; parameter_kind?: string | null;
+  quantum_impact?: string | null; quantum_vulnerable?: boolean;
+  notes?: string; recognized?: boolean;
+}
+export interface ProtocolEntry {
+  protocol: string; category: string; status: string;
+  port?: number | null; transport?: string; encrypted?: boolean;
+  cleartext?: boolean; exposure?: string; notes?: string;
+  risk_reason?: string; recognized?: boolean;
+}
+export interface HardwareEntry {
+  device: string; category: string; status: string;
+  manufacturer?: string; quantum_resistant?: boolean; attestation?: boolean;
+  notes?: string; risk_reason?: string; recognized?: boolean;
+}
+export interface CatalogResult<T> {
+  count: number;
+  total_count?: number;
+  status_counts: Record<string, number>;
+  counts_by_status?: Record<string, number>;
+  protocols?: T[]; devices?: T[]; algorithms?: T[];
+  families?: string[];
+}
+
+export const apiAlgorithmCatalog = (params?: { family?: string; status?: string; q?: string }): Promise<ApiResult<CatalogResult<AlgorithmEntry> & { algorithms: AlgorithmEntry[] }>> => {
+  const qs = new URLSearchParams();
+  if (params?.family) qs.set("family", params.family);
+  if (params?.status) qs.set("status", params.status);
+  if (params?.q) qs.set("q", params.q);
+  const s = qs.toString();
+  return call(`/api/v1/algorithms${s ? `?${s}` : ""}`);
+};
+export const apiProtocolCatalog = (params?: { category?: string; status?: string }): Promise<ApiResult<CatalogResult<ProtocolEntry>>> => {
+  const qs = new URLSearchParams();
+  if (params?.category) qs.set("category", params.category);
+  if (params?.status) qs.set("status", params.status);
+  const s = qs.toString();
+  return call(`/api/v1/network/protocols${s ? `?${s}` : ""}`);
+};
+export const apiHardwareCatalog = (params?: { category?: string; status?: string }): Promise<ApiResult<CatalogResult<HardwareEntry>>> => {
+  const qs = new URLSearchParams();
+  if (params?.category) qs.set("category", params.category);
+  if (params?.status) qs.set("status", params.status);
+  const s = qs.toString();
+  return call(`/api/v1/hardware/catalog${s ? `?${s}` : ""}`);
+};
+
 export interface LiveAlert {
   severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   scanner: string;

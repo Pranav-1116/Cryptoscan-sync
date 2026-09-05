@@ -20,6 +20,7 @@ const NAV = [
     { to: "/crypto", label: "Cryptography", icon: "⚿" },
   ]},
   { section: "Inventory", items: [
+    { to: "/catalog", label: "Catalogs", icon: "☷" },
     { to: "/assets", label: "Assets", icon: "▣" },
     { to: "/crypto-assets", label: "Crypto assets", icon: "⚿" },
     { to: "/certificates", label: "Certificates", icon: "⊞" },

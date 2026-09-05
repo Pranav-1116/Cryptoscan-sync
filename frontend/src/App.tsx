@@ -12,6 +12,7 @@ import CryptoAssets from "./pages/CryptoAssets.jsx";
 import Certificates from "./pages/Certificates.jsx";
 import Libraries from "./pages/Libraries.jsx";
 import Protocols from "./pages/Protocols.jsx";
+import Catalog from "./pages/Catalog.jsx";
 import Cbom from "./pages/Cbom.jsx";
 import Hbom from "./pages/Hbom.jsx";
 import Graph from "./pages/Graph.jsx";
@@ -57,6 +58,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/certificates": Certificates,
   "/libraries": Libraries,
   "/protocols": Protocols,
+  "/catalog": Catalog,
   "/cbom": Cbom,
   "/hbom": Hbom,
   "/graph": Graph,
