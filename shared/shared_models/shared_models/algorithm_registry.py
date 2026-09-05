@@ -116,6 +116,8 @@ _FAMILIES: dict[str, _Family] = {
     "RC6": _Family("RC6", "block-cipher", RESTRICTED, notes="not NIST-approved"),
     "BLOWFISH": _Family("Blowfish", "block-cipher", RESTRICTED, notes="64-bit block; not for new use"),
     "TWOFISH": _Family("Twofish", "block-cipher", ALLOWED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover"),
+    "SERPENT": _Family("Serpent", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="AES finalist; no current standardization"),
+    "DSTU7624": _Family("Kalyna", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 256, 512), quantum_impact="grover", notes="Ukrainian national standard DSTU 7624:2014 (Kalyna)"),
     "CAMELLIA": _Family("Camellia", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), notes="not FIPS-approved"),
     "ARIA": _Family("ARIA", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256)),
     "SEED": _Family("SEED", "block-cipher", DEPRECATED, key_size=128, parameter_kind=KEY_BITS),
@@ -199,6 +201,70 @@ _FAMILIES: dict[str, _Family] = {
     "SECP256K1": _Family("secp256k1", "ec-curve", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="non-NIST curve"),
     "BRAINPOOLP256R1": _Family("brainpoolP256r1", "ec-curve", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     "CURVE25519": _Family("Curve25519", "ec-curve", ALLOWED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
+    # -- additional symmetric / stream ciphers ----------------------------- #
+    "XSALSA20": _Family("XSalsa20", "stream-cipher", RESTRICTED, key_size=256, parameter_kind=KEY_BITS),
+    "XCHACHA20": _Family("XChaCha20", "stream-cipher", ALLOWED, key_size=256, parameter_kind=KEY_BITS, quantum_impact="grover"),
+    "XCHACHA20-POLY1305": _Family("XChaCha20-Poly1305", "aead", ALLOWED, key_size=256, parameter_kind=KEY_BITS, quantum_impact="grover"),
+    # -- Chinese national (GM/T) algorithms -------------------------------- #
+    "SM4": _Family("SM4", "block-cipher", ALLOWED, allowed_key_sizes=(128,), min_key_size=128, quantum_impact="grover", notes="Chinese GM/T block cipher (GB/T 32907)"),
+    "SM3": _Family("SM3", "hash", ALLOWED, key_size=256, parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="Chinese GM/T hash (GB/T 32905)"),
+    "SM2": _Family("SM2", "signature", ALLOWED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="Chinese GM/T ECC signature/key-exchange (GB/T 32918); Shor breaks"),
+    "SM9": _Family("SM9", "signature", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="Chinese identity-based (pairing) cryptography; Shor breaks"),
+    "ZUC": _Family("ZUC", "stream-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="3GPP LTE/5G confidentiality/integrity stream cipher"),
+    # -- Russian GOST algorithms ------------------------------------------- #
+    "KUZNYECHIK": _Family("Kuznyechik", "block-cipher", ALLOWED, key_size=256, parameter_kind=KEY_BITS, quantum_impact="grover", notes="GOST R 34.12-2015 block cipher (aka Grasshopper)"),
+    "MAGMA": _Family("Magma", "block-cipher", RESTRICTED, key_size=256, parameter_kind=KEY_BITS, quantum_impact="grover", notes="GOST R 34.12-2015 legacy block cipher (formerly GOST 28147)"),
+    "STREEBOG": _Family("Streebog", "hash", RESTRICTED, allowed_key_sizes=(256, 512), parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="GOST R 34.11-2012 hash"),
+    "GOST3411-94": _Family("GOST R 34.11-94", "hash", DEPRECATED, key_size=256, parameter_kind=DIGEST_BITS, notes="superseded GOST hash; weaknesses"),
+    # -- Korean / additional block ciphers --------------------------------- #
+    "LEA": _Family("LEA", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="Korean lightweight block cipher"),
+    "HIGHT": _Family("HIGHT", "block-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, notes="Korean lightweight 64-bit block cipher"),
+    # -- lightweight / embedded / NIST LWC --------------------------------- #
+    "ASCON": _Family("Ascon", "aead", ALLOWED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="NIST lightweight crypto (LWC) winner; AEAD + hash"),
+    "PRESENT": _Family("PRESENT", "block-cipher", RESTRICTED, allowed_key_sizes=(80, 128), notes="ultra-lightweight block cipher"),
+    "CLEFIA": _Family("CLEFIA", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), notes="Sony lightweight block cipher"),
+    "GRAIN": _Family("Grain", "stream-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, notes="lightweight stream cipher (Grain-128)"),
+    "TRIVIUM": _Family("Trivium", "stream-cipher", RESTRICTED, key_size=80, parameter_kind=KEY_BITS, notes="lightweight stream cipher"),
+    "SIMON": _Family("Simon", "block-cipher", RESTRICTED, notes="NSA lightweight block cipher family"),
+    "SPECK": _Family("Speck", "block-cipher", RESTRICTED, notes="NSA lightweight block cipher family"),
+    # -- legacy / mobile telephony (broken or restricted) ------------------ #
+    "KASUMI": _Family("KASUMI", "block-cipher", DISALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="3G A5/3; practical attacks; disallowed"),
+    "MISTY1": _Family("MISTY1", "block-cipher", DISALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="broken (Leuven attack); disallowed"),
+    "SNOW3G": _Family("SNOW 3G", "stream-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, notes="3G/4G/5G confidentiality stream cipher"),
+    "A5-1": _Family("A5/1", "stream-cipher", DISALLOWED, key_size=64, parameter_kind=KEY_BITS, notes="GSM cipher; broken — disallowed"),
+    "A5-2": _Family("A5/2", "stream-cipher", DISALLOWED, key_size=64, parameter_kind=KEY_BITS, notes="GSM export cipher; deliberately weak — disallowed"),
+    "XTEA": _Family("XTEA", "block-cipher", DISALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="related-key weaknesses; disallowed"),
+    "SKIPJACK": _Family("Skipjack", "block-cipher", DISALLOWED, key_size=80, parameter_kind=KEY_BITS, notes="NSA Clipper cipher; 80-bit; disallowed"),
+    "SHACAL2": _Family("SHACAL-2", "block-cipher", RESTRICTED, key_size=256, parameter_kind=KEY_BITS),
+    # -- additional hashes / XOFs ------------------------------------------ #
+    "BLAKE2B": _Family("BLAKE2b", "hash", ALLOWED, allowed_key_sizes=(256, 512), parameter_kind=DIGEST_BITS, quantum_impact="grover"),
+    "BLAKE2S": _Family("BLAKE2s", "hash", ALLOWED, key_size=256, parameter_kind=DIGEST_BITS, quantum_impact="grover"),
+    "BLAKE3": _Family("BLAKE3", "hash", ALLOWED, key_size=256, parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="modern fast hash/XOF"),
+    "KMAC": _Family("KMAC", "mac", ALLOWED, allowed_key_sizes=(128, 256), parameter_kind=KEY_BITS, notes="SHA-3 derived MAC (SP 800-185)"),
+    "SKEIN": _Family("Skein", "hash", RESTRICTED, allowed_key_sizes=(256, 512, 1024), parameter_kind=DIGEST_BITS),
+    "TIGER": _Family("Tiger", "hash", RESTRICTED, key_size=192, parameter_kind=DIGEST_BITS),
+    # -- additional MACs / KDFs -------------------------------------------- #
+    "POLY1305": _Family("Poly1305", "mac", ALLOWED, key_size=256, parameter_kind=KEY_BITS, notes="one-time AEAD authenticator (with ChaCha20/AES)"),
+    "SIPHASH": _Family("SipHash", "mac", ALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="fast PRF/MAC for hash tables"),
+    # -- additional asymmetric --------------------------------------------- #
+    "MQV": _Family("MQV", "key-agree", DISALLOWED, min_key_size=2048, quantum_impact="shor", notes="key agreement; not recommended (use ECDHE)"),
+    "SRP": _Family("SRP", "key-agree", RESTRICTED, min_key_size=2048, quantum_impact="shor", notes="password-authenticated key exchange; Shor applies"),
+    "ELGAMAL": _Family("ElGamal", "pke", DEPRECATED, min_key_size=2048, quantum_impact="shor", notes="legacy; use ECIES/RSA-OAEP"),
+    # -- additional curves -------------------------------------------------- #
+    "P-224": _Family("P-224", "ec-curve", RESTRICTED, key_size=224, parameter_kind=CURVE_BITS, quantum_impact="shor"),
+    "BRAINPOOLP384R1": _Family("brainpoolP384r1", "ec-curve", RESTRICTED, key_size=384, parameter_kind=CURVE_BITS, quantum_impact="shor"),
+    "FRP256V1": _Family("FRP256v1", "ec-curve", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="French ANSSI curve"),
+    # -- additional post-quantum (NIST FIPS 203/204/205 + candidates) ----- #
+    "FN-DSA": _Family("FN-DSA (Falcon)", "signature-pqc", ALLOWED, notes="FIPS 206 / Falcon lattice signature (draft)"),
+    "FALCON": _Family("Falcon", "signature-pqc", RESTRICTED, notes="pre-standardization name — prefer FN-DSA"),
+    "SLH-DSA": _Family("SLH-DSA (SPHINCS+)", "signature-pqc", ALLOWED, notes="FIPS 205 stateless hash-based signature family"),
+    "MCELIECE": _Family("Classic McEliece", "kem-pqc", ALLOWED, notes="NIST PQC round-4 KEM (code-based)"),
+    "HQC-128": _Family("HQC-128", "kem-pqc", RESTRICTED, key_size=3626, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 1"),
+    "HQC-192": _Family("HQC-192", "kem-pqc", RESTRICTED, key_size=7242, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 3"),
+    "HQC-256": _Family("HQC-256", "kem-pqc", RESTRICTED, key_size=14434, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 5"),
+    "BIKE": _Family("BIKE", "kem-pqc", RESTRICTED, notes="NIST PQC round-4 KEM (code-based)"),
+    "FRODOKEM": _Family("FrodoKEM", "kem-pqc", RESTRICTED, notes="conservative lattice KEM (high bandwidth)"),
+    "NTRU": _Family("NTRU", "kem-pqc", RESTRICTED, notes="lattice KEM (legacy/commercial)"),
 }
 
 # Aliases: normalized (upper, separators stripped) -> canonical family key.
@@ -251,6 +317,30 @@ _ALIASES: dict[str, str] = {
     "MLDSA44": "ML-DSA-44", "MLDSA65": "ML-DSA-65", "MLDSA87": "ML-DSA-87",
     "DILITHIUM2": "DILITHIUM", "DILITHIUM3": "DILITHIUM", "DILITHIUM5": "DILITHIUM",
     "SPHINCS": "SLH-DSA-128S", "SPHINCSPLUS": "SLH-DSA-128S", "SLHDSA128S": "SLH-DSA-128S",
+    # Chinese GM/T
+    "SM2WITHSM3": "SM2", "SM2SIGN": "SM2", "SM2-256": "SM2",
+    "SM3-256": "SM3", "SM4-128": "SM4", "SMS4": "SM4",
+    # Russian GOST
+    "GRASSHOPPER": "KUZNYECHIK", "GRASSHOPPER-M": "KUZNYECHIK",
+    "GOST3412-2015-K": "KUZNYECHIK", "GOST-R-3412": "KUZNYECHIK",
+    "GOST3412-2015-M": "MAGMA",
+    "GOST3411-2012-256": "STREEBOG", "GOST3411-2012-512": "STREEBOG", "STREEBOG-256": "STREEBOG", "STREEBOG-512": "STREEBOG",
+    "GOSTR341194": "GOST3411-94", "GOST94": "GOST3411-94",
+    # hashes
+    "BLAKE2B-512": "BLAKE2B", "BLAKE2S-256": "BLAKE2S", "BLAKE2": "BLAKE2B",
+    # AEAD / lightweight / legacy
+    "CHACHAPOLY": "CHACHA20-POLY1305", "CHACHA20POLY1305": "CHACHA20-POLY1305",
+    "XCHACHAPOLY": "XCHACHA20-POLY1305",
+    "POLY1305": "POLY1305",
+    "A5/1": "A5-1", "A51": "A5-1", "A5/2": "A5-2", "A52": "A5-2",
+    "SNOW3G": "SNOW3G", "SNOW-3G": "SNOW3G",
+    # lightweight / code-based PQC name variants
+    "PRESENT80": "PRESENT", "PRESENT128": "PRESENT",
+    "GRAIN128": "GRAIN", "GRAIN128A": "GRAIN",
+    "CLASSICMCELIECE": "MCELIECE", "MCELIECE348864": "MCELIECE",
+    "KALYNA": "DSTU7624",
+    "HQC": "HQC-128", "HQC128": "HQC-128", "HQC192": "HQC-192", "HQC256": "HQC-256",
+
 }
 
 # JOSE aliases carry an implied size — map alias -> (family key, bits)
