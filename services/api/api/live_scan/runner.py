@@ -320,9 +320,10 @@ class LiveScanRunner:
             libs: dict[tuple, dict[str, Any]] = {}
             for p in procs:
                 for d in p.get("library_details") or []:
-                    k = (d.get("library_name") or d.get("library"), d.get("version"))
+                    name = d.get("library") or str(d.get("library_name") or "").split()[0]
+                    k = (name, d.get("version"))
                     entry = libs.setdefault(k, {
-                        "library": d.get("library_name") or d.get("library"),
+                        "library": name,
                         "version": d.get("version"), "status": d.get("status"),
                         "package": d.get("package"), "processes": 0})
                     entry["processes"] += 1
@@ -633,9 +634,13 @@ class LiveScanRunner:
         lib_agg: dict[tuple, dict[str, Any]] = {}
         for p in rt.get("processes") or []:
             for d in p.get("library_details") or []:
-                key = (d.get("library_name") or d.get("library"), d.get("version"))
+                # ``library`` is the canonical name (e.g. "openssl");
+                # ``library_name`` is a display label that may already include
+                # the version, so use ``library`` for identity/dedup.
+                name = d.get("library") or str(d.get("library_name") or "").split()[0]
+                key = (name, d.get("version"))
                 entry = lib_agg.setdefault(key, {
-                    "name": d.get("library_name") or d.get("library"),
+                    "name": name,
                     "version": d.get("version"), "status": d.get("status"),
                     "package": d.get("package"), "processes": 0})
                 entry["processes"] += 1
@@ -984,10 +989,11 @@ class LiveScanRunner:
             seen.add(k)
             uniq.append(c)
 
-        quantum_vulnerable = sum(
-            1 for c in uniq
-            if str(c.get("quantum_status") or "").lower() in
-            ("vulnerable", "broken", "at_risk", "deprecated"))
+        def _quantum_bad(c: dict[str, Any]) -> bool:
+            q = str(c.get("quantum_status") or "").lower()
+            return ("vulnerable" in q or "broken" in q or "at_risk" in q) and "safe" not in q
+
+        quantum_vulnerable = sum(1 for c in uniq if _quantum_bad(c))
 
         # HBOM: hardware devices
         hbom_components = [
