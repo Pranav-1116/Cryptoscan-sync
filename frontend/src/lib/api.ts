@@ -344,6 +344,39 @@ export const apiStatsSummary = (): Promise<ApiResult<Record<string, unknown>>> =
 export const apiRuntimeFindings = (limit = 50): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/scans/runtime-findings?limit=${limit}`);
 
+// ── Realtime scanner control (runs the actual scanner CLIs server-side) ──
+export interface LiveScanStatus {
+  running: boolean;
+  last_run_at: string | null;
+  periodic: { enabled: boolean; interval_seconds: number };
+  scanners: Record<string, {
+    ok: boolean | null;
+    elapsed_s?: number;
+    summary?: Record<string, unknown>;
+    error?: string;
+  }>;
+  ok_count: number;
+  failed_count: number;
+}
+
+export const apiLiveScanStatus = (): Promise<ApiResult<LiveScanStatus>> =>
+  call(`/api/v1/live-scan/status`);
+
+export const apiLiveScanRun = (body: {
+  scanners?: string[];
+  network_target?: string;
+  network_full?: boolean;
+  container_target?: string;
+  ot_logs?: string;
+}): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/live-scan/run`, { method: "POST", body: JSON.stringify(body) });
+
+export const apiLiveScanStart = (intervalSeconds = 900): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/live-scan/start`, { method: "POST", body: JSON.stringify({ interval_seconds: intervalSeconds }) });
+
+export const apiLiveScanStop = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/live-scan/stop`, { method: "POST", body: JSON.stringify({}) });
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

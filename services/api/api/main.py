@@ -46,6 +46,7 @@ from api.routers import (
     health,
     intelligence,
     jobs,
+    live_scan,
     network,
     network_scans,
     ot,
@@ -270,6 +271,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(payment_crypto.router, prefix=prefix)
     app.include_router(audit_export.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
+    app.include_router(live_scan.router, prefix=prefix)
     app.include_router(api_keys.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)

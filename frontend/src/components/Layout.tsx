@@ -54,6 +54,7 @@ const NAV = [
   ]},
   { section: "Operate", items: [
     { to: "/scanners", label: "Scanners", icon: "⌖" },
+    { to: "/live-scanners", label: "Realtime scanners", icon: "◉" },
     { to: "/runtime", label: "Runtime hosts", icon: "⧉" },
     { to: "/notifications", label: "Notifications", icon: "✉" },
     { to: "/reports", label: "Reports", icon: "▤" },
