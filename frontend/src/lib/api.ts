@@ -414,6 +414,7 @@ export interface LiveInventory {
   cert_center: { expired: number; expiring30: number; weak_algorithm: number; unknown_owner: number; total: number };
   libraries: LiveLibrary[];
   processes: LiveProcess[];
+  scans?: Record<string, { summary: Record<string, unknown>; elapsed_s?: number }>;
 }
 export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
   call(`/api/v1/live-scan/inventory`);

@@ -643,6 +643,16 @@ class LiveScanRunner:
                 "status": "RISK" if weak else "OK",
             })
 
+        # generic scan summaries for the remaining services (best-effort; the
+        # summaries are produced per-scanner in _summarize, full payloads are
+        # in the snapshot).
+        extra: dict[str, Any] = {}
+        for key in ("container", "cloud", "ot", "source", "universal"):
+            res = results.get(key) or {}
+            if res.get("ok"):
+                extra[key] = {"summary": res.get("summary") or {},
+                              "elapsed_s": res.get("elapsed_s")}
+
         cert_center = {
             "expired": sum(1 for c in certificates if c["status"] == "EXPIRED"),
             "expiring30": sum(1 for c in certificates if c["status"] == "EXPIRING"),
@@ -670,6 +680,7 @@ class LiveScanRunner:
             "cert_center": cert_center,
             "libraries": libraries,
             "processes": processes,
+            "scans": extra,
         }
         # After a restart the in-memory snapshot only has summaries (full
         # payloads are not persisted); fall back to the page-ready inventory
