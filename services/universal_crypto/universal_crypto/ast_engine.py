@@ -292,6 +292,66 @@ _PATTERNS: list[tuple[str, str, str, str, Operation]] = [
     ("javascript", "Node crypto", r"createCipheriv\(\s*['\"](?:chacha20-poly1305|xchacha20-poly1305)['\"]", "ChaCha20-Poly1305", Operation.ENCRYPT),
     ("c", "libsodium", r"crypto_aead_(?:x)?chacha20poly1305_(?:encrypt|decrypt)", "ChaCha20-Poly1305", Operation.ENCRYPT),
     ("c", "libsodium", r"crypto_aead_aes256gcm_(?:encrypt|decrypt)", "AES-GCM", Operation.ENCRYPT),
+    # ── Blockchain / pairing: BLS signatures, BN254, BLS12-381 ────────────
+    ("python", "py_ecc", r"py_ecc\.(?:bls|bls12_381|optimized_bls12_381)", "BLS12-381", Operation.KEYEXCHANGE),
+    ("python", "blst", r"blst\.(?:sign|sk_to_pk)|blspy\.", "BLS", Operation.SIGN),
+    ("javascript", "blst", r"@chainsafe/blst|bls\.sign\(|bls12-381", "BLS", Operation.SIGN),
+    ("java", "BouncyCastle", r"BLS12(?:381|377)(?:Point|Curve|Fp)\b", "BLS12-381", Operation.KEYEXCHANGE),
+    ("java", "BouncyCastle", r"BN254(?:Point|Curve)|BLS(?:12381)?Signer\s*\(", "BLS", Operation.SIGN),
+    ("rust", "blst", r"blst::(?:min_pk|min_sig)|blstrs::Bls12", "BLS", Operation.SIGN),
+    ("go", "Go crypto/*", r"bn256\.(?:G1|G2)|cloudflare/bn256", "BN254", Operation.KEYEXCHANGE),
+    ("solidity", "", r"ecPairing\s*\(|precompile(?:_ec)?pairing", "BN254", Operation.KEYEXCHANGE),
+    # ── Russian / Ukrainian signatures: GOST R 34.10-2012, DSTU 4145 ─────
+    ("java", "BouncyCastle", r"ECGOST3410(?:Signer|KeyPairGenerator)|GOST3410Signer\s*\(", "GOST R 34.10-2012", Operation.SIGN),
+    ("java", "BouncyCastle", r"DSTU4145(?:Signer|KeyPairGenerator|Parameters)\b", "DSTU 4145", Operation.SIGN),
+    ("c", "GmSSL", r"gost3410(?:2012|94)_(?:sign|verify)\s*\(|gost2001_(?:sign|verify)\s*\(", "GOST R 34.10-2012", Operation.SIGN),
+    ("python", "pygost", r"\bgost3410(?:2012|94)?\b", "GOST R 34.10-2012", Operation.SIGN),
+    ("go", "Go crypto/*", r"gost3410|gostcrypto/gost", "GOST R 34.10-2012", Operation.SIGN),
+    # ── Ukrainian BelT block cipher + Kupyna (DSTU 7564) hash ─────────────
+    ("java", "BouncyCastle", r"BelTEngine\s*\(|BelTCipher\b", "BelT", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"DSTU7564Digest\s*\(|KupynaDigest\s*\(", "Kupyna", Operation.HASH),
+    # ── Keccak (pre-SHA3, Ethereum) vs SHA-3 distinction ─────────────────
+    ("python", "pysha3", r"\bkeccak_256\s*\(|keccak\.keccak256|Crypto\.hash\.keccak\b", "Keccak-256", Operation.HASH),
+    ("java", "BouncyCastle", r"Keccak(?:256|512)?Digest\s*\(", "Keccak-256", Operation.HASH),
+    ("javascript", "js-sha3", r"require\(\s*['\"]js-sha3['\"]\)|\bkeccak256\s*\(|ethers\.keccak256", "Keccak-256", Operation.HASH),
+    ("go", "Go crypto/*", r"golang\.org/x/crypto/sha3.*(?:NewLegacy|LegacyKeccak256)|keccak256\b", "Keccak-256", Operation.HASH),
+    ("rust", "RustCrypto", r"keccak::(?:Keccak256|V256)", "Keccak-256", Operation.HASH),
+    # ── Stateful hash-based PQC: XMSS / LMS (NIST SP 800-208) ─────────────
+    ("python", "liboqs", r"oqs\.[\w.]*Signature\s*\(\s*['\"](?:XMSS|LMS)", "XMSS", Operation.SIGN),
+    ("java", "BouncyCastle", r"XMSS(?:MTSigner|Signer|PrivateKeyParameters)\b", "XMSS", Operation.SIGN),
+    ("java", "BouncyCastle", r"\bHSS(?:PrivateKeyParameters|Signer)\b|\bLMS(?:PrivateKey|Signer)\b", "LMS", Operation.SIGN),
+    ("c", "liboqs", r"OQS_SIG_(?:xmss|lms|hss)[a-z0-9_]*", "XMSS", Operation.SIGN),
+    ("rust", "RustCrypto", r"xmss[-_]?rs::|lms[-_]?\w*::", "XMSS", Operation.SIGN),
+    # ── Broken / superseded PQC (detect to flag DISALLOWED) ───────────────
+    ("python", "liboqs", r"oqs\.[\w.]*KeyEncapsulation\s*\(\s*['\"](?:SIKE|SIDH|sike)", "SIKE", Operation.KEYEXCHANGE),
+    ("python", "liboqs", r"oqs\.[\w.]*KeyEncapsulation\s*\(\s*['\"](?:SABER|Lightsaber|Firesaber|sntrup|NTRU-Prime|newhope)", "SABER", Operation.KEYEXCHANGE),
+    ("python", "liboqs", r"oqs\.[\w.]*Signature\s*\(\s*['\"](?:Rainbow|rainbow|GeMSS|gemss)", "Rainbow", Operation.SIGN),
+    ("c", "liboqs", r"OQS_KEM_(?:sike|saber|ntruprime|sntrup|newhope)[a-z0-9_]*", "SABER", Operation.KEYEXCHANGE),
+    ("c", "liboqs", r"OQS_SIG_(?:rainbow|gemss)\b", "Rainbow", Operation.SIGN),
+    ("rust", "pqcrypto", r"pqcrypto::(?:sike|saber|ntruprime|sntrup|newhope)", "SABER", Operation.KEYEXCHANGE),
+    ("rust", "pqcrypto", r"pqcrypto::(?:rainbow|gemss)", "Rainbow", Operation.SIGN),
+    ("go", "liboqs", r"cloudflare/circl/(?:pke|kem)/(?:sike|saber|hpke)|oqs-go.*(?:SIKE|SABER)", "SABER", Operation.KEYEXCHANGE),
+    # ── Random number generators / DRBG (flag Dual_EC backdoor) ──────────
+    ("java", "BouncyCastle", r"SP800-90A\.(?:EC_DRB|EC_DRBG)|DualEC(?:Spi|Provider)|NIST?\s*EC\s*DRBG", "Dual-EC-DRBG", Operation.RANDOM),
+    ("c", "OpenSSL", r"EC_DRBG|FIPS_drbg_(?:new|init)\s*\([^)]*EC", "Dual-EC-DRBG", Operation.RANDOM),
+    ("python", "", r"\bDual_EC_DRBG\b|\bdual_ec_drbg\b", "Dual-EC-DRBG", Operation.RANDOM),
+    ("c", "OpenSSL", r"RAND_DRBG_(?:new|init).*?(?:HMAC|CTR|HASH)|EVP_RAND_(?:HMAC|CTR|HASH)", "HMAC-DRBG", Operation.RANDOM),
+    ("java", "JCA-JCE", r"SecureRandom\.getInstance\(\s*\"(?:HMACDRBG|DRBG|NIST-DRBG)", "HMAC-DRBG", Operation.RANDOM),
+    # ── Format-preserving encryption (NIST SP 800-38Gr2 FF1 / FF3-1) ──────
+    ("java", "BouncyCastle", r"FF1(?:Engine)?\s*\(|FPE(?:Engine)?\s*\(", "FF1", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"FF3-?1?(?:Engine)?\s*\(", "FF3-1", Operation.ENCRYPT),
+    ("c", "OpenSSL", r"CRYPTO_ff(?:1|3)|FPE_?(?:FF1|FF3)", "FF1", Operation.ENCRYPT),
+    # ── Additional AEAD / lightweight (CAESAR / NIST LWC finalists) ───────
+    ("c", "libaegis", r"aegis(?:128l|256)_(?:encrypt|decrypt)\w*\s*\(|\blibaegis\b", "AEGIS", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"AEGIS(?:128L|256)?(?:Engine|Cipher)\s*\(", "AEGIS", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"Elephant(?:Engine|AEADCipher)\s*\(", "Elephant", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"Xoodyak(?:Engine|AEADCipher|Digest)\s*\(", "Xoodyak", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"Schwaemm(?:Engine|AEADCipher)\s*\(", "Schwaemm", Operation.ENCRYPT),
+    ("java", "BouncyCastle", r"Esch(?:Digest)?(?:256|384)?\s*\(", "Esch", Operation.HASH),
+    ("c", "Ascon", r"xoodyak_(?:aead|wrap|hash)\w*\s*\(", "Xoodyak", Operation.ENCRYPT),
+    ("c", "Ascon", r"elephant_(?:encrypt|aead)\w*\s*\(", "Elephant", Operation.ENCRYPT),
+    ("c", "Ascon", r"schwaemm_\w*\s*\(", "Schwaemm", Operation.ENCRYPT),
+    ("python", "crypto-c", r"\bkeccak_256|\bkeccak512|keccak\.keccak", "Keccak-256", Operation.HASH),
 ]
 
 #: languages the engine knows (18 per §4)

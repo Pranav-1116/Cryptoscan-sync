@@ -265,12 +265,77 @@ _FAMILIES: dict[str, _Family] = {
     "BIKE": _Family("BIKE", "kem-pqc", RESTRICTED, notes="NIST PQC round-4 KEM (code-based)"),
     "FRODOKEM": _Family("FrodoKEM", "kem-pqc", RESTRICTED, notes="conservative lattice KEM (high bandwidth)"),
     "NTRU": _Family("NTRU", "kem-pqc", RESTRICTED, notes="lattice KEM (legacy/commercial)"),
+    # -- additional AEAD / cipher modes ------------------------------------ #
+    "AES-CCM": _Family("AES-CCM", "aead", ALLOWED, allowed_key_sizes=(128, 192, 256), min_key_size=128, quantum_impact="grover", notes="AES in CCM mode (AEAD), RFC 3610/4309"),
+    "AES-SIV": _Family("AES-SIV", "aead", RESTRICTED, allowed_key_sizes=(256, 512), quantum_impact="grover", notes="misuse-resistant AEAD, RFC 5297 (256/512 = SIV key)"),
+    "AEGIS": _Family("AEGIS", "aead", ALLOWED, allowed_key_sizes=(128, 256), quantum_impact="grover", notes="high-performance AEAD (AEGIS-128L, RFC 8452)"),
+    "ACORN": _Family("Acorn", "aead", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="CAESAR lightweight AEAD winner"),
+    "XOODYAK": _Family("Xoodyak", "aead", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="NIST LWC finalist (Xoodyak)"),
+    "ELEPHANT": _Family("Elephant", "aead", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="NIST LWC finalist (Elephant)"),
+    "SCHWAEMM": _Family("Schwaemm", "aead", RESTRICTED, allowed_key_sizes=(128, 256), quantum_impact="grover", notes="SPARKLE AEAD (NIST LWC finalist; with Esch hash)"),
+    # -- additional block / stream ciphers --------------------------------- #
+    "BELT": _Family("BelT", "block-cipher", RESTRICTED, key_size=256, parameter_kind=KEY_BITS, quantum_impact="grover", notes="Belarusian STB 34.101.31 block cipher"),
+    "TEA": _Family("TEA", "block-cipher", DISALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="Tiny Encryption Algorithm; weak — disallowed"),
+    "XXTEA": _Family("XXTEA", "block-cipher", DISALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="Corrected Block TEA; related-key weaknesses"),
+    "MARS": _Family("MARS", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="IBM AES finalist"),
+    "NOEKEON": _Family("Noekeon", "block-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="NESSIE block cipher"),
+    "SNOW-V": _Family("SNOW-V", "stream-cipher", RESTRICTED, key_size=256, parameter_kind=KEY_BITS, quantum_impact="grover", notes="5G high-speed stream cipher (SNOW-V / SNOW-Vi)"),
+    "E0": _Family("E0", "stream-cipher", DISALLOWED, key_size=128, parameter_kind=KEY_BITS, notes="Bluetooth classic stream cipher; practical attacks — disallowed"),
+    "MUGI": _Family("MUGI", "stream-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="PANAMA-derived 128-bit stream cipher"),
+    # -- additional hashes -------------------------------------------------- #
+    "KECCAK-256": _Family("Keccak-256", "hash", ALLOWED, key_size=256, parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="pre-FIPS Keccak (Ethereum); distinct padding from SHA3-256"),
+    "HAS-160": _Family("HAS-160", "hash", DISALLOWED, key_size=160, parameter_kind=DIGEST_BITS, notes="Korean legacy hash; collision weaknesses — disallowed"),
+    "LSH": _Family("LSH", "hash", RESTRICTED, allowed_key_sizes=(256, 512), parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="Korean lightweight hash (LSH-256/512)"),
+    "KUPYNA": _Family("Kupyna", "hash", RESTRICTED, allowed_key_sizes=(256, 512), parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="Ukrainian DSTU 7564 hash"),
+    "ESCH": _Family("Esch", "hash", RESTRICTED, allowed_key_sizes=(256, 384), parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="SPARKLE hash (NIST LWC finalist; Esch256/384)"),
+    # -- additional asymmetric / signature / key agreement ----------------- #
+    "ECIES": _Family("ECIES", "pke", RESTRICTED, min_key_size=256, quantum_impact="shor", notes="Elliptic Curve Integrated Encryption Scheme; Shor applies"),
+    "BLS": _Family("BLS", "signature", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="Boneh-Lynn-Shacham pairing signature (blockchain)"),
+    "GOST3410-2012": _Family("GOST R 34.10-2012", "signature", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="Russian GOST elliptic-curve signature; Shor applies"),
+    "DSTU4145": _Family("DSTU 4145", "signature", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="Ukrainian DSTU 4145 elliptic-curve signature; Shor applies"),
+    "KCDSA": _Family("KCDSA", "signature", RESTRICTED, key_size=2048, parameter_kind=KEY_BITS, quantum_impact="shor", notes="Korean Certificate-based Digital Signature Algorithm"),
+    "ECGDSA": _Family("ECGDSA", "signature", RESTRICTED, min_key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="German EC-GDSA (ECDSA variant over brainpool/secp curves)"),
+    "HMQV": _Family("HMQV", "key-agree", RESTRICTED, min_key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="hashed MQV authenticated key agreement; Shor applies"),
+    "RABIN": _Family("Rabin", "pke", DEPRECATED, min_key_size=2048, quantum_impact="shor", notes="Rabin cryptosystem (factoring-based); legacy"),
+    # -- password-authenticated key exchange (aPAKE/PAKE) ----------------- #
+    "OPAQUE": _Family("OPAQUE", "key-agree", ALLOWED, quantum_impact="shor", notes="asymmetric PAKE (RFC 9380); Shor applies to the AKE group"),
+    "CPACE": _Family("CPace", "key-agree", ALLOWED, quantum_impact="shor", notes="balanced PAKE (RFC 9382); Shor applies to the AKE group"),
+    "JPAKE": _Family("J-PAKE", "key-agree", RESTRICTED, quantum_impact="shor", notes="Password Authenticated Key Exchange by Juggling"),
+    # -- additional curves (incl. pairing / blockchain) -------------------- #
+    "P-192": _Family("P-192", "ec-curve", DISALLOWED, key_size=192, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="secp192r1; ~96-bit security — disallowed"),
+    "BRAINPOOLP224R1": _Family("brainpoolP224r1", "ec-curve", RESTRICTED, key_size=224, parameter_kind=CURVE_BITS, quantum_impact="shor"),
+    "BRAINPOOLP512R1": _Family("brainpoolP512r1", "ec-curve", RESTRICTED, key_size=512, parameter_kind=CURVE_BITS, quantum_impact="shor"),
+    "BN254": _Family("BN254", "ec-curve", RESTRICTED, key_size=254, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="alt_bn128 pairing curve (~100-bit security; blockchain)"),
+    "BLS12-381": _Family("BLS12-381", "ec-curve", ALLOWED, key_size=381, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="pairing-friendly curve (BLS/Zcash/Ethereum)"),
+    "BLS12-377": _Family("BLS12-377", "ec-curve", RESTRICTED, key_size=377, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="pairing-friendly curve"),
+    "BW6-761": _Family("BW6-761", "ec-curve", RESTRICTED, key_size=761, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="pairing-friendly curve (two-layer proof systems)"),
+    # -- post-quantum KEMs (broken / superseded / not-selected) ----------- #
+    "SIKE": _Family("SIKE", "kem-pqc", DISALLOWED, notes="Supersingular Isogeny KEM — broken by Castryck-Decru (2022); disallowed"),
+    "SIDH": _Family("SIDH", "kem-pqc", DISALLOWED, notes="Supersingular Isogeny DH — broken (2022); disallowed"),
+    "NEWHOPE": _Family("NewHope", "kem-pqc", DEPRECATED, notes="early lattice KEM; superseded by ML-KEM (Kyber)"),
+    "SABER": _Family("SABER", "kem-pqc", RESTRICTED, notes="NIST PQC round-3 finalist (module LWR); not standardized"),
+    "NTRUPRIME": _Family("NTRU-Prime", "kem-pqc", RESTRICTED, notes="Streamlined NTRU Prime (sntrup761/1277); round-3 candidate"),
+    # -- post-quantum signatures (broken / stateful hash-based) ----------- #
+    "RAINBOW": _Family("Rainbow", "signature-pqc", DISALLOWED, notes="multivariate signature — broken by Ward-Beullens (2022); disallowed"),
+    "GEMSS": _Family("GeMSS", "signature-pqc", RESTRICTED, notes="multivariate (HFEv-) signature candidate; not standardized"),
+    "XMSS": _Family("XMSS", "signature-pqc", ALLOWED, notes="stateful hash-based signature (RFC 8391, NIST SP 800-208); quantum-safe"),
+    "LMS": _Family("LMS", "signature-pqc", ALLOWED, notes="Leighton-Micali stateful hash-based signature (RFC 8554, SP 800-208); quantum-safe"),
+    # -- random number generators / DRBG ---------------------------------- #
+    "DUAL-EC-DRBG": _Family("Dual-EC-DRBG", "rng", DISALLOWED, notes="NSA-backdoored DRBG (NIST SP 800-90A); never use — disallowed"),
+    "HMAC-DRBG": _Family("HMAC-DRBG", "rng", ALLOWED, notes="NIST SP 800-90A HMAC-based DRBG"),
+    "CTR-DRBG": _Family("CTR-DRBG", "rng", ALLOWED, notes="NIST SP 800-90A CTR-mode DRBG"),
+    "HASH-DRBG": _Family("Hash-DRBG", "rng", ALLOWED, notes="NIST SP 800-90A hash-based DRBG"),
+    # -- format-preserving encryption -------------------------------------- #
+    "FF1": _Family("FF1", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="NIST SP 800-38Gr2 format-preserving encryption (AES-based)"),
+    "FF3-1": _Family("FF3-1", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), quantum_impact="grover", notes="NIST SP 800-38Gr2 format-preserving encryption"),
 }
 
 # Aliases: normalized (upper, separators stripped) -> canonical family key.
 _ALIASES: dict[str, str] = {
     "AES128": "AES", "AES192": "AES", "AES256": "AES",
-    "AESGCM": "AES-GCM", "AESCCM": "AES-GCM",
+    "AESGCM": "AES-GCM", "AESCCM": "AES-CCM", "AESSIV": "AES-SIV",
+    "AESKW": "AES", "AES128KW": "AES", "AES256KW": "AES",
+    "CCM": "AES-CCM",
     "AESXTS": "AES-XTS",
     "DESEDE": "3DES", "TRIPLEDES": "3DES", "3KEYTRIPLEDES": "3DES", "DESEDE3": "3DES",
     "ARCFOUR": "RC4", "RC4MD5": "RC4",
@@ -280,7 +345,7 @@ _ALIASES: dict[str, str] = {
     "SHA224": "SHA-224", "SHA256": "SHA-256", "SHA384": "SHA-384", "SHA512": "SHA-512",
     "SHA512224": "SHA-512/224", "SHA512256": "SHA-512/256",
     "SHA3224": "SHA3-224", "SHA3256": "SHA3-256", "SHA3384": "SHA3-384", "SHA3512": "SHA3-512",
-    "KECCAK256": "SHA3-256", "KECCAK": "SHA3-256",
+    "KECCAK256": "KECCAK-256", "KECCAK": "KECCAK-256", "KECCAK-256": "KECCAK-256",
     "RIPEMD": "RIPEMD160", "RIPEMD128": "RIPEMD160",
     "HMACSHA1": "HMAC-SHA-1", "HMACSHA224": "HMAC-SHA-224", "HMACSHA256": "HMAC-SHA-256",
     "HMACSHA384": "HMAC-SHA-384", "HMACSHA512": "HMAC-SHA-512", "HMACMD5": "HMAC-MD5",
@@ -288,11 +353,11 @@ _ALIASES: dict[str, str] = {
     "RSASSAPSS": "RSA-PSS", "RSAPSS": "RSA-PSS",
     "RSAPKCS1": "RSA-PKCS1V15", "RSA1_5": "RSA-PKCS1V15",
     "DIFFIEHELLMAN": "DH", "MODP": "DH",
-    "ECIES": "ECDH",
+    "ECIES": "ECIES",
     "EDDSA": "ED25519",
     "PRIME256V1": "P-256", "SECP256R1": "P-256", "NISTP256": "P-256",
     "SECP384R1": "P-384", "NISTP384": "P-384", "SECP521R1": "P-521", "NISTP521": "P-521",
-    "BRAINPOOLP320R1": "BRAINPOOLP256R1", "BRAINPOOLP384R1": "BRAINPOOLP256R1", "BRAINPOOLP512R1": "BRAINPOOLP256R1",
+    "BRAINPOOLP320R1": "BRAINPOOLP384R1",
     # JOSE (RFC 7518)
     "HS256": "HMAC-SHA-256", "HS384": "HMAC-SHA-384", "HS512": "HMAC-SHA-512",
     "RS256": "RSA", "RS384": "RSA", "RS512": "RSA",
@@ -340,7 +405,53 @@ _ALIASES: dict[str, str] = {
     "CLASSICMCELIECE": "MCELIECE", "MCELIECE348864": "MCELIECE",
     "KALYNA": "DSTU7624",
     "HQC": "HQC-128", "HQC128": "HQC-128", "HQC192": "HQC-192", "HQC256": "HQC-256",
-
+    # AEAD / lightweight / CAESAR
+    "AESCCM8": "AES-CCM", "AES-128-CCM": "AES-CCM", "AES-256-CCM": "AES-CCM",
+    "GCM-SIV": "AES-SIV", "AESGCMSIV": "AES-SIV",
+    "AEGIS128": "AEGIS", "AEGIS128L": "AEGIS", "AEGIS256": "AEGIS",
+    "ACORN128": "ACORN", "XOOYAKAEAD": "XOODYAK", "XOOYAK": "XOODYAK", "XOODYAK": "XOODYAK",
+    "A53": "KASUMI", "A5/3": "KASUMI", "A54": "KASUMI", "A5/4": "KASUMI", "F8": "KASUMI", "F9": "KASUMI",
+    # additional ciphers
+    "BELT-256": "BELT", "STB3410131": "BELT",
+    "XXTEA": "XXTEA", "TEA": "TEA", "TINYENCRYPTION": "TEA",
+    "SNOWV": "SNOW-V", "SNOWVI": "SNOW-V",
+    "BLUETOOTHE0": "E0",
+    # hashes
+    "HAS160": "HAS-160", "LSH256": "LSH", "LSH512": "LSH",
+    "KUPYNA-256": "KUPYNA", "KUPYNA-512": "KUPYNA", "DSTU7564": "KUPYNA",
+    "ESCH256": "ESCH", "ESCH384": "ESCH", "SPARKLE": "ESCH",
+    # asymmetric / pairing / blockchain
+    "BLSSIGNATURE": "BLS", "BLSSIG": "BLS",
+    "BLST": "BLS", "BN128": "BN254", "ALTBN128": "BN254",
+    "BL12381": "BLS12-381", "BLS12381G1": "BLS12-381", "BLS12381G2": "BLS12-381",
+    "BL12377": "BLS12-377", "BW6761": "BW6-761",
+    "GOSTR34102012": "GOST3410-2012", "GOST3410": "GOST3410-2012",
+    "GOST3410-2001": "GOST3410-2012", "GOST3410-94": "GOST3410-2012",
+    "DSTU4145": "DSTU4145", "UKRSIGN": "DSTU4145",
+    "EC-GDSA": "ECGDSA", "ECGDSA": "ECGDSA",
+    "HMQV": "HMQV", "ECMQV": "MQV", "EC-MQV": "MQV",
+    "RABINWILLIAMS": "RABIN",
+    "KCDSA": "KCDSA",
+    # PAKE
+    "JPAKE": "JPAKE", "CPACE": "CPACE", "OPAQUE": "OPAQUE",
+    # curves
+    "SECP192R1": "P-192", "NISTP192": "P-192", "P192": "P-192",
+    "BRAINPOOLP224R1": "BRAINPOOLP224R1", "BRAINPOOLP256R1": "BRAINPOOLP256R1",
+    "BRAINPOOLP512R1": "BRAINPOOLP512R1",
+    # PQC — broken / superseded / hash-based stateful
+    "SIKEP434": "SIKE", "SIKECMP": "SIKE", "CSIDH": "SIKE",
+    "NEWHOPE512": "NEWHOPE", "NEWHOPE1024": "NEWHOPE",
+    "SABER": "SABER", "LIGHTSABER": "SABER", "FIRESABER": "SABER",
+    "NTRUPRIME": "NTRUPRIME", "SNTRUP761": "NTRUPRIME", "SNTRUP1277": "NTRUPRIME", "SNTRUP": "NTRUPRIME",
+    "RAINBOW": "RAINBOW", "RAINBOW-I": "RAINBOW",
+    "GEMSS": "GEMSS", "GEMSS128": "GEMSS",
+    "XMSS": "XMSS", "XMSSMT": "XMSS",
+    "LMS": "LMS", "HSS": "LMS", "LEIGHTONMICALI": "LMS",
+    # DRBG / RNG
+    "DUALECDRBG": "DUAL-EC-DRBG", "DUALEC": "DUAL-EC-DRBG", "DUAL_EC": "DUAL-EC-DRBG",
+    "HMACDRBG": "HMAC-DRBG", "CTRDRBG": "CTR-DRBG", "HASHDRBG": "HASH-DRBG",
+    # FPE
+    "FF1": "FF1", "FPE-AES": "FF1", "FF31": "FF3-1", "FF3": "FF3-1",
 }
 
 # JOSE aliases carry an implied size — map alias -> (family key, bits)
