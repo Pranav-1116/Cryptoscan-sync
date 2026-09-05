@@ -20,6 +20,7 @@ const SCANNER_LABEL: Record<string, string> = {
   network: "Network TLS probe",
   container: "Container / image",
   ot: "OT / ICS (passive logs)",
+  cloud: "Cloud (read-only live)",
 };
 
 function kv(summary: Record<string, unknown> | undefined): Array<[string, unknown]> {
@@ -33,6 +34,7 @@ export default function LiveScanners() {
   const [source, setSource] = useState<"live" | "offline">("offline");
   const [netTarget, setNetTarget] = useState("");
   const [netFull, setNetFull] = useState(true);
+  const [cloudLive, setCloudLive] = useState(false);
   const [intervalS, setIntervalS] = useState(900);
   const [log, setLog] = useState<LogLine[]>([]);
   const logRef = useRef<LogLine[]>([]);
@@ -82,11 +84,13 @@ export default function LiveScanners() {
   const runNow = async () => {
     const scanners = ["hardware", "runtime"];
     if (netTarget.trim()) scanners.push("network");
+    if (cloudLive) scanners.push("cloud");
     pushLog("requesting scan …", "start");
     const r = await apiLiveScanRun({
       scanners,
       network_target: netTarget.trim() || undefined,
       network_full: netFull,
+      cloud_live: cloudLive || undefined,
     });
     if (r.source === "offline") pushLog(`could not start: ${r.error || "backend unreachable"}`, "fail");
   };
@@ -104,7 +108,7 @@ export default function LiveScanners() {
   };
 
   const scannerRows = useMemo(() => {
-    const keys = new Set([...Object.keys(status?.scanners || {}), "hardware", "runtime", "network"]);
+    const keys = new Set([...Object.keys(status?.scanners || {}), "hardware", "runtime", "network", "cloud"]);
     return Array.from(keys).map((key) => {
       const s = status?.scanners?.[key];
       return {
@@ -158,6 +162,10 @@ export default function LiveScanners() {
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
             <input type="checkbox" checked={netFull} onChange={(e) => setNetFull(e.target.checked)} />
             full (OCSP + renegotiation)
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, paddingBottom: 6 }}>
+            <input type="checkbox" checked={cloudLive} onChange={(e) => setCloudLive(e.target.checked)} />
+            cloud live (read-only, needs cloud creds)
           </label>
           <button className="btn" onClick={runNow} disabled={status?.running}>
             {status?.running ? "scan running…" : "Run scan now"}

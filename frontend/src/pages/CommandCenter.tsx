@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
 import { globalState, events, risk, networkAssets, cloudResources, vendors, hardware } from "../data/initial.js";
-import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, ApiResult, LiveBadge } from "../lib/api.js";
+import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, ApiResult, LiveBadge, LiveScanStatus } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 
@@ -19,6 +19,10 @@ export default function CommandCenter() {
   // Live operational counts straight from the platform database (polled).
   const liveStats = usePollingApi(apiStatsSummary, 15000);
   const liveDeliveries = usePollingApi(apiDeliveries, 20000);
+  // Realtime scanner execution (hardware/runtime/network run server-side).
+  const liveScan = usePollingApi(apiLiveScanStatus, 5000);
+  const lsx = (liveScan.data ?? null) as LiveScanStatus | null;
+  const lastScanEvent = rt.events.find((e) => e.type === "live_scan.completed");
   const ls = (liveStats.data ?? {}) as Record<string, number>;
   const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
 
@@ -64,6 +68,42 @@ export default function CommandCenter() {
             <LiveStat label="webhooks delivered" value={Number(dStats.delivered ?? 0)} tone="green" />
             <LiveStat label="webhooks failed" value={Number(dStats.failed ?? 0)} tone="red" />
             <LiveBadge source="live" label="LIVE DB" />
+          </div>
+        </Panel>
+      )}
+
+      {/* realtime scanner execution — real hardware/runtime/network scans */}
+      {liveScan.source === "live" && lsx && (
+        <Panel
+          title="Realtime scanners"
+          sub={lsx.running
+            ? "scan cycle running now — results stream over SSE"
+            : lsx.last_run_at
+              ? `last cycle ${new Date(lsx.last_run_at).toLocaleString()}${lsx.periodic.enabled ? ` · loop every ${lsx.periodic.interval_seconds}s` : ""}`
+              : "no scan cycle has run yet — start one in Operations → Realtime scanners"}
+          className="mt"
+        >
+          <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
+            <LiveStat label="cycle" value={lsx.running ? "RUNNING" : "idle"} tone={lsx.running ? "cyan" : ""} />
+            <LiveStat label="scanners OK" value={Number(lsx.ok_count ?? 0)} tone="green" />
+            <LiveStat label="scanners failed" value={Number(lsx.failed_count ?? 0)} tone={lsx.failed_count ? "red" : "green"} />
+            {(lsx.scanners?.hardware?.summary as Record<string, unknown> | undefined)?.tpm_present === true && (
+              <LiveStat label="TPM" value="2.0 present" tone="green" />
+            )}
+            {lsx.scanners?.runtime?.summary && (
+              <LiveStat
+                label="crypto processes"
+                value={Number((lsx.scanners.runtime.summary as Record<string, unknown>).crypto_processes ?? 0)}
+              />
+            )}
+            {lsx.scanners?.runtime?.summary && (
+              <LiveStat
+                label="risky libraries"
+                value={Number((lsx.scanners.runtime.summary as Record<string, unknown>).risky_libraries ?? 0)}
+                tone={Number((lsx.scanners.runtime.summary as Record<string, unknown>).risky_libraries ?? 0) ? "red" : "green"}
+              />
+            )}
+            {lastScanEvent && rt.connected && <LiveBadge source="live" label="SSE LIVE" />}
           </div>
         </Panel>
       )}

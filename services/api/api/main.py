@@ -152,6 +152,15 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             telemetry_task = start_telemetry_heartbeat()
             if telemetry_task is not None:
                 logger.info("telemetry_heartbeat_started")
+            # restore the latest live-scanner snapshot so consoles see the most
+            # recent real scan immediately after a restart (best-effort)
+            try:
+                from api.live_scan.runner import get_live_scan_runner
+
+                if get_live_scan_runner().load_persisted_snapshot():
+                    logger.info("live_scan_snapshot_restored")
+            except Exception:  # noqa: BLE001
+                logger.debug("live_scan_snapshot_restore_skipped", exc_info=True)
         yield
         if tailer_task is not None:
             tailer_task.cancel()

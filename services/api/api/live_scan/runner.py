@@ -52,6 +52,39 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+#: well-known app_settings key under which the latest live-scan snapshot is
+#: persisted, so results survive an API restart and can feed pages directly.
+SNAPSHOT_SETTING_KEY = "live_scan.last_snapshot"
+
+
+def _db_persist(snapshot: dict[str, Any]) -> bool:
+    """Best-effort: write the snapshot to the settings table. Never raises —
+    a missing/unconfigured DB must not block scanning."""
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.settings_repository import SettingsRepository
+
+        with SessionLocal() as session:
+            SettingsRepository(session).set(SNAPSHOT_SETTING_KEY, snapshot,
+                                            updated_by="live-scanner")
+            session.commit()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _db_load_snapshot() -> dict[str, Any] | None:
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.settings_repository import SettingsRepository
+
+        with SessionLocal() as session:
+            snap = SettingsRepository(session).get(SNAPSHOT_SETTING_KEY)
+        return snap if isinstance(snap, dict) else None
+    except Exception:  # noqa: BLE001
+        return None
+
+
 class ScannerSpec:
     """One invocable scanner command. The full host set runs in the periodic
     loop; the rest are on-demand only (they need a target or credentials)."""
@@ -84,6 +117,7 @@ class LiveScanRunner:
         self.last_run_at: str | None = None
         self.running: bool = False
         self._started_at: float | None = None
+        self._persisted: bool = False
 
     # ------------------------------------------------------------------ specs
     def _specs(
@@ -139,6 +173,15 @@ class LiveScanRunner:
                 [py, "-m", "ot_scanner.main", ot_target],
                 cwd=str(root / "services/ot_scanner"),
                 periodic=False, needs_target=True, timeout=180,
+            ))
+        if targets.get("cloud_live"):
+            # Live cloud read-only scan — needs cloud credentials in the API
+            # environment (CRYPTOSCAN_CLOUD_LIVE etc.); absent creds error honestly.
+            specs.append(ScannerSpec(
+                "cloud",
+                [py, "-m", "cloud_scanner.main", ".", "--live"],
+                cwd=str(root / "services/cloud_scanner"),
+                periodic=False, needs_target=True, timeout=300,
             ))
         if only:
             specs = [s for s in specs if s.key in only]
@@ -226,6 +269,10 @@ class LiveScanRunner:
             }
         if key == "container":
             return {"findings": len(data.get("findings") or data.get("vulnerabilities") or [])}
+        if key == "cloud":
+            resources = data.get("resources") or data.get("assets") or []
+            return {"resources": len(resources) if hasattr(resources, "__len__") else 0,
+                    "findings": len(data.get("findings") or [])}
         if key == "ot":
             return {"events": data.get("events_count") or len(data.get("events") or [])}
         return {}
@@ -288,10 +335,21 @@ class LiveScanRunner:
                 snapshot["results"] = merged
             self.last_snapshot = snapshot
             self.last_run_at = snapshot["ts"]
+            # persist a trimmed snapshot (summaries, not full scanner payloads)
+            # so it survives restarts without bloating the settings row
+            trimmed = {
+                **snapshot,
+                "results": {
+                    k: {kk: vv for kk, vv in res.items() if kk != "data"}
+                    for k, res in snapshot["results"].items()
+                },
+            }
+            self._persisted = _db_persist(trimmed)
             self._publish("live_scan.completed",
                           {"ts": snapshot["ts"], "elapsed_s": snapshot["elapsed_s"],
                            "ok": snapshot["ok_count"], "failed": snapshot["failed_count"],
-                           "scanners": list(snapshot["results"].keys())})
+                           "scanners": list(snapshot["results"].keys()),
+                           "persisted": self._persisted})
             return {"status": "completed", **snapshot}
         finally:
             self.running = False
@@ -330,6 +388,17 @@ class LiveScanRunner:
     def stop_periodic(self) -> dict[str, Any]:
         self._stop.set()
         return {"status": "stopping"}
+
+    def load_persisted_snapshot(self) -> bool:
+        """Restore the last snapshot from the settings table on startup so the
+        UI shows the most recent real scan immediately. Returns True if one
+        was loaded."""
+        snap = _db_load_snapshot()
+        if not snap:
+            return False
+        self.last_snapshot = snap
+        self.last_run_at = snap.get("ts")
+        return True
 
     def _periodic_loop(self) -> None:
         while not self._stop.is_set():

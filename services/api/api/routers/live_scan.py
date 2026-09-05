@@ -37,6 +37,8 @@ class RunScanRequest(BaseModel):
     network_full: bool = False
     container_target: Optional[str] = None
     ot_logs: Optional[str] = None
+    cloud_live: bool = Field(
+        default=False, description="run a read-only live cloud scan (needs cloud creds in env)")
 
 
 class PeriodicRequest(BaseModel):
@@ -86,6 +88,7 @@ def run_scan(
         "network_full": body.network_full,
         "container": body.container_target,
         "ot_logs": body.ot_logs,
+        "cloud_live": body.cloud_live,
     }
     return r.start_cycle(only=body.scanners, targets=targets, trigger="manual")
 
