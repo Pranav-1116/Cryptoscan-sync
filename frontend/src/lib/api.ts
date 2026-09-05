@@ -380,6 +380,31 @@ export const apiLiveScanStart = (intervalSeconds = 900): Promise<ApiResult<Recor
 export const apiLiveScanStop = (): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/live-scan/stop`, { method: "POST", body: JSON.stringify({}) });
 
+// Page-ready live inventory for dashboards (hardware/network/libraries).
+export interface LiveHardwareDevice {
+  id: string; type: string; vendor: string; firmware: string;
+  caps: string[]; host: string; status: string;
+}
+export interface LiveNetworkAsset {
+  kind: string; id: string; ip: string; tls: string; certs: string[];
+  os: string; status: string; cert_expiry_days?: number; chain_valid?: boolean;
+}
+export interface LiveLibrary {
+  name: string | null; version: string | null; status: string | null;
+  package: string | null; processes?: number | null;
+}
+export interface LiveInventory {
+  generated_at: string | null;
+  host: string | null;
+  counts: { hardware_devices: number; network_assets: number; libraries: number };
+  hardware: LiveHardwareDevice[];
+  firmware: Array<{ device: string; kind: string; version: string; status: string }>;
+  network: LiveNetworkAsset[];
+  libraries: LiveLibrary[];
+}
+export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
+  call(`/api/v1/live-scan/inventory`);
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

@@ -110,6 +110,14 @@ def start_periodic(
     return _runner().start_periodic(body.interval_seconds)
 
 
+@router.get("/inventory")
+def inventory(user: str = Depends(get_current_user)) -> dict[str, Any]:
+    """Page-ready live inventory (hardware devices, network TLS assets,
+    crypto libraries) from the most recent real scan cycle — for the
+    Hardware / Network / Libraries dashboards."""
+    return _runner().inventory()
+
+
 @router.post("/stop", status_code=202)
 def stop_periodic(
     user: str = Depends(require_roles(*_OPERATORS)),

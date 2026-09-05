@@ -314,13 +314,25 @@ class LiveScanRunner:
                 "hsm_present": hsm.get("present"),
             }
         if key == "runtime":
+            procs = data.get("processes") or []
+            libs: dict[tuple, dict[str, Any]] = {}
+            for p in procs:
+                for d in p.get("library_details") or []:
+                    k = (d.get("library_name") or d.get("library"), d.get("version"))
+                    entry = libs.setdefault(k, {
+                        "library": d.get("library_name") or d.get("library"),
+                        "version": d.get("version"), "status": d.get("status"),
+                        "package": d.get("package"), "processes": 0})
+                    entry["processes"] += 1
+            risky = {s for s in ("DISALLOWED", "DEPRECATED", "RESTRICTED")}
+            risky_count = sum(1 for l in libs.values() if l.get("status") in risky)
             return {
-                "crypto_processes": data.get("crypto_processes"),
+                "crypto_processes": data.get("process_count", len(procs)),
                 "total_processes_scanned": data.get("total_processes_scanned"),
                 "kernel_threads_skipped": data.get("kernel_threads_skipped"),
-                "libraries": data.get("current_libraries"),
-                "risky_libraries": data.get("risky_libraries"),
-                "listening_endpoints": data.get("listening_endpoints"),
+                "libraries": len(libs),
+                "risky_libraries": risky_count,
+                "listening_endpoints": data.get("listening_processes"),
             }
         if key == "network":
             tel = data.get("probe_telemetry") or {}
@@ -431,6 +443,12 @@ class LiveScanRunner:
                     for k, res in snapshot["results"].items()
                 },
             }
+            # page-ready inventory is small and survives a restart so the
+            # Hardware/Network/Libraries dashboards show the last real scan
+            try:
+                trimmed["inventory"] = self.inventory()
+            except Exception:  # noqa: BLE001
+                trimmed["inventory"] = None
             self._persisted = _db_persist(trimmed)
             self._publish("live_scan.completed",
                           {"ts": snapshot["ts"], "elapsed_s": snapshot["elapsed_s"],
@@ -486,6 +504,134 @@ class LiveScanRunner:
         self.last_snapshot = snap
         self.last_run_at = snap.get("ts")
         return True
+
+    # ------------------------------------------------------------------ inventory
+    def inventory(self) -> dict[str, Any]:
+        """Build page-ready structures for the dashboard pages from the most
+        recent live snapshot (in-memory with full payloads, else the persisted
+        summaries). Real scan data only — empty until a scan runs."""
+        snap = self.last_snapshot or {}
+        results: dict[str, Any] = snap.get("results") or {}
+
+        def _data(key: str) -> dict[str, Any]:
+            res = results.get(key) or {}
+            return res.get("data") or {}
+
+        devices: list[dict[str, Any]] = []
+        firmware_rows: list[dict[str, Any]] = []
+        hw = _data("hardware")
+        if hw:
+            host = (hw.get("host") or {}).get("hostname") or "this-host"
+            cpu = hw.get("cpu") or {}
+            tpm = hw.get("tpm") or {}
+            hsm = hw.get("hsm") or {}
+            sc = hw.get("smartcard") or {}
+            caps = []
+            if cpu.get("aes_acceleration"):
+                caps.append("AES-NI")
+            if cpu.get("sha_acceleration"):
+                caps.append("SHA-NI")
+            if cpu.get("hardware_rng"):
+                caps.append("HW-RNG")
+            devices.append({
+                "id": f"{host}:cpu", "type": "CPU", "host": host,
+                "vendor": cpu.get("vendor") or "",
+                "firmware": f"microcode {cpu.get('microcode_version') or '?'}",
+                "caps": caps,
+                "status": "present",
+            })
+            firmware_rows.append({
+                "device": cpu.get("model") or "CPU", "kind": "CPU microcode",
+                "version": str(cpu.get("microcode_version") or "?"), "status": "current",
+            })
+            if tpm.get("present"):
+                devices.append({
+                    "id": f"{host}:tpm", "type": "TPM", "host": host,
+                    "vendor": tpm.get("manufacturer") or "TPM",
+                    "firmware": f"TPM {tpm.get('version') or '?'}",
+                    "caps": ["key storage", "attestation"], "status": "present",
+                })
+                firmware_rows.append({
+                    "device": f"TPM {tpm.get('version') or ''}".strip(), "kind": "TPM",
+                    "version": str(tpm.get("version") or "?"), "status": "current",
+                })
+            if hsm.get("present"):
+                devices.append({
+                    "id": f"{host}:hsm", "type": "HSM", "host": host,
+                    "vendor": "HSM", "firmware": hsm.get("kind") or "",
+                    "caps": ["PKCS#11"], "status": "present",
+                })
+            if sc.get("present"):
+                devices.append({
+                    "id": f"{host}:smartcard", "type": "smart_card", "host": host,
+                    "vendor": "PC/SC", "firmware": sc.get("interface") or "",
+                    "caps": sc.get("pkcs11_middleware") or ["PC/SC"],
+                    "status": "middleware (no card)",
+                })
+
+        net_assets: list[dict[str, Any]] = []
+        net = _data("network")
+        for f in net.get("findings") or []:
+            ep = f.get("endpoint") or ""
+            crypto = f.get("crypto") or {}
+            certs = f.get("certificates") or []
+            leaf = certs[0] if certs else {}
+            chain = f.get("chain_validation") or {}
+            issues = f.get("policy_issues") or []
+            net_assets.append({
+                "kind": "tls_endpoint", "id": ep, "ip": ep,
+                "tls": f"{crypto.get('tls_version') or '?'} {crypto.get('cipher_suite') or ''}".strip(),
+                "certs": [c.get("subject") or "" for c in certs[:1]],
+                "os": leaf.get("issuer") or "",
+                "status": ("OK" if f.get("status") == "OK" and not issues else
+                           (";" .join(issues) or f.get("status") or "?")),
+                "cert_expiry_days": leaf.get("days_until_expiry"),
+                "chain_valid": chain.get("is_valid"),
+            })
+        # discovery sweep open endpoints
+        if net.get("cidr"):
+            for ep in net.get("endpoints") or []:
+                net_assets.append({
+                    "kind": "discovered", "id": ep, "ip": ep,
+                    "tls": "open", "certs": [], "os": "", "status": "discovered",
+                })
+
+        # runtime: crypto libraries (page-ready), aggregated from processes
+        libraries: list[dict[str, Any]] = []
+        rt = _data("runtime")
+        lib_agg: dict[tuple, dict[str, Any]] = {}
+        for p in rt.get("processes") or []:
+            for d in p.get("library_details") or []:
+                key = (d.get("library_name") or d.get("library"), d.get("version"))
+                entry = lib_agg.setdefault(key, {
+                    "name": d.get("library_name") or d.get("library"),
+                    "version": d.get("version"), "status": d.get("status"),
+                    "package": d.get("package"), "processes": 0})
+                entry["processes"] += 1
+        libraries = list(lib_agg.values())
+
+        counts = {
+            "hardware_devices": len(devices),
+            "network_assets": len(net_assets),
+            "libraries": len(libraries),
+        }
+        built = {
+            "generated_at": snap.get("ts"),
+            "host": (hw.get("host") or {}).get("hostname"),
+            "counts": counts,
+            "hardware": devices,
+            "firmware": firmware_rows,
+            "network": net_assets,
+            "libraries": libraries,
+        }
+        # After a restart the in-memory snapshot only has summaries (full
+        # payloads are not persisted); fall back to the page-ready inventory
+        # captured at scan time until a new cycle repopulates full data.
+        if counts["hardware_devices"] == 0 and counts["network_assets"] == 0 \
+                and counts["libraries"] == 0 and isinstance(snap.get("inventory"), dict):
+            return snap["inventory"]
+        return built
+
 
     def _periodic_loop(self) -> None:
         while not self._stop.is_set():
