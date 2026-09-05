@@ -118,6 +118,12 @@ def inventory(user: str = Depends(get_current_user)) -> dict[str, Any]:
     return _runner().inventory()
 
 
+@router.get("/alerts")
+def alerts(user: str = Depends(get_current_user)) -> dict[str, Any]:
+    """Deterministic, cross-scanner risk aggregation for the Alerts/Risk view."""
+    return _runner().alerts()
+
+
 @router.post("/stop", status_code=202)
 def stop_periodic(
     user: str = Depends(require_roles(*_OPERATORS)),

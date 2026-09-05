@@ -689,6 +689,106 @@ class LiveScanRunner:
             return snap["inventory"]
         return built
 
+    # ------------------------------------------------------------------ alerts
+    def alerts(self) -> dict[str, Any]:
+        """Deterministic, cross-scanner risk aggregation. Derives alerts from
+        the page-ready inventory (so it also works after a restart) plus the
+        per-scanner summaries/errors in the latest snapshot."""
+        inv = self.inventory()
+        ts = inv.get("generated_at")
+        out: list[dict[str, Any]] = []
+        sev_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
+
+        def add(severity: str, scanner: str, kind: str, title: str,
+                detail: str, asset: str = "") -> None:
+            out.append({"severity": severity, "scanner": scanner, "kind": kind,
+                        "title": title, "detail": detail, "asset": asset, "ts": ts})
+
+        # runtime libraries
+        for lib in inv.get("libraries", []):
+            st = (lib.get("status") or "").upper()
+            if st in ("DISALLOWED",):
+                add("CRITICAL", "runtime", "WEAK_LIBRARY",
+                    f"Disallowed crypto library {lib.get('name')} {lib.get('version') or ''}".strip(),
+                    f"EOL/banned library in use across {lib.get('processes') or 0} process(es)",
+                    asset=str(lib.get("package") or ""))
+            elif st in ("DEPRECATED", "RESTRICTED"):
+                add("HIGH", "runtime", "DEPRECATED_LIBRARY",
+                    f"Deprecated library {lib.get('name')} {lib.get('version') or ''}".strip(),
+                    f"Near/at end-of-life; plan upgrade ({lib.get('processes') or 0} process(es))",
+                    asset=str(lib.get("package") or ""))
+            elif st == "UNKNOWN":
+                add("LOW", "runtime", "UNMANAGED_LIBRARY",
+                    f"Unmanaged {lib.get('name')} library",
+                    "Version cannot be resolved (bundled/venv/static) — review manually")
+
+        # runtime processes at risk
+        for p in inv.get("processes", []):
+            if p.get("status") == "RISK":
+                add("HIGH", "runtime", "RISK_PROCESS",
+                    f"Process {p.get('process')} (pid {p.get('pid')}) uses a weak library",
+                    f"libs: {', '.join(p.get('tls_libraries') or [])}",
+                    asset=f"{p.get('process')}:{p.get('pid')}")
+
+        # network endpoints
+        for n in inv.get("network", []):
+            status = n.get("status") or ""
+            asset = n.get("id") or ""
+            if "WEAK_TLS" in status or "DISALLOWED_CIPHER" in status:
+                add("HIGH", "network", "WEAK_TLS",
+                    f"Weak TLS/cipher accepted on {asset}", f"{status}; {n.get('tls')}")
+            elif "CBC" in status:
+                add("MEDIUM", "network", "CBC_CIPHER",
+                    f"CBC-mode ciphers accepted on {asset}",
+                    "Lucky13 timing hardening — restrict to GCM/ChaCha20 (TLS 1.2+)")
+            if n.get("chain_valid") is False:
+                add("HIGH", "network", "CHAIN_INVALID",
+                    f"Certificate chain invalid on {asset}", "chain validation failed")
+
+        # certificate inventory (authoritative for expiry/signature alerts)
+        for c in inv.get("certificates", []):
+            if c.get("status") == "EXPIRED":
+                add("CRITICAL", "certificates", "CERT_EXPIRED",
+                    f"Expired certificate {c.get('cn')}", f"endpoint {c.get('endpoint')}")
+            elif c.get("status") == "EXPIRING":
+                add("MEDIUM", "certificates", "CERT_EXPIRING",
+                    f"Certificate {c.get('cn')} expiring", f"{c.get('days')} days ({c.get('endpoint')})")
+            sig = str(c.get("sig") or "").lower()
+            if sig.startswith(("md5", "sha1")):
+                add("HIGH", "certificates", "WEAK_SIGNATURE",
+                    f"Weak signature on {c.get('cn')}", f"{c.get('sig')} ({c.get('endpoint')})")
+
+        # hardware root-of-trust
+        hw_types = {d.get("type") for d in inv.get("hardware", [])}
+        if inv.get("hardware") and "TPM" not in hw_types:
+            add("LOW", "hardware", "TPM_ABSENT",
+                "No TPM detected on host",
+                "No hardware root of trust for key storage/attestation (check BIOS)")
+
+        # source/container/universal static findings (counts from summaries)
+        scans = inv.get("scans") or {}
+        for svc, block in scans.items():
+            s = block.get("summary") or {}
+            if s.get("high"):
+                add("HIGH", svc, "STATIC_FINDINGS",
+                    f"{svc} scan: {s.get('high')} high-confidence finding(s)",
+                    f"files={s.get('files_scanned') or '?'} findings={s.get('findings') or '?'}")
+            elif s.get("findings"):
+                add("MEDIUM", svc, "STATIC_FINDINGS",
+                    f"{svc} scan: {s.get('findings')} finding(s)",
+                    f"files={s.get('files_scanned') or '?'}")
+
+        # failed scanners (operational)
+        for key, res in (self.last_snapshot or {}).get("results", {}).items():
+            if isinstance(res, dict) and res.get("ok") is False and res.get("error"):
+                add("LOW", key, "SCANNER_ERROR",
+                    f"{key} scan failed", str(res.get("error"))[:180])
+
+        out.sort(key=lambda a: sev_rank.get(a["severity"], 9))
+        counts = {sev: sum(1 for a in out if a["severity"] == sev)
+                  for sev in ("CRITICAL", "HIGH", "MEDIUM", "LOW")}
+        return {"generated_at": ts, "counts": counts, "alerts": out, "total": len(out)}
+
 
     def _periodic_loop(self) -> None:
         while not self._stop.is_set():

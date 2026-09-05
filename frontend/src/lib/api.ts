@@ -419,6 +419,24 @@ export interface LiveInventory {
 export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
   call(`/api/v1/live-scan/inventory`);
 
+export interface LiveAlert {
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  scanner: string;
+  kind: string;
+  title: string;
+  detail: string;
+  asset: string;
+  ts: string | null;
+}
+export interface LiveAlertsResponse {
+  generated_at: string | null;
+  counts: Record<string, number>;
+  alerts: LiveAlert[];
+  total: number;
+}
+export const apiLiveAlerts = (): Promise<ApiResult<LiveAlertsResponse>> =>
+  call(`/api/v1/live-scan/alerts`);
+
 /** The caller's effective ABAC scope (Region→BU→Environment→Asset grants). */
 export const apiMyGrants = (): Promise<ApiResult<{ principal: string; roles: string[]; grants: Array<Record<string, unknown>>; count: number; abac_enforced: boolean }>> =>
   call("/api/v1/control/me/grants");

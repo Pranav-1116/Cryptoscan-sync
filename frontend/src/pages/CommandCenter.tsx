@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
 import { globalState, events, risk, networkAssets, cloudResources, vendors, hardware } from "../data/initial.js";
-import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, ApiResult, LiveBadge, LiveScanStatus } from "../lib/api.js";
+import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 
@@ -23,6 +23,8 @@ export default function CommandCenter() {
   const liveScan = usePollingApi(apiLiveScanStatus, 5000);
   const lsx = (liveScan.data ?? null) as LiveScanStatus | null;
   const lastScanEvent = rt.events.find((e) => e.type === "live_scan.completed");
+  const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
+  const alx = (liveAlerts.data ?? null) as LiveAlertsResponse | null;
   const ls = (liveStats.data ?? {}) as Record<string, number>;
   const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
 
@@ -87,6 +89,11 @@ export default function CommandCenter() {
             <LiveStat label="cycle" value={lsx.running ? "RUNNING" : "idle"} tone={lsx.running ? "cyan" : ""} />
             <LiveStat label="scanners OK" value={Number(lsx.ok_count ?? 0)} tone="green" />
             <LiveStat label="scanners failed" value={Number(lsx.failed_count ?? 0)} tone={lsx.failed_count ? "red" : "green"} />
+            {alx && (Number(alx.counts?.CRITICAL ?? 0) + Number(alx.counts?.HIGH ?? 0)) > 0 && (
+              <a href="#/alerts" style={{ textDecoration: "none" }}>
+                <LiveStat label="critical/high alerts" value={Number(alx.counts?.CRITICAL ?? 0) + Number(alx.counts?.HIGH ?? 0)} tone="red" />
+              </a>
+            )}
             {(lsx.scanners?.hardware?.summary as Record<string, unknown> | undefined)?.tpm_present === true && (
               <LiveStat label="TPM" value="2.0 present" tone="green" />
             )}
