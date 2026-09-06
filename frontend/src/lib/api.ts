@@ -469,6 +469,16 @@ export const apiHardwareCatalog = (params?: { category?: string; status?: string
   return call(`/api/v1/hardware/catalog${s ? `?${s}` : ""}`);
 };
 
+// ── Cloud accounts (read-only; scans never write) ──
+export interface CloudAccount {
+  cloud_provider?: string; provider?: string;
+  account_identifier?: string; account_id?: string;
+  role_arn?: string; regions?: string[] | string; enabled?: boolean;
+  status?: string; [k: string]: unknown;
+}
+export const apiCloudAccounts = (): Promise<ApiResult<{ accounts: CloudAccount[] }>> =>
+  call(`/api/v1/cloud/accounts`);
+
 export interface LiveAlert {
   severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
   scanner: string;
