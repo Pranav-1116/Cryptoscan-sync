@@ -620,12 +620,24 @@ class LiveScanRunner:
                     "chain_position": i,
                     "chain_length": len(certs),
                 })
-        # discovery sweep open endpoints
+        # discovery sweep open endpoints — named + risk-scored via the
+        # canonical network registry (passive classification, no extra probes)
         if net.get("cidr"):
+            services_by_ep = {s.get("endpoint"): s for s in (net.get("services") or [])}
             for ep in net.get("endpoints") or []:
+                svc = services_by_ep.get(ep) or {}
+                proto = svc.get("protocol")
+                status = "discovered"
+                if proto:
+                    svc_status = str(svc.get("status") or "")
+                    sev = str(svc.get("severity") or "")
+                    enc = "TLS" if svc.get("encrypted") else "cleartext"
+                    status = f"{proto} · {enc} · {svc_status or sev or 'open'}"
                 net_assets.append({
                     "kind": "discovered", "id": ep, "ip": ep,
-                    "tls": "open", "certs": [], "os": "", "status": "discovered",
+                    "tls": proto or "open", "certs": [],
+                    "os": svc.get("category") or "", "status": status,
+                    "service": svc,
                 })
 
         # runtime: crypto libraries (page-ready), aggregated from processes
