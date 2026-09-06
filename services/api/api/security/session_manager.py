@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import secrets
 import time
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 
@@ -26,6 +27,7 @@ class SessionManager:
         payload = {
             "username": username,
             "roles": roles if roles else ["readonly"],
+            "jti": secrets.token_urlsafe(18),  # unique per minted token
             "created_at": now,
             "expires_at": now + self.ttl,
         }
@@ -41,6 +43,7 @@ class SessionManager:
         return self._sign({
             "username": username,
             "purpose": "mfa_challenge",
+            "jti": secrets.token_urlsafe(18),
             "created_at": now,
             "expires_at": now + ttl_seconds,
         })
