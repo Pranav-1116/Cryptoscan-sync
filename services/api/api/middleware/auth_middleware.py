@@ -27,6 +27,8 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/auth/login",
     "/api/v1/auth/register",  # self-service registration (role pick from the 8-role catalog)
     "/api/v1/auth/oidc",
+    "/api/v1/auth/saml",   # SAML metadata/login/ACS (ACS verifies the IdP signature itself)
+    "/api/v1/auth/ldap",   # LDAP bind login (credential checked by directory)
     "/api/v1/meta",
     "/api/v1/healthz",
     "/api/v1/readyz",  # LB readiness probes must work without credentials

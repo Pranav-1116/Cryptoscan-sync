@@ -48,6 +48,33 @@ class APISettings(BaseSettings):
     OIDC_JWKS_FILE: str = ""
     OIDC_AUTO_PROVISION: bool = False
     OIDC_CLOCK_LEEWAY: int = 60
+
+    # SAML 2.0 SSO (SP side, bring-your-own-IdP): off until SAML_IDP_ENTITY_ID
+    # and the IdP signing certificate are set. Certificate is PEM, either inline
+    # or a path in SAML_IDP_CERT_PATH.
+    SAML_ENABLED: bool = False
+    SAML_SP_ENTITY_ID: str = ""
+    SAML_ACS_URL: str = ""
+    SAML_IDP_ENTITY_ID: str = ""
+    SAML_IDP_SSO_URL: str = ""
+    SAML_IDP_CERT: str = ""          # inline PEM (or single-line base64)
+    SAML_IDP_CERT_PATH: str = ""
+    SAML_ROLE_ATTRIBUTE: str = "groups"
+    SAML_AUTO_PROVISION: bool = False
+    SAML_CLOCK_SKEW_SECONDS: int = 120
+
+    # LDAP / Active Directory bind auth: off until LDAP_SERVER_URI is set.
+    LDAP_ENABLED: bool = False
+    LDAP_SERVER_URI: str = ""        # e.g. ldaps://dc01.corp:636
+    LDAP_BIND_DN: str = ""           # service/bind account DN
+    LDAP_BIND_PASSWORD: str = ""
+    LDAP_USER_SEARCH_BASE: str = ""
+    LDAP_USER_SEARCH_FILTER: str = "(sAMAccountName={username})"
+    LDAP_GROUP_SEARCH_BASE: str = ""
+    LDAP_GROUP_MEMBERSHIP_FILTER: str = "(member:1.2.840.113556.1.4.1941:={user_dn})"
+    # deterministic group-DN -> CryptoScan role mapping (JSON or comma k=v).
+    LDAP_GROUP_ROLE_MAP: str = ""
+
     SESSION_EXPIRE_HOURS: int = 24
     COOKIE_SECURE: bool | None = None
     # Real-time stream: how often the API tails monitor_events (written by the
