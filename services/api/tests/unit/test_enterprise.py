@@ -3,6 +3,8 @@ regions/DR, crypto KB, air-gapped signed transfer."""
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 
@@ -135,10 +137,14 @@ def test_siem_export_to_queue(client):
 # ------------------------------------------------------------- regions/DR
 def test_regions_and_dr(client):
     h = _h(client)
+    # Backup timestamp relative to the current clock so the RPO comparison
+    # is deterministic regardless of when the suite runs (a 5-min-old backup
+    # is always within the 60-minute target).
+    recent_backup = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
     client.put("/api/v1/enterprise/regions", headers=h, json={
         "code": "uae-primary", "name": "UAE Primary", "is_primary": True,
         "healthy": True, "rpo_minutes": 60,
-        "last_backup_at": "2026-09-06T11:50:00+00:00"})
+        "last_backup_at": recent_backup})
     client.put("/api/v1/enterprise/regions", headers=h, json={
         "code": "uae-dr", "name": "UAE DR", "is_primary": False, "healthy": True})
     health = client.get("/api/v1/enterprise/regions/health", headers=h).json()
