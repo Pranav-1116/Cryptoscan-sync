@@ -37,6 +37,7 @@ import Reports from "./pages/Reports.jsx";
 import Integrations from "./pages/Integrations.jsx";
 import Admin from "./pages/Admin.jsx";
 import Identity from "./pages/Identity.jsx";
+import CryptoAssurance from "./pages/CryptoAssurance.jsx";
 import Accuracy from "./pages/Accuracy.jsx";
 import Organization from "./pages/Organization.jsx";
 import Notifications from "./pages/Notifications.jsx";
@@ -84,6 +85,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/integrations": Integrations,
   "/admin": Admin,
   "/identity": Identity,
+  "/crypto-assurance": CryptoAssurance,
   "/accuracy": Accuracy,
   "/organization": Organization,
   "/notifications": Notifications,

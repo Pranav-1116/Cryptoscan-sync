@@ -1039,3 +1039,44 @@ export const apiWorkloadIssueSvid = (workload: string, ttl_minutes = 60): Promis
 /** Verify a presented peer SVID against the CA + workload allowlist. */
 export const apiWorkloadVerify = (cert_pem: string, allowed_workloads?: string[]): Promise<ApiResult<{ valid: boolean; spiffe_id?: string; workload?: string }>> =>
   _idReq("POST", "/api/v1/workload/verify", { cert_pem, ...(allowed_workloads ? { allowed_workloads } : {}) });
+
+/* ========================================================================== */
+/* Crypto assurance: active TLS audit, CT monitoring, expiry alerts + SLA,    */
+/* HSM/KMS key residence, trust-store inventory, hybrid-PQC downgrade, and    */
+/* deterministic weak-primitive code rules. Live backend only, no fallback.   */
+/* ========================================================================== */
+
+async function _ca<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+export const apiTlsAudit = (host: string, port = 443, sni?: string) =>
+  _ca<any>("/api/v1/crypto-assurance/tls-audit", { host, port, ...(sni ? { sni } : {}) });
+
+export const apiCtMonitor = (domains: string[], allowedIssuers: string[] = [], knownSerials: string[] = []) =>
+  _ca<any>("/api/v1/crypto-assurance/ct-monitor", { domains, allowed_issuers: allowedIssuers, known_serials: knownSerials });
+
+export const apiExpiryAlerts = (assets: Array<{ subject: string; not_after: string; sla_tier?: string; owner?: string }>) =>
+  _ca<any>("/api/v1/crypto-assurance/expiry-alerts", { assets });
+
+export const apiHsmCheck = (keys: Array<{ key_ref: string; provider: string; describe: Record<string, unknown> }>) =>
+  _ca<any>("/api/v1/crypto-assurance/hsm-check", { keys });
+
+export const apiTrustStore = (payload: { pem_bundle_b64?: string; path?: string; approved_subjects?: string[] }) =>
+  _ca<any>("/api/v1/crypto-assurance/trust-store", payload);
+
+export const apiPqcDowngrade = (host: string, port = 443, sni?: string) =>
+  _ca<any>("/api/v1/crypto-assurance/pqc-downgrade-audit", { host, port, ...(sni ? { sni } : {}) });
+
+export const apiCodeRuleScan = (filename: string, source: string) =>
+  _ca<any>("/api/v1/crypto-assurance/code-rules/scan", { filename, source });

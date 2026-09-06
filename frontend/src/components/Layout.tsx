@@ -24,6 +24,7 @@ const NAV = [
     { to: "/assets", label: "Assets", icon: "▣" },
     { to: "/crypto-assets", label: "Crypto assets", icon: "⚿" },
     { to: "/certificates", label: "Certificates", icon: "⊞" },
+    { to: "/crypto-assurance", label: "Crypto assurance", icon: "⚿" },
     { to: "/libraries", label: "Crypto libraries", icon: "▤" },
     { to: "/protocols", label: "Protocols", icon: "⇄" },
   ]},
