@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 
-from api.dependencies import get_current_user, get_job_repository, get_scan_repository
+from api.dependencies import (
+    get_current_user,
+    get_job_repository,
+    get_scan_repository,
+    require_auditor,
+)
 from api.schemas.job_schemas import TriggerScanResponse
 from api.schemas.scan_schemas import ScanListResponse, ScanResponse
 from db.repositories.job_repository import JobRepository
@@ -66,7 +71,7 @@ def get_scan(
 def retry_scan(
     scan_id: str,
     background_tasks: BackgroundTasks,
-    user: str = Depends(get_current_user),
+    user: str = Depends(require_auditor),
     scans: ScanRepository = Depends(get_scan_repository),
     jobs: JobRepository = Depends(get_job_repository),
 ):

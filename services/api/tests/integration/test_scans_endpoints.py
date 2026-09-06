@@ -74,3 +74,17 @@ class TestScanEndpoints:
         response = await authenticated_client.post("/api/v1/scans/scan-1/retry")
         assert response.status_code == 200
         assert response.json()["job_id"] == "retry-1"
+
+    @pytest.mark.asyncio
+    async def test_retry_scan_denied_low_privilege(
+        self,
+        lowpriv_client: AsyncClient,
+        mock_scan_repo: MagicMock,
+        mock_job_repo: MagicMock,
+    ):
+        """BFLA: a read-only authenticated user must not re-trigger a scan."""
+        mock_scan_repo.get_by_id = MagicMock(return_value=_scan())
+        response = await lowpriv_client.post("/api/v1/scans/scan-1/retry")
+        assert response.status_code == 403
+        # no job may be enqueued on a denied retry
+        mock_job_repo.create.assert_not_called()

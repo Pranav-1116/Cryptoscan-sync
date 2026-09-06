@@ -184,3 +184,29 @@ async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
         base_url="http://test",
     ) as ac:
         yield ac
+
+@_async_fixture
+async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
+    """Authenticated client with a read-only role (fail-closed authorization).
+
+    get_current_user succeeds (the session is valid) but every role-gated
+    dependency is forced to raise 403, so mutating endpoints that rely on
+    require_roles/require_auditor/require_admin must deny the caller.
+    """
+    from fastapi import HTTPException
+
+    from api import dependencies
+
+    app.dependency_overrides[dependencies.get_current_user] = lambda: "lowpriv"
+
+    def _deny(_request=None):
+        raise HTTPException(status_code=403, detail="insufficient role")
+
+    app.dependency_overrides[dependencies.require_admin] = _deny
+    app.dependency_overrides[dependencies.require_auditor] = _deny
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as ac:
+        yield ac
