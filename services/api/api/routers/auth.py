@@ -20,7 +20,12 @@ from api.dependencies import (
 from api.events.auth import publish_auth
 from api.security import totp
 from api.security.auth import AuthenticationError, AuthService
-from api.security.passwords import hash_password, verify_password
+from api.security.passwords import (
+    PasswordPolicyError,
+    hash_password,
+    validate_password_policy,
+    verify_password,
+)
 from api.security.session_manager import SessionManager
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -59,7 +64,7 @@ class MfaDisableRequest(BaseModel):
 
 class UserCreateRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=100)
-    password: str = Field(..., min_length=10, max_length=200)
+    password: str = Field(..., min_length=12, max_length=200)
     roles: list[str] = Field(default_factory=lambda: ["viewer"])
     display_name: str | None = None
     email: str | None = None
@@ -68,7 +73,7 @@ class UserCreateRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     roles: list[str] | None = None
     is_active: bool | None = None
-    password: str | None = Field(None, min_length=10, max_length=200)
+    password: str | None = Field(None, min_length=12, max_length=200)
 
 
 class UserResponse(BaseModel):
@@ -209,7 +214,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
 
 class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=100)
-    password: str = Field(..., min_length=8, max_length=200)
+    password: str = Field(..., min_length=12, max_length=200)
     role: str = "readonly"
     display_name: str | None = None
     email: str | None = None
@@ -249,6 +254,11 @@ def register(body: RegisterRequest, request: Request, db: Session = Depends(get_
             detail="superadmin is the platform-owner role and cannot be self-assigned — "
                    "sign in with the seeded admin account or ask an admin to grant it",
         )
+    try:
+        validate_password_policy(body.password)
+    except PasswordPolicyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Weak password: {exc}")
     repo = _user_repo(db)
     if repo.get_by_username(body.username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
@@ -488,7 +498,7 @@ def update_me(
 
 class ChangePasswordRequest(BaseModel):
     current_password: str = Field(..., min_length=1)
-    new_password: str = Field(..., min_length=10, max_length=200)
+    new_password: str = Field(..., min_length=12, max_length=200)
 
 
 @router.post("/me/password")
@@ -521,6 +531,11 @@ def change_my_password(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="New password must differ from the current password",
         )
+    try:
+        validate_password_policy(body.new_password)
+    except PasswordPolicyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Weak password: {exc}")
     settings = get_settings()
     if settings.is_production and body.new_password.lower() in {"", "cryptoscan", "admin", "password", "changeme", "secret"}:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="New password is too weak")
@@ -959,6 +974,11 @@ def create_user(
 ):
     from db.models.user import VALID_ROLES
 
+    try:
+        validate_password_policy(body.password)
+    except PasswordPolicyError as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                            detail=f"Weak password: {exc}")
     repo = _user_repo(db)
     if repo.get_by_username(body.username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
@@ -1021,6 +1041,11 @@ def update_user(
         if not body.is_active:
             changes["revoked_sessions"] = repo.revoke_all_sessions(username)
     if body.password is not None:
+        try:
+            validate_password_policy(body.password)
+        except PasswordPolicyError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail=f"Weak password: {exc}")
         repo.set_password(username, hash_password(body.password))
         changes["password_rotated"] = True
         changes["revoked_sessions"] = repo.revoke_all_sessions(username)

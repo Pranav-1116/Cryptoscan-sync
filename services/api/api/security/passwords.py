@@ -10,6 +10,90 @@ import os
 SCHEME = "pbkdf2_sha256"
 DEFAULT_ITERATIONS = 210_000
 
+MIN_PASSWORD_LENGTH = 12
+MAX_PASSWORD_LENGTH = 200
+
+# Common / breached-shaped passwords that are never accepted even if they
+# meet the length rule. Kept small and dependency-free (extend as needed).
+_COMMON_PASSWORDS = frozenset({
+    "password", "password1", "password123", "passw0rd", "qwerty", "qwerty123",
+    "12345678", "123456789", "1234567890", "changeme", "admin", "administrator",
+    "cryptoscan", "zelinx", "welcome", "welcome1", "letmein", "iloveyou",
+    "abc12345", "football", "monkey123", "dragon123", "master123",
+    "p@ssw0rd", "p@ssword", "passw0rd!", "qazwsx123",
+})
+
+# Core dictionary words that are weak even when padded with digits/symbols
+# (e.g. "Password12345!", "Qwerty-2026"). Matched on leetspeak-normalized stem.
+_COMMON_STEMS = frozenset({
+    "password", "passw0rd", "qwerty", "changeme", "admin", "administrator",
+    "welcome", "letmein", "iloveyou", "football", "monkey", "dragon",
+    "master", "cryptoscan", "zelinx", "secret",
+})
+
+
+def _normalized_stem(pw: str) -> str:
+    """Lowercase, map symbol-only leet (@→a, $→s), drop digits/other symbols."""
+    table = str.maketrans({"@": "a", "$": "s"})
+    stem = pw.lower().translate(table)
+    return "".join(c for c in stem if c.isalpha())
+
+
+class PasswordPolicyError(ValueError):
+    """Raised when a candidate password fails the strength policy."""
+
+
+def password_policy_errors(password: str) -> list[str]:
+    """Return a list of human-readable policy problems (empty list == OK).
+
+    Policy: 12+ chars; not a common/breached-shaped password; must contain
+    at least three of {lowercase, uppercase, digit, symbol}; must not repeat
+    a single character more than 3 times in a row.
+    """
+    errors: list[str] = []
+    pw = str(password or "")
+    if len(pw) < MIN_PASSWORD_LENGTH:
+        errors.append(f"password must be at least {MIN_PASSWORD_LENGTH} characters")
+    if len(pw) > MAX_PASSWORD_LENGTH:
+        errors.append(f"password must be at most {MAX_PASSWORD_LENGTH} characters")
+    if pw.lower() in _COMMON_PASSWORDS:
+        errors.append("password is too common")
+    else:
+        stem = _normalized_stem(pw)
+        if stem in _COMMON_STEMS or any(
+            len(s) >= 5 and s in stem for s in _COMMON_STEMS
+        ):
+            errors.append("password is based on a common word and too easy to guess")
+    classes = 0
+    if any(c.islower() for c in pw):
+        classes += 1
+    if any(c.isupper() for c in pw):
+        classes += 1
+    if any(c.isdigit() for c in pw):
+        classes += 1
+    if any((not c.isalnum()) for c in pw):
+        classes += 1
+    if classes < 3 and len(pw) >= MIN_PASSWORD_LENGTH:
+        errors.append("password must contain at least three of: lowercase, uppercase, digit, symbol")
+    # reject long runs of the same character
+    run = 1
+    for i in range(1, len(pw)):
+        if pw[i] == pw[i - 1]:
+            run += 1
+            if run >= 4:
+                errors.append("password must not repeat a character 4+ times")
+                break
+        else:
+            run = 1
+    return errors
+
+
+def validate_password_policy(password: str) -> None:
+    """Raise PasswordPolicyError if the password is unacceptable."""
+    errors = password_policy_errors(password)
+    if errors:
+        raise PasswordPolicyError("; ".join(errors))
+
 
 def hash_password(password: str, *, iterations: int = DEFAULT_ITERATIONS) -> str:
     salt = os.urandom(16)

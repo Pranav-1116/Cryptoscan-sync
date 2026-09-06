@@ -41,7 +41,7 @@ def _auth(token: str) -> dict:
     return {"Authorization": f"Bearer {token}"}
 
 
-def _register(client, username, password="password123", role="readonly", **extra):
+def _register(client, username, password="Str0ng!Test-2026", role="readonly", **extra):
     body = {"username": username, "password": password, "role": role, **extra}
     return client.post("/api/v1/auth/register", json=body)
 
@@ -65,7 +65,7 @@ def test_register_open_role_and_login(sqlite_app):
     assert r.json()["roles"] == ["developer"]
 
     # the new account can authenticate and sees a canonical role
-    r = _login(c, "alice", "password123")
+    r = _login(c, "alice", "Str0ng!Test-2026")
     assert r.status_code == 200
     assert r.json()["roles"] == ["developer"]
     assert r.json()["token"]
@@ -96,7 +96,7 @@ def test_register_is_whitelisted_without_token(sqlite_app):
     # No Authorization header sent — proves the middleware lets it through.
     r = sqlite_app.post(
         "/api/v1/auth/register",
-        json={"username": "dave", "password": "password123", "role": "scanner"},
+        json={"username": "dave", "password": "Str0ng!Test-2026", "role": "scanner"},
     )
     assert r.status_code == 201
 
@@ -105,8 +105,8 @@ def test_admin_can_soft_delete_and_restore_user(sqlite_app):
     c = sqlite_app
     # admin + a victim account
     admin = _login(c, "admin", "cryptoscan").json()["token"]
-    _register(c, "victim", password="password123", role="readonly")
-    victim = _login(c, "victim", "password123").json()["token"]
+    _register(c, "victim", password="Str0ng!Test-2026", role="readonly")
+    victim = _login(c, "victim", "Str0ng!Test-2026").json()["token"]
     # victim has a live session before deletion
     assert c.get("/api/v1/auth/me", headers=_auth(victim)).status_code == 200
 
@@ -117,7 +117,7 @@ def test_admin_can_soft_delete_and_restore_user(sqlite_app):
 
     # victim can no longer log in / use the (now revoked) token
     assert c.get("/api/v1/auth/me", headers=_auth(victim)).status_code == 401
-    assert _login(c, "victim", "password123").status_code == 401
+    assert _login(c, "victim", "Str0ng!Test-2026").status_code == 401
     # deleted user is hidden from the default list ...
     users = c.get("/api/v1/auth/users", headers=_auth(admin)).json()
     assert all(u["username"] != "victim" for u in users)
@@ -129,7 +129,7 @@ def test_admin_can_soft_delete_and_restore_user(sqlite_app):
     r = c.post("/api/v1/auth/users/victim/restore", headers=_auth(admin))
     assert r.status_code == 200, r.text
     assert r.json()["is_active"] is True
-    assert _login(c, "victim", "password123").status_code == 200
+    assert _login(c, "victim", "Str0ng!Test-2026").status_code == 200
 
 
 def test_superadmin_cannot_be_deleted(sqlite_app):
@@ -148,7 +148,7 @@ def test_delete_unknown_user_404(sqlite_app):
 def test_non_admin_cannot_delete(sqlite_app):
     c = sqlite_app
     _register(c, "regular", role="readonly")
-    token = _login(c, "regular", "password123").json()["token"]
+    token = _login(c, "regular", "Str0ng!Test-2026").json()["token"]
     _register(c, "target", role="readonly")
     assert c.delete("/api/v1/auth/users/target", headers=_auth(token)).status_code in (401, 403)
 
@@ -158,7 +158,7 @@ def test_register_normalizes_email_and_rejects_bad(sqlite_app):
     r = _register(c, "olive", role="readonly", email="Olive@Example.COM")
     assert r.status_code == 201
     # email is stored lowercased and served back normalized via /me
-    token = _login(c, "olive", "password123").json()["token"]
+    token = _login(c, "olive", "Str0ng!Test-2026").json()["token"]
     assert c.get("/api/v1/auth/me", headers=_auth(token)).json()["email"] == "olive@example.com"
     # a malformed email is rejected at registration time
     r = _register(c, "pete", role="readonly", email="not-an-email")
@@ -170,7 +170,7 @@ def test_register_normalizes_email_and_rejects_bad(sqlite_app):
 def test_me_returns_canonical_roles_permissions_and_profile(sqlite_app):
     c = sqlite_app
     _register(c, "erin", role="auditor")
-    token = _login(c, "erin", "password123").json()["token"]
+    token = _login(c, "erin", "Str0ng!Test-2026").json()["token"]
     r = c.get("/api/v1/auth/me", headers=_auth(token))
     assert r.status_code == 200
     body = r.json()
@@ -184,7 +184,7 @@ def test_me_returns_canonical_roles_permissions_and_profile(sqlite_app):
 def test_update_me_profile(sqlite_app):
     c = sqlite_app
     _register(c, "frank", role="readonly")
-    token = _login(c, "frank", "password123").json()["token"]
+    token = _login(c, "frank", "Str0ng!Test-2026").json()["token"]
     r = c.patch("/api/v1/auth/me", headers=_auth(token),
                 json={"display_name": "Frank F", "email": "Frank@Example.com"})
     assert r.status_code == 200, r.text
@@ -195,7 +195,7 @@ def test_update_me_profile(sqlite_app):
 def test_update_me_rejects_bad_email(sqlite_app):
     c = sqlite_app
     _register(c, "gina", role="readonly")
-    token = _login(c, "gina", "password123").json()["token"]
+    token = _login(c, "gina", "Str0ng!Test-2026").json()["token"]
     r = c.patch("/api/v1/auth/me", headers=_auth(token), json={"email": "not-an-email"})
     assert r.status_code == 422
 
@@ -204,8 +204,8 @@ def test_update_me_rejects_bad_email(sqlite_app):
 
 def test_change_password_requires_current(sqlite_app):
     c = sqlite_app
-    _register(c, "hank", password="password123", role="readonly")
-    token = _login(c, "hank", "password123").json()["token"]
+    _register(c, "hank", password="Str0ng!Test-2026", role="readonly")
+    token = _login(c, "hank", "Str0ng!Test-2026").json()["token"]
     r = c.post("/api/v1/auth/me/password", headers=_auth(token),
                json={"current_password": "wrong-old", "new_password": "brand-new-pass-9"})
     assert r.status_code == 401
@@ -213,23 +213,23 @@ def test_change_password_requires_current(sqlite_app):
 
 def test_change_password_rejects_same_password(sqlite_app):
     c = sqlite_app
-    _register(c, "ivy", password="password123", role="readonly")
-    token = _login(c, "ivy", "password123").json()["token"]
+    _register(c, "ivy", password="Str0ng!Test-2026", role="readonly")
+    token = _login(c, "ivy", "Str0ng!Test-2026").json()["token"]
     r = c.post("/api/v1/auth/me/password", headers=_auth(token),
-               json={"current_password": "password123", "new_password": "password123"})
+               json={"current_password": "Str0ng!Test-2026", "new_password": "Str0ng!Test-2026"})
     assert r.status_code == 422
 
 
 def test_change_password_rotates_and_revokes_other_sessions(sqlite_app):
     c = sqlite_app
-    _register(c, "jane", password="password123", role="developer")
+    _register(c, "jane", password="Str0ng!Test-2026", role="developer")
     # two independent sessions (two devices)
-    t1 = _login(c, "jane", "password123").json()["token"]
-    t2 = _login(c, "jane", "password123").json()["token"]
+    t1 = _login(c, "jane", "Str0ng!Test-2026").json()["token"]
+    t2 = _login(c, "jane", "Str0ng!Test-2026").json()["token"]
     assert t1 != t2
 
     r = c.post("/api/v1/auth/me/password", headers=_auth(t1),
-               json={"current_password": "password123", "new_password": "rotated-pass-1"})
+               json={"current_password": "Str0ng!Test-2026", "new_password": "R0tated!Pass-2027"})
     assert r.status_code == 200, r.text
     assert r.json()["revoked_other_sessions"] >= 1
 
@@ -238,17 +238,17 @@ def test_change_password_rotates_and_revokes_other_sessions(sqlite_app):
     # the other device's token is revoked
     assert c.get("/api/v1/auth/me", headers=_auth(t2)).status_code == 401
     # old password no longer works, new one does
-    assert _login(c, "jane", "password123").status_code == 401
-    assert _login(c, "jane", "rotated-pass-1").status_code == 200
+    assert _login(c, "jane", "Str0ng!Test-2026").status_code == 401
+    assert _login(c, "jane", "R0tated!Pass-2027").status_code == 200
 
 
 # ------------------------------------------------------------------- sessions
 
 def test_list_and_revoke_sessions(sqlite_app):
     c = sqlite_app
-    _register(c, "kim", password="password123", role="readonly")
-    t1 = _login(c, "kim", "password123").json()["token"]
-    _login(c, "kim", "password123")  # second device
+    _register(c, "kim", password="Str0ng!Test-2026", role="readonly")
+    t1 = _login(c, "kim", "Str0ng!Test-2026").json()["token"]
+    _login(c, "kim", "Str0ng!Test-2026")  # second device
 
     r = c.get("/api/v1/auth/me/sessions", headers=_auth(t1))
     assert r.status_code == 200
@@ -277,7 +277,7 @@ def test_auth_events_published(sqlite_app):
     admin = _login(c, "admin", "cryptoscan").json()["token"]
 
     _register(c, "leo", role="readonly")
-    _login(c, "leo", "password123")
+    _login(c, "leo", "Str0ng!Test-2026")
     types = _recent_event_types(c, admin)
     assert "auth.register" in types
     assert "auth.login" in types
@@ -291,10 +291,10 @@ def test_auth_events_published(sqlite_app):
 def test_password_change_event_published(sqlite_app):
     c = sqlite_app
     admin = _login(c, "admin", "cryptoscan").json()["token"]
-    _register(c, "mia", password="password123", role="readonly")
-    token = _login(c, "mia", "password123").json()["token"]
+    _register(c, "mia", password="Str0ng!Test-2026", role="readonly")
+    token = _login(c, "mia", "Str0ng!Test-2026").json()["token"]
     c.post("/api/v1/auth/me/password", headers=_auth(token),
-           json={"current_password": "password123", "new_password": "fresh-pass-77"})
+           json={"current_password": "Str0ng!Test-2026", "new_password": "Fr3sh!Pass-2027"})
     types = _recent_event_types(c, admin)
     assert "auth.password_change" in types
 

@@ -15,10 +15,17 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_current_user, require_roles
+from api.security.target_validation import (
+    TargetValidationError,
+    validate_scan_targets,
+)
+
+# HTTP 400 — numeric to avoid clashing with the ``status`` route below.
+HTTP_400 = 400
 
 router = APIRouter(prefix="/live-scan", tags=["live-scan"])
 
@@ -99,6 +106,16 @@ def run_scan(
         "source": body.source_target,
         "universal": body.universal_target,
     }
+    # SSRF / path-traversal / shell-injection guard: refuse unsafe scan
+    # targets (loopback, cloud-metadata, secret paths, shell metachars)
+    # before any real scanner is launched. Fail closed with HTTP 400.
+    try:
+        targets = validate_scan_targets(targets)
+    except TargetValidationError as exc:
+        raise HTTPException(
+            status_code=HTTP_400,
+            detail={"error": "invalid_target", "field": exc.field, "reason": str(exc)},
+        )
     return r.start_cycle(only=body.scanners, targets=targets, trigger="manual")
 
 

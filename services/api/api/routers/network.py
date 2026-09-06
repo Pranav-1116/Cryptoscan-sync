@@ -213,7 +213,16 @@ def discover_subnet_endpoints(
     """
     from network_scanner.discovery.subnet_discoverer import DEFAULT_PORTS, discover_subnet
 
-    result = discover_subnet(body.cidr, body.ports or list(DEFAULT_PORTS), timeout=body.timeout)
+    # SSRF guard: reject loopback/link-local/metadata/multicast/reserved and
+    # non-CIDR inputs (URLs, hostnames, shell metacharacters) before sweeping.
+    try:
+        from api.security.target_validation import validate_network_target
+
+        safe_cidr = validate_network_target(body.cidr)
+    except Exception as exc:  # TargetValidationError
+        raise HTTPException(status_code=400, detail={"error": "invalid_target", "reason": str(exc)})
+
+    result = discover_subnet(safe_cidr, body.ports or list(DEFAULT_PORTS), timeout=body.timeout)
     if body.register:
         from network_scanner.discovery.registration import register_targets
 
