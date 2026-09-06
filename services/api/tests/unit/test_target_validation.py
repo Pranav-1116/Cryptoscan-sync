@@ -102,3 +102,50 @@ def test_validate_scan_targets_passes_safe():
 
 def test_empty_targets_are_noop():
     assert validate_scan_targets({}) == {}
+
+
+# -- active-probe target validator ------------------------------------------- #
+from api.security.target_validation import (  # noqa: E402
+    validate_probe_target,
+    validate_probe_targets,
+)
+
+PROBE_BLOCK = [
+    "127.0.0.1", "127.0.0.1:443", "[::1]:443", "169.254.169.254",
+    "localhost", "localhost:8443", "metadata.google.internal",
+    "0.0.0.0", "224.0.0.1", "100.64.0.1", "fe80::1",
+    "http://evil.com/", "https://1.2.3.4", "host;cat /etc/passwd",
+    "user:pass@internal", "169.254.169.254:443",
+]
+
+PROBE_ALLOW = [
+    "mail.customer.com:443", "api.example.com", "10.0.0.5", "10.0.0.5:8443",
+    "192.168.1.10", "172.16.0.1", "8.8.8.8:443", "[2001:db8::1]:443",
+]
+
+
+@pytest.mark.parametrize("t", PROBE_BLOCK)
+def test_probe_blocks_ssrf_targets(t):
+    with pytest.raises(TargetValidationError):
+        validate_probe_target(t)
+
+
+@pytest.mark.parametrize("t", PROBE_ALLOW)
+def test_probe_allows_named_and_internal_hosts(t):
+    assert validate_probe_target(t) == t
+
+
+def test_probe_batch_returns_cleaned_list():
+    out = validate_probe_targets(["a.com:443", "10.0.0.1"])
+    assert out == ["a.com:443", "10.0.0.1"]
+
+
+def test_probe_batch_empty_rejected():
+    with pytest.raises(TargetValidationError):
+        validate_probe_targets([])
+
+
+def test_probe_batch_rejects_metadata_member():
+    with pytest.raises(TargetValidationError) as ei:
+        validate_probe_targets(["ok.com:443", "169.254.169.254"])
+    assert "[1]" in ei.value.field

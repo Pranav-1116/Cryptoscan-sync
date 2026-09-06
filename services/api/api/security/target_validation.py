@@ -220,3 +220,89 @@ def validate_scan_targets(targets: dict) -> dict:
         if out.get(key):
             out[key] = validate_source_target(str(out[key]), label=f"{key}_target")
     return out
+
+
+# Hostnames that resolve to / name the cloud-instance metadata services.
+_METADATA_HOSTNAMES = (
+    "metadata.google.internal",
+    "metadata.azure.com",
+    "169.254.169.254",
+    "fd00:ec2::254",
+)
+
+
+def validate_probe_target(raw: str, *, label: str = "probe_target") -> str:
+    """Validate a single host/endpoint for an *active* TLS/TCP probe.
+
+    Unlike the subnet-discovery guard this MUST accept DNS names and public
+    hosts (TLS audits scan ``mail.customer.com`` etc.) and RFC1918 internal
+    endpoints, but it still refuses the SSRF-sensitive targets: loopback,
+    the cloud-metadata addresses/names, link-local multicast, URL schemes,
+    shell metacharacters, and credentials embedded in the target.
+    """
+    if not raw or not str(raw).strip():
+        raise TargetValidationError("empty probe target", label)
+    target = str(raw).strip()
+
+    if _URL_SCHEME.match(target):
+        raise TargetValidationError(
+            "supply a host or host:port, not a URL (scheme:// not permitted)", label)
+    if _SHELL_META.search(target):
+        raise TargetValidationError("shell metacharacters not permitted in target", label)
+
+    # no userinfo (user:pass@host) — checked before port parsing so an
+    # "@" cannot be mistaken for a port separator.
+    if "@" in target:
+        raise TargetValidationError("credentials are not permitted in a probe target", label)
+
+    # strip an optional port / brackets (169.254.169.254:443, [::1]:443)
+    host = target
+    if target.startswith("["):  # bracketed IPv6
+        host = target[1:].split("]", 1)[0]
+    elif target.count(":") == 1:  # host:port
+        host = target.rsplit(":", 1)[0]
+    host = host.strip().lower()
+
+    if host in ("localhost",) or host in _METADATA_HOSTNAMES or host in _METADATA_IPS:
+        raise TargetValidationError("refusing to probe loopback/cloud-metadata target", label)
+
+    ip = None
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+
+    if ip is not None:
+        meta_ips = [ipaddress.ip_address(h) for h in _METADATA_IPS if _is_ip(h)]
+        if ip.is_loopback or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+            raise TargetValidationError(
+                f"refusing to probe {ip} — loopback/metadata/multicast/reserved blocked", label)
+        if ip.is_link_local or ip in meta_ips or ip in ipaddress.ip_network("100.64.0.0/10"):
+            raise TargetValidationError(
+                f"refusing to probe link-local/CGNAT/metadata address {ip}", label)
+    else:
+        # hostname: sanity check it looks like a DNS name, not an injection
+        if any(ch.isspace() for ch in host) or not all(
+            part and all(c.isalnum() or c in "-._" for c in part)
+            for part in host.split(".")
+        ):
+            raise TargetValidationError(f"malformed probe hostname: {host!r}", label)
+    return target
+
+
+def _is_ip(value: str) -> bool:
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except ValueError:
+        return False
+
+
+def validate_probe_targets(targets, *, label: str = "probe_target") -> list[str]:
+    """Validate a list of probe hosts; returns the cleaned list."""
+    cleaned: list[str] = []
+    for i, item in enumerate(targets or []):
+        cleaned.append(validate_probe_target(str(item), label=f"{label}[{i}]"))
+    if not cleaned:
+        raise TargetValidationError("at least one probe target is required", label)
+    return cleaned

@@ -445,7 +445,17 @@ def check_revocation(cert_id: str, user: str = Depends(get_current_user), db: Se
 def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
+    # SSRF guard: active TLS probes must never target loopback/cloud-metadata.
+    # Hostnames and RFC1918 endpoints (the internal-asset use case) are allowed.
+    try:
+        from api.security.target_validation import TargetValidationError, validate_probe_targets
+
+        safe_hosts = validate_probe_targets(body.hosts, label="hosts")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_target",
+                                                     "field": exc.field, "reason": str(exc)})
     result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
+        safe_hosts,
         body.hosts,
         sni=body.sni,
         starttls=body.starttls,
@@ -473,7 +483,16 @@ def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), d
 
 @router.post("/network/scan-path")
 def scan_path(body: FilesystemTlsRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    result = NetworkTlsScanner(live=body.live).scan_filesystem(body.path)
+    # Path-traversal / secret-exposure guard: confine filesystem cert scans to
+    # the allow-listed source roots (the same choke point as source scans).
+    try:
+        from api.security.target_validation import TargetValidationError, validate_source_target
+
+        safe_path = validate_source_target(body.path, label="path")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_target",
+                                                     "field": "path", "reason": str(exc)})
+    result = NetworkTlsScanner(live=body.live).scan_filesystem(safe_path)
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
     for cert in result.get("certificates") or []:
