@@ -419,6 +419,30 @@ export interface LiveInventory {
 export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
   call(`/api/v1/live-scan/inventory`);
 
+// ── Certificate expiry calendar (SLA-tiered, deterministic) ──
+export interface ExpiryCalendarEntry {
+  subject: string | null;
+  fingerprint_sha256: string | null;
+  issuer: string | null;
+  not_after: string | null;
+  days_until_expiry: number | null;
+  severity: string;
+  renewal_status: string | null;
+  renewal_ticket: string | null;
+  usages: unknown[];
+}
+export interface ExpiryCalendar {
+  generated_at: string;
+  sla_tiers: Record<string, string>;
+  counts: Record<string, number>;
+  total_tracked: number;
+  actionable_count: number;
+  healthy_count: number;
+  buckets: Record<string, ExpiryCalendarEntry[]>;
+}
+export const apiExpiryCalendar = (): Promise<ApiResult<ExpiryCalendar>> =>
+  call(`/api/v1/certificates/expiry-calendar`);
+
 // ── Canonical catalogs (algorithms · network protocols · hardware) ──
 export interface AlgorithmEntry {
   algorithm: string; family: string; status: string;

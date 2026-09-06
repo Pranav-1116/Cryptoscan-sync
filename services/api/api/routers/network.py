@@ -123,6 +123,31 @@ def update_certificate_renewal(
     }
 
 
+@router.get("/certificates/expiry-calendar")
+def certificate_expiry_calendar(
+    include_renewed: bool = False,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """SLA-tiered certificate expiry calendar.
+
+    Deterministic day-based buckets: expired / critical (0-7d) / warning
+    (8-30d) / scheduled (31-90d) / healthy (>90d). Remaining days are
+    re-computed live from ``not_after`` so stale scans never mislead.
+    Certs already marked renewed are excluded unless ``include_renewed=true``.
+    """
+    from network_scanner.certificates.expiry_calendar import build_expiry_calendar
+
+    rows = CertificateRepository(db).list_all()
+    certs = [row.to_dict() for row in rows]
+    if not include_renewed:
+        certs = [c for c in certs if (c.get("renewal_status") or "").lower() not in
+                 ("renewed", "completed", "done")]
+    calendar = build_expiry_calendar(certs)
+    # return the summary counts/tier structure plus entries; drop nothing
+    return calendar
+
+
 @router.get("/certificates/{cert_id}")
 def get_certificate(cert_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     row = CertificateRepository(db).get_by_id(cert_id)

@@ -1,7 +1,13 @@
 import React, { useState } from "react";
-import { Panel, Badge, Table, Bar, PageHead, Drawer } from "../components/ui.jsx";
+import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
-import { apiLiveInventory, LiveCertificate, LiveInventory } from "../lib/api.js";
+import {
+  apiLiveInventory,
+  apiExpiryCalendar,
+  LiveCertificate,
+  LiveInventory,
+  ExpiryCalendar,
+} from "../lib/api.js";
 
 /* Certificates — live certificate inventory observed on TLS endpoints by the
    network scanner via GET /api/v1/live-scan/inventory. Empty until a network
@@ -37,6 +43,61 @@ function CertDrawer({ cert, onClose }: { cert: CertRow; onClose: () => void }) {
         <a href="#/evidence" className="mono" style={{ fontSize: 12 }}>open evidence chain →</a>
       </Panel>
     </Drawer>
+  );
+}
+
+const SLA_TIERS: { key: string; label: string; tone: "red" | "amber" | "cyan" | "green" | "" }[] = [
+  { key: "expired", label: "Expired", tone: "red" },
+  { key: "critical", label: "0–7 days", tone: "red" },
+  { key: "warning", label: "8–30 days", tone: "amber" },
+  { key: "scheduled", label: "31–90 days", tone: "cyan" },
+  { key: "healthy", label: ">90 days", tone: "green" },
+];
+
+function ExpiryCalendarPanel() {
+  const cal = usePollingApi(apiExpiryCalendar, 30000);
+  const data = (cal.data ?? null) as ExpiryCalendar | null;
+  if (!data) {
+    return (
+      <Panel title="Renewal SLA calendar" sub="deterministic day-based expiry buckets" className="mt">
+        <div className="dim" style={{ fontSize: 13 }}>No expiry calendar yet — run a certificate scan to populate it.</div>
+      </Panel>
+    );
+  }
+  const actionable = data.actionable_count ?? 0;
+  return (
+    <Panel
+      title="Renewal SLA calendar"
+      sub={`${data.total_tracked} tracked · ${actionable} need action · deterministic day-based buckets`}
+      className="mt"
+    >
+      <div className="grid cols-5" style={{ marginBottom: 16 }}>
+        {SLA_TIERS.map((t) => (
+          <div className="kpi" key={t.key}>
+            <span className="k">{t.label}</span>
+            <span className="v" style={{ color: `var(--${t.tone === "" ? "cyan" : t.tone})` }}>
+              {data.counts?.[t.key] ?? 0}
+            </span>
+          </div>
+        ))}
+      </div>
+      {SLA_TIERS.filter((t) => (data.buckets?.[t.key] ?? []).length > 0).map((t) => (
+        <div key={t.key} style={{ marginBottom: 12 }}>
+          <div className="dim mono" style={{ fontSize: 11, marginBottom: 6, textTransform: "uppercase", letterSpacing: 0.5 }}>
+            {t.label} · {data.buckets[t.key].length}
+          </div>
+          {data.buckets[t.key].slice(0, 6).map((e) => (
+            <div key={e.fingerprint_sha256 ?? e.subject} className="spread" style={{ fontSize: 13 }}>
+              <span className="mono">{e.subject ?? "unknown"}</span>
+              <span className="dim mono">
+                {e.days_until_expiry === null ? "no expiry" : `${e.days_until_expiry} days`}
+                {e.renewal_ticket ? ` · ticket ${e.renewal_ticket}` : ""}
+              </span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </Panel>
   );
 }
 
@@ -99,23 +160,7 @@ export default function Certificates() {
         )}
       </Panel>
       {detail && <CertDrawer cert={detail} onClose={() => setSel(null)} />}
-      <Panel title="Expiration calendar" sub="certificate lifetimes from the live inventory" className="mt">
-        {certs.length ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {certs.slice(0, 10).map((c) => (
-              <div key={`${c.cn}-${c.endpoint}-${c.chain_position}`} className="spread" style={{ fontSize: 13 }}>
-                <span className="mono">{c.cn} <span className="dim">({c.endpoint})</span></span>
-                <div style={{ flex: 1, maxWidth: 320 }}>
-                  <Bar value={Math.max(0, Math.min(1, (c.days ?? 0) / 365))} tone={(c.days ?? 0) < 30 ? "red" : (c.days ?? 0) < 90 ? "amber" : "green"} />
-                </div>
-                <span className="mono">{c.days ?? "—"} days</span>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="dim" style={{ fontSize: 13 }}>No certificates discovered yet — run a network scan to populate the expiration calendar.</div>
-        )}
-      </Panel>
+      <ExpiryCalendarPanel />
     </>
   );
 }
