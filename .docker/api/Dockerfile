@@ -38,7 +38,11 @@ RUN set -eux; \
         | sort -u > "$SITE_DIR/cryptoscan.pth"; \
     cat "$SITE_DIR/cryptoscan.pth"
 
-RUN chown -R cryptoscan:cryptoscan /app
+# Scanner workspace: the live/universal scanners clone/extract scan targets
+# here. It must exist and be writable by the unprivileged user, and it is an
+# allow-listed source root for the target-validation (SSRF/traversal) guard.
+RUN mkdir -p /tmp/cryptoscan-workspaces \
+    && chown -R cryptoscan:cryptoscan /app /tmp/cryptoscan-workspaces
 
 USER cryptoscan
 EXPOSE 8010

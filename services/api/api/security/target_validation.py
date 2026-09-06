@@ -120,11 +120,22 @@ def _allowed_source_roots() -> list[Path]:
     roots: list[Path] = []
     if env:
         roots = [Path(p).resolve() for p in env.split(os.pathsep) if p.strip()]
+    # The scanner worker clones/extracts scan targets into WORKSPACE_BASE_PATH
+    # (default /tmp/cryptoscan-workspaces in the container images); treat it
+    # and any explicit source roots as allow-listed scan locations.
+    for envvar in ("WORKSPACE_BASE_PATH", "SOURCE_ROOT"):
+        val = os.environ.get(envvar, "").strip()
+        if val:
+            roots.append(Path(val).resolve())
     # repository root and common workspace locations
     here = Path(__file__).resolve()
     repo = here.parents[4]  # services/api/api/security -> repo root
     roots.append(repo)
-    for p in ("/workspace", "/workspaces", "/tmp/cryptoscan-sources", "/app/sources"):
+    for p in (
+        "/workspace", "/workspaces",
+        "/tmp/cryptoscan-workspaces", "/tmp/cryptoscan-sources",
+        "/app/sources", "/app/workspaces",
+    ):
         pp = Path(p)
         if pp.exists():
             roots.append(pp.resolve())

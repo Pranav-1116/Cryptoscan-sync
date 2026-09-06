@@ -60,6 +60,8 @@ services:
       ALLOW_INSECURE_CORS: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
       REDIS_URL: redis://redis:6379/0
+      WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
+      CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
     command:
       - uvicorn
@@ -77,6 +79,10 @@ services:
     mem_limit: 1g
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
   worker:
     environment:
@@ -85,17 +91,33 @@ services:
       ALLOW_SQLITE: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
       REDIS_URL: redis://redis:6379/0
+      WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
+      CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
     logging: *json-log
     mem_limit: 2g
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
+
+  monitor:
+    logging: *json-log
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   frontend:
     logging: *json-log
     mem_limit: 256m
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
 
   nginx:
     ports: !override
@@ -104,3 +126,7 @@ services:
     mem_limit: 128m
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
