@@ -936,3 +936,106 @@ export async function apiExceptions(status?: string): Promise<ApiResult<any[]>> 
 /** Approve / reject / revoke a policy exception (HMAC-signed server-side on approve). */
 export const apiExceptionDecision = (exceptionId: string, action: "approve" | "reject" | "revoke", notes?: string) =>
   _postAction(`/api/v1/exceptions/${encodeURIComponent(exceptionId)}/${action}`, { notes: notes || "" });
+
+/* ========================================================================== */
+/* Identity & access: SAML SSO, LDAP, SCIM provisioning, workload identity,   */
+/* API-key IP allowlist + rotation. All calls hit the live backend; there is  */
+/* no fallback dataset — offline/error renders as empty + a badge.           */
+/* ========================================================================== */
+
+async function _idReq<T>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (resp.status === 204) return { source: "live", ok: true, data: null as unknown as T };
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) {
+    return { source: "offline", ok: false, error: String(e), data: null };
+  }
+}
+
+function _idErr(data: any, status: number): string {
+  if (data?.detail && typeof data.detail === "object") return String(data.detail.detail || data.detail.scimType || `HTTP ${status}`);
+  return String(data?.detail || `HTTP ${status}`);
+}
+
+export interface ScimUser {
+  id: string; userName: string; displayName?: string; active: boolean;
+  emails?: { value: string }[]; roles?: { value: string }[];
+}
+export interface ScimList { totalResults: number; itemsPerPage: number; Resources: ScimUser[]; }
+
+/** SSO feature flags (SAML/LDAP configured or not). */
+export const apiSsoStatus = (): Promise<ApiResult<{ saml_enabled: boolean; ldap_enabled: boolean }>> =>
+  _idReq("GET", "/api/v1/auth/saml/status");
+
+/** SCIM directory listing (users provisioned via IdP sync). */
+export const apiScimUsers = (): Promise<ApiResult<ScimList>> =>
+  _idReq("GET", "/api/v1/scim/v2/Users?count=200");
+
+/** Provision a user over SCIM 2.0. Roles are normalized server-side; the
+ *  directory sync can never mint a superadmin. */
+export const apiScimCreateUser = (payload: {
+  userName: string; displayName?: string; email?: string;
+  roles?: string[]; active?: boolean;
+}): Promise<ApiResult<ScimUser>> =>
+  _idReq("POST", "/api/v1/scim/v2/Users", {
+    schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"],
+    userName: payload.userName,
+    ...(payload.displayName ? { displayName: payload.displayName } : {}),
+    ...(payload.email ? { emails: [{ value: payload.email, primary: true }] } : {}),
+    ...(payload.roles ? { roles: payload.roles.map((r) => ({ value: r })) } : {}),
+    active: payload.active ?? true,
+  });
+
+/** Deprovision = soft-deactivate (audit chain preserved; sessions revoked). */
+export const apiScimDeactivate = (userName: string): Promise<ApiResult<null>> =>
+  _idReq("DELETE", `/api/v1/scim/v2/Users/${encodeURIComponent(userName)}`);
+
+/** Reactivate / role change via a SCIM PATCH op. */
+export const apiScimSetActive = (userName: string, active: boolean): Promise<ApiResult<ScimUser>> =>
+  _idReq("PATCH", `/api/v1/scim/v2/Users/${encodeURIComponent(userName)}`, {
+    schemas: ["urn:ietf:params:scim:api:messages:2.0:PatchOp"],
+    Operations: [{ op: "replace", path: "active", value: active }],
+  });
+
+export interface RotationKey {
+  id: string; name?: string; key_prefix?: string;
+  state?: string; age_days?: number; days_until_expiry?: number; recommended_action?: string;
+  allowed_ips?: string[]; rotate_after_days?: number;
+}
+export interface RotationReport {
+  total_active: number; counts: Record<string, number>; actionable: number; keys: RotationKey[];
+}
+
+/** API-key rotation posture (REVOKED/EXPIRED/EXPIRING_SOON/ROTATION_DUE/…). */
+export const apiKeyRotationReport = (): Promise<ApiResult<RotationReport>> =>
+  _idReq("GET", "/api/v1/api-keys/rotation/report");
+
+/** Set per-IP allowlist (CIDR or exact) and rotation period on a key. */
+export const apiUpdateKeyPolicy = (id: string, patch: {
+  allowed_ips?: string[]; rotate_after_days?: number;
+}): Promise<ApiResult<unknown>> =>
+  _idReq("PATCH", `/api/v1/api-keys/${encodeURIComponent(id)}`, patch);
+
+export interface Svid {
+  spiffe_id: string; cert_pem: string; key_pem: string; ca_cert_pem: string; not_after: string;
+}
+
+/** Workload trust domain CA (public) for mTLS clients. */
+export const apiWorkloadCa = (): Promise<ApiResult<{ trust_domain: string; ca_cert_pem: string }>> =>
+  _idReq("GET", "/api/v1/workload/ca");
+
+/** Mint a short-lived SPIFFE SVID for a scanner/worker workload. */
+export const apiWorkloadIssueSvid = (workload: string, ttl_minutes = 60): Promise<ApiResult<Svid>> =>
+  _idReq("POST", "/api/v1/workload/svid", { workload, ttl_minutes });
+
+/** Verify a presented peer SVID against the CA + workload allowlist. */
+export const apiWorkloadVerify = (cert_pem: string, allowed_workloads?: string[]): Promise<ApiResult<{ valid: boolean; spiffe_id?: string; workload?: string }>> =>
+  _idReq("POST", "/api/v1/workload/verify", { cert_pem, ...(allowed_workloads ? { allowed_workloads } : {}) });

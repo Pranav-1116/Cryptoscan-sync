@@ -60,6 +60,7 @@ const NAV = [
     { to: "/notifications", label: "Notifications", icon: "✉" },
     { to: "/reports", label: "Reports", icon: "▤" },
     { to: "/integrations", label: "Integrations", icon: "⇌" },
+    { to: "/identity", label: "Identity & access", icon: "⛃" },
     { to: "/admin", label: "Administration", icon: "⚙" },
   ]},
   { section: "Platform (P2)", items: [

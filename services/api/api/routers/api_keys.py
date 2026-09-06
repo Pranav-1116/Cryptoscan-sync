@@ -218,6 +218,8 @@ def rotation_report(
             "age_days": st["age_days"],
             "days_until_expiry": st["days_until_expiry"],
             "recommended_action": st["recommended_action"],
+            "allowed_ips": list(getattr(row, "ip_allowlist", []) or []),
+            "rotate_after_days": getattr(row, "rotate_after_days", None),
         })
     actionable = sum(counts.get(s, 0) for s in
                      ("EXPIRED", "EXPIRING_SOON", "ROTATION_DUE"))
