@@ -35,14 +35,19 @@ class ApiKeyRepository:
         scopes: list[str] | None = None,
         allowed_methods: list[str] | None = None,
         rate_per_minute: int = 0,
+        allowed_ips: list[str] | str | None = None,
+        rotate_after_days: int | None = None,
     ) -> tuple[ApiKey, str]:
         """Create a key; returns (row, raw_key). The raw key is shown once."""
+        from identity.api_key_guard import normalize_allowlist
+
         clean = name.strip()
         if not clean:
             raise ValueError("name is required")
         clean_roles = sorted({r for r in (roles or ["viewer"]) if r in ApiKey.valid_roles()})
         if not clean_roles:
             raise ValueError(f"roles must be a subset of {', '.join(ApiKey.valid_roles())}")
+        ip_rules = normalize_allowlist(allowed_ips)  # raises ValueError on junk
         raw = KEY_PREFIX + secrets.token_urlsafe(_RAW_LEN)
         row = ApiKey(
             name=clean[:100],
@@ -54,6 +59,8 @@ class ApiKeyRepository:
             scopes=",".join(scopes) if scopes else None,
             allowed_methods=",".join(m.upper() for m in allowed_methods) if allowed_methods else None,
             rate_per_minute=max(0, int(rate_per_minute or 0)),
+            allowed_ips=",".join(ip_rules) if ip_rules else None,
+            rotate_after_days=(int(rotate_after_days) if rotate_after_days else None),
         )
         self.session.add(row)
         self.session.flush()

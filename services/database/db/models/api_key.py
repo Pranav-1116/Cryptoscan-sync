@@ -42,6 +42,12 @@ class ApiKey(BaseModel):
     # Lifetime usage counters (best-effort, stamped alongside last_used_at).
     request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     denied_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # Optional per-key IP allowlist (comma/space-separated IPv4/IPv6 or CIDRs,
+    # e.g. "10.0.0.0/8,203.0.113.4"). Empty = no network restriction.
+    allowed_ips: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Rotation bookkeeping: how many days the key may live before it should
+    # be rotated (deterministic reminder; not hard-enforced).
+    rotate_after_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     @property
     def role_list(self) -> list[str]:
@@ -50,6 +56,11 @@ class ApiKey(BaseModel):
     @property
     def scopes_list(self) -> list[str]:
         return [s.strip() for s in (self.scopes or "").split(",") if s.strip()]
+
+    @property
+    def ip_allowlist(self) -> list[str]:
+        raw = (self.allowed_ips or "").replace(";", ",").replace(" ", ",")
+        return [s.strip() for s in raw.split(",") if s.strip()]
 
     @property
     def method_list(self) -> list[str]:

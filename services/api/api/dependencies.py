@@ -120,7 +120,34 @@ def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | ob
 
 
 def _authorize_key_policy(request, row, session) -> None:
-    """Scope / method / quota enforcement for a machine API key (fail-closed)."""
+    """Scope / method / quota / network enforcement for a machine API key."""
+    # Per-key IP allowlist (fail-closed). Client IP honours X-Forwarded-For
+    # only as the last hop (the edge nginx sets it); fall back to the socket.
+    try:
+        from identity.api_key_guard import ip_allowed
+
+        client_ip = request.client.host if request.client else None
+        fwd = request.headers.get("x-forwarded-for", "")
+        if fwd:
+            client_ip = fwd.split(",")[0].strip() or client_ip
+        if not ip_allowed(client_ip, getattr(row, "allowed_ips", None)):
+            try:
+                from db.repositories.api_key_repository import ApiKeyRepository as _Repo
+
+                _Repo(session).record_request(row.id, denied=True)
+                session.commit()
+            except Exception:  # pragma: no cover
+                session.rollback()
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"API key not permitted from client address {client_ip}",
+                headers={"WWW-Authenticate": "ApiKey"},
+            )
+    except HTTPException:
+        raise
+    except Exception:  # pragma: no cover - guard must not crash the request
+        pass
+
     try:
         from apikeys.policy import DenyReason, KeyPolicy, authorize
     except Exception:  # pragma: no cover - policy package always present
