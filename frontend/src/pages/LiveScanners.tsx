@@ -223,36 +223,67 @@ export default function LiveScanners() {
       </Panel>
 
       <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 14, marginTop: 14 }}>
-        <Panel title="Scanner results" sub="From the most recent live cycle.">
-          <Table
-            head={["Scanner", "Status", "Elapsed", "Key facts"]}
-            rows={scannerRows.map((r) => [
-              r.label,
-              <Badge tone={toneFor(r.ok)}>
-                {r.ok === true ? "OK" : r.ok === false ? "FAILED" : "not run yet"}
-              </Badge>,
-              r.elapsed != null ? `${r.elapsed}s` : "—",
-              r.ok === false
-                ? <span style={{ color: "var(--red,#d36a6a)" }}>{r.error}</span>
-                : <span style={{ fontSize: 12, opacity: 0.85 }}>
-                    {kv(r.summary).map(([k, v]) => `${k}=${String(v)}`).join("  ·  ") || "—"}
-                  </span>,
-            ])}
-          />
+        <Panel
+          title="Scanner fleet"
+          sub={status?.running ? "cycle in progress — live SSE ticks" : "from the most recent live cycle"}
+        >
+          <div className="scan-prog">
+            {scannerRows.filter((r) => r.ok !== undefined || status?.running).map((r) => {
+              const isRunning = status?.running && r.ok === undefined;
+              const failed = r.ok === false;
+              const cls = isRunning ? "is-running" : failed ? "is-failed" : r.ok === true ? "is-ok" : "";
+              const facts = r.ok === false
+                ? r.error
+                : kv(r.summary).map(([k, v]) => `${k}=${String(v)}`).join("  ·  ");
+              return (
+                <div key={r.key} className={`scan-row ${cls}`}>
+                  <div className="s-ico">{isRunning ? "▶" : failed ? "✗" : r.ok === true ? "✓" : "·"}</div>
+                  <div className="s-meta">
+                    <div className="s-name">{r.label}</div>
+                    {facts && <div className="s-detail">{facts}</div>}
+                  </div>
+                  <div className="s-right">
+                    {isRunning
+                      ? <Badge tone="cyan"><span className="dot pulse" /> scanning</Badge>
+                      : r.ok === false
+                        ? <Badge tone="red">failed</Badge>
+                        : r.ok === true
+                          ? <Badge tone="green">ok{r.elapsed != null ? ` · ${Number(r.elapsed).toFixed(2)}s` : ""}</Badge>
+                          : <Badge tone="slate">queued</Badge>}
+                  </div>
+                </div>
+              );
+            })}
+            {scannerRows.every((r) => r.ok === undefined) && !status?.running && (
+              <div className="dim" style={{ fontSize: 13 }}>
+                No scanner results yet — hardware &amp; runtime run without a target; add a target to
+                include network / container / OT / source scans.
+              </div>
+            )}
+          </div>
         </Panel>
 
-        <Panel title="Live activity" sub="Streamed from the scanners via SSE.">
-          <div style={{ fontFamily: "monospace", fontSize: 12, lineHeight: 1.7, maxHeight: 320, overflowY: "auto" }}>
-            {log.length === 0 && <div style={{ opacity: 0.6 }}>No scan activity yet — run a scan.</div>}
-            {log.map((l, i) => (
-              <div key={i} style={{
-                color: l.tone === "ok" ? "var(--green,#6abf8a)"
-                  : l.tone === "fail" ? "var(--red,#d36a6a)"
-                  : l.tone === "start" ? "var(--cyan,#6ab0d3)" : "inherit",
-              }}>
-                <span style={{ opacity: 0.5 }}>{l.ts}</span>  {l.text}
-              </div>
-            ))}
+        <Panel title="Live activity" sub="streamed from the scanners via SSE">
+          <div style={{ maxHeight: 360, overflowY: "auto" }}>
+            {log.length === 0 && <div className="dim" style={{ fontSize: 13 }}>No scan activity yet — run a scan.</div>}
+            <div className="feed">
+              {log.slice().reverse().map((l, i) => (
+                <div className="ev" key={i}>
+                  <span className="t">{l.ts}</span>
+                  <span className="tag" style={{
+                    color: l.tone === "ok" ? "var(--green)"
+                      : l.tone === "fail" ? "var(--red)"
+                      : l.tone === "start" ? "var(--cyan)" : "var(--dim)",
+                    borderColor: "currentColor",
+                  }}>
+                    {l.tone === "ok" ? "ok" : l.tone === "fail" ? "err" : l.tone === "start" ? "run" : "info"}
+                  </span>
+                  <span className="txt" style={{
+                    color: l.tone === "fail" ? "var(--red)" : l.tone === "start" ? "var(--text)" : undefined,
+                  }}>{l.text}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </Panel>
       </div>
