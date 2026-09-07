@@ -40,6 +40,10 @@ import Identity from "./pages/Identity.jsx";
 import CryptoAssurance from "./pages/CryptoAssurance.jsx";
 import DevSecOps from "./pages/DevSecOps.jsx";
 import Resilience from "./pages/Resilience.jsx";
+<<<<<<< HEAD
+=======
+import Trust from "./pages/Trust.jsx";
+>>>>>>> 757bb4b (feat(trust,notifications): Trust & Keys console + persisted notification routing)
 import RoleDashboard from "./pages/RoleDashboard.jsx";
 import Accuracy from "./pages/Accuracy.jsx";
 import Organization from "./pages/Organization.jsx";
@@ -91,6 +95,10 @@ const PAGES: Record<string, React.ComponentType> = {
   "/crypto-assurance": CryptoAssurance,
   "/devsecops": DevSecOps,
   "/resilience": Resilience,
+<<<<<<< HEAD
+=======
+  "/trust": Trust,
+>>>>>>> 757bb4b (feat(trust,notifications): Trust & Keys console + persisted notification routing)
   "/role-home": RoleDashboard,
   "/accuracy": Accuracy,
   "/organization": Organization,

@@ -1196,3 +1196,41 @@ export const apiBackupSweep = (applyRetention = true) =>
 
 export const apiBackupConfigSet = (databases: Array<{ database_id: string; engine: string; interval_hours?: number }>) =>
   _rsPost<any>("/api/v1/resilience/backup/config", { databases });
+
+/* ========================================================================== */
+/* Trust & key management: payment-crypto key inventory/rotation, HSM        */
+/* ceremonies, workload SPIFFE/SVID identity, OT safe-scan policy (real ops). */
+/* ========================================================================== */
+
+export const apiPaymentKeys = () => _rsGet<any>("/api/v1/payment-crypto/keys");
+export const apiPaymentSummary = () => _rsGet<any>("/api/v1/payment-crypto/summary");
+export const apiPaymentForecast = () => _rsGet<any>("/api/v1/payment-crypto/forecast");
+export const apiPaymentCeremonies = () => _rsGet<any>("/api/v1/payment-crypto/ceremonies");
+export const apiPaymentHsmEvents = () => _rsGet<any>("/api/v1/payment-crypto/hsm-events");
+
+export const apiApiKeyRotationReport = () => _rsGet<any>("/api/v1/api-keys/rotation/report");
+
+export const apiSafeScanPolicy = () => _rsGet<any>("/api/v1/control/safe-scan/policy");
+export const apiSafeScanEmergencyStop = (engaged: boolean) =>
+  _rsPost<any>("/api/v1/control/safe-scan/emergency-stop", { engaged });
+
+/* Notification routing (persisted per tenant). */
+export const apiNotificationRoutingGet = () => _rsGet<any>("/api/v1/notifications/routing");
+export const apiNotificationRoutingPut = (routing: Array<{ id: string; name: string; severity: string; channels: Record<string, boolean> }>) =>
+  _rsPut<any>("/api/v1/notifications/routing", { routing });
+
+
+/* PUT helper for persisted notification routing. */
+export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: "HTTP " + resp.status, data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}

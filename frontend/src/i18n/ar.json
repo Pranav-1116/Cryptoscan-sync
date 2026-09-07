@@ -70,6 +70,10 @@
   "nav.compliance": "الامتثال",
   "nav.governance": "الحوكمة",
   "nav.resilience": "المرونة والتعافي",
+<<<<<<< HEAD
+=======
+  "nav.trustKeys": "الثقة والمفاتيح",
+>>>>>>> 757bb4b (feat(trust,notifications): Trust & Keys console + persisted notification routing)
   "nav.evidence": "الأدلة",
   "nav.operate": "التشغيل",
   "nav.scanners": "الماسحات",
