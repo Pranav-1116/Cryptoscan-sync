@@ -152,3 +152,48 @@ def test_offline_bundle_flows_into_feed_sink():
     out = ag.import_bundle(bundle, secret=secret, sink=sink)
     assert out["imported"] == 1
     assert sink.feeds["nvd"], "feed entry should be normalized and stored"
+
+
+# ------------------------------------------------------- REAL storage/runner -- #
+def test_subprocess_runner_uses_real_tool(tmp_path):
+    import sys
+    runner = bj.subprocess_runner()
+    # echo is a real, universally-available binary (no shell); captures stdout
+    argv = [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'REAL-OUTPUT')"]
+    res = runner(argv)
+    assert res.returncode == 0 and res.stdout == b"REAL-OUTPUT"
+
+
+def test_subprocess_runner_reports_missing_tool():
+    runner = bj.subprocess_runner()
+    with pytest.raises(bj.ToolNotFound):
+        runner(["/definitely/not/a/real/pg_dump_bin_xyz", "db"])
+
+
+def test_disk_storage_persists_across_instances(tmp_path):
+    s1 = bj.DiskBackupStorage(tmp_path)
+    s1.put("postgres/db/bk-1", b"CIPHER")
+    s1.put_manifest("postgres/db/bk-1", {"backup_id": "bk-1", "database_id": "db", "engine": "postgres"})
+    # a fresh store over the same directory reads the persisted artifact
+    s2 = bj.DiskBackupStorage(tmp_path)
+    assert s2.get("postgres/db/bk-1") == b"CIPHER"
+    mans = s2.list_manifests()
+    assert len(mans) == 1 and mans[0]["storage_key"] == "postgres/db/bk-1"
+    s2.delete("postgres/db/bk-1")
+    assert s2.list_manifests() == []
+    with pytest.raises(FileNotFoundError):
+        s2.get("postgres/db/bk-1")
+
+
+def test_run_due_backups_isolates_missing_tool():
+    storage = bj.InMemoryBackupStorage()
+    key = bk.generate_encryption_key()
+    cfg = bj.BackupConfig(database_id="d", engine="postgres")
+
+    def backend_for(engine):
+        return bj.PgDumpBackend(runner=bj.subprocess_runner(), pg_bin="/no/such/pg_bin_dir")
+
+    out = bj.run_due_backups(configs=[cfg], backend_for=backend_for, storage=storage,
+                             encryption_key=key, signing_secret="s")
+    assert out[0]["ok"] is False and "ToolNotFound" in out[0]["error"]
+    assert len(storage.list_manifests()) == 0  # nothing fake-persisted

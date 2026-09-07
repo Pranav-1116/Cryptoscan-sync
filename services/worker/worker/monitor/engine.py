@@ -121,7 +121,9 @@ class MonitorEngine:
             report_outcomes = run_due_report_schedules(self.session, on_event=self._report_event)
 
         backup_summary: dict[str, Any] = {}
-        if self.run_backups and self._backup_backend_for is not None and self._backup_storage is not None:
+        if self.run_backups:
+            # real subprocess backends + persistent disk store are used by
+            # default; tests may inject fakes. Missing tools fail honestly.
             backup_summary = self._run_backup_sweep(now)
 
         return {
@@ -143,11 +145,41 @@ class MonitorEngine:
         try:
             from db.repositories.settings_repository import SettingsRepository
             from governance import backup_schedule as bsched, backup_jobs as bj, keys as gkeys
+            import os as _os
 
             repo = SettingsRepository(self.session)
+
+            # Default to REAL subprocess backends (pg_dump / neo4j-admin) and a
+            # persistent on-disk store unless tests explicitly injected them.
+            backend_for = self._backup_backend_for
+            if backend_for is None:
+                def backend_for(engine_name: str):
+                    runner = bj.subprocess_runner()
+                    if engine_name == "neo4j":
+                        return bj.Neo4jBackend(
+                            runner=runner,
+                            host=_os.environ.get("NEO4J_HOST", "localhost"),
+                            port=int(_os.environ.get("NEO4J_BACKUP_PORT", "6362")),
+                            neo4j_bin=_os.environ.get("NEO4J_BIN", ""),
+                            backup_dir=_os.environ.get("NEO4J_BACKUP_STAGING", "/tmp/cryptoscan-neo4j-backup"))
+                    return bj.PgDumpBackend(
+                        runner=runner,
+                        host=_os.environ.get("PGHOST", _os.environ.get("POSTGRES_HOST", "localhost")),
+                        port=int(_os.environ.get("PGPORT", _os.environ.get("POSTGRES_PORT", "5432"))),
+                        user=_os.environ.get("PGUSER", _os.environ.get("POSTGRES_USER", "postgres")),
+                        pg_bin=_os.environ.get("PG_BIN", ""))
+            storage = self._backup_storage
+            if storage is None:
+                root = _os.environ.get("BACKUP_STORAGE_DIR", "/var/lib/cryptoscan/backups")
+                try:
+                    storage = bj.DiskBackupStorage(root)
+                except Exception:
+                    import tempfile
+                    storage = bj.DiskBackupStorage(__import__("os").path.join(tempfile.gettempdir(), "cryptoscan-backups"))
+
             summary = bsched.run_due_backups_sweep(
-                settings_repo=repo, backend_for=self._backup_backend_for,
-                storage=self._backup_storage,
+                settings_repo=repo, backend_for=backend_for,
+                storage=storage,
                 encryption_key=gkeys.backup_fernet_key(settings_repo=repo),
                 signing_secret=gkeys.signing_secret(settings_repo=repo), now=now)
             if summary.get("backed_up"):

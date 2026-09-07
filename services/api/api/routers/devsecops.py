@@ -11,6 +11,7 @@ exercise the payload builders with an injected transport.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -299,10 +300,15 @@ def chat_action(body: ChatActionRequest, db: Session = Depends(get_db_session),
 # ------------------------------------------- 17. bidirectional ticket sync -- #
 class TicketPullRequest(BaseModel):
     provider: str = Field(..., description="servicenow | jira")
-    # injected remote state for deterministic reconciliation; production uses the
-    # live HTTP GET transport with stored vault credentials.
+    # Injected remote state (deterministic reconciliation). Ignored when
+    # live=true, which performs real HTTPS GET against a configured instance.
     remote_rows: list[dict] = Field(default_factory=list)
     finding_ids: list[str] = Field(default_factory=list)
+    live: bool = False
+    instance: str | None = None     # ServiceNow host (e.g. acme.service-now.com)
+    base_url: str | None = None     # Jira base URL
+    auth: str | None = None         # Basic auth token (base64 user:pass)
+    jql: str | None = None
 
 
 @router.post("/tickets/sync-pull")
@@ -311,8 +317,11 @@ def ticket_sync_pull(body: TicketPullRequest, db: Session = Depends(get_db_sessi
     """Reconcile remote ITSM ticket state (status/assignee/comments) back onto
     local findings by de-dup key. Persists reconciled state and audits changes.
 
-    Deterministic: remote rows are provided in the request (the live worker
-    supplies them via the injected HTTP GET transport). Idempotent."""
+    Two modes:
+    - live=false (default): remote_rows supplied in the request (deterministic).
+    - live=true: performs a REAL HTTPS GET against the ServiceNow/Jira instance
+      using provided/vault credentials; the destination is SSRF-validated and a
+      reachable-but-failed poll is reported honestly (never faked)."""
     from devsecops import sync as dsync
     from devsecops.finding_state import FindingStateStore
     from db.repositories.settings_repository import SettingsRepository
@@ -320,28 +329,60 @@ def ticket_sync_pull(body: TicketPullRequest, db: Session = Depends(get_db_sessi
     state_store = FindingStateStore(SettingsRepository(db))
     states = {fid: state_store.get_or_create(fid) for fid in body.finding_ids}
 
-    # Seed the per-pull idempotency set from the persisted states so repeat pulls
-    # never re-import the same remote comment.
     synced = set()
     for st in states.values():
         synced.update(st.synced_comment_ids)
 
-    # Build a TicketSync whose GET transport returns the injected remote rows.
-    remote_json = {"result": body.remote_rows} if body.provider == "servicenow" \
-        else {"issues": body.remote_rows}
-    import json as _json
+    transport_errors: list[dict] = []
+    if body.live:
+        # REAL HTTP transport against a live ITSM (SSRF-validated).
+        from devsecops import runtime_adapters as rt
+        from control_plane.delivery import validate_webhook_url
+        auth = body.auth or os.environ.get("ITSM_BASIC_AUTH", "")
+        if not auth:
+            raise HTTPException(400, "live sync requires ITSM credentials (auth or ITSM_BASIC_AUTH)")
+        base = body.instance or body.base_url
+        if not base:
+            raise HTTPException(400, "live sync requires instance (ServiceNow) or base_url (Jira)")
+        host = base if base.startswith("http") else f"https://{base}"
+        try:
+            validate_webhook_url(f"{host}/api/now/table/incident") if body.provider == "servicenow" \
+                else validate_webhook_url(f"{host}/rest/api/3/search/jql")
+        except Exception as exc:  # noqa: BLE001 - SSRF rejection
+            raise HTTPException(421, f"destination rejected (SSRF/unsafe): {exc}")
+        raw_get = rt.urllib_get()
 
-    def fake_get(url, headers=None):
-        from devsecops.connectors import HttpResult
-        return HttpResult(ok=True, status=200, body=_json.dumps(remote_json))
-
-    ts = dsync.TicketSync(get=fake_get, synced_comments=synced)
-    if body.provider == "servicenow":
-        outcomes = ts.pull_servicenow(states, instance="injected", auth="injected")
-    elif body.provider == "jira":
-        outcomes = ts.pull_jira(states, base_url="https://injected", auth="x")
+        def live_get(url, headers=None):
+            h = {"Accept": "application/json", "Authorization": f"Basic {auth}", **(headers or {})}
+            return raw_get(url, headers=h)
+        ts = dsync.TicketSync(get=live_get, synced_comments=synced)
+        if body.provider == "servicenow":
+            outcomes = ts.pull_servicenow(states, instance=host, auth=auth)
+        elif body.provider == "jira":
+            outcomes = ts.pull_jira(states, base_url=host, auth=auth, jql=body.jql or "labels = cryptoscan")
+        else:
+            raise HTTPException(422, "provider must be servicenow or jira")
+        # surface any poll failure honestly
+        for o in outcomes:
+            if not o.get("ok"):
+                transport_errors.append({"provider": o.get("provider"), "error": o.get("error")})
     else:
-        raise HTTPException(422, "provider must be servicenow or jira")
+        # Deterministic injected mode.
+        remote_json = {"result": body.remote_rows} if body.provider == "servicenow" \
+            else {"issues": body.remote_rows}
+        import json as _json
+
+        def fake_get(url, headers=None):
+            from devsecops.connectors import HttpResult
+            return HttpResult(ok=True, status=200, body=_json.dumps(remote_json))
+
+        ts = dsync.TicketSync(get=fake_get, synced_comments=synced)
+        if body.provider == "servicenow":
+            outcomes = ts.pull_servicenow(states, instance="injected", auth="injected")
+        elif body.provider == "jira":
+            outcomes = ts.pull_jira(states, base_url="https://injected", auth="x")
+        else:
+            raise HTTPException(422, "provider must be servicenow or jira")
 
     # persist reconciled states (including synced comment ids for idempotency)
     for fid, st in states.items():
@@ -354,7 +395,10 @@ def ticket_sync_pull(body: TicketPullRequest, db: Session = Depends(get_db_sessi
                                  target_type="finding", target_id=o.get("finding_id", ""),
                                  detail={"ticket_id": o.get("ticket_id"), "changes": o.get("changes")})
     db.commit()
-    return {"provider": body.provider, "reconciled": len(reconciled),
+    return {"provider": body.provider, "mode": "live" if body.live else "injected",
+            "reconciled": len(reconciled),
             "no_match": sum(1 for o in outcomes if o.get("action") == "NO_MATCH"),
+            "transport_errors": transport_errors,
+            "ok": not transport_errors,
             "outcomes": outcomes,
             "states": {fid: st.to_dict() for fid, st in states.items()}}

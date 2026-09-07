@@ -127,68 +127,120 @@ class BackupCreateRequest(BaseModel):
     sequence: int = 1
 
 
-class _CreateBackend:
-    def __init__(self, name: str, dump_bytes: bytes):
-        self.name = name
-        self._dump = dump_bytes
+def _real_backend(engine: str):
+    """Build a REAL dump backend that shells out to pg_dump / neo4j-admin via
+    subprocess. Connection params come from settings/env. Raises ToolNotFound
+    (reported honestly) when the binary isn't installed."""
+    from governance import backup_jobs as bj
 
-    def dump(self, database_id: str) -> bytes:
-        return self._dump or f"REFERENCE-DUMP:{database_id}".encode()
+    runner = bj.subprocess_runner()
+    if engine == "neo4j":
+        return bj.Neo4jBackend(
+            runner=runner,
+            host=os.environ.get("NEO4J_HOST", "localhost"),
+            port=int(os.environ.get("NEO4J_BACKUP_PORT", "6362")),
+            neo4j_bin=os.environ.get("NEO4J_BIN", ""),
+            backup_dir=os.environ.get("NEO4J_BACKUP_STAGING", "/tmp/cryptoscan-neo4j-backup"))
+    return bj.PgDumpBackend(
+        runner=runner,
+        host=os.environ.get("PGHOST", os.environ.get("POSTGRES_HOST", "localhost")),
+        port=int(os.environ.get("PGPORT", os.environ.get("POSTGRES_PORT", "5432"))),
+        user=os.environ.get("PGUSER", os.environ.get("POSTGRES_USER", "postgres")),
+        pg_bin=os.environ.get("PG_BIN", ""))
 
 
 @router.post("/backup/create")
-def backup_create(body: BackupCreateRequest,
+def backup_create(body: BackupCreateRequest, db: Session = Depends(get_db_session),
                   user: str = Depends(require_roles("admin", "superadmin"))):
-    """Create an encrypted, signed backup artifact (reference dump; production
-    wires pg_dump / neo4j-admin). Returns ciphertext + manifest for restore."""
+    """Create a REAL encrypted, signed backup via pg_dump/neo4j-admin and persist
+    it to the configured backup store. A raw dump may be supplied (b64) for
+    explicit/offline capture; otherwise the live database tool is invoked."""
     from governance import backup as bk
+    from governance import backup_jobs as bj
 
-    raw = base64.b64decode(body.dump_b64) if body.dump_b64 else b""
-    backend = _CreateBackend(body.engine, raw)
+    if body.dump_b64:
+        raw = base64.b64decode(body.dump_b64)
+        backend = bj._DumpCaptureBackend(body.engine or "postgres", raw)
+    else:
+        backend = _real_backend(body.engine or "postgres")
     wal = base64.b64decode(body.wal_tail_b64) if body.wal_tail_b64 else None
-    res = bk.create_backup(backend=backend, database_id=body.database_id,
-                           encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
-                           sequence=body.sequence, wal_tail=wal)
-    return {"manifest": res["manifest"],
-            "ciphertext_b64": base64.b64encode(res["ciphertext"]).decode(),
+    try:
+        res = bk.create_backup(backend=backend, database_id=body.database_id,
+                               encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
+                               sequence=body.sequence, wal_tail=wal)
+    except bj.ToolNotFound as exc:
+        raise HTTPException(503, f"backup tool unavailable: {exc}")
+    except bk.BackupError as exc:
+        UserRepository(db).audit(user, "governance.backup_create", target_type="database",
+                                 target_id=body.database_id, outcome="FAILURE", detail={"error": str(exc)})
+        db.commit()
+        raise HTTPException(502, f"backup failed: {exc}")
+    # persist to the real store so it survives restarts and is restorable
+    storage = _backup_storage()
+    key = f"{body.engine or 'postgres'}/{body.database_id}/{res['manifest']['backup_id']}"
+    storage.put(key, res["ciphertext"])
+    storage.put_manifest(key, res["manifest"])
+    UserRepository(db).audit(user, "governance.backup_create", target_type="database",
+                             target_id=body.database_id,
+                             detail={"backup_id": res["manifest"]["backup_id"],
+                                     "engine": res["manifest"]["engine"], "storage_key": key})
+    db.commit()
+    return {"manifest": res["manifest"], "storage_key": key,
             "plaintext_sha256": res["plaintext_preview_sha"]}
 
 
 class BackupRestoreRequest(BaseModel):
-    ciphertext_b64: str
-    manifest: dict
+    ciphertext_b64: str | None = None
+    manifest: dict | None = None
     database_id: str
+    storage_key: str | None = None
     target_point_in_time: str | None = None
 
 
-class _RestoreBackend:
-    """Reference restore backend: records intent without touching a real DB in
-    the reference surface; production wires pg_dump/neo4j-admin here."""
-
-    name = "reference"
-
-    def restore(self, database_id: str, payload: bytes) -> dict:
-        return {"database_id": database_id, "bytes": len(payload), "mode": "reference-noop"}
-
-    def replay_wal(self, database_id, wal, pit):
-        return {"database_id": database_id, "wal_bytes": len(wal), "point_in_time": pit}
-
-
 @router.post("/backup/restore")
-def backup_restore(body: BackupRestoreRequest,
+def backup_restore(body: BackupRestoreRequest, db: Session = Depends(get_db_session),
                    user: str = Depends(require_roles("admin", "superadmin"))):
+    """REAL restore: verify+decrypt the backup and apply it via pg_restore /
+    neo4j-admin restore. Artifact is loaded from the persistent store by
+    storage_key, or from supplied ciphertext/manifest."""
     from governance import backup as bk
+    from governance import backup_jobs as bj
 
+    storage = _backup_storage()
     try:
-        ciphertext = base64.b64decode(body.ciphertext_b64)
-        out = bk.restore_backup(backend=_RestoreBackend(), database_id=body.database_id,
-                                ciphertext=ciphertext, manifest=body.manifest,
+        if body.storage_key:
+            man = next((m for m in storage.list_manifests() if m["storage_key"] == body.storage_key), None)
+            if man is None:
+                raise HTTPException(404, f"backup {body.storage_key} not found in store")
+            ciphertext = storage.get(body.storage_key)
+            manifest = {k: v for k, v in man.items() if k != "storage_key"}
+        else:
+            if not body.ciphertext_b64 or not body.manifest:
+                raise HTTPException(400, "provide storage_key or ciphertext_b64+manifest")
+            ciphertext = base64.b64decode(body.ciphertext_b64)
+            manifest = body.manifest
+        engine = manifest.get("engine", "postgres")
+        backend = _real_backend(engine)
+        out = bk.restore_backup(backend=backend, database_id=body.database_id,
+                                ciphertext=ciphertext, manifest=manifest,
                                 encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
                                 target_point_in_time=body.target_point_in_time)
+    except HTTPException:
+        raise
+    except bj.ToolNotFound as exc:
+        raise HTTPException(503, f"restore tool unavailable: {exc}")
     except bk.BackupError as exc:
+        UserRepository(db).audit(user, "governance.backup_restore", target_type="database",
+                                 target_id=body.database_id, outcome="FAILURE", detail={"error": str(exc)})
+        db.commit()
         raise HTTPException(400, str(exc))
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(400, f"restore rejected: {exc}")
+        raise HTTPException(502, f"restore failed: {exc}")
+    UserRepository(db).audit(user, "governance.backup_restore", target_type="database",
+                             target_id=body.database_id,
+                             detail={"engine": engine, "point_in_time": out.get("point_in_time"),
+                                     "wal_applied": out.get("wal_applied")})
+    db.commit()
     return out
 
 
@@ -198,10 +250,11 @@ class BackupRunRequest(BaseModel):
 
 
 @router.post("/backup/run-scheduled")
-def backup_run_scheduled(body: BackupRunRequest,
+def backup_run_scheduled(body: BackupRunRequest, db: Session = Depends(get_db_session),
                          user: str = Depends(require_roles("admin", "superadmin"))):
-    """Run due backups across Postgres/Neo4j via injected command runners,
-    persist encrypted artifacts to the reference store, then apply retention.
+    """Run due backups across Postgres/Neo4j via REAL subprocess runners
+    (pg_dump/neo4j-admin), persist encrypted artifacts to the on-disk store,
+    then apply retention. A missing tool / unreachable DB is reported honestly.
 
     In the reference surface the command runner is a deterministic stub that
     returns synthetic dumps (no real DB server required); production injects a
@@ -213,23 +266,14 @@ def backup_run_scheduled(body: BackupRunRequest,
     key = _fernet_key(db)
     secret = _signing_secret(db)
 
-    def fake_runner_factory(engine: str):
-        def runner(argv, stdin: bytes | None = None):
-            tool = argv[0].split("/")[-1]
-            if "dump" in tool or "backup" in tool:
-                return bj.CommandResult(0, f"{engine.upper()}-DUMP:{':'.join(argv[-1:])}".encode())
-            return bj.CommandResult(0, b"")
-        return runner
-
     def backend_for(engine: str):
-        runner = fake_runner_factory(engine)
-        if engine == "neo4j":
-            return bj.Neo4jBackend(runner=runner)
-        return bj.PgDumpBackend(runner=runner)
+        return _real_backend(engine)  # real subprocess pg_dump / neo4j-admin
 
     configs = [bj.BackupConfig(database_id=c["database_id"], engine=c.get("engine", "postgres"),
                                interval_hours=c.get("interval_hours", 24.0))
                for c in body.databases]
+    # run each config; a missing tool / unreachable DB is reported honestly as a
+    # failed result rather than a fake success.
     results = bj.run_due_backups(configs=configs, backend_for=backend_for, storage=storage,
                                  encryption_key=key, signing_secret=secret)
     retention = None
@@ -247,10 +291,19 @@ _BACKUP_STORE = None
 
 
 def _backup_storage():
+    """Persistent on-disk backup store (survives restarts). Path configurable
+    via BACKUP_STORAGE_DIR; defaults to a data volume directory."""
     global _BACKUP_STORE
     if _BACKUP_STORE is None:
-        from governance.backup_jobs import InMemoryBackupStorage
-        _BACKUP_STORE = InMemoryBackupStorage()
+        from governance.backup_jobs import DiskBackupStorage
+        root = os.environ.get("BACKUP_STORAGE_DIR", "/var/lib/cryptoscan/backups")
+        try:
+            _BACKUP_STORE = DiskBackupStorage(root)
+        except Exception:
+            # fall back to a writable temp volume if the default path isn't usable
+            import tempfile
+            from governance.backup_jobs import DiskBackupStorage as _D
+            _BACKUP_STORE = _D(os.path.join(tempfile.gettempdir(), "cryptoscan-backups"))
     return _BACKUP_STORE
 
 
@@ -278,23 +331,16 @@ def backup_sweep(body: BackupSweepRequest, db: Session = Depends(get_db_session)
     storage = _backup_storage()
     repo = SettingsRepository(db)
 
-    def fake_runner(argv, stdin: bytes | None = None):
-        engine = "neo4j" if "neo4j" in argv[0] else "postgres"
-        tool = argv[0].split("/")[-1]
-        if "dump" in tool or "backup" in argv:
-            return bj.CommandResult(0, f"{engine.upper()}-DUMP".encode(), b"")
-        return bj.CommandResult(0, b"", b"")
-
     def backend_for(engine: str):
-        if engine == "neo4j":
-            return bj.Neo4jBackend(runner=fake_runner)
-        return bj.PgDumpBackend(runner=fake_runner)
+        return _real_backend(engine)  # real subprocess pg_dump / neo4j-admin
 
     try:
         out = bsched.run_due_backups_sweep(
             settings_repo=repo, backend_for=backend_for, storage=storage,
             encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
             apply_retention=body.apply_retention)
+    except bj.ToolNotFound as exc:
+        raise HTTPException(503, f"backup tool unavailable: {exc}")
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"backup sweep failed: {exc}")
     UserRepository(db).audit(user, "governance.backup_sweep", target_type="backup_schedule",

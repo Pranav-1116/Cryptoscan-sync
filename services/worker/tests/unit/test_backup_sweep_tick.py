@@ -70,9 +70,23 @@ def test_tick_runs_due_backups_and_reports_in_summary(monkeypatch):
     assert all(o["status"] == "SKIPPED_NOT_DUE" for o in out2["backups"]["outcomes"])
 
 
-def test_tick_without_backup_wiring_leaves_backups_empty(monkeypatch):
+def test_tick_runs_backup_sweep_by_default_with_real_backends(monkeypatch, tmp_path):
+    """With no injected fakes the tick still attempts a REAL sweep: it builds
+    subprocess backends and a persistent disk store; with no configured backup
+    schedules it reports zero backed-up (and never fakes success)."""
+    monkeypatch.setenv("SECRET_KEY", "worker-tick-master")
+    monkeypatch.setenv("BACKUP_STORAGE_DIR", str(tmp_path))
+    session = _session()  # no backup configs persisted
+    eng = MonitorEngine(session, runners={}, clock=lambda: T0, watch_enabled=False,
+                        run_reports=False, run_backups=True)
+    out = eng.tick()
+    bk = out["backups"]
+    assert bk["configs"] == 0 and bk["backed_up"] == 0
+
+
+def test_tick_can_disable_backups(monkeypatch):
     session = _session()
     eng = MonitorEngine(session, runners={}, clock=lambda: T0, watch_enabled=False,
-                        run_reports=False, run_backups=True)  # no backend/storage wired
+                        run_reports=False, run_backups=False)
     out = eng.tick()
     assert out["backups"] == {}

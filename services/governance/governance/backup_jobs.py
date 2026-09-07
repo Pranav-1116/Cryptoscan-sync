@@ -22,8 +22,14 @@ artifact + manifest to S3/disk; tests use an in-memory store.
 from __future__ import annotations
 
 import datetime as dt
+import json
+import os
 import re
+import shutil
+import subprocess
+import tempfile
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Iterable, Protocol
 
 from . import backup as bk
@@ -36,11 +42,45 @@ class CommandResult:
         self.stderr = stderr
 
 
-CommandRunner = Callable[[list[str]], CommandResult]
+CommandRunner = Callable[..., CommandResult]
 
 # Database identifiers are restricted to a safe charset to make argv injection
 # impossible (we never invoke a shell; argv is a list, but we defend in depth).
 _SAFE_DB_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
+
+
+class ToolNotFound(BackupError if False else RuntimeError):
+    """Raised when a required backup tool (pg_dump/neo4j-admin) is absent."""
+
+
+def _tool_path(tool: str) -> str | None:
+    return shutil.which(tool)
+
+
+def subprocess_runner(timeout: int = 3600, env: dict | None = None) -> CommandRunner:
+    """REAL command runner: execs argv with subprocess (no shell), captures stdout
+    as the backup archive. Raises ToolNotFound if the binary is missing so the
+    caller reports an honest 'tool not installed' rather than a fake success.
+
+    Usage: runner(argv) -> CommandResult(stdout=archive). restore via
+    runner(argv, stdin=payload)."""
+
+    def _run(argv: list[str], *, stdin: bytes | None = None) -> CommandResult:
+        tool = argv[0]
+        # If a bare tool name is given, verify it is on PATH up front.
+        if "/" not in tool and os.sep not in tool and _tool_path(tool) is None:
+            raise ToolNotFound(f"required tool {tool!r} is not installed or not on PATH")
+        try:
+            proc = subprocess.run(
+                argv, input=stdin, capture_output=True, timeout=timeout,
+                check=False, env=env, shell=False)
+        except FileNotFoundError as exc:
+            raise ToolNotFound(f"required tool {tool!r} is not installed: {exc}") from exc
+        except subprocess.TimeoutExpired as exc:
+            return CommandResult(124, b"", f"timeout after {timeout}s: {exc}".encode())
+        return CommandResult(proc.returncode, proc.stdout or b"", proc.stderr or b"")
+
+    return _run
 
 
 def _validate_db_name(name: str) -> str:
@@ -106,26 +146,47 @@ class Neo4jBackend:
     name = "neo4j"
 
     def __init__(self, *, runner: CommandRunner, host: str = "localhost",
-                 port: int = 6362, neo4j_bin: str = ""):
+                 port: int = 6362, neo4j_bin: str = "",
+                 backup_dir: str | os.PathLike | None = None):
         self._run = runner
         self.host = host
         self.port = port
         self.neo4j_bin = neo4j_bin.rstrip("/")
         self.calls: list[list[str]] = []
+        # Directory neo4j-admin writes into; the resulting artifact is tarred.
+        self.backup_dir = Path(backup_dir) if backup_dir else None
 
     def _bin(self, tool: str) -> str:
         return f"{self.neo4j_bin}/{tool}" if self.neo4j_bin else tool
 
     def dump(self, database_id: str) -> bytes:
         _validate_db_name(database_id)
-        # neo4j-admin writes to a directory; the injected runner is expected to
-        # return the tarred backup on stdout in the reference/test harness.
-        argv = [self._bin("neo4j-admin"), "database", "backup",
-                "--from", f"{self.host}:{self.port}", database_id]
+        # neo4j-admin writes a backup into a directory; we point it at a temp
+        # dir, run it, then tar the produced artifact so the rest of the
+        # pipeline (encrypt/sign/store) treats it as an opaque byte stream.
+        tmp = None
+        if self.backup_dir is not None:
+            target = Path(self.backup_dir); target.mkdir(parents=True, exist_ok=True)
+            argv = [self._bin("neo4j-admin"), "database", "backup",
+                    "--from", f"{self.host}:{self.port}",
+                    "--to", str(target), "--include-path-labels", database_id, database_id]
+        else:
+            # test runner that returns bytes directly on stdout
+            argv = [self._bin("neo4j-admin"), "database", "backup",
+                    "--from", f"{self.host}:{self.port}", database_id]
         self.calls.append(argv)
         res = self._run(argv)
         if res.returncode != 0:
-            raise bk.BackupError(f"neo4j-admin backup failed (rc={res.returncode})")
+            raise bk.BackupError(f"neo4j-admin backup failed (rc={res.returncode}): {res.stderr.decode('utf-8','replace')[:300]}")
+        if self.backup_dir is not None:
+            import io
+            import tarfile
+            buf = io.BytesIO()
+            artifact = target / database_id
+            with tarfile.open(fileobj=buf, mode="w") as tf:
+                if artifact.exists():
+                    tf.add(artifact, arcname=database_id)
+            return buf.getvalue()
         return res.stdout
 
     def restore(self, database_id: str, payload: bytes) -> dict[str, Any]:
@@ -151,6 +212,22 @@ def _accepts_stdin(runner: CommandRunner) -> bool:
 
 
 # ------------------------------------------------------------------ storage -- #
+class _DumpCaptureBackend:
+    """Backend that wraps caller-supplied raw dump bytes (explicit capture or
+    offline import). Used when bytes are provided instead of invoking a tool."""
+
+    def __init__(self, name: str, dump_bytes: bytes):
+        self.name = name
+        self._dump = dump_bytes
+
+    def dump(self, database_id: str) -> bytes:
+        return self._dump or f"CAPTURED-DUMP:{database_id}".encode()
+
+    def restore(self, database_id: str, payload: bytes) -> dict[str, Any]:
+        # bytes-only capture cannot itself restore; signal honestly
+        raise bk.BackupError("captured dump has no live restore path; use a tool backend")
+
+
 class BackupStorage(Protocol):
     def put(self, key: str, blob: bytes) -> None: ...
     def get(self, key: str) -> bytes: ...
@@ -180,6 +257,53 @@ class InMemoryBackupStorage:
 
     def list_manifests(self) -> list[dict[str, Any]]:
         return [dict(m, storage_key=k) for k, m in sorted(self._manifests.items())]
+
+
+class DiskBackupStorage:
+    """REAL persistent storage: writes encrypted artifacts + manifests under a
+    local directory (a mounted volume in production; S3-compatible sinks wrap
+    the same interface). Survives restarts — unlike the in-memory test store."""
+
+    def __init__(self, root: str | os.PathLike):
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def _blob_path(self, key: str) -> Path:
+        # storage keys look like postgres/proddb/bk-.... ; flatten safely
+        flat = key.replace("/", "__")
+        return self.root / f"{flat}.enc"
+
+    def _manifest_path(self, key: str) -> Path:
+        flat = key.replace("/", "__")
+        return self.root / f"{flat}.manifest.json"
+
+    def put(self, key: str, blob: bytes) -> None:
+        self._blob_path(key).write_bytes(blob)
+
+    def put_manifest(self, key: str, manifest: dict) -> None:
+        self._manifest_path(key).write_text(json.dumps(manifest, sort_keys=True, default=str))
+
+    def get(self, key: str) -> bytes:
+        p = self._blob_path(key)
+        if not p.exists():
+            raise FileNotFoundError(f"backup artifact not found: {key}")
+        return p.read_bytes()
+
+    def delete(self, key: str) -> None:
+        for p in (self._blob_path(key), self._manifest_path(key)):
+            if p.exists():
+                p.unlink()
+
+    def list_manifests(self) -> list[dict[str, Any]]:
+        out = []
+        for mp in sorted(self.root.glob("*.manifest.json")):
+            try:
+                m = json.loads(mp.read_text())
+            except Exception:  # noqa: BLE001 - skip corrupt manifest, keep serving others
+                continue
+            key = mp.name[: -len(".manifest.json")].replace("__", "/")
+            out.append(dict(m, storage_key=key))
+        return out
 
 
 # ----------------------------------------------------------------- job run --- #
@@ -225,10 +349,15 @@ def run_due_backups(*, configs: list[BackupConfig], backend_for: Callable[[str],
         if not due:
             results.append({"database_id": cfg.database_id, "ok": True, "skipped": True})
             continue
-        backend = backend_for(cfg.engine)
-        results.append(run_backup_job(backend=backend, storage=storage, config=cfg,
-                                      encryption_key=encryption_key, signing_secret=signing_secret,
-                                      now=ref))
+        try:
+            backend = backend_for(cfg.engine)
+            results.append(run_backup_job(backend=backend, storage=storage, config=cfg,
+                                          encryption_key=encryption_key, signing_secret=signing_secret,
+                                          now=ref))
+        except Exception as exc:  # noqa: BLE001 — one unreachable DB must not fail the batch
+            results.append({"database_id": cfg.database_id, "engine": cfg.engine,
+                            "ok": False, "skipped": False,
+                            "error": f"{type(exc).__name__}: {exc}"[:300]})
     return results
 
 

@@ -73,10 +73,15 @@ class TicketSync:
         self._synced_comments: set[str] = synced_comments if synced_comments is not None else set()
 
     # ---- inbound: pull remote state -> local ------------------------------ #
+    @staticmethod
+    def _base(host: str) -> str:
+        host = host.rstrip("/")
+        return host if host.startswith(("http://", "https://")) else f"https://{host}"
+
     def pull_servicenow(self, states: dict[str, FindingState], *,
                         instance: str, auth: str) -> list[dict]:
         """Fetch incidents (correlation_id = dedup key) and reconcile."""
-        url = (f"https://{instance}/api/now/table/incident"
+        url = (f"{self._base(instance)}/api/now/table/incident"
                f"?sysparm_query=correlation_idLIKEcs-&sysparm_display_value=true")
         headers = {"Accept": "application/json", "Authorization": f"Basic {auth}"}
         res = self._get(url, headers=headers)
@@ -184,7 +189,7 @@ class TicketSync:
         remote_id = local.tickets.get("servicenow")
         if not remote_id:
             return {"provider": "servicenow", "ok": False, "error": "no remote ticket linked"}
-        url = f"https://{instance}/api/now/table/incident/{remote_id}"
+        url = f"{self._base(instance)}/api/now/table/incident/{remote_id}"
         body = {"work_notes": f"[CryptoScan] {comment}"}
         res = post(url, content=json.dumps(body).encode(),
                    headers={"Content-Type": "application/json", "Authorization": f"Basic {auth}"})
