@@ -23,12 +23,36 @@ from sqlalchemy.orm import Session
 from api.dependencies import get_db_session, require_roles
 from db.models.user import AuditLog
 from db.repositories.user_repository import UserRepository
+from db.repositories.settings_repository import SettingsRepository
 
 router = APIRouter(prefix="/resilience", tags=["resilience"])
 
 
-def _signing_secret() -> str:
-    return os.environ.get("GOVERNANCE_SIGNING_SECRET") or _ephemeral["secret"]
+def _signing_secret(db: Session | None = None) -> str:
+    """Vault-ref > persisted settings key > HKDF-derived from platform master.
+    Falls back to the dev ephemeral only when no platform SECRET_KEY exists."""
+    from governance import keys
+    try:
+        repo = SettingsRepository(db) if db is not None else None
+        return keys.signing_secret(settings_repo=repo)
+    except Exception:
+        return _ephemeral["secret"]
+
+
+def _fernet_key(db: Session | None = None) -> bytes:
+    """Vault-ref > persisted key > HKDF-derived Fernet key (stable restarts)."""
+    from governance import keys
+    try:
+        repo = SettingsRepository(db) if db is not None else None
+        return keys.backup_fernet_key(settings_repo=repo)
+    except Exception:
+        env = os.environ.get("BACKUP_ENCRYPTION_KEY")
+        if env:
+            return env.encode()
+        global _EPHEMERAL_FERNET
+        if _EPHEMERAL_FERNET is None:
+            _EPHEMERAL_FERNET = Fernet.generate_key()
+        return _EPHEMERAL_FERNET
 
 
 def _airgap_policy():
@@ -37,21 +61,6 @@ def _airgap_policy():
     on = os.environ.get("AIRGAP_MODE", "false").lower() in ("1", "true", "yes", "on")
     allowlist = tuple(a.strip() for a in os.environ.get("AIRGAP_ALLOWLIST", "").split(",") if a.strip())
     return airgap.AirgapPolicy(airgap=on, allowlist=allowlist)
-
-
-def _fernet_key() -> bytes:
-    from cryptography.fernet import Fernet
-
-    env = os.environ.get("BACKUP_ENCRYPTION_KEY")
-    if env:
-        return env.encode()
-    # process-ephemeral but stable across calls within this process, so a
-    # backup created here can be verified/restored here; production sets the env
-    # vault reference so the key persists across restarts.
-    global _EPHEMERAL_FERNET
-    if _EPHEMERAL_FERNET is None:
-        _EPHEMERAL_FERNET = Fernet.generate_key()
-    return _EPHEMERAL_FERNET
 
 
 _EPHEMERAL_FERNET: bytes | None = None
@@ -138,7 +147,7 @@ def backup_create(body: BackupCreateRequest,
     backend = _CreateBackend(body.engine, raw)
     wal = base64.b64decode(body.wal_tail_b64) if body.wal_tail_b64 else None
     res = bk.create_backup(backend=backend, database_id=body.database_id,
-                           encryption_key=_fernet_key(), signing_secret=_signing_secret(),
+                           encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
                            sequence=body.sequence, wal_tail=wal)
     return {"manifest": res["manifest"],
             "ciphertext_b64": base64.b64encode(res["ciphertext"]).decode(),
@@ -174,7 +183,7 @@ def backup_restore(body: BackupRestoreRequest,
         ciphertext = base64.b64decode(body.ciphertext_b64)
         out = bk.restore_backup(backend=_RestoreBackend(), database_id=body.database_id,
                                 ciphertext=ciphertext, manifest=body.manifest,
-                                encryption_key=_fernet_key(), signing_secret=_signing_secret(),
+                                encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
                                 target_point_in_time=body.target_point_in_time)
     except bk.BackupError as exc:
         raise HTTPException(400, str(exc))
@@ -201,8 +210,8 @@ def backup_run_scheduled(body: BackupRunRequest,
     from governance import backup_jobs as bj
 
     storage = _backup_storage()
-    key = _fernet_key()
-    secret = _signing_secret()
+    key = _fernet_key(db)
+    secret = _signing_secret(db)
 
     def fake_runner_factory(engine: str):
         def runner(argv, stdin: bytes | None = None):
@@ -250,6 +259,73 @@ def backup_list(user: str = Depends(require_roles("admin", "auditor", "superadmi
     return {"backups": _backup_storage().list_manifests()}
 
 
+class BackupSweepRequest(BaseModel):
+    apply_retention: bool = True
+
+
+@router.post("/backup/sweep")
+def backup_sweep(body: BackupSweepRequest, db: Session = Depends(get_db_session),
+                 user: str = Depends(require_roles("admin", "superadmin"))):
+    """Run the scheduled-backup sweep (called by the worker tick or manually).
+
+    Reads backup configs persisted in app_settings, runs due Postgres/Neo4j
+    backups via the injected dump runner, applies retention, and persists the
+    schedule state. In the reference surface the dump runner is deterministic;
+    production injects a subprocess runner for pg_dump/neo4j-admin."""
+    from governance import backup_jobs as bj
+    from governance import backup_schedule as bsched
+
+    storage = _backup_storage()
+    repo = SettingsRepository(db)
+
+    def fake_runner(argv, stdin: bytes | None = None):
+        engine = "neo4j" if "neo4j" in argv[0] else "postgres"
+        tool = argv[0].split("/")[-1]
+        if "dump" in tool or "backup" in argv:
+            return bj.CommandResult(0, f"{engine.upper()}-DUMP".encode(), b"")
+        return bj.CommandResult(0, b"", b"")
+
+    def backend_for(engine: str):
+        if engine == "neo4j":
+            return bj.Neo4jBackend(runner=fake_runner)
+        return bj.PgDumpBackend(runner=fake_runner)
+
+    try:
+        out = bsched.run_due_backups_sweep(
+            settings_repo=repo, backend_for=backend_for, storage=storage,
+            encryption_key=_fernet_key(db), signing_secret=_signing_secret(db),
+            apply_retention=body.apply_retention)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"backup sweep failed: {exc}")
+    UserRepository(db).audit(user, "governance.backup_sweep", target_type="backup_schedule",
+                             target_id="sweep", detail={"backed_up": out["backed_up"],
+                                                       "failed": out["failed"],
+                                                       "stored": out["stored_backups"]})
+    db.commit()
+    return out
+
+
+class BackupConfigRequest(BaseModel):
+    databases: list[dict] = Field(..., description="[{database_id, engine, interval_hours}]")
+
+
+@router.post("/backup/config")
+def backup_config(body: BackupConfigRequest, db: Session = Depends(get_db_session),
+                  user: str = Depends(require_roles("admin", "superadmin"))):
+    """Persist the scheduled-backup configuration in app_settings."""
+    from governance import backup_schedule as bsched
+    from governance import backup_jobs as bj
+
+    repo = SettingsRepository(db)
+    configs = [bj.BackupConfig(database_id=c["database_id"], engine=c.get("engine", "postgres"),
+                               interval_hours=float(c.get("interval_hours", 24.0)))
+               for c in body.databases]
+    bsched.save_configs(repo, configs, by=user)
+    db.commit()
+    return {"ok": True, "configured": len(configs),
+            "databases": [c.database_id for c in configs]}
+
+
 @router.get("/backup/encryption-key-info")
 def backup_key_info(user: str = Depends(require_roles("admin", "superadmin"))):
     """Reports whether a persistent backup key is configured (never returns it)."""
@@ -277,7 +353,7 @@ def audit_attestation(db: Session = Depends(get_db_session),
                 "chain_sequence": r.chain_sequence, "previous_hash": r.previous_hash,
                 "entry_hash": r.entry_hash} for r in rows]
     report = aa.build_attestation(entries, org=os.environ.get("ORG_NAME", "CryptoScan Tenant"),
-                                  signer=user, secret=_signing_secret())
+                                  signer=user, secret=_signing_secret(db))
     report["chain_verification"] = base
     return report
 
@@ -336,7 +412,7 @@ def airgap_import(body: FeedBundleRequest, db: Session = Depends(get_db_session)
 
     sink = feed_store.SqlVulnerabilityFeedSink(db)
     try:
-        result = airgap.import_bundle(body.bundle, secret=_signing_secret(), sink=sink)
+        result = airgap.import_bundle(body.bundle, secret=_signing_secret(db), sink=sink)
     except airgap.AirgapError as exc:
         raise HTTPException(400, str(exc))
     UserRepository(db).audit(user, "airgap.feed_import", target_type="feed_bundle",
@@ -361,7 +437,7 @@ def airgap_build(body: FeedBuildRequest,
     artifact into the air-gapped network for import)."""
     from governance import airgap
 
-    return airgap.build_bundle(body.entries, secret=_signing_secret(), created_by=body.created_by)
+    return airgap.build_bundle(body.entries, secret=_signing_secret(db), created_by=body.created_by)
 
 
 # ============================================================== 27 OT ====== #

@@ -1190,3 +1190,9 @@ export const apiOtIngestPcap = (pcapB64: string) =>
 
 export const apiAirgapDecision = (payload: { url?: string; operation?: string }) =>
   _rsPost<any>("/api/v1/resilience/airgap/network-decision", payload);
+
+export const apiBackupSweep = (applyRetention = true) =>
+  _rsPost<any>("/api/v1/resilience/backup/sweep", { apply_retention: applyRetention });
+
+export const apiBackupConfigSet = (databases: Array<{ database_id: string; engine: string; interval_hours?: number }>) =>
+  _rsPost<any>("/api/v1/resilience/backup/config", { databases });

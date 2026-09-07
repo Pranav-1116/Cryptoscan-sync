@@ -70,7 +70,9 @@ class MonitorEngine:
                  watch_enabled: bool = True, probes: dict[str, Callable[..., ProbeResult]] | None = None,
                  probe_timeout: float = 10.0,
                  session_factory: Callable[[], Any] | None = None, concurrency: int = 1,
-                 run_reports: bool = True):
+                 run_reports: bool = True, run_backups: bool = True,
+                 backup_backend_for: Callable[[str], Any] | None = None,
+                 backup_storage: Any = None):
         self.session = session
         self.repo = MonitorRepository(session)
         self.runners = runners if runners is not None else _default_runners()
@@ -84,6 +86,9 @@ class MonitorEngine:
         self.session_factory = session_factory
         self.concurrency = max(1, int(concurrency))
         self.run_reports = bool(run_reports)
+        self.run_backups = bool(run_backups)
+        self._backup_backend_for = backup_backend_for
+        self._backup_storage = backup_storage
 
     # ---------------------------------------------------------------- tick
 
@@ -114,6 +119,11 @@ class MonitorEngine:
             from worker.monitor.report_sweep import run_due_report_schedules
 
             report_outcomes = run_due_report_schedules(self.session, on_event=self._report_event)
+
+        backup_summary: dict[str, Any] = {}
+        if self.run_backups and self._backup_backend_for is not None and self._backup_storage is not None:
+            backup_summary = self._run_backup_sweep(now)
+
         return {
             "ran": len(results),
             "results": results,
@@ -121,7 +131,32 @@ class MonitorEngine:
             "due": len(due),
             "report_ran": len(report_outcomes),
             "reports": report_outcomes,
+            "backups": backup_summary,
         }
+
+    def _run_backup_sweep(self, now) -> dict[str, Any]:
+        """Run due encrypted backups (Postgres/Neo4j) + retention on the tick.
+
+        Isolated: a backup failure never raises out of the monitor loop. The
+        runner backend + storage are injected; production supplies subprocess
+        pg_dump/neo4j-admin runners and a persistent storage sink."""
+        try:
+            from db.repositories.settings_repository import SettingsRepository
+            from governance import backup_schedule as bsched, backup_jobs as bj, keys as gkeys
+
+            repo = SettingsRepository(self.session)
+            summary = bsched.run_due_backups_sweep(
+                settings_repo=repo, backend_for=self._backup_backend_for,
+                storage=self._backup_storage,
+                encryption_key=gkeys.backup_fernet_key(settings_repo=repo),
+                signing_secret=gkeys.signing_secret(settings_repo=repo), now=now)
+            if summary.get("backed_up"):
+                self._report_event("backup_sweep", f"backed_up={summary['backed_up']}", summary)
+            return summary
+        except Exception as exc:  # noqa: BLE001 — backups must never kill monitoring
+            import logging
+            logging.getLogger(__name__).warning("backup_sweep_failed: %s", exc)
+            return {"error": f"{type(exc).__name__}: {exc}"}
 
     # ----------------------------------------------------------- report run
 

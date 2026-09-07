@@ -6,6 +6,7 @@ import {
   apiComplianceReport, apiRetentionPlan, apiBackupCreate, apiBackupRestore,
   apiAuditAttestation, apiAirgapStatus, apiAirgapImportFeed, apiOtDecode,
   apiBackupRunScheduled, apiBackupList, apiAirgapBuildBundle, apiOtIngestPcap,
+  apiBackupConfigSet, apiBackupSweep,
 } from "../lib/api.js";
 import { useI18n } from "../i18n/I18n.jsx";
 
@@ -146,6 +147,7 @@ function BackupPanel() {
   const [retention, setRetention] = useState<any>(null);
   const [sched, setSched] = useState<any>(null);
   const [stored, setStored] = useState<any[]>([]);
+  const [persisted, setPersisted] = useState<any>(null);
   const [err, setErr] = useState<string>();
 
   const create = async () => {
@@ -181,6 +183,21 @@ function BackupPanel() {
     const l = await apiBackupList();
     if (l.ok) setStored(l.data?.backups ?? []);
   };
+  const persistAndSweep = async () => {
+    setErr(undefined);
+    const dbs = [
+      { database_id: "proddb", engine: "postgres", interval_hours: 24 },
+      { database_id: "graphdb", engine: "neo4j", interval_hours: 24 },
+    ];
+    const cfg = await apiBackupConfigSet(dbs);
+    if (!cfg.ok) return setErr(cfg.error);
+    setPersisted(cfg.data);
+    const out = await apiBackupSweep(true);
+    if (!out.ok) return setErr(out.error);
+    setSched(out.data);
+    const l = await apiBackupList();
+    if (l.ok) setStored(l.data?.backups ?? []);
+  };;
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -192,7 +209,13 @@ function BackupPanel() {
         </p>
         <button className="btn sm primary" onClick={runScheduled}
           style={{ background: "var(--grad)", color: "#fff", border: "none" }}>run scheduled backup cycle</button>
+        <button className="btn sm" onClick={persistAndSweep} style={{ marginLeft: 8 }}>
+          persist schedule + worker sweep
+        </button>
         <Err e={err} />
+        {persisted && <div style={{ marginTop: 6, fontSize: 12 }}>
+          <Badge ok>persisted schedule for {persisted.configured} databases (runs on worker tick)</Badge>
+        </div>}
         {sched && <div style={{ marginTop: 10, fontSize: 12 }}>
           <Badge ok>ran {sched.ran} · skipped {sched.skipped} · stored {sched.stored_backups}</Badge>
           {sched.retention && <div style={{ marginTop: 4, color: "var(--faint)" }}>
