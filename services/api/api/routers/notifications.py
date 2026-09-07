@@ -18,9 +18,39 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 ROUTING_SETTING_KEY = "notification.routing.v1"
 
-#: the event classes the console exposes (ids/names/severity are catalog config;
-#: only the per-channel boolean routing map is persisted per tenant).
-DEFAULT_ROUTING: list[dict] = []
+#: Canonical event-class catalog the console exposes. ids/names/severity are
+#: product config served live by the control plane; only the per-channel
+#: boolean routing map is persisted per tenant (overlaid on these defaults).
+CHANNELS = ("inApp", "email", "webhook", "siem")
+
+
+def _ev(id_: str, name: str, severity: str, channels: dict[str, bool]) -> dict:
+    return {"id": id_, "name": name, "severity": severity,
+            "channels": {c: bool(channels.get(c, False)) for c in CHANNELS}}
+
+
+CATALOG: list[dict] = [
+    _ev("critical_crypto_change", "Critical crypto change", "CRITICAL",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
+    _ev("new_asset", "New asset discovered", "LOW",
+        {"inApp": True, "email": False, "webhook": False, "siem": True}),
+    _ev("new_certificate", "New certificate", "MEDIUM",
+        {"inApp": True, "email": True, "webhook": False, "siem": True}),
+    _ev("pqc_risk_change", "PQC risk change", "HIGH",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
+    _ev("crypto_drift", "Crypto drift", "HIGH",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
+    _ev("scanner_failure", "Scanner failure", "CRITICAL",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
+    _ev("cloud_change", "Cloud change", "MEDIUM",
+        {"inApp": True, "email": False, "webhook": True, "siem": True}),
+    _ev("vendor_change", "Vendor change", "MEDIUM",
+        {"inApp": True, "email": False, "webhook": False, "siem": False}),
+    _ev("hardware_change", "Hardware change", "MEDIUM",
+        {"inApp": True, "email": False, "webhook": True, "siem": True}),
+    _ev("compliance_failure", "Compliance failure", "HIGH",
+        {"inApp": True, "email": True, "webhook": True, "siem": True}),
+]
 
 
 class RoutingItem(BaseModel):
@@ -38,10 +68,40 @@ def _repo(db: Session) -> SettingsRepository:
     return SettingsRepository(db)
 
 
+def _merged(db: Session) -> tuple[list[dict], bool]:
+    """Catalog defaults with per-tenant persisted channel overrides overlaid."""
+    data = _repo(db).get(ROUTING_SETTING_KEY, default=[])
+    persisted = data if isinstance(data, list) else []
+    by_id = {item.get("id"): item for item in persisted if isinstance(item, dict)}
+    merged = []
+    for entry in CATALOG:
+        override = by_id.get(entry["id"])
+        channels = dict(entry["channels"])
+        if override and isinstance(override.get("channels"), dict):
+            for c in CHANNELS:
+                if c in override["channels"]:
+                    channels[c] = bool(override["channels"][c])
+        merged.append({**entry, "channels": channels})
+    # include any persisted classes not in the current catalog (forward-safe)
+    known = {e["id"] for e in CATALOG}
+    for item in persisted:
+        if isinstance(item, dict) and item.get("id") not in known:
+            merged.append({"id": item["id"], "name": item.get("name", item["id"]),
+                           "severity": item.get("severity", "INFO"),
+                           "channels": {c: bool(item.get("channels", {}).get(c, False)) for c in CHANNELS}})
+    return merged, bool(persisted)
+
+
+@router.get("/catalog")
+def get_catalog(user: str = Depends(get_current_user)):
+    """The canonical event-class catalog with default channel routing."""
+    return {"catalog": CATALOG, "channels": list(CHANNELS)}
+
+
 @router.get("/routing")
 def get_routing(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    data = _repo(db).get(ROUTING_SETTING_KEY, default=[])
-    return {"routing": data if isinstance(data, list) else [], "persisted": isinstance(data, list) and bool(data)}
+    merged, persisted = _merged(db)
+    return {"routing": merged, "persisted": persisted}
 
 
 @router.put("/routing")

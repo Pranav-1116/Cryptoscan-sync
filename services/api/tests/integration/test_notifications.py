@@ -45,26 +45,42 @@ def client():
 
 
 class TestNotificationRouting:
-    def test_empty_by_default(self, client):
+    def test_catalog_defaults_before_persistence(self, client):
+        # Before any tenant override, GET serves the canonical catalog defaults
+        # (not empty) and reports persisted=False.
         r = client.get(f"{API}/notifications/routing")
         assert r.status_code == 200
-        assert r.json()["routing"] == []
-        assert r.json()["persisted"] is False
+        body = r.json()
+        assert body["persisted"] is False
+        ids = [item["id"] for item in body["routing"]]
+        assert "scanner_failure" in ids and "crypto_drift" in ids
+        # catalog defaults: a CRITICAL class routes to all four channels
+        sf = next(x for x in body["routing"] if x["id"] == "scanner_failure")
+        assert sf["channels"] == {"inApp": True, "email": True, "webhook": True, "siem": True}
 
-    def test_put_then_get_persists(self, client):
-        payload = {"routing": [
-            {"id": "n1", "name": "Critical crypto change", "severity": "CRITICAL",
-             "channels": {"inApp": True, "email": True, "webhook": False, "siem": True}},
-        ]}
-        r = client.put(f"{API}/notifications/routing", json=payload)
+    def test_catalog_endpoint(self, client):
+        r = client.get(f"{API}/notifications/catalog")
+        assert r.status_code == 200
+        assert r.json()["channels"] == ["inApp", "email", "webhook", "siem"]
+        assert len(r.json()["catalog"]) >= 8
+
+    def test_put_then_get_merges_overrides(self, client):
+        # Flip scanner_failure email OFF; everything else stays at catalog default.
+        catalog = client.get(f"{API}/notifications/routing").json()["routing"]
+        for item in catalog:
+            if item["id"] == "scanner_failure":
+                item["channels"]["email"] = False
+        r = client.put(f"{API}/notifications/routing", json={"routing": catalog})
         assert r.status_code == 200
         assert r.json()["ok"] is True
-        assert r.json()["count"] == 1
 
         g = client.get(f"{API}/notifications/routing").json()
         assert g["persisted"] is True
-        assert g["routing"][0]["id"] == "n1"
-        assert g["routing"][0]["channels"] == {"inApp": True, "email": True, "webhook": False, "siem": True}
+        by_id = {x["id"]: x for x in g["routing"]}
+        assert by_id["scanner_failure"]["channels"]["email"] is False
+        # untouched classes keep catalog defaults
+        assert by_id["critical_crypto_change"]["channels"]["siem"] is True
+        assert by_id["crypto_drift"]["channels"]["webhook"] is True
 
     def test_unknown_channels_are_stripped(self, client):
         r = client.put(f"{API}/notifications/routing", json={"routing": [

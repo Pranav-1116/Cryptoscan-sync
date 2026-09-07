@@ -197,19 +197,8 @@ export const severityTone: Record<Severity, "red" | "amber" | "green"> = {
 /* ── organization — empty until onboarding defines the estate scope ── */
 export const organization: RegionUnit[] = [];
 
-/* Notification preference catalog — static product configuration. */
-export const notificationTypes: NotificationType[] = [
-  { id: "n1", name: "Critical crypto change", severity: "CRITICAL", channels: { inApp: true, email: true, webhook: true, siem: true } },
-  { id: "n2", name: "New asset discovered", severity: "LOW", channels: { inApp: true, email: false, webhook: false, siem: true } },
-  { id: "n3", name: "New certificate", severity: "MEDIUM", channels: { inApp: true, email: true, webhook: false, siem: true } },
-  { id: "n4", name: "PQC risk change", severity: "HIGH", channels: { inApp: true, email: true, webhook: true, siem: true } },
-  { id: "n5", name: "Crypto drift", severity: "HIGH", channels: { inApp: true, email: true, webhook: true, siem: true } },
-  { id: "n6", name: "Scanner failure", severity: "CRITICAL", channels: { inApp: true, email: true, webhook: true, siem: true } },
-  { id: "n7", name: "Cloud change", severity: "MEDIUM", channels: { inApp: true, email: false, webhook: true, siem: true } },
-  { id: "n8", name: "Vendor change", severity: "MEDIUM", channels: { inApp: true, email: false, webhook: false, siem: false } },
-  { id: "n9", name: "Hardware change", severity: "MEDIUM", channels: { inApp: true, email: false, webhook: true, siem: true } },
-  { id: "n10", name: "Compliance failure", severity: "HIGH", channels: { inApp: true, email: true, webhook: true, siem: true } },
-];
+/* Notification event-class catalog is served live by the control plane
+   (GET /notifications/catalog + /notifications/routing); no static catalog. */
 
 /* ── live crypto changes / agents — populated by real streams ──────── */
 export const cryptoChanges: CryptoChangeItem[] = [];

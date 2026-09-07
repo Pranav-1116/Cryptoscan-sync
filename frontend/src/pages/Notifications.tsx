@@ -1,43 +1,34 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { notificationTypes } from "../data/initial.js";
 import { useLive, LiveStatus } from "../lib/useLive.js";
-import { apiNotificationRoutingGet, apiNotificationRoutingPut } from "../lib/api.js";
+import { apiNotificationRoutingPut } from "../lib/api.js";
 
 const CHANNELS = ["inApp", "email", "webhook", "siem"] as const;
 const CHANNEL_LABEL: Record<string, string> = { inApp: "in-app", email: "email", webhook: "webhook", siem: "SIEM / SOC" };
 
+type RouteItem = { id: string; name: string; severity: string; channels: Record<string, boolean> };
+
 /* Notification center (spec §37) — in-app · email · webhook · SIEM.
-   Routing is PERSISTED to the control plane (/notifications/routing) so the
-   event-class -> channel map survives reloads. */
+   The event-class catalog AND defaults are served live by the control plane
+   (/notifications/routing merges catalog defaults with persisted overrides);
+   toggles PERSIST so the routing survives reloads. No static catalog. */
 
 export default function Notifications() {
-  const [state, setState] = useState(notificationTypes.map((n) => ({ ...n, channels: { ...n.channels } })));
+  const routing = useLive<{ routing: RouteItem[]; persisted?: boolean }>("/api/v1/notifications/routing", { routing: [] });
+  const state = routing.data.routing ?? [];
   const [saved, setSaved] = useState<boolean | null>(null);
   const integ = useLive<{ integrations: any[] }>("/api/v1/enterprise/integrations", { integrations: [] });
   const integrations = integ.data.integrations ?? [];
 
-  useEffect(() => {
-    apiNotificationRoutingGet().then((r) => {
-      if (r.ok && r.data?.routing?.length) {
-        const map = new Map(r.data.routing.map((x: any) => [x.id, x.channels]));
-        setState((prev) => prev.map((n) => ({ ...n, channels: { ...n.channels, ...(map.get(n.id) ?? {}) } })));
-      }
-    });
-  }, []);
-
-  const persist = (next: typeof state) => {
+  const persist = (next: RouteItem[]) => {
     setSaved(null);
     apiNotificationRoutingPut(next.map((n) => ({ id: n.id, name: n.name, severity: n.severity, channels: n.channels })))
-      .then((r) => setSaved(!!r.ok));
+      .then((r) => { setSaved(!!r.ok); if (r.ok) routing.reload(); });
   };
 
   const toggle = (idx: number, ch: (typeof CHANNELS)[number]) => {
-    setState((prev) => {
-      const next = prev.map((n, i) => (i === idx ? { ...n, channels: { ...n.channels, [ch]: !n.channels[ch] } } : n));
-      persist(next);
-      return next;
-    });
+    const next = state.map((n, i) => (i === idx ? { ...n, channels: { ...n.channels, [ch]: !n.channels[ch] } } : n));
+    persist(next);
   };
 
   const enabled = (ch: (typeof CHANNELS)[number]) => state.filter((n) => n.channels[ch]).length;
