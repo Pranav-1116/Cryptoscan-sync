@@ -23,6 +23,21 @@ from db.repositories.user_repository import UserRepository
 router = APIRouter(prefix="/devsecops", tags=["devsecops"])
 
 
+def _enforce_airgap_writable(operation: str) -> None:
+    """Block mutating/networked operations when AIRGAP_MODE is on (fail-closed)."""
+    import os
+
+    if os.environ.get("AIRGAP_MODE", "false").lower() not in ("1", "true", "yes", "on"):
+        return
+    from governance import airgap
+
+    allow = tuple(a.strip() for a in os.environ.get("AIRGAP_ALLOWLIST", "").split(",") if a.strip())
+    try:
+        airgap.enforce_operation(operation, airgap.AirgapPolicy(airgap=True, allowlist=allow))
+    except airgap.AirgapReadOnlyError as exc:
+        raise HTTPException(status_code=423, detail=str(exc))  # 423 Locked
+
+
 # ------------------------------------------------------------- 13. image --- #
 class ContainerScanRequest(BaseModel):
     packages: list[dict] = Field(default_factory=list)
@@ -136,6 +151,11 @@ def connector_preview(body: ConnectorRequest,
     import json as _json
 
     from devsecops import connectors
+
+    # Air-gap read-only mode must block live delivery BEFORE any network attempt
+    # or payload build (fail-closed, 423 Locked).
+    if body.deliver_live:
+        _enforce_airgap_writable("connector.deliver")
 
     f = body.finding
     target = body.target

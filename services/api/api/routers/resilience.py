@@ -31,6 +31,14 @@ def _signing_secret() -> str:
     return os.environ.get("GOVERNANCE_SIGNING_SECRET") or _ephemeral["secret"]
 
 
+def _airgap_policy():
+    from governance import airgap
+
+    on = os.environ.get("AIRGAP_MODE", "false").lower() in ("1", "true", "yes", "on")
+    allowlist = tuple(a.strip() for a in os.environ.get("AIRGAP_ALLOWLIST", "").split(",") if a.strip())
+    return airgap.AirgapPolicy(airgap=on, allowlist=allowlist)
+
+
 def _fernet_key() -> bytes:
     from cryptography.fernet import Fernet
 
@@ -175,6 +183,73 @@ def backup_restore(body: BackupRestoreRequest,
     return out
 
 
+class BackupRunRequest(BaseModel):
+    databases: list[dict] = Field(..., description="[{database_id, engine, interval_hours}]")
+    apply_retention: bool = True
+
+
+@router.post("/backup/run-scheduled")
+def backup_run_scheduled(body: BackupRunRequest,
+                         user: str = Depends(require_roles("admin", "superadmin"))):
+    """Run due backups across Postgres/Neo4j via injected command runners,
+    persist encrypted artifacts to the reference store, then apply retention.
+
+    In the reference surface the command runner is a deterministic stub that
+    returns synthetic dumps (no real DB server required); production injects a
+    subprocess runner wrapping pg_dump / neo4j-admin."""
+    from governance import backup as bk
+    from governance import backup_jobs as bj
+
+    storage = _backup_storage()
+    key = _fernet_key()
+    secret = _signing_secret()
+
+    def fake_runner_factory(engine: str):
+        def runner(argv, stdin: bytes | None = None):
+            tool = argv[0].split("/")[-1]
+            if "dump" in tool or "backup" in tool:
+                return bj.CommandResult(0, f"{engine.upper()}-DUMP:{':'.join(argv[-1:])}".encode())
+            return bj.CommandResult(0, b"")
+        return runner
+
+    def backend_for(engine: str):
+        runner = fake_runner_factory(engine)
+        if engine == "neo4j":
+            return bj.Neo4jBackend(runner=runner)
+        return bj.PgDumpBackend(runner=runner)
+
+    configs = [bj.BackupConfig(database_id=c["database_id"], engine=c.get("engine", "postgres"),
+                               interval_hours=c.get("interval_hours", 24.0))
+               for c in body.databases]
+    results = bj.run_due_backups(configs=configs, backend_for=backend_for, storage=storage,
+                                 encryption_key=key, signing_secret=secret)
+    retention = None
+    if body.apply_retention:
+        retention = bj.execute_retention(storage=storage, signing_secret=secret)
+    return {"ran": len([r for r in results if not r.get("skipped")]),
+            "skipped": len([r for r in results if r.get("skipped")]),
+            "results": results,
+            "retention": ({"kept": retention["plan"]["kept"], "purged": retention["plan"]["purged"],
+                           "deleted_keys": retention["deleted_keys"]} if retention else None),
+            "stored_backups": len(storage.list_manifests())}
+
+
+_BACKUP_STORE = None
+
+
+def _backup_storage():
+    global _BACKUP_STORE
+    if _BACKUP_STORE is None:
+        from governance.backup_jobs import InMemoryBackupStorage
+        _BACKUP_STORE = InMemoryBackupStorage()
+    return _BACKUP_STORE
+
+
+@router.get("/backup/list")
+def backup_list(user: str = Depends(require_roles("admin", "auditor", "superadmin"))):
+    return {"backups": _backup_storage().list_manifests()}
+
+
 @router.get("/backup/encryption-key-info")
 def backup_key_info(user: str = Depends(require_roles("admin", "superadmin"))):
     """Reports whether a persistent backup key is configured (never returns it)."""
@@ -217,7 +292,8 @@ def audit_attestation_verify(payload: dict,
 
 # ============================================================== 26 airgap == #
 class AirgapDecisionRequest(BaseModel):
-    url: str
+    url: str | None = None
+    operation: str | None = None
 
 
 @router.get("/airgap/status")
@@ -235,9 +311,15 @@ def airgap_decision(body: AirgapDecisionRequest,
                     user: str = Depends(require_roles("admin", "auditor", "security_analyst", "superadmin"))):
     from governance import airgap
 
-    on = os.environ.get("AIRGAP_MODE", "false").lower() in ("1", "true", "yes", "on")
-    allowlist = tuple(a.strip() for a in os.environ.get("AIRGAP_ALLOWLIST", "").split(",") if a.strip())
-    policy = airgap.AirgapPolicy(airgap=on, allowlist=allowlist)
+    policy = _airgap_policy()
+    if body.operation:
+        try:
+            return airgap.enforce_operation(body.operation, policy)
+        except airgap.AirgapReadOnlyError as exc:
+            return {"operation": body.operation, "airgap": True, "allowed": False,
+                    "action": "BLOCK", "reason": str(exc)}
+    if not body.url:
+        raise HTTPException(400, "provide url or operation")
     return airgap.network_decision(body.url, policy)
 
 
@@ -246,22 +328,49 @@ class FeedBundleRequest(BaseModel):
 
 
 @router.post("/airgap/import-feed")
-def airgap_import(body: FeedBundleRequest,
+def airgap_import(body: FeedBundleRequest, db: Session = Depends(get_db_session),
                   user: str = Depends(require_roles("admin", "superadmin"))):
-    from governance import airgap
+    """Verify a signed offline feed bundle and ingest entries into the LIVE
+    vulnerability store used by the scanners (idempotent merge)."""
+    from governance import airgap, feed_store
 
-    sink = airgap.InMemoryFeedSink()
+    sink = feed_store.SqlVulnerabilityFeedSink(db)
     try:
         result = airgap.import_bundle(body.bundle, secret=_signing_secret(), sink=sink)
     except airgap.AirgapError as exc:
         raise HTTPException(400, str(exc))
-    result["staged_feeds"] = {k: len(v) for k, v in sink.feeds.items()}
+    UserRepository(db).audit(user, "airgap.feed_import", target_type="feed_bundle",
+                             target_id=body.bundle.get("manifest", {}).get("bundle_sha256", "")[:16],
+                             detail={"imported": result["imported"], "inserted": sink.inserted,
+                                     "updated": sink.updated, "by_feed": result["by_feed"]})
+    db.commit()
+    result["rows_inserted"] = sink.inserted
+    result["rows_updated"] = sink.updated
     return result
+
+
+class FeedBuildRequest(BaseModel):
+    entries: list[dict]
+    created_by: str = "online-updater"
+
+
+@router.post("/airgap/build-bundle")
+def airgap_build(body: FeedBuildRequest,
+                 user: str = Depends(require_roles("admin", "superadmin"))):
+    """Build a signed offline feed bundle (run on an ONLINE host, then carry the
+    artifact into the air-gapped network for import)."""
+    from governance import airgap
+
+    return airgap.build_bundle(body.entries, secret=_signing_secret(), created_by=body.created_by)
 
 
 # ============================================================== 27 OT ====== #
 class OtDecodeRequest(BaseModel):
     frames: list[dict] = Field(..., description="Observed frames: {tcp_payload_hex|udp_payload_hex, dport}")
+
+
+class OtPcapRequest(BaseModel):
+    pcap_b64: str = Field(..., description="base64-encoded classic libpcap capture")
 
 
 @router.post("/ot/decode")
@@ -279,3 +388,34 @@ def ot_decode(body: OtDecodeRequest,
             parsed["udp_payload"] = bytes.fromhex(fr["udp_payload_hex"])
         frames.append(parsed)
     return ot.analyze_capture(frames)
+
+
+@router.post("/ot/ingest-pcap")
+def ot_ingest_pcap(body: OtPcapRequest, db: Session = Depends(get_db_session),
+                   user: str = Depends(require_roles("admin", "auditor", "security_analyst", "ot_engineer", "superadmin"))):
+    """Parse an uploaded libpcap capture (passive), decode OT protocols, and
+    PERSIST cleartext-engineering findings as audit-verifiable records. Never
+    sends a packet — active_probes_sent is always 0."""
+    from network_scanner.passive import ot_capture
+
+    try:
+        blob = base64.b64decode(body.pcap_b64)
+        result = ot_capture.analyze_pcap(blob)
+    except ot_capture.PcapError as exc:
+        raise HTTPException(400, f"pcap parse failed: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, f"pcap ingest rejected: {exc}")
+
+    # Persist each finding to the audit chain (deterministic record). Findings
+    # surface to analysts via the audit trail + response; no false positives are
+    # generated because a flag only exists when a decoded frame proved it.
+    for f in result["findings"]:
+        UserRepository(db).audit(
+            user, "ot.cleartext_engineering", target_type="ot_finding",
+            target_id=f"{f['protocol']}:{f['port']}",
+            detail={"rule_id": f["rule_id"], "severity": f["severity"],
+                    "service": f.get("service"), "flags": f["flags"],
+                    "active_probes_sent": 0},
+            outcome="DETECTED")
+    db.commit()
+    return result

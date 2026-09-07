@@ -59,6 +59,41 @@ def network_decision(url: str, policy: AirgapPolicy) -> dict[str, Any]:
             "action": "ALLOW" if permitted else "BLOCK"}
 
 
+# Read-only enforcement: in air-gap mode the platform must refuse MUTATING
+# operations that could change estate state (active scans, connector pushes,
+# outbound delivery). Reads and the offline feed import are always permitted.
+_MUTATING_OPERATIONS = frozenset({
+    "scan.trigger", "scan.schedule", "connector.deliver", "webhook.send",
+    "ticket.create", "siem.push", "bus.publish", "chat.card.send",
+    "cloud.discover", "network.probe", "backup.restore",
+})
+_READ_ONLY_ALLOWED = frozenset({
+    "feed.import", "report.read", "audit.verify", "finding.read",
+    "ot.decode", "backup.create", "dashboard.read",
+})
+
+
+class AirgapReadOnlyError(PermissionError):
+    pass
+
+
+def enforce_operation(operation: str, policy: AirgapPolicy) -> dict[str, Any]:
+    """Fail-closed guard: block mutating/networked operations when air-gapped.
+
+    Read operations and the offline feed import remain allowed. Raises
+    AirgapReadOnlyError for blocked mutations; returns a decision dict for
+    allowed operations."""
+    if not policy.airgap:
+        return {"operation": operation, "airgap": False, "allowed": True, "action": "ALLOW"}
+    if operation in _READ_ONLY_ALLOWED:
+        return {"operation": operation, "airgap": True, "allowed": True, "action": "ALLOW_READONLY"}
+    if operation in _MUTATING_OPERATIONS or operation.startswith(("scan.", "connector.", "send.")):
+        raise AirgapReadOnlyError(
+            f"operation {operation!r} blocked: platform is in read-only air-gapped mode")
+    # Unknown operations default to deny in air-gap mode (fail-closed).
+    raise AirgapReadOnlyError(f"operation {operation!r} not on the air-gap allowlist")
+
+
 # ---------------------------------------------------------- bundle build ---- #
 def build_bundle(entries: Iterable[dict[str, Any]], *, secret: str,
                  created_by: str = "offline-updater") -> dict[str, Any]:

@@ -1174,3 +1174,19 @@ export const apiAirgapImportFeed = (bundle: any) =>
 
 export const apiOtDecode = (frames: any[]) =>
   _rsPost<any>("/api/v1/resilience/ot/decode", { frames });
+
+/* --- Resilience last-mile: scheduled backups, feed bundle builder, pcap --- */
+export const apiBackupRunScheduled = (databases: Array<{ database_id: string; engine: string; interval_hours?: number }>, applyRetention = true) =>
+  _rsPost<any>("/api/v1/resilience/backup/run-scheduled", { databases, apply_retention: applyRetention });
+
+export const apiBackupList = () =>
+  _rsGet<any>("/api/v1/resilience/backup/list");
+
+export const apiAirgapBuildBundle = (entries: any[], createdBy = "online-updater") =>
+  _rsPost<any>("/api/v1/resilience/airgap/build-bundle", { entries, created_by: createdBy });
+
+export const apiOtIngestPcap = (pcapB64: string) =>
+  _rsPost<any>("/api/v1/resilience/ot/ingest-pcap", { pcap_b64: pcapB64 });
+
+export const apiAirgapDecision = (payload: { url?: string; operation?: string }) =>
+  _rsPost<any>("/api/v1/resilience/airgap/network-decision", payload);

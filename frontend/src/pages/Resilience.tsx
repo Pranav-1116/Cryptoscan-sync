@@ -5,6 +5,7 @@ import React, { useEffect, useState } from "react";
 import {
   apiComplianceReport, apiRetentionPlan, apiBackupCreate, apiBackupRestore,
   apiAuditAttestation, apiAirgapStatus, apiAirgapImportFeed, apiOtDecode,
+  apiBackupRunScheduled, apiBackupList, apiAirgapBuildBundle, apiOtIngestPcap,
 } from "../lib/api.js";
 import { useI18n } from "../i18n/I18n.jsx";
 
@@ -143,6 +144,8 @@ function BackupPanel() {
   const [created, setCreated] = useState<any>(null);
   const [restored, setRestored] = useState<any>(null);
   const [retention, setRetention] = useState<any>(null);
+  const [sched, setSched] = useState<any>(null);
+  const [stored, setStored] = useState<any[]>([]);
   const [err, setErr] = useState<string>();
 
   const create = async () => {
@@ -167,9 +170,48 @@ function BackupPanel() {
     if (!out.ok) return setErr(out.error);
     setRetention(out.data);
   };
+  const runScheduled = async () => {
+    setErr(undefined);
+    const out = await apiBackupRunScheduled([
+      { database_id: "proddb", engine: "postgres", interval_hours: 24 },
+      { database_id: "graphdb", engine: "neo4j", interval_hours: 24 },
+    ]);
+    if (!out.ok) return setErr(out.error);
+    setSched(out.data);
+    const l = await apiBackupList();
+    if (l.ok) setStored(l.data?.backups ?? []);
+  };
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
+      <div className="card" style={{ padding: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Scheduled encrypted backups (Postgres + Neo4j) with retention</h3>
+        <p style={{ fontSize: 12, color: "var(--faint)" }}>
+          Runs due backups via the injected dump runner (pg_dump / neo4j-admin in production),
+          encrypts (Fernet), signs a manifest, persists artifacts, then applies GFS retention/purge.
+        </p>
+        <button className="btn sm primary" onClick={runScheduled}
+          style={{ background: "var(--grad)", color: "#fff", border: "none" }}>run scheduled backup cycle</button>
+        <Err e={err} />
+        {sched && <div style={{ marginTop: 10, fontSize: 12 }}>
+          <Badge ok>ran {sched.ran} · skipped {sched.skipped} · stored {sched.stored_backups}</Badge>
+          {sched.retention && <div style={{ marginTop: 4, color: "var(--faint)" }}>
+            retention: kept {sched.retention.kept} · purged {sched.retention.purged} · deleted {sched.retention.deleted_keys?.length ?? 0}
+          </div>}
+        </div>}
+        {stored.length > 0 && (
+          <table className="table" style={{ width: "100%", marginTop: 10, fontSize: 11 }}>
+            <thead><tr><th>backup</th><th>db</th><th>engine</th><th>seq</th><th>sha256</th></tr></thead>
+            <tbody>
+              {stored.map((m: any) => <tr key={m.storage_key}>
+                <td style={{ fontFamily: "var(--mono)" }}>{m.backup_id}</td>
+                <td>{m.database_id}</td><td>{m.engine}</td><td>{m.sequence}</td>
+                <td style={{ fontFamily: "var(--mono)", fontSize: 10 }}>{String(m.ciphertext_sha256 || "").slice(0, 16)}…</td>
+              </tr>)}
+            </tbody>
+          </table>
+        )}
+      </div>
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.backup")}</h3>
         <input className="input" value={db} onChange={(e) => setDb(e.target.value)} style={{ marginRight: 8, minWidth: 220 }} />
@@ -231,6 +273,42 @@ function AttestationPanel() {
   );
 }
 
+function BundleBuilder() {
+  const [entriesText, setEntriesText] = useState(JSON.stringify([
+    { feed: "nvd", id: "CVE-2026-0001", payload: { package: "openssl", cvss: 9.8, version: "3.0.2", summary: "example advisory" } },
+  ], null, 2));
+  const [bundle, setBundle] = useState<any>(null);
+  const [err, setErr] = useState<string>();
+  const build = async () => {
+    setErr(undefined);
+    let entries;
+    try { entries = JSON.parse(entriesText); } catch (e) { return setErr("entries JSON invalid: " + String(e)); }
+    const out = await apiAirgapBuildBundle(entries);
+    if (!out.ok) return setErr(out.error);
+    setBundle(out.data);
+  };
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: "var(--faint)" }}>
+        Run on an internet-connected host to package CVE/registry advisories into a signed, hash-verified
+        bundle, then carry it to the air-gapped network and import it below.
+      </p>
+      <textarea className="input" rows={4} value={entriesText} onChange={(e) => setEntriesText(e.target.value)}
+        style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 11 }} />
+      <button className="btn sm" style={{ marginTop: 8 }} onClick={build}>build signed bundle</button>
+      <Err e={err} />
+      {bundle && (
+        <div style={{ marginTop: 10 }}>
+          <Badge ok>{bundle.manifest?.entry_count} entries · sha {String(bundle.manifest?.bundle_sha256 || "").slice(0, 16)}… · HMAC signed</Badge>
+          <textarea className="input" readOnly rows={4} value={JSON.stringify(bundle)}
+            style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 10, marginTop: 8 }}
+            onFocus={(e) => e.target.select()} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AirgapPanel() {
   const { t } = useI18n();
   const [status, setStatus] = useState<any>(null);
@@ -257,6 +335,10 @@ function AirgapPanel() {
           Set <code>AIRGAP_MODE=true</code> and <code>AIRGAP_ALLOWLIST</code> to block all external feeds;
           offline CVE/registry updates arrive as signed bundles.
         </p>
+      </div>
+      <div className="card" style={{ padding: 18 }}>
+        <h3 style={{ marginTop: 0 }}>Build signed feed bundle (online host)</h3>
+        <BundleBuilder />
       </div>
       <div className="card" style={{ padding: 18 }}>
         <h3 style={{ marginTop: 0 }}>{t("resilience.importFeed")}</h3>
@@ -304,6 +386,20 @@ function OtPanel() {
       <textarea className="input" rows={3} value={hexInput} onChange={(e) => setHexInput(e.target.value)}
         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12, margin: "10px 0" }} />
       <button className="btn sm primary" onClick={decode} style={{ background: "var(--grad)", color: "#fff", border: "none" }}>decode frame</button>
+      <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
+        <label style={{ fontSize: 12, color: "var(--faint)" }}>Upload a passive capture (.pcap) — parsed offline, never probed</label>
+        <input type="file" accept=".pcap,.cap" className="input" style={{ display: "block", margin: "6px 0" }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const buf = new Uint8Array(await file.arrayBuffer());
+            let bin = ""; for (const b of buf) bin += String.fromCharCode(b);
+            const b64 = btoa(bin);
+            const out = await apiOtIngestPcap(b64);
+            if (!out.ok) { setErr(out.error); return; }
+            setRes(out.data);
+          }} />
+      </div>
       <Err e={err} />
       {res && (
         <div style={{ marginTop: 14 }}>

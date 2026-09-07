@@ -80,8 +80,10 @@ def create_backup(
     fernet = Fernet(encryption_key)
     ciphertext = fernet.encrypt(tar_path)
 
+    # Include the timestamp in the id so identical dump content at different
+    # times still yields a unique backup id (retention tracks each artifact).
     manifest = {
-        "backup_id": f"bk-{sha[:12]}-{sequence}",
+        "backup_id": f"bk-{sha[:12]}-{sequence}-{ts.replace('-', '').replace(':', '').replace('+00:00', 'Z')}",
         "database_id": database_id,
         "engine": getattr(backend, "name", "unknown"),
         "created_at": ts,
