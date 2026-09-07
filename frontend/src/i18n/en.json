@@ -199,5 +199,6 @@
   "scanners.domainCloud": "Cloud",
   "scanners.domainHardware": "Hardware",
   "scanners.domainVendor": "Vendor",
-  "scanners.domainCrypto": "Cryptography"
+  "scanners.domainCrypto": "Cryptography",
+  "nav.automation": "Automation rules"
 }

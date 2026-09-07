@@ -46,6 +46,7 @@ const NAV = [
   ]},
   { sectionKey: "nav.groupOperations", items: [
     { to: "/whatif", labelKey: "nav.whatIf", icon: "▶" },
+    { to: "/automation", labelKey: "nav.automation", icon: "⚙" },
     { to: "/migration", labelKey: "nav.migrationPlanning", icon: "⇉" },
     { to: "/crypto-changes", labelKey: "nav.liveCryptoChanges", icon: "≋" },
     { to: "/timeline", labelKey: "nav.globalTimeline", icon: "◷" },

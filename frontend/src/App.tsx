@@ -39,6 +39,7 @@ import Admin from "./pages/Admin.jsx";
 import Identity from "./pages/Identity.jsx";
 import CryptoAssurance from "./pages/CryptoAssurance.jsx";
 import DevSecOps from "./pages/DevSecOps.jsx";
+import Automation from "./pages/Automation.jsx";
 import Resilience from "./pages/Resilience.jsx";
 import Trust from "./pages/Trust.jsx";
 import RoleDashboard from "./pages/RoleDashboard.jsx";
@@ -91,6 +92,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/identity": Identity,
   "/crypto-assurance": CryptoAssurance,
   "/devsecops": DevSecOps,
+  "/automation": Automation,
   "/resilience": Resilience,
   "/trust": Trust,
   "/role-home": RoleDashboard,

@@ -760,6 +760,35 @@ export async function apiAutomationCapabilities(): Promise<ApiResult<any>> {
   } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
 }
 
+/* Create or update an automation rule (WHEN event · IF conditions · THEN actions). */
+export async function apiAutomationSaveRule(body: Record<string, unknown>): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/rules`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    });
+    const rbody = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String((rbody as any).detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: rbody };
+  } catch (e) { return { source: "live", ok: false, error: String(e) } as ApiResult<any>; }
+}
+
+/* Delete (disable) an automation rule. */
+export async function apiAutomationDeleteRule(ruleId: string): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/rules/${encodeURIComponent(ruleId)}`, {
+      method: "DELETE",
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const rbody = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String((rbody as any).detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: rbody };
+  } catch (e) { return { source: "live", ok: false, error: String(e) } as ApiResult<any>; }
+}
+
 export async function apiAutomationSectors(): Promise<ApiResult<any[]>> {
   try {
     const resp = await fetch(`/api/v1/automation/sectors`, {
