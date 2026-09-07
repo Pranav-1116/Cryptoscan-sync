@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { apiLogin, isBackendLive, getToken, getRoles } from "../lib/api.js";
+import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 
 const ROLE_CATALOG: Array<{ role: string; desc: string }> = [
   { role: "superadmin", desc: "Full platform access" },
@@ -14,8 +15,10 @@ const ROLE_CATALOG: Array<{ role: string; desc: string }> = [
 
 /* ── shared left brand panel ───────────────────────────────────────── */
 function BrandPanel() {
+  const { t } = useI18n();
   return (
     <aside className="auth-brand">
+      <div style={{ display: "flex", justifyContent: "flex-end" }}><LanguageSwitcher /></div>
       <div className="auth-logo">
         <span className="mark">Z</span>
         <span>
@@ -25,39 +28,37 @@ function BrandPanel() {
       </div>
 
       <div className="auth-hero">
-        <h2>Deterministic control plane for post-quantum crypto risk.</h2>
+        <h2>{t("login.heroTitle")}</h2>
         <p>
-          One console for cryptographic inventory, quantum-readiness, compliance
-          reporting and exception governance — verified by hash and signature,
-          not inference.
+          {t("app.tagline")}
         </p>
         <ul className="auth-feats">
           <li>
             <span className="ic">◈</span>
             <span>
-              <b>Policy-as-code, fail-closed access</b>
-              <span>Hierarchical Region → BU → Environment → Asset scoping enforced on every request.</span>
+              <b>{t("login.hero1Title")}</b>
+              <span>{t("login.hero1Body")}</span>
             </span>
           </li>
           <li>
             <span className="ic">▤</span>
             <span>
-              <b>Hash-chained audit trail</b>
-              <span>Every action cryptographically linked for regulator-grade integrity.</span>
+              <b>{t("login.hero2Title")}</b>
+              <span>{t("login.hero2Body")}</span>
             </span>
           </li>
           <li>
             <span className="ic">⬡</span>
             <span>
-              <b>Benchmarked accuracy, no AI decisions</b>
-              <span>Detection performance measured against held-out datasets with stated uncertainty.</span>
+              <b>{t("login.hero3Title")}</b>
+              <span>{t("login.hero3Body")}</span>
             </span>
           </li>
         </ul>
       </div>
 
       <div className="auth-trust">
-        <span className="lbl">Aligned to</span>
+        <span className="lbl">{t("login.alignedTo")}</span>
         <span className="badge cyan"><span className="dot" />FIPS 140-3</span>
         <span className="badge cyan"><span className="dot" />NIST SP 800-131A</span>
         <span className="badge cyan"><span className="dot" />SOC 2</span>
@@ -85,6 +86,7 @@ export default function Login() {
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
   const roles = getRoles();
   const token = getToken();
+  const { t } = useI18n();
 
   React.useEffect(() => {
     void isBackendLive().then(setBackendUp);
@@ -111,16 +113,16 @@ export default function Login() {
       <main className="auth-panel">
         <div className="auth-form">
           <div className="auth-head">
-            <div className="kicker">Control plane access</div>
-            <h1>Sign in</h1>
-            <p>Authenticate to your workspace to stream live inventory, findings and compliance telemetry.</p>
+            <div className="kicker">{t("login.kicker")}</div>
+            <h1>{t("login.title")}</h1>
+            <p>{t("login.subtitle")}</p>
             <span className={`auth-status ${backendUp === null ? "" : backendUp ? "live" : "down"}`}>
               <span className="dot" />
               {backendUp === null
-                ? "Connecting to control plane…"
+                ? t("app.banner.connecting")
                 : backendUp
-                  ? "Control plane connected · live data"
-                  : "Control plane offline — sign in when reachable"}
+                  ? t("app.banner.live")
+                  : t("app.banner.offline")}
             </span>
           </div>
 
@@ -129,10 +131,10 @@ export default function Login() {
 
           <form onSubmit={(e) => void submit(e)}>
             <div className="field">
-              <label htmlFor="login-user">Username</label>
+              <label htmlFor="login-user">{t("login.username")}</label>
               <input
                 id="login-user"
-                placeholder="e.g. admin"
+                placeholder={t("login.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 autoComplete="username"
@@ -140,11 +142,11 @@ export default function Login() {
               />
             </div>
             <div className="field">
-              <label htmlFor="login-pass">Password</label>
+              <label htmlFor="login-pass">{t("login.password")}</label>
               <input
                 id="login-pass"
                 type="password"
-                placeholder="Enter your password"
+                placeholder={t("login.passwordPlaceholder")}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
@@ -152,20 +154,20 @@ export default function Login() {
             </div>
 
             <button className="btn primary auth-submit" type="submit" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? t("login.signingIn") : t("login.signIn")}
             </button>
           </form>
 
           <div className="auth-alt">
-            <span>New to the platform?</span>
-            <a href="#/register">Request an account</a>
+            <span>{t("login.newHere")}</span>
+            <a href="#/register">{t("login.requestAccount")}</a>
           </div>
 
           {token && roles.length > 0 ? (
             <div className="auth-alert ok" style={{ marginTop: 16 }}>
               <span>
-                ● Already signed in as <b>{username}</b> — roles: {roles.join(", ")}.{" "}
-                <a href="#/" style={{ color: "inherit", fontWeight: 700 }}>Enter console →</a>
+                ● {t("login.alreadySignedIn")} <b>{username}</b> — {roles.join(", ")}.{" "}
+                <a href="#/" style={{ color: "inherit", fontWeight: 700 }}>{t("login.enterConsole")} →</a>
               </span>
             </div>
           ) : (

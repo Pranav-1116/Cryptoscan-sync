@@ -6,73 +6,73 @@ import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 
 const NAV = [
-  { section: "Command center", items: [
-    { to: "/", label: "Command center", icon: "◎" },
-    { to: "/role-home", labelKey: "role.title", label: "Role workspace", icon: "◐" },
-    { to: "/onboarding", label: "Onboarding", icon: "➤" },
-    { to: "/env", label: "Live environment", icon: "◉" },
-    { to: "/organization", label: "Organization", icon: "◫" },
-    { to: "/sectors", label: "Sector profiles", icon: "⛨" },
+  { sectionKey: "nav.commandCenter", items: [
+    { to: "/", labelKey: "nav.commandCenter", icon: "◎" },
+    { to: "/role-home", labelKey: "nav.roleWorkspace", icon: "◐" },
+    { to: "/onboarding", labelKey: "nav.onboarding", icon: "➤" },
+    { to: "/env", labelKey: "nav.liveEnvironment", icon: "◉" },
+    { to: "/organization", labelKey: "nav.organization", icon: "◫" },
+    { to: "/sectors", labelKey: "nav.sectorProfiles", icon: "⛨" },
   ]},
-  { section: "Discovery", items: [
-    { to: "/network", label: "Network", icon: "◈" },
-    { to: "/cloud", label: "Cloud", icon: "☁" },
-    { to: "/vendor", label: "Vendor", icon: "▤" },
-    { to: "/hardware", label: "Hardware", icon: "⌬" },
-    { to: "/crypto", label: "Cryptography", icon: "⚿" },
+  { sectionKey: "nav.discovery", items: [
+    { to: "/network", labelKey: "nav.network", icon: "◈" },
+    { to: "/cloud", labelKey: "nav.cloud", icon: "☁" },
+    { to: "/vendor", labelKey: "nav.vendor", icon: "▤" },
+    { to: "/hardware", labelKey: "nav.hardware", icon: "⌬" },
+    { to: "/crypto", labelKey: "nav.cryptography", icon: "⚿" },
   ]},
-  { section: "Inventory", items: [
-    { to: "/catalog", label: "Catalogs", icon: "☷" },
-    { to: "/assets", label: "Assets", icon: "▣" },
-    { to: "/crypto-assets", label: "Crypto assets", icon: "⚿" },
-    { to: "/certificates", label: "Certificates", icon: "⊞" },
-    { to: "/crypto-assurance", label: "Crypto assurance", icon: "⚿" },
-    { to: "/devsecops", label: "DevSecOps pipeline", icon: "⛀" },
-    { to: "/libraries", label: "Crypto libraries", icon: "▤" },
-    { to: "/protocols", label: "Protocols", icon: "⇄" },
+  { sectionKey: "nav.inventory", items: [
+    { to: "/catalog", labelKey: "nav.catalogs", icon: "☷" },
+    { to: "/assets", labelKey: "nav.assets", icon: "▣" },
+    { to: "/crypto-assets", labelKey: "nav.cryptoAssets", icon: "⚿" },
+    { to: "/certificates", labelKey: "nav.certificates", icon: "⊞" },
+    { to: "/crypto-assurance", labelKey: "nav.cryptoAssurance", icon: "⚿" },
+    { to: "/devsecops", labelKey: "nav.devsecops", icon: "⛀" },
+    { to: "/libraries", labelKey: "nav.cryptoLibraries", icon: "▤" },
+    { to: "/protocols", labelKey: "nav.protocols", icon: "⇄" },
   ]},
-  { section: "Boms", items: [
-    { to: "/cbom", label: "CBOM", icon: "⬡" },
-    { to: "/hbom", label: "HBOM", icon: "⬢" },
-    { to: "/graph", label: "Dependency graph", icon: "⬟" },
+  { sectionKey: "nav.boms", items: [
+    { to: "/cbom", labelKey: "nav.cbom", icon: "⬡" },
+    { to: "/hbom", labelKey: "nav.hbom", icon: "⬢" },
+    { to: "/graph", labelKey: "nav.dependencyGraph", icon: "⬟" },
   ]},
-  { section: "Post-quantum", items: [
-    { to: "/pqc", label: "PQC readiness", icon: "◬" },
-    { to: "/pqc-map", label: "PQC migration map", icon: "⇉" },
-    { to: "/agility", label: "Crypto agility", icon: "◔" },
-    { to: "/risk", label: "Risk", icon: "⚠" },
-    { to: "/drift", label: "Drift", icon: "⇄" },
-    { to: "/alerts", label: "Alerts", icon: "▲" },
+  { sectionKey: "nav.postQuantum", items: [
+    { to: "/pqc", labelKey: "nav.pqcReadiness", icon: "◬" },
+    { to: "/pqc-map", labelKey: "nav.pqcMigrationMap", icon: "⇉" },
+    { to: "/agility", labelKey: "nav.cryptoAgility", icon: "◔" },
+    { to: "/risk", labelKey: "nav.risk", icon: "⚠" },
+    { to: "/drift", labelKey: "nav.drift", icon: "⇄" },
+    { to: "/alerts", labelKey: "nav.alerts", icon: "▲" },
   ]},
-  { section: "Live", items: [
-    { to: "/crypto-changes", label: "Live crypto changes", icon: "≋" },
-    { to: "/timeline", label: "Global timeline", icon: "◷" },
+  { sectionKey: "nav.liveSection", items: [
+    { to: "/crypto-changes", labelKey: "nav.liveCryptoChanges", icon: "≋" },
+    { to: "/timeline", labelKey: "nav.globalTimeline", icon: "◷" },
   ]},
-  { section: "Plan", items: [
-    { to: "/whatif", label: "What-if simulator", icon: "▶" },
-    { to: "/migration", label: "Migration planning", icon: "⇉" },
+  { sectionKey: "nav.plan", items: [
+    { to: "/whatif", labelKey: "nav.whatIf", icon: "▶" },
+    { to: "/migration", labelKey: "nav.migrationPlanning", icon: "⇉" },
   ]},
-  { section: "Govern", items: [
-    { to: "/compliance", label: "Compliance", icon: "✓" },
-    { to: "/governance", label: "Governance", icon: "⚖" },
-    { to: "/resilience", labelKey: "nav.resilience", label: "Resilience & DR", icon: "⛨" },
-    { to: "/evidence", label: "Evidence", icon: "⛨" },
+  { sectionKey: "nav.govern", items: [
+    { to: "/compliance", labelKey: "nav.compliance", icon: "✓" },
+    { to: "/governance", labelKey: "nav.governance", icon: "⚖" },
+    { to: "/resilience", labelKey: "nav.resilience", icon: "⛨" },
+    { to: "/evidence", labelKey: "nav.evidence", icon: "⛨" },
   ]},
-  { section: "Operate", items: [
-    { to: "/scanners", label: "Scanners", icon: "⌖" },
-    { to: "/live-scanners", label: "Realtime scanners", icon: "◉" },
-    { to: "/runtime", label: "Runtime hosts", icon: "⧉" },
-    { to: "/notifications", label: "Notifications", icon: "✉" },
-    { to: "/reports", label: "Reports", icon: "▤" },
-    { to: "/integrations", label: "Integrations", icon: "⇌" },
-    { to: "/identity", label: "Identity & access", icon: "⛃" },
-    { to: "/admin", label: "Administration", icon: "⚙" },
+  { sectionKey: "nav.operate", items: [
+    { to: "/scanners", labelKey: "nav.scanners", icon: "⌖" },
+    { to: "/live-scanners", labelKey: "nav.realtimeScanners", icon: "◉" },
+    { to: "/runtime", labelKey: "nav.runtimeHosts", icon: "⧉" },
+    { to: "/notifications", labelKey: "nav.notifications", icon: "✉" },
+    { to: "/reports", labelKey: "nav.reports", icon: "▤" },
+    { to: "/integrations", labelKey: "nav.integrations", icon: "⇌" },
+    { to: "/identity", labelKey: "nav.identity", icon: "⛃" },
+    { to: "/admin", labelKey: "nav.administration", icon: "⚙" },
   ]},
-  { section: "Platform (P2)", items: [
-    { to: "/platform", label: "P2 console", icon: "⬢" },
+  { sectionKey: "nav.platformP2", items: [
+    { to: "/platform", labelKey: "nav.platformP2", icon: "⬢" },
   ]},
-  { section: "Quality", items: [
-    { to: "/accuracy", label: "Accuracy", icon: "◔" },
+  { sectionKey: "nav.quality", items: [
+    { to: "/accuracy", labelKey: "nav.accuracy", icon: "◔" },
   ]},
 ];
 
@@ -107,11 +107,11 @@ export default function Layout({ route, children }: { route: string; children: R
         </a>
         {NAV.map((group) => (
           <React.Fragment key={group.section}>
-            <div className="nav-label">{group.section}</div>
+            <div className="nav-label">{t(group.sectionKey)}</div>
             {group.items.map((item) => (
               <a key={item.to} href={`#${item.to}`} className={`nav ${route === item.to ? "active" : ""}`}>
                 <span style={{ width: 18, textAlign: "center" }}>{item.icon}</span>
-                {"labelKey" in item && item.labelKey ? t(item.labelKey) : item.label}
+                {t(item.labelKey)}
               </a>
             ))}
           </React.Fragment>
@@ -129,14 +129,14 @@ export default function Layout({ route, children }: { route: string; children: R
             <span className="dot" style={{ background: ticker.backend ? "var(--green)" : "var(--amber)" }} />
             <span>
               {ticker.backend === null
-                ? "connecting to platform…"
+                ? t("app.banner.connecting")
                 : ticker.backend
-                  ? "live platform · deterministic engine · no AI inference"
-                  : "offline · sign in to connect to the live platform"}
+                  ? t("app.banner.live")
+                  : t("app.banner.offline")}
             </span>
           </div>
           <div style={{ marginTop: 10, padding: "0 8px", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)", lineHeight: 1.7 }}>
-            v1.0 · policy-as-code · hash-chained audit<br />fail-closed access control
+            v1.0 · {t("app.footer")}<br />{t("app.footer2")}
           </div>
         </div>
       </aside>
@@ -144,38 +144,38 @@ export default function Layout({ route, children }: { route: string; children: R
       <main className="main">
         <div className="livehead">
           <span className="live-dot" style={ticker.connected ? undefined : { background: "var(--amber)", boxShadow: "0 0 12px var(--amber)" }} />
-          <span className="item"><b>{ticker.connected ? "LIVE" : "IDLE"}</b></span>
-          <span className="item">last event <b>{ticker.ago === null ? "—" : `${ticker.ago}s`}</b> ago</span>
-          <span className="item">events/sec <b>{ticker.eps || "—"}</b></span>
+          <span className="item"><b>{ticker.connected ? t("common.live") : t("common.idle")}</b></span>
+          <span className="item">{t("head.lastEvent")} <b>{ticker.ago === null ? "—" : `${ticker.ago}s`}</b> {t("head.ago")}</span>
+          <span className="item">{t("head.eventsPerSec")} <b>{ticker.eps || "—"}</b></span>
           {ticker.connected ? (
-            <span className="item">stream subscribers <b>{ticker.subscribers}</b></span>
+            <span className="item">{t("head.streamSubs")} <b>{ticker.subscribers}</b></span>
           ) : (
-            <span className="item">agents <b>{Number(st?.agents_healthy ?? 0)}/{Number(st?.agents_total ?? 0)}</b> healthy</span>
+            <span className="item">{t("head.agents")} <b>{Number(st?.agents_healthy ?? 0)}/{Number(st?.agents_total ?? 0)}</b> {t("head.healthy")}</span>
           )}
-          <span className="item">scanners <b>{Number(st?.active_scanners ?? 0)}/{Number(st?.total_scanners ?? 0)}</b></span>
-          <span className="item">scans <b>{Number(st?.total_scans ?? 0)}</b></span>
-          <span className="item">findings <b>{Number(st?.total_findings ?? 0)}</b></span>
+          <span className="item">{t("head.scanners")} <b>{Number(st?.active_scanners ?? 0)}/{Number(st?.total_scanners ?? 0)}</b></span>
+          <span className="item">{t("head.scans")} <b>{Number(st?.total_scans ?? 0)}</b></span>
+          <span className="item">{t("head.findings")} <b>{Number(st?.total_findings ?? 0)}</b></span>
           {abac && (
-            <span className="item" title="ABAC scope policy — Region → Business Unit → Environment → Asset">
+            <span className="item" title={t("head.abac")}>
               ABAC <b style={{ color: abac.enforced ? "var(--green)" : "var(--amber)" }}>
-                {abac.enforced ? `ENFORCED · ${abac.grants} grants` : "off"}
+                {abac.enforced ? `${abac.grants} grants` : "off"}
               </b>
             </span>
           )}
           <div className="searchbox" onClick={() => setShowSearch(true)}>
-            <span>⌕</span> Search entire environment…
+            <span>⌕</span> {t("common.search")}
             <span style={{ marginLeft: "auto", fontSize: 10, border: "1px solid var(--line-strong)", borderRadius: 4, padding: "1px 6px" }}>esc</span>
           </div>
           {getToken() ? (
             <button
               className="btn sm"
-              title="sign out"
+              title={t("common.signOut")}
               onClick={() => { setToken(null); window.location.hash = "#/"; }}
             >
-              {getUserName() || "user"} · sign out
+              {getUserName() || "user"} · {t("common.signOut")}
             </button>
           ) : (
-            <a href="#/login" className="btn sm">sign in</a>
+            <a href="#/login" className="btn sm">{t("common.signIn")}</a>
           )}
         </div>
         {children}

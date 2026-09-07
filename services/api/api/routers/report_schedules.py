@@ -10,7 +10,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import base64
+import os
+
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -30,6 +34,36 @@ class ScheduleCreate(BaseModel):
 
 class ScheduleUpdate(BaseModel):
     active: bool
+
+
+def _report_signing_secret() -> str:
+    """HMAC secret for the deterministic report PDF. Prefers an explicit env
+    value; otherwise derives deterministically from the platform SECRET_KEY so
+    scheduled PDFs are stable and verifiable across restarts (no AI)."""
+    secret = os.environ.get("REPORT_SIGNING_SECRET") or os.environ.get("GOVERNANCE_SIGNING_SECRET")
+    if secret:
+        return secret
+    try:
+        from governance.keys import signing_secret
+        return signing_secret()
+    except Exception:
+        return os.environ.get("SECRET_KEY", "dev-report-secret-change-me")
+
+
+def _attach_signed_pdf(report: dict) -> dict:
+    """Render the dependency-free signed framework PDF and embed it (base64)
+    plus its HMAC signature on the report body before snapshot persistence."""
+    try:
+        from reporting.compliance_pdf import render_signed_pdf, report_signature
+        secret = _report_signing_secret()
+        pdf = render_signed_pdf(report, signing_secret=secret)
+        report["pdf_b64"] = base64.b64encode(pdf).decode()
+        report["pdf_signature"] = report_signature(report, secret)
+        report["pdf_media_type"] = "application/pdf"
+    except Exception:
+        # PDF rendering must never break report generation/snapshot
+        report["pdf_b64"] = None
+    return report
 
 
 def _repo(db: Session):
@@ -70,6 +104,7 @@ def _run_schedule(schedule, db: Session) -> dict:
         schedule.template_id,
         ",".join(schedule.requirements or []),
     )
+    _attach_signed_pdf(report)  # unify: scheduled reports emit signed framework PDFs
     repo = _repo(db)
     snapshot = repo.add_snapshot(
         schedule_id=schedule.id,
@@ -270,3 +305,31 @@ def get_snapshot(
         "email_status": row.email_status,
     }
     return payload
+
+
+@router.get("/report-snapshots/{snapshot_id}/pdf")
+def get_snapshot_pdf(
+    snapshot_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Download the signed framework PDF captured with a scheduled snapshot."""
+    row = _repo(db).get_snapshot(snapshot_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    report = row.report or {}
+    pdf_b64 = report.get("pdf_b64")
+    if not pdf_b64:
+        # render on demand for snapshots created before PDF unification
+        body = {k: v for k, v in report.items() if k not in ("pdf_b64", "pdf_signature", "snapshot")}
+        try:
+            from reporting.compliance_pdf import render_signed_pdf
+            pdf = render_signed_pdf(body, signing_secret=_report_signing_secret())
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=409, detail=f"no PDF for this snapshot: {exc}")
+    else:
+        pdf = base64.b64decode(pdf_b64)
+    fname = f"compliance-{row.template_id}-{snapshot_id[:8]}.pdf"
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"',
+                             "X-Report-Signature": report.get("pdf_signature", "")})
