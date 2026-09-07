@@ -187,5 +187,17 @@
   "nav.groupGovern": "الحوكمة",
   "nav.groupPlatform": "المنصة",
   "common.connecting": "جارٍ الاتصال",
-  "common.reconnecting": "إعادة الاتصال"
+  "common.reconnecting": "إعادة الاتصال",
+  "scanners.runDiscovery": "تشغيل الاكتشاف (مباشر)",
+  "scanners.runningDiscovery": "جارٍ الاكتشاف…",
+  "scanners.stageDiscover": "الاكتشاف",
+  "scanners.stageIdentify": "التعريف",
+  "scanners.stageCorrelate": "الربط",
+  "scanners.stageVerify": "التحقق",
+  "scanners.stageMonitor": "المراقبة",
+  "scanners.domainNetwork": "الشبكة",
+  "scanners.domainCloud": "السحابة",
+  "scanners.domainHardware": "الأجهزة",
+  "scanners.domainVendor": "المورّد",
+  "scanners.domainCrypto": "التشفير"
 }

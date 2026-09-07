@@ -187,5 +187,17 @@
   "nav.groupGovern": "Govern",
   "nav.groupPlatform": "Platform",
   "common.connecting": "CONNECTING",
-  "common.reconnecting": "RECONNECTING"
+  "common.reconnecting": "RECONNECTING",
+  "scanners.runDiscovery": "Run discovery (live)",
+  "scanners.runningDiscovery": "Running discovery…",
+  "scanners.stageDiscover": "Discover",
+  "scanners.stageIdentify": "Identify",
+  "scanners.stageCorrelate": "Correlate",
+  "scanners.stageVerify": "Verify",
+  "scanners.stageMonitor": "Monitor",
+  "scanners.domainNetwork": "Network",
+  "scanners.domainCloud": "Cloud",
+  "scanners.domainHardware": "Hardware",
+  "scanners.domainVendor": "Vendor",
+  "scanners.domainCrypto": "Cryptography"
 }
