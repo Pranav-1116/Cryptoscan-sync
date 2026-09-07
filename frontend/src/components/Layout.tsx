@@ -74,6 +74,15 @@ const NAV = [
 export default function Layout({ route, children }: { route: string; children: React.ReactNode }) {
   const { t, dir } = useI18n();
   const [showSearch, setShowSearch] = useState(false);
+  const [theme, setTheme] = useState<string>(() => {
+    try { return localStorage.getItem("zelnx-theme") || "dark"; } catch { return "dark"; }
+  });
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === "light") root.setAttribute("data-theme", "light");
+    else root.removeAttribute("data-theme");
+    try { localStorage.setItem("zelnx-theme", theme); } catch { /* ignore */ }
+  }, [theme]);
   const [abac, setAbac] = useState<{ enforced: boolean; grants: number } | null>(null);
   const ticker = useLiveTicker();
   const toasts = useAlertToasts();
@@ -118,8 +127,8 @@ export default function Layout({ route, children }: { route: string; children: R
           </div>
           <div className="demobanner" style={{
             color: ticker.backend ? "var(--green)" : "var(--amber)",
-            borderColor: ticker.backend ? "rgba(47,184,119,0.35)" : undefined,
-            background: ticker.backend ? "rgba(47,184,119,0.07)" : undefined,
+            borderColor: ticker.backend ? "rgba(34,197,94,0.35)" : undefined,
+            background: ticker.backend ? "rgba(34,197,94,0.07)" : undefined,
           }}>
             <span className="dot" style={{ background: ticker.backend ? "var(--green)" : "var(--amber)" }} />
             <span>
@@ -161,6 +170,14 @@ export default function Layout({ route, children }: { route: string; children: R
             <span>⌕</span> {t("common.search")}
             <span style={{ marginLeft: "auto", fontSize: 10, border: "1px solid var(--line-strong)", borderRadius: 4, padding: "1px 6px" }}>esc</span>
           </div>
+          <button
+            className="btn sm"
+            title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+            onClick={() => setTheme((x) => (x === "dark" ? "light" : "dark"))}
+            style={{ fontFamily: "var(--mono)" }}
+          >
+            {theme === "dark" ? "☾ dark" : "☀ light"}
+          </button>
           {getToken() ? (
             <button
               className="btn sm"

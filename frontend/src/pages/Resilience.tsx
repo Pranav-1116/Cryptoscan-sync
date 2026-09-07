@@ -22,7 +22,7 @@ function Err({ e }: { e: string | undefined }) {
   return <div style={{ color: "var(--red,#e01e5a)", fontSize: 12, marginTop: 8 }}>{e}</div>;
 }
 function Badge({ ok, children }: { ok?: boolean; children: React.ReactNode }) {
-  return <span className="badge" style={{ background: ok ? "rgba(47,184,119,0.12)" : "rgba(232,161,61,0.12)", color: ok ? "var(--green)" : "var(--amber)" }}>{children}</span>;
+  return <span className="badge" style={{ background: ok ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)", color: ok ? "var(--green)" : "var(--amber)" }}>{children}</span>;
 }
 
 const TABS = ["report", "backup", "attestation", "airgap", "ot"];

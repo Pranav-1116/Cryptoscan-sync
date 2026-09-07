@@ -67,7 +67,7 @@ export default function RoleDashboard() {
     <div className="page" style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>{t("role.title")} · {personaTitle}</h1>
-        <span className="badge" style={{ background: live ? "rgba(47,184,119,0.12)" : "rgba(232,161,61,0.12)", color: live ? "var(--green)" : "var(--amber)" }}>
+        <span className="badge" style={{ background: live ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)", color: live ? "var(--green)" : "var(--amber)" }}>
           {live ? t("common.liveData") : t("common.offline")}
         </span>
       </div>

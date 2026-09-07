@@ -438,9 +438,9 @@ select.inp option { background: var(--panel); color: var(--text); }
 /* ── dependency graph ─────────────────────────────────────────────── */
 .graphwrap { overflow: auto; }
 .graphwrap svg { min-width: 780px; }
-.edge { stroke: var(--line-strong); stroke-width: 1.4; fill: none; }
+.edge { stroke: rgba(30, 58, 82, 0.7); stroke-width: 1.2; fill: none; }
 .edge.hit { stroke: var(--red); stroke-width: 2.4; }
-.edge.blast { stroke: rgba(251, 191, 36, 0.6); stroke-width: 2; }
+.edge.blast { stroke: rgba(249, 115, 22, 0.75); stroke-width: 2.2; }
 .gnode { cursor: pointer; }
 .gnode rect { fill: var(--panel); stroke: var(--line-strong); rx: 9; transition: stroke 0.15s; }
 .gnode:hover rect { stroke: var(--cyan); }
@@ -619,7 +619,7 @@ select.inp option { background: var(--panel); color: var(--text); }
   border: 1px solid var(--line); color: var(--dim);
 }
 .auth-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.auth-status.live { color: #9fe6c6; border-color: #23634a; background: rgba(47,184,119,0.08); }
+.auth-status.live { color: #9fe6c6; border-color: #23634a; background: rgba(34,197,94,0.08); }
 .auth-status.live .dot { background: var(--green); animation: pulse 2s infinite; }
 .auth-status.down { color: #f0d398; border-color: #6b5220; background: rgba(224,163,41,0.08); }
 .auth-status.down .dot { background: var(--amber); }
@@ -656,7 +656,7 @@ select.inp option { background: var(--panel); color: var(--text); }
   font-family: var(--sans);
 }
 .auth-alert.err { color: #f2b2ae; border: 1px solid #6e2f2c; background: rgba(224,86,79,0.10); }
-.auth-alert.ok  { color: #9fe6c6; border: 1px solid #23634a; background: rgba(47,184,119,0.09); }
+.auth-alert.ok  { color: #9fe6c6; border: 1px solid #23634a; background: rgba(34,197,94,0.09); }
 
 .auth-submit { width: 100%; padding: 13px; font-size: 14px; margin-top: 4px; }
 

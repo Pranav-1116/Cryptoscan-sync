@@ -54,7 +54,7 @@ export default function WhatIf() {
         <div className="row">
           {SCENARIOS.map((sc, i) => (
             <button key={sc.label} className="btn sm"
-              style={i === sel ? { borderColor: "var(--cyan)", color: "#cfe4ff", background: "rgba(77,159,255,0.10)" } : {}}
+              style={i === sel ? { borderColor: "var(--cyan)", color: "#aef3ff", background: "rgba(0,212,255,0.10)" } : {}}
               onClick={() => { setSel(i); setLive(null); }}>
               {sc.label}
             </button>
