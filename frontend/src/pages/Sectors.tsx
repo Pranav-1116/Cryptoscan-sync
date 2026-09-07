@@ -1,23 +1,15 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Panel, Badge, PageHead } from "../components/ui.jsx";
 import {
   apiListSectors, apiActiveSector, apiSetActiveSector,
   type ApiResult, type SectorProfile,
 } from "../lib/api.js";
-import { Corners, Kicker } from "../components/ui.jsx";
 
 /* Sector Layer — one universal scanning engine; the sector profile changes
    context only (criticality, policy packs, compliance frameworks, evidence,
-   scan modes). This page lists the catalog and sets the org's active sector. */
-
-const chip: React.CSSProperties = {
-  fontFamily: "var(--mono)", fontSize: 10.5, padding: "3px 8px", borderRadius: 6,
-  border: "1px solid var(--line-strong)", color: "var(--dim)", background: "transparent",
-};
-const chipActive: React.CSSProperties = { ...chip, color: "var(--cyan)", border: "1px solid var(--cyan)", background: "rgba(34,211,238,.1)" };
-
-function Pill({ children, on }: { children: React.ReactNode; on?: boolean }) {
-  return <span style={on ? chipActive : chip}>{children}</span>;
-}
+   scan modes). This page lists the catalog and sets the org's active sector,
+   rendered in the standard ZELNX panel system. RBAC: only superadmin/ciso/
+   admin can change the active sector. */
 
 export default function Sectors() {
   const [sectors, setSectors] = useState<SectorProfile[]>([]);
@@ -40,6 +32,8 @@ export default function Sectors() {
 
   const canSet = roles.some((role) => ["superadmin", "ciso", "admin"].includes(role));
 
+  const activeProfile = useMemo(() => sectors.find((s) => s.id === active), [sectors, active]);
+
   const select = async (id: string) => {
     if (id === active || !canSet) return;
     setBusy(id);
@@ -55,104 +49,129 @@ export default function Sectors() {
   };
 
   return (
-    <div style={{ padding: "26px 28px" }}>
-      <div className="frame" style={{ position: "relative", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 16, padding: "26px 26px 22px", marginBottom: 22 }}>
-        <Corners />
-        <Kicker>Sector Layer · universal engine</Kicker>
-        <h1 style={{ fontSize: 26, margin: "8px 0 6px" }}>Sector Profiles</h1>
-        <p className="dim" style={{ fontSize: 13, margin: 0, maxWidth: 820, lineHeight: 1.6 }}>
-          One scanning engine for every estate. The sector never forks the scanner — it changes <b>which assets
-          matter most</b>, which <b>policy packs</b> and <b>compliance frameworks</b> apply, how <b>criticality</b> is
-          weighted, what <b>evidence</b> is required, and which <b>scan modes</b> are recommended (e.g. passive-only for OT).
-        </p>
-        <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={{ ...chip, color: "var(--cyan)" }}>active: {active}</span>
-          <span className="dim" style={{ fontSize: 11.5 }}>
-            {source === "live" ? "● live control plane" : "● control plane offline — no live data yet"}
-          </span>
-          {!canSet && (
-            <span className="dim" style={{ fontSize: 11.5, color: "var(--amber)" }}>
-              superadmin/ciso can change the active sector
-            </span>
-          )}
+    <>
+      <PageHead
+        crumb="govern / sector profiles"
+        title="Multi-sector profiles"
+        sub="One deterministic scanning engine — the sector only changes which assets matter, which policy packs and frameworks apply, criticality weighting, evidence and scan modes"
+        right={
+          <>
+            <Badge tone={source === "live" ? "green" : "slate"}><span className="dot" /> {source === "live" ? "live control plane" : "offline"}</Badge>
+            <Badge tone="cyan">active: {active}</Badge>
+          </>
+        }
+      />
+
+      {/* active sector summary */}
+      {activeProfile && (
+        <Panel
+          title={activeProfile.name}
+          sub={`active profile · ${activeProfile.id} · ${activeProfile.compliance_frameworks.length} frameworks · ${activeProfile.policy_packs.length} policy packs`}
+        >
+          <p className="dim" style={{ fontSize: 13, lineHeight: 1.6, margin: "0 0 12px", maxWidth: 900 }}>
+            {activeProfile.description}
+          </p>
+          <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+            {activeProfile.compliance_frameworks.map((fw) => <Badge key={fw} tone="cyan">{fw}</Badge>)}
+            {activeProfile.policy_packs.map((p) => <Badge key={p} tone="violet">{p}</Badge>)}
+          </div>
+        </Panel>
+      )}
+
+      {!canSet && (
+        <div className="dim" style={{ fontSize: 12, color: "var(--amber)", margin: "12px 2px" }}>
+          Only superadmin / CISO / admin can change the active sector.
         </div>
-        {msg && (
-          <div style={{ marginTop: 10, fontFamily: "var(--mono)", fontSize: 12, color: msg.ok ? "var(--green)" : "var(--red)" }}>
-            {msg.ok ? "✓ " : "✕ "}{msg.text}
+      )}
+      {msg && (
+        <div style={{ margin: "10px 2px", fontFamily: "var(--mono)", fontSize: 12, color: msg.ok ? "var(--green)" : "var(--red)" }}>
+          {msg.ok ? "✓ " : "✕ "}{msg.text}
+        </div>
+      )}
+
+      <Panel
+        title="Sector catalog"
+        sub={`${sectors.length} profiles · select one to apply its policy context`}
+        className="mt"
+      >
+        {sectors.length === 0 ? (
+          <div className="dim" style={{ fontSize: 13 }}>
+            {source === "live" ? "No sector profiles returned." : "Backend offline — sector catalog unavailable."}
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
+            {sectors.map((s) => {
+              const isActive = s.id === active;
+              return (
+                <div
+                  key={s.id}
+                  className="plug-card"
+                  style={{
+                    borderColor: isActive ? "var(--cyan)" : undefined,
+                    boxShadow: isActive ? "0 0 0 1px var(--cyan)" : undefined,
+                    padding: 16,
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <div>
+                      <div style={{ fontFamily: "var(--mono)", fontSize: 10.5, color: isActive ? "var(--cyan)" : "var(--faint)", letterSpacing: ".06em" }}>
+                        {s.id}
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, margin: "3px 0 6px" }}>{s.name}</div>
+                    </div>
+                    {isActive && <Badge tone="green"><span className="dot" /> active</Badge>}
+                  </div>
+                  <p className="dim" style={{ fontSize: 12, lineHeight: 1.55, margin: "0 0 12px", minHeight: 34 }}>{s.description}</p>
+
+                  <div className="dim" style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>compliance frameworks</div>
+                  <div className="row" style={{ gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
+                    {s.compliance_frameworks.slice(0, 6).map((fw) => <span key={fw} className="cap-chip">{fw}</span>)}
+                  </div>
+
+                  <div className="dim" style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>policy packs</div>
+                  <div className="row" style={{ gap: 5, flexWrap: "wrap", marginBottom: 10 }}>
+                    {s.policy_packs.map((p) => <span key={p} className="cap-chip">{p}</span>)}
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <div className="dim" style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>scan modes</div>
+                      <div className="row" style={{ gap: 5, flexWrap: "wrap" }}>
+                        {(s.recommended_modes || []).slice(0, 4).map((m) => (
+                          <span key={m.id} className="cap-chip" style={m.ot_safe ? { color: "var(--cyan)", borderColor: "#14637a" } : undefined}>
+                            {m.ot_safe ? "🛰 " : ""}{m.id}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="dim" style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>separation</div>
+                      <div className="row" style={{ gap: 5, flexWrap: "wrap" }}>
+                        {(s.environment_separation || []).map((e) => <span key={e} className="cap-chip">{e}</span>)}
+                      </div>
+                    </div>
+                  </div>
+
+                  {(s.required_evidence?.length ?? 0) > 0 && (
+                    <div className="dim" style={{ fontSize: 10.5, lineHeight: 1.5, marginBottom: 8 }}>
+                      evidence: {(s.required_evidence ?? []).slice(0, 3).join(" · ")}
+                    </div>
+                  )}
+
+                  <button
+                    className={`btn sm ${isActive ? "" : "primary"}`}
+                    disabled={isActive || !canSet || busy === s.id}
+                    onClick={() => void select(s.id)}
+                    style={{ width: "100%", marginTop: 4 }}
+                  >
+                    {busy === s.id ? "applying…" : isActive ? "active profile" : "set as active sector"}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
-        {sectors.map((s) => {
-          const isActive = s.id === active;
-          return (
-            <div key={s.id} className="frame" style={{
-              position: "relative", background: "var(--panel)", border: `1px solid ${isActive ? "var(--cyan)" : "var(--line)"}`,
-              borderRadius: 14, padding: "18px 18px 16px", opacity: s.id === "generic" ? 0.92 : 1,
-            }}>
-              <Corners />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                <div>
-                  <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: isActive ? "var(--cyan)" : "var(--dim)", letterSpacing: ".06em" }}>
-                    {s.id}
-                  </div>
-                  <h3 style={{ margin: "4px 0 6px", fontSize: 16 }}>{s.name}</h3>
-                </div>
-                {isActive && <span style={{ ...chipActive, whiteSpace: "nowrap" }}>● active</span>}
-              </div>
-              <p className="dim" style={{ fontSize: 12, lineHeight: 1.55, margin: "0 0 12px", minHeight: 34 }}>{s.description}</p>
-
-              <div style={{ marginBottom: 10 }}>
-                <div className="dim" style={labelStyle}>compliance frameworks</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {s.compliance_frameworks.slice(0, 6).map((fw) => <Pill key={fw} on={isActive}>{fw}</Pill>)}
-                </div>
-              </div>
-              <div style={{ marginBottom: 10 }}>
-                <div className="dim" style={labelStyle}>policy packs</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                  {s.policy_packs.map((p) => <Pill key={p} on={isActive}>{p}</Pill>)}
-                </div>
-              </div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                <div>
-                  <div className="dim" style={labelStyle}>scan modes</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {(s.recommended_modes || []).slice(0, 4).map((m) => (
-                      <Pill key={m.id} on={isActive}>{m.ot_safe ? "🛰 " : ""}{m.id}</Pill>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="dim" style={labelStyle}>separation</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
-                    {(s.environment_separation || []).map((e) => <Pill key={e} on={isActive}>{e}</Pill>)}
-                  </div>
-                </div>
-              </div>
-              {(s.required_evidence?.length ?? 0) > 0 && (
-                <div className="dim" style={{ fontSize: 11, lineHeight: 1.5 }}>
-                  evidence: {(s.required_evidence ?? []).slice(0, 3).join(" · ")}
-                </div>
-              )}
-
-              <button
-                className={`btn ${isActive ? "" : "primary"}`}
-                disabled={isActive || !canSet || busy === s.id}
-                onClick={() => void select(s.id)}
-                style={{ width: "100%", marginTop: 12, opacity: isActive ? 0.6 : 1 }}
-              >
-                {busy === s.id ? "applying…" : isActive ? "active profile" : `set as active sector`}
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+      </Panel>
+    </>
   );
 }
-
-const labelStyle: React.CSSProperties = {
-  fontSize: 10.5, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5,
-};
