@@ -1239,3 +1239,10 @@ export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult
 export const apiReportTemplates = () => _rsGet<any>("/api/v1/report-templates");
 export const apiReportScheduleCreate = (body: { name: string; template_id: string; frequency: string; scan_target?: string; requirements?: string[]; recipients?: string[] }) =>
   _rsPost<any>("/api/v1/report-schedules", body);
+
+/* OT maintenance windows (author + list + cancel) and operation classes. */
+export const apiOtSafetyOperations = () => _rsGet<any>("/api/v1/ot/safety/operations");
+export const apiOtCreateMaintenanceWindow = (body: {
+  window_ref: string; title?: string; starts_at: string; ends_at: string;
+  change_ticket: string; allowed_action_class?: string; device_ids?: string[]; zones?: string[]; sites?: string[]; operations?: string[];
+}) => _rsPost<any>("/api/v1/ot/maintenance-windows", body);

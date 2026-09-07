@@ -8,6 +8,7 @@ import {
   apiPaymentKeys, apiPaymentSummary, apiPaymentForecast, apiPaymentCeremonies,
   apiApiKeyRotationReport, apiWorkloadCa, apiWorkloadIssueSvid, apiWorkloadVerify,
   apiSafeScanPolicy, apiSafeScanEmergencyStop, apiOtMaintenanceWindows,
+  apiOtSafetyOperations, apiOtCreateMaintenanceWindow, apiOtCancelWindow,
 } from "../lib/api.js";
 
 type AnyR = { ok?: boolean; data?: any; error?: string };
@@ -168,9 +169,105 @@ export default function Trust() {
           ])}
         />
         <p className="dim" style={{ fontSize: 12.5, marginTop: 10 }}>
-          OT maintenance windows declared: {windows.data.total_count ?? windowList.length}. Active probing of OT/ICS environments is permitted only inside an explicit, authorized window.
+          Active probing of OT/ICS environments is permitted only inside an explicit, authorized maintenance window; SIS/ESD are never probed. Declare windows below.
         </p>
       </Panel>
+
+      <OtWindowsPanel onChange={() => windows.reload()} />
     </>
+  );
+}
+
+function OtWindowsPanel({ onChange }: { onChange: () => void }) {
+  const list = useLive<any>("/api/v1/ot/maintenance-windows", { windows: [], total_count: 0 });
+  const ops = useLive<any>("/api/v1/ot/safety/operations", { passive_operations: [], active_operations: [] });
+  const [form, setForm] = useState({
+    window_ref: "", title: "", starts_at: "", ends_at: "", change_ticket: "", zones: "", action_class: "interact",
+  });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const create = async () => {
+    if (!form.window_ref.trim() || !form.starts_at || !form.ends_at || form.change_ticket.trim().length < 3) {
+      setMsg({ ok: false, text: "window ref, start/end (ISO 8601) and a change ticket are required" });
+      return;
+    }
+    setBusy(true);
+    const r = await apiOtCreateMaintenanceWindow({
+      window_ref: form.window_ref.trim(),
+      title: form.title || undefined,
+      starts_at: new Date(form.starts_at).toISOString(),
+      ends_at: new Date(form.ends_at).toISOString(),
+      change_ticket: form.change_ticket.trim(),
+      allowed_action_class: form.action_class,
+      zones: form.zones.split(",").map((z) => z.trim()).filter(Boolean),
+    });
+    setBusy(false);
+    if (r.ok) {
+      setMsg({ ok: true, text: `window ${r.data?.window_ref ?? form.window_ref} → ${r.data?.status ?? "APPROVED"}` });
+      setForm({ window_ref: "", title: "", starts_at: "", ends_at: "", change_ticket: "", zones: "", action_class: "interact" });
+      list.reload(); onChange();
+    } else setMsg({ ok: false, text: r.error ?? "rejected (outside policy / overlap / missing ticket)" });
+  };
+
+  const cancel = async (ref: string) => {
+    const r = await apiOtCancelWindow(ref);
+    if (r.ok) { list.reload(); onChange(); }
+    else setMsg({ ok: false, text: r.error ?? "cancel failed" });
+  };
+
+  const wins = list.data.windows ?? [];
+  const input: React.CSSProperties = { flex: 1, minWidth: 150, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" };
+
+  return (
+    <Panel title="OT maintenance windows" sub={`${list.data.total_count ?? wins.length} authorized window(s) — active probing allowed only inside these`} className="mt">
+      <div className="row" style={{ flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+        <input style={input} placeholder="window ref (e.g. MW-2026-014)" value={form.window_ref} onChange={(e) => set("window_ref", e.target.value)} />
+        <input style={input} placeholder="title" value={form.title} onChange={(e) => set("title", e.target.value)} />
+        <input style={input} placeholder="change ticket (CHG-…)" value={form.change_ticket} onChange={(e) => set("change_ticket", e.target.value)} />
+        <input style={input} placeholder="zones (comma-separated)" value={form.zones} onChange={(e) => set("zones", e.target.value)} />
+        <label style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", flexDirection: "column", gap: 2 }}>
+          action class
+          <select style={{ ...input, minWidth: 140 }} value={form.action_class} onChange={(e) => set("action_class", e.target.value)}>
+            <option value="interact">interact</option>
+            <option value="maintain">maintain</option>
+            <option value="passive">passive-only</option>
+          </select>
+        </label>
+        <label style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", flexDirection: "column", gap: 2 }}>
+          start
+          <input type="datetime-local" style={input} value={form.starts_at} onChange={(e) => set("starts_at", e.target.value)} />
+        </label>
+        <label style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", flexDirection: "column", gap: 2 }}>
+          end
+          <input type="datetime-local" style={input} value={form.ends_at} onChange={(e) => set("ends_at", e.target.value)} />
+        </label>
+        <button className="btn primary" onClick={() => void create()} disabled={busy}>{busy ? "Requesting…" : "Declare window"}</button>
+      </div>
+      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "✓ " : ""}{msg.text}</Badge></div>}
+
+      <Table
+        head={["window", "title", "window (UTC)", "zones", "ticket", "status", ""]}
+        rows={wins.map((w: any) => [
+          <span className="mono" key="r">{w.window_ref}</span>,
+          <span key="t" style={{ fontSize: 12.5 }}>{w.title || "—"}</span>,
+          <span className="mono" key="w" style={{ fontSize: 11.5 }}>{String(w.starts_at).replace("T", " ").slice(0, 16)} → {String(w.ends_at).replace("T", " ").slice(0, 16)}</span>,
+          <span key="z" style={{ fontSize: 12 }}>{(w.zones ?? []).join(", ") || "—"}</span>,
+          <span className="mono" key="c" style={{ fontSize: 12 }}>{w.change_ticket}</span>,
+          <Badge key="s" tone={w.is_cancelled ? "red" : w.status === "APPROVED" ? "green" : "amber"}>{w.is_cancelled ? "CANCELLED" : w.status}</Badge>,
+          !w.is_cancelled
+            ? <button key="x" className="btn sm" style={{ borderColor: "var(--red)", color: "var(--red)" }} onClick={() => void cancel(w.window_ref)}>cancel</button>
+            : <span key="x" className="dim">—</span>,
+        ])}
+      />
+      {wins.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No maintenance windows declared. Outside a window, OT/ICS scanning stays strictly passive.</p>}
+
+      <p className="dim" style={{ fontSize: 12, marginTop: 12 }}>
+        Passive operations (always allowed): {(ops.data.passive_operations ?? []).slice(0, 6).join(", ")}{(ops.data.passive_operations ?? []).length > 6 ? "…" : ""}.
+        {" "}Active operations (window-only): {(ops.data.active_operations ?? []).slice(0, 6).join(", ")}…
+      </p>
+    </Panel>
   );
 }
