@@ -1080,3 +1080,41 @@ export const apiPqcDowngrade = (host: string, port = 443, sni?: string) =>
 
 export const apiCodeRuleScan = (filename: string, source: string) =>
   _ca<any>("/api/v1/crypto-assurance/code-rules/scan", { filename, source });
+
+/* ========================================================================== */
+/* DevSecOps pipeline: container CVE scan, K8s/IaC misconfig, cloud CIS       */
+/* posture, SBOM CycloneDX/SPDX import+export + pinning, and outbound         */
+/* connectors (ServiceNow/Jira, Splunk HEC/Elastic, Kafka/RabbitMQ, Slack/Teams). */
+/* ========================================================================== */
+
+async function _ds<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+export const apiContainerScan = (packages: any[], feed: any[], dockerfile?: string) =>
+  _ds<any>("/api/v1/devsecops/container-scan", { packages, feed, dockerfile });
+
+export const apiK8sScan = (manifestsYaml: string) =>
+  _ds<any>("/api/v1/devsecops/k8s-manifest-scan", { manifests_yaml: manifestsYaml });
+
+export const apiCloudPosture = (resources: any[]) =>
+  _ds<any>("/api/v1/devsecops/cloud-posture", { resources });
+
+export const apiSbomImport = (doc: any) =>
+  _ds<any>("/api/v1/devsecops/sbom/import", { doc });
+
+export const apiSbomExport = (components: any[], format: "cyclonedx" | "spdx") =>
+  _ds<any>("/api/v1/devsecops/sbom/export", { components, format });
+
+export const apiConnectorPreview = (provider: string, finding: any, target: Record<string, unknown>, deliverLive = false) =>
+  _ds<any>("/api/v1/devsecops/connectors/preview", { provider, finding, target, deliver_live: deliverLive });

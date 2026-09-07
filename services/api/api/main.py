@@ -79,6 +79,7 @@ from api.routers import (
     scim,
     workload,
     crypto_assurance,
+    devsecops,
     onboarding,
     control_plane,
     enterprise,
@@ -302,6 +303,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(sso.router, prefix=prefix)
     app.include_router(scim.router, prefix=prefix)
     app.include_router(workload.router, prefix=prefix)
+    app.include_router(devsecops.router, prefix=prefix)
     app.include_router(crypto_assurance.router, prefix=prefix)
     app.include_router(onboarding.router, prefix=prefix)
     app.include_router(control_plane.router, prefix=prefix)
