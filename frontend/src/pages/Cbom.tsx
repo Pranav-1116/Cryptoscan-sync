@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, Tabs, Code, PageHead } from "../components/ui.jsx";
-import { bomComponents, bomDependencies, bomDiff, bomHistory, globalState } from "../data/initial.js";
 import { apiBom, apiLiveBom, LiveBadge, ApiResult, LiveBomResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 
@@ -14,7 +13,11 @@ export default function Cbom() {
   // live CBOM assembled from the scanner cycle (algorithms/libraries/packages)
   const liveBomRes = usePollingApi(apiLiveBom, 8000);
   const liveBom = (liveBomRes.data ?? null) as LiveBomResponse | null;
-  const liveComponents = liveBom?.cbom.components ?? [];
+  const bomComponents: any[] = liveBom?.cbom.components ?? [];
+  const bomDependencies: any[] = liveBom?.cbom.dependencies ?? [];
+  const bomDiff = (liveBom?.cbom as any)?.diff ?? { added: [], removed: [], changed: [] };
+  const bomHistory: any[] = liveBom?.cbom.history ?? liveBom?.versions ?? [];
+  const cbomVersion = liveBom?.cbom.version ?? bomHistory.length;
   const liveCounts = liveBom?.cbom.counts ?? {};
   const Q_TONE: Record<string, "red" | "amber" | "green" | ""> = {
     vulnerable: "red", broken: "red", at_risk: "amber", safe: "green",
@@ -35,7 +38,7 @@ export default function Cbom() {
         sub="Cryptographic Bill of Materials — CycloneDX 1.6 · live with every crypto change"
         right={
           <div className="row">
-            <Badge tone="green"><span className="dot" /> v{globalState.cbomVersion} · LATEST</Badge>
+            <Badge tone="green"><span className="dot" /> v{cbomVersion} · LATEST</Badge>
             <button className="btn sm" onClick={() => void fetchLive()} disabled={busy}>
               {busy ? "Fetching…" : "Fetch live CBOM"}
             </button>
@@ -165,7 +168,7 @@ export default function Cbom() {
           <Code>{`{
   "bomFormat": "CycloneDX",
   "specVersion": "1.6",
-  "version": ${globalState.cbomVersion || 0},
+  "version": ${cbomVersion || 0},
   "components": [ ${bomComponents.length} components ],
   "dependencies": [ ${bomDependencies.length} edges ],
   "zelinx": {

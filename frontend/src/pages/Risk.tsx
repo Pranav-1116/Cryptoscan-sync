@@ -1,20 +1,27 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { risk } from "../data/initial.js";
-import { apiRisk, LiveBadge, ApiResult } from "../lib/api.js";
+import { apiRisk, apiStatsSummary, ApiResult } from "../lib/api.js";
+
+interface RiskResp { score?: number; level?: string; count?: number; }
+interface StatsResp { open_drift?: Record<string, number>; total_findings?: number; }
 
 export default function Risk() {
-  const [sel, setSel] = useState(-1);
-  const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
+  const [live, setLive] = useState<ApiResult<RiskResp> | null>(null);
+  const [stats, setStats] = useState<StatsResp | null>(null);
   const [busy, setBusy] = useState(false);
-  const c = risk.counts;
 
   const scoreEstate = async () => {
     setBusy(true);
-    const res = await apiRisk();
-    setLive(res);
+    const [r, s] = await Promise.all([apiRisk(), apiStatsSummary()]);
+    setLive(r as ApiResult<RiskResp>);
+    if (s.ok && s.data) setStats(s.data as StatsResp);
     setBusy(false);
   };
+
+  useEffect(() => { void scoreEstate(); /* live on mount — no static fallback */ }, []);
+
+  const drift = stats?.open_drift ?? {};
+  const level = live?.data?.level ?? "—";
 
   return (
     <>
@@ -24,64 +31,53 @@ export default function Risk() {
         sub="Weighted risk model 0–100 · CRITICAL ≥ 80 · HIGH ≥ 60 · MEDIUM ≥ 40"
         right={
           <div className="row">
-            <Badge tone="red">{c.CRITICAL} CRITICAL</Badge>
+            <Badge tone={live?.data?.score && live.data.score >= 80 ? "red" : "green"}>
+              SCORE {live?.data?.score ?? "—"} · {level}
+            </Badge>
             <button className="btn sm" onClick={() => void scoreEstate()} disabled={busy}>
-              {busy ? "Scoring…" : "Score estate (live)"}
+              {busy ? "Scoring…" : "Re-score estate (live)"}
             </button>
-            {live && <LiveBadge source={live.source} label={live.source === "live" ? "LIVE API RESULT" : "BACKEND OFFLINE"} />}
           </div>
         }
       />
       {live?.data && (
-        <Panel title="POST /api/v1/platform/risk — engine response" sub="eight-factor weighted score from the control plane" className="mt">
+        <Panel title="POST /api/v1/platform/risk — live engine response" sub="eight-factor weighted score from the control plane" className="mt">
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
         </Panel>
       )}
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
-        {[["critical", c.CRITICAL, "red"], ["high", c.HIGH, "red"], ["medium", c.MEDIUM, "amber"], ["low", c.LOW, "green"]].map(([k, v, tone]) => (
-          <div className="kpi" key={k}><span className="k">{k}</span><span className="v" style={{ color: `var(--${tone})` }}>{v}</span></div>
+        {[["critical", drift.CRITICAL ?? 0, "red"], ["high", drift.HIGH ?? 0, "red"],
+          ["medium", drift.MEDIUM ?? 0, "amber"], ["low", drift.INFO ?? 0, "green"]].map(([k, v, tone]) => (
+          <div className="kpi" key={k as string}><span className="k">{k}</span><span className="v" style={{ color: `var(--${tone})` }}>{v}</span></div>
         ))}
       </div>
 
-      <div className="grid cols-2" style={{ marginBottom: 16 }}>
-        <Panel title="Risk map" sub="impact × exposure">
-          <div className="matrix">
-            <div className="cell hh"><b className="grad-text">{risk.matrix["impact:high/exposure:high"]}</b><span>critical</span></div>
-            <div className="cell hl"><b className="grad-text">{risk.matrix["impact:high/exposure:low"]}</b><span>high impact · low exposure</span></div>
-            <div className="cell lh"><b className="grad-text">{risk.matrix["impact:low/exposure:high"]}</b><span>low impact · high exposure</span></div>
-            <div className="cell ll"><b className="grad-text">{risk.matrix["impact:low/exposure:low"]}</b><span>low</span></div>
-          </div>
-        </Panel>
-        <Panel title="Blast radius view" sub="select a finding to see affected assets">
-          <Table
-            clickable
-            selected={sel}
-            onSelect={setSel}
-            head={["finding", "severity", "assets", "evidence"]}
-            rows={risk.topFindings.map((f) => [
-              <span style={{ fontSize: 13 }}>{f.title}</span>,
-              <Badge>{f.severity}</Badge>,
-              <span className="num">{f.assets}</span>,
-              <span className="num">{f.evidence}</span>,
-            ])}
-          />
-          {sel >= 0 && (
-            <div className="tree mt" style={{ marginTop: 14 }}>
-              Blast radius — {risk.topFindings[sel]?.title}:<br />
-              Affected assets are computed live from the dependency graph. Run a scan to populate findings and their blast radius.
-            </div>
-          )}
-        </Panel>
-      </div>
+      <Panel title="Open drift / findings" sub="live counts from the evidence store">
+        <Table
+          head={["severity bucket", "open items", "source"]}
+          rows={[
+            ["CRITICAL drift", drift.CRITICAL ?? 0, "stats summary"],
+            ["HIGH drift", drift.HIGH ?? 0, "stats summary"],
+            ["MEDIUM drift", drift.MEDIUM ?? 0, "stats summary"],
+            ["INFO drift", drift.INFO ?? 0, "stats summary"],
+            ["total findings", stats?.total_findings ?? 0, "scans"],
+          ].map(([k, v, src]) => [
+            <span style={{ fontSize: 13 }}>{k}</span>,
+            <Badge tone={(v as number) > 0 ? "red" : "green"}>{v}</Badge>,
+            <span className="dim mono" style={{ fontSize: 12 }}>{src}</span>,
+          ])}
+        />
+        {!stats && <p className="dim" style={{ fontSize: 13 }}>Run a scan to populate risk findings and their blast radius.</p>}
+      </Panel>
 
-      <Panel title="Weighted risk model" sub="the deterministic scoring weights">
+      <Panel title="Weighted risk model" sub="the deterministic scoring weights" className="mt">
         <Table
           head={["factor", "weight"]}
           rows={[
             ["quantum vulnerability", "0.20"], ["algorithm strength", "0.20"], ["key size", "0.15"],
             ["protocol exposure", "0.10"], ["trust chain", "0.15"], ["library risk", "0.10"],
             ["hardware capability", "0.05"], ["vendor posture", "0.05"],
-          ].map(([k, v]) => [k, <span className="num">{v}</span>])}
+          ].map(([k, v]) => [k, <span className="num" key={k}>{v}</span>])}
         />
       </Panel>
     </>

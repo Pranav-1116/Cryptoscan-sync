@@ -1,12 +1,22 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
-import { globalState, events, risk, networkAssets, cloudResources, vendors, hardware } from "../data/initial.js";
 import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
+import { useLive } from "../lib/useLive.js";
 
 export default function CommandCenter() {
-  const g = globalState;
+  // Live domain counts straight from the control plane (no static asset lists).
+  const liveInventory = useLive<{ assets?: any[]; total?: number }>("/api/v1/live/inventory", {});
+  const liveAgents = useLive<{ agents?: any[] }>("/api/v1/control/agents", { agents: [] });
+  const recentEvents = useLive<{ events?: any[] }>("/api/v1/events/recent", { events: [] });
+  const g = {
+    // every value defaults to zero/empty — populated only by live data
+    pqcReadyPct: 0, hybridReadyPct: 0, migrationRequiredPct: 0, risks: 0,
+    activeScanners: 0, totalScanners: 0, eventsPerSec: 0, agentsHealthy: 0, agentsTotal: 0,
+    scannerHealthPct: 0, evidenceHealthPct: 0, cbomVersion: 0, hbomVersion: 0,
+    liveChanges24h: 0, criticalFindings: 0, highFindings: 0, pqcExposurePct: 0, migrationProgressPct: 0,
+  };
   const [backend, setBackend] = useState<boolean | null>(null);
   const [scope, setScope] = useState<ApiResult<Record<string, unknown>>>({ source: "offline", data: null });
   const rt = useRealtime();
@@ -25,8 +35,32 @@ export default function CommandCenter() {
   const lastScanEvent = rt.events.find((e) => e.type === "live_scan.completed");
   const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
   const alx = (liveAlerts.data ?? null) as LiveAlertsResponse | null;
-  const ls = (liveStats.data ?? {}) as Record<string, number>;
+  const ls = (liveStats.data ?? {}) as Record<string, any>;
   const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
+
+  // Derive every dashboard KPI from live endpoints (zero until real data exists).
+  const cov = (ls.coverage ?? {}) as Record<string, number>;
+  const agents = liveAgents.data.agents ?? [];
+  const inventoryAssets = liveInventory.data.assets ?? [];
+  g.totalScanners = ls.total_scans ?? 0;
+  g.activeScanners = ls.total_scans ?? 0;
+  g.agentsTotal = agents.length;
+  g.agentsHealthy = agents.filter((a: any) => a.status === "HEALTHY" || a.healthy).length;
+  g.scannerHealthPct = g.agentsTotal ? Math.round((g.agentsHealthy / g.agentsTotal) * 100) : 0;
+  g.risks = ls.total_findings ?? 0;
+  g.criticalFindings = (ls.open_drift ?? {}).CRITICAL ?? 0;
+  g.highFindings = (ls.open_drift ?? {}).HIGH ?? 0;
+  g.liveChanges24h = (recentEvents.data.events ?? []).length;
+  g.evidenceHealthPct = ls.total_findings ? Math.round(((ls.compliant ?? 0) / Math.max(1, ls.total_findings)) * 100) : 0;
+  g.cbomVersion = cov.with_cbom ?? 0;
+  g.pqcReadyPct = Math.round(cov.coverage_pct ?? 0);
+  g.migrationProgressPct = Math.round(cov.coverage_pct ?? 0);
+  const networkAssets = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "network");
+  const cloudResources = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "cloud");
+  const vendors = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "vendor");
+  const hardware = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "hardware");
+  const riskCounts: Record<string, number> = { CRITICAL: g.criticalFindings, HIGH: g.highFindings, MEDIUM: (ls.open_drift ?? {}).MEDIUM ?? 0, LOW: (ls.open_drift ?? {}).INFO ?? 0 };
+  const events = recentEvents.data.events ?? [];
 
   /* realtime feed — shows only events streamed live from the control plane */
   const liveFeed = rt.events.filter((e) => !isSystemEvent(e.type)).slice(0, 6).map((e) => ({
@@ -35,7 +69,14 @@ export default function CommandCenter() {
     text: String(e.payload?.detail || e.payload?.target || ""),
     severity: severityOf(e.type),
   }));
-  const feed = rt.connected ? liveFeed : events.slice(0, 6).map((e) => ({ ...e, severity: e.severity || "LOW" }));
+  const feed = liveFeed.length
+    ? liveFeed
+    : events.slice(0, 6).map((e: any) => ({
+        t: new Date(e.ts ?? e.timestamp).toLocaleTimeString("en-GB", { hour12: false }),
+        tag: String(e.type ?? "").replace(/^(platform|monitor|demo)\./, "").slice(0, 22).toUpperCase(),
+        text: String(e.payload?.detail || e.payload?.target || ""),
+        severity: severityOf(e.type),
+      }));
 
   return (
     <>
@@ -190,7 +231,7 @@ export default function CommandCenter() {
         </Panel>
         <Panel title="Risk distribution" sub="portfolio">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {Object.entries(risk.counts).map(([lv, n]) => (
+            {Object.entries(riskCounts).map(([lv, n]) => (
               <div key={lv} className="spread">
                 <Badge tone={lv === "CRITICAL" || lv === "HIGH" ? "red" : lv === "MEDIUM" ? "amber" : "green"}>{lv}</Badge>
                 <span className="mono">{n}</span>

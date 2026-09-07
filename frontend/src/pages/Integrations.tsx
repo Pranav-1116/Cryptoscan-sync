@@ -1,6 +1,5 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { integrations as configuredIntegrations } from "../data/initial.js";
 import {
   apiIntegrations, apiDeliveries, apiTestIntegration, apiFlushDeliveries,
   LiveBadge,
@@ -66,13 +65,7 @@ export default function Integrations() {
           </button>,
         ];
       })
-    : configuredIntegrations.map((i) => [
-        <span style={{ fontWeight: 600 }}>{i.name}</span>,
-        <Badge tone="cyan">{i.kind}</Badge>,
-        <Badge tone="green">{i.status}</Badge>,
-        <span style={{ fontSize: 12.5 }} className="dim">{i.detail}</span>,
-        <span className="dim" style={{ fontSize: 12 }}>configured</span>,
-      ]);
+    : [];
 
   return (
     <>

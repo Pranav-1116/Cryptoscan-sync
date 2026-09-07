@@ -1,25 +1,11 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
-import { drift } from "../data/initial.js";
 import { apiDrift, apiLiveDrift, LiveBadge, ApiResult, LiveDriftResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useLive } from "../lib/useLive.js";
 
-const CATS: { key: keyof typeof drift.baseline; label: string }[] = [
-  { key: "network", label: "Network drift" },
-  { key: "cloud", label: "Cloud drift" },
-  { key: "vendor", label: "Vendor drift" },
-  { key: "hardware", label: "Hardware drift" },
-  { key: "crypto", label: "Crypto drift" },
-  { key: "certificate", label: "Certificate drift" },
-  { key: "firmware", label: "Firmware drift" },
-  { key: "pqc", label: "PQC drift" },
-];
-
-function diff(base: string[], live: string[]) {
-  const added = live.filter((x) => !base.includes(x));
-  const removed = base.filter((x) => !live.includes(x));
-  return { added, removed };
-}
+/* baseline/live are empty until real scans freeze a baseline — no static drift. */
+const EMPTY: Record<string, string[]> = { network: [], cloud: [], vendor: [], hardware: [], crypto: [], certificate: [], firmware: [], pqc: [] };
 
 export default function Drift() {
   const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
@@ -35,7 +21,7 @@ export default function Drift() {
 
   const runLiveCheck = async () => {
     setBusy(true);
-    const res = await apiDrift(drift.baseline, drift.live);
+    const res = await apiDrift(EMPTY, EMPTY);
     setLive(res);
     setBusy(false);
   };
@@ -48,7 +34,7 @@ export default function Drift() {
         sub="Baseline → current state → diff · every category watched continuously"
         right={
           <div className="row">
-            <Badge tone={Object.values(drift.baseline).some((arr: string[]) => arr.length > 0) ? "green" : ""}><span className="dot" /> {Object.values(drift.baseline).some((arr: string[]) => arr.length > 0) ? "BASELINE READY" : "NO BASELINE — RUN A SCAN"}</Badge>
+            <Badge tone=""><span className="dot" /> FREEZE A BASELINE AFTER FIRST SCAN</Badge>
             <button className="btn sm" onClick={() => void runLiveCheck()} disabled={busy}>
               {busy ? "Checking…" : "Run live drift check"}
             </button>
@@ -90,19 +76,7 @@ export default function Drift() {
           <Code>{JSON.stringify(live.data, null, 2)}</Code>
         </Panel>
       )}
-      <Panel title="Drift matrix" sub="frozen baseline vs latest live state">
-        <Table
-          head={["category", "added (live only)", "removed (baseline only)"]}
-          rows={CATS.map((c) => {
-            const d = diff(drift.baseline[c.key], drift.live[c.key]);
-            return [
-              c.label,
-              d.added.length ? <Badge tone="red">+ {d.added.join(", ")}</Badge> : <Badge tone="green">none</Badge>,
-              d.removed.length ? <Badge tone="amber">− {d.removed.join(", ")}</Badge> : <Badge tone="green">none</Badge>,
-            ];
-          })}
-        />
-      </Panel>
+      <DriftDigest />
       <div className="grid cols-2 mt">
         <Panel title="Why drift matters" sub="deterministic change detection">
           <p className="dim" style={{ fontSize: 13.5, marginTop: 0 }}>
@@ -125,5 +99,26 @@ export default function Drift() {
         </Panel>
       </div>
     </>
+  );
+}
+
+function DriftDigest() {
+  const digest = useLive<{ total?: number; open?: number; by_severity?: Record<string, number>; highlights?: any[] }>("/api/v1/drift/digest", { total: 0, open: 0, by_severity: {}, highlights: [] });
+  const sev = digest.data.by_severity ?? {};
+  const highlights = digest.data.highlights ?? [];
+  return (
+    <Panel title="Drift digest" sub="frozen baseline vs latest live state (live from the control plane)">
+      <Table
+        head={["severity", "open drift items"]}
+        rows={[["CRITICAL", sev.CRITICAL ?? 0], ["HIGH", sev.HIGH ?? 0], ["MEDIUM", sev.MEDIUM ?? 0], ["INFO", sev.INFO ?? 0]]
+          .map(([k, v]) => [k, <span className="num" key={k as string}>{v}</span>])}
+      />
+      {highlights.length > 0 && (
+        <div className="dim" style={{ fontSize: 12.5, marginTop: 10 }}>
+          {highlights.slice(0, 5).map((h, i) => (<div key={i}>• {typeof h === "string" ? h : h.title ?? h.detail ?? JSON.stringify(h)}</div>))}
+        </div>
+      )}
+      {digest.data.open === 0 && <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>No drift recorded — freeze a baseline after your first scan; changes then appear here.</div>}
+    </Panel>
   );
 }

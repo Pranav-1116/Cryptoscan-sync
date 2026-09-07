@@ -1,26 +1,28 @@
 import React from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
-import {
-  networkAssets, cloudResources, vendors, hardware, algorithms,
-  bomComponents, globalState, assets,
-} from "../data/initial.js";
+import { useLive, LiveStatus } from "../lib/useLive.js";
 
 /* Unified live environment visualization (spec §5) — the five discovery
    domains feeding cryptography → applications → CBOM. All counts come from
-   the live platform; they are 0 until discovery/scan runs. */
+   the live platform (/assets + /stats/summary); they are 0 until discovery. */
 
 export default function LiveEnvironment() {
+  const assetsLive = useLive<{ assets?: any[] }>("/api/v1/assets", { assets: [] });
+  const stats = useLive<Record<string, any>>("/api/v1/stats/summary", {});
+  const assetList = assetsLive.data.assets ?? [];
+  const cov = (stats.data.coverage ?? {}) as Record<string, any>;
+
   const counts = {
-    network: networkAssets.length,
-    cloud: cloudResources.length,
-    vendor: vendors.length,
-    hardware: hardware.length,
-    crypto: algorithms.length,
-    apps: assets.filter((a) => a.type === "application").length,
-    cbom: globalState.cbomVersion,
-    hbom: globalState.hbomVersion,
+    network: assetList.filter((a) => (a.kind ?? a.type ?? a.asset_type) === "network").length,
+    cloud: assetList.filter((a) => (a.kind ?? a.type ?? a.asset_type) === "cloud").length,
+    vendor: assetList.filter((a) => (a.kind ?? a.type ?? a.asset_type) === "vendor").length,
+    hardware: assetList.filter((a) => (a.kind ?? a.type ?? a.asset_type) === "hardware").length,
+    crypto: cov.with_cbom ?? 0,
+    apps: assetList.filter((a) => (a.kind ?? a.type ?? a.asset_type) === "application").length,
+    cbom: cov.with_cbom ?? 0,
+    hbom: cov.with_hbom ?? 0,
   };
-  const reconciled = bomComponents.length;
+  const reconciled = cov.systems ?? assetList.length;
   const hasData = reconciled > 0 || counts.network + counts.cloud + counts.vendor + counts.hardware + counts.crypto > 0;
 
   return (
@@ -29,8 +31,9 @@ export default function LiveEnvironment() {
         crumb="command center / live environment"
         title="Live environment"
         sub="One graph across network, cloud, vendor, hardware, cryptography and applications"
-        right={<Badge tone={reconciled ? "green" : ""}><span className="dot" /> {reconciled.toLocaleString()} RELATIONSHIPS</Badge>}
+        right={<Badge tone={reconciled ? "green" : ""}><span className="dot" /> {Number(reconciled).toLocaleString()} SYSTEMS</Badge>}
       />
+      <div style={{ marginBottom: 12 }}><LiveStatus loading={assetsLive.loading || stats.loading} error={assetsLive.error || stats.error} /></div>
 
       <Panel title="Unified map" sub="every domain feeds the cryptography layer — populated by discovery (global → region → org → environment → asset → crypto dependency)">
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "18px 0 8px", overflowX: "auto" }}>

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
-import { cryptoChanges } from "../data/initial.js";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
+import { useLive } from "../lib/useLive.js";
 
 const CATS = ["ALL", "CERTIFICATE", "PROTOCOL", "LIBRARY", "PQC", "HARDWARE", "CLOUD", "NETWORK", "ALGORITHM", "PLATFORM"];
 
@@ -26,21 +26,22 @@ function categoryOf(type: string): string {
 export default function CryptoChanges() {
   const [cat, setCat] = useState("ALL");
   const rt = useRealtime();
+  const backlog = useLive<{ events: any[] }>("/api/v1/events/recent", { events: [] });
 
-  const streamRows = rt.events.filter((e) => !isSystemEvent(e.type)).map((e) => ({
-    t: new Date(e.ts).toLocaleTimeString("en-GB", { hour12: false }),
-    tag: categoryOf(e.type),
-    text: `${e.type.replace(/^(platform|monitor|demo)\./, "")}: ${String(e.payload?.detail || e.payload?.target || "")}`,
+  const toRow = (e: any) => ({
+    t: new Date(e.ts ?? e.timestamp).toLocaleTimeString("en-GB", { hour12: false }),
+    tag: categoryOf(String(e.type ?? "")),
+    text: `${String(e.type ?? "").replace(/^(platform|monitor|demo)\./, "")}: ${String(e.payload?.detail || e.payload?.target || "")}`,
     severity: severityOf(e.type),
     id: e.id,
-  }));
+  });
 
-  const staticRows = cryptoChanges.map((c, i) => ({
-    t: c.t, tag: c.category, text: c.text, severity: c.severity, id: -i - 1000,
-  }));
-  const rows = (cat === "ALL" ? streamRows : streamRows.filter((r) => r.tag === cat))
-    .concat(cat === "ALL" ? staticRows : staticRows.filter((r) => r.tag === cat))
-    .slice(0, 40);
+  const liveRows = rt.events.filter((e) => !isSystemEvent(e.type)).map(toRow);
+  const backlogRows = (backlog.data.events ?? []).map(toRow);
+  const seen = new Set(liveRows.map((r) => r.id));
+  const streamRows = liveRows.concat(backlogRows.filter((r) => !seen.has(r.id)));
+
+  const rows = (cat === "ALL" ? streamRows : streamRows.filter((r) => r.tag === cat)).slice(0, 40);
 
   return (
     <>
