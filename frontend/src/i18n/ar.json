@@ -200,5 +200,6 @@
   "scanners.domainHardware": "الأجهزة",
   "scanners.domainVendor": "المورّد",
   "scanners.domainCrypto": "التشفير",
-  "nav.automation": "قواعد الأتمتة"
+  "nav.automation": "قواعد الأتمتة",
+  "nav.executiveView": "عرض تنفيذي"
 }

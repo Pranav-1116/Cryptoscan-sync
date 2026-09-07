@@ -43,6 +43,7 @@ import Automation from "./pages/Automation.jsx";
 import Resilience from "./pages/Resilience.jsx";
 import Trust from "./pages/Trust.jsx";
 import RoleDashboard from "./pages/RoleDashboard.jsx";
+import Executive from "./pages/Executive.jsx";
 import Accuracy from "./pages/Accuracy.jsx";
 import Organization from "./pages/Organization.jsx";
 import Notifications from "./pages/Notifications.jsx";
@@ -96,6 +97,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/resilience": Resilience,
   "/trust": Trust,
   "/role-home": RoleDashboard,
+  "/executive": Executive,
   "/accuracy": Accuracy,
   "/organization": Organization,
   "/notifications": Notifications,

@@ -200,5 +200,6 @@
   "scanners.domainHardware": "Hardware",
   "scanners.domainVendor": "Vendor",
   "scanners.domainCrypto": "Cryptography",
-  "nav.automation": "Automation rules"
+  "nav.automation": "Automation rules",
+  "nav.executiveView": "Executive view"
 }

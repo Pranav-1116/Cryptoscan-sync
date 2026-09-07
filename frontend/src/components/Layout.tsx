@@ -8,6 +8,7 @@ import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 const NAV = [
   { sectionKey: "nav.groupOverview", items: [
     { to: "/", labelKey: "nav.commandCenter", icon: "◈" },
+    { to: "/executive", labelKey: "nav.executiveView", icon: "▦" },
     { to: "/role-home", labelKey: "nav.roleWorkspace", icon: "◐" },
     { to: "/onboarding", labelKey: "nav.onboarding", icon: "➤" },
   ]},
