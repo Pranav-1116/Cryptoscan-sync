@@ -70,10 +70,7 @@
   "nav.compliance": "Compliance",
   "nav.governance": "Governance",
   "nav.resilience": "Resilience & DR",
-<<<<<<< HEAD
-=======
   "nav.trustKeys": "Trust & Keys",
->>>>>>> 757bb4b (feat(trust,notifications): Trust & Keys console + persisted notification routing)
   "nav.evidence": "Evidence",
   "nav.operate": "Operate",
   "nav.scanners": "Scanners",

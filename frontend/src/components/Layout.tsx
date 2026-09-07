@@ -56,10 +56,7 @@ const NAV = [
     { to: "/compliance", labelKey: "nav.compliance", icon: "✓" },
     { to: "/governance", labelKey: "nav.governance", icon: "⚖" },
     { to: "/resilience", labelKey: "nav.resilience", icon: "⛨" },
-<<<<<<< HEAD
-=======
     { to: "/trust", labelKey: "nav.trustKeys", icon: "⚿" },
->>>>>>> 757bb4b (feat(trust,notifications): Trust & Keys console + persisted notification routing)
     { to: "/evidence", labelKey: "nav.evidence", icon: "⛨" },
   ]},
   { sectionKey: "nav.operate", items: [
