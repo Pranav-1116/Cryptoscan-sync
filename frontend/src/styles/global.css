@@ -540,7 +540,7 @@ select.inp option { background: var(--panel); color: var(--text); }
   gap: 32px;
   padding: 44px 48px;
   background:
-    radial-gradient(1100px 520px at -10% -20%, rgba(47, 111, 214, 0.20), transparent 60%),
+    radial-gradient(1100px 520px at -10% -20%, rgba(59, 130, 246, 0.18), transparent 60%),
     radial-gradient(900px 500px at 110% 110%, rgba(0, 212, 255, 0.10), transparent 55%),
     var(--bg-2);
   border-right: 1px solid var(--line);
@@ -564,7 +564,7 @@ select.inp option { background: var(--panel); color: var(--text); }
 .auth-logo .mark {
   width: 40px; height: 40px; border-radius: 9px;
   display: grid; place-items: center;
-  background: var(--grad); color: #fff;
+  background: var(--grad); color: #04121d;
   font-family: var(--sans); font-weight: 800; font-size: 20px;
 }
 .auth-logo .tagline {

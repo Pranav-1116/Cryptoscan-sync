@@ -18,7 +18,7 @@ function BrandPanel() {
   return (
     <aside className="auth-brand">
       <div className="auth-logo">
-        <span className="mark">Z</span>
+        <span className="mark">◈</span>
         <span>
           ZELNX
           <span className="tagline">CRYPTO INTELLIGENCE PLATFORM</span>

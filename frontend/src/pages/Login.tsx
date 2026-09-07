@@ -20,7 +20,7 @@ function BrandPanel() {
     <aside className="auth-brand">
       <div style={{ display: "flex", justifyContent: "flex-end" }}><LanguageSwitcher /></div>
       <div className="auth-logo">
-        <span className="mark">Z</span>
+        <span className="mark">◈</span>
         <span>
           ZELNX
           <span className="tagline">CRYPTO INTELLIGENCE PLATFORM</span>
