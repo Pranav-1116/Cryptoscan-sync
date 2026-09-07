@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
-import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, apiLiveScanRun, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
+import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, apiLiveScanRun, apiLiveBom, apiLiveDrift, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 import { useLive } from "../lib/useLive.js";
@@ -16,7 +16,7 @@ export default function CommandCenter() {
     activeScanners: 0, totalScanners: 0, eventsPerSec: 0, agentsHealthy: 0, agentsTotal: 0,
     scannerHealthPct: 0, evidenceHealthPct: 0, cbomVersion: 0, hbomVersion: 0,
     liveChanges24h: 0, criticalFindings: 0, highFindings: 0, pqcExposurePct: 0, migrationProgressPct: 0,
-    totalAssets: 0, cryptoAssets: 0,
+    totalAssets: 0, cryptoAssets: 0, quantumVulnerable: 0, activeDrift: 0,
   };
   const [firstScanBusy, setFirstScanBusy] = useState(false);
   const [firstScanMsg, setFirstScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -49,7 +49,11 @@ export default function CommandCenter() {
   const lsx = (liveScan.data ?? null) as LiveScanStatus | null;
   const lastScanEvent = rt.events.find((e) => e.type === "live_scan.completed");
   const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
+  const liveBom = usePollingApi(apiLiveBom, 12000);
+  const liveDrift = usePollingApi(apiLiveDrift, 9000);
   const alx = (liveAlerts.data ?? null) as LiveAlertsResponse | null;
+  const bomCounts = (liveBom.data as any)?.cbom?.counts ?? {};
+  const activeDrift = Number((liveDrift.data as any)?.change_count ?? 0);
   const ls = (liveStats.data ?? {}) as Record<string, any>;
   const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
 
@@ -79,6 +83,10 @@ export default function CommandCenter() {
     .filter(([k]) => ["hardware_devices", "network_assets", "cloud_resources"].includes(k))
     .reduce((n, [, v]) => n + Number(v ?? 0), 0);
   g.cryptoAssets = (invCounts.libraries ?? 0) + (invCounts.certificates ?? 0) + (invCounts.processes ?? 0);
+  // quantum-vulnerable components come straight from the deterministic CBOM classifier;
+  // active drift is the count of live changes since the last baseline.
+  g.quantumVulnerable = Number(bomCounts.quantum_vulnerable ?? 0);
+  g.activeDrift = activeDrift;
   const hasInventory = g.totalAssets > 0 || g.cryptoAssets > 0;
   const riskCounts: Record<string, number> = { CRITICAL: g.criticalFindings, HIGH: g.highFindings, MEDIUM: (ls.open_drift ?? {}).MEDIUM ?? 0, LOW: (ls.open_drift ?? {}).INFO ?? 0 };
   const events = recentEvents.data.events ?? [];
@@ -193,22 +201,15 @@ export default function CommandCenter() {
         </Panel>
       )}
 
-      {/* global security state */}
-      <div className="grid cols-3" style={{ marginBottom: 16 }}>
-        <Panel title="Assets" sub="total inventory">
-          <div className="grad-text" style={{ fontSize: 44, fontWeight: 700 }}>{g.totalAssets.toLocaleString()}</div>
-          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{g.totalAssets === 0 ? "no assets discovered — run discovery" : "live inventory"}</div>
-        </Panel>
-        <Panel title="Crypto assets" sub="algorithms · certs · keys · libraries">
-          <div className="grad-text" style={{ fontSize: 44, fontWeight: 700 }}>{g.cryptoAssets.toLocaleString()}</div>
-          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>{g.cryptoAssets === 0 ? "no crypto inventory yet — run a scan" : "from live scans"}</div>
-        </Panel>
-        <Panel title="Risks" sub="active findings">
-          <div className="grad-text" style={{ fontSize: 44, fontWeight: 700 }}>{g.risks.toLocaleString()}</div>
-          <div className="dim" style={{ fontSize: 12.5, marginTop: 4 }}>
-            <Badge tone="red">{g.criticalFindings} CRITICAL</Badge> <Badge tone="red">{g.highFindings} HIGH</Badge>
-          </div>
-        </Panel>
+      {/* Five-question KPI strip — what do I have / what changed / what is risky /
+          what is quantum-vulnerable / what needs action. All live, zero until real. */}
+      <div className="kpi-strip">
+        <HeroKpi label="Total assets" q="what do I have?" value={g.totalAssets} tone="cyan" to="#/assets" />
+        <HeroKpi label="Crypto assets" q="what do I have?" value={g.cryptoAssets} tone="blue" to="#/cbom" />
+        <HeroKpi label="Quantum-vulnerable" q="what is quantum-vulnerable?" value={g.quantumVulnerable} tone={g.quantumVulnerable ? "red" : "green"} to="#/pqc" />
+        <HeroKpi label="Critical" q="what is risky?" value={g.criticalFindings} tone={g.criticalFindings ? "red" : "green"} to="#/risk" />
+        <HeroKpi label="Active drift" q="what changed?" value={g.activeDrift} tone={g.activeDrift ? "orange" : "green"} to="#/drift" />
+        <HeroKpi label="Scanners" q="what needs action?" value={`${g.agentsHealthy}/${g.agentsTotal}`} tone={g.agentsTotal && g.agentsHealthy === g.agentsTotal ? "green" : "amber"} to="#/scanners" suffix={g.agentsTotal ? (g.agentsHealthy === g.agentsTotal ? "healthy" : "degraded") : "idle"} />
       </div>
 
       {/* readiness bars */}
@@ -270,7 +271,7 @@ export default function CommandCenter() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {Object.entries(riskCounts).map(([lv, n]) => (
               <div key={lv} className="spread">
-                <Badge tone={lv === "CRITICAL" || lv === "HIGH" ? "red" : lv === "MEDIUM" ? "amber" : "green"}>{lv}</Badge>
+                <Badge>{lv}</Badge>
                 <span className="mono">{n}</span>
               </div>
             ))}
@@ -306,6 +307,19 @@ export default function CommandCenter() {
         </Panel>
       </div>
     </>
+  );
+}
+
+function HeroKpi({ label, q, value, tone, to, suffix }: { label: string; q: string; value: number | string; tone: string; to: string; suffix?: string }) {
+  const color = tone === "red" ? "var(--red)" : tone === "orange" ? "var(--orange)" : tone === "amber" ? "var(--amber)"
+    : tone === "green" ? "var(--green)" : tone === "blue" ? "var(--blue)" : "var(--cyan)";
+  return (
+    <a href={to} className="hero-kpi" style={{ textDecoration: "none", borderTopColor: color }}>
+      <span className="hero-q">{q}</span>
+      <span className="hero-label">{label}</span>
+      <span className="hero-v" style={{ color }}>{typeof value === "number" ? value.toLocaleString() : value}</span>
+      <span className="hero-suffix" style={{ color }}>● {suffix ?? (Number(value) === 0 ? "none yet" : "live")}</span>
+    </a>
   );
 }
 

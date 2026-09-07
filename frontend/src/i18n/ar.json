@@ -177,5 +177,13 @@
   "login.hero3Body": "أداء الكشف مقاس مقابل بيانات محجوبة مع نسبة عدم يقين مصرّح بها.",
   "login.alignedTo": "متوافق مع",
   "login.alreadySignedIn": "سجلت الدخول بالفعل باسم",
-  "login.enterConsole": "الدخول إلى الوحدة"
+  "login.enterConsole": "الدخول إلى الوحدة",
+  "nav.groupOverview": "نظرة عامة",
+  "nav.groupScanners": "الماسحات",
+  "nav.groupAssets": "الأصول",
+  "nav.groupIntelligence": "الاستخبارات",
+  "nav.groupAssess": "التقييم",
+  "nav.groupOperations": "العمليات",
+  "nav.groupGovern": "الحوكمة",
+  "nav.groupPlatform": "المنصة"
 }

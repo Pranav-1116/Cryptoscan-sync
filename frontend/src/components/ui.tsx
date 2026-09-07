@@ -47,14 +47,24 @@ export function Kpi({ k, v, tone }: { k: string; v: ReactNode; tone?: string }) 
 }
 
 const BADGE_TONE: Record<string, string> = {
-  QUANTUM_SAFE: "green", PQC_READY: "green", ACTIVE: "green", ONLINE: "green",
+  // success / ok — green
+  QUANTUM_SAFE: "green", PQC_READY: "green", ACTIVE: "green", ONLINE: "green", LIVE: "green",
   VALID: "green", HEALTHY: "green", LOW: "green", MATCHES: "green", COMPLIANT: "green",
-  CONNECTED: "green", RUNNING: "green", COMPLETED: "green", YES: "green",
-  QUANTUM_VULNERABLE: "red", EXPIRED: "red", CRITICAL: "red", HIGH: "red",
-  NON_COMPLIANT: "red", "NON-COMPLIANT": "red", STOPPED: "red",
+  CONNECTED: "green", RUNNING: "green", COMPLETED: "green", YES: "green", APPROVED: "green",
+  // critical — red
+  QUANTUM_VULNERABLE: "red", EXPIRED: "red", CRITICAL: "red", VULNERABLE: "red",
+  NON_COMPLIANT: "red", "NON-COMPLIANT": "red", STOPPED: "red", FAILED: "red", REVOKED: "red",
+  MIGRATION_REQUIRED: "red",
+  // high — orange
+  HIGH: "orange",
+  // warning / medium — amber
   EXPIRING: "amber", MEDIUM: "amber", SUSPECT: "amber", PARTIAL: "amber",
-  PAUSED: "amber", UNKNOWN: "amber", PQC_UNKNOWN: "amber", NEW: "amber", SCHEDULED: "amber",
-  HYBRID_READY: "violet", MIGRATION_REQUIRED: "red",
+  PAUSED: "amber", NEW: "amber", SCHEDULED: "amber", WARNING: "amber",
+  // informational / scanning — cyan·blue
+  SCANNING: "cyan", INFO: "blue", MONITORING: "cyan", TRANSITIONING: "blue",
+  HYBRID_READY: "violet", QUEUED: "blue",
+  // unknown — slate
+  UNKNOWN: "slate", PQC_UNKNOWN: "slate", OFFLINE: "slate",
 };
 
 export function Badge({ children, tone }: { children: ReactNode; tone?: string }) {
@@ -83,7 +93,7 @@ export function Ring({ pct, label, sub, tone = "cyan" }: { pct: number; label: R
   const r = 62;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.min(1, Math.max(0, pct)));
-  const colors: Record<string, string> = { cyan: "#4d9fff", green: "#2fb877", amber: "#e0a329", red: "#e0564f", violet: "#7c9cff" };
+  const colors: Record<string, string> = { cyan: "#00d4ff", green: "#22c55e", amber: "#f59e0b", orange: "#f97316", red: "#ef4444", violet: "#8b7cf6", blue: "#3b82f6" };
   const col = colors[tone || "cyan"] || colors.cyan;
   return (
     <div className="ring">

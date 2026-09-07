@@ -6,74 +6,68 @@ import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 
 const NAV = [
-  { sectionKey: "nav.commandCenter", items: [
-    { to: "/", labelKey: "nav.commandCenter", icon: "◎" },
+  { sectionKey: "nav.groupOverview", items: [
+    { to: "/", labelKey: "nav.commandCenter", icon: "◈" },
     { to: "/role-home", labelKey: "nav.roleWorkspace", icon: "◐" },
     { to: "/onboarding", labelKey: "nav.onboarding", icon: "➤" },
-    { to: "/env", labelKey: "nav.liveEnvironment", icon: "◉" },
-    { to: "/organization", labelKey: "nav.organization", icon: "◫" },
-    { to: "/sectors", labelKey: "nav.sectorProfiles", icon: "⛨" },
   ]},
-  { sectionKey: "nav.discovery", items: [
+  { sectionKey: "nav.groupScanners", items: [
+    { to: "/scanners", labelKey: "nav.scanners", icon: "⌖" },
+    { to: "/live-scanners", labelKey: "nav.realtimeScanners", icon: "◉" },
     { to: "/network", labelKey: "nav.network", icon: "◈" },
     { to: "/cloud", labelKey: "nav.cloud", icon: "☁" },
-    { to: "/vendor", labelKey: "nav.vendor", icon: "▤" },
     { to: "/hardware", labelKey: "nav.hardware", icon: "⌬" },
-    { to: "/crypto", labelKey: "nav.cryptography", icon: "⚿" },
+    { to: "/vendor", labelKey: "nav.vendor", icon: "▤" },
+    { to: "/runtime", labelKey: "nav.runtimeHosts", icon: "⧉" },
   ]},
-  { sectionKey: "nav.inventory", items: [
-    { to: "/catalog", labelKey: "nav.catalogs", icon: "☷" },
+  { sectionKey: "nav.groupAssets", items: [
     { to: "/assets", labelKey: "nav.assets", icon: "▣" },
-    { to: "/crypto-assets", labelKey: "nav.cryptoAssets", icon: "⚿" },
+    { to: "/catalog", labelKey: "nav.catalogs", icon: "☷" },
     { to: "/certificates", labelKey: "nav.certificates", icon: "⊞" },
-    { to: "/crypto-assurance", labelKey: "nav.cryptoAssurance", icon: "⚿" },
-    { to: "/devsecops", labelKey: "nav.devsecops", icon: "⛀" },
+    { to: "/crypto-assets", labelKey: "nav.cryptoAssets", icon: "⚿" },
     { to: "/libraries", labelKey: "nav.cryptoLibraries", icon: "▤" },
     { to: "/protocols", labelKey: "nav.protocols", icon: "⇄" },
+    { to: "/devsecops", labelKey: "nav.devsecops", icon: "⛀" },
   ]},
-  { sectionKey: "nav.boms", items: [
+  { sectionKey: "nav.groupIntelligence", items: [
+    { to: "/crypto", labelKey: "nav.cryptography", icon: "⚿" },
     { to: "/cbom", labelKey: "nav.cbom", icon: "⬡" },
     { to: "/hbom", labelKey: "nav.hbom", icon: "⬢" },
     { to: "/graph", labelKey: "nav.dependencyGraph", icon: "⬟" },
   ]},
-  { sectionKey: "nav.postQuantum", items: [
+  { sectionKey: "nav.groupAssess", items: [
     { to: "/pqc", labelKey: "nav.pqcReadiness", icon: "◬" },
     { to: "/pqc-map", labelKey: "nav.pqcMigrationMap", icon: "⇉" },
-    { to: "/agility", labelKey: "nav.cryptoAgility", icon: "◔" },
     { to: "/risk", labelKey: "nav.risk", icon: "⚠" },
     { to: "/drift", labelKey: "nav.drift", icon: "⇄" },
     { to: "/alerts", labelKey: "nav.alerts", icon: "▲" },
+    { to: "/agility", labelKey: "nav.cryptoAgility", icon: "◔" },
+    { to: "/crypto-assurance", labelKey: "nav.cryptoAssurance", icon: "⚿" },
   ]},
-  { sectionKey: "nav.liveSection", items: [
+  { sectionKey: "nav.groupOperations", items: [
+    { to: "/whatif", labelKey: "nav.whatIf", icon: "▶" },
+    { to: "/migration", labelKey: "nav.migrationPlanning", icon: "⇉" },
     { to: "/crypto-changes", labelKey: "nav.liveCryptoChanges", icon: "≋" },
     { to: "/timeline", labelKey: "nav.globalTimeline", icon: "◷" },
   ]},
-  { sectionKey: "nav.plan", items: [
-    { to: "/whatif", labelKey: "nav.whatIf", icon: "▶" },
-    { to: "/migration", labelKey: "nav.migrationPlanning", icon: "⇉" },
-  ]},
-  { sectionKey: "nav.govern", items: [
+  { sectionKey: "nav.groupGovern", items: [
     { to: "/compliance", labelKey: "nav.compliance", icon: "✓" },
     { to: "/governance", labelKey: "nav.governance", icon: "⚖" },
     { to: "/resilience", labelKey: "nav.resilience", icon: "⛨" },
     { to: "/trust", labelKey: "nav.trustKeys", icon: "⚿" },
     { to: "/evidence", labelKey: "nav.evidence", icon: "⛨" },
-  ]},
-  { sectionKey: "nav.operate", items: [
-    { to: "/scanners", labelKey: "nav.scanners", icon: "⌖" },
-    { to: "/live-scanners", labelKey: "nav.realtimeScanners", icon: "◉" },
-    { to: "/runtime", labelKey: "nav.runtimeHosts", icon: "⧉" },
-    { to: "/notifications", labelKey: "nav.notifications", icon: "✉" },
     { to: "/reports", labelKey: "nav.reports", icon: "▤" },
+  ]},
+  { sectionKey: "nav.groupPlatform", items: [
     { to: "/integrations", labelKey: "nav.integrations", icon: "⇌" },
+    { to: "/notifications", labelKey: "nav.notifications", icon: "✉" },
     { to: "/identity", labelKey: "nav.identity", icon: "⛃" },
-    { to: "/admin", labelKey: "nav.administration", icon: "⚙" },
-  ]},
-  { sectionKey: "nav.platformP2", items: [
-    { to: "/platform", labelKey: "nav.platformP2", icon: "⬢" },
-  ]},
-  { sectionKey: "nav.quality", items: [
+    { to: "/organization", labelKey: "nav.organization", icon: "◫" },
+    { to: "/sectors", labelKey: "nav.sectorProfiles", icon: "⛨" },
+    { to: "/env", labelKey: "nav.liveEnvironment", icon: "◉" },
     { to: "/accuracy", labelKey: "nav.accuracy", icon: "◔" },
+    { to: "/platform", labelKey: "nav.platformP2", icon: "⬢" },
+    { to: "/admin", labelKey: "nav.administration", icon: "⚙" },
   ]},
 ];
 
@@ -102,16 +96,16 @@ export default function Layout({ route, children }: { route: string; children: R
   return (
     <div className="shell">
       <aside className="sidebar">
-        <a href="#/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 18, letterSpacing: "0.02em", margin: "2px 8px 10px" }}>
-          <span className="mark" style={{ width: 32, height: 32, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--grad)", color: "#fff", fontFamily: "var(--sans)", fontWeight: 800 }}>Z</span>
-          <span>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 11, marginLeft: 8, letterSpacing: "0.14em" }}>CRYPTO INTELLIGENCE</span></span>
+        <a href="#/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 18, letterSpacing: "0.02em", margin: "2px 8px 12px" }}>
+          <span className="mark" style={{ width: 32, height: 32, borderRadius: 8, display: "grid", placeItems: "center", background: "var(--grad)", color: "#04121d", fontSize: 18, boxShadow: "var(--glow-cyan)" }}>◈</span>
+          <span>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 10, marginLeft: 8, letterSpacing: "0.16em" }}>CRYPTO INTELLIGENCE</span></span>
         </a>
         {NAV.map((group) => (
           <React.Fragment key={group.sectionKey}>
             <div className="nav-label">{t(group.sectionKey)}</div>
             {group.items.map((item) => (
               <a key={item.to} href={`#${item.to}`} className={`nav ${route === item.to ? "active" : ""}`}>
-                <span style={{ width: 18, textAlign: "center" }}>{item.icon}</span>
+                <span className="nav-icon">{item.icon}</span>
                 {t(item.labelKey)}
               </a>
             ))}

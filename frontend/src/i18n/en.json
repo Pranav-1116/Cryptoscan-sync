@@ -177,5 +177,13 @@
   "login.hero3Body": "Detection performance measured against held-out datasets with stated uncertainty.",
   "login.alignedTo": "Aligned to",
   "login.alreadySignedIn": "Already signed in as",
-  "login.enterConsole": "Enter console"
+  "login.enterConsole": "Enter console",
+  "nav.groupOverview": "Overview",
+  "nav.groupScanners": "Scanners",
+  "nav.groupAssets": "Assets",
+  "nav.groupIntelligence": "Intelligence",
+  "nav.groupAssess": "Assess",
+  "nav.groupOperations": "Operations",
+  "nav.groupGovern": "Govern",
+  "nav.groupPlatform": "Platform"
 }
