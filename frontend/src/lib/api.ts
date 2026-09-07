@@ -1258,3 +1258,18 @@ export const apiCertRenew = (fingerprint: string, body: { validity_days?: number
 export const apiCertRevoke = (fingerprint: string, reason: string) =>
   _rsPost<any>(`/api/v1/certificates/${encodeURIComponent(fingerprint)}/revoke`, { reason });
 export const apiCertRenewalQueue = () => _rsGet<any>("/api/v1/certificates/lifecycle/renewal-queue");
+
+/* Credential vault — vault-reference only (never inline secrets), short-lived
+   leases with deterministic policy gates, rotation, and release. */
+export const apiVaultCredentials = () => _rsGet<any>("/api/v1/control/credentials");
+export const apiVaultCredentialCreate = (body: {
+  name: string; kind: string; vault_provider?: string; secret_ref: string;
+  least_privilege_scope?: string; region?: string; rotation_policy_days?: number;
+}) => _rsPost<any>("/api/v1/control/credentials", body);
+export const apiVaultCredentialLease = (credentialId: string, body: { component?: string; scope?: string[]; ttl_seconds?: number }) =>
+  _rsPost<any>(`/api/v1/control/credentials/${encodeURIComponent(credentialId)}/lease`, body);
+export const apiVaultLeaseRelease = (handle: string) =>
+  _rsPost<any>(`/api/v1/control/credential-leases/${encodeURIComponent(handle)}/release`, {});
+export const apiVaultCredentialRotate = (credentialId: string) =>
+  _rsPost<any>(`/api/v1/control/credentials/${encodeURIComponent(credentialId)}/rotate`, {});
+export const apiVaultLeases = () => _rsGet<any>("/api/v1/control/credential-leases");
