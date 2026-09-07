@@ -1,9 +1,14 @@
 import React, { useState } from "react";
-import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
+import { Panel, Badge, Table, PageHead, Drawer, Code } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import {
   apiLiveInventory,
   apiExpiryCalendar,
+  apiCertCsr,
+  apiCertIssue,
+  apiCertRenew,
+  apiCertRevoke,
+  apiCertRenewalQueue,
   LiveCertificate,
   LiveInventory,
   ExpiryCalendar,
@@ -101,6 +106,118 @@ function ExpiryCalendarPanel() {
   );
 }
 
+type Issued = { fingerprint: string; cn: string; not_after?: string; serial?: string; pem: string; status: string };
+
+function CertLifecyclePanel() {
+  const queue = usePollingApi(apiCertRenewalQueue, 20000);
+  const [cn, setCn] = useState("");
+  const [san, setSan] = useState("");
+  const [days, setDays] = useState(365);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [issued, setIssued] = useState<Issued[]>([]);
+  const [showPem, setShowPem] = useState<string | null>(null);
+
+  const sans = san.split(",").map((s) => s.trim()).filter(Boolean);
+  const input: React.CSSProperties = { flex: 1, minWidth: 150, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" };
+
+  const genCsr = async () => {
+    if (!cn.trim()) { setMsg({ ok: false, text: "common name (CN) is required" }); return; }
+    setBusy(true);
+    const r = await apiCertCsr({ subject: { CN: cn.trim(), O: "" }, ...(sans.length ? { san: sans } : {}) });
+    setBusy(false);
+    if (r.ok) { setMsg({ ok: true, text: `CSR generated for ${cn}` }); setShowPem(r.data?.csr_pem ?? ""); }
+    else setMsg({ ok: false, text: r.error ?? "CSR generation failed" });
+  };
+
+  const issue = async () => {
+    if (!cn.trim()) { setMsg({ ok: false, text: "common name (CN) is required" }); return; }
+    setBusy(true);
+    const r = await apiCertIssue({ subject: { CN: cn.trim() }, ...(sans.length ? { san: sans } : {}), validity_days: days, signed_by_ca: false });
+    setBusy(false);
+    if (r.ok) {
+      const d = r.data;
+      const fp: string = d.fingerprint_sha256 ?? d.fingerprint;
+      setIssued((p) => [{ fingerprint: fp, cn, not_after: d.not_after, serial: d.serial_number, pem: d.certificate_pem, status: "ISSUED" }, ...p]);
+      setMsg({ ok: true, text: `issued ${cn} · fp ${fp.slice(0, 16)}… · valid to ${(d.not_after ?? "").replace("T", " ").slice(0, 10)}` });
+      queue.run();
+    } else setMsg({ ok: false, text: r.error ?? "issuance failed" });
+  };
+
+  const renew = async (fp: string) => {
+    const r = await apiCertRenew(fp, { validity_days: days, rotate_key: true });
+    if (r.ok) {
+      setIssued((p) => p.map((c) => c.fingerprint === fp ? { ...c, fingerprint: r.data.fingerprint_sha256 ?? fp, not_after: r.data.not_after, pem: r.data.certificate_pem, status: "RENEWED" } : c));
+      setMsg({ ok: true, text: `renewed with rotated key · new fp ${(r.data.fingerprint_sha256 ?? "").slice(0, 16)}…` });
+      queue.run();
+    } else setMsg({ ok: false, text: r.error ?? "renew failed" });
+  };
+
+  const revoke = async (fp: string) => {
+    const r = await apiCertRevoke(fp, "cessation_of_operation");
+    if (r.ok) {
+      setIssued((p) => p.map((c) => c.fingerprint === fp ? { ...c, status: r.data.revocation_status ?? "REVOKED" } : c));
+      setMsg({ ok: true, text: `revoked · ${r.data.revocation_method ?? "CRL"}` });
+      queue.run();
+    } else setMsg({ ok: false, text: r.error ?? "revoke failed" });
+  };
+
+  const due = (queue.data as any)?.due ?? [];
+
+  return (
+    <Panel title="Certificate lifecycle" sub="issue · renew (key rotation) · revoke (CRL) — deterministic local PKI, no AI" className="mt">
+      <div className="row" style={{ flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
+        <input style={input} placeholder="common name (e.g. tls.payments.demo.local)" value={cn} onChange={(e) => setCn(e.target.value)} />
+        <input style={input} placeholder="SAN hostnames (comma-separated)" value={san} onChange={(e) => setSan(e.target.value)} />
+        <label style={{ fontSize: 12.5, color: "var(--dim)", display: "flex", flexDirection: "column", gap: 2 }}>
+          validity (days)
+          <input type="number" min={1} max={3998} style={{ ...input, minWidth: 120 }} value={days} onChange={(e) => setDays(Number(e.target.value))} />
+        </label>
+        <button className="btn sm" onClick={() => void genCsr()} disabled={busy}>{busy ? "…" : "Generate CSR"}</button>
+        <button className="btn primary" onClick={() => void issue()} disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button>
+      </div>
+      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "✓ " : ""}{msg.text}</Badge></div>}
+
+      {due.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <div className="dim mono" style={{ fontSize: 11.5, marginBottom: 6, textTransform: "uppercase" }}>Renewal queue · {due.length} due (lead {(queue.data as any)?.lead_days ?? 30}d)</div>
+          {due.slice(0, 6).map((e: any) => (
+            <div key={e.fingerprint_sha256 ?? e.subject} className="spread" style={{ fontSize: 12.5 }}>
+              <span className="mono">{e.subject ?? "unknown"}</span>
+              <span className="dim mono">{e.days_until_expiry === null ? "no expiry" : `${e.days_until_expiry} days`}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <Table
+        head={["common name", "valid to", "status", "actions"]}
+        rows={issued.map((c) => [
+          <span className="mono" style={{ fontWeight: 600 }} key="cn">{c.cn}</span>,
+          <span className="mono" key="v" style={{ fontSize: 12 }}>{(c.not_after ?? "").replace("T", " ").slice(0, 10) || "—"}</span>,
+          <Badge key="s" tone={c.status === "REVOKED" ? "red" : c.status === "RENEWED" ? "cyan" : "green"}>{c.status}</Badge>,
+          <span key="a" className="row" style={{ gap: 6 }}>
+            <button className="btn sm" onClick={() => setShowPem(c.pem)}>view PEM</button>
+            {c.status !== "REVOKED" && <button className="btn sm" onClick={() => void renew(c.fingerprint)}>renew</button>}
+            {c.status !== "REVOKED" && <button className="btn sm" style={{ borderColor: "var(--red)", color: "var(--red)" }} onClick={() => void revoke(c.fingerprint)}>revoke</button>}
+          </span>,
+        ])}
+      />
+      {issued.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No certificates issued in this session. Issue a leaf above; renewed/revoked certs stay here for the session.</p>}
+
+      {showPem && (
+        <div style={{ marginTop: 12 }}>
+          <div className="row" style={{ justifyContent: "space-between", marginBottom: 6 }}>
+            <span className="dim mono" style={{ fontSize: 11.5 }}>PEM</span>
+            <button className="btn sm" onClick={() => setShowPem(null)}>close</button>
+          </div>
+          <Code>{showPem}</Code>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 export default function Certificates() {
   const [sel, setSel] = useState<number | null>(null);
   const inv = usePollingApi(apiLiveInventory, 8000);
@@ -160,6 +277,7 @@ export default function Certificates() {
         )}
       </Panel>
       {detail && <CertDrawer cert={detail} onClose={() => setSel(null)} />}
+      <CertLifecyclePanel />
       <ExpiryCalendarPanel />
     </>
   );

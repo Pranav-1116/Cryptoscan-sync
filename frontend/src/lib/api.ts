@@ -1246,3 +1246,15 @@ export const apiOtCreateMaintenanceWindow = (body: {
   window_ref: string; title?: string; starts_at: string; ends_at: string;
   change_ticket: string; allowed_action_class?: string; device_ids?: string[]; zones?: string[]; sites?: string[]; operations?: string[];
 }) => _rsPost<any>("/api/v1/ot/maintenance-windows", body);
+
+/* Certificate lifecycle — CSR generation, issuance, renewal (key rotation),
+   revocation (CRL), and the deterministic renewal queue. */
+export const apiCertCsr = (body: { subject?: Record<string, string>; san?: string[]; key_size?: number }) =>
+  _rsPost<any>("/api/v1/certificates/lifecycle/csr", body);
+export const apiCertIssue = (body: { subject?: Record<string, string>; san?: string[]; csr_pem?: string; key_size?: number; validity_days?: number; signed_by_ca?: boolean }) =>
+  _rsPost<any>("/api/v1/certificates/lifecycle/issue", body);
+export const apiCertRenew = (fingerprint: string, body: { validity_days?: number; rotate_key?: boolean }) =>
+  _rsPost<any>(`/api/v1/certificates/${encodeURIComponent(fingerprint)}/renew`, body);
+export const apiCertRevoke = (fingerprint: string, reason: string) =>
+  _rsPost<any>(`/api/v1/certificates/${encodeURIComponent(fingerprint)}/revoke`, { reason });
+export const apiCertRenewalQueue = () => _rsGet<any>("/api/v1/certificates/lifecycle/renewal-queue");
