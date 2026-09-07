@@ -17,7 +17,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 API = "/api/v1"
-NOW = datetime(2026, 9, 3, 12, 0, tzinfo=timezone.utc)
+# Window bounds are computed relative to the real clock (the engine enforces
+# them fail-closed against system time); a frozen date would make the
+# "in-effect" window expire as real time moves past it.
+NOW = datetime.now(timezone.utc)
 
 
 def _token(roles=("superadmin",)):

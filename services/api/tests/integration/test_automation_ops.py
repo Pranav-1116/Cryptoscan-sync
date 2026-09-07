@@ -120,37 +120,43 @@ class TestCertWatch:
 
 class TestCbomVersioning:
     def test_cbom_versioning_and_diff(self, client):
-        # v1: two components
+        # Use unique component ids per test run and assert relative version
+        # progression (the shared test engine may already hold versions from
+        # other modules; the logic under test is the content-addressed diff).
+        tag = datetime.now(timezone.utc).strftime("%H%M%S%f")
+        a, b, c = f"app-a-{tag}", f"app-b-{tag}", f"app-c-{tag}"
+        # v1: two components -> a new version is created (changed)
         r = client.post(f"{API}/automation/cbom/versions", json={"observations": [
-            {"component_id": "app-a", "algorithm": "RSA", "key_size": 2048},
-            {"component_id": "app-b", "algorithm": "AES", "key_size": 256},
+            {"component_id": a, "algorithm": "RSA", "key_size": 2048},
+            {"component_id": b, "algorithm": "AES", "key_size": 256},
         ]})
         assert r.status_code == 201, r.text
         v1 = r.json()
-        assert v1["changed"] is True and v1["version"] == 1
+        assert v1["changed"] is True and v1["version"] >= 1
 
-        # identical -> no new version
+        # identical (order-independent) -> no new version
         r = client.post(f"{API}/automation/cbom/versions", json={"observations": [
-            {"component_id": "app-b", "algorithm": "AES", "key_size": 256},
-            {"component_id": "app-a", "algorithm": "RSA", "key_size": 2048},
+            {"component_id": b, "algorithm": "AES", "key_size": 256},
+            {"component_id": a, "algorithm": "RSA", "key_size": 2048},
         ]})
         assert r.json()["changed"] is False
 
-        # add one -> v2 with added component
+        # add one -> next version with exactly one added component
         r = client.post(f"{API}/automation/cbom/versions", json={"observations": [
-            {"component_id": "app-a", "algorithm": "RSA", "key_size": 2048},
-            {"component_id": "app-b", "algorithm": "AES", "key_size": 256},
-            {"component_id": "app-c", "algorithm": "ECDSA", "key_size": 256},
+            {"component_id": a, "algorithm": "RSA", "key_size": 2048},
+            {"component_id": b, "algorithm": "AES", "key_size": 256},
+            {"component_id": c, "algorithm": "ECDSA", "key_size": 256},
         ]})
         v2 = r.json()
-        assert v2["version"] == 2 and len(v2["added"]) == 1
-        assert v2["added"][0]["id"] == "app-c"
+        assert v2["version"] == v1["version"] + 1 and len(v2["added"]) == 1
+        assert v2["added"][0]["id"] == c
 
         # history reflects the chain
         hist = client.get(f"{API}/automation/cbom/versions").json()
-        assert hist["latest_version"] == 2
-        assert hist["versions"][0]["version"] == 2  # newest first
-        assert hist["versions"][1]["fingerprint"] == hist["versions"][0]["parent_fingerprint"]
+        assert hist["latest_version"] == v2["version"]
+        assert hist["versions"][0]["version"] == v2["version"]  # newest first
+        # chain link: the newest version's parent is the second-newest version
+        assert hist["versions"][0]["parent_fingerprint"] == hist["versions"][1]["fingerprint"]
 
 
 class TestRiskRecalculation:
