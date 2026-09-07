@@ -79,7 +79,7 @@ export function LiveStatus({ loading, error }: { loading?: boolean; error?: stri
       </span>
     );
   return (
-    <span className="badge" style={{ background: "rgba(47,184,119,0.12)", color: "var(--green)", fontSize: 11 }}>
+    <span className="badge" style={{ background: "rgba(34,197,94,0.12)", color: "var(--green)", fontSize: 11 }}>
       <span className="dot" /> LIVE
     </span>
   );
