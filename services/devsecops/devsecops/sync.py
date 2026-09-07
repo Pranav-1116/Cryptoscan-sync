@@ -45,11 +45,13 @@ class FindingState:
     assignee: str | None = None
     comments: list[dict] = field(default_factory=list)
     tickets: dict[str, str] = field(default_factory=dict)  # provider -> remote id
+    synced_comment_ids: list[str] = field(default_factory=list)
 
     def to_dict(self):
         return {"finding_id": self.finding_id, "status": self.status,
                 "assignee": self.assignee, "comments": list(self.comments),
-                "tickets": dict(self.tickets)}
+                "tickets": dict(self.tickets),
+                "synced_comment_ids": list(self.synced_comment_ids)}
 
 
 class TicketSync:
@@ -61,11 +63,14 @@ class TicketSync:
     """
 
     def __init__(self, *, get: Callable[..., HttpResult] | None = None,
-                 post: Callable[..., HttpResult] | None = None):
+                 post: Callable[..., HttpResult] | None = None,
+                 synced_comments: set[str] | None = None):
         self._get = get
         self._post = post
-        # remote comment ids already reconciled (idempotency)
-        self._synced_comments: set[str] = set()
+        # remote comment ids already reconciled (idempotency). Persisted by the
+        # caller across requests (finding-state store) so repeat pulls don't
+        # re-add the same comment.
+        self._synced_comments: set[str] = synced_comments if synced_comments is not None else set()
 
     # ---- inbound: pull remote state -> local ------------------------------ #
     def pull_servicenow(self, states: dict[str, FindingState], *,

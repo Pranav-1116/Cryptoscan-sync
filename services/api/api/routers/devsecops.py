@@ -230,18 +230,6 @@ def connector_preview(body: ConnectorRequest,
 
 
 # ------------------------------------------------- 20. inbound chat actions -- #
-_CHAT_STATE: dict[str, Any] = {}
-
-
-def _finding_state_store() -> dict[str, Any]:
-    """Process-local finding lifecycle state keyed by finding_id.
-
-    In production this is the findings table; the in-memory store keeps the
-    reference surface stateless-to-deploy while preserving ack/assign
-    idempotency semantics across requests."""
-    return _CHAT_STATE
-
-
 class ChatActionRequest(BaseModel):
     platform: str = Field(..., description="slack | teams")
     action: str = Field(..., description="ack | assign | ticket")
@@ -278,14 +266,17 @@ def chat_action(body: ChatActionRequest, db: Session = Depends(get_db_session),
             db.commit()
             raise HTTPException(status_code=401, detail="invalid Slack request signature")
 
-    # Persist finding lifecycle state in a module-level store (production uses a
-    # findings table); this makes ack/assign idempotent across requests.
-    store = _finding_state_store()
-    state = store.get(body.finding_id) or dsync.FindingState(finding_id=body.finding_id, status="OPEN")
+    # Persist finding lifecycle state in the settings-backed store so ack/assign
+    # survives restarts and is shared with bidirectional ITSM sync.
+    from db.repositories.settings_repository import SettingsRepository
+    from devsecops.finding_state import FindingStateStore
+
+    store = FindingStateStore(SettingsRepository(db))
+    state = store.get_or_create(body.finding_id)
     result = dsync.apply_chat_action(state, action=body.action, key=body.key,
                                      actor=body.actor, finding=body.finding_id)
     if result.get("ok"):
-        store[body.finding_id] = state
+        store.save(state, by=user)
     if not result.get("ok"):
         UserRepository(db).audit(user, "devsecops.chat_action_rejected", target_type="finding",
                                  target_id=body.finding_id, detail={"reason": result.get("error")},
@@ -303,3 +294,67 @@ def chat_action(body: ChatActionRequest, db: Session = Depends(get_db_session),
             "finding_id": body.finding_id, "state": result["state"],
             "idempotent": result.get("idempotent", False),
             "audit": result.get("audit")}
+
+
+# ------------------------------------------- 17. bidirectional ticket sync -- #
+class TicketPullRequest(BaseModel):
+    provider: str = Field(..., description="servicenow | jira")
+    # injected remote state for deterministic reconciliation; production uses the
+    # live HTTP GET transport with stored vault credentials.
+    remote_rows: list[dict] = Field(default_factory=list)
+    finding_ids: list[str] = Field(default_factory=list)
+
+
+@router.post("/tickets/sync-pull")
+def ticket_sync_pull(body: TicketPullRequest, db: Session = Depends(get_db_session),
+                     user: str = Depends(require_roles("admin", "security_analyst", "auditor", "superadmin"))):
+    """Reconcile remote ITSM ticket state (status/assignee/comments) back onto
+    local findings by de-dup key. Persists reconciled state and audits changes.
+
+    Deterministic: remote rows are provided in the request (the live worker
+    supplies them via the injected HTTP GET transport). Idempotent."""
+    from devsecops import sync as dsync
+    from devsecops.finding_state import FindingStateStore
+    from db.repositories.settings_repository import SettingsRepository
+
+    state_store = FindingStateStore(SettingsRepository(db))
+    states = {fid: state_store.get_or_create(fid) for fid in body.finding_ids}
+
+    # Seed the per-pull idempotency set from the persisted states so repeat pulls
+    # never re-import the same remote comment.
+    synced = set()
+    for st in states.values():
+        synced.update(st.synced_comment_ids)
+
+    # Build a TicketSync whose GET transport returns the injected remote rows.
+    remote_json = {"result": body.remote_rows} if body.provider == "servicenow" \
+        else {"issues": body.remote_rows}
+    import json as _json
+
+    def fake_get(url, headers=None):
+        from devsecops.connectors import HttpResult
+        return HttpResult(ok=True, status=200, body=_json.dumps(remote_json))
+
+    ts = dsync.TicketSync(get=fake_get, synced_comments=synced)
+    if body.provider == "servicenow":
+        outcomes = ts.pull_servicenow(states, instance="injected", auth="injected")
+    elif body.provider == "jira":
+        outcomes = ts.pull_jira(states, base_url="https://injected", auth="x")
+    else:
+        raise HTTPException(422, "provider must be servicenow or jira")
+
+    # persist reconciled states (including synced comment ids for idempotency)
+    for fid, st in states.items():
+        st.synced_comment_ids = sorted(ts._synced_comments)
+        state_store.save(st, by=user)
+
+    reconciled = [o for o in outcomes if o.get("action") == "RECONCILED"]
+    for o in reconciled:
+        UserRepository(db).audit(user, f"devsecops.ticket_sync_{body.provider}",
+                                 target_type="finding", target_id=o.get("finding_id", ""),
+                                 detail={"ticket_id": o.get("ticket_id"), "changes": o.get("changes")})
+    db.commit()
+    return {"provider": body.provider, "reconciled": len(reconciled),
+            "no_match": sum(1 for o in outcomes if o.get("action") == "NO_MATCH"),
+            "outcomes": outcomes,
+            "states": {fid: st.to_dict() for fid, st in states.items()}}

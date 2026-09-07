@@ -214,3 +214,28 @@ def test_chat_action_rejects_wrong_key_and_unknown_action():
     invalid = apply_chat_action(st, action="delete_everything",
                                 key=dedup_key("slack", "FIND-11"), actor="x")
     assert invalid["ok"] is False
+
+
+# ------------------------------------------------- persistent finding state -- #
+class _MemSettings:
+    def __init__(self): self._d = {}
+    def get(self, k, default=None): return self._d.get(k, default)
+    def set(self, k, v, updated_by=None): self._d[k] = v
+
+
+def test_finding_state_store_persists_status_assignee_comments():
+    from devsecops.finding_state import FindingStateStore
+    repo = _MemSettings()
+    store = FindingStateStore(repo)
+    st = store.get_or_create("F-1")
+    st.status = "IN_PROGRESS"; st.assignee = "jane"
+    st.comments.append({"source": "servicenow", "text": "on it"}); st.synced_comment_ids.append("x:1")
+    st.tickets["servicenow"] = "SYS-1"
+    store.save(st, by="sync")
+    # new store instance reads the same persistence
+    store2 = FindingStateStore(repo)
+    loaded = store2.get("F-1")
+    assert loaded.status == "IN_PROGRESS" and loaded.assignee == "jane"
+    assert loaded.tickets["servicenow"] == "SYS-1"
+    assert loaded.synced_comment_ids == ["x:1"]
+    assert store2.get("missing") is None
