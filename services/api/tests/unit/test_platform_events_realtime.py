@@ -162,3 +162,36 @@ def test_bus_stats_expose_published_total(admin_client, db):
     body = admin_client.get("/api/v1/events/stats").json()
     assert body["published_total"] >= 1
     assert body["events_buffered"] >= 1
+
+
+def test_persist_platform_event_durable_only_and_dedup(admin_client, db):
+    """persist_platform_event is the durable half: it writes the DB row and
+    registers it as already-delivered (so the tailer won't double-deliver),
+    but it does NOT itself publish to the in-process bus — the caller (the
+    live-scan runner) does that with the exact SSE event type."""
+    from api.events.bus import get_event_bus
+    from api.events.platform_events import persist_platform_event
+
+    bus = get_event_bus()
+    before = bus.published_total()
+
+    row_id = persist_platform_event(
+        "live_scan.completed", "manual",
+        {"ok": 2, "failed": 0, "elapsed_s": 1.1},
+        target_name="live-scan",
+    )
+    assert row_id is not None
+    # no extra in-process publish from the persist-only helper
+    assert bus.published_total() == before
+
+    session = SessionLocal()
+    try:
+        rows = MonitorRepository(session).list_events(limit=10)
+        live = [r for r in rows if r.event_type == "live_scan.completed"]
+        assert live and live[0].id == row_id
+        assert live[0].target_name == "live-scan"
+    finally:
+        session.close()
+
+    # marked delivered so the cross-worker tailer skips it on this process
+    assert row_id in published_event_ids()

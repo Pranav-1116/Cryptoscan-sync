@@ -379,6 +379,14 @@ class LiveScanRunner:
             return {"events": data.get("events_count") or len(data.get("events") or [])}
         return {}
 
+    #: lifecycle/result events are durable: they are persisted to the DB event
+    #: log in addition to the in-memory bus, so they reach browsers on other
+    #: API workers (via the DB tailer) and survive a restart. High-frequency
+    #: progress ticks (scanner_started/scanner_completed) stay in-memory only.
+    _DURABLE_EVENTS = frozenset({
+        "live_scan.started", "live_scan.completed", "live_scan.error", "live_scan.drift",
+    })
+
     def _publish(self, event_type: str, payload: dict[str, Any]) -> None:
         try:
             from api.events.bus import get_event_bus
@@ -386,6 +394,14 @@ class LiveScanRunner:
             get_event_bus().publish(event_type, payload, source="live-scanner")
         except Exception:  # noqa: BLE001 — event failure must never kill a scan
             pass
+        if event_type in self._DURABLE_EVENTS:
+            try:
+                from api.events.platform_events import persist_platform_event
+
+                detail = payload.get("error") or payload.get("trigger") or event_type
+                persist_platform_event(event_type, str(detail), payload, target_name="live-scan")
+            except Exception:  # noqa: BLE001 — best-effort durability
+                pass
 
     def run_cycle(
         self,

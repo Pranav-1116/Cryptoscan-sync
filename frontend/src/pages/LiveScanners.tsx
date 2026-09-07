@@ -83,20 +83,26 @@ export default function LiveScanners() {
   useEffect(() => {
     for (const ev of realtime.events) {
       if (seenIds.current.has(ev.id)) continue;
-      if (!ev.type.startsWith("live_scan.")) continue;
+      // Accept both direct events (live_scan.*) and the durable/tailer-federated
+      // form from other API workers (monitor.live_scan_*).
+      let type = ev.type;
+      if (type.startsWith("monitor.live_scan_")) {
+        type = "live_scan." + type.slice("monitor.live_scan_".length);
+      }
+      if (!type.startsWith("live_scan.")) continue;
       seenIds.current.add(ev.id);
       const p = ev.payload || {};
-      if (ev.type === "live_scan.started") {
+      if (type === "live_scan.started") {
         pushLog(`scan started (${p.trigger || "?"}) — ${((p.scanners as string[]) || []).join(", ")}`, "start");
-      } else if (ev.type === "live_scan.scanner_started") {
+      } else if (type === "live_scan.scanner_started") {
         pushLog(`▶ ${SCANNER_LABEL[p.scanner as string] || p.scanner} …`, "info");
-      } else if (ev.type === "live_scan.scanner_completed") {
+      } else if (type === "live_scan.scanner_completed") {
         if (p.ok) pushLog(`✓ ${SCANNER_LABEL[p.scanner as string] || p.scanner} in ${p.elapsed_s}s`, "ok");
         else pushLog(`✗ ${SCANNER_LABEL[p.scanner as string] || p.scanner}: ${p.error || "failed"}`, "fail");
-      } else if (ev.type === "live_scan.completed") {
+      } else if (type === "live_scan.completed") {
         pushLog(`cycle complete — ${p.ok} ok, ${p.failed} failed in ${p.elapsed_s}s`, p.failed ? "fail" : "ok");
         refresh();
-      } else if (ev.type === "live_scan.error") {
+      } else if (type === "live_scan.error") {
         pushLog(`error: ${p.error}`, "fail");
       }
     }

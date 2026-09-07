@@ -24,6 +24,7 @@ export function useLiveTicker() {
     eps: rt.eps,
     backend: rt.backend,
     connected: rt.connected,
+    conn: rt.conn,
     source: rt.source,
     subscribers: rt.subscribers,
     eventCount: rt.events.length,

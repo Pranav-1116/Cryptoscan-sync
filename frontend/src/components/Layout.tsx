@@ -147,8 +147,22 @@ export default function Layout({ route, children }: { route: string; children: R
 
       <main className="main">
         <div className="livehead">
-          <span className="live-dot" style={ticker.connected ? undefined : { background: "var(--amber)", boxShadow: "0 0 12px var(--amber)" }} />
-          <span className="item"><b>{ticker.connected ? t("common.live") : t("common.idle")}</b></span>
+          {(() => {
+            const conn = ticker.conn ?? (ticker.connected ? "live" : "offline");
+            const map: Record<string, { c: string; label: string; pulse: boolean }> = {
+              live: { c: "var(--green)", label: t("common.live"), pulse: true },
+              connecting: { c: "var(--cyan)", label: t("common.connecting"), pulse: true },
+              stalled: { c: "var(--amber)", label: t("common.reconnecting"), pulse: true },
+              offline: { c: "var(--slate)", label: t("common.idle"), pulse: false },
+            };
+            const s = map[conn] ?? map.offline;
+            return (
+              <>
+                <span className="live-dot" style={{ background: s.c, boxShadow: `0 0 12px ${s.c}`, animation: s.pulse ? undefined : "none" }} />
+                <span className="item"><b style={{ color: s.c }}>{s.label}</b></span>
+              </>
+            );
+          })()}
           <span className="item">{t("head.lastEvent")} <b>{ticker.ago === null ? "—" : `${ticker.ago}s`}</b> {t("head.ago")}</span>
           <span className="item">{t("head.eventsPerSec")} <b>{ticker.eps || "—"}</b></span>
           {ticker.connected ? (

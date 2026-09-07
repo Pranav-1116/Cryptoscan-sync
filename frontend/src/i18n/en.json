@@ -185,5 +185,7 @@
   "nav.groupAssess": "Assess",
   "nav.groupOperations": "Operations",
   "nav.groupGovern": "Govern",
-  "nav.groupPlatform": "Platform"
+  "nav.groupPlatform": "Platform",
+  "common.connecting": "CONNECTING",
+  "common.reconnecting": "RECONNECTING"
 }

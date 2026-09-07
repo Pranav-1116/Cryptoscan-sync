@@ -47,7 +47,10 @@ export default function CommandCenter() {
   // Realtime scanner execution (hardware/runtime/network run server-side).
   const liveScan = usePollingApi(apiLiveScanStatus, 5000);
   const lsx = (liveScan.data ?? null) as LiveScanStatus | null;
-  const lastScanEvent = rt.events.find((e) => e.type === "live_scan.completed");
+  // a completed cycle may arrive directly (live_scan.completed) or federated
+  // from another API worker via the DB tailer (monitor.live_scan_completed).
+  const lastScanEvent = rt.events.find((e) =>
+    e.type === "live_scan.completed" || e.type === "monitor.live_scan_completed");
   const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
   const liveBom = usePollingApi(apiLiveBom, 12000);
   const liveDrift = usePollingApi(apiLiveDrift, 9000);

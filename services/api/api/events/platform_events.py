@@ -79,6 +79,36 @@ def emit_platform_event(
     return event
 
 
+def persist_platform_event(
+    event_type: str,
+    detail: str,
+    payload: dict[str, Any] | None = None,
+    *,
+    target_name: str = "platform",
+) -> str | None:
+    """Durable half of a real-time event: persist to the DB event log and mark
+    the row as already-delivered so the tailer never double-delivers it.
+
+    Use when the caller has ALREADY published to the in-process bus directly
+    (preserving the exact event type for same-process SSE clients) and wants the
+    event to also reach workers/browsers on other API processes and survive a
+    restart via the tailer. The tailer republishes persisted rows to other
+    workers as ``monitor.<event_type_lower>``. Best-effort; never raises.
+    """
+    try:
+        row_id = _persist(target_name=target_name, event_type=event_type,
+                          detail=detail, payload=payload)
+    except Exception as exc:  # DB unavailable — in-process delivery still happened
+        logger.warning("platform_event_persist_failed: %s", exc)
+        return None
+    if row_id is not None:
+        ids = published_event_ids()
+        ids.add(row_id)
+        if len(ids) > _PUBLISHED_IDS_CAP:
+            published_event_ids().clear()
+    return row_id
+
+
 def _persist(*, target_name: str, event_type: str, detail: str,
              payload: dict[str, Any] | None) -> str | None:
     from db.connection.session import SessionLocal

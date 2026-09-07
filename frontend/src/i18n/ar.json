@@ -185,5 +185,7 @@
   "nav.groupAssess": "التقييم",
   "nav.groupOperations": "العمليات",
   "nav.groupGovern": "الحوكمة",
-  "nav.groupPlatform": "المنصة"
+  "nav.groupPlatform": "المنصة",
+  "common.connecting": "جارٍ الاتصال",
+  "common.reconnecting": "إعادة الاتصال"
 }
