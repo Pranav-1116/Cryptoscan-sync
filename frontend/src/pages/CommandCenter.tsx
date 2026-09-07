@@ -7,7 +7,7 @@ import { useLive } from "../lib/useLive.js";
 
 export default function CommandCenter() {
   // Live domain counts straight from the control plane (no static asset lists).
-  const liveInventory = useLive<{ assets?: any[]; total?: number }>("/api/v1/live/inventory", {});
+  const liveInventory = useLive<{ counts?: Record<string, number> }>("/api/v1/live-scan/inventory", {});
   const liveAgents = useLive<{ agents?: any[] }>("/api/v1/control/agents", { agents: [] });
   const recentEvents = useLive<{ events?: any[] }>("/api/v1/events/recent", { events: [] });
   const g = {
@@ -55,10 +55,11 @@ export default function CommandCenter() {
   g.cbomVersion = cov.with_cbom ?? 0;
   g.pqcReadyPct = Math.round(cov.coverage_pct ?? 0);
   g.migrationProgressPct = Math.round(cov.coverage_pct ?? 0);
-  const networkAssets = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "network");
-  const cloudResources = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "cloud");
-  const vendors = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "vendor");
-  const hardware = inventoryAssets.filter((a: any) => (a.kind ?? a.type) === "hardware");
+  const invCounts = liveInventory.data.counts ?? {};
+  const networkAssets = Array(invCounts.network_assets ?? 0).fill(null);
+  const cloudResources = []; // cloud counts come from /cloud accounts (read-only)
+  const vendors = [];
+  const hardware = Array(invCounts.hardware_devices ?? 0).fill(null);
   const riskCounts: Record<string, number> = { CRITICAL: g.criticalFindings, HIGH: g.highFindings, MEDIUM: (ls.open_drift ?? {}).MEDIUM ?? 0, LOW: (ls.open_drift ?? {}).INFO ?? 0 };
   const events = recentEvents.data.events ?? [];
 
