@@ -1118,3 +1118,59 @@ export const apiSbomExport = (components: any[], format: "cyclonedx" | "spdx") =
 
 export const apiConnectorPreview = (provider: string, finding: any, target: Record<string, unknown>, deliverLive = false) =>
   _ds<any>("/api/v1/devsecops/connectors/preview", { provider, finding, target, deliver_live: deliverLive });
+
+/* ========================================================================== */
+/* Resilience / governance: signed compliance PDF, encrypted backup/restore,  */
+/* audit hash-chain attestation, air-gap feed import, passive OT decode (21-27). */
+/* ========================================================================== */
+
+async function _rsPost<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(30000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+async function _rsGet<T>(path: string): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(20000),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+export const apiComplianceReport = (framework: string, org: string, evidence: Record<string, unknown>) =>
+  _rsPost<any>("/api/v1/resilience/compliance-report", { framework, org, evidence, format: "json" });
+
+export const apiRetentionPlan = (backups: any[], policy?: Record<string, number>) =>
+  _rsPost<any>("/api/v1/resilience/backup/retention-plan", { backups, policy });
+
+export const apiBackupCreate = (databaseId: string, engine = "reference", sequence = 1) =>
+  _rsPost<any>("/api/v1/resilience/backup/create", { database_id: databaseId, engine, sequence });
+
+export const apiBackupRestore = (databaseId: string, ciphertextB64: string, manifest: any, pit?: string) =>
+  _rsPost<any>("/api/v1/resilience/backup/restore",
+    { database_id: databaseId, ciphertext_b64: ciphertextB64, manifest, ...(pit ? { target_point_in_time: pit } : {}) });
+
+export const apiAuditAttestation = () =>
+  _rsGet<any>("/api/v1/resilience/audit/attestation");
+
+export const apiAirgapStatus = () =>
+  _rsGet<any>("/api/v1/resilience/airgap/status");
+
+export const apiAirgapImportFeed = (bundle: any) =>
+  _rsPost<any>("/api/v1/resilience/airgap/import-feed", { bundle });
+
+export const apiOtDecode = (frames: any[]) =>
+  _rsPost<any>("/api/v1/resilience/ot/decode", { frames });

@@ -39,6 +39,8 @@ import Admin from "./pages/Admin.jsx";
 import Identity from "./pages/Identity.jsx";
 import CryptoAssurance from "./pages/CryptoAssurance.jsx";
 import DevSecOps from "./pages/DevSecOps.jsx";
+import Resilience from "./pages/Resilience.jsx";
+import RoleDashboard from "./pages/RoleDashboard.jsx";
 import Accuracy from "./pages/Accuracy.jsx";
 import Organization from "./pages/Organization.jsx";
 import Notifications from "./pages/Notifications.jsx";
@@ -88,6 +90,8 @@ const PAGES: Record<string, React.ComponentType> = {
   "/identity": Identity,
   "/crypto-assurance": CryptoAssurance,
   "/devsecops": DevSecOps,
+  "/resilience": Resilience,
+  "/role-home": RoleDashboard,
   "/accuracy": Accuracy,
   "/organization": Organization,
   "/notifications": Notifications,

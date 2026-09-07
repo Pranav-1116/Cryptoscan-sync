@@ -87,6 +87,7 @@ from api.routers import (
     datalake as datalake_router,
     anomaly as anomaly_router,
     governance as governance_router,
+    resilience,
 )
 from api.routers import metrics as metrics_router
 from api.security.exceptions import AuthenticationError, ValidationError
@@ -304,6 +305,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(scim.router, prefix=prefix)
     app.include_router(workload.router, prefix=prefix)
     app.include_router(devsecops.router, prefix=prefix)
+    app.include_router(resilience.router, prefix=prefix)
     app.include_router(crypto_assurance.router, prefix=prefix)
     app.include_router(onboarding.router, prefix=prefix)
     app.include_router(control_plane.router, prefix=prefix)

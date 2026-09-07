@@ -207,3 +207,79 @@ def connector_preview(body: ConnectorRequest,
         db.commit()
     return {"provider": provider, "result": res, "delivered_live": body.deliver_live,
             "preview": captured}
+
+
+# ------------------------------------------------- 20. inbound chat actions -- #
+_CHAT_STATE: dict[str, Any] = {}
+
+
+def _finding_state_store() -> dict[str, Any]:
+    """Process-local finding lifecycle state keyed by finding_id.
+
+    In production this is the findings table; the in-memory store keeps the
+    reference surface stateless-to-deploy while preserving ack/assign
+    idempotency semantics across requests."""
+    return _CHAT_STATE
+
+
+class ChatActionRequest(BaseModel):
+    platform: str = Field(..., description="slack | teams")
+    action: str = Field(..., description="ack | assign | ticket")
+    key: str
+    finding_id: str
+    actor: str
+    # Slack signature verification (v0 HMAC) — optional in preview; required live
+    timestamp: str | None = None
+    signature: str | None = None
+    raw_body: str | None = None
+    signing_secret: str | None = None
+
+
+@router.post("/chat/action")
+def chat_action(body: ChatActionRequest, db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles("admin", "security_analyst", "auditor", "superadmin"))):
+    """Deterministic inbound ack/assign/ticket handler for Slack/Teams buttons.
+
+    Verifies the platform request signature (Slack v0 HMAC) when provided, then
+    applies the state transition idempotently and writes an audit entry. Fails
+    closed on bad signature / unknown action / mismatched dedup key.
+    """
+    from devsecops import sync as dsync
+
+    # Signature verification (fail-closed when a secret+signature are supplied)
+    if body.platform == "slack" and body.signing_secret:
+        raw = (body.raw_body or "").encode()
+        if not body.signature or not body.timestamp or not dsync.verify_slack_request(
+                signing_secret=body.signing_secret, timestamp=body.timestamp,
+                body=raw, signature=body.signature):
+            UserRepository(db).audit(user, "devsecops.chat_action_rejected", target_type="finding",
+                                     target_id=body.finding_id, detail={"reason": "bad signature"},
+                                     outcome="FAILURE")
+            db.commit()
+            raise HTTPException(status_code=401, detail="invalid Slack request signature")
+
+    # Persist finding lifecycle state in a module-level store (production uses a
+    # findings table); this makes ack/assign idempotent across requests.
+    store = _finding_state_store()
+    state = store.get(body.finding_id) or dsync.FindingState(finding_id=body.finding_id, status="OPEN")
+    result = dsync.apply_chat_action(state, action=body.action, key=body.key,
+                                     actor=body.actor, finding=body.finding_id)
+    if result.get("ok"):
+        store[body.finding_id] = state
+    if not result.get("ok"):
+        UserRepository(db).audit(user, "devsecops.chat_action_rejected", target_type="finding",
+                                 target_id=body.finding_id, detail={"reason": result.get("error")},
+                                 outcome="FAILURE")
+        db.commit()
+        raise HTTPException(status_code=400, detail=result.get("error") or "action rejected")
+
+    UserRepository(db).audit(user, f"devsecops.chat_{body.action}", target_type="finding",
+                             target_id=body.finding_id,
+                             detail={"platform": body.platform, "actor": body.actor,
+                                     "idempotent": result.get("idempotent", False),
+                                     "new_status": result["state"]["status"]})
+    db.commit()
+    return {"ok": True, "platform": body.platform, "action": body.action,
+            "finding_id": body.finding_id, "state": result["state"],
+            "idempotent": result.get("idempotent", False),
+            "audit": result.get("audit")}

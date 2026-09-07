@@ -3,10 +3,12 @@ import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search.jsx";
 import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 
 const NAV = [
   { section: "Command center", items: [
     { to: "/", label: "Command center", icon: "◎" },
+    { to: "/role-home", labelKey: "role.title", label: "Role workspace", icon: "◐" },
     { to: "/onboarding", label: "Onboarding", icon: "➤" },
     { to: "/env", label: "Live environment", icon: "◉" },
     { to: "/organization", label: "Organization", icon: "◫" },
@@ -53,6 +55,7 @@ const NAV = [
   { section: "Govern", items: [
     { to: "/compliance", label: "Compliance", icon: "✓" },
     { to: "/governance", label: "Governance", icon: "⚖" },
+    { to: "/resilience", labelKey: "nav.resilience", label: "Resilience & DR", icon: "⛨" },
     { to: "/evidence", label: "Evidence", icon: "⛨" },
   ]},
   { section: "Operate", items: [
@@ -74,6 +77,7 @@ const NAV = [
 ];
 
 export default function Layout({ route, children }: { route: string; children: React.ReactNode }) {
+  const { t, dir } = useI18n();
   const [showSearch, setShowSearch] = useState(false);
   const [abac, setAbac] = useState<{ enforced: boolean; grants: number } | null>(null);
   const ticker = useLiveTicker();
@@ -107,12 +111,16 @@ export default function Layout({ route, children }: { route: string; children: R
             {group.items.map((item) => (
               <a key={item.to} href={`#${item.to}`} className={`nav ${route === item.to ? "active" : ""}`}>
                 <span style={{ width: 18, textAlign: "center" }}>{item.icon}</span>
-                {item.label}
+                {"labelKey" in item && item.labelKey ? t(item.labelKey) : item.label}
               </a>
             ))}
           </React.Fragment>
         ))}
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, padding: "0 8px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: dir === "rtl" ? "flex-end" : "flex-start", gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 11, color: "var(--faint)", letterSpacing: "0.08em" }}>{t("lang.label").toUpperCase()}</span>
+            <LanguageSwitcher />
+          </div>
           <div className="demobanner" style={{
             color: ticker.backend ? "var(--green)" : "var(--amber)",
             borderColor: ticker.backend ? "rgba(47,184,119,0.35)" : undefined,

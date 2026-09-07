@@ -649,3 +649,15 @@ select.inp option { background: var(--panel); color: var(--text); }
   .auth-brand { display: none; }
   .auth-panel { padding: 32px 22px; }
 }
+
+/* Arabic (RTL) support — feature 23. <html dir="rtl"> flips flex/grid flow;
+   sidebar moves to the right and text aligns right. */
+html[dir="rtl"] body { text-align: right; }
+html[dir="rtl"] .shell { direction: rtl; }
+html[dir="rtl"] .sidebar { border-right: none; border-left: 1px solid var(--line); }
+html[dir="rtl"] .main { direction: rtl; }
+html[dir="rtl"] .nav { text-align: right; }
+html[dir="rtl"] .livehead { direction: ltr; } /* live status strip stays LTR for numbers */
+html[dir="rtl"] .table, html[dir="rtl"] table { direction: rtl; }
+html[dir="rtl"] input, html[dir="rtl"] textarea, html[dir="rtl"] select { text-align: right; }
+html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
