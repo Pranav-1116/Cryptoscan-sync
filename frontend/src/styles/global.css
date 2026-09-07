@@ -1036,3 +1036,20 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .rb-rule-card .rb-when { font-family: var(--mono); font-size: 11.5px; color: var(--cyan); }
 .rb-rule-card .rb-conds { font-family: var(--mono); font-size: 11px; color: var(--dim); margin: 8px 0; }
 .rb-rule-card .rb-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* ── finding detail (why → evidence → deps → recommend → remediate → verify) ── */
+.fd-sections { display: flex; flex-direction: column; gap: 14px; }
+.fd-sec { border: 1px solid var(--line); border-radius: 9px; background: var(--panel); padding: 12px 14px; }
+.fd-sec h4 {
+  margin: 0 0 7px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--cyan); display: flex; align-items: center; gap: 8px; font-family: var(--mono);
+}
+.fd-sec h4 .fd-num {
+  display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
+  border: 1.5px solid var(--cyan); color: var(--cyan); font-size: 10px;
+}
+.fd-sec p { margin: 0; font-size: 12.5px; color: var(--dim); line-height: 1.55; }
+.fd-sec ul { margin: 6px 0 0; padding-left: 18px; font-size: 12.5px; color: var(--dim); line-height: 1.7; }
+.fd-sec .fd-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12.5px; }
+.fd-sec .fd-kv .k { font-family: var(--mono); font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
+.fd-sec.verify { border-color: var(--line-strong); }
