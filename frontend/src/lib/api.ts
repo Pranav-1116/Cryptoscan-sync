@@ -1234,3 +1234,8 @@ export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult
     return { source: "live", ok: true, data: data as T };
   } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
 }
+
+/* Report templates + schedule creation. */
+export const apiReportTemplates = () => _rsGet<any>("/api/v1/report-templates");
+export const apiReportScheduleCreate = (body: { name: string; template_id: string; frequency: string; scan_target?: string; requirements?: string[]; recipients?: string[] }) =>
+  _rsPost<any>("/api/v1/report-schedules", body);
