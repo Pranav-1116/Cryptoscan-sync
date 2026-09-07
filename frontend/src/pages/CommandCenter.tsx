@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
-import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
+import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, apiLiveScanRun, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
 import { useLive } from "../lib/useLive.js";
@@ -16,6 +16,21 @@ export default function CommandCenter() {
     activeScanners: 0, totalScanners: 0, eventsPerSec: 0, agentsHealthy: 0, agentsTotal: 0,
     scannerHealthPct: 0, evidenceHealthPct: 0, cbomVersion: 0, hbomVersion: 0,
     liveChanges24h: 0, criticalFindings: 0, highFindings: 0, pqcExposurePct: 0, migrationProgressPct: 0,
+    totalAssets: 0, cryptoAssets: 0,
+  };
+  const [firstScanBusy, setFirstScanBusy] = useState(false);
+  const [firstScanMsg, setFirstScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const runFirstScan = async () => {
+    setFirstScanBusy(true);
+    setFirstScanMsg(null);
+    const r = await apiLiveScanRun({ scanners: ["hardware", "runtime"] });
+    setFirstScanBusy(false);
+    if (r.ok) {
+      setFirstScanMsg({ ok: true, text: "scan started — inventory populates in a few seconds" });
+      setTimeout(() => { liveInventory.reload(); void liveScan.run(); }, 6000);
+    } else {
+      setFirstScanMsg({ ok: false, text: r.error ?? "scan failed to start" });
+    }
   };
   const [backend, setBackend] = useState<boolean | null>(null);
   const [scope, setScope] = useState<ApiResult<Record<string, unknown>>>({ source: "offline", data: null });
@@ -41,7 +56,6 @@ export default function CommandCenter() {
   // Derive every dashboard KPI from live endpoints (zero until real data exists).
   const cov = (ls.coverage ?? {}) as Record<string, number>;
   const agents = liveAgents.data.agents ?? [];
-  const inventoryAssets = liveInventory.data.assets ?? [];
   g.totalScanners = ls.total_scans ?? 0;
   g.activeScanners = ls.total_scans ?? 0;
   g.agentsTotal = agents.length;
@@ -60,6 +74,12 @@ export default function CommandCenter() {
   const cloudResources = []; // cloud counts come from /cloud accounts (read-only)
   const vendors = [];
   const hardware = Array(invCounts.hardware_devices ?? 0).fill(null);
+  // Total / crypto asset counts derived from the live inventory counts.
+  g.totalAssets = Object.entries(invCounts)
+    .filter(([k]) => ["hardware_devices", "network_assets", "cloud_resources"].includes(k))
+    .reduce((n, [, v]) => n + Number(v ?? 0), 0);
+  g.cryptoAssets = (invCounts.libraries ?? 0) + (invCounts.certificates ?? 0) + (invCounts.processes ?? 0);
+  const hasInventory = g.totalAssets > 0 || g.cryptoAssets > 0;
   const riskCounts: Record<string, number> = { CRITICAL: g.criticalFindings, HIGH: g.highFindings, MEDIUM: (ls.open_drift ?? {}).MEDIUM ?? 0, LOW: (ls.open_drift ?? {}).INFO ?? 0 };
   const events = recentEvents.data.events ?? [];
 
@@ -154,6 +174,22 @@ export default function CommandCenter() {
             )}
             {lastScanEvent && rt.connected && <LiveBadge source="live" label="SSE LIVE" />}
           </div>
+        </Panel>
+      )}
+
+      {/* zero-state quick start — one real local scan, no fabricated data */}
+      {backend === true && !hasInventory && (
+        <Panel title="Start here — run your first real scan" sub="deterministic local hardware + runtime inventory; results land in the live CBOM" className="mt">
+          <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="btn primary" onClick={() => void runFirstScan()} disabled={firstScanBusy} style={{ fontSize: 14, padding: "11px 20px" }}>
+              {firstScanBusy ? "Scanning this host…" : "▶ Scan this host now"}
+            </button>
+            <a href="#/onboarding" className="btn sm" style={{ textDecoration: "none" }}>Set up environments & scope →</a>
+            <span className="dim" style={{ fontSize: 12.5 }}>
+              Hardware (CPU crypto caps, TPM/HSM, RNG) and runtime (crypto libraries, processes, certificates) are read locally — no targets, no credentials, nothing simulated.
+            </span>
+          </div>
+          {firstScanMsg && <div style={{ marginTop: 10 }}><Badge tone={firstScanMsg.ok ? "green" : "red"}>{firstScanMsg.ok ? "✓ " : ""}{firstScanMsg.text}</Badge></div>}
         </Panel>
       )}
 

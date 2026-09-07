@@ -107,7 +107,7 @@ export default function Layout({ route, children }: { route: string; children: R
           <span>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 11, marginLeft: 8, letterSpacing: "0.14em" }}>CRYPTO INTELLIGENCE</span></span>
         </a>
         {NAV.map((group) => (
-          <React.Fragment key={group.section}>
+          <React.Fragment key={group.sectionKey}>
             <div className="nav-label">{t(group.sectionKey)}</div>
             {group.items.map((item) => (
               <a key={item.to} href={`#${item.to}`} className={`nav ${route === item.to ? "active" : ""}`}>

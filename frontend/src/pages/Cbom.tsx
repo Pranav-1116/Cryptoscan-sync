@@ -13,12 +13,13 @@ export default function Cbom() {
   // live CBOM assembled from the scanner cycle (algorithms/libraries/packages)
   const liveBomRes = usePollingApi(apiLiveBom, 8000);
   const liveBom = (liveBomRes.data ?? null) as LiveBomResponse | null;
-  const bomComponents: any[] = liveBom?.cbom.components ?? [];
-  const bomDependencies: any[] = liveBom?.cbom.dependencies ?? [];
-  const bomDiff = (liveBom?.cbom as any)?.diff ?? { added: [], removed: [], changed: [] };
-  const bomHistory: any[] = liveBom?.cbom.history ?? liveBom?.versions ?? [];
-  const cbomVersion = liveBom?.cbom.version ?? bomHistory.length;
-  const liveCounts = liveBom?.cbom.counts ?? {};
+  const cbom = (liveBom?.cbom ?? {}) as any;
+  const bomComponents: any[] = cbom.components ?? [];
+  const bomDependencies: any[] = cbom.dependencies ?? [];
+  const bomDiff = cbom.diff ?? { added: [], removed: [], changed: [] };
+  const bomHistory: any[] = cbom.history ?? (liveBom as any)?.versions ?? [];
+  const cbomVersion = cbom.version ?? bomHistory.length;
+  const liveCounts: Record<string, number> = cbom.counts ?? {};
   const Q_TONE: Record<string, "red" | "amber" | "green" | ""> = {
     vulnerable: "red", broken: "red", at_risk: "amber", safe: "green",
   };
@@ -54,7 +55,7 @@ export default function Cbom() {
       {liveBomRes.source === "live" && (
         <Panel title="Live CBOM (from real scans)" sub={liveBom ? `generated ${liveBom.generated_at ? new Date(liveBom.generated_at).toLocaleString() : ""} · quantum verdicts from the universal classifier` : ""} className="mt">
           <div className="grid cols-4" style={{ marginBottom: 12 }}>
-            {[["total", liveCounts.total ?? liveComponents.length], ["algorithms", liveCounts.algorithms ?? 0],
+            {[["total", liveCounts.total ?? bomComponents.length], ["algorithms", liveCounts.algorithms ?? 0],
               ["libraries/packages", (liveCounts.libraries ?? 0) + (liveCounts.packages ?? 0)],
               ["quantum vulnerable", liveCounts.quantum_vulnerable ?? 0]].map(([k, v]) => (
               <div className="kpi" key={k as string}><span className="k">{k}</span>
@@ -63,7 +64,7 @@ export default function Cbom() {
           </div>
           <Table
             head={["type", "component", "version", "source", "quantum status", "priority"]}
-            rows={liveComponents.map((c) => [
+            rows={bomComponents.map((c) => [
               <Badge tone="cyan">{c.type}</Badge>,
               <span className="mono" style={{ fontWeight: 600 }}>{c.name}</span>,
               <span className="num">{c.version || "—"}</span>,
@@ -74,7 +75,7 @@ export default function Cbom() {
               <span>{c.migration_priority ?? "—"}</span>,
             ])}
           />
-          {!liveComponents.length && (
+          {!bomComponents.length && (
             <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
               No crypto components yet — run runtime + universal/container scans in Operations → Realtime scanners.
             </div>
@@ -127,7 +128,7 @@ export default function Cbom() {
           <h3 style={{ margin: "18px 0 8px" }}>Dependencies</h3>
           <Table
             head={["component", "depends on"]}
-            rows={bomDependencies.map((d) => [<span className="mono">{d.ref}</span>, d.dependsOn.map((x) => <Badge key={x}>{x}</Badge>)])}
+            rows={bomDependencies.map((d: any) => [<span className="mono">{d.ref}</span>, (d.dependsOn ?? []).map((x: string) => <Badge key={x}>{x}</Badge>)])}
           />
         </Panel>
       )}
@@ -138,9 +139,9 @@ export default function Cbom() {
           <Table
             head={["change", "components"]}
             rows={[
-              ["added", bomDiff.added.map((a) => <Badge key={a} tone="green">+ {a}</Badge>)],
-              ["removed", bomDiff.removed.map((a) => <Badge key={a} tone="red">− {a}</Badge>)],
-              ["changed", bomDiff.changed.map((a) => <Badge key={a} tone="amber">~ {a}</Badge>)],
+              ["added", bomDiff.added.map((a: string) => <Badge key={a} tone="green">+ {a}</Badge>)],
+              ["removed", bomDiff.removed.map((a: string) => <Badge key={a} tone="red">− {a}</Badge>)],
+              ["changed", bomDiff.changed.map((a: string) => <Badge key={a} tone="amber">~ {a}</Badge>)],
             ]}
           />
           ) : (

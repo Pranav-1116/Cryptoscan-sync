@@ -7,6 +7,7 @@ interface AgilitySystem {
   system_id?: string;
   agility_score?: number;
   category?: string;
+  score_delta?: number;
 }
 interface AgilityResp {
   systems?: AgilitySystem[];
