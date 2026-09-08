@@ -575,6 +575,87 @@ export const apiInventory = (): Promise<ApiResult<CmdbInventory>> =>
 export const apiInventorySummary = (): Promise<ApiResult<CmdbSummary>> =>
   call(`/api/v1/inventory/summary`);
 
+// ── Unified Risk Engine (#3) ──
+export interface UnifiedRiskAsset {
+  id: string;
+  name: string | null;
+  asset_type: string;
+  score: number;
+  level: string;
+  factors: Record<string, { level: number; points: number; weight: number }>;
+  missing: string[];
+}
+export interface UnifiedRiskEstate {
+  score: number;
+  level: string;
+  count: number;
+  by_level: Record<string, number>;
+}
+export interface UnifiedRiskResponse {
+  assets: UnifiedRiskAsset[];
+  count: number;
+  estate: UnifiedRiskEstate;
+  factors: string[];
+  source: string;
+}
+export const apiUnifiedRisk = (params?: { asset_type?: string; risk?: string }): Promise<ApiResult<UnifiedRiskResponse>> => {
+  const q = new URLSearchParams();
+  if (params?.asset_type) q.set("asset_type", params.asset_type);
+  if (params?.risk) q.set("risk", params.risk);
+  const qs = q.toString();
+  return call(`/api/v1/risk/unified${qs ? `?${qs}` : ""}`);
+};
+
+// ── Scope & Authorization + Multi-Tenant isolation (#2, #11) ──
+export interface ScopeEnvelope {
+  org_id: string | null;
+  tenant: string | null;
+  allowed_targets: Record<string, string[]>;
+  allowed_methods: string[];
+  read_only: boolean;
+  exclusions: string[];
+  rate_limit: { max: number; window_seconds: number };
+  scanner: string | null;
+  maintenance_window_open: boolean;
+}
+export const apiScopeEnvelope = (): Promise<ApiResult<ScopeEnvelope>> =>
+  call(`/api/v1/scope/envelope`);
+export const apiScopeAuthorize = (target: string, kind?: string, method?: string, mutating = false): Promise<ApiResult<{ decision: { allowed: boolean; reason: string }; scope: ScopeEnvelope }>> => {
+  const q = new URLSearchParams({ target });
+  if (kind) q.set("kind", kind);
+  if (method) q.set("method", method);
+  if (mutating) q.set("mutating", "true");
+  return call(`/api/v1/scope/authorize?${q.toString()}`);
+};
+export interface TenantIsolation {
+  source: string;
+  enforced: boolean;
+  tenants: { id: string; name: string; sector: string }[];
+  current_tenant: string;
+  authorized_scope: ScopeEnvelope;
+  scope_entry_count: number;
+  connector_count: number;
+  maintenance_window_open: boolean;
+}
+export const apiTenantIsolation = (): Promise<ApiResult<TenantIsolation>> =>
+  call(`/api/v1/scope/tenant/isolation`);
+
+// ── Connector Framework / SDK (#13) ──
+export interface ConnectorRegistered {
+  kind: string;
+  method: string;
+  mode: string;
+  name: string;
+}
+export interface ConnectorCatalog {
+  source: string;
+  registered: ConnectorRegistered[];
+  catalog_kinds: string[];
+  catalog_methods: string[];
+}
+export const apiConnectorCatalog = (): Promise<ApiResult<ConnectorCatalog>> =>
+  call(`/api/v1/connectors/sdk`);
+
 // ── Certificate expiry calendar (SLA-tiered, deterministic) ──
 export interface ExpiryCalendarEntry {
   subject: string | null;

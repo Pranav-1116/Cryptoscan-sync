@@ -130,7 +130,7 @@ def _crypto_systems(session: Session) -> dict[str, list[str]]:
     return out
 
 
-def _collect(session: Session, *,
+def collect_inventory(session: Session, *,
              limit: int = 500) -> list[dict[str, Any]]:
     sys_links = _system_links(session)
     cert_systems = _cert_systems(session)
@@ -290,7 +290,7 @@ def list_inventory(
     db: Session = Depends(get_db_session),
 ):
     """The authoritative, deduplicated asset inventory across every source."""
-    rows = _collect(db, limit=limit)
+    rows = collect_inventory(db, limit=limit)
     if asset_type:
         rows = [r for r in rows if r["asset_type"].lower() == asset_type.lower()]
     if risk:
@@ -310,7 +310,7 @@ def inventory_summary(
     db: Session = Depends(get_db_session),
 ):
     """Counts by asset type + risk + PQC posture (honest, from the DB)."""
-    rows = _collect(db)
+    rows = collect_inventory(db)
     by_type: dict[str, int] = {}
     by_risk: dict[str, int] = {}
     by_pqc: dict[str, int] = {}

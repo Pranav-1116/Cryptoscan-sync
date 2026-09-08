@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Stat, Tabs } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, useRealtimeRefresh, RealtimeChip, severityOf, isSystemEvent, type RealtimeState } from "../lib/realtime.js";
-import { apiInventory, apiInventorySummary, CmdbAsset, CmdbInventory, CmdbSummary } from "../lib/api.js";
+import { apiInventory, apiInventorySummary, apiUnifiedRisk, CmdbAsset, CmdbInventory, CmdbSummary, UnifiedRiskResponse } from "../lib/api.js";
 
 /* Unified Asset Inventory / CMDB — one authoritative, deduplicated view of the
    estate across systems, crypto assets, certificates, cloud, hardware, vendors,
@@ -55,13 +55,17 @@ const PQC_TONE: Record<string, string> = {
   unknown: "",
 };
 
+const riskTone = (level: string) => (level === "CRITICAL" ? "red" : level === "HIGH" ? "amber" : level === "MEDIUM" ? "amber" : "green");
+const riskRank = (level: string) => ({ CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 }[level] ?? 4);
+
 const TYPE_ORDER = ["Application", "Crypto", "Certificate", "Cloud", "Hardware", "Vendor", "BusinessService", "Owner", "NetworkTarget"];
 
 export default function Cmdb() {
   const rt = useRealtime();
   const assets = usePollingApi(apiInventory, 9000);
   const summary = usePollingApi(apiInventorySummary, 12000);
-  useRealtimeRefresh(assets.run, summary.run);
+  const riskU = usePollingApi(apiUnifiedRisk, 15000);
+  useRealtimeRefresh(assets.run, summary.run, riskU.run);
 
   const live = assets.source === "live";
   const data: CmdbInventory | null = assets.data ?? null;
@@ -139,6 +143,40 @@ export default function Cmdb() {
           </div>
         </Panel>
       </div>
+
+      <Panel
+        title="Unified risk engine"
+        sub={riskU.source === "live" ? "Technical + Crypto + PQC + Exposure + Business Criticality + Dependency + Evidence Confidence + Threat → one score per asset" : "unified risk unavailable — backend offline"}
+      >
+        {riskU.data ? (
+          <div className="row" style={{ gap: 18, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div style={{ minWidth: 160 }}>
+              <Stat label="Estate score" value={riskU.data.estate.score} tone={riskTone(riskU.data.estate.level)} />
+              <div className="dim" style={{ fontSize: 12, marginTop: 4 }}>{riskU.data.estate.level} · {riskU.data.estate.count} assets</div>
+            </div>
+            <div className="kpi-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 10, flex: 1 }}>
+              {(Object.entries(riskU.data.estate.by_level).sort((a, b) => riskRank(b[0]) - riskRank(a[0]))).map(([k, v]) => (
+                <Stat key={k} label={k} value={v} tone={riskTone(k)} />
+              ))}
+            </div>
+            <Table
+              head={["asset", "type", "score", "level", "top factors"]}
+              rows={riskU.data.assets.slice(0, 12).map((a) => {
+                const top = Object.entries(a.factors).filter(([, f]) => f.level > 0).sort((a, b) => b[1].level - a[1].level).slice(0, 3).map(([k, f]) => `${k}:${f.level}`).join(", ");
+                return [
+                  <span className="mono">{a.name ?? a.id}</span>,
+                  <Badge tone="cyan">{a.asset_type}</Badge>,
+                  <span className="num">{a.score}</span>,
+                  <Badge tone={riskTone(a.level)}>{a.level}</Badge>,
+                  <span className="dim mono" style={{ fontSize: 12 }}>{top || "no factors > 0"}</span>,
+                ];
+              })}
+            />
+          </div>
+        ) : (
+          <div className="dim" style={{ fontSize: 13 }}>{riskU.source === "offline" ? "Backend offline — unified risk unavailable." : "No assets yet — run a scan to compute unified risk."}</div>
+        )}
+      </Panel>
 
       <Panel
         title="Unified inventory"

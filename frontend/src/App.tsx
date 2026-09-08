@@ -13,6 +13,7 @@ const Hardware = lazy(() => import("./pages/Hardware.jsx"));
 const Crypto = lazy(() => import("./pages/Crypto.jsx"));
 const Assets = lazy(() => import("./pages/Assets.jsx"));
 const Cmdb = lazy(() => import("./pages/Cmdb.jsx"));
+const Scope = lazy(() => import("./pages/Scope.jsx"));
 const CryptoAssets = lazy(() => import("./pages/CryptoAssets.jsx"));
 const Certificates = lazy(() => import("./pages/Certificates.jsx"));
 const Libraries = lazy(() => import("./pages/Libraries.jsx"));
@@ -72,6 +73,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/crypto": Crypto,
   "/assets": Assets,
   "/cmdb": Cmdb,
+  "/scope": Scope,
   "/crypto-assets": CryptoAssets,
   "/certificates": Certificates,
   "/libraries": Libraries,

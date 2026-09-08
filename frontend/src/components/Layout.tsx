@@ -55,6 +55,7 @@ const NAV = [
     { to: "/env", labelKey: "nav.liveEnvironment", icon: "◉" },
   ]},
   { sectionKey: "nav.groupGovern", items: [
+    { to: "/scope", labelKey: "nav.scope", icon: "⚖" },
     { to: "/compliance", labelKey: "nav.compliance", icon: "✓" },
     { to: "/governance", labelKey: "nav.governance", icon: "⚖" },
     { to: "/resilience", labelKey: "nav.resilience", icon: "⛨" },

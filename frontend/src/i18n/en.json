@@ -44,6 +44,7 @@
   "nav.catalogs": "Catalogs",
   "nav.assets": "Assets",
   "nav.cmdb": "Asset & CMDB",
+  "nav.scope": "Scope & AuthZ",
   "nav.cryptoAssets": "Crypto assets",
   "nav.certificates": "Certificates",
   "nav.cryptoAssurance": "Crypto assurance",
