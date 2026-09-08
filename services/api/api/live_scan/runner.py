@@ -29,6 +29,7 @@ API environment:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -38,6 +39,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _repo_root() -> Path:
@@ -403,6 +406,53 @@ class LiveScanRunner:
             except Exception:  # noqa: BLE001 — best-effort durability
                 pass
 
+    def _auto_sync_graph(self, *, trigger: str, requested: list[str]) -> None:
+        """After a scan cycle, reconcile the persisted graph and publish a
+        precise graph.updated event. Best-effort and never raises."""
+        try:
+            from db.connection.session import SessionLocal
+
+            from api.graph_builder import sync_graph
+
+            with SessionLocal() as db:
+                result = sync_graph(db)
+            detail = (
+                f"Graph auto-synced after {trigger} scan"
+                f" ({result.get('nodes')} nodes / {result.get('edges')} edges)"
+            )
+        except Exception as exc:  # noqa: BLE001 — graph sync must not break a scan
+            logger.warning("graph_auto_sync_failed: %s", exc)
+            try:
+                from api.events.platform_events import emit_platform_event
+
+                emit_platform_event(
+                    "graph.updated",
+                    f"Scan cycle ({trigger}) completed — inventory may have changed",
+                    {"trigger": trigger, "scanners": requested, "changed": True},
+                    target_name="graph",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        try:
+            from api.events.platform_events import emit_platform_event
+
+            emit_platform_event(
+                "graph.updated",
+                detail,
+                {
+                    "trigger": trigger,
+                    "scanners": requested,
+                    "nodes": result.get("nodes"),
+                    "edges": result.get("edges"),
+                    "synced": result.get("synced", True),
+                    "changed": True,
+                },
+                target_name="graph",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("graph_update_event_failed: %s", exc)
+
     def run_cycle(
         self,
         *,
@@ -485,6 +535,12 @@ class LiveScanRunner:
                            "ok": snapshot["ok_count"], "failed": snapshot["failed_count"],
                            "scanners": list(snapshot["results"].keys()),
                            "persisted": self._persisted})
+            # Realtime pipeline: a completed scan may have changed the inventory
+            # (crypto assets, certs, cloud/hardware res). Auto-sync the persisted
+            # graph (Neo4j when configured) and publish a precise graph.updated
+            # platform event so SSE consumers refresh without polling. Best-effort
+            # — a graph/event failure must never fail the scan cycle.
+            self._auto_sync_graph(trigger=trigger, requested=requested)
             return {"status": "completed", **snapshot}
         finally:
             self.running = False

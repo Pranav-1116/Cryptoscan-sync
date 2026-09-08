@@ -481,7 +481,6 @@ def scan_network(body: HostScanRequest, user: str = Depends(get_current_user), d
                                                      "field": exc.field, "reason": str(exc)})
     result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
         safe_hosts,
-        body.hosts,
         sni=body.sni,
         starttls=body.starttls,
         scan_versions=body.scan_versions,

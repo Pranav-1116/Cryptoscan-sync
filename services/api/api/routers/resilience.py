@@ -14,6 +14,7 @@ import datetime as dt
 import os
 from typing import Any
 
+from cryptography.fernet import Fernet
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
@@ -259,7 +260,6 @@ def backup_run_scheduled(body: BackupRunRequest, db: Session = Depends(get_db_se
     In the reference surface the command runner is a deterministic stub that
     returns synthetic dumps (no real DB server required); production injects a
     subprocess runner wrapping pg_dump / neo4j-admin."""
-    from governance import backup as bk
     from governance import backup_jobs as bj
 
     storage = _backup_storage()
@@ -478,6 +478,7 @@ class FeedBuildRequest(BaseModel):
 
 @router.post("/airgap/build-bundle")
 def airgap_build(body: FeedBuildRequest,
+                 db: Session = Depends(get_db_session),
                  user: str = Depends(require_roles("admin", "superadmin"))):
     """Build a signed offline feed bundle (run on an ONLINE host, then carry the
     artifact into the air-gapped network for import)."""
