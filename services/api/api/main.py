@@ -29,6 +29,7 @@ from api.routers import (
     scope,
     risk,
     connectors,
+    live,
     auth,
     baselines,
     business,
@@ -291,6 +292,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(scope.router, prefix=prefix)
     app.include_router(risk.router, prefix=prefix)
     app.include_router(connectors.router, prefix=prefix)
+    app.include_router(live.router, prefix=prefix)
     app.include_router(algorithms.router, prefix=prefix)
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)

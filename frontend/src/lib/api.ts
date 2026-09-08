@@ -656,6 +656,54 @@ export interface ConnectorCatalog {
 export const apiConnectorCatalog = (): Promise<ApiResult<ConnectorCatalog>> =>
   call(`/api/v1/connectors/sdk`);
 
+// ── Live Scanning flow / SCAN ORCHESTRATOR (one product) ──
+export interface LiveDomainCounts {
+  network: number;
+  hardware: number;
+  vendor: number;
+  crypto: number;
+  certificate: number;
+  application: number;
+  total: number;
+}
+export interface LiveGraphSummary {
+  node_count?: number;
+  edge_count?: number;
+  by_kind?: Record<string, number>;
+  backend?: string | null;
+  note?: string;
+}
+export interface OrchestratorScan {
+  scan_id: string;
+  org_id: string;
+  org_name: string;
+  phase: string;
+  status: string;
+  started_at: string;
+  scope_validated: boolean;
+  targets: Record<string, string[]>;
+  credentials: Record<string, boolean>;
+  progress: Record<string, number>;
+  error: string | null;
+  domain_counts: Record<string, number>;
+}
+export interface LiveEnvironmentResponse {
+  source: string;
+  domains: LiveDomainCounts;
+  graph: LiveGraphSummary;
+  events: { events: { id: number; ts: string; type: string; payload: Record<string, unknown> }[]; latest_id: number; subscribers: number };
+  scan: OrchestratorScan | null;
+  runner: { running: boolean } | null;
+}
+export const apiLiveEnvironment = (): Promise<ApiResult<LiveEnvironmentResponse>> =>
+  call(`/api/v1/live/environment`);
+export const apiLiveOrchestratorStatus = (): Promise<ApiResult<{ scan: OrchestratorScan | null; source: string; runner: { running: boolean } }>> =>
+  call(`/api/v1/live/orchestrator/status`);
+export const apiLiveOrchestratorStart = (scanners?: string[]): Promise<ApiResult<{ status: string; scan: OrchestratorScan }>> => {
+  const q = scanners?.length ? `?${scanners.map((s) => `scanners=${encodeURIComponent(s)}`).join("&")}` : "";
+  return call(`/api/v1/live/orchestrator/start${q}`, { method: "POST" });
+};
+
 // ── Certificate expiry calendar (SLA-tiered, deterministic) ──
 export interface ExpiryCalendarEntry {
   subject: string | null;
