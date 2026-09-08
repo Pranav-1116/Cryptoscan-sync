@@ -150,3 +150,4 @@ from db.models.p2 import (  # noqa: E402,F401
 from db.models.ot_maintenance import OtMaintenanceWindow  # noqa: E402,F401
 from db.models.credential_lease import CredentialLease  # noqa: E402,F401
 from db.models.automation import AutomationRuleRow, AutomationRun, CbomVersionRow  # noqa: E402,F401
+from db.models.graph_snapshot import GraphSnapshot  # noqa: E402,F401

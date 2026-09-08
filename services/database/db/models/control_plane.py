@@ -295,6 +295,39 @@ class BenchmarkRun(BaseModel):
 DELIVERY_STATUSES = ("delivered", "failed", "skipped")
 
 
+class SecurityPosture(BaseModel):
+    """A durable snapshot of ZELNX's own security posture.
+
+    The security center aggregates live signals (agent fleet health, plugin
+    trust, anomaly flags, failed logins, certificate expiry, audit-chain
+    integrity, credential health) into a deterministic 0-100 score plus a
+    component breakdown. Each GET/score is computed atomically by the control
+    plane; this table retains the history so a 24/7 SOC (and the audit
+    governance model) can show posture over time, not just the current frame.
+
+    Deterministic and metadata-only: no secret material is ever persisted.
+    """
+
+    __tablename__ = "cp_security_posture"
+
+    score: Mapped[int] = mapped_column(Integer, nullable=False)
+    agents_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    agents_healthy: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    plugins_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    plugins_verified: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    threats_open: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    threats_critical: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    failed_logins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cert_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cert_valid_pct: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    audit_ok: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    credentials_active: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    credentials_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    #: per-signal sub-scores (0..1) + human-readable notes for the console.
+    components: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="live")
+
+
 class DeliveryLog(BaseModel):
     """One outbound webhook delivery attempt to a registered integration.
 
