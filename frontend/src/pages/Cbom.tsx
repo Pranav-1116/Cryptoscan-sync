@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, Tabs, Code, PageHead } from "../components/ui.jsx";
 import { apiBom, apiLiveBom, LiveBadge, ApiResult, LiveBomResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 
 /* CBOM — Cryptographic Bill of Materials (CycloneDX 1.6). Every panel is built
    from the LIVE scan-derived BOM (GET /live-scan/bom): an interactive
@@ -99,6 +100,7 @@ export default function Cbom() {
   const [selNode, setSelNode] = useState<string | null>(null);
 
   const liveBomRes = usePollingApi(apiLiveBom, 8000);
+  useRealtimeRefresh(liveBomRes.run);
   const liveBom = (liveBomRes.data ?? null) as LiveBomResponse | null;
   const cbom = (liveBom?.cbom ?? {}) as any;
   const bomComponents: BomComponent[] = cbom.components ?? [];

@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { apiRuntimeFindings, apiLiveInventory, ApiResult, LiveInventory } from "../lib/api.js";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 
 /* Runtime host agents — live process-level cryptography observed on real
    hosts by the runtime agent (`python -m runtime.main once --submit`).
@@ -80,6 +81,7 @@ export default function Runtime() {
     8000,
     [],
   );
+  useRealtimeRefresh(liveInv.run);
   const hostProcs = liveInv.data?.processes ?? [];
   const hostLibs = liveInv.data?.libraries ?? [];
 

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Tabs, Drawer } from "../components/ui.jsx";
 import { usePollingApi, useApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiLiveInventory, apiHardwareCatalog, apiLiveScanStatus,
   LiveInventory, HardwareEntry, LiveHardwareDevice,
@@ -32,6 +33,7 @@ export default function Hardware() {
   const stat = usePollingApi(apiLiveScanStatus, 8000);
   const hwSummary = (stat.data as { scanners?: { hardware?: { summary?: Record<string, unknown> } } } | null)
     ?.scanners?.hardware?.summary ?? {};
+  useRealtimeRefresh(inv.run, stat.run);
 
   const cat = useApi(() => apiHardwareCatalog(), []);
   const catalog: HardwareEntry[] = useMemo(() => cat.data?.devices ?? [], [cat.data]);

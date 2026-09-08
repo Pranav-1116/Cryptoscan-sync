@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiAutomationRules, apiAutomationCapabilities,
   apiAutomationSaveRule, apiAutomationDeleteRule,
@@ -33,6 +34,7 @@ function slug(s: string) {
 export default function Automation() {
   const capsRes = usePollingApi(apiAutomationCapabilities, 60000);
   const rulesRes = usePollingApi(apiAutomationRules, 15000);
+  useRealtimeRefresh(capsRes.run, rulesRes.run);
   const caps = (capsRes.data ?? {}) as any;
   const rules = (rulesRes.data ?? []) as any[];
 

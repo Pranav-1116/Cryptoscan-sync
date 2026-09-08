@@ -19,6 +19,7 @@ psycopg2-binary>=2.9.9
 neo4j>=5.20.0
 pytest>=7.4.4
 pytest-asyncio>=0.23.0
+pytest-timeout>=2.3.0
 ruff>=0.1.14
 fpdf2>=2.8.8
 cryptography>=42.0

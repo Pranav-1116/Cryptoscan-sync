@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { apiDrift, apiLiveDrift, LiveBadge, ApiResult, LiveDriftResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import { useLive } from "../lib/useLive.js";
 
 /* baseline/live are empty until real scans freeze a baseline — no static drift. */
@@ -13,6 +14,7 @@ export default function Drift() {
 
   // continuous drift between consecutive real scan cycles
   const liveCycle = usePollingApi(apiLiveDrift, 6000);
+  useRealtimeRefresh(liveCycle.run);
   const cycle = (liveCycle.data ?? null) as LiveDriftResponse | null;
   const cycleChanges = cycle?.changes ?? [];
   const DRIFT_TONE: Record<string, "red" | "amber" | "cyan" | ""> = {

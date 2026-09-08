@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import { apiLiveInventory, LiveInventory } from "../lib/api.js";
 
 /* Asset inventory — unified from the live scan inventory (hardware, network,
@@ -19,6 +20,7 @@ interface AssetRow {
 
 export default function Assets() {
   const inv = usePollingApi(apiLiveInventory, 9000);
+  useRealtimeRefresh(inv.run);
   const live = inv.source === "live";
   const data: LiveInventory | null = inv.data ?? null;
 

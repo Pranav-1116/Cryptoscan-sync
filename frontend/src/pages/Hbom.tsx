@@ -1,6 +1,7 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import { apiLiveBom, LiveBomResponse } from "../lib/api.js";
 
 /* HBOM — Hardware Bill of Materials from the live hardware scanner via
@@ -8,6 +9,7 @@ import { apiLiveBom, LiveBomResponse } from "../lib/api.js";
 
 export default function Hbom() {
   const res = usePollingApi(apiLiveBom, 8000);
+  useRealtimeRefresh(res.run);
   const live = res.source === "live";
   const bom = (res.data ?? null) as LiveBomResponse | null;
   const devices = bom?.hbom.components ?? [];

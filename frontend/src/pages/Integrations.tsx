@@ -7,6 +7,7 @@ import {
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 
 const CRED_KINDS = ["cloud", "network_device", "hsm", "database", "kubernetes", "git", "siem", "api", "other"];
 
@@ -21,6 +22,7 @@ function statusTone(status: string): "green" | "red" | "amber" | "cyan" {
 function VaultPanel() {
   const creds = usePollingApi(apiVaultCredentials, 12000);
   const leases = usePollingApi(apiVaultLeases, 12000);
+  useRealtimeRefresh(creds.run, leases.run);
   const [f, setF] = useState({ name: "", kind: "cloud", vault_provider: "aws_secretsmanager", secret_ref: "", least_privilege_scope: "", rotation_policy_days: 90 });
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -125,6 +127,7 @@ function VaultPanel() {
 export default function Integrations() {
   const ints = usePollingApi(apiIntegrations, 12000);
   const deliv = usePollingApi(apiDeliveries, 12000);
+  useRealtimeRefresh(ints.run, deliv.run);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 

@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Panel, Badge, Bar, Ring, Table, PageHead } from "../components/ui.jsx";
 import { useApi, usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import { apiAlgorithmCatalog, apiLiveBom, AlgorithmEntry, LiveBomResponse } from "../lib/api.js";
 
 /* PQC readiness dashboard — two complementary views of quantum posture:
@@ -28,6 +29,7 @@ export default function Pqc() {
 
   // estate BOM (real deployed components)
   const bomRes = usePollingApi(apiLiveBom, 8000);
+  useRealtimeRefresh(res.run, bomRes.run);
   const bom = ((bomRes.data as LiveBomResponse | null)?.cbom ?? {}) as any;
   const estateComps: any[] = bom.components ?? [];
   const estateCounts: Record<string, number> = bom.counts ?? {};

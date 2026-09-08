@@ -1,6 +1,7 @@
 import React from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import { apiLiveInventory, LiveLibrary } from "../lib/api.js";
 
 /* Crypto libraries — live versions/status from the runtime scanner via
@@ -16,6 +17,7 @@ const TONE: Record<string, "green" | "amber" | "red" | ""> = {
 
 export default function Libraries() {
   const inv = usePollingApi(apiLiveInventory, 8000);
+  useRealtimeRefresh(inv.run);
   const live = inv.source === "live";
   const libs: LiveLibrary[] = (inv.data as { libraries?: LiveLibrary[] } | null)?.libraries ?? [];
 

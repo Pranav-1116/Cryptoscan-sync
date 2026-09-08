@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
 import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, apiLiveScanRun, apiLiveBom, apiLiveDrift, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { useRealtime, severityOf, isSystemEvent } from "../lib/realtime.js";
+import { useRealtime, severityOf, isSystemEvent, useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
 import { useLive } from "../lib/useLive.js";
 
 export default function CommandCenter() {
@@ -54,6 +54,7 @@ export default function CommandCenter() {
   const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
   const liveBom = usePollingApi(apiLiveBom, 12000);
   const liveDrift = usePollingApi(apiLiveDrift, 9000);
+  useRealtimeRefresh(liveStats.run, liveDeliveries.run, liveScan.run, liveAlerts.run, liveBom.run, liveDrift.run);
   const alx = (liveAlerts.data ?? null) as LiveAlertsResponse | null;
   const bomCounts = (liveBom.data as any)?.cbom?.counts ?? {};
   const activeDrift = Number((liveDrift.data as any)?.change_count ?? 0);
@@ -118,6 +119,7 @@ export default function CommandCenter() {
         sub="Global security state across network, cloud, vendor, hardware and cryptography"
         right={
           <>
+            <RealtimeChip />
             {backend === null && <Badge>PROBING BACKEND…</Badge>}
             {backend === true && <Badge tone="green"><span className="dot" /> CONTROL PLANE: LIVE</Badge>}
             {backend === false && <Badge tone="amber"><span className="dot" /> CONTROL PLANE: OFFLINE — SIGN IN TO LOAD LIVE DATA</Badge>}

@@ -1,9 +1,16 @@
 .PHONY: help setup seed api worker test scan verify
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-PY := $(ROOT)/.venv/bin/python
+# Prefer the repo-standard .venv created by `make setup`; fall back to a venv/
+# (used in environments where .venv is not writable/persisted).
+PY := $(shell if [ -x "$(ROOT)/.venv/bin/python" ]; then echo "$(ROOT)/.venv/bin/python"; elif [ -x "$(ROOT)/venv/bin/python" ]; then echo "$(ROOT)/venv/bin/python"; else echo "$(ROOT)/.venv/bin/python"; fi)
 export CRYPTOSCAN_ROOT := $(ROOT)
-export PYTHONPATH := $(ROOT)/services/universal_crypto:$(ROOT)/services/universal_vendor:$(ROOT)/shared/shared_config:$(ROOT)/shared/shared_logging:$(ROOT)/shared/shared_models:$(ROOT)/services/api:$(ROOT)/services/database:$(ROOT)/services/scanner:$(ROOT)/services/evidence:$(ROOT)/services/normalization:$(ROOT)/services/policy:$(ROOT)/services/drift:$(ROOT)/services/worker:$(ROOT)/services/deduplication:$(ROOT)/services/cbom:$(ROOT)/services/container_scanner:$(ROOT)/services/network_scanner:$(ROOT)/services/cloud_scanner:$(ROOT)/services/runtime:$(ROOT)/services/graph_engine:$(ROOT)/services/business_context:$(ROOT)/services/quantum:$(ROOT)/services/remediation:$(ROOT)/services/reporting:$(ROOT)/services/ot_scanner:$(ROOT)/services/vendor_intel:$(ROOT)/services/agility:$(ROOT)/services/payment_crypto:$(ROOT)/services/universal_platform
+# Auto-discover every service/shared package so the path never goes stale when
+# a new microservice is added (previously a hardcoded list that omits 16 dirs).
+# This mirrors the Docker image, which registers all packages via a generated
+# .pth file. The PATH is also populated by .venv/lib/python*/site-packages/
+# cryptoscan.pth when the venv is created via `make setup`.
+export PYTHONPATH := $(shell find $(ROOT)/services $(ROOT)/shared -mindepth 1 -maxdepth 1 -type d | tr '\n' ':')
 
 help:
 	@echo "make setup  - create venv and install deps"
