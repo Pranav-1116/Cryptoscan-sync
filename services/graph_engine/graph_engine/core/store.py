@@ -293,6 +293,18 @@ class Neo4jGraphStore:
             "backend": self.backend,
         }
 
+    def vendor_chain(self, start_id: str) -> dict[str, Any]:
+        # Fallback path: build a memory engine from the exported vis so the
+        # chain is computed the same way as the in-memory backend.
+        from graph_engine.core.engine import GraphEngine
+
+        return GraphEngine.from_vis(self.to_vis()).vendor_chain(start_id)
+
+    def vendor_chains(self, *, limit: int = 100) -> dict[str, Any]:
+        from graph_engine.core.engine import GraphEngine
+
+        return GraphEngine.from_vis(self.to_vis()).vendor_chains(limit=limit)
+
     def crypto_for_system(self, start_id: str) -> dict[str, Any]:
         rows = self._run(CRYPTO_FOR_SYSTEM, start=start_id)
         assets = [
