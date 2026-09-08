@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_roles
 from api.events.bus import get_event_bus
-from api.live_scan.orchestrator import get_scan_orchestrator
+from api.live_scan.orchestrator import collapse_scan_events, get_scan_orchestrator
 from api.routers.inventory import collect_inventory
 from api.graph_builder import graph_from_db
 from db.repositories.onboarding_repository import OnboardingRepository
@@ -61,7 +61,7 @@ def orchestrator_start(
         raise HTTPException(status_code=404,
                             detail="No organization yet — create one via POST /onboarding/organization")
     orch = get_scan_orchestrator()
-    run = orch.start(org.to_dict(), entries, conns, envs, only=scanners)
+    run = orch.start(org.to_dict(), entries, conns, envs, only=scanners, db=db, updated_by=user)
     return {"status": "started", "scan": run.to_dict()}
 
 
@@ -71,6 +71,42 @@ def orchestrator_status(
 ):
     """Current integrated scan run: scan id, phase, per-domain progress."""
     return get_scan_orchestrator().status()
+
+
+@router.get("/orchestrator/history")
+def orchestrator_history(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+    limit: int = 25,
+):
+    """Recent integrated scan runs, rebuilt from the durable platform event log.
+
+    Unlike ``/orchestrator/status`` (which only holds the current in-memory run),
+    this reconstructs *finished* runs from the persisted ``platform`` events, so
+    run history survives restarts and is visible from any worker.
+    """
+    from db.models.monitor import MonitorEvent
+
+    rows = (
+        db.query(MonitorEvent)
+        .filter(
+            MonitorEvent.target_name == "platform",
+            MonitorEvent.event_type.in_(("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED")),
+        )
+        .order_by(MonitorEvent.created_at.desc(), MonitorEvent.id.desc())
+        .limit(800)
+        .all()
+    )
+    events = [
+        {
+            "event_type": r.event_type,
+            "payload": r.payload or {},
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in reversed(rows)  # oldest-first so collapse + sort yields newest-first
+    ]
+    runs = collapse_scan_events(events)
+    return {"source": "scan_orchestrator", "runs": runs[: max(0, int(limit))]}
 
 
 @router.get("/environment")
@@ -88,7 +124,6 @@ def live_environment(
         rows = collect_inventory(db, limit=1000)
     except Exception:  # noqa: BLE001
         rows = []
-    by_type = {r["asset_type"] for r in rows}
     domain_counts = {
         "network": sum(1 for r in rows if r["asset_type"] in ("NetworkTarget",) or r.get("asset_type") == "NetworkTarget"),
         "hardware": sum(1 for r in rows if r["asset_type"] == "Hardware"),

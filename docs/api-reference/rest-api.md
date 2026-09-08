@@ -156,6 +156,31 @@ CLI: `python -m universal_crypto.cli scan <path|--request file.json> [--policy N
 `python -m universal_crypto.cli simulate --current RSA --target ML-KEM-768
 --protocol TLS --library OpenSSL --hardware HSM`.
 
+## Live environment & integrated scan orchestrator
+
+The unified scan flow turns Network, Hardware, Vendor and Cryptography into ONE
+product instead of four scanners. Every integrated run gets ONE global scan id
+(`SCAN-YYYY-NNNN`, unique across restarts via the persisted `scan_seq` counter)
+and a deterministic phase machine: `scope_validated → discovery → correlation →
+risk_calculation → live_monitoring`.
+
+```
+POST /api/v1/live/orchestrator/start?scanners=…   202  start one integrated scan for the tenant's authorized scope
+GET  /api/v1/live/orchestrator/status              current scan: scan id, phase, per-domain progress, runner
+GET  /api/v1/live/orchestrator/history?limit=25    finished runs, rebuilt from the durable platform event log
+GET  /api/v1/live/environment                      ONE view of the whole estate: domain counts + graph + scan + events
+```
+
+`/live/environment` aggregates the same authoritative inventory and the same
+correlation graph the whole platform reads, so the customer sees one estate —
+no per-scanner datasets. Scope is fail-closed: an empty authorized scope denies
+the scan (`scope_validated: false`, `SCAN_FAILED`) rather than probing anything.
+
+Roles: `orchestrator/start` = admin, superadmin, ciso, security_analyst, scanner;
+`status`, `history`, `environment` = any authenticated user. Scans emit
+`platform.scan_phase` / `platform.scan_completed` (persisted as
+`SCAN_STARTED`/`SCAN_PHASE`/`SCAN_COMPLETED`/`SCAN_FAILED` platform events).
+
 ## Realtime event stream
 
 The control plane exposes a realtime SSE stream (spec §42 — Backend → SSE → frontend event store; no polling):

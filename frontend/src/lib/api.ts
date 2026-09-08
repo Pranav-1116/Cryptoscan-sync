@@ -687,6 +687,17 @@ export interface OrchestratorScan {
   error: string | null;
   domain_counts: Record<string, number>;
 }
+export interface ScanRunSummary {
+  scan_id: string;
+  phase: string | null;
+  status: string;
+  started_at: string | null;
+  ended_at: string | null;
+  progress: Record<string, number>;
+  error: string | null;
+  scope_validated: boolean | null;
+  events: string[];
+}
 export interface LiveEnvironmentResponse {
   source: string;
   domains: LiveDomainCounts;
@@ -703,6 +714,8 @@ export const apiLiveOrchestratorStart = (scanners?: string[]): Promise<ApiResult
   const q = scanners?.length ? `?${scanners.map((s) => `scanners=${encodeURIComponent(s)}`).join("&")}` : "";
   return call(`/api/v1/live/orchestrator/start${q}`, { method: "POST" });
 };
+export const apiLiveOrchestratorHistory = (): Promise<ApiResult<{ source: string; runs: ScanRunSummary[] }>> =>
+  call(`/api/v1/live/orchestrator/history`);
 
 // ── Certificate expiry calendar (SLA-tiered, deterministic) ──
 export interface ExpiryCalendarEntry {

@@ -3,8 +3,8 @@ import { Panel, Badge, PageHead, Table } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, useRealtimeRefresh, severityOf, isSystemEvent } from "../lib/realtime.js";
 import {
-  apiLiveEnvironment, apiLiveOrchestratorStart, apiLiveOrchestratorStatus,
-  LiveEnvironmentResponse, OrchestratorScan,
+  apiLiveEnvironment, apiLiveOrchestratorStart, apiLiveOrchestratorStatus, apiLiveOrchestratorHistory,
+  LiveEnvironmentResponse, OrchestratorScan, ScanRunSummary,
 } from "../lib/api.js";
 
 /* LIVE ENVIRONMENT — one graph across network, cloud, vendor, hardware,
@@ -32,7 +32,8 @@ function timeAgo(ts: string): string {
 export default function LiveEnvironment() {
   const lt = usePollingApi(apiLiveEnvironment, 6000);
   const status = usePollingApi(apiLiveOrchestratorStatus, 6000);
-  useRealtimeRefresh(lt.run, status.run);
+  const history = usePollingApi(apiLiveOrchestratorHistory, 9000);
+  useRealtimeRefresh(lt.run, status.run, history.run);
   const rt = useRealtime();
 
   const [starting, setStarting] = useState(false);
@@ -42,6 +43,7 @@ export default function LiveEnvironment() {
   const domains = env?.domains ?? { network: 0, hardware: 0, vendor: 0, crypto: 0, certificate: 0, application: 0, total: 0 };
   const graph = env?.graph ?? {};
   const events = (env?.events?.events ?? []).filter((e) => !isSystemEvent(e.type)).slice(0, 6);
+  const runs: ScanRunSummary[] = history.data?.runs ?? [];
   const live = lt.source === "live";
   const hasData = domains.total > 0 || (graph.node_count ?? 0) > 0;
 
@@ -162,6 +164,30 @@ export default function LiveEnvironment() {
           )}
         </Panel>
       </div>
+
+      <Panel title="Scan run history" sub="rebuilt from the durable platform event log — survives restarts, visible from any worker">
+        {runs.length ? (
+          <Table
+            head={["run", "phase", "status", "started", "duration", "scope", "error"]}
+            rows={runs.map((r) => [
+              <span key={r.scan_id} className="mono" style={{ fontSize: 12 }}>{r.scan_id}</span>,
+              <Badge key="p" tone={phaseTone(r.phase ?? "completed")}>{(r.phase ?? "—").replace(/_/g, " ")}</Badge>,
+              <Badge key="s" tone={r.status === "completed" ? "green" : r.status === "failed" ? "red" : "amber"}>{r.status}</Badge>,
+              <span key="t" className="dim" style={{ fontSize: 12 }}>{r.started_at ? timeAgo(r.started_at) : "—"}</span>,
+              <span key="d" className="dim" style={{ fontSize: 12 }}>
+                {r.started_at && r.ended_at ? `${Math.max(0, Math.round((new Date(r.ended_at).getTime() - new Date(r.started_at).getTime()) / 1000))}s` : "—"}
+              </span>,
+              r.scope_validated == null ? <span key="v" className="dim" style={{ fontSize: 12 }}>—</span>
+                : <Badge key="v" tone={r.scope_validated ? "green" : "red"}>{r.scope_validated ? "yes" : "no"}</Badge>,
+              <span key="e" className="dim" style={{ fontSize: 12 }}>{r.error ?? "—"}</span>,
+            ])}
+          />
+        ) : (
+          <div className="dim" style={{ fontSize: 13 }}>
+            {history.source === "live" ? "No integrated scans run yet — start one above to record history." : "Backend offline — run history unavailable."}
+          </div>
+        )}
+      </Panel>
     </>
   );
 }

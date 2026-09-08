@@ -34,6 +34,62 @@ from api.live_scan.runner import LiveScanRunner, get_live_scan_runner
 
 SCAN_ID_FORMAT = "SCAN-{year}-{seq:06d}"
 
+# Platform event types the orchestrator (and downstream pipeline) emit for the
+# unified scan flow. These are the durable audit log that run history is rebuilt
+# from — so past integrated scans survive a restart and are cluster-visible.
+SCAN_EVENT_TYPES = ("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED")
+
+
+def collapse_scan_events(events: list[dict]) -> list[dict]:
+    """Reconstruct condensed integrated-scan run records from platform events.
+
+    Memory-safe: any event without a ``payload.scan_id`` is skipped. Each run
+    record collects the latest phase/progress it observed and whether it ended
+    as ``completed`` or ``failed``. Pure function — unit-testable without a DB.
+
+    ``events`` entries are dicts ``{event_type, payload, created_at}``.
+    Returns run records sorted newest-first.
+    """
+    runs: dict[str, dict] = {}
+    for ev in events:
+        evt_type = str(ev.get("event_type") or "")
+        if evt_type not in SCAN_EVENT_TYPES:
+            continue
+        payload = ev.get("payload") or {}
+        scan_id = payload.get("scan_id")
+        if not scan_id:
+            continue
+        ts = ev.get("created_at")
+        run = runs.setdefault(
+            scan_id,
+            {
+                "scan_id": scan_id,
+                "phase": None,
+                "status": "running",
+                "started_at": ts,
+                "ended_at": None,
+                "progress": {},
+                "error": None,
+                "scope_validated": None,
+                "events": [],
+            },
+        )
+        run["events"].append(evt_type)
+        if payload.get("phase"):
+            run["phase"] = payload["phase"]
+        if payload.get("progress"):
+            run["progress"] = payload["progress"]
+        if "scope_validated" in payload:
+            run["scope_validated"] = payload["scope_validated"]
+        if evt_type == "SCAN_COMPLETED":
+            run["status"] = "completed"
+            run["ended_at"] = ts
+        elif evt_type == "SCAN_FAILED":
+            run["status"] = "failed"
+            run["error"] = payload.get("reason") or run.get("error")
+            run["ended_at"] = ts
+    return sorted(runs.values(), key=lambda r: r.get("started_at") or "", reverse=True)
+
 SCOPE_TO_SCANNER: dict[str, str] = {
     "network": "network",
     "cloud": "cloud",
@@ -155,13 +211,44 @@ class ScanOrchestrator:
             targets["hardware"] = ["host"] + targets.get("hardware", [])
         return targets, credentials
 
-    # ---------------------------------------------------------------- start
-    def start(self, org, scope_entries, connectors, environments, *, only: list[str] | None = None) -> OrchestratorScan:
-        targets, credentials = self._plan(org, scope_entries, connectors, environments)
+    # ------------------------------------------------------------ scan id seq
+    def _next_scan_id(self, db=None, *, updated_by: str = "orchestrator") -> str:
+        """Allocate the next globally-unique integrated scan id.
+
+        The sequence is persisted in ``app_settings`` so run ids stay unique
+        across API restarts and across workers (the in-memory ``_seq`` alone
+        resets on restart and would re-issue the same id). If the DB is
+        unavailable we fall back to the in-memory counter so the orchestrator
+        never blocks a scan on persistence.
+        """
+        date = datetime.now(timezone.utc).strftime("%Y")
+        if db is not None:
+            try:
+                from db.models.app_setting import AppSetting
+
+                row = db.query(AppSetting).filter(AppSetting.key == "scan_seq").one_or_none()
+                next_seq = int(row.value or "0") if row is not None else 0
+                with self._lock:
+                    next_seq = max(self._seq, next_seq) + 1
+                    self._seq = next_seq
+                row = row or AppSetting(key="scan_seq", value="0", updated_by=updated_by)
+                row.value = str(next_seq)
+                row.updated_by = updated_by
+                db.add(row)
+                db.commit()
+                return SCAN_ID_FORMAT.format(year=date, seq=next_seq)
+            except Exception:  # noqa: BLE001 — scan persistence is best-effort
+                pass
         with self._lock:
             self._seq += 1
-            date = datetime.now(timezone.utc).strftime("%Y")
-            scan_id = SCAN_ID_FORMAT.format(year=date, seq=self._seq)
+            return SCAN_ID_FORMAT.format(year=date, seq=self._seq)
+
+    # ---------------------------------------------------------------- start
+    def start(self, org, scope_entries, connectors, environments, *, only: list[str] | None = None,
+              db=None, updated_by: str = "orchestrator") -> OrchestratorScan:
+        targets, credentials = self._plan(org, scope_entries, connectors, environments)
+        scan_id = self._next_scan_id(db=db, updated_by=updated_by)
+        with self._lock:
             org_id = str((org or {}).get("id") or "")
             org_name = str((org or {}).get("name") or "")
             scope_empty = not any(targets.values())

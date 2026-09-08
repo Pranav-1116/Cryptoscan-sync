@@ -55,6 +55,18 @@ backoff, alert-once semantics, BLOCKED-honesty for unscannable targets, event
 feed, `GET /monitor/status` + dashboard "Live monitor" view (5 s refresh).
 Migration 0028. See `docs/user-guide/live-monitoring.md`.
 
+**Unified live scan flow (the "one product")** — instead of four independent
+scanners, Network / Hardware / Vendor / Cryptography are now driven by ONE
+integrated **scan orchestrator** (`api/live_scan/orchestrator.py`,
+`GET/POST /api/v1/live/orchestrator/*`, `GET /api/v1/live/environment`). Every
+run gets ONE global scan id (`SCAN-YYYY-NNNN`, unique across restarts via the
+persisted `scan_seq` counter) and a deterministic phase machine
+(`scope_validated → discovery → correlation → risk_calculation →
+live_monitoring`). Scope is **fail-closed** (empty authorized scope denies the
+scan) and execution delegates to the real `LiveScanRunner`. Run history is
+rebuilt from the durable platform event log (`GET /live/orchestrator/history`),
+so past integrated scans survive restarts and are visible from any worker.
+
 **Payment crypto (bank gap #1)** — HSM key inventory + ceremonies, audit-trail
 ingestion (JSONL/syslog/CSV, timestamp-deduped), TR-31 header parsing, 10
 PAY-xxx rules (weak algorithms, rotation, dual control, clear-key exports,
