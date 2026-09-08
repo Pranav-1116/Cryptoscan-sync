@@ -344,6 +344,108 @@ export const apiStatsSummary = (): Promise<ApiResult<Record<string, unknown>>> =
 export const apiRuntimeFindings = (limit = 50): Promise<ApiResult<Record<string, unknown>>> =>
   call(`/api/v1/scans/runtime-findings?limit=${limit}`);
 
+/* ── evidence findings (GET /api/v1/findings, /api/v1/findings/{evidence_id}) ── */
+
+export interface Finding {
+  evidence_id: string;
+  scan_id: string;
+  algorithm: string;
+  key_size?: number | null;
+  mode?: string | null;
+  padding?: string | null;
+  purpose?: string | null;
+  confidence: string;
+  is_hardcoded_key: boolean;
+  file_path: string;
+  line_number: number;
+  class_name?: string | null;
+  method_name?: string | null;
+  compliance_status?: string | null;
+  content_hash: string;
+  chain_hash: string;
+  normalized_crypto?: Record<string, unknown> | null;
+  policy_evaluation?: Record<string, unknown> | null;
+  finding_data?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}
+
+export interface FindingList {
+  findings: Finding[];
+  total_count: number;
+  page: number;
+  page_size: number;
+}
+
+/** Paginated list of evidence-chain findings. */
+export const apiFindings = (params: {
+  page?: number;
+  page_size?: number;
+  algorithm?: string;
+  compliance_status?: string;
+  scan_id?: string;
+} = {}): Promise<ApiResult<FindingList>> => {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.page_size) q.set("page_size", String(params.page_size));
+  if (params.algorithm) q.set("algorithm", params.algorithm);
+  if (params.compliance_status) q.set("compliance_status", params.compliance_status);
+  if (params.scan_id) q.set("scan_id", params.scan_id);
+  const qs = q.toString();
+  return call(`/api/v1/findings${qs ? `?${qs}` : ""}`);
+};
+
+/** A single finding (full detail incl. normalized_crypto / policy_evaluation). */
+export const apiFindingDetail = (evidenceId: string): Promise<ApiResult<Finding>> =>
+  call(`/api/v1/findings/${encodeURIComponent(evidenceId)}`);
+
+/** Trigger a universal source scan (POST /api/v1/scans/trigger → 202).
+    Requires one of the auditor/admin roles. Runs the worker pipeline and
+    persists evidence-chain findings. */
+export interface TriggerScanResult { job_id: string; status: string; created_at: string; message: string; }
+export async function apiTriggerScan(input: {
+  repo_url: string;
+  branch?: string;
+  sector?: string;
+  scan_mode?: string;
+}): Promise<{ ok: boolean; error?: string; job_id?: string; status?: string; message?: string }> {
+  try {
+    const resp = await fetch("/api/v1/scans/trigger", {
+      method: "POST",
+      signal: AbortSignal.timeout(15000),
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      body: JSON.stringify({ repo_url: input.repo_url, branch: input.branch || "main", sector: input.sector, scan_mode: input.scan_mode }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    return { ok: true, job_id: body.job_id, status: body.status, message: body.message };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+/** Live runtime findings from the 24/7 engine (GET /api/v1/scans/runtime-findings). */
+export interface RuntimeFindingRow {
+  id: string;
+  hostname?: string | null;
+  process_name?: string | null;
+  pid?: number | null;
+  tls_version?: string | null;
+  cipher_suite?: string | null;
+  algorithm?: string | null;
+  key_size?: number | null;
+  status?: string | null;
+  quantum_impact?: string | null;
+  weak_tls?: boolean;
+  observation_count?: number;
+  last_seen_at?: string | null;
+}
+export interface RuntimeFindingsResponse {
+  summary?: Record<string, unknown>;
+  total_count: number;
+  findings: RuntimeFindingRow[];
+}
+
 // ── Realtime scanner control (runs the actual scanner CLIs server-side) ──
 export interface LiveScanStatus {
   running: boolean;
@@ -418,6 +520,60 @@ export interface LiveInventory {
 }
 export const apiLiveInventory = (): Promise<ApiResult<LiveInventory>> =>
   call(`/api/v1/live-scan/inventory`);
+
+// ── Unified Asset Inventory (CMDB) ──
+// One authoritative, deduplicated inventory across systems, crypto assets,
+// certificates, cloud, hardware, vendors, business processes, owners and
+// network targets. Every row is persisted real data; missing fields read null.
+export interface CmdbAsset {
+  id: string;
+  asset_type: string;
+  name: string | null;
+  risk: string | null;
+  pqc: string | null;
+  criticality?: string | null;
+  environment?: string | null;
+  owner?: string | null;
+  business_unit?: string | null;
+  cloud_provider?: string | null;
+  algorithm?: string | null;
+  purpose?: string | null;
+  key_size?: number | null;
+  confidence?: string | null;
+  file_path?: string | null;
+  source_language?: string | null;
+  subject?: string | null;
+  issuer?: string | null;
+  public_key_algorithm?: string | null;
+  public_key_size?: number | null;
+  expiry_status?: string | null;
+  days_until_expiry?: number | null;
+  manufacturer?: string | null;
+  model?: string | null;
+  device_type?: string | null;
+  serial_reference?: string | null;
+  endpoint?: string | null;
+  scan_frequency?: string | null;
+  vendor_type?: string | null;
+  process_type?: string | null;
+  [k: string]: unknown;
+}
+export interface CmdbInventory {
+  assets: CmdbAsset[];
+  count: number;
+  source: string;
+}
+export interface CmdbSummary {
+  total: number;
+  by_type: Record<string, number>;
+  by_risk: Record<string, number>;
+  by_pqc: Record<string, number>;
+  source: string;
+}
+export const apiInventory = (): Promise<ApiResult<CmdbInventory>> =>
+  call(`/api/v1/inventory/assets`);
+export const apiInventorySummary = (): Promise<ApiResult<CmdbSummary>> =>
+  call(`/api/v1/inventory/summary`);
 
 // ── Certificate expiry calendar (SLA-tiered, deterministic) ──
 export interface ExpiryCalendarEntry {
@@ -1242,6 +1398,227 @@ export const apiApiKeyRotationReport = () => _rsGet<any>("/api/v1/api-keys/rotat
 export const apiSafeScanPolicy = () => _rsGet<any>("/api/v1/control/safe-scan/policy");
 export const apiSafeScanEmergencyStop = (engaged: boolean) =>
   _rsPost<any>("/api/v1/control/safe-scan/emergency-stop", { engaged });
+
+/* Immutable audit log (auth router): paged events + hash-chain integrity. */
+export interface AuditEvent {
+  id: string; actor: string; action: string; target_type?: string | null;
+  target_id?: string | null; detail?: unknown; ip_address?: string | null;
+  outcome: string; created_at?: string | null;
+}
+export interface AuditList { events: AuditEvent[]; page: number; page_size: number; }
+export const apiAuditList = (params: { page?: number; page_size?: number; actor?: string; action?: string } = {}): Promise<ApiResult<AuditList>> => {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.page_size) q.set("page_size", String(params.page_size));
+  if (params.actor) q.set("actor", params.actor);
+  if (params.action) q.set("action", params.action);
+  const qs = q.toString();
+  return call(`/api/v1/auth/audit${qs ? `?${qs}` : ""}`);
+};
+export interface AuditChainStatus { status: string; checked: number; entry_count: number; chain_head?: string | null; break_at_sequence?: number | null; reason?: string | null; }
+export const apiAuditVerify = (): Promise<ApiResult<AuditChainStatus>> => call("/api/v1/auth/audit/verify");
+
+/* Control-plane observability: queue / fleet / credential / db / redis health. */
+export const apiControlHealth = (): Promise<ApiResult<Record<string, unknown>>> => call("/api/v1/control/health");
+
+/* ── Security posture (ZELNX Security Center, server-owned & durable) ── *
+ * GET /api/v1/security/posture computes a deterministic 0-100 score from live
+ * control-plane signals and persists a metadata-only snapshot for time-series.
+ * The Security Center consumes this contract instead of recomputing a score
+ * client-side. The score is honest: an unprovisioned store reads low.
+ * ------------------------------------------------------------------- */
+export interface PostureComponent {
+  value: number;
+  total?: number;
+  good?: number;
+  ok?: boolean;
+  note?: string;
+  valid_pct?: number | null;
+}
+export interface SecurityPostureSnapshot {
+  id: string;
+  score: number;
+  agents_total: number;
+  agents_healthy: number;
+  plugins_total: number;
+  plugins_verified: number;
+  threats_open: number;
+  threats_critical: number;
+  failed_logins: number;
+  cert_total: number;
+  cert_valid_pct: number | null;
+  audit_ok: boolean;
+  credentials_active: number;
+  credentials_total: number;
+  source: string;
+  created_at?: string | null;
+}
+export interface SecurityPosture {
+  score: number;
+  agents_total: number;
+  agents_healthy: number;
+  plugins_total: number;
+  plugins_verified: number;
+  threats_open: number;
+  threats_critical: number;
+  failed_logins: number;
+  cert_total: number;
+  cert_valid_pct: number | null;
+  audit_ok: boolean;
+  credentials_active: number;
+  credentials_total: number;
+  components: Record<string, PostureComponent>;
+  source: string;
+  snapshot_id: string;
+  history: SecurityPostureSnapshot[];
+}
+export const apiSecurityPosture = (historyLimit = 60): Promise<ApiResult<SecurityPosture>> =>
+  call(`/api/v1/security/posture?history_limit=${historyLimit}`);
+
+/** Posture-over-time buckets for the SOC trend chart (score min/avg/max +
+ *  per-signal average per time bucket). */
+export interface PostureTrendBucket {
+  start: string;
+  count: number;
+  score_avg: number | null;
+  score_min: number | null;
+  score_max: number | null;
+  components: Record<string, number | null>;
+}
+export interface PostureTrend {
+  window_hours: number;
+  bucket_minutes: number;
+  count: number;
+  buckets: PostureTrendBucket[];
+  latest: {
+    id: string; score: number; created_at: string | null;
+    delta: number | null; previous_score: number | null; dropped: boolean;
+  } | null;
+}
+export const apiSecurityPostureTrend = (hours = 24, bucketMinutes = 30): Promise<ApiResult<PostureTrend>> =>
+  call(`/api/v1/security/posture/trend?hours=${hours}&bucket_minutes=${bucketMinutes}`);
+
+/** Unified live threat feed for 24/7 SOC triage (anomaly flags + live-scan
+ *  alerts + critical/high runtime findings + failed logins). */
+export interface SecurityAlert {
+  id: string; severity: string; kind: string; title: string; detail: string;
+  asset: string; ts: string | null; source: string; status: string;
+  ack_href: string | null;
+}
+export interface SecurityAlertsResponse {
+  alerts: SecurityAlert[]; count: number; counts: Record<string, number>;
+  generated_at: string;
+}
+export const apiSecurityAlerts = (limit = 50): Promise<ApiResult<SecurityAlertsResponse>> =>
+  call(`/api/v1/security/alerts?limit=${limit}`);
+
+/* ══════════════════════ Dependency Graph (flagship) ══════════════════════
+   Backend-produced knowledge graph. The frontend never discovers relationships —
+   it renders what GET /api/v1/graph (and the blast-radius / trace / simulate /
+   explain endpoints) return. Honest empty state when the store is unprovisioned. */
+
+export interface GraphNode {
+  id: string; label: string; group: string; kind?: string;
+  name?: string; algorithm?: string; confidence?: string;
+  environment?: string; owner?: string | null; criticality?: string;
+  purpose?: string; file_path?: string; extra?: Record<string, unknown>;
+  subject?: string; issuer?: string; expiry_status?: string; days_until_expiry?: number;
+  [k: string]: unknown;
+}
+export interface GraphEdge { from: string; to: string; label: string; [k: string]: unknown; }
+export interface GraphView {
+  nodes: GraphNode[]; edges: GraphEdge[];
+  backend?: string; health?: { ok?: boolean; error?: string; backend?: string; configured?: boolean };
+}
+export interface GraphStats {
+  nodes: number; edges: number; systems: number;
+  nodes_by_kind: Record<string, number>; edges_by_relation: Record<string, number>;
+  orphan_system_count?: number; unlinked_asset_count?: number; backend?: string;
+}
+export interface BlastSystem { id: string; name?: string; criticality?: string | null; hops: number; }
+export interface BlastRadiusResult {
+  start?: string; systems: BlastSystem[]; nodes_visited: number; hops?: number; backend?: string;
+}
+export interface SimulateResult {
+  node_id: string; change: string;
+  affected: { assets: number; applications: number; certificates: number; services: number };
+  compatibility_issues: number; migration_tasks: number;
+  systems: { id: string; name?: string; crypto_assets: number }[];
+  total_revenue_at_risk: number; backend?: string;
+}
+export interface ExplainStep {
+  label: string; kind: string; detail?: string; confidence?: string | null;
+  evidence?: string; file?: string | null; quantum_vulnerable?: boolean;
+}
+export interface ExplainResult {
+  node_id: string; title: string; quantum_vulnerable: boolean; steps: ExplainStep[]; backend?: string;
+}
+export const apiGraph = (): Promise<ApiResult<GraphView>> => call("/api/v1/graph");
+export const apiGraphStats = (): Promise<ApiResult<GraphStats>> => call("/api/v1/graph/stats");
+export const apiGraphBlastRadius = (systemId: string, hops = 5): Promise<ApiResult<BlastRadiusResult>> =>
+  call(`/api/v1/graph/blast-radius?system_id=${encodeURIComponent(systemId)}&hops=${hops}`);
+export const apiGraphDependents = (systemId: string, hops = 5): Promise<ApiResult<BlastRadiusResult>> =>
+  call(`/api/v1/graph/dependents?system_id=${encodeURIComponent(systemId)}&hops=${hops}`);
+export const apiGraphSimulate = (nodeId: string, change = "migrate_pqc"): Promise<ApiResult<SimulateResult>> =>
+  call("/api/v1/graph/simulate", { method: "POST", body: JSON.stringify({ node_id: nodeId, change }) });
+export const apiGraphExplain = (nodeId: string): Promise<ApiResult<ExplainResult>> =>
+  call(`/api/v1/graph/explain?node_id=${encodeURIComponent(nodeId)}`);
+export interface MigrationPlanResult {
+  created: boolean; project_id: string | null; project_name?: string; tasks_created: number;
+  affected: { asset_id: string; algorithm_from: string; system_id: string; file?: string }[];
+  backend?: string;
+}
+export const apiGraphMigrationPlan = (nodeId: string, change = "migrate_pqc", algorithmTo = "ML-KEM-768"): Promise<ApiResult<MigrationPlanResult>> =>
+  call("/api/v1/graph/migration-plan", { method: "POST", body: JSON.stringify({ node_id: nodeId, change, algorithm_to: algorithmTo }) });
+export interface GraphSnapshot {
+  id: string; version: number; fingerprint: string; parent_fingerprint?: string | null;
+  node_count: number; edge_count: number; nodes_by_kind: Record<string, number>;
+  edges_by_relation: Record<string, number>;
+  added_nodes: (string[] | { id: string; kind?: string })[];
+  removed_nodes: (string[] | { id: string; kind?: string })[];
+  added_edges: string[][]; removed_edges: string[][];
+  new_quantum_vulnerable: { id: string; algorithm?: string }[];
+  created_by?: string; created_at?: string;
+}
+export interface GraphTimeline { versions: GraphSnapshot[]; total_count: number; latest_version: number; }
+export interface GraphCompare {
+  from: { version: number; node_count: number; edge_count: number };
+  to: { version: number; node_count: number; edge_count: number };
+  added_nodes: { id: string; kind?: string; algorithm?: string }[];
+  removed_nodes: { id: string; kind?: string; algorithm?: string }[];
+  added_edges: string[][]; removed_edges: string[][];
+  new_quantum_vulnerable: { id: string; algorithm?: string }[];
+  changed: boolean; backend?: string;
+}
+export const apiGraphSnapshot = (): Promise<ApiResult<GraphSnapshot>> =>
+  call("/api/v1/graph/snapshot", { method: "POST" });
+export const apiGraphTimeline = (limit = 50): Promise<ApiResult<GraphTimeline>> =>
+  call(`/api/v1/graph/timeline?limit=${limit}`);
+export const apiGraphCompare = (fromVersion: number, toVersion: number): Promise<ApiResult<GraphCompare>> =>
+  call(`/api/v1/graph/compare?from_version=${fromVersion}&to_version=${toVersion}`);
+export const apiGraphVendorPath = (systemId: string): Promise<ApiResult<{ path: string[]; vendor?: string | null; hops: number }>> =>
+  call(`/api/v1/graph/vendor-path?system_id=${encodeURIComponent(systemId)}`);
+export interface VendorChainAsset {
+  id: string; algorithm?: string | null; purpose?: string | null; confidence?: string | null;
+  key_size?: number | null; file_path?: string | null; risk?: "vulnerable" | "ready" | null;
+}
+export interface VendorChainSystem {
+  id: string; name?: string | null; criticality?: string | null;
+  asset_count: number; assets: VendorChainAsset[];
+  processes: { id: string }[];
+}
+export interface VendorChain {
+  start: string; vendor: { id: string; name?: string | null } | null;
+  product?: string | null; systems: VendorChainSystem[]; count: number;
+  total_assets: number; backend?: string;
+}
+export interface VendorChains {
+  chains: VendorChain[]; count: number; backend?: string;
+}
+export const apiGraphVendorChain = (vendorId: string): Promise<ApiResult<VendorChain>> =>
+  call(`/api/v1/graph/vendor-chain?vendor_id=${encodeURIComponent(vendorId)}`);
+export const apiGraphVendorChains = (): Promise<ApiResult<VendorChains>> =>
+  call("/api/v1/graph/vendor-chains");
 
 /* Notification routing (persisted per tenant). */
 export const apiNotificationRoutingGet = () => _rsGet<any>("/api/v1/notifications/routing");

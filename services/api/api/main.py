@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from api.routers import (
     agility,
     analytics,
     assets,
+    inventory,
     auth,
     baselines,
     business,
@@ -88,12 +90,26 @@ from api.routers import (
     datalake as datalake_router,
     anomaly as anomaly_router,
     governance as governance_router,
+    security as security_router,
     resilience,
 )
 from api.routers import metrics as metrics_router
 from api.security.exceptions import AuthenticationError, ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+def _under_test() -> bool:
+    """True when running under pytest.
+
+    Several test fixtures set ``ENVIRONMENT=development`` (closer to real
+    runtime than ``test``), which would otherwise start the async event tailer /
+    telemetry heartbeat in the app lifespan. Those background asyncio tasks and
+    their threads keep the process alive after the suite finishes, causing
+    hangs. Detecting pytest directly lets us suppress them regardless of the
+    ENVIRONMENT value a fixture sets.
+    """
+    return "pytest" in sys.modules
 
 
 def _shared_rate_limit_backend():
@@ -143,7 +159,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         tailer_task = None
         telemetry_task = None
-        if settings.EVENT_TAILER_SECONDS > 0 and settings.ENVIRONMENT.lower() not in {"test", "testing"}:
+        if (
+            settings.EVENT_TAILER_SECONDS > 0
+            and settings.ENVIRONMENT.lower() not in {"test", "testing"}
+            and not _under_test()
+        ):
             from api.routers.events import start_event_tailer, start_telemetry_heartbeat
 
             tailer_task = start_event_tailer(settings.EVENT_TAILER_SECONDS)
@@ -264,6 +284,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(health.router, prefix=prefix)
     app.include_router(export.router, prefix=prefix)
     app.include_router(assets.router, prefix=prefix)
+    app.include_router(inventory.router, prefix=prefix)
     app.include_router(algorithms.router, prefix=prefix)
     app.include_router(systems.router, prefix=prefix)
     app.include_router(cbom.router, prefix=prefix)
@@ -311,6 +332,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(crypto_assurance.router, prefix=prefix)
     app.include_router(onboarding.router, prefix=prefix)
     app.include_router(control_plane.router, prefix=prefix)
+    app.include_router(security_router.router, prefix=prefix)
     app.include_router(enterprise.router, prefix=prefix)
     app.include_router(marketplace_router.router, prefix=prefix)
     app.include_router(datalake_router.router, prefix=prefix)

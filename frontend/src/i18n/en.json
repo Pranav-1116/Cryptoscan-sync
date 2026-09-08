@@ -43,6 +43,7 @@
   "nav.inventory": "Inventory",
   "nav.catalogs": "Catalogs",
   "nav.assets": "Assets",
+  "nav.cmdb": "Asset & CMDB",
   "nav.cryptoAssets": "Crypto assets",
   "nav.certificates": "Certificates",
   "nav.cryptoAssurance": "Crypto assurance",
@@ -201,5 +202,10 @@
   "scanners.domainVendor": "Vendor",
   "scanners.domainCrypto": "Cryptography",
   "nav.automation": "Automation rules",
-  "nav.executiveView": "Executive view"
+  "nav.executiveView": "Executive view",
+  "nav.findings": "Findings",
+  "nav.security": "Security",
+  "nav.securityCenter": "Security center",
+  "nav.settings": "Settings",
+  "nav.usersAccess": "Users & access"
 }

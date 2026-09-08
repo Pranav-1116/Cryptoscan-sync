@@ -43,6 +43,7 @@
   "nav.inventory": "الجرد",
   "nav.catalogs": "الكتالوجات",
   "nav.assets": "الأصول",
+  "nav.cmdb": "الأصول و CMDB",
   "nav.cryptoAssets": "أصول التشفير",
   "nav.certificates": "الشهادات",
   "nav.cryptoAssurance": "ضمان التشفير",
@@ -201,5 +202,10 @@
   "scanners.domainVendor": "المورّد",
   "scanners.domainCrypto": "التشفير",
   "nav.automation": "قواعد الأتمتة",
-  "nav.executiveView": "عرض تنفيذي"
+  "nav.executiveView": "عرض تنفيذي",
+  "nav.findings": "النتائج",
+  "nav.security": "الأمان",
+  "nav.securityCenter": "مركز الأمان",
+  "nav.settings": "الإعدادات",
+  "nav.usersAccess": "المستخدمون والوصول"
 }
