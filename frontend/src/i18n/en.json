@@ -54,6 +54,7 @@
   "nav.boms": "Bills of materials",
   "nav.cbom": "CBOM",
   "nav.hbom": "HBOM",
+  "nav.liveAssetIntelligence": "Live asset intelligence",
   "nav.dependencyGraph": "Dependency graph",
   "nav.postQuantum": "Post-quantum",
   "nav.pqcReadiness": "PQC readiness",
@@ -207,6 +208,7 @@
   "nav.findings": "Findings",
   "nav.security": "Security",
   "nav.securityCenter": "Security center",
+  "nav.securityPolicy": "Scanning policy",
   "nav.settings": "Settings",
   "nav.usersAccess": "Users & access"
 }

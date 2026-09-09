@@ -19,7 +19,7 @@ Never emits secret material — key strings / passwords are stripped.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable
+from typing import Any
 
 from network_scanner.enterprise.vendors.base import NetworkVendorPlugin, register_plugin
 from network_scanner.enterprise.credentials import scrub_secrets

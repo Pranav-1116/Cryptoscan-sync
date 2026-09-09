@@ -26,7 +26,7 @@ agree.
 
 from __future__ import annotations
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import HTTPException, Request, status
 
 from api.dependencies import _resolve_api_key, _token_from_request  # noqa: F401  (re-exported for tests)
 from api.security.session_manager import SessionManager

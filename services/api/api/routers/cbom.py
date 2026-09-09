@@ -87,7 +87,6 @@ def _render(bom: dict, fmt: str, signed: bool):
         if sign_alg in {"rs256", "es256"} and private_key_path:
             from pathlib import Path
 
-            from cbom.signing.jws_signer import SUPPORTED_ALGS
 
             pem = (
                 private_key_path

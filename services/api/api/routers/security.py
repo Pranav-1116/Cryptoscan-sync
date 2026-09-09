@@ -25,15 +25,26 @@ import asyncio
 import json
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_roles
+from api.schemas.security_intelligence_schemas import (
+    AssetStateRequest,
+    CorrelateRequest,
+    IdentityResolveRequest,
+    RiskChainRequest,
+    ScanProfileResolveRequest,
+    ScanScheduleRequest,
+)
 from db.repositories.control_plane_repository import ControlPlaneRepository
 
 router = APIRouter(prefix="/security", tags=["security"])
+
+#: who may manage the org scan/privacy policy (the "Security & Scanning Policy" screen).
+_POLICY_OPERATORS = ("admin", "superadmin", "ciso")
 
 POSTURE_STREAM_HEARTBEAT_SECONDS = 15.0
 DEFAULT_DROP_THRESHOLD = 5
@@ -206,7 +217,7 @@ def posture_trend(
         ts = _aware(row.created_at)
         bucket_start = int(ts.timestamp() // bucket_secs) * bucket_secs
         key = datetime.fromtimestamp(bucket_start, tz=timezone.utc)
-        idx = int((ts - cutoff).total_seconds() // bucket_secs)
+        _idx = int((ts - cutoff).total_seconds() // bucket_secs)
         # find or create a bucket keyed by UTC start time
         if not buckets or (buckets[-1]["start"]).isoformat() != key.isoformat():
             comp_names = set((row.components or {}).keys())
@@ -338,6 +349,323 @@ def security_alerts(
 
 
 # --------------------------------------------------------------------------- #
+
+
+_POLICY_KEY = "scan_policy"
+
+
+def _active_sector(db: Session) -> str | None:
+    """The org's active sector (from the sector setting), for policy seeding."""
+    try:
+        from db.repositories.settings_repository import SECTOR_SETTING_KEY, SettingsRepository
+
+        saved = SettingsRepository(db).get(SECTOR_SETTING_KEY)
+        if isinstance(saved, dict) and saved.get("sector"):
+            return str(saved["sector"])
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    try:
+        from db.repositories.onboarding_repository import OnboardingRepository
+
+        org = OnboardingRepository(db).get_default_org()
+        if org is not None and getattr(org, "sector", None):
+            return str(org.sector)
+    except Exception:  # noqa: BLE001 — best-effort
+        pass
+    return None
+
+
+def _default_policy() -> dict:
+    """Conservative per-sector-default scan + privacy policy (fail-safe)."""
+    try:
+        from privacy.policy import build_policy
+        return build_policy({}, {}, sector=None).to_dict()
+    except Exception:  # noqa: BLE001
+        return {"scan": {"mode": "read-only", "intensity": "low"}, "privacy": {}}
+
+
+@router.get("/policy")
+def get_scan_policy(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """The org's current Scanning & Security Policy (§25)."""
+    from db.models.app_setting import AppSetting
+
+    row = db.execute(select(AppSetting).where(AppSetting.key == _POLICY_KEY)).scalars().first()
+    existing = _default_policy()
+    if row is not None and row.value:
+        try:
+            import json
+            stored = json.loads(row.value)
+            # ensure both halves always present (deterministic contract)
+            existing = {"scan": stored.get("scan") or existing["scan"],
+                        "privacy": stored.get("privacy") or existing["privacy"]}
+        except Exception:  # noqa: BLE001
+            pass
+    # validate+normalize the policy so the UI always sees real bounds, and
+    # reflect the sector profile so a chosen sector actually enforces (§26)
+    sector = _active_sector(db)
+    try:
+        from privacy.policy import apply_sector_overrides, build_policy
+        bundle = build_policy(existing.get("scan"), existing.get("privacy"), sector=sector or None)
+        if sector:
+            bundle = apply_sector_overrides(bundle, sector)
+        existing = bundle.to_dict()
+    except Exception:  # noqa: BLE001
+        pass
+    return {"source": "security_policy", "policy": existing, "sector": sector}
+
+
+@router.put("/policy", status_code=200)
+def put_scan_policy(
+    body: dict = Body(default={}),
+    user: str = Depends(require_roles(*_POLICY_OPERATORS)),
+    db: Session = Depends(get_db_session),
+):
+    """Persist the org's Scanning & Security Policy. Fail-safe: we refuse to
+    enable sensitive-data collection or a non-read-only/high mode; the stored
+    value is the normalized policy (unknown keys dropped)."""
+    from db.models.app_setting import AppSetting
+
+    scan = (body or {}).get("scan") or {}
+    privacy = (body or {}).get("privacy") or {}
+    sector = _active_sector(db)
+    try:
+        from privacy.policy import apply_sector_overrides, build_policy
+
+        bundle = build_policy(scan, privacy, sector=sector or None)
+        if sector:
+            # the stored policy can never be looser than the sector profile
+            bundle = apply_sector_overrides(bundle, sector)
+        normalized = bundle.to_dict()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=f"invalid policy: {exc}")
+
+    # fail-safe guardrails (never loosened through this endpoint)
+    if normalized["privacy"].get("collect_private_keys") or normalized["privacy"].get("collect_secrets"):
+        raise HTTPException(status_code=422, detail="sensitive-data collection is not permitted")
+    if normalized["scan"].get("mode") != "read-only":
+        raise HTTPException(status_code=422, detail="scan mode must be read-only")
+    if normalized["scan"].get("intensity") not in ("off", "low", "medium"):
+        raise HTTPException(status_code=422, detail="intensity must be off/low/medium")
+
+    import json
+    row = db.execute(select(AppSetting).where(AppSetting.key == _POLICY_KEY)).scalars().first()
+    if row is None:
+        row = AppSetting(key=_POLICY_KEY, value=json.dumps(normalized), updated_by=user)
+        db.add(row)
+    else:
+        row.value = json.dumps(normalized)
+        row.updated_by = user
+    db.commit()
+    db.refresh(row)
+    from api.events.platform_events import emit_platform_event
+    emit_platform_event("security.policy_updated",
+                        f"scan/privacy policy updated by {user}",
+                        {"updated_by": user, "mode": normalized["scan"]["mode"],
+                         "intensity": normalized["scan"]["intensity"]}, target_name="security")
+    return {"source": "security_policy", "updated": True, "policy": normalized, "sector": sector}
+
+
+@router.post("/gate")
+def evaluate_gate(
+    body: dict = Body(default={}),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Run the unified scanner gate on a proposed scan request, BEFORE anything
+    spins up. Returns permit/deny with the ordered control chain and audit
+    record. Always read-only (never starts a scan)."""
+    try:
+        from privacy.gate import ScannerGate
+        from privacy.policy import apply_sector_overrides, build_policy
+        from privacy.ratelimit import Limits
+
+        scan = (body or {}).get("scan") or {}
+        privacy = (body or {}).get("privacy") or {}
+        sector = (body or {}).get("sector")
+        # default to the persisted policy if none supplied
+        if not scan and not privacy:
+            pol = get_scan_policy(user="", db=db)["policy"]
+            scan, privacy = pol.get("scan") or {}, pol.get("privacy") or {}
+        bundle = build_policy(scan, privacy, sector=sector or None)
+        if sector:
+            bundle = apply_sector_overrides(bundle, sector)
+        gate = ScannerGate(policy=bundle, limits=Limits())
+        decision = gate.evaluate(
+            actor=str((body or {}).get("actor") or user),
+            tenant=str((body or {}).get("tenant") or ""),
+            environment=str((body or {}).get("environment") or ""),
+            targets=(body or {}).get("targets") or {},
+            credentials=(body or {}).get("credentials") or {},
+            scanners=(body or {}).get("scanners") or [],
+            scope_includes=(body or {}).get("scope") or {},
+        )
+        return {"source": "security_gate", **decision.to_dict(), "policy": bundle.to_dict()}
+    except Exception as exc:  # noqa: BLE001 — gate must not crash the API
+        raise HTTPException(status_code=500, detail=f"gate evaluation failed: {exc}")
+
+
+# --------------------------------------------------------------------------- #
+# Security intelligence — deterministic decision modules (no DB writes).
+# These expose the pure engines as read-mostly endpoints so the frontend and
+# any automations can resolve identities, scan profiles, finding correlation,
+# verification state and scan triggers without re-implementing the logic.
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/profiles")
+def list_scan_profiles(user: str = Depends(get_current_user)):
+    """The sanctioned scan profiles (spec #8) that a scan may be run under."""
+    try:
+        from privacy.profiles import SCAN_PROFILES
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"profiles unavailable: {exc}")
+    return {"profiles": [p.to_dict() for p in SCAN_PROFILES.values()], "count": len(SCAN_PROFILES)}
+
+
+@router.post("/profiles/resolve")
+def resolve_scan_profile(
+    body: ScanProfileResolveRequest,
+    user: str = Depends(get_current_user),
+):
+    """Resolve a named profile to a concrete policy + limits, clamped by the
+    org's sector so a profile can never loosen sector protection (spec #8)."""
+    try:
+        from privacy.profiles import resolve_profile
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"profiles unavailable: {exc}")
+    profile_id = body.profile.strip()
+    if not profile_id:
+        raise HTTPException(status_code=422, detail="profile is required")
+    try:
+        resolved = resolve_profile(
+            profile_id, sector=body.sector or None,
+            scan=body.scan, privacy=body.privacy, limits=body.limits,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"unknown profile '{profile_id}'")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail=f"failed to resolve profile: {exc}")
+    return {
+        "source": "security_profiles",
+        "profile": resolved["profile"],
+        "policy": resolved["policy"].to_dict(),
+        "limits": resolved["limits"].to_dict(),
+        "sector": body.sector,
+    }
+
+
+@router.post("/intelligence/identity/resolve")
+def resolve_asset_identity(body: IdentityResolveRequest, user: str = Depends(get_current_user)):
+    """Cross-scanner identity resolution (spec #1). Given a batch of scanner
+    observations, return ONE canonical asset per real asset with all aliases."""
+    try:
+        from privacy.identity import AssetObservation, resolve_identities
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"identity engine unavailable: {exc}")
+    if not body.observations:
+        raise HTTPException(status_code=422, detail="observations are required")
+    obs = []
+    for entry in body.observations:
+        try:
+            obs.append(AssetObservation(
+                source=entry.source,
+                ids={str(k): str(v) for k, v in entry.ids.items() if v is not None},
+                attrs=dict(entry.attrs),
+                observed_at=entry.observed_at,
+            ))
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail=f"invalid observation: {exc}")
+    result = resolve_identities(obs)
+    return {"source": "identity_resolution", **result.to_dict()}
+
+
+@router.post("/intelligence/correlate")
+def correlate_findings(body: CorrelateRequest, user: str = Depends(get_current_user)):
+    """Finding deduplication (spec #21): collapse the same root cause seen by
+    many scanners into ONE finding carrying corroborating evidence."""
+    try:
+        from privacy.correlation import correlate_findings
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"correlation engine unavailable: {exc}")
+    findings = body.findings
+    if not findings:
+        raise HTTPException(status_code=422, detail="findings are required")
+    merged = correlate_findings(findings)
+    return {"source": "finding_correlation", "deduplicated": merged, "count": len(merged),
+            "inputs": len(findings), "deduped_by": max(0, len(findings) - len(merged))}
+
+
+@router.post("/intelligence/chain")
+def build_risk_chain(body: RiskChainRequest, user: str = Depends(get_current_user)):
+    """Finding correlation -> attack/dependency chain (spec #22): turn related
+    findings into a single compound business risk."""
+    try:
+        from privacy.correlation import build_chain
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"correlation engine unavailable: {exc}")
+    asset_id = body.asset_id.strip()
+    findings = body.findings
+    if not asset_id:
+        raise HTTPException(status_code=422, detail="asset_id is required")
+    chain = build_chain(
+        asset_id, findings,
+        critical_asset=body.critical_asset,
+        business_value=body.business_value,
+    )
+    return {"source": "risk_chain", **chain}
+
+
+@router.post("/intelligence/state")
+def asset_state(body: AssetStateRequest, user: str = Depends(get_current_user)):
+    """Verification + freshness state for an asset (spec #23, #24, #25).
+
+    Returns an honest display status — an asset that has not been observed
+    within its freshness window is never reported as healthy/green."""
+    import time as _time
+    try:
+        from privacy.state import confidence_from_sources, health_for_asset, staleness
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"state engine unavailable: {exc}")
+    confidence = confidence_from_sources(
+        {str(k): str(v) for k, v in body.sources.items()},
+        verified=body.verified,
+    )
+    now = body.now if body.now is not None else _time.time()
+    freshness = staleness(body.last_seen_epoch, now=now)
+    health = health_for_asset(
+        {"verification": body.verification, "last_seen_epoch": body.last_seen_epoch},
+        now=now,
+    )
+    return {"source": "asset_state", "confidence": confidence.to_dict(),
+            "freshness": freshness, "health": health}
+
+
+@router.post("/intelligence/schedule")
+def resolve_schedule(body: ScanScheduleRequest, user: str = Depends(get_current_user)):
+    """Scan trigger + incremental decision (spec #10, #11, #12). Resolve a
+    cadence keyword to a schedule, map a change event to scan types, and decide
+    whether an incremental re-scan is safe given a baseline."""
+    import time as _time
+    try:
+        from privacy.triggers import is_incremental, resolve_schedule
+        from privacy.triggers import event_for_change
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"trigger engine unavailable: {exc}")
+    cadence = body.cadence or "on_demand"
+    schedule = resolve_schedule(cadence)
+    scans_for_event = list(event_for_change(body.event)) if body.event else []
+    incremental = is_incremental(
+        body.scan_type,
+        baseline_at=body.baseline_at,
+        now=body.now if body.now is not None else _time.time(),
+        changed_assets=body.changed_assets,
+    ).to_dict()
+    return {"source": "scan_schedule", "schedule": schedule.to_dict(),
+            "cadence": cadence, "event": body.event, "scans_for_event": scans_for_event,
+            "incremental": incremental}
 
 
 async def _emit_drop_event(score: int, drift: dict) -> None:

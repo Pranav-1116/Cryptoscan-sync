@@ -10,7 +10,7 @@ installed.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
@@ -18,8 +18,7 @@ from db.models.onboarding import CONNECTOR_KINDS, CONNECTOR_METHODS
 
 # import built-in connectors so the registry is populated
 import connector_sdk.contrib  # noqa: F401
-from connector_sdk import ConnectorContext, available, get_connector
-from connector_sdk.base import BaseConnector
+from connector_sdk import available, get_connector
 
 router = APIRouter(prefix="/connectors", tags=["connectors"])
 

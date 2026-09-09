@@ -91,6 +91,11 @@ __all__ = [
     "VerificationLog",
     "Vulnerability",
 ]
+from db.models.technology_bom_snapshot import TechnologyBomSnapshot  # noqa: E402,F401
+from db.models.technology_bom_export import (  # noqa: E402,F401
+    TechnologyBomExportRun,
+    TechnologyBomExportSchedule,
+)
 from db.models.runtime_finding import RuntimeFinding  # noqa: E402,F401
 from db.models.monitor import MonitorLease  # noqa: E402,F401
 from db.models.payment_crypto import (  # noqa: E402,F401

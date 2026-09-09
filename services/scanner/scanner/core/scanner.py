@@ -71,7 +71,7 @@ class Scanner:
             git_meta = None
 
         languages = detect_languages_in_repo(path)
-        context = ScanContext(
+        _context = ScanContext(
             root_path=path,
             scan_id=scan_id,
             target_type=target_type,

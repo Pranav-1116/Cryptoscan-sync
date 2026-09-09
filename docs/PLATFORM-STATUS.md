@@ -6,8 +6,18 @@ Honest accounting, capability by capability, for every week in the plan
 "Not claimed" means we deliberately did not fake it — usually because it needs
 real infrastructure or credentials.
 
-Measured at this commit: **221 API paths**, **23 services**, **1,233 tests
-passing (`make test`, exit 0)**, 26 database migrations (0001–0026).
+> **Current-state correction (2026-09-08):** the numbers at the top of this
+> document were measured at an earlier commit and are now out of date. The
+> tables below are a historical record of the plan vs. what existed at those
+> commits; they are retained for traceability and should not be read as the
+> current state.
+
+Measured at the current HEAD (`24a7a0c`, ZELNX security & scanning policy):
+**505 OpenAPI paths** (under `/api/v1`), **~44 service packages**, **54 ordered
+database migrations** (0001–0054), **60 frontend pages**, **8 RBAC roles**
+(superadmin, ciso, security_analyst, developer, auditor, business_owner,
+scanner, readonly — plus admin→superadmin / viewer→readonly aliases), and
+**~3,660 test functions** across every service suite.
 
 ## Scope & honest boundaries
 

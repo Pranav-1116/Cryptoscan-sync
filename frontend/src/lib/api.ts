@@ -73,6 +73,9 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
     const resp = await fetch(path, {
       signal: AbortSignal.timeout(8000),
       headers,
+      // send the httpOnly session cookie too (server auth via cookie, not only
+      // the XSS-readable Bearer token in localStorage)
+      credentials: "include",
       ...init,
     });
     if (!resp.ok) return { source: "offline", data: null, error: `HTTP ${resp.status}` };
@@ -89,6 +92,7 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
       signal: AbortSignal.timeout(8000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password }),
+      credentials: "include",
     });
     if (!resp.ok) {
       const body = await resp.json().catch(() => ({}));
@@ -123,6 +127,7 @@ export async function apiRegister(input: {
       signal: AbortSignal.timeout(8000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
+      credentials: "include",
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
@@ -130,6 +135,32 @@ export async function apiRegister(input: {
   } catch (e) {
     return { ok: false, error: String(e) };
   }
+}
+
+/* Server-truth session (security hardening): refresh the current user + roles
+   from GET /auth/me (backed by the httpOnly session cookie) instead of trusting
+   the XSS-readable token/roles cached in localStorage. localStorage remains a
+   fast display cache only; authorization is always enforced server-side. */
+export async function apiAuthMe(): Promise<{ username?: string; roles?: string[] } | null> {
+  const r = await _rsGet<{ username?: string; roles?: string[] }>("/api/v1/auth/me");
+  return r.ok && r.data ? r.data : null;
+}
+
+export async function syncSession(): Promise<{ user: string | null; roles: string[] }> {
+  try {
+    const me = await apiAuthMe();
+    if (me && me.username) {
+      const roles = me.roles || [];
+      setUserName(me.username);
+      try { localStorage.setItem(ROLES_KEY, JSON.stringify(roles)); } catch { /* ignore */ }
+      try { window.dispatchEvent(new CustomEvent("zelinx:auth", { detail: { token: !!getToken() } })); } catch { /* non-browser */ }
+      return { user: me.username, roles };
+    }
+    if (me && me.roles) {
+      try { localStorage.setItem(ROLES_KEY, JSON.stringify(me.roles)); } catch { /* ignore */ }
+    }
+  } catch { /* session not available — fall back to cached profile */ }
+  return { user: getUserName(), roles: getRoles() };
 }
 
 /* ── platform endpoints (contracts in api/routers/platform.py) ─────── */
@@ -717,6 +748,118 @@ export const apiLiveOrchestratorStart = (scanners?: string[]): Promise<ApiResult
 export const apiLiveOrchestratorHistory = (): Promise<ApiResult<{ source: string; runs: ScanRunSummary[] }>> =>
   call(`/api/v1/live/orchestrator/history`);
 
+// ── Security & Scanning Policy + unified scanner gate (§25 / §21) ──
+export interface ScanPolicyView {
+  mode: string;
+  intensity: string;
+  max_concurrent_jobs: number;
+  max_targets_per_scan: number;
+  max_connections: number;
+  rate_limit_qps: number;
+  rate_limit_per_minute: number;
+  scan_timeout_seconds: number;
+  retry_limit: number;
+  production_protection: boolean;
+  hsm_protection: boolean;
+  require_special_approval: boolean;
+  maintenance_window_start: string;
+  maintenance_window_end: string;
+}
+export interface PrivacyPolicyView {
+  collect_pii: boolean;
+  collect_private_keys: boolean;
+  collect_secrets: boolean;
+  redact_secrets: boolean;
+  mask_sensitive_fields: boolean;
+  tokenize_identifiers: boolean;
+  enforce_payload_limits: boolean;
+  max_payload_bytes: number;
+  retention_days: number;
+  data_minimization: boolean;
+  alert_on_private_key: boolean;
+  allow_evidence_metadata: boolean;
+}
+export interface SecurityPolicy {
+  scan: ScanPolicyView;
+  privacy: PrivacyPolicyView;
+}
+export const apiSecurityPolicyGet = (): Promise<ApiResult<{ source: string; policy: SecurityPolicy; sector: string | null }>> =>
+  _rsGet("/api/v1/security/policy");
+export const apiSecurityPolicyPut = (policy: SecurityPolicy): Promise<ApiResult<{ source: string; updated: boolean; policy: SecurityPolicy; sector: string | null }>> =>
+  _rsPut("/api/v1/security/policy", policy);
+export const apiSecurityGate = (req: {
+  actor?: string; tenant?: string; environment?: string; sector?: string;
+  targets?: Record<string, string[]>; credentials?: Record<string, boolean>;
+  scanners?: string[]; scope?: Record<string, unknown>;
+}): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost("/api/v1/security/gate", req);
+
+/* ── Security-intelligence decision engines (deterministic, read-mostly) ──
+   These wrap the pure modules the backend exposes under /security/intelligence:
+   universal asset identity (#1), scan profiles (#8), finding dedup + risk chain
+   (#21/#22), verification/freshness state (#23/#24/#25) and scan triggers
+   (#10/#11/#12). */
+
+export interface ScanProfileView {
+  id: string;
+  name: string;
+  description: string;
+  mode: string;
+  intensity: string;
+  schedule: string;
+  scope: Record<string, unknown>;
+  data_collection: string;
+  limit: Record<string, unknown>;
+  sectors: string[];
+}
+export interface ScanProfileResolve {
+  profile: ScanProfileView;
+  policy: { scan: ScanPolicyView; privacy: PrivacyPolicyView };
+  limits: Record<string, unknown>;
+  sector: string | null;
+}
+export const apiScanProfiles = (): Promise<ApiResult<{ profiles: ScanProfileView[]; count: number }>> =>
+  _rsGet("/api/v1/security/profiles");
+export const apiScanProfileResolve = (req: {
+  profile: string; sector?: string | null;
+  scan?: Record<string, unknown>; privacy?: Record<string, unknown>; limits?: Record<string, unknown>;
+}): Promise<ApiResult<ScanProfileResolve>> =>
+  _rsPost("/api/v1/security/profiles/resolve", req);
+
+export interface IdentityAsset {
+  id: string;
+  asset_type: string;
+  source: string;
+  aliases: string[];
+  sources: string[];
+  first_seen: string | null;
+  last_seen: string | null;
+}
+export const apiIdentityResolve = (req: {
+  observations: { source: string; ids: Record<string, string>; attrs?: Record<string, unknown>; observed_at?: string | null }[];
+}): Promise<ApiResult<{ assets: IdentityAsset[]; aliases: Record<string, string>; merges: number; observations: number }>> =>
+  _rsPost("/api/v1/security/intelligence/identity/resolve", req);
+
+export const apiCorrelateFindings = (req: { findings: Record<string, unknown>[] }): Promise<ApiResult<{
+  deduplicated: Record<string, unknown>[]; count: number; inputs: number; deduped_by: number; source: string;
+}>> =>
+  _rsPost("/api/v1/security/intelligence/correlate", req);
+
+export const apiRiskChain = (req: {
+  asset_id: string; findings: Record<string, unknown>[]; critical_asset?: boolean; business_value?: string;
+}): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost("/api/v1/security/intelligence/chain", req);
+
+export const apiAssetState = (req: {
+  sources?: Record<string, string>; verification?: string; last_seen_epoch?: number | null; now?: number; verified?: boolean;
+}): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost("/api/v1/security/intelligence/state", req);
+
+export const apiScanSchedule = (req: {
+  cadence?: string; event?: string; scan_type?: string; baseline_at?: number | null; now?: number; changed_assets?: string[];
+}): Promise<ApiResult<Record<string, unknown>>> =>
+  _rsPost("/api/v1/security/intelligence/schedule", req);
+
 // ── Certificate expiry calendar (SLA-tiered, deterministic) ──
 export interface ExpiryCalendarEntry {
   subject: string | null;
@@ -1117,6 +1260,7 @@ export async function apiHealthSweep(): Promise<ApiResult<any>> {
       method: "POST",
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(20000),
+      credentials: "include",
     });
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) return { source: "live", ok: false, error: String(body.detail || `HTTP ${resp.status}`) } as ApiResult<any>;
@@ -1173,6 +1317,7 @@ async function _postAction(path: string, body?: unknown): Promise<ApiResult<any>
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(30000),
+      credentials: "include",
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) return { source: "live", ok: false, error: String(data.detail || `HTTP ${resp.status}`), data: null } as ApiResult<any>;
@@ -1458,18 +1603,7 @@ async function _rsPost<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(30000),
-    });
-    const data = await resp.json().catch(() => ({}));
-    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
-    return { source: "live", ok: true, data: data as T };
-  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
-}
-
-async function _rsGet<T>(path: string): Promise<ApiResult<T>> {
-  try {
-    const resp = await fetch(path, {
-      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
-      signal: AbortSignal.timeout(20000),
+      credentials: "include",
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
@@ -1776,6 +1910,20 @@ export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(30000),
+      credentials: "include",
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: "HTTP " + resp.status, data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+async function _rsGet<T>(path: string): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(20000),
+      credentials: "include",
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) return { source: "live", ok: false, error: "HTTP " + resp.status, data: null };
@@ -1821,3 +1969,184 @@ export const apiVaultLeaseRelease = (handle: string) =>
 export const apiVaultCredentialRotate = (credentialId: string) =>
   _rsPost<any>(`/api/v1/control/credentials/${encodeURIComponent(credentialId)}/rotate`, {});
 export const apiVaultLeases = () => _rsGet<any>("/api/v1/control/credential-leases");
+
+/* ── Unified Technology BOM (Live Asset Intelligence) ──────────────────
+   GET /technology-bom (live) · POST /snapshot (version) · /history */
+export const apiTechBomLive = (limit = 2000): Promise<ApiResult<TechBomState>> =>
+  call(`/api/v1/technology-bom?limit=${limit}`);
+
+export const apiTechBomSnapshot = (): Promise<ApiResult<TechBomSnapshotResponse>> =>
+  _rsPost<any>("/api/v1/technology-bom/snapshot");
+
+export const apiTechBomHistory = (limit = 50): Promise<ApiResult<{ versions: TechBomVersion[]; total_count: number; latest_version: number }>> =>
+  call(`/api/v1/technology-bom/history?limit=${limit}`);
+
+export const apiTechBomVersions = (limit = 200): Promise<ApiResult<{ versions: TechBomVersion[]; total_count: number }>> =>
+  call(`/api/v1/technology-bom/history/versions?limit=${limit}`);
+
+export const apiTechBomCompare = (fromVersion: number, toVersion: number): Promise<ApiResult<TechBomDiff>> =>
+  call(`/api/v1/technology-bom/compare?from_version=${fromVersion}&to_version=${toVersion}`);
+
+export const apiTechBomExport = (params: { version?: number; fmt?: string; layer?: string }): Promise<ApiResult<TechBomExport>> => {
+  const q = new URLSearchParams();
+  if (params.version !== undefined) q.set("version", String(params.version));
+  if (params.fmt) q.set("fmt", params.fmt);
+  if (params.layer) q.set("layer", params.layer);
+  return call(`/api/v1/technology-bom/export?${q.toString()}`);
+};
+
+export const apiTechBomExportCsv = (params: { version?: number; layer?: string }): Promise<Response> => {
+  const q = new URLSearchParams();
+  if (params.version !== undefined) q.set("version", String(params.version));
+  if (params.layer) q.set("layer", params.layer);
+  q.set("fmt", "csv");
+  return fetch(`/api/v1/technology-bom/export?${q.toString()}`, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+};
+
+/* Time-based formatting for snapshot_id (TECHBOM-YYYYMMDD-HHMMSS). */
+export function fmtSnapshotId(sid: string | null | undefined): string {
+  if (!sid) return "—";
+  const m = sid.match(/^TECHBOM-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/);
+  if (!m) return sid;
+  return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}:${m[6]}`;
+}
+
+/* Technology BOM type contracts (mirror `services/cbom/.../technology_bom.py`). */
+export interface TechBomComponent {
+  "bom-ref"?: string;
+  type?: string;
+  name?: string;
+  version?: string;
+  supplier?: string;
+  properties?: Record<string, unknown>;
+}
+export interface TechBomLayer {
+  count: number;
+  components: TechBomComponent[];
+}
+export interface TechBomState {
+  source?: string;
+  live?: boolean;
+  snapshot_id: string;
+  environment: string;
+  state_version: number;
+  generated_at?: string;
+  total_components: number;
+  components_by_layer: Partial<Record<"sbom" | "cbom" | "hbom" | "vendor" | "certificates", number>>;
+  certificate_count?: number;
+  dependency_count?: number;
+  layers: Partial<Record<"sbom" | "cbom" | "hbom" | "vendor" | "certificates", TechBomLayer>>;
+  scan?: Record<string, unknown>;
+  fingerprint: string;
+  scan_in_progress?: boolean;
+  live_scan_note?: string | null;
+  latest_snapshot_id?: string | null;
+  previous_snapshot_id?: string | null;
+}
+export interface TechBomVersion {
+  version: number;
+  snapshot_id: string;
+  environment: string;
+  total_components: number;
+  components_by_layer?: Partial<Record<"sbom" | "cbom" | "hbom" | "vendor" | "certificates", number>>;
+  created_at?: string;
+}
+export interface TechBomSnapshotResponse {
+  source: string;
+  recorded: boolean;
+  snapshot: TechBomVersion & { id?: string; fingerprint?: string; created_by?: string };
+  diff?: TechBomDiff;
+  note?: string;
+}
+export interface TechBomLayerDiff {
+  added_count: number;
+  removed_count: number;
+  added: TechBomComponent[];
+  removed: TechBomComponent[];
+  from_count: number;
+  to_count: number;
+}
+export interface TechBomDiff {
+  from: { snapshot_id?: string; state_version?: number; total_components?: number };
+  to: { snapshot_id?: string; state_version?: number; total_components?: number };
+  changed: boolean;
+  layers: Partial<Record<"sbom" | "cbom" | "hbom" | "vendor" | "certificates", TechBomLayerDiff>>;
+}
+export interface TechBomExport {
+  snapshot_id: string;
+  environment: string;
+  state_version: number;
+  generated_at?: string;
+  layer: string;
+  format: string;
+  mime_type: string;
+  integrity_sha256: string;
+  data: unknown;
+}
+
+/* Raw (non-JSON) exports — CSV / XML / PDF are returned as download bodies. */
+export const apiTechBomExportRaw = (params: { version?: number; fmt: string; layer?: string; filters?: Record<string, unknown> }): Promise<Response> => {
+  const q = new URLSearchParams();
+  if (params.version !== undefined) q.set("version", String(params.version));
+  q.set("fmt", params.fmt);
+  if (params.layer) q.set("layer", params.layer);
+  if (params.filters) for (const [k, v] of Object.entries(params.filters)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  return fetch(`/api/v1/technology-bom/export?${q.toString()}`, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+};
+
+export const apiTechBomSchedules = (): Promise<ApiResult<{ schedules: TechBomSchedule[]; count: number }>> =>
+  call("/api/v1/technology-bom/export-schedules");
+export const apiTechBomScheduleCreate = (body: Partial<TechBomSchedule>): Promise<ApiResult<TechBomSchedule>> =>
+  _rsPost<any>("/api/v1/technology-bom/export-schedules", body);
+export const apiTechBomScheduleUpdate = (id: string, body: Partial<TechBomSchedule>): Promise<ApiResult<TechBomSchedule>> =>
+  call(`/api/v1/technology-bom/export-schedules/${id}`, { method: "PUT", body: JSON.stringify(body) });
+export const apiTechBomScheduleDelete = (id: string): Promise<ApiResult<{ deleted: boolean }>> =>
+  call(`/api/v1/technology-bom/export-schedules/${id}`, { method: "DELETE" });
+export const apiTechBomScheduleRun = (id: string): Promise<ApiResult<{ run: TechBomRun; schedule: TechBomSchedule }>> =>
+  _rsPost<any>(`/api/v1/technology-bom/export-schedules/${id}/run`);
+export const apiTechBomRunDue = (): Promise<ApiResult<{ ran_total: number; skipped_total: number; ran: unknown[]; skipped: { id: string; reason: string }[] }>> =>
+  _rsPost<any>("/api/v1/technology-bom/export-schedules/run-due");
+export const apiTechBomExportRuns = (limit = 50): Promise<ApiResult<{ runs: TechBomRun[]; count: number }>> =>
+  call(`/api/v1/technology-bom/export-runs?limit=${limit}`);
+export const apiTechBomEvidence = (version?: number, fmt = "json"): Promise<ApiResult<TechBomEvidence>> | Promise<Response> => {
+  const q = new URLSearchParams();
+  if (version !== undefined) q.set("version", String(version));
+  q.set("fmt", fmt);
+  if (fmt === "pdf") {
+    return fetch(`/api/v1/technology-bom/evidence-package?${q.toString()}`, { credentials: "include", ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}) });
+  }
+  return call(`/api/v1/technology-bom/evidence-package?${q.toString()}`);
+};
+export const apiTechBomVendor = (): Promise<ApiResult<TechBomVendorInventory>> =>
+  call("/api/v1/technology-bom/vendor");
+
+export interface TechBomSchedule {
+  id: string; name: string; frequency: string; fmt: string; layer: string;
+  filters: Record<string, unknown>; environment: string; recipients: string[];
+  active: boolean; last_run_at?: string | null; next_run_at?: string | null;
+  last_snapshot_id?: string | null; created_by?: string | null;
+}
+export interface TechBomRun {
+  schedule_id?: string | null; schedule_name?: string | null; version?: number | null;
+  snapshot_id: string; environment: string; fmt: string; layer: string;
+  filters: Record<string, unknown>; total_components: number; content_sha256: string;
+  signature_hmac?: string | null; mime_type?: string | null; audit_event_id?: string | null;
+  trigger?: string | null; created_at?: string | null;
+}
+export interface TechBomEvidence {
+  kind: string; snapshot_id: string; environment: string; state_version: number;
+  generated_at: string; generated_by?: string; bom: { total_components: number; components_by_layer: Record<string, number>; certificate_count: number; dependency_count: number; fingerprint: string };
+  certificates: { total: number; expired: number; expiring: number; self_signed: number; revoked: number };
+  scan_in_progress?: boolean; content_sha256: string; signature_hmac: string;
+}
+export interface TechBomVendorInventory {
+  vendors: Array<{ id: string; name: string; vendor_type: string; criticality: string; contract_end_date?: string | null; last_assessment_date?: string | null; integration_type: string; systems: string[]; system_count: number }>;
+  linkage: Array<{ vendor: string; vendor_id: string; system: string; system_id: string; dependency_type: string }>;
+  vendor_count: number;
+}

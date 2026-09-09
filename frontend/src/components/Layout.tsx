@@ -35,6 +35,7 @@ const NAV = [
     { to: "/crypto", labelKey: "nav.cryptography", icon: "⚿" },
     { to: "/cbom", labelKey: "nav.cbom", icon: "⬡" },
     { to: "/hbom", labelKey: "nav.hbom", icon: "⬢" },
+    { to: "/live-asset-intelligence", labelKey: "nav.liveAssetIntelligence", icon: "⬟" },
     { to: "/graph", labelKey: "nav.dependencyGraph", icon: "⬟" },
   ]},
   { sectionKey: "nav.groupAssess", items: [
@@ -70,6 +71,7 @@ const NAV = [
     { to: "/identity", labelKey: "nav.usersAccess", icon: "⛃" },
     { to: "/security", labelKey: "nav.security", icon: "🛡" },
     { to: "/security-center", labelKey: "nav.securityCenter", icon: "☗" },
+    { to: "/security-policy", labelKey: "nav.securityPolicy", icon: "⛨" },
     { to: "/settings", labelKey: "nav.settings", icon: "⚙" },
     { to: "/organization", labelKey: "nav.organization", icon: "◫" },
     { to: "/sectors", labelKey: "nav.sectorProfiles", icon: "⛨" },

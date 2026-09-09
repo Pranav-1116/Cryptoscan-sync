@@ -23,11 +23,14 @@ are driven by the real scanner lifecycle.
 
 from __future__ import annotations
 
+import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 from api.events.platform_events import emit_platform_event
 from api.live_scan.runner import LiveScanRunner, get_live_scan_runner
@@ -131,6 +134,7 @@ class OrchestratorScan:
     progress: dict[str, float] = field(default_factory=dict)
     error: Optional[str] = None
     domain_counts: dict[str, int] = field(default_factory=dict)
+    gate: Optional[dict] = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -146,6 +150,7 @@ class OrchestratorScan:
             "progress": self.progress,
             "error": self.error,
             "domain_counts": self.domain_counts,
+            "gate": self.gate,
         }
 
 
@@ -161,6 +166,20 @@ class ScanOrchestrator:
         self._seq = 0
         self._current: Optional[OrchestratorScan] = None
         self._runner: LiveScanRunner = get_live_scan_runner()
+        self._status_store: Any = None
+
+    def set_status_store(self, store: Any) -> None:
+        """Optional shared current-run store (Redis) for multi-instance status."""
+        self._status_store = store
+
+    def _mirror_status(self) -> None:
+        """Best-effort mirror of the current status snapshot to the shared store."""
+        if self._status_store is None:
+            return
+        try:
+            self._status_store.set(self.status())
+        except Exception:  # noqa: BLE001 — mirror must never break a scan
+            pass
 
     # -------------------------------------------------------------- planning
     def _plan(self, org, scope_entries, connectors, environments) -> tuple[dict[str, list[str]], dict[str, bool]]:
@@ -245,7 +264,17 @@ class ScanOrchestrator:
 
     # ---------------------------------------------------------------- start
     def start(self, org, scope_entries, connectors, environments, *, only: list[str] | None = None,
-              db=None, updated_by: str = "orchestrator") -> OrchestratorScan:
+              db=None, updated_by: str = "orchestrator", actor: str | None = None,
+              policy: dict | None = None, scope_meta: dict | None = None,
+              sector: str | None = None) -> OrchestratorScan:
+        """Start one integrated scan, through the fail-closed scanner gate.
+
+        A scan is only started if it passes the full control chain:
+        authorization -> tenant -> scope -> privacy policy -> scan policy ->
+        rate limit -> target safety -> credential. Any failure DENIES the scan
+        (status ``failed``, ``SCAN_DENIED``/``SCAN_FAILED`` event + audit) before
+        any scanner touches a target.
+        """
         targets, credentials = self._plan(org, scope_entries, connectors, environments)
         scan_id = self._next_scan_id(db=db, updated_by=updated_by)
         with self._lock:
@@ -265,26 +294,89 @@ class ScanOrchestrator:
                 progress={},
             )
             self._current = run
+
+        gate_decision = self._evaluate_gate(
+            actor=actor or updated_by, org=run, scope_meta=scope_meta, policy=policy,
+            sector=sector)
+        run.gate = gate_decision.to_dict()
+
+        if scope_empty:
+            return self._deny(run, "no authorized scope — ZELNX scans only explicitly authorized scope",
+                              denied_by="scope")
+        if gate_decision.denied:
+            return self._deny(run, gate_decision.reason, denied_by=gate_decision.denied_by,
+                              event_type="SCAN_DENIED")
+
         emit_platform_event(
             "SCAN_STARTED",
             f"scan {scan_id} started for {org_name or 'unknown org'}",
             {"scan_id": scan_id, "org": org_name, "targets": targets,
-             "credentials": credentials, "scope_validated": run.scope_validated},
+             "credentials": credentials, "scope_validated": run.scope_validated,
+             "gate": run.gate, "actor": actor or updated_by},
         )
-        if scope_empty:
-            run.status = "failed"
-            run.phase = ScanPhase.FAILED.value
-            run.error = "no authorized scope — ZELNX scans only explicitly authorized scope"
-            emit_platform_event(
-                "SCAN_FAILED",
-                f"scan {scan_id} refused: no authorized scope",
-                {"scan_id": scan_id, "reason": run.error},
-            )
-            return run
         # phase transitions are emitted as they happen (real, streamed)
         self._emit_phase(run, ScanPhase.DISCOVERY)
         thread = threading.Thread(target=self._execute, kwargs=dict(run=run, only=only), daemon=True, name=f"orchestrator-{scan_id}")
         thread.start()
+        return run
+
+    # ------------------------------------------------------------------ gate
+    def _evaluate_gate(self, *, actor: str, org: OrchestratorScan, policy: dict | None,
+                       scope_meta: dict | None, sector: str | None = None):
+        """Run the unified scanner gate.
+
+        Fail-closed: if the privacy/gate module is unavailable OR throws, the
+        scan is DENIED (`gate_error`) — never fabricated into an allow. The org
+        policy is seeded from the sector profile (when present) so a chosen
+        sector actually enforces its recommended modes/policy packs.
+        """
+        try:
+            from privacy.gate import ScannerGate
+            from privacy.policy import build_policy, apply_sector_overrides
+            from privacy.ratelimit import Limits
+
+            bundle = build_policy(
+                policy.get("scan") if policy else {},
+                policy.get("privacy") if policy else {},
+                sector=sector or None,
+            )
+            if sector:
+                bundle = apply_sector_overrides(bundle, sector)
+            gate = ScannerGate(policy=bundle, limits=Limits())
+            return gate.evaluate(
+                actor=actor,
+                tenant=org.org_id or "default",
+                environment="",
+                targets=org.targets,
+                credentials=org.credentials,
+                scanners=list(org.targets.keys()),
+                scan_id=org.scan_id,
+                policy=bundle,
+                scope_includes=scope_meta or {},
+            )
+        except Exception as exc:  # noqa: BLE001 — never fabricate an allow
+            from privacy.gate import GateCheck, GateDecision
+            logger.exception("scanner gate evaluation failed; denying scan")
+            return GateDecision(
+                permitted=False, scan_id=org.scan_id,
+                checks=[GateCheck("gate", False, f"gate evaluation failed: {exc}")],
+                denied_by="gate",
+                reason=f"gate evaluation failed — scan denied (fail-closed)",
+                audit={"actor": actor, "gate": "fail-closed", "error": str(exc)},
+            )
+
+    def _deny(self, run: OrchestratorScan, reason: str, *, denied_by: str,
+              event_type: str = "SCAN_FAILED") -> OrchestratorScan:
+        run.status = "failed"
+        run.phase = ScanPhase.FAILED.value
+        run.error = reason
+        if run.gate:
+            run.gate["denied_by"] = denied_by
+        emit_platform_event(
+            event_type,
+            f"scan {run.scan_id} denied by {denied_by}: {reason}",
+            {"scan_id": run.scan_id, "reason": reason, "denied_by": denied_by, "gate": run.gate},
+        )
         return run
 
     # ------------------------------------------------------------- execute
@@ -341,11 +433,21 @@ class ScanOrchestrator:
             {"scan_id": run.scan_id, "phase": phase.value, "progress": run.progress,
              "scope_validated": run.scope_validated},
         )
+        self._mirror_status()
 
     # --------------------------------------------------------------- status
     def status(self) -> dict[str, Any]:
         with self._lock:
             if self._current is None:
+                # no local run: if a shared store (Redis) is configured, serve the
+                # latest status mirrored by whichever replica ran the scan.
+                if self._status_store is not None:
+                    try:
+                        shared = self._status_store.get()
+                        if shared and shared.get("scan"):
+                            return {**shared, "source": "scan_orchestrator:shared"}
+                    except Exception:  # noqa: BLE001
+                        pass
                 return {"scan": None, "source": "scan_orchestrator", "runner": {"running": self._runner.running}}
             return {"scan": self._current.to_dict(), "source": "scan_orchestrator",
                     "runner": {"running": self._runner.running}}

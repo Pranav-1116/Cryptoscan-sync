@@ -173,7 +173,7 @@ class TrustStoreRequest(BaseModel):
 @router.post("/trust-store")
 def trust_store(body: TrustStoreRequest,
                 user: str = Depends(require_roles("admin", "auditor", "superadmin"))):
-    from keyassure.trust_store import TrustStoreError, audit, baseline_fingerprints, parse_pem_bundle
+    from keyassure.trust_store import TrustStoreError, audit, parse_pem_bundle
 
     anchors = []
     baseline = set(body.approved_fingerprints)

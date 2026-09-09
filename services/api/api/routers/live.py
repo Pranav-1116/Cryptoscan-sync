@@ -31,6 +31,26 @@ router = APIRouter(prefix="/live", tags=["live", "scans"])
 _OPERATORS = ("admin", "superadmin", "ciso", "security_analyst", "scanner")
 
 
+def _org_policy(repo: OnboardingRepository, org_id: str) -> dict | None:
+    """Load the persisted scan/privacy policy for an org (JSON in app_settings)."""
+    try:
+        from db.models.app_setting import AppSetting
+        from sqlalchemy import select
+
+        row = repo.session.execute(
+            select(AppSetting).where(AppSetting.key == f"org:{org_id}:scan_policy")
+        ).scalars().first()
+        if row is None:
+            return None
+        import json
+        return json.loads(row.value or "{}")
+    except Exception:  # noqa: BLE001 — policy read is best-effort
+        return None
+
+
+
+
+
 def _scope_rows(repo: OnboardingRepository):
     org = repo.get_default_org()
     if org is None:
@@ -61,7 +81,9 @@ def orchestrator_start(
         raise HTTPException(status_code=404,
                             detail="No organization yet — create one via POST /onboarding/organization")
     orch = get_scan_orchestrator()
-    run = orch.start(org.to_dict(), entries, conns, envs, only=scanners, db=db, updated_by=user)
+    run = orch.start(org.to_dict(), entries, conns, envs, only=scanners, db=db,
+                     updated_by=user, actor=user, policy=_org_policy(repo, org.id),
+                     sector=getattr(org, "sector", None))
     return {"status": "started", "scan": run.to_dict()}
 
 

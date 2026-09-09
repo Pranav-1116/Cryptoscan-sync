@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
 from api.routers.inventory import collect_inventory
-from universal_platform.risk import UNIFIED_FACTORS, from_asset, unified_risk
+from universal_platform.risk import UNIFIED_FACTORS, from_asset
 
 router = APIRouter(prefix="/risk", tags=["risk"])
 

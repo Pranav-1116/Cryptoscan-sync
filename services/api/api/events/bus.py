@@ -68,6 +68,12 @@ class EventBus:
         self._subs: list[Subscription] = []
         self._counter = itertools.count(1)
         self._published_total = 0
+        self._remote_publisher: Any = None
+
+    def set_remote_publisher(self, fn: Any) -> None:
+        """Optional cross-process publisher (e.g. Redis pub/sub) invoked after
+        every local publish. Never mutates or throws into the local path."""
+        self._remote_publisher = fn
 
     # ------------------------------------------------------------- publishing
 
@@ -84,6 +90,33 @@ class EventBus:
             "type": str(event_type),
             "source": str(source),
             "payload": payload or {},
+        }
+        with self._lock:
+            self._history.append(event)
+            self._published_total += 1
+            subs = list(self._subs)
+        for sub in subs:
+            sub.deliver(event)
+        if self._remote_publisher is not None:
+            try:
+                self._remote_publisher(event)
+            except Exception:  # noqa: BLE001 — never let Redis break publishing
+                pass
+        return event
+
+    def inject_remote(self, frame: dict[str, Any]) -> dict[str, Any]:
+        """Re-publish an event that arrived from another node (Redis sync).
+
+        Gives it a fresh local id (so ids stay monotonic per node and
+        Last-Event-ID resume is consistent) and delivers to local subscribers
+        WITHOUT re-publishing to Redis (avoids an echo loop).
+        """
+        event = {
+            "id": next(self._counter),
+            "ts": frame.get("ts") or datetime.now(timezone.utc).isoformat(),
+            "type": str(frame.get("type") or "remote.event"),
+            "source": str(frame.get("source") or "remote"),
+            "payload": frame.get("payload") or {},
         }
         with self._lock:
             self._history.append(event)

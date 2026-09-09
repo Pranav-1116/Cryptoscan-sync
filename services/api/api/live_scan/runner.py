@@ -102,6 +102,51 @@ def _db_load_snapshot() -> dict[str, Any] | None:
         return None
 
 
+#: privacy enforcement: the fail-safe default (no PII / secrets / private keys,
+#: redaction on, data minimization on) applies whenever no org policy is stored.
+def _privacy_policy_obj() -> Any | None:
+    """Best-effort: load the org scan/privacy policy from app_settings.
+
+    Returns a ``PrivacyPolicy`` (or ``None`` to signal the caller to use the
+    fail-safe default). Never raises — a broken/unconfigured settings row must
+    not block scanning; it just falls back to the strict default.
+    """
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.settings_repository import SettingsRepository
+
+        with SessionLocal() as session:
+            repo = SettingsRepository(session)
+            for key_candidate in ("scan_policy", "org:default:scan_policy"):
+                raw = repo.get(key_candidate)
+                if isinstance(raw, dict) and raw:
+                    from privacy.policy import build_policy
+
+                    return build_policy(raw.get("scan"), raw.get("privacy")).privacy
+        from privacy.policy import PrivacyPolicy
+
+        return PrivacyPolicy()  # fail-safe default
+    except Exception:  # noqa: BLE001 — fail-safe on any error
+        try:
+            from privacy.policy import PrivacyPolicy
+
+            return PrivacyPolicy()
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def _privacy_scrub(snapshot: dict[str, Any], privacy_policy: Any | None) -> dict[str, Any]:
+    """Apply the privacy engine to a live-scan snapshot. Fail-soft on engine
+    issues (the scan already ran); returns the sanitized snapshot."""
+    try:
+        from privacy.engine import sanitize_snapshot
+
+        sanitized, _report = sanitize_snapshot(snapshot, privacy_policy)
+        return sanitized if isinstance(sanitized, dict) else snapshot
+    except Exception:  # noqa: BLE001
+        return snapshot
+
+
 class ScannerSpec:
     """One invocable scanner command. The full host set runs in the periodic
     loop; the rest are on-demand only (they need a target or credentials)."""
@@ -501,6 +546,10 @@ class LiveScanRunner:
                 merged = dict(self.last_snapshot.get("results") or {})
                 merged.update(results)
                 snapshot["results"] = merged
+            # privacy: scrub the snapshot so the engine actually enforces the
+            # policy (no PII/secrets/private keys, data minimization). Fail-soft:
+            # a sanitizer error never blocks an already-completed scan.
+            snapshot = _privacy_scrub(snapshot, _privacy_policy_obj())
             self.last_snapshot = snapshot
             self.last_run_at = snapshot["ts"]
             # persist a trimmed snapshot (summaries, not full scanner payloads)

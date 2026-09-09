@@ -207,3 +207,50 @@ Plus a `telemetry.snapshot` heartbeat every 15s (events/sec, subscribers, buffer
 events federated from the DB event log. The stream supports Last-Event-ID resume; after an API restart
 the backlog is seeded from the durable `monitor_events` table (index `ix_monitor_events_created_at`,
 migration 0038).
+
+## ZELNX Security & Scanning Policy + unified scan gate
+
+```text
+GET  /api/v1/security/policy    normalized org scan+privacy policy (any authed user)
+PUT  /api/v1/security/policy    admin/superadmin/ciso only; fail-safe validation
+POST /api/v1/security/gate      evaluate the fail-closed gate; returns per-control checks
+```
+
+The security policy configures, per org:
+- **scan** controls — production protection (read-only + low), HSM protection,
+  require-special-approval, and the **scan intensity** (`off`/`low`/`medium`).
+- **privacy** controls — whether to collect PII / private keys / secrets
+  (blocked at `PUT` time), plus redaction, field masking, identifier
+  tokenization, data minimization, payload limits, private-key alerting and
+  evidence-metadata-only retention.
+
+`POST /security/gate` returns `{decision, policy}` where `decision` lists every
+control in the chain — authorization → tenant → scope → privacy → scan policy →
+rate limit → target safety → credential — with a `permitted` flag and a
+`denied_by` on failure. Scans are **fail-closed**: the orchestrator refuses to
+start if the gate denies (`SCAN_DENIED`) before any scanner runs.
+
+Persistence: `AppSetting` key `org:{org_id}:scan_policy` (JSON). The gate is also
+wired into the live orchestrator so `POST /live/orchestrator/start` evaluates the
+org policy automatically.
+
+## Sector profiles
+
+```text
+GET  /api/v1/sectors/organization/active  the sector currently applied + resolved context
+GET  /api/v1/sectors                       list supported sectors + aliases
+GET  /api/v1/sectors/{sector_id}           profile (policy packs, compliance frameworks,
+                                            recommended scan modes, OT safety)
+GET  /api/v1/sectors/scan-modes            scan modes (ot_safe_only filter)
+GET  /api/v1/sectors/quantum-risk          sector-weighted quantum risk for live assets
+POST /api/v1/sectors/criticality           score business criticality in a sector context
+POST /api/v1/sectors/compliance-map        map policy findings onto sector frameworks
+POST /api/v1/sectors/context               full seed bundle (packs, integrations, env separation)
+```
+
+Sector profiles (banking, healthcare, energy, telecom, government, ...) are
+normalized on org create (`POST /onboarding/organization`), persisted to the
+`SECTOR_SETTING_KEY`, surfaced in `GET /onboarding/state` as `sector_context`
+(recommended modes, policy packs, compliance frameworks), and served by the
+`/sectors` router above. `POST /sectors/context` returns the bundle used to seed
+scans and reports for a sector.

@@ -44,6 +44,7 @@ from api.routers import (
     drift,
     estate,
     events,
+    techbom,
     exceptions,
     notifications,
     export,
@@ -163,6 +164,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         logger.info("cryptoscan_api_started", extra={"env": settings.ENVIRONMENT})
         tailer_task = None
         telemetry_task = None
+        redis_sync = None
         if (
             settings.EVENT_TAILER_SECONDS > 0
             and settings.ENVIRONMENT.lower() not in {"test", "testing"}
@@ -183,6 +185,33 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             telemetry_task = start_telemetry_heartbeat()
             if telemetry_task is not None:
                 logger.info("telemetry_heartbeat_started")
+            # Cross-instance realtime: when REDIS_URL is set, federate events so
+            # SSE clients on ANY replica receive events published on another
+            # replica. Without Redis the bus stays on the local node (and the
+            # durable DB tailer still federates cross-process events).
+            redis_sync = None
+            try:
+                if settings.REDIS_URL:
+                    import redis as _redis
+                    from api.events.bus import get_event_bus
+                    from api.events.redis_sync import start_redis_federation
+
+                    rclient = _redis.Redis.from_url(
+                        settings.REDIS_URL, socket_timeout=2, socket_connect_timeout=2
+                    )
+                    redis_sync = start_redis_federation(rclient, get_event_bus())
+                    if redis_sync is not None:
+                        logger.info("redis_event_federation_started")
+                    # Share the live scan status across replicas so any node can
+                    # answer /orchestrator/status even if it did not run the scan.
+                    from api.live_scan.current_run import get_current_run_store
+                    from api.live_scan.orchestrator import get_scan_orchestrator
+
+                    get_scan_orchestrator().set_status_store(
+                        get_current_run_store(settings.REDIS_URL)
+                    )
+            except Exception:  # noqa: BLE001 — Redis must never break startup
+                logger.debug("redis_event_federation_skipped", exc_info=True)
         # Restore the latest live-scanner snapshot so consoles see the most
         # recent real scan immediately after a restart (best-effort; runs
         # independent of the event tailer).
@@ -198,6 +227,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             tailer_task.cancel()
         if telemetry_task is not None:
             telemetry_task.cancel()
+        if redis_sync is not None:
+            try:
+                redis_sync.stop()
+            except Exception:  # noqa: BLE001
+                pass
         logger.info("cryptoscan_api_stopped")
 
     app = FastAPI(
@@ -218,7 +252,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         allow_credentials=origins != ["*"],
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Request-ID", "X-Total-Count"],
+        expose_headers=["X-Request-ID", "X-Request-Duration-ms", "X-Trace-Id", "X-Total-Count"],
     )
     if settings.trusted_host_list and settings.trusted_host_list != ["*"]:
         app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.trusted_host_list)
@@ -309,6 +343,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(cloud.router, prefix=prefix)
     app.include_router(cloud_scans.router, prefix=prefix)
     app.include_router(estate.router, prefix=prefix)
+    app.include_router(techbom.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)

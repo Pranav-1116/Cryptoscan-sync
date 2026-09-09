@@ -102,7 +102,6 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
     # (each carries cloud_provider + resource + source_type as the scanner wrote
     # them). Linked to the owning system via the asset's SystemAsset link.
     from sqlalchemy import select
-    from db.models.system_asset import SystemAsset
     resource_seen: set[str] = set()
     for asset in session.query(CryptoAsset).limit(500).all():
         extra = asset.extra or {}

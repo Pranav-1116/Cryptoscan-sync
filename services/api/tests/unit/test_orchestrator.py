@@ -135,3 +135,76 @@ def test_collapse_scan_events_ignores_non_scan_and_when_no_scan_id():
     from api.live_scan.orchestrator import collapse_scan_events
     assert collapse_scan_events([]) == []
     assert collapse_scan_events([{"event_type": "telemetry.snapshot", "payload": {}}]) == []
+
+
+def test_gate_denies_scan_that_has_no_authorized_targets():
+    from api.live_scan.orchestrator import OrchestratorScan, get_scan_orchestrator
+    orch = get_scan_orchestrator()
+    run = OrchestratorScan(scan_id="SCAN-2026-000001", org_id="o1", org_name="Acme",
+                           phase="scope_validated", status="running", started_at="",
+                           scope_validated=False, targets={}, credentials={})
+    d = orch._evaluate_gate(actor="alice", org=run, policy=None, scope_meta=None)
+    assert d.denied and d.denied_by == "scope"
+
+
+def test_gate_evaluation_records_full_control_chain():
+    from api.live_scan.orchestrator import OrchestratorScan, get_scan_orchestrator
+    orch = get_scan_orchestrator()
+    run = OrchestratorScan(scan_id="SCAN-2026-000002", org_id="o1", org_name="Acme",
+                           phase="scope_validated", status="running", started_at="",
+                           scope_validated=True,
+                           targets={"network": ["10.20.0.10:443"]},
+                           credentials={"network": True})
+    d = orch._evaluate_gate(actor="alice", org=run, policy=None,
+                            scope_meta={"excluded": [], "special": [], "special_approved": False})
+    assert d.permitted, d.reason
+    controls = {c.control for c in d.checks}
+    assert {"authorization", "scope", "privacy", "scan_policy", "rate_limit",
+            "target_safety", "credential"} <= controls
+
+
+def test_start_denies_when_policy_intensity_off_without_spawning():
+    from api.live_scan.orchestrator import get_scan_orchestrator
+    orch = get_scan_orchestrator()
+    run = orch.start(_org(), _scope(), _connectors(), [], only=None,
+                     policy={"scan": {"intensity": "off", "mode": "read-only"}})
+    assert run.status == "failed"
+    assert run.phase == "failed"
+    assert run.gate is not None
+    assert run.gate.get("denied_by") == "scan_policy"
+    assert "intensity is OFF" in (run.error or "")
+
+
+def test_start_accepts_sector_param_and_records_full_gate():
+    """A sector-seeded scan still runs the full control chain and records it."""
+    from api.live_scan.orchestrator import get_scan_orchestrator
+    orch = get_scan_orchestrator()
+    run = orch.start(_org(), _scope(), _connectors(), [], only=None, sector="banking")
+    assert run.gate is not None
+    # the sector parameter is accepted and the gate runs the control chain in
+    # order. For a conservative scope the chain may short-circuit at rate_limit,
+    # so assert the earliest stages all ran.
+    controls = {c["control"] for c in run.gate.get("checks", [])}
+    assert {"authorization", "scope", "privacy", "scan_policy"} <= controls
+
+
+def test_gate_fails_closed_when_privacy_layer_throws(monkeypatch):
+    """If the privacy/gate layer errors, the scan is DENIED (never fabricated
+    into an allow)."""
+    from api.live_scan.orchestrator import OrchestratorScan, get_scan_orchestrator
+    orch = get_scan_orchestrator()
+    run = OrchestratorScan(scan_id="SCAN-2026-000009", org_id="o1", org_name="Acme",
+                           phase="scope_validated", status="running", started_at="",
+                           scope_validated=True,
+                           targets={"network": ["10.20.0.10:443"]},
+                           credentials={"network": True})
+    import privacy.policy as pp
+
+    def boom(*a, **k):
+        raise RuntimeError("privacy layer unavailable")
+
+    monkeypatch.setattr(pp, "build_policy", boom)
+    d = orch._evaluate_gate(actor="alice", org=run, policy=None, scope_meta=None)
+    assert d.denied is True
+    assert d.denied_by == "gate"
+    assert "fail-closed" in d.reason

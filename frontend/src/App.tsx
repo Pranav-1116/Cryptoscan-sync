@@ -1,5 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import Layout from "./components/Layout.jsx";
+import { syncSession } from "./lib/api.js";
 
 // Route-level code splitting: each page is loaded on demand, so Vite emits a
 // separate chunk per page instead of one large bundle (~554 kB). This cuts the
@@ -38,6 +39,7 @@ const Evidence = lazy(() => import("./pages/Evidence.jsx"));
 const Scanners = lazy(() => import("./pages/Scanners.jsx"));
 const Runtime = lazy(() => import("./pages/Runtime.jsx"));
 const LiveScanners = lazy(() => import("./pages/LiveScanners.jsx"));
+const LiveAssetIntelligence = lazy(() => import("./pages/LiveAssetIntelligence"));
 const Timeline = lazy(() => import("./pages/Timeline.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const Integrations = lazy(() => import("./pages/Integrations.jsx"));
@@ -62,6 +64,8 @@ const Findings = lazy(() => import("./pages/Findings.jsx"));
 const Settings = lazy(() => import("./pages/Settings.jsx"));
 const Security = lazy(() => import("./pages/Security.jsx"));
 const SecurityCenter = lazy(() => import("./pages/SecurityCenter.jsx"));
+const SecurityPolicy = lazy(() => import("./pages/SecurityPolicy"));
+const SecurityIntelligence = lazy(() => import("./pages/SecurityIntelligence"));
 
 const PAGES: Record<string, React.ComponentType> = {
   "/": CommandCenter,
@@ -99,6 +103,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/runtime": Runtime,
   "/live-scanners": LiveScanners,
   "/timeline": Timeline,
+  "/live-asset-intelligence": LiveAssetIntelligence,
   "/reports": Reports,
   "/integrations": Integrations,
   "/admin": Admin,
@@ -122,6 +127,8 @@ const PAGES: Record<string, React.ComponentType> = {
   "/settings": Settings,
   "/security": Security,
   "/security-center": SecurityCenter,
+  "/security-policy": SecurityPolicy,
+  "/security-intelligence": SecurityIntelligence,
 };
 
 function useHashRoute(): string {
@@ -138,6 +145,11 @@ export default function App() {
   const route = useHashRoute();
   const Page = PAGES[route] || CommandCenter;
   const active = Object.keys(PAGES).includes(route) ? route : "/";
+  // Refresh server-truth identity (username + roles) from GET /auth/me via the
+  // httpOnly session cookie on boot, so the UI never trusts localStorage roles.
+  useEffect(() => {
+    void syncSession();
+  }, []);
   if (route === "/login" || route === "/register") {
     return (
       <Suspense fallback={<div className="page-loading">Loading…</div>}>

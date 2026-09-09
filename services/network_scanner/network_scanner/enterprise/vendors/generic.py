@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 from network_scanner.enterprise.vendors.base import NetworkVendorPlugin, register_plugin
-from network_scanner.enterprise.vendors.snmp import SnmpClient, SnmpError, snmp_discover, vendor_from_sys_object_id
+from network_scanner.enterprise.vendors.snmp import snmp_discover, vendor_from_sys_object_id
 
 
 class GenericSNMPPlugin(NetworkVendorPlugin):

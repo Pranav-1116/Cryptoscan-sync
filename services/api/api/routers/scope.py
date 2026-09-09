@@ -47,7 +47,7 @@ def _load(repo: OnboardingRepository, org_id: str | None):
          "config": c.config, "agent_id": c.agent_id}
         for c in conns
     ]
-    org_row = {"id": org.id, "name": org.name}
+    _org_row = {"id": org.id, "name": org.name}
     return org, scope_rows, connector_rows, maintenance_open
 
 

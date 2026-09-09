@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import socket
 import struct
-from typing import Any
 
 UDP_PROBE_TIMEOUT = 1.5
 TCP_BANNER_TIMEOUT = 2.0

@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 from typing import Any
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+logger = logging.getLogger(__name__)
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -568,7 +571,6 @@ def _snapshot_graph(db: Session, *, user: str = "system") -> dict[str, Any]:
     """
     from sqlalchemy import select
 
-    from db.repositories.system_repository import SystemRepository
 
     graph = graph_from_db(db)
     nodes, edges, nodes_by_kind, edges_by_relation = _canon_graph(graph)

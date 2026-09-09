@@ -13,20 +13,17 @@ from __future__ import annotations
 
 import json
 import os
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone
 from typing import Any, Callable, Iterable
 
 from network_scanner.enterprise.assets import AssetRegistry, NetworkAsset
 from network_scanner.enterprise.blast_radius import blast_radius
 from network_scanner.enterprise.cert_intel import certificate_intelligence_report
-from network_scanner.enterprise.credentials import CredentialRef, CredentialVault, scrub_all
+from network_scanner.enterprise.credentials import CredentialVault, scrub_all
 from network_scanner.enterprise.geo import GeoLocation, GeographyModel
 from network_scanner.enterprise.passive_engine import PassiveDiscoveryEngine, PassiveSource
-from network_scanner.enterprise.pqc_readiness import assess_asset_readiness, network_pqc_readiness
+from network_scanner.enterprise.pqc_readiness import network_pqc_readiness
 from network_scanner.enterprise.protocols.engine import ProtocolDetectionEngine
 from network_scanner.enterprise.scan_modes import ScanMetadata, ScanMode
-from network_scanner.enterprise.sdwan import SdwanTopology, discover_sdwan
 from network_scanner.enterprise.simulation import MigrationSimulator, default_steps_from_crypto
 from network_scanner.enterprise.target_spec import TargetSpec, parse_scope_spec
 from network_scanner.enterprise.tls_intel import build_tls_intelligence, profile_all
@@ -228,7 +225,7 @@ class GlobalNetworkDiscoveryEngine:
         if not host:
             return
         self.metadata.targets_probed += 1
-        asset = self.assets.get(host) or self.assets.upsert(NetworkAsset.from_host(host, source="probe"))
+        _asset = self.assets.get(host) or self.assets.upsert(NetworkAsset.from_host(host, source="probe"))
         try:
             finding = self.tls_probe(host)
             self._findings.append(finding)
