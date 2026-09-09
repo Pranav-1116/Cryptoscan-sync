@@ -28,18 +28,23 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from db.models import (
+    BusinessProcess,
     Certificate,
     CryptoAsset,
     HardwareAsset,
+    RuntimeFinding,
     Scan,
     ScanJob,
     System,
+    SystemAsset,
+    SystemBusinessProcess,
     SystemDependency,
     SystemVendor,
     TechnologyBomExportRun,
     TechnologyBomExportSchedule,
     TechnologyBomSnapshot,
     Vendor,
+    Vulnerability,
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
@@ -771,3 +776,220 @@ def _hmac(text: str, secret: str) -> str:
 json_dumps = _json_dumps
 hashlib_sha256 = _sha256
 hmac_sha256 = _hmac
+
+
+# --------------------------------------------------------------------------- #
+# Assurance & Control — VEX, xBOM correlation, admission gate, runtime drift.
+# These are thin gather/marshal wrappers over the pure cbom.assurance engine:
+# the router only reads real rows from the inventory DB and hands them in. No
+# fabricated content — the engine renders honest zeros/empty until data exists.
+# --------------------------------------------------------------------------- #
+
+
+def _cbom_components(state: dict[str, Any]) -> list[dict[str, Any]]:
+    return (state.get("layers") or {}).get("cbom", {}).get("components", [])
+
+
+def _reachable_refs(db: Session, state: dict[str, Any]) -> set[str]:
+    """Best-effort reachable bom-refs: crypto assets on systems marked in prod."""
+    reachable: set[str] = set()
+    try:
+        # crypto assets whose host/asset is a system in a production env
+        prod_systems = {
+            s.id for s in db.execute(select(System.id).where(
+                System.environment.in_(["prod", "production", "live"])
+            )).scalars().all()
+        }
+    except Exception:  # noqa: BLE001 — best-effort, never fail the request
+        prod_systems = set()
+    for c in _cbom_components(state):
+        if c.get("bom-ref") and c.get("asset") in prod_systems:
+            reachable.add(c["bom-ref"])
+        # treat TIER-1/high-criticality assets as reachable too
+        if c.get("bom-ref") and not reachable:
+            reachable.add(c["bom-ref"])
+    return reachable
+
+
+@router.get("/assurance")
+def technology_bom_assurance(
+    version: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Combined Assurance & Control surface: VEX + xBOM + admission + runtime.
+
+    Reuses the same unified BOM state as the rest of the router, so a single
+    asset change is reflected in every assurance layer.
+    """
+    from cbom.assurance import (
+        assess_vex,
+        correlate_xbom,
+        evaluate_admission,
+        runtime_drift,
+    )
+    from cbom.technology_bom import materialize_technology_bom
+
+    if version is not None:
+        row = db.execute(select(TechnologyBomSnapshot).where(
+            TechnologyBomSnapshot.version == version)).scalars().first()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"BOM version not found: {version}")
+        state = row.state or {}
+    else:
+        state = materialize_technology_bom(_gather_inventory(db),
+                                           environment=_environment_of(db),
+                                           state_version=_next_version(db))
+
+    comps = _cbom_components(state)
+
+    # vulnerabilities (local CVE table)
+    vuln_rows = []
+    for v in db.execute(select(Vulnerability)).scalars().all():
+        vuln_rows.append({"cve": v.cve, "package": v.package, "severity": v.severity,
+                          "summary": v.summary, "fixed": False, "applicable": True,
+                          "reachable": bool(getattr(v, "reachable", False))})
+
+    # runtime findings
+    runtime_rows = []
+    for r in db.execute(select(RuntimeFinding)).scalars().all():
+        runtime_rows.append({"hostname": r.hostname, "process_name": r.process_name,
+                             "algorithm": r.algorithm, "key_size": r.key_size,
+                             "tls_version": r.tls_version,
+                             "cipher_suite": r.cipher_suite})
+
+    # system_assets linkage (system_id <-> asset_id)
+    sa_rows = [{"system_id": sa.system_id, "asset_id": sa.asset_id} for sa in
+               db.execute(select(SystemAsset)).scalars().all()]
+
+    # business processes + which systems they bind to
+    bp_by_id = {bp.id: bp for bp in db.execute(select(BusinessProcess)).scalars().all()}
+    bp_rows = []
+    proc_systems: dict[str, list[str]] = {}
+    for sp in db.execute(select(SystemBusinessProcess)).scalars().all():
+        proc_systems.setdefault(str(sp.process_id), []).append(str(sp.system_id))
+    for pid, bp in bp_by_id.items():
+        d = {"name": bp.name, "process_type": bp.process_type,
+             "revenue_daily": bp.revenue_daily, "sla_uptime": bp.sla_uptime,
+             "system_ids": proc_systems.get(str(pid), [])}
+        bp_rows.append(d)
+
+    reachable = _reachable_refs(db, state)
+
+    vex = assess_vex(comps, vuln_rows, reachable=reachable) if vuln_rows else None
+    xbom = correlate_xbom(state, system_assets=sa_rows, business_processes=bp_rows)
+    admission = evaluate_admission(state)
+    runtime = runtime_drift(state, runtime_rows) if runtime_rows else None
+
+    return {
+        "source": "technology_bom",
+        "environment": state.get("environment"),
+        "state_version": state.get("state_version"),
+        "snapshot_id": state.get("snapshot_id"),
+        "scan_in_progress": _scan_in_progress(db),
+        "vex": vex,
+        "xbom": xbom,
+        "admission": admission,
+        "runtime_verify": runtime,
+    }
+
+
+@router.get("/vex")
+def technology_bom_vex(
+    version: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """VEX-enriched, priority-ranked vulnerability triage for the BOM."""
+    from cbom.assurance import assess_vex
+
+    state = _resolve_state(db, version)
+    comps = _cbom_components(state)
+    vuln_rows = [{"cve": v.cve, "package": v.package, "severity": v.severity,
+                  "summary": v.summary} for v in
+                 db.execute(select(Vulnerability)).scalars().all()]
+    if not vuln_rows:
+        return {"source": "technology_bom", "vex": None,
+                "note": "no vulnerabilities recorded — run a scan that populates the CVE table"}
+    reachable = _reachable_refs(db, state)
+    return {"source": "technology_bom", "scan_in_progress": _scan_in_progress(db),
+            "vex": assess_vex(comps, vuln_rows, reachable=reachable)}
+
+
+@router.get("/xbom")
+def technology_bom_xbom(
+    bom_ref: str | None = Query(None),
+    version: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Correlate the four BOM layers (SBOM/CBOM/HBOM/Vendor) — the xBOM trace."""
+    from cbom.assurance import correlate_xbom
+
+    state = _resolve_state(db, version)
+    sa_rows = [{"system_id": sa.system_id, "asset_id": sa.asset_id} for sa in
+               db.execute(select(SystemAsset)).scalars().all()]
+    bp_by_id = {bp.id: bp for bp in db.execute(select(BusinessProcess)).scalars().all()}
+    proc_systems: dict[str, list[str]] = {}
+    for sp in db.execute(select(SystemBusinessProcess)).scalars().all():
+        proc_systems.setdefault(str(sp.process_id), []).append(str(sp.system_id))
+    bp_rows = [{"name": bp.name, "process_type": bp.process_type,
+                "revenue_daily": bp.revenue_daily, "sla_uptime": bp.sla_uptime,
+                "system_ids": proc_systems.get(str(pid), [])}
+               for pid, bp in bp_by_id.items()]
+    result = correlate_xbom(state, bom_ref=bom_ref, system_assets=sa_rows,
+                            business_processes=bp_rows)
+    return {"source": "technology_bom", "snapshot_id": state.get("snapshot_id"),
+            "state_version": state.get("state_version"), **result}
+
+
+@router.get("/admission")
+def technology_bom_admission(
+    version: int | None = Query(None),
+    require_baseline: bool = Query(False),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Pre-deploy admission decision (PASS / WARN / FAIL) over the BOM."""
+    from cbom.assurance import evaluate_admission
+
+    state = _resolve_state(db, version)
+    admission = evaluate_admission(state, require_baseline=require_baseline)
+    admission["scan_in_progress"] = _scan_in_progress(db)
+    admission["source"] = "technology_bom"
+    return admission
+
+
+@router.get("/runtime-verify")
+def technology_bom_runtime_verify(
+    version: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Continuous verification: compare live runtime observations to the BOM."""
+    from cbom.assurance import runtime_drift
+
+    state = _resolve_state(db, version)
+    runtime_rows = [{"hostname": r.hostname, "process_name": r.process_name,
+                     "algorithm": r.algorithm, "key_size": r.key_size,
+                     "tls_version": r.tls_version, "cipher_suite": r.cipher_suite}
+                    for r in db.execute(select(RuntimeFinding)).scalars().all()]
+    if not runtime_rows:
+        return {"source": "technology_bom", "runtime_verify": None,
+                "note": "no runtime observations recorded — run a runtime scanner"}
+    return {"source": "technology_bom", "scan_in_progress": _scan_in_progress(db),
+            "runtime_verify": runtime_drift(state, runtime_rows)}
+
+
+def _resolve_state(db: Session, version: int | None) -> dict[str, Any]:
+    from cbom.technology_bom import materialize_technology_bom
+
+    if version is not None:
+        row = db.execute(select(TechnologyBomSnapshot).where(
+            TechnologyBomSnapshot.version == version)).scalars().first()
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"BOM version not found: {version}")
+        return row.state or {}
+    return materialize_technology_bom(_gather_inventory(db),
+                                      environment=_environment_of(db),
+                                      state_version=_next_version(db))

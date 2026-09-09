@@ -10,8 +10,10 @@ import {
   apiTechBomSchedules, apiTechBomScheduleCreate, apiTechBomScheduleDelete,
   apiTechBomScheduleRun, apiTechBomRunDue, apiTechBomExportRuns,
   apiTechBomEvidence, apiTechBomVendor,
+  apiTechBomAssurance, apiTechBomAdmission, apiTechBomVex, apiTechBomXbom, apiTechBomRuntimeVerify,
   TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
+  TechBomAssurance, TechBomAdmission, TechBomVex, TechBomXbom, TechBomRuntimeVerify,
 } from "../lib/api.js";
 
 /* Live Asset Intelligence — one asset model materialized into SBOM / CBOM /
@@ -20,7 +22,7 @@ import {
    Export Service (JSON/CSV/CycloneDX/XML/SPDX/PDF, with filters), scheduled
    exports, an evidence package, and a vendor inventory. */
 
-const VIEWS = ["Overview", "Components", "Compare", "Export", "Schedules", "Evidence & Vendor"];
+const VIEWS = ["Overview", "Components", "Compare", "Export", "Schedules", "Assurance", "Evidence & Vendor"];
 
 const LAYER_LABELS: Record<string, string> = {
   sbom: "SBOM — Application",
@@ -133,6 +135,136 @@ function Comparison({ from, to, diff }: { from: TechBomVersion | null; to: TechB
   );
 }
 
+function vexTone(status: string): string {
+  return ({ not_affected: "green", fixed: "cyan", affected: "red", under_review: "amber" } as Record<string, string>)[status] || "default";
+}
+function prioTone(p: string): string {
+  return ({ P0: "red", P1: "amber", P2: "cyan", P3: "default" } as Record<string, string>)[p] || "default";
+}
+
+function AssuranceTab({ data }: { data: TechBomAssurance | null }) {
+  if (!data) return <div className="empty">Loading Assurance & Control…</div>;
+
+  const vex = data.vex;
+  const xbom = data.xbom;
+  const admission = data.admission;
+  const runtime = data.runtime_verify;
+  const admitTone = admission?.decision === "FAIL" ? "red" : admission?.decision === "WARN" ? "amber" : "green";
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      {/* Admission gate */}
+      <Panel title="Pre-Deploy Admission Gate" sub="PASS / WARN / FAIL over the materialized BOM" frame>
+        {admission ? (
+          <div>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 10, flexWrap: "wrap" }}>
+              <Badge tone={admitTone}>{admission.decision}</Badge>
+              <Stat label="Blocking" value={admission.blocking_count} tone="red" />
+              <Stat label="Warnings" value={admission.warn_count} tone="amber" />
+              <Stat label="Admitted" value={admission.admitted ? "yes" : "no"} />
+            </div>
+            <Table
+              head={["BOM-Ref", "Algorithm", "Purpose", "Reason", "Verdict"]}
+              rows={[
+                ...(admission.blocking ?? []).map((b) => [
+                  <code key="r">{b.bom_ref || "—"}</code>, b.algorithm || "—", b.purpose || "—", b.reason,
+                  <Badge key="v" tone="red">BLOCK</Badge>,
+                ]),
+                ...(admission.warnings ?? []).map((w) => [
+                  <code key="r">{w.bom_ref || "—"}</code>, w.algorithm || "—", w.purpose || "—", w.reason,
+                  <Badge key="v" tone="amber">WARN</Badge>,
+                ]),
+              ]}
+            />
+          </div>
+        ) : <div className="empty">No admission decision yet.</div>}
+      </Panel>
+
+      {/* VEX */}
+      <Panel title="VEX — Vulnerability Prioritization" sub="CycloneDX VEX lifecycle + exploitability-weighted priority" frame>
+        {vex ? (
+          <div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <Stat label="Total" value={vex.total} tone="cyan" />
+              <Stat label="Affected" value={vex.affected} tone="red" />
+              <Stat label="Not affected" value={vex.not_affected} tone="green" />
+              <Stat label="Fixed" value={vex.fixed} tone="cyan" />
+              <Stat label="Under review" value={vex.under_review} tone="amber" />
+            </div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              {(Object.entries(vex.by_priority)).map(([p, n]) => <Badge key={p} tone={prioTone(p)}>{p}: {n}</Badge>)}
+            </div>
+            <Table
+              head={["CVE", "Package", "Severity", "Exploitability", "VEX", "Priority", ""]}
+              rows={vex.findings.slice(0, 30).map((f) => [
+                <code key="c">{f.cve}</code>,
+                f.package || "—",
+                <Badge key="s" tone={f.severity === "CRITICAL" ? "red" : f.severity === "HIGH" ? "amber" : "cyan"}>{f.severity || "UNKNOWN"}</Badge>,
+                `${(f.exploitability * 100).toFixed(0)}%`,
+                <Badge key="v" tone={vexTone(f.vex_status)}>{f.vex_status}</Badge>,
+                <Badge key="p" tone={prioTone(f.priority)}>{f.priority}</Badge>,
+                f.component_is_blocking ? <Badge key="b" tone="red">blocking</Badge> : f.component_is_weak ? <Badge key="w" tone="amber">weak</Badge> : <span key="n">—</span>,
+              ])}
+            />
+          </div>
+        ) : <div className="empty">No vulnerabilities recorded — run a scan that populates the CVE table.</div>}
+      </Panel>
+
+      {/* xBOM correlation */}
+      <Panel title="xBOM Correlation" sub="CBOM crypto → SBOM app → HBOM hardware → VBOM vendor → business process" frame>
+        {xbom && xbom.count ? (
+          <div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <Stat label="Crypto traces" value={xbom.count} tone="amber" />
+              <Stat label="Deploy-relevant" value={xbom.deploy_relevant} tone="red" />
+              <Stat label="Highest impact (processes)" value={xbom.highest_impact} />
+            </div>
+            <Table
+              head={["Crypto", "Applications", "Hardware", "Vendor", "Processes"]}
+              rows={xbom.traces.slice(0, 20).map((t) => [
+                <span key="c">
+                  <Badge tone={t.crypto.blocking ? "red" : t.crypto.weak ? "amber" : "green"}>{t.crypto.algorithm || "—"}</Badge>
+                  {t.crypto.asset ? <span style={{ fontSize: 11, marginLeft: 6 }}>{t.crypto.asset}</span> : null}
+                </span>,
+                t.applications.length ? t.applications.slice(0, 3).map((a) => <code key={a.name}>{a.name}</code>).reduce<React.ReactNode[]>((acc, el, i) => [...acc, ...(i ? [", "] : []), el], []) : "—",
+                t.hardware ? <code key="h">{t.hardware.model}</code> : "—",
+                t.vendor ? <code key="v">{t.vendor.name}</code> : "—",
+                t.business_processes.length ? t.business_processes.slice(0, 2).map((b) => <code key={b.name}>{b.name}</code>) : "—",
+              ])}
+            />
+          </div>
+        ) : <div className="empty">No xBOM correlation yet.</div>}
+      </Panel>
+
+      {/* Runtime verification */}
+      <Panel title="Runtime Verification" sub="Live runtime observations vs the BOM baseline (continuous drift)" frame>
+        {runtime ? (
+          <div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <Stat label="Observed" value={runtime.observed} tone="cyan" />
+              <Stat label="Drifted" value={runtime.drifted} tone="red" />
+              <Stat label="Runtime-only" value={runtime.runtime_only} tone="amber" />
+              <Stat label="Weak at runtime" value={runtime.weak_at_runtime} tone="red" />
+              <Stat label="TLS < 1.2" value={runtime.tls_below_1_2} tone="amber" />
+            </div>
+            <Table
+              head={["Host", "Algorithm", "TLS", "Cipher", "Weak", "Drift"]}
+              rows={runtime.drift_rows.slice(0, 30).map((r) => [
+                <code key="h">{r.hostname || "—"}</code>,
+                r.algorithm || "—",
+                r.tls_version || "—",
+                <code key="c">{(r.cipher_suite || "").slice(0, 40) || "—"}</code>,
+                r.weak ? <Badge key="w" tone="red">weak</Badge> : <Badge key="w" tone="green">ok</Badge>,
+                r.drift ? <Badge key="d" tone="amber">{r.drift_reason}</Badge> : <Badge key="d" tone="green">baseline</Badge>,
+              ])}
+            />
+          </div>
+        ) : <div className="empty">No runtime observations recorded — run a runtime scanner.</div>}
+      </Panel>
+    </div>
+  );
+}
+
 export default function LiveAssetIntelligence() {
   const [view, setView] = useState(0);
   const live = usePollingApi(apiTechBomLive, 15000);
@@ -140,6 +272,7 @@ export default function LiveAssetIntelligence() {
   const schedules = usePollingApi(apiTechBomSchedules, 30000);
   const vendor = usePollingApi(apiTechBomVendor, 60000);
   const runs = usePollingApi(apiTechBomExportRuns, 30000);
+  const assurance = usePollingApi(apiTechBomAssurance, 30000);
   const rt = useRealtime();
 
   const [compare, setCompare] = useState<{ from: number; to: number; diff: TechBomDiff | null; loading: boolean }>({ from: 0, to: 0, diff: null, loading: false });
@@ -149,7 +282,7 @@ export default function LiveAssetIntelligence() {
   const [evidenceMsg, setEvidenceMsg] = useState<string | null>(null);
   const [scheduleForm, setScheduleForm] = useState<{ name: string; frequency: string; fmt: string; layer: string }>({ name: "", frequency: "weekly", fmt: "json", layer: "all" });
 
-  useRealtimeRefresh(live.run, versions.run, schedules.run, runs.run, vendor.run);
+  useRealtimeRefresh(live.run, versions.run, schedules.run, runs.run, vendor.run, assurance.run);
 
   const state: TechBomState | null = (live.data as TechBomState) ?? null;
 
@@ -249,6 +382,7 @@ export default function LiveAssetIntelligence() {
   const schedulesList = (schedules.data as { schedules?: TechBomSchedule[] })?.schedules ?? [];
   const runsList = (runs.data as { runs?: TechBomRun[] })?.runs ?? [];
   const vendorData = (vendor.data as TechBomVendorInventory) ?? null;
+  const assuranceData = (assurance.data as TechBomAssurance) ?? null;
 
   return (
     <div>
@@ -436,6 +570,14 @@ export default function LiveAssetIntelligence() {
       )}
 
       {view === 5 && (
+        <div style={{ display: "grid", gap: 14 }}>
+          <Panel title="Assurance & Control" sub="VEX prioritization · xBOM correlation · admission gate · runtime verification" frame>
+            <AssuranceTab data={assuranceData} />
+          </Panel>
+        </div>
+      )}
+
+      {view === 6 && (
         <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <Panel title="Evidence Package" sub="Compliance / audit — BOM + certificate posture, content hashed & HMAC-signed" frame>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>

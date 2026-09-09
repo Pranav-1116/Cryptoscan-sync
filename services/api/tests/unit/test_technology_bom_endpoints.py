@@ -13,13 +13,18 @@ from api.dependencies import get_current_user, get_db_session
 from api.main import create_app
 from db.connection.session import Base
 from db.models import (
+    BusinessProcess,
     Certificate,
     CryptoAsset,
     HardwareAsset,
+    RuntimeFinding,
     Scan,
     System,
+    SystemAsset,
+    SystemBusinessProcess,
     SystemVendor,
     Vendor,
+    Vulnerability,
 )
 from db.models.system_dependency import SystemDependency
 from httpx import ASGITransport, AsyncClient
@@ -381,3 +386,80 @@ async def test_vendor_inventory(app_db):
         assert v["systems"] == ["payment-api"]
         assert body["linkage"][0]["vendor"] == "ZELNX"
         assert body["linkage"][0]["system"] == "payment-api"
+
+
+# --------------------------------------------------------------------------- #
+# Assurance & Control — VEX, xBOM, admission, runtime verify
+# --------------------------------------------------------------------------- #
+@pytest.mark.asyncio
+async def test_assurance_vex_prioritizes(app_db):
+    transport = ASGITransport(app=app_db)
+    session = app_db.state.test_session
+    session.add_all([
+        Vulnerability(id="vuln-1", cve="CVE-2024-1111", package="openssl",
+                      severity="CRITICAL", summary="RSA padding oracle"),
+        RuntimeFinding(id="rf-1", scanner_id="runtime", kind="session",
+                       hostname="pay-01", process_name="java", algorithm="DES",
+                       key_size=56, tls_version="1.0",
+                       cipher_suite="TLS_RSA_WITH_DES_CBC_SHA", dedup_key="DES/pay-01"),
+        SystemAsset(id="sa-1", system_id="sys-pay", asset_id="ca-rsa"),
+        BusinessProcess(id="bp-1", name="Payment Processing", process_type="payments",
+                        revenue_daily=100000, sla_uptime=99.99),
+        SystemBusinessProcess(id="sbp-1", system_id="sys-pay", process_id="bp-1"),
+    ])
+    session.commit()
+
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/api/v1/technology-bom/assurance")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["vex"] is not None
+    assert body["vex"]["total"] >= 1
+    by_cve = {f["cve"]: f for f in body["vex"]["findings"]}
+    assert by_cve["CVE-2024-1111"]["priority"] in ("P0", "P1")
+    assert "admission" in body and "xbom" in body
+    assert body["xbom"]["layer_set"] == ["sbom", "cbom", "hbom", "vendor"]
+    assert body["xbom"]["count"] >= 1
+    assert body["runtime_verify"] is not None
+    assert body["runtime_verify"]["drifted"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_admission_endpoint_return_shape(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/api/v1/technology-bom/admission")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["source"] == "technology_bom"
+    assert body["decision"] in ("PASS", "WARN", "FAIL")
+    assert "blocking" in body and "warnings" in body
+    assert "snapshot_id" in body and "state_version" in body
+
+
+@pytest.mark.asyncio
+async def test_vex_empty_when_no_vulns(app_db):
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/api/v1/technology-bom/vex")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["vex"] is None
+    assert "note" in body
+
+
+@pytest.mark.asyncio
+async def test_runtime_verify_endpoint(app_db):
+    transport = ASGITransport(app=app_db)
+    app_db.state.test_session.add(
+        RuntimeFinding(id="rf-2", scanner_id="runtime", kind="session",
+                       hostname="db-01", process_name="python", algorithm="RC4",
+                       key_size=128, tls_version="", cipher_suite="TLS_RSA_WITH_RC4_128_SHA",
+                       dedup_key="RC4/db-01"))
+    app_db.state.test_session.commit()
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        r = await client.get("/api/v1/technology-bom/runtime-verify")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["runtime_verify"] is not None
+    assert body["runtime_verify"]["observed"] >= 1

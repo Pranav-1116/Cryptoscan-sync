@@ -2150,3 +2150,99 @@ export interface TechBomVendorInventory {
   linkage: Array<{ vendor: string; vendor_id: string; system: string; system_id: string; dependency_type: string }>;
   vendor_count: number;
 }
+
+
+/* ── Assurance & Control (VEX · xBOM · admission · runtime verify) ──────
+   GET /technology-bom/assurance (combined) + the individual surfaces.
+   Mirrors services/cbom/.../assurance.py — pure engine, live backend only. */
+
+export interface TechBomVexFinding {
+  cve: string;
+  package?: string | null;
+  bom_ref?: string | null;
+  severity: string;
+  exploitability: number;
+  exploitability_reasons: string[];
+  vex_status: "not_affected" | "affected" | "fixed" | "under_review";
+  priority: "P0" | "P1" | "P2" | "P3";
+  component_used_in_production: boolean;
+  component_is_blocking: boolean;
+  component_is_weak: boolean;
+  summary?: string;
+}
+export interface TechBomVex {
+  total: number;
+  affected: number;
+  not_affected: number;
+  fixed: number;
+  under_review: number;
+  by_status: Record<string, number>;
+  by_priority: Record<string, number>;
+  top_p0: TechBomVexFinding[];
+  findings: TechBomVexFinding[];
+}
+export interface TechBomXbomTrace {
+  crypto: { "bom-ref"?: string; algorithm?: string; key_size?: number | null; purpose?: string; weak: boolean; blocking: boolean; asset?: string };
+  applications: Array<{ "bom-ref"?: string; name?: string; version?: string; criticality?: string }>;
+  hardware: { "bom-ref"?: string; model?: string; manufacturer?: string; device_type?: string } | null;
+  vendor: { "bom-ref"?: string; name?: string; risk_level?: string; lifecycle?: string } | null;
+  business_processes: Array<{ name?: string; process_type?: string; revenue_daily?: number; sla_uptime?: number }>;
+  impact_count: { applications: number; hardware: number; vendors: number; business_processes: number };
+}
+export interface TechBomXbom {
+  layer_set: string[];
+  traces: TechBomXbomTrace[];
+  count: number;
+  deploy_relevant: number;
+  highest_impact: number;
+}
+export interface TechBomAdmissionItem { bom_ref?: string | null; algorithm?: string; purpose?: string; key_size?: number | null; reason: string; }
+export interface TechBomAdmission {
+  decision: "PASS" | "WARN" | "FAIL";
+  admitted: boolean;
+  blocking_count: number;
+  warn_count: number;
+  blocking: TechBomAdmissionItem[];
+  warnings: TechBomAdmissionItem[];
+  snapshot_id?: string;
+  state_version?: number;
+  environment?: string;
+  scan_in_progress?: boolean;
+  source?: string;
+}
+export interface TechBomRuntimeRow {
+  hostname?: string; process_name?: string; algorithm?: string; key_size?: string;
+  tls_version?: string | null; cipher_suite?: string | null; weak: boolean; tls_weak: boolean;
+  runtime_only: boolean; bom_has_weak: boolean; drift: boolean; drift_reason: string;
+}
+export interface TechBomRuntimeVerify {
+  observed: number; drifted: number; runtime_only: number; weak_at_runtime: number;
+  tls_below_1_2: number; drift_rows: TechBomRuntimeRow[]; halting: TechBomRuntimeRow[];
+}
+export interface TechBomAssurance {
+  source: string;
+  environment?: string;
+  state_version?: number;
+  snapshot_id?: string;
+  scan_in_progress?: boolean;
+  vex: TechBomVex | null;
+  xbom: TechBomXbom;
+  admission: TechBomAdmission;
+  runtime_verify: TechBomRuntimeVerify | null;
+}
+
+export const apiTechBomAssurance = (version?: number): Promise<ApiResult<TechBomAssurance>> =>
+  call(`/api/v1/technology-bom/assurance${version !== undefined ? `?version=${version}` : ""}`);
+export const apiTechBomVex = (version?: number): Promise<ApiResult<{ source: string; scan_in_progress?: boolean; vex: TechBomVex | null; note?: string }>> =>
+  call(`/api/v1/technology-bom/vex${version !== undefined ? `?version=${version}` : ""}`);
+export const apiTechBomXbom = (bomRef?: string, version?: number): Promise<ApiResult<TechBomXbom & { source?: string; snapshot_id?: string; state_version?: number }>> => {
+  const q = new URLSearchParams();
+  if (bomRef) q.set("bom_ref", bomRef);
+  if (version !== undefined) q.set("version", String(version));
+  const qs = q.toString();
+  return call(`/api/v1/technology-bom/xbom${qs ? `?${qs}` : ""}`);
+};
+export const apiTechBomAdmission = (version?: number, requireBaseline = false): Promise<ApiResult<TechBomAdmission>> =>
+  call(`/api/v1/technology-bom/admission${version !== undefined ? `?version=${version}` : ""}${requireBaseline ? `${version !== undefined ? "&" : "?"}require_baseline=true` : ""}`);
+export const apiTechBomRuntimeVerify = (version?: number): Promise<ApiResult<{ source: string; scan_in_progress?: boolean; runtime_verify: TechBomRuntimeVerify | null; note?: string }>> =>
+  call(`/api/v1/technology-bom/runtime-verify${version !== undefined ? `?version=${version}` : ""}`);
