@@ -303,6 +303,22 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
             "version": settings.API_VERSION,
         }
 
+    # Root-level LB/K8s probe aliases of /api/v1/healthz + /api/v1/readyz.
+    # smoke_test.sh and the hardening guide probe these at the edge; /readyz
+    # carries the drain semantics (503 while the database is down) that the
+    # legacy /ready above intentionally does not have.
+    @app.get("/healthz")
+    def healthz_root_alias():
+        from api.routers.health import healthz as _healthz
+
+        return _healthz()
+
+    @app.get("/readyz")
+    def readyz_root_alias():
+        from api.routers.health import readyz as _readyz
+
+        return _readyz()
+
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
     app.include_router(banking.router, prefix=prefix)

@@ -27,6 +27,11 @@ dated CHANGELOG section, contiguous migrations, prod-guard intact).
 - Scope boundary completed: z/OS mainframe crypto-configuration discovery
   is a covered area; COBOL/PL-I application-source scanning remains a
   declared non-goal.
+- Release sweep found and fixed: the documented root-level LB probes
+  `/healthz` + `/readyz` were missing (only `/api/v1/healthz` existed) —
+  the post-deploy smoke test now passes against a live stack; `/readyz`
+  carries the 503 drain semantics; shared_config production-gate tests
+  made hermetic against ambient ENVIRONMENT.
 
 ### International banking layer
 - Jurisdiction packs for 10 supervisory regimes (EU/ECB+DORA, UK, US, SG, HK,
