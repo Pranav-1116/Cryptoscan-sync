@@ -1,3 +1,0 @@
-"""Policy service test suite.
-
-"""

@@ -157,7 +157,7 @@ def test_daemon_loop_survives_exceptions_and_stops():
             ticks["n"] += 1
 
     sleeps: list[float] = []
-    loop = MonitorLoop(
+    _loop = MonitorLoop(
         lambda s: (_ for _ in ()).throw(RuntimeError("engine died")),
         session_factory=lambda: session,
         tick_seconds=5,
@@ -168,7 +168,7 @@ def test_daemon_loop_survives_exceptions_and_stops():
 
     loop2 = MonitorLoop(loop_factory, session_factory=lambda: session, tick_seconds=5, sleep=sleeps.append)
     # stop after two sleeps
-    original_sleep = loop2._sleep
+    _original_sleep = loop2._sleep
 
     def sleep_then_stop(seconds):
         sleeps.append(seconds)

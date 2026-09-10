@@ -101,7 +101,7 @@ def test_issue_self_signed_via_api(ciso_client, session):
 
 
 def test_renewal_queue_via_api(ciso_client, session):
-    repo = CertificateRepository(session)
+    _repo = CertificateRepository(session)
     r = ciso_client.post(
         "/api/v1/certificates/lifecycle/issue",
         json={"subject": {"CN": "soon.example"}, "validity_days": 5},

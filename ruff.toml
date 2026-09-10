@@ -1,0 +1,18 @@
+# Repo-wide lint baseline for CI (ruff>=0.1.14 in requirements.txt).
+# Python 3.11 matches the runtime images (.docker/api/Dockerfile, python:3.11-slim).
+target-version = "py311"
+line-length = 120
+
+[lint]
+# CI ratchet (2026-09): gate on pyflakes (F) + syntax errors (E9) — rules that
+# flag actual defects. The codebase still carries ~280 style findings (E501
+# line-length, W29x whitespace) and ~68 B904 raise-without-from; tighten the
+# selection (E/W/B) as those are cleaned up, never by ignoring findings.
+select = ["F", "E9"]
+
+[lint.per-file-ignores]
+# Test files legitimately use pytest.raises without binding the exception.
+"**/tests/**" = ["B011", "B017"]
+
+[format]
+quote-style = "double"

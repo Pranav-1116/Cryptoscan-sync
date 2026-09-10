@@ -361,7 +361,7 @@ class ScanOrchestrator:
                 permitted=False, scan_id=org.scan_id,
                 checks=[GateCheck("gate", False, f"gate evaluation failed: {exc}")],
                 denied_by="gate",
-                reason=f"gate evaluation failed — scan denied (fail-closed)",
+                reason="gate evaluation failed — scan denied (fail-closed)",
                 audit={"actor": actor, "gate": "fail-closed", "error": str(exc)},
             )
 

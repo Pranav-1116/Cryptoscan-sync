@@ -119,7 +119,7 @@ async def test_ceremony_lifecycle_via_api():
             "ceremony_id": "CER-LATE", "key_id": "ZMK-LIFE",
             "held_at": (datetime.now(tz.utc) - timedelta(days=2)).isoformat(),
             "custodians": ["a", "b"], "dual_control": True})
-        late = session.execute(  # force PLANNED on a past date (missed ceremony)
+        _late = session.execute(  # force PLANNED on a past date (missed ceremony)
             __import__("sqlalchemy").text(
                 "UPDATE key_ceremonies SET status='PLANNED' WHERE ceremony_id='CER-LATE'"
             )

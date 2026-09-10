@@ -6,7 +6,7 @@
 # realtime event stream works through the container boundary.
 
 # ── build stage ──────────────────────────────────────────────────────
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 
 # Install dependencies first (better layer caching). The lockfile is copied
@@ -19,7 +19,7 @@ COPY frontend/ ./
 RUN npm run build
 
 # ── runtime stage ────────────────────────────────────────────────────
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.29-alpine AS runtime
 
 COPY .docker/frontend/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html

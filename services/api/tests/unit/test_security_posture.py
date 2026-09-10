@@ -21,7 +21,6 @@ from sqlalchemy.pool import StaticPool
 from db.models.base import Base
 from db.models.control_plane import Agent, CredentialRef
 from db.models.p2 import AnomalyFlag, PluginPackage
-from db.models.user import AuditLog
 from db.models.certificate import Certificate
 
 

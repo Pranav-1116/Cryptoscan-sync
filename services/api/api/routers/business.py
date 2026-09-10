@@ -564,7 +564,7 @@ def export_github_issues(project_id: str, user: str = Depends(get_current_user),
             {
                 "title": task.title,
                 "body": "\n".join(lines),
-                "labels": [f"cryptoscan", f"priority-{task.priority}", f"migration-{project_id[:8]}"],
+                "labels": ["cryptoscan", f"priority-{task.priority}", f"migration-{project_id[:8]}"],
                 "external_id_hint": task.id,
             }
         )

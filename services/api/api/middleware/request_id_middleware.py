@@ -5,7 +5,7 @@ import uuid
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from api.middleware.trace import new_trace, push_trace, reset_trace
+from api.middleware.trace import push_trace, reset_trace
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):

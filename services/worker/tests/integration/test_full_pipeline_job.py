@@ -41,7 +41,7 @@ def test_full_pipeline_execution(test_db, temp_workspace, mock_scan_job):
             mock_scan.return_value = result
             
             # Execute pipeline
-            context = {
+            _context = {
                 "job": mock_scan_job,
                 "workspace": temp_workspace,
                 "db": test_db
