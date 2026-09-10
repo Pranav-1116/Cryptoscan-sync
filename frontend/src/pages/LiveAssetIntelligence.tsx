@@ -14,6 +14,8 @@ import {
   apiBankingOverview, apiBankingHndl, apiBankingRoadmap, apiBankingHsm,
   apiBankingActionPlan, apiBankingMainframe, apiBankingMainframeIngest,
   apiBankingMainframeAnalyze, apiBankingHsmParse, apiBankingFipsLookup, downloadBankingArtifact,
+  apiBankingJurisdictions, apiBankingKeys, apiBankingSwiftCsp, apiBankingActionPlanJurisdiction, downloadBankingArtifactIntl,
+  BankJurisdictionPack, BankKeyLifecycle, BankSwiftCsp,
   TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
   TechBomAssurance, TechBomAdmission, TechBomVex, TechBomXbom, TechBomRuntimeVerify,
@@ -293,6 +295,11 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
   const [deepOut, setDeepOut] = useState<Record<string, unknown> | null>(null);
   const [fipsMod, setFipsMod] = useState("");
   const [fipsOut, setFipsOut] = useState<Record<string, unknown> | null>(null);
+  const [jurisdictions, setJurisdictions] = useState<BankJurisdictionPack[]>([]);
+  const [jurisdiction, setJurisdiction] = useState("eu");
+  const [exportLang, setExportLang] = useState("en");
+  const [keys, setKeys] = useState<BankKeyLifecycle | null>(null);
+  const [cscf, setCscf] = useState<BankSwiftCsp["cscf"] | null>(null);
 
   useEffect(() => {
     apiBankingHndl().then((r) => r.ok && setHndl(r.data as BankHndl));
@@ -300,6 +307,9 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
     apiBankingHsm().then((r) => r.ok && setHsm((r.data as { fleet: BankHsmFleet }).fleet));
     apiBankingMainframe().then((r) => r.ok && setMainframe(r.data as BankMainframeInventory));
     apiBankingActionPlan(framework, institution).then((r) => r.ok && setPlan(r.data as BankActionPlan));
+    apiBankingJurisdictions().then((r) => r.ok && setJurisdictions((r.data as { jurisdictions: BankJurisdictionPack[] }).jurisdictions));
+    apiBankingKeys().then((r) => r.ok && setKeys(r.data as BankKeyLifecycle));
+    apiBankingSwiftCsp().then((r) => r.ok && setCscf((r.data as BankSwiftCsp).cscf ?? null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -308,6 +318,10 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
   async function generatePlan() {
     const r = await apiBankingActionPlan(framework, institution);
     if (r.ok) setPlan(r.data as BankActionPlan);
+  }
+  function loadJurisdiction(code: string) {
+    setJurisdiction(code);
+    apiBankingActionPlanJurisdiction(code, institution).then((r) => r.ok && setPlan(r.data as BankActionPlan));
   }
   async function ingestMainframe() {
     setMfErr(null);
@@ -344,7 +358,28 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
             onChange={(e) => setInstitution(e.target.value)}
             style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
           <button onClick={generatePlan} style={{ padding: "4px 14px" }}>Generate</button>
+          {jurisdictions.length ? (
+            <select value={jurisdiction} onChange={(e) => loadJurisdiction(e.target.value)}
+              style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+              {jurisdictions.map((j) => <option key={j.code} value={j.code}>{j.display}</option>)}
+            </select>
+          ) : null}
+          <select value={exportLang} onChange={(e) => setExportLang(e.target.value)}
+            style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+            {["en", "de", "fr", "es", "it", "ar"].map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
+          </select>
+          <button onClick={() => downloadBankingArtifactIntl("action-plan", { format: "html", lang: exportLang, jurisdiction })}
+            style={{ padding: "4px 14px" }}>Download ({exportLang.toUpperCase()})</button>
         </div>
+        {plan?.milestones?.length ? (
+          <div style={{ marginBottom: 10 }}>
+            {(plan.milestones as Array<{ label: string; date?: string | null; note?: string }>).slice(0, 5).map((m, i) => (
+              <div key={i} style={{ fontSize: 11, opacity: 0.75 }}>
+                📅 <strong>{m.label}</strong>{m.date ? ` — ${m.date}` : ""}{m.note ? ` · ${m.note}` : ""}
+              </div>
+            ))}
+          </div>
+        ) : null}
         {a ? (
           <div>
             <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
@@ -499,6 +534,53 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
               {JSON.stringify(fipsOut, null, 2).slice(0, 800)}
             </pre>
           ) : null}
+        </Panel>
+      </div>
+
+      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Panel title="Key Lifecycle" sub="NIST SP 800-57 states over the unified inventory" frame>
+          {keys && keys.total ? (
+            <div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                <Stat label="Keys" value={keys.total} />
+                <Stat label="Compromised" value={keys.compromised} tone={keys.compromised ? "red" : "green"} />
+                <Stat label="Expired" value={keys.expired} tone={keys.expired ? "red" : "green"} />
+                <Stat label="Rotation overdue" value={keys.rotation_overdue} tone={keys.rotation_overdue ? "amber" : "green"} />
+              </div>
+              <Table
+                head={["Key", "State", "Rotation", "Detail"]}
+                rows={(keys.keys ?? []).slice(0, 12).map((k, i) => [
+                  <code key="k">{k.label || k.location}</code>,
+                  <Badge key="s" tone={k.state === "compromised" ? "red" : k.state === "expired" ? "red" : k.state === "active" ? "green" : "default"}>{k.state}</Badge>,
+                  <Badge key="r" tone={k.rotation_status === "overdue" ? "red" : k.rotation_status === "within_policy" ? "green" : "default"}>{k.rotation_status}</Badge>,
+                  <span key="d" style={{ fontSize: 11, opacity: 0.75 }}>{k.detail}</span>,
+                ])}
+              />
+            </div>
+          ) : <div className="empty">{keys ? "No keys in the inventory yet — ingest ICSF/RACF extracts." : "Loading key lifecycle…"}</div>}
+        </Panel>
+
+        <Panel title="SWIFT CSP — CSCF Evidence" sub="control themes → platform evidence (pin IDs from your CSCF version)" frame>
+          {cscf ? (
+            <div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                <Stat label="Controls" value={cscf.controls.length} />
+                <Stat label="Gaps" value={cscf.gaps} tone={cscf.gaps ? "red" : "green"} />
+                <Stat label="Unknown" value={cscf.unknown} tone={cscf.unknown ? "amber" : "green"} />
+                <Badge tone={cscf.attestation_ready ? "green" : "amber"}>
+                  {cscf.attestation_ready ? "attestation-ready" : "evidence in progress"}
+                </Badge>
+              </div>
+              <Table
+                head={["Control theme", "Status", "Evidence"]}
+                rows={cscf.controls.map((c) => [
+                  <span key="t" style={{ fontSize: 11 }}>{c.theme}</span>,
+                  <Badge key="s" tone={c.status === "satisfied" ? "green" : c.status === "gap" ? "red" : "default"}>{c.status}</Badge>,
+                  <span key="e" style={{ fontSize: 11, opacity: 0.75 }}>{c.evidence}</span>,
+                ])}
+              />
+            </div>
+          ) : <div className="empty">Loading SWIFT CSP evidence…</div>}
         </Panel>
       </div>
     </div>

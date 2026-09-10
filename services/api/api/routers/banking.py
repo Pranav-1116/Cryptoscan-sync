@@ -154,6 +154,7 @@ def banking_action_plan(
     framework: str = Query("generic", pattern="^(ecb|rbi|fca|generic)$"),
     institution: str = Query("", max_length=200),
     require_baseline: bool = Query(False),
+    jurisdiction: str = Query("", max_length=8),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -173,6 +174,16 @@ def banking_action_plan(
     fleet = assess_hsm_fleet(_hsm_rows(db))
     admission = evaluate_admission(state, require_baseline=require_baseline)
     mf_rows = _mainframe_rows(db)
+
+    # A jurisdiction pack pins the regulatory references (and implied framework)
+    # for cross-border banking groups reporting into a specific supervisor.
+    jurisdiction_pack = None
+    if jurisdiction:
+        from cbom.regulators import jurisdiction_pack as _pack
+
+        jurisdiction_pack = _pack(jurisdiction)
+        if jurisdiction_pack is None:
+            raise HTTPException(status_code=404, detail=f"unknown jurisdiction: {jurisdiction}")
 
     framework_refs = {
         "ecb": [
@@ -197,10 +208,19 @@ def banking_action_plan(
 
     return {
         "document": "cryptographic-risk-action-plan",
-        "framework": framework,
+        "framework": jurisdiction_pack["framework"] if jurisdiction_pack else framework,
+        "jurisdiction": jurisdiction_pack["code"] if jurisdiction_pack else None,
+        "jurisdiction_display": jurisdiction_pack["display"] if jurisdiction_pack else None,
+        "milestones": jurisdiction_pack["milestones"] if jurisdiction_pack else [],
         "institution": institution or None,
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "references": framework_refs[framework],
+        "references": (
+            [
+                f'{m["label"]}' + (f' — {m["date"]}' if m.get("date") else "")
+                for m in (jurisdiction_pack["milestones"] if jurisdiction_pack else [])
+            ]
+            or framework_refs[framework]
+        ),
         "evidence": {
             "snapshot_id": state.get("snapshot_id"),
             "fingerprint": state.get("fingerprint"),
@@ -284,6 +304,9 @@ def banking_mainframe_ingest(
                 line_number=0,
                 source_language=a["source_language"],
                 confidence="HIGH",
+                extra={k: a[k] for k in ("status", "expires", "label", "signature_algorithm",
+                                         "scope", "usage", "activated_at")
+                       if a.get(k) not in (None, "")},
             ))
             inserted += 1
     if payload.persist and inserted:
@@ -483,22 +506,27 @@ def banking_action_plan_export(
     framework: str = Query("ecb", pattern="^(ecb|rbi|fca|generic)$"),
     institution: str = Query("", max_length=200),
     require_baseline: bool = Query(False),
+    jurisdiction: str = Query("", max_length=8),
+    lang: str = Query("en", max_length=8),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """One-click supervisory artifact: the action plan as HTML (print→PDF),
     CSV (HNDL register) or JSON. Owners are assigned from the systems
     inventory where applications match."""
-    from cbom.integrations import render_action_plan_csv, render_action_plan_html
+    from cbom.integrations import ACTION_PLAN_I18N, render_action_plan_csv, render_action_plan_html
 
+    if lang not in ACTION_PLAN_I18N:
+        raise HTTPException(status_code=422, detail=f"lang must be one of {sorted(ACTION_PLAN_I18N)}")
     plan = banking_action_plan(version=version, framework=framework,
                                institution=institution, require_baseline=require_baseline,
-                               user=user, db=db)
+                               jurisdiction=jurisdiction, user=user, db=db)
     owners = _system_owners(db)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    base = f"action-plan-{framework}-{stamp}"
+    jcode = jurisdiction or framework
+    base = f"action-plan-{jcode}-{stamp}"
     if format == "html":
-        return Response(content=render_action_plan_html(plan, owners),
+        return Response(content=render_action_plan_html(plan, owners, lang=lang),
                         media_type="text/html; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="{base}.html"'})
     if format == "csv":
@@ -558,3 +586,111 @@ def banking_compliance_crosswalk(
                      "snapshot_id": state.get("snapshot_id")},
     })
     return xw
+
+
+# --------------------------------------------------------------------------- #
+# International: jurisdiction packs, SWIFT CSP, key lifecycle
+# --------------------------------------------------------------------------- #
+
+@router.get("/jurisdictions")
+def banking_jurisdictions(user: str = Depends(get_current_user)):
+    """Supervisory jurisdictions the platform ships packs for (group operations)."""
+    from cbom.regulators import JURISDICTION_PACKS
+
+    packs = [{"code": p["code"], "display": p["display"], "region": p["region"],
+              "regulators": p["regulators"], "languages": p["languages"],
+              "milestones": len(p["milestones"]), "artifacts": p["artifacts"]}
+             for p in JURISDICTION_PACKS.values()]
+    return {"count": len(packs), "jurisdictions": packs}
+
+
+@router.get("/jurisdiction/{code}")
+def banking_jurisdiction(
+    code: str,
+    version: int | None = Query(None),
+    institution: str = Query("", max_length=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One jurisdiction pack + the action plan pinned to its regulator/milestones."""
+    from cbom.regulators import jurisdiction_pack as _pack
+
+    pack = _pack(code)
+    if pack is None:
+        raise HTTPException(status_code=404, detail=f"unknown jurisdiction: {code}")
+    plan = banking_action_plan(version=version, framework=pack["framework"],
+                               institution=institution, jurisdiction=pack["code"],
+                               user=user, db=db)
+    return {
+        "pack": pack,
+        "action_plan": plan,
+        "artifacts": pack["artifacts"],
+    }
+
+
+@router.get("/keys")
+def banking_key_lifecycle(
+    version: int | None = Query(None),
+    source: str = Query("", max_length=100,
+                        description="comma-separated source filter: icsf, racf, scanner…"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """NIST SP 800-57 key-state register over the unified inventory.
+
+    Covers persisted z/OS keys/certificates (status/expires from the extracts)
+    and scanner-found keys with recorded state, so rotation and compromised-key
+    registers come from ONE place.
+    """
+    from cbom.regulators import key_lifecycle
+
+    wanted = {s.strip().lower() for s in (source or "").split(",") if s.strip()}
+    rows: list[dict[str, Any]] = []
+    for r in db.execute(select(CryptoAsset)).scalars().all():
+        extra = r.extra if isinstance(r.extra, dict) else {}
+        row_source = (r.source_language or "").replace("zos-", "") or "scanner"
+        if wanted and row_source not in wanted:
+            continue
+        rows.append({
+            "label": extra.get("label") or "",
+            "file_path": r.file_path,
+            "algorithm": r.algorithm,
+            "key_size": r.key_size,
+            "status": extra.get("status") or "",
+            "expires": extra.get("expires") or "",
+            "activated_at": extra.get("activated_at") or "",
+            "source": row_source,
+        })
+    reg = key_lifecycle(rows)
+    reg["source"] = "technology_bom"
+    return reg
+
+
+@router.get("/swift-csp")
+def banking_swift_csp(
+    version: int | None = Query(None),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """SWIFT CSP / CSCF evidence mapping for the annual attestation."""
+    from cbom.mainframe import mainframe_assessment
+    from cbom.regulators import swift_cscf_assessment
+
+    from cbom.hsm_pkcs11 import assess_hsm_deep
+
+    state = _resolve_state(db, version)
+    mf_rows = [{"source": (r.source_language or "").replace("zos-", ""),
+                "algorithm": r.algorithm, "key_size": r.key_size,
+                "file_path": r.file_path,
+                **(r.extra if isinstance(r.extra, dict) else {})}
+               for r in _mainframe_rows(db)]
+    hsm_rows = [{**h,
+                 "slots_text": str(((h.get("hsm") or {}) if isinstance(h.get("hsm"), Mapping) else {}).get("pkcs11_slots", "") or ""),
+                 "objects_text": str(((h.get("hsm") or {}) if isinstance(h.get("hsm"), Mapping) else {}).get("pkcs11_objects", "") or ""),
+                 "cex_text": str(((h.get("hsm") or {}) if isinstance(h.get("hsm"), Mapping) else {}).get("cex_adapters", "") or "")}
+                for h in _hsm_rows(db)]
+    return {
+        "source": "technology_bom",
+        "cscf": swift_cscf_assessment(state, hsm_fleet=assess_hsm_deep(hsm_rows),
+                                      mainframe=mainframe_assessment(mf_rows)),
+    }

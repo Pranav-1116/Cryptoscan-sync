@@ -143,34 +143,94 @@ def _owner_map(applications: Iterable[str], system_owners: Mapping[str, str]) ->
     return {app: system_owners.get(app, "unassigned") for app in applications}
 
 
-def render_action_plan_html(plan: Mapping[str, Any], owners: Mapping[str, str] | None = None) -> str:
-    """The supervisory action plan as a printable HTML document."""
+# Document chrome translations for the supervisory action plan. Content
+# (algorithm names, regulator references) stays in its source language.
+ACTION_PLAN_I18N: dict[str, dict[str, Any]] = {
+    "en": {"doc_title": "Cryptographic Risk Action Plan", "s1": "1. Assessment",
+           "s2": "2. Regulatory references", "s3": "3. HNDL exposure register",
+           "s4": "4. Phased migration plan (NIST IR 8547 anchored)",
+           "col_algorithm": "Algorithm", "col_purpose": "Purpose", "col_app": "Application",
+           "col_owner": "Owner", "col_horizon": "Horizon", "col_deadline": "Deadline",
+           "col_exposure": "Exposure", "unassigned": "unassigned", "no_hndl": "No HNDL-exposed assets.",
+           "rtl": False},
+    "de": {"doc_title": "Maßnahmenplan zum Kryptografierisiko", "s1": "1. Bewertung",
+           "s2": "2. Regulatorische Referenzen", "s3": "3. HNDL-Expositionsregister",
+           "s4": "4. Phasierter Migrationsplan (NIST IR 8547)",
+           "col_algorithm": "Algorithmus", "col_purpose": "Zweck", "col_app": "Anwendung",
+           "col_owner": "Verantwortlich", "col_horizon": "Horizont", "col_deadline": "Frist",
+           "col_exposure": "Exposition", "unassigned": "nicht zugewiesen",
+           "no_hndl": "Keine HNDL-exponierten Assets.", "rtl": False},
+    "fr": {"doc_title": "Plan d'action sur le risque cryptographique", "s1": "1. Évaluation",
+           "s2": "2. Références réglementaires", "s3": "3. Registre d'exposition HNDL",
+           "s4": "4. Plan de migration par phases (NIST IR 8547)",
+           "col_algorithm": "Algorithme", "col_purpose": "Usage", "col_app": "Application",
+           "col_owner": "Responsable", "col_horizon": "Horizon", "col_deadline": "Échéance",
+           "col_exposure": "Exposition", "unassigned": "non attribué",
+           "no_hndl": "Aucun actif exposé au HNDL.", "rtl": False},
+    "es": {"doc_title": "Plan de acción sobre riesgo criptográfico", "s1": "1. Evaluación",
+           "s2": "2. Referencias regulatorias", "s3": "3. Registro de exposición HNDL",
+           "s4": "4. Plan de migración por fases (NIST IR 8547)",
+           "col_algorithm": "Algoritmo", "col_purpose": "Propósito", "col_app": "Aplicación",
+           "col_owner": "Responsable", "col_horizon": "Horizonte", "col_deadline": "Plazo",
+           "col_exposure": "Exposición", "unassigned": "sin asignar",
+           "no_hndl": "No hay activos expuestos a HNDL.", "rtl": False},
+    "it": {"doc_title": "Piano d'azione sul rischio crittografico", "s1": "1. Valutazione",
+           "s2": "2. Riferimenti normativi", "s3": "3. Registro dell'esposizione HNDL",
+           "s4": "4. Piano di migrazione per fasi (NIST IR 8547)",
+           "col_algorithm": "Algoritmo", "col_purpose": "Scopo", "col_app": "Applicazione",
+           "col_owner": "Responsabile", "col_horizon": "Orizzonte", "col_deadline": "Scadenza",
+           "col_exposure": "Esposizione", "unassigned": "non assegnato",
+           "no_hndl": "Nessun asset esposto a HNDL.", "rtl": False},
+    "ar": {"doc_title": "خطة عمل مخاطر التشفير", "s1": "١. التقييم",
+           "s2": "٢. المراجع التنظيمية", "s3": "٣. سجل تعرض HNDL",
+           "s4": "٤. خطة الهجرة المرحلية (NIST IR 8547)",
+           "col_algorithm": "الخوارزمية", "col_purpose": "الغرض", "col_app": "التطبيق",
+           "col_owner": "المسؤول", "col_horizon": "الأفق", "col_deadline": "الموعد النهائي",
+           "col_exposure": "التعرض", "unassigned": "غير مُسند",
+           "no_hndl": "لا توجد أصول معرضة لـ HNDL.", "rtl": True},
+}
+
+
+def render_action_plan_html(
+    plan: Mapping[str, Any],
+    owners: Mapping[str, str] | None = None,
+    lang: str = "en",
+) -> str:
+    """The supervisory action plan as a printable HTML document.
+
+    ``lang`` translates the document chrome (ECB-area banks report to
+    German/French/Italian/Spanish-speaking authorities; UAE to Arabic with
+    RTL layout). Unknown languages fall back to English.
+    """
+    t = ACTION_PLAN_I18N.get((lang or "en").lower()) or ACTION_PLAN_I18N["en"]
     a = plan.get("assessment") or {}
     ev = plan.get("evidence") or {}
     refs = plan.get("references") or []
     phases = plan.get("phases") or []
     register = plan.get("hndl_register") or []
+    unassigned = t["unassigned"]
     owner_map = _owner_map({e.get("application", "") for e in register if e.get("application")}, owners or {})
     rows = "".join(
         f"<tr><td>{_escape(e.get('algorithm'))}{('-' + str(e.get('key_size'))) if e.get('key_size') else ''}</td>"
         f"<td>{_escape(e.get('purpose'))}</td><td>{_escape(e.get('application') or '—')}</td>"
-        f"<td>{_escape(owner_map.get(e.get('application', ''), 'unassigned'))}</td>"
+        f"<td>{_escape(owner_map.get(e.get('application', ''), unassigned))}</td>"
         f"<td>{_escape(e.get('confidentiality_years'))}y</td><td>{_escape(e.get('deadline'))}</td>"
         f"<td>{_escape(e.get('exposure'))}</td></tr>"
         for e in register)
     phase_html = "".join(
         f"<div class='phase'><h3>{_escape(p.get('phase'))} — {_escape(p.get('title'))} "
-        f"<span class='due'>by {_escape(p.get('deadline') or 'continuous')}</span></h3>"
+        f"<span class='due'>{_escape(t['col_deadline'])} {_escape(p.get('deadline') or '—')}</span></h3>"
         f"<p>{_escape(p.get('action'))}</p>"
         + ("".join(f"<div class='item'>{_escape(i.get('family'))}{_escape('-' + str(i['key_size']) if i.get('key_size') else '')} "
-                   f"× {_escape(i.get('instances'))} — owner: {_escape(owner_map.get(app, 'unassigned'))}</div>"
+                   f"× {_escape(i.get('instances'))} — {t['col_owner']}: {_escape(owner_map.get(app, unassigned))}</div>"
                    for i in (p.get('items') or []) for app in (i.get('applications') or ['(estate-wide)'])[:1])
-          or "<div class='item'>no in-scope instances</div>")
+          or "<div class='item'>—</div>")
         + "</div>"
         for p in phases)
-    return f"""<!doctype html><html><head><meta charset="utf-8">
-<title>Cryptographic Risk Action Plan</title><style>
-body{{font-family:Georgia,serif;margin:48px;color:#111;max-width:900px}}
+    dir_attr = 'dir="rtl" ' if t["rtl"] else ""
+    return f"""<!doctype html><html {dir_attr}lang="{_escape(lang)}"><head><meta charset="utf-8">
+<title>{_escape(t['doc_title'])}</title><style>
+body{{font-family:Georgia,'Times New Roman',serif;margin:48px;color:#111;max-width:900px}}
 h1{{border-bottom:2px solid #111;padding-bottom:8px}} table{{border-collapse:collapse;width:100%;font-size:13px}}
 th,td{{border:1px solid #999;padding:6px;text-align:left}} th{{background:#eee}}
 .phase{{border:1px solid #ccc;padding:12px;margin:12px 0;border-radius:4px}}
@@ -178,20 +238,20 @@ th,td{{border:1px solid #999;padding:6px;text-align:left}} th{{background:#eee}}
 .item{{font-size:13px;margin:4px 0}} .meta{{color:#555;font-size:13px}}
 @media print{{.phase{{break-inside:avoid}}}}
 </style></head><body>
-<h1>Cryptographic Risk Action Plan</h1>
-<p class="meta">{_escape(plan.get('institution') or '')} — framework {_escape(plan.get('framework'))} — generated {_escape(plan.get('generated_at'))}</p>
+<h1>{_escape(t['doc_title'])}</h1>
+<p class="meta">{_escape(plan.get('institution') or '')} — framework {_escape(plan.get('framework'))} — {_escape(plan.get('generated_at'))}</p>
 <p class="meta">Evidence: snapshot <b>{_escape(ev.get('snapshot_id'))}</b> fingerprint <code>{_escape(ev.get('fingerprint'))}</code> environment <b>{_escape(ev.get('environment'))}</b></p>
-<h2>1. Assessment</h2>
-<table><tr><th>Crypto instances</th><th>Admission</th><th>HNDL exposed</th><th>HSM PQC gap</th><th>Mainframe assets</th></tr>
+<h2>{_escape(t['s1'])}</h2>
+<table><tr><th>Crypto instances</th><th>Admission</th><th>HNDL</th><th>HSM PQC</th><th>Mainframe</th></tr>
 <tr><td>{_escape(a.get('total_crypto_instances'))}</td><td>{_escape((a.get('admission') or {}).get('decision'))}
  ({_escape((a.get('admission') or {}).get('blocking'))} blocking)</td><td>{_escape((a.get('hndl') or {}).get('total'))}</td>
 <td>{_escape((a.get('hsm_fleet') or {}).get('pqc_gap'))}</td><td>{_escape((a.get('mainframe_inventory') or {}).get('total'))}</td></tr></table>
-<h2>2. Regulatory references</h2>
+<h2>{_escape(t['s2'])}</h2>
 {''.join(f'<p class="item">§ {_escape(r)}</p>' for r in refs)}
-<h2>3. HNDL exposure register</h2>
-<table><tr><th>Algorithm</th><th>Purpose</th><th>Application</th><th>Owner</th><th>Horizon</th><th>Deadline</th><th>Exposure</th></tr>
-{rows or '<tr><td colspan=7>No HNDL-exposed assets.</td></tr>'}</table>
-<h2>4. Phased migration plan (NIST IR 8547 anchored)</h2>
+<h2>{_escape(t['s3'])}</h2>
+<table><tr><th>{_escape(t['col_algorithm'])}</th><th>{_escape(t['col_purpose'])}</th><th>{_escape(t['col_app'])}</th><th>{_escape(t['col_owner'])}</th><th>{_escape(t['col_horizon'])}</th><th>{_escape(t['col_deadline'])}</th><th>{_escape(t['col_exposure'])}</th></tr>
+{rows or f'<tr><td colspan=7>{_escape(t["no_hndl"])}</td></tr>'}</table>
+<h2>{_escape(t['s4'])}</h2>
 {phase_html}
 <p class="meta">{_escape(plan.get('attestation'))}</p>
 </body></html>"""

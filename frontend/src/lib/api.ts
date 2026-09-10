@@ -2295,6 +2295,8 @@ export interface BankOverview {
 }
 export interface BankActionPlan {
   document?: string; framework?: string; institution?: string | null; generated_at?: string;
+  jurisdiction?: string | null; jurisdiction_display?: string | null;
+  milestones?: Array<{ label: string; date?: string | null; note?: string }>;
   references?: string[];
   evidence?: { snapshot_id?: string; fingerprint?: string; environment?: string; state_version?: number };
   assessment?: {
@@ -2370,6 +2372,68 @@ export async function downloadBankingArtifact(what: "action-plan" | "servicenow"
   const a = document.createElement("a");
   a.href = url;
   a.download = match?.[1] || `${what}-${fmt || "export"}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ── International banking: jurisdictions, SWIFT CSP, key lifecycle ── */
+export interface BankJurisdictionPack {
+  code: string; display: string; region: string; regulators: string[];
+  languages: string[]; milestones: Array<Record<string, unknown>>; artifacts: string[];
+}
+export interface BankKeyRow {
+  label?: string; location?: string; algorithm?: string; key_size?: number | null;
+  state?: string; klass?: string; expires?: string; rotation_status?: string; detail?: string;
+  source?: string;
+}
+export interface BankKeyLifecycle {
+  standard?: string; total?: number; by_state?: Record<string, number>;
+  compromised?: number; expired?: number; rotation_overdue?: number;
+  activation_dates_missing?: number; keys?: BankKeyRow[]; source?: string;
+}
+export interface BankCscfControl {
+  theme: string; status: string; evidence: string; detail: string; endpoint: string;
+}
+export interface BankSwiftCsp {
+  source?: string;
+  cscf?: { programme: string; note: string; controls: BankCscfControl[];
+           gaps: number; unknown: number; attestation_ready: boolean };
+}
+
+export const apiBankingJurisdictions = (): Promise<ApiResult<{ count: number; jurisdictions: BankJurisdictionPack[] }>> =>
+  call("/api/v1/banking/jurisdictions");
+export const apiBankingKeys = (source = ""): Promise<ApiResult<BankKeyLifecycle>> =>
+  call(`/api/v1/banking/keys${source ? `?source=${encodeURIComponent(source)}` : ""}`);
+export const apiBankingSwiftCsp = (): Promise<ApiResult<BankSwiftCsp>> =>
+  call("/api/v1/banking/swift-csp");
+export const apiBankingActionPlanJurisdiction = (jurisdiction: string, institution = ""): Promise<ApiResult<BankActionPlan>> =>
+  call(`/api/v1/banking/action-plan?jurisdiction=${encodeURIComponent(jurisdiction)}${institution ? `&institution=${encodeURIComponent(institution)}` : ""}`);
+
+/* Downloads with language + jurisdiction for regulator output. */
+export async function downloadBankingArtifactIntl(
+  what: "action-plan" | "servicenow" | "qualys",
+  opts: { format?: string; lang?: string; jurisdiction?: string } = {},
+): Promise<void> {
+  const path = what === "action-plan"
+    ? `/api/v1/banking/action-plan/export?format=${opts.format || "html"}`
+      + (opts.jurisdiction ? `&jurisdiction=${encodeURIComponent(opts.jurisdiction)}` : "")
+      + `&lang=${opts.lang || "en"}`
+    : what === "qualys" ? "/api/v1/banking/integrations/qualys"
+      : "/api/v1/banking/integrations/servicenow";
+  const resp = await fetch(path, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  const cd = resp.headers.get("content-disposition") || "";
+  const match = cd.match(/filename="?([^";]+)"?/);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = match?.[1] || `${what}-export`;
   document.body.appendChild(a);
   a.click();
   a.remove();

@@ -237,3 +237,62 @@ async def test_fips_lookup_and_registry(app_db, tmp_path, monkeypatch):
     assert add.status_code == 200 and add.json()["ok"] is True
     modules = {e["module"] for e in listing.json()["entries"]}
     assert "luna k7 firmware" in modules
+
+
+# --------------------------------------------------------------------------- #
+# International: jurisdictions, SWIFT CSP, key lifecycle, multi-language export
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_jurisdictions_list_and_detail(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        listing = await client.get("/api/v1/banking/jurisdictions")
+        eu = await client.get("/api/v1/banking/jurisdiction/eu?institution=Test%20Bank")
+        bad = await client.get("/api/v1/banking/jurisdiction/atlantis")
+    assert listing.status_code == 200 and listing.json()["count"] >= 10
+    body = eu.json()
+    assert body["pack"]["code"] == "eu"
+    assert body["action_plan"]["jurisdiction"] == "eu"
+    assert any("DORA" in m["label"] for m in body["action_plan"]["milestones"])
+    assert any("ECB" in ref for ref in body["action_plan"]["references"])
+    assert bad.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_action_plan_export_language_and_jurisdiction(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        de = await client.get("/api/v1/banking/action-plan/export?format=html&lang=de&jurisdiction=eu")
+        ar = await client.get("/api/v1/banking/action-plan/export?format=html&lang=ar")
+        badlang = await client.get("/api/v1/banking/action-plan/export?format=html&lang=klingon")
+    assert de.status_code == 200 and "Maßnahmenplan" in de.text
+    assert ar.status_code == 200 and 'dir="rtl"' in ar.text
+    assert badlang.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_key_lifecycle_endpoint_from_ingest(app_db):
+    icsf = ("LABEL,ALGORITHM,KEYBITS,USAGE,STATUS\n"
+            "PAY.ZEK.2026,AES,256,CIPHER,ACTIVE\n"
+            "OLD.MAC.DES,DES,56,MAC,COMPROMISED\n")
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        await client.post("/api/v1/banking/mainframe/ingest",
+                          json={"kind": "icsf_csv", "content": icsf})
+        keys = await client.get("/api/v1/banking/keys?source=icsf")
+    assert keys.status_code == 200
+    body = keys.json()
+    assert body["total"] == 2
+    assert body["by_state"] == {"compromised": 1, "active": 1}
+    assert body["keys"][0]["state"] == "compromised"          # sorted first
+    assert body["keys"][0]["label"] == "OLD.MAC.DES"
+    assert body["standard"].startswith("NIST SP 800-57")
+
+
+@pytest.mark.asyncio
+async def test_swift_csp_endpoint(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        resp = await client.get("/api/v1/banking/swift-csp")
+    assert resp.status_code == 200
+    cscf = resp.json()["cscf"]
+    assert cscf["programme"].startswith("SWIFT")
+    assert len(cscf["controls"]) == 6
+    assert isinstance(cscf["attestation_ready"], bool)
