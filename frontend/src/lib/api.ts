@@ -2439,3 +2439,50 @@ export async function downloadBankingArtifactIntl(
   a.remove();
   URL.revokeObjectURL(url);
 }
+
+/* ── Group governance: legal entities, cross-entity rollup, DORA register ── */
+export interface GroupEntityRec {
+  code: string; name: string; jurisdiction: string; lei?: string;
+  regulator?: string; parent?: string; country?: string; notes?: string;
+}
+export interface GroupEntityRollup {
+  entity: GroupEntityRec; systems: number; crypto_instances: number;
+  weak_legacy_instances: number; quantum_vulnerable_public_key: number;
+  top_families: Array<[string, number]>;
+  worst_system?: { system?: string; system_id?: string; weak_instances?: number };
+}
+export interface GroupRollup {
+  source?: string; generated_at?: string; registry_count?: number; unassigned_systems?: number;
+  entities?: GroupEntityRollup[];
+  group?: {
+    totals?: Record<string, number>;
+    by_jurisdiction?: Record<string, Record<string, number>>;
+    exposure_ranking?: Array<{ entity: string; name?: string; jurisdiction?: string; weak: number; quantum: number }>;
+    recurring_weak_families?: Array<{ family: string; entities: string[]; entity_count: number }>;
+  };
+}
+export const apiGroupEntities = (): Promise<ApiResult<{ count: number; entities: GroupEntityRec[] }>> =>
+  call("/api/v1/banking/group/entities");
+export const apiGroupEntityAdd = (e: GroupEntityRec): Promise<ApiResult<{ ok: boolean; count: number }>> =>
+  call("/api/v1/banking/group/entities", {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(e),
+  });
+export const apiGroupEntityDelete = (code: string): Promise<ApiResult<{ ok: boolean }>> =>
+  call(`/api/v1/banking/group/entities/${encodeURIComponent(code)}`, { method: "DELETE" });
+export const apiGroupRollup = (): Promise<ApiResult<GroupRollup>> =>
+  call("/api/v1/banking/group");
+export async function downloadDoraRegister(format: "json" | "csv", entity = ""): Promise<void> {
+  const resp = await fetch(`/api/v1/banking/group/dora-register?format=${format}${entity ? `&entity=${encodeURIComponent(entity)}` : ""}`, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  const cd = resp.headers.get("content-disposition") || "";
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = cd.match(/filename="?([^";]+)"?/)?.[1] || `dora-register.${format}`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

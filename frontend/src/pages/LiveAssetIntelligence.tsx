@@ -15,7 +15,8 @@ import {
   apiBankingActionPlan, apiBankingMainframe, apiBankingMainframeIngest,
   apiBankingMainframeAnalyze, apiBankingHsmParse, apiBankingFipsLookup, downloadBankingArtifact,
   apiBankingJurisdictions, apiBankingKeys, apiBankingSwiftCsp, apiBankingActionPlanJurisdiction, downloadBankingArtifactIntl,
-  BankJurisdictionPack, BankKeyLifecycle, BankSwiftCsp,
+  apiGroupEntities, apiGroupEntityAdd, apiGroupEntityDelete, apiGroupRollup, downloadDoraRegister,
+  BankJurisdictionPack, BankKeyLifecycle, BankSwiftCsp, GroupEntityRec, GroupRollup,
   TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
   TechBomAssurance, TechBomAdmission, TechBomVex, TechBomXbom, TechBomRuntimeVerify,
@@ -300,6 +301,9 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
   const [exportLang, setExportLang] = useState("en");
   const [keys, setKeys] = useState<BankKeyLifecycle | null>(null);
   const [cscf, setCscf] = useState<BankSwiftCsp["cscf"] | null>(null);
+  const [group, setGroup] = useState<GroupRollup | null>(null);
+  const [groupEntities, setGroupEntities] = useState<GroupEntityRec[]>([]);
+  const [newEntity, setNewEntity] = useState("");
 
   useEffect(() => {
     apiBankingHndl().then((r) => r.ok && setHndl(r.data as BankHndl));
@@ -310,6 +314,8 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
     apiBankingJurisdictions().then((r) => r.ok && setJurisdictions((r.data as { jurisdictions: BankJurisdictionPack[] }).jurisdictions));
     apiBankingKeys().then((r) => r.ok && setKeys(r.data as BankKeyLifecycle));
     apiBankingSwiftCsp().then((r) => r.ok && setCscf((r.data as BankSwiftCsp).cscf ?? null));
+    apiGroupEntities().then((r) => r.ok && setGroupEntities((r.data as { entities: GroupEntityRec[] }).entities));
+    apiGroupRollup().then((r) => r.ok && setGroup(r.data as GroupRollup));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -318,6 +324,27 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
   async function generatePlan() {
     const r = await apiBankingActionPlan(framework, institution);
     if (r.ok) setPlan(r.data as BankActionPlan);
+  }
+  async function addEntity() {
+    const code = newEntity.trim().toLowerCase();
+    if (!code) return;
+    const juris = jurisdiction || "eu";
+    const r = await apiGroupEntityAdd({ code, name: code, jurisdiction: juris });
+    if (r.ok) {
+      setNewEntity("");
+      const list = await apiGroupEntities();
+      if (list.ok) setGroupEntities((list.data as { entities: GroupEntityRec[] }).entities);
+      const roll = await apiGroupRollup();
+      if (roll.ok) setGroup(roll.data as GroupRollup);
+    }
+  }
+  async function removeEntity(code: string) {
+    const r = await apiGroupEntityDelete(code);
+    if (r.ok) {
+      setGroupEntities((prev) => prev.filter((e) => e.code !== code));
+      const roll = await apiGroupRollup();
+      if (roll.ok) setGroup(roll.data as GroupRollup);
+    }
   }
   function loadJurisdiction(code: string) {
     setJurisdiction(code);
@@ -558,6 +585,45 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
               />
             </div>
           ) : <div className="empty">{keys ? "No keys in the inventory yet — ingest ICSF/RACF extracts." : "Loading key lifecycle…"}</div>}
+        </Panel>
+
+        <Panel title="Group — Legal Entities & Rollup" sub="cross-entity posture; systems inherit via assignment" frame>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+            <input placeholder="new entity code (e.g. sg-ops)" value={newEntity}
+              onChange={(e) => setNewEntity(e.target.value)}
+              style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
+            <button onClick={addEntity} disabled={!newEntity.trim()} style={{ padding: "4px 12px" }}>Add</button>
+            <button onClick={() => downloadDoraRegister("csv", groupEntities[0]?.code || "")} style={{ padding: "4px 12px" }}>DORA register (CSV)</button>
+            <button onClick={() => downloadDoraRegister("json", groupEntities[0]?.code || "")} style={{ padding: "4px 12px" }}>DORA (JSON)</button>
+          </div>
+          {group && groupEntities.length ? (
+            <div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                <Stat label="Entities" value={group.group?.totals?.entities ?? 0} />
+                <Stat label="Systems" value={group.group?.totals?.systems ?? 0} />
+                <Stat label="Weak (group)" value={group.group?.totals?.weak_legacy_instances ?? 0} tone={(group.group?.totals?.weak_legacy_instances ?? 0) ? "red" : "green"} />
+                <Stat label="Quantum-exposed" value={group.group?.totals?.quantum_vulnerable_public_key ?? 0} tone="amber" />
+              </div>
+              <Table
+                head={["Entity", "Jurisdiction", "Systems", "Crypto", "Weak", "Quantum", ""]}
+                rows={(group.entities ?? []).map((e) => [
+                  <code key="c">{e.entity.code}</code>, e.entity.jurisdiction,
+                  e.systems, e.crypto_instances,
+                  <Badge key="w" tone={e.weak_legacy_instances ? "red" : "green"}>{e.weak_legacy_instances}</Badge>,
+                  <Badge key="q" tone={e.quantum_vulnerable_public_key ? "amber" : "green"}>{e.quantum_vulnerable_public_key}</Badge>,
+                  <button key="d" onClick={() => removeEntity(e.entity.code)} style={{ padding: "2px 8px" }}>✕</button>,
+                ])}
+              />
+              {(group.group?.recurring_weak_families ?? []).length ? (
+                <div style={{ fontSize: 11, opacity: 0.8, marginTop: 8 }}>
+                  ↻ shared across entities:
+                  {(group.group?.recurring_weak_families ?? []).slice(0, 4).map((f) => (
+                    <Badge key={f.family} tone="amber">{f.family} ×{f.entity_count}</Badge>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : <div className="empty">No legal entities registered — add one to start the group rollup.</div>}
         </Panel>
 
         <Panel title="SWIFT CSP — CSCF Evidence" sub="control themes → platform evidence (pin IDs from your CSCF version)" frame>

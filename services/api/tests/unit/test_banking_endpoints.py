@@ -296,3 +296,98 @@ async def test_swift_csp_endpoint(app_db):
     assert cscf["programme"].startswith("SWIFT")
     assert len(cscf["controls"]) == 6
     assert isinstance(cscf["attestation_ready"], bool)
+
+
+# --------------------------------------------------------------------------- #
+# Group governance — entities, rollup, DORA register
+# --------------------------------------------------------------------------- #
+
+VALID_LEI_BODY = "BANKDE123456"
+
+
+def _lei(body: str = VALID_LEI_BODY) -> str:
+    cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    b = body.upper().ljust(18, "X")[:18]
+    n = int("".join(str(cs.index(c)) for c in b) + "00")
+    return b + f"{98 - (n % 97):02d}"
+
+
+@pytest.mark.asyncio
+async def test_group_entity_registry_crud(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "entities.json"))
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        add = await client.post("/api/v1/banking/group/entities", json={
+            "code": "de-ret", "name": "Musterbank Retail AG", "jurisdiction": "eu",
+            "lei": _lei(), "country": "de"})
+        bad_lei = await client.post("/api/v1/banking/group/entities", json={
+            "code": "fr-ret", "name": "X", "jurisdiction": "eu", "lei": "BANKXXXXXXXXXXXXXXXX99"})
+        listing = await client.get("/api/v1/banking/group/entities")
+        deleted = await client.delete("/api/v1/banking/group/entities/de-ret")
+        gone = await client.delete("/api/v1/banking/group/entities/de-ret")
+    assert add.status_code == 200 and add.json()["ok"] is True
+    assert bad_lei.status_code == 422
+    body = listing.json()
+    assert body["count"] == 1 and body["entities"][0]["code"] == "de-ret"
+    assert deleted.status_code == 200 and gone.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_group_rollup_assigns_and_aggregates(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "entities.json"))
+    # group test needs a system + an asset mapping (fixture ships assets only)
+    from db.models import System as SystemModel, SystemAsset as SystemAssetModel
+    session = app_db.state.test_session
+    session.add(SystemModel(id="sys-web", name="web-frontend", owner="platform"))
+    session.add(SystemAssetModel(system_id="sys-web", asset_id="ca-aes"))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        await client.post("/api/v1/banking/group/entities", json={
+            "code": "de-ret", "name": "Retail AG", "jurisdiction": "eu"})
+        # sys-web carries ca-aes (AES-256); assign it to the entity
+        assign = await client.put("/api/v1/banking/group/systems/sys-web/entity",
+                                  json={"entity_code": "de-ret"})
+        unknown = await client.put("/api/v1/banking/group/systems/sys-web/entity",
+                                   json={"entity_code": "nope"})
+        roll = await client.get("/api/v1/banking/group")
+    assert assign.status_code == 200 and assign.json()["legal_entity"] == "de-ret"
+    assert unknown.status_code == 422
+    body = roll.json()
+    assert body["registry_count"] == 1
+    ent = body["entities"][0]
+    assert ent["entity"]["code"] == "de-ret"
+    assert ent["systems"] == 1 and ent["crypto_instances"] == 1  # sys-web → ca-aes
+    assert body["unassigned_systems"] == 0                        # the only system is assigned
+    assert body["group"]["totals"]["entities"] == 1
+
+
+@pytest.mark.asyncio
+async def test_dora_register_json_and_csv(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "entities.json"))
+    from db.models import Vendor as VendorModel
+    import datetime as _dt
+    session = app_db.state.test_session
+    session.add(VendorModel(id="v-thales", name="Thales", vendor_type="hsm",
+                            criticality="MISSION-CRITICAL",
+                            contract_end_date=_dt.datetime(2026, 10, 1)))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        await client.post("/api/v1/banking/group/entities", json={
+            "code": "de-ret", "name": "Retail AG", "jurisdiction": "eu"})
+        js = await client.get("/api/v1/banking/group/dora-register?entity=de-ret")
+        csv_resp = await client.get("/api/v1/banking/group/dora-register?format=csv&entity=de-ret")
+    assert js.status_code == 200
+    body = js.json()
+    assert body["total"] == 1 and body["entity_code"] == "de-ret"
+    assert body["rows"][0]["provider_name"] == "Thales"
+    assert body["critical"] == 1 and body["critical_expiring_180d"] == 1
+    assert body["rows"][0]["bank_to_supply"]                      # honest placeholders
+    assert csv_resp.status_code == 200
+    assert csv_resp.text.startswith("provider_name,ict_service_type")
+
+
+@pytest.mark.asyncio
+async def test_group_entity_delete_unknown_404(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "entities.json"))
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        r = await client.delete("/api/v1/banking/group/entities/ghost")
+    assert r.status_code == 404

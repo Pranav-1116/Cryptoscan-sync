@@ -53,10 +53,15 @@ async def test_scope_endpoint_returns_manifest(app_client):
 async def test_scope_names_honest_non_goals(app_client):
     body = (await app_client.get("/api/v1/platform/scope")).json()
     labels = " ".join(goal["label"] for goal in body["non_goals"]).lower()
-    assert "mainframe" in labels
+    # z/OS crypto discovery is a COVERED area (extract-based inventory); COBOL
+    # application scanning stays a declared non-goal.
+    assert "mainframe" not in labels
+    assert "cobol" in labels
     assert "malware" in labels
     assert "endpoint" in labels
     assert "sast" in labels
+    covered = " ".join(str(area) for area in body.get("covered_areas", [])).lower()
+    assert "z/os" in covered or "zos" in covered
 
 
 @pytest.mark.asyncio

@@ -126,6 +126,13 @@ NON_GOALS: list[dict[str, Any]] = [
                   "hunting, or endpoint telemetry analysis.",
     },
     {
+        "id": "no-cobol-app-scanning",
+        "label": "COBOL / PL-I application-code scanning",
+        "detail": "z/OS coverage is crypto-configuration inventory via "
+                  "operator-produced extracts (RACF/ICSF/DB2/CICS); we do not "
+                  "parse COBOL/PL-I application source.",
+    },
+    {
         "id": "no-endpoint-agents",
         "label": "Employee endpoint scanning",
         "detail": "We do not install agents on or scan employee workstations/endpoints.",

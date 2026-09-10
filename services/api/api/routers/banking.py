@@ -13,6 +13,8 @@ the xBOM correlation and the assurance surfaces automatically.
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import os
 from datetime import datetime, timezone
@@ -26,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
-from db.models import CryptoAsset, HardwareAsset
+from db.models import CryptoAsset, HardwareAsset, System, SystemAsset, Vendor
 
 router = APIRouter(prefix="/banking", tags=["banking-regulatory"])
 
@@ -694,3 +696,192 @@ def banking_swift_csp(
         "cscf": swift_cscf_assessment(state, hsm_fleet=assess_hsm_deep(hsm_rows),
                                       mainframe=mainframe_assessment(mf_rows)),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Group governance — legal entities, rollup, DORA register
+# --------------------------------------------------------------------------- #
+
+def _group_registry_path() -> Path:
+    from cbom.group import default_registry_path
+
+    return default_registry_path(Path(os.environ.get("CRYPTOSCAN_ROOT") or Path.cwd()))
+
+
+def _system_entity_code(system: Any) -> str:
+    extra = system.extra if isinstance(system.extra, dict) else {}
+    return str(extra.get("legal_entity") or "").lower()
+
+
+class GroupEntity(BaseModel):
+    code: str
+    name: str
+    jurisdiction: str
+    lei: str = ""
+    regulator: str = ""
+    parent: str = ""
+    country: str = ""
+    notes: str = ""
+
+
+class SystemEntityAssignment(BaseModel):
+    entity_code: str
+
+
+@router.get("/group/entities")
+def banking_group_entities(user: str = Depends(get_current_user)):
+    """Legal-entity registry for the banking group."""
+    from cbom.group import load_entities
+
+    entries = sorted(load_entities(_group_registry_path()).values(), key=lambda e: e["code"])
+    return {"count": len(entries), "entities": entries}
+
+
+@router.post("/group/entities")
+def banking_group_entity_add(
+    entity: GroupEntity,
+    user: str = Depends(get_current_user),
+):
+    """Add/update a legal entity (LEI validated per ISO 17442)."""
+    from cbom.group import load_entities, save_entities
+
+    registry = load_entities(_group_registry_path())
+    try:
+        registry[entity.code.lower()] = entity.model_dump()
+        count = save_entities(registry.values(), _group_registry_path())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {"ok": True, "count": count}
+
+
+@router.delete("/group/entities/{code}")
+def banking_group_entity_delete(
+    code: str,
+    user: str = Depends(get_current_user),
+):
+    from cbom.group import load_entities, save_entities
+
+    registry = load_entities(_group_registry_path())
+    if code.lower() not in registry:
+        raise HTTPException(status_code=404, detail=f"unknown entity: {code}")
+    del registry[code.lower()]
+    save_entities(registry.values(), _group_registry_path())
+    return {"ok": True, "count": len(registry)}
+
+
+@router.put("/group/systems/{system_id}/entity")
+def banking_group_assign_system(
+    system_id: str,
+    payload: SystemEntityAssignment,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Assign a system to a legal entity (stored on the system record)."""
+    from cbom.group import load_entities
+
+    registry = load_entities(_group_registry_path())
+    code = payload.entity_code.strip().lower()
+    if code and code not in registry:
+        raise HTTPException(status_code=422, detail=f"unknown entity: {code}")
+    system = db.execute(select(System).where(System.id == system_id)).scalars().first()
+    if system is None:
+        raise HTTPException(status_code=404, detail=f"system not found: {system_id}")
+    extra = dict(system.extra or {})
+    if code:
+        extra["legal_entity"] = code
+    else:
+        extra.pop("legal_entity", None)
+    system.extra = extra
+    db.commit()
+    return {"ok": True, "system_id": system_id, "legal_entity": code or None}
+
+
+@router.get("/group")
+def banking_group_rollup(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Cross-entity rollup: posture per legal entity + the group view.
+
+    Systems carry their entity assignment (extra.legal_entity); assets flow
+    through the system↔asset mapping, so the rollup is always derived from
+    the same unified inventory the BOM materializes.
+    """
+    from cbom.group import entity_rollup as _entity_rollup, group_rollup as _group_rollup, load_entities
+
+    registry = load_entities(_group_registry_path())
+    systems = db.execute(select(System)).scalars().all()
+    # asset rows per system id via the mapping table
+    pairs = db.execute(
+        select(SystemAsset.system_id, CryptoAsset)
+        .join(CryptoAsset, CryptoAsset.id == SystemAsset.asset_id)
+    ).all()
+    assets_by_system: dict[str, list[dict[str, Any]]] = {}
+    for system_id, asset in pairs:
+        assets_by_system.setdefault(system_id, []).append({
+            "algorithm": asset.algorithm, "key_size": asset.key_size,
+            "purpose": asset.purpose,
+        })
+
+    rollups, unassigned_systems = [], 0
+    for entity in registry.values():
+        entity_systems = []
+        for s in systems:
+            code = _system_entity_code(s)
+            if code == entity["code"]:
+                entity_systems.append({
+                    "id": s.id, "name": s.name, "criticality": s.criticality,
+                    "legal_entity": code,
+                })
+        rollups.append(_entity_rollup(entity, entity_systems, assets_by_system))
+    unassigned_systems = sum(1 for s in systems if not _system_entity_code(s))
+
+    group = _group_rollup(rollups) if rollups else {"totals": {}, "by_jurisdiction": {},
+                                                    "exposure_ranking": [],
+                                                    "recurring_weak_families": []}
+    return {
+        "source": "technology_bom",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "registry_count": len(registry),
+        "unassigned_systems": unassigned_systems,
+        "entities": rollups,
+        "group": group,
+    }
+
+
+@router.get("/group/dora-register")
+def banking_group_dora_register(
+    format: str = Query("json", pattern="^(json|csv)$"),
+    entity: str = Query("", max_length=32),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """DORA register of information over ICT third-party arrangements.
+
+    Rows follow the register structure from the vendor inventory (criticality,
+    contract end dates, data classes); fields only the bank knows (contract
+    ids, exit plans, subcontracting) are explicit bank_to_supply columns.
+    """
+    from cbom.group import dora_register_rows
+
+    vendors = [v.to_dict() if hasattr(v, "to_dict") else {"name": v.name}
+               for v in db.execute(select(Vendor)).scalars().all()]
+    reg = dora_register_rows(vendors, entity_code=entity.lower())
+    reg["count_vendors"] = len(vendors)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        base_fields = ["provider_name", "ict_service_type", "function_criticality",
+                       "contract_nature", "contract_end_date", "days_to_contract_end",
+                       "data_classes", "security_contact", "register_entity_code"]
+        writer.writerow(base_fields + [f"bank_to_supply_{f}" for f in
+                                       sorted(reg["rows"][0]["bank_to_supply"])] if reg["rows"]
+                        else base_fields)
+        for r in reg["rows"]:
+            writer.writerow([r.get(f, "") for f in base_fields]
+                            + [r["bank_to_supply"].get(f, "") for f in sorted(r["bank_to_supply"])])
+        return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="dora-register-{stamp}.csv"'})
+    return reg
