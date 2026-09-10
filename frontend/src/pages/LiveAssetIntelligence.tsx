@@ -16,6 +16,8 @@ import {
   apiBankingMainframeAnalyze, apiBankingHsmParse, apiBankingFipsLookup, downloadBankingArtifact,
   apiBankingJurisdictions, apiBankingKeys, apiBankingSwiftCsp, apiBankingActionPlanJurisdiction, downloadBankingArtifactIntl,
   apiGroupEntities, apiGroupEntityAdd, apiGroupEntityDelete, apiGroupRollup, downloadDoraRegister,
+  downloadGroupRoadmap,
+  downloadSupervisorPack,
   BankJurisdictionPack, BankKeyLifecycle, BankSwiftCsp, GroupEntityRec, GroupRollup,
   TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
@@ -595,6 +597,8 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
             <button onClick={addEntity} disabled={!newEntity.trim()} style={{ padding: "4px 12px" }}>Add</button>
             <button onClick={() => downloadDoraRegister("csv", groupEntities[0]?.code || "")} style={{ padding: "4px 12px" }}>DORA register (CSV)</button>
             <button onClick={() => downloadDoraRegister("json", groupEntities[0]?.code || "")} style={{ padding: "4px 12px" }}>DORA (JSON)</button>
+            <button onClick={() => downloadGroupRoadmap().catch(() => undefined)} style={{ padding: "4px 12px" }}>Roadmap (CSV)</button>
+            <button onClick={() => downloadSupervisorPack().catch(() => undefined)} style={{ padding: "4px 12px" }}>Supervisor pack (JSON)</button>
           </div>
           {group && groupEntities.length ? (
             <div>

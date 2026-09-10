@@ -6,7 +6,18 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
-(nothing yet)
+### Supervisory portal & migration roadmap
+- Read-only `supervisor` RBAC role (the spec's 8 roles + 1) with the new
+  `supervision.read` permission: posture, DORA register and roadmap —
+  never configuration, ingestion or management.
+- Cross-entity migration roadmap on the NIST IR 8547 milestones (purge
+  legacy now → 112-bit public-key before 2030 → ≥128-bit before 2035),
+  bucketed strictly from `cbom.banking.quantum_vulnerability` — JSON + CSV.
+- `GET /banking/group/supervisor-pack`: one read-only artifact with group
+  posture, jurisdiction distribution, DORA summary, roadmap summary and an
+  explicit `declared_limits` section (honesty travels with the pack).
+- Frontend: Roadmap (CSV) and Supervisor pack (JSON) downloads in the
+  Group panel.
 
 ## [1.0.0] — 2026-09-10
 

@@ -24,7 +24,7 @@ import {
    empty with an explicit status. */
 
 const ROLES = ["readonly", "auditor", "security_analyst", "developer",
-  "business_owner", "ciso", "scanner", "superadmin"];
+  "business_owner", "ciso", "scanner", "supervisor", "superadmin"];
 
 function useReload<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = []) {
   const [res, setRes] = useState<ApiResult<T> | null>(null);

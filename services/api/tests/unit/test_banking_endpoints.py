@@ -11,7 +11,7 @@ import pytest
 from api.dependencies import get_current_user, get_db_session
 from api.main import create_app
 from db.connection.session import Base
-from db.models import CryptoAsset, HardwareAsset
+from db.models import CryptoAsset, HardwareAsset, System, SystemAsset
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -391,3 +391,98 @@ async def test_group_entity_delete_unknown_404(app_db, tmp_path, monkeypatch):
     async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
         r = await client.delete("/api/v1/banking/group/entities/ghost")
     assert r.status_code == 404
+
+
+# --- supervisory portal (supervision.read-gated) -----------------------------
+
+def _mint_supervisor(session, username: str, roles: list[str]) -> str:
+    """Real session token carrying ``roles`` (RBAC dependency resolves it)."""
+    from datetime import datetime, timedelta, timezone
+
+    from api.security.passwords import hash_password
+    from api.security.session_manager import SessionManager
+    from db.repositories.user_repository import UserRepository
+
+    repo = UserRepository(session)
+    if repo.get_by_username(username) is None:
+        repo.create_user(username, hash_password("x"), roles)
+        session.commit()
+    token = SessionManager().create_session(username, roles=roles)
+    expires = datetime.now(timezone.utc) + timedelta(hours=1)
+    UserRepository(session).create_session(token, username, expires, ip="127.0.0.1")
+    session.commit()
+    return token
+
+
+def _sup_headers(session, roles: list[str]) -> dict[str, str]:
+    return {"Authorization": f"Bearer {_mint_supervisor(session, 'sup-' + roles[0], roles)}"}
+
+
+@pytest.mark.asyncio
+async def test_group_roadmap_buckets_and_csv(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "reg.json"))
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        r = await client.post("/api/v1/banking/group/entities",
+                              headers=_sup_headers(app_db.state.test_session, ["supervisor"]),
+                              json={"code": "bank-de", "name": "Bank DE",
+                                    "jurisdiction": "de", "lei": _lei()})
+        assert r.status_code in (200, 201), r.text
+        # link a quantum-vulnerable asset (RSA-2048) into the entity estate
+        s = app_db.state.test_session
+        s.add(System(id="sys-pay", name="payments-core"))
+        s.add(SystemAsset(system_id="sys-pay", asset_id="ca-rsa"))
+        s.commit()
+        sup = _sup_headers(app_db.state.test_session, ["supervisor"])
+        assigned = await client.put("/api/v1/banking/group/systems/sys-pay/entity",
+                                    headers=sup, json={"entity_code": "bank-de"})
+        assert assigned.status_code == 200, assigned.text
+
+        roadmap = await client.get("/api/v1/banking/group/roadmap", headers=sup)
+        assert roadmap.status_code == 200
+        body = roadmap.json()
+        assert body["basis"].startswith("NIST IR 8547")
+        rsa = [row for row in body["rows"] if row["family"] == "RSA-2048"]
+        assert rsa and rsa[0]["bucket"] == "by-2030"
+        assert rsa[0]["entity_code"] == "bank-de"
+        assert rsa[0]["deadline"] == "2030-12-31"
+
+        csv_resp = await client.get("/api/v1/banking/group/roadmap?format=csv",
+                                    headers=_sup_headers(app_db.state.test_session, ["supervisor"]))
+        assert csv_resp.status_code == 200
+        assert csv_resp.headers["content-type"].startswith("text/csv")
+        assert "attachment; filename=\"migration-roadmap-" in csv_resp.headers["content-disposition"]
+        assert "RSA-2048" in csv_resp.text and "by-2030" in csv_resp.text
+
+
+@pytest.mark.asyncio
+async def test_supervisor_pack_assembles_sections(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "reg.json"))
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        await client.post("/api/v1/banking/group/entities",
+                          headers=_sup_headers(app_db.state.test_session, ["supervisor"]),
+                          json={"code": "bank-de", "name": "Bank DE",
+                                "jurisdiction": "de", "lei": _lei()})
+        pack = await client.get("/api/v1/banking/group/supervisor-pack",
+                                headers=_sup_headers(app_db.state.test_session, ["supervisor"]))
+        assert pack.status_code == 200
+        body = pack.json()
+        inner = body["pack"]
+        assert inner["pack"]["kind"] == "supervisory-pack"
+        assert inner["entities"][0]["code"] == "bank-de"
+        assert "migration_roadmap_summary" in inner and "dora_register_summary" in inner
+        assert len(inner["declared_limits"]) == 3
+        assert any("placeholders" in lim for lim in inner["declared_limits"])
+
+
+@pytest.mark.asyncio
+async def test_supervisory_surfaces_deny_non_supervisor_roles(app_db):
+    headers = _sup_headers(app_db.state.test_session, ["readonly"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        for path in ("/api/v1/banking/group/roadmap",
+                     "/api/v1/banking/group/supervisor-pack"):
+            denied = await client.get(path, headers=headers)
+            assert denied.status_code == 403, path
+            assert "supervision.read" in denied.json()["detail"]
+        # unauthenticated is 401 from the dependency's token resolution
+        anon = await client.get("/api/v1/banking/group/roadmap")
+        assert anon.status_code == 401

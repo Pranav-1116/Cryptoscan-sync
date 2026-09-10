@@ -1,4 +1,5 @@
-"""Role-Based Access Control — the spec's 8-role catalog (logic-5 W57–58).
+"""Role-Based Access Control — the spec's 8-role catalog (logic-5 W57–58),
+extended with the read-only ``supervisor`` role for the regulatory portal.
 
 The original implementation shipped 3 roles (admin / auditor / viewer).
 This module completes the catalog defined in the spec:
@@ -42,6 +43,8 @@ ROLE_CATALOG: dict[str, str] = {
     "business_owner": "View findings for owned systems",
     "scanner": "API-only (scan job submission)",
     "readonly": "Dashboard view only",
+    "supervisor": "Financial supervisor / regulator — read-only supervisory view "
+                  "(group posture, DORA register, migration roadmap)",
 }
 
 ROLE_ALIASES: dict[str, str] = {
@@ -99,7 +102,10 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
     "remediation.apply": frozenset({"superadmin", "ciso", "security_analyst"}),
     "migrations.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
     # read surfaces
-    "reports.read": frozenset({"superadmin", "ciso", "auditor", "security_analyst", "business_owner"}),
+    "reports.read": frozenset({"superadmin", "ciso", "auditor", "security_analyst", "business_owner", "supervisor"}),
+    # supervisory portal: read-only pack/roadmap/register surfaces for the
+    # bank's supervisor(s) — never configuration, ingestion or management
+    "supervision.read": frozenset({"superadmin", "ciso", "auditor", "supervisor"}),
     "findings.read": ALL_ROLES,
     "systems.view": ALL_ROLES,
     "payment.view": frozenset({"superadmin", "ciso", "auditor"}),

@@ -28,6 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
+from api.security.rbac import require_permission
 from db.models import CryptoAsset, HardwareAsset, System, SystemAsset, Vendor
 
 router = APIRouter(prefix="/banking", tags=["banking-regulatory"])
@@ -796,18 +797,13 @@ def banking_group_assign_system(
     return {"ok": True, "system_id": system_id, "legal_entity": code or None}
 
 
-@router.get("/group")
-def banking_group_rollup(
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
-    """Cross-entity rollup: posture per legal entity + the group view.
+def _group_rollups_from_db(db: Session):
+    """(registry, per-entity rollups, unassigned system count) from inventory.
 
-    Systems carry their entity assignment (extra.legal_entity); assets flow
-    through the system↔asset mapping, so the rollup is always derived from
-    the same unified inventory the BOM materializes.
+    Shared by /group, /group/roadmap and /group/supervisor-pack so every
+    supervisory surface derives from the same join — never a divergent copy.
     """
-    from cbom.group import entity_rollup as _entity_rollup, group_rollup as _group_rollup, load_entities
+    from cbom.group import entity_rollup as _entity_rollup, load_entities
 
     registry = load_entities(_group_registry_path())
     systems = db.execute(select(System)).scalars().all()
@@ -823,7 +819,7 @@ def banking_group_rollup(
             "purpose": asset.purpose,
         })
 
-    rollups, unassigned_systems = [], 0
+    rollups: list[dict[str, Any]] = []
     for entity in registry.values():
         entity_systems = []
         for s in systems:
@@ -834,8 +830,24 @@ def banking_group_rollup(
                     "legal_entity": code,
                 })
         rollups.append(_entity_rollup(entity, entity_systems, assets_by_system))
-    unassigned_systems = sum(1 for s in systems if not _system_entity_code(s))
+    unassigned = sum(1 for s in systems if not _system_entity_code(s))
+    return registry, rollups, unassigned
 
+
+@router.get("/group")
+def banking_group_rollup(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Cross-entity rollup: posture per legal entity + the group view.
+
+    Systems carry their entity assignment (extra.legal_entity); assets flow
+    through the system↔asset mapping, so the rollup is always derived from
+    the same unified inventory the BOM materializes.
+    """
+    from cbom.group import group_rollup as _group_rollup
+
+    registry, rollups, unassigned_systems = _group_rollups_from_db(db)
     group = _group_rollup(rollups) if rollups else {"totals": {}, "by_jurisdiction": {},
                                                     "exposure_ranking": [],
                                                     "recurring_weak_families": []}
@@ -885,3 +897,80 @@ def banking_group_dora_register(
                         headers={"Content-Disposition":
                                  f'attachment; filename="dora-register-{stamp}.csv"'})
     return reg
+
+
+@router.get("/group/roadmap")
+def banking_group_roadmap(
+    format: str = Query("json", pattern="^(json|csv)$"),
+    principal: str = Depends(require_permission("supervision.read")),
+    db: Session = Depends(get_db_session),
+):
+    """Cross-entity migration roadmap on the NIST IR 8547 milestones.
+
+    Rows exist only for families the classification flags — legacy/broken
+    (purge now), 112-bit public-key (deprecated after 2030) and >=128-bit
+    public-key (disallowed after 2035). Buckets come from
+    cbom.banking.quantum_vulnerability; nothing is re-derived here.
+    Read-only: requires the supervision.read permission (supervisor,
+    auditor, ciso, superadmin).
+    """
+    from cbom.supervisor import group_roadmap
+
+    _registry, rollups, unassigned = _group_rollups_from_db(db)
+    roadmap = group_roadmap(rollups)
+    roadmap["unassigned_systems"] = unassigned
+    roadmap["generated_at"] = datetime.now(timezone.utc).isoformat()
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if format == "csv":
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        fields = ["entity_code", "entity_name", "jurisdiction", "family",
+                  "instances", "bucket", "deadline", "action"]
+        writer.writerow(fields)
+        for row in roadmap["rows"]:
+            writer.writerow([row.get(f, "") for f in fields])
+        return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="migration-roadmap-{stamp}.csv"'})
+    return roadmap
+
+
+@router.get("/group/supervisor-pack")
+def banking_group_supervisor_pack(
+    principal: str = Depends(require_permission("supervision.read")),
+    db: Session = Depends(get_db_session),
+):
+    """Read-only supervisory pack (JSON) for the supervisor portal.
+
+    One artifact a supervisor can request without any write surface:
+    group posture, jurisdiction distribution, DORA register summary,
+    migration-roadmap summary — plus an explicit declared_limits section
+    so the honest boundary travels with the pack.
+    """
+    from cbom.group import dora_register_rows, group_rollup as _group_rollup
+    from cbom.supervisor import group_roadmap, supervisor_pack
+
+    from api.config.settings import get_settings
+
+    registry, rollups, unassigned = _group_rollups_from_db(db)
+    group = _group_rollup(rollups) if rollups else {"totals": {}, "by_jurisdiction": {},
+                                                    "exposure_ranking": [],
+                                                    "recurring_weak_families": []}
+    vendors = [v.to_dict() if hasattr(v, "to_dict") else {"name": v.name}
+               for v in db.execute(select(Vendor)).scalars().all()]
+    dora = dora_register_rows(vendors)
+    roadmap = group_roadmap(rollups)
+    pack = supervisor_pack(
+        group=group,
+        entity_rollups=rollups,
+        dora_summary=dora.get("summary", {}),
+        roadmap=roadmap,
+        pack_version=get_settings().API_VERSION,
+    )
+    return {
+        "source": "technology_bom",
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "registry_count": len(registry),
+        "unassigned_systems": unassigned,
+        "pack": pack,
+    }

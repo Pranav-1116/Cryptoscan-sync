@@ -2486,3 +2486,33 @@ export async function downloadDoraRegister(format: "json" | "csv", entity = ""):
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+export async function downloadGroupRoadmap(): Promise<void> {
+  const resp = await fetch("/api/v1/banking/group/roadmap?format=csv", {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  const cd = resp.headers.get("content-disposition") || "";
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = cd.match(/filename="?([^";]+)"?/)?.[1] || "migration-roadmap.csv";
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export async function downloadSupervisorPack(): Promise<void> {
+  const resp = await fetch("/api/v1/banking/group/supervisor-pack", {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `supervisor-pack-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

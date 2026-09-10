@@ -10,6 +10,7 @@ const ROLE_CATALOG: Array<{ role: string; desc: string; adminOnly?: boolean }> =
   { role: "business_owner", desc: "View findings for owned systems" },
   { role: "scanner", desc: "API-only scan job submission" },
   { role: "readonly", desc: "Dashboard view only" },
+  { role: "supervisor", desc: "Financial supervisor — read-only supervisory view" },
   { role: "superadmin", desc: "Full platform access", adminOnly: true },
 ];
 
