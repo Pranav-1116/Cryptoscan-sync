@@ -31,6 +31,7 @@ from api.routers import (
     connectors,
     live,
     auth,
+    banking,
     baselines,
     business,
     business_context,
@@ -304,6 +305,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
+    app.include_router(banking.router, prefix=prefix)
     # Runtime findings MUST be registered before scans.router: scans exposes a
     # catch-all GET /scans/{scan_id} which would otherwise shadow the static
     # path /scans/runtime-findings (FastAPI matches routes in include order).

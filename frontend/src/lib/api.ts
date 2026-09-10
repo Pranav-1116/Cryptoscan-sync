@@ -2246,3 +2246,89 @@ export const apiTechBomAdmission = (version?: number, requireBaseline = false): 
   call(`/api/v1/technology-bom/admission${version !== undefined ? `?version=${version}` : ""}${requireBaseline ? `${version !== undefined ? "&" : "?"}require_baseline=true` : ""}`);
 export const apiTechBomRuntimeVerify = (version?: number): Promise<ApiResult<{ source: string; scan_in_progress?: boolean; runtime_verify: TechBomRuntimeVerify | null; note?: string }>> =>
   call(`/api/v1/technology-bom/runtime-verify${version !== undefined ? `?version=${version}` : ""}`);
+
+/* ── Banking & Regulatory — supervisor-ready surfaces over the Tech BOM ── */
+export interface BankHndlEntry {
+  bom_ref?: string; algorithm?: string; key_size?: number | null; purpose?: string;
+  application?: string; asset?: string; confidentiality_years?: number;
+  transition?: string; deadline?: number; years_to_deadline?: number | null;
+  exposure?: "critical" | "high"; reason?: string;
+}
+export interface BankHndl {
+  threshold_years?: number; at_risk?: boolean; total?: number;
+  by_exposure?: Record<string, number>; entries?: BankHndlEntry[]; source?: string;
+}
+export interface BankRoadmapItem {
+  family?: string; key_size?: number | null; transition?: string; instances?: number;
+  applications?: string[]; deadline?: number; years_left?: number | null; overdue?: boolean;
+}
+export interface BankRoadmapPhase {
+  phase?: string; window?: string; deadline?: number | null; title?: string;
+  action?: string; items?: BankRoadmapItem[]; instance_count?: number;
+}
+export interface BankRoadmap {
+  anchor?: string; generated_for_year?: number; phases?: BankRoadmapPhase[];
+  weak_legacy_instances?: number; total_in_scope?: number; source?: string;
+}
+export interface BankHsmRow {
+  asset_id?: string; manufacturer?: string; model?: string; firmware?: string | { version?: string } | null;
+  pqc_status?: string; pqc_evidence?: string; gap?: string;
+  fips?: { module?: string; algorithm?: string; status?: string; cert?: string; note?: string; source?: string };
+}
+export interface BankHsmFleet {
+  total?: number; pqc_ready?: number; pqc_gap?: number;
+  fips_validated_family?: number; fips_unknown?: number; ready_share?: number; hsms?: BankHsmRow[];
+}
+export interface BankMainframeAsset {
+  algorithm?: string; key_size?: number | null; purpose?: string; location?: string;
+  source_language?: string; quantum?: { transition?: string; deadline?: number | null };
+}
+export interface BankOverview {
+  source?: string; environment?: string; snapshot_id?: string; generated_at?: string;
+  overview?: {
+    hndl?: { at_risk?: boolean; total?: number; by_exposure?: Record<string, number> };
+    roadmap?: { anchor?: string; total_in_scope?: number; weak_legacy_instances?: number;
+                phases?: BankRoadmapPhase[] };
+    hsm?: { total?: number; pqc_ready?: number; pqc_gap?: number };
+    mainframe?: { total?: number; by_source?: Record<string, number> };
+  };
+}
+export interface BankActionPlan {
+  document?: string; framework?: string; institution?: string | null; generated_at?: string;
+  references?: string[];
+  evidence?: { snapshot_id?: string; fingerprint?: string; environment?: string; state_version?: number };
+  assessment?: {
+    total_crypto_instances?: number;
+    admission?: { decision?: string; blocking?: number; warnings?: number };
+    hndl?: { at_risk?: boolean; total?: number; by_exposure?: Record<string, number> };
+    hsm_fleet?: { total?: number; pqc_ready?: number; pqc_gap?: number };
+    mainframe_inventory?: { total?: number; by_source?: Record<string, number> };
+  };
+  hndl_register?: BankHndlEntry[]; phases?: BankRoadmapPhase[]; attestation?: string;
+}
+export interface BankIngestResult {
+  kind?: string; parsed?: number; inserted?: number; duplicates?: number; persisted?: boolean;
+  assets?: Array<Record<string, unknown>>;
+}
+export interface BankMainframeInventory {
+  source?: string; total?: number; by_source?: Record<string, number>; assets?: BankMainframeAsset[];
+}
+
+export const apiBankingOverview = (version?: number): Promise<ApiResult<BankOverview>> =>
+  call(`/api/v1/banking/overview${version !== undefined ? `?version=${version}` : ""}`);
+export const apiBankingHndl = (horizonYears = 5): Promise<ApiResult<BankHndl>> =>
+  call(`/api/v1/banking/hndl?horizon_years=${horizonYears}`);
+export const apiBankingRoadmap = (): Promise<ApiResult<BankRoadmap>> =>
+  call("/api/v1/banking/roadmap");
+export const apiBankingHsm = (): Promise<ApiResult<{ source: string; fleet: BankHsmFleet }>> =>
+  call("/api/v1/banking/hsm");
+export const apiBankingActionPlan = (framework: string, institution = ""): Promise<ApiResult<BankActionPlan>> =>
+  call(`/api/v1/banking/action-plan?framework=${encodeURIComponent(framework)}${institution ? `&institution=${encodeURIComponent(institution)}` : ""}`);
+export const apiBankingMainframe = (): Promise<ApiResult<BankMainframeInventory>> =>
+  call("/api/v1/banking/mainframe");
+export const apiBankingMainframeIngest = (kind: string, content: string, persist = true): Promise<ApiResult<BankIngestResult>> =>
+  call("/api/v1/banking/mainframe/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, content, persist }),
+  });

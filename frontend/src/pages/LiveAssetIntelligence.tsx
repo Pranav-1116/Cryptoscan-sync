@@ -11,9 +11,12 @@ import {
   apiTechBomScheduleRun, apiTechBomRunDue, apiTechBomExportRuns,
   apiTechBomEvidence, apiTechBomVendor,
   apiTechBomAssurance, apiTechBomAdmission, apiTechBomVex, apiTechBomXbom, apiTechBomRuntimeVerify,
+  apiBankingOverview, apiBankingHndl, apiBankingRoadmap, apiBankingHsm,
+  apiBankingActionPlan, apiBankingMainframe, apiBankingMainframeIngest,
   TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
   TechBomAssurance, TechBomAdmission, TechBomVex, TechBomXbom, TechBomRuntimeVerify,
+  BankOverview, BankHndl, BankRoadmap, BankHsmFleet, BankActionPlan, BankMainframeInventory, BankIngestResult,
 } from "../lib/api.js";
 
 /* Live Asset Intelligence — one asset model materialized into SBOM / CBOM /
@@ -22,7 +25,7 @@ import {
    Export Service (JSON/CSV/CycloneDX/XML/SPDX/PDF, with filters), scheduled
    exports, an evidence package, and a vendor inventory. */
 
-const VIEWS = ["Overview", "Components", "Compare", "Export", "Schedules", "Assurance", "Evidence & Vendor"];
+const VIEWS = ["Overview", "Components", "Compare", "Export", "Schedules", "Assurance", "Banking", "Evidence & Vendor"];
 
 const LAYER_LABELS: Record<string, string> = {
   sbom: "SBOM — Application",
@@ -265,6 +268,181 @@ function AssuranceTab({ data }: { data: TechBomAssurance | null }) {
   );
 }
 
+function deadlineTone(yearsLeft: number | null | undefined): string {
+  if (yearsLeft === null || yearsLeft === undefined) return "default";
+  if (yearsLeft <= 1) return "red";
+  if (yearsLeft <= 4) return "amber";
+  return "green";
+}
+
+function BankingTab({ overview }: { overview: BankOverview | null }) {
+  const [hndl, setHndl] = useState<BankHndl | null>(null);
+  const [roadmap, setRoadmap] = useState<BankRoadmap | null>(null);
+  const [hsm, setHsm] = useState<BankHsmFleet | null>(null);
+  const [plan, setPlan] = useState<BankActionPlan | null>(null);
+  const [mainframe, setMainframe] = useState<BankMainframeInventory | null>(null);
+  const [framework, setFramework] = useState("ecb");
+  const [institution, setInstitution] = useState("");
+  const [mfKind, setMfKind] = useState("racdcert");
+  const [mfText, setMfText] = useState("");
+  const [mfResult, setMfResult] = useState<BankIngestResult | null>(null);
+  const [mfErr, setMfErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    apiBankingHndl().then((r) => r.ok && setHndl(r.data as BankHndl));
+    apiBankingRoadmap().then((r) => r.ok && setRoadmap(r.data as BankRoadmap));
+    apiBankingHsm().then((r) => r.ok && setHsm((r.data as { fleet: BankHsmFleet }).fleet));
+    apiBankingMainframe().then((r) => r.ok && setMainframe(r.data as BankMainframeInventory));
+    apiBankingActionPlan(framework, institution).then((r) => r.ok && setPlan(r.data as BankActionPlan));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const a = plan?.assessment;
+
+  async function generatePlan() {
+    const r = await apiBankingActionPlan(framework, institution);
+    if (r.ok) setPlan(r.data as BankActionPlan);
+  }
+  async function ingestMainframe() {
+    setMfErr(null);
+    const r = await apiBankingMainframeIngest(mfKind, mfText);
+    if (r.ok) {
+      setMfResult(r.data as BankIngestResult);
+      const inv = await apiBankingMainframe();
+      if (inv.ok) setMainframe(inv.data as BankMainframeInventory);
+    } else {
+      setMfErr((r as { error?: string }).error || "ingest failed");
+    }
+  }
+
+  return (
+    <div style={{ display: "grid", gap: 18 }}>
+      <Panel title="Supervisor Action Plan" sub="assessment → register → phased roadmap (ECB / RBI / FCA shaped)" frame>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          {["ecb", "rbi", "fca", "generic"].map((f) => (
+            <button key={f} className={f === framework ? "active" : ""} onClick={() => setFramework(f)}
+              style={{ padding: "4px 12px", textTransform: "uppercase" }}>{f}</button>
+          ))}
+          <input placeholder="institution (optional)" value={institution}
+            onChange={(e) => setInstitution(e.target.value)}
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
+          <button onClick={generatePlan} style={{ padding: "4px 14px" }}>Generate</button>
+        </div>
+        {a ? (
+          <div>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+              <Badge tone={a.admission?.decision === "FAIL" ? "red" : a.admission?.decision === "WARN" ? "amber" : "green"}>
+                admission {a.admission?.decision}
+              </Badge>
+              <Stat label="HNDL exposed" value={a.hndl?.total ?? 0} tone={a.hndl?.at_risk ? "red" : "green"} />
+              <Stat label="HSM PQC gap" value={a.hsm_fleet?.pqc_gap ?? 0} tone={(a.hsm_fleet?.pqc_gap ?? 0) ? "amber" : "green"} />
+              <Stat label="Mainframe assets" value={a.mainframe_inventory?.total ?? 0} tone="cyan" />
+              <Stat label="BOM snapshot" value={plan?.evidence?.snapshot_id?.slice(0, 16) || "—"} />
+            </div>
+            {(plan?.references ?? []).map((ref, i) => (
+              <div key={i} style={{ fontSize: 11, opacity: 0.75, marginBottom: 3 }}>§ {ref}</div>
+            ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginTop: 12 }}>
+              {(plan?.phases ?? []).map((p) => (
+                <div key={p.phase} style={{ border: "1px solid #1b2740", borderRadius: 6, padding: 10 }}>
+                  <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                    <Badge tone={p.phase === "P1" ? "red" : p.phase === "P2" ? "amber" : "cyan"}>{p.phase}</Badge>
+                    <strong style={{ fontSize: 12 }}>{p.title}</strong>
+                    {p.deadline ? <Badge tone={deadlineTone((p.deadline ?? 0) - new Date().getFullYear())}>by {p.deadline}</Badge> : null}
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 6 }}>{p.action}</div>
+                  {(p.items ?? []).slice(0, 6).map((it, i) => (
+                    <div key={i} style={{ fontSize: 11, display: "flex", gap: 6, alignItems: "center" }}>
+                      <code>{it.family}{it.key_size ? `-${it.key_size}` : ""}</code>
+                      <span>×{it.instances}</span>
+                      {it.overdue ? <Badge tone="red">overdue</Badge> : null}
+                      {it.applications?.length ? <span style={{ opacity: 0.6 }}>{it.applications.slice(0, 2).join(", ")}</span> : null}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : <div className="empty">Generating action plan…</div>}
+      </Panel>
+
+      <div className="grid" style={{ gridTemplateColumns: "3fr 2fr", gap: 14 }}>
+        <Panel title="HNDL — Harvest Now, Decrypt Later" sub="quantum-vulnerable public-key crypto over long-horizon data" frame>
+          {hndl && hndl.total ? (
+            <Table
+              head={["Algorithm", "Purpose", "Horizon", "Deadline", "Exposure", "Reason"]}
+              rows={(hndl.entries ?? []).slice(0, 20).map((e) => [
+                <code key="a">{e.algorithm}{e.key_size ? `-${e.key_size}` : ""}</code>,
+                e.purpose || "—",
+                `${e.confidentiality_years ?? "?"}y`,
+                <Badge key="d" tone={deadlineTone(e.years_to_deadline)}>{e.deadline}</Badge>,
+                <Badge key="e" tone={e.exposure === "critical" ? "red" : "amber"}>{e.exposure}</Badge>,
+                <span key="r" style={{ fontSize: 11, opacity: 0.75 }}>{e.reason}</span>,
+              ])}
+            />
+          ) : <div className="empty">{hndl ? "No HNDL exposure in the current BOM." : "Loading HNDL register…"}</div>}
+        </Panel>
+
+        <Panel title="HSM Fleet Readiness" sub="PQC + FIPS posture from the hardware inventory" frame>
+          {hsm && hsm.total ? (
+            <div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 10 }}>
+                <Stat label="Fleet" value={hsm.total} />
+                <Stat label="PQC ready" value={hsm.pqc_ready} tone={hsm.pqc_gap ? "amber" : "green"} />
+                <Stat label="FIPS family" value={hsm.fips_validated_family} tone="cyan" />
+              </div>
+              <Table
+                head={["HSM", "Firmware", "FIPS", "PQC"]}
+                rows={(hsm.hsms ?? []).map((h) => [
+                  <code key="h">{h.model || h.asset_id}</code>,
+                  String(typeof h.firmware === "object" ? h.firmware?.version : (h.firmware ?? "—")).slice(0, 12),
+                  <Badge key="f" tone={h.fips?.status === "validated" ? "green" : "default"}>{h.fips?.status}</Badge>,
+                  <Badge key="p" tone={h.pqc_status === "ready" ? "green" : h.pqc_status === "not_declared" ? "amber" : "default"}>{h.pqc_status}</Badge>,
+                ])}
+              />
+            </div>
+          ) : <div className="empty">{hsm ? "No HSMs in the hardware inventory." : "Loading HSM fleet…"}</div>}
+        </Panel>
+      </div>
+
+      <Panel title="Mainframe Ingest — z/OS into the unified BOM" sub="RACF RACDCERT LIST text or ICSF key CSV → same crypto_assets as every scanner" frame>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
+          <select value={mfKind} onChange={(e) => setMfKind(e.target.value)}
+            style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+            <option value="racdcert">RACDCERT LIST</option>
+            <option value="icsf_csv">ICSF CSV</option>
+          </select>
+          <button onClick={ingestMainframe} disabled={!mfText.trim()} style={{ padding: "4px 14px" }}>Ingest</button>
+          {mfResult ? (
+            <span style={{ fontSize: 12 }}>
+              parsed <strong>{mfResult.parsed}</strong> · inserted <strong>{mfResult.inserted}</strong> · duplicates <strong>{mfResult.duplicates}</strong>
+            </span>
+          ) : null}
+          {mfErr ? <Badge tone="red">{mfErr}</Badge> : null}
+          {mainframe ? <span style={{ fontSize: 12, opacity: 0.7 }}>inventory: {mainframe.total} mainframe assets</span> : null}
+        </div>
+        <textarea value={mfText} onChange={(e) => setMfText(e.target.value)} rows={5}
+          placeholder={mfKind === "racdcert"
+            ? "Digital certificate information for site certificate PAYGW:\n    Status: TRUST\n    Certificate Key Size: 2048\n    Algorithm Signature: SHA256WithRSA"
+            : "LABEL,ALGORITHM,KEYBITS,USAGE,STATUS\nPAY.ZEK.2026,AES,256,CIPHER,ACTIVE"}
+          style={{ width: "100%", background: "#0b1020", color: "var(--ink, #cdd6f4)", border: "1px solid #233047", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 11 }} />
+        {mainframe && mainframe.total ? (
+          <div style={{ marginTop: 8 }}>
+            <Table
+              head={["Algorithm", "Key", "Usage", "Location", "Quantum"]}
+              rows={(mainframe.assets ?? []).slice(0, 12).map((m, i) => [
+                <code key="a">{m.algorithm}</code>, m.key_size ?? "—", m.purpose || "—",
+                <code key="l">{m.location}</code>,
+                <Badge key="q" tone={m.quantum?.deadline ? "amber" : "green"}>{m.quantum?.transition || "—"}</Badge>,
+              ])}
+            />
+          </div>
+        ) : null}
+      </Panel>
+    </div>
+  );
+}
+
 export default function LiveAssetIntelligence() {
   const [view, setView] = useState(0);
   const live = usePollingApi(apiTechBomLive, 15000);
@@ -273,6 +451,7 @@ export default function LiveAssetIntelligence() {
   const vendor = usePollingApi(apiTechBomVendor, 60000);
   const runs = usePollingApi(apiTechBomExportRuns, 30000);
   const assurance = usePollingApi(apiTechBomAssurance, 30000);
+  const banking = usePollingApi(apiBankingOverview, 60000);
   const rt = useRealtime();
 
   const [compare, setCompare] = useState<{ from: number; to: number; diff: TechBomDiff | null; loading: boolean }>({ from: 0, to: 0, diff: null, loading: false });
@@ -383,6 +562,7 @@ export default function LiveAssetIntelligence() {
   const runsList = (runs.data as { runs?: TechBomRun[] })?.runs ?? [];
   const vendorData = (vendor.data as TechBomVendorInventory) ?? null;
   const assuranceData = (assurance.data as TechBomAssurance) ?? null;
+  const bankingData = (banking.data as BankOverview) ?? null;
 
   return (
     <div>
@@ -578,6 +758,10 @@ export default function LiveAssetIntelligence() {
       )}
 
       {view === 6 && (
+        <BankingTab overview={bankingData} />
+      )}
+
+      {view === 7 && (
         <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <Panel title="Evidence Package" sub="Compliance / audit — BOM + certificate posture, content hashed & HMAC-signed" frame>
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
