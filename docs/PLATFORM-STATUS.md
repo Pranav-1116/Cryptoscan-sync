@@ -12,12 +12,18 @@ real infrastructure or credentials.
 > commits; they are retained for traceability and should not be read as the
 > current state.
 
-Measured at the current HEAD (`24a7a0c`, ZELNX security & scanning policy):
-**505 OpenAPI paths** (under `/api/v1`), **~44 service packages**, **54 ordered
-database migrations** (0001–0054), **60 frontend pages**, **8 RBAC roles**
-(superadmin, ciso, security_analyst, developer, auditor, business_owner,
-scanner, readonly — plus admin→superadmin / viewer→readonly aliases), and
-**~3,660 test functions** across every service suite.
+Measured at the release HEAD (`v1.0.0`, 2026-09-10): **557 OpenAPI paths**
+(616 operations, under `/api/v1`), **56 ordered database migrations**
+(0001–0056), **62 frontend pages**, **8 RBAC roles** (superadmin, ciso,
+security_analyst, developer, auditor, business_owner, scanner, readonly —
+plus admin→superadmin / viewer→readonly aliases), and **4,004 test
+functions** across every service suite (collected at the release commit). Releases are cut through
+`python3 scripts/release_check.py` (VERSION == API version == `v` tag,
+dated CHANGELOG section, contiguous migrations, prod-guard intact).
+
+Earlier measurement, kept for traceability — at `24a7a0c` (ZELNX security &
+scanning policy): 505 OpenAPI paths, ~44 service packages, 54 migrations
+(0001–0054), 60 frontend pages, ~3,660 test functions.
 
 ## Scope & honest boundaries
 
@@ -29,8 +35,10 @@ docstring boundary checks + evidence-whitelist leakage tests), documented in
 [docs/architecture/platform-boundaries.md](docs/architecture/platform-boundaries.md).
 
 Highlights: **read-only, evidence-chained, key *metadata* only (never key
-material)**; no general SAST / malware / SIEM behavior analytics / mainframe
-(AS/400, COBOL) / employee endpoints; cloud scanning is limited to the
+material)**; no general SAST / malware / SIEM behavior analytics / COBOL or
+PL-I application-source scanning / employee endpoints; z/OS mainframe
+coverage IS in scope as crypto-configuration inventory via operator-produced
+extracts (RACF/ICSF/DB2/CICS) — never application-code parsing; cloud scanning is limited to the
 accounts/tenants the operator's credentials can see — external surface only
 via public internet scanning of configured targets.
 

@@ -108,11 +108,15 @@ down: docker-down
 
 # ---- production operations -------------------------------------------------
 help-prod: ## production operations
+	@echo "make release-check - release gate: VERSION/tag/changelog/migrations/prod-guard"
 	@echo "make smoke         - post-deploy smoke test (BASE=… USER=… PASSWORD=…)"
 	@echo "make security-scan - pip-audit + ruff gate + secret hygiene (release gate)"
 	@echo "make sbom          - generate the platform's own CycloneDX SBOM"
 	@echo "make backup        - database backup via scripts/db_backup.sh"
 	@echo "make docker-up-prod-tls - production stack with the TLS overlay"
+
+release-check:
+	$(PY) $(ROOT)/scripts/release_check.py
 
 smoke:
 	BASE=$(or $(BASE),http://localhost:8080) USER='$(or $(USER),admin)' PASSWORD='$(or $(PASSWORD),cryptoscan)' bash $(ROOT)/scripts/smoke_test.sh

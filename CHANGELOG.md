@@ -6,6 +6,28 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+(nothing yet)
+
+## [1.0.0] — 2026-09-10
+
+First semver production release. `VERSION` moves from interim git-hash
+naming to semver; releases are tagged `v<version>` and gated by
+`python3 scripts/release_check.py` (VERSION == API version == tag,
+dated CHANGELOG section, contiguous migrations, prod-guard intact).
+
+### Group governance & DORA register (9758f85)
+- Legal-entity registry for banking groups with ISO 17442 LEI validation
+  (ISO 7064 MOD 97-10 checksum, round-trip tested).
+- Per-entity and group-wide crypto posture rollup: jurisdiction
+  concentration, exposure ranking, weak families recurring across entities.
+- DORA register of information (Reg. (EU) 2022/2554 art. 28) with
+  ICT-service taxonomy, criticality and contract end-date proximity;
+  JSON/CSV export with explicit bank-to-supply placeholders.
+- API: 6 `/banking/group/*` routes (28 total); frontend Group panel.
+- Scope boundary completed: z/OS mainframe crypto-configuration discovery
+  is a covered area; COBOL/PL-I application-source scanning remains a
+  declared non-goal.
+
 ### International banking layer
 - Jurisdiction packs for 10 supervisory regimes (EU/ECB+DORA, UK, US, SG, HK,
   CH, IN, JP, CA, UAE) with dated milestones and evidence-artifact mapping.

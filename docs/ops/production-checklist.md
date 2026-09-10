@@ -52,3 +52,4 @@ on the host network.
 - [ ] DR runbook read + drill scheduled: `docs/runbooks/dr-recovery.md`
 - [ ] Evidence chain verify scheduled: `scripts/backup_evidence.py --verify`
 - [ ] CHANGELOG.md updated per release; VERSION tagged
+- [ ] `python3 scripts/release_check.py` PASS (VERSION == API version == `v` tag on HEAD, dated CHANGELOG section, migrations contiguous)
