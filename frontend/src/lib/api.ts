@@ -2332,3 +2332,46 @@ export const apiBankingMainframeIngest = (kind: string, content: string, persist
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ kind, content, persist }),
   });
+
+/* ── Banking deep discovery, regulator exports, integrations (raw downloads) ── */
+export const apiBankingMainframeAnalyze = (kind: string, content: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/banking/mainframe/analyze", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ kind, content, persist: false }),
+  });
+export const apiBankingHsmParse = (payload: { slots_text?: string; objects_text?: string; cex_text?: string; manufacturer?: string; model?: string }): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/banking/hsm/parse", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+export const apiBankingFipsLookup = (module: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/banking/fips?module=${encodeURIComponent(module)}`);
+
+/* Raw file downloads (HTML/CSV/JSON bodies returned as Response blobs). */
+export const apiBankingDownload = (what: "action-plan" | "servicenow" | "qualys", fmt = ""): Promise<Response> => {
+  const path = what === "action-plan"
+    ? `/api/v1/banking/action-plan/export?format=${fmt || "html"}&framework=ecb`
+    : what === "qualys"
+      ? "/api/v1/banking/integrations/qualys"
+      : "/api/v1/banking/integrations/servicenow";
+  return fetch(path, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+};
+
+export async function downloadBankingArtifact(what: "action-plan" | "servicenow" | "qualys", fmt = ""): Promise<void> {
+  const resp = await apiBankingDownload(what, fmt);
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  const cd = resp.headers.get("content-disposition") || "";
+  const match = cd.match(/filename="?([^";]+)"?/);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = match?.[1] || `${what}-${fmt || "export"}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

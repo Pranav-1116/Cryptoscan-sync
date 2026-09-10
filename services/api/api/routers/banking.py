@@ -13,10 +13,14 @@ the xBOM correlation and the assurance surfaces automatically.
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import Any, Mapping
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -309,3 +313,248 @@ def banking_mainframe_inventory(
                       for s in _MAINFRAME_LANGUAGES if any(r.source_language == s for r in rows)},
         "assets": _mainframe_public(rows),
     }
+
+
+# --------------------------------------------------------------------------- #
+# Deep mainframe discovery (multi-source z/OS extracts)
+# --------------------------------------------------------------------------- #
+
+@router.post("/mainframe/analyze")
+def banking_mainframe_analyze(
+    payload: MainframeIngest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Deep z/OS analysis: parse any supported extract and assess WITHOUT persisting.
+
+    ``kind`` extends the ingest set: ``racdcert`` (rich RACF parse),
+    ``icsf_csv`` (CKDS/PKDS), ``db2_tls`` (DB2 SSL config), and
+    ``cics_tcpservice`` (CICS TLS edge). Returns parsed findings plus the
+    aggregated mainframe assessment (cleartext, weak transport, expiring
+    certificates, quantum-vulnerable public-key material).
+    """
+    from cbom.mainframe import INGEST_KINDS, mainframe_assessment
+
+    parser = INGEST_KINDS.get(payload.kind)
+    if parser is None:
+        raise HTTPException(status_code=422, detail=f"kind must be one of {sorted(INGEST_KINDS)}")
+    findings = parser(payload.content)
+    return {"kind": payload.kind, "findings": findings, "assessment": mainframe_assessment(findings)}
+
+
+@router.get("/mainframe/assessment")
+def banking_mainframe_assessment(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Assessment over mainframe crypto already persisted in the inventory."""
+    from cbom.mainframe import mainframe_assessment
+
+    rows = []
+    for r in _mainframe_rows(db):
+        rows.append({"source": (r.source_language or "").replace("zos-", ""),
+                     "algorithm": r.algorithm, "key_size": r.key_size,
+                     "purpose": r.purpose, "file_path": r.file_path,
+                     "extra": r.extra or {}})
+    return {"source": "technology_bom", "assessment": mainframe_assessment(rows)}
+
+
+# --------------------------------------------------------------------------- #
+# HSM deep assessment (PKCS#11 artifacts)
+# --------------------------------------------------------------------------- #
+
+class HsmParseRequest(BaseModel):
+    slots_text: str = ""
+    objects_text: str = ""
+    cex_text: str = ""
+    manufacturer: str = ""
+    model: str = ""
+
+
+@router.post("/hsm/parse")
+def banking_hsm_parse(
+    payload: HsmParseRequest,
+    user: str = Depends(get_current_user),
+):
+    """Assess one HSM from pasted PKCS#11/CEX artifacts (no persistence)."""
+    from cbom.hsm_pkcs11 import assess_hsm_deep
+
+    row = {"asset_id": payload.model or "adhoc",
+           "manufacturer": payload.manufacturer, "model": payload.model,
+           "slots_text": payload.slots_text, "objects_text": payload.objects_text,
+           "cex_text": payload.cex_text}
+    return {"assessment": assess_hsm_deep([row])}
+
+
+@router.get("/hsm/deep")
+def banking_hsm_deep(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Fleet-deep HSM assessment over the hardware inventory (PKCS#11-aware).
+
+    Reads stored artifacts when present: ``hsm.pkcs11_slots`` /
+    ``hsm.pkcs11_objects`` JSON fields on the hardware asset (populated by
+    asset-sync or the parse endpoint payloads).
+    """
+    from cbom.hsm_pkcs11 import assess_hsm_deep
+
+    rows = []
+    for h in _hsm_rows(db):
+        hsm_info = h.get("hsm") if isinstance(h.get("hsm"), Mapping) else {}
+        rows.append({
+            **h,
+            "slots_text": str(hsm_info.get("pkcs11_slots", "") or ""),
+            "objects_text": str(hsm_info.get("pkcs11_objects", "") or ""),
+            "cex_text": str(hsm_info.get("cex_adapters", "") or ""),
+        })
+    return {"source": "hardware_inventory", "fleet": assess_hsm_deep(rows)}
+
+
+# --------------------------------------------------------------------------- #
+# FIPS registry (CMVP certificate numbers)
+# --------------------------------------------------------------------------- #
+
+def _fips_registry_path() -> Path:
+    from cbom.integrations import default_registry_path
+
+    return default_registry_path(Path(os.environ.get("CRYPTOSCAN_ROOT") or Path.cwd()))
+
+
+@router.get("/fips")
+def banking_fips_lookup(
+    module: str = Query(..., min_length=2),
+    user: str = Depends(get_current_user),
+):
+    """CMVP certificate lookup for a crypto module ('validated cert #xxxx')."""
+    from cbom.integrations import fips_lookup, load_fips_registry
+
+    return fips_lookup(module, load_fips_registry(_fips_registry_path()))
+
+
+@router.get("/fips/registry")
+def banking_fips_registry(user: str = Depends(get_current_user)):
+    """The module→certificate registry backing /banking/fips."""
+    from cbom.integrations import load_fips_registry
+
+    entries = sorted(load_fips_registry(_fips_registry_path()).values(),
+                     key=lambda e: str(e.get("module")))
+    return {"path": str(_fips_registry_path()), "count": len(entries), "entries": entries}
+
+
+class FipsRegistryEntry(BaseModel):
+    module: str
+    vendor: str = ""
+    standard: str = "FIPS 140"
+    cert: str = ""
+    note: str = ""
+
+
+@router.post("/fips/registry")
+def banking_fips_registry_add(
+    entry: FipsRegistryEntry,
+    user: str = Depends(get_current_user),
+):
+    """Record a CMVP certificate you have verified (never inferred)."""
+    from cbom.integrations import load_fips_registry, save_fips_registry
+
+    path = _fips_registry_path()
+    save_fips_registry([entry.model_dump()], path)
+    return {"ok": True, "count": len(load_fips_registry(path))}
+
+
+# --------------------------------------------------------------------------- #
+# Regulator export + enterprise integrations + compliance crosswalk
+# --------------------------------------------------------------------------- #
+
+def _system_owners(db: Session) -> dict[str, str]:
+    """application-name → owning team from the systems inventory (owner assignment)."""
+    from db.models import System
+
+    pairs = db.execute(select(System.name, System.owner)).all()
+    return {str(name).strip().lower(): str(owner or "unassigned")
+            for name, owner in pairs if name}
+
+
+@router.get("/action-plan/export")
+def banking_action_plan_export(
+    format: str = Query("html", pattern="^(html|csv|json)$"),
+    version: int | None = Query(None),
+    framework: str = Query("ecb", pattern="^(ecb|rbi|fca|generic)$"),
+    institution: str = Query("", max_length=200),
+    require_baseline: bool = Query(False),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One-click supervisory artifact: the action plan as HTML (print→PDF),
+    CSV (HNDL register) or JSON. Owners are assigned from the systems
+    inventory where applications match."""
+    from cbom.integrations import render_action_plan_csv, render_action_plan_html
+
+    plan = banking_action_plan(version=version, framework=framework,
+                               institution=institution, require_baseline=require_baseline,
+                               user=user, db=db)
+    owners = _system_owners(db)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    base = f"action-plan-{framework}-{stamp}"
+    if format == "html":
+        return Response(content=render_action_plan_html(plan, owners),
+                        media_type="text/html; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{base}.html"'})
+    if format == "csv":
+        return Response(content=render_action_plan_csv(plan, owners),
+                        media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{base}-hndl-register.csv"'})
+    return Response(content=json.dumps(plan, indent=2, default=str),
+                    media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{base}.json"'})
+
+
+@router.get("/integrations/servicenow")
+def banking_integrations_servicenow(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Crypto assets (incl. mainframe) → ServiceNow CMDB import payloads."""
+    from cbom.integrations import to_servicenow_cmdb
+
+    records = [r.to_dict() for r in db.execute(select(CryptoAsset)).scalars().all()]
+    return to_servicenow_cmdb(records)
+
+
+@router.get("/integrations/qualys")
+def banking_integrations_qualys(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Weak/quantum-exposed crypto → Qualys-style detection CSV download."""
+    from cbom.integrations import to_qualys_csv
+
+    records = []
+    for r in db.execute(select(CryptoAsset)).scalars().all():
+        records.append({"asset": r.file_path, "algorithm": r.algorithm,
+                        "key_size": r.key_size, "purpose": r.purpose,
+                        "source": (r.source_language or "").replace("zos-", "") or "scanner"})
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Response(content=to_qualys_csv(records),
+                    media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="crypto-detections-{stamp}.csv"'})
+
+
+@router.get("/compliance-crosswalk")
+def banking_compliance_crosswalk(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """ISO 27001:2022 / SOC 2 control crosswalk over the platform's evidence surfaces."""
+    from cbom.integrations import procurement_trust_package, soc2_iso_crosswalk
+
+    state = _resolve_state(db, None)
+    xw = soc2_iso_crosswalk()
+    xw["trust_package"] = procurement_trust_package({
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "overview": {"total_components": state.get("total_components"),
+                     "environment": state.get("environment"),
+                     "snapshot_id": state.get("snapshot_id")},
+    })
+    return xw

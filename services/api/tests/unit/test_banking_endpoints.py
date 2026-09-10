@@ -146,3 +146,94 @@ async def test_mainframe_ingest_persists_into_unified_inventory(app_db):
     rows = list(session.query(CryptoAsset).filter(
         CryptoAsset.source_language == "zos-racf").all())
     assert len(rows) == 1 and rows[0].file_path == "racf://PAYGW"
+
+
+# --------------------------------------------------------------------------- #
+# Deep mainframe / HSM / exports / integrations / FIPS registry
+# --------------------------------------------------------------------------- #
+
+DB2_EXTRACT = ("[database PAYDB]\nSSL_VERSIONS = TLSv1,TLSv1.2\n"
+               "SSL_CIPHERSPECS = TLS_RSA_WITH_DES_CBC_SHA\nSSL_SVC_LABEL = PAYCERT\n"
+               "[database HRDB]\nDB2Z = x\n")
+
+CICS_EXTRACT = ("TCPIPSERVICE(PAYMENTS) PORTNUMBER(9443) PROTOCOL(https) CERTIFICATE(PAYGW)\n"
+                "TCPIPSERVICE(LEGACY) PORTNUMBER(2000) PROTOCOL(http)\n")
+
+
+@pytest.mark.asyncio
+async def test_mainframe_analyze_db2_and_cics(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        db2 = await client.post("/api/v1/banking/mainframe/analyze",
+                                json={"kind": "db2_tls", "content": DB2_EXTRACT, "persist": False})
+        cics = await client.post("/api/v1/banking/mainframe/analyze",
+                                 json={"kind": "cics_tcpservice", "content": CICS_EXTRACT, "persist": False})
+        bad = await client.post("/api/v1/banking/mainframe/analyze",
+                                json={"kind": "wat", "content": "x"})
+    assert db2.status_code == 200 and cics.status_code == 200 and bad.status_code == 422
+    a = db2.json()["assessment"]
+    assert a["cleartext_endpoints"], "HRDB without SSL must surface"
+    assert a["weak_transport"][0]["weak_ciphers"] == ["TLS_RSA_WITH_DES_CBC_SHA"]
+    c = cics.json()["assessment"]
+    assert len(c["cleartext_endpoints"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_action_plan_export_formats_and_owners(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        html = await client.get("/api/v1/banking/action-plan/export?format=html&framework=ecb")
+        csv_resp = await client.get("/api/v1/banking/action-plan/export?format=csv&framework=fca")
+        blob = await client.get("/api/v1/banking/action-plan/export?format=json")
+        bad = await client.get("/api/v1/banking/action-plan/export?format=docx")
+    assert html.status_code == 200 and csv_resp.status_code == 200 and blob.status_code == 200
+    assert bad.status_code == 422
+    assert "attachment" in html.headers["content-disposition"]
+    assert html.text.lstrip().startswith("<!doctype html")
+    assert csv_resp.text.splitlines()[0].startswith("algorithm,key_size")
+    assert blob.json()["document"] == "cryptographic-risk-action-plan"
+
+
+@pytest.mark.asyncio
+async def test_hsm_parse_and_deep(app_db):
+    slots = ("Slot 0 (0x80000000): Luna\n  token label: pay-p1\n  token model: Luna K7\n"
+             "  firmware version: 7.8.4\n")
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        parsed = await client.post("/api/v1/banking/hsm/parse", json={
+            "slots_text": slots, "objects_text": "Slot 0:\n  Private Key Object\n    label: k1\n",
+            "manufacturer": "Thales", "model": "Luna Network HSM"})
+        deep = await client.get("/api/v1/banking/hsm/deep")
+    assert parsed.status_code == 200
+    one = parsed.json()["assessment"]["hsms"][0]
+    assert one["pqc_status"] in ("ready", "not_declared", "unknown")
+    assert one["key_objects"] == 1
+    assert deep.status_code == 200
+    assert deep.json()["fleet"]["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_integrations_and_crosswalk(app_db):
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        sns = await client.get("/api/v1/banking/integrations/servicenow")
+        qy = await client.get("/api/v1/banking/integrations/qualys")
+        xw = await client.get("/api/v1/banking/compliance-crosswalk")
+    assert sns.status_code == 200 and sns.json()["count"] >= 2
+    assert qy.status_code == 200 and qy.text.startswith("ASSET,TYPE,SERVICE")
+    body = xw.json()
+    assert any(c["iso27001"] for c in body["controls"])
+    assert body["trust_package"]["package"] == "procurement-trust-package"
+
+
+@pytest.mark.asyncio
+async def test_fips_lookup_and_registry(app_db, tmp_path, monkeypatch):
+    reg = tmp_path / "fips.json"
+    monkeypatch.setenv("CRYPTOSCAN_FIPS_REGISTRY", str(reg))
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        hit = await client.get("/api/v1/banking/fips", params={"module": "OpenSSL FIPS Provider 3.0"})
+        miss = await client.get("/api/v1/banking/fips", params={"module": "unknown-lib"})
+        add = await client.post("/api/v1/banking/fips/registry", json={
+            "module": "Luna K7 Firmware", "vendor": "Thales", "standard": "FIPS 140-3", "cert": "XXXX"})
+        listing = await client.get("/api/v1/banking/fips/registry")
+    assert hit.status_code == 200 and hit.json()["cert"] == "4282"
+    assert miss.json()["status"] == "unknown" and "CMVP" in miss.json()["note"]
+    assert add.status_code == 200 and add.json()["ok"] is True
+    modules = {e["module"] for e in listing.json()["entries"]}
+    assert "luna k7 firmware" in modules

@@ -13,6 +13,7 @@ import {
   apiTechBomAssurance, apiTechBomAdmission, apiTechBomVex, apiTechBomXbom, apiTechBomRuntimeVerify,
   apiBankingOverview, apiBankingHndl, apiBankingRoadmap, apiBankingHsm,
   apiBankingActionPlan, apiBankingMainframe, apiBankingMainframeIngest,
+  apiBankingMainframeAnalyze, apiBankingHsmParse, apiBankingFipsLookup, downloadBankingArtifact,
   TechBomState, TechBomDiff, TechBomVersion, TechBomComponent, TechBomExport,
   TechBomSchedule, TechBomRun, TechBomEvidence, TechBomVendorInventory,
   TechBomAssurance, TechBomAdmission, TechBomVex, TechBomXbom, TechBomRuntimeVerify,
@@ -287,6 +288,11 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
   const [mfText, setMfText] = useState("");
   const [mfResult, setMfResult] = useState<BankIngestResult | null>(null);
   const [mfErr, setMfErr] = useState<string | null>(null);
+  const [deepKind, setDeepKind] = useState("db2_tls");
+  const [deepText, setDeepText] = useState("");
+  const [deepOut, setDeepOut] = useState<Record<string, unknown> | null>(null);
+  const [fipsMod, setFipsMod] = useState("");
+  const [fipsOut, setFipsOut] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     apiBankingHndl().then((r) => r.ok && setHndl(r.data as BankHndl));
@@ -313,6 +319,17 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
     } else {
       setMfErr((r as { error?: string }).error || "ingest failed");
     }
+  }
+
+  async function deepAnalyze() {
+    setMfErr(null);
+    const r = await apiBankingMainframeAnalyze(deepKind, deepText);
+    if (r.ok) setDeepOut(r.data as Record<string, unknown>);
+    else setMfErr((r as { error?: string }).error || "analyze failed");
+  }
+  async function lookupFips() {
+    const r = await apiBankingFipsLookup(fipsMod);
+    if (r.ok) setFipsOut(r.data as Record<string, unknown>);
   }
 
   return (
@@ -439,6 +456,51 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
           </div>
         ) : null}
       </Panel>
+
+      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Panel title="z/OS Deep Analysis" sub="DB2 SSL config · CICS TCPIPSERVICE · RACDCERT · ICSF — assessed inline" frame>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+            <select value={deepKind} onChange={(e) => setDeepKind(e.target.value)}
+              style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+              <option value="db2_tls">DB2 TLS config</option>
+              <option value="cics_tcpservice">CICS TCPIPSERVICE</option>
+              <option value="racdcert">RACDCERT LIST</option>
+              <option value="icsf_csv">ICSF CSV</option>
+            </select>
+            <button onClick={deepAnalyze} disabled={!deepText.trim()} style={{ padding: "4px 14px" }}>Analyze</button>
+          </div>
+          <textarea value={deepText} onChange={(e) => setDeepText(e.target.value)} rows={4}
+            placeholder={deepKind === "db2_tls"
+              ? "[database PAYDB]\nSSL_VERSIONS = TLSv1.2\nSSL_CIPHERSPECS = TLS_AES_256_GCM_SHA384"
+              : "TCPIPSERVICE(PAYMENTS) PORTNUMBER(9443) PROTOCOL(https) CIPHERS(...)"}
+            style={{ width: "100%", background: "#0b1020", color: "var(--ink, #cdd6f4)", border: "1px solid #233047", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 11 }} />
+          {deepOut ? (
+            <pre style={{ fontSize: 11, background: "#0b1020", padding: 8, borderRadius: 6, overflowX: "auto", maxHeight: 180 }}>
+              {JSON.stringify((deepOut as { assessment?: unknown }).assessment ?? deepOut, null, 2).slice(0, 1600)}
+            </pre>
+          ) : null}
+        </Panel>
+
+        <Panel title="Regulator Exports & Integrations" sub="one-click downloads for supervisors, CMDB sync and GRC tooling" frame>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <button onClick={() => downloadBankingArtifact("action-plan", "html")} style={{ padding: "6px 10px" }}>Action Plan (HTML→PDF)</button>
+            <button onClick={() => downloadBankingArtifact("action-plan", "csv")} style={{ padding: "6px 10px" }}>HNDL Register (CSV)</button>
+            <button onClick={() => downloadBankingArtifact("servicenow")} style={{ padding: "6px 10px" }}>ServiceNow CMDB (JSON)</button>
+            <button onClick={() => downloadBankingArtifact("qualys")} style={{ padding: "6px 10px" }}>Qualys Detections (CSV)</button>
+          </div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+            <input placeholder="FIPS 140 module lookup (CMVP registry)" value={fipsMod}
+              onChange={(e) => setFipsMod(e.target.value)}
+              style={{ flex: 1, background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
+            <button onClick={lookupFips} disabled={fipsMod.trim().length < 2} style={{ padding: "4px 14px" }}>Lookup</button>
+          </div>
+          {fipsOut ? (
+            <pre style={{ fontSize: 11, background: "#0b1020", padding: 8, borderRadius: 6, overflowX: "auto", marginTop: 8 }}>
+              {JSON.stringify(fipsOut, null, 2).slice(0, 800)}
+            </pre>
+          ) : null}
+        </Panel>
+      </div>
     </div>
   );
 }
