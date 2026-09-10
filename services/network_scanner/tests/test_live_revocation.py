@@ -404,7 +404,7 @@ def test_check_revocation_live_prefers_ocsp_then_crl(pki, monkeypatch, tmp_path)
 def test_probe_endpoint_live_revocation_flags_revoked(pki, monkeypatch, tmp_path):
     """End-to-end: TLS server presents a revoked leaf -> CERT_REVOKED policy issue."""
     monkeypatch.setenv("CRYPTOSCAN_REVOCATION_CACHE_DIR", str(tmp_path / "c9"))
-    leaf = pki.issue("served")
+    pki.issue("served")
     pki.revoke("served")
     crl = pki.crl("served")
     server_http = FileServer("/served.crl.pem", Path(crl["pem"]).read_bytes())

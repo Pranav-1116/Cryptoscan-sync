@@ -100,7 +100,7 @@ def build_migration_plan(
     report = analyze_quantum_risk(findings, systems=systems, today=today)
     assets = report["assets"]
 
-    system_by_id = {str(row.get("id") or ""): row for row in (systems or [])}
+    {str(row.get("id") or ""): row for row in (systems or [])}
     retentions: list[int] = []
     for system in systems or []:
         extra = system.get("extra") or {}

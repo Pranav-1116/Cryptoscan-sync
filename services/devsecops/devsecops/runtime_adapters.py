@@ -15,7 +15,6 @@ here we only perform the I/O and normalise results/errors.
 
 from __future__ import annotations
 
-import json
 import urllib.request
 import urllib.error
 from typing import Any, Callable

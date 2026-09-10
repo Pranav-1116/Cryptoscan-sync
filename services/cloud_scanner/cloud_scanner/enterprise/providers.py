@@ -29,7 +29,7 @@ Adapter keys:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 Enumerator = Callable[[], list[dict[str, Any]]]

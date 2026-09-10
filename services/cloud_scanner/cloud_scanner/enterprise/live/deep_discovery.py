@@ -19,7 +19,6 @@ from dataclasses import dataclass, field
 from typing import Any, Callable
 
 from cloud_scanner.enterprise.live.change_classifier import (
-    CHANGE_TO_SCANNERS,
     classify_change,
 )
 from cloud_scanner.enterprise.live.event_schema import CloudEvent

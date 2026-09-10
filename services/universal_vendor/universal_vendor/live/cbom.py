@@ -9,7 +9,7 @@ component set, and each materialization is versioned.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from universal_vendor.live.events import UniversalVendorEvent
 

@@ -27,7 +27,6 @@ from universal_vendor.hardware.discovery import (
     ApiBasedDiscovery,
     NetworkBasedDiscovery,
 )
-from universal_vendor.hardware.models import HardwareType
 
 # device type -> mechanism (deterministic catalog, §5)
 _MECHANISM_CATALOG: dict[str, str] = {

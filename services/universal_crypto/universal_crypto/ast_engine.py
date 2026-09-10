@@ -20,7 +20,7 @@ The existing Java AST scanner of the product becomes one plugin here
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_crypto.models import Operation
 

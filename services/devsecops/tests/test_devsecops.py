@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 
 # ---- 13. Container CVE + Dockerfile -------------------------------------- #
@@ -344,7 +343,7 @@ def test_splunk_hec_and_elastic_bulk():
     e = elastic_bulk([FINDING], base_url="https://es:9200", index="findings", auth="key", post=h2)
     assert e["ok"] and e["events_sent"] == 1
     assert "application/x-ndjson" in h2.calls[0]["headers"]["Content-Type"]
-    lines = h2.calls[0]["body"] if isinstance(h2.calls[0]["body"], str) else None
+    h2.calls[0]["body"] if isinstance(h2.calls[0]["body"], str) else None
     # bulk = 2 NDJSON lines per event (action + doc)
     assert h2.calls[0]["url"].endswith("/findings/_bulk")
 

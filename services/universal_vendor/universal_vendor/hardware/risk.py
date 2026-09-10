@@ -11,7 +11,7 @@ dependency count → CRITICAL HARDWARE PQC RISK.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 _CRITICALITY_WEIGHTS = {"critical": 3, "high": 2, "medium": 1, "low": 0}
 _EXPOSURE_WEIGHTS = {"internet": 3, "dmz": 2, "internal": 1, "isolated": 0}

@@ -26,11 +26,10 @@ import hashlib
 import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
 from xml.etree import ElementTree as ET
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding, rsa
 from cryptography.x509 import load_pem_x509_certificate
 

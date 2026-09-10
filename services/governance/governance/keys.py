@@ -16,7 +16,6 @@ No AI; pure cryptography via the `cryptography` package.
 from __future__ import annotations
 
 import base64
-import hashlib
 import os
 
 from cryptography.hazmat.primitives import hashes

@@ -17,8 +17,8 @@ import hashlib
 import hmac
 import json
 import zlib
-from dataclasses import dataclass, field
-from typing import Any, Iterable
+from dataclasses import dataclass
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Framework control catalogues (deterministic mapping keyed to platform
@@ -186,9 +186,6 @@ def _build_pdf(pages: list[list[tuple[str, int]]], *, title: str, author: str) -
         return len(objects)
 
     # placeholder ids for catalog/pages (allocate in order)
-    catalog_id = 1
-    pages_id = 2
-    font_id = 3
     # page + content objects
     page_ids = []
     content_ids = []
@@ -209,7 +206,7 @@ def _build_pdf(pages: list[list[tuple[str, int]]], *, title: str, author: str) -
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")               # 3
 
     for idx, text_lines in enumerate(pages):
-        pid, cid = page_ids[idx], content_ids[idx]
+        _pid, cid = page_ids[idx], content_ids[idx]
         content = _page_content(text_lines)
         objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
                        b"/Resources << /Font << /F1 3 0 R >> >> /Contents "

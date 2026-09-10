@@ -167,7 +167,6 @@ class Neo4jBackend:
         # neo4j-admin writes a backup into a directory; we point it at a temp
         # dir, run it, then tar the produced artifact so the rest of the
         # pipeline (encrypt/sign/store) treats it as an opaque byte stream.
-        tmp = None
         if self.backup_dir is not None:
             target = Path(self.backup_dir); target.mkdir(parents=True, exist_ok=True)
             argv = [self._bin("neo4j-admin"), "database", "backup",

@@ -113,7 +113,7 @@ register_plugin(GenericSNMPPlugin)
 _IF_TYPE_NAMES = {
     1: "ETHERNET", 6: "ETHERNET", 23: "PPP", 24: "SOFTWARE_LOOPBACK",
     53: "PROP_VIRTUAL", 131: "TUNNEL", 135: "L2VLAN", 161: "IEEE80211",
-    117: "GRE", 131: "TUNNEL", 150: "MPLS_TUNNEL",
+    117: "GRE", 150: "MPLS_TUNNEL",
 }
 
 

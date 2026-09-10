@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from universal_vendor.hardware.live.events import ChangeClass, classify_change
+from universal_vendor.hardware.live.events import classify_change
 
 # event type -> targeted verification actions (deterministic catalog).
 # The §6 example: BIOS_UPDATED → BIOS verification → hardware capability

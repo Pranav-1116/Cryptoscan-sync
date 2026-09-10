@@ -32,6 +32,15 @@ MISSION = (
 
 COVERED_AREAS: list[dict[str, Any]] = [
     {
+        "id": "zos-crypto-discovery",
+        "label": "z/OS mainframe crypto discovery",
+        "detail": "Ingest of operator-produced z/OS security extracts — RACF "
+                  "RACDCERT LIST, ICSF key inventories, DB2 TLS configuration, "
+                  "CICS TCPIPSERVICE definitions — into the unified crypto "
+                  "inventory. Crypto inventory only; we do not scan or parse "
+                  "COBOL application code.",
+    },
+    {
         "id": "source-tree-crypto",
         "label": "Source-tree crypto inventory",
         "detail": "Deterministic detection of cryptographic API usage "
@@ -117,12 +126,6 @@ NON_GOALS: list[dict[str, Any]] = [
                   "hunting, or endpoint telemetry analysis.",
     },
     {
-        "id": "no-mainframe",
-        "label": "Mainframe core banking (AS/400, COBOL)",
-        "detail": "We do not scan mainframe core banking systems or COBOL "
-                  "assets.",
-    },
-    {
         "id": "no-endpoint-agents",
         "label": "Employee endpoint scanning",
         "detail": "We do not install agents on or scan employee workstations/endpoints.",
@@ -196,7 +199,6 @@ INVARIANTS: list[dict[str, Any]] = [
 # Banned module-path tokens: any python file under services/ or shared/
 # whose path contains one of these is out of scope by construction.
 BANNED_PATH_TOKENS: tuple[str, ...] = (
-    "mainframe",
     "as400",
     "as_400",
     "cobol",
@@ -212,7 +214,6 @@ BANNED_DOC_PHRASES: tuple[str, ...] = (
     "behavior analytics",
     "behavioral analytics",
     "endpoint agent",
-    "mainframe",
     "cobol",
     "source-code hacking",
 )

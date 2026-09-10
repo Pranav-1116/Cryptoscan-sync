@@ -1,6 +1,5 @@
 """Tests for the unified signed compliance PDF rendered from evaluated template
 reports. Deterministic; no third-party deps."""
-import pytest
 
 from reporting import compliance_pdf as cpdf
 from reporting.report_templates import evaluate_template, template_ids

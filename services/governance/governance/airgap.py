@@ -19,7 +19,7 @@ import json
 import tarfile
 import io
 from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Protocol
+from typing import Any, Iterable, Protocol
 
 BUNDLE_FORMAT = "cryptoscan-offline-feed-v1"
 # External hosts the platform would otherwise contact (blocked in airgap).

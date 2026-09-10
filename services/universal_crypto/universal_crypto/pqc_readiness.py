@@ -15,11 +15,10 @@ PQC_READY / PQC_UNKNOWN, then the migration pipeline:
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
-from universal_crypto.models import LifecycleStatus, QuantumStatus
+from universal_crypto.models import QuantumStatus
 from universal_crypto.registry import find as _registry_find
-from universal_crypto.registry import lifecycle_status as _lifecycle
 
 #: current algorithm → replacement candidates (deterministic catalog)
 REPLACEMENT_CANDIDATES: dict[str, list[str]] = {

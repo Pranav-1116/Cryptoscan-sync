@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from cloud_scanner.enterprise.live.asset_state import (
-    CloudAsset,
     LiveCloudAssetStateEngine,
     action_for_event,
 )
@@ -22,7 +20,6 @@ from cloud_scanner.enterprise.live.collector import (
     RegionalCollector,
 )
 from cloud_scanner.enterprise.live.deep_discovery import (
-    DEEP_SCANNERS,
     DeepDiscoveryPlanner,
 )
 from cloud_scanner.enterprise.live.event_schema import CloudEvent
@@ -44,8 +41,6 @@ from cloud_scanner.enterprise.live.priority import (
 from zelix_live_fixtures import (
     AWS_CERT,
     AWS_KEY,
-    AZURE_CERT,
-    GCP_KEY,
     make_live_engine,
 )
 

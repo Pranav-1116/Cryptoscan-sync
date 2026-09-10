@@ -19,10 +19,9 @@ import datetime as dt
 import hashlib
 import hmac
 import json
-import os
 import tarfile
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Protocol
+from dataclasses import dataclass
+from typing import Any, Iterable, Protocol
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -184,7 +183,7 @@ def classify_backup(created_at: dt.datetime, *, now: dt.datetime | None = None) 
     """GFS tier: daily/weekly(anchor day)/monthly(anchor)/yearly(anchor)."""
     ref = now or dt.datetime.now(dt.timezone.utc)
     d = created_at.astimezone(dt.timezone.utc)
-    age_days = (ref.date() - d.date()).days
+    (ref.date() - d.date()).days
     if d.month == 1 and d.day == 1:
         return "yearly"
     if d.day == 1:

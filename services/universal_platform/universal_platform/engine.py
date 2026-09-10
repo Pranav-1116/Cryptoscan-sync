@@ -20,7 +20,6 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from universal_platform.assets import PlatformAsset
 from universal_platform.blast_radius import blast_radius
 from universal_platform.bom import produce_combined_bom
 from universal_platform.discovery import UniversalDiscoveryEngine

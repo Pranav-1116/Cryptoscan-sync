@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from scanner.core.file_discovery import FileDiscovery, DEFAULT_EXCLUDED_DIRS
+from scanner.core.file_discovery import FileDiscovery
 from scanner.git.git_client import GitClient, GitMetadata
 
 

@@ -7,7 +7,6 @@ import pytest
 from universal_vendor.models import (
     AssetType,
     CryptoType,
-    VendorCategory,
     Visibility,
 )
 from universal_vendor.registry import UnknownPluginError

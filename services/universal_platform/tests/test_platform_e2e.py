@@ -11,7 +11,6 @@ Deterministic, no AI anywhere.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 
 from universal_platform.engine import UniversalPlatform

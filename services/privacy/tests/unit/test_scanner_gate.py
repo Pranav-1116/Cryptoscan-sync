@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from privacy.gate import ScannerGate
-from privacy.policy import PolicyBundle, ScanPolicy, build_policy
+from privacy.policy import build_policy
 from privacy.ratelimit import Limits, RateLimiter
 
 

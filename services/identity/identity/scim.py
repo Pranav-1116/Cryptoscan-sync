@@ -137,7 +137,7 @@ def patch_scim_user(store: UserStore, username: str, ops: list[dict[str, Any]]) 
     roles = list(getattr(user, "role_list", []) or [])
     active = bool(getattr(user, "is_active", True))
     email = getattr(user, "email", None)
-    display = getattr(user, "display_name", None)
+    getattr(user, "display_name", None)
     for op in ops or []:
         op_name = (op.get("op") or "").lower()
         path = op.get("path") or ""
@@ -156,7 +156,7 @@ def patch_scim_user(store: UserStore, username: str, ops: list[dict[str, Any]]) 
             elif path.startswith("emails"):
                 email = (_emails({"emails": value}) if isinstance(value, list) else None) or email
             elif path == "displayName":
-                display = str(value)
+                str(value)
         elif op_name == "delete":
             if path == "active":
                 active = False

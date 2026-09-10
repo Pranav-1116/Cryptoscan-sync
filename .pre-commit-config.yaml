@@ -1,0 +1,24 @@
+# Pre-commit hooks — run the same gates locally that CI runs.
+#   pip install pre-commit && pre-commit install
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+      - id: check-yaml
+        args: ["--unsafe"] # compose overlays use !override/!reset tags
+        exclude: '^deploy/ci-workflows/'
+      - id: end-of-file-fixer
+        types: [python]
+      - id: trailing-whitespace
+        types: [python]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        name: ruff defect gate (F+E9)
+        args: ["--select", "F,E9"]
+        files: ^services/|^scripts/

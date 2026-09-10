@@ -10,7 +10,6 @@ The canonical event carries every field required by the spec plus a
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime, timezone
 from enum import Enum

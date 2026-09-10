@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from universal_crypto.ast_engine import CryptoAstEngine, LANGUAGES
 from universal_crypto.models import Operation

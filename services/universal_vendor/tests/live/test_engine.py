@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from universal_vendor.live.engine import LiveVendorEngine
-from universal_vendor.live.events import EventType, UniversalVendorEvent
 from universal_vendor.live.monitoring import LiveConnector, MonitorMode
 from universal_vendor.live.vendor_monitors import CiscoLiveMonitor
 

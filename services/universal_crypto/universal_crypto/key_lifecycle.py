@@ -7,7 +7,7 @@ long-lived, unsupported algorithm.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
 STAGES = ["generated", "stored", "used", "rotated", "backed_up", "revoked", "destroyed"]

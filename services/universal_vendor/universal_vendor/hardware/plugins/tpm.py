@@ -9,7 +9,6 @@ from universal_vendor.hardware.models import (
     HardwareIdentity,
     HardwareObservation,
     HardwareType,
-    TpmInfo,
 )
 from universal_vendor.hardware.plugin import UniversalHardwarePlugin
 from universal_vendor.hardware.tpm import TpmScanner

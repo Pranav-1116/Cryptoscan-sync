@@ -10,7 +10,7 @@ contract; the registry tracks them by hardware category.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_vendor.hardware.models import (
     HardwareConfidence,

@@ -10,8 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from universal_crypto.models import Operation
-from universal_crypto.protocol_engine import _IPSEC_DH, _SSH_CIPHERS
+from universal_crypto.protocol_engine import _IPSEC_DH
 
 #: safe curves (everything else is flagged when used for key exchange)
 _SAFE_CURVES = {"P-256", "P-384", "P-521", "X25519", "X448", "Curve25519",

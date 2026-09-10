@@ -15,11 +15,10 @@ what keeps a misconfigured connector from ever mutating a production system.
 from __future__ import annotations
 
 import ipaddress
-import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator
+from typing import Any
 
 #: secret-shaped config keys; values are redacted in logs / reprs.
 _SECRET_KEY = re.compile(

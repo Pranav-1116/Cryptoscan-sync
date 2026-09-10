@@ -11,11 +11,9 @@ import json
 import socket
 import struct
 import threading
-from pathlib import Path
 
-import pytest
 
-from network_scanner.discovery.dnssec_checker import DNS_ALGORITHMS, scan_dnssec
+from network_scanner.discovery.dnssec_checker import scan_dnssec
 from network_scanner.probing.ipsec_probe import (
     build_ikev2_sa_init,
     classify_ipsec,

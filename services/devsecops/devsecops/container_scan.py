@@ -17,8 +17,8 @@ The NVD/advisory feed and the package inventory are supplied to the functions
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Protocol
+from dataclasses import dataclass
+from typing import Any, Iterable
 
 SEVERITY_ORDER = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1, "UNKNOWN": 0}
 

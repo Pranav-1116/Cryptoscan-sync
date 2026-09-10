@@ -5,7 +5,6 @@ from __future__ import annotations
 import zipfile
 from pathlib import Path
 
-import pytest
 
 from container_scanner.analyzers.embedded.jar_scanner import _jar_string_hits, scan_jars
 from container_scanner.registry.registry_webhook_handler import parse_registry_event

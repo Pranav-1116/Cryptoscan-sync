@@ -228,7 +228,7 @@ def test_hsm_unsupported_provider():
 # ---- 10. Trust-store inventory -------------------------------------------- #
 from cryptography import x509 as _x509
 from cryptography.hazmat.primitives import hashes as _hashes
-from cryptography.hazmat.primitives.asymmetric import ec, rsa as _rsa
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID as _OID
 
 from keyassure.trust_store import audit, baseline_fingerprints, parse_pem_bundle

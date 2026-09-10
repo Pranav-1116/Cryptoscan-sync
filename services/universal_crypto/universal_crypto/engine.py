@@ -18,7 +18,7 @@ No AI: every stage is a pure function of evidence and explicit catalogs.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from universal_crypto.agility import CryptoAgilityEngine
 from universal_crypto.ast_engine import CryptoAstEngine

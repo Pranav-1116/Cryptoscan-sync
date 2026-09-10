@@ -9,6 +9,7 @@ default (allow_init=False), enforced here.
 from __future__ import annotations
 
 import pytest
+from typing import Any
 
 from network_scanner.enterprise.protocols.engine import (
     ALL_PROTOCOLS,

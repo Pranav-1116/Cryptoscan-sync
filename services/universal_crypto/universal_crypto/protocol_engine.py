@@ -248,7 +248,6 @@ _SSH_CIPHERS = {
     "aes128-cbc": "AES-CBC", "aes256-cbc": "AES-CBC", "aes128-gcm@openssh.com": "AES-GCM",
     "aes256-gcm@openssh.com": "AES-GCM", "chacha20-poly1305@openssh.com": "ChaCha20-Poly1305",
     "3des-cbc": "3DES", "arcfour": "RC4", "arcfour128": "RC4", "arcfour256": "RC4",
-    "aes128-ctr": "AES-CTR",
 }
 
 _SSH_MACS = {

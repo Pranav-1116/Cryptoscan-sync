@@ -8,7 +8,7 @@ Score 0–100 from structural signals (never a guess):
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 #: structural signals with deterministic contributions
 SIGNALS: list[dict[str, Any]] = [

@@ -85,10 +85,9 @@ class PrivacyScrubber:
         if isinstance(value, dict):
             out: dict[str, Any] = {}
             # data minimization on observation-shaped dicts
-            allow = None
             obs_type = value.get("observation_type")
             if self.policy.data_minimization and obs_type in MINIMALLY_REQUIRED_FIELDS:
-                allow = set(MINIMALLY_REQUIRED_FIELDS[obs_type]) | _META_KEYS
+                set(MINIMALLY_REQUIRED_FIELDS[obs_type]) | _META_KEYS
             for k, v in value.items():
                 key_path = f"{path}.{k}" if path else str(k)
                 low = str(k).lower()

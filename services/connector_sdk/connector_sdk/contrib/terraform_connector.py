@@ -9,7 +9,7 @@ crypto/cloud resources the parser actually sees — no sample/fabricated rows.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Iterable
 
 from connector_sdk.base import BaseConnector
 from connector_sdk.context import ConnectorContext

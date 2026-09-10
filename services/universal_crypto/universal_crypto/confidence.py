@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
-from universal_crypto.models import ConfidenceBand, Evidence, EvidenceType
+from universal_crypto.models import ConfidenceBand, Evidence
 
 #: spec §28 base weights (calibrated against the bundled corpus — see
 #: `calibrate_weights` and tests/test_confidence.py)

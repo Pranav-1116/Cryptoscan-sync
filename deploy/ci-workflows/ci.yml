@@ -38,8 +38,8 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install "ruff>=0.1.14"
-      - name: Ruff (repo baseline in ruff.toml)
-        run: ruff check services/api services/cbom services/drift services/graph_engine services/database services/worker
+      - name: Ruff (repo-wide defect gate, baseline in ruff.toml)
+        run: ruff check services scripts
 
   backend:
     name: tests / ${{ matrix.service }}

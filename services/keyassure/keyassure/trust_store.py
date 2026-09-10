@@ -19,14 +19,12 @@ For each trust anchor we report subject/issuer/validity/key and flag:
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
 
 from cryptography import x509
-from cryptography.hazmat.primitives import serialization
 from cryptography.x509.oid import NameOID
 
 _PEM_MARKER = b"-----BEGIN CERTIFICATE-----"

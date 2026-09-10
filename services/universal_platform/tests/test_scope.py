@@ -6,10 +6,8 @@ fail-closed and Tenant A cannot read Tenant B.
 
 from __future__ import annotations
 
-import pytest
 
 from universal_platform.scope import (
-    ScopeAuthorization,
     authorize_scope,
     guard_tenant,
     resolve_scope,

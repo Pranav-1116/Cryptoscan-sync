@@ -15,7 +15,7 @@ that sends extra settings is still served deterministically.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 #: ordered least -> most intrusive scan intensity (matches the safe-scan engine).

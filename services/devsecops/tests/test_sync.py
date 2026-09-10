@@ -1,10 +1,8 @@
 """Tests for bidirectional ITSM sync (17), native SIEM indexers (18),
 event streaming (19), and inbound chat actions (20). Deterministic, no network."""
 import json
-import pytest
 
 from devsecops.connectors import dedup_key, HttpResult
-from devsecops import sync
 from devsecops.sync import (TicketSync, FindingState, splunk_hec_with_ack,
                             elastic_bulk_with_retry, EventStream, apply_chat_action,
                             verify_slack_request, verify_teams_token)

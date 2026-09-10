@@ -133,7 +133,7 @@ def check_key(key_ref: str, *, provider: str, backend: Backend) -> dict[str, Any
     elif protection == "SOFTWARE":
         result["key_residence"] = "SOFTWARE"
         result["issues"].append({"severity": "MEDIUM", "code": "NOT_HARDWARE_BACKED",
-                                 "detail": f"provider reports SOFTWARE protection level"})
+                                 "detail": "provider reports SOFTWARE protection level"})
     elif provider == "aws_kms" and origin == "AWS_KMS":
         # Default AWS-managed KMS keys are not dedicated-HSM backed.
         result["key_residence"] = "SOFTWARE"

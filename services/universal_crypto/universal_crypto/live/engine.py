@@ -8,8 +8,7 @@ Example (certificate renewed):
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from universal_crypto.agility import CryptoAgilityEngine
 from universal_crypto.live.cbom import LiveCbomProducer

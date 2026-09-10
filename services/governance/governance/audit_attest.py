@@ -15,7 +15,7 @@ import datetime as dt
 import hashlib
 import hmac
 import json
-from typing import Any, Iterable, Protocol
+from typing import Any, Iterable
 
 GENESIS_HASH = "0" * 64
 

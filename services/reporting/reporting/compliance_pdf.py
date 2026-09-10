@@ -105,7 +105,7 @@ def _build_pdf(pages: list[list[tuple[str, int]]], *, title: str) -> bytes:
     objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
 
     for idx, text_lines in enumerate(pages):
-        pid, cid = page_ids[idx], content_ids[idx]
+        _pid, cid = page_ids[idx], content_ids[idx]
         content = _page_content(text_lines)
         objects.append(b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
                        b"/Resources << /Font << /F1 3 0 R >> >> /Contents "

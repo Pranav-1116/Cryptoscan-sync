@@ -11,7 +11,6 @@ from connector_sdk import (
     RateLimit,
     get_connector,
     register_connector,
-    scrub,
 )
 from connector_sdk.observations import observations_to_json
 

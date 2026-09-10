@@ -103,3 +103,28 @@ docker-down-prod:
 
 up: docker-up
 down: docker-down
+
+.PHONY: smoke security-scan sbom backup help-prod
+
+# ---- production operations -------------------------------------------------
+help-prod: ## production operations
+	@echo "make smoke         - post-deploy smoke test (BASE=… USER=… PASSWORD=…)"
+	@echo "make security-scan - pip-audit + ruff gate + secret hygiene (release gate)"
+	@echo "make sbom          - generate the platform's own CycloneDX SBOM"
+	@echo "make backup        - database backup via scripts/db_backup.sh"
+	@echo "make docker-up-prod-tls - production stack with the TLS overlay"
+
+smoke:
+	BASE=$(or $(BASE),http://localhost:8080) USER='$(or $(USER),admin)' PASSWORD='$(or $(PASSWORD),cryptoscan)' bash $(ROOT)/scripts/smoke_test.sh
+
+security-scan:
+	bash $(ROOT)/scripts/security_scan.sh
+
+sbom:
+	$(PY) $(ROOT)/scripts/generate_own_sbom.py
+
+backup:
+	bash $(ROOT)/scripts/db_backup.sh
+
+docker-up-prod-tls:
+	$(COMPOSE) -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up --build -d

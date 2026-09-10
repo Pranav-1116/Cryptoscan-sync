@@ -9,7 +9,6 @@ source-code scanner (``scanner`` service).
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from universal_vendor.models import (
@@ -20,7 +19,7 @@ from universal_vendor.models import (
     Visibility,
 )
 from universal_vendor.plugin import scrub_secrets
-from universal_vendor.plugins._helpers import BannerPluginBase, extract_algorithms
+from universal_vendor.plugins._helpers import BannerPluginBase
 
 
 class _DevOpsPluginBase(BannerPluginBase):

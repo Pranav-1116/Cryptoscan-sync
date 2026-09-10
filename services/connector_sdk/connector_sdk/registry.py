@@ -7,7 +7,7 @@ configured ``Connector`` row without hard-coding dispatchers in routers.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Any
 
 from connector_sdk.base import BaseConnector
 

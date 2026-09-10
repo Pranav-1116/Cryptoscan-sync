@@ -9,7 +9,7 @@ TRUSTS, USES_ALGORITHM).
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_vendor.models import UniversalObservation
 
