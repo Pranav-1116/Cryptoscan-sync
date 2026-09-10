@@ -48,8 +48,13 @@ def get_database_url() -> str:
     Raises:
         ValueError: If required config is missing.
     """
-    # Check for direct URL first
-    url = os.environ.get("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    # Precedence: an explicit -c ini URL wins (that is what "alembic -c
+    # <file>" means), then the ambient DATABASE_URL (the deployment path —
+    # alembic.ini ships an empty sqlalchemy.url), then DB_* components.
+    # Env-first previously let a leaked DATABASE_URL silently redirect an
+    # explicitly-targeted migration to another database.
+    url = (config.get_main_option("sqlalchemy.url") or "").strip()
+    url = url or os.environ.get("DATABASE_URL")
 
     if url:
         # Normalize scheme for psycopg2
