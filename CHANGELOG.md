@@ -6,6 +6,21 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Telecom operations: automation linkage + per-carrier NRA packs
+- Realtime posture events now drive the EXISTING automation rules engine
+  (no parallel system): TELECOM_CERT_EXPIRING → certificate_expiring (the
+  cert playbook with gated rotation), TELECOM_REACHABILITY_LOST →
+  agent_offline (new Telecom NF unreachable playbook: re-probe, NOC alert
+  with carrier/PLMN context, ticket, gated failover), high/critical
+  FINDINGS_CHANGED/FINDING → drift_detected. Recoveries and info events
+  never wake the engine. Proven end-to-end: a real REACHABILITY_LOST bus
+  event with a seeded agent_offline rule produces an automation plan.
+- `GET /telecom/pack?carrier=…&format=json|csv`: per-carrier NRA pack —
+  the national-regulator artifact (one carrier's posture, flagged IR 8547
+  families, the roaming edges it serves, declared limits). Other
+  carriers' rows are deliberately excluded. Frontend: NRA pack button per
+  carrier row.
+
 ### Telecom roadmap linkage & roaming matrix
 - The telecom estate joins the SAME NIST IR 8547 migration plan: verdict
   crypto inventory (leaf key, signature, cipher) feeds the family taxonomy

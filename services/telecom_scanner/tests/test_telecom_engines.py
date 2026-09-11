@@ -347,3 +347,78 @@ def test_roaming_matrix_uses_explicit_sepp_mapping_first():
     # the explicit mapping wins over the carrier's first SEPP
     assert rows["rows"][0]["status"] == "protected"
     assert rows["rows"][0]["sepp_nf_id"] == "sepp-fr"
+
+
+# ---------------------------------------------------------------- automation
+
+from telecom_scanner.automation import automation_data, automation_event_kind
+
+
+def test_automation_event_mapping_policy():
+    assert automation_event_kind({"kind": "TELECOM_CERT_EXPIRING"}) == "certificate_expiring"
+    assert automation_event_kind({"kind": "TELECOM_REACHABILITY_LOST"}) == "agent_offline"
+    assert automation_event_kind({"kind": "TELECOM_FINDINGS_CHANGED", "severity": "critical"}) == "drift_detected"
+    assert automation_event_kind({"kind": "TELECOM_FINDING", "severity": "high"}) == "drift_detected"
+    # noise never wakes the engine
+    assert automation_event_kind({"kind": "TELECOM_RECOVERED"}) is None
+    assert automation_event_kind({"kind": "TELECOM_FINDINGS_CHANGED", "severity": "info"}) is None
+    assert automation_event_kind({"kind": "TELECOM_TARGET_ADDED"}) is None
+    assert automation_event_kind({}) is None
+
+
+def test_automation_condition_data_carries_telecom_identity():
+    data = automation_data({"kind": "TELECOM_REACHABILITY_LOST", "target": "sepp-1",
+                            "carrier_code": "de-telekom", "plane": "roaming",
+                            "severity": "critical", "message": "down"})
+    assert data["nf_id"] == "sepp-1"
+    assert data["carrier_code"] == "de-telekom" and data["plane"] == "roaming"
+    assert data["severity"] == "CRITICAL"
+    assert "kind" not in data and None not in data.values()
+
+
+def test_telecom_playbook_registered_and_reachable():
+    from automation.playbooks import get_playbook, playbook_for_event
+
+    pb = get_playbook("pb_telecom_nf_down")
+    assert pb is not None and pb.trigger == "agent_offline"
+    actions = [s.action for s in pb.steps]
+    assert "targeted_rescan" in actions and "create_alert" in actions
+    assert any(s.requires_approval for s in pb.steps)  # failover is gated
+    assert playbook_for_event("agent_offline").id == "pb_telecom_nf_down"
+
+
+# ---------------------------------------------------------------- pack
+
+from telecom_scanner.pack import DECLARED_LIMITS, carrier_pack
+
+
+def test_carrier_pack_scopes_to_one_carrier():
+    fr = normalize_carrier({"code": "fr-orange", "name": "Orange", "country": "fr",
+                            "plmn": "208-01"})
+    mine = classify_target(_target(), _probe())
+    theirs = classify_target(_target(nf_id="nf-fr", carrier="fr-orange"),
+                             _probe_with("rsa", 2048, "sha1WithRSAEncryption",
+                                         "TLS_RSA_WITH_3DES_EDE_CBC_SHA"))
+    roaming = [{"carrier_code": "de-telekom", "partner_name": "Orange", "status": "protected"},
+               {"carrier_code": "fr-orange", "partner_name": "DT", "status": "unknown"}]
+    pack = carrier_pack(_CARRIER, [mine, theirs], roaming_rows=roaming)
+    assert pack["pack"]["kind"] == "telecom-nra-pack"
+    assert pack["pack"]["carrier_code"] == "de-telekom"
+    assert pack["pack"]["plmn"] == "262-01"
+    assert pack["posture"]["totals"]["targets"] == 1          # only mine
+    # _probe() serves RSA-3072: Shor-vulnerable per IR 8547 -> flagged (by-2035)
+    assert pack["families_flagged"] == [("RSA-3072", 1)]
+    assert [r["partner_name"] for r in pack["roaming_edges"]] == ["Orange"]
+    assert pack["declared_limits"] == list(DECLARED_LIMITS)
+
+    fr_pack = carrier_pack(fr, [mine, theirs], roaming_rows=roaming)
+    # legacy probe: 3DES cipher + SHA1 signature + RSA-2048 leaf key
+    assert fr_pack["families_flagged"] == [("3DES-112", 1), ("RSA-2048", 1), ("SHA1WITHRSA-2048", 1)]
+    assert fr_pack["posture"]["totals"]["targets"] == 1
+
+
+def test_carrier_pack_empty_is_honest():
+    pack = carrier_pack(_CARRIER, [])
+    assert pack["posture"]["totals"]["targets"] == 0
+    assert pack["families_flagged"] == [] and pack["roaming_edges"] == []
+    assert pack["declared_limits"]

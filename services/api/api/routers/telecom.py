@@ -19,8 +19,10 @@ import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import io
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from api.security.rbac import require_permission
@@ -409,3 +411,47 @@ def telecom_roaming_partner_delete(pid: str,
     del reg["roaming_partners"][key]
     _save(reg)
     return {"ok": True, "counts": {"roaming_partners": len(reg["roaming_partners"])}}
+
+@router.get("/pack")
+def telecom_carrier_pack(
+    carrier: str = Query(..., min_length=2, max_length=24),
+    format: str = Query("json", pattern="^(json|csv)$"),
+    user: str = Depends(require_permission("findings.read")),
+):
+    """Per-carrier NRA pack — the national regulator artifact.
+
+    One country's regulator receives one carrier's posture: NF verdicts,
+    flagged families (IR 8547 buckets), the roaming edges this carrier
+    serves, and the platform's declared limits. Other carriers' rows are
+    deliberately excluded. CSV = this carrier's verdict rows.
+    """
+    import csv as _csv
+
+    from telecom_scanner.pack import carrier_pack
+    from telecom_scanner.roaming import roaming_matrix
+
+    reg = _registry()
+    code = carrier.strip().lower()
+    record = reg["carriers"].get(code)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"unknown carrier: {carrier}")
+    snapshot = _load_snapshot() or {}
+    rows = snapshot.get("rows") or []
+    matrix = roaming_matrix(reg.get("roaming_partners", {}).values(), rows)
+    pack = carrier_pack(record, rows, roaming_rows=matrix["rows"])
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if format == "csv":
+        buf = io.StringIO()
+        writer = _csv.writer(buf)
+        fields = ["nf_id", "nf_type", "endpoint", "environment", "plane",
+                  "status", "severity", "score"]
+        writer.writerow(fields)
+        for row in rows:
+            if str(row.get("carrier_code") or "") != code:
+                continue
+            writer.writerow([row.get(f, "") for f in fields])
+        return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="telecom-pack-{code}-{stamp}.csv"'})
+    return pack

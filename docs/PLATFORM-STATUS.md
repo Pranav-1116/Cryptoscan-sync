@@ -13,7 +13,7 @@ real infrastructure or credentials.
 > current state.
 
 Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + roaming matrix, 2026-09-11):
-**574 OpenAPI paths**, **56 ordered database migrations** (0001–0056),
+**575 OpenAPI paths**, **56 ordered database migrations** (0001–0056),
 **64 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,
 developer, auditor, business_owner, scanner, readonly, supervisor — plus
 admin→superadmin / viewer→readonly aliases), and **4,004 test functions**

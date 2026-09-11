@@ -382,3 +382,105 @@ async def test_banking_roadmap_folds_telecom_families(app_db, tmp_path, monkeypa
 
         plain = await client.get("/api/v1/banking/group/roadmap", headers=sup)
         assert "telecom" not in plain.json()
+
+
+@pytest.mark.asyncio
+async def test_carrier_pack_endpoint_scopes_and_csv(app_db):
+    session = app_db.state.test_session
+    manage = _auth(session, ["security_analyst"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        await _add_carrier(client, manage)
+        await client.post("/api/v1/telecom/targets", headers=manage, json={
+            "nf_id": "amf-prod-01", "nf_type": "amf", "endpoint": "sba.example:443",
+            "carrier_code": "de-telekom"})
+        await client.post("/api/v1/telecom/targets", headers=manage, json={
+            "nf_id": "amf-fr-01", "nf_type": "amf", "endpoint": "sba-fr.example:443",
+            "carrier_code": "fr-orange"})
+        await client.post("/api/v1/telecom/carriers", headers=manage, json={
+            "code": "fr-orange", "name": "Orange", "country": "fr", "plmn": "208-01"})
+        from telecom_scanner.classify import classify_target
+        from telecom_scanner.registry import normalize_target
+
+        t1 = normalize_target({"nf_id": "amf-prod-01", "nf_type": "amf",
+                               "endpoint": "sba.example:443", "carrier_code": "de-telekom"})
+        t2 = normalize_target({"nf_id": "amf-fr-01", "nf_type": "amf",
+                               "endpoint": "sba-fr.example:443", "carrier_code": "fr-orange"})
+        _seed_snapshot([
+            classify_target(t1, {"status": "TIMEOUT"}),
+            classify_target(t2, {"status": "OK", "crypto": {"tls_version": "TLSv1.2",
+                                                            "cipher_suite": "TLS_RSA_WITH_3DES_EDE_CBC_SHA"},
+                                 "certificates": [{"expiry_status": "VALID", "days_until_expiry": 100,
+                                                   "is_self_signed": False, "key_size": 2048,
+                                                   "key_type": "rsa",
+                                                   "signature_algorithm": "sha1WithRSAEncryption"}],
+                                 "chain_validation": {"is_valid": True, "errors": []}}),
+        ])
+
+        pack = await client.get("/api/v1/telecom/pack?carrier=de-telekom",
+                                headers=_auth(session, ["readonly"]))
+        assert pack.status_code == 200
+        body = pack.json()
+        assert body["pack"]["carrier_code"] == "de-telekom"
+        assert body["posture"]["totals"]["targets"] == 1        # scoped, not the whole estate
+        assert body["posture"]["totals"]["unreachable"] == 1
+        assert len(body["declared_limits"]) == 3
+
+        csv_resp = await client.get("/api/v1/telecom/pack?carrier=de-telekom&format=csv",
+                                    headers=_auth(session, ["readonly"]))
+        assert csv_resp.status_code == 200
+        assert csv_resp.headers["content-type"].startswith("text/csv")
+        assert "telecom-pack-de-telekom" in csv_resp.headers["content-disposition"]
+
+        unknown = await client.get("/api/v1/telecom/pack?carrier=ghost",
+                                   headers=_auth(session, ["readonly"]))
+        assert unknown.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_telecom_events_drive_the_automation_bridge(app_db, monkeypatch):
+    """The bridge maps telecom events onto the SAME rules engine — proven
+    end-to-end with a real rule: a REACHABILITY_LOST event (agent_offline)
+    triggers the seeded rule and produces an automation plan with actions."""
+    from api.events import automation_bridge
+    from api.routers.automation import run_automation
+
+    session = app_db.state.test_session
+    calls = []
+    real_run = run_automation
+
+    def spy_run(db, **kwargs):
+        result = real_run(db, **kwargs)
+        calls.append((kwargs.get("event_kind"), result))
+        return result
+
+    monkeypatch.setattr("api.routers.automation.run_automation", spy_run)
+
+    # a rule that fires on agent_offline
+    from automation.rules_engine import AutomationRule
+    from api.routers.automation import _load_rules
+    import api.routers.automation as auto_router
+
+    rule = AutomationRule(id="tel-down", name="NF down", when="agent_offline",
+                          conditions=[], actions=["create_alert"], severity="HIGH")
+    monkeypatch.setattr(auto_router, "_load_rules", lambda db: [rule])
+
+    automation_bridge._handle({
+        "id": 1, "ts": "2026-09-11T04:00:00+00:00", "type": "telecom.event",
+        "source": "telecom-scanner",
+        "payload": {"kind": "TELECOM_REACHABILITY_LOST", "severity": "critical",
+                    "target": "amf-1", "nf_id": "amf-1", "nf_type": "amf",
+                    "carrier_code": "de-telekom", "plane": "5gc",
+                    "message": "amf-1 became unreachable"},
+    })
+    assert calls and calls[0][0] == "agent_offline"
+    plan = calls[0][1]
+    assert plan, "rule must produce an automation plan"
+
+    # noise must NOT reach the engine
+    calls.clear()
+    automation_bridge._handle({
+        "id": 2, "ts": "2026-09-11T04:01:00+00:00", "type": "telecom.event",
+        "source": "telecom-scanner",
+        "payload": {"kind": "TELECOM_RECOVERED", "severity": "info"},
+    })
+    assert calls == []

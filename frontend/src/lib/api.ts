@@ -2604,6 +2604,32 @@ export const apiTelecomRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>
 export const apiTelecomRoaming = (): Promise<ApiResult<{ generated_at: string | null;
   rows: TelecomRoamingRow[]; summary: { partners: number; protected: number; unprotected: number; unknown: number } }>> =>
   call("/api/v1/telecom/roaming");
+export async function downloadTelecomPack(carrierCode: string, format: "json" | "csv" = "json"): Promise<void> {
+  const resp = await fetch(`/api/v1/telecom/pack?carrier=${encodeURIComponent(carrierCode)}&format=${format}`, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  if (format === "json") {
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `telecom-pack-${carrierCode}-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    return;
+  }
+  const cd = resp.headers.get("content-disposition") || "";
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = cd.match(/filename="?([^";]+)"?/)?.[1] || `telecom-pack-${carrierCode}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const apiTelecomPartnerAdd = (p: { carrier_code: string; partner_plmn: string; partner_name: string; country: string; sepp_nf_id?: string }): Promise<ApiResult<{ ok: boolean }>> =>
   call("/api/v1/telecom/roaming-partners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
 

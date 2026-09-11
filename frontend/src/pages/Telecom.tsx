@@ -5,7 +5,7 @@ import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiTelecomPosture, apiTelecomRegistry, apiTelecomEvents,
   apiTelecomCarrierAdd, apiTelecomTargetAdd, apiTelecomScan,
-  apiTelecomRoadmap, apiTelecomRoaming, apiTelecomPartnerAdd,
+  apiTelecomRoadmap, apiTelecomRoaming, apiTelecomPartnerAdd, downloadTelecomPack,
   TelecomPosture, TelecomRegistry, TelecomEventRec, TelecomRoamingRow, GroupRoadmap,
 } from "../lib/api.js";
 
@@ -132,6 +132,10 @@ export default function Telecom() {
                   <td style={{ textAlign: "right", padding: "4px 8px" }}>{c.critical}</td>
                   <td style={{ padding: "4px 8px" }}><Badge tone={SEV_TONE[c.worst_severity] || ""}>{c.worst_severity}</Badge></td>
                   <td style={{ padding: "4px 8px" }}>{c.legal_entity || "—"}</td>
+                  <td style={{ padding: "4px 8px" }}>
+                    <button onClick={() => void downloadTelecomPack(code, "json").catch(() => undefined)}
+                      style={{ padding: "2px 8px", fontSize: "0.85em" }}>NRA pack</button>
+                  </td>
                 </tr>
               ))}
             </tbody>
