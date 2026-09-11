@@ -235,6 +235,17 @@ class LiveScanRunner:
                 periodic=bool(env.get("CRYPTOSCAN_LIVE_NETWORK_TARGET")),
                 needs_target=True, timeout=120,
             ))
+        # telecom: registry-driven estate scan — no per-target env var; the
+        # scanner probes every registered NF (5G SBA / EPC / IMS / signaling)
+        if targets.get("telecom") or env.get("CRYPTOSCAN_LIVE_TELECOM"):
+            specs.append(ScannerSpec(
+                "telecom",
+                [py, "-m", "telecom_scanner.main", "--json",
+                 "--state", str(root / "data" / "telecom_state.json")],
+                cwd=str(root),
+                periodic=True,
+                needs_target=False, timeout=300,
+            ))
         ctr_target = targets.get("container") or env.get("CRYPTOSCAN_LIVE_CONTAINER_TARGET")
         if ctr_target:
             specs.append(ScannerSpec(

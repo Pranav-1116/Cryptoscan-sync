@@ -67,6 +67,7 @@ from api.routers import (
     report_schedules,
     monitor,
     payment_crypto,
+    telecom,
     audit_export,
     repo_configs,
     runtime,
@@ -368,6 +369,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(report_schedules.router, prefix=prefix)
     app.include_router(monitor.router, prefix=prefix)
     app.include_router(payment_crypto.router, prefix=prefix)
+    app.include_router(telecom.router, prefix=prefix)
     app.include_router(audit_export.router, prefix=prefix)
     app.include_router(events.router, prefix=prefix)
     app.include_router(notifications.router, prefix=prefix)

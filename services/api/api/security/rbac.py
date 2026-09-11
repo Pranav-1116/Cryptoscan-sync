@@ -119,6 +119,9 @@ PERMISSION_MATRIX: dict[str, frozenset[str]] = {
     "crypto.read": ALL_ROLES,
     "crypto.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
     "crypto.ingest": frozenset({"superadmin", "ciso", "scanner"}),
+    # telecom realtime scanner — estate registry vs operator-side ingest
+    "telecom.manage": frozenset({"superadmin", "ciso", "security_analyst"}),
+    "telecom.ingest": frozenset({"superadmin", "ciso", "scanner"}),
 }
 
 ALL_PERMISSIONS = frozenset(PERMISSION_MATRIX)

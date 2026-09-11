@@ -2539,6 +2539,64 @@ export interface GroupRoadmap {
   };
   unassigned_systems?: number;
 }
+export interface TelecomVerdictRow {
+  nf_id: string; nf_type: string; endpoint: string; carrier_code: string;
+  environment: string; plane: string; status: string; severity: string;
+  score: number; cert_not_after?: string | null;
+  findings: Array<{ code: string; severity: string; message: string; ref?: string }>;
+  pqc_kex: string[];
+}
+export interface TelecomRollup {
+  totals: {
+    targets: number; probed: number; reachable: number; unreachable: number;
+    critical: number; expiring_certs: number; pqc_ready: number;
+    worst_severity: string; avg_score: number;
+  };
+  by_carrier: Record<string, { name: string; country: string; plmn: string; legal_entity: string;
+    targets: number; reachable: number; critical: number; worst_severity: string; avg_score: number }>;
+  by_country: Record<string, { carriers: number; targets: number; critical: number }>;
+  by_nf_type: Record<string, { targets: number; critical: number; avg_score: number }>;
+  international: Record<string, { carriers: string[]; countries: string[]; targets: number;
+    critical: number; worst_severity: string }>;
+  roaming_edges: { sepp_targets: number; protected: number; unprotected: number };
+  worst_targets: Array<{ nf_id: string; nf_type: string; severity: string; score: number;
+    status: string; headline: string }>;
+}
+export interface TelecomPosture {
+  has_data: boolean;
+  message?: string;
+  generated_at: string | null;
+  scanner?: string;
+  targets_registered?: number;
+  rollup: TelecomRollup | null;
+  rows?: TelecomVerdictRow[];
+  events_summary?: Record<string, number>;
+}
+export interface TelecomRegistry {
+  carriers: Record<string, { code: string; name: string; country: string; plmn: string; legal_entity: string }>;
+  targets: Record<string, { nf_id: string; nf_type: string; endpoint: string;
+    carrier_code: string; environment: string }>;
+  counts: { carriers: number; targets: number };
+  nf_catalog: Record<string, { name: string; transport: string; plane: string }>;
+}
+export interface TelecomEventRec {
+  id: number; ts: string; type: string;
+  payload: { kind: string; severity: string; message: string; nf_id?: string;
+    nf_type?: string; carrier_code?: string; target?: string };
+}
+export const apiTelecomPosture = (): Promise<ApiResult<TelecomPosture>> =>
+  call("/api/v1/telecom/posture");
+export const apiTelecomRegistry = (): Promise<ApiResult<TelecomRegistry>> =>
+  call("/api/v1/telecom/registry");
+export const apiTelecomEvents = (): Promise<ApiResult<{ count: number; events: TelecomEventRec[] }>> =>
+  call("/api/v1/telecom/events?limit=50");
+export const apiTelecomCarrierAdd = (c: { code: string; name: string; country: string; plmn: string; legal_entity?: string }): Promise<ApiResult<{ ok: boolean }>> =>
+  call("/api/v1/telecom/carriers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
+export const apiTelecomTargetAdd = (t: { nf_id: string; nf_type: string; endpoint: string; carrier_code?: string; environment?: string }): Promise<ApiResult<{ ok: boolean }>> =>
+  call("/api/v1/telecom/targets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) });
+export const apiTelecomScan = (only: string[] = [], timeout = 4.0): Promise<ApiResult<{ scanned: number; events: Array<{ kind: string; severity: string; message: string }>; rollup: TelecomRollup }>> =>
+  call("/api/v1/telecom/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ only, timeout }) });
+
 export const apiSupervisorPack = (): Promise<ApiResult<SupervisorPackEnvelope>> =>
   call("/api/v1/banking/group/supervisor-pack");
 export const apiGroupRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>

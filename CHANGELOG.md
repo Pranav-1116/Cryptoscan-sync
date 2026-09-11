@@ -6,6 +6,28 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Telecom realtime crypto scanner (international carrier estates)
+- New `telecom_scanner` service: carrier registry (PLMN per ITU-T E.212,
+  country, legal-entity link into the group registry) over 3GPP network
+  functions — 5G SBA (AMF/SMF/UPF/AUSF/UDM/NRF/…), EPC, IMS, signaling,
+  NDS/IP gateways, gNB-CU. TLS probing composes the network_scanner
+  primitives; IPsec/IKE is classified ONLY from operator-side ingest
+  (unknown ≠ pass, unknown ≠ fail).
+- Classification per 3GPP TS 33.210 (NDS/IP floors: IKEv2, DH ≥ 14,
+  AES-GCM), TS 33.501 (SEPP roaming edge must be TLS-protected), NIST
+  SP 800-52r2 (TLS 1.2 floor, cert/key rules) and IR 8547 (hybrid
+  ML-KEM key exchange on SBI recorded when detected).
+- Realtime: every pass diffs against persisted previous state —
+  REACHABILITY_LOST / RECOVERED / FINDINGS_CHANGED / CERT_EXPIRING with
+  cooldown dedupe; events publish onto the platform bus (SSE) as
+  `telecom.event`. Periodic driver: `CRYPTOSCAN_LIVE_TELECOM=1` in the
+  live scan runner; on-demand: POST /telecom/scan (bounded, 64/pass).
+- API (7 routes): registry CRUD (telecom.manage), scan (scan.trigger),
+  operator ingest (telecom.ingest), posture + events (findings.read).
+- Frontend `/telecom`: posture tiles (incl. roaming-edge protection),
+  per-carrier/PLMN table with legal-entity column, live event feed,
+  registry management, scan-now.
+
 ### Supervisory portal page & environment hygiene
 - Frontend `/supervision` page: the read-only portal as a first-class surface —
   pack stats, jurisdiction table, DORA summary, roadmap table with bucket

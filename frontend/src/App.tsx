@@ -41,6 +41,7 @@ const Runtime = lazy(() => import("./pages/Runtime.jsx"));
 const LiveScanners = lazy(() => import("./pages/LiveScanners.jsx"));
 const LiveAssetIntelligence = lazy(() => import("./pages/LiveAssetIntelligence"));
 const Supervision = lazy(() => import("./pages/Supervision"));
+const Telecom = lazy(() => import("./pages/Telecom"));
 const Timeline = lazy(() => import("./pages/Timeline.jsx"));
 const Reports = lazy(() => import("./pages/Reports.jsx"));
 const Integrations = lazy(() => import("./pages/Integrations.jsx"));
@@ -106,6 +107,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/timeline": Timeline,
   "/live-asset-intelligence": LiveAssetIntelligence,
   "/supervision": Supervision,
+  "/telecom": Telecom,
   "/reports": Reports,
   "/integrations": Integrations,
   "/admin": Admin,
