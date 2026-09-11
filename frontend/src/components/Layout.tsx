@@ -59,6 +59,7 @@ const NAV = [
     { to: "/scope", labelKey: "nav.scope", icon: "⚖" },
     { to: "/compliance", labelKey: "nav.compliance", icon: "✓" },
     { to: "/governance", labelKey: "nav.governance", icon: "⚖" },
+    { to: "/supervision", labelKey: "nav.supervision", icon: "⛨" },
     { to: "/resilience", labelKey: "nav.resilience", icon: "⛨" },
     { to: "/trust", labelKey: "nav.trustKeys", icon: "⚿" },
     { to: "/evidence", labelKey: "nav.evidence", icon: "⛨" },

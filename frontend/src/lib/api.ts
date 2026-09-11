@@ -2502,6 +2502,47 @@ export async function downloadGroupRoadmap(): Promise<void> {
   URL.revokeObjectURL(url);
 }
 
+export interface SupervisorPack {
+  pack: { kind: string; version: string; generated_for: string };
+  group_totals: Record<string, number>;
+  by_jurisdiction: Record<string, Record<string, number>>;
+  entities: Array<{ code: string; name: string; jurisdiction: string; lei: string }>;
+  dora_register_summary: Record<string, number>;
+  migration_roadmap_summary: {
+    rows?: number;
+    instances_by_bucket?: Record<string, number>;
+    families_by_bucket?: Record<string, number>;
+    entities_affected?: string[];
+  };
+  declared_limits: string[];
+}
+export interface SupervisorPackEnvelope {
+  source: string;
+  generated_at: string;
+  registry_count: number;
+  unassigned_systems: number;
+  pack: SupervisorPack;
+}
+export interface GroupRoadmap {
+  basis: string;
+  generated_for: string;
+  rows: Array<{
+    entity_code: string; entity_name: string; jurisdiction: string;
+    family: string; instances: number; bucket: string;
+    deadline: string; action: string;
+  }>;
+  summary: {
+    rows: number;
+    instances_by_bucket: Record<string, number>;
+    families_by_bucket: Record<string, number>;
+    entities_affected: string[];
+  };
+  unassigned_systems?: number;
+}
+export const apiSupervisorPack = (): Promise<ApiResult<SupervisorPackEnvelope>> =>
+  call("/api/v1/banking/group/supervisor-pack");
+export const apiGroupRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>
+  call("/api/v1/banking/group/roadmap");
 export async function downloadSupervisorPack(): Promise<void> {
   const resp = await fetch("/api/v1/banking/group/supervisor-pack", {
     credentials: "include",

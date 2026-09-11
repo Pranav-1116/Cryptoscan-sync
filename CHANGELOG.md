@@ -6,6 +6,17 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Supervisory portal page & environment hygiene
+- Frontend `/supervision` page: the read-only portal as a first-class surface —
+  pack stats, jurisdiction table, DORA summary, roadmap table with bucket
+  tones and the declared_limits section; honest 403 notice when the role is
+  not provisioned. Nav entry + i18n (en/ar).
+- Test-environment hygiene net (api suite): every fixture now snapshots and
+  restores the managed env keys at setup/finalizer (any scope), plus a
+  per-test guard for in-test writes — 19 test files wrote os.environ raw;
+  a leaked DATABASE_URL had silently redirected an alembic run to the
+  wrong database. Fixtures stay untouched; the suite is order-independent.
+
 ### Supervisory portal & migration roadmap
 - Read-only `supervisor` RBAC role (the spec's 8 roles + 1) with the new
   `supervision.read` permission: posture, DORA register and roadmap —

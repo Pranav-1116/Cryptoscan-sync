@@ -12,9 +12,9 @@ real infrastructure or credentials.
 > commits; they are retained for traceability and should not be read as the
 > current state.
 
-Measured at the release HEAD (`v1.0.0` + supervisory portal, 2026-09-10):
+Measured at the release HEAD (`v1.0.0` + supervisory portal page, 2026-09-10):
 **559 OpenAPI paths**, **56 ordered database migrations** (0001–0056),
-**62 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,
+**63 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,
 developer, auditor, business_owner, scanner, readonly, supervisor — plus
 admin→superadmin / viewer→readonly aliases), and **4,004 test functions**
 across every service suite (collected at the release commit). Releases are cut through
