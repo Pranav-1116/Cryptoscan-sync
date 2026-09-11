@@ -25,7 +25,9 @@ _RULES = [
     (re.compile(r"\bRc4\b|\brc4::"), "RC4", "CIPHER_INSTANCE", "ENCRYPTION", "rc4", None),
     (re.compile(r"\bRsaPrivateKey\b|\brsa::Rsa|rsa::pkcs1v15"), "RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "rsa", None),
     (re.compile(r"\bring::aead::"), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "ring", None),
-    (re.compile(r"\bring::digest::SHA256|\bring::digest::SHA1|\bring::digest::SHA512"), "SHA-256", "MESSAGE_DIGEST", "HASHING", "ring", None),
+    (re.compile(r"\bring::digest::SHA1\b"), "SHA-1", "MESSAGE_DIGEST", "HASHING", "ring", None),
+    (re.compile(r"\bring::digest::SHA256\b"), "SHA-256", "MESSAGE_DIGEST", "HASHING", "ring", None),
+    (re.compile(r"\bring::digest::SHA512\b"), "SHA-512", "MESSAGE_DIGEST", "HASHING", "ring", None),
     (re.compile(r"\bring::signature::"), "UNKNOWN", "SIGNATURE", "SIGNING", "ring", None),
     (re.compile(r"\bChaCha20Poly1305\b"), "ChaCha20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "chacha20poly1305", None),
     (re.compile(r"\bXChaCha20Poly1305\b"), "XChaCha20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "chacha20poly1305", None),
@@ -41,12 +43,15 @@ _RULES = [
     (re.compile(r"\bopenssl::ssl::(SslContext|SslAcceptor|SslConnector)"), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "openssl", None),
     (re.compile(r"\bopenssl::symm::(encrypt|decrypt|Cipher)"), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "openssl", None),
     (re.compile(r"\bopenssl::hash::(hash|Hasher|MessageDigest)"), "UNKNOWN", "MESSAGE_DIGEST", "HASHING", "openssl", None),
+    (re.compile(r"\bopenssl::sha::sha1\b"), "SHA-1", "MESSAGE_DIGEST", "HASHING", "openssl", None),
+    (re.compile(r"\bopenssl::sha::md5\b"), "MD5", "MESSAGE_DIGEST", "HASHING", "openssl", None),
+    (re.compile(r"\bopenssl::sha::sha256\b"), "SHA-256", "MESSAGE_DIGEST", "HASHING", "openssl", None),
     (re.compile(r"\bopenssl::rsa::Rsa"), "RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl", None),
     (re.compile(r"\borion::hazardous::aead"), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "orion", None),
     (re.compile(r"\bsodiumoxide::crypto::"), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "sodiumoxide", None),
     (re.compile(r"\brand::rngs::OsRng|\bgetrandom::"), "CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "getrandom", None),
 ]
-_RSA_BITS = re.compile(r"RsaPrivateKey::new\([^,]+,\s*(\d+)")
+_RSA_BITS = re.compile(r"RsaPrivateKey::new\([^,]+,\s*(\d+)|Rsa::generate\(\s*(\d+)")
 
 
 def parse_rust_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -99,7 +104,7 @@ def parse_rust_file(file_path: Path, repo_root: Path | None = None) -> list[RawF
                 algorithm="RSA",
                 purpose="KEY_GENERATION",
                 library="rsa",
-                key_size=int(match.group(1)),
+                key_size=int(next(g for g in match.groups() if g)),
                 confidence="HIGH",
                 confidence_reason="rust-rsa-bits",
                 raw_transformation=match.group(0)[:80],

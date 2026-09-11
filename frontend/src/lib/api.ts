@@ -2769,3 +2769,39 @@ export async function generateExitReport(
     return { ok: false, error: String(e) };
   }
 }
+
+/** Download the final engagement archive (audit pack + exit report + manifest)
+ *  as one ZIP. Resolves the archive's file count on success. */
+export async function downloadEngagementArchive(
+  opts: ExitReportOpts = {},
+): Promise<{ ok: boolean; files?: number; error?: string }> {
+  try {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(opts)) {
+      if (v && v.trim()) params.set(k, v.trim());
+    }
+    const qs = params.toString();
+    const resp = await fetch(`/api/v1/audit-export/engagement-archive${qs ? `?${qs}` : ""}`, {
+      credentials: "include",
+      ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    }
+    const files = Number(resp.headers.get("X-Archive-Files") || 0);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `cryptoscan-engagement-${new Date().toISOString().slice(0, 10)}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return { ok: true, files };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}

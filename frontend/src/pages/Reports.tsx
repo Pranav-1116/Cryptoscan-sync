@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
-import { getToken, apiReportTemplates, apiReportScheduleCreate, generateExitReport } from "../lib/api.js";
+import { getToken, apiReportTemplates, apiReportScheduleCreate, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
 
 export default function Reports() {
   const snaps = useLive<{ snapshots: any[]; total?: number }>("/api/v1/report-snapshots", { snapshots: [] });
@@ -27,6 +27,20 @@ export default function Reports() {
   const [exitBusy, setExitBusy] = useState(false);
   const [exitHash, setExitHash] = useState<string | null>(null);
   const [exitMsg, setExitMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const runArchive = async () => {
+    setExitBusy(true);
+    setExitMsg(null);
+    const r = await downloadEngagementArchive({
+      client: exitClient, window: exitWindow, owner: exitOwner, accepted_by: exitAccepted,
+    });
+    setExitBusy(false);
+    if (r.ok) {
+      setExitMsg({ ok: true, text: `archive downloaded — ${r.files} files, manifest included` });
+    } else {
+      setExitMsg({ ok: false, text: r.error || "archive failed" });
+    }
+  };
 
   const runExit = async (format: "json" | "md") => {
     setExitBusy(true);
@@ -139,6 +153,9 @@ export default function Reports() {
           </button>
           <button className="btn sm primary" disabled={exitBusy} onClick={() => void runExit("md")}>
             {exitBusy ? "Generating…" : "Download markdown report"}
+          </button>
+          <button className="btn sm" disabled={exitBusy} onClick={() => void runArchive()}>
+            {exitBusy ? "Bundling…" : "Download engagement archive (ZIP)"}
           </button>
           {exitHash && <Badge tone="green">SHA-256 {exitHash.slice(0, 16)}…</Badge>}
         </div>

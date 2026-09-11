@@ -290,3 +290,49 @@ async def test_exit_report_endpoint_json_md_and_hash(tmp_path, monkeypatch):
         assert md.headers["x-report-hash"]
         assert "# PoC exit report — FAB" in md.text
         assert md.headers["x-report-hash"] in md.text
+
+
+@pytest.mark.asyncio
+async def test_engagement_archive_bundles_pack_report_and_manifest(tmp_path, monkeypatch):
+    """The final deliverable: one ZIP with the audit pack, the exit report in
+    both renderings (same hash), and a manifest that verifies independently."""
+    monkeypatch.setenv("CRYPTOSCAN_SNAPSHOT_DIR", str(tmp_path))
+    from api.routers import telecom as _telecom_router
+
+    _telecom_router._SNAPSHOT = None  # no snapshot in this test → honest absence
+
+    app, session, engine = _make_app()
+    _seed_certificate(session, "CN=archive.bank.example", 60)
+    session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            "/api/v1/audit-export/engagement-archive",
+            params={"client": "FAB", "window": "2026-09-14..25"})
+        assert response.status_code == 200, response.text
+        assert response.headers["content-type"].startswith("application/zip")
+
+        archive = zipfile.ZipFile(io.BytesIO(response.content))
+        names = set(archive.namelist())
+        assert {"audit-pack.zip", "exit-report.json", "exit-report.md",
+                "manifest.json"} <= names
+
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["client"] == "FAB"
+        # every declared hash verifies
+        for name, entry in manifest["files"].items():
+            assert hashlib.sha256(archive.read(name)).hexdigest() == entry["sha256"], name
+
+        # the nested audit pack is itself a valid, manifest-carrying pack
+        inner = zipfile.ZipFile(io.BytesIO(archive.read("audit-pack.zip")))
+        assert "manifest.json" in inner.namelist()
+        assert "certificates/inventory.json" in inner.namelist()
+
+        # the two report renderings agree: same hash, verifiable report
+        from reporting.exit_report import verify_exit_report
+
+        report = json.loads(archive.read("exit-report.json"))
+        assert verify_exit_report(report) is True
+        assert manifest["exit_report_hash"] == report["report_hash"]
+        assert report["report_hash"] in archive.read("exit-report.md").decode()

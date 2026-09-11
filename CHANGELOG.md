@@ -6,6 +6,23 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Engagement archive + Go/Rust parser hardening
+- `GET /audit-export/engagement-archive` — the FINAL deliverable in one ZIP:
+  the examiner audit pack, the exit report in both renderings (ONE report —
+  JSON and markdown share the same SHA-256), and a top-level manifest whose
+  hashes cover every file (any sha256sum -c-style check verifies it).
+  Reports page gained the archive download button.
+- Scanner: fixed two real rust_parser gaps found by probing —
+  `openssl::sha::{sha1,md5,sha256}` were invisible (only the standalone
+  crates were matched), and the ring digest rule labeled SHA-1/SHA-512
+  usage as "SHA-256" (now per-algorithm rules); `Rsa::generate(bits)` now
+  extracts the key size. Go parser verified strong (weak primitives, TLS
+  floor, rsa key size) and pinned.
+- New tests: Go/Rust parser contracts (5) incl. regression pins for the
+  fixed gaps; engagement-archive bundling test (nested pack opens,
+  manifest hashes verify, both renderings agree). Matrix corrected: six
+  first-class languages, not four.
+
 ### PoC exit-report generator: pack -> engagement deliverable
 - New pure engine `reporting.exit_report`: scores the collected estate
   against the fab-poc.md success criteria — per-estate coverage

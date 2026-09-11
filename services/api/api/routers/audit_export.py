@@ -110,6 +110,66 @@ def exit_report(
     return report
 
 
+@router.get("/engagement-archive")
+def engagement_archive(
+    client: str = "",
+    window: str = "",
+    owner: str = "",
+    accepted_by: str = "",
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """The final engagement deliverable in ONE archive: the examiner audit
+    pack + the exit report (JSON + markdown, ONE report — same hash in both
+    renderings) + a top-level manifest whose SHA-256s cover every file.
+    Verified by the client with any sha256sum -c-style check."""
+    import io
+    import json as _json
+    import zipfile
+    from datetime import datetime, timezone
+
+    from reporting.exit_report import render_markdown
+
+    generated_at = datetime.now(timezone.utc)
+    pack = export_pack(user=user, db=db)  # reuse the route function directly
+    report = exit_report(client=client, window=window, owner=owner,
+                         accepted_by=accepted_by, format="json", user=user, db=db)
+    files: dict[str, bytes] = {
+        "audit-pack.zip": pack.body,
+        "exit-report.json": _json.dumps(report, indent=2, sort_keys=True,
+                                        default=str).encode("utf-8"),
+        "exit-report.md": render_markdown(report).encode("utf-8"),
+    }
+    manifest = {
+        "kind": "cryptoscan-engagement-archive",
+        "version": "1.0.0",
+        "client": report["client"],
+        "window": report.get("window", ""),
+        "generated_at": generated_at.isoformat(),
+        "exit_report_hash": report["report_hash"],
+        "files": {
+            name: {"sha256": hashlib.sha256(payload).hexdigest(), "bytes": len(payload)}
+            for name, payload in sorted(files.items())
+        },
+    }
+    files["manifest.json"] = _json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8")
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for path, payload in sorted(files.items()):
+            info = zipfile.ZipInfo(path, date_time=generated_at.timetuple()[:6])
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, payload)
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="cryptoscan-engagement-{generated_at.strftime("%Y%m%dT%H%M%SZ")}.zip"',
+            "X-Archive-Files": str(len(files)),
+        },
+    )
+
+
 @router.get("/pack")
 def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_db_session)):
     from db.models.certificate import Certificate
