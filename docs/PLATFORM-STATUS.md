@@ -12,8 +12,8 @@ real infrastructure or credentials.
 > commits; they are retained for traceability and should not be read as the
 > current state.
 
-Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer, 2026-09-11):
-**575 OpenAPI paths**, **56 ordered database migrations** (0001–0056),
+Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer + enterprise readiness, 2026-09-11):
+**583 OpenAPI paths** (measured from the live schema), **56 ordered database migrations** (0001–0056),
 **64 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,
 developer, auditor, business_owner, scanner, readonly, supervisor — plus
 admin→superadmin / viewer→readonly aliases), and **4,004 test functions**
@@ -177,7 +177,8 @@ air-gap install guide (`docs/admin-guide/air-gap-install.md`).
 
 ## Explicitly open (needs real credentials/infrastructure — never stubbed)
 
-- **SSO federation** — OIDC verification is now built (bring-your-own-IdP: `POST /auth/oidc`, RS256 + JWKS, `docs/admin-guide/oidc-sso.md`); what still needs yours: a real issuer. SAML remains unclaimed
+- **SSO federation** — OIDC (token relay + server-side authorization-code flow with signed state/nonce), SAML 2.0 SP (metadata/AuthnRequest/ACS with signature verification) and LDAP/AD group→role login are all built, bring-your-own-IdP; what still needs yours: a real issuer/IdP. PKCE for pure-SPA public clients is the next hardening step (`docs/enterprise-readiness.md`)
+- **Cloud KMS collectors** — AWS KMS + Azure Key Vault are built (read-only metadata → the shared crypto-asset inventory; unknown key types skipped with their reason). GCP KMS / AWS ACM / DB-TDE / mainframe collectors are not built and will not be faked
 - **PKI-signed reports** — needs a signing certificate; reports carry an
   HMAC integrity hash today and `signature: null` honestly
 - **Live burn-ins** (10k scans/day, 100k assets, uptime) — needs production

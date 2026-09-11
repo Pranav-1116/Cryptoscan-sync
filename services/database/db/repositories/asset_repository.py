@@ -144,3 +144,45 @@ class AssetRepository(BaseRepository[CryptoAsset]):
                     self.session.add(CryptoAssetEvidence(asset_id=row.id, evidence_id=evidence_id))
         self.session.flush()
         return stored
+
+    # --------------------------------------------------------- cloud inventory
+
+    def upsert_cloud_asset(self, asset: dict) -> tuple[CryptoAsset, bool]:
+        """Idempotent insert/update for cloud-collected keys, keyed by file_path.
+
+        Cloud collectors produce stable refs (aws-kms://<region>/<keyId>,
+        azure-kv://<vault>/<name>), so re-collection updates the existing row
+        instead of stacking duplicates. first_seen_at survives updates;
+        last_seen_at does not.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        extra = dict(asset.get("extra") or {})
+        extra["last_seen_at"] = now
+        existing = self.session.execute(
+            select(CryptoAsset).where(CryptoAsset.file_path == asset["file_path"])
+        ).scalar_one_or_none()
+        if existing is None:
+            extra["first_seen_at"] = now
+            row = CryptoAsset(
+                algorithm=asset["algorithm"],
+                purpose=asset.get("purpose"),
+                key_size=asset.get("key_size"),
+                file_path=asset["file_path"],
+                line_number=0,
+                source_language=asset.get("source_language") or "cloud-kms",
+                confidence="HIGH",
+                extra=extra,
+            )
+            self.session.add(row)
+            self.session.flush()
+            return row, True
+        existing.algorithm = asset["algorithm"]
+        existing.key_size = asset.get("key_size")
+        existing.purpose = asset.get("purpose")
+        existing.source_language = asset.get("source_language") or "cloud-kms"
+        existing.confidence = "HIGH"
+        existing.extra = {**(existing.extra or {}), **extra}
+        self.session.flush()
+        return existing, False

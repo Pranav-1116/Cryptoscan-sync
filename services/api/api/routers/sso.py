@@ -75,6 +75,23 @@ class SamlLoginStarted(BaseModel):
     redirect_to: str
 
 
+@router.get("/auth/sso/status")
+def sso_status() -> dict:
+    """Unified SSO capability flags for the login screen (public, booleans + paths).
+
+    OIDC is usable when issuer AND client id are set (token relay and/or the
+    authorization-code flow); SAML/LDAP mirror the existing dedicated checks.
+    """
+    settings = get_settings()
+    oidc_on = bool((settings.OIDC_ISSUER or "").strip() and (settings.OIDC_CLIENT_ID or "").strip())
+    return {
+        "oidc": {"enabled": oidc_on,
+                 "authorize_url": "/api/v1/auth/oidc/authorize" if oidc_on else None},
+        "saml_enabled": bool(settings.SAML_ENABLED and settings.SAML_IDP_ENTITY_ID),
+        "ldap_enabled": bool(settings.LDAP_ENABLED and settings.LDAP_SERVER_URI),
+    }
+
+
 @router.get("/auth/saml/status")
 def saml_status() -> dict:
     settings = get_settings()

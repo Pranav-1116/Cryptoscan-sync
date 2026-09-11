@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { apiLogin, isBackendLive, getToken, getRoles } from "../lib/api.js";
+import { apiLogin, apiSsoStatus, isBackendLive, getToken, getRoles, SsoStatus } from "../lib/api.js";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 
 const ROLE_CATALOG: Array<{ role: string; desc: string }> = [
@@ -84,13 +84,32 @@ export default function Login() {
   );
   const [busy, setBusy] = useState(false);
   const [backendUp, setBackendUp] = useState<boolean | null>(null);
+  const [sso, setSso] = useState<SsoStatus | null>(null);
   const roles = getRoles();
   const token = getToken();
   const { t } = useI18n();
 
   React.useEffect(() => {
     void isBackendLive().then(setBackendUp);
+    // the login screen only renders SSO options the platform actually has —
+    // an unconfigured IdP is an invisible option, never a dead button
+    void apiSsoStatus().then((res) => setSso(res.source === "live" ? (res.data ?? null) : null));
   }, []);
+
+  const samlRedirect = async () => {
+    try {
+      const resp = await fetch("/api/v1/auth/saml/login", { credentials: "include" });
+      if (!resp.ok) {
+        setError(`SAML login unavailable (HTTP ${resp.status}).`);
+        return;
+      }
+      const body = (await resp.json()) as { redirect_to?: string };
+      if (body.redirect_to) window.location.href = body.redirect_to;
+      else setError("SAML IdP SSO URL is not configured.");
+    } catch (e) {
+      setError(String(e));
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();

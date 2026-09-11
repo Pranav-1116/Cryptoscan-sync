@@ -296,3 +296,70 @@ def schedule_preview(body: AssetsBody, user: str = Depends(get_current_user)):
     due = due_assets(body.assets)
     return {"due": [s.as_dict() for s in due], "due_count": len(due),
             "total_assets": len(body.assets)}
+
+
+# ------------------------------------------------------------------ connectors
+# ITSM/SIEM delivery of automation runs. Payload mappers are pure (automation
+# .connectors); the sender is injectable and never raises into the engine.
+# Status responses carry configuration NAMES only — values never leave the API.
+
+_CONNECTOR_SETTINGS = (
+    "SERVICENOW_INSTANCE_URL", "SERVICENOW_USER", "SERVICENOW_PASSWORD",
+    "SPLUNK_HEC_URL", "SPLUNK_HEC_TOKEN",
+)
+
+
+class ConnectorBody(BaseModel):
+    connector: str = Field(..., pattern="^(servicenow|splunk)$")
+    run_id: str = Field(..., min_length=1)
+
+
+@router.get("/connectors")
+def list_connectors(user: str = Depends(require_roles(*_ADMINS))):
+    from api.config.settings import get_settings
+    from automation.connectors import CONNECTORS, connector_status
+
+    settings = get_settings()
+    config = {key: str(getattr(settings, key, "") or "") for key in _CONNECTOR_SETTINGS}
+    return {"connectors": connector_status(config), "catalog": CONNECTORS}
+
+
+def _connector_run(db: Session, run_id: str) -> dict:
+    from db.models.automation import AutomationRun
+
+    row = db.execute(select(AutomationRun).where(AutomationRun.id == run_id)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"automation run '{run_id}' not found")
+    return row.to_dict()
+
+
+@router.post("/connectors/preview")
+def connector_preview(body: ConnectorBody,
+                      user: str = Depends(require_roles(*_ADMINS)),
+                      db: Session = Depends(get_db_session)):
+    """Build the exact payload that WOULD be delivered — nothing is sent."""
+    from automation.connectors import servicenow_incident_payload, splunk_hec_payload
+
+    run = _connector_run(db, body.run_id)
+    payload = (servicenow_incident_payload(run) if body.connector == "servicenow"
+               else splunk_hec_payload(run))
+    return {"connector": body.connector, "run_id": body.run_id,
+            "payload": payload, "delivered": False,
+            "note": "preview only — nothing was sent"}
+
+
+@router.post("/connectors/dispatch")
+def connector_dispatch(body: ConnectorBody,
+                       user: str = Depends(require_roles(*_ADMINS)),
+                       db: Session = Depends(get_db_session)):
+    """Deliver an automation run to the configured connector, honestly."""
+    from api.config.settings import get_settings
+    from automation.connectors import send, servicenow_incident_payload, splunk_hec_payload
+
+    run = _connector_run(db, body.run_id)
+    payload = (servicenow_incident_payload(run) if body.connector == "servicenow"
+               else splunk_hec_payload(run))
+    settings = get_settings()
+    config = {key: str(getattr(settings, key, "") or "") for key in _CONNECTOR_SETTINGS}
+    result = send(body.connector, payload, config=config)
+    return {"connector": body.connector, "run_id": body.run_id, **result}

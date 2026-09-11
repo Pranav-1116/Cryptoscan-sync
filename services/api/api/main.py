@@ -26,6 +26,7 @@ from api.routers import (
     analytics,
     assets,
     inventory,
+    inventory_cloud,
     scope,
     risk,
     connectors,
@@ -342,6 +343,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(export.router, prefix=prefix)
     app.include_router(assets.router, prefix=prefix)
     app.include_router(inventory.router, prefix=prefix)
+    app.include_router(inventory_cloud.router, prefix=prefix)
     app.include_router(scope.router, prefix=prefix)
     app.include_router(risk.router, prefix=prefix)
     app.include_router(connectors.router, prefix=prefix)

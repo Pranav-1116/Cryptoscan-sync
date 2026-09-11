@@ -1,13 +1,18 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
-import { apiCloudAccounts, CloudAccount } from "../lib/api.js";
+import { apiCloudAccounts, apiCloudKeys, apiCloudCollect, CloudAccount, CloudCollectResult } from "../lib/api.js";
 
 /* Cloud — connected read-only cloud accounts rendered as a provider tree
    (AWS / Azure / GCP → account → regions). Source of truth is
    GET /api/v1/cloud/accounts. Scans are strictly read-only and credentials
    stay in the vault (only a role reference is shown). The tree is empty until
-   an account is registered via onboarding — nothing is fabricated. */
+   an account is registered via onboarding — nothing is fabricated.
+
+   Below the estate tree: the cloud KMS key inventory (AWS KMS / Azure Key
+   Vault). Collection normalizes key METADATA into the same crypto-asset
+   inventory as file discovery — no key material is ever fetched or stored,
+   unknown key types are skipped with their reason, never guessed. */
 
 const PROVIDERS = ["AWS", "AZURE", "GCP"] as const;
 type Prov = (typeof PROVIDERS)[number] | "OTHER";
@@ -47,6 +52,29 @@ export default function Cloud() {
   const connected = accounts.filter((a) => a.enabled !== false).length;
 
   const toggle = (p: string) => setOpen((s) => ({ ...s, [p]: !s[p] }));
+
+  /* ── cloud KMS key inventory ─────────────────────────────────────────── */
+  const keysRes = useApi(() => apiCloudKeys(), []);
+  const [kmsRef, setKmsRef] = useState("");
+  const [collecting, setCollecting] = useState<string | null>(null);
+  const [collectResult, setCollectResult] = useState<CloudCollectResult | null>(null);
+  const [collectErr, setCollectErr] = useState<string | null>(null);
+
+  const collect = async (provider: "aws-kms" | "azure-keyvault", dryRun: boolean) => {
+    setCollecting(provider);
+    setCollectErr(null);
+    const opts = provider === "aws-kms"
+      ? { region: kmsRef.trim(), dry_run: dryRun }
+      : { vault_url: kmsRef.trim(), dry_run: dryRun };
+    const res = await apiCloudCollect(provider, opts);
+    setCollecting(null);
+    if (res.source === "live" && res.data) {
+      setCollectResult(res.data);
+      void keysRes.run();
+    } else {
+      setCollectErr(res.error || "collection failed");
+    }
+  };
 
   return (
     <>
@@ -155,6 +183,74 @@ export default function Cloud() {
           </div>
         </Panel>
       )}
+
+      <Panel title="Cloud KMS key inventory" sub="AWS KMS · Azure Key Vault — key metadata folded into the same crypto-asset inventory (read-only; no key material fetched or stored)" className="mt">
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            className="inp"
+            placeholder="AWS region or Azure vault URL (optional)"
+            value={kmsRef}
+            onChange={(e) => setKmsRef(e.target.value)}
+            style={{ flex: "1 1 260px" }}
+          />
+          <button className="btn sm" disabled={collecting !== null} onClick={() => void collect("aws-kms", true)}>
+            preview AWS KMS
+          </button>
+          <button className="btn sm primary" disabled={collecting !== null} onClick={() => void collect("aws-kms", false)}>
+            {collecting === "aws-kms" ? "Collecting…" : "Collect AWS KMS"}
+          </button>
+          <button className="btn sm primary" disabled={collecting !== null} onClick={() => void collect("azure-keyvault", false)}>
+            {collecting === "azure-keyvault" ? "Collecting…" : "Collect Azure Key Vault"}
+          </button>
+        </div>
+        {collectErr && (
+          <div style={{ color: "var(--red)", fontSize: 12.5, marginTop: 8 }}>✕ {collectErr}</div>
+        )}
+        {collectResult && (
+          <div style={{ marginTop: 10, fontSize: 12.5, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+            <Badge tone={collectResult.created ? "green" : "cyan"}>
+              {collectResult.created} new · {collectResult.upserted} upserted · {collectResult.seen} seen
+            </Badge>
+            {collectResult.truncated && <Badge tone="amber">more keys exist — bounded pass of 100</Badge>}
+            {collectResult.skipped.length > 0 && (
+              <Badge tone="amber">{collectResult.skipped.length} skipped — reasons below, never guessed</Badge>
+            )}
+            {collectResult.skipped.length > 0 && (
+              <div className="mono dim" style={{ fontSize: 11.5, width: "100%" }}>
+                {collectResult.skipped.slice(0, 4).map((s) => (
+                  <div key={s.ref}>skip {s.ref}: {s.reason}</div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div style={{ marginTop: 12 }}>
+          {(keysRes.data?.assets ?? []).length === 0 ? (
+            <div className="dim" style={{ fontSize: 13 }}>
+              {keysRes.source === "live"
+                ? "No cloud KMS keys collected yet — run a collection above (requires cloud credentials on the platform side)."
+                : "Backend offline — cloud key inventory unavailable."}
+            </div>
+          ) : (
+            <Table
+              head={["family", "bits", "purpose", "provider", "reference", "quantum-relevant", "first seen"]}
+              rows={(keysRes.data?.assets ?? []).map((k) => {
+                const extra = (k.extra ?? {}) as Record<string, string>;
+                const qrelevant = /^(RSA|ECDSA|DH|ECDH)/.test(k.algorithm || "");
+                return [
+                  <span className="mono">{k.algorithm}</span>,
+                  <span>{k.key_size ?? "—"}</span>,
+                  <span className="dim">{k.purpose ?? "—"}</span>,
+                  <Badge tone="violet">{String(extra.collector ?? "cloud")}</Badge>,
+                  <span className="mono dim" style={{ fontSize: 11.5 }}>{k.file_path}</span>,
+                  qrelevant ? <Badge tone="red">Shor-exposed</Badge> : <Badge tone="green">no</Badge>,
+                  <span className="dim">{extra.first_seen_at ? String(extra.first_seen_at).slice(0, 10) : "—"}</span>,
+                ];
+              })}
+            />
+          )}
+        </div>
+      </Panel>
 
       <Panel title="Scan policy" sub="cloud safety guarantees" className="mt">
         <div className="mono" style={{ fontSize: 12.5, display: "flex", flexDirection: "column", gap: 8 }}>

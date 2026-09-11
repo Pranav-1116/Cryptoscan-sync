@@ -6,6 +6,38 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Enterprise readiness: SSO code flow, cloud KMS inventory, ITSM/SIEM delivery
+- OIDC authorization-code flow (the enterprise redirect flavor of SSO):
+  `GET /auth/oidc/authorize` → IdP → `GET /auth/oidc/callback` — HMAC-signed
+  self-contained state carrying the nonce (no server-side session store),
+  confidential code exchange, the same RS256/issuer/audience/expiry
+  verification as the token relay, auto-provision as viewer only. Discovery
+  inherits the JWKS SSRF discipline (same host, https for https issuers).
+  Air-gap overrides: OIDC_AUTHORIZATION_URL / OIDC_TOKEN_URL.
+- Unified `GET /auth/sso/status` (public, booleans + paths) — the login
+  screen renders only the SSO options the platform actually has (OIDC,
+  SAML, LDAP); nothing is a dead button.
+- Cloud KMS key inventory: new `inventory` service — AWS KMS
+  (ListKeys/GetKeyDescription) and Azure Key Vault (KeyClient) collectors,
+  read-only, metadata-only, bounded per pass, unknown key types skipped
+  WITH their reason (never guessed into a family). Normalized rows land in
+  the SAME crypto-asset table (idempotent upsert per provider ref), so
+  cloud keys flow into the existing CBOM/roadmap/evidence surfaces.
+  Endpoints: `POST /inventory/cloud/collect` (dry-run supported),
+  `GET /inventory/cloud/assets` (crypto.manage permission).
+- ITSM/SIEM delivery of automation runs: pure payload mappers + injectable
+  sender (`automation.connectors`) — ServiceNow incident (tier→impact/
+  urgency, stable correlation_id for idempotent retries) and Splunk HEC
+  (fixed sourcetype). `GET /automation/connectors` reports configuration
+  NAMES only; `POST .../preview` builds the exact payload sending nothing;
+  `POST .../dispatch` delivers honestly (never raises into the engine).
+  Automation page gains a delivery panel; Cloud page gains the KMS
+  inventory panel with collect buttons.
+- `docs/enterprise-readiness.md` — measured capability/gap matrix
+  (identity, discovery coverage, automation delivery, ops artifacts,
+  deployment) and `docs/proposals/fab-poc.md` — a two-week, read-only,
+  fixed-scope PoC proposal for a UAE bank.
+
 ### Telecom observability & operations
 - Prometheus metrics (best-effort, DB-independent): telecom target count,
   verdicts by severity, unreachable count and scan age — rendered even

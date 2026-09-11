@@ -1443,9 +1443,10 @@ export interface ScimUser {
 }
 export interface ScimList { totalResults: number; itemsPerPage: number; Resources: ScimUser[]; }
 
-/** SSO feature flags (SAML/LDAP configured or not). */
-export const apiSsoStatus = (): Promise<ApiResult<{ saml_enabled: boolean; ldap_enabled: boolean }>> =>
-  _idReq("GET", "/api/v1/auth/saml/status");
+/** SSO feature flags (unified: OIDC authorization-code + SAML + LDAP). The
+ *  login screen renders only the options the platform actually has. */
+export const apiSsoStatus = (): Promise<ApiResult<SsoStatus>> =>
+  _idReq("GET", "/api/v1/auth/sso/status");
 
 /** SCIM directory listing (users provisioned via IdP sync). */
 export const apiScimUsers = (): Promise<ApiResult<ScimList>> =>
@@ -2654,3 +2655,67 @@ export async function downloadSupervisorPack(): Promise<void> {
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
 }
+
+/* ── SSO capabilities (login screen renders only what the platform has) ── */
+
+export interface SsoStatus {
+  oidc: { enabled: boolean; authorize_url: string | null };
+  saml_enabled: boolean;
+  ldap_enabled: boolean;
+}
+
+/* ── Cloud KMS key inventory (AWS KMS / Azure Key Vault → crypto assets) ── */
+
+export interface CloudKeyAsset {
+  id: string;
+  algorithm: string;
+  key_size: number | null;
+  purpose: string | null;
+  file_path: string;
+  extra: Record<string, unknown> | null;
+}
+export interface CloudCollectResult {
+  provider: string;
+  seen: number;
+  truncated: boolean;
+  assets: CloudKeyAsset[];
+  skipped: Array<{ ref: string; reason: string }>;
+  dry_run: boolean;
+  upserted: number;
+  created: number;
+}
+export const apiCloudKeys = (): Promise<ApiResult<{ assets: CloudKeyAsset[]; total_count: number }>> =>
+  call("/api/v1/inventory/cloud/assets");
+export const apiCloudCollect = (
+  provider: "aws-kms" | "azure-keyvault",
+  opts: { region?: string; vault_url?: string; dry_run?: boolean } = {},
+): Promise<ApiResult<CloudCollectResult>> =>
+  call("/api/v1/inventory/cloud/collect", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ provider, ...opts }),
+  });
+
+/* ── Automation → ITSM/SIEM delivery (ServiceNow incident, Splunk HEC) ──── */
+
+export interface ConnectorStatus { configured: boolean; missing: string[]; }
+export const apiConnectorsStatus = (): Promise<ApiResult<{
+  connectors: Record<string, ConnectorStatus>;
+  catalog: Record<string, { label: string; config: string[] }>;
+}>> => call("/api/v1/automation/connectors");
+export const apiAutomationConnectorPreview = (connector: string, runId: string): Promise<ApiResult<{
+  connector: string; run_id: string; payload: Record<string, unknown>;
+  delivered: boolean; note: string;
+}>> => call("/api/v1/automation/connectors/preview", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ connector, run_id: runId }),
+});
+export const apiAutomationConnectorDispatch = (connector: string, runId: string): Promise<ApiResult<{
+  connector: string; run_id: string; ok: boolean; delivered: boolean;
+  status_code: number | null; detail: string;
+}>> => call("/api/v1/automation/connectors/dispatch", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ connector, run_id: runId }),
+});
