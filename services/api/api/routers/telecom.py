@@ -138,14 +138,19 @@ def _nf_catalog() -> dict[str, dict[str, Any]]:
 def _save(registry: dict[str, Any]) -> None:
     from telecom_scanner.registry import save_registry
 
-    save_registry(registry["carriers"].values(), registry["targets"].values(), _registry_path())
+    save_registry(
+        registry["carriers"].values(), registry["targets"].values(),
+        _registry_path(), partners=registry.get("roaming_partners", {}).values(),
+    )
 
 
 @router.get("/registry")
 def telecom_registry(user: str = Depends(require_permission("findings.read"))):
     reg = _registry()
     return {"carriers": reg["carriers"], "targets": reg["targets"],
-            "counts": {"carriers": len(reg["carriers"]), "targets": len(reg["targets"])},
+            "roaming_partners": reg.get("roaming_partners", {}),
+            "counts": {"carriers": len(reg["carriers"]), "targets": len(reg["targets"]),
+                       "roaming_partners": len(reg.get("roaming_partners", {}))},
             "nf_catalog": {k: {"name": v["name"], "transport": v["transport"],
                                "plane": v["plane"]} for k, v in sorted(_nf_catalog().items())}}
 
@@ -328,3 +333,79 @@ def telecom_events(limit: int = Query(50, ge=1, le=200),
     recent = get_event_bus().recent(since_id=0, limit=500)
     events = [e for e in recent if str(e.get("type")) == "telecom.event"]
     return {"count": len(events), "events": list(reversed(events))[:limit]}
+
+# ------------------------------------------------------- roadmap + roaming
+
+class RoamingPartner(BaseModel):
+    carrier_code: str = Field(min_length=2, max_length=24)
+    partner_plmn: str = Field(min_length=5, max_length=7)
+    partner_name: str = Field(min_length=2, max_length=120)
+    country: str = Field(min_length=2, max_length=2)
+    sepp_nf_id: str = Field(default="", max_length=64)
+
+
+@router.get("/roadmap")
+def telecom_roadmap_view(user: str = Depends(require_permission("findings.read"))):
+    """Carrier-bucketed migration roadmap on the NIST IR 8547 milestones.
+
+    Families come from the verdicts' crypto inventory (leaf key, signature,
+    cipher) classified by cbom.banking.quantum_vulnerability — the same
+    buckets as the banking estate, so one migration plan covers both.
+    """
+    from telecom_scanner.roadmap import telecom_roadmap
+
+    reg = _registry()
+    snapshot = _load_snapshot()
+    rows = (snapshot or {}).get("rows") or []
+    roadmap = telecom_roadmap(rows, reg["carriers"])
+    return {"generated_at": (snapshot or {}).get("generated_at"),
+            "basis": roadmap["basis"], "rows": roadmap["rows"],
+            "summary": roadmap["summary"]}
+
+
+@router.get("/roaming")
+def telecom_roaming(user: str = Depends(require_permission("findings.read"))):
+    """Roaming partner matrix (GSMA IR.21 context, TS 33.501 obligation).
+
+    Per partner: is the inter-PLMN SBI path demonstrably protected by the
+    carrier's SEPP? Unprobed edges read as unknown — never fabricated.
+    """
+    from telecom_scanner.roaming import roaming_matrix
+
+    reg = _registry()
+    snapshot = _load_snapshot()
+    rows = (snapshot or {}).get("rows") or []
+    matrix = roaming_matrix(reg.get("roaming_partners", {}).values(), rows)
+    return {"generated_at": (snapshot or {}).get("generated_at"), **matrix}
+
+
+@router.post("/roaming-partners")
+def telecom_roaming_partner_add(partner: RoamingPartner,
+                                user: str = Depends(require_permission("telecom.manage"))):
+    from telecom_scanner.roaming import normalize_partner
+
+    reg = _registry()
+    try:
+        record = normalize_partner(partner.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if record["carrier_code"] not in reg["carriers"]:
+        raise HTTPException(status_code=422, detail=f"unknown carrier_code: {record['carrier_code']}")
+    if record["sepp_nf_id"] and record["sepp_nf_id"] not in reg["targets"]:
+        raise HTTPException(status_code=422, detail=f"unknown sepp_nf_id: {record['sepp_nf_id']}")
+    reg.setdefault("roaming_partners", {})[record["id"]] = record
+    _save(reg)
+    return {"ok": True, "partner": record,
+            "counts": {"roaming_partners": len(reg["roaming_partners"])}}
+
+
+@router.delete("/roaming-partners/{pid}")
+def telecom_roaming_partner_delete(pid: str,
+                                   user: str = Depends(require_permission("telecom.manage"))):
+    reg = _registry()
+    key = pid.strip().lower()
+    if key not in reg.get("roaming_partners", {}):
+        raise HTTPException(status_code=404, detail=f"unknown roaming partner: {pid}")
+    del reg["roaming_partners"][key]
+    _save(reg)
+    return {"ok": True, "counts": {"roaming_partners": len(reg["roaming_partners"])}}

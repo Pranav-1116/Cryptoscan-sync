@@ -159,42 +159,58 @@ def default_registry_path(base: str | Path | None = None) -> Path:
 
 
 def load_registry(path: str | Path | None = None) -> dict[str, dict[str, Any]]:
-    """{carriers: {code: carrier}, targets: {nf_id: target}} from the registry file."""
+    """Carriers, targets and roaming partners from the registry file."""
     file = Path(path) if path else default_registry_path()
+    empty = {"carriers": {}, "targets": {}, "roaming_partners": {}}
     if not file.is_file():
-        return {"carriers": {}, "targets": {}}
+        return empty
     try:
         raw = json.loads(file.read_text())
     except (OSError, json.JSONDecodeError):
-        return {"carriers": {}, "targets": {}}
-    carriers = {}
+        return empty
+    # partner validation lives in roaming (avoids a circular import)
+    from telecom_scanner.roaming import normalize_partner
+
+    carriers: dict[str, dict[str, Any]] = {}
     for record in raw.get("carriers") or []:
         try:
             carrier = normalize_carrier(record)
         except ValueError:
             continue
         carriers[carrier["code"]] = carrier
-    targets = {}
+    targets: dict[str, dict[str, Any]] = {}
     for record in raw.get("targets") or []:
         try:
             target = normalize_target(record)
         except ValueError:
             continue
         targets[target["nf_id"]] = target
-    return {"carriers": carriers, "targets": targets}
+    partners: dict[str, dict[str, Any]] = {}
+    for record in raw.get("roaming_partners") or []:
+        try:
+            partner = normalize_partner(record)
+        except ValueError:
+            continue
+        partners[partner["id"]] = partner
+    return {"carriers": carriers, "targets": targets, "roaming_partners": partners}
 
 
 def save_registry(
     carriers: Iterable[Mapping[str, Any]],
     targets: Iterable[Mapping[str, Any]],
     path: str | Path | None = None,
+    *,
+    partners: Iterable[Mapping[str, Any]] = (),
 ) -> int:
     """Persist the registry (validated); returns the total record count."""
+    from telecom_scanner.roaming import normalize_partner
+
     file = Path(path) if path else default_registry_path()
     file.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "carriers": [normalize_carrier(c) for c in carriers],
         "targets": [normalize_target(t) for t in targets],
+        "roaming_partners": [normalize_partner(p) for p in partners],
     }
     file.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    return len(payload["carriers"]) + len(payload["targets"])
+    return len(payload["carriers"]) + len(payload["targets"]) + len(payload["roaming_partners"])

@@ -173,6 +173,32 @@ def classify_target(
         severity = "ok" if not findings else "info"
     score = max(0, 100 - sum(_DEDUCTIONS.get(f["severity"], 0) for f in findings))
     cert = _leaf_cert(probe or {})
+
+    # Crypto facts for the migration planner (cbom/supervisor.py): the leaf
+    # key and signature algorithm plus the negotiated cipher — the families
+    # an IR 8547 roadmap is built from. Empty unless TLS was actually
+    # observed; an unprobed target contributes nothing it did not show.
+    crypto_inventory: dict[str, str] = {}
+    if status == "TLS_OK":
+        sig_raw = (_norm(cert.get("signature_algorithm"))
+                   or _norm(cert.get("sig_alg"))
+                   or _norm(cert.get("signature_hash_algorithm"))).upper()
+        key_type = _norm(cert.get("key_type") or cert.get("public_key_type")
+                         or cert.get("algorithm")).upper()
+        try:
+            key_bits = int(cert.get("key_size") or cert.get("key_bits")
+                           or cert.get("public_key_size"))
+        except (TypeError, ValueError):
+            key_bits = None
+        if key_type and key_bits:
+            crypto_inventory["cert_key"] = f"{key_type}-{key_bits}"
+        if sig_raw:
+            crypto_inventory["cert_sig"] = sig_raw.replace("WITHTSA", "WITH").replace("ENCRYPTION", "")
+        cipher_suite = _norm(probe.get("crypto", {}).get("cipher_suite")
+                             or probe.get("cipher_suite"))
+        if cipher_suite:
+            crypto_inventory["cipher"] = cipher_suite
+
     fingerprint = "|".join([
         status,
         ",".join(sorted(f["code"] for f in findings if f["severity"] != "info")),
@@ -189,6 +215,7 @@ def classify_target(
         "severity": severity,
         "findings": findings,
         "pqc_kex": sorted(set(pqc_groups)),
+        "crypto_inventory": crypto_inventory,
         "score": score,
         "cert_not_after": _norm(cert.get("not_after")) or None,
         "probed_at": (_norm((probe.get("metadata") or {}).get("probed_at"))

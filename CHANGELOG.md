@@ -6,6 +6,21 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Telecom roadmap linkage & roaming matrix
+- The telecom estate joins the SAME NIST IR 8547 migration plan: verdict
+  crypto inventory (leaf key, signature, cipher) feeds the family taxonomy
+  through cbom.banking.quantum_vulnerability — SHA1-with-RSA and 3DES land
+  in `immediate`, RSA-2048 in `by-2030`, RSA-3072/EC-256 in `by-2035`;
+  per carrier, and foldable into the group legal-entity view.
+- `GET /telecom/roadmap` (carrier-bucketed); `GET /banking/group/roadmap
+  ?include_telecom=true` merges carrier families into the supervisors'
+  one artifact (bank IT + carrier NFs per legal entity).
+- Roaming partner registry (GSMA IR.21 context) + `GET /telecom/roaming`
+  matrix: per partner PLMN, is the inter-PLMN SBI demonstrably protected
+  by the carrier's SEPP (TS 33.501)? protected / unprotected / unknown —
+  unprobed edges are never fabricated. Frontend: roadmap tiles + roaming
+  matrix panel on /telecom.
+
 ### Telecom realtime crypto scanner (international carrier estates)
 - New `telecom_scanner` service: carrier registry (PLMN per ITU-T E.212,
   country, legal-entity link into the group registry) over 3GPP network

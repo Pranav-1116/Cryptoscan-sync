@@ -248,3 +248,102 @@ def test_rollup_empty_is_honest():
     assert roll["totals"]["targets"] == 0 and roll["totals"]["avg_score"] == 0
     assert roll["roaming_edges"] == {"sepp_targets": 0, "protected": 0, "unprotected": 0}
     assert roll["international"] == {} and roll["worst_targets"] == []
+
+
+# ---------------------------------------------------------------- roadmap
+
+from telecom_scanner.roadmap import (
+    carrier_entity_families,
+    carrier_families,
+    telecom_roadmap,
+)
+from telecom_scanner.roaming import normalize_partner, roaming_matrix
+
+
+def _probe_with(key_type, key_bits, sig, cipher):
+    return {
+        "status": "OK",
+        "crypto": {"tls_version": "TLSv1.2", "cipher_suite": cipher},
+        "certificates": [{"expiry_status": "VALID", "days_until_expiry": 100,
+                          "is_self_signed": False, "key_size": key_bits,
+                          "key_type": key_type, "signature_algorithm": sig,
+                          "not_after": "2027-01-01T00:00:00+00:00"}],
+        "chain_validation": {"is_valid": True, "errors": []},
+    }
+
+
+def test_carrier_families_flag_only_what_the_classification_flags():
+    legacy = classify_target(_target(nf_id="nf-a"), _probe_with("rsa", 2048, "sha1WithRSAEncryption", "TLS_RSA_WITH_3DES_EDE_CBC_SHA"))
+    modern = classify_target(_target(nf_id="nf-b"), _probe_with("rsa", 3072, "sha256WithRSAEncryption", "TLS_AES_256_GCM_SHA384"))
+    down = classify_target(_target(nf_id="nf-c"), {"status": "TIMEOUT"})
+    families = carrier_families([legacy, modern, down])
+    assert families["de-telekom"] == [("3DES-112", 1), ("RSA-2048", 1), ("RSA-3072", 1), ("SHA1WITHRSA-2048", 1)]
+    # unprobed targets contribute nothing
+    assert carrier_families([down]) == {}
+
+
+def test_telecom_roadmap_buckets_per_ir_8547():
+    legacy = classify_target(_target(nf_id="nf-a"), _probe_with("rsa", 2048, "sha1WithRSAEncryption", "TLS_RSA_WITH_3DES_EDE_CBC_SHA"))
+    modern = classify_target(_target(nf_id="nf-b"), _probe_with("rsa", 3072, "sha256WithRSAEncryption", "TLS_AES_256_GCM_SHA384"))
+    roadmap = telecom_roadmap([legacy, modern], {"de-telekom": _CARRIER})
+    by_family = {row["family"]: row["bucket"] for row in roadmap["rows"]}
+    assert by_family == {"3DES-112": "immediate", "SHA1WITHRSA-2048": "immediate",
+                         "RSA-2048": "by-2030", "RSA-3072": "by-2035"}
+    assert roadmap["basis"].startswith("NIST IR 8547")
+    assert roadmap["summary"]["entities_affected"] == ["de-telekom"]
+
+
+def test_entity_fold_links_carriers_into_the_group_plan():
+    fr = normalize_carrier({"code": "fr-orange", "name": "Orange", "country": "fr",
+                            "plmn": "208-01", "legal_entity": "dt-group"})
+    carriers = {"de-telekom": _CARRIER, "fr-orange": fr}
+    v1 = classify_target(_target(nf_id="nf-a"), _probe_with("rsa", 2048, "sha256WithRSAEncryption", "TLS_AES_128_GCM_SHA256"))
+    v2 = classify_target(_target(nf_id="nf-b", carrier="fr-orange"), _probe_with("rsa", 1024, "sha256WithRSAEncryption", "TLS_AES_128_GCM_SHA256"))
+    folded = carrier_entity_families([v1, v2], carriers)
+    assert folded["dt-group"] == [("RSA-1024", 1), ("RSA-2048", 1)]
+
+
+# ---------------------------------------------------------------- roaming
+
+def test_partner_normalization():
+    p = normalize_partner({"carrier_code": "de-telekom", "partner_plmn": "208-01",
+                           "partner_name": "Orange France", "country": "FR"})
+    assert p["id"] == "de-telekom:208-01" and p["partner_plmn"] == "208-01"
+    for bad in ({"carrier_code": "x", "partner_plmn": "208-01", "partner_name": "N", "country": "fr"},
+                {"carrier_code": "de-telekom", "partner_plmn": "26-1", "partner_name": "Ok Name", "country": "fr"},
+                {"carrier_code": "de-telekom", "partner_plmn": "208-01", "partner_name": "Ok Name", "country": "fra"}):
+        with pytest.raises(ValueError):
+            normalize_partner(bad)
+
+
+def test_roaming_matrix_status_priority_and_honest_unknown():
+    p_protected = normalize_partner({"carrier_code": "de-telekom", "partner_plmn": "208-01",
+                                     "partner_name": "Orange", "country": "fr"})
+    # a partner whose carrier has NO probed SEPP — must read unknown, never protected
+    p_unknown = normalize_partner({"carrier_code": "fr-orange", "partner_plmn": "262-02",
+                                   "partner_name": "Vodafone DE", "country": "de"})
+    sepp_ok = classify_target(_target(nf_id="sepp-1", nf_type="sepp"), _probe())
+    rows = roaming_matrix([p_unknown, p_protected], [sepp_ok])
+    assert [(r["partner_name"], r["status"]) for r in rows["rows"]] == [
+        ("Vodafone DE", "unknown"),   # no SEPP verdict for fr-orange — never fabricated
+        ("Orange", "protected"),
+    ]
+    assert rows["summary"] == {"partners": 2, "protected": 1, "unprotected": 0, "unknown": 1}
+
+    sepp_bad = classify_target(_target(nf_id="sepp-1", nf_type="sepp"), {"status": "TLS_ERROR"})
+    rows = roaming_matrix([p_protected, p_unknown], [sepp_bad])
+    assert rows["rows"][0]["status"] == "unprotected"      # worst first
+    assert rows["rows"][0]["severity"] == "critical"
+    assert "33.501" in rows["rows"][0]["ref"]
+
+
+def test_roaming_matrix_uses_explicit_sepp_mapping_first():
+    partner = normalize_partner({"carrier_code": "de-telekom", "partner_plmn": "208-01",
+                                 "partner_name": "Orange", "country": "fr",
+                                 "sepp_nf_id": "sepp-fr"})
+    sepp_fr = classify_target(_target(nf_id="sepp-fr", nf_type="sepp"), _probe())
+    sepp_generic = classify_target(_target(nf_id="sepp-9", nf_type="sepp"), {"status": "TLS_ERROR"})
+    rows = roaming_matrix([partner], [sepp_fr, sepp_generic])
+    # the explicit mapping wins over the carrier's first SEPP
+    assert rows["rows"][0]["status"] == "protected"
+    assert rows["rows"][0]["sepp_nf_id"] == "sepp-fr"

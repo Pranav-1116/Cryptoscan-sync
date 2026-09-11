@@ -2594,6 +2594,19 @@ export const apiTelecomCarrierAdd = (c: { code: string; name: string; country: s
   call("/api/v1/telecom/carriers", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(c) });
 export const apiTelecomTargetAdd = (t: { nf_id: string; nf_type: string; endpoint: string; carrier_code?: string; environment?: string }): Promise<ApiResult<{ ok: boolean }>> =>
   call("/api/v1/telecom/targets", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(t) });
+export interface TelecomRoamingRow {
+  id: string; carrier_code: string; partner_plmn: string; partner_name: string;
+  country: string; sepp_nf_id?: string | null; status: string; severity: string;
+  sepp_status?: string | null; ref: string;
+}
+export const apiTelecomRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>
+  call("/api/v1/telecom/roadmap");
+export const apiTelecomRoaming = (): Promise<ApiResult<{ generated_at: string | null;
+  rows: TelecomRoamingRow[]; summary: { partners: number; protected: number; unprotected: number; unknown: number } }>> =>
+  call("/api/v1/telecom/roaming");
+export const apiTelecomPartnerAdd = (p: { carrier_code: string; partner_plmn: string; partner_name: string; country: string; sepp_nf_id?: string }): Promise<ApiResult<{ ok: boolean }>> =>
+  call("/api/v1/telecom/roaming-partners", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+
 export const apiTelecomScan = (only: string[] = [], timeout = 4.0): Promise<ApiResult<{ scanned: number; events: Array<{ kind: string; severity: string; message: string }>; rollup: TelecomRollup }>> =>
   call("/api/v1/telecom/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ only, timeout }) });
 

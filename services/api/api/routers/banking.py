@@ -902,6 +902,7 @@ def banking_group_dora_register(
 @router.get("/group/roadmap")
 def banking_group_roadmap(
     format: str = Query("json", pattern="^(json|csv)$"),
+    include_telecom: bool = Query(False, description="fold carrier-estate families (telecom registry + latest snapshot) into the entity roadmap"),
     principal: str = Depends(require_permission("supervision.read")),
     db: Session = Depends(get_db_session),
 ):
@@ -917,9 +918,42 @@ def banking_group_roadmap(
     from cbom.supervisor import group_roadmap
 
     _registry, rollups, unassigned = _group_rollups_from_db(db)
+    telecom_note = None
+    if include_telecom:
+        # Fold the carrier estate into the SAME IR 8547 plan: carrier families
+        # (from the latest telecom snapshot) attach to their group legal entity.
+        from api.routers.telecom import _load_snapshot as _tl_snapshot
+        from telecom_scanner.roadmap import carrier_entity_families
+        from telecom_scanner.registry import default_registry_path as _tl_path
+        from telecom_scanner.registry import load_registry as _tl_load
+
+        tl = _tl_load(_tl_path())
+        tl_rows = (_tl_snapshot() or {}).get("rows") or []
+        per_entity = carrier_entity_families(tl_rows, tl["carriers"])
+        by_code = {r["entity"]["code"]: r for r in rollups}
+        for entity_code, families in per_entity.items():
+            rollup = by_code.get(entity_code)
+            if rollup is None:
+                carrier_hint = next((c for c in tl["carriers"].values()
+                                     if c.get("legal_entity") == entity_code), {})
+                rollup = {"entity": {"code": entity_code,
+                                     "name": carrier_hint.get("name") or entity_code,
+                                     "jurisdiction": carrier_hint.get("country") or "",
+                                     "lei": ""},
+                          "top_families": []}
+                rollups.append(rollup)
+                by_code[entity_code] = rollup
+            merged = dict(rollup.get("top_families") or [])
+            for family, count in families:
+                merged[family] = merged.get(family, 0) + count
+            rollup["top_families"] = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))
+        telecom_note = {"carriers_folded": len(per_entity),
+                        "snapshot_at": (_tl_snapshot() or {}).get("generated_at")}
     roadmap = group_roadmap(rollups)
     roadmap["unassigned_systems"] = unassigned
     roadmap["generated_at"] = datetime.now(timezone.utc).isoformat()
+    if telecom_note is not None:
+        roadmap["telecom"] = telecom_note
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     if format == "csv":
         buf = io.StringIO()

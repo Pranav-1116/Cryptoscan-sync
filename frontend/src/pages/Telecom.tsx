@@ -5,7 +5,8 @@ import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiTelecomPosture, apiTelecomRegistry, apiTelecomEvents,
   apiTelecomCarrierAdd, apiTelecomTargetAdd, apiTelecomScan,
-  TelecomPosture, TelecomRegistry, TelecomEventRec,
+  apiTelecomRoadmap, apiTelecomRoaming, apiTelecomPartnerAdd,
+  TelecomPosture, TelecomRegistry, TelecomEventRec, TelecomRoamingRow, GroupRoadmap,
 } from "../lib/api.js";
 
 /* Telecom — realtime crypto posture of an international carrier estate.
@@ -27,7 +28,9 @@ export default function Telecom() {
   const posture = usePollingApi(apiTelecomPosture, 15000);
   const registry = usePollingApi(apiTelecomRegistry, 30000);
   const events = usePollingApi(apiTelecomEvents, 8000);
-  useRealtimeRefresh(posture.run, registry.run, events.run);
+  const roadmap = usePollingApi(apiTelecomRoadmap, 60000);
+  const roaming = usePollingApi(apiTelecomRoaming, 20000);
+  useRealtimeRefresh(posture.run, registry.run, events.run, roadmap.run, roaming.run);
 
   const data: TelecomPosture | null = posture.data ?? null;
   const reg: TelecomRegistry | null = registry.data ?? null;
@@ -35,6 +38,16 @@ export default function Telecom() {
 
   const [carrier, setCarrier] = useState({ code: "", name: "", country: "", plmn: "", legal_entity: "" });
   const [target, setTarget] = useState({ nf_id: "", nf_type: "amf", endpoint: "", carrier_code: "" });
+  const [partner, setPartner] = useState({ carrier_code: "", partner_plmn: "", partner_name: "", country: "" });
+
+  const rmData: GroupRoadmap | null = roadmap.data ?? null;
+  const roamingRows: TelecomRoamingRow[] = roaming.data?.rows ?? [];
+
+  const addPartner = async () => {
+    const r = await apiTelecomPartnerAdd(partner);
+    if (r.source === "live") { setPartner({ carrier_code: "", partner_plmn: "", partner_name: "", country: "" }); registry.run(); roaming.run(); }
+    else setScanMsg(`partner add failed: ${r.error}`);
+  };
   const [scanning, setScanning] = useState(false);
   const [scanMsg, setScanMsg] = useState("");
 
@@ -149,6 +162,69 @@ export default function Telecom() {
               </div>
             ))}
           </div>
+        )}
+      </Panel>
+
+      {rmData && rmData.rows.length > 0 && (
+        <Panel title="Migration roadmap — carrier estate" sub={rmData.basis} frame>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+            <Stat label="Purge now" value={num(rmData.summary.instances_by_bucket.immediate)}
+              tone={num(rmData.summary.instances_by_bucket.immediate) ? "red" : "green"} />
+            <Stat label="Deprecated after 2030" value={num(rmData.summary.instances_by_bucket["by-2030"])}
+              tone={num(rmData.summary.instances_by_bucket["by-2030"]) ? "amber" : "green"} />
+            <Stat label="Disallowed after 2035" value={num(rmData.summary.instances_by_bucket["by-2035"])}
+              tone={num(rmData.summary.instances_by_bucket["by-2035"]) ? "amber" : "green"} />
+          </div>
+          {rmData.rows.map((row, i) => (
+            <div key={i} style={{ marginBottom: 3 }}>
+              <Badge tone={SEV_TONE[row.bucket === "immediate" ? "critical" : row.bucket === "by-2030" ? "medium" : "low"] || ""}>{row.bucket}</Badge>{" "}
+              <strong>{row.entity_name || row.entity_code}</strong> — {row.family} ×{row.instances} · {row.action}
+            </div>
+          ))}
+        </Panel>
+      )}
+
+      <Panel title="Roaming partners" sub="inter-PLMN SBI protection per partner (GSMA IR.21 context · TS 33.501 SEPP)" frame>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
+          <input placeholder="carrier (de-telekom)" value={partner.carrier_code} onChange={(e) => setPartner({ ...partner, carrier_code: e.target.value })}
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 150 }} />
+          <input placeholder="partner PLMN (208-01)" value={partner.partner_plmn} onChange={(e) => setPartner({ ...partner, partner_plmn: e.target.value })}
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 160 }} />
+          <input placeholder="partner name" value={partner.partner_name} onChange={(e) => setPartner({ ...partner, partner_name: e.target.value })}
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 150 }} />
+          <input placeholder="country (fr)" value={partner.country} onChange={(e) => setPartner({ ...partner, country: e.target.value })}
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 90 }} />
+          <button onClick={() => void addPartner()} disabled={!partner.carrier_code || !partner.partner_plmn || !partner.partner_name} style={{ padding: "4px 12px" }}>Add partner</button>
+        </div>
+        {roamingRows.length === 0 ? (
+          <p style={{ margin: 0, opacity: 0.6 }}>No roaming partners registered.</p>
+        ) : (
+          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Partner</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>PLMN</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Country</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Inter-PLMN SBI</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>SEPP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {roamingRows.map((row) => (
+                <tr key={row.id}>
+                  <td style={{ padding: "4px 8px" }}>{row.partner_name}</td>
+                  <td style={{ padding: "4px 8px" }}>{row.partner_plmn}</td>
+                  <td style={{ padding: "4px 8px" }}>{row.country}</td>
+                  <td style={{ padding: "4px 8px" }}>
+                    <Badge tone={row.status === "protected" ? "green" : row.status === "unprotected" ? "red" : "amber"}>
+                      {row.status}
+                    </Badge>
+                  </td>
+                  <td style={{ padding: "4px 8px" }}>{row.sepp_nf_id || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </Panel>
 
