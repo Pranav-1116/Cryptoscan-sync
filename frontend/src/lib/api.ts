@@ -2719,3 +2719,53 @@ export const apiAutomationConnectorDispatch = (connector: string, runId: string)
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify({ connector, run_id: runId }),
 });
+
+/* ── PoC exit report (audit-export/exit-report) ────────────────────────── */
+
+export interface ExitReportOpts {
+  client?: string;
+  window?: string;
+  owner?: string;
+  accepted_by?: string;
+}
+
+/** Generate the exit report. `format="json"` returns {report, hash} without
+ *  downloading; `format="md"` downloads the markdown deliverable and returns
+ *  its hash. Returns null with error in `error` on failure. */
+export async function generateExitReport(
+  format: "json" | "md",
+  opts: ExitReportOpts = {},
+): Promise<{ ok: boolean; hash?: string; error?: string }> {
+  try {
+    const params = new URLSearchParams({ format });
+    for (const [k, v] of Object.entries(opts)) {
+      if (v && v.trim()) params.set(k, v.trim());
+    }
+    const resp = await fetch(`/api/v1/audit-export/exit-report?${params.toString()}`, {
+      credentials: "include",
+      ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => ({}));
+      return { ok: false, error: String(body.detail || `HTTP ${resp.status}`) };
+    }
+    if (format === "json") {
+      const report = await resp.json();
+      return { ok: true, hash: String(report.report_hash || "") };
+    }
+    const hash = resp.headers.get("X-Report-Hash") || "";
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `poc-exit-report-${new Date().toISOString().slice(0, 10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return { ok: true, hash };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}

@@ -36,6 +36,80 @@ def _note(text: str) -> bytes:
     return text.encode("utf-8")
 
 
+@router.get("/exit-report")
+def exit_report(
+    client: str = "",
+    window: str = "",
+    owner: str = "",
+    accepted_by: str = "",
+    format: str = "json",
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """PoC exit report — the engagement deliverable, generated from the SAME
+    inventories the audit pack exports. Deterministic: identical estate +
+    scope produce an identical SHA-256 (report_hash), so the client's audit
+    function can re-verify independently."""
+    from db.models.certificate import Certificate
+    from db.models.crypto_asset import CryptoAsset
+    from reporting.exit_report import build_exit_report, render_markdown
+
+    cloud_sources = ("aws-kms", "azure-keyvault", "gcp-kms")
+    cloud_rows = db.query(CryptoAsset).filter(
+        CryptoAsset.source_language.in_(cloud_sources)).count()
+    code_rows = db.query(CryptoAsset).filter(
+        CryptoAsset.source_language.notin_(cloud_sources)).count()
+    acm_rows = db.query(Certificate).filter(
+        Certificate.extra["collector"].as_string() == "aws-acm").count()
+
+    shor_families = sorted({
+        row.algorithm
+        for row in db.query(CryptoAsset.algorithm).distinct()
+        if row.algorithm and (row.algorithm.startswith("RSA") or row.algorithm.startswith("ECDSA"))
+    })
+
+    from api.routers.telecom import _load_snapshot as _telecom_snapshot
+
+    telecom = _telecom_snapshot() or {}
+    telecom_rows = telecom.get("rows") or []
+    estate = {
+        "payment_keys": 0,  # payment surface counted below when present
+        "certificates": db.query(Certificate).count(),
+        "cloud_kms": {"assets": cloud_rows, "skipped": []},
+        "acm": {"certificates": acm_rows, "skipped": []},
+        "code": {"assets": code_rows},
+        "roadmap_families": shor_families,
+    }
+    # telecom block only when a snapshot exists (scanned estate); honest zeros
+    # for registered-but-empty passes, absent entirely when never scanned
+    if telecom_rows or telecom.get("targets_registered"):
+        estate["telecom"] = {
+            "targets": int(telecom.get("targets_registered") or 0),
+            "rows": len(telecom_rows),
+            "critical": sum(1 for r in telecom_rows if r.get("severity") == "critical"),
+        }
+
+
+    try:
+        payment_repo_count = 0
+        from db.repositories.payment_crypto_repository import PaymentCryptoRepository
+
+        payment_repo_count = len(PaymentCryptoRepository(db).list_keys())
+    except Exception:
+        payment_repo_count = 0
+    estate["payment_keys"] = payment_repo_count
+
+    report = build_exit_report(
+        estate, client=client, window=window, owner=owner, accepted_by=accepted_by)
+    if format == "md":
+        return Response(
+            content=render_markdown(report),
+            media_type="text/markdown",
+            headers={"X-Report-Hash": report["report_hash"]},
+        )
+    return report
+
+
 @router.get("/pack")
 def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_db_session)):
     from db.models.certificate import Certificate

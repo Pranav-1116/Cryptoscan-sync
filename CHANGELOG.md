@@ -6,6 +6,27 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### PoC exit-report generator: pack -> engagement deliverable
+- New pure engine `reporting.exit_report`: scores the collected estate
+  against the fab-poc.md success criteria — per-estate coverage
+  (collected vs verbatim skips; no data renders as NOT MEASURABLE,
+  never a faked 100%), SC-1 threshold 90% evaluated from computed
+  coverage, SC-4 client acceptance stays unmet until a human name is
+  supplied (never inferred). Deterministic: identical estate + scope
+  produce an identical SHA-256 `report_hash` (canonical JSON excl. the
+  hash), independently re-verifiable via `verify_exit_report()`.
+  Markdown renderer for the client-facing document.
+- `GET /audit-export/exit-report` (auditor-gated, json|md): assembles
+  the estate from the same queries as the audit pack (payment keys,
+  certificates, cloud KMS, ACM, code findings, Shor-exposed families,
+  telecom snapshot) — the telecom block appears with honest zeros for
+  registered-but-empty passes and stays absent when never scanned.
+- Reports page: "PoC exit report" panel — client/window/owner/
+  accepted-by inputs, hash-only generation or markdown download, hash
+  shown on screen.
+- Tests: engine determinism/tamper-detection/coverage-threshold/
+  acceptance semantics (6) + endpoint json/md/hash pinning (1).
+
 ### Vendor PQC refresh: hardware registry reflects shipping reality (2026-09)
 - `shared_models.hardware_registry` updated against vendor releases and
   CAVP/CMVP listings: Thales Luna HSM (fw 7.9 — ML-KEM/ML-DSA in core

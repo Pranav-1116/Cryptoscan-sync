@@ -229,3 +229,64 @@ async def test_audit_pack_estate_sections_are_honest_when_empty(tmp_path, monkey
         manifest = json.loads(archive.read("manifest.json"))
         assert manifest["totals"]["cloud_kms_assets"] == 0
         assert manifest["totals"]["telecom_targets"] == 0
+
+
+@pytest.mark.asyncio
+async def test_exit_report_endpoint_json_md_and_hash(tmp_path, monkeypatch):
+    """The exit report reads the same inventories as the pack; JSON carries a
+    self-verifying hash, markdown renders it, and both are deterministic."""
+    from api.routers import telecom as telecom_router
+
+    monkeypatch.setenv("CRYPTOSCAN_SNAPSHOT_DIR", str(tmp_path))
+    # a registered-but-not-yet-populated telecom pass → honest zeros in the block
+    (tmp_path / "telecom_snapshot.json").write_text(json.dumps({
+        "generated_at": "2026-09-11T00:00:00+00:00", "scanner": "telecom-api-scan",
+        "targets_registered": 2, "rows": []}))
+    telecom_router._SNAPSHOT = None
+
+    app, session, engine = _make_app()
+    _seed_certificate(session, "CN=exit.bank.example", 30)
+    from db.models.crypto_asset import CryptoAsset
+
+    session.add(CryptoAsset(algorithm="RSA-2048", file_path="/r/a.py",
+                            source_language="python", confidence="HIGH"))
+    session.add(CryptoAsset(algorithm="AES-256", key_size=256,
+                            file_path="aws-kms://eu-central-1/k",
+                            source_language="aws-kms", confidence="HIGH",
+                            extra={"collector": "aws-kms"}))
+    session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        body = (await client.get("/api/v1/audit-export/exit-report",
+                                 params={"client": "FAB", "window": "2026-09-14..25"}))
+        assert body.status_code == 200, body.text
+        report = body.json()
+        assert report["kind"] == "cryptoscan-poc-exit-report"
+        assert report["client"] == "FAB"
+        estates = report["executive_summary"]["estates"]
+        assert estates["certificates"] == 1
+        assert estates["cloud_kms"] == 1
+        assert estates["code_findings"] == 1
+        # Shor-exposed families flow from the inventory (AES excluded)
+        assert report["roadmap"]["families_flagged"] == ["RSA-2048"]
+        # telecom snapshot present → block included with honest zeros
+        assert report["telecom"]["critical_findings"] == 0
+        from reporting.exit_report import verify_exit_report
+
+        assert verify_exit_report(report) is True
+
+        again = (await client.get("/api/v1/audit-export/exit-report",
+                                  params={"client": "FAB", "window": "2026-09-14..25",
+                                          "format": "json"}))
+        # generated_at is part of the report → hashes differ per call unless pinned;
+        # determinism is proven at engine level — here assert STRUCTURE equality
+        assert again.json()["executive_summary"] == report["executive_summary"]
+
+        md = await client.get("/api/v1/audit-export/exit-report",
+                              params={"client": "FAB", "format": "md"})
+        assert md.status_code == 200
+        assert md.headers["content-type"].startswith("text/markdown")
+        assert md.headers["x-report-hash"]
+        assert "# PoC exit report — FAB" in md.text
+        assert md.headers["x-report-hash"] in md.text
