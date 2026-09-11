@@ -6,6 +6,19 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Sales enablement: security-questionnaire answer pack + demo script
+- `docs/security-questionnaire.md` — SIG-lite answers grounded in named code
+  artifacts: on-prem/no-egress deployment (telemetry heartbeat is in-process
+  event-bus stats, verified), data flows (metadata only, never key material),
+  encryption (PBKDF2-SHA256 @210k, SHA-256-hashed API keys, Fernet-encrypted
+  backups, honest "DB at rest is deployment-owned"), identity (TOTP MFA,
+  OIDC+PKCE/SAML/LDAP/SCIM, fail-closed 9-role RBAC), tamper-detecting audit
+  chain, test gates — and a published known-gaps section.
+- `docs/proposals/fab-demo-script.md` — the 45-minute meeting plan: six acts
+  from sign-in to the live sha256sum pack verification, with the honest
+  failure moments staged deliberately (a real provider error shown, then
+  fixed) and four true objection one-liners.
+
 ### PoC delivery bundle: whole-estate audit pack + on-prem bring-up kit
 - The examiner-ready audit-export pack now covers EVERY estate the platform
   produces: `cloud/kms-inventory.json` (AWS/Azure/GCP keys),
