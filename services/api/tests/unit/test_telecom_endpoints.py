@@ -484,3 +484,35 @@ async def test_telecom_events_drive_the_automation_bridge(app_db, monkeypatch):
         "payload": {"kind": "TELECOM_RECOVERED", "severity": "info"},
     })
     assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_telecom_metrics_in_prometheus_exposition(app_db, monkeypatch, tmp_path):
+    monkeypatch.setenv("CRYPTOSCAN_SNAPSHOT_DIR", str(tmp_path))
+    from api.routers import telecom as telecom_router
+    from fastapi.testclient import TestClient
+
+    from telecom_scanner.classify import classify_target
+    from telecom_scanner.registry import normalize_target
+
+    target = normalize_target({"nf_id": "amf-prod-01", "nf_type": "amf",
+                               "endpoint": "sba.example:443", "carrier_code": "de-telekom"})
+    down = classify_target(target, {"status": "TIMEOUT"})
+    with telecom_router._LOCK:
+        telecom_router._SNAPSHOT = {
+            "generated_at": __import__("datetime").datetime.now(
+                __import__("datetime").timezone.utc).isoformat(),
+            "targets_registered": 3,
+            "rows": [down], "state": {}, "events": [],
+        }
+    try:
+        with TestClient(create_app()) as client:
+            body = client.get("/metrics").text
+        assert "cryptoscan_telecom_targets_registered 3" in body
+        assert 'cryptoscan_telecom_targets_by_severity{severity="critical"} 1' in body
+        assert "cryptoscan_telecom_targets_unreachable 1" in body
+        age_line = [ln for ln in body.splitlines() if ln.startswith("cryptoscan_telecom_scan_age_seconds")]
+        assert age_line and int(float(age_line[0].rsplit(" ", 1)[1])) >= 0
+    finally:
+        with telecom_router._LOCK:
+            telecom_router._SNAPSHOT = None

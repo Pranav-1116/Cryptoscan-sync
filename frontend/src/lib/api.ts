@@ -2597,7 +2597,7 @@ export const apiTelecomTargetAdd = (t: { nf_id: string; nf_type: string; endpoin
 export interface TelecomRoamingRow {
   id: string; carrier_code: string; partner_plmn: string; partner_name: string;
   country: string; sepp_nf_id?: string | null; status: string; severity: string;
-  sepp_status?: string | null; ref: string;
+  sepp_status?: string | null; pqc_ready?: boolean; ref: string;
 }
 export const apiTelecomRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>
   call("/api/v1/telecom/roadmap");

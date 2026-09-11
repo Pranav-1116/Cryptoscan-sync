@@ -349,6 +349,26 @@ def test_roaming_matrix_uses_explicit_sepp_mapping_first():
     assert rows["rows"][0]["sepp_nf_id"] == "sepp-fr"
 
 
+def test_roaming_matrix_pqc_ready_follows_the_sepp_verdict():
+    partner = normalize_partner({"carrier_code": "de-telekom", "partner_plmn": "208-01",
+                                 "partner_name": "Orange", "country": "fr",
+                                 "sepp_nf_id": "sepp-fr"})
+    hybrid = _probe()
+    hybrid["crypto"]["key_exchange"] = "X25519MLKEM768"
+    pqc_sepp = classify_target(_target(nf_id="sepp-fr", nf_type="sepp"), hybrid)
+    rows = roaming_matrix([partner], [pqc_sepp])
+    assert rows["rows"][0]["pqc_ready"] is True
+
+    classic_sepp = classify_target(_target(nf_id="sepp-fr", nf_type="sepp"), _probe())
+    rows = roaming_matrix([partner], [classic_sepp])
+    assert rows["rows"][0]["pqc_ready"] is False
+
+    # no SEPP verdict at all -> not pqc_ready (never inferred)
+    rows = roaming_matrix([partner], [])
+    assert rows["rows"][0]["pqc_ready"] is False
+    assert rows["rows"][0]["status"] == "unknown"
+
+
 # ---------------------------------------------------------------- automation
 
 from telecom_scanner.automation import automation_data, automation_event_kind

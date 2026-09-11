@@ -6,6 +6,19 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Telecom observability & operations
+- Prometheus metrics (best-effort, DB-independent): telecom target count,
+  verdicts by severity, unreachable count and scan age — rendered even
+  during database outages (the moment dashboards matter most); the
+  DB-down early-return path now carries them too.
+- Roaming matrix rows carry `pqc_ready` — the partner's protecting SEPP
+  probed hybrid ML-KEM; unknown edges never infer it.
+- Operations runbook: `docs/runbooks/telecom-operations.md` (concepts,
+  bring-up, scan modes incl. operator ingest, verdict table, automation
+  playbook, regulatory artifacts, metrics + suggested alerts,
+  troubleshooting, boundaries).
+- Smoke test now covers the telecom surfaces (posture + registry).
+
 ### Telecom operations: automation linkage + per-carrier NRA packs
 - Realtime posture events now drive the EXISTING automation rules engine
   (no parallel system): TELECOM_CERT_EXPIRING → certificate_expiring (the

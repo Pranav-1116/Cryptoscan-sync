@@ -211,6 +211,7 @@ export default function Telecom() {
                 <th style={{ textAlign: "left", padding: "4px 8px" }}>Country</th>
                 <th style={{ textAlign: "left", padding: "4px 8px" }}>Inter-PLMN SBI</th>
                 <th style={{ textAlign: "left", padding: "4px 8px" }}>SEPP</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>PQC-ready</th>
               </tr>
             </thead>
             <tbody>
@@ -225,6 +226,9 @@ export default function Telecom() {
                     </Badge>
                   </td>
                   <td style={{ padding: "4px 8px" }}>{row.sepp_nf_id || "—"}</td>
+                  <td style={{ padding: "4px 8px" }}>
+                    {row.status === "unknown" ? "—" : row.pqc_ready ? "yes" : "no"}
+                  </td>
                 </tr>
               ))}
             </tbody>

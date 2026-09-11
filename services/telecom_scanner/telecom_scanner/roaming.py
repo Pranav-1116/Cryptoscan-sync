@@ -98,6 +98,7 @@ def roaming_matrix(
             "status": status,
             "severity": severity,
             "sepp_status": (sepp or {}).get("status"),
+            "pqc_ready": bool(sepp and sepp.get("pqc_kex")),
             "ref": f"{_REF_IR21}; {_REF_33501}",
         })
 

@@ -47,5 +47,7 @@ LAST=$(code_auth "$BASE/api/v1/technology-bom/assurance"); expect 200 "assurance
 LAST=$(code_auth "$BASE/api/v1/banking/overview");  expect 200 "banking overview"
 LAST=$(code_auth "$BASE/api/v1/banking/jurisdictions"); expect 200 "jurisdiction packs"
 LAST=$(code_auth "$BASE/api/v1/banking/keys");      expect 200 "key lifecycle register"
+LAST=$(code_auth "$BASE/api/v1/telecom/posture");   expect 200 "telecom posture (realtime scanner)"
+LAST=$(code_auth "$BASE/api/v1/telecom/registry");  expect 200 "telecom registry"
 
 echo "SMOKE OK — platform is serving on $BASE"
