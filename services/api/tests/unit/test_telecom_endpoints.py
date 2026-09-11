@@ -13,6 +13,7 @@ import pytest
 from api.dependencies import get_db_session
 from api.main import create_app
 from db.connection.session import Base, configure_session
+from db.models import CryptoAsset, System, SystemAsset
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
@@ -78,6 +79,14 @@ def _auth(session, roles: list[str]) -> dict[str, str]:
     return {"Authorization": f"Bearer {_mint(session, 'tel-' + roles[0], roles)}"}
 
 
+def _lei(body: str = "BANKDE123456") -> str:
+    """Valid ISO 17442 LEI for the given 18-char body (ISO 7064 MOD 97-10)."""
+    cs = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    b = body.upper().ljust(18, "X")[:18]
+    n = int("".join(str(cs.index(c)) for c in b) + "00")
+    return b + f"{98 - (n % 97):02d}"
+
+
 async def _add_carrier(client, headers):
     return await client.post("/api/v1/telecom/carriers", headers=headers, json={
         "code": "de-telekom", "name": "Deutsche Telekom", "country": "de",
@@ -115,7 +124,7 @@ async def test_carrier_and_target_registry_crud(app_db):
         reg = await client.get("/api/v1/telecom/registry", headers=_auth(session, ["readonly"]))
         assert reg.status_code == 200
         body = reg.json()
-        assert body["counts"] == {"carriers": 1, "targets": 1}
+        assert body["counts"] == {"carriers": 1, "targets": 1, "roaming_partners": 0}
         assert "amf" in body["nf_catalog"]
 
         deleted = await client.delete("/api/v1/telecom/carriers/de-telekom", headers=headers)
@@ -240,3 +249,136 @@ async def test_rbac_matrix(app_db):
 
         anonymous = await client.get("/api/v1/telecom/posture")
         assert anonymous.status_code == 401
+
+
+# ------------------------------------------------------- roadmap + roaming
+
+def _seed_snapshot(rows):
+    from api.routers import telecom as telecom_router
+
+    with telecom_router._LOCK:
+        telecom_router._SNAPSHOT = {"generated_at": "2026-09-11T04:00:00+00:00",
+                                    "rows": rows, "state": {}, "events": []}
+
+
+@pytest.mark.asyncio
+async def test_roadmap_endpoint_buckets_carrier_families(app_db):
+    session = app_db.state.test_session
+    manage = _auth(session, ["security_analyst"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        await _add_carrier(client, manage)
+        from telecom_scanner.classify import classify_target
+        from telecom_scanner.registry import normalize_target
+
+        target = normalize_target({"nf_id": "amf-prod-01", "nf_type": "amf",
+                                   "endpoint": "sba.example:443", "carrier_code": "de-telekom"})
+        probe = {"status": "OK", "crypto": {"tls_version": "TLSv1.2",
+                                            "cipher_suite": "TLS_RSA_WITH_3DES_EDE_CBC_SHA"},
+                 "certificates": [{"expiry_status": "VALID", "days_until_expiry": 100,
+                                   "is_self_signed": False, "key_size": 2048, "key_type": "rsa",
+                                   "signature_algorithm": "sha1WithRSAEncryption"}],
+                 "chain_validation": {"is_valid": True, "errors": []}}
+        _seed_snapshot([classify_target(target, probe)])
+
+        roadmap = await client.get("/api/v1/telecom/roadmap", headers=_auth(session, ["readonly"]))
+        assert roadmap.status_code == 200
+        body = roadmap.json()
+        buckets = {row["family"]: row["bucket"] for row in body["rows"]}
+        assert buckets == {"3DES-112": "immediate", "SHA1WITHRSA-2048": "immediate",
+                           "RSA-2048": "by-2030"}
+        assert body["summary"]["entities_affected"] == ["de-telekom"]
+
+
+@pytest.mark.asyncio
+async def test_roaming_partner_crud_and_matrix(app_db):
+    session = app_db.state.test_session
+    manage = _auth(session, ["security_analyst"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        await _add_carrier(client, manage)
+        await client.post("/api/v1/telecom/targets", headers=manage, json={
+            "nf_id": "sepp-01", "nf_type": "sepp", "endpoint": "roam.example:443",
+            "carrier_code": "de-telekom"})
+
+        added = await client.post("/api/v1/telecom/roaming-partners", headers=manage, json={
+            "carrier_code": "de-telekom", "partner_plmn": "208-01",
+            "partner_name": "Orange France", "country": "fr"})
+        assert added.status_code == 200, added.text
+        assert added.json()["partner"]["id"] == "de-telekom:208-01"
+
+        orphan = await client.post("/api/v1/telecom/roaming-partners", headers=manage, json={
+            "carrier_code": "ghost", "partner_plmn": "208-01",
+            "partner_name": "No Carrier", "country": "fr"})
+        assert orphan.status_code == 422
+
+        _seed_snapshot([])
+        matrix = await client.get("/api/v1/telecom/roaming", headers=_auth(session, ["readonly"]))
+        assert matrix.status_code == 200
+        body = matrix.json()
+        assert body["summary"]["partners"] == 1
+        assert body["rows"][0]["status"] == "unknown"  # no scan has run
+
+        denied = await client.post("/api/v1/telecom/roaming-partners", headers=_auth(session, ["readonly"]),
+                                   json={"carrier_code": "de-telekom", "partner_plmn": "262-02",
+                                         "partner_name": "Vodafone", "country": "de"})
+        assert denied.status_code == 403
+
+        deleted = await client.delete("/api/v1/telecom/roaming-partners/de-telekom:208-01", headers=manage)
+        assert deleted.status_code == 200
+        gone = await client.delete("/api/v1/telecom/roaming-partners/de-telekom:208-01", headers=manage)
+        assert gone.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_banking_roadmap_folds_telecom_families(app_db, tmp_path, monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_GROUP_ENTITIES", str(tmp_path / "reg.json"))
+    from telecom_scanner.classify import classify_target
+    from telecom_scanner.registry import normalize_target
+
+    # telecom side: a carrier tied to the bank's legal entity
+    target = normalize_target({"nf_id": "amf-prod-01", "nf_type": "amf",
+                               "endpoint": "sba.example:443", "carrier_code": "de-telekom"})
+    probe = {"status": "OK", "crypto": {"tls_version": "TLSv1.3",
+                                        "cipher_suite": "TLS_AES_256_GCM_SHA384"},
+             "certificates": [{"expiry_status": "VALID", "days_until_expiry": 100,
+                               "is_self_signed": False, "key_size": 2048, "key_type": "rsa",
+                               "signature_algorithm": "sha256WithRSAEncryption"}],
+             "chain_validation": {"is_valid": True, "errors": []}}
+
+    session = app_db.state.test_session
+    manage = _auth(session, ["security_analyst"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://t") as client:
+        await client.post("/api/v1/telecom/carriers", headers=manage, json={
+            "code": "de-telekom", "name": "Deutsche Telekom", "country": "de",
+            "plmn": "262-01", "legal_entity": "bank-de"})
+        _seed_snapshot([classify_target(target, probe)])
+
+        # banking side: register the entity + one system with RSA-2048
+        sup = _auth(app_db.state.test_session, ["supervisor"])
+        created = await client.post("/api/v1/banking/group/entities", headers=sup,
+                                    json={"code": "bank-de", "name": "Bank DE",
+                                          "jurisdiction": "de", "lei": _lei()})
+        assert created.status_code in (200, 201), created.text
+        s = app_db.state.test_session
+        s.add(CryptoAsset(id="ca-rsa", algorithm="RSA", file_path="src/Pay.java",
+                          purpose="key_exchange", key_size=2048, confidence=1.0))
+        s.add(System(id="sys-bank", name="core-banking"))
+        s.add(SystemAsset(system_id="sys-bank", asset_id="ca-rsa"))
+        s.commit()
+        assigned = await client.put("/api/v1/banking/group/systems/sys-bank/entity",
+                                    headers=sup, json={"entity_code": "bank-de"})
+        assert assigned.status_code == 200
+
+        merged = await client.get("/api/v1/banking/group/roadmap?include_telecom=true", headers=sup)
+        assert merged.status_code == 200
+        body = merged.json()
+        assert body["telecom"]["carriers_folded"] == 1
+        by_family = {}
+        for row in body["rows"]:
+            if row["entity_code"] == "bank-de":
+                by_family[row["family"]] = row["bucket"]
+        # bank asset + telecom NF land in ONE plan for the SAME entity
+        assert by_family.get("RSA-2048") == "by-2030"
+        assert body["summary"]["instances_by_bucket"]["by-2030"] >= 2
+
+        plain = await client.get("/api/v1/banking/group/roadmap", headers=sup)
+        assert "telecom" not in plain.json()
