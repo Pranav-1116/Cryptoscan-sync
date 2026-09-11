@@ -270,9 +270,11 @@ export default function Automation() {
       {/* ITSM / SIEM delivery */}
       <Panel title="ITSM / SIEM delivery" sub="push an automation run to ServiceNow (incident) or Splunk HEC (event) — preview builds the exact payload, nothing is sent until you dispatch" className="mt">
         <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <select className="inp" value={connector} onChange={(e) => setConnector(e.target.value)} style={{ width: 150 }}>
-            <option value="servicenow">ServiceNow</option>
-            <option value="splunk">Splunk HEC</option>
+          <select className="inp" value={connector} onChange={(e) => setConnector(e.target.value)} style={{ width: 170 }}>
+            {(Object.keys(connRes.data?.catalog ?? {}).length
+              ? Object.keys(connRes.data?.catalog ?? {})
+              : ["servicenow", "splunk", "jira", "sentinel"]
+            ).map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
           <input
             className="inp"

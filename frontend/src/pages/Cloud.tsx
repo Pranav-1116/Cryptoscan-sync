@@ -60,12 +60,14 @@ export default function Cloud() {
   const [collectResult, setCollectResult] = useState<CloudCollectResult | null>(null);
   const [collectErr, setCollectErr] = useState<string | null>(null);
 
-  const collect = async (provider: "aws-kms" | "azure-keyvault", dryRun: boolean) => {
+  const collect = async (provider: "aws-kms" | "azure-keyvault" | "gcp-kms" | "aws-acm", dryRun: boolean) => {
     setCollecting(provider);
     setCollectErr(null);
-    const opts = provider === "aws-kms"
+    const opts = provider === "aws-kms" || provider === "aws-acm"
       ? { region: kmsRef.trim(), dry_run: dryRun }
-      : { vault_url: kmsRef.trim(), dry_run: dryRun };
+      : provider === "gcp-kms"
+        ? { project: kmsRef.trim(), dry_run: dryRun }
+        : { vault_url: kmsRef.trim(), dry_run: dryRun };
     const res = await apiCloudCollect(provider, opts);
     setCollecting(null);
     if (res.source === "live" && res.data) {
@@ -184,11 +186,11 @@ export default function Cloud() {
         </Panel>
       )}
 
-      <Panel title="Cloud KMS key inventory" sub="AWS KMS · Azure Key Vault — key metadata folded into the same crypto-asset inventory (read-only; no key material fetched or stored)" className="mt">
+      <Panel title="Cloud KMS key inventory" sub="AWS KMS · Azure Key Vault · GCP KMS keys + AWS ACM certificates — metadata folded into the same inventory (read-only; no key material fetched or stored)" className="mt">
         <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
           <input
             className="inp"
-            placeholder="AWS region or Azure vault URL (optional)"
+            placeholder="AWS region · Azure vault URL · GCP project (optional)"
             value={kmsRef}
             onChange={(e) => setKmsRef(e.target.value)}
             style={{ flex: "1 1 260px" }}
@@ -201,6 +203,12 @@ export default function Cloud() {
           </button>
           <button className="btn sm primary" disabled={collecting !== null} onClick={() => void collect("azure-keyvault", false)}>
             {collecting === "azure-keyvault" ? "Collecting…" : "Collect Azure Key Vault"}
+          </button>
+          <button className="btn sm primary" disabled={collecting !== null} onClick={() => void collect("gcp-kms", false)}>
+            {collecting === "gcp-kms" ? "Collecting…" : "Collect GCP KMS"}
+          </button>
+          <button className="btn sm primary" disabled={collecting !== null} onClick={() => void collect("aws-acm", false)}>
+            {collecting === "aws-acm" ? "Collecting…" : "Collect AWS ACM certs"}
           </button>
         </div>
         {collectErr && (

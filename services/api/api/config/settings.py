@@ -65,6 +65,12 @@ class APISettings(BaseSettings):
     SERVICENOW_PASSWORD: str = ""
     SPLUNK_HEC_URL: str = ""
     SPLUNK_HEC_TOKEN: str = ""
+    JIRA_BASE_URL: str = ""
+    JIRA_USER_EMAIL: str = ""
+    JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEY: str = ""
+    SENTINEL_WORKSPACE_ID: str = ""
+    SENTINEL_SHARED_KEY: str = ""
 
     # SAML 2.0 SSO (SP side, bring-your-own-IdP): off until SAML_IDP_ENTITY_ID
     # and the IdP signing certificate are set. Certificate is PEM, either inline

@@ -6,6 +6,29 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Enterprise breadth: GCP/ACM collectors, OIDC PKCE, Jira/Sentinel delivery
+- Cloud collectors extended on the same adapter pattern: **GCP Cloud KMS**
+  (symmetric/HMAC/RSA-PSS+PKCS1+OAEP/EC algorithm table, honest skips,
+  limit+1 truncation so "more keys exist" is known, not guessed) and
+  **AWS ACM certificates** (list->describe->PEM; the stored fingerprint is
+  the REAL SHA-256 of the certificate DER — pending-validation certs are
+  skipped with their reason). ACM rows land in the shared certificates
+  table (fingerprint-unique), so renewal workflow and expiry surfaces
+  apply to cloud-issued certs too.
+- OIDC **PKCE S256** (RFC 7636): automatic for public clients (no client
+  secret configured). The verifier rides a callback-path-scoped HttpOnly
+  cookie — never the front-channel state, which the IdP and browser can
+  see — and the callback fails closed without it. Confidential clients
+  unchanged (secret auth, no PKCE).
+- Two more ITSM/SIEM connectors: **Atlassian Jira** (REST v3 issue, ADF
+  description, tier-to-priority) and **Microsoft Sentinel** (Log Analytics
+  Data Collector API with the documented SharedKey HMAC signature — the
+  string-to-sign is pure and unit-tested). /automation/connectors status,
+  preview and dispatch all speak four connectors now; the Automation page
+  derives its connector list from the live catalog.
+- Schema unchanged (583 paths / 642 ops — all extensions are inside
+  existing endpoints). docs/enterprise-readiness.md matrix updated.
+
 ### Enterprise readiness: SSO code flow, cloud KMS inventory, ITSM/SIEM delivery
 - OIDC authorization-code flow (the enterprise redirect flavor of SSO):
   `GET /auth/oidc/authorize` → IdP → `GET /auth/oidc/callback` — HMAC-signed

@@ -306,11 +306,13 @@ def schedule_preview(body: AssetsBody, user: str = Depends(get_current_user)):
 _CONNECTOR_SETTINGS = (
     "SERVICENOW_INSTANCE_URL", "SERVICENOW_USER", "SERVICENOW_PASSWORD",
     "SPLUNK_HEC_URL", "SPLUNK_HEC_TOKEN",
+    "JIRA_BASE_URL", "JIRA_USER_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY",
+    "SENTINEL_WORKSPACE_ID", "SENTINEL_SHARED_KEY",
 )
 
 
 class ConnectorBody(BaseModel):
-    connector: str = Field(..., pattern="^(servicenow|splunk)$")
+    connector: str = Field(..., pattern="^(servicenow|splunk|jira|sentinel)$")
     run_id: str = Field(..., min_length=1)
 
 
@@ -333,16 +335,28 @@ def _connector_run(db: Session, run_id: str) -> dict:
     return row.to_dict()
 
 
+def _connector_payload(connector: str, run: dict) -> dict:
+    from automation.connectors import (
+        jira_issue_payload, servicenow_incident_payload, sentinel_event_payload,
+        splunk_hec_payload,
+    )
+
+    if connector == "servicenow":
+        return servicenow_incident_payload(run)
+    if connector == "jira":
+        return jira_issue_payload(run)
+    if connector == "sentinel":
+        return sentinel_event_payload(run)
+    return splunk_hec_payload(run)
+
+
 @router.post("/connectors/preview")
 def connector_preview(body: ConnectorBody,
                       user: str = Depends(require_roles(*_ADMINS)),
                       db: Session = Depends(get_db_session)):
     """Build the exact payload that WOULD be delivered — nothing is sent."""
-    from automation.connectors import servicenow_incident_payload, splunk_hec_payload
-
     run = _connector_run(db, body.run_id)
-    payload = (servicenow_incident_payload(run) if body.connector == "servicenow"
-               else splunk_hec_payload(run))
+    payload = _connector_payload(body.connector, run)
     return {"connector": body.connector, "run_id": body.run_id,
             "payload": payload, "delivered": False,
             "note": "preview only — nothing was sent"}
@@ -354,11 +368,10 @@ def connector_dispatch(body: ConnectorBody,
                        db: Session = Depends(get_db_session)):
     """Deliver an automation run to the configured connector, honestly."""
     from api.config.settings import get_settings
-    from automation.connectors import send, servicenow_incident_payload, splunk_hec_payload
+    from automation.connectors import send
 
     run = _connector_run(db, body.run_id)
-    payload = (servicenow_incident_payload(run) if body.connector == "servicenow"
-               else splunk_hec_payload(run))
+    payload = _connector_payload(body.connector, run)
     settings = get_settings()
     config = {key: str(getattr(settings, key, "") or "") for key in _CONNECTOR_SETTINGS}
     result = send(body.connector, payload, config=config)

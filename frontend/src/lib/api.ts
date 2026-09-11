@@ -2687,8 +2687,8 @@ export interface CloudCollectResult {
 export const apiCloudKeys = (): Promise<ApiResult<{ assets: CloudKeyAsset[]; total_count: number }>> =>
   call("/api/v1/inventory/cloud/assets");
 export const apiCloudCollect = (
-  provider: "aws-kms" | "azure-keyvault",
-  opts: { region?: string; vault_url?: string; dry_run?: boolean } = {},
+  provider: "aws-kms" | "azure-keyvault" | "gcp-kms" | "aws-acm",
+  opts: { region?: string; vault_url?: string; project?: string; dry_run?: boolean } = {},
 ): Promise<ApiResult<CloudCollectResult>> =>
   call("/api/v1/inventory/cloud/collect", {
     method: "POST",

@@ -322,28 +322,51 @@ def discover_oidc_endpoints(issuer: str, *, timeout: float = 5.0, fetch=None) ->
 
 
 def make_authorize_url(authorization_endpoint: str, *, client_id: str,
-                       redirect_uri: str, scope: str, state: str, nonce: str) -> str:
+                       redirect_uri: str, scope: str, state: str, nonce: str,
+                       code_challenge: str = "") -> str:
     from urllib.parse import urlencode
 
-    params = urlencode({
+    params = {
         "response_type": "code",
         "client_id": client_id,
         "redirect_uri": redirect_uri,
         "scope": scope or "openid",
         "state": state,
         "nonce": nonce,
-    })
+    }
+    if code_challenge:
+        # RFC 7636 PKCE, S256 — used whenever no client secret is configured
+        # (public client); the verifier itself never travels the front channel.
+        params["code_challenge"] = code_challenge
+        params["code_challenge_method"] = "S256"
+    params = urlencode(params)
     separator = "&" if "?" in authorization_endpoint else "?"
     return f"{authorization_endpoint}{separator}{params}"
 
 
+def make_pkce() -> tuple[str, str]:
+    """RFC 7636 PKCE pair: (code_verifier, S256 code_challenge).
+
+    Verifier is 64 base64url characters (within the required 43..128);
+    challenge is base64url(SHA256(verifier)) with no padding.
+    """
+    import hashlib
+    import secrets as _secrets
+
+    verifier = _b64url_encode(_secrets.token_bytes(48))
+    challenge = _b64url_encode(hashlib.sha256(verifier.encode("ascii")).digest())
+    return verifier, challenge
+
+
 def exchange_code(token_endpoint: str, *, code: str, client_id: str, redirect_uri: str,
-                  client_secret: str = "", timeout: float = 5.0, poster=None) -> dict[str, Any]:
+                  client_secret: str = "", timeout: float = 5.0, poster=None,
+                  code_verifier: str = "") -> dict[str, Any]:
     """Confidential-client code exchange (RFC 6749 §4.1.3).
 
     Returns the raw token response; the caller verifies the contained
     id_token. When no client secret is configured the parameter is simply
-    omitted (public client) — honest, not silently substituted.
+    omitted (public client) — honest, not silently substituted. A PKCE
+    code_verifier is included when provided (RFC 7636 §4.5).
     """
     from urllib.parse import urlencode
 
@@ -355,6 +378,8 @@ def exchange_code(token_endpoint: str, *, code: str, client_id: str, redirect_ur
     }
     if client_secret:
         form["client_secret"] = client_secret
+    if code_verifier:
+        form["code_verifier"] = code_verifier
     poster_fn = poster or _default_post
     try:
         raw = poster_fn(token_endpoint, urlencode(form).encode("utf-8"), timeout)

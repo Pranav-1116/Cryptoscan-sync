@@ -14,14 +14,13 @@ built (needs real infrastructure or a decision, never stubbed).
 | RBAC | ✅ | 9 roles (8-role spec catalog + read-only supervisor), permission matrix, fail-closed `require_permission` |
 | OIDC SSO (token relay) | ✅ | `POST /auth/oidc` — verifies IdP RS256 id_tokens (JWKS/discovery/air-gap file), issuer+audience+exp, real `cryptography` math |
 | OIDC SSO (authorization code) | ✅ | `GET /auth/oidc/authorize` → IdP → `GET /auth/oidc/callback` — HMAC-signed state carrying the nonce, confidential code exchange, same verification rules, auto-provision as viewer only |
+| OIDC PKCE (public clients) | ✅ | RFC 7636 S256 — automatic when no client secret is configured; verifier rides a callback-scoped HttpOnly cookie (never the front-channel state), callback fails closed without it |
 | SAML 2.0 SP | ✅ | metadata / AuthnRequest / ACS with enveloped-signature verification + InResponseTo CSRF binding; roles stay admin-managed |
 | LDAP/AD login | ✅ | bind + group→role map (explicit JSON map; directory can never mint a superadmin) |
 | SCIM 2.0 provisioning | ✅ | `/scim/v2/Users` — directory sync cannot mint a superadmin |
 | Auditor role & audit export | ✅ | read-only `auditor` role; `GET /audit-export/pack` — examiner-ready ZIP, deterministic JSON, SHA-256 manifest |
 | Hash-chained audit trail | ✅ | every auth/admin action recorded, chain-verifiable |
 | API keys | ✅ | scoped keys for machine callers (scanner/worker) |
-| ⚠️ OIDC PKCE (public clients) | ⚠️ | the code flow assumes a confidential client (client_secret); PKCE S256 is the next hardening step for pure-SPA deployments |
-| ❌ Certificate-pin the IdP JWKS rotation | ❌ | JWKS TTL cache exists; long-term pinning policy is a deployment decision |
 
 ## 2. Discovery & inventory coverage
 
@@ -31,10 +30,11 @@ built (needs real infrastructure or a decision, never stubbed).
 | CBOM generation | ✅ | CycloneDX-style CBOM, versioned + fingerprinted |
 | Cloud KMS inventory (AWS KMS) | ✅ | ListKeys/GetKeyDescription → same crypto-asset table; unknown KeySpecs skipped with reason; read-only, no key material |
 | Cloud KMS inventory (Azure Key Vault) | ✅ | key metadata via KeyClient; RSA size from modulus when absent; disabled keys still inventoried |
+| AWS ACM certificate inventory | ✅ | list→describe→PEM, fingerprint is the REAL SHA-256 of the DER (never an identifier); pending-validation certs skipped with reason; rows feed the renewal workflow-ready certificate table |
 | Telecom network scanner | ✅ | 5GC/roaming/EPC/IMS verdict engine, SEPP PQC readiness, operator ingest for closed networks |
 | Payment HSM | ✅ | PQC-capable HSM matching, ceremonies, dual custody |
 | ⚠️ Code-repository scanning depth | ⚠️ | dedup asset store + evidence links exist; deep monorepo/SAST-grade crypto pattern search is roadmap |
-| ❌ GCP Cloud KMS / AWS ACM / ACM PCA collectors | ❌ | same adapter pattern as AWS/Azure (a day each), not yet built |
+| GCP Cloud KMS inventory | ✅ | CryptoKey listing → same crypto-asset table; algorithm table covers symmetric/HMAC/RSA(PSS,PKCS1,OAEP)/EC; unknown algorithms skipped with reason |
 | ❌ Database TDE / mainframe (RACF, ICSF) discovery | ❌ | needs customer-environment adapters; never faked from config files |
 
 ## 3. Automation & delivery
@@ -47,7 +47,9 @@ built (needs real infrastructure or a decision, never stubbed).
 | ServiceNow delivery | ✅ | incident per automation run — impact/urgency from tier, stable `correlation_id` (idempotent on retries), preview endpoint builds the exact payload before anything is sent |
 | Splunk HEC delivery | ✅ | one event per run, fixed `sourcetype=cryptoscan:automation`; HEC token never leaves the process — status endpoints report configuration NAMES only |
 | Connector SDK | ✅ | registry + validation framework (`/connectors/sdk`) with built-ins |
-| ❌ Jira / Sentinel / Qualys connectors | ❌ | same pure-mapper + injectable-sender pattern as ServiceNow/Splunk; built on demand |
+| Jira delivery | ✅ | issue per run via REST v3 — Atlassian Document Format description, tier→priority ladder, labels carry the event kind |
+| Microsoft Sentinel delivery | ✅ | Log Analytics Data Collector API with the documented SharedKey HMAC signature (pure, unit-tested string-to-sign); records flattened for ingestion |
+| ❌ Qualys / ServiceNow VR / Jira Server (on-prem) connectors | ❌ | same pure-mapper + injectable-sender pattern; built on demand |
 
 ## 4. Operations & compliance artifacts
 

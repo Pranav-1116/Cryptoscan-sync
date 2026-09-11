@@ -94,7 +94,7 @@ async def test_connectors_status_reports_names_only(app_db):
     assert body["connectors"]["servicenow"]["configured"] is False
     assert "SERVICENOW_INSTANCE_URL" in body["connectors"]["servicenow"]["missing"]
     assert body["connectors"]["splunk"]["configured"] is False
-    assert set(body["catalog"]) == {"servicenow", "splunk"}
+    assert set(body["catalog"]) == {"servicenow", "splunk", "jira", "sentinel"}
     # no configured value ever appears in the response
     assert "pw" not in str(body)
 

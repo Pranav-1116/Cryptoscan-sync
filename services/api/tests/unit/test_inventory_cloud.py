@@ -173,5 +173,113 @@ async def test_collect_rejects_unknown_provider(app_db, _collector):
     headers = _auth(session, ["ciso"])
     async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
         response = await client.post("/api/v1/inventory/cloud/collect",
-                                     json={"provider": "gcp-kms"}, headers=headers)
+                                     json={"provider": "ibm-cloud-hsm"}, headers=headers)
         assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_collect_acm_upserts_certificate_inventory(app_db, monkeypatch):
+    """ACM certificates land in the shared certificates table with the real
+    SHA-256 fingerprint (generated locally here — a throwaway test key)."""
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+    from datetime import datetime, timedelta, timezone as tz
+
+    from inventory import cloud_kms
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    now = datetime.now(tz.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "api.bank.example")]))
+        .issuer_name(x509.Name([x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Bank CA")]))
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1))
+        .not_valid_after(now + timedelta(days=90))
+        .sign(key, hashes.SHA256())
+    )
+    fingerprint = cert.fingerprint(hashes.SHA256()).hex()
+
+    def fake_collect(client=None, *, region="", limit=100):
+        return {
+            "provider": "aws-acm",
+            "certificates": [{
+                "fingerprint_sha256": fingerprint,
+                "subject": "CN=api.bank.example",
+                "issuer": "O=Bank CA",
+                "serial_number": format(cert.serial_number, "x"),
+                "not_before": (now - timedelta(days=1)).isoformat(),
+                "not_after": (now + timedelta(days=90)).isoformat(),
+                "public_key_algorithm": "ECDSA-P256",
+                "public_key_size": 256,
+                "expiry_status": "valid",
+                "days_until_expiry": 90,
+                "is_self_signed": False,
+                "san": ["api.bank.example"],
+                "usages": ["tls"],
+                "extra": {"collector": "aws-acm", "arn": "arn:aws:acm:eu-central-1:1:certificate/x",
+                          "region": region, "acm_type": "AMAZON_ISSUED", "acm_status": "ISSUED",
+                          "signature_algorithm": "SHA256WITHECDSA",
+                          "renewal_eligibility": "ELIGIBLE"},
+            }],
+            "skipped": [{"ref": "pending.bank.example",
+                         "reason": "no PEM issued yet (status PENDING_VALIDATION)"}],
+            "seen": 2,
+            "truncated": False,
+        }
+
+    monkeypatch.setattr(cloud_kms, "collect_aws_acm", fake_collect)
+    from db.models.certificate import Certificate
+
+    session = app_db.state.test_session
+    headers = _auth(session, ["ciso"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        body = (await client.post("/api/v1/inventory/cloud/collect",
+                                  json={"provider": "aws-acm", "region": "eu-central-1"},
+                                  headers=headers)).json()
+        assert body["created"] == 1 and body["seen"] == 2
+        assert body["skipped"][0]["ref"] == "pending.bank.example"
+
+        row = session.query(Certificate).filter(
+            Certificate.fingerprint_sha256 == fingerprint).one()
+        assert row.public_key_algorithm == "ECDSA-P256"
+        assert row.extra["collector"] == "aws-acm"
+
+        # re-collection updates the same fingerprint, never stacks duplicates
+        again = (await client.post("/api/v1/inventory/cloud/collect",
+                                   json={"provider": "aws-acm"}, headers=headers)).json()
+        assert again["created"] == 1  # 1 row upserted
+        assert session.query(Certificate).count() == 1
+
+
+@pytest.mark.asyncio
+async def test_collect_gcp_dry_run(app_db, monkeypatch):
+    from inventory import cloud_kms
+
+    def fake_collect(client=None, *, project="", location="global", limit=100):
+        return {
+            "provider": "gcp-kms",
+            "assets": [
+                {"algorithm": "RSA-3072", "key_size": 3072, "purpose": "signing",
+                 "file_path": "gcp-kms://projects/p/locations/global/keyRings/r/signing-key",
+                 "source_language": "gcp-kms", "confidence": "HIGH",
+                 "extra": {"collector": "gcp-kms", "cloud": "gcp", "key_ring": "r"}},
+            ],
+            "skipped": [{"ref": "exotic", "reason": "unsupported algorithm 'X' — not classified"}],
+            "seen": 2,
+            "truncated": False,
+        }
+
+    monkeypatch.setattr(cloud_kms, "collect_gcp_kms", fake_collect)
+    session = app_db.state.test_session
+    headers = _auth(session, ["ciso"])
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        body = (await client.post("/api/v1/inventory/cloud/collect",
+                                  json={"provider": "gcp-kms", "project": "p", "dry_run": True},
+                                  headers=headers)).json()
+        assert body["dry_run"] is True and body["created"] == 0
+        listing = (await client.get("/api/v1/inventory/cloud/assets", headers=headers)).json()
+        assert listing["total_count"] == 0

@@ -19,7 +19,7 @@ raises a RuntimeError with the exact install hint.
 from __future__ import annotations
 
 import base64
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 MAX_KEYS_PER_PASS = 100
@@ -296,3 +296,247 @@ def collect_azure_keyvault(client: Any = None, *, vault_url: str = "",
         assets.append(asset)
     return {"provider": "azure-keyvault", "assets": assets, "skipped": skipped,
             "seen": seen, "truncated": truncated}
+
+
+# --------------------------------------------------------------------- GCP KMS
+
+# Cloud KMS CryptoKeyVersionAlgorithm → (family, bits, purpose).
+# Symmetric encryption keys are AES-256 (GCP documents this); HMAC variants
+# carry their digest; RSA/EC naming embeds curve and size.
+_GCP_RSA = {
+    "SIGN_PSS": "signing",
+    "SIGN_PKCS1": "signing",
+    "SIGN_RAW_PKCS1": "signing",
+    "DECRYPT_OAEP": "encryption",
+}
+
+
+def _gcp_family(algorithm: str) -> tuple[str, int, str | None] | None:
+    if algorithm == "GOOGLE_SYMMETRIC_ENCRYPTION":
+        return ("AES-256", 256, "encryption")
+    if algorithm.startswith("HMAC_SHA"):
+        bits = algorithm.removeprefix("HMAC_SHA")
+        if bits in {"224", "256", "384", "512"}:
+            return (f"HMAC-SHA{bits}", int(bits), "mac")
+        return None
+    if algorithm.startswith("EC_SIGN_"):
+        curves = {"P256_SHA256": ("ECDSA-P256", 256),
+                  "P384_SHA384": ("ECDSA-P384", 384),
+                  "SECP256K1_SHA256": ("ECDSA-P256K1", 256)}
+        curve = curves.get(algorithm.removeprefix("EC_SIGN_"))
+        if curve:
+            return (curve[0], curve[1], "signing")
+        return None
+    # RSA_(SIGN_PSS|SIGN_PKCS1|SIGN_RAW_PKCS1|DECRYPT_OAEP)_<bits>(_SHAxxx)?
+    parts = algorithm.split("_")
+    if len(parts) >= 4 and parts[0] == "RSA":
+        bits = next((p for p in parts if p.isdigit()), "")
+        kind = "_".join(parts[1:parts.index(bits)])
+        purpose = _GCP_RSA.get(kind)
+        if purpose and bits in {"2048", "3072", "4096"}:
+            return (f"RSA-{bits}", int(bits), purpose)
+    return None
+
+
+def normalize_gcp_key(kms_key: Any, *, project: str = "", location: str = "") -> dict[str, Any] | None:
+    """GCP CryptoKey (SDK proto or dict) → asset dict, or None when the
+    primary version's algorithm is not one we classify."""
+    name = str(_attr(kms_key, "name", "") or "")
+    primary = _attr(kms_key, "primary", None)
+    algorithm = str(_attr(primary, "algorithm", "") or "") if primary else ""
+    if not name or not algorithm:
+        return None
+    family = _gcp_family(algorithm)
+    if family is None:
+        return None
+    algo, bits, purpose = family
+    # name …/projects/P/locations/L/keyRings/R/cryptoKeys/K
+    segments = name.strip("/").split("/")
+    try:
+        ring = segments[segments.index("keyRings") + 1]
+        key_name = segments[segments.index("cryptoKeys") + 1]
+        proj = project or segments[segments.index("projects") + 1]
+        loc = location or segments[segments.index("locations") + 1]
+    except (ValueError, IndexError):
+        return None
+    extra: dict[str, Any] = {
+        "collector": "gcp-kms",
+        "cloud": "gcp",
+        "project": proj,
+        "location": loc,
+        "key_ring": ring,
+        "key_name": key_name,
+        "gcp_algorithm": algorithm,
+        "protection_level": str(_attr(primary, "protection_level", "") or ""),
+    }
+    rotation = _iso(_attr(kms_key, "next_rotation_time", None))
+    if rotation:
+        extra["next_rotation_at"] = rotation
+    return {
+        "algorithm": algo,
+        "key_size": bits,
+        "purpose": purpose,
+        "file_path": f"gcp-kms://projects/{proj}/locations/{loc}/keyRings/{ring}/{key_name}",
+        "source_language": "gcp-kms",
+        "confidence": "HIGH",
+        "extra": extra,
+    }
+
+
+def collect_gcp_kms(client: Any = None, *, project: str = "", location: str = "global",
+                    limit: int = MAX_KEYS_PER_PASS) -> dict[str, Any]:
+    """List CryptoKeys (bounded) → {provider, assets, skipped, seen, truncated}.
+
+    `client` is any object exposing list_crypto_keys(parent=…) — the real
+    KeyManagementServiceClient (google-cloud-kms) is constructed lazily.
+    """
+    if client is None:
+        if not project:
+            raise RuntimeError("no project configured — pass project for GCP collection")
+        try:
+            from google.cloud import kms  # noqa: F401 — presence check
+        except ImportError as exc:
+            raise RuntimeError(
+                "google-cloud-kms is required for GCP KMS collection "
+                "(pip install google-cloud-kms)") from exc
+        from google.cloud import kms as _kms
+
+        client = _kms.KeyManagementServiceClient()
+        parent = f"projects/{project}/locations/{location}/keyRings/-"
+    else:
+        parent = f"projects/{project or '-'}/locations/{location}/keyRings/-"
+
+    # read limit+1 to know, honestly, whether more keys exist
+    keys = list(client.list_crypto_keys(parent=parent))[: max(1, limit) + 1]
+    truncated = len(keys) > limit
+    keys = keys[:limit]
+    assets: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for key in keys:
+        normalized = normalize_gcp_key(key, project=project, location=location)
+        if normalized is None:
+            primary = _attr(key, "primary", None)
+            algorithm = str(_attr(primary, "algorithm", "") or "") if primary else ""
+            ref = str(_attr(key, "name", "") or "unknown").rsplit("/", 1)[-1]
+            reason = ("no active primary version" if not primary
+                      else f"unsupported algorithm '{algorithm}' — not classified")
+            skipped.append({"ref": ref, "reason": reason})
+            continue
+        assets.append(normalized)
+    return {"provider": "gcp-kms", "assets": assets, "skipped": skipped,
+            "seen": len(keys), "truncated": truncated}
+
+
+# --------------------------------------------------------------------- AWS ACM
+
+_ACM_KEY_ALGOS = {
+    "RSA_2048": ("RSA-2048", 2048),
+    "RSA_3072": ("RSA-3072", 3072),
+    "RSA_4096": ("RSA-4096", 4096),
+    "EC_prime256v1": ("ECDSA-P256", 256),
+    "EC_secp384r1": ("ECDSA-P384", 384),
+    "EC_secp521r1": ("ECDSA-P521", 521),
+}
+
+
+def normalize_acm_certificate(detail: dict[str, Any], *, pem: str,
+                              region: str = "") -> dict[str, Any] | None:
+    """ACM describe_certificate + PEM → Certificate-repository payload.
+
+    The SHA-256 fingerprint is computed from the REAL certificate DER — an
+    identifier would be mislabeled, so certs without a retrievable PEM
+    (pending validation) are skipped by the caller instead.
+    """
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes
+
+    arn = str(detail.get("CertificateArn") or "").strip()
+    algorithm = str(detail.get("KeyAlgorithm") or "").strip()
+    if not arn or algorithm not in _ACM_KEY_ALGOS:
+        return None
+    try:
+        cert = x509.load_pem_x509_certificate(pem.encode("utf-8"))
+    except Exception:
+        return None
+    family, bits = _ACM_KEY_ALGOS[algorithm]
+    fingerprint = cert.fingerprint(hashes.SHA256()).hex()
+    not_after = cert.not_valid_after_utc
+    days_left = (not_after - datetime.now(timezone.utc).astimezone()).days
+    try:
+        sans = [str(g.value) for g in
+                cert.extensions.get_extension_for_class(x509.SubjectAlternativeName).value]
+    except x509.ExtensionNotFound:
+        sans = []
+    return {
+        "fingerprint_sha256": fingerprint,
+        "subject": cert.subject.rfc4514_string(),
+        "issuer": cert.issuer.rfc4514_string(),
+        "serial_number": format(cert.serial_number, "x"),
+        "not_before": cert.not_valid_before_utc.isoformat(),
+        "not_after": not_after.isoformat(),
+        "public_key_algorithm": family,
+        "public_key_size": bits,
+        "expiry_status": "expired" if days_left < 0 else "valid",
+        "days_until_expiry": days_left,
+        "is_self_signed": cert.subject == cert.issuer,
+        "san": sans,
+        "usages": ["tls"],
+        "extra": {
+            "collector": "aws-acm",
+            "cloud": "aws",
+            "arn": arn,
+            "region": region,
+            "acm_type": str(detail.get("Type") or ""),
+            "acm_status": str(detail.get("Status") or ""),
+            "signature_algorithm": str(detail.get("SignatureAlgorithm") or ""),
+            "renewal_eligibility": str(detail.get("RenewalEligibility") or ""),
+        },
+    }
+
+
+def collect_aws_acm(client: Any = None, *, region: str = "",
+                    limit: int = MAX_KEYS_PER_PASS) -> dict[str, Any]:
+    """Inventory ACM certificates into the shared certificate table.
+
+    Three read-only calls per certificate (list → describe → PEM); the PEM is
+    parsed locally so the fingerprint is the true SHA-256 of the DER.
+    Certificates without a retrievable PEM (pending validation) are skipped
+    WITH their reason.
+    """
+    if client is None:
+        try:
+            import boto3  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError("boto3 is required for AWS ACM collection (pip install boto3)") from exc
+        import boto3
+
+        client = boto3.client("acm", region_name=region or None)
+
+    listing = client.list_certificates()
+    summaries = list(listing.get("CertificateSummaryList") or [])[: max(1, limit)]
+    certificates: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for summary in summaries:
+        arn = str(summary.get("CertificateArn") or "")
+        domain = str(summary.get("DomainName") or arn)
+        try:
+            detail = dict(client.describe_certificate(CertificateArn=arn).get("Certificate") or {})
+            fetched = client.get_certificate(CertificateArn=arn)
+            pem = str(fetched.get("Certificate") or "")
+        except Exception as exc:
+            skipped.append({"ref": domain, "reason": f"describe/pem failed: {exc}"[:160]})
+            continue
+        if not pem:
+            skipped.append({"ref": domain,
+                            "reason": f"no PEM issued yet (status {detail.get('Status') or 'unknown'})"})
+            continue
+        payload = normalize_acm_certificate(detail, pem=pem, region=region)
+        if payload is None:
+            skipped.append({"ref": domain,
+                            "reason": f"unsupported KeyAlgorithm '{detail.get('KeyAlgorithm')}' "
+                                      "or unparseable PEM — not classified"})
+            continue
+        certificates.append(payload)
+    return {"provider": "aws-acm", "certificates": certificates, "skipped": skipped,
+            "seen": len(summaries),
+            "truncated": bool(listing.get("NextToken")) or len(list(listing.get("CertificateSummaryList") or [])) > limit}

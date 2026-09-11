@@ -355,3 +355,123 @@ async def test_sso_status_reports_capabilities(app_env):
             assert off["oidc"]["authorize_url"] is None
     finally:
         get_settings.cache_clear()
+
+
+# ----------------------------------------------------------------- PKCE (S256)
+
+
+def test_make_pkce_rfc7636_shapes():
+    import base64 as b64
+    import hashlib
+
+    from api.security.oidc import make_pkce
+
+    verifier, challenge = make_pkce()
+    assert 43 <= len(verifier) <= 128
+    allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+    assert set(verifier) <= allowed and set(challenge) <= allowed
+    expected = b64.urlsafe_b64encode(hashlib.sha256(verifier.encode("ascii")).digest()).rstrip(b"=").decode()
+    assert challenge == expected  # S256: challenge is exactly the hashed verifier
+    assert make_pkce()[0] != verifier  # fresh verifier per login
+
+
+@pytest.mark.asyncio
+async def test_public_client_authorize_sends_challenge_and_stores_verifier(app_env, monkeypatch):
+    _fake_discovery(monkeypatch)
+    application, _ = _make_app(app_env)  # no OIDC_CLIENT_SECRET → public client
+    async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
+        response = await client.get("/api/v1/auth/oidc/authorize", follow_redirects=False)
+    location = response.headers["location"]
+    assert "code_challenge=" in location
+    assert "code_challenge_method=S256" in location
+    # the verifier itself must NOT appear anywhere in the front-channel URL
+    assert "verifier" not in location
+
+
+@pytest.mark.asyncio
+async def test_public_client_callback_without_verifier_fails_closed(app_env, monkeypatch):
+    from api.security import oidc as oidc_mod
+
+    _fake_discovery(monkeypatch)
+    monkeypatch.setattr(oidc_mod, "exchange_code",
+                        lambda *a, **kw: {"id_token": "would-be-accepted"})
+    application, _ = _make_app(app_env)
+    async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
+        authorize = await client.get("/api/v1/auth/oidc/authorize", follow_redirects=False)
+        state = authorize.headers["location"].split("state=")[1].split("&")[0]
+        # a FRESH client: no PKCE cookie (login started elsewhere / cookie lost)
+        fresh = AsyncClient(transport=ASGITransport(app=application), base_url="http://test")
+        response = await fresh.get("/api/v1/auth/oidc/callback",
+                                   params={"code": "c", "state": state}, follow_redirects=False)
+        await fresh.aclose()
+    assert response.status_code == 401
+    assert "PKCE verifier missing" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_full_flow_carries_verifier_to_exchange(app_env, monkeypatch, idp):
+    from api.security import oidc as oidc_mod
+
+    _fake_discovery(monkeypatch)
+    captured = {}
+
+    def fake_exchange(token_endpoint, *, code, client_id, redirect_uri,
+                      client_secret="", code_verifier="", **kw):
+        captured["code_verifier"] = code_verifier
+        return {"access_token": "at", "id_token": idp["mint"](_claims(nonce=code))}
+
+    monkeypatch.setattr(oidc_mod, "exchange_code", fake_exchange)
+    application, session = _make_app(app_env)
+    async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
+        authorize = await client.get("/api/v1/auth/oidc/authorize", follow_redirects=False)
+        verifier_cookie = client.cookies.get("cryptoscan_pkce")
+        assert verifier_cookie
+        state = authorize.headers["location"].split("state=")[1].split("&")[0]
+        nonce = _state_nonce(state)
+        response = await client.get(
+            "/api/v1/auth/oidc/callback",
+            params={"code": nonce, "state": state}, follow_redirects=False)
+        assert response.status_code == 303
+    assert captured["code_verifier"] == verifier_cookie
+    # cookie consumed — a replay of the callback cannot reuse the verifier
+    assert not client.cookies.get("cryptoscan_pkce")
+
+
+@pytest.mark.asyncio
+async def test_confidential_client_skips_pkce(app_env, monkeypatch, idp):
+    import os
+
+    os.environ["OIDC_CLIENT_SECRET"] = "confidential-secret-value"
+    from api.config.settings import get_settings
+
+    get_settings.cache_clear()
+    try:
+        from api.security import oidc as oidc_mod
+
+        _fake_discovery(monkeypatch)
+        captured = {}
+
+        def fake_exchange(token_endpoint, *, code, client_id, redirect_uri,
+                          client_secret="", code_verifier="", **kw):
+            captured["client_secret"] = client_secret
+            captured["code_verifier"] = code_verifier
+            return {"access_token": "at", "id_token": idp["mint"](_claims(nonce=code))}
+
+        monkeypatch.setattr(oidc_mod, "exchange_code", fake_exchange)
+        application, _ = _make_app(app_env)
+        async with AsyncClient(transport=ASGITransport(app=application), base_url="http://test") as client:
+            authorize = await client.get("/api/v1/auth/oidc/authorize", follow_redirects=False)
+            location = authorize.headers["location"]
+            assert "code_challenge=" not in location  # confidential → no PKCE
+            assert not client.cookies.get("cryptoscan_pkce")
+            state = location.split("state=")[1].split("&")[0]
+            nonce = _state_nonce(state)
+            response = await client.get(
+                "/api/v1/auth/oidc/callback",
+                params={"code": nonce, "state": state}, follow_redirects=False)
+            assert response.status_code == 303
+        assert captured["code_verifier"] == ""  # no PKCE for confidential clients
+        assert captured["client_secret"] == "confidential-secret-value"
+    finally:
+        os.environ.pop("OIDC_CLIENT_SECRET", None)
+        get_settings.cache_clear()

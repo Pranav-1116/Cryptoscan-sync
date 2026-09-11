@@ -430,10 +430,23 @@ def oidc_authorize(request: Request) -> RedirectResponse:
     state = make_state(settings.SECRET_KEY, nonce)
     redirect_uri = (settings.OIDC_REDIRECT_URI or "").strip() or \
         str(request.base_url).rstrip("/") + "/api/v1/auth/oidc/callback"
+    # RFC 7636: with no client secret we are a PUBLIC client — PKCE S256 is
+    # mandatory. The verifier rides a short-lived HttpOnly cookie scoped to
+    # the callback path; it must never travel the front channel (the state
+    # is visible to the IdP and the browser, so it can't carry it).
+    pkce_verifier, code_challenge = ("", "")
+    if not (settings.OIDC_CLIENT_SECRET or "").strip():
+        pkce_verifier, code_challenge = oidc_mod.make_pkce()
     url = make_authorize_url(endpoint, client_id=client_id, redirect_uri=redirect_uri,
                              scope=(settings.OIDC_SCOPES or "openid").strip(),
-                             state=state, nonce=nonce)
-    return RedirectResponse(url, status_code=302)
+                             state=state, nonce=nonce, code_challenge=code_challenge)
+    response = RedirectResponse(url, status_code=302)
+    if pkce_verifier:
+        response.set_cookie(
+            key="cryptoscan_pkce", value=pkce_verifier, httponly=True, samesite="lax",
+            secure=settings.cookie_secure, max_age=600, path="/api/v1/auth/oidc/callback",
+        )
+    return response
 
 
 @router.get("/oidc/callback")
@@ -472,6 +485,19 @@ def oidc_callback(request: Request, db: Session = Depends(get_db_session),
         _audit_failure("authorization code missing")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="authorization code missing")
 
+    # PKCE (public clients): the verifier comes from the HttpOnly cookie set
+    # at authorize time. Fail closed — no cookie means the flow was started
+    # elsewhere or the cookie expired; either way we do not exchange blind.
+    code_verifier = ""
+    if (settings.OIDC_CLIENT_SECRET or "").strip():
+        code_verifier = ""  # confidential client — secret auth, no PKCE
+    else:
+        code_verifier = request.cookies.get("cryptoscan_pkce") or ""
+        if not code_verifier:
+            detail = "PKCE verifier missing — restart the SSO login"
+            _audit_failure(detail)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
     issuer = settings.OIDC_ISSUER.strip()
     token_endpoint = (settings.OIDC_TOKEN_URL or "").strip()
     if not token_endpoint:
@@ -484,7 +510,8 @@ def oidc_callback(request: Request, db: Session = Depends(get_db_session),
     try:
         tokens = oidc_mod.exchange_code(
             token_endpoint, code=code, client_id=(settings.OIDC_CLIENT_ID or "").strip(),
-            redirect_uri=redirect_uri, client_secret=(settings.OIDC_CLIENT_SECRET or "").strip())
+            redirect_uri=redirect_uri, client_secret=(settings.OIDC_CLIENT_SECRET or "").strip(),
+            code_verifier=code_verifier)
         id_token = str(tokens.get("id_token") or "")
         if not id_token:
             raise OidcError("token endpoint returned no id_token")
@@ -506,6 +533,7 @@ def oidc_callback(request: Request, db: Session = Depends(get_db_session),
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
 
     redirect = RedirectResponse((settings.OIDC_POST_LOGIN_REDIRECT or "/"), status_code=303)
+    redirect.delete_cookie(key="cryptoscan_pkce", path="/api/v1/auth/oidc/callback")
     _oidc_identity_to_session(db, request, redirect, claims, settings=settings,
                               client=client, audit_action="auth.oidc_callback")
     return redirect

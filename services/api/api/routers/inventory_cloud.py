@@ -25,9 +25,10 @@ _CLOUD_SOURCES = ("aws-kms", "azure-keyvault")
 
 
 class CollectBody(BaseModel):
-    provider: str = Field(..., pattern="^(aws-kms|azure-keyvault)$")
+    provider: str = Field(..., pattern="^(aws-kms|azure-keyvault|gcp-kms|aws-acm)$")
     region: str = ""
     vault_url: str = ""
+    project: str = ""
     dry_run: bool = False
 
 
@@ -35,13 +36,19 @@ class CollectBody(BaseModel):
 def collect(body: CollectBody,
             user: str = Depends(require_permission("crypto.manage")),
             db: Session = Depends(get_db_session)):
-    """Collect key metadata from the provider. dry_run=true normalizes and
-    reports without writing; otherwise rows are upserted into the inventory."""
+    """Collect key/certificate metadata from the provider. dry_run=true
+    normalizes and reports without writing; otherwise rows are upserted into
+    the shared inventory (crypto assets for KMS providers, certificates for
+    AWS ACM)."""
     from inventory import cloud_kms
 
     try:
         if body.provider == "aws-kms":
             result = cloud_kms.collect_aws_kms(region=body.region)
+        elif body.provider == "gcp-kms":
+            result = cloud_kms.collect_gcp_kms(project=body.project, location=body.region or "global")
+        elif body.provider == "aws-acm":
+            result = cloud_kms.collect_aws_acm(region=body.region)
         else:
             result = cloud_kms.collect_azure_keyvault(vault_url=body.vault_url)
     except RuntimeError as exc:  # SDK missing / no vault configured
@@ -53,10 +60,19 @@ def collect(body: CollectBody,
     upserted = created = 0
     if not body.dry_run:
         repo = AssetRepository(db)
-        for asset in result["assets"]:
-            _, was_created = repo.upsert_cloud_asset(asset)
-            created += int(was_created)
-            upserted += 1
+        if body.provider == "aws-acm":
+            from db.repositories.certificate_repository import CertificateRepository
+
+            certs = CertificateRepository(db)
+            for payload in result["certificates"]:
+                certs.upsert(payload)
+                created += 1
+                upserted += 1
+        else:
+            for asset in result["assets"]:
+                _, was_created = repo.upsert_cloud_asset(asset)
+                created += int(was_created)
+                upserted += 1
         db.commit()
     return {**result, "dry_run": body.dry_run, "upserted": upserted, "created": created}
 

@@ -80,9 +80,11 @@ def test_connector_status_reports_missing_names_only():
     assert status["splunk"]["configured"] is False
     full = connector_status({k: "x" for k in (
         "SERVICENOW_INSTANCE_URL", "SERVICENOW_USER", "SERVICENOW_PASSWORD",
-        "SPLUNK_HEC_URL", "SPLUNK_HEC_TOKEN")})
+        "SPLUNK_HEC_URL", "SPLUNK_HEC_TOKEN",
+        "JIRA_BASE_URL", "JIRA_USER_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY",
+        "SENTINEL_WORKSPACE_ID", "SENTINEL_SHARED_KEY")})
     assert all(entry["configured"] for entry in full.values())
-    assert set(CONNECTORS) == {"servicenow", "splunk"}
+    assert set(CONNECTORS) == {"servicenow", "splunk", "jira", "sentinel"}
 
 
 # ---------------------------------------------------------------------- send
@@ -91,9 +93,9 @@ def test_connector_status_reports_missing_names_only():
 def _ok_poster(status_code=201, text='{"sys_id": "abc"}'):
     captured = {}
 
-    def poster(url, *, json=None, headers=None, auth=None, timeout=None):
+    def poster(url, *, json=None, headers=None, auth=None, timeout=None, data=None):
         captured.update({"url": url, "json": json, "headers": headers,
-                         "auth": auth, "timeout": timeout})
+                         "auth": auth, "timeout": timeout, "data": data})
         return SimpleNamespace(status_code=status_code, text=text)
 
     poster.captured = captured
@@ -142,3 +144,104 @@ def test_send_is_honest_about_config_and_failures():
 
     result = send("splunk", {}, config=config, poster=_ok_poster(status_code=403, text="forbidden"))
     assert result["ok"] is False and result["status_code"] == 403
+
+
+# ---------------------------------------------------------------- jira/sentinel
+
+
+def test_jira_payload_adf_and_priority():
+    from automation.connectors import jira_issue_payload
+
+    payload = jira_issue_payload(RUN, project_key="SECOPS")
+    fields = payload["fields"]
+    assert fields["project"] == {"key": "SECOPS"}
+    assert fields["issuetype"] == {"name": "Task"}
+    assert "CryptoScan agent_offline" in fields["summary"]
+    assert "[CRITICAL]" in fields["summary"] and len(fields["summary"]) <= 250
+    assert fields["priority"] == {"name": "Highest"}
+    description = fields["description"]
+    assert description["type"] == "doc" and description["version"] == 1
+    text = description["content"][0]["content"][0]["text"]
+    assert "Asset: asset-9" in text and "create_ticket" in text
+    assert fields["labels"] == ["cryptoscan", "agent_offline"]
+    # tier → priority ladder
+    for tier, expected in (("HIGH", "High"), ("MEDIUM", "Medium"), ("LOW", "Low")):
+        got = jira_issue_payload({**RUN, "recommended_tier": tier})["fields"]["priority"]
+        assert got == {"name": expected}
+
+
+def test_sentinel_string_to_sign_is_the_documented_format():
+    from automation.connectors import sentinel_string_to_sign
+
+    assert sentinel_string_to_sign(
+        content_length=17, x_ms_date="Mon, 11 Sep 2026 00:00:00 GMT") == \
+        "POST\n17\napplication/json\nMon, 11 Sep 2026 00:00:00 GMT\n/api/logs"
+
+
+def test_sentinel_shared_key_signature_is_hmac_over_decoded_key():
+    import base64 as b64
+    import hashlib
+    import hmac as hmac_mod
+
+    from automation.connectors import sentinel_shared_key_authorization
+
+    shared_key = b64.b64encode(b"0123456789abcdef0123456789abcdef").decode()
+    string_to_sign = "POST\n17\napplication/json\nMon, 11 Sep 2026 00:00:00 GMT\n/api/logs"
+    header = sentinel_shared_key_authorization(shared_key, string_to_sign=string_to_sign)
+    assert header.startswith("SharedKey ")
+    expected_sig = b64.b64encode(hmac_mod.new(
+        b64.b64decode(shared_key), string_to_sign.encode(), hashlib.sha256).digest()).decode()
+    assert header == f"SharedKey {expected_sig}"
+
+
+def test_sentinel_event_flattens_for_log_analytics():
+    from automation.connectors import sentinel_event_payload
+
+    event = sentinel_event_payload(RUN, now=1_700_000_000.0)
+    assert event["log_type"] == "CRYPTOSCAN_AUTOMATION"
+    record = event["record"]
+    assert record["TimeGenerated"].startswith("2023-11-14T22:13:20")
+    assert record["event_kind"] == "agent_offline"          # scalar passes through
+    assert record["auto_actions"].startswith("[")           # nested → JSON string
+    assert record["governance_ref"] is None
+
+
+def test_send_jira_posts_adf_with_basic_auth():
+    poster = _ok_poster(status_code=201, text='{"key": "CRYPTO-1"}')
+    config = {"JIRA_BASE_URL": "https://acme.atlassian.net/", "JIRA_USER_EMAIL": "svc@acme.com",
+              "JIRA_API_TOKEN": "token", "JIRA_PROJECT_KEY": "SECOPS",
+              "SERVICENOW_INSTANCE_URL": "", "SERVICENOW_USER": "", "SERVICENOW_PASSWORD": "",
+              "SPLUNK_HEC_URL": "", "SPLUNK_HEC_TOKEN": "",
+              "SENTINEL_WORKSPACE_ID": "", "SENTINEL_SHARED_KEY": ""}
+    result = send("jira", RUN, config=config, poster=poster)
+    assert result["delivered"] is True and result["status_code"] == 201
+    assert poster.captured["url"] == "https://acme.atlassian.net/rest/api/3/issue"
+    assert poster.captured["auth"] == ("svc@acme.com", "token")
+    assert poster.captured["json"]["fields"]["project"] == {"key": "SECOPS"}
+
+
+def test_send_sentinel_signs_the_request():
+    poster = _ok_poster(status_code=200, text='{"authorization": "ok"}')
+    config = {"SENTINEL_WORKSPACE_ID": "ws0123456789abcdef", "SENTINEL_SHARED_KEY": "a2V5MTIzNDU2Nzg5MGFiY2RlZg==",
+              "SERVICENOW_INSTANCE_URL": "", "SERVICENOW_USER": "", "SERVICENOW_PASSWORD": "",
+              "SPLUNK_HEC_URL": "", "SPLUNK_HEC_TOKEN": "",
+              "JIRA_BASE_URL": "", "JIRA_USER_EMAIL": "", "JIRA_API_TOKEN": "", "JIRA_PROJECT_KEY": ""}
+    result = send("sentinel", RUN, config=config, poster=poster)
+    assert result["delivered"] is True
+    assert poster.captured["url"].startswith(
+        "https://ws0123456789abcdef.ods.opinsights.azure.com/api/logs?api-version=2016-04-01")
+    headers = poster.captured["headers"]
+    assert headers["Authorization"].startswith("SharedKey ")
+    assert headers["Log-Type"] == "CRYPTOSCAN_AUTOMATION"
+    assert "x-ms-date" in headers
+    assert b"agent_offline" in poster.captured["data"]
+
+
+def test_new_connectors_report_missing_config_honestly():
+    status = connector_status({})
+    assert status["jira"]["configured"] is False
+    assert set(status["jira"]["missing"]) == {"JIRA_BASE_URL", "JIRA_USER_EMAIL",
+                                              "JIRA_API_TOKEN", "JIRA_PROJECT_KEY"}
+    assert status["sentinel"]["configured"] is False
+    result = send("jira", {}, config={}, poster=_ok_poster())
+    assert result["delivered"] is False and "JIRA_BASE_URL" in result["detail"]
