@@ -36,6 +36,14 @@ institution) · **Proposed by:** CryptoScan / ZELNX · **Duration:** 2 weeks ·
 5. **Optional telecom module** — if the bank operates private 5G/roaming
    edges: 5GC/roaming verdicts incl. SEPP hybrid-PQC readiness.
 
+## How it runs (on-prem, two containers)
+
+The engagement runs from `deploy/poc/`: a two-container compose stack (API +
+dashboard, SQLite in a named volume), a fill-in env template, and a
+day-by-day operator checklist (`deploy/poc/CHECKLIST.md`). Everything stays
+inside the bank's tenancy; the end-of-engagement `down -v` destroys every
+byte. Air-gap install is documented for disconnected environments.
+
 ## How (read-only by construction)
 
 - Network probes are TLS/certificate handshakes — no exploitation, no

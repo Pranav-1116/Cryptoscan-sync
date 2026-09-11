@@ -6,6 +6,25 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### PoC delivery bundle: whole-estate audit pack + on-prem bring-up kit
+- The examiner-ready audit-export pack now covers EVERY estate the platform
+  produces: `cloud/kms-inventory.json` (AWS/Azure/GCP keys),
+  `cloud/acm-certificates.json`, `code/findings-summary.json` (by language,
+  by algorithm, hardcoded-key count), and `telecom/posture.json` (rollup +
+  verdict rows) — each with an honest `NO_*.txt` note when empty. Manifest
+  totals gained cloud_kms_assets, cloud_acm_certificates,
+  code_finding_assets and telecom_targets. The SHA-256 manifest covers the
+  new files like every other.
+- `deploy/poc/`: two-container on-prem PoC stack (API + dashboard, SQLite in
+  a named volume so nothing leaves the tenancy), `poc.env.example`, and
+  `CHECKLIST.md` — a day-by-day operator plan (scope sheet, read-only cloud
+  roles, bring-up, network/cloud/code/telecom passes, exit report, `down -v`
+  data destruction) mapped to the success criteria in docs/proposals/
+  fab-poc.md.
+- docs/enterprise-readiness.md: the code-scanning row corrected to reality
+  (Python/Java/C#/JS detectors incl. hardcoded keys + PEM material run by
+  the worker pipeline) and the PoC proposal references the bundle.
+
 ### Enterprise breadth: GCP/ACM collectors, OIDC PKCE, Jira/Sentinel delivery
 - Cloud collectors extended on the same adapter pattern: **GCP Cloud KMS**
   (symmetric/HMAC/RSA-PSS+PKCS1+OAEP/EC algorithm table, honest skips,

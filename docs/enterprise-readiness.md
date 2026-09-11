@@ -33,7 +33,7 @@ built (needs real infrastructure or a decision, never stubbed).
 | AWS ACM certificate inventory | ✅ | list→describe→PEM, fingerprint is the REAL SHA-256 of the DER (never an identifier); pending-validation certs skipped with reason; rows feed the renewal workflow-ready certificate table |
 | Telecom network scanner | ✅ | 5GC/roaming/EPC/IMS verdict engine, SEPP PQC readiness, operator ingest for closed networks |
 | Payment HSM | ✅ | PQC-capable HSM matching, ceremonies, dual custody |
-| ⚠️ Code-repository scanning depth | ⚠️ | dedup asset store + evidence links exist; deep monorepo/SAST-grade crypto pattern search is roadmap |
+| Code-repository scanning | ✅ | pattern detectors for Python / Java / C# / JavaScript incl. hardcoded keys, PEM material and secrets misuse (services/scanner), run by the worker pipeline into the deduplicated crypto-asset store; language breadth beyond these four is roadmap |
 | GCP Cloud KMS inventory | ✅ | CryptoKey listing → same crypto-asset table; algorithm table covers symmetric/HMAC/RSA(PSS,PKCS1,OAEP)/EC; unknown algorithms skipped with reason |
 | ❌ Database TDE / mainframe (RACF, ICSF) discovery | ❌ | needs customer-environment adapters; never faked from config files |
 

@@ -39,6 +39,7 @@ def _note(text: str) -> bytes:
 @router.get("/pack")
 def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_db_session)):
     from db.models.certificate import Certificate
+    from db.models.crypto_asset import CryptoAsset
     from db.models.monitor import MonitorTarget
     from db.repositories.payment_crypto_repository import PaymentCryptoRepository
     from payment_crypto.forecast import ExpiryForecaster
@@ -120,6 +121,94 @@ def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_
         "status_counts": db.query(MonitorTarget).filter(MonitorTarget.enabled).count(),
     })
 
+    # ------------------------------------------- estate: cloud KMS + ACM
+    # Whole-estate evidence: the same inventories the dashboards use, in the
+    # examiner's hands — cloud KMS keys, ACM certificates, code findings and
+    # the telecom posture. Empty areas get honest note files, never silence.
+    cloud_sources = ("aws-kms", "azure-keyvault", "gcp-kms")
+    cloud_rows = db.query(CryptoAsset).filter(
+        CryptoAsset.source_language.in_(cloud_sources)).all()
+    if cloud_rows:
+        by_collector: dict[str, int] = {}
+        for row in cloud_rows:
+            name = str((row.extra or {}).get("collector") or row.source_language)
+            by_collector[name] = by_collector.get(name, 0) + 1
+        entries["cloud/kms-inventory.json"] = _canonical({
+            "total": len(cloud_rows),
+            "by_collector": dict(sorted(by_collector.items())),
+            "assets": [{
+                "algorithm": row.algorithm, "key_size": row.key_size,
+                "purpose": row.purpose, "reference": row.file_path,
+                "first_seen_at": (row.extra or {}).get("first_seen_at"),
+                "last_seen_at": (row.extra or {}).get("last_seen_at"),
+            } for row in cloud_rows],
+        })
+    else:
+        entries["cloud/NO_CLOUD_INVENTORY.txt"] = _note(
+            "No cloud KMS/KeyVault keys collected yet — run "
+            "POST /api/v1/inventory/cloud/collect with provider credentials.\n")
+    acm_rows = [row for row in db.query(Certificate).all()
+                if str((row.extra or {}).get("collector") or "") == "aws-acm"]
+    if acm_rows:
+        entries["cloud/acm-certificates.json"] = _canonical({
+            "total": len(acm_rows),
+            "certificates": [{
+                "fingerprint_sha256": row.fingerprint_sha256, "subject": row.subject,
+                "not_after": row.not_after.isoformat() if row.not_after else None,
+                "public_key_algorithm": row.public_key_algorithm,
+                "public_key_size": row.public_key_size,
+                "expiry_status": row.expiry_status,
+                "arn": (row.extra or {}).get("arn"),
+                "region": (row.extra or {}).get("region"),
+            } for row in acm_rows],
+        })
+    else:
+        entries["cloud/NO_ACM_CERTIFICATES.txt"] = _note(
+            "No AWS ACM certificates collected yet — run POST "
+            "/api/v1/inventory/cloud/collect with provider aws-acm.\n")
+
+    # ------------------------------------------- estate: code findings
+    code_rows = [row for row in db.query(CryptoAsset).all()
+                 if row.source_language and row.source_language not in cloud_sources
+                 and row.source_language != "cloud-kms"]
+    if code_rows:
+        by_language: dict[str, int] = {}
+        by_algorithm: dict[str, int] = {}
+        hardcoded = 0
+        for row in code_rows:
+            by_language[row.source_language] = by_language.get(row.source_language, 0) + 1
+            by_algorithm[row.algorithm] = by_algorithm.get(row.algorithm, 0) + 1
+            hardcoded += int(bool(row.is_hardcoded_key))
+        entries["code/findings-summary.json"] = _canonical({
+            "total": len(code_rows),
+            "hardcoded_keys": hardcoded,
+            "by_language": dict(sorted(by_language.items(), key=lambda kv: -kv[1])),
+            "by_algorithm": dict(sorted(by_algorithm.items(), key=lambda kv: -kv[1])),
+            "note": "Full deduplicated inventory with file/line evidence lives "
+                    "in the CBOM surfaces; this is the examiner summary.",
+        })
+    else:
+        entries["code/NO_CODE_FINDINGS.txt"] = _note(
+            "No source-code crypto findings recorded yet — run a repository "
+            "scan so the pipeline can populate the asset inventory.\n")
+
+    # ------------------------------------------- estate: telecom posture
+    from api.routers.telecom import _load_snapshot as _telecom_snapshot
+
+    telecom = _telecom_snapshot()
+    if telecom and (telecom.get("rows") or telecom.get("targets_registered")):
+        entries["telecom/posture.json"] = _canonical({
+            "generated_at": telecom.get("generated_at"),
+            "scanner": telecom.get("scanner"),
+            "targets_registered": telecom.get("targets_registered"),
+            "rollup": telecom.get("rollup"),
+            "rows": telecom.get("rows"),
+        })
+    else:
+        entries["telecom/NO_TELECOM_DATA.txt"] = _note(
+            "No telecom scan snapshot yet — register NF targets and run "
+            "POST /api/v1/telecom/scan (see docs/runbooks/telecom-operations.md).\n")
+
     # ------------------------------------------------ compliance + evidence
     scan = None
     try:
@@ -193,6 +282,10 @@ def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_
             "payment_keys": len(keys), "ceremonies": len(ceremonies),
             "open_findings": sum(1 for row in findings if row["status"] == "OPEN"),
             "certificates": len(certificates), "hsm_events_90d": len(events),
+            "cloud_kms_assets": len(cloud_rows),
+            "cloud_acm_certificates": len(acm_rows),
+            "code_finding_assets": len(code_rows),
+            "telecom_targets": int((telecom or {}).get("targets_registered") or 0),
         },
     }
     entries["manifest.json"] = _canonical(manifest)

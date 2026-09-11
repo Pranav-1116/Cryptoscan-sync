@@ -140,3 +140,92 @@ async def test_audit_pack_hashes_and_honest_notes():
         keys = json.loads(archive.read("payment/keys.json"))
         assert [row["key_id"] for row in keys] == ["ZMK-PACK"]
         assert manifest["totals"]["payment_keys"] == 1
+
+
+@pytest.mark.asyncio
+async def test_audit_pack_carries_whole_estate(tmp_path, monkeypatch):
+    """The examiner pack covers every estate the PoC produces: cloud KMS,
+    ACM certificates, code findings, telecom posture — and says NO_* loudly
+    where an estate is empty."""
+    from db.models.crypto_asset import CryptoAsset
+
+    # telecom snapshot on disk (the pack reads the same mirror the router does)
+    monkeypatch.setenv("CRYPTOSCAN_SNAPSHOT_DIR", str(tmp_path))
+    (tmp_path / "telecom_snapshot.json").write_text(json.dumps({
+        "generated_at": "2026-09-11T00:00:00+00:00",
+        "scanner": "telecom-api-scan",
+        "targets_registered": 2,
+        "rows": [{"nf_id": "amf-lab-01", "status": "TLS_OK", "severity": "info"}],
+        "rollup": {"totals": {"targets": 2}},
+    }))
+    from api.routers import telecom as telecom_router
+
+    telecom_router._SNAPSHOT = None  # force a disk read
+
+    app, session, engine = _make_app()
+    session.add(CryptoAsset(
+        algorithm="RSA-3072", key_size=3072, purpose="signing",
+        file_path="aws-kms://eu-central-1/k1", source_language="aws-kms",
+        confidence="HIGH", extra={"collector": "aws-kms", "first_seen_at": "2026-09-11"}))
+    session.add(CryptoAsset(
+        algorithm="MD5", file_path="/repo/app/util.py", line_number=42,
+        source_language="python", confidence="HIGH", is_hardcoded_key=True))
+    session.add(Certificate(
+        fingerprint_sha256="f" * 64, subject="CN=acm.bank.example",
+        public_key_algorithm="ECDSA-P256", public_key_size=256,
+        extra={"collector": "aws-acm", "arn": "arn:aws:acm:eu-central-1:1:certificate/x"}))
+    session.commit()
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pack = await client.get("/api/v1/audit-export/pack")
+        assert pack.status_code == 200, pack.text
+
+        archive = zipfile.ZipFile(io.BytesIO(pack.content))
+        names = set(archive.namelist())
+        assert {"cloud/kms-inventory.json", "cloud/acm-certificates.json",
+                "code/findings-summary.json", "telecom/posture.json"} <= names
+        # populated estates carry no NO_ notes
+        assert "cloud/NO_CLOUD_INVENTORY.txt" not in names
+
+        kms = json.loads(archive.read("cloud/kms-inventory.json"))
+        assert kms["total"] == 1 and kms["by_collector"] == {"aws-kms": 1}
+        assert kms["assets"][0]["reference"] == "aws-kms://eu-central-1/k1"
+
+        acm = json.loads(archive.read("cloud/acm-certificates.json"))
+        assert acm["total"] == 1 and acm["certificates"][0]["arn"].startswith("arn:aws:acm")
+
+        code = json.loads(archive.read("code/findings-summary.json"))
+        assert code["total"] == 1 and code["hardcoded_keys"] == 1
+        assert code["by_language"] == {"python": 1} and code["by_algorithm"] == {"MD5": 1}
+
+        posture = json.loads(archive.read("telecom/posture.json"))
+        assert posture["targets_registered"] == 2 and posture["rows"][0]["nf_id"] == "amf-lab-01"
+
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["totals"]["cloud_kms_assets"] == 1
+        assert manifest["totals"]["cloud_acm_certificates"] == 1
+        assert manifest["totals"]["code_finding_assets"] == 1
+        assert manifest["totals"]["telecom_targets"] == 2
+
+
+@pytest.mark.asyncio
+async def test_audit_pack_estate_sections_are_honest_when_empty(tmp_path, monkeypatch):
+    from api.routers import telecom as telecom_router
+
+    monkeypatch.setenv("CRYPTOSCAN_SNAPSHOT_DIR", str(tmp_path))
+    telecom_router._SNAPSHOT = None
+
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        pack = await client.get("/api/v1/audit-export/pack")
+        archive = zipfile.ZipFile(io.BytesIO(pack.content))
+        names = set(archive.namelist())
+        assert {"cloud/NO_CLOUD_INVENTORY.txt", "cloud/NO_ACM_CERTIFICATES.txt",
+                "code/NO_CODE_FINDINGS.txt", "telecom/NO_TELECOM_DATA.txt"} <= names
+        assert "cloud/kms-inventory.json" not in names
+        assert "telecom/posture.json" not in names
+        manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["totals"]["cloud_kms_assets"] == 0
+        assert manifest["totals"]["telecom_targets"] == 0
