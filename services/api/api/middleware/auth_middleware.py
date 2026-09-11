@@ -29,6 +29,7 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/auth/oidc",
     "/api/v1/auth/saml",   # SAML metadata/login/ACS (ACS verifies the IdP signature itself)
     "/api/v1/auth/ldap",   # LDAP bind login (credential checked by directory)
+    "/api/v1/auth/sso",    # unified capability flags for the login screen (booleans only)
     "/api/v1/meta",
     "/api/v1/healthz",
     "/api/v1/readyz",  # LB readiness probes must work without credentials
