@@ -6,6 +6,26 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Vendor PQC refresh: hardware registry reflects shipping reality (2026-09)
+- `shared_models.hardware_registry` updated against vendor releases and
+  CAVP/CMVP listings: Thales Luna HSM (fw 7.9 — ML-KEM/ML-DSA in core
+  firmware, T-Series CNSA 2.0 under FIPS 140-3 L3 cert 5450), Entrust
+  nShield (fw 13.8.0 — CAVP-validated ML-KEM/ML-DSA/SLH-DSA), Utimaco
+  SecurityServer (Se Gen2 fw 5.5 — validated ML-DSA-65 module), AWS
+  CloudHSM (managed firmware; KMS internal HSM CMVP-validated for
+  ML-DSA-65), IBM Cloud HSM, Google Cloud HSM and Azure Dedicated HSM
+  (user-managed Luna 7 — PQC requires the tenant's own fw upgrade) are
+  now `quantum_resistant=True`. Thales payShield stays False with an
+  explicit "announced, not yet shipping" note — roadmap never flips a
+  flag. 10 of 60 devices quantum-resistant (7 keystore HSMs + 2 IBM Z
+  entries + ARM CCA).
+- `GET /hardware/catalog` now reports `quantum_resistant_count`; the
+  Vendor page (already rendering per-device/per-vendor PQC) picks the
+  refresh up with zero frontend changes.
+- New pinned tests: shipping-support facts frozen by firmware number
+  (`test_hardware_registry_vendors.py`), catalog count + honest
+  roadmap-≠-shipped assertions in the hardware API suite (350 green).
+
 ### Sales enablement: security-questionnaire answer pack + demo script
 - `docs/security-questionnaire.md` — SIG-lite answers grounded in named code
   artifacts: on-prem/no-egress deployment (telemetry heartbeat is in-process
