@@ -6,6 +6,30 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### De-mock: the simulated benchmark runner is gone; first boot is empty
+- Removed `POST /control/benchmark/run` — the "detector profile" runner that
+  fabricated predictions from `detect_rate`/`false_alarm_rate` RNG knobs.
+  Accuracy numbers can now come only from the REAL detector
+  (`POST /control/benchmark/run-real`, the shipping universal-crypto engine
+  over labelled ground truth) or from real external predictions
+  (`POST /control/benchmark/score`). The runs listing and scoring endpoints
+  are unchanged; a unit test now pins the simulated path as 404 and re-pins
+  `run-real` scoring real detection.
+- `scripts/run_stack.sh` no longer seeds anything: a fresh boot is EMPTY —
+  inventory exists only after real scans run. Deleted
+  `scripts/seed_demo.py` (bundled `local://demo/vulnerable-app` sample scan)
+  and `scripts/seed_test_data.sh`. Kept the operator-configuration seeders
+  (network targets from YAML config, compliance rule pack, business
+  owners/processes) — those load operator config, not fabricated findings.
+- Live realtime verified end-to-end (no mocks): SSE `GET /events/stream`
+  carries real events (`monitor.scan_degraded`, `monitor.alert`,
+  `telecom.event`, `alert.raised`, `ticket.requested` from the automation
+  bridge) with Last-Event-ID resume; `scripts/run_monitor.py` daemon holds
+  the leader lease and re-scans real NETWORK targets (github.com:443,
+  api.github.com:443 probed OK, one genuine CERT_EXPIRING finding) on their
+  intervals; the dashboard dev server proxies /api to the control plane —
+  the browser path sees the same live data.
+
 ### Engagement archive + Go/Rust parser hardening
 - `GET /audit-export/engagement-archive` — the FINAL deliverable in one ZIP:
   the examiner audit pack, the exit report in both renderings (ONE report —

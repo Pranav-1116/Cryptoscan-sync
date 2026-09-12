@@ -5,7 +5,7 @@ Production cryptographic inventory and compliance platform.
 Deterministic scanners, hashed evidence, YAML policy, drift, and a dashboard.
 Policy is never decided by AI.
 
-**Local:** `bash scripts/run_stack.sh` (seeds SQLite on first boot).  
+**Local:** `bash scripts/run_stack.sh` (boots empty — no demo data; inventory appears when real scans run).  
 **Development login:** `admin` / `cryptoscan` (refused in production). **Docs:** [docs/README.md](docs/README.md) (all guides) · [RUN.md](RUN.md) · [REST API reference](docs/api-reference/rest-api.md).  
 **Docker (dev):** `docker compose up --build`.  
 **Docker (prod):** set secrets, then `docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build`.
