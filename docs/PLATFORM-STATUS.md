@@ -21,6 +21,19 @@ across every service suite (collected at the release commit). Releases are cut t
 `python3 scripts/release_check.py` (VERSION == API version == `v` tag,
 dated CHANGELOG section, contiguous migrations, prod-guard intact).
 
+**Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
+(measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC
+roles. New since the last measurement: six first-class scanner languages
+(Python/Java/C#/JavaScript/Go/Rust — weak-primitive + key-size extraction pinned
+by tests), the examiner **audit pack** (`GET /audit-export/pack`), the PoC
+**exit report** with deterministic SHA-256 and SC-1…4 scorecard
+(`GET /audit-export/exit-report`, SC-4 met only by a human name), the
+**engagement archive** (`GET /audit-export/engagement-archive` — pack + report +
+manifest, all sha256sum-verifiable), and the hardware catalog PQC refresh
+(`GET /hardware/catalog` → 60 device types, `quantum_resistant_count: 10`,
+firmware-cited provenance, shipping-only evidence). Full regression lane at this
+commit: **1370 passed / 12 skipped / 0 failed**.
+
 Earlier measurement, kept for traceability — at `24a7a0c` (ZELNX security &
 scanning policy): 505 OpenAPI paths, ~44 service packages, 54 migrations
 (0001–0054), 60 frontend pages, ~3,660 test functions.
@@ -32,7 +45,7 @@ What CryptoScan is (and is not) is a tested, versioned manifest, not prose:
 `GET /api/v1/platform/scope`, enforced by
 `shared/shared_models/tests/test_platform_scope.py` (module-path and
 docstring boundary checks + evidence-whitelist leakage tests), documented in
-[docs/architecture/platform-boundaries.md](docs/architecture/platform-boundaries.md).
+[docs/architecture/platform-boundaries.md](architecture/platform-boundaries.md).
 
 Highlights: **read-only, evidence-chained, key *metadata* only (never key
 material)**; no general SAST / malware / SIEM behavior analytics / COBOL or

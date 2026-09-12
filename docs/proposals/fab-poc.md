@@ -78,3 +78,22 @@ PoC fee credited against the first platform year. Platform scope: continuous
 scanning (Prometheus metrics + alert rules), ITSM/SIEM delivery
 (ServiceNow incidents, Splunk HEC), SSO (OIDC/SAML/LDAP/SCIM) with the
 auditor role and audit-export packs, per-regulator artifact generation.
+
+## Delivered in this repo (as of 2026-09-12)
+
+Every item above exists as code + tests, not slides:
+
+| Proposal item | In the repo |
+|---|---|
+| CBOM of agreed scope | estate CBOM engine + `GET /scans/{id}/cbom`, CycloneDX 1.5 ([user guide](../user-guide/cbom-export.md)) |
+| Quantum-risk view | Shor/Grover families → NIST IR 8547 buckets in the quantum/migration views |
+| Migration roadmap pack | roadmap engine across IT + cloud + telecom (`GET /telecom/roadmap`) |
+| Evidence pack | now three hash-sealed deliverables: **audit pack** (`/audit-export/pack`), **exit report** (`/audit-export/exit-report`, deterministic SHA-256, SC-1…4 scored from data), **engagement archive** (`/audit-export/engagement-archive`) — the client's audit function verifies with any sha256sum-style check ([guide](../user-guide/audit-pack-and-exit-report.md)) |
+| Optional telecom module | shipped: 5GC/roaming/EPC/IMS verdict engine, SEPP hybrid-PQC readiness (`pqc_ready` only when actually probed), carrier packs ([guide](../user-guide/telecom-scanning.md)) |
+| Two-container on-prem run | `deploy/poc/` — compose stack, env template, day-by-day operator checklist |
+| Read-only by construction | read-only cloud roles, TLS-handshake-only probes, key metadata never key material (enforced by tests) |
+
+The success criteria above are now **machine-scored**: the exit report
+evaluates coverage ≥ 90% from the computed worst estate (skips named with
+reasons), pack verifiability from its manifest, and acceptance **only** from
+a human `accepted_by` name — never inferred.
