@@ -44,16 +44,28 @@ def _snapshot_file() -> Path:
     return Path(__import__("os").environ.get("CRYPTOSCAN_SNAPSHOT_DIR") or (root / "data")) / "telecom_snapshot.json"
 
 
+_SNAPSHOT_MTIME: float | None = None
+
+
 def _load_snapshot() -> dict[str, Any] | None:
-    global _SNAPSHOT
-    if _SNAPSHOT is not None:
-        return _SNAPSHOT
+    """In-process cache, re-read when the file's mtime changes — monitor-daemon
+    passes (written from another process) show up without an API restart."""
+    global _SNAPSHOT, _SNAPSHOT_MTIME
     file = _snapshot_file()
-    if file.is_file():
-        try:
-            _SNAPSHOT = json.loads(file.read_text())
-        except (OSError, json.JSONDecodeError):
-            _SNAPSHOT = None
+    try:
+        mtime = file.stat().st_mtime if file.is_file() else None
+    except OSError:
+        mtime = None
+    if _SNAPSHOT is not None and mtime == _SNAPSHOT_MTIME:
+        return _SNAPSHOT
+    if mtime is None:
+        _SNAPSHOT, _SNAPSHOT_MTIME = None, None
+        return None
+    try:
+        _SNAPSHOT = json.loads(file.read_text())
+        _SNAPSHOT_MTIME = mtime
+    except (OSError, json.JSONDecodeError):
+        _SNAPSHOT = None
     return _SNAPSHOT
 
 
@@ -62,9 +74,11 @@ def _store_snapshot(snapshot: dict[str, Any]) -> None:
     with _LOCK:
         _SNAPSHOT = snapshot
     file = _snapshot_file()
+    global _SNAPSHOT_MTIME
     try:
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(json.dumps(snapshot))
+        _SNAPSHOT_MTIME = file.stat().st_mtime
     except OSError:
         pass  # serving in-memory is still correct; persistence is best-effort
 

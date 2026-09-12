@@ -21,6 +21,23 @@ Registry path resolution: `CRYPTOSCAN_TELECOM_REGISTRY` env var →
 `CRYPTOSCAN_SNAPSHOT_DIR` (default `data/`), so restarts keep serving the
 last posture.
 
+## 1b. Continuous monitoring (24/7)
+
+On-demand `POST /telecom/scan` passes are point-in-time. For continuous
+posture, register a TELECOM monitor target and let the daemon re-probe on
+interval (default 15 min):
+
+```bash
+curl -X POST $API/api/v1/monitor/targets -H "Authorization: Bearer $T" -H 'Content-Type: application/json' \
+  -d '{"name":"carrier estate","target_type":"TELECOM","config":{}}'
+```
+
+Each pass runs the same probe/classify engine, mirrors the snapshot (so
+`/telecom/posture` and the exit report stay current — the API picks up
+daemon-written snapshots by file mtime, no restart), and raises
+`monitor.scan_degraded` / `monitor.alert` events (SSE) when a NF turns
+critical. Scope to one carrier with `{"carrier":"de-telekom"}`.
+
 ## 2. Bring-up
 
 ```bash

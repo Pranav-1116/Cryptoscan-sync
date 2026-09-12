@@ -313,3 +313,63 @@ async def test_network_target_with_live_monitor_config():
             "config": {"scope": ["10.0.0.0/24"], "live": "yes"},
         })
         assert bad_shape.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_telecom_target_type_accepted_with_default_interval():
+    """TELECOM (continuous 5GC/roaming posture) is a first-class monitor type:
+    accepted with no required config (the registered estate IS the scope),
+    stored, and listed like any other target."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/api/v1/monitor/targets", json={
+            "name": "carrier estate watch", "target_type": "TELECOM",
+            "config": {"carrier": "de-telekom"}})
+        assert created.status_code == 201, created.text
+        body = created.json()
+        assert (body.get("interval_seconds") in (None, 900)), body
+
+        listed = await client.get("/api/v1/monitor/targets")
+        types = {t["target_type"] for t in listed.json().get("targets", listed.json() if isinstance(listed.json(), list) else [])}
+        assert "TELECOM" in types
+
+
+@pytest.mark.asyncio
+async def test_shortened_interval_takes_effect_immediately():
+    """Lowering the interval pulls next_scan_at in (never waits out the old
+    window); lengthening never accelerates the current schedule."""
+    from datetime import datetime, timedelta, timezone
+
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        created = await client.post("/api/v1/monitor/targets", json={
+            "name": "edge", "target_type": "NETWORK",
+            "config": {"endpoints": ["h.example:443"]}, "interval_seconds": 900})
+        tid = created.json()["id"]
+        row = next(t for t in session.execute(__import__("sqlalchemy").select(
+            __import__("db.models.monitor", fromlike=["MonitorTarget"]).MonitorTarget)).scalars() if False) if False else None
+        from db.models.monitor import MonitorTarget
+        from sqlalchemy import select
+        row = session.execute(select(MonitorTarget)).scalars().first()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)  # DB stores naive UTC
+        row.last_scan_at = now
+        row.next_scan_at = now + timedelta(seconds=900)
+        session.commit()
+
+        r = await client.patch(f"/api/v1/monitor/targets/{tid}", json={"interval_seconds": 60})
+        assert r.status_code == 200, r.text
+        session.expire_all()
+        row = session.execute(select(MonitorTarget)).scalars().first()
+        assert row.interval_seconds == 60
+        assert row.next_scan_at <= now + timedelta(seconds=61)
+
+        # lengthening never accelerates an already-scheduled sooner run
+        soon = now + timedelta(seconds=30)
+        row.next_scan_at = soon
+        session.commit()
+        await client.patch(f"/api/v1/monitor/targets/{tid}", json={"interval_seconds": 3600})
+        session.expire_all()
+        row = session.execute(select(MonitorTarget)).scalars().first()
+        assert row.next_scan_at == soon

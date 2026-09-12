@@ -49,6 +49,7 @@ DEFAULT_INTERVALS: dict[str, int] = {
     "PAYMENT": 3_600,     # hourly — HSM audit trails move fast
     "OT": 900,        # 15 min — passive capture re-scan (watch mode rescans on new captures)
     "VENDOR": 604_800,  # weekly — vendor posture changes slowly
+    "TELECOM": 900,    # 15 min — 5GC/roaming NF posture changes fast
 }
 MAX_BACKOFF_SECONDS = 86_400
 
@@ -395,6 +396,7 @@ def _default_runners() -> dict[str, Runner]:
         ot_runner,
         payment_runner,
         repo_runner,
+        telecom_runner,
         vendor_runner,
     )
 
@@ -406,4 +408,5 @@ def _default_runners() -> dict[str, Runner]:
         "PAYMENT": payment_runner,
         "OT": ot_runner,
         "VENDOR": vendor_runner,
+        "TELECOM": telecom_runner,
     }

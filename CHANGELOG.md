@@ -6,6 +6,31 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Continuous telecom monitoring: TELECOM joins the monitor loop
+- New monitor target type `TELECOM` (default 15-min interval): the 24/7
+  daemon re-probes the registered 3GPP NF estate through the SAME engine as
+  `POST /telecom/scan` — classify verdicts, honest BLOCKED (with the fix)
+  when no estate is registered, issues derived from real severities
+  (critical/high NFs -> SCAN_DEGRADED + ALERT on new issues). Optional
+  scope: `carrier`, `nf_ids`, `timeout`.
+- Each pass mirrors the snapshot the API serves (same file, same shape),
+  and `/telecom/posture` + the roaming view + the exit report now pick up
+  daemon-written passes LIVE (the API loader re-reads on file mtime — no
+  restart). Monitor events flow to SSE via the existing event tailer.
+- `VALID_TYPES` in the monitor router now imports `TARGET_TYPES` from the
+  model — one source of truth for target types.
+- Shortening a target's interval now takes effect immediately
+  (`next_scan_at` pulls in to `last_scan_at + new_interval`; lengthening
+  never accelerates an already-scheduled run).
+- Live-verified on real endpoints: daemon pass against a lab AMF running a
+  REAL TLS server (TLS_OK with self-signed-cert findings) + a dead SEPP
+  (UNREACHABLE/critical); `/telecom/posture` showed each daemon pass
+  without an API restart; exit report picked up the daemon-written estate
+  (2 targets, 1 critical).
+- Tests: runner classification/filter/mirror/blocked paths (4) + API
+  target-type acceptance (1); telecom engines, monitor API and
+  audit-pack/exit-report suites re-verified against the mtime loader.
+
 ### De-mock: the simulated benchmark runner is gone; first boot is empty
 - Removed `POST /control/benchmark/run` — the "detector profile" runner that
   fabricated predictions from `detect_rate`/`false_alarm_rate` RNG knobs.

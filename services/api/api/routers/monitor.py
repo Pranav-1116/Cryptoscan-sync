@@ -8,6 +8,8 @@ NETWORK targets, so expect probe latency, not instant results.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -16,7 +18,7 @@ from api.dependencies import get_current_user, get_db_session, require_auditor
 
 router = APIRouter(tags=["monitor"])
 
-VALID_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT", "OT", "VENDOR")
+from db.models.monitor import TARGET_TYPES as VALID_TYPES  # noqa: E402 — single source of truth
 # Change-watch (realtime rescan-on-change) is only meaningful where a cheap
 # fingerprint probe exists: git HEAD for REPO, local image id for CONTAINER,
 # OT capture-directory fingerprint for OT.
@@ -240,6 +242,13 @@ def update_target(
         if not (60 <= body.interval_seconds <= 2_592_000):
             raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
         row.interval_seconds = body.interval_seconds
+        # A shortened interval must take effect immediately: never make the
+        # operator wait out the OLD window. Pull next_scan_at in (never push
+        # it out — lengthening stays respectful of the current schedule).
+        if row.last_scan_at is not None and row.next_scan_at is not None:
+            due = row.last_scan_at + timedelta(seconds=row.interval_seconds)
+            if due < row.next_scan_at:
+                row.next_scan_at = due
     if body.config is not None:
         row.config = _validate_config(body.config, row.target_type)
     if body.enabled is not None:
