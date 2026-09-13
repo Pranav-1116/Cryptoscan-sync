@@ -6,7 +6,7 @@ import {
   apiAutomationRules, apiAutomationCapabilities,
   apiAutomationSaveRule, apiAutomationDeleteRule,
   apiConnectorsStatus, apiAutomationConnectorPreview, apiAutomationConnectorDispatch,
-} from "../lib/api.js";
+  apiAutomationInstallTelecomGuardrails,} from "../lib/api.js";
 
 /* Automation rule builder — deterministic event→action rules. A rule is
    WHEN <event> · IF <conditions> · THEN <actions>. The action catalog carries
@@ -86,6 +86,16 @@ export default function Automation() {
       void rulesRes.run();
     } else {
       setMsg({ ok: false, text: r.error || "Could not save rule." });
+    }
+  };
+
+  const installGuardrails = async () => {
+    const r = await apiAutomationInstallTelecomGuardrails();
+    if (r.ok) {
+      setMsg({ ok: true, text: `Telecom guardrails installed: ${(r.data as any)?.created ?? 0} created, ${(r.data as any)?.updated ?? 0} updated.` });
+      void rulesRes.run();
+    } else {
+      setMsg({ ok: false, text: r.error || "Could not install telecom guardrails." });
     }
   };
 
@@ -232,6 +242,12 @@ export default function Automation() {
 
         {/* active rules */}
         <Panel title="Active rules" sub="rules loaded into the deterministic engine">
+          <div style={{ marginBottom: 10 }}>
+            <button className="btn sm" onClick={() => void installGuardrails()}>install telecom guardrails</button>
+            <span className="dim" style={{ fontSize: 12, marginInlineStart: 8 }}>
+              roaming PQC drop · mission NF down · SEPP cert expiry — idempotent
+            </span>
+          </div>
           {rules.length === 0 ? (
             <div className="dim" style={{ fontSize: 13 }}>
               No custom rules yet — built-in playbooks run by default. Create one on the left.

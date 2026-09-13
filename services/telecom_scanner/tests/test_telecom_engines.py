@@ -515,3 +515,37 @@ def test_pqc_regression_wakes_automation_with_existing_vocabulary():
 
     assert automation_event_kind({"kind": "TELECOM_PQC_READY", "severity": "info"}) is None
     assert automation_event_kind({"kind": "TELECOM_RECOVERED", "severity": "info"}) is None
+
+
+def test_guardrail_presets_are_valid_and_semantically_correct():
+    """The curated guardrail rules validate against the rules engine
+    (fail-closed preset) and match exactly the drift they claim to guard."""
+    from automation.rules_engine import ACTIONS, EVENT_KINDS, AutomationRule, evaluate_conditions
+    from telecom_scanner.automation import telecom_guardrail_rules
+
+    rules = []
+    for preset in telecom_guardrail_rules():
+        rule = AutomationRule.from_dict({
+            "id": preset["rule_id"], "name": preset["name"], "when": preset["when"],
+            "if": preset["if"], "then": preset["then"],
+            "severity": preset["severity"], "enabled": True,
+        })
+        rules.append(rule)
+        assert preset["when"] in EVENT_KINDS
+        assert set(preset["then"]) <= ACTIONS
+
+    roaming_pqc, mission_down, sepp_cert = rules
+
+    # roaming link losing hybrid PQC -> guarded; 5gc PQC drop is NOT this rule
+    assert evaluate_conditions(roaming_pqc, {"plane": "roaming", "nf_type": "sepp"})
+    assert not evaluate_conditions(roaming_pqc, {"plane": "5gc", "nf_type": "amf"})
+
+    # mission-plane NF down -> guarded; roaming-plane down stays with the
+    # default playbook (explicitly not this guardrail)
+    assert evaluate_conditions(mission_down, {"plane": "5gc"})
+    assert evaluate_conditions(mission_down, {"plane": "epc"})
+    assert not evaluate_conditions(mission_down, {"plane": "roaming"})
+
+    # SEPP cert expiry -> guarded; an AMF cert expiring is not
+    assert evaluate_conditions(sepp_cert, {"nf_type": "sepp"})
+    assert not evaluate_conditions(sepp_cert, {"nf_type": "amf"})

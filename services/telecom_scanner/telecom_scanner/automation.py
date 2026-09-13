@@ -61,3 +61,48 @@ def automation_data(payload: Mapping[str, Any]) -> dict[str, Any]:
         "endpoint": payload.get("endpoint"),
     }
     return {k: v for k, v in data.items() if v is not None}
+
+def telecom_guardrail_rules() -> list[dict[str, Any]]:
+    """Curated operator-installable guardrail rules for a telecom estate.
+
+    Installed via POST /automation/telecom-guardrails (idempotent upsert);
+    they ride the SAME rules engine, actions and governance gates as any
+    operator-authored rule — this preset just encodes the 3GPP/NIST defaults
+    so an operator does not have to author them by hand:
+
+    * roaming PQC drop — a SEPP edge that LOST hybrid key exchange enters the
+      PQC migration queue with a ticket and an alert (CRITICAL);
+    * mission-plane NF down — a 5GC/EPC/IMS network function gone dark raises
+      a ticket + NOC-visible alert (HIGH); roaming-plane down stays with the
+      default pb_telecom_nf_down playbook;
+    * SEPP certificate expiry — a ticket ahead of a roaming-link cert
+      expiring (MEDIUM); rotation itself stays behind the playbook's gated
+      approval.
+    """
+    return [
+        {
+            "rule_id": "guardrail-roaming-pqc-drop",
+            "name": "Roaming PQC guardrail — hybrid key exchange lost",
+            "when": "quantum_vulnerable_detected",
+            "if": [{"field": "plane", "operator": "equals", "value": "roaming"}],
+            "then": ["add_pqc_queue", "create_ticket", "create_alert"],
+            "severity": "CRITICAL",
+        },
+        {
+            "rule_id": "guardrail-mission-nf-down",
+            "name": "Mission-plane NF down guardrail",
+            "when": "agent_offline",
+            "if": [{"field": "plane", "operator": "not_equals", "value": "roaming"}],
+            "then": ["create_ticket", "create_alert"],
+            "severity": "HIGH",
+        },
+        {
+            "rule_id": "guardrail-sepp-cert-expiry",
+            "name": "SEPP certificate expiry guardrail",
+            "when": "certificate_expiring",
+            "if": [{"field": "nf_type", "operator": "equals", "value": "sepp"}],
+            "then": ["create_ticket"],
+            "severity": "MEDIUM",
+        },
+    ]
+

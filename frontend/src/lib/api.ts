@@ -1216,6 +1216,20 @@ export async function apiAutomationSaveRule(body: Record<string, unknown>): Prom
   } catch (e) { return { source: "live", ok: false, error: String(e) } as ApiResult<any>; }
 }
 
+/* Install the curated telecom guardrail rules (idempotent upsert). */
+export async function apiAutomationInstallTelecomGuardrails(): Promise<ApiResult<any>> {
+  try {
+    const resp = await fetch(`/api/v1/automation/telecom-guardrails`, {
+      method: "POST",
+      headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      signal: AbortSignal.timeout(15000),
+    });
+    const rbody = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: String((rbody as any).detail || `HTTP ${resp.status}`) } as ApiResult<any>;
+    return { source: "live", ok: true, data: rbody };
+  } catch (e) { return { source: "live", ok: false, error: String(e) } as ApiResult<any>; }
+}
+
 /* Delete (disable) an automation rule. */
 export async function apiAutomationDeleteRule(ruleId: string): Promise<ApiResult<any>> {
   try {

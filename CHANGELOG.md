@@ -6,6 +6,27 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Telecom guardrails: the curated 3GPP/NIST defaults, installable in one call
+- `POST /automation/telecom-guardrails` (admin-gated, idempotent upsert)
+  installs three vetted operator rules through the SAME store, validation
+  and governance gates as hand-authored rules:
+  `guardrail-roaming-pqc-drop` (a roaming edge losing hybrid PQC -> PQC
+  migration queue + ticket + alert, CRITICAL), `guardrail-mission-nf-down`
+  (5GC/EPC/IMS NF dark -> ticket + alert, HIGH; roaming-plane down stays
+  with the default playbook), `guardrail-sepp-cert-expiry` (ticket ahead of
+  a roaming-link cert expiring, MEDIUM; rotation stays behind the gated
+  approval). Fail-closed: every preset validates BEFORE anything is
+  written; re-running updates in place, never duplicates.
+- Presets are pure (`telecom_scanner.automation.telecom_guardrail_rules`)
+  and pinned against the rules-engine vocabulary and condition semantics
+  (roaming vs 5gc vs SEPP matching proven, not asserted).
+- Automation page: one-click "install telecom guardrails" with an
+  idempotency hint; API reference regenerated (585 paths / 644 ops).
+- Live-verified: install (3 created, then 0/3 on re-install) -> real AMF
+  outage -> daemon pass -> the run cites `guardrail-mission-nf-down` in
+  matched_rules with create_ticket + create_alert (pre-guardrail runs show
+  matched: [] — the before/after is visible in the runs table).
+
 ### PQC regression wakes automation; drift → ticket loop closed live
 - `TELECOM_PQC_DROPPED` now maps onto the EXISTING
   `quantum_vulnerable_detected` trigger — a roaming link that LOST hybrid

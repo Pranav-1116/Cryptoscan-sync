@@ -1,6 +1,6 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-12:
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-13:
 **585 paths, 644 operations** across 78 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
@@ -138,6 +138,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/automation/sectors` | List Sectors |
 | `POST` | `/api/v1/automation/sectors/{sector}/activate` | Activate Sector Endpoint |
 | `POST` | `/api/v1/automation/select-scanners` | Select Scanners Preview |
+| `POST` | `/api/v1/automation/telecom-guardrails` | Install Telecom Guardrails |
 
 ## banking-regulatory
 
@@ -319,7 +320,6 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/control/authorize` | Authorize |
 | `POST` | `/api/v1/control/benchmark/cases` | Add Cases |
 | `POST` | `/api/v1/control/benchmark/datasets` | Create Dataset |
-| `POST` | `/api/v1/control/benchmark/run` | Run Benchmark |
 | `POST` | `/api/v1/control/benchmark/run-real` | Run Real Benchmark |
 | `GET` | `/api/v1/control/benchmark/runs` | Benchmark Runs |
 | `POST` | `/api/v1/control/benchmark/score` | Score Benchmark |

@@ -157,6 +157,62 @@ def delete_rule(rule_id: str,
     return {"rule_id": rule_id, "deleted": True}
 
 
+@router.post("/telecom-guardrails")
+def install_telecom_guardrails(user: str = Depends(require_roles(*_ADMINS)),
+                               db: Session = Depends(get_db_session)):
+    """Install the curated telecom guardrail rules (idempotent upsert).
+
+    Encodes the 3GPP/NIST defaults for a monitored carrier estate: roaming
+    PQC drop -> PQC queue + ticket + alert (CRITICAL), mission-plane NF down
+    -> ticket + alert (HIGH), SEPP cert expiry -> ticket (MEDIUM). Same rules
+    engine, same actions, same governance gates as operator-authored rules;
+    re-running updates in place, never duplicates."""
+    try:
+        from telecom_scanner.automation import telecom_guardrail_rules
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail=(
+            f"telecom_scanner service not available in this deployment: {exc}")) from exc
+
+    from automation.rules_engine import AutomationRule, RulesError
+    from db.models.automation import AutomationRuleRow as Row
+
+    presets = telecom_guardrail_rules()
+    # fail-closed: validate EVERY preset before touching the store — a bad
+    # preset never half-installs
+    for preset in presets:
+        try:
+            AutomationRule.from_dict({
+                "id": preset["rule_id"], "name": preset["name"], "when": preset["when"],
+                "if": preset["if"], "then": preset["then"],
+                "severity": preset["severity"], "enabled": True,
+            })
+        except RulesError as exc:
+            raise HTTPException(status_code=422, detail=(
+                f"preset {preset['rule_id']} failed validation: {exc}")) from exc
+
+    results = []
+    for preset in presets:
+        row = db.execute(select(Row).where(Row.rule_id == preset["rule_id"])).scalars().first()
+        created = row is None
+        if row is None:
+            row = Row(rule_id=preset["rule_id"], created_by=user)
+            db.add(row)
+        row.name = preset["name"]
+        row.when = preset["when"]
+        row.conditions = preset["if"]
+        row.actions = preset["then"]
+        row.severity = preset["severity"]
+        row.enabled = True
+        results.append({"rule_id": preset["rule_id"], "created": created})
+    db.commit()
+    _publish("automation.guardrails_installed",
+             {"rules": [r["rule_id"] for r in results], "by": user})
+    return {"installed": len(results),
+            "created": sum(1 for r in results if r["created"]),
+            "updated": sum(1 for r in results if not r["created"]),
+            "rules": results}
+
+
 # ------------------------------------------------------------------ process
 class EventBody(BaseModel):
     event_kind: str = Field(..., min_length=2, max_length=60)
