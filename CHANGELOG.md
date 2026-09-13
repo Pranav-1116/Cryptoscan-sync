@@ -6,6 +6,25 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### PQC regression wakes automation; drift → ticket loop closed live
+- `TELECOM_PQC_DROPPED` now maps onto the EXISTING
+  `quantum_vulnerable_detected` trigger — a roaming link that LOST hybrid
+  PQC is quantum-vulnerable again and reuses the `pb_pqc` playbook
+  (rescan, CBOM refresh, migration queue, ticket, alert, gated approval).
+  No new action vocabulary; `TELECOM_PQC_READY` stays noise.
+- The snapshot tailer's bus payload now carries `plane` + `endpoint`
+  (extracted into the pure `_telecom_event_payload`), so operator rules can
+  target `plane == "roaming"` on daemon-originated drift too.
+- Telecom page: live drift indicator — connection state plus the latest
+  `telecom.event` (kind + NF + time) rendered from the SSE stream, above
+  the event feed.
+- Live-verified end-to-end (real outage): AMF TLS listener recovered then
+  killed again — the daemon wrote both passes, SSE streamed
+  `TELECOM_RECOVERED` and `TELECOM_REACHABILITY_LOST`, and the automation
+  bridge persisted runs (`agent_offline`, `drift_detected`,
+  `certificate_expiring` — all `triggered_by: event-bus:telecom-scanner`)
+  with tickets requested on the bus. Cross-process freshness re-proven.
+
 ### Telecom drift streams; Docker wiring for the realtime loop
 - Verdict changes now STREAM: a new snapshot tailer federates telecom drift
   events written by OTHER processes (monitor-daemon TELECOM passes, CLI

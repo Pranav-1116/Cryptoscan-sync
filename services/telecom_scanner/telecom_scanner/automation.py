@@ -14,8 +14,12 @@ Mapping policy (event payload ``kind`` → automation event kind):
 * ``TELECOM_FINDINGS_CHANGED`` / ``TELECOM_FINDING`` with severity
   high/critical                    → ``drift_detected``         (crypto posture
   drift: new weak verdict or lost reachability on the estate)
-* everything else (recoveries, info findings, target added) → None — noise
-  never wakes the automation engine.
+* ``TELECOM_PQC_DROPPED``          → ``quantum_vulnerable_detected``
+  (a link LOST hybrid PQC — it is quantum-vulnerable again; reuses the
+  existing pb_pqc playbook: rescan, CBOM refresh, migration queue, ticket,
+  alert, gated approval. No new action vocabulary was invented.)
+* everything else (recoveries, ``TELECOM_PQC_READY``, info findings,
+  target added) → None — noise never wakes the automation engine.
 
 The condition data handed to rules carries the telecom identity (nf_id,
 carrier_code, plmn-adjacent fields, plane, environment) so operator rules
@@ -28,6 +32,7 @@ from typing import Any, Mapping
 _EVENT_KIND_BY_TELECOM = {
     "TELECOM_CERT_EXPIRING": "certificate_expiring",
     "TELECOM_REACHABILITY_LOST": "agent_offline",
+    "TELECOM_PQC_DROPPED": "quantum_vulnerable_detected",
 }
 _DRIFT_KINDS = ("TELECOM_FINDINGS_CHANGED", "TELECOM_FINDING")
 _ACTIONABLE_SEVERITIES = ("high", "critical")

@@ -107,7 +107,8 @@ Verdict rules worth knowing cold:
 | `TELECOM_REACHABILITY_LOST` | `agent_offline` | `pb_telecom_nf_down` — re-probe, NOC alert, ticket, **gated failover** |
 | `TELECOM_CERT_EXPIRING` | `certificate_expiring` | `pb_certificate_expiring` — owner ticket, gated rotation |
 | `TELECOM_FINDINGS_CHANGED` (high/critical) | `drift_detected` | `pb_drift` — rescan, alert, ticket |
-| `TELECOM_RECOVERED`, `TELECOM_TARGET_ADDED`, info changes | — (None) | noise never wakes the engine |
+| `TELECOM_PQC_DROPPED` | `quantum_vulnerable_detected` | `pb_pqc` — rescan, CBOM refresh, migration queue, ticket, **gated approval** |
+| `TELECOM_RECOVERED`, `TELECOM_PQC_READY`, `TELECOM_TARGET_ADDED`, info changes | — (None) | noise never wakes the engine |
 
 Add operator rules under Automation (the telecom condition data carries
 `nf_id`, `carrier_code`, `plane`, `environment`, so rules can target e.g.

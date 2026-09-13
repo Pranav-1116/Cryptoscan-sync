@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, PageHead, Stat } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
-import { useRealtimeRefresh } from "../lib/realtime.js";
+import { useRealtime, useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiTelecomPosture, apiTelecomRegistry, apiTelecomEvents,
   apiTelecomCarrierAdd, apiTelecomTargetAdd, apiTelecomScan,
@@ -25,6 +25,8 @@ const SEV_TONE: Record<string, string> = {
 const num = (v: unknown): number => (typeof v === "number" ? v : 0);
 
 export default function Telecom() {
+  const rt = useRealtime();
+  const lastDrift = rt.events.find((e) => e.type === "telecom.event");
   const posture = usePollingApi(apiTelecomPosture, 15000);
   const registry = usePollingApi(apiTelecomRegistry, 30000);
   const events = usePollingApi(apiTelecomEvents, 8000);
@@ -154,6 +156,19 @@ export default function Telecom() {
       )}
 
       <Panel title="Live event feed" sub="posture changes stream over the platform event bus (SSE)" frame>
+        <div style={{ marginBottom: 8, fontSize: "0.92em" }}>
+          <Badge tone={rt.conn === "live" ? "green" : "amber"}>{rt.conn}</Badge>{" "}
+          {lastDrift ? (
+            <span>
+              last drift{" "}
+              <strong>{String(lastDrift.payload?.kind ?? "")}</strong> on{" "}
+              <strong>{String(lastDrift.payload?.nf_id ?? "")}</strong>{" "}
+              <span style={{ opacity: 0.5 }}>({String(lastDrift.ts ?? "").slice(11, 19)})</span>
+            </span>
+          ) : (
+            <span style={{ opacity: 0.55 }}>no drift observed since you opened this page</span>
+          )}
+        </div>
         {feed.length === 0 ? (
           <p style={{ margin: 0, opacity: 0.6 }}>No telecom events yet — run a scan, or enable the periodic scanner.</p>
         ) : (

@@ -489,3 +489,29 @@ def test_pqc_transition_quiet_on_first_observation():
     pqc_probe["crypto"]["key_exchange"] = "X25519MLKEM768"
     v = classify_target(_target(), pqc_probe)
     assert evaluate_changes(None, [v]) == []
+
+
+def test_pqc_regression_wakes_automation_with_existing_vocabulary():
+    """TELECOM_PQC_DROPPED maps onto the EXISTING quantum-vulnerable trigger
+    (pb_pqc: rescan, CBOM refresh, migration queue, ticket, gated approval) —
+    no new action vocabulary. READY stays noise; data carries the telecom
+    identity so rules can target plane/carrier."""
+    from telecom_scanner.automation import automation_data, automation_event_kind
+
+    dropped = {"kind": "TELECOM_PQC_DROPPED", "severity": "high",
+               "target": "gw-za-01", "nf_id": "gw-za-01", "nf_type": "sepp",
+               "carrier_code": "de-telekom", "plane": "roaming",
+               "message": "PQC regression on gw-za-01"}
+    assert automation_event_kind(dropped) == "quantum_vulnerable_detected"
+    # and the rules engine + playbook machinery know this kind end-to-end
+    from automation.playbooks import playbook_for_event
+    from automation.rules_engine import EVENT_KINDS
+    assert "quantum_vulnerable_detected" in EVENT_KINDS
+    assert playbook_for_event("quantum_vulnerable_detected") is not None
+
+    data = automation_data(dropped)
+    assert data["nf_id"] == "gw-za-01" and data["plane"] == "roaming"
+    assert data["severity"] == "HIGH"
+
+    assert automation_event_kind({"kind": "TELECOM_PQC_READY", "severity": "info"}) is None
+    assert automation_event_kind({"kind": "TELECOM_RECOVERED", "severity": "info"}) is None

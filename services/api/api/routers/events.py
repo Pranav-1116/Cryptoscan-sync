@@ -156,6 +156,23 @@ def app_state():
 
 # ------------------------------------------------------------------- tailer
 
+def _telecom_event_payload(ev: dict) -> dict:
+    """Bus payload for one telecom drift event — full identity so automation
+    rules can target plane/carrier (e.g. "plane == roaming")."""
+    return {
+        "nf_id": ev.get("target"),
+        "nf_type": ev.get("nf_type"),
+        "carrier_code": ev.get("carrier_code"),
+        "plane": ev.get("plane"),
+        "endpoint": ev.get("endpoint"),
+        "kind": ev.get("kind"),
+        "severity": ev.get("severity"),
+        "message": ev.get("message"),
+        "at": ev.get("at"),
+        "origin": "snapshot-tailer",
+    }
+
+
 def _drain_telecom_events(seen: set[str], publish, snapshot: dict | None,
                           *, seed_only: bool = False) -> int:
     """Publish not-yet-seen telecom drift events from a snapshot (pure apart
@@ -279,20 +296,8 @@ async def tail_telecom_snapshot(interval: float = 2.0) -> None:
                     directly = set()
 
                 def publish(ev: dict) -> None:
-                    bus.publish(
-                        "telecom.event",
-                        {
-                            "nf_id": ev.get("target"),
-                            "nf_type": ev.get("nf_type"),
-                            "carrier_code": ev.get("carrier_code"),
-                            "kind": ev.get("kind"),
-                            "severity": ev.get("severity"),
-                            "message": ev.get("message"),
-                            "at": ev.get("at"),
-                            "origin": "snapshot-tailer",
-                        },
-                        source="telecom-scanner",
-                    )
+                    bus.publish("telecom.event", _telecom_event_payload(ev),
+                                source="telecom-scanner")
 
                 if not seeded:
                     # first read after boot: learn history, publish nothing
