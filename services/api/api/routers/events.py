@@ -156,6 +156,32 @@ def app_state():
 
 # ------------------------------------------------------------------- tailer
 
+def _drain_telecom_events(seen: set[str], publish, snapshot: dict | None,
+                          *, seed_only: bool = False) -> int:
+    """Publish not-yet-seen telecom drift events from a snapshot (pure apart
+    from the publish callback). ``seed_only=True`` learns history without
+    publishing — the tailer's first read after boot, so a restart never
+    floods the bus with old events."""
+    if not snapshot:
+        return 0
+    published = 0
+    for ev in snapshot.get("events") or []:
+        key = (f"telecom:{ev.get('kind')}:{ev.get('target')}:"
+               f"{ev.get('at')}:{ev.get('fingerprint')}")
+        if key in seen:
+            continue
+        seen.add(key)
+        if not seed_only:
+            publish(ev)
+            published += 1
+    if len(seen) > 2_000:
+        seen.clear()
+        for ev in (snapshot.get("events") or [])[-1_000:]:
+            seen.add(f"telecom:{ev.get('kind')}:{ev.get('target')}:"
+                     f"{ev.get('at')}:{ev.get('fingerprint')}")
+    return published
+
+
 async def tail_monitor_events(interval: float = 2.0) -> None:
     """Federate monitor_events rows (written by the monitor process or by
     direct platform publishers) onto the in-process bus as `monitor.*`
@@ -229,10 +255,68 @@ def _fetch_recent_monitor_events(limit: int = 100) -> list[dict]:
         session.close()
 
 
+
+async def tail_telecom_snapshot(interval: float = 2.0) -> None:
+    """Federate telecom drift events written by OTHER processes (the monitor
+    daemon's TELECOM passes, CLI runs) onto the bus as `telecom.event` — a
+    daemon pass streams exactly like an API scan. Events this process already
+    published directly (shared ``published_event_ids`` registry, ``telecom:``
+    prefixed keys) are skipped: one event, one delivery."""
+    bus = get_event_bus()
+    seen: set[str] = set()
+    seeded = False
+    while True:
+        try:
+            from api.routers.telecom import _load_snapshot, _snapshot_file
+
+            file = _snapshot_file()
+            mtime = file.stat().st_mtime if file.is_file() else None
+            if mtime is not None:
+                snapshot = _load_snapshot()
+                try:
+                    directly = platform_events.published_event_ids()
+                except Exception:
+                    directly = set()
+
+                def publish(ev: dict) -> None:
+                    bus.publish(
+                        "telecom.event",
+                        {
+                            "nf_id": ev.get("target"),
+                            "nf_type": ev.get("nf_type"),
+                            "carrier_code": ev.get("carrier_code"),
+                            "kind": ev.get("kind"),
+                            "severity": ev.get("severity"),
+                            "message": ev.get("message"),
+                            "at": ev.get("at"),
+                            "origin": "snapshot-tailer",
+                        },
+                        source="telecom-scanner",
+                    )
+
+                if not seeded:
+                    # first read after boot: learn history, publish nothing
+                    _drain_telecom_events(seen, publish, snapshot, seed_only=True)
+                    seeded = True
+                else:
+                    fresh = [ev for ev in (snapshot or {}).get("events") or []
+                             if (f"telecom:{ev.get('kind')}:{ev.get('target')}:"
+                                 f"{ev.get('at')}:{ev.get('fingerprint')}") not in directly]
+                    _drain_telecom_events(seen, publish, {"events": fresh})
+        except Exception:  # snapshot unreadable / mid-write — retry quietly
+            pass
+        await asyncio.sleep(interval)
+
+
 def start_event_tailer(interval: float) -> asyncio.Task | None:
     try:
         task = asyncio.create_task(tail_monitor_events(interval))
         task.set_name("event-tailer")
+        try:
+            telecom_task = asyncio.create_task(tail_telecom_snapshot(interval))
+            telecom_task.set_name("telecom-tailer")
+        except RuntimeError:  # pragma: no cover — same loop, cannot happen
+            pass
         return task
     except RuntimeError:  # no running loop (sync test contexts)
         return None

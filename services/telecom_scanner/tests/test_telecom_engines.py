@@ -442,3 +442,50 @@ def test_carrier_pack_empty_is_honest():
     assert pack["posture"]["totals"]["targets"] == 0
     assert pack["families_flagged"] == [] and pack["roaming_edges"] == []
     assert pack["declared_limits"]
+
+
+def _state_row(verdict):
+    """The exact state shape the API scan/ingest and the monitor runner mirror."""
+    return {k: verdict[k] for k in ("status", "severity", "fingerprint",
+                                    "cert_not_after", "pqc_ready")}
+
+
+def test_pqc_readiness_transitions_stream():
+    """A roaming link gaining/losing hybrid ML-KEM must be an EVENT: the
+    pqc.hybrid_kem finding is info-severity (excluded from the fingerprint),
+    so without the explicit transition the flip would be event-silent."""
+    classical = classify_target(_target(nf_type="sepp"), _probe())
+    pqc_probe = _probe()
+    pqc_probe["crypto"]["key_exchange"] = "X25519MLKEM768"
+    pqc_verdict = classify_target(_target(nf_type="sepp"), pqc_probe)
+
+    # the fingerprint is IDENTICAL — this is exactly why the explicit
+    # transition check exists
+    assert classical["fingerprint"] == pqc_verdict["fingerprint"]
+    assert classical["pqc_ready"] is False and pqc_verdict["pqc_ready"] is True
+
+    gained = evaluate_changes({"amf-prod-01": _state_row(classical)}, [pqc_verdict])
+    pqc_events = [(e["kind"], e["severity"]) for e in gained]
+    assert ("TELECOM_PQC_READY", "info") in pqc_events
+    ready = [e for e in gained if e["kind"] == "TELECOM_PQC_READY"][0]
+    assert "roaming link" in ready["message"]  # SEPP phrasing
+    assert ready["pqc_kex"] == ["x25519mlkem768"]  # scanner normalizes case
+
+    dropped = evaluate_changes({"amf-prod-01": _state_row(pqc_verdict)}, [classical])
+    dropped_events = [(e["kind"], e["severity"]) for e in dropped]
+    assert ("TELECOM_PQC_DROPPED", "high") in dropped_events
+    reg = [e for e in dropped if e["kind"] == "TELECOM_PQC_DROPPED"][0]
+    assert "regression" in reg["message"]
+
+    # steady state: no repeat events
+    quiet = evaluate_changes({"amf-prod-01": _state_row(pqc_verdict)}, [pqc_verdict])
+    assert "TELECOM_PQC_READY" not in [e["kind"] for e in quiet]
+
+
+def test_pqc_transition_quiet_on_first_observation():
+    """First observation is a baseline (no per-target noise) — a PQC-ready NF
+    seen for the first time must not fire TELECOM_PQC_READY."""
+    pqc_probe = _probe()
+    pqc_probe["crypto"]["key_exchange"] = "X25519MLKEM768"
+    v = classify_target(_target(), pqc_probe)
+    assert evaluate_changes(None, [v]) == []

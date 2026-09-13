@@ -102,6 +102,25 @@ def evaluate_changes(
         elif prev_status == "UNREACHABLE" and this_status not in ("UNREACHABLE", "NOT_PROBED"):
             emit("TELECOM_RECOVERED", "info", f"{nf_id} is reachable again ({this_status})")
 
+        # PQC readiness drift (hybrid ML-KEM observed on the link). The
+        # pqc.hybrid_kem finding is info-severity so it never reaches the
+        # fingerprint — without this explicit transition check a roaming
+        # link gaining (or losing) quantum-safety would be event-silent.
+        prev_ready = before.get("pqc_ready")
+        this_ready = bool(verdict.get("pqc_kex")) if verdict.get("pqc_ready") is None \
+            else bool(verdict.get("pqc_ready"))
+        if prev_ready is not None and bool(prev_ready) != this_ready:
+            link = "roaming link" if str(verdict.get("nf_type")) == "sepp" else "link"
+            kex = ", ".join(sorted(set(verdict.get("pqc_kex") or []))) or "none"
+            if this_ready:
+                emit("TELECOM_PQC_READY", "info",
+                     f"PQC-hybrid key exchange now observed on {nf_id} ({link}): {kex}",
+                     pqc_kex=verdict.get("pqc_kex"))
+            else:
+                emit("TELECOM_PQC_DROPPED", "high",
+                     f"PQC regression on {nf_id} ({link}): hybrid key exchange no longer observed",
+                     pqc_kex=verdict.get("pqc_kex"))
+
         prev_codes = set(str(before.get("fingerprint")).split("|")[1].split(",")) - {""}
         this_codes = set(str(verdict.get("fingerprint")).split("|")[1].split(",")) - {""}
         gained = this_codes - prev_codes

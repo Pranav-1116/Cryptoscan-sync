@@ -83,7 +83,15 @@ def _store_snapshot(snapshot: dict[str, Any]) -> None:
         pass  # serving in-memory is still correct; persistence is best-effort
 
 
+def _event_key(event: dict[str, Any]) -> str:
+    """Stable identity of one telecom drift event (mirrors the scanner's
+    cooldown key) — shared by direct publishes and the snapshot tailer."""
+    return (f"telecom:{event.get('kind')}:{event.get('target')}:"
+            f"{event.get('at')}:{event.get('fingerprint')}")
+
+
 def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
+    from api.events import platform_events
     from api.events.bus import get_event_bus
 
     get_event_bus().publish(
@@ -91,6 +99,7 @@ def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
         {**target_hint, **event, "kind": event.get("kind")},
         source="telecom-scanner",
     )
+    platform_events.published_event_ids().add(_event_key(event))
 
 
 def _publish_events(events: list[dict[str, Any]]) -> int:
@@ -259,7 +268,9 @@ def telecom_scan(request: ScanRequest,
     previous = (_load_snapshot() or {}).get("state") or {}
     rows = probe_registry(reg, only=list(request.only) or None, timeout=request.timeout)
     events = evaluate_changes(previous, rows)
-    state = {row["nf_id"]: {k: row[k] for k in ("status", "severity", "fingerprint", "cert_not_after")} for row in rows}
+    state = {row["nf_id"]: {k: row[k] for k in
+                            ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
+             for row in rows}
     snapshot = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "scanner": "telecom-api-scan",
@@ -297,7 +308,8 @@ def telecom_ingest(request: IngestRequest,
     rows.sort(key=lambda r: str(r.get("nf_id")))
     events = evaluate_changes(previous.get("state") or {}, [verdict])
     state = dict(previous.get("state") or {})
-    state[verdict["nf_id"]] = {k: verdict[k] for k in ("status", "severity", "fingerprint", "cert_not_after")}
+    state[verdict["nf_id"]] = {k: verdict[k] for k in
+                               ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
 
     from telecom_scanner.rollup import posture_rollup
 

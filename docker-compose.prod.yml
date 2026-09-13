@@ -63,6 +63,11 @@ services:
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
       CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
+      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
+    volumes:
+      - telecom_data:/var/lib/cryptoscan/telecom
+      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     command:
       - uvicorn
       - api.main:app
@@ -104,6 +109,12 @@ services:
       - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
   monitor:
+    environment:
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
+      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
+    volumes:
+      - telecom_data:/var/lib/cryptoscan/telecom
+      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     logging: *json-log
     mem_limit: 512m
     security_opt:

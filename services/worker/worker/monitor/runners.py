@@ -637,7 +637,8 @@ def telecom_runner(config: dict, session: Any) -> dict:
             "rows": rows,
             "events": events,
             "events_summary": summarize_events(events),
-            "state": {row["nf_id"]: {k: row[k] for k in ("status", "severity", "fingerprint", "cert_not_after")}
+            "state": {row["nf_id"]: {k: row[k] for k in
+                                  ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
                       for row in rows},
             "rollup": posture_rollup(rows, reg.get("carriers") or {}),
         }

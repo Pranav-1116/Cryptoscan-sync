@@ -6,6 +6,31 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Telecom drift streams; Docker wiring for the realtime loop
+- Verdict changes now STREAM: a new snapshot tailer federates telecom drift
+  events written by OTHER processes (monitor-daemon TELECOM passes, CLI
+  runs) onto the SSE bus as `telecom.event` — a daemon pass streams exactly
+  like an API scan. One event, one delivery: the API's direct publisher
+  registers a shared `telecom:`-prefixed key per event and the tailer skips
+  those; the tailer's first read after boot seeds history without
+  publishing (a restart never floods the bus).
+- PQC readiness drift is now an event: `TELECOM_PQC_READY` (info) /
+  `TELECOM_PQC_DROPPED` (high). The pqc.hybrid_kem finding is info-severity
+  and excluded from the fingerprint — without the explicit transition a
+  roaming link gaining/losing hybrid ML-KEM was event-silent. `classify`
+  rows now carry `pqc_ready` (single source: `bool(pqc_kex)`); the API
+  scan/ingest and the monitor mirror persist it in the drift state.
+- Docker updated for the realtime loop: `api` + `monitor` services share a
+  `telecom_data` volume (snapshots) and the operator-mounted
+  `telecom_registry.json` — daemon passes appear in the API and on SSE
+  with no restart; an absent registry file = honest BLOCKED. The PoC stack
+  gains an opt-in `monitor` service (`--profile continuous`) on the same
+  `poc_data` volume; the two-container PoC footprint is unchanged by
+  default. Docs: live-monitoring.md, telecom runbook, PoC CHECKLIST.
+- Tests: PQC transition directions/first-pass quiet/fingerprint-identity
+  pin, tailer seed/publish/dedup-key contract (cross-module key agreement
+  with the direct publisher), runner state carries `pqc_ready`.
+
 ### Continuous telecom monitoring: TELECOM joins the monitor loop
 - New monitor target type `TELECOM` (default 15-min interval): the 24/7
   daemon re-probes the registered 3GPP NF estate through the SAME engine as

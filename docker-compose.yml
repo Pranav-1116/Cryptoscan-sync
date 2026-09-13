@@ -107,6 +107,15 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
+      # Telecom realtime: the monitor daemon writes snapshot passes to the
+      # SAME shared volume this API reads — cross-process freshness without
+      # a restart. Drop your estate at ./config/telecom_registry.json to
+      # enable TELECOM monitor targets (absent file = honest BLOCKED).
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
+      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
+    volumes:
+      - telecom_data:/var/lib/cryptoscan/telecom
+      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,12 +205,19 @@ services:
       MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: ${MONITOR_WATCH_PROBE_TIMEOUT_SECONDS:-10}
       MONITOR_CONCURRENCY: ${MONITOR_CONCURRENCY:-2}
       MONITOR_RUN_REPORTS: ${MONITOR_RUN_REPORTS:-true}
+      # Telecom realtime: same shared snapshot dir + registry as the API —
+      # TELECOM targets probe the same estate and the API serves the passes.
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
+      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
       ALERT_CEF_HOST: ${ALERT_CEF_HOST:-}
       ALERT_CEF_PORT: ${ALERT_CEF_PORT:-514}
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
       SMTP_HOST: ${SMTP_HOST:-}
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+    volumes:
+      - telecom_data:/var/lib/cryptoscan/telecom
+      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,6 +277,7 @@ services:
     restart: unless-stopped
 
 volumes:
+  telecom_data:
   postgres_data:
   redis_data:
   neo4j_data:

@@ -215,6 +215,9 @@ def classify_target(
         "severity": severity,
         "findings": findings,
         "pqc_kex": sorted(set(pqc_groups)),
+        # drift-diff fact for the realtime layer: hybrid ML-KEM observed on
+        # THIS probe (roaming/rollup views derive the same flag from pqc_kex)
+        "pqc_ready": bool(pqc_groups),
         "crypto_inventory": crypto_inventory,
         "score": score,
         "cert_not_after": _norm(cert.get("not_after")) or None,

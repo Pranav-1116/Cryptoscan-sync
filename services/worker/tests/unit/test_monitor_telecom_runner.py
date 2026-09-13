@@ -77,6 +77,8 @@ def test_telecom_runner_classifies_and_mirrors_snapshot(estate):
     assert snapshot["scanner"] == "telecom-monitor"
     assert snapshot["targets_registered"] == 2
     assert set(snapshot["state"]) == {"amf-de-01", "amf-fr-01"}
+    # drift diffs need pqc_ready in the state (PQC transitions stream)
+    assert snapshot["state"]["amf-de-01"]["pqc_ready"] is False
     assert snapshot["rollup"]  # same shape the API scan writes
 
 

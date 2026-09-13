@@ -56,6 +56,38 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
 
+  # OPTIONAL continuous monitoring: `docker compose -f docker-compose.poc.yml
+  # --profile continuous ... up -d` adds the 24/7 daemon — it re-probes NETWORK
+  # and TELECOM (5GC/roaming) targets on interval and writes passes to the same
+  # snapshot volume the API serves. Off by default: the two-container PoC
+  # footprint stays exactly as proposed.
+  monitor:
+    build:
+      context: ..
+      dockerfile: .docker/worker/Dockerfile
+    container_name: cryptoscan-poc-monitor
+    command: ["python", "scripts/run_monitor.py"]
+    profiles: ["continuous"]
+    environment:
+      ENVIRONMENT: development
+      ALLOW_SQLITE: "true"
+      DATABASE_URL: sqlite:////data/techbom-poc.db
+      SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY (min 32 chars) in poc.env}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-poc-webhook-secret-not-used-012345}
+      CRYPTOSCAN_HOME: /data/home
+      CRYPTOSCAN_SNAPSHOT_DIR: /data/snapshots
+      CRYPTOSCAN_TELECOM_REGISTRY: /data/telecom_registry.json
+      MONITOR_TICK_SECONDS: ${MONITOR_TICK_SECONDS:-30}
+    volumes:
+      - poc_data:/data
+      - ${TELECOM_REGISTRY_HOST_PATH:-./telecom_registry.json}:/data/telecom_registry.json:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   dashboard:
     build:
       context: ..

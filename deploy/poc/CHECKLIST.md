@@ -84,3 +84,18 @@ If the PoC environment has no outbound internet: build the images on a
 connected machine, `docker save` them, and follow
 `docs/admin-guide/air-gap-install.md`. All SSO/verification paths support
 file-based JWKS (`OIDC_JWKS_FILE`).
+
+## Optional: continuous monitoring (after the core weeks)
+
+The PoC stack can add the 24/7 monitor daemon without changing the
+two-container footprint (it is compose-profile gated):
+
+```bash
+docker compose -f deploy/poc/docker-compose.poc.yml --env-file poc.env \
+  --profile continuous up -d --build monitor
+```
+
+Register targets as during the weeks (NETWORK endpoints, or
+`target_type: "TELECOM"` for the registered 5GC/roaming estate) — the daemon
+re-probes on interval and the API serves every pass live (shared snapshot
+volume). SSE clients see verdict changes without any manual scan.
