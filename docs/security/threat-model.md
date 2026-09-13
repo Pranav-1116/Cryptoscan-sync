@@ -28,3 +28,20 @@ exists today and what is explicitly **not** claimed.
 - HSM **key material** is never imported, stored or transmitted by CryptoScan.
   Only metadata (usage, algorithm, size, state) and audit events — by design,
   so a CryptoScan compromise cannot leak payment keys.
+
+## SSRF (OWASP A10) — one choke point, three consumers
+
+All operator-supplied probe/sweep inputs pass `api/security/target_validation.py`:
+`POST /network/discover` (CIDR), `POST /crypto-assurance/*` (probe host) and —
+since the 2026-09-13 security round, found by live attack testing — monitor
+NETWORK target configs (`POST/PATCH /monitor/targets`), which previously bypassed
+the guard and would have let an authenticated user point the daemon's scan tick
+at loopback or cloud-metadata addresses.
+
+The guard refuses loopback, link-local (incl. `169.254.169.254` and
+`fd00:ec2::254`), CGNAT, multicast/reserved ranges, URL schemes, embedded
+credentials and shell metacharacters; it allows public hosts and RFC1918 ranges
+(a TLS-audit product legitimately scans internal networks when the operator
+asks). Monitor NETWORK configs are additionally re-checked at execution time in
+the daemon runner (defense in depth for configs that predate the API gate):
+blocked targets are never probed and surface as `SSRF_BLOCKED:*` issues.

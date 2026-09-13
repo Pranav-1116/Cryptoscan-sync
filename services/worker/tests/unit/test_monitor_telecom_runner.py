@@ -120,3 +120,39 @@ def test_telecom_target_type_is_wired_end_to_end():
     assert "TELECOM" in TARGET_TYPES
     assert DEFAULT_INTERVALS["TELECOM"] == 900
     assert callable(_default_runners()["TELECOM"])
+
+
+def test_network_runner_refuses_ssrf_targets_at_execution(monkeypatch):
+    """Defense in depth (OWASP A10): even a config that predates the API-side
+    SSRF gate is filtered at probe time — metadata/loopback/URL targets are
+    never probed by the daemon and surface as named issues."""
+    from worker.monitor import runners as runner_mod
+
+    probed: list[str] = []
+
+    class _FakeScanner:
+        def scan_hosts(self, endpoints, *a, **k):
+            probed.extend(str(e) for e in endpoints)
+            return {"findings": [{"endpoint": e, "status": "OK",
+                                  "policy_issues": [], "crypto": {"tls_version": "TLSv1.3"}}
+                                 for e in endpoints]}
+
+        def discover_network(self, *a, **k):
+            return {}
+
+    monkeypatch.setattr(
+        "network_scanner.core.scanner.NetworkTlsScanner",
+        lambda live=True, timeout=5.0: _FakeScanner(),
+    )
+
+    result = runner_mod.network_runner(
+        {"endpoints": ["169.254.169.254:80", "127.0.0.1:8010",
+                       "http://169.254.169.254/latest/meta-data/",
+                       "api.bank.example:443"]},
+        session=None,
+    )
+    assert "blocked_reason" not in result, result
+    assert result["degraded"] is True
+    blocked = [i for i in result["issues"] if i.startswith("SSRF_BLOCKED:")]
+    assert len(blocked) == 3, result["issues"]
+    assert probed == ["api.bank.example:443"], f"only the public endpoint may be probed, got {probed}"

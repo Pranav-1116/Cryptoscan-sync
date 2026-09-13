@@ -31,11 +31,50 @@ def network_runner(config: dict, session: Any) -> dict:
     if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
         return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
 
+    # defense in depth (config may predate the API-side SSRF gate): never
+    # probe loopback, cloud metadata or URL-scheme targets from the daemon
+    import ipaddress as _ip
+
+    _ssrf_hosts = {"localhost", "169.254.169.254", "metadata.google.internal",
+                   "fd00:ec2::254"}
+
+    def _ssrf_blocked(raw: str) -> str | None:
+        t = str(raw).strip()
+        if "://" in t:
+            return f"SSRF_BLOCKED:{t} (URL schemes are not probe targets)"
+        host = t[1:].split("]", 1)[0] if t.startswith("[") else (
+            t.rsplit(":", 1)[0] if t.count(":") == 1 else t)
+        host = host.strip().lower().removeprefix("user@").split("@")[-1]
+        if host in _ssrf_hosts:
+            return f"SSRF_BLOCKED:{t} (loopback/cloud metadata)"
+        try:
+            ip = _ip.ip_address(host)
+        except ValueError:
+            return None
+        if (ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified):
+            return f"SSRF_BLOCKED:{t} (loopback/link-local/metadata range)"
+        return None
+
+    ssrf_issues: list[str] = []
+    kept: list[str] = []
+    for raw in endpoints:
+        reason = _ssrf_blocked(raw)
+        (ssrf_issues.append(reason) if reason else kept.append(raw))
+    endpoints = kept
+    if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
+        if ssrf_issues:
+            return {"summary": {"endpoints": 0, "probed_ok": 0, "unreachable": 0,
+                                "ipsec_targets": 0, "dnssec_zones": 0,
+                                "issues": ssrf_issues},
+                    "degraded": True, "issues": ssrf_issues}
+        return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
+
     from network_scanner.core.scanner import NetworkTlsScanner
 
     timeout = float(config.get("timeout", 5.0))
     scanner = NetworkTlsScanner(live=True, timeout=timeout)
-    issues: list[str] = []
+    issues: list[str] = list(ssrf_issues)
     ok = unreachable = 0
     scope_summary: dict | None = None
 

@@ -373,3 +373,36 @@ async def test_shortened_interval_takes_effect_immediately():
         session.expire_all()
         row = session.execute(select(MonitorTarget)).scalars().first()
         assert row.next_scan_at == soon
+
+
+@pytest.mark.asyncio
+async def test_monitor_network_targets_reject_ssrf_targets():
+    """OWASP A10 (found by live attack testing 2026-09-13): the monitor used
+    to accept loopback / cloud-metadata / URL-scheme endpoints — a monitor
+    target must never become an internal probe primitive. Configs now pass
+    the platform's SSRF choke point at create AND update."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        for name, cfg in [
+            ("metadata-ip", {"endpoints": ["169.254.169.254:80"]}),
+            ("metadata-url", {"endpoints": ["http://169.254.169.254/latest/meta-data/"]}),
+            ("loopback", {"endpoints": ["127.0.0.1:8010"]}),
+            ("metadata-v6", {"endpoints": ["[fd00:ec2::254]:80"]}),
+            ("scope-metadata", {"scope": ["169.254.169.254/32"]}),
+            ("userinfo", {"endpoints": ["user:pass@internal.example:443"]}),
+        ]:
+            r = await client.post("/api/v1/monitor/targets", json={
+                "name": f"ssrf-{name}", "target_type": "NETWORK", "config": cfg})
+            assert r.status_code == 422, (name, r.status_code, r.text)
+
+        ok = await client.post("/api/v1/monitor/targets", json={
+            "name": "public-edge", "target_type": "NETWORK",
+            "config": {"endpoints": ["api.bank.example:443"]}})
+        assert ok.status_code == 201, ok.text
+
+        # update path is gated too: a legit target cannot be edited into a probe
+        tid = ok.json()["id"]
+        bad = await client.patch(f"/api/v1/monitor/targets/{tid}", json={
+            "config": {"endpoints": ["169.254.169.254:80"]}})
+        assert bad.status_code == 422

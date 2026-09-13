@@ -6,6 +6,25 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Security round: monitor targets can no longer be turned into internal probes (OWASP A10)
+- Found by live attack testing against the running stack: an authenticated
+  `POST /api/v1/monitor/targets` accepted NETWORK configs with loopback,
+  cloud-metadata (`169.254.169.254`) and URL-scheme endpoints — the daemon
+  would have probed them on every tick, making a monitor target an SSRF
+  primitive against the host network and cloud metadata services.
+- Fix (two layers): `_validate_config` now routes every NETWORK endpoint /
+  scope through the platform's SSRF choke point (`api.security.
+  target_validation`) — refused at create AND at update (422 with the reason);
+  and the monitor's network runner re-checks at execution time (defense in
+  depth for configs that predate the gate) — blocked targets are never probed
+  and surface as named `SSRF_BLOCKED:*` issues. Legit public and RFC1918
+  targets, and wildcard-domain discovery scopes, are unchanged (verified
+  live and by tests).
+- Regression tests pin the behavior: metadata IP/URL, IPv6 metadata
+  (`fd00:ec2::254`), loopback, userinfo and metadata-CIDR scopes all 422;
+  a public endpoint still 201s; editing a legit target into a probe is 422;
+  the runner probe list provably contains only the public endpoint.
+
 ### PQC adoption journey: drift detection becomes a trend answer
 - New pure engine `telecom_scanner.journey`: every pass folds into per-NF
   readiness **eras** (consecutive same-verdict passes coalesce — a passes

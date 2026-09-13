@@ -8,6 +8,8 @@ NETWORK targets, so expect probe latency, not instant results.
 
 from __future__ import annotations
 
+import re
+
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,10 +28,50 @@ WATCHABLE_TYPES = ("REPO", "CONTAINER", "OT")
 
 
 def _validate_config(config: dict, target_type: str) -> dict:
-    """Validate + sanitize a target config before it reaches the daemon."""
+    """Validate + sanitize a target config before it reaches the daemon.
+
+    NETWORK probe targets pass the platform's SSRF choke point
+    (api.security.target_validation): loopback, cloud metadata, link-local,
+    URL schemes, credentials and shell metacharacters are refused here so a
+    monitor target can never be turned into an internal probe primitive."""
     clean = dict(config or {})
     # watch_state is engine-managed (fingerprints / probe errors) — never client-supplied
     clean.pop("watch_state", None)
+    if target_type == "NETWORK":
+        from api.security.target_validation import (
+            TargetValidationError,
+            validate_network_target,
+            validate_probe_target,
+        )
+
+        def _check(raw: str) -> str:
+            try:
+                return validate_probe_target(str(raw), label="monitor.config.endpoints")
+            except TargetValidationError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        endpoints = [str(e) for e in (clean.get("endpoints") or [])]
+        if clean.get("endpoint") and not endpoints:
+            endpoints = [str(clean["endpoint"])]
+        for raw in endpoints:
+            _check(raw)
+        for key in ("ipsec", "dnssec"):
+            for raw in (clean.get(key) or []):
+                _check(str(raw))
+        # scope entries: IP/CIDR shapes go through the discovery guard
+        # (metadata/loopback blocked); wildcard/hostname discovery specs are
+        # a supported feature and are validated by the discovery engine.
+        cidr_shape = re.compile(r"^[0-9a-fA-F:.]+(/\d{1,3})?$")
+        scope_items = clean.get("scope") or []
+        if isinstance(scope_items, str):
+            scope_items = [scope_items]
+        for raw in scope_items:
+            raw = str(raw).strip()
+            if cidr_shape.match(raw):
+                try:
+                    validate_network_target(raw)
+                except TargetValidationError as exc:
+                    raise HTTPException(status_code=422, detail=str(exc)) from exc
     if clean.get("watch"):
         if target_type not in WATCHABLE_TYPES:
             raise HTTPException(
