@@ -2619,6 +2619,14 @@ export const apiTelecomRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>
 export const apiTelecomRoaming = (): Promise<ApiResult<{ generated_at: string | null;
   rows: TelecomRoamingRow[]; summary: { partners: number; protected: number; unprotected: number; unknown: number } }>> =>
   call("/api/v1/telecom/roaming");
+export interface TelecomJourneyEra { from: string; until: string; pqc_ready: boolean; passes: number }
+export interface TelecomJourney {
+  generated_at: string | null;
+  nf_tracked: number; pqc_ready_now: number; adoption_pct: number | null; transitions: number;
+  per_nf: Record<string, { pqc_ready: boolean; since: string | null; eras: number; flips: number; passes: number; history: TelecomJourneyEra[] }>;
+}
+export const apiTelecomJourney = (): Promise<ApiResult<TelecomJourney>> =>
+  call("/api/v1/telecom/journey");
 export async function downloadTelecomPack(carrierCode: string, format: "json" | "csv" = "json"): Promise<void> {
   const resp = await fetch(`/api/v1/telecom/pack?carrier=${encodeURIComponent(carrierCode)}&format=${format}`, {
     credentials: "include",

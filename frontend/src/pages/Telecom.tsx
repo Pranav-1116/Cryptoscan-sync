@@ -6,6 +6,7 @@ import {
   apiTelecomPosture, apiTelecomRegistry, apiTelecomEvents,
   apiTelecomCarrierAdd, apiTelecomTargetAdd, apiTelecomScan,
   apiTelecomRoadmap, apiTelecomRoaming, apiTelecomPartnerAdd, downloadTelecomPack,
+  apiTelecomJourney,
   TelecomPosture, TelecomRegistry, TelecomEventRec, TelecomRoamingRow, GroupRoadmap,
 } from "../lib/api.js";
 
@@ -32,7 +33,8 @@ export default function Telecom() {
   const events = usePollingApi(apiTelecomEvents, 8000);
   const roadmap = usePollingApi(apiTelecomRoadmap, 60000);
   const roaming = usePollingApi(apiTelecomRoaming, 20000);
-  useRealtimeRefresh(posture.run, registry.run, events.run, roadmap.run, roaming.run);
+  const journey = usePollingApi(apiTelecomJourney, 15000);
+  useRealtimeRefresh(posture.run, registry.run, events.run, roadmap.run, roaming.run, journey.run);
 
   const data: TelecomPosture | null = posture.data ?? null;
   const reg: TelecomRegistry | null = registry.data ?? null;
@@ -183,6 +185,37 @@ export default function Telecom() {
           </div>
         )}
       </Panel>
+
+      {journey.data && journey.data.nf_tracked > 0 && (
+        <Panel title="PQC adoption journey" sub="readiness eras per NF — every pass coalesces, a flip opens a new era" frame>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+            <Stat label="Adoption" value={journey.data.adoption_pct === null ? "—" : `${journey.data.adoption_pct}%`}
+              tone={journey.data.adoption_pct && journey.data.adoption_pct > 0 ? "green" : "amber"} />
+            <Stat label="PQC-ready now" value={`${journey.data.pqc_ready_now}/${journey.data.nf_tracked}`} />
+            <Stat label="Transitions" value={journey.data.transitions} />
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ textAlign: "start", opacity: 0.6 }}>
+                <th style={{ padding: "4px 8px" }}>NF</th><th style={{ padding: "4px 8px" }}>now</th>
+                <th style={{ padding: "4px 8px" }}>ready since</th><th style={{ padding: "4px 8px" }}>eras / flips</th>
+                <th style={{ padding: "4px 8px" }}>passes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(journey.data.per_nf).map(([nf, s]) => (
+                <tr key={nf}>
+                  <td style={{ padding: "4px 8px" }} className="mono">{nf}</td>
+                  <td style={{ padding: "4px 8px" }}><Badge tone={s.pqc_ready ? "green" : "amber"}>{s.pqc_ready ? "hybrid PQC" : "classical"}</Badge></td>
+                  <td style={{ padding: "4px 8px" }}>{(s.since ?? "").slice(0, 16).replace("T", " ")}</td>
+                  <td style={{ padding: "4px 8px" }}>{s.eras} / {s.flips}</td>
+                  <td style={{ padding: "4px 8px" }}>{s.passes}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
 
       {rmData && rmData.rows.length > 0 && (
         <Panel title="Migration roadmap — carrier estate" sub={rmData.basis} frame>

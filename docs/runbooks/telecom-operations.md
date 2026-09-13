@@ -123,7 +123,10 @@ Add operator rules under Automation (the telecom condition data carries
 - `GET /telecom/pack?carrier=<code>&format=json|csv` — per-carrier NRA
   pack (the national-regulator artifact; other carriers' rows excluded).
 - `GET /telecom/roaming` — partner matrix: protected / unprotected /
-  `unknown` (an unprobed edge is never reported as protected).
+  `unknown` (an unprobed edge is never reported as protected), each row
+  joined with its SEPP's PQC journey (`pqc`: ready / since / flips / passes).
+- `GET /telecom/journey` — PQC adoption trend: per-NF readiness eras,
+  transitions, adoption % (steering-committee / NRA progress artifact).
 
 ## 7. Metrics & alerting
 

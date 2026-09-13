@@ -646,6 +646,22 @@ def telecom_runner(config: dict, session: Any) -> dict:
         tmp = snapshot_file.with_suffix(".tmp")
         tmp.write_text(json.dumps(snapshot))
         os.replace(tmp, snapshot_file)
+
+        # fold the pass into the PQC adoption journey (same file contract
+        # as the API: load -> update -> atomic replace)
+        from telecom_scanner.journey import update_journey
+
+        journey_file = snapshot_file.parent / "telecom_journey.json"
+        history: dict = {}
+        if journey_file.is_file():
+            try:
+                history = json.loads(journey_file.read_text()) or {}
+            except (OSError, json.JSONDecodeError):
+                history = {}
+        journey = update_journey(history, snapshot["generated_at"], rows)
+        jtmp = journey_file.with_suffix(".tmp")
+        jtmp.write_text(json.dumps(journey))
+        os.replace(jtmp, journey_file)
     except Exception:  # noqa: BLE001 — snapshot mirroring must never fail the scan
         logger.exception("telecom_monitor_snapshot_mirror_failed")
 

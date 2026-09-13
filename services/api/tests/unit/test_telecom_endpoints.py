@@ -444,7 +444,6 @@ async def test_telecom_events_drive_the_automation_bridge(app_db, monkeypatch):
     from api.events import automation_bridge
     from api.routers.automation import run_automation
 
-    session = app_db.state.test_session
     calls = []
     real_run = run_automation
 
@@ -457,7 +456,6 @@ async def test_telecom_events_drive_the_automation_bridge(app_db, monkeypatch):
 
     # a rule that fires on agent_offline
     from automation.rules_engine import AutomationRule
-    from api.routers.automation import _load_rules
     import api.routers.automation as auto_router
 
     rule = AutomationRule(id="tel-down", name="NF down", when="agent_offline",
@@ -516,3 +514,60 @@ async def test_telecom_metrics_in_prometheus_exposition(app_db, monkeypatch, tmp
     finally:
         with telecom_router._LOCK:
             telecom_router._SNAPSHOT = None
+
+@pytest.mark.asyncio
+async def test_pqc_journey_accumulates_coalesces_and_joins_roaming(app_db, monkeypatch):
+    """Every scan pass folds into the journey: same verdict coalesces (no
+    era spam), a readiness flip opens a new era, GET /telecom/journey serves
+    the trend, and roaming partner rows carry their SEPP's journey."""
+    from telecom_scanner.classify import classify_target
+    from telecom_scanner.registry import normalize_target
+
+    session = app_db.state.test_session
+    ciso = _auth(session, ["ciso"])
+
+    target = normalize_target({"nf_id": "amf-prod-01", "nf_type": "amf",
+                               "endpoint": "sba.example:443", "carrier_code": "de-telekom"})
+    classical = {"status": "OK", "crypto": {"tls_version": "TLSv1.3",
+                                            "cipher_suite": "TLS_AES_256_GCM_SHA384",
+                                            "key_exchange": "X25519"},
+                 "certificates": [{"expiry_status": "VALID", "days_until_expiry": 200,
+                                   "is_self_signed": False, "not_after": "2027-03-01T00:00:00+00:00"}],
+                 "chain_validation": {"is_valid": True, "errors": []}}
+    hybrid = {**classical, "crypto": {**classical["crypto"],
+                                      "key_exchange": "X25519MLKEM768"}}
+    probes = [classical, classical, hybrid]
+
+    def fake_probe_registry(registry, *, only=None, timeout=4.0, max_workers=8):
+        return [classify_target(target, probes.pop(0))] if probes else []
+
+    monkeypatch.setattr("telecom_scanner.main.probe_registry", fake_probe_registry)
+
+    client = _client(app_db)
+    for _ in range(3):
+        r = await client_scan(client, ciso)
+        assert r.status_code == 200, r.text
+
+    journey = (await _client(app_db).get("/api/v1/telecom/journey", headers=ciso)).json()
+    assert journey["nf_tracked"] == 1
+    assert journey["transitions"] == 1  # classical -> hybrid
+    per_nf = journey["per_nf"]["amf-prod-01"]
+    assert per_nf["pqc_ready"] is True and per_nf["flips"] == 1
+    assert per_nf["passes"] == 3
+    assert [(e["pqc_ready"], e["passes"]) for e in per_nf["history"]] ==         [(False, 2), (True, 1)]
+
+    # the journey survives an API restart (file-backed, mtime-aware)
+    from api.routers import telecom as telecom_router
+
+    telecom_router._JOURNEY = None
+    again = (await _client(app_db).get("/api/v1/telecom/journey", headers=ciso)).json()
+    assert again["per_nf"]["amf-prod-01"]["passes"] == 3
+
+
+async def client_scan(client, headers):
+    return await client.post("/api/v1/telecom/scan", headers=headers, json={"timeout": 1.0})
+
+
+def _client(app_db):
+    return AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test")
+

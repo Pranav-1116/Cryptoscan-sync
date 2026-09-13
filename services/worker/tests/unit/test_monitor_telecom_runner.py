@@ -15,6 +15,7 @@ import json
 
 import pytest
 
+from telecom_scanner.journey import pqc_adoption
 from worker.monitor.runners import telecom_runner
 
 
@@ -80,6 +81,14 @@ def test_telecom_runner_classifies_and_mirrors_snapshot(estate):
     # drift diffs need pqc_ready in the state (PQC transitions stream)
     assert snapshot["state"]["amf-de-01"]["pqc_ready"] is False
     assert snapshot["rollup"]  # same shape the API scan writes
+
+    # the pass also folds into the PQC adoption journey (same file contract
+    # as the API; pqc_ready derived from pqc_kex for classify rows)
+    journey = json.loads((estate / "snaps" / "telecom_journey.json").read_text())
+    assert journey["eras"]["amf-de-01"][0]["pqc_ready"] is False
+    assert journey["eras"]["amf-de-01"][0]["passes"] == 1
+    adoption = pqc_adoption(journey)
+    assert adoption["nf_tracked"] == 2 and adoption["adoption_pct"] == 0.0
 
 
 def test_telecom_runner_carrier_and_nf_filters(estate):

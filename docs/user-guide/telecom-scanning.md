@@ -49,6 +49,19 @@ HTTP check) — no exploitation, no agents on the network functions.
 ML-KEM was actually observed in the probe. Configured-but-not-probed is
 reported as such, never inferred.
 
+## PQC adoption journey
+
+`GET /telecom/journey` turns per-pass drift detection into the trend answer:
+per-NF readiness **eras** (consecutive passes with the same verdict coalesce
+into one era; a flip opens a new era), transitions, and adoption % over
+tracked NFs. Fed by every writer — API scans, operator ingest, monitor-daemon
+TELECOM passes — and file-backed, so an API restart keeps the history. The
+roaming view (`GET /telecom/roaming`) joins each partner row with its
+protecting SEPP's journey (`pqc`: ready / since / flips / passes). Honest
+empties: nothing probed yet reports `nf_tracked: 0` with `adoption_pct:
+null` — never a fabricated percent. Dashboard: **Telecom** page, "PQC
+adoption journey" panel.
+
 ## Operator ingest and carrier packs
 
 Network functions that cannot be probed directly can **push** observations

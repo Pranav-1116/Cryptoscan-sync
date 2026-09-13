@@ -6,6 +6,24 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### PQC adoption journey: drift detection becomes a trend answer
+- New pure engine `telecom_scanner.journey`: every pass folds into per-NF
+  readiness **eras** (consecutive same-verdict passes coalesce — a passes
+  counter, no era spam; a readiness flip opens a new era), with
+  transitions and adoption % over tracked NFs only. Honest empties:
+  nothing probed reports `nf_tracked: 0`, `adoption_pct: null` — never a
+  fabricated percent.
+- `GET /telecom/journey` serves the trend; `GET /telecom/roaming` joins
+  each partner row with its protecting SEPP's journey (ready / since /
+  flips / passes). History is file-backed (`telecom_journey.json` beside
+  the snapshot, mtime-aware loader) and written by ALL writers — API
+  scans, operator ingest, and monitor-daemon TELECOM passes (atomic
+  replace, never fails the scan).
+- Telecom page: "PQC adoption journey" panel — adoption %, ready/tracked,
+  transitions, and the per-NF era table; refreshes on drift events.
+- Tests: pure engine (coalescing, flips, adoption math, pqc_kex fallback),
+  API accumulation/coalescing/flip + restart persistence, runner mirror.
+
 ### Telecom guardrails: the curated 3GPP/NIST defaults, installable in one call
 - `POST /automation/telecom-guardrails` (admin-gated, idempotent upsert)
   installs three vetted operator rules through the SAME store, validation

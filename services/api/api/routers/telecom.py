@@ -90,6 +90,60 @@ def _event_key(event: dict[str, Any]) -> str:
             f"{event.get('at')}:{event.get('fingerprint')}")
 
 
+# ---------------------------------------------------------------- journey
+
+_JOURNEY: dict[str, Any] | None = None
+_JOURNEY_MTIME: float | None = None
+
+
+def _journey_file() -> Path:
+    return _snapshot_file().parent / "telecom_journey.json"
+
+
+def _load_journey() -> dict[str, Any] | None:
+    """mtime-aware like the snapshot: daemon-written passes show up live."""
+    global _JOURNEY, _JOURNEY_MTIME
+    file = _journey_file()
+    try:
+        mtime = file.stat().st_mtime if file.is_file() else None
+    except OSError:
+        mtime = None
+    if _JOURNEY is not None and mtime == _JOURNEY_MTIME:
+        return _JOURNEY
+    if mtime is None:
+        _JOURNEY, _JOURNEY_MTIME = None, None
+        return None
+    try:
+        _JOURNEY = json.loads(file.read_text())
+        _JOURNEY_MTIME = mtime
+    except (OSError, json.JSONDecodeError):
+        _JOURNEY = None
+    return _JOURNEY
+
+
+def _store_journey(journey: dict[str, Any]) -> None:
+    global _JOURNEY, _JOURNEY_MTIME
+    file = _journey_file()
+    try:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(journey))
+        tmp.replace(file)
+        _JOURNEY, _JOURNEY_MTIME = journey, file.stat().st_mtime
+    except OSError:
+        pass  # in-memory is still correct; persistence is best-effort
+
+
+def _fold_journey(rows: list[dict[str, Any]], generated_at: str) -> None:
+    """Fold one pass into the adoption journey (best-effort, never fails a scan)."""
+    try:
+        from telecom_scanner.journey import update_journey
+
+        _store_journey(update_journey(_load_journey(), generated_at, rows))
+    except Exception:  # noqa: BLE001 — journey must never break a scan
+        pass
+
+
 def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
     from api.events import platform_events
     from api.events.bus import get_event_bus
@@ -282,6 +336,7 @@ def telecom_scan(request: ScanRequest,
         "rollup": posture_rollup(rows, reg["carriers"]),
     }
     _store_snapshot(snapshot)
+    _fold_journey(rows, snapshot["generated_at"])
     published = _publish_events(events)
     return {"generated_at": snapshot["generated_at"], "scanned": len(rows),
             "events": events, "events_published": published,
@@ -324,6 +379,7 @@ def telecom_ingest(request: IngestRequest,
         "rollup": posture_rollup(rows, reg["carriers"]),
     }
     _store_snapshot(snapshot)
+    _fold_journey(rows, snapshot["generated_at"])
     published = _publish_events(events)
     return {"ok": True, "verdict": verdict, "events": events,
             "events_published": published, "rollup": snapshot["rollup"]}
@@ -391,6 +447,21 @@ def telecom_roadmap_view(user: str = Depends(require_permission("findings.read")
             "summary": roadmap["summary"]}
 
 
+@router.get("/journey")
+def telecom_journey(user: str = Depends(require_permission("findings.read"))):
+    """PQC adoption journey — per-NF readiness eras over scan passes.
+
+    Answers "where is PQC adoption, where is it going": current readiness,
+    since-when, transitions (flips), and how many passes back the history
+    goes. Honest empties: nothing tracked yet reports nf_tracked 0 with
+    adoption_pct None — never a fabricated percent. Fed by every writer
+    (API scans, operator ingest, monitor-daemon TELECOM passes)."""
+    from telecom_scanner.journey import pqc_adoption
+
+    adoption = pqc_adoption(_load_journey())
+    return {"generated_at": (_load_journey() or {}).get("generated_at"), **adoption}
+
+
 @router.get("/roaming")
 def telecom_roaming(user: str = Depends(require_permission("findings.read"))):
     """Roaming partner matrix (GSMA IR.21 context, TS 33.501 obligation).
@@ -398,12 +469,20 @@ def telecom_roaming(user: str = Depends(require_permission("findings.read"))):
     Per partner: is the inter-PLMN SBI path demonstrably protected by the
     carrier's SEPP? Unprobed edges read as unknown — never fabricated.
     """
+    from telecom_scanner.journey import pqc_adoption
     from telecom_scanner.roaming import roaming_matrix
 
     reg = _registry()
     snapshot = _load_snapshot()
     rows = (snapshot or {}).get("rows") or []
     matrix = roaming_matrix(reg.get("roaming_partners", {}).values(), rows)
+    per_nf = pqc_adoption(_load_journey()).get("per_nf") or {}
+    for row in matrix.get("rows") or []:
+        sepp_id = row.get("sepp_nf_id")
+        stats = (per_nf or {}).get(sepp_id or "")
+        if stats:
+            row["pqc"] = {"pqc_ready": stats["pqc_ready"], "since": stats["since"],
+                          "flips": stats["flips"], "passes": stats["passes"]}
     return {"generated_at": (snapshot or {}).get("generated_at"), **matrix}
 
 
