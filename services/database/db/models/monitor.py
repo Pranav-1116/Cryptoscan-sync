@@ -41,6 +41,10 @@ class MonitorTarget(BaseModel):
     consecutive_failures: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    # Owning tenant (multi-tenant SaaS). NULL = platform estate (single-tenant
+    # / on-prem stores keep working untouched); daemon passes still execute
+    # platform targets. Tenant-scoped requests never see platform rows.
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
 
 
 class MonitorLease(BaseModel):

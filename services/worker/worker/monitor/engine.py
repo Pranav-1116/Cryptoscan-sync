@@ -263,6 +263,19 @@ class MonitorEngine:
 
     # ------------------------------------------------------------- run one
 
+    def _meter_scan(self, target: MonitorTarget) -> None:
+        """SaaS metering: one scan_run unit per executed pass, tenant-owned
+        targets only. Best-effort — metering must never break the loop."""
+        if not getattr(target, "tenant_id", None):
+            return
+        try:
+            from db.repositories.tenant_repository import TenantRepository
+
+            TenantRepository(self.session).record_usage(
+                target.tenant_id, "scan_run", 1, detail=target.name)
+        except Exception:
+            logger.debug("tenant_usage_record_failed", extra={"target": target.name}, exc_info=True)
+
     def run_target(self, target: MonitorTarget) -> dict[str, Any]:
         now = self._now()
         interval = int(target.interval_seconds or default_interval(target.target_type))
@@ -277,6 +290,7 @@ class MonitorEngine:
 
         try:
             result = runner(dict(target.config or {}), self.session)
+            self._meter_scan(target)
         except Exception as exc:  # 24/7 rule: the target fails, the loop does not
             logger.warning("monitor_target_failed", extra={"target": target.name})
             failures = int(target.consecutive_failures or 0) + 1

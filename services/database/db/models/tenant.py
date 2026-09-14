@@ -1,0 +1,84 @@
+"""Multi-tenant SaaS core: tenants, memberships, usage metering.
+
+A tenant (organization) owns its scan surface. Isolation is enforced at the
+data layer (tenant_id columns + repository filters) and at the request layer
+(api.dependencies.TenantContext) — a tenant member can never read or write
+another tenant's rows, and cross-tenant access is a 404, never a 403 (no
+existence oracle). Platform operators (superadmin) keep a global estate for
+single-tenant/on-prem stores: rows with a NULL tenant_id.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import DateTime, Index, Integer, String, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db.models.base import BaseModel
+
+# Tenant plans. Limits are policy — pinned by api tests via
+# api.security.tenancy (the api-side pure engine mirrors this catalog by
+# contract, like VALID_ROLES does for RBAC).
+TENANT_PLANS = ("FREE", "PRO", "ENTERPRISE")
+TENANT_STATUSES = ("ACTIVE", "SUSPENDED")
+# Tenant-scoped roles (independent of the platform RBAC catalog): a tenant
+# owner is not a platform superadmin.
+TENANT_ROLES = ("owner", "admin", "member", "viewer")
+
+
+class Tenant(BaseModel):
+    __tablename__ = "tenants"
+
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
+    plan: Mapped[str] = mapped_column(String(20), nullable=False, default="FREE", index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    suspended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    suspend_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class TenantMembership(BaseModel):
+    __tablename__ = "tenant_memberships"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "username", name="uq_tenant_member"),
+        Index("ix_memberships_username", "username"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    tenant_role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+
+
+class TenantUsageEvent(BaseModel):
+    """Append-only per-tenant metering trail (plan enforcement + billing input).
+
+    kind is a meter name (e.g. "scan_run", "target_create", "member_create");
+    amount lets one event carry N units. Counts are SUM(amount) over the
+    calendar month — never inferred from row counts that deletes would shrink.
+    """
+
+    __tablename__ = "tenant_usage_events"
+    __table_args__ = (Index("ix_usage_tenant_kind_time", "tenant_id", "kind", "created_at"),)
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(60), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
+
+
+class TenantProvisionEvent(BaseModel):
+    """Audit trail for tenant lifecycle (signup, suspend, restore, plan change).
+
+    The platform-wide audit log stays actor/action-shaped; this gives the SaaS
+    control plane its own per-tenant lifecycle timeline.
+    """
+
+    __tablename__ = "tenant_provision_events"
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(60), nullable=False)
+    actor: Mapped[str] = mapped_column(String(100), nullable=False)
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)

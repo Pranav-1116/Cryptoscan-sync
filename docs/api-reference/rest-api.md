@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-13:
-**585 paths, 644 operations** across 78 tagged groups.
+**595 paths, 655 operations** across 79 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -12,6 +12,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 - Development login: `admin` / `cryptoscan` (refused in production).
 - RBAC: 9 roles (superadmin, ciso, security_analyst, developer, auditor, business_owner,
   scanner, readonly, supervisor); most read endpoints allow readonly+, exports/mutations are role-gated.
+- Multi-tenant SaaS: tenant-scoped requests resolve the organization from the session's
+  memberships or `X-Tenant-ID`; API keys minted inside a tenant are bound to it. See
+  [architecture/multi-tenancy.md](../architecture/multi-tenancy.md).
 - Every list endpoint is paginated and every export carries SHA-256 verification
   (`/verify` siblings) — see [user-guide/evidence-pack.md](../user-guide/evidence-pack.md).
 
@@ -63,11 +66,11 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
-| `POST` | `/api/v1/api-keys` | Create Api Key |
 | `GET` | `/api/v1/api-keys` | List Api Keys |
+| `POST` | `/api/v1/api-keys` | Create Api Key |
 | `GET` | `/api/v1/api-keys/rotation/report` | Rotation Report |
-| `DELETE` | `/api/v1/api-keys/{key_id}` | Revoke Api Key |
 | `PATCH` | `/api/v1/api-keys/{key_id}` | Update Api Key Policy |
+| `DELETE` | `/api/v1/api-keys/{key_id}` | Revoke Api Key |
 
 ## assets
 
@@ -109,8 +112,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/auth/roles` | List Roles |
 | `GET` | `/api/v1/auth/users` | List Users |
 | `POST` | `/api/v1/auth/users` | Create User |
-| `DELETE` | `/api/v1/auth/users/{username}` | Delete User |
 | `PATCH` | `/api/v1/auth/users/{username}` | Update User |
+| `DELETE` | `/api/v1/auth/users/{username}` | Delete User |
 | `POST` | `/api/v1/auth/users/{username}/restore` | Restore User |
 
 ## automation
@@ -119,8 +122,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `POST` | `/api/v1/automation/blast-radius` | Blast Radius |
 | `GET` | `/api/v1/automation/capabilities` | Capabilities |
-| `POST` | `/api/v1/automation/cbom/versions` | Cbom Update |
 | `GET` | `/api/v1/automation/cbom/versions` | Cbom History |
+| `POST` | `/api/v1/automation/cbom/versions` | Cbom Update |
 | `POST` | `/api/v1/automation/cert-watch` | Cert Watch |
 | `GET` | `/api/v1/automation/connectors` | List Connectors |
 | `POST` | `/api/v1/automation/connectors/dispatch` | Connector Dispatch |
@@ -198,12 +201,12 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `PATCH` | `/api/v1/migrations/{project_id}` | Update Migration |
 | `GET` | `/api/v1/migrations/{project_id}/export/github-issues` | Export Github Issues |
 | `GET` | `/api/v1/migrations/{project_id}/forecast` | Migration Forecast |
-| `POST` | `/api/v1/migrations/{project_id}/milestones` | Add Milestone |
 | `GET` | `/api/v1/migrations/{project_id}/milestones` | List Milestones |
+| `POST` | `/api/v1/migrations/{project_id}/milestones` | Add Milestone |
 | `GET` | `/api/v1/migrations/{project_id}/progress` | Migration Progress |
 | `POST` | `/api/v1/migrations/{project_id}/sync` | Sync Migration |
-| `POST` | `/api/v1/migrations/{project_id}/tasks` | Add Migration Task |
 | `GET` | `/api/v1/migrations/{project_id}/tasks` | List Migration Tasks |
+| `POST` | `/api/v1/migrations/{project_id}/tasks` | Add Migration Task |
 | `GET` | `/api/v1/vendor-risks` | Vendor Risks |
 | `GET` | `/api/v1/vendors` | List Vendors |
 | `POST` | `/api/v1/vendors` | Create Vendor |
@@ -415,8 +418,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/enterprise/airgap/import` | Airgap Import |
 | `POST` | `/api/v1/enterprise/compliance/controls` | Add Control |
 | `POST` | `/api/v1/enterprise/compliance/evaluate` | Compliance Evaluate |
-| `PUT` | `/api/v1/enterprise/crypto-kb` | Put Kb Entry |
 | `GET` | `/api/v1/enterprise/crypto-kb` | Crypto Kb |
+| `PUT` | `/api/v1/enterprise/crypto-kb` | Put Kb Entry |
 | `GET` | `/api/v1/enterprise/integrations` | List Integrations |
 | `POST` | `/api/v1/enterprise/integrations` | Register Integration |
 | `POST` | `/api/v1/enterprise/integrations/cmdb/resolve` | Cmdb Resolve |
@@ -488,8 +491,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/governance/migration` | List Validations |
 | `POST` | `/api/v1/governance/migration/validate` | Validate Migration Endpoint |
-| `POST` | `/api/v1/governance/requests` | Submit Request |
 | `GET` | `/api/v1/governance/requests` | List Requests |
+| `POST` | `/api/v1/governance/requests` | Submit Request |
 | `POST` | `/api/v1/governance/requests/{request_pk}/decide` | Decide Request |
 
 ## graph
@@ -627,8 +630,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/marketplace/active/{plugin_id}` | Active Plugin |
-| `POST` | `/api/v1/marketplace/plugins` | Upload Plugin |
 | `GET` | `/api/v1/marketplace/plugins` | List Plugins |
+| `POST` | `/api/v1/marketplace/plugins` | Upload Plugin |
 | `POST` | `/api/v1/marketplace/plugins/{plugin_pk}/disable` | Disable Plugin |
 | `POST` | `/api/v1/marketplace/plugins/{plugin_pk}/enable` | Enable Plugin |
 | `POST` | `/api/v1/marketplace/plugins/{plugin_pk}/evaluate` | Evaluate Ruleset |
@@ -758,8 +761,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/payment-crypto/findings` | List Findings |
 | `POST` | `/api/v1/payment-crypto/findings/{finding_id}/status` | Set Finding Status |
 | `GET` | `/api/v1/payment-crypto/forecast` | Forecast |
-| `POST` | `/api/v1/payment-crypto/hsm-events` | Ingest Hsm Events |
 | `GET` | `/api/v1/payment-crypto/hsm-events` | List Hsm Events |
+| `POST` | `/api/v1/payment-crypto/hsm-events` | Ingest Hsm Events |
 | `GET` | `/api/v1/payment-crypto/keys` | List Keys |
 | `POST` | `/api/v1/payment-crypto/keys` | Upsert Key |
 | `DELETE` | `/api/v1/payment-crypto/keys/{key_id}` | Delete Key |
@@ -867,8 +870,23 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
-| `POST` | `/api/v1/scans/runtime-findings` | Ingest Runtime Findings |
 | `GET` | `/api/v1/scans/runtime-findings` | List Runtime Findings |
+| `POST` | `/api/v1/scans/runtime-findings` | Ingest Runtime Findings |
+
+## saas
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/saas/admin/tenants` | Admin List Tenants |
+| `POST` | `/api/v1/saas/admin/tenants/{tenant_id}/plan` | Admin Set Plan |
+| `POST` | `/api/v1/saas/admin/tenants/{tenant_id}/restore` | Admin Restore |
+| `POST` | `/api/v1/saas/admin/tenants/{tenant_id}/suspend` | Admin Suspend |
+| `GET` | `/api/v1/saas/members` | List Members |
+| `POST` | `/api/v1/saas/members` | Add Member |
+| `DELETE` | `/api/v1/saas/members/{username}` | Remove Member |
+| `POST` | `/api/v1/saas/signup` | Signup |
+| `GET` | `/api/v1/saas/usage` | Usage |
+| `GET` | `/api/v1/saas/whoami` | Whoami |
 
 ## scans
 
@@ -963,8 +981,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/systems` | List Systems |
 | `POST` | `/api/v1/systems` | Create System |
 | `POST` | `/api/v1/systems/import` | Import Systems |
-| `PATCH` | `/api/v1/systems/{system_id}` | Update System |
 | `GET` | `/api/v1/systems/{system_id}` | Get System |
+| `PATCH` | `/api/v1/systems/{system_id}` | Update System |
 | `POST` | `/api/v1/systems/{system_id}/assets` | Attach Asset |
 | `POST` | `/api/v1/systems/{system_id}/dependencies` | Add Dependency |
 | `POST` | `/api/v1/systems/{system_id}/scan` | Scan System |
@@ -1004,6 +1022,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `DELETE` | `/api/v1/telecom/carriers/{code}` | Telecom Carrier Delete |
 | `GET` | `/api/v1/telecom/events` | Telecom Events |
 | `POST` | `/api/v1/telecom/ingest` | Telecom Ingest |
+| `GET` | `/api/v1/telecom/journey` | Telecom Journey |
 | `GET` | `/api/v1/telecom/pack` | Telecom Carrier Pack |
 | `GET` | `/api/v1/telecom/posture` | Telecom Posture |
 | `GET` | `/api/v1/telecom/registry` | Telecom Registry |

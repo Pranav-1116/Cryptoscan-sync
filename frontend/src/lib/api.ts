@@ -65,11 +65,32 @@ export async function isBackendLive(): Promise<boolean> {
   return backendLive === true;
 }
 
+// Active tenant (multi-tenant SaaS): set after login/signup, switchable in
+// the tenancy page; sent on every API call so the backend resolves the org.
+export function activeTenantId(): string | null {
+  try {
+    return localStorage.getItem("cryptoscan_tenant");
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveTenantId(id: string | null): void {
+  try {
+    if (id) localStorage.setItem("cryptoscan_tenant", id);
+    else localStorage.removeItem("cryptoscan_tenant");
+  } catch {
+    /* private mode: tenant stays per-session in memory */
+  }
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
+    const tenant = activeTenantId();
+    if (tenant) headers["X-Tenant-ID"] = tenant;
     const resp = await fetch(path, {
       signal: AbortSignal.timeout(8000),
       headers,
@@ -2827,3 +2848,90 @@ export async function downloadEngagementArchive(
     return { ok: false, error: String(e) };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Multi-tenant SaaS control plane
+// ---------------------------------------------------------------------------
+
+export interface SaasUsageMeter {
+  used: number;
+  limit: number | null;
+  remaining: number | null;
+}
+export interface SaasWhoami {
+  username: string;
+  tenant_id: string | null;
+  tenant_name?: string;
+  tenant_slug?: string;
+  tenant_role: string | null;
+  plan: string | null;
+  tenant_status: string | null;
+  is_platform_admin: boolean;
+  usage?: Record<string, SaasUsageMeter>;
+}
+export interface SaasMember {
+  username: string;
+  tenant_role: string;
+  added_at: string | null;
+}
+export interface SaasAdminTenant {
+  id: string;
+  name: string;
+  slug: string;
+  plan: string;
+  status: string;
+  created_at: string | null;
+  members: number;
+  targets: number;
+  scans_this_month: number;
+}
+
+export async function apiSaasSignup(input: {
+  org_name: string;
+  username: string;
+  password: string;
+  email?: string;
+}): Promise<{ ok: boolean; error?: string; tenant?: { id: string; name: string; slug: string; plan: string } }> {
+  try {
+    const resp = await fetch("/api/v1/saas/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail ?? `HTTP ${resp.status}`) };
+    return { ok: true, tenant: body.tenant };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+export const apiSaasWhoami = () => call<SaasWhoami>("/api/v1/saas/whoami");
+export const apiSaasUsage = () =>
+  call<{ plan: string; limits: Record<string, number | null>; meters: Record<string, SaasUsageMeter>; month_breakdown: Record<string, number> }>(
+    "/api/v1/saas/usage",
+  );
+export const apiSaasMembers = () => call<{ members: SaasMember[] }>("/api/v1/saas/members");
+export const apiSaasAddMember = (input: { username: string; tenant_role: string; password?: string }) =>
+  call<{ username: string; tenant_role: string }>("/api/v1/saas/members", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+export const apiSaasRemoveMember = (username: string) =>
+  call<{ removed: string }>(`/api/v1/saas/members/${encodeURIComponent(username)}`, { method: "DELETE" });
+export const apiSaasAdminTenants = () => call<{ tenants: SaasAdminTenant[] }>("/api/v1/saas/admin/tenants");
+export const apiSaasSuspend = (id: string, reason: string) =>
+  call<{ tenant_id: string; status: string }>(`/api/v1/saas/admin/tenants/${encodeURIComponent(id)}/suspend`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+export const apiSaasRestore = (id: string) =>
+  call<{ tenant_id: string; status: string }>(`/api/v1/saas/admin/tenants/${encodeURIComponent(id)}/restore`, {
+    method: "POST",
+  });
+export const apiSaasSetPlan = (id: string, plan: string) =>
+  call<{ tenant_id: string; plan: string }>(`/api/v1/saas/admin/tenants/${encodeURIComponent(id)}/plan`, {
+    method: "POST",
+    body: JSON.stringify({ plan }),
+  });

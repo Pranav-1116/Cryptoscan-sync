@@ -76,6 +76,7 @@ const NAV = [
     { to: "/security-policy", labelKey: "nav.securityPolicy", icon: "⛨" },
     { to: "/settings", labelKey: "nav.settings", icon: "⚙" },
     { to: "/organization", labelKey: "nav.organization", icon: "◫" },
+    { to: "/tenancy", labelKey: "nav.tenancy", icon: "⛓" },
     { to: "/sectors", labelKey: "nav.sectorProfiles", icon: "⛨" },
     { to: "/accuracy", labelKey: "nav.accuracy", icon: "◔" },
     { to: "/platform", labelKey: "nav.platformP2", icon: "⬢" },

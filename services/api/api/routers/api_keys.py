@@ -18,10 +18,24 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_db_session, require_roles
+from api.dependencies import (
+    TenantContext,
+    get_db_session,
+    require_roles,
+    require_tenant_roles,
+)
 from api.events.bus import get_event_bus
 
 logger = logging.getLogger(__name__)
+
+
+def _key_in_scope(row, ctx: TenantContext) -> bool:
+    """Platform context sees platform keys only; a tenant context only its own."""
+    if ctx.is_platform_admin and ctx.tenant_id is None:
+        return row.tenant_id is None
+    return row.tenant_id == ctx.tenant_id
+
+
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 
 
@@ -109,9 +123,12 @@ def _to_out(row) -> ApiKeyOut:
 @router.post("", response_model=ApiKeyCreated, status_code=201)
 def create_api_key(
     body: ApiKeyCreate,
-    user: str = Depends(require_roles("admin")),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin")),
     db: Session = Depends(get_db_session),
 ) -> ApiKeyCreated:
+    """Mint a key. Tenant owner/admin -> key bound to their org; platform
+    admins (no tenant header) -> platform-estate key. Both audited."""
+
     # validate/normalize the platform constraints deterministically
     try:
         from apikeys.policy import normalize_methods, normalize_rate, normalize_scopes
@@ -126,7 +143,7 @@ def create_api_key(
     try:
         row, raw = repo.create(
             name=body.name,
-            created_by=user,
+            created_by=ctx.username,
             roles=body.roles,
             expires_at=body.expires_at,
             scopes=scopes,
@@ -134,12 +151,17 @@ def create_api_key(
             rate_per_minute=rate,
             allowed_ips=body.allowed_ips,
             rotate_after_days=body.rotate_after_days,
+            tenant_id=ctx.tenant_id,  # keys minted in a tenant are bound to it
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if ctx.tenant_id:
+        from db.repositories.tenant_repository import TenantRepository
+
+        TenantRepository(db).record_usage(ctx.tenant_id, "key_create", 1, detail=row.name)
     db.commit()
     UserRepository(db).audit(
-        user,
+        ctx.username,
         "auth.api_key_create",
         target_type="api_key",
         target_id=row.id,
@@ -147,7 +169,7 @@ def create_api_key(
     )
     db.commit()
     get_event_bus().publish(
-        "apikey.create", {"name": row.name, "roles": row.role_list, "created_by": user},
+        "apikey.create", {"name": row.name, "roles": row.role_list, "created_by": ctx.username},
         source="api-keys",
     )
     out = ApiKeyCreated(**_to_out(row).model_dump(), raw_key=raw)
@@ -157,31 +179,34 @@ def create_api_key(
 @router.get("", response_model=list[ApiKeyOut])
 def list_api_keys(
     include_revoked: bool = Query(True),
-    user: str = Depends(require_roles("admin")),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin")),
     db: Session = Depends(get_db_session),
 ) -> list[ApiKeyOut]:
-    rows = ApiKeyRepository(db).list_keys(include_revoked=include_revoked)
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    rows = ApiKeyRepository(db).list_keys(
+        include_revoked=include_revoked, tenant_id=ctx.tenant_id, platform=platform)
     return [_to_out(r) for r in rows]
 
 
 @router.delete("/{key_id}", response_model=ApiKeyOut)
 def revoke_api_key(
     key_id: str,
-    user: str = Depends(require_roles("admin")),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin")),
     db: Session = Depends(get_db_session),
 ) -> ApiKeyOut:
     repo = ApiKeyRepository(db)
-    row = repo.revoke(key_id)
-    if row is None:
+    row = repo.get(key_id)
+    if row is None or not _key_in_scope(row, ctx):
         raise HTTPException(status_code=404, detail="API key not found")
+    row = repo.revoke(key_id)
     db.commit()
     UserRepository(db).audit(
-        user, "auth.api_key_revoke", target_type="api_key", target_id=row.id,
+        ctx.username, "auth.api_key_revoke", target_type="api_key", target_id=row.id,
         detail={"name": row.name},
     )
     db.commit()
     get_event_bus().publish(
-        "apikey.revoke", {"name": row.name, "revoked_by": user}, source="api-keys"
+        "apikey.revoke", {"name": row.name, "revoked_by": ctx.username}, source="api-keys"
     )
     return _to_out(row)
 

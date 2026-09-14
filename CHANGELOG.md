@@ -6,6 +6,25 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Multi-tenant SaaS: organizations, isolation, plans, metering
+- Tenancy core: `tenants` / `tenant_memberships` / `tenant_usage_events` /
+  `tenant_provision_events` tables; `POST /saas/signup` self-serve org
+  provisioning (slug-unique, password-policy enforced); tenant roles
+  (owner/admin/member/viewer) independent of platform RBAC.
+- Isolation enforced in depth: `tenant_id` on monitor targets and API keys
+  (schema reconciliation migrates existing stores; NULL = platform estate),
+  repository filters, `TenantContext` request resolution (per-request DB
+  lookup; header or sole-membership selection; foreign tenant = 404, no
+  existence oracle), suspension = 423 with the daemon skipping suspended
+  tenants' passes.
+- Plans with honest quotas (FREE 5 targets / 200 scans-mo / 3 seats, PRO
+  100 / 20k / 25, ENTERPRISE unlimited): breaches are 402 quota_exceeded;
+  append-only usage metering (month SUM, delete-proof) powers
+  `GET /saas/usage` and the dashboard Tenancy page (org, meter bars,
+  members, platform tenant registry with suspend/restore/plan).
+- Platform admin surface: tenant registry with live counts, suspend /
+  restore / plan change — all audited.
+
 ### Security round: monitor targets can no longer be turned into internal probes (OWASP A10)
 - Found by live attack testing against the running stack: an authenticated
   `POST /api/v1/monitor/targets` accepted NETWORK configs with loopback,

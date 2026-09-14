@@ -27,6 +27,10 @@ class ApiKey(BaseModel):
     key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)  # display: csk_ab12…
     created_by: Mapped[str] = mapped_column(String(100), nullable=False, default="admin")
     roles: Mapped[str] = mapped_column(String(200), nullable=False, default="viewer")
+    # Multi-tenant SaaS: a key minted inside a tenant context is bound to that
+    # tenant — every request it makes is scoped to the tenant, regardless of
+    # headers. NULL = platform key (single-tenant/on-prem estate).
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

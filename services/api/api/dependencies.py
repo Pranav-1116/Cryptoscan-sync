@@ -99,6 +99,8 @@ def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | ob
             if row is None:
                 return _API_KEY_INVALID
             key_id = row.id
+            # tenant binding for the SaaS layer (see get_tenant_context)
+            request.state.tenant_id = row.tenant_id
             # Enforce P2 API-key platform policy: endpoint scopes, HTTP method
             # allowlist, and per-key rate quota. Raises 403/429 on violation.
             _authorize_key_policy(request, row, session)
@@ -257,19 +259,29 @@ def _session_store_allows(token: str, username: str) -> bool:
         return not strict
 
 
-def _user_roles(username: str, token: str | None) -> list[str]:
-    """Fresh roles from the users table; falls back to token claims."""
+def _user_roles(username: str, token: str | None, db: Session | None = None) -> list[str]:
+    """Fresh roles from the users table; falls back to token claims.
+
+    Uses the request's DB session when given (tests override it), else a
+    fresh connection.
+    """
     try:
-        from db.connection.session import SessionLocal
         from db.repositories.user_repository import UserRepository
 
-        session = SessionLocal()
-        try:
-            user = UserRepository(session).get_by_username(username)
+        if db is not None:
+            user = UserRepository(db).get_by_username(username)
             if user is not None:
                 return user.role_list
-        finally:
-            session.close()
+        else:
+            from db.connection.session import SessionLocal
+
+            session = SessionLocal()
+            try:
+                user = UserRepository(session).get_by_username(username)
+                if user is not None:
+                    return user.role_list
+            finally:
+                session.close()
     except Exception:  # pragma: no cover - DB unavailable
         pass
     if token:
@@ -292,7 +304,11 @@ def require_roles(*allowed: str):
 
     allowed_norm = set(normalize_roles(list(allowed)))
 
-    def dependency(request: Request) -> str:
+    def dependency(
+        request: Request,
+        user: str = Depends(get_current_user),
+        db: Session = Depends(get_db_session),
+    ) -> str:
         api_key = _resolve_api_key(request)
         if api_key is _API_KEY_INVALID:
             raise HTTPException(
@@ -309,23 +325,19 @@ def require_roles(*allowed: str):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"API key requires one of roles: {', '.join(allowed)} (has: {', '.join(key_roles) or 'none'})",
             )
-        token = _token_from_request(request)
-        if not token:
+        # Session path: require actual request credentials (bearer or session
+        # cookie). get_current_user may be overridden in tests, but this gate
+        # itself must still refuse credential-less requests.
+        if not _token_from_request(request):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication required",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        username = SessionManager().validate_session(token)
-        if not username or not _session_store_allows(token, username):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or revoked token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        roles = normalize_roles(_user_roles(username, token))
+        # roles are read fresh from the users table
+        roles = normalize_roles(_user_roles(user, None, db))
         if not roles or set(roles) & allowed_norm:
-            return username
+            return user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Requires one of roles: {', '.join(allowed)}",
@@ -336,3 +348,174 @@ def require_roles(*allowed: str):
 
 require_admin = require_roles("admin")
 require_auditor = require_roles("admin", "auditor")
+
+
+# ---------------------------------------------------------------------------
+# Multi-tenant SaaS context
+# ---------------------------------------------------------------------------
+
+from dataclasses import dataclass  # noqa: E402
+
+
+@dataclass
+class TenantContext:
+    """Resolved tenancy for one request.
+
+    tenant_id None = platform context (superadmin operators on the global /
+    single-tenant estate). Otherwise the request is scoped to exactly one
+    tenant, resolved authoritatively from the DB on every request (membership
+    changes take effect mid-session; the signed token is never widened).
+    """
+
+    username: str
+    tenant_id: str | None
+    tenant_role: str | None
+    is_platform_admin: bool
+    plan: str | None = None
+    tenant_status: str | None = None
+
+
+def get_tenant_context(
+    request: Request,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> TenantContext:
+    """Resolve the active tenant for this request.
+
+    - superadmin: `X-Tenant-ID` picks a tenant to operate on; without it the
+      request sees the platform estate (tenant_id NULL rows only).
+    - everyone else: exactly one membership is chosen automatically; several
+      memberships require the header. No membership -> 403; a SUSPENDED
+      tenant -> 423.
+    - an API key minted inside a tenant is hard-bound to it (its requests are
+      scoped to the tenant even if a header lies).
+    """
+    from api.security.rbac import normalize_roles
+    from db.repositories.tenant_repository import TenantRepository
+
+    repo = TenantRepository(db)
+    # normalize through the RBAC catalog: "admin" is the legacy alias of
+    # superadmin and must reach the platform-admin path
+    roles = normalize_roles(_principal_roles(request, user, db))
+
+    # API-key tenant binding: the key's tenant wins over any header.
+    key_tenant = getattr(request.state, "tenant_id", None)
+
+    if key_tenant:
+        header_tenant = request.headers.get("x-tenant-id", "").strip() or None
+        if header_tenant and header_tenant != key_tenant:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="API key is bound to a different tenant than X-Tenant-ID",
+            )
+        tenant_row = repo.get(key_tenant)
+        if tenant_row is None:
+            raise HTTPException(status_code=404, detail="Unknown tenant")
+        if tenant_row.status == "SUSPENDED":
+            raise HTTPException(status_code=status.HTTP_423_LOCKED,
+                                detail="This organization is suspended — contact platform support")
+        # machine principal: the binding IS the tenancy; platform admin roles
+        # on the key translate to tenant admin, everything else to member
+        tenant_role = "admin" if set(roles) & {"superadmin", "admin"} else (
+            "viewer" if set(roles) & {"readonly", "viewer", "auditor"} else "member")
+        return TenantContext(username=user, tenant_id=tenant_row.id,
+                             tenant_role=tenant_role, is_platform_admin=False,
+                             plan=tenant_row.plan, tenant_status=tenant_row.status)
+
+    active_id = request.headers.get("x-tenant-id", "").strip() or None
+
+    if "superadmin" in roles:
+        if not active_id:
+            return TenantContext(username=user, tenant_id=None, tenant_role=None,
+                                 is_platform_admin=True)
+        row = repo.get(active_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Unknown tenant")
+        return TenantContext(username=user, tenant_id=row.id,
+                             tenant_role="owner", is_platform_admin=True,
+                             plan=row.plan, tenant_status=row.status)
+
+    memberships = repo.memberships_of(user)
+    if not memberships:
+        from db.repositories.user_repository import UserRepository
+
+        if UserRepository(db).get_by_username(user) is None:
+            # legacy single-tenant principal (env-admin before bootstrap,
+            # or a test harness identity): platform estate, as before SaaS
+            return TenantContext(username=user, tenant_id=None, tenant_role=None,
+                                 is_platform_admin=True)
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No tenant membership — ask your organization owner for an invite",
+        )
+    if active_id:
+        chosen = next((m for m in memberships if m.tenant_id == active_id), None)
+        if chosen is None:
+            # 404, not 403: never confirm another tenant's existence.
+            raise HTTPException(status_code=404, detail="Unknown tenant")
+    elif len(memberships) == 1:
+        chosen = memberships[0]
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Multiple tenant memberships — send X-Tenant-ID",
+        )
+
+    tenant_row = repo.get(chosen.tenant_id)
+    if tenant_row is None:
+        raise HTTPException(status_code=404, detail="Unknown tenant")
+    if tenant_row.status == "SUSPENDED":
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="This organization is suspended — contact platform support",
+        )
+    return TenantContext(username=user, tenant_id=tenant_row.id,
+                         tenant_role=chosen.tenant_role, is_platform_admin=False,
+                         plan=tenant_row.plan, tenant_status=tenant_row.status)
+
+
+def _principal_roles(request: Request, user: str, db: Session | None = None) -> list[str]:
+    """Roles of the authenticated principal (session user or API key).
+
+    Uses the request's DB session when available (tests override it); falls
+    back to a fresh connection for standalone calls.
+    """
+    api_key = _resolve_api_key(request)
+    if isinstance(api_key, tuple):
+        return list(api_key[1])
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        if db is not None:
+            row = UserRepository(db).get_by_username(user)
+            return row.role_list if row else []
+        from db.connection.session import SessionLocal
+
+        session = SessionLocal()
+        try:
+            row = UserRepository(session).get_by_username(user)
+            return row.role_list if row else []
+        finally:
+            session.close()
+    except Exception:
+        return []
+
+
+def require_tenant_roles(*allowed: str):
+    """Dependency factory: gate a tenant-scoped route by tenant role.
+
+    Platform admins pass (they operate the tenant on behalf of the org).
+    """
+    allowed_set = set(allowed)
+
+    def _dep(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:
+        if ctx.is_platform_admin:
+            return ctx
+        if ctx.tenant_role not in allowed_set:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires tenant role in {sorted(allowed_set)}",
+            )
+        return ctx
+
+    return _dep

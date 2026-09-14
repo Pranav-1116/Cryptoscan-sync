@@ -16,7 +16,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, require_auditor
+from api.dependencies import (
+    TenantContext,
+    get_db_session,
+    get_tenant_context,
+    require_tenant_roles,
+)
 
 router = APIRouter(tags=["monitor"])
 
@@ -198,22 +203,25 @@ def _serialize(target) -> dict:
         "last_summary": target.last_summary,
         "consecutive_failures": target.consecutive_failures,
         "last_error": target.last_error,
+        "tenant_id": target.tenant_id,
     }
 
 
 @router.get("/monitor/targets")
 def list_targets(
     enabled: bool | None = None,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db_session),
 ):
-    return {"targets": [_serialize(row) for row in _repo(db).list_targets(enabled=enabled)]}
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    rows = _repo(db).list_targets(enabled=enabled, tenant_id=ctx.tenant_id, platform=platform)
+    return {"targets": [_serialize(row) for row in rows]}
 
 
 @router.post("/monitor/targets", status_code=201)
 def create_target(
     body: TargetCreate,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
     from worker.monitor.engine import DEFAULT_INTERVALS, default_interval
@@ -256,15 +264,34 @@ def create_target(
         raise HTTPException(status_code=422, detail="interval_seconds must be between 60 and 2592000")
     config = _validate_config(body.config, body.target_type)
     repo = _repo(db)
-    if repo.get_by_name(body.name) is not None:
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    if repo.get_by_name_scoped(body.name, tenant_id=ctx.tenant_id, platform=platform) is not None:
         raise HTTPException(status_code=409, detail=f"target '{body.name}' already exists")
+    # plan quota (multi-tenant SaaS): unlimited plans pass, finite plans deny
+    # with 402 once the tenant's target budget is spent.
+    if ctx.tenant_id:
+        from api.security.tenancy import quota_check
+        from db.repositories.tenant_repository import TenantRepository
+
+        t_repo = TenantRepository(db)
+        tenant = t_repo.get(ctx.tenant_id)
+        allowed, reason = quota_check(
+            tenant.plan if tenant else "FREE", "target_create",
+            t_repo.live_target_count(ctx.tenant_id))
+        if not allowed:
+            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
     row = repo.create(
         name=body.name,
         target_type=body.target_type,
         config=config,
         interval_seconds=body.interval_seconds or DEFAULT_INTERVALS.get(body.target_type, default_interval(body.target_type)),
-        created_by=user,
+        created_by=ctx.username,
+        tenant_id=ctx.tenant_id,
     )
+    if ctx.tenant_id:
+        from db.repositories.tenant_repository import TenantRepository
+
+        TenantRepository(db).record_usage(ctx.tenant_id, "target_create", 1, detail=body.name)
     db.commit()
     return _serialize(row)
 
@@ -273,12 +300,12 @@ def create_target(
 def update_target(
     target_id: str,
     body: TargetUpdate,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
     repo = _repo(db)
     row = repo.get(target_id)
-    if row is None:
+    if row is None or not _in_scope(row, ctx):
         raise HTTPException(status_code=404, detail="Target not found")
     if body.interval_seconds is not None:
         if not (60 <= body.interval_seconds <= 2_592_000):
@@ -306,9 +333,12 @@ def update_target(
 @router.delete("/monitor/targets/{target_id}")
 def delete_target(
     target_id: str,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
+    row = _repo(db).get(target_id)
+    if row is None or not _in_scope(row, ctx):
+        raise HTTPException(status_code=404, detail="Target not found")
     if not _repo(db).delete(target_id):
         raise HTTPException(status_code=404, detail="Target not found")
     db.commit()
@@ -318,7 +348,7 @@ def delete_target(
 @router.post("/monitor/targets/{target_id}/scan-now")
 def scan_now(
     target_id: str,
-    user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin", "member")),
     db: Session = Depends(get_db_session),
 ):
     """Run one target immediately, synchronously (live probe for NETWORK)."""
@@ -326,8 +356,20 @@ def scan_now(
 
     repo = _repo(db)
     target = repo.get(target_id)
-    if target is None:
+    if target is None or not _in_scope(target, ctx):
         raise HTTPException(status_code=404, detail="Target not found")
+    if ctx.tenant_id:
+        from api.security.tenancy import quota_check
+        from db.repositories.tenant_repository import TenantRepository
+
+        t_repo = TenantRepository(db)
+        tenant = t_repo.get(ctx.tenant_id)
+        allowed, reason = quota_check(
+            tenant.plan if tenant else "FREE", "scan_run",
+            t_repo.month_usage(ctx.tenant_id, "scan_run"))
+        if not allowed:
+            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
+        # metering happens in MonitorEngine.run_target (one funnel, no double count)
     if not target.enabled:
         raise HTTPException(status_code=409, detail="target is paused — enable it first")
     outcome = MonitorEngine(db).run_target(target)
@@ -335,17 +377,33 @@ def scan_now(
     return outcome
 
 
+def _in_scope(row, ctx: TenantContext) -> bool:
+    """Cross-tenant access is a 404 (no existence oracle); platform context
+    sees only the platform estate, a superadmin wearing a tenant header sees
+    that tenant's rows."""
+    if ctx.is_platform_admin and ctx.tenant_id is None:
+        return row.tenant_id is None
+    return row.tenant_id == ctx.tenant_id
+
+
 @router.get("/monitor/status")
-def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+def monitor_status(ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(get_db_session)):
     """The live picture: what is watched, its health, what happened lately."""
     from datetime import datetime, timezone
 
     repo = _repo(db)
-    targets = repo.list_targets()
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    targets = repo.list_targets(tenant_id=ctx.tenant_id, platform=platform)
+    by_status: dict[str, int] = {}
+    by_type: dict[str, int] = {}
+    for row in targets:
+        by_status[row.status] = by_status.get(row.status, 0) + 1
+        by_type[row.target_type] = by_type.get(row.target_type, 0) + 1
     overview = {
         "targets_total": len(targets),
-        "by_status": repo.status_counts(),
-        "by_type": repo.type_counts(),
+        "by_status": by_status,
+        "by_type": by_type,
+        "tenant_id": ctx.tenant_id,
         "enabled": sum(1 for row in targets if row.enabled),
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "daemon": "scripts/run_monitor.py (this API does not run the loop)",
@@ -364,7 +422,7 @@ def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(
             "detail": event.detail,
             "created_at": event.created_at.isoformat() if event.created_at else None,
         }
-        for event in repo.list_events(limit=20)
+        for event in repo.list_events(limit=20, tenant_id=ctx.tenant_id, platform=platform)
     ]
     return {"overview": overview, "needs_attention": attention, "recent_events": events}
 
@@ -373,10 +431,12 @@ def monitor_status(user: str = Depends(get_current_user), db: Session = Depends(
 def monitor_events(
     target_id: str | None = None,
     limit: int = 50,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db_session),
 ):
-    rows = _repo(db).list_events(target_id=target_id, limit=limit)
+    platform = ctx.is_platform_admin and ctx.tenant_id is None
+    rows = _repo(db).list_events(target_id=target_id, limit=limit,
+                                 tenant_id=ctx.tenant_id, platform=platform)
     return {
         "events": [
             {

@@ -153,6 +153,15 @@ from db.models.p2 import (  # noqa: E402,F401
     PluginPackage,
 )
 from db.models.ot_maintenance import OtMaintenanceWindow  # noqa: E402,F401
+# SaaS tenancy (db.models.tenant): the Tenant class is intentionally NOT
+# re-exported — control_plane.Tenant (data residency) already owns that name
+# in this namespace; importing the module registers all four tables.
+from db.models import tenant as _saas_tenant  # noqa: E402,F401
+from db.models.tenant import (  # noqa: E402,F401
+    TenantMembership,
+    TenantProvisionEvent,
+    TenantUsageEvent,
+)
 from db.models.credential_lease import CredentialLease  # noqa: E402,F401
 from db.models.automation import AutomationRuleRow, AutomationRun, CbomVersionRow  # noqa: E402,F401
 from db.models.graph_snapshot import GraphSnapshot  # noqa: E402,F401
