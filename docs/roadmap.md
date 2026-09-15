@@ -25,7 +25,7 @@ Legend: ✅ exists · 🔨 improved r30 · ⛔ infra-blocked · 📋 planned · 
 | 12 | Registry webhook live | 🟨 ACR/DockerHub/ECR/Harbor handlers shipped; live registry round-trip ⛔ needs a registry |
 | 13 | Real GitHub round-trip | 🟨 webhook handler shipped + secret-verified; end-to-end needs a repo webhook config (ops task) |
 | 14 | Email delivery proof | ⛔ needs an SMTP relay; channel plumbing + preference routing shipped |
-| 15 | Perf benchmark 10K files | 📋 run + publish numbers (scanner benchmark harness exists under `services/control_plane`) |
+| 15 | Perf benchmark 10K files | 🔨 r30: `scripts/perf_benchmark.py` + `docs/performance.md` — measured 10,000-file deterministic corpus: ~2,300 files/s end-to-end, 16,050 findings, 0 parse errors (sandbox, 2 CPUs, reproducible) |
 
 ## B. Missing features (by family)
 
@@ -79,7 +79,9 @@ Legend: ✅ exists · 🔨 improved r30 · ⛔ infra-blocked · 📋 planned · 
 - DX: quickstart + CLI + i18n (en/ar, RTL) shipped; IDE extensions, bots,
   mobile 📋.
 - Testing: 202+ backend test files, deterministic suites, probe tests,
-  contract-pinned engines; property-based/fuzz/mutation 📋.
+  contract-pinned engines; seeded fuzz harness for the wire parsers +
+  normalizer (r30, `telecom_scanner/tests/test_fuzz.py` — found and fixed
+  4 robustness bugs on day one); property-based/mutation 📋.
 - Docs: architecture docs + API reference + runbooks shipped; C4 diagrams,
   video walkthroughs, glossary 📋.
 - Business: plans/quotas/metering shipped (FREE/PRO/ENTERPRISE); Stripe,
@@ -93,4 +95,8 @@ Legend: ✅ exists · 🔨 improved r30 · ⛔ infra-blocked · 📋 planned · 
   remediation queue with revenue/agility/graph context and honest coverage.
 - RFC 7515 JWS on export manifests (A2) — canonical signature, legacy HMAC
   retained.
+- 10K-file performance benchmark measured and published (A15,
+  `docs/performance.md`); seeded fuzz harness for wire parsers/normalizer
+  (G) — hardened 4 robustness bugs (Diameter OOB read, kind-echo poisoning,
+  non-dict sub-object crashes, bytes leaking into signed JSON).
 - This roadmap + refreshed completeness tracker.

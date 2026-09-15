@@ -6,6 +6,24 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Performance benchmark + parser fuzz hardening
+- **A15 closed**: `scripts/perf_benchmark.py` runs the real static scanner
+  over a deterministic 10,000-file corpus (py/java/js/config/PEM with
+  realistic crypto API shapes) and publishes measured numbers to
+  `docs/performance.md` — ~2,300 files/s end-to-end, 16,050 findings, zero
+  parse errors on 2 sandbox CPUs; reproducible, honestly scoped to the
+  environment.
+- **Parser robustness fuzzing** (roadmap G): seeded fuzz suite
+  (`telecom_scanner/tests/test_fuzz.py`) throws random/structured-corrupt/
+  truncated bytes at the Diameter/GTP-C/SIP parsers and arbitrary dicts at
+  the stream normalizer — no raise, always serializable. Day one it caught
+  and this round fixes 4 real bugs: an out-of-bounds read in the Diameter
+  AVP walk (short AVP header), raw-junk `kind` echo poisoning the canonical
+  schema (now pinned to `unknown` with `reported_kind` kept), typed loaders
+  crashing on non-dict `crypto`/`summary` fields, and bytes leaking into
+  HMAC-signed canonical JSON (now coerced to visible `bytes:n:hex` form).
+  `normalize()` now guarantees a serializable output contract on every path.
+
 ### Prioritization work queue + JWS-conformant exports
 - **Remediation prioritization** (gap A8): `GET /api/v1/priority` + the
   `/priorities` page — every OPEN drift event and weak runtime finding folded

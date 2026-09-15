@@ -63,7 +63,7 @@ def parse_diameter(buf: bytes) -> dict[str, Any] | None:
         "avps": [], "origin_host": None, "origin_realm": None,
     }
     pos = 20
-    while pos + 4 <= min(length, len(buf)):
+    while pos + 8 <= min(length, len(buf)):  # full AVP header (8B) must be in bounds
         avp_code = int.from_bytes(buf[pos:pos + 4], "big")
         avp_flags = buf[pos + 4]
         avp_len = int.from_bytes(buf[pos + 5:pos + 8], "big")
