@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from api.dependencies import (
     TenantContext,
+    get_current_user,
     get_db_session,
     get_tenant_context,
     require_roles,
@@ -53,6 +54,18 @@ class SignupRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=100)
     password: str = Field(..., min_length=12, max_length=200)
     email: str | None = Field(None, max_length=320)
+
+
+class InviteCreate(BaseModel):
+    username: str = Field(..., min_length=3, max_length=100)
+    tenant_role: str = "member"
+    email: str | None = Field(None, max_length=320)
+    days: int = Field(7, ge=1, le=30)
+
+
+class InviteAccept(BaseModel):
+    token: str = Field(..., min_length=10, max_length=200)
+    password: str | None = Field(None, min_length=12, max_length=200)  # required when the invited user has no account yet
 
 
 class MemberCreate(BaseModel):
@@ -246,6 +259,146 @@ def remove_member(
                          target_id=ctx.tenant_id, detail={"member": username})
     db.commit()
     return {"removed": username}
+
+
+# ------------------------------------------------------------------ invites
+
+@router.post("/invites", status_code=201)
+def create_invite(
+    body: InviteCreate,
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin")),
+    db: Session = Depends(get_db_session),
+):
+    """Invite a user to this tenant. The raw token is returned ONCE (like an
+    API key) — deliver it out-of-band; only its hash is stored."""
+    if not ctx.tenant_id:
+        raise HTTPException(status_code=400, detail="Platform context — send X-Tenant-ID")
+    if body.tenant_role not in grantable_roles(ctx.tenant_role or ""):
+        raise HTTPException(
+            status_code=403,
+            detail=f"role '{ctx.tenant_role}' may grant: {list(grantable_roles(ctx.tenant_role or ''))}",
+        )
+    t_repo = _tenant_repo(db)
+    try:
+        row, raw = t_repo.create_invite(
+            ctx.tenant_id, body.username, body.tenant_role,
+            invited_by=ctx.username, days=body.days, email=body.email)
+    except Exception as exc:
+        msg = str(exc)
+        raise HTTPException(status_code=409 if "already a member" in msg else 422, detail=msg)
+    _user_repo(db).audit(ctx.username, "tenant.invite_create", target_type="tenant",
+                         target_id=ctx.tenant_id, detail={"invite": body.username,
+                                                          "role": body.tenant_role})
+    db.commit()
+    return {
+        "invite_id": row.id,
+        "username": row.username,
+        "tenant_role": row.tenant_role,
+        "expires_at": row.expires_at.isoformat(),
+        "token": raw,  # shown once
+    }
+
+
+@router.get("/invites")
+def list_invites(
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin")),
+    db: Session = Depends(get_db_session),
+):
+    if not ctx.tenant_id:
+        raise HTTPException(status_code=400, detail="Platform context — send X-Tenant-ID")
+    return {"invites": [
+        {
+            "invite_id": i.id,
+            "username": i.username,
+            "tenant_role": i.tenant_role,
+            "invited_by": i.invited_by,
+            "expires_at": i.expires_at.isoformat(),
+            "accepted": i.accepted_at is not None,
+        }
+        for i in _tenant_repo(db).invites_for(ctx.tenant_id)
+    ]}
+
+
+@router.delete("/invites/{invite_id}")
+def revoke_invite(
+    invite_id: str,
+    ctx: TenantContext = Depends(require_tenant_roles("owner", "admin")),
+    db: Session = Depends(get_db_session),
+):
+    if not ctx.tenant_id:
+        raise HTTPException(status_code=400, detail="Platform context — send X-Tenant-ID")
+    row = _tenant_repo(db).revoke_invite(ctx.tenant_id, invite_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Pending invite not found")
+    _user_repo(db).audit(ctx.username, "tenant.invite_revoke", target_type="tenant",
+                         target_id=ctx.tenant_id, detail={"invite": row.username})
+    db.commit()
+    return {"revoked": row.username}
+
+
+@router.post("/invites/accept")
+def accept_invite(
+    body: InviteAccept,
+    request: Request,
+    db: Session = Depends(get_db_session),
+):
+    """Redeem an invite token.
+
+    - invited user does not exist yet: the token + a policy-passing password
+      provision the account (the invitee keeps their password private).
+    - invited user exists: the caller must be signed in AS that username —
+      a stolen token can never rebind or reset an existing identity.
+    Seat quota is enforced at accept time (pending invites hold no seat).
+    """
+    t_repo = _tenant_repo(db)
+    invite = t_repo.get_invite_by_raw(body.token)
+    if invite is None or invite.is_dead:
+        raise HTTPException(status_code=404,
+                            detail="invite is invalid, expired, revoked or already used")
+    tenant = t_repo.get(invite.tenant_id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="invite tenant no longer exists")
+    if tenant.status == "SUSPENDED":
+        raise HTTPException(status_code=423, detail="This organization is suspended")
+
+    users = _user_repo(db)
+    existing = users.get_by_username(invite.username)
+    if existing is not None:
+        # must be signed in as the invited identity
+        user = get_current_user(request)
+        if user != invite.username:
+            raise HTTPException(status_code=403,
+                                detail="sign in as the invited username to accept this invite")
+    else:
+        from api.security.passwords import PasswordPolicyError, validate_password_policy
+
+        if not body.password:
+            raise HTTPException(status_code=422,
+                                detail="set a password to create the invited account")
+        try:
+            validate_password_policy(body.password)
+        except PasswordPolicyError as exc:
+            raise HTTPException(status_code=422, detail=f"Weak password: {exc}")
+        user = users.create_user(invite.username, hash_password(body.password),
+                                 roles=["readonly"], email=invite.email)
+
+    allowed, reason = quota_check(tenant.plan, "member_create",
+                                  t_repo.member_count(tenant.id))
+    if not allowed:
+        raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
+    try:
+        membership = t_repo.accept_invite(body.token, actor=invite.username)
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    users.audit(invite.username, "tenant.invite_accept", target_type="tenant",
+                target_id=tenant.id, detail={"role": membership.tenant_role},
+                ip=request.client.host if request.client else None)
+    db.commit()
+    return {
+        "tenant": {"id": tenant.id, "name": tenant.name, "slug": tenant.slug},
+        "username": membership.username,
+        "tenant_role": membership.tenant_role,
+    }
 
 
 # ------------------------------------------------------- platform administration

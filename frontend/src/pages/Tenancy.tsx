@@ -4,7 +4,8 @@ import { usePollingApi } from "../lib/apiUi.jsx";
 import {
   apiSaasWhoami, apiSaasUsage, apiSaasMembers, apiSaasAddMember, apiSaasRemoveMember,
   apiSaasAdminTenants, apiSaasSuspend, apiSaasRestore, apiSaasSetPlan,
-  SaasWhoami, SaasMember, SaasAdminTenant, activeTenantId, setActiveTenantId,
+  apiSaasInvites, apiSaasCreateInvite, apiSaasRevokeInvite,
+  SaasWhoami, SaasMember, SaasAdminTenant, SaasInvite, activeTenantId, setActiveTenantId,
 } from "../lib/api.js";
 
 /* Tenancy — the multi-tenant SaaS control surface: your organization, plan
@@ -102,6 +103,73 @@ function MembersPanel({ whoami }: { whoami: SaasWhoami }) {
                 </button>,
               ]
             : []),
+        ])}
+      />
+    </Panel>
+  );
+}
+
+function InvitesPanel() {
+  const invitesRes = usePollingApi(apiSaasInvites, 20000);
+  const invites = useMemo(() => invitesRes.data?.invites ?? [], [invitesRes.data]);
+  const [username, setUsername] = useState("");
+  const [role, setRole] = useState("member");
+  const [msg, setMsg] = useState<string | null>(null);
+  const [freshToken, setFreshToken] = useState<string | null>(null);
+
+  async function invite() {
+    if (!username.trim()) return;
+    const r = await apiSaasCreateInvite({ username: username.trim(), tenant_role: role });
+    if (r.ok) {
+      setFreshToken(r.token ?? null);
+      setMsg(`invite created for ${r.username} (${r.tenant_role}) — deliver the token out-of-band`);
+      setUsername("");
+      invitesRes.run();
+    } else {
+      setFreshToken(null);
+      setMsg(r.error ?? "failed");
+    }
+  }
+
+  async function revoke(id: string) {
+    const r = await apiSaasRevokeInvite(id);
+    setMsg(r.data ? `revoked invite for ${r.data.revoked}` : r.error ?? "failed");
+    invitesRes.run();
+  }
+
+  return (
+    <Panel title={`Pending invites (${invites.length})`}>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+        <input placeholder="username to invite" value={username} onChange={(e) => setUsername(e.target.value)} />
+        <select value={role} onChange={(e) => setRole(e.target.value)}>
+          {["viewer", "member", "admin"].map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </select>
+        <button onClick={invite}>Create invite</button>
+      </div>
+      {freshToken && (
+        <p style={{ fontSize: 12, background: "var(--bg, #161b22)", padding: 8, borderRadius: 6 }}>
+          one-time token (shown once): <code>{freshToken}</code>
+        </p>
+      )}
+      {msg && (
+        <p style={{ fontSize: 12, opacity: 0.8 }}>
+          {msg}
+        </p>
+      )}
+      <Table
+        head={["username", "role", "invited by", "expires", ""]}
+        rows={invites.map((i) => [
+          i.username,
+          <Badge key={`${i.invite_id}-r`} tone={i.tenant_role === "owner" ? "green" : undefined}>{i.tenant_role}</Badge>,
+          i.invited_by ?? "—",
+          i.expires_at ? new Date(i.expires_at).toLocaleDateString() : "—",
+          <button key={`${i.invite_id}-x`} onClick={() => revoke(i.invite_id)}>
+            revoke
+          </button>,
         ])}
       />
     </Panel>
@@ -208,6 +276,7 @@ export default function Tenancy() {
           )}
         </Panel>
       </div>
+      {w?.tenant_id && (w.tenant_role === "owner" || w.tenant_role === "admin") && <InvitesPanel />}
       {w?.tenant_id && <MembersPanel whoami={w} />}
       {w?.is_platform_admin && <AdminPanel />}
     </div>

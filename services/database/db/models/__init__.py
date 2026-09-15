@@ -158,6 +158,7 @@ from db.models.ot_maintenance import OtMaintenanceWindow  # noqa: E402,F401
 # in this namespace; importing the module registers all four tables.
 from db.models import tenant as _saas_tenant  # noqa: E402,F401
 from db.models.tenant import (  # noqa: E402,F401
+    TenantInvite,
     TenantMembership,
     TenantProvisionEvent,
     TenantUsageEvent,

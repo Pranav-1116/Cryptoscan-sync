@@ -82,3 +82,35 @@ class TenantProvisionEvent(BaseModel):
     actor: Mapped[str] = mapped_column(String(100), nullable=False)
     detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+class TenantInvite(BaseModel):
+    """A pending invitation to join a tenant.
+
+    The raw token is shown ONCE at creation (like API keys) and only its
+    SHA-256 hash is stored. Accepting binds the invited username to the
+    tenant with the invited role. Expired/accepted/revoked invites are dead
+    tokens — accept refuses them.
+    """
+
+    __tablename__ = "tenant_invites"
+    __table_args__ = (Index("ix_invites_tenant_pending", "tenant_id", "accepted_at"),)
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    tenant_role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    invited_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_dead(self) -> bool:
+        from db.models.base import utcnow
+        from shared_models.chrono import aware
+
+        expires = aware(self.expires_at) or utcnow()
+        return (self.accepted_at is not None or self.revoked_at is not None
+                or expires <= utcnow())

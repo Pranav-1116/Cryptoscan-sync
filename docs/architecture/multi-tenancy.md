@@ -52,6 +52,29 @@ Every tenant-scoped request resolves a `TenantContext`
 Plan policy lives in `api/security/tenancy.py` (pure, unit-pinned); unknown
 plans degrade to FREE — never to unlimited.
 
+## Invitations
+
+Members join via one-time invite tokens (`csi_…`, 7–30 day expiry, only the
+SHA-256 hash stored):
+
+- `POST /saas/invites` (owner/admin, grant ladder enforced) returns the raw
+  token **once** — it is delivered out-of-band (chat/email) by the operator;
+- `POST /saas/invites/accept` binds the invited username to the tenant:
+  a brand-new identity sets its own password there (policy-enforced); an
+  EXISTING identity can only be claimed by a session signed in as that
+  username — a leaked token can never rebind or reset a live account;
+- pending invites hold no seat; the seat quota is enforced at accept;
+- `GET /saas/invites` / `DELETE /saas/invites/{id}` manage pending invites;
+  dashboard: Tenancy → Pending invites (+ the `/invite` accept page).
+
+## Metering — every scan that costs the platform
+
+`scan_run` units are recorded by ALL scan writers, so plan limits are honest:
+daemon passes (one per executed pass), `POST /monitor/targets/{id}/scan-now`
+(pre-checked, metered once by the engine), `POST /network-scans` (one unit
+per host), and `POST /scans/{id}/retry` (one unit). Platform-estate scans
+(on-prem operators) are unmetered.
+
 ## Lifecycle
 
 - `POST /saas/signup` provisions org + owner self-serve (password policy

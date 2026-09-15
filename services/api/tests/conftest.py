@@ -146,6 +146,15 @@ def app(
     application.dependency_overrides[dependencies.get_repo_config_repository] = (
         lambda: mock_repo_config_repo
     )
+    # This harness mocks the repositories entirely (no real DB), so tenancy
+    # resolves to the PLATFORM context: tenant-scoped routes behave like the
+    # pre-SaaS estate here. Real-DB tenancy behavior is covered by
+    # integration/test_saas_tenancy.py.
+    from api.dependencies import TenantContext
+
+    application.dependency_overrides[dependencies.get_tenant_context] = lambda: TenantContext(
+        username="testuser", tenant_id=None, tenant_role=None, is_platform_admin=True
+    )
 
     return application
 

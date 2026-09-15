@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from api.dependencies import (
+    TenantContext,
     get_current_user,
+    get_db_session,
     get_job_repository,
     get_scan_repository,
+    get_tenant_context,
     require_auditor,
 )
 from api.schemas.job_schemas import TriggerScanResponse
@@ -72,12 +76,28 @@ def retry_scan(
     scan_id: str,
     background_tasks: BackgroundTasks,
     user: str = Depends(require_auditor),
+    ctx: TenantContext = Depends(get_tenant_context),
     scans: ScanRepository = Depends(get_scan_repository),
     jobs: JobRepository = Depends(get_job_repository),
+    db: Session = Depends(get_db_session),
 ):
     scan = scans.get_by_id(scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
+    # tenant contexts spend plan quota on every scan they trigger (platform
+    # estate retries are unmetered)
+    if ctx.tenant_id:
+        from api.security.tenancy import quota_check
+        from db.repositories.tenant_repository import TenantRepository
+
+        t_repo = TenantRepository(db)
+        tenant = t_repo.get(ctx.tenant_id)
+        allowed, reason = quota_check(
+            tenant.plan if tenant else "FREE", "scan_run",
+            t_repo.month_usage(ctx.tenant_id, "scan_run"))
+        if not allowed:
+            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
+        t_repo.record_usage(ctx.tenant_id, "scan_run", 1, detail=f"retry:{scan_id}")
     from api.routers.trigger import enqueue_scan_job
 
     return enqueue_scan_job(

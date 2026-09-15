@@ -57,6 +57,7 @@ const Executive = lazy(() => import("./pages/Executive.jsx"));
 const Accuracy = lazy(() => import("./pages/Accuracy.jsx"));
 const Organization = lazy(() => import("./pages/Organization.jsx"));
 const Tenancy = lazy(() => import("./pages/Tenancy"));
+const InviteAccept = lazy(() => import("./pages/InviteAccept"));
 const Notifications = lazy(() => import("./pages/Notifications.jsx"));
 const PqcMap = lazy(() => import("./pages/PqcMap.jsx"));
 const CryptoChanges = lazy(() => import("./pages/CryptoChanges.jsx"));
@@ -123,6 +124,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/accuracy": Accuracy,
   "/organization": Organization,
   "/tenancy": Tenancy,
+  "/invite": InviteAccept,
   "/notifications": Notifications,
   "/pqc-map": PqcMap,
   "/crypto-changes": CryptoChanges,

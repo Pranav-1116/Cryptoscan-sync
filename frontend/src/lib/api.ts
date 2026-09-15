@@ -2935,3 +2935,54 @@ export const apiSaasSetPlan = (id: string, plan: string) =>
     method: "POST",
     body: JSON.stringify({ plan }),
   });
+
+export interface SaasInvite {
+  invite_id: string;
+  username: string;
+  tenant_role: string;
+  invited_by: string | null;
+  expires_at: string | null;
+  accepted: boolean;
+}
+
+export const apiSaasInvites = () => call<{ invites: SaasInvite[] }>("/api/v1/saas/invites");
+export async function apiSaasCreateInvite(input: {
+  username: string;
+  tenant_role: string;
+  days?: number;
+}): Promise<{ ok: boolean; error?: string; token?: string; username?: string; tenant_role?: string }> {
+  try {
+    const resp = await fetch("/api/v1/saas/invites", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(activeTenantId() ? { "X-Tenant-ID": activeTenantId()! } : {}) },
+      credentials: "include",
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail ?? `HTTP ${resp.status}`) };
+    return { ok: true, token: body.token, username: body.username, tenant_role: body.tenant_role };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+export const apiSaasRevokeInvite = (id: string) =>
+  call<{ revoked: string }>(`/api/v1/saas/invites/${encodeURIComponent(id)}`, { method: "DELETE" });
+export async function apiSaasAcceptInvite(input: {
+  token: string;
+  password?: string;
+}): Promise<{ ok: boolean; error?: string; tenant_name?: string; tenant_role?: string }> {
+  try {
+    const resp = await fetch("/api/v1/saas/invites/accept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { ok: false, error: String(body.detail ?? `HTTP ${resp.status}`) };
+    return { ok: true, tenant_name: body.tenant?.name, tenant_role: body.tenant_role };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}

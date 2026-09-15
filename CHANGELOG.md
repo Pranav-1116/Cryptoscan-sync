@@ -6,6 +6,23 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### SaaS round 2: invitations, full-surface metering, network-scan SSRF fix
+- Invitations: `POST /saas/invites` (one-time `csi_` token, hash-stored,
+  7-30 day expiry), `POST /saas/invites/accept` (new identities set their
+  own password; existing identities must accept from a session signed in
+  as the invited username — a leaked token can never take over a live
+  account), pending-invite listing/revocation, seat quota enforced at
+  accept. Dashboard: Pending invites panel + `/invite` accept page.
+- Metering now covers EVERY scan writer: daemon passes, monitor scan-now,
+  manual `POST /network-scans` (one scan_run unit per host) and
+  `POST /scans/{id}/retry` — plan monthly limits are honest across the
+  whole product, not just the monitor.
+- Security fix (round-28 review): `POST /network-scans` ran the live TLS
+  scanner on unvalidated hosts — the same OWASP A10 class as the round-26
+  monitor finding. Host lists now pass `target_validation` (metadata/
+  loopback/URL targets 422; regression-tested with a mocked scanner that
+  provably never probes refused hosts).
+
 ### Multi-tenant SaaS: organizations, isolation, plans, metering
 - Tenancy core: `tenants` / `tenant_memberships` / `tenant_usage_events` /
   `tenant_provision_events` tables; `POST /saas/signup` self-serve org

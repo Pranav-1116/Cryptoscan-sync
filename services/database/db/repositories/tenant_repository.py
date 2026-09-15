@@ -13,6 +13,7 @@ from db.models.monitor import MonitorTarget
 from db.models.tenant import (
     TENANT_ROLES,
     Tenant,
+    TenantInvite,
     TenantMembership,
     TenantProvisionEvent,
     TenantUsageEvent,
@@ -206,3 +207,81 @@ class TenantRepository:
             select(TenantProvisionEvent).where(TenantProvisionEvent.tenant_id == tenant_id)
             .order_by(TenantProvisionEvent.occurred_at)
         ).scalars().all())
+
+    # --------------------------------------------------------------- invites
+
+    def create_invite(self, tenant_id: str, username: str, tenant_role: str,
+                      *, invited_by: str, days: int = 7,
+                      email: str | None = None) -> tuple[TenantInvite, str]:
+        """Create a pending invite; returns (row, raw_token) — the raw token
+        is shown once and stored only as a SHA-256 hash."""
+        import hashlib
+        import secrets
+        from datetime import timedelta
+
+        if tenant_role not in TENANT_ROLES:
+            raise TenantError(f"unknown tenant role: {tenant_role}")
+        if self.membership(tenant_id, username) is not None:
+            raise TenantError(f"{username} is already a member of this tenant")
+        raw = "csi_" + secrets.token_urlsafe(24)
+        row = TenantInvite(
+            tenant_id=tenant_id,
+            username=username,
+            email=email,
+            tenant_role=tenant_role,
+            token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+            invited_by=invited_by,
+            expires_at=utcnow() + timedelta(days=max(1, min(int(days), 30))),
+        )
+        self.session.add(row)
+        self.session.flush()
+        self.provision_event(tenant_id, "invite_create", actor=invited_by,
+                             detail=f"{username}:{tenant_role}")
+        return row, raw
+
+    def invites_for(self, tenant_id: str, *, pending_only: bool = True) -> list[TenantInvite]:
+        stmt = select(TenantInvite).where(TenantInvite.tenant_id == tenant_id).order_by(
+            TenantInvite.created_at.desc())
+        rows = list(self.session.execute(stmt).scalars().all())
+        if pending_only:
+            rows = [r for r in rows if not r.is_dead]
+        return rows
+
+    def get_invite_by_raw(self, raw: str) -> Optional[TenantInvite]:
+        import hashlib
+
+        return self.session.execute(
+            select(TenantInvite).where(
+                TenantInvite.token_hash == hashlib.sha256((raw or "").encode()).hexdigest())
+        ).scalar_one_or_none()
+
+    def accept_invite(self, raw: str, *, actor: str) -> TenantMembership:
+        """Validate the token and bind the invited user to the tenant.
+
+        Raises TenantError with a caller-friendly message on any refusal:
+        unknown/expired/revoked/used token, suspended tenant. Membership
+        creation goes through add_member so metering/audit stay identical
+        to direct adds."""
+        invite = self.get_invite_by_raw(raw)
+        if invite is None or invite.is_dead:
+            raise TenantError("invite is invalid, expired, revoked or already used")
+        tenant = self.get(invite.tenant_id)
+        if tenant is None:
+            raise TenantError("invite tenant no longer exists")
+        if tenant.status == "SUSPENDED":
+            raise TenantError("tenant is suspended — contact platform support")
+        membership = self.add_member(invite.tenant_id, invite.username,
+                                     invite.tenant_role, actor=actor)
+        invite.accepted_at = utcnow()
+        self.session.flush()
+        return membership
+
+    def revoke_invite(self, tenant_id: str, invite_id: str) -> Optional[TenantInvite]:
+        row = self.session.get(TenantInvite, invite_id)
+        if row is None or row.tenant_id != tenant_id or row.accepted_at is not None:
+            return None
+        row.revoked_at = utcnow()
+        self.session.flush()
+        self.provision_event(tenant_id, "invite_revoke", actor="system",
+                             detail=row.username)
+        return row

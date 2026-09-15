@@ -316,3 +316,159 @@ async def test_api_keys_minted_in_a_tenant_are_bound_to_it():
         all_keys = (await client.get("/api/v1/api-keys",
                                      headers={"X-Tenant-ID": a})).json()
         assert [k["name"] for k in all_keys] == ["tenant-bot"]
+
+
+@pytest.mark.asyncio
+async def test_invite_flow_provisions_account_and_membership():
+    """Owner invites a brand-new user; the invitee redeems the token with
+    their own password. The token is single-use and shown once."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        a = (await _signup(client, "Invite Co", "chief")).json()["tenant"]["id"]
+        _act_as(client, session, "chief", roles="readonly")
+
+        r = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                              json={"username": "newjoiner", "tenant_role": "member"})
+        assert r.status_code == 201, r.text
+        invite = r.json()
+        token = invite["token"]
+        assert token.startswith("csi_")
+
+        # pending list shows the invite WITHOUT the token
+        listed = (await client.get("/api/v1/saas/invites", headers={"X-Tenant-ID": a})).json()["invites"]
+        assert [i["username"] for i in listed] == ["newjoiner"]
+        assert "token" not in listed[0]
+
+        # redeem: new account + membership
+        client.headers.pop("Authorization", None)  # invitee is anonymous
+        r2 = await client.post("/api/v1/saas/invites/accept",
+                               json={"token": token, "password": "joiner-pw-Str0ng!"})
+        assert r2.status_code == 200, r2.text
+        assert r2.json()["tenant_role"] == "member"
+
+        # the new account can actually sign in (real password verification)
+        client.headers.pop("Authorization", None)
+        login = await client.post("/api/v1/auth/login",
+                                  json={"username": "newjoiner", "password": "joiner-pw-Str0ng!"})
+        assert login.status_code == 200, login.text
+        client.headers["Authorization"] = f"Bearer {login.json()['token']}"
+        who = (await client.get("/api/v1/saas/whoami", headers={"X-Tenant-ID": a})).json()
+        assert who["tenant_role"] == "member"
+        who = (await client.get("/api/v1/saas/whoami", headers={"X-Tenant-ID": a})).json()
+        assert who["tenant_role"] == "member"
+
+        # single use: the same token is dead
+        r3 = await client.post("/api/v1/saas/invites/accept", json={"token": token})
+        assert r3.status_code == 404, r3.text
+
+
+        # the new account can actually sign in (real password verification)
+        client.headers.pop("Authorization", None)
+        login = await client.post("/api/v1/auth/login",
+                                  json={"username": "newjoiner", "password": "joiner-pw-Str0ng!"})
+        assert login.status_code == 200, login.text
+        client.headers["Authorization"] = f"Bearer {login.json()['token']}"
+        who = (await client.get("/api/v1/saas/whoami", headers={"X-Tenant-ID": a})).json()
+        assert who["tenant_role"] == "member"
+
+
+@pytest.mark.asyncio
+async def test_invite_for_existing_identity_requires_that_session():
+    """A leaked invite token can never rebind an EXISTING account: the
+    accepter must be signed in as the invited username."""
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        a = (await _signup(client, "Safe Co", "chief")).json()["tenant"]["id"]
+        # the invited identity ALREADY has a platform account
+        _act_as(client, session, "veteran", roles="readonly")
+        _act_as(client, session, "chief", roles="readonly")
+        r = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                              json={"username": "veteran", "tenant_role": "admin"})
+        token = r.json()["token"]
+
+        # anonymous accept for an existing identity -> refused (401: no
+        # session to verify the invited identity against)
+        client.headers.pop("Authorization", None)
+        r1 = await client.post("/api/v1/saas/invites/accept", json={"token": token})
+        assert r1.status_code == 401, r1.text
+
+        # signed in as SOMEONE ELSE -> refused (no identity rebinding)
+        _act_as(client, session, "mallory", roles="readonly")
+        r2 = await client.post("/api/v1/saas/invites/accept", json={"token": token})
+        assert r2.status_code == 403, r2.text
+
+        # signed in as the invited user -> accepted
+        _act_as(client, session, "veteran", roles="readonly")
+        r3 = await client.post("/api/v1/saas/invites/accept", json={"token": token})
+        assert r3.status_code == 200 and r3.json()["tenant_role"] == "admin"
+
+
+@pytest.mark.asyncio
+async def test_invite_guards_ladder_expiry_revocation_quota_suspension():
+    app, session, engine = _make_app()
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        a = (await _signup(client, "Guard Co", "chief")).json()["tenant"]["id"]
+        _act_as(client, session, "chief", roles="readonly")
+
+        # ladder: owner may not be invited by anyone (no role grants owner upward)
+        r0 = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                               json={"username": "wouldbe-owner", "tenant_role": "owner"})
+        assert r0.status_code == 403
+
+        # revoke kills a pending invite
+        r1 = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                               json={"username": "transient", "tenant_role": "member"})
+        tok1, inv1 = r1.json()["token"], r1.json()["invite_id"]
+        assert (await client.delete(f"/api/v1/saas/invites/{inv1}",
+                                    headers={"X-Tenant-ID": a})).status_code == 200
+        client.headers.pop("Authorization", None)
+        assert (await client.post("/api/v1/saas/invites/accept", json={
+            "token": tok1, "password": "whatever-pw-Str0ng!"})).status_code == 404
+        _act_as(client, session, "chief", roles="readonly")
+
+        # expiry kills a pending invite
+        from db.models.base import utcnow
+        from db.repositories.tenant_repository import TenantRepository
+
+        r2 = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                               json={"username": "latecomer", "tenant_role": "member"})
+        tok2 = r2.json()["token"]
+        row = TenantRepository(session).get_invite_by_raw(tok2)
+        row.expires_at = utcnow()
+        session.commit()
+        client.headers.pop("Authorization", None)
+        assert (await client.post("/api/v1/saas/invites/accept", json={
+            "token": tok2, "password": "whatever-pw-Str0ng!"})).status_code == 404
+        _act_as(client, session, "chief", roles="readonly")
+
+        # seat quota enforced at accept: FREE = 3 seats (chief fills one),
+        # so two invites land and the third accept is 402
+        toks = []
+        for i in (1, 2, 3):
+            r = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                                  json={"username": f"seat{i}", "tenant_role": "member"})
+            toks.append(r.json()["token"])
+        client.headers.pop("Authorization", None)
+        assert (await client.post("/api/v1/saas/invites/accept", json={
+            "token": toks[0], "password": "seat-one-pw-Str0ng!"})).status_code == 200
+        assert (await client.post("/api/v1/saas/invites/accept", json={
+            "token": toks[1], "password": "seat-two-pw-Str0ng!"})).status_code == 200
+        assert (await client.post("/api/v1/saas/invites/accept", json={
+            "token": toks[2], "password": "seat-tri-pw-Str0ng!"})).status_code == 402
+        _act_as(client, session, "chief", roles="readonly")
+
+        # suspended tenant: accept is 423
+        _act_as(client, session, "root", roles="superadmin")
+        assert (await client.post(f"/api/v1/saas/admin/tenants/{a}/suspend",
+                                  json={"reason": "guard test"})).status_code == 200
+        r5 = await client.post("/api/v1/saas/invites", headers={"X-Tenant-ID": a},
+                               json={"username": "blocked", "tenant_role": "member"})
+        # platform admin may still create the invite, but accept is locked
+        tok5 = r5.json()["token"]
+        client.headers.pop("Authorization", None)
+        last = await client.post("/api/v1/saas/invites/accept", json={
+            "token": tok5, "password": "blocked-pw-Str0ng!"})
+        assert last.status_code == 423, last.text

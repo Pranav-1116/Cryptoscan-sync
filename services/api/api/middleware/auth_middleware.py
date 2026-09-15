@@ -27,6 +27,7 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/auth/login",
     "/api/v1/auth/register",  # self-service registration (role pick from the 8-role catalog)
     "/api/v1/saas/signup",  # self-serve tenant provisioning (verifies its own credentials)
+    "/api/v1/saas/invites/accept",  # invite token IS the credential for new identities; existing ones still require a session (enforced in the route)
     "/api/v1/auth/oidc",
     "/api/v1/auth/saml",   # SAML metadata/login/ACS (ACS verifies the IdP signature itself)
     "/api/v1/auth/ldap",   # LDAP bind login (credential checked by directory)
