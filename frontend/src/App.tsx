@@ -40,6 +40,7 @@ const Scanners = lazy(() => import("./pages/Scanners.jsx"));
 const Runtime = lazy(() => import("./pages/Runtime.jsx"));
 const LiveScanners = lazy(() => import("./pages/LiveScanners.jsx"));
 const LiveStream = lazy(() => import("./pages/LiveStream.jsx"));
+const Priorities = lazy(() => import("./pages/Priorities.jsx"));
 const LiveAssetIntelligence = lazy(() => import("./pages/LiveAssetIntelligence"));
 const Supervision = lazy(() => import("./pages/Supervision"));
 const Telecom = lazy(() => import("./pages/Telecom"));
@@ -108,6 +109,7 @@ const PAGES: Record<string, React.ComponentType> = {
   "/runtime": Runtime,
   "/live-scanners": LiveScanners,
   "/live-stream": LiveStream,
+  "/priorities": Priorities,
   "/timeline": Timeline,
   "/live-asset-intelligence": LiveAssetIntelligence,
   "/supervision": Supervision,

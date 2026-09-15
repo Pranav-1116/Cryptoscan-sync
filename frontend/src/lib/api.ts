@@ -3038,3 +3038,35 @@ export const apiCbomVerify = (system: string): Promise<ApiResult<{ chain_valid: 
 
 export const apiCbomSystemVersions = (system: string, limit = 20): Promise<ApiResult<{ versions: CbomVersion[] }>> =>
   call(`/api/v1/cbom/versions/${encodeURIComponent(system)}?limit=${limit}`);
+
+/* ── Remediation prioritization (r30) ───────────────────────────────────── */
+
+export interface RankedItem {
+  rank: number;
+  ref_id: string | null;
+  source: string;
+  kind: string;
+  severity_in: string;
+  priority: number;
+  effort: number;
+  explanation: string;
+  replacement: { replacement: string; reason?: string } | null;
+  plan: { profile: string; phases: Array<{ phase: string; actions?: string[] }> } | null;
+  correlated: string[];
+}
+export interface PriorityResponse {
+  ranked: RankedItem[];
+  counts_by_severity: Record<string, number>;
+  coverage: {
+    open_drift_events: number;
+    runtime_findings: number;
+    systems_with_agility: number;
+    systems_with_revenue_mapping: number;
+    graph_edges: number;
+    processes_linked: number;
+    profile: string;
+  };
+}
+
+export const apiPriority = (limit = 100): Promise<ApiResult<PriorityResponse>> =>
+  call(`/api/v1/priority?limit=${limit}`);

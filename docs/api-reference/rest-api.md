@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-15:
-**608 paths, 670 operations** across 80 tagged groups.
+**609 paths, 671 operations** across 81 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -17,6 +17,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
   [architecture/multi-tenancy.md](../architecture/multi-tenancy.md).
 - Every list endpoint is paginated and every export carries SHA-256 verification
   (`/verify` siblings) — see [user-guide/evidence-pack.md](../user-guide/evidence-pack.md).
+- Export manifests are signed with compact JWS (`signature_jws`, RFC 7515; legacy
+  `signature_hmac` retained).
 
 ## agility
 
@@ -780,6 +782,12 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/policy/rules` | List Rules |
+
+## priority
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/priority` | Remediation Priority |
 
 ## quantum
 

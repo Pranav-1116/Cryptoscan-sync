@@ -82,6 +82,7 @@
   "nav.scanners": "الماسحات",
   "nav.realtimeScanners": "الماسحات اللحظية",
   "nav.liveStream": "البث الحالي وCBOM",
+  "nav.priorities": "أولويات المعالجة",
   "nav.runtimeHosts": "مضيفات وقت التشغيل",
   "nav.notifications": "الإشعارات",
   "nav.reports": "التقارير",

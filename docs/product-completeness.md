@@ -124,13 +124,21 @@ domain is to the product mission** (continuous cryptographic assurance).
 
 ## 5. What is NOT done (the remaining ~8%)
 
+Full tracking now lives in [roadmap.md](roadmap.md) (the master A–J update
+list, mapped item-by-item). Headline gaps:
+
 | Gap | Why | Next step |
 |-----|-----|-----------|
 | Multi-region active-active orchestration | Needs real infra (k8s/terraform) — out of sandbox scope | Deployment repo + region-local bus log shipping |
 | Cloud connectors beyond AWS (GCP/Azure live) | Staged in `universal_vendor` SDK template | Credential-backed certification |
 | Tenant billing integration (real PSP for plan upgrades) | Plans/metering/quotas enforced; money movement not | Stripe/checkout integration round |
 | Telecom **active** 5G SBA/PFCP/NETCONF probing | Passive parsers shipped (r29); active probes need lab gear | Lab-validated active runners |
+| SIEM/GRC/ticketing connector catalog | Webhook + SIEM channel shipped; per-product connectors remain | Integration rounds |
 | Mobile-app/MDM scanner | Not started | Roadmap |
+
+r30 additions: prioritized remediation queue (`/api/v1/priority` +
+`/priorities` page, gap A8 closed) and RFC 7515 JWS signatures on all export
+manifests (gap A2 closed).
 
 ## 6. Verification
 

@@ -24,6 +24,7 @@ from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     agility,
     analytics,
+    priority,
     saas,
     stream,
     assets,
@@ -381,6 +382,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(api_keys.router, prefix=prefix)
     app.include_router(saas.router, prefix=prefix)
     app.include_router(stream.router, prefix=prefix)
+    app.include_router(priority.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)
     app.include_router(agility.router, prefix=prefix)

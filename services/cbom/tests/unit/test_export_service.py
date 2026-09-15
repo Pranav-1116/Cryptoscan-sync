@@ -78,3 +78,45 @@ def test_export_service_deterministic_signature():
 
 def test_signing_secret_never_empty():
     assert len(signing_secret()) >= 8
+
+
+def test_export_manifest_carries_rfc7515_jws():
+    """A2 conformance: the export manifest's canonical signature is a compact
+    JWS over the same bytes as the content hash; legacy HMAC hex retained."""
+    from cbom.export_service import (
+        canonical_export_payload,
+        signing_secret,
+    )
+    from cbom.signing.jws_signer import verify_compact
+
+    manifest = export_bom(_state(), fmt="json", layer="all")
+    jws = manifest["signature_jws"]
+    assert jws.count(".") == 2
+    # the JWS payload claim IS the canonical export payload (full coverage)
+    import base64
+    import json as _json
+
+    claim = _json.loads(base64.urlsafe_b64decode(
+        jws.split(".")[1] + "=" * (-len(jws.split(".")[1]) % 4)))
+    assert claim == _json.loads(canonical_export_payload(_state(), manifest["data"]))
+    ok, err = verify_compact(jws, signing_secret(), "HS256")
+    assert ok, err
+
+    # tamper -> verification fails
+    head, _, sig = jws.rpartition(".")
+    ok2, _ = verify_compact(f"{head}.{sig[:-2]}aa", signing_secret(), "HS256")
+    assert ok2 is False
+
+
+def test_export_jws_covers_bytes_bodies():
+    """Binary formats (pdf) sign the raw bytes inside the JWS payload claim."""
+    from cbom.export_service import sign_manifest_jws, signing_secret
+    from cbom.signing.jws_signer import verify_compact
+
+    state = _state()
+    manifest = export_bom(state, fmt="pdf", layer="hbom")
+    ok, err = verify_compact(manifest["signature_jws"], signing_secret(), "HS256")
+    assert ok, err
+    # deterministic: same input, same JWS
+    again = sign_manifest_jws(state, manifest["data"], secret=signing_secret())
+    assert again == manifest["signature_jws"]

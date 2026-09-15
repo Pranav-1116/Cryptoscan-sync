@@ -50,14 +50,31 @@ def validate_export_request(fmt: str, layer: str, filters: dict[str, Any] | None
         raise ExportValidationError(f"unsupported filter layer '{fl['layer']}'")
 
 
-def sign_manifest(state: dict[str, Any], body: Any, *, secret: str) -> str:
-    """HMAC-SHA256 over the same canonical body the content hash is computed from."""
+def canonical_export_payload(state: dict[str, Any], body: Any) -> bytes:
+    """The exact bytes both signatures cover (content hash + JWS + legacy HMAC)."""
     if isinstance(body, (bytes, bytearray)):
-        payload = bytes(body)
-    else:
-        payload = json.dumps({"snapshot_id": state.get("snapshot_id"), "body": body},
-                             sort_keys=True, default=str).encode("utf-8")
+        return bytes(body)
+    return json.dumps({"snapshot_id": state.get("snapshot_id"), "body": body},
+                      sort_keys=True, default=str).encode("utf-8")
+
+
+def sign_manifest(state: dict[str, Any], body: Any, *, secret: str) -> str:
+    """Legacy raw HMAC-SHA256 hex (kept for verifiers predating JWS support)."""
+    payload = canonical_export_payload(state, body)
     return hmac.new(secret.encode("utf-8"), payload, hashlib.sha256).hexdigest()
+
+
+def sign_manifest_jws(state: dict[str, Any], body: Any, *, secret: str,
+                      alg: str = "HS256") -> str:
+    """RFC 7515 compact JWS over the same canonical bytes as the content hash.
+
+    Standards-conformant signature for export manifests (HS256 shared secret
+    by default; asymmetric algs supported via ``cbom.signing.jws_signer``).
+    """
+    from cbom.signing.jws_signer import sign_compact
+
+    payload = canonical_export_payload(state, body)
+    return sign_compact(payload, secret, alg)
 
 
 def export_bom(
@@ -85,10 +102,15 @@ def export_bom(
     filtered = filter_technology_bom(state, filters) if filters else state
 
     block = export_technology_bom(filtered, fmt=fmt, layer=scope)
-    sig = signature or sign_manifest(filtered, block["data"], secret=signing_secret())
+    secret = signing_secret()
+    sig = signature or sign_manifest(filtered, block["data"], secret=secret)
     manifest: dict[str, Any] = {
         **block,
+        # canonical signature: RFC 7515 compact JWS over the hashed bytes
+        "signature_jws": sign_manifest_jws(filtered, block["data"], secret=secret),
+        # legacy raw HMAC hex retained for older verifiers
         "signature_hmac": sig,
+        "signature_alg": "HS256",
         "audit_event_id": None,
     }
     if on_audit is not None:

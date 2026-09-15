@@ -6,6 +6,27 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Prioritization work queue + JWS-conformant exports
+- **Remediation prioritization** (gap A8): `GET /api/v1/priority` + the
+  `/priorities` page — every OPEN drift event and weak runtime finding folded
+  through the deterministic correlation engine and ranked by
+  revenue × severity × agility with effort bars, replacement rules, migration
+  plans and BFS blast radius from the system dependency graph. Revenue tiers
+  come from linked business processes (`revenue_daily`/`customer_count`
+  bands), agility from the 6-factor system scores, neutral defaults
+  otherwise — nothing invented, empty estate ranks empty.
+- **RFC 7515 JWS on export manifests** (gap A2): `export_bom` now emits
+  `signature_jws` (compact JWS, HS256 by default, RS256/ES256 available)
+  over the same canonical bytes as the content hash; legacy raw-HMAC hex
+  retained for older verifiers. CBOM documents already sign via
+  `cbom.signing.jws_signer`.
+- `docs/roadmap.md`: the full master update list (A–J) mapped to shipped /
+  blocked / planned status with pointers.
+- Tests: prioritization engine (bands, clamps, ranking determinism, counts),
+  API ranking over seeded real tables (incl. resolved-event exclusion,
+  revenue/agility weighting, blast radius, honest empty estate), JWS export
+  coverage (payload-claim equality, tamper rejection, byte formats).
+
 ### Event stream, Live CBOM, deterministic correlation, telecom passive collection
 - **Message bus** (`services/eventstream`): 8 fixed topics (raw-events,
   normalized-events, policy-results, attack-detections, cbom-updates,
