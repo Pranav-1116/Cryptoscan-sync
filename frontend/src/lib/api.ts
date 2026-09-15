@@ -2986,3 +2986,55 @@ export async function apiSaasAcceptInvite(input: {
     return { ok: false, error: String(e) };
   }
 }
+
+/* ── Event stream + Live CBOM (r29) ─────────────────────────────────────── */
+
+export interface StreamTopicStat {
+  last_seq: number;
+  in_memory: number;
+  log_bytes: number;
+  consumer_groups: Record<string, { cursor: number; lag: number }>;
+}
+export interface StreamStats {
+  log_dir: string;
+  topics: Record<string, StreamTopicStat>;
+  chain_len?: number;
+}
+export interface AttackDetection {
+  rule: string;
+  severity: string;
+  detail: string;
+  detected_at: string;
+  endpoint?: string;
+  system?: string;
+  evidence?: Record<string, unknown>;
+}
+export interface CbomVersion {
+  system_id: string;
+  version_no: number;
+  generated_at: string;
+  version_hash: string;
+  prev_hash: string;
+  asset_count: number;
+  jws: string;
+  freshness?: { seconds_since_update: number; stale_after_seconds: number; stale: boolean };
+  doc?: { assets: Array<Record<string, unknown>> };
+}
+
+export const apiStreamStats = (): Promise<ApiResult<StreamStats>> =>
+  call(`/api/v1/stream/stats`);
+
+export const apiAttacks = (limit = 50): Promise<ApiResult<{ detections: AttackDetection[] }>> =>
+  call(`/api/v1/attacks?limit=${limit}`);
+
+export const apiAttackSummary = (): Promise<ApiResult<{ by_rule: Record<string, number>; by_severity: Record<string, number> }>> =>
+  call(`/api/v1/attacks/summary`);
+
+export const apiCbomLive = (system: string): Promise<ApiResult<CbomVersion>> =>
+  call(`/api/v1/cbom/live/${encodeURIComponent(system)}`);
+
+export const apiCbomVerify = (system: string): Promise<ApiResult<{ chain_valid: boolean; versions: number; broke_at: number | null; reason: string | null }>> =>
+  call(`/api/v1/cbom/verify/${encodeURIComponent(system)}`);
+
+export const apiCbomSystemVersions = (system: string, limit = 20): Promise<ApiResult<{ versions: CbomVersion[] }>> =>
+  call(`/api/v1/cbom/versions/${encodeURIComponent(system)}?limit=${limit}`);

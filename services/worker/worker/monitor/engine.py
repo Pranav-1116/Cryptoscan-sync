@@ -276,6 +276,29 @@ class MonitorEngine:
         except Exception:
             logger.debug("tenant_usage_record_failed", extra={"target": target.name}, exc_info=True)
 
+    def _publish_pass(self, target: MonitorTarget, status: str) -> None:
+        """Every finished pass becomes a signed raw event on the stream
+        (24/7 collection). Best-effort — publishing must never break the
+        monitor loop."""
+        try:
+            from eventstream.bus import get_bus
+
+            get_bus().publish_raw(
+                {
+                    "kind": "monitor_pass",
+                    "target_name": target.name,
+                    "target_type": target.target_type,
+                    "status": status,
+                    "summary": target.last_summary or {},
+                    "tenant_id": getattr(target, "tenant_id", None),
+                    "observed_at": target.last_scan_at.isoformat() if target.last_scan_at else None,
+                },
+                key=target.name,
+                source="monitor-daemon",
+            )
+        except Exception:
+            logger.debug("monitor_pass_publish_failed", extra={"target": target.name}, exc_info=True)
+
     def run_target(self, target: MonitorTarget) -> dict[str, Any]:
         now = self._now()
         interval = int(target.interval_seconds or default_interval(target.target_type))
@@ -385,6 +408,7 @@ class MonitorEngine:
         return [issue for issue in issues if issue not in previous]
 
     def _finish(self, target, *, now, interval, status, error, event_type) -> None:
+        self._publish_pass(target, status)
         target.status = status
         target.last_error = error
         target.last_scan_at = now

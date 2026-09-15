@@ -81,6 +81,7 @@
   "nav.operate": "Operate",
   "nav.scanners": "Scanners",
   "nav.realtimeScanners": "Realtime scanners",
+  "nav.liveStream": "Live stream & CBOM",
   "nav.runtimeHosts": "Runtime hosts",
   "nav.notifications": "Notifications",
   "nav.reports": "Reports",

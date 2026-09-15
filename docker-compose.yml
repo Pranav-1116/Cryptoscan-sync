@@ -97,6 +97,12 @@ services:
       SCAN_JOB_QUEUE_KEY: cryptoscan:jobs:queue
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       DOCS_ENABLED: ${DOCS_ENABLED:-true}
+      # Event stream (r29): persistent HMAC-signed event logs + live CBOM.
+      # The stream/CBOM dirs ride the telecom snapshot volume; set a real
+      # CBOM_SIGNING_SECRET in production (dev default is NOT safe).
+      STREAM_LOG_DIR: /var/lib/cryptoscan/telecom/eventstream
+      CBOM_STORE_DIR: /var/lib/cryptoscan/telecom/live_cbom
+      CBOM_SIGNING_SECRET: ${CBOM_SIGNING_SECRET:-dev-cbom-signing-secret-change-me-32ch}
       CRYPTOSCAN_ROOT: /app
       # Scan-target sandbox: sources are cloned/extracted here; the target
       # validation guard allows paths under this root (SSRF/traversal confine).

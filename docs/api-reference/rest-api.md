@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-13:
-**595 paths, 655 operations** across 79 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-15:
+**608 paths, 670 operations** across 80 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -740,16 +740,6 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/ot/safety/authorize` | Authorize |
 | `GET` | `/api/v1/ot/safety/operations` | List Operation Classes |
 
-## other
-
-| Method | Path | Summary |
-|---|---|---|
-| `GET` | `/` | Home |
-| `GET` | `/health` | Health Check |
-| `GET` | `/healthz` | Healthz Root Alias |
-| `GET` | `/ready` | Ready Check |
-| `GET` | `/readyz` | Readyz Root Alias |
-
 ## payment-crypto
 
 | Method | Path | Summary |
@@ -881,6 +871,10 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/saas/admin/tenants/{tenant_id}/plan` | Admin Set Plan |
 | `POST` | `/api/v1/saas/admin/tenants/{tenant_id}/restore` | Admin Restore |
 | `POST` | `/api/v1/saas/admin/tenants/{tenant_id}/suspend` | Admin Suspend |
+| `GET` | `/api/v1/saas/invites` | List Invites |
+| `POST` | `/api/v1/saas/invites` | Create Invite |
+| `POST` | `/api/v1/saas/invites/accept` | Accept Invite |
+| `DELETE` | `/api/v1/saas/invites/{invite_id}` | Revoke Invite |
 | `GET` | `/api/v1/saas/members` | List Members |
 | `POST` | `/api/v1/saas/members` | Add Member |
 | `DELETE` | `/api/v1/saas/members/{username}` | Remove Member |
@@ -974,6 +968,22 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/stats/summary` | Summary |
 
+## stream
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/attacks` | Recent Attacks |
+| `GET` | `/api/v1/attacks/summary` | Attack Summary |
+| `GET` | `/api/v1/cbom/diff` | Cbom Diff |
+| `GET` | `/api/v1/cbom/live/{system_id}` | Cbom Live |
+| `GET` | `/api/v1/cbom/stream/{system_id}` | Cbom Stream |
+| `GET` | `/api/v1/cbom/verify/{system_id}` | Cbom Verify |
+| `GET` | `/api/v1/cbom/versions/{system_id}` | Cbom Versions |
+| `GET` | `/api/v1/cbom/versions/{system_id}/{version_no}` | Cbom Version |
+| `GET` | `/api/v1/stream/events` | Stream Events |
+| `POST` | `/api/v1/stream/ingest` | Ingest |
+| `GET` | `/api/v1/stream/stats` | Stream Stats |
+
 ## systems
 
 | Method | Path | Summary |
@@ -1039,6 +1049,16 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `POST` | `/api/v1/scans/trigger` | Trigger Manual Scan |
+
+## ungrouped
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/` | Home |
+| `GET` | `/health` | Health Check |
+| `GET` | `/healthz` | Healthz Root Alias |
+| `GET` | `/ready` | Ready Check |
+| `GET` | `/readyz` | Readyz Root Alias |
 
 ## vulnerabilities
 

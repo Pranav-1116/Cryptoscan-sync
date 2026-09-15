@@ -15,6 +15,7 @@ const NAV = [
   { sectionKey: "nav.groupScanners", items: [
     { to: "/scanners", labelKey: "nav.scanners", icon: "⌖" },
     { to: "/live-scanners", labelKey: "nav.realtimeScanners", icon: "◉" },
+    { to: "/live-stream", labelKey: "nav.liveStream", icon: "⇄" },
     { to: "/telecom", labelKey: "nav.telecom", icon: "⌬" },
     { to: "/network", labelKey: "nav.network", icon: "◈" },
     { to: "/cloud", labelKey: "nav.cloud", icon: "☁" },

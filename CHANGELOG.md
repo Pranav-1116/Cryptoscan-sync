@@ -6,6 +6,52 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Event stream, Live CBOM, deterministic correlation, telecom passive collection
+- **Message bus** (`services/eventstream`): 8 fixed topics (raw-events,
+  normalized-events, policy-results, attack-detections, cbom-updates,
+  graph-sync, audit-log, alerts) on append-only JSONL logs. Envelopes carry
+  canonical-JSON payload hashes + HMAC-SHA256 signatures (constant-time
+  verify); consumer groups with cursors + lag stats; replay from any offset;
+  torn-tail tolerant, tampered lines are detected and never delivered.
+- **Stream processor**: normalize → dedup → policy → attack-detect → fan-out,
+  fully deterministic and stateful. Canonical CBOM schema across TLS findings,
+  monitor passes, telecom NFs/certs; unmapped kinds are honestly flagged.
+  Identity dedup (kind/system/endpoint/proto/fingerprint/algorithm) merges
+  re-observations into one asset with a seen_count. The audit topic carries a
+  SHA-256 evidence chain (prev hash + input hash + dedup key + policy fails +
+  rules) — every verdict is reproducible.
+- **Real-time attack detection** — 13 deterministic rules with pinned
+  severities replace batch drift: crypto/algorithm downgrade (ALERT/CRITICAL),
+  key-size reduction (ALERT), MITM pin mismatch (CRITICAL), unexpected CA
+  (HIGH), cross-system key reuse (HIGH), weak entropy (MEDIUM), protocol
+  violations (ALERT), 3σ rate anomalies (MEDIUM), new endpoints (MEDIUM),
+  near-expiry (MEDIUM) and revoked-in-use certs (CRITICAL), KMS/HSM policy
+  changes (HIGH). Baselines learn from clean traffic only and never
+  auto-overwrite; `AttackState` snapshots make the detector replayable.
+- **Live CBOM service**: per-system versioned CBOMs — compact JWS (HS256)
+  signed docs, SHA-256 hash chain back to genesis, deterministic diffs
+  (added/removed/changed), freshness window (default 1h), full-chain
+  re-verification that reports the exact version where a signature or hash
+  breaks. APIs: `/cbom/live/{system}`, `/cbom/versions/...`, `/cbom/diff`,
+  `/cbom/verify/{system}`, and SSE push on `/cbom/stream/{system}`.
+- **Telecom passive collection**: offline parsers for Diameter (RFC 6733
+  commands/AVPs), GTP-C v2 (TS 29.274 header/TEID/IEs) and SIP/IMS
+  Security-Server/Verify (ipsec-3gpp + TLS mechanisms, TS 33.203) — captured
+  or replayed wire bytes join the same pipeline as active scans.
+- **Deterministic correlation engine** (`services/correlation`): replaces any
+  AI — priority = revenue × severity × agility, effort formula, replacement
+  rule table (3DES→AES-256-GCM, RSA-2048→ML-KEM-768 hybrid / ML-DSA-65, …),
+  template explanations, phase-plan templates (banking/telecom/default) and
+  cycle-safe BFS blast-radius over the asset graph. Same input ⇒ identical
+  report.
+- **Surface**: `POST /stream/ingest` (external collectors; returns the
+  pipeline verdict + detections for that payload), `GET /stream/stats`,
+  `GET /stream/events?topic=`, `GET /attacks` + `/attacks/summary`; the
+  monitor daemon now publishes every pass to the bus. Compose: stream/CBOM
+  dirs ride the telecom volume, `CBOM_SIGNING_SECRET` required in prod.
+- Docs: `docs/architecture/event-stream.md`; product inventory and
+  completeness tracker: `docs/product-completeness.md`.
+
 ### SaaS round 2: invitations, full-surface metering, network-scan SSRF fix
 - Invitations: `POST /saas/invites` (one-time `csi_` token, hash-stored,
   7-30 day expiry), `POST /saas/invites/accept` (new identities set their
