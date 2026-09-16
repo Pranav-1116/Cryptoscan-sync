@@ -6,6 +6,42 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Production burn: live deployment smoke, Stripe billing, DR drill, security campaign
+- **Deployment burn** (`scripts/deploy_burn.py` + `docs/deploy-burn.md`):
+  boots the real API and walks the live OpenAPI surface — 360 safe
+  operations exercised with real sessions, **zero 5xx**. Found and fixed a
+  real latent bug day one: `/healthz/schema` 500 on every call (import of a
+  nonexistent `engine` symbol — now `get_engine()` like its siblings).
+- **Stripe billing** (`services/billing`, `/saas/billing/*`): checkout
+  sessions against the real Stripe API (form-encoded, Idempotency-Key,
+  price IDs from env — never invented amounts), webhook ingestion with
+  Stripe's documented `t=…,v1=…` HMAC scheme (constant-time, replay
+  window), subscription state in the platform settings store, honest 503
+  `billing_not_configured` without keys. 5 tests incl. signature round-trip
+  and request-shape pinning via mocked transport (product code always calls
+  the real endpoint when configured).
+- **Infra burn-in** (`docs/burn-in.md`): GitHub signed-webhook round trip
+  PASS (job COMPLETED through the live API — full pipeline: scan → 14
+  findings → policy → quantum HNDL alert → CBOM), SMTP delivery PASS (real
+  wire conversation via built-in sink), live TLS probe PASS
+  (github.com:443, TLS 1.3 parsed). Cloud/Neo4j/container honestly SKIP
+  (no creds/JVM/Docker in this environment).
+- **Load/soak** (`docs/load-soak.md`): 68,390 requests / 90 s / 12 sessions,
+  **0 errors**, p99 133 ms served; the 600/min/identity burst limiter was
+  the ceiling and shed the rest correctly. Harness hardened for the
+  platform's own defenses (login budget respected, per-user sessions).
+- **Backup/restore drill** (`scripts/backup_drill.py` +
+  `docs/backup-drill.md`): hot online backup of the durable trio (SQLite
+  estate + bus logs + signed CBOM store) → restore into a clean dir →
+  second instance boots from backup alone → 12/12 checks PASS (estate
+  survives, CBOM chain verifies from genesis, bus replays, logins work).
+- **Security campaign** (`services/api/tests/security/` +
+  `docs/security-campaign.md`): 7 adversarial probes all green — anonymous
+  sweep (no leaks), cross-tenant absence (no existence oracle), injection
+  sweep (no 5xx, store survives DROP TABLE), webhook signature enforcement
+  (GitHub + Stripe), production boot gate fails closed, brute-force limiter
+  429 on attempt #6, logout invalidation.
+
 ### Performance benchmark + parser fuzz hardening
 - **A15 closed**: `scripts/perf_benchmark.py` runs the real static scanner
   over a deterministic 10,000-file corpus (py/java/js/config/PEM with

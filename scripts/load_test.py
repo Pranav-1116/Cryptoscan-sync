@@ -79,14 +79,22 @@ def make_client(base_url: str, token: str) -> Callable[[str, str | None], tuple[
 
 
 def login(base_url: str, username: str, password: str) -> str:
-    request = urllib.request.Request(
-        base_url + "/api/v1/auth/login",
-        data=json.dumps({"username": username, "password": password}).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=10) as response:
-        return json.loads(response.read()).get("token", "")
+    for attempt in range(5):
+        request = urllib.request.Request(
+            base_url + "/api/v1/auth/login",
+            data=json.dumps({"username": username, "password": password}).encode(),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=10) as response:
+                return json.loads(response.read()).get("token", "")
+        except urllib.error.HTTPError as exc:
+            if exc.code == 429 and attempt < 4:
+                time.sleep(3.0 * (attempt + 1))  # burst-limiter cooldown
+                continue
+            raise
+    return ""
 
 
 def worker(call: Callable, result: Result, stop_at: float, scan_target_id: str | None) -> None:
@@ -126,12 +134,28 @@ def main() -> int:
         print("login failed", file=sys.stderr)
         return 2
 
-    call = make_client(args.url, token)
     result = Result()
-    stop_at = time.time() + args.duration
+    # one session per virtual user. The login limiter allows 5/min per
+    # source IP (brute-force protection) — stagger logins to fit the
+    # budget; never weaken or bypass the platform's own defenses.
+    tokens = [token]
+    for i in range(1, args.users):
+        user_token = login(args.url, args.username, args.password)
+        if not user_token:
+            print(f"login {i + 1}/{args.users} throttled; reduce --users",
+                  file=sys.stderr)
+            return 2
+        tokens.append(user_token)
+        if i < args.users - 1:
+            time.sleep(13.0)  # login window: 5/min per IP
+    stop_at = time.time() + args.duration  # soak clock starts after setup
     threads = [
-        threading.Thread(target=worker, args=(call, result, stop_at, args.scan_target or None), daemon=True)
-        for _ in range(args.users)
+        threading.Thread(
+            target=worker,
+            args=(make_client(args.url, tok), result, stop_at,
+                  args.scan_target or None),
+            daemon=True)
+        for tok in tokens
     ]
     started = time.perf_counter()
     for thread in threads:

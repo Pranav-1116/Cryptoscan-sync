@@ -89,6 +89,19 @@ Legend: ✅ exists · 🔨 improved r30 · ⛔ infra-blocked · 📋 planned · 
 - Geo: ar/en with RTL shipped; data residency + sovereign deploys = the
   multi-region item (⛔ infra), regional compliance packs 📋.
 
+## Production burn round (r31)
+
+- Deployment burn harness + full-surface PASS (360 ops, 0×5xx);
+  `/healthz/schema` latent 500 found & fixed on day one.
+- Stripe billing gateway live-code complete (checkout/webhook/status);
+  needs real `STRIPE_API_KEY` + price IDs to go transactional (⛔ creds).
+- Burn-in: github/smtp/tls PASS against live processes; cloud/neo4j/
+  container remain ⛔ (credentials/infra).
+- 90s API soak: 0 errors at 760 rps offered; limiter budget was the ceiling.
+- Backup/restore drill: 12/12 PASS end-to-end.
+- Security campaign: 7 adversarial probes green; external pen test remains
+  📋 (vendor engagement).
+
 ## r30 delta (this round)
 
 - `GET /api/v1/priority` + `/priorities` page (A8) — deterministic ranked
