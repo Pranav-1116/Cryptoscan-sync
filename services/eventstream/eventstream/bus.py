@@ -66,11 +66,21 @@ class StreamBus:
 
     # ---------------------------------------------------------------- publish
 
+    def _assert_writable(self) -> None:
+        """Replica-region dirs refuse writes (split-brain protection)."""
+        from eventstream.replication import write_role
+
+        if write_role(self.log_dir) == "replica":
+            raise RuntimeError(
+                f"bus dir {self.log_dir} has write_role=replica; "
+                "promote it (set_write_role role='primary') before publishing")
+
     def publish(self, topic: str, payload: dict[str, Any], *, key: str = "default",
                 source: str = "unknown") -> dict[str, Any]:
         from eventstream.topics import validate_topic
 
         validate_topic(topic)
+        self._assert_writable()
         with self._lock:
             seq = self._seq[topic] + 1
             env = sign_envelope(payload, topic=topic, key=key, seq=seq,

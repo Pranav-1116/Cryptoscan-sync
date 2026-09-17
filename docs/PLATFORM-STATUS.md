@@ -106,6 +106,16 @@ re-evaluation, `PAYMENT` monitor target, CEF/webhook/SMTP alert routing,
 HA compose stack + DR runbook, threat model + dependency audit (0 known CVEs),
 API load-test tool. Migration 0030. See `docs/user-guide/payment-crypto.md`.
 
+**Scale/observability/DR/compliance (current round)** — multi-region event
+log replication (HMAC-verified, seq-continuous, failback-converging; drill
+`docs/region-failover.md`), PITR snapshot+replay to any epoch
+(`docs/pitr-drill.md`), platform self-observability (W3C trace-context +
+Prometheus `/ops/*`: metrics, traces, SLO burn, self-alerts, capacity
+forecast — `docs/round-scalability-observability.md`), signed registry
+webhook live burn (`docs/registry-webhook-burn.md`), compliance evidence
+pack from live state + JWS attestations + 7-year WORM gate + auditor API
+(`docs/compliance-burn.md`).
+
 **Scale/HA/DR (bank gap #2)** — monitor **leader lease** (run N daemons,
 exactly one scans; SIGTERM = instant failover, hard loss = failover within
 TTL — *verified live* in this environment), Postgres streaming-replication

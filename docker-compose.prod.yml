@@ -60,6 +60,17 @@ services:
       ALLOW_INSECURE_CORS: "false"
       # Event stream (r29): CBOM signing secret is REQUIRED in production.
       CBOM_SIGNING_SECRET: ${CBOM_SIGNING_SECRET:?set CBOM_SIGNING_SECRET}
+      # Signed registry webhooks: REQUIRED in production — unsigned events
+      # are rejected 401; a wrong signature is always 401 (fail-closed).
+      REGISTRY_WEBHOOK_SECRET: ${REGISTRY_WEBHOOK_SECRET:?set REGISTRY_WEBHOOK_SECRET}
+      # Stream HMAC secret (event bus / replication / PITR verification).
+      STREAM_SECRET: ${STREAM_SECRET:-}
+      # Auditor API: production auditor access to /compliance/audit/* is
+      # fail-closed 401 WITHOUT this key.
+      AUDITOR_API_KEY: ${AUDITOR_API_KEY:-}
+      # Platform self-observability: W3C trace-context + Prometheus on every
+      # request; set OTEL_EXPORTER_OTLP_ENDPOINT for OTLP/JSON export too.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
       REDIS_URL: redis://redis:6379/0
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
@@ -101,6 +112,7 @@ services:
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
       CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
     logging: *json-log
     mem_limit: 2g
     security_opt:

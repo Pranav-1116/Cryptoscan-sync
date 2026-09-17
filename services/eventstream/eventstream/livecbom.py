@@ -116,6 +116,12 @@ class LiveCbomService:
         self._current[system_id] = record
         return record
 
+    def list_systems(self) -> list[str]:
+        """System ids with at least one versioned CBOM on disk."""
+        if not self.store_dir.exists():
+            return []
+        return sorted(path.stem for path in self.store_dir.glob("*.jsonl"))
+
     def current(self, system_id: str) -> dict[str, Any] | None:
         rec = self._current.get(system_id)
         if rec is None:

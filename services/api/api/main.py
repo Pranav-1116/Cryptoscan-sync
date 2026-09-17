@@ -25,6 +25,8 @@ from api.routers import (
     agility,
     analytics,
     billing,
+    compliance,
+    ops,
     priority,
     saas,
     stream,
@@ -269,6 +271,23 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
         app.add_middleware(AuthMiddleware, settings=settings)
         app.add_middleware(RateLimitMiddleware, redis_client=_shared_rate_limit_backend())
+    # Platform self-observability: W3C trace-context + Prometheus metrics on
+    # every request (works in all environments; cheap single pass).
+    from observability.metrics import MetricsRegistry
+    from observability.metrics import TraceStore as _TraceStore
+    import os as _os
+
+    app.state.metrics = MetricsRegistry()
+    app.state.evidence_pack = None
+    _sink = _os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data")
+    app.state.traces = _TraceStore(
+        sink_path=None if settings.ENVIRONMENT.lower() in {"test", "testing"}
+        else Path(_sink) / "traces" / "spans.jsonl",
+        otlp_endpoint=_os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"))
+    from api.middleware.observability_middleware import ObservabilityMiddleware
+
+    app.add_middleware(ObservabilityMiddleware,
+                       registry=app.state.metrics, traces=app.state.traces)
     # ABAC scope enforcement runs just inside the auth gate on EVERY route.
     # It is a no-op unless ABAC_ENFORCED is set (and grants are provisioned),
     # so test/dev installs keep working while large-bank deployments get
@@ -385,6 +404,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(stream.router, prefix=prefix)
     app.include_router(priority.router, prefix=prefix)
     app.include_router(billing.router, prefix=prefix)
+    app.include_router(ops.router, prefix=prefix)
+    app.include_router(compliance.router, prefix=prefix)
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)
     app.include_router(agility.router, prefix=prefix)
