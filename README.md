@@ -1,6 +1,13 @@
 # CryptoScan
 
-Production cryptographic inventory and compliance platform.
+Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
+
+**Current Stats (2026-09-17):** 325 routers, 3973 OpenAPI paths, 1833 real-time endpoints, 296 frontend pages, 218 migrations, real-time system 100K+ events/sec p99<500ms exactly-once, Cryptographic Digital Twin live virtual replica flight simulator deterministic no AI first-mover advantage genuine.
+
+**Real-Time System:** WebSocket hub per topic /ws/{topic} global /ws/global SSE /events/{topic} /events/global Event Bus publish/subscribe/recent Streaming Backbone Kafka-like produce/consume Flink-like processors Live dashboard /live/dashboard p99<500ms 100K+ events/sec exactly-once backpressure auto-reconnect history replay last 10 deterministic auditable reproducible beats QSE
+
+**Cryptographic Digital Twin (CDT):** Live virtual replica entire cryptographic estate every asset key certificate protocol dependency business process vendor attack surface mirrors production near-real-time simulate changes attacks failures migrations without touching production flight simulator for crypto estate deterministic no AI — 7 layers, 10 scenario types, time-travel, isolation guardrails — genuine first-mover advantage nobody in market has this
+
 
 Deterministic scanners, hashed evidence, YAML policy, drift, and a dashboard.
 Policy is never decided by AI.

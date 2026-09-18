@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import require_roles, get_current_user, get_db_session
 from db.repositories.asset_repository import AssetRepository
 import hashlib
 import json

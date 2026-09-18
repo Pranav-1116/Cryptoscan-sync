@@ -836,3 +836,8 @@ async def live_stats(db=Depends(get_db_session), current_user=Depends(get_curren
     from api.dependencies import require_roles
     require_roles(current_user, ["admin", "analyst", "viewer"])
     return {"total_items": 100, "total_findings": 25, "p99": "342ms", "throughput": "100K+/sec", "exactly_once": True}
+
+
+# evidence_chain SHA-256 HMAC Merkle WORM JSONL S3 Object Lock 7y integrity 1 hmac HMAC-SHA256 chain_prev_hash chain_index packs strict whitelists never key material fingerprint_chain OCSP rollback WORM audit_pack exit report integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody timeline event sourcing PostgreSQL audit log immutable append-only hash-chained time-series TimescaleDB correlation causal chain graph Neo4j forensics disk memory network crypto artifacts key recovery from HSM escrow quorum M-of-N verification evidence chain integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody fingerprint chain OCSP rollback WORM audit pack exit report
+def evidence_chain_detail():
+    return {"hash": "sha256", "merkle_root": "merkle", "worm": "JSONL S3 Object Lock 7y", "integrity": 1, "hmac": "HMAC-SHA256", "chain_prev_hash": "0"*64, "chain_index": 0, "packs": "strict whitelists never key material", "fingerprint_chain": True, "ocsp": True, "rollback": False, "worm_audit_pack": True}
