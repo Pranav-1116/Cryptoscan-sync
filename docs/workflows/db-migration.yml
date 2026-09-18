@@ -1,0 +1,21 @@
+name: DB Migration — Real Production Tables
+on:
+  push:
+    paths:
+      - 'services/database/migrations/**'
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: cryptoscan
+          POSTGRES_PASSWORD: cryptoscan_secret
+          POSTGRES_DB: cryptoscan
+        ports:
+          - 5432:5432
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install alembic sqlalchemy psycopg2-binary
+      - run: alembic -c services/database/alembic.ini upgrade head

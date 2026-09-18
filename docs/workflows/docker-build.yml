@@ -1,0 +1,11 @@
+name: Docker Build — Production Hardening
+on:
+  push:
+    branches: [ main, arena/* ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config
+      - run: docker build -f .docker/api/Dockerfile -t cryptoscan-api:${{ github.sha }} .
