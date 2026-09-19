@@ -1,300 +1,345 @@
-import React, { useCallback, useEffect, useState } from "react";
-import { Panel, Badge, Table, PageHead, Code, Tabs } from "../components/ui.jsx";
-import { LiveBadge, ApiResult } from "../lib/api.js";
-import {
-  apiSsoStatus,
-  apiScimUsers,
-  apiScimCreateUser,
-  apiScimDeactivate,
-  apiScimSetActive,
-  apiKeyRotationReport,
-  apiUpdateKeyPolicy,
-  apiWorkloadCa,
-  apiWorkloadIssueSvid,
-  apiWorkloadVerify,
-  ScimList,
-  RotationReport,
-  Svid,
-} from "../lib/api.js";
+import React, { useEffect, useState } from "react";
+import { Badge, Button } from "../components/ui";
+import { apiAuthMeDetails, apiMfaEnroll, apiMfaEnable, apiMfaDisable } from "../lib/api";
 
-/* Identity & access administration — SAML 2.0 SSO, LDAP/AD, SCIM 2.0
-   provisioning, API-key IP allowlist/rotation, and SPIFFE workload identity.
-   Every panel is driven by the live backend; there is no demo dataset. When
-   the backend is unreachable or the principal lacks rights, panels render
-   empty with an explicit status. */
-
-const ROLES = ["readonly", "auditor", "security_analyst", "developer",
-  "business_owner", "ciso", "scanner", "supervisor", "superadmin"];
-
-function useReload<T>(fn: () => Promise<ApiResult<T>>, deps: unknown[] = []) {
-  const [res, setRes] = useState<ApiResult<T> | null>(null);
+export default function Identity() {
   const [loading, setLoading] = useState(true);
-  const reload = useCallback(() => {
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
+  const [mfaSecretData, setMfaSecretData] = useState<any>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaDisablePassword, setMfaDisablePassword] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
+  const [mfaSubmitting, setMfaSubmitting] = useState(false);
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
+
+  const loadData = async () => {
     setLoading(true);
-    fn().then((r) => { setRes(r); setLoading(false); }).catch(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
-  useEffect(() => { reload(); }, [reload]);
-  return { res, loading, reload };
-}
+    try {
+      const [meRes, usersRes, rolesRes] = await Promise.all([
+        apiAuthMeDetails(),
+        fetch("/api/v1/auth/users", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("cryptoscan_token") || ""}` }
+        }).then(r => r.ok ? r.json() : []),
+        fetch("/api/v1/auth/roles", {
+          headers: { Authorization: `Bearer ${localStorage.getItem("cryptoscan_token") || ""}` }
+        }).then(r => r.ok ? r.json() : [])
+      ]);
 
-function State({ res, loading }: { res: ApiResult<unknown> | null; loading: boolean }) {
-  if (loading) return <span className="faint">loading…</span>;
-  if (res?.source === "live" && res.ok)
-    return <LiveBadge source="live" label="LIVE" />;
-  return <LiveBadge source="offline" label={res?.error ? `UNAVAILABLE · ${res.error}` : "BACKEND OFFLINE"} />;
-}
-
-/* ----------------------------- SSO / LDAP -------------------------------- */
-function SsoPanel() {
-  const { res, loading, reload } = useReload(apiSsoStatus);
-  const d = res?.data;
-  return (
-    <Panel title="Single sign-on & directory" sub="SAML 2.0 (Okta / Entra / ADFS) and LDAP / Active Directory — configured server-side"
-      className="mt">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <div className="row">
-          <Badge tone={d?.saml_enabled ? "green" : ""}><span className="dot" /> SAML SSO {d?.saml_enabled ? "ENABLED" : "NOT CONFIGURED"}</Badge>
-          <Badge tone={d?.ldap_enabled ? "green" : ""}><span className="dot" /> LDAP / AD {d?.ldap_enabled ? "ENABLED" : "NOT CONFIGURED"}</Badge>
-        </div>
-        <div className="row"><State res={res} loading={loading} />
-          <button className="btn sm" onClick={() => reload()}>Refresh</button></div>
-      </div>
-      <Table
-        head={["capability", "endpoint", "status"]}
-        rows={[
-          ["SAML metadata", <span className="mono">GET /auth/saml/metadata</span>, d ? <Badge tone={d.saml_enabled ? "green" : ""}>{d.saml_enabled ? "available" : "404 unconfigured"}</Badge> : "—"],
-          ["SAML login (SP-initiated)", <span className="mono">GET /auth/saml/login</span>, d ? <Badge tone={d.saml_enabled ? "green" : ""}>{d.saml_enabled ? "ready" : "disabled"}</Badge> : "—"],
-          ["SAML ACS (assertion consumer)", <span className="mono">POST /auth/saml/acs</span>, d ? <Badge tone={d.saml_enabled ? "green" : ""}>signed-assertion + CSRF check</Badge> : "—"],
-          ["LDAP bind + group→role", <span className="mono">POST /auth/ldap/login</span>, d ? <Badge tone={d.ldap_enabled ? "green" : ""}>{d.ldap_enabled ? "ready" : "disabled"}</Badge> : "—"],
-        ]}
-      />
-      <p className="faint" style={{ marginTop: 12, fontSize: 12 }}>
-        Assertions are validated deterministically: enveloped XML signature (RS256), reference
-        digest binding, issuer/audience/time-window checks, and strict InResponseTo correlation.
-        Directory groups map to the 8-role RBAC catalog; unmapped users default to read-only.
-      </p>
-    </Panel>
-  );
-}
-
-/* ----------------------------- SCIM users -------------------------------- */
-function ScimPanel() {
-  const { res, loading, reload } = useReload(apiScimUsers);
-  const list = res?.data as ScimList | null | undefined;
-  const [form, setForm] = useState({ userName: "", displayName: "", email: "", roles: "readonly" });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-
-  const create = async () => {
-    if (!form.userName.trim()) { setMsg("userName is required"); return; }
-    setBusy(true); setMsg(null);
-    const r = await apiScimCreateUser({
-      userName: form.userName.trim(),
-      displayName: form.displayName.trim() || undefined,
-      email: form.email.trim() || undefined,
-      roles: [form.roles],
-    });
-    setBusy(false);
-    setMsg(r.ok ? `Provisioned ${form.userName}` : `Failed: ${r.error}`);
-    if (r.ok) { setForm({ userName: "", displayName: "", email: "", roles: "readonly" }); reload(); }
-  };
-  const toggle = async (u: string, active: boolean) => {
-    const r = active ? await apiScimSetActive(u, true) : await apiScimDeactivate(u);
-    setMsg(r.ok ? `${active ? "Reactivated" : "Deprovisioned"} ${u}` : `Failed: ${r.error}`);
-    reload();
+      if (meRes.source === "live" && meRes.data) {
+        setCurrentUser(meRes.data);
+      }
+      if (Array.isArray(usersRes)) setUsers(usersRes);
+      if (Array.isArray(rolesRes)) setRoles(rolesRes);
+    } catch (err) {
+      console.error("Failed to load identity state:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const users = list?.Resources ?? [];
-  return (
-    <Panel title="SCIM 2.0 user provisioning" sub="Deterministic REST sync from the identity provider — deprovisioning soft-deactivates and preserves the audit chain" className="mt">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <div className="row"><Badge tone="green"><span className="dot" /> {list ? `${list.totalResults} provisioned` : "—"}</Badge>
-          <State res={res} loading={loading} /></div>
-        <button className="btn sm" onClick={() => reload()}>Refresh</button>
-      </div>
+  useEffect(() => {
+    loadData();
+  }, []);
 
-      <div className="grid" style={{ gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 14 }}>
-        <input className="inp" placeholder="userName (login)" value={form.userName}
-          onChange={(e) => setForm({ ...form, userName: e.target.value })} />
-        <input className="inp" placeholder="display name" value={form.displayName}
-          onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
-        <input className="inp" placeholder="email" value={form.email}
-          onChange={(e) => setForm({ ...form, email: e.target.value })} />
-        <div className="row">
-          <select className="inp" value={form.roles} onChange={(e) => setForm({ ...form, roles: e.target.value })}>
-            {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
-          </select>
-          <button className="btn sm" onClick={() => void create()} disabled={busy}>{busy ? "…" : "Provision"}</button>
-        </div>
-      </div>
-      {msg && <p className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{msg}</p>}
-
-      <Table
-        head={["user", "name", "email", "roles", "status", ""]}
-        rows={users.length ? users.map((u) => [
-          <span className="mono" style={{ fontWeight: 600 }}>{u.userName}</span>,
-          u.displayName || "—",
-          u.emails?.[0]?.value || "—",
-          <span className="mono">{(u.roles || []).map((r) => r.value).join(", ") || "readonly"}</span>,
-          <Badge tone={u.active ? "green" : ""}>{u.active ? "active" : "deprovisioned"}</Badge>,
-          <button className="btn sm" onClick={() => void toggle(u.userName, !u.active)}>
-            {u.active ? "Deprovision" : "Reactivate"}
-          </button>,
-        ]) : [[<span className="faint">No provisioned users — when an IdP syncs (or you provision above), users appear here.</span>, "", "", "", "", ""]]}
-      />
-    </Panel>
-  );
-}
-
-/* -------------------------- API-key rotation ----------------------------- */
-function toneFor(state?: string): string {
-  if (!state) return "";
-  if (["REVOKED", "EXPIRED", "ROTATION_DUE"].includes(state)) return "red";
-  if (["EXPIRING_SOON", "ROTATION_SOON"].includes(state)) return "amber";
-  return "green";
-}
-function KeyPanel() {
-  const { res, loading, reload } = useReload(apiKeyRotationReport);
-  const rep = res?.data as RotationReport | null | undefined;
-  const [sel, setSel] = useState<string | null>(null);
-  const [ips, setIps] = useState("");
-  const [days, setDays] = useState("90");
-  const [msg, setMsg] = useState<string | null>(null);
-
-  const counts = rep?.counts ?? {};
-  const save = async (id: string) => {
-    const allowed_ips = ips.split(/[\s,]+/).map((s) => s.trim()).filter(Boolean);
-    const r = await apiUpdateKeyPolicy(id, {
-      ...(allowed_ips.length ? { allowed_ips } : {}),
-      rotate_after_days: Math.max(1, Math.min(3650, parseInt(days || "90", 10) || 90)),
-    });
-    setMsg(r.ok ? `Policy updated for ${id.slice(0, 12)}…` : `Failed: ${r.error}`);
-    setSel(null); reload();
+  const handleStartEnroll = async () => {
+    setMfaSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await apiMfaEnroll();
+      if (res.source === "live" && res.data) {
+        setMfaSecretData(res.data);
+      } else {
+        setMessage({ text: res.error || "MFA enrollment failed", error: true });
+      }
+    } catch (e) {
+      setMessage({ text: String(e), error: true });
+    } finally {
+      setMfaSubmitting(false);
+    }
   };
 
-  return (
-    <Panel title="API-key IP allowlist & rotation" sub="Per-endpoint keys locked to client networks (CIDR/exact IP) with deterministic expiry-rotation reminders" className="mt">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <div className="row">
-          <Badge tone="green"><span className="dot" /> {rep ? `${rep.total_active} active` : "—"}</Badge>
-          {rep?.actionable ? <Badge tone="red"><span className="dot" /> {rep.actionable} need attention</Badge> : null}
-          <State res={res} loading={loading} />
-        </div>
-        <button className="btn sm" onClick={() => reload()}>Refresh</button>
-      </div>
+  const handleConfirmEnable = async () => {
+    if (!mfaCode || mfaCode.length !== 6) {
+      setMessage({ text: "Please enter a valid 6-digit TOTP code.", error: true });
+      return;
+    }
+    setMfaSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await apiMfaEnable(mfaCode);
+      if (res.source === "live" && res.data) {
+        setRecoveryCodes(res.data.recovery_codes || []);
+        setMessage({ text: "MFA successfully activated! Save your recovery codes safely." });
+        setMfaSecretData(null);
+        setMfaCode("");
+        loadData();
+      } else {
+        setMessage({ text: res.error || "Invalid verification code", error: true });
+      }
+    } catch (e) {
+      setMessage({ text: String(e), error: true });
+    } finally {
+      setMfaSubmitting(false);
+    }
+  };
 
-      {Object.keys(counts).length > 0 && (
-        <div className="grid" style={{ gridTemplateColumns: "repeat(6,1fr)", gap: 8, marginBottom: 14 }}>
-          {Object.entries(counts).map(([state, n]) => (
-            <div key={state} className="kpi" style={{ padding: 10 }}>
-              <div className="num" style={{ fontSize: 22, color: `var(--${toneFor(state)})` }}>{n}</div>
-              <div className="faint" style={{ fontSize: 10 }}>{state}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      {msg && <p className="faint" style={{ fontSize: 12 }}>{msg}</p>}
-
-      <Table
-        head={["key", "state", "ip allowlist", "rotate after", ""]}
-        rows={rep?.keys?.length ? rep.keys.map((k) => [
-          <span className="mono">{(k.key_prefix || (k.id || "").slice(0, 18)).toString()}</span>,
-          <Badge tone={toneFor(k.state)}>{k.state || "OK"}</Badge>,
-          <span className="mono">{(k.allowed_ips && k.allowed_ips.length) ? k.allowed_ips.join(", ") : "any (0.0.0.0/0)"}</span>,
-          <span className="num">{k.rotate_after_days ?? 90} d</span>,
-          <button className="btn sm" onClick={() => { setSel(sel === k.id ? null : k.id); setIps((k.allowed_ips || []).join(", ")); setDays(String(k.rotate_after_days ?? 90)); }}>
-            {sel === k.id ? "Close" : "Policy"}
-          </button>,
-        ]) : [[<span className="faint">No active API keys.</span>, "", "", "", ""]]}
-      />
-      {sel && (
-        <div className="grid mt" style={{ gridTemplateColumns: "2fr 1fr auto", gap: 8, alignItems: "center" }}>
-          <input className="inp" placeholder="allowed IPs / CIDR, comma-separated (e.g. 203.0.113.7, 10.0.0.0/8)"
-            value={ips} onChange={(e) => setIps(e.target.value)} />
-          <input className="inp" type="number" min={1} max={3650} placeholder="rotate after days"
-            value={days} onChange={(e) => setDays(e.target.value)} />
-          <button className="btn sm" onClick={() => void save(sel)}>Save policy</button>
-        </div>
-      )}
-      <p className="faint" style={{ marginTop: 12, fontSize: 12 }}>
-        A request from a non-allowlisted address is rejected with 403 before any scope/quota check
-        (fail-closed). Leave the list empty to allow any address.
-      </p>
-    </Panel>
-  );
-}
-
-/* --------------------------- Workload identity --------------------------- */
-function WorkloadPanel() {
-  const ca = useReload(apiWorkloadCa);
-  const [workload, setWorkload] = useState("scanner/edge-1");
-  const [ttl, setTtl] = useState("60");
-  const [svid, setSvid] = useState<Svid | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [verify, setVerify] = useState<string | null>(null);
-
-  const issue = async () => {
-    setBusy(true); setVerify(null);
-    const r = await apiWorkloadIssueSvid(workload.trim(), Math.max(5, Math.min(1440, parseInt(ttl || "60", 10) || 60)));
-    setBusy(false);
-    if (r.ok && r.data) {
-      setSvid(r.data);
-      const v = await apiWorkloadVerify(r.data.cert_pem, [workload.trim()]);
-      setVerify(v.ok ? `Verified: ${v.data?.spiffe_id}` : `Verify failed: ${v.error}`);
-    } else {
-      setVerify(`Issue failed: ${r.error}`);
+  const handleDisableMfa = async () => {
+    if (!mfaDisablePassword) {
+      setMessage({ text: "Password is required to disable MFA.", error: true });
+      return;
+    }
+    setMfaSubmitting(true);
+    setMessage(null);
+    try {
+      const res = await apiMfaDisable(mfaDisablePassword);
+      if (res.source === "live" && res.data) {
+        setMessage({ text: "MFA has been disabled." });
+        setMfaDisablePassword("");
+        loadData();
+      } else {
+        setMessage({ text: res.error || "Incorrect password", error: true });
+      }
+    } catch (e) {
+      setMessage({ text: String(e), error: true });
+    } finally {
+      setMfaSubmitting(false);
     }
   };
 
   return (
-    <Panel title="Workload identity (SPIFFE / mTLS)" sub="Short-lived X.509 SVIDs carrying spiffe:// URI SANs for scanner↔API service-to-service auth" className="mt">
-      <div className="row" style={{ justifyContent: "space-between", marginBottom: 12 }}>
-        <div className="row">
-          <Badge tone={ca.res?.data ? "green" : ""}><span className="dot" /> trust domain: {ca.res?.data?.trust_domain || "—"}</Badge>
-          <State res={ca.res} loading={ca.loading} />
+    <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <div style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            Enterprise Access & Authentication
+          </div>
+          <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Identity & Access Governance</h1>
+          <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
+            RBAC role-based access, SCIM 2.0 provisioning lifecycle, and FIPS 140-3 hardware MFA enforcement.
+          </p>
+        </div>
+
+        <div style={{ display: "flex", gap: "10px" }}>
+          <a
+            href="/api/v1/scim/v2/ServiceProviderConfig"
+            target="_blank"
+            rel="noreferrer"
+            className="btn outline"
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+          >
+            SCIM 2.0 Config
+          </a>
+          <a
+            href="/api/v1/auth/saml/metadata"
+            target="_blank"
+            rel="noreferrer"
+            className="btn outline"
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+          >
+            SAML Metadata
+          </a>
         </div>
       </div>
-      <div className="grid" style={{ gridTemplateColumns: "2fr 1fr auto", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <input className="inp" placeholder="workload path (e.g. scanner/edge-1)" value={workload}
-          onChange={(e) => setWorkload(e.target.value)} />
-        <input className="inp" type="number" min={5} max={1440} placeholder="TTL minutes" value={ttl}
-          onChange={(e) => setTtl(e.target.value)} />
-        <button className="btn sm" onClick={() => void issue()} disabled={busy}>{busy ? "Issuing…" : "Issue SVID"}</button>
-      </div>
-      {verify && <p className="faint" style={{ fontSize: 12, marginBottom: 8 }}>{verify}</p>}
-      {svid && (
-        <Table
-          head={["field", "value"]}
-          rows={[
-            ["SPIFFE id", <span className="mono">{svid.spiffe_id}</span>],
-            ["valid until", <span className="mono">{svid.not_after}</span>],
-            ["leaf certificate", <Code>{svid.cert_pem}</Code>],
-            ["CA bundle", <Code>{svid.ca_cert_pem}</Code>],
-          ]}
-        />
-      )}
-      {!svid && <p className="faint">Issue an SVID to retrieve the leaf certificate and CA bundle for mTLS. Peers are validated against the CA, validity window, and a workload allowlist (fail-closed).</p>}
-    </Panel>
-  );
-}
 
-export default function Identity() {
-  const [tab, setTab] = useState(0);
-  const tabs = ["SSO & directory", "SCIM users", "API keys", "Workload identity"];
-  return (
-    <>
-      <PageHead
-        crumb="operate / identity & access"
-        title="Identity & access"
-        sub="SAML 2.0 SSO · LDAP/AD · SCIM 2.0 provisioning · API-key IP allowlist & rotation · SPIFFE workload identity — all enforced server-side, deterministic, fail-closed"
-        right={<Badge tone=""><span className="dot" /> ENTERPRISE IDENTITY</Badge>}
-      />
-      <div className="mt"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
-      {tab === 0 && <SsoPanel />}
-      {tab === 1 && <ScimPanel />}
-      {tab === 2 && <KeyPanel />}
-      {tab === 3 && <WorkloadPanel />}
-    </>
+      {message && (
+        <div
+          className="panel"
+          style={{
+            padding: "12px 16px",
+            marginBottom: "20px",
+            background: message.error ? "rgba(239, 68, 68, 0.08)" : "rgba(16, 185, 129, 0.08)",
+            border: `1px solid ${message.error ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+            color: message.error ? "#fca5a5" : "var(--green)",
+            fontSize: "13px"
+          }}
+        >
+          {message.text}
+        </div>
+      )}
+
+      {/* Top Stat Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "24px" }}>
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Current Authenticated User
+          </div>
+          <div style={{ fontSize: "22px", fontWeight: 700, margin: "6px 0", color: "var(--cyan)" }}>
+            {loading ? "..." : (currentUser?.username || "Anonymous")}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+            Roles: {currentUser?.roles?.join(", ") || "None"}
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            MFA / Hardware Token Posture
+          </div>
+          <div style={{ fontSize: "22px", fontWeight: 700, color: currentUser?.mfa_enabled ? "var(--green)" : "var(--amber)", margin: "6px 0" }}>
+            {loading ? "..." : (currentUser?.mfa_enabled ? "Enforced (Active)" : "Not Enforced")}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+            RFC 6238 / FIDO2 Token
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Enterprise Directory Users
+          </div>
+          <div style={{ fontSize: "28px", fontWeight: 700, margin: "4px 0" }}>
+            {loading ? "..." : users.length}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+            Local & SCIM synchronized
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Active Login Sessions
+          </div>
+          <div style={{ fontSize: "28px", fontWeight: 700, margin: "4px 0" }}>
+            {loading ? "..." : (currentUser?.active_sessions ?? 1)}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--green)" }}>
+            24h sliding rotation window
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "24px" }}>
+        {/* Hardware Token & MFA Enrolment Panel */}
+        <div className="panel" style={{ padding: "24px" }}>
+          <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>FIPS 140-3 Hardware Token & MFA</h3>
+          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
+            Enforce time-based one-time passwords (TOTP) or hardware security key authentication for your account.
+          </p>
+
+          {!currentUser?.mfa_enabled ? (
+            <div>
+              {!mfaSecretData ? (
+                <div>
+                  <p style={{ fontSize: "13px", color: "var(--text)", marginBottom: "16px" }}>
+                    Multi-factor authentication is currently <b>disabled</b> for this account. Tier-1 financial institutions mandate MFA for all privileged roles.
+                  </p>
+                  <Button variant="primary" onClick={handleStartEnroll} disabled={mfaSubmitting}>
+                    {mfaSubmitting ? "Generating Secret..." : "Enroll Hardware Authenticator"}
+                  </Button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+                    1. Add this secret to your Authenticator (or YubiKey TOTP slot):
+                  </div>
+                  <div style={{ padding: "10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", fontFamily: "var(--mono)", fontSize: "13px", color: "var(--cyan)", textAlign: "center", letterSpacing: "0.1em" }}>
+                    {mfaSecretData.secret}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+                    2. Enter the 6-digit confirmation code generated by your device:
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.trim())}
+                      className="inp"
+                      style={{ width: "120px", fontSize: "15px", fontFamily: "var(--mono)", textAlign: "center" }}
+                    />
+                    <Button variant="primary" onClick={handleConfirmEnable} disabled={mfaSubmitting}>
+                      {mfaSubmitting ? "Activating..." : "Verify & Enforce MFA"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--green)", fontSize: "13.5px", fontWeight: 600 }}>
+                <span>✓</span> <span>MFA is actively enforced on your session</span>
+              </div>
+              <p style={{ margin: 0, fontSize: "12.5px", color: "var(--dim)" }}>
+                To disable MFA, enter your current account password. This will terminate all other active enterprise sessions.
+              </p>
+              <div style={{ display: "flex", gap: "8px" }}>
+                <input
+                  type="password"
+                  placeholder="Enter current password"
+                  value={mfaDisablePassword}
+                  onChange={(e) => setMfaDisablePassword(e.target.value)}
+                  className="inp"
+                  style={{ flex: 1, fontSize: "12.5px" }}
+                />
+                <Button variant="danger" onClick={handleDisableMfa} disabled={mfaSubmitting}>
+                  Disable MFA
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {recoveryCodes.length > 0 && (
+            <div style={{ marginTop: "20px", padding: "14px", background: "rgba(0, 212, 255, 0.05)", border: "1px solid var(--cyan)", borderRadius: "8px" }}>
+              <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--cyan)", marginBottom: "6px" }}>
+                Emergency Recovery Codes (Save These Now)
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", fontFamily: "var(--mono)", fontSize: "12px", color: "var(--text)" }}>
+                {recoveryCodes.map((code, idx) => (
+                  <div key={idx}>• {code}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Enterprise Directory & SCIM Provisioning Panel */}
+        <div className="panel" style={{ padding: "24px" }}>
+          <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Directory Synchronization & SCIM 2.0</h3>
+          <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
+            Automated user lifecycle, role mapping, and instantaneous deprovisioning.
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "280px", overflowY: "auto" }}>
+            {users.map((u: any, idx: number) => (
+              <div
+                key={u.id || idx}
+                style={{
+                  padding: "10px 12px",
+                  background: "var(--bg-2)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "6px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center"
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>
+                    {u.username} {u.display_name ? `(${u.display_name})` : ""}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "var(--dim)" }}>
+                    {u.email || "Directory bind"} · MFA: {u.mfa_enabled ? "Enabled" : "Off"}
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: "4px" }}>
+                  {(u.roles || []).map((r: string) => (
+                    <Badge key={r} variant="neutral">{r}</Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {users.length === 0 && !loading && (
+              <div style={{ textAlign: "center", padding: "24px", color: "var(--dim)", fontSize: "12.5px" }}>
+                No directory users found.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

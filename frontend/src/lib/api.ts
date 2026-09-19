@@ -3182,3 +3182,24 @@ export const apiComplianceRetention = (): Promise<ApiResult<any>> =>
 
 export const apiDriftEvents = (page = 1, pageSize = 50): Promise<ApiResult<any>> =>
   call(`/api/v1/drift?page=${page}&page_size=${pageSize}`);
+
+/* ── Enterprise MFA / Hardware Token API ── */
+export const apiMfaEnroll = (): Promise<ApiResult<{ secret: string; otpauth_uri: string; digits: number; period: number; issuer: string; next: string }>> =>
+  call("/api/v1/auth/mfa/enroll", { method: "POST" });
+
+export const apiMfaEnable = (code: string): Promise<ApiResult<{ enabled: boolean; recovery_codes: string[]; warning: string }>> =>
+  call("/api/v1/auth/mfa/enable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+
+export const apiMfaDisable = (password: string, code?: string, recoveryCode?: string): Promise<ApiResult<{ disabled: boolean }>> =>
+  call("/api/v1/auth/mfa/disable", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ password, ...(code ? { code } : {}), ...(recoveryCode ? { recovery_code: recoveryCode } : {}) }),
+  });
+
+export const apiAuthMeDetails = (): Promise<ApiResult<{ username: string; roles: string[]; permissions: string[]; mfa_enabled: boolean; display_name: string; email: string | null; active_sessions: number }>> =>
+  call("/api/v1/auth/me");
