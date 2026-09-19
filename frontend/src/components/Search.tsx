@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 /* Global search & command palette — Ctrl+K / Cmd+K
  * ChatGPT-style usability + enterprise cybersecurity command palette.
  * Searches assets, services, certificates, dependencies, policies, evidence, and runnable actions. */
@@ -126,7 +127,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
       setSelectedIndex(prev => (prev - 1 + flatItems.length) % (flatItems.length || 1));
     } else if (e.key === "Enter" && flatItems[selectedIndex]) {
       e.preventDefault();
-      window.location.hash = flatItems[selectedIndex].to;
+      navigate(flatItems[selectedIndex].to);
       onClose();
     }
   };
@@ -162,7 +163,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
                       className="gitem"
                       key={`${it.name}-${it.to}`}
                       href={it.to}
-                      onClick={onClose}
+                      onClick={(e) => { e.preventDefault(); navigate(it.to); onClose(); }}
                       style={{
                         background: isSelected ? "rgba(0, 212, 255, 0.12)" : undefined,
                         borderLeft: isSelected ? "2px solid var(--cyan)" : "2px solid transparent",

@@ -1,249 +1,384 @@
-import React, { useState } from "react";
-import { Badge, Button, ProgressBar } from "../components/ui";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Panel, Badge, Table, PageHead, Kpi } from "../components/ui.jsx";
+import {
+  apiDiscover, apiControlAgents, apiLiveScanStatus,
+  ApiResult, LiveScanStatus,
+} from "../lib/api.js";
+import { useLive, LiveStatus } from "../lib/useLive.js";
+import { useRealtime } from "../lib/realtime.jsx";
+import { useI18n } from "../i18n/I18n.jsx";
 
-type ScanTarget =
-  | "Source Repository"
-  | "Network"
-  | "Cloud"
-  | "Container"
-  | "Hardware"
-  | "Vendor"
-  | "Certificate"
-  | "Full Estate";
+/* Scanner control center — the deterministic §1 discovery platform.
+   Every element reflects a live backend response:
+   • pipeline stepper = the fixed Discover→Identify→Correlate→Verify→Monitor
+     stages the universal engine actually executes (no fake progress).
+   • five-domain cards  = the domains a discover run exercised (sources_run).
+   • scan progress      = /live-scan/status + live_scan.* SSE ticks.
+   • plugin registry    = /discovery/plugins (health + capabilities).
+   Nothing is simulated: a brand-new tenant sees honest empty states. */
+
+interface Plugin {
+  plugin_id: string;
+  plugin_version?: string;
+  capabilities?: string[];
+  health?: { ok?: boolean; detail?: string };
+}
+interface MonitorStatus {
+  overview?: { targets_total?: number; by_type?: Record<string, number>; enabled?: number };
+  needs_attention?: unknown[];
+}
+interface DiscoverReport {
+  asset_count?: number;
+  relationship_count?: number;
+  sources_run?: string[];
+  monitor_plan?: Array<{ domain: string; targets: string[]; cadence_seconds: number }>;
+  verified?: Record<string, boolean>;
+  generated_at?: string;
+}
+
+const PIPELINE = [
+  { key: "discover", glyph: "⬚", titleKey: "scanners.stageDiscover", sub: "domain adapters" },
+  { key: "identify", glyph: "◈", titleKey: "scanners.stageIdentify", sub: "stable identity" },
+  { key: "correlate", glyph: "⌗", titleKey: "scanners.stageCorrelate", sub: "cross-domain links" },
+  { key: "verify", glyph: "✓", titleKey: "scanners.stageVerify", sub: "source · type" },
+  { key: "monitor", glyph: "◉", titleKey: "scanners.stageMonitor", sub: "24/7 cadence" },
+] as const;
+
+const DOMAINS = [
+  { key: "network", glyph: "◈", nameKey: "scanners.domainNetwork", mode: "passive / active" },
+  { key: "cloud", glyph: "☁", nameKey: "scanners.domainCloud", mode: "read-only" },
+  { key: "hardware", glyph: "⌬", nameKey: "scanners.domainHardware", mode: "HSM · TPM · CPU" },
+  { key: "vendor", glyph: "▤", nameKey: "scanners.domainVendor", mode: "metadata" },
+  { key: "crypto", glyph: "⚿", nameKey: "scanners.domainCrypto", mode: "cert · library" },
+] as const;
+
+const SCANNER_LABEL: Record<string, string> = {
+  hardware: "Hardware (CPU / TPM / HSM)",
+  runtime: "Runtime host crypto",
+  network: "Network TLS probe",
+  container: "Container / image",
+  ot: "OT / ICS (passive logs)",
+  cloud: "Cloud (read-only live)",
+  source: "Static source (crypto API)",
+  universal: "Universal crypto",
+};
 
 export default function Scanners() {
-  const [step, setStep] = useState<"select" | "configure" | "running">("select");
-  const [selectedTarget, setSelectedTarget] = useState<ScanTarget>("Full Estate");
-  const [targetInput, setTargetInput] = useState("prod-cluster-us-east-1.bank.internal");
-  const [accessMode, setAccessMode] = useState("Read-only");
-  const [scope, setScope] = useState("In-scope payment switches & mTLS mesh");
-  const [progress, setProgress] = useState(82);
+  const { t } = useI18n();
+  const plugins = useLive<{ plugins: Plugin[] }>("/api/v1/discovery/plugins", { plugins: [] });
+  const monitor = useLive<MonitorStatus>("/api/v1/monitor/status", {});
+  const realtime = useRealtime();
 
-  const targets: { id: ScanTarget; label: string; desc: string; icon: string }[] = [
-    { id: "Source Repository", label: "Source Repository", desc: "150+ regex patterns & Shannon entropy &gt;4.5 for hardcoded crypto secrets", icon: "⬡" },
-    { id: "Network", label: "Network", desc: "Passive TLS JA3/JA3S/JARM fingerprinting and cipher suite audit", icon: "◈" },
-    { id: "Cloud", label: "Cloud", desc: "AWS KMS, Azure Key Vault, GCP Cloud KMS key hierarchy audit", icon: "☁" },
-    { id: "Container", label: "Container", desc: "Trivy & Syft image SBOM crypto package extraction", icon: "⧉" },
-    { id: "Hardware", label: "Hardware", desc: "FIPS 140-3 HSM fleet, TPM 2.0, Secure Boot UEFI measurements", icon: "⌬" },
-    { id: "Vendor", label: "Vendor", desc: "Third-party API and vendor cryptographic risk assessment", icon: "▤" },
-    { id: "Certificate", label: "Certificate", desc: "X.509 cert lifecycle, CT logs, and expiry monitoring", icon: "⊞" },
-    { id: "Full Estate", label: "Full Estate", desc: "Comprehensive continuous cryptographic estate discovery", icon: "✦" },
-  ];
+  const [agents, setAgents] = useState<any[]>([]);
+  const [report, setReport] = useState<DiscoverReport | null>(null);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [scan, setScan] = useState<LiveScanStatus | null>(null);
+  const [runningNow, setRunningNow] = useState<Set<string>>(new Set());
+  const seenEv = useRef<Set<number>>(new Set());
+
+  // ── agents (control plane) ──────────────────────────────────────────────
+  useEffect(() => {
+    void apiControlAgents().then((r) => {
+      if (r.ok && r.data) {
+        const d = r.data as any;
+        setAgents(d.agents ?? (Array.isArray(d) ? d : []));
+      }
+    });
+  }, []);
+
+  // ── live scanner status (poll backstop) ─────────────────────────────────
+  const refreshScan = async () => {
+    const r = await apiLiveScanStatus();
+    if (r.ok && r.data) {
+      setScan(r.data as LiveScanStatus);
+      if (!r.data.running) setRunningNow(new Set());
+    }
+  };
+  useEffect(() => {
+    refreshScan();
+    const id = setInterval(refreshScan, 4000);
+    return () => clearInterval(id);
+  }, []);
+
+  // ── live_scan.* SSE → pipeline / progress state ─────────────────────────
+  useEffect(() => {
+    for (const ev of realtime.events) {
+      if (seenEv.current.has(ev.id)) continue;
+      let type = ev.type;
+      if (type.startsWith("monitor.live_scan_")) {
+        type = "live_scan." + type.slice("monitor.live_scan_".length);
+      }
+      if (!type.startsWith("live_scan.") && type !== "platform.discovery_completed") continue;
+      seenEv.current.add(ev.id);
+      const p = ev.payload || {};
+      if (type === "live_scan.scanner_started") {
+        setRunningNow((prev) => new Set(prev).add(String(p.scanner)));
+      } else if (type === "live_scan.scanner_completed" || type === "live_scan.completed") {
+        if (type === "live_scan.completed") setRunningNow(new Set());
+        else setRunningNow((prev) => {
+          const n = new Set(prev); n.delete(String(p.scanner)); return n;
+        });
+        void refreshScan();
+      } else if (type === "live_scan.started") {
+        const list = (p.scanners as string[]) || [];
+        setRunningNow(new Set(list));
+      }
+    }
+  }, [realtime.events]);
+
+  // ── actions ─────────────────────────────────────────────────────────────
+  const runDiscovery = async () => {
+    setBusy(true);
+    setReportError(null);
+    const r = await apiDiscover({ network: {}, cloud: {}, vendor: {}, hardware: {}, crypto: {} });
+    setBusy(false);
+    if (r.ok && r.data) setReport(r.data as DiscoverReport);
+    else setReportError(r.error || "Discovery did not complete.");
+  };
+
+  // ── derived state ───────────────────────────────────────────────────────
+  const plugs = plugins.data.plugins ?? [];
+  const healthy = plugs.filter((p) => p.health?.ok !== false).length;
+  const targets = monitor.data.overview?.targets_total ?? 0;
+  const ranDomains = useMemo(() => new Set(report?.sources_run ?? []), [report]);
+  const verifiedValues = Object.values(report?.verified ?? {});
+  const verifiedOk = verifiedValues.filter(Boolean).length;
+  const hasReport = !!report && (report.asset_count ?? 0) >= 0 && !!report.generated_at;
+  // pipeline stage state — derived deterministically from the report
+  const stageState = (i: number): "done" | "active" | "idle" | "error" => {
+    if (busy) return i === 0 ? "active" : "idle";
+    if (!hasReport) return "idle";
+    // after a completed run the whole deterministic pipeline has executed
+    if (i <= 3) return verifiedValues.length && verifiedOk < verifiedValues.length ? "error" : "done";
+    return (report?.monitor_plan?.length ?? 0) > 0 ? "done" : "idle";
+  };
+
+  const scanEntries = Object.entries(scan?.scanners ?? {});
+  const ago = scan?.last_run_at
+    ? Math.max(0, Math.round((Date.now() - new Date(scan.last_run_at).getTime()) / 1000))
+    : null;
 
   return (
-    <div className="page" style={{ maxWidth: "880px", margin: "0 auto", padding: "20px 0 60px" }}>
-      {/* 7. Scan Experience — Conversational Workflow */}
-      {step === "select" && (
-        <div>
-          <div style={{ marginBottom: "28px" }}>
-            <span style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Discovery Workflow</span>
-            <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "6px 0 8px" }}>New Scan</h1>
-            <p style={{ margin: 0, fontSize: "14px", color: "var(--dim)" }}>
-              What would you like to discover in your cryptographic infrastructure?
-            </p>
+    <>
+      <PageHead
+        crumb="operate / scanners"
+        title="Scanner control center"
+        sub="Deterministic discovery pipeline · live scanner fleet · registered plugins — no simulation"
+        right={
+          <div className="row">
+            <Badge tone={healthy === plugs.length && plugs.length > 0 ? "green" : "amber"}>
+              <span className="dot" /> {healthy}/{plugs.length} plugins
+            </Badge>
+            <button className="btn sm primary" onClick={() => void runDiscovery()} disabled={busy}>
+              {busy ? t("scanners.runningDiscovery") : t("scanners.runDiscovery")}
+            </button>
           </div>
+        }
+      />
+      <div style={{ marginBottom: 14 }}><LiveStatus loading={plugins.loading} error={plugins.error} /></div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "14px", marginBottom: "28px" }}>
-            {targets.map((t) => {
-              const isSelected = selectedTarget === t.id;
+      {/* ── KPI strip ─────────────────────────────────────────────────── */}
+      <div className="grid cols-4" style={{ marginBottom: 16 }}>
+        <Kpi k="scanner plugins" v={plugs.length} tone="cyan" />
+        <Kpi k="plugins healthy" v={`${healthy}/${plugs.length}`} tone={healthy === plugs.length ? "green" : "amber"} />
+        <Kpi k="monitor targets" v={targets} />
+        <Kpi k="agents connected" v={agents.length} tone={agents.length ? "green" : undefined} />
+      </div>
+
+      {/* ── deterministic discovery pipeline ──────────────────────────── */}
+      <Panel
+        title="Discovery pipeline"
+        sub="The fixed five stages every unified discovery run executes (§1) — deterministic, no AI"
+      >
+        <div className="stepper">
+          {PIPELINE.map((s, i) => {
+            const st = busy ? stageState(i) : stageState(i);
+            return (
+              <div key={s.key} className={`step state-${st}`}>
+                <div className="node">{s.glyph}</div>
+                <div className="stitle">{t(s.titleKey)}</div>
+                <div className="ssub">{s.sub}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 14 }}>
+          {busy && (
+            <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>
+              <Badge tone="cyan"><span className="dot pulse" /> running</Badge>{" "}
+              executing domain adapters → identify → correlate → verify → monitor plan…
+            </p>
+          )}
+          {!busy && !hasReport && (
+            <p className="dim" style={{ fontSize: 12.5, margin: 0 }}>
+              No discovery run in this session yet — press <b>Run discovery</b>. The pipeline stays
+              idle until real scope is supplied; empty adapters are skipped, not faked.
+            </p>
+          )}
+          {!busy && hasReport && (
+            <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+              <Badge tone="green"><span className="dot" /> complete</Badge>
+              <Badge tone="cyan">{report!.asset_count} assets</Badge>
+              <Badge tone="blue">{report!.relationship_count} relationships</Badge>
+              <Badge tone={verifiedOk === verifiedValues.length && verifiedValues.length ? "green" : "amber"}>
+                {verifiedOk}/{verifiedValues.length} verified
+              </Badge>
+              <Badge tone="violet">{report!.monitor_plan?.length ?? 0} monitored domains</Badge>
+            </div>
+          )}
+          {reportError && <p style={{ color: "var(--red)", fontSize: 12.5, margin: "6px 0 0" }}>{reportError}</p>}
+        </div>
+      </Panel>
+
+      {/* ── five domains ──────────────────────────────────────────────── */}
+      <Panel
+        title="Discovery domains"
+        sub="Five passive-first domains · state reflects the last live discover run"
+        className="mt"
+      >
+        <div className="domain-grid">
+          {DOMAINS.map((d) => {
+            const ran = ranDomains.has(d.key);
+            const plan = report?.monitor_plan?.find((m) => m.domain === d.key);
+            const stateCls = ran ? "state-ran" : report ? "state-idle" : "state-target";
+            return (
+              <div key={d.key} className={`domain-card ${stateCls}`}>
+                <div className="d-icon">{d.glyph}</div>
+                <div className="d-name">{t(d.nameKey)}</div>
+                <div className="d-mode">{d.mode}</div>
+                <div className="d-stat">
+                  {ran ? (
+                    <Badge tone="green"><span className="dot" /> ran{plan ? ` · ${plan.targets.length} tgt` : ""}</Badge>
+                  ) : report ? (
+                    <Badge tone="slate">no input</Badge>
+                  ) : (
+                    <Badge tone="cyan">queued</Badge>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+
+      {/* ── live scanner fleet progress ───────────────────────────────── */}
+      <Panel
+        title="Live scanner fleet"
+        sub={scan?.running
+          ? "scan in progress — progress streams over SSE"
+          : ago !== null
+            ? `last cycle ${ago}s ago · ${scan?.ok_count ?? 0} ok / ${scan?.failed_count ?? 0} failed`
+            : "no live scan cycle yet — start one in Realtime scanners"}
+        className="mt"
+      >
+        {scanEntries.length === 0 ? (
+          <p className="dim" style={{ fontSize: 13, margin: 0 }}>
+            No scanner results yet. Run a live cycle (hardware & runtime run without a target) from
+            Operations → Realtime scanners; results appear here and stream live on every worker.
+          </p>
+        ) : (
+          <div className="scan-prog">
+            {scanEntries.map(([key, s]) => {
+              const isRunning = scan?.running || runningNow.has(key);
+              const failed = s.ok === false;
+              const cls = isRunning ? "is-running" : failed ? "is-failed" : "is-ok";
+              const detail = s.error
+                ? s.error
+                : s.summary
+                  ? Object.entries(s.summary)
+                      .filter(([, v]) => v !== null && v !== undefined && v !== "")
+                      .slice(0, 4)
+                      .map(([k, v]) => `${k}=${typeof v === "boolean" ? (v ? "yes" : "no") : v}`)
+                      .join("  ·  ")
+                  : "";
               return (
-                <div
-                  key={t.id}
-                  onClick={() => setSelectedTarget(t.id)}
-                  style={{
-                    padding: "16px 18px",
-                    background: isSelected ? "rgba(0, 212, 255, 0.08)" : "var(--panel)",
-                    border: isSelected ? "1px solid var(--cyan)" : "1px solid var(--line)",
-                    borderRadius: "10px",
-                    cursor: "pointer",
-                    transition: "all 0.15s ease"
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-                    <span style={{ fontSize: "18px", color: isSelected ? "var(--cyan)" : "var(--faint)" }}>{t.icon}</span>
-                    <span style={{ fontWeight: 600, fontSize: "14px", color: isSelected ? "var(--cyan)" : "var(--text)" }}>{t.label}</span>
-                    <span style={{ marginLeft: "auto", fontSize: "14px", color: isSelected ? "var(--cyan)" : "var(--faint)" }}>
-                      {isSelected ? "●" : "○"}
-                    </span>
+                <div key={key} className={`scan-row ${cls}`}>
+                  <div className="s-ico">
+                    {isRunning ? "▶" : failed ? "✗" : "✓"}
                   </div>
-                  <p style={{ margin: 0, fontSize: "12px", color: "var(--dim)", lineHeight: 1.4 }}>
-                    {t.desc}
-                  </p>
+                  <div className="s-meta">
+                    <div className="s-name">{SCANNER_LABEL[key] ?? key}</div>
+                    {detail && <div className="s-detail">{detail}</div>}
+                  </div>
+                  <div className="s-right">
+                    {isRunning
+                      ? <Badge tone="cyan"><span className="dot pulse" /> scanning</Badge>
+                      : failed
+                        ? <Badge tone="red">failed</Badge>
+                        : <Badge tone="green">ok</Badge>}
+                    {typeof s.elapsed_s === "number" && !isRunning && (
+                      <span className="s-elapsed">{s.elapsed_s.toFixed(2)}s</span>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
+        )}
+      </Panel>
 
-          <div style={{ display: "flex", justifyContent: "flex-end" }}>
-            <Button variant="primary" size="lg" onClick={() => setStep("configure")}>
-              Continue →
-            </Button>
+      {/* ── plugin registry ───────────────────────────────────────────── */}
+      <Panel
+        title="Registered scanner plugins"
+        sub={`${plugs.length} plugins discovered · ${targets} monitor target(s)`}
+        className="mt"
+      >
+        {plugs.length === 0 ? (
+          <p className="dim" style={{ fontSize: 13 }}>
+            {plugins.loading ? "Loading registered plugins…" : "No scanner plugins registered yet."}
+          </p>
+        ) : (
+          <div className="plug-grid">
+            {plugs.map((p) => {
+              const bad = p.health?.ok === false;
+              return (
+                <div key={p.plugin_id} className="plug-card">
+                  <div className="plug-head">
+                    <span className="plug-id">{p.plugin_id}</span>
+                    <Badge tone={bad ? "red" : "green"}>{bad ? "unhealthy" : "ok"}</Badge>
+                  </div>
+                  <div className="plug-ver">v{p.plugin_version ?? "—"}</div>
+                  <div className="caps">
+                    {(p.capabilities ?? []).map((c) => <span key={c} className="cap-chip">{c}</span>)}
+                  </div>
+                  {bad && p.health?.detail && (
+                    <div className="s-detail" style={{ color: "var(--red)" }}>{p.health.detail}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      )}
+        )}
+      </Panel>
 
-      {/* Configure Scan Step */}
-      {step === "configure" && (
-        <div>
-          <div style={{ marginBottom: "28px" }}>
-            <button
-              onClick={() => setStep("select")}
-              style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: "13px", padding: 0, marginBottom: "12px" }}
-            >
-              ← Back to Discovery Selection
-            </button>
-            <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "0 0 8px" }}>Configure Scan</h1>
-            <p style={{ margin: 0, fontSize: "14px", color: "var(--dim)" }}>
-              Define targets and read-only access boundaries for <b>{selectedTarget}</b>.
-            </p>
+      {/* ── agents + policy ───────────────────────────────────────────── */}
+      <div className="grid cols-2 mt">
+        <Panel title="Agents" sub={`${agents.length} registered`}>
+          <Table
+            head={["agent", "host", "version", "status"]}
+            rows={agents.map((a) => [
+              <span className="mono">{a.agent_id ?? a.id ?? "—"}</span>,
+              <span className="mono">{a.host ?? a.hostname ?? "—"}</span>,
+              <span className="num">{a.version ?? "—"}</span>,
+              <Badge tone={a.status === "HEALTHY" || a.healthy ? "green" : "amber"}>
+                {a.status ?? (a.healthy ? "HEALTHY" : "unknown")}
+              </Badge>,
+            ])}
+          />
+          {agents.length === 0 && <p className="dim" style={{ fontSize: 13 }}>No agents connected.</p>}
+        </Panel>
+        <Panel title="Monitor & scan policy" sub="safe by default — read-only, scoped, scheduled">
+          <div className="mono" style={{ fontSize: 12.5, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div><span className="faint">targets monitored:</span> {targets}</div>
+            <div><span className="faint">enabled:</span> {monitor.data.overview?.enabled ?? 0}</div>
+            <div><span className="faint">needs attention:</span> {(monitor.data.needs_attention ?? []).length}</div>
+            <div><span className="faint">policy:</span> SAFE · READ_ONLY · SCOPED</div>
+            <div><span className="faint">OT:</span> PASSIVE-FIRST · SIS/ESD NEVER PROBED</div>
+            <div><Badge tone="green">credentials in vault · never stored in state</Badge></div>
           </div>
-
-          <div className="panel" style={{ padding: "28px", display: "flex", flexDirection: "column", gap: "20px", marginBottom: "24px" }}>
-            <div>
-              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--text)", marginBottom: "8px" }}>
-                Target Endpoint / Domain / ARN
-              </label>
-              <input
-                type="text"
-                value={targetInput}
-                onChange={(e) => setTargetInput(e.target.value)}
-                className="inp"
-                placeholder="e.g. core-banking-switch.internal, arn:aws:kms:..., github.com/repo"
-                style={{ fontSize: "13.5px" }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--text)", marginBottom: "8px" }}>
-                Access Permissions (Zero Write Impact)
-              </label>
-              <select
-                value={accessMode}
-                onChange={(e) => setAccessMode(e.target.value)}
-                className="inp"
-                style={{ fontSize: "13.5px" }}
-              >
-                <option value="Read-only">Read-only (Non-invasive passive inspection)</option>
-                <option value="Network Mirror">Network Mirror (Out-of-band packet analysis)</option>
-                <option value="API Audit">API Audit (Read-only metadata discovery)</option>
-              </select>
-            </div>
-
-            <div>
-              <label style={{ display: "block", fontSize: "12.5px", fontWeight: 600, color: "var(--text)", marginBottom: "8px" }}>
-                Scope & Tags
-              </label>
-              <input
-                type="text"
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
-                className="inp"
-                placeholder="Environment tags, business units, or IP CIDR"
-                style={{ fontSize: "13.5px" }}
-              />
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: "12px", color: "var(--faint)" }}>
-              🔒 Passive read-only discovery. Production traffic is never modified or delayed.
-            </span>
-            <Button variant="primary" size="lg" onClick={() => setStep("running")}>
-              Start Scan
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 8. Live Scan Interface — Real-time Progress & Streaming Feedback */}
-      {step === "running" && (
-        <div>
-          <div style={{ marginBottom: "24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-              <h1 style={{ fontSize: "24px", fontWeight: 700, margin: 0 }}>Scanning production estate</h1>
-              <Badge tone="cyan">LIVE SCAN IN PROGRESS</Badge>
-            </div>
-            <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-              Target: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{targetInput}</code> ({accessMode})
-            </p>
-          </div>
-
-          <div className="panel" style={{ padding: "28px", marginBottom: "20px" }}>
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "14px", fontWeight: 600, marginBottom: "8px" }}>
-                <span>Discovering cryptographic assets...</span>
-                <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{progress}%</span>
-              </div>
-              <ProgressBar value={progress} />
-            </div>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--green)" }}>
-                <span>✓</span> <span>Network discovery (TLS 1.2 / 1.3 JA3 passive sniff complete)</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--green)" }}>
-                <span>✓</span> <span>Certificate discovery (1,204 X.509 certs validated against CT logs)</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--green)" }}>
-                <span>✓</span> <span>TLS configuration & cipher suites mapped</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--green)" }}>
-                <span>✓</span> <span>Application analysis & library version extraction</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--green)" }}>
-                <span>✓</span> <span>Cloud KMS key hierarchy parsed</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--cyan)", fontWeight: 600 }}>
-                <span>→</span> <span>Dependency mapping (Graph traversal depth 3...)</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--faint)" }}>
-                <span>○</span> <span>Policy evaluation (Deterministic FIPS 203 & PCI-DSS check)</span>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", color: "var(--faint)" }}>
-                <span>○</span> <span>Evidence verification (Sealing Merkle root into WORM log)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Metrics summary during scan */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: "12px", marginBottom: "24px" }}>
-            <div className="panel" style={{ padding: "14px 16px" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)" }}>Assets discovered</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)" }}>8,421</div>
-            </div>
-            <div className="panel" style={{ padding: "14px 16px" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)" }}>Cryptographic findings</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--amber)" }}>2,193</div>
-            </div>
-            <div className="panel" style={{ padding: "14px 16px" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)" }}>Certificates</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)" }}>1,204</div>
-            </div>
-            <div className="panel" style={{ padding: "14px 16px" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)" }}>Dependencies</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)" }}>4,827</div>
-            </div>
-            <div className="panel" style={{ padding: "14px 16px" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)" }}>Evidence records</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--cyan)" }}>16,923</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <Button variant="ghost" onClick={() => setStep("select")}>
-              Cancel Scan
-            </Button>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <a href="#/cbom" className="btn outline" style={{ textDecoration: "none" }}>
-                View Intermediate CBOM
-              </a>
-              <a href="#/command-center" className="btn primary" style={{ textDecoration: "none" }}>
-                Return to Dashboard
-              </a>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+        </Panel>
+      </div>
+    </>
   );
 }

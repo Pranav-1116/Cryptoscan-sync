@@ -1,3 +1,4 @@
+import { Link, useLocation } from "react-router-dom";
 import { EnterpriseAdminDrawer, AdminDrawerTab } from "./EnterpriseAdminDrawer";
 import { useEnterprise, EnterpriseProvider } from "./EnterpriseContext";
 import { TenantModal, EnvironmentModal, RoleModal } from "./EnterpriseModals";
@@ -72,7 +73,9 @@ const PRIMARY_SECTIONS = [
   }
 ];
 
-function LayoutInner({ route, children }: { route: string; children: React.ReactNode }) {
+function LayoutInner({ route: propRoute, children }: { route?: string; children: React.ReactNode }) {
+  const location = useLocation();
+  const route = propRoute || location.pathname;
   const { role, env, org, infoLevel, setInfoLevel, timezone, setTimezone, canPerformAction } = useEnterprise();
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [showEnvModal, setShowEnvModal] = useState(false);
@@ -151,10 +154,10 @@ function LayoutInner({ route, children }: { route: string; children: React.React
     <div className={`shell ${isCollapsed ? "collapsed" : ""}`}>
       <aside className="sidebar">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 8px 16px" }}>
-          <a href="#/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 17, letterSpacing: "0.02em", textDecoration: "none" }}>
+          <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 17, letterSpacing: "0.02em", textDecoration: "none" }}>
             <span className="mark" style={{ width: 30, height: 30, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--grad)", color: "#04121d", fontSize: 16, boxShadow: "var(--glow-cyan)", flexShrink: 0 }}>◈</span>
             <span className="logo-text" style={{ color: "var(--text)" }}>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 10, marginLeft: 6, letterSpacing: "0.14em" }}>SEC</span></span>
-          </a>
+          </Link>
           <button
             onClick={toggleSidebar}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
@@ -222,13 +225,13 @@ function LayoutInner({ route, children }: { route: string; children: React.React
         {/* Action button inside sidebar: Start Scan */}
         {!isCollapsed && canPerformAction("scan") && (
           <div style={{ padding: "0 8px 12px" }}>
-            <a
-              href="#/scanners"
+            <Link
+              to="/scanners"
               className="btn primary"
               style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "8px 12px", textDecoration: "none", borderRadius: "7px", fontSize: "12.5px" }}
             >
               <span>+</span> Start Scan
-            </a>
+            </Link>
           </div>
         )}
 
@@ -238,15 +241,15 @@ function LayoutInner({ route, children }: { route: string; children: React.React
             {group.items.map((item) => {
               const active = route === item.to || (item.to === "/command-center" && (route === "/" || route === ""));
               return (
-                <a
+                <Link
                   key={item.to}
-                  href={`#${item.to}`}
+                  to={item.to}
                   className={`nav ${active ? "active" : ""}`}
                   title={isCollapsed ? item.label : undefined}
                 >
                   <span className="nav-icon">{item.icon}</span>
                   <span className="nav-text">{item.label}</span>
-                </a>
+                </Link>
               );
             })}
           </React.Fragment>
@@ -276,27 +279,27 @@ function LayoutInner({ route, children }: { route: string; children: React.React
             </button>
             {showAllModules && (
               <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
-                <a href="#/cryptographic-digital-twin" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                <Link to="/cryptographic-digital-twin" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">◈</span> <span className="nav-text">CDT Simulation Twin</span>
-                </a>
-                <a href="#/realtime-system" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                </Link>
+                <Link to="/realtime-system" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">◉</span> <span className="nav-text">Realtime Backbone</span>
-                </a>
-                <a href="#/quantum-entropy-fabric" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                </Link>
+                <Link to="/quantum-entropy-fabric" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">◎</span> <span className="nav-text">Quantum Entropy</span>
-                </a>
-                <a href="#/pqc-code-signing-orchestrator" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                </Link>
+                <Link to="/pqc-code-signing-orchestrator" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">✓</span> <span className="nav-text">PQC Code Signing</span>
-                </a>
-                <a href="#/zero-trust-crypto-enforcer" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                </Link>
+                <Link to="/zero-trust-crypto-enforcer" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">⛨</span> <span className="nav-text">Zero Trust Enforcer</span>
-                </a>
-                <a href="#/telecom-signaling-analyzer" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                </Link>
+                <Link to="/telecom-signaling-analyzer" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">⌬</span> <span className="nav-text">Telecom Signaling</span>
-                </a>
-                <a href="#/hsm-fleet-orchestrator" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
+                </Link>
+                <Link to="/hsm-fleet-orchestrator" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
                   <span className="nav-icon">⚿</span> <span className="nav-text">HSM Fleet</span>
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -440,7 +443,7 @@ function LayoutInner({ route, children }: { route: string; children: React.React
               {getUserName() || "Enterprise Admin"}
             </button>
           ) : (
-            <a href="#/login" className="btn sm">{t("common.signIn")}</a>
+            <Link to="/login" className="btn sm">{t("common.signIn")}</Link>
           )}
         </div>
 

@@ -1,277 +1,291 @@
-"""
-webhooks — real production router deterministic no AI beats QSE.
-Domain: webhooks — real business logic, no template.
-"""
+"""GitHub webhook receiver."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from pydantic import BaseModel
-from typing import List, Optional
-import hashlib, json, uuid, time
+from __future__ import annotations
+
+import inspect
+import json
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
-from api.dependencies import get_db_session, get_current_user, require_roles
-from api.repositories import AssetRepository, CertificateRepository, EvidenceRepository
+from db.repositories.job_repository import JobRepository
+from db.repositories.repo_config_repository import RepoConfigRepository
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 
-router = APIRouter(prefix="/api/v1/webhooks", tags=["webhooks"])
+from api.config.settings import get_settings
+from api.dependencies import get_job_repository, get_repo_config_repository
+from api.github.payload_parser import parse_push_event
+from api.security.hmac_verifier import HMACVerifier
 
-# Deterministic hash SHA-256 canonical JSON
-def deterministic_hash(data: dict) -> str:
-    canonical = json.dumps(data, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
-    return hashlib.sha256(canonical.encode('utf-8')).hexdigest()
+router = APIRouter(prefix="/webhooks", tags=["webhooks"])
 
-def risk_score_6_factor(technical: float, business: float, compliance: float, exploitability: float, quantum: float, blast: float) -> float:
-    # technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100
-    return round((technical*0.25 + business*0.25 + compliance*0.20 + exploitability*0.15 + quantum*0.10 + blast*0.05)*100, 2)
 
-def posture_score_sla(days_overdue: int) -> str:
-    if days_overdue >= 365:
-        return "CRITICAL"
-    if days_overdue >= 180:
-        return "HIGH"
-    if days_overdue >= 90:
-        return "MEDIUM"
-    if days_overdue >= 30:
-        return "LOW"
-    if days_overdue >= 7:
-        return "MINIMAL"
-    return "HEALTHY"
+async def _maybe(value):
+    if inspect.isawaitable(value):
+        return await value
+    return value
 
-def quantum_readiness_score(pqc: float, hybrid: float, agility: float, migration: float, vendor: float, infra: float) -> dict:
-    # pqc*0.30 hybrid*0.20 agility*0.15 migration*0.15 vendor*0.10 infra*0.10 index 75 HYBRID_READY
-    score = round(pqc*0.30 + hybrid*0.20 + agility*0.15 + migration*0.15 + vendor*0.10 + infra*0.10, 2)
-    if score >= 80:
-        cat = "QUANTUM_READY"
-    elif score >= 60:
-        cat = "HYBRID_READY"
-    elif score >= 40:
-        cat = "PQC_AWARE"
-    elif score >= 20:
-        cat = "LEGACY"
-    else:
-        cat = "NOT_READY"
-    return {"index": score, "category": cat, "pqc": pqc, "hybrid": hybrid, "agility": agility, "migration": migration, "vendor": vendor, "infra": infra, "nists": ["FIPS 203 ML-KEM", "FIPS 204 ML-DSA", "FIPS 205 SLH-DSA"], "cnsa": "CNSA 2.0", "timeline": "2024-2035", "threat": "Shor Grover HNDL"}
 
-class WebhooksCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    metadata: Optional[dict] = None
+#: weak/placeholder default secrets that must never be treated as "configured".
+_WEAK_SECRETS = {
+    "", "dev-webhook-secret-change-me-32chars!!", "changeme", "secret", "webhook-secret",
+}
 
-class WebhooksResponse(BaseModel):
-    id: str
-    name: str
-    risk_score: float
-    posture: str
-    quantum_readiness: dict
-    evidence_chain: dict
-    realtime: dict
-    pqc_migration: dict
-    compliance: dict
-    drift: dict
-    hash_sha256: str
-    created_at: str
 
-@router.get("/", response_model=List[WebhooksResponse])
-async def list_webhooks(
-    db: AsyncSession = Depends(get_db_session),
-    current_user=Depends(get_current_user),
-    tenant_id: str = Query(..., description="Tenant ID"),
-    limit: int = Query(50, le=1000),
-    offset: int = Query(0, ge=0),
+def _registry_secret() -> str:
+    """Shared secret for registry webhooks (ACR/GCR/ECR/Harbor/Docker Hub/…).
+
+    Registry push events are authenticated by HMAC (REGISTRY_WEBHOOK_SECRET)
+    falling back to the GitHub secret; never by defaulting to open access.
+    """
+    for name in ("REGISTRY_WEBHOOK_SECRET", "GITHUB_WEBHOOK_SECRET"):
+        val = (os.environ.get(name) or "").strip()
+        if val and val not in _WEAK_SECRETS:
+            return val
+    return ""
+
+
+def _authorize_registry_webhook(request: Request, body: bytes) -> None:
+    """Authenticate an inbound registry push event.
+
+    Accepts EITHER a valid ``X-ZELNX-Signature: sha256=<hex>`` HMAC over the raw
+    body (registry configured with the shared secret) OR a machine ``X-API-Key``
+    (CI/scanner identity, RBAC-checked against the API-key store). Fails CLOSED:
+    in production an unauthenticated/unsigned request is rejected (401). In dev,
+    with no secret configured and no API key, the request is allowed for local
+    testing — but never if a real secret is set and the signature is wrong.
+    """
+    sig = request.headers.get("x-zelnx-signature") or request.headers.get("x-hub-signature-256")
+    if sig:
+        secret = _registry_secret()
+        if secret and HMACVerifier(secret).verify(body, sig):
+            return
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    if request.headers.get("x-api-key"):
+        from api.dependencies import _API_KEY_INVALID, _resolve_api_key
+
+        result = _resolve_api_key(request)
+        if result is _API_KEY_INVALID:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+        if isinstance(result, tuple):
+            return  # valid machine identity
+
+    settings = get_settings()
+    if getattr(settings, "is_production", False):
+        # Fail closed: production never accepts unsigned registry events.
+        raise HTTPException(status_code=401, detail="Webhook authentication required")
+    # Dev/test with no secret configured and no/accepted credentials: allowed.
+
+
+def _safe_scan_path(raw_path: str) -> Path:
+    """Validate the caller-supplied container filesystem root.
+
+    Blocks absolute paths to sensitive OS locations (path traversal outside a
+    scan sandbox) and, when SCAN_ROOT is configured, confines scans to it.
+    """
+    target = Path(str(raw_path)).resolve()
+    blocked_prefixes = ("/etc", "/proc", "/sys", "/root", "/var/lib/postgresql",
+                        "/var/run", "/run/secrets", "/dev", "/boot")
+    if any(str(target) == p or str(target).startswith(p + "/") for p in blocked_prefixes):
+        raise HTTPException(status_code=403, detail="Refusing to scan a protected system path")
+    sandbox = os.environ.get("SCAN_ROOT", "").strip()
+    if sandbox:
+        root = Path(sandbox).resolve()
+        if not (target == root or root in target.parents):
+            raise HTTPException(status_code=403, detail="scan path outside the configured SCAN_ROOT")
+    return target
+
+
+@router.post("/github")
+async def github_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    x_hub_signature_256: str | None = Header(default=None),
+    x_github_event: str | None = Header(default=None),
+    job_repo: JobRepository = Depends(get_job_repository),
+    configs: RepoConfigRepository = Depends(get_repo_config_repository),
 ):
-    # RBAC 9 roles fail-closed JWT 401/403
-    require_roles(current_user, ["admin", "analyst", "viewer", "auditor", "engineer", "operator", "ciso", "compliance", "developer"])
-    repo = AssetRepository(db)
-    # Real DB query with deterministic hash
+    body = await request.body()
+    settings = get_settings()
+    secret = getattr(settings, "GITHUB_WEBHOOK_SECRET", "") or ""
+    if secret and not HMACVerifier(secret).verify(body, x_hub_signature_256):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    if not secret or secret in _WEAK_SECRETS:
+        # No real shared secret configured: dev/test accept unauthenticated for
+        # local testing, but production must never run an open webhook.
+        if getattr(settings, "is_production", False):
+            raise HTTPException(status_code=401, detail="Webhook secret not configured")
+
+    if x_github_event and x_github_event not in {"push", "pull_request"}:
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": f"ignored event {x_github_event}",
+        }
+
     try:
-        # Example real query - list assets with risk scoring
-        result = await db.execute(select(func.count()).select_from(repo.model) if hasattr(repo, 'model') else select(func.count()))
-        total = result.scalar() or 0
+        raw = json.loads(body.decode() or "{}")
     except Exception:
-        total = 0
-    # Deterministic mock for demo but with real structure - would query actual table webhooks
-    items = []
-    for i in range(min(limit, 5)):
-        base_data = {"tenant_id": tenant_id, "name": f"webhooks-{i}", "index": i, "total": total}
-        h = deterministic_hash(base_data)
-        risk = risk_score_6_factor(0.8, 0.7, 0.6, 0.5, 0.9, 0.4)
-        qr = quantum_readiness_score(75, 80, 70, 65, 60, 75)
-        items.append({
-            "id": str(uuid.uuid4()),
-            "name": f"webhooks-{i}",
-            "risk_score": risk,
-            "posture": posture_score_sla(i*30),
-            "quantum_readiness": qr,
-            "evidence_chain": {
-                "hash": h,
-                "merkle_root": hashlib.sha256(h.encode()).hexdigest(),
-                "worm": "JSONL S3 Object Lock 7y",
-                "integrity": 1,
-                "hmac": "HMAC-SHA256",
-                "chain_prev_hash": "0"*64,
-                "chain_index": i,
-                "packs": "strict whitelists never key material",
-                "fingerprint_chain": True,
-                "ocsp": True,
-                "rollback": False,
-                "worm_audit_pack": True,
-            },
-            "realtime": {
-                "enabled": True,
-                "p99": "342ms",
-                "throughput": "100K+/sec",
-                "exactly_once": True,
-                "redis_pubsub": True,
-                "horizontal_scaling": True,
-                "persistence_fallback": "deque 1000",
-                "history_replay": "last 10",
-                "uuid": str(uuid.uuid4()),
-                "backpressure": True,
-                "event_bus": "single-writer per topic per region last-write-wins vector clocks",
-                "websocket": "/ws manager 1000 max per node",
-                "sse": "/events manager 1000 max per node",
-                "live": "/live total_items total_findings p99<500ms throughput 100K+/sec exactly_once True",
-                "streaming": "/streaming streaming_backbone Flink 5min Neo4j correlation_groups TimescaleDB behavioral baselines 100K+ events/sec p99 342ms measured",
-                "k6": "k6-realtime.js 100→1000 VUs p99<500ms throughput 100K+ events/sec deterministic",
-            },
-            "pqc_migration": {
-                "phase": "Assess Protect Store Integrate Operate Verify 6-phase",
-                "effort": "$150/h",
-                "timeline": "critical path weeks team_required 5 engineers total_hours 1000h total_cost $150000",
-                "quantum_threat": "NIST FIPS 203/204/205 NSA CNSA 2.0 2024-2035 Shor Grover HNDL",
-                "risk_before": 85,
-                "risk_after": 20,
-                "hybrid": "ECDH-P256 ML-KEM-768 KDF HKDF-SHA256 classical share ECDH-P256 pqc_share ML-KEM-768",
-                "tls": "TLS 1.3 ClientHello groups ML-KEM X25519MLKEM768 X25519MLKEM1024 SecP256r1MLKEM768 SecP384r1MLKEM1024 X25519MLKEM768Draft00 SigAlgs ML-DSA-65 ML-DSA-87 SLH-DSA-SHA2-128s SLH-DSA-SHA2-128f Falcon-512 hybrid ECDSA_P256_ML-DSA-65 RSA3072_ML-DSA-65 cert chain ML-DSA hybrid leaf intermediate root OCSP stapling CT log SCT HSTS ALPN ECH TLS 1.2 fallback disabled implementation OpenSSL 3.3+ OQS provider oqsprovider BoringSSL fork NSS Rustls Go crypto/tls PQC branch Java BouncyCastle PQC Python oqs-python",
-            },
-            "compliance": {
-                "cross_standard": "single-pass deduplicate by control evaluate once map to all standards PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA SOC2 ISO 3GPP compliance cube 9 standards",
-                "control_mapping": "deterministic list all controls SOC2 ~60 controls map to platform capability identify evidence source automate evidence collection verify integrity",
-                "evidence_automation": "scheduled daily weekly monthly automated query from PostgreSQL audit log sign store WORM index by control date standard artifacts access control matrix PDF change management log CSV incident response records JSON vulnerability scan results JSON encryption key inventory CBOM backup/restore test results PDF business continuity test PDF security awareness training CSV pen test report PDF risk assessment PDF",
-                "auditor_portal": "read-only auditors view controls evidence verify integrity hashes signatures request additional evidence ask questions ticketing document findings sign off access control time-limited engagement period scoped specific controls audited all access logged continuous compliance after certification continuous control monitoring drift detection control failure alert on regression automated evidence refresh annual re-certification reports SOC2 Type I II ISO27001 FedRAMP Moderate IRAP C5 CyberSecure Canada PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA 3GPP compliance cube 9 standards",
-            },
-            "drift": {
-                "rules": "13 rules forbidden_algorithm DES RC4 MD5 SHA1 weak_key_size RSA<2048 ECC<256 weak_protocol TLS1.0 1.1 SSLv3 cert_expiry 30d 7d expired key_rotation 90d 30d overdue HSM drift KMS drift env drift K8s drift Terraform drift PQC compliance vendor drift",
-                "timeseries": "TimescaleDB hypertable drift_events time asset_id rule_id severity old_value new_value continuous aggregates 1h 1d 7d compression 7d retention 1y anomaly z-score seasonal decomposition EWMA exponentially weighted moving average 30d learning mean stdev median IQR percentiles seasonal trend auto-refresh weekly drift>20% flag human review policy OPA/Rego-like GitOps YAML Flink broadcast policy simulation dry-run impact analysis effort cost risk timeline alert drift>20% flag human review TimescaleDB z-score seasonal EWMA 30d learning auto-refresh weekly control failure alert on regression automated evidence refresh",
-            },
-            "hash_sha256": h,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        })
-    return items
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
 
-@router.get("/{item_id}", response_model=WebhooksResponse)
-async def get_webhooks(
-    item_id: str,
-    db: AsyncSession = Depends(get_db_session),
-    current_user=Depends(get_current_user),
-    tenant_id: str = Query(..., description="Tenant ID"),
-):
-    require_roles(current_user, ["admin", "analyst", "viewer", "auditor", "engineer", "operator", "ciso", "compliance", "developer"])
-    # Real DB get with evidence chain verification
-    h = deterministic_hash({"id": item_id, "tenant_id": tenant_id})
-    return {
-        "id": item_id,
-        "name": f"webhooks-{item_id[:8]}",
-        "risk_score": risk_score_6_factor(0.8, 0.7, 0.6, 0.5, 0.9, 0.4),
-        "posture": posture_score_sla(0),
-        "quantum_readiness": quantum_readiness_score(75, 80, 70, 65, 60, 75),
-        "evidence_chain": {
-            "hash": h,
-            "merkle_root": hashlib.sha256(h.encode()).hexdigest(),
-            "worm": "JSONL S3 Object Lock 7y",
-            "integrity": 1,
-            "hmac": "HMAC-SHA256",
-            "chain_prev_hash": "0"*64,
-            "chain_index": 0,
-            "packs": "strict whitelists never key material",
-            "fingerprint_chain": True,
-            "ocsp": True,
-            "rollback": False,
-            "worm_audit_pack": True,
-            "exit_report": "integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody timeline event sourcing PostgreSQL audit log immutable append-only hash-chained time-series TimescaleDB correlation causal chain graph Neo4j forensics disk memory network crypto artifacts key recovery from HSM escrow quorum M-of-N verification",
-        },
-        "realtime": {"enabled": True, "p99": "342ms", "throughput": "100K+/sec", "exactly_once": True},
-        "pqc_migration": {"phase": "Assess Protect Store Integrate Operate Verify", "effort": "$150/h", "quantum_threat": "NIST FIPS 203/204/205 NSA CNSA 2.0 2024-2035 Shor Grover HNDL"},
-        "compliance": {"cross_standard": "single-pass 9 standards", "control_mapping": "deterministic"},
-        "drift": {"rules": "13 rules", "timeseries": "TimescaleDB hypertable"},
-        "hash_sha256": h,
+    if raw.get("deleted"):
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "branch deletion ignored",
+        }
+
+    try:
+        payload = parse_push_event(raw)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid webhook payload")
+
+    repo_url = payload.get("repo_url")
+    if not repo_url:
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "no repository in payload",
+        }
+
+    cfg = None
+    if hasattr(configs, "get_by_url"):
+        cfg = await _maybe(configs.get_by_url(repo_url))
+    if cfg is None:
+        env = (getattr(settings, "ENVIRONMENT", "") or "").lower()
+        if env in {"test", "testing"}:
+            return {
+                "accepted": True,
+                "acknowledged": True,
+                "queued": False,
+                "message": "repository not configured",
+            }
+        if hasattr(configs, "is_allowed") and not configs.is_allowed(repo_url):
+            return {
+                "accepted": True,
+                "acknowledged": True,
+                "queued": False,
+                "message": "repository not configured",
+            }
+    elif not getattr(cfg, "enabled", True) or x_github_event == "pull_request" and not getattr(
+        cfg, "scan_on_pr", getattr(cfg, "scan_on_push", True)
+    ) or x_github_event != "pull_request" and not getattr(cfg, "scan_on_push", True):
+        return {
+            "accepted": True,
+            "acknowledged": True,
+            "queued": False,
+            "message": "repository not configured",
+        }
+
+    created = None
+    if hasattr(job_repo, "create_from_webhook"):
+        created = await _maybe(
+            job_repo.create_from_webhook(
+                target_repo=repo_url,
+                target_branch=payload.get("branch") or "main",
+                target_commit=payload.get("commit"),
+                triggered_by=payload.get("author") or "github",
+            )
+        )
+    if created is None:
+        created = job_repo.create_job(
+            job_type="GITHUB_WEBHOOK",
+            target_repo=repo_url,
+            target_branch=payload.get("branch") or "main",
+            target_commit=payload.get("commit"),
+            triggered_by=payload.get("author") or "github",
+        )
+        created = await _maybe(created)
+
+    job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
+    # Commit the job BEFORE scheduling the background task: FastAPI runs
+    # dependency teardown (which commits) only AFTER background tasks, so an
+    # inline pipeline would otherwise race the uncommitted INSERT and hit
+    # "database is locked" (SQLite) or read a missing job.
+    try:
+        session = getattr(job_repo, "session", None)
+        if session is not None:
+            session.commit()
+    except Exception:
+        pass
+    job_payload = {
+        "job_id": job_id,
+        "job_type": "GITHUB_WEBHOOK",
+        "target_repo": repo_url,
+        "target_branch": payload.get("branch") or "main",
+        "target_commit": payload.get("commit"),
+        "triggered_by": payload.get("author") or "github",
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    if settings.REDIS_URL:
+        from worker.core.job_consumer import enqueue_job
 
-@router.post("/", response_model=WebhooksResponse)
-async def create_webhooks(
-    payload: WebhooksCreate,
-    db: AsyncSession = Depends(get_db_session),
-    current_user=Depends(get_current_user),
-    tenant_id: str = Query(..., description="Tenant ID"),
-):
-    require_roles(current_user, ["admin", "engineer", "operator"])
-    # Real DB create with deterministic hash + evidence chain + WORM
-    h = deterministic_hash(payload.model_dump())
-    # Evidence chain: SHA-256 HMAC Merkle WORM JSONL S3 Object Lock 7y
-    # Audit log immutable append-only hash-chained
-    repo = AssetRepository(db)
-    # Would insert into real table webhooks
+        background_tasks.add_task(enqueue_job, job_payload, settings.REDIS_URL, settings.SCAN_JOB_QUEUE_KEY)
+    else:
+        from worker.pipeline.pipeline_runner import PipelineRunner
+
+        background_tasks.add_task(
+            PipelineRunner().run,
+            job_id=job_id,
+            target_repo=repo_url,
+            target_branch=payload.get("branch") or "main",
+            triggered_by=payload.get("author") or "github",
+            target_commit=payload.get("commit"),
+        )
     return {
-        "id": str(uuid.uuid4()),
-        "name": payload.name,
-        "risk_score": risk_score_6_factor(0.8, 0.7, 0.6, 0.5, 0.9, 0.4),
-        "posture": posture_score_sla(0),
-        "quantum_readiness": quantum_readiness_score(75, 80, 70, 65, 60, 75),
-        "evidence_chain": {"hash": h, "merkle_root": hashlib.sha256(h.encode()).hexdigest(), "worm": "JSONL S3 Object Lock 7y", "integrity": 1, "hmac": "HMAC-SHA256", "chain_prev_hash": "0"*64, "chain_index": 0},
-        "realtime": {"enabled": True, "p99": "342ms", "throughput": "100K+/sec", "exactly_once": True},
-        "pqc_migration": {"phase": "Assess Protect Store Integrate Operate Verify", "effort": "$150/h"},
-        "compliance": {"cross_standard": "single-pass 9 standards"},
-        "drift": {"rules": "13 rules"},
-        "hash_sha256": h,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "accepted": True,
+        "acknowledged": True,
+        "queued": True,
+        "job_id": job_id,
+        "message": "Scan queued",
     }
 
-# Additional real endpoints for production hardening
-@router.get("/stats/summary")
-async def webhooks_stats(
-    db: AsyncSession = Depends(get_db_session),
-    current_user=Depends(get_current_user),
-    tenant_id: str = Query(...),
-):
-    require_roles(current_user, ["admin", "analyst", "viewer", "auditor"])
-    return {
-        "total_items": 100,
-        "total_findings": 25,
-        "risk_score_avg": 65.5,
-        "quantum_readiness_avg": 75.0,
-        "posture": {"CRITICAL": 5, "HIGH": 10, "MEDIUM": 15, "LOW": 20, "HEALTHY": 50},
-        "p99_latency": "342ms",
-        "throughput": "100K+/sec",
-        "evidence_chain_integrity": 1.0,
-        "hash": deterministic_hash({"tenant_id": tenant_id, "stats": True}),
-    }
 
-@router.get("/realtime/live")
-async def webhooks_live(
-    db: AsyncSession = Depends(get_db_session),
-    current_user=Depends(get_current_user),
-    tenant_id: str = Query(...),
+@router.post("/acr")
+@router.post("/gcr")
+@router.post("/dockerhub")
+@router.post("/harbor")
+@router.post("/container")
+@router.post("/ecr")
+async def container_registry_webhook(
+    request: Request,
 ):
-    require_roles(current_user, ["admin", "analyst", "viewer"])
-    return {
-        "total_items": 100,
-        "total_findings": 25,
-        "p99": "342ms",
-        "throughput": "100K+/sec",
-        "exactly_once": True,
-        "streaming_backbone": "Flink 5min Neo4j correlation_groups TimescaleDB behavioral baselines 100K+ events/sec p99 342ms measured",
-        "realtime_system": "WebSocket /ws manager 1000 max per node sse /events manager 1000 max per node live /live total_items total_findings p99<500ms throughput 100K+/sec exactly_once True streaming /streaming streaming_backbone Flink 5min Neo4j correlation_groups TimescaleDB behavioral baselines 100K+ events/sec p99 342ms measured k6 k6-realtime.js 100→1000 VUs p99<500ms throughput 100K+ events/sec deterministic",
-    }
+    """Accept a registry push event. Scans an already-unpacked image root only.
 
-@router.get("/scanners/detail")
-async def webhooks_scanners(
-    current_user=Depends(get_current_user),
-):
-    require_roles(current_user, ["admin", "analyst", "engineer"])
+    Authenticated: requires a valid HMAC signature (REGISTRY_WEBHOOK_SECRET) or
+    a machine API key; unsigned requests are rejected (fail-closed in prod).
+    """
+    body = await request.body()
+    _authorize_registry_webhook(request, body)
+    try:
+        payload = json.loads(body.decode() or "{}")
+    except Exception:
+        payload = {}
+    path = payload.get("path") or payload.get("image_root")
+    image = payload.get("image") or payload.get("repository") or payload.get("detail", {}).get("repository-name")
+    if not path:
+        return {
+            "accepted": True,
+            "scanned": False,
+            "message": "no unpacked image_root/path supplied; image pull is out of scope",
+            "image": image,
+        }
+    target = _safe_scan_path(str(path))
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="Container filesystem not found")
+    from container_scanner.core.scanner import ContainerScanner
+
+    result = ContainerScanner().scan_filesystem(target)
     return {
-        "code": "150+ patterns Shannon entropy >4.5 AWS AKIA GCP private_key Azure storage GitHub ghp_ Slack xox private keys passwords tokens bearer jwt oauth tls JA3 JA3S JARM fingerprinting downgrade cipher suite HSTS ALPN ECH PQC ClientHello groups ML-KEM X25519MLKEM768 SigAlgs ML-DSA SLH-DSA container Trivy image scan layers base images embedded certs private keys secrets CVEs NVD OSV GHSA CISA KEV CVSS 3.1 4.0 EPSS Syft SBOM CycloneDX SPDX PURL CPE K8s manifest mTLS Istio Linkerd admission controller SLSA cloud AWS KMS ListKeys GetKeyDescription KeySpec SYMMETRIC_256 RSA_2048_3072_4096 ECC NIST P-256 P-384 P-521 ML-KEM-768_1024 rotation 90d least-privilege IAM no wildcard Azure KV KeyClient RSA size Managed HSM FIPS 140-3 Level 3 RBAC purge protection GCP KMS CryptoKey algorithm IAM CMEK residency drift TimescaleDB z-score EWMA ot Modbus TCP function codes 1-4 HEALTHY 5-6 15-16 WARNING DNP3 start bytes 0x05 0x64 OPC-UA HELLO OPEN security policy None CRITICAL BACnet BVLC NPDU APDU S7comm EtherNet-IP Zigbee BLE MQTT CoAP DTLS PSK firmware binwalk SquashFS JFFS2 UBIFS ARM MIPS OpenSSL mbedTLS WolfSSL zero packets TAP safety guardrails 1000 pkt/sec telecom SS7 MTP SCCP TCAP MAP A5/1 A5/2 Diameter SIP GTP 5G SBA NRF AMF SMF UPF SEPP PQC 3GPP TS33.501/210 safety guardrails 1000 pkt/sec qrng Shannon entropy -Σ p(x) log2 p(x) threshold 7.5 bits per byte pool<128 WARNING <64 CRITICAL chi-square χ² = Σ (O-E)²/E p-value <0.01 WARNING <0.001 CRITICAL NIST SP800-90B HW RDSEED RDRAND TPM TRNG",
-        "hsm": "fleet FIPS 140-3 Level 3 Thales Luna 7.8.0 ML-KEM ML-DSA Entrust nShield 12.80 Utimaco 5.4.0 AWS CloudHSM quorum M-of-N 3-of-5 Shamir 5 shares threshold 3 key ceremony escrow PED key partition SO CO HA group 3 HSMs Security World smart card OCS softcard root master key never leaves HSM intermediate KEK rotation 90d leaf DEK per-tenant envelope encryption root→KEK→DEK ceremony key ceremony script witness auditor video recording dual control split knowledge M-of-N Shamir secret sharing 5 shares threshold 3 escrow secure safe deposit box",
-        "k8s": "replicas 3 hpa min 3 max 10 CPU70% mem80% probes /healthz /readyz podAntiAffinity True networkPolicy True ingress TLS cert-manager admission Kyverno OPA Gatekeeper verifies SLSA level ≥3 signature provenance SBOM policy forbid unsigned require signed require provenance security runAsNonRoot seccomp readOnlyRootFilesystem PDB minAvailable 2 secrets fail-closed monitoring prometheus 6 jobs api worker postgres redis neo4j realtime-system cdt-real scrape_interval 15s alerts 7 HighErrorRate HighP99Latency RealtimeConnectionsHigh CDTSimulationsFailing EvidenceChainBroken QRNGEntropyLow QRNGEntropyCritical grafana 8 panels p99 latency throughput connections CDT simulations evidence chain QRNG risk compliance posture score agility quantum readiness jaeger tracing otel loki logs audit log immutable append-only hash-chained SHA-256 HMAC WORM JSONL S3 Object Lock 7y",
+        "accepted": True,
+        "scanned": True,
+        "image": image,
+        "packages": len(result.get("packages") or []),
+        "libraries": len(result.get("libraries") or []),
+        "vulnerabilities": len(result.get("vulnerabilities") or []),
+        "scan_id": result.get("scan_id"),
     }
