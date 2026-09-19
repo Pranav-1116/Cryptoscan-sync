@@ -1,5 +1,5 @@
 /**
- * LiveTable — real-time live updating table deterministic no AI beats QSE.
+ * LiveTable — real-time live updating table deterministic no AI high-assurance verification.
  */
 import React, { useEffect, useState } from 'react';
 import { useRealtime } from '../../hooks/useRealtime';
@@ -42,7 +42,7 @@ export function LiveTable({ topic, fetchUrl, title }: { topic: string; fetchUrl:
         <Badge tone="cyan">{data.length} items</Badge>
         <Badge>{events.length} live events</Badge>
         <Badge>Auto-refresh on event</Badge>
-        <Badge>Deterministic</Badge>
+        
       </div>
       {loading ? (
         <div className="dim" style={{ fontSize: 13 }}>Loading live data from {fetchUrl}...</div>

@@ -1,5 +1,5 @@
 /**
- * RealtimeChart — live chart with real-time data deterministic no AI beats QSE.
+ * RealtimeChart — live chart with real-time data deterministic no AI high-assurance verification.
  */
 import React, { useEffect, useState } from 'react';
 import { useRealtime } from '../../hooks/useRealtime';

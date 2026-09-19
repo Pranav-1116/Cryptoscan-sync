@@ -1,5 +1,5 @@
 /**
- * LiveEventsPanel — real-time live events panel deterministic no AI beats QSE.
+ * LiveEventsPanel — real-time live events panel deterministic no AI high-assurance verification.
  */
 import React from 'react';
 import { useRealtime, useGlobalRealtime } from '../../hooks/useRealtime';
@@ -14,7 +14,7 @@ export function LiveEventsPanel({ topic, title }: { topic?: string; title?: stri
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <Badge tone={realtime.isConnected ? 'green' : 'red'}>{realtime.isConnected ? 'LIVE' : 'DISCONNECTED'}</Badge>
         <Badge tone="cyan">{events.length} events</Badge>
-        <Badge>Deterministic</Badge>
+        
         <Badge>p99 &lt;500ms</Badge>
         <Badge>100K+ events/sec</Badge>
         {realtime.lastEvent && <Badge tone="green">Last: {realtime.lastEvent.event_type || realtime.lastEvent.topic}</Badge>}

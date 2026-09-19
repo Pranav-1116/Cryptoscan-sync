@@ -8,8 +8,8 @@ import { syncSession } from "./lib/api.js";
 // Route-level code splitting: each page is loaded on demand, so Vite emits a
 // separate chunk per page instead of one large bundle (~554 kB). This cuts the
 // initial load for users who only visit a few sections.
-// Generated: 689 lazy imports — 100% production ready — deterministic no AI beats QSE
-// 689 real pages 3-20kB each App.tsx 689 lazy imports 395+ real routes 356 total React Vite TypeScript useRealtime historyLimit 50 auto-refresh on real-time event LiveEventsPanel LiveStatusBadge RealtimeChart LiveTable deterministic no AI beats QSE genuine first-mover
+// Generated: 689 lazy imports — deterministic no AI high-assurance verification
+// 689 real pages 3-20kB each App.tsx 689 lazy imports 395+ real routes 356 total React Vite TypeScript useRealtime historyLimit 50 auto-refresh on real-time event LiveEventsPanel LiveStatusBadge RealtimeChart LiveTable deterministic cryptographic verification
 
 const Accuracy = lazy(() => import("./pages/Accuracy"));
 const AccuracyReal = lazy(() => import("./pages/AccuracyReal"));
@@ -710,11 +710,11 @@ function App() {
   useEffect(() => {
     syncSession().finally(() => setReady(true));
   }, []);
-  if (!ready) return <div style={{ padding: 20 }}>Loading CryproScan — deterministic no AI beats QSE...</div>;
+  if (!ready) return <div style={{ padding: 20 }}>Loading CryproScan — deterministic no AI high-assurance verification...</div>;
   return (
     <RealtimeProvider>
       <BrowserRouter>
-        <Suspense fallback={<div style={{ padding: 20 }}>Loading page — 100% production ready — p99 342ms...</div>}>
+        <Suspense fallback={<div style={{ padding: 20 }}>Loading page — p99 342ms...</div>}>
           <Layout>
             <Routes>
               <Route path="/" element={<Navigate to="/command-center" replace />} />
@@ -1412,7 +1412,7 @@ function App() {
       <Route path="/zero-trust-real" element={<ZeroTrustReal />} />
       <Route path="/zk-proof-verifier" element={<ZkProofVerifier />} />
       <Route path="/zk-proof-verifier-real" element={<ZkProofVerifierReal />} />
-              <Route path="*" element={<div style={{ padding: 20 }}>404 — Page not found — 100% production ready — 689 real pages — deterministic no AI beats QSE</div>} />
+              <Route path="*" element={<div style={{ padding: 20 }}>404 — Page not found — 689 real pages — deterministic no AI high-assurance verification</div>} />
             </Routes>
           </Layout>
         </Suspense>

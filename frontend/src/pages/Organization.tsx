@@ -269,7 +269,7 @@ export default function Organization() {
           <div style={{ padding: "16px", background: "var(--bg-2)", borderRadius: "8px", border: "1px solid var(--cyan)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div>
-                <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--cyan)" }}>ZELNX Sovereign Enterprise Tier</div>
+                <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--cyan)" }}>Sovereign Enterprise Tier</div>
                 <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "4px" }}>
                   Unlimited Assets · S3 Object Lock 7y WORM · Hardware QRNG Entropy · Sub-second p99 SLA
                 </div>

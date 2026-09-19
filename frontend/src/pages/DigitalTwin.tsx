@@ -55,7 +55,7 @@ export interface TwinEdge {
 const INITIAL_NODES: TwinNode[] = [
   {
     id: "org-zelnx",
-    name: "ZELNX Enterprise Group",
+    name: "Enterprise Estate",
     category: "Organization",
     status: "Healthy",
     environment: "Enterprise",
@@ -693,7 +693,7 @@ export default function DigitalTwin() {
         {viewMode === "tree" && (
           <div style={{ flex: 1, background: "var(--bg-0)", border: "1px solid var(--line)", borderRadius: "8px", padding: "16px", overflow: "auto" }}>
             <div style={{ fontFamily: "var(--mono)", fontSize: "12px", color: "var(--text)", lineHeight: "1.8" }}>
-              <div>🏢 ZELNX Enterprise Group</div>
+              <div>🏢 Enterprise Estate</div>
               <div style={{ paddingLeft: "20px" }}>├── 🌐 UAE Sovereign Region (Production)</div>
               <div style={{ paddingLeft: "40px" }}>├── 💼 Payments & Clearing Business Unit</div>
               <div style={{ paddingLeft: "60px" }}>│   └── 📱 Payment Gateway Core (Application)</div>

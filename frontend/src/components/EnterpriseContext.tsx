@@ -31,10 +31,10 @@ export interface EnterpriseState {
 }
 
 export const ORGANIZATIONS: OrganizationTenant[] = [
-  { id: "uae", name: "ZELNX Bank Group · UAE", region: "Middle East", subsidiary: "UAE Core Banking" },
-  { id: "saudi", name: "ZELNX Bank Group · Saudi Arabia", region: "Middle East", subsidiary: "KSA Payments" },
-  { id: "europe", name: "ZELNX Bank Group · Europe", region: "EU (DORA Regulated)", subsidiary: "EU Clearing & Settlement" },
-  { id: "singapore", name: "ZELNX Bank Group · Singapore", region: "APAC", subsidiary: "Singapore Treasury" },
+  { id: "uae", name: "Enterprise Tenant · UAE", region: "Middle East", subsidiary: "UAE Core Banking" },
+  { id: "saudi", name: "Enterprise Tenant · Saudi Arabia", region: "Middle East", subsidiary: "KSA Payments" },
+  { id: "europe", name: "Enterprise Tenant · Europe", region: "EU (DORA Regulated)", subsidiary: "EU Clearing & Settlement" },
+  { id: "singapore", name: "Enterprise Tenant · Singapore", region: "APAC", subsidiary: "Singapore Treasury" },
 ];
 
 const EnterpriseContext = createContext<EnterpriseState | null>(null);

@@ -1,5 +1,5 @@
 /**
- * RealtimeProvider — deterministic no AI beats QSE.
+ * RealtimeProvider — deterministic no AI high-assurance verification.
  * Provides global real-time context, WebSocket manager, live status.
  */
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
