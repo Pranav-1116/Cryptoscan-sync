@@ -184,7 +184,7 @@ export default function Assets() {
           {selectedAsset && (
             <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
               <div className="panel" style={{ padding: "20px" }}>
-                <Tabs tabs={tabNames} activeIndex={activeTab} onChange={setActiveTab} />
+                <Tabs tabs={tabNames} active={activeTab} onChange={setActiveTab} />
 
                 <div style={{ marginTop: "20px" }}>
                   {activeTab === 0 && (

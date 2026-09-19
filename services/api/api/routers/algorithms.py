@@ -1,84 +1,110 @@
-"""
-Real product — algorithms — converted from template/demo to real DB + real-time system.
-Deterministic no AI genuine first-mover.
+"""Algorithms router — the canonical algorithm catalog and name parser.
+
+Data source is ``shared_models.algorithm_registry`` — the single source of
+truth that normalization, policy and CBOM already use for parsing and
+classifying cryptographic names. This router exposes that catalog over
+HTTP plus a deterministic parser. No AI, no demo data: every value is
+derived from the registry.
+
+Endpoints
+---------
+GET /api/v1/algorithms           catalog (filters: status, family, q)
+GET /api/v1/algorithms/parse     parse one name (?name=AES-256)
+GET /api/v1/algorithms/parse/many  parse a comma list (?names=AES,DES)
 """
 from __future__ import annotations
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from api.dependencies import require_roles, get_current_user, get_db_session
-from db.repositories.asset_repository import AssetRepository
-import hashlib
-import json
+
+from typing import Any
+
+from fastapi import APIRouter, Depends, Query
+
+from api.dependencies import get_current_user
+from shared_models.algorithm_registry import catalog, parse_algorithm
 
 router = APIRouter(prefix="/algorithms", tags=["algorithms"])
 
-def deterministic_hash(data: Dict) -> str:
-    canonical = json.dumps(data, sort_keys=True, separators=(',', ':'))
-    return hashlib.sha256(canonical.encode()).hexdigest()
 
-def risk_score_6_factor(factors: Dict[str, float]) -> float:
-    tech = factors.get("technical_severity", 50)
-    biz = factors.get("business_impact", 50)
-    comp = factors.get("compliance_impact", 50)
-    expl = factors.get("exploitability", 50)
-    quant = factors.get("quantum_risk", 50)
-    blast = factors.get("blast_radius", 50)
-    return round(tech*0.25 + biz*0.25 + comp*0.20 + expl*0.15 + quant*0.10 + blast*0.05, 2)
+def list_algorithms(
+    status: str | None = None,
+    family: str | None = None,
+    q: str | None = None,
+) -> dict[str, Any]:
+    """Filter the canonical catalog.
+
+    ``status`` (ALLOWED/DEPRECATED/RESTRICTED/DISALLOWED, case-insensitive),
+    ``family`` (block-cipher, hash, aead, pke, …, case-insensitive) and
+    ``q`` (substring of the canonical name) are AND-combined. The
+    unfiltered ``counts_by_status`` / ``families`` are always returned so
+    the UI can show filter chips without extra round-trips.
+    """
+    entries = catalog()
+    counts: dict[str, int] = {}
+    for e in entries:
+        counts[e["status"]] = counts.get(e["status"], 0) + 1
+    families = sorted({e["family"] for e in entries})
+
+    if status:
+        s = status.strip().upper()
+        entries = [e for e in entries if e["status"] == s]
+    if family:
+        f = family.strip().lower()
+        entries = [e for e in entries if e["family"] == f]
+    if q:
+        qq = q.strip().lower()
+        entries = [e for e in entries if qq in str(e["algorithm"]).lower()]
+
+    return {
+        "algorithms": entries,
+        "total_count": len(entries),
+        "counts_by_status": counts,
+        "families": families,
+        "source": "shared_models.algorithm_registry",
+        "deterministic": True,
+    }
+
+
+def parse(name: str) -> dict[str, Any]:
+    """Parse one algorithm name into its canonical AlgorithmInfo dict.
+
+    Unknown names degrade to ``status="UNKNOWN", recognized=False`` —
+    never to silence.
+    """
+    return parse_algorithm(name).to_dict()
+
+
+def parse_many(names: str) -> dict[str, Any]:
+    """Parse a comma-separated list of names; count the recognized ones."""
+    raw_items = [n.strip() for n in names.split(",") if n.strip()]
+    results = [parse_algorithm(n).to_dict() for n in raw_items]
+    return {
+        "results": results,
+        "total_count": len(results),
+        "recognized": sum(1 for r in results if r["recognized"]),
+        "deterministic": True,
+    }
+
 
 @router.get("")
-def list_items(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
+def list_catalog(
+    status: str | None = Query(None, description="ALLOWED/DEPRECATED/RESTRICTED/DISALLOWED"),
+    family: str | None = Query(None, description="block-cipher, hash, aead, pke, kem-pqc, …"),
+    q: str | None = Query(None, description="substring of the canonical algorithm name"),
     user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
 ):
-    """Real DB — PostgreSQL not _store dict — deterministic no AI."""
-    rows, total = AssetRepository(db).list_assets(page=page, page_size=page_size)
-    return {
-        "items": [row.to_dict() for row in rows],
-        "total_count": total,
-        "page": page,
-        "page_size": page_size,
-        "real_db": True,
-        "deterministic": True,
-        "formula": "technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100",
-        "posture_score": risk_score_6_factor({"technical_severity": 70, "business_impact": 60, "compliance_impact": 80, "exploitability": 50, "quantum_risk": 90, "blast_radius": 60}),
-        "quantum_readiness": {"pqc": 0.30, "hybrid": 0.20, "agility": 0.15, "migration": 0.15, "vendor": 0.10, "infra": 0.10},
-        "evidence_chain": {"hash": deterministic_hash({"items": total}), "merkle_root": deterministic_hash({"total": total}), "worm": "JSONL S3 Object Lock 7y"},
-        "realtime": {"enabled": True, "p99_latency_ms": 342, "throughput": "100K+ events/sec", "exactly_once": True},
-    }
+    return list_algorithms(status=status, family=family, q=q)
 
-@router.get("/realtime/status")
-def realtime_status():
-    return {
-        "router": "algorithms",
-        "realtime": True,
-        "total_items": 0,
-        "deterministic": True,
-        "live": True,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "capabilities": ["WebSocket /ws", "SSE /events", "Live /live", "Streaming /streaming", "Event Bus", "Exactly-once p99<500ms"],
-        "real_db": True,
-        "p99_latency_ms": 342,
-        "throughput": "100K+ events/sec",
-        "exactly_once": True,
-        "risk_formula": "technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100",
-        "evidence_chain": "SHA-256 HMAC Merkle WORM JSONL S3 Object Lock 7y",
-    }
 
-@router.get("/live")
-def live_status():
-    return {
-        "router": "algorithms",
-        "live": True,
-        "total": 0,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "deterministic": True,
-        "realtime": True,
-        "p99_latency_ms": "<500ms",
-        "throughput": "100K+ events/sec",
-        "exactly_once": True,
-        "real_db": True,
-    }
+@router.get("/parse")
+def parse_endpoint(
+    name: str = Query(..., min_length=1, description="algorithm name, e.g. AES-256 or a TLS suite"),
+    user: str = Depends(get_current_user),
+):
+    return parse(name)
+
+
+@router.get("/parse/many")
+def parse_many_endpoint(
+    names: str = Query(..., min_length=1, description="comma-separated names"),
+    user: str = Depends(get_current_user),
+):
+    return parse_many(names)

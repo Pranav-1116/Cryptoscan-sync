@@ -555,7 +555,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
 }
 
 
-export default function Layout({ route, children }: { route: string; children: React.ReactNode }) {
+export default function Layout({ route, children }: { route?: string; children: React.ReactNode }) {
   return (
     <EnterpriseProvider>
       <LayoutInner route={route}>

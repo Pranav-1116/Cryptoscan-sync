@@ -2,9 +2,9 @@
 
 Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
 
-**Current Stats (2026-09-17):** 325 routers, 3973 OpenAPI paths, 1833 real-time endpoints, 296 frontend pages, 218 migrations, real-time system 100K+ events/sec p99<500ms exactly-once, Cryptographic Digital Twin live virtual replica flight simulator deterministic no AI first-mover advantage genuine.
+**Current Stats (2026-09-19, verified):** 51 services (~276k lines of Python, 2,239 files), 325 API router modules (85 registered in `api.main`), 57 alembic migrations with schema-parity tests, 71 frontend pages with lazy-loaded routes, 498 test files. Deterministic policy — no AI in the decision path.
 
-**Real-Time System:** WebSocket hub per topic /ws/{topic} global /ws/global SSE /events/{topic} /events/global Event Bus publish/subscribe/recent Streaming Backbone Kafka-like produce/consume Flink-like processors Live dashboard /live/dashboard p99<500ms 100K+ events/sec exactly-once backpressure auto-reconnect history replay last 10 deterministic auditable reproducible
+**Real-Time System:** WebSocket hub per topic /ws/{topic} plus global /ws/global; SSE /events/{topic} and /events/global; in-process event bus (publish/subscribe/recent) with a DB tailer that federates cross-process monitor events; live dashboard at /live/dashboard with history replay and auto-reconnect. Deterministic and auditable.
 
 **Cryptographic Digital Twin (CDT):** Live virtual replica entire cryptographic estate every asset key certificate protocol dependency business process vendor attack surface mirrors production near-real-time simulate changes attacks failures migrations without touching production flight simulator for crypto estate deterministic no AI — 7 layers, 10 scenario types, time-travel, isolation guardrails — genuine first-mover advantage nobody in market has this
 

@@ -12,8 +12,7 @@ from __future__ import annotations
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Mapping
+from typing import Any
 
 _DS_NS = {"ds": "http://www.w3.org/2000/09/xmldsig#"}
 

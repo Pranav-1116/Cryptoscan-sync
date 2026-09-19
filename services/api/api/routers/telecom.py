@@ -1,101 +1,562 @@
-"""
-Real product — telecom — converted from template/demo to real DB + real-time system — 100% production ready.
-Deterministic no AI genuine first-mover — PostgreSQL not _store dict — RBAC 9 roles fail-closed — evidence chain SHA-256 HMAC Merkle WORM — realtime p99 342ms — PQC 6-phase — 100% realtime system — 100% production ready.
+"""Telecom realtime crypto-posture API.
+
+International carrier estates: carriers (PLMN, country, legal entity) →
+network functions (5G SBA / EPC / IMS / signaling / NDS/IP) → live probes.
+Realtime story: every scan pass diffs against the previous state
+(telecom_scanner.realtime) and publishes ``telecom.event`` frames onto the
+platform event bus, so SSE clients see posture changes as they happen —
+reachability loss, verdict changes, certificate expiries, recoveries.
+
+Permissions follow the platform matrix conventions: surfaces are
+findings.read (every role); registry changes are telecom.manage; accepting
+operator-side probe results (IKE/IPsec from inside the carrier network,
+probes behind NAT) is telecom.ingest; triggering scans is scan.trigger.
 """
 from __future__ import annotations
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from api.dependencies import get_current_user, get_db_session, require_roles
-from db.repositories.asset_repository import AssetRepository
-from db.repositories.finding_repository import FindingRepository
-from db.repositories.certificate_repository import CertificateRepository
-import hashlib
+
 import json
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+import io
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
+
+from api.security.rbac import require_permission
 
 router = APIRouter(prefix="/telecom", tags=["telecom"])
 
-def deterministic_hash(data: Dict) -> str:
-    canonical = json.dumps(data, sort_keys=True, separators=(',', ':'))
-    return hashlib.sha256(canonical.encode()).hexdigest()
+# ------------------------------------------------------------ snapshot store
+# Last scan/ingest result, kept in memory for the running process and
+# mirrored to data/telecom_snapshot.json so a restarted API still serves the
+# most recent posture (data/ is runtime-only, gitignored — same convention
+# as the live scanner's persisted snapshot).
 
-def risk_score_6_factor(factors: Dict[str, float]) -> float:
-    tech = factors.get("technical_severity", 50)
-    biz = factors.get("business_impact", 50)
-    comp = factors.get("compliance_impact", 50)
-    expl = factors.get("exploitability", 50)
-    quant = factors.get("quantum_risk", 50)
-    blast = factors.get("blast_radius", 50)
-    return round(tech*0.25 + biz*0.25 + comp*0.20 + expl*0.15 + quant*0.10 + blast*0.05, 2)
+_LOCK = threading.Lock()
+_SNAPSHOT: dict[str, Any] | None = None
 
-def posture_score(factors: Dict) -> Dict[str, Any]:
-    score = risk_score_6_factor(factors)
-    category = "CRITICAL" if score >= 80 else "HIGH" if score >= 60 else "MEDIUM" if score >= 40 else "LOW" if score >= 20 else "MINIMAL"
-    sla_days = {"CRITICAL": 7, "HIGH": 30, "MEDIUM": 90, "LOW": 180, "MINIMAL": 365}[category]
-    return {"posture_score": score, "category": category, "sla_days": sla_days, "deterministic": True, "formula": "technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100"}
 
-@router.get("")
-def list_items(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=200),
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
-    rows, total = AssetRepository(db).list_assets(page=page, page_size=page_size)
+def _snapshot_file() -> Path:
+    root = Path(__file__).resolve().parents[3]
+    return Path(__import__("os").environ.get("CRYPTOSCAN_SNAPSHOT_DIR") or (root / "data")) / "telecom_snapshot.json"
+
+
+_SNAPSHOT_MTIME: float | None = None
+
+
+def _load_snapshot() -> dict[str, Any] | None:
+    """In-process cache, re-read when the file's mtime changes — monitor-daemon
+    passes (written from another process) show up without an API restart."""
+    global _SNAPSHOT, _SNAPSHOT_MTIME
+    file = _snapshot_file()
     try:
-        cert_rows, cert_total = CertificateRepository(db).list_certificates(page=1, page_size=5)
-    except Exception:
-        cert_rows, cert_total = [], 0
+        mtime = file.stat().st_mtime if file.is_file() else None
+    except OSError:
+        mtime = None
+    if _SNAPSHOT is not None and mtime == _SNAPSHOT_MTIME:
+        return _SNAPSHOT
+    if mtime is None:
+        _SNAPSHOT, _SNAPSHOT_MTIME = None, None
+        return None
+    try:
+        _SNAPSHOT = json.loads(file.read_text())
+        _SNAPSHOT_MTIME = mtime
+    except (OSError, json.JSONDecodeError):
+        _SNAPSHOT = None
+    return _SNAPSHOT
+
+
+def _store_snapshot(snapshot: dict[str, Any]) -> None:
+    global _SNAPSHOT
+    with _LOCK:
+        _SNAPSHOT = snapshot
+    file = _snapshot_file()
+    global _SNAPSHOT_MTIME
+    try:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(json.dumps(snapshot))
+        _SNAPSHOT_MTIME = file.stat().st_mtime
+    except OSError:
+        pass  # serving in-memory is still correct; persistence is best-effort
+
+
+def _event_key(event: dict[str, Any]) -> str:
+    """Stable identity of one telecom drift event (mirrors the scanner's
+    cooldown key) — shared by direct publishes and the snapshot tailer."""
+    return (f"telecom:{event.get('kind')}:{event.get('target')}:"
+            f"{event.get('at')}:{event.get('fingerprint')}")
+
+
+# ---------------------------------------------------------------- journey
+
+_JOURNEY: dict[str, Any] | None = None
+_JOURNEY_MTIME: float | None = None
+
+
+def _journey_file() -> Path:
+    return _snapshot_file().parent / "telecom_journey.json"
+
+
+def _load_journey() -> dict[str, Any] | None:
+    """mtime-aware like the snapshot: daemon-written passes show up live."""
+    global _JOURNEY, _JOURNEY_MTIME
+    file = _journey_file()
+    try:
+        mtime = file.stat().st_mtime if file.is_file() else None
+    except OSError:
+        mtime = None
+    if _JOURNEY is not None and mtime == _JOURNEY_MTIME:
+        return _JOURNEY
+    if mtime is None:
+        _JOURNEY, _JOURNEY_MTIME = None, None
+        return None
+    try:
+        _JOURNEY = json.loads(file.read_text())
+        _JOURNEY_MTIME = mtime
+    except (OSError, json.JSONDecodeError):
+        _JOURNEY = None
+    return _JOURNEY
+
+
+def _store_journey(journey: dict[str, Any]) -> None:
+    global _JOURNEY, _JOURNEY_MTIME
+    file = _journey_file()
+    try:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(journey))
+        tmp.replace(file)
+        _JOURNEY, _JOURNEY_MTIME = journey, file.stat().st_mtime
+    except OSError:
+        pass  # in-memory is still correct; persistence is best-effort
+
+
+def _fold_journey(rows: list[dict[str, Any]], generated_at: str) -> None:
+    """Fold one pass into the adoption journey (best-effort, never fails a scan)."""
+    try:
+        from telecom_scanner.journey import update_journey
+
+        _store_journey(update_journey(_load_journey(), generated_at, rows))
+    except Exception:  # noqa: BLE001 — journey must never break a scan
+        pass
+
+
+def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
+    from api.events import platform_events
+    from api.events.bus import get_event_bus
+
+    get_event_bus().publish(
+        "telecom.event",
+        {**target_hint, **event, "kind": event.get("kind")},
+        source="telecom-scanner",
+    )
+    platform_events.published_event_ids().add(_event_key(event))
+
+
+def _publish_events(events: list[dict[str, Any]]) -> int:
+    for event in events:
+        _publish(event, {
+            "nf_id": event.get("target"),
+            "nf_type": event.get("nf_type"),
+            "carrier_code": event.get("carrier_code"),
+        })
+    return len(events)
+
+
+# ------------------------------------------------------------------- models
+
+class TelecomCarrier(BaseModel):
+    code: str = Field(min_length=2, max_length=24)
+    name: str = Field(min_length=2, max_length=120)
+    country: str = Field(min_length=2, max_length=2)
+    plmn: str = Field(min_length=5, max_length=7)
+    legal_entity: str = Field(default="", max_length=24)
+
+
+class TelecomTarget(BaseModel):
+    nf_id: str = Field(min_length=2, max_length=64)
+    nf_type: str = Field(min_length=2, max_length=16)
+    endpoint: str = Field(min_length=6, max_length=253)
+    carrier_code: str = Field(default="", max_length=24)
+    environment: str = Field(default="production", max_length=16)
+
+
+class ScanRequest(BaseModel):
+    only: list[str] = Field(default_factory=list, max_length=64)
+    timeout: float = Field(default=4.0, gt=0, le=15)
+
+
+class IngestRequest(BaseModel):
+    target_id: str = Field(min_length=2, max_length=64)
+    probe: dict[str, Any]
+
+
+# ----------------------------------------------------------------- registry
+
+def _registry_path():
+    from telecom_scanner.registry import default_registry_path
+
+    return default_registry_path()
+
+
+def _registry() -> dict[str, Any]:
+    from telecom_scanner.registry import load_registry
+
+    return load_registry(_registry_path())
+
+
+def _nf_catalog() -> dict[str, dict[str, Any]]:
+    from telecom_scanner.registry import NF_CATALOG
+
+    return NF_CATALOG
+
+
+def _save(registry: dict[str, Any]) -> None:
+    from telecom_scanner.registry import save_registry
+
+    save_registry(
+        registry["carriers"].values(), registry["targets"].values(),
+        _registry_path(), partners=registry.get("roaming_partners", {}).values(),
+    )
+
+
+@router.get("/registry")
+def telecom_registry(user: str = Depends(require_permission("findings.read"))):
+    reg = _registry()
+    return {"carriers": reg["carriers"], "targets": reg["targets"],
+            "roaming_partners": reg.get("roaming_partners", {}),
+            "counts": {"carriers": len(reg["carriers"]), "targets": len(reg["targets"]),
+                       "roaming_partners": len(reg.get("roaming_partners", {}))},
+            "nf_catalog": {k: {"name": v["name"], "transport": v["transport"],
+                               "plane": v["plane"]} for k, v in sorted(_nf_catalog().items())}}
+
+
+@router.post("/carriers")
+def telecom_carrier_add(carrier: TelecomCarrier,
+                        user: str = Depends(require_permission("telecom.manage"))):
+    from telecom_scanner.registry import normalize_carrier
+
+    reg = _registry()
+    try:
+        record = normalize_carrier(carrier.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    reg["carriers"][record["code"]] = record
+    _save(reg)
+    return {"ok": True, "carrier": record, "counts": {"carriers": len(reg["carriers"])}}
+
+
+@router.delete("/carriers/{code}")
+def telecom_carrier_delete(code: str, user: str = Depends(require_permission("telecom.manage"))):
+    reg = _registry()
+    key = code.strip().lower()
+    if key not in reg["carriers"]:
+        raise HTTPException(status_code=404, detail=f"unknown carrier: {code}")
+    del reg["carriers"][key]
+    for target in list(reg["targets"].values()):
+        if target.get("carrier_code") == key:
+            target["carrier_code"] = ""
+    _save(reg)
+    return {"ok": True, "counts": {"carriers": len(reg["carriers"])}}
+
+
+@router.post("/targets")
+def telecom_target_add(target: TelecomTarget,
+                       user: str = Depends(require_permission("telecom.manage"))):
+    from telecom_scanner.registry import normalize_target
+
+    reg = _registry()
+    try:
+        record = normalize_target(target.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    carrier = record.get("carrier_code")
+    if carrier and carrier not in reg["carriers"]:
+        raise HTTPException(status_code=422, detail=f"unknown carrier_code: {carrier}")
+    reg["targets"][record["nf_id"]] = record
+    _save(reg)
+    return {"ok": True, "target": record, "counts": {"targets": len(reg["targets"])}}
+
+
+@router.delete("/targets/{nf_id}")
+def telecom_target_delete(nf_id: str, user: str = Depends(require_permission("telecom.manage"))):
+    reg = _registry()
+    key = nf_id.strip().lower()
+    if key not in reg["targets"]:
+        raise HTTPException(status_code=404, detail=f"unknown target: {nf_id}")
+    del reg["targets"][key]
+    _save(reg)
+    return {"ok": True, "counts": {"targets": len(reg["targets"])}}
+
+
+# -------------------------------------------------------------------- scans
+
+@router.post("/scan")
+def telecom_scan(request: ScanRequest,
+                 user: str = Depends(require_permission("scan.trigger"))):
+    """Probe the registered estate now and return the refreshed posture.
+
+    Bounded: at most 64 targets per pass (bigger estates run through the
+    periodic live scanner — CRYPTOSCAN_LIVE_TELECOM=1 — or successive
+    --only passes). Events are published onto the platform bus so SSE
+    clients receive them in realtime.
+    """
+    from telecom_scanner.realtime import evaluate_changes, summarize_events
+    from telecom_scanner.main import probe_registry
+    from telecom_scanner.rollup import posture_rollup
+
+    reg = _registry()
+    targets = reg["targets"]
+    if request.only:
+        wanted = {n.strip().lower() for n in request.only}
+        targets = {k: v for k, v in targets.items() if k in wanted}
+        unknown = wanted - set(targets)
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"unknown nf_id: {', '.join(sorted(unknown))}")
+    if len(targets) > 64:
+        raise HTTPException(status_code=413, detail=f"{len(targets)} targets exceeds the 64-per-pass cap — use the periodic live scanner or --only passes")
+
+    previous = (_load_snapshot() or {}).get("state") or {}
+    rows = probe_registry(reg, only=list(request.only) or None, timeout=request.timeout)
+    events = evaluate_changes(previous, rows)
+    state = {row["nf_id"]: {k: row[k] for k in
+                            ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
+             for row in rows}
+    snapshot = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "scanner": "telecom-api-scan",
+        "targets_registered": len(reg["targets"]),
+        "rows": rows,
+        "events": events,
+        "events_summary": summarize_events(events),
+        "state": state,
+        "rollup": posture_rollup(rows, reg["carriers"]),
+    }
+    _store_snapshot(snapshot)
+    _fold_journey(rows, snapshot["generated_at"])
+    published = _publish_events(events)
+    return {"generated_at": snapshot["generated_at"], "scanned": len(rows),
+            "events": events, "events_published": published,
+            "rollup": snapshot["rollup"], "state": state}
+
+
+@router.post("/ingest")
+def telecom_ingest(request: IngestRequest,
+                   user: str = Depends(require_permission("telecom.ingest"))):
+    """Accept an operator-side probe result (IKE/IPsec parameters, TLS probe
+    from inside a NATed carrier network) and classify it like any other pass."""
+    from telecom_scanner.classify import classify_target
+    from telecom_scanner.realtime import evaluate_changes, summarize_events
+
+    reg = _registry()
+    target = reg["targets"].get(request.target_id.strip().lower())
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"unknown target: {request.target_id}")
+
+    previous = (_load_snapshot() or {})
+    verdict = classify_target(target, request.probe)
+    rows = [row for row in (previous.get("rows") or []) if row.get("nf_id") != verdict["nf_id"]]
+    rows.append(verdict)
+    rows.sort(key=lambda r: str(r.get("nf_id")))
+    events = evaluate_changes(previous.get("state") or {}, [verdict])
+    state = dict(previous.get("state") or {})
+    state[verdict["nf_id"]] = {k: verdict[k] for k in
+                               ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
+
+    from telecom_scanner.rollup import posture_rollup
+
+    snapshot = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "scanner": "telecom-ingest",
+        "targets_registered": len(reg["targets"]),
+        "rows": rows,
+        "events": events,
+        "events_summary": summarize_events(events),
+        "state": state,
+        "rollup": posture_rollup(rows, reg["carriers"]),
+    }
+    _store_snapshot(snapshot)
+    _fold_journey(rows, snapshot["generated_at"])
+    published = _publish_events(events)
+    return {"ok": True, "verdict": verdict, "events": events,
+            "events_published": published, "rollup": snapshot["rollup"]}
+
+
+# ----------------------------------------------------------------- surfaces
+
+@router.get("/posture")
+def telecom_posture(user: str = Depends(require_permission("findings.read"))):
+    snapshot = _load_snapshot()
+    if not snapshot:
+        return {
+            "has_data": False,
+            "message": "No telecom scan has run yet — register carriers/targets and POST /telecom/scan, or enable CRYPTOSCAN_LIVE_TELECOM=1 for the periodic scanner.",
+            "generated_at": None,
+            "rollup": None,
+            "events_summary": {},
+        }
     return {
-        "items": [row.to_dict() for row in rows],
-        "total_count": total,
-        "page": page,
-        "page_size": page_size,
-        "real_db": True,
-        "deterministic": True,
-        "rbac": True,
-        "fail_closed": True,
-        "evidence_chain": True,
-        "realtime": True,
-        "100_percent": True,
-        "production_ready": True,
-        "formula": "technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100",
-        "posture_score": risk_score_6_factor({"technical_severity": 70, "business_impact": 60, "compliance_impact": 80, "exploitability": 50, "quantum_risk": 90, "blast_radius": 60}),
-        "posture_detail": posture_score({"technical_severity": 70, "business_impact": 60, "compliance_impact": 80, "exploitability": 50, "quantum_risk": 90, "blast_radius": 60}),
-        "quantum_readiness": {"pqc": 0.30, "hybrid": 0.20, "agility": 0.15, "migration": 0.15, "vendor": 0.10, "infra": 0.10, "index": 75, "category": "HYBRID_READY", "nists": ["FIPS 203 ML-KEM", "FIPS 204 ML-DSA", "FIPS 205 SLH-DSA"], "cnsa": "CNSA 2.0 timeline 2024-2035", "threat": "Shor Grover HNDL"},
-        "evidence_chain_detail": {"hash": deterministic_hash({"items": total}), "merkle_root": deterministic_hash({"total": total}), "worm": "JSONL S3 Object Lock 7y", "integrity": 1, "hmac": "HMAC-SHA256", "chain_prev_hash": deterministic_hash({"prev": total}), "chain_index": total, "packs": "strict whitelists never key material", "fingerprint_chain": "OCSP rollback WORM", "audit_pack": "exit report integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody", "timeline": "event sourcing PostgreSQL audit log immutable append-only hash-chained time-series TimescaleDB correlation causal chain graph Neo4j forensics disk memory network crypto artifacts key recovery from HSM escrow quorum M-of-N"},
-        "realtime_detail": {"enabled": True, "p99_latency_ms": 342, "throughput": "100K+ events/sec", "exactly_once": True, "redis_pubsub": True, "horizontal_scaling": True, "persistence_fallback": "deque 1000", "history_replay": "last 10", "uuid": "exactly-once uuid", "backpressure": True, "event_bus": "single-writer per topic per region last-write-wins vector clocks or fail-closed", "websocket": "/ws manager 1000 max per node", "sse": "/events manager 1000 max per node", "live": "/live total_items total_findings p99<500ms throughput 100K+/sec exactly_once True", "streaming": "/streaming streaming_backbone Flink 5min Neo4j correlation_groups TimescaleDB behavioral baselines 100K+ events/sec p99 342ms measured k6", "k6": "k6-realtime.js 100→1000 VUs p99<500ms throughput 100K+ events/sec deterministic k6-cdt.js CDT simulation deterministic p99 latency 342ms measured PASS"},
-        "pqc": {"migration": "6-phase Assess Protect Store Integrate Operate Verify", "effort": "50/h", "timeline": "critical path weeks", "team_required": "5 engineers", "total_hours": "1000h", "total_cost": "50000", "quantum_threat": "NIST FIPS 203/204/205 NSA CNSA 2.0 2024-2035 Shor Grover HNDL", "risk_before": 85, "risk_after": 20, "hybrid": "ECDH-P256 ML-KEM-768 KDF HKDF-SHA256 classical share ECDH-P256 pqc_share ML-KEM-768", "tls": "TLS 1.3 ClientHello groups ML-KEM X25519MLKEM768 X25519MLKEM1024 SecP256r1MLKEM768 SecP384r1MLKEM1024 X25519MLKEM768Draft00 SigAlgs ML-DSA-65 ML-DSA-87 SLH-DSA-SHA2-128s SLH-DSA-SHA2-128f Falcon-512 hybrid ECDSA_P256_ML-DSA-65 RSA3072_ML-DSA-65 cert chain ML-DSA hybrid leaf intermediate root OCSP stapling CT log SCT HSTS ALPN ECH TLS 1.2 fallback disabled", "implementation": "OpenSSL 3.3+ OQS provider oqsprovider BoringSSL fork NSS Rustls Go crypto/tls PQC branch Java BouncyCastle PQC Python oqs-python"},
-        "compliance": {"cross_standard": "single-pass deduplicate by control evaluate once map to all standards PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA SOC2 ISO 3GPP compliance cube 9 standards", "control_mapping": "deterministic list all controls SOC2 ~60 controls map to platform capability identify evidence source automate evidence collection verify integrity", "evidence_automation": "scheduled daily weekly monthly automated query from PostgreSQL audit log sign store WORM index by control date standard artifacts access control matrix PDF change management log CSV incident response records JSON vulnerability scan results JSON encryption key inventory CBOM backup/restore test results PDF business continuity test PDF security awareness training CSV pen test report PDF risk assessment PDF", "auditor_portal": "read-only auditors view controls evidence verify integrity hashes signatures request additional evidence ask questions ticketing document findings sign off access control time-limited engagement period scoped specific controls audited all access logged continuous compliance after certification continuous control monitoring drift detection control failure alert on regression automated evidence refresh annual re-certification", "reports": "SOC2 Type I II ISO27001 FedRAMP Moderate IRAP C5 CyberSecure Canada PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA 3GPP compliance cube 9 standards cross-standard single-pass deduplicate by control evaluate once map to all standards"},
-        "drift": {"rules": "13 rules forbidden_algorithm DES RC4 MD5 SHA1 weak_key_size RSA<2048 ECC<256 weak_protocol TLS1.0 1.1 SSLv3 cert_expiry 30d 7d expired key_rotation 90d 30d overdue HSM drift KMS drift env drift K8s drift Terraform drift PQC compliance vendor drift", "timeseries": "TimescaleDB hypertable drift_events time asset_id rule_id severity old_value new_value continuous aggregates 1h 1d 7d compression 7d retention 1y", "anomaly": "z-score seasonal decomposition EWMA exponentially weighted moving average 30d learning mean stdev median IQR percentiles seasonal trend auto-refresh weekly drift>20% flag human review", "policy": "OPA/Rego-like GitOps YAML Flink broadcast policy simulation dry-run impact analysis effort cost risk timeline", "alert": "drift>20% flag human review TimescaleDB z-score seasonal EWMA 30d learning auto-refresh weekly control failure alert on regression automated evidence refresh"},
-        "scanners": {"code": "150+ patterns Shannon entropy >4.5 AWS AKIA GCP private_key Azure storage GitHub ghp_ Slack xox private keys passwords tokens bearer jwt oauth", "tls": "JA3 JA3S JARM fingerprinting downgrade cipher suite HSTS ALPN ECH PQC ClientHello groups ML-KEM X25519MLKEM768 SigAlgs ML-DSA SLH-DSA", "container": "Trivy image scan layers base images embedded certs private keys secrets CVEs NVD OSV GHSA CISA KEV CVSS 3.1 4.0 EPSS Syft SBOM CycloneDX SPDX PURL CPE K8s manifest mTLS Istio Linkerd admission controller SLSA", "cloud": "AWS KMS ListKeys GetKeyDescription KeySpec SYMMETRIC_256 RSA_2048_3072_4096 ECC NIST P-256 P-384 P-521 ML-KEM-768_1024 rotation 90d least-privilege IAM no wildcard Azure KV KeyClient RSA size Managed HSM FIPS 140-3 Level 3 RBAC purge protection GCP KMS CryptoKey algorithm IAM CMEK residency drift TimescaleDB z-score EWMA", "ot": "Modbus TCP function codes 1-4 HEALTHY 5-6 15-16 WARNING DNP3 start bytes 0x05 0x64 OPC-UA HELLO OPEN security policy None CRITICAL BACnet BVLC NPDU APDU S7comm EtherNet-IP Zigbee BLE MQTT CoAP DTLS PSK firmware binwalk SquashFS JFFS2 UBIFS ARM MIPS OpenSSL mbedTLS WolfSSL zero packets TAP safety guardrails 1000 pkt/sec", "telecom": "SS7 MTP SCCP TCAP MAP A5/1 A5/2 Diameter SIP GTP 5G SBA NRF AMF SMF UPF SEPP PQC 3GPP TS33.501/210 safety guardrails 1000 pkt/sec", "qrng": "Shannon entropy -Σ p(x) log2 p(x) threshold 7.5 bits per byte pool<128 WARNING <64 CRITICAL chi-square χ² = Σ (O-E)²/E p-value <0.01 WARNING <0.001 CRITICAL NIST SP800-90B HW RDSEED RDRAND TPM TRNG"},
-        "hsm": {"fleet": "FIPS 140-3 Level 3 Thales Luna 7.8.0 ML-KEM ML-DSA Entrust nShield 12.80 Utimaco 5.4.0 AWS CloudHSM quorum M-of-N 3-of-5 Shamir 5 shares threshold 3 key ceremony escrow PED key partition SO CO HA group 3 HSMs Security World smart card OCS softcard root master key never leaves HSM intermediate KEK rotation 90d leaf DEK per-tenant envelope encryption root→KEK→DEK", "ceremony": "key ceremony script witness auditor video recording dual control split knowledge M-of-N Shamir secret sharing 5 shares threshold 3 escrow secure safe deposit box"},
-        "k8s": {"replicas": 3, "hpa": "min 3 max 10 CPU70% mem80%", "probes": "/healthz /readyz", "podAntiAffinity": True, "networkPolicy": True, "ingress": "TLS cert-manager", "admission": "Kyverno OPA Gatekeeper verifies SLSA level ≥3 signature provenance SBOM policy forbid unsigned require signed require provenance", "security": "runAsNonRoot seccomp readOnlyRootFilesystem PDB minAvailable 2 secrets fail-closed", "monitoring": "prometheus 6 jobs api worker postgres redis neo4j realtime-system cdt-real scrape_interval 15s alerts 7 HighErrorRate HighP99Latency RealtimeConnectionsHigh CDTSimulationsFailing EvidenceChainBroken QRNGEntropyLow QRNGEntropyCritical grafana 8 panels p99 latency throughput connections CDT simulations evidence chain QRNG risk compliance posture score agility quantum readiness jaeger tracing otel loki logs audit log immutable append-only hash-chained SHA-256 HMAC WORM JSONL S3 Object Lock 7y"},
+        "has_data": True,
+        "generated_at": snapshot.get("generated_at"),
+        "scanner": snapshot.get("scanner"),
+        "targets_registered": snapshot.get("targets_registered"),
+        "rollup": snapshot.get("rollup"),
+        "rows": snapshot.get("rows"),
+        "events_summary": snapshot.get("events_summary") or {},
     }
 
-@router.get("/realtime/status")
-def realtime_status(user: str = Depends(get_current_user)):
-    return {
-        "router": "telecom",
-        "realtime": True,
-        "total_items": 0,
-        "deterministic": True,
-        "live": True,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "capabilities": ["WebSocket /ws", "SSE /events", "Live /live", "Streaming /streaming", "Event Bus", "Exactly-once p99<500ms"],
-        "real_db": True,
-        "rbac": True,
-        "fail_closed": True,
-        "evidence_chain": True,
-        "100_percent": True,
-        "production_ready": True,
-        "p99_latency_ms": 342,
-        "throughput": "100K+ events/sec",
-        "exactly_once": True,
-        "risk_formula": "technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100",
-        "evidence_chain_detail": "SHA-256 HMAC Merkle WORM JSONL S3 Object Lock 7y",
-        "quantum_readiness": "pqc*0.30 hybrid*0.20 agility*0.15 migration*0.15 vendor*0.10 infra*0.10",
-        "pqc_migration": "6-phase Assess Protect Store Integrate Operate Verify",
-        "compliance": "cross-standard single-pass deduplicate by control evaluate once map to all standards PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA SOC2 ISO 3GPP",
-    }
+
+@router.get("/events")
+def telecom_events(limit: int = Query(50, ge=1, le=200),
+                   user: str = Depends(require_permission("findings.read"))):
+    from api.events.bus import get_event_bus
+
+    recent = get_event_bus().recent(since_id=0, limit=500)
+    events = [e for e in recent if str(e.get("type")) == "telecom.event"]
+    return {"count": len(events), "events": list(reversed(events))[:limit]}
+
+# ------------------------------------------------------- roadmap + roaming
+
+class RoamingPartner(BaseModel):
+    carrier_code: str = Field(min_length=2, max_length=24)
+    partner_plmn: str = Field(min_length=5, max_length=7)
+    partner_name: str = Field(min_length=2, max_length=120)
+    country: str = Field(min_length=2, max_length=2)
+    sepp_nf_id: str = Field(default="", max_length=64)
+
+
+@router.get("/roadmap")
+def telecom_roadmap_view(user: str = Depends(require_permission("findings.read"))):
+    """Carrier-bucketed migration roadmap on the NIST IR 8547 milestones.
+
+    Families come from the verdicts' crypto inventory (leaf key, signature,
+    cipher) classified by cbom.banking.quantum_vulnerability — the same
+    buckets as the banking estate, so one migration plan covers both.
+    """
+    from telecom_scanner.roadmap import telecom_roadmap
+
+    reg = _registry()
+    snapshot = _load_snapshot()
+    rows = (snapshot or {}).get("rows") or []
+    roadmap = telecom_roadmap(rows, reg["carriers"])
+    return {"generated_at": (snapshot or {}).get("generated_at"),
+            "basis": roadmap["basis"], "rows": roadmap["rows"],
+            "summary": roadmap["summary"]}
+
+
+@router.get("/journey")
+def telecom_journey(user: str = Depends(require_permission("findings.read"))):
+    """PQC adoption journey — per-NF readiness eras over scan passes.
+
+    Answers "where is PQC adoption, where is it going": current readiness,
+    since-when, transitions (flips), and how many passes back the history
+    goes. Honest empties: nothing tracked yet reports nf_tracked 0 with
+    adoption_pct None — never a fabricated percent. Fed by every writer
+    (API scans, operator ingest, monitor-daemon TELECOM passes)."""
+    from telecom_scanner.journey import pqc_adoption
+
+    adoption = pqc_adoption(_load_journey())
+    return {"generated_at": (_load_journey() or {}).get("generated_at"), **adoption}
+
+
+@router.get("/roaming")
+def telecom_roaming(user: str = Depends(require_permission("findings.read"))):
+    """Roaming partner matrix (GSMA IR.21 context, TS 33.501 obligation).
+
+    Per partner: is the inter-PLMN SBI path demonstrably protected by the
+    carrier's SEPP? Unprobed edges read as unknown — never fabricated.
+    """
+    from telecom_scanner.journey import pqc_adoption
+    from telecom_scanner.roaming import roaming_matrix
+
+    reg = _registry()
+    snapshot = _load_snapshot()
+    rows = (snapshot or {}).get("rows") or []
+    matrix = roaming_matrix(reg.get("roaming_partners", {}).values(), rows)
+    per_nf = pqc_adoption(_load_journey()).get("per_nf") or {}
+    for row in matrix.get("rows") or []:
+        sepp_id = row.get("sepp_nf_id")
+        stats = (per_nf or {}).get(sepp_id or "")
+        if stats:
+            row["pqc"] = {"pqc_ready": stats["pqc_ready"], "since": stats["since"],
+                          "flips": stats["flips"], "passes": stats["passes"]}
+    return {"generated_at": (snapshot or {}).get("generated_at"), **matrix}
+
+
+@router.post("/roaming-partners")
+def telecom_roaming_partner_add(partner: RoamingPartner,
+                                user: str = Depends(require_permission("telecom.manage"))):
+    from telecom_scanner.roaming import normalize_partner
+
+    reg = _registry()
+    try:
+        record = normalize_partner(partner.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if record["carrier_code"] not in reg["carriers"]:
+        raise HTTPException(status_code=422, detail=f"unknown carrier_code: {record['carrier_code']}")
+    if record["sepp_nf_id"] and record["sepp_nf_id"] not in reg["targets"]:
+        raise HTTPException(status_code=422, detail=f"unknown sepp_nf_id: {record['sepp_nf_id']}")
+    reg.setdefault("roaming_partners", {})[record["id"]] = record
+    _save(reg)
+    return {"ok": True, "partner": record,
+            "counts": {"roaming_partners": len(reg["roaming_partners"])}}
+
+
+@router.delete("/roaming-partners/{pid}")
+def telecom_roaming_partner_delete(pid: str,
+                                   user: str = Depends(require_permission("telecom.manage"))):
+    reg = _registry()
+    key = pid.strip().lower()
+    if key not in reg.get("roaming_partners", {}):
+        raise HTTPException(status_code=404, detail=f"unknown roaming partner: {pid}")
+    del reg["roaming_partners"][key]
+    _save(reg)
+    return {"ok": True, "counts": {"roaming_partners": len(reg["roaming_partners"])}}
+
+@router.get("/pack")
+def telecom_carrier_pack(
+    carrier: str = Query(..., min_length=2, max_length=24),
+    format: str = Query("json", pattern="^(json|csv)$"),
+    user: str = Depends(require_permission("findings.read")),
+):
+    """Per-carrier NRA pack — the national regulator artifact.
+
+    One country's regulator receives one carrier's posture: NF verdicts,
+    flagged families (IR 8547 buckets), the roaming edges this carrier
+    serves, and the platform's declared limits. Other carriers' rows are
+    deliberately excluded. CSV = this carrier's verdict rows.
+    """
+    import csv as _csv
+
+    from telecom_scanner.pack import carrier_pack
+    from telecom_scanner.roaming import roaming_matrix
+
+    reg = _registry()
+    code = carrier.strip().lower()
+    record = reg["carriers"].get(code)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"unknown carrier: {carrier}")
+    snapshot = _load_snapshot() or {}
+    rows = snapshot.get("rows") or []
+    matrix = roaming_matrix(reg.get("roaming_partners", {}).values(), rows)
+    pack = carrier_pack(record, rows, roaming_rows=matrix["rows"])
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if format == "csv":
+        buf = io.StringIO()
+        writer = _csv.writer(buf)
+        fields = ["nf_id", "nf_type", "endpoint", "environment", "plane",
+                  "status", "severity", "score"]
+        writer.writerow(fields)
+        for row in rows:
+            if str(row.get("carrier_code") or "") != code:
+                continue
+            writer.writerow([row.get(f, "") for f in fields])
+        return Response(content=buf.getvalue(), media_type="text/csv; charset=utf-8",
+                        headers={"Content-Disposition":
+                                 f'attachment; filename="telecom-pack-{code}-{stamp}.csv"'})
+    return pack

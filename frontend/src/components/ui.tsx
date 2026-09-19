@@ -67,8 +67,17 @@ const BADGE_TONE: Record<string, string> = {
   UNKNOWN: "slate", PQC_UNKNOWN: "slate", OFFLINE: "slate",
 };
 
-export function Badge({ children, tone }: { children: ReactNode; tone?: string }) {
-  const t = tone || BADGE_TONE[String(children).toString().toUpperCase()] || "";
+/* variant → tone alias map (pages pass either `tone` or `variant`). */
+const VARIANT_TO_TONE: Record<string, string> = {
+  danger: "red", error: "red", critical: "red",
+  success: "green", ok: "green",
+  warning: "amber", warn: "amber",
+  info: "cyan", primary: "cyan",
+  neutral: "slate",
+};
+
+export function Badge({ children, tone, variant }: { children: ReactNode; tone?: string; variant?: string }) {
+  const t = tone || VARIANT_TO_TONE[variant || ""] || BADGE_TONE[String(children).toString().toUpperCase()] || "";
   return (
     <span className={`badge ${t}`}>
       <span className="dot" />
@@ -183,6 +192,76 @@ export function PageHead({ crumb, title, sub, right }: { crumb: string; title: s
         {sub && <div className="sub">{sub}</div>}
       </div>
       {right && <div className="row">{right}</div>}
+    </div>
+  );
+}
+
+/* Button — small button kit used by the interactive pages (MFA flows,
+ * parsers, actions). Variants map onto the console design tokens. */
+export function Button({
+  children, onClick, disabled = false, variant = "default", type = "button", size = "md", style, title,
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  variant?: "default" | "primary" | "danger" | "ghost" | string;
+  type?: "button" | "submit";
+  size?: "sm" | "md" | "lg";
+  style?: React.CSSProperties;
+  title?: string;
+}) {
+  const colors: Record<string, { bg: string; border: string; fg: string }> = {
+    primary: { bg: "rgba(0,212,255,0.14)", border: "var(--cyan)", fg: "#04121d" },
+    danger: { bg: "rgba(239,68,68,0.12)", border: "var(--red)", fg: "#fca5a5" },
+    default: { bg: "var(--bg-2)", border: "var(--line-strong)", fg: "var(--text)" },
+    ghost: { bg: "transparent", border: "var(--line)", fg: "var(--dim)" },
+  };
+  const c = colors[variant] || colors.default;
+  const padding = size === "sm" ? "5px 10px" : size === "lg" ? "10px 18px" : "7px 14px";
+  const fontSize = size === "sm" ? 11.5 : size === "lg" ? 14 : 12.5;
+  return (
+    <button
+      type={type}
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+        padding, borderRadius: 7, fontSize, fontWeight: 600,
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1,
+        background: c.bg, border: `1px solid ${c.border}`, color: variant === "primary" ? c.fg : c.fg,
+        transition: "filter 120ms ease", fontFamily: "inherit", ...style,
+      }}
+      onMouseEnter={(e) => { if (!disabled) (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.2)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.filter = ""; }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ProgressBar — 0..100 value. */
+export function ProgressBar({ value, tone = "cyan", height = 8, label }: {
+  value: number; tone?: string; height?: number; label?: ReactNode;
+}) {
+  const v = Math.min(100, Math.max(0, Number(value) || 0));
+  const colors: Record<string, string> = { cyan: "var(--cyan)", green: "var(--green)", amber: "var(--amber)", red: "var(--red)" };
+  return (
+    <div>
+      {label}
+      <div
+        style={{
+          width: "100%", height, borderRadius: height / 2, background: "var(--bg-2)",
+          border: "1px solid var(--line)", overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            width: `${v}%`, height: "100%", background: colors[tone] || colors.cyan,
+            transition: "width 240ms ease",
+          }}
+        />
+      </div>
     </div>
   );
 }

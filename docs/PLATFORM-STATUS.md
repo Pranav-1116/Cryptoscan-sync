@@ -34,6 +34,25 @@ manifest, all sha256sum-verifiable), and the hardware catalog PQC refresh
 firmware-cited provenance, shipping-only evidence). Full regression lane at this
 commit: **1370 passed / 12 skipped / 0 failed**.
 
+**Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
+2026-09-17 router rewrite (hollow "real router" templates) broke the API
+import chain and the frontend build; both are repaired: 25 router modules
+restored to their last real implementations (validated by the full API test
+suite), the phantom `finding_repository` / `api.repositories` imports
+removed (117 files), doubled `/api/v1` route prefixes fixed, and the
+algorithms router now serves the canonical
+`shared_models.algorithm_registry` catalog (195 entries) instead of asset
+rows. Frontend: `react-router-dom` declared, `App.tsx` rewritten to the 71
+pages that exist (lazy-loaded, unknown routes redirect to Command Center),
+the four missing enterprise shell components (context, modals, admin
+drawer, system-health modal) implemented against the live API, and the
+shared UI kit gained `Button`/`ProgressBar`; `tsc --noEmit` and the
+production build are green. Migration **0057** adds the multi-tenant SaaS
+core (`tenants`, `tenant_memberships`, `tenant_usage_events`,
+`tenant_provision_events`, `tenant_invites`) plus `tenant_id` scoping on
+`api_keys` and `monitor_targets` — the schema-parity tests are green again.
+CI workflows restored to `.github/workflows/` from `deploy/ci-workflows/`.
+
 Earlier measurement, kept for traceability — at `24a7a0c` (ZELNX security &
 scanning policy): 505 OpenAPI paths, ~44 service packages, 54 migrations
 (0001–0054), 60 frontend pages, ~3,660 test functions.

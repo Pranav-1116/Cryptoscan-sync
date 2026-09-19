@@ -91,19 +91,17 @@ def main() -> int:
 
     # ---- 1. seed a distinguishable estate through the real API -----------
     marker = f"drill-{stamp}"
-    status, sys_body = call(args.api, "/api/v1/systems", "POST",
-                            {"name": marker, "description": "backup drill probe"},
-                            token)
-    if status not in (200, 201):
-        # systems POST may be role/shape constrained; fall back to stream seed
-        sys_body = None
+    status, _sys = call(args.api, "/api/v1/systems", "POST",
+                        {"name": marker, "description": "backup drill probe"},
+                        token)
+    # systems POST may be role/shape constrained; the stream seed below is
+    # the fallback estate marker either way.
     status, ing = call(args.api, "/api/v1/stream/ingest", "POST", {
         "payload": {"kind": "tls_finding", "system": marker,
                     "endpoint": f"{marker}.example:443",
                     "crypto": {"tls_version": "TLSv1.3", "key_size": 256}},
         "key": marker, "source": "backup-drill"}, token)
     check("seed: stream ingest accepted", status == 200, f"HTTP {status}")
-    live_cbom = (args.api, marker, token)
     status, live = call(args.api, f"/api/v1/cbom/live/{marker}", token=token)
     check("seed: CBOM version exists for marker", status == 200 and
           isinstance(live, dict) and live.get("version_no", 0) >= 1,

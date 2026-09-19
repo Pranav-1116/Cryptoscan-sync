@@ -34,7 +34,7 @@ def test_replica_dir_refuses_writes_split_brain(tmp_path):
 
 
 def test_replication_ships_verified_lines_only(tmp_path):
-    a, b = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
+    a, _ = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
     for i in range(5):
         a.publish("raw-events", {"i": i}, source="edge")
     rep = Replicator(tmp_path / "region-a", tmp_path / "region-b", SECRET)
@@ -66,7 +66,7 @@ def test_replication_ships_verified_lines_only(tmp_path):
 
 
 def test_replication_refuses_tampered_lines(tmp_path):
-    a, b = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
+    a, _ = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
     a.publish("alerts", {"ok": True})
     rep = Replicator(tmp_path / "region-a", tmp_path / "region-b", SECRET)
     assert rep.ship_once("alerts") == 1
@@ -83,7 +83,7 @@ def test_replication_refuses_tampered_lines(tmp_path):
 
 
 def test_replication_aborts_on_sequence_gap_never_skips(tmp_path):
-    a, b = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
+    a, _ = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
     for i in range(3):
         a.publish("raw-events", {"i": i})
     rep = Replicator(tmp_path / "region-a", tmp_path / "region-b", SECRET)
@@ -125,7 +125,7 @@ def test_replication_aborts_on_sequence_gap_never_skips(tmp_path):
 
 
 def test_failover_region_b_continues_sequence(tmp_path):
-    a, b = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
+    a, _ = _bus(tmp_path, "region-a"), _bus(tmp_path, "region-b")
     for i in range(4):
         a.publish("raw-events", {"round": 1, "i": i})
     rep = Replicator(tmp_path / "region-a", tmp_path / "region-b", SECRET)
@@ -161,7 +161,7 @@ def test_pitr_snapshot_restore_replays_to_point_in_time(tmp_path):
     conn.close()
     late = _bus(tmp_path, "main")
     e1 = late.publish("raw-events", {"phase": "T1"})
-    e2 = late.publish("cbom-updates", {"phase": "T2"})
+    late.publish("cbom-updates", {"phase": "T2"})  # beyond the recovery point
     time.sleep(0.01)
 
     # restore to T1: db from snapshot + live-log replay up to (incl) e1
