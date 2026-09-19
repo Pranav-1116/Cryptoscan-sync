@@ -51,250 +51,58 @@ export interface TwinEdge {
   relation: "Contains" | "Runs On" | "Uses" | "Depends On" | "Signed By" | "Protected By" | "Owned By" | "Evaluated By";
 }
 
-// Deterministic Twin topology derived from verified observations
-const INITIAL_NODES: TwinNode[] = [
-  {
-    id: "org-zelnx",
-    name: "Enterprise Estate",
-    category: "Organization",
-    status: "Healthy",
-    environment: "Enterprise",
-    owner: "Executive Board",
-    pqcStatus: "Hybrid",
-    firstSeen: "2026-01-01",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-ROOT-001",
-    evidenceId: "EV-ROOT-001",
-    scannerSource: "Directory Sync",
-    verified: true,
-    description: "Enterprise top-level tenant entity.",
-    x: 480,
-    y: 40,
-  },
-  {
-    id: "reg-uae",
-    name: "UAE Sovereign Region",
-    category: "Region",
-    status: "Healthy",
-    environment: "Production",
-    owner: "Sovereign SecOps",
-    pqcStatus: "PQC Ready",
-    firstSeen: "2026-01-01",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-REG-UAE",
-    evidenceId: "EV-REG-UAE",
-    scannerSource: "Cloud Fabric Ingest",
-    verified: true,
-    description: "me-central-1 UAE dedicated sovereign boundary.",
-    x: 280,
-    y: 120,
-  },
-  {
-    id: "reg-eu",
-    name: "EU Sovereign Region",
-    category: "Region",
-    status: "Healthy",
-    environment: "Production",
-    owner: "EU Compliance Team",
-    pqcStatus: "Hybrid",
-    firstSeen: "2026-01-01",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-REG-EU",
-    evidenceId: "EV-REG-EU",
-    scannerSource: "Cloud Fabric Ingest",
-    verified: true,
-    description: "Frankfurt / DORA Regulated Datacenter.",
-    x: 680,
-    y: 120,
-  },
-  {
-    id: "bu-payments",
-    name: "Payments & Clearing",
-    category: "Business Unit",
-    status: "Warning",
-    environment: "Production",
-    owner: "Zainab Harbi",
-    pqcStatus: "Migration Required",
-    firstSeen: "2026-02-14",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-BU-PAY",
-    evidenceId: "EV-BU-PAY",
-    scannerSource: "CMDB / Asset Ingest",
-    verified: true,
-    description: "Core settlement and credit card tokenization bus.",
-    x: 180,
-    y: 200,
-  },
-  {
-    id: "bu-identity",
-    name: "IAM & Trust Infrastructure",
-    category: "Business Unit",
-    status: "Healthy",
-    environment: "Production",
-    owner: "Vikram R.",
-    pqcStatus: "Hybrid",
-    firstSeen: "2026-02-14",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-BU-IAM",
-    evidenceId: "EV-BU-IAM",
-    scannerSource: "CMDB / Asset Ingest",
-    verified: true,
-    description: "SSO, CASB, directory, and hardware PKCS#11 keys.",
-    x: 380,
-    y: 200,
-  },
-  {
-    id: "app-payment-gateway",
-    name: "Payment Gateway Core",
-    category: "Application",
-    status: "Warning",
-    environment: "Production",
-    owner: "Payments Engineering",
-    pqcStatus: "Migration Required",
-    firstSeen: "2026-03-01",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-APP-GW",
-    evidenceId: "EV-APP-GW",
-    scannerSource: "Container Scanner / Trivy",
-    verified: true,
-    description: "High-throughput settlement gateway.",
-    x: 180,
-    y: 290,
-  },
-  {
-    id: "svc-payment-api",
-    name: "Payment API Service",
-    category: "Service",
-    status: "Warning",
-    environment: "Production",
-    owner: "Payments Engineering",
-    pqcStatus: "Migration Required",
-    firstSeen: "2026-03-01",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-SVC-API",
-    evidenceId: "EV-SVC-API",
-    scannerSource: "Kubernetes Service Mesh Ingest",
-    verified: true,
-    description: "REST & gRPC ingress API for payment processing.",
-    x: 180,
-    y: 380,
-  },
-  {
-    id: "dep-openssl",
-    name: "OpenSSL 3.0.7",
-    category: "Dependency",
-    status: "Warning",
-    environment: "Production",
-    owner: "Base Image Platform",
-    pqcStatus: "Classical Only",
-    firstSeen: "2026-04-10",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-DEP-SSL",
-    evidenceId: "EV-DEP-SSL",
-    scannerSource: "SBOM Syft Scanner",
-    verified: true,
-    description: "Legacy crypto provider lacking native ML-KEM provider.",
-    x: 80,
-    y: 470,
-  },
-  {
-    id: "cert-pay-tls",
-    name: "api.payment.zelnx.internal (Cert)",
-    category: "Certificate",
-    status: "Warning",
-    environment: "Production",
-    owner: "Infra PKI Team",
-    pqcStatus: "Migration Required",
-    firstSeen: "2026-05-12",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-CERT-928",
-    evidenceId: "EV-CERT-928",
-    scannerSource: "TLS Handshake Scanner (JA4/JARM)",
-    verified: true,
-    description: "Server TLS certificate issued under corporate CA.",
-    x: 280,
-    y: 470,
-  },
-  {
-    id: "algo-rsa-2048",
-    name: "RSA-2048",
-    category: "Algorithm",
-    status: "Critical",
-    algorithm: "RSA",
-    keySize: 2048,
-    environment: "Production",
-    owner: "Payments Engineering",
-    pqcStatus: "Migration Required",
-    firstSeen: "2026-08-21",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-82931",
-    evidenceId: "EV-98231",
-    scannerSource: "Network Scanner / AST Python Scanner",
-    verified: true,
-    description: "Vulnerable to Shor's algorithm (NIST SP 800-131A Deprecated).",
-    x: 180,
-    y: 560,
-  },
-  {
-    id: "hsm-thales",
-    name: "Thales Luna HSM (FIPS 140-3 L3)",
-    category: "HSM",
-    status: "Healthy",
-    environment: "Production",
-    owner: "Marcus Vance",
-    pqcStatus: "Hybrid",
-    firstSeen: "2026-01-15",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-HSM-01",
-    evidenceId: "EV-HSM-01",
-    scannerSource: "PKCS#11 Daemon Auditor",
-    verified: true,
-    description: "Hardware Security Module holding master KEK with M-of-N quorum.",
-    x: 480,
-    y: 380,
-  },
-  {
-    id: "algo-mlkem-768",
-    name: "ML-KEM-768 (FIPS 203)",
-    category: "Algorithm",
-    status: "Healthy",
-    algorithm: "ML-KEM",
-    keySize: 768,
-    environment: "Production",
-    owner: "Quantum Architecture Team",
-    pqcStatus: "PQC Ready",
-    firstSeen: "2026-07-01",
-    lastSeen: "2026-09-19",
-    observationId: "OBS-PQC-768",
-    evidenceId: "EV-PQC-768",
-    scannerSource: "TLS 1.3 ClientHello Monitor",
-    verified: true,
-    description: "NIST FIPS 203 lattice-based Post-Quantum KEM.",
-    x: 580,
-    y: 470,
-  },
-];
-
-const INITIAL_EDGES: TwinEdge[] = [
-  { source: "org-zelnx", target: "reg-uae", relation: "Contains" },
-  { source: "org-zelnx", target: "reg-eu", relation: "Contains" },
-  { source: "reg-uae", target: "bu-payments", relation: "Contains" },
-  { source: "reg-uae", target: "bu-identity", relation: "Contains" },
-  { source: "bu-payments", target: "app-payment-gateway", relation: "Contains" },
-  { source: "app-payment-gateway", target: "svc-payment-api", relation: "Contains" },
-  { source: "svc-payment-api", target: "dep-openssl", relation: "Depends On" },
-  { source: "svc-payment-api", target: "cert-pay-tls", relation: "Protected By" },
-  { source: "cert-pay-tls", target: "algo-rsa-2048", relation: "Uses" },
-  { source: "dep-openssl", target: "algo-rsa-2048", relation: "Uses" },
-  { source: "bu-identity", target: "hsm-thales", relation: "Protected By" },
-  { source: "hsm-thales", target: "algo-mlkem-768", relation: "Uses" },
-];
+// Dynamic Twin topology loaded from authoritative backend observations
+const INITIAL_NODES: TwinNode[] = [];
+const INITIAL_EDGES: TwinEdge[] = [];
 
 export default function DigitalTwin() {
   const { role, env, org } = useEnterprise();
   const realtime = useRealtime("digital-twin", { historyLimit: 50 });
   const [nodes, setNodes] = useState<TwinNode[]>(INITIAL_NODES);
   const [edges, setEdges] = useState<TwinEdge[]>(INITIAL_EDGES);
+
+  // Fetch verified topological nodes from authoritative backend
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBackendTwin() {
+      try {
+        const { getToken } = await import("../lib/api");
+        const token = getToken();
+        if (!token) return;
+        const res = await fetch("/api/v1/assets?page_size=100", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.ok) {
+          const body = await res.json();
+          if (!cancelled && body.assets && Array.isArray(body.assets)) {
+            const backendNodes: TwinNode[] = body.assets.map((a: any, i: number) => ({
+              id: a.id || `asset-${i}`,
+              name: a.name || a.common_name || a.algorithm || `Asset ${i+1}`,
+              category: a.category || "Application",
+              status: a.status || "Healthy",
+              algorithm: a.algorithm,
+              keySize: a.key_size,
+              environment: a.environment || env,
+              owner: a.owner || "Security Operations",
+              pqcStatus: a.pqc_status || "Classical Only",
+              firstSeen: a.first_seen || new Date().toISOString().slice(0, 10),
+              lastSeen: a.last_seen || new Date().toISOString().slice(0, 10),
+              observationId: a.observation_id || `OBS-${a.id || i}`,
+              evidenceId: a.evidence_id || `EV-${a.id || i}`,
+              scannerSource: a.scanner_source || "Deterministic Scanner",
+              verified: true,
+              x: 100 + (i % 6) * 140,
+              y: 80 + Math.floor(i / 6) * 110,
+              description: a.description || "Authoritative cryptographic asset.",
+            }));
+            setNodes(backendNodes);
+          }
+        }
+      } catch { /* offline / error */ }
+    }
+    loadBackendTwin();
+    return () => { cancelled = true; };
+  }, [env]);
 
   // Ingest live realtime events dynamically into the Digital Twin
   useEffect(() => {
