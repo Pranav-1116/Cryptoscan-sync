@@ -1,3 +1,4 @@
+import { EnterpriseAdminDrawer, AdminDrawerTab } from "./EnterpriseAdminDrawer";
 import { useEnterprise, EnterpriseProvider } from "./EnterpriseContext";
 import { TenantModal, EnvironmentModal, RoleModal } from "./EnterpriseModals";
 import SystemHealthModal from "./SystemHealthModal";
@@ -62,9 +63,10 @@ const PRIMARY_SECTIONS = [
   {
     title: "Administration",
     items: [
-      { to: "/settings", label: "Settings", icon: "⚙" },
-      { to: "/identity", label: "Users & Roles", icon: "⛃" },
-      { to: "/integrations", label: "Integrations", icon: "⇌" },
+      { to: "/settings", label: "Settings & Org", icon: "⚙" },
+      { to: "/security-center", label: "Security Center", icon: "⛨" },
+      { to: "/identity", label: "Users & Teams", icon: "⛃" },
+      { to: "/integrations", label: "Integrations & API", icon: "⇌" },
     ]
   }
 ];
@@ -74,6 +76,9 @@ function LayoutInner({ route, children }: { route: string; children: React.React
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
+  const [showAdminDrawer, setShowAdminDrawer] = useState(false);
+  const [adminDrawerTab, setAdminDrawerTab] = useState<AdminDrawerTab>("security_center");
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const { t, dir } = useI18n();
   const [showSearch, setShowSearch] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
@@ -107,6 +112,15 @@ function LayoutInner({ route, children }: { route: string; children: React.React
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
         setShowSearch(prev => !prev);
+      }
+      // Section 97: Keyboard shortcuts (? for help modal)
+      const target = e.target as HTMLElement;
+      const isInput = target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (!isInput) {
+        if (e.key === "?") {
+          e.preventDefault();
+          setShowShortcutsHelp(prev => !prev);
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -407,13 +421,22 @@ function LayoutInner({ route, children }: { route: string; children: React.React
             {theme === "dark" ? "☾" : "☀"}
           </button>
 
+          <button
+            className="btn sm"
+            onClick={() => { setAdminDrawerTab("security_center"); setShowAdminDrawer(true); }}
+            style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "11px", borderColor: "var(--cyan)", color: "var(--cyan)" }}
+            title="Enterprise Identity, Access & Governance Suite"
+          >
+            🛡 <span>Security Center</span>
+          </button>
+
           {getToken() ? (
             <button
               className="btn sm"
-              title={t("common.signOut")}
-              onClick={() => { setToken(null); window.location.hash = "#/"; }}
+              title="Click to manage profile or sign out"
+              onClick={() => { setAdminDrawerTab("user_profile"); setShowAdminDrawer(true); }}
             >
-              {getUserName() || "SecOps"}
+              {getUserName() || "Enterprise Admin"}
             </button>
           ) : (
             <a href="#/login" className="btn sm">{t("common.signIn")}</a>
@@ -485,6 +508,40 @@ function LayoutInner({ route, children }: { route: string; children: React.React
       <TenantModal isOpen={showTenantModal} onClose={() => setShowTenantModal(false)} />
       <EnvironmentModal isOpen={showEnvModal} onClose={() => setShowEnvModal(false)} />
       <RoleModal isOpen={showRoleModal} onClose={() => setShowRoleModal(false)} />
+
+      <EnterpriseAdminDrawer
+        isOpen={showAdminDrawer}
+        onClose={() => setShowAdminDrawer(false)}
+        initialTab={adminDrawerTab}
+      />
+
+      {/* Section 97: Global Keyboard Shortcuts Modal */}
+      {showShortcutsHelp && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", borderRadius: "10px", padding: "24px", maxWidth: "480px", width: "90%", boxShadow: "0 20px 40px rgba(0,0,0,0.6)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <div style={{ fontWeight: 700, fontSize: "16px", color: "var(--text)" }}>⌨ Global Keyboard Shortcuts</div>
+              <button onClick={() => setShowShortcutsHelp(false)} className="btn sm">✕</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
+              {[
+                { key: "⌘ / Ctrl + K", desc: "Open Global Search & Command Palette" },
+                { key: "?", desc: "Toggle Keyboard Shortcuts reference modal" },
+                { key: "Alt + S", desc: "Trigger on-demand scan modal" },
+                { key: "Alt + H", desc: "Open Enterprise System Health modal" },
+              ].map((sc, i) => (
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                  <span style={{ color: "var(--dim)" }}>{sc.desc}</span>
+                  <code style={{ background: "var(--bg-2)", border: "1px solid var(--line)", padding: "3px 8px", borderRadius: "4px", color: "var(--cyan)", fontFamily: "var(--mono)" }}>{sc.key}</code>
+                </div>
+              ))}
+            </div>
+            <div style={{ marginTop: "18px", textAlign: "right" }}>
+              <button onClick={() => setShowShortcutsHelp(false)} className="btn sm primary">Got it</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <Toasts toasts={toasts} />
     </div>

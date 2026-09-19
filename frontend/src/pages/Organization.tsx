@@ -1,146 +1,313 @@
-import React, { useState, useEffect } from "react";
-import { PageHead, Panel, Badge, Stat, Row, Col } from "../components/ui";
-import { useRealtime } from "../hooks/useRealtime";
-import LiveEventsPanel from "../components/realtime/LiveEventsPanel";
-import LiveStatusBadge from "../components/realtime/LiveStatusBadge";
-import RealtimeChart from "../components/realtime/RealtimeChart";
-import LiveTable from "../components/realtime/LiveTable";
+import React, { useState } from "react";
+import { PageHead, Panel, Badge, Row, Col } from "../components/ui";
+import { useEnterprise } from "../components/EnterpriseContext";
+import { EnterpriseAdminDrawer } from "../components/EnterpriseAdminDrawer";
 
 export default function Organization() {
-  const realtime = useRealtime("organization", { historyLimit: 50 });
-  const [filter, setFilter] = useState("all");
-  const [selected, setSelected] = useState<any>(null);
+  const { org, env, role } = useEnterprise();
+  const [activeTab, setActiveTab] = useState<
+    "general" | "security" | "members" | "teams" | "roles" | "environments" | "integrations" | "api" | "billing" | "retention"
+  >("general");
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [drawerTab, setDrawerTab] = useState<any>("organization");
 
-  // Organization — Real Product — 90% Production Ready — deterministic no AI beats QSE genuine first-mover
-  // Domain: Organization — real domain-specific business logic deterministic no AI beats QSE genuine first-mover, 6-factor risk scoring, quantum readiness, PQC migration 6-phase, evidence chain SHA-256 HMAC Merkle WORM, realtime p99 342ms, compliance cross-standard, drift 13 rules TimescaleDB EWMA, scanners 7 types, HSM FIPS 140-3 Level3 quorum 3-of-5, K8s replicas 3 HPA 3-10
-  // File hash: d764d425 — risk base 79 — deterministic SHA-256 canonical JSON
-
-  const stats = {
-    total: 127 + (parseInt("d764d425", 16) % 100),
-    critical: 5 + (parseInt("d764d425", 16) % 10),
-    high: 12 + (parseInt("d764d425", 16) % 15),
-    medium: 23 + (parseInt("d764d425", 16) % 20),
-    low: 34 + (parseInt("d764d425", 16) % 25),
-    healthy: 53 + (parseInt("d764d425", 16) % 30),
-    riskAvg: 79 + 0.5,
-    quantumReadinessAvg: 75.3,
-    p99: "342ms",
-    throughput: "100K+/sec",
-    evidenceIntegrity: 1.0,
+  const openDrawer = (tabName: string) => {
+    setDrawerTab(tabName);
+    setShowDrawer(true);
   };
-
-  const items = [
-    {
-      id: "1",
-      name: "Organization Alpha",
-      risk_score: 94.2,
-      posture: "CRITICAL",
-      quantum_readiness: { index: 75, category: "HYBRID_READY", pqc: 75, hybrid: 80, agility: 70, migration: 65, vendor: 60, infra: 75 },
-      evidence_chain: { hash: "d764d425001", merkle_root: "d764d425002", worm: "JSONL S3 Object Lock 7y", integrity: 1, hmac: "HMAC-SHA256" },
-      pqc_migration: { phase: "Assess", effort: "$150/h", timeline: "2 weeks", team_required: 5 },
-      compliance: { soc2: "pass", iso27001: "pass", pci_dss: "pass", nist: "pass", cnsa: "pass" },
-      drift: { rules: 13, anomalies: 2, status: "healthy" },
-      hash: "d764d425001",
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: "2",
-      name: "Organization Beta",
-      risk_score: 79.2,
-      posture: "HIGH",
-      quantum_readiness: { index: 62, category: "PQC_AWARE", pqc: 60, hybrid: 65, agility: 60, migration: 55, vendor: 50, infra: 65 },
-      evidence_chain: { hash: "d764d425003", merkle_root: "d764d425004", worm: "JSONL S3 Object Lock 7y", integrity: 1, hmac: "HMAC-SHA256" },
-      pqc_migration: { phase: "Protect", effort: "$150/h", timeline: "3 weeks", team_required: 5 },
-      compliance: { soc2: "pass", iso27001: "pass", pci_dss: "review", nist: "pass", cnsa: "pass" },
-      drift: { rules: 13, anomalies: 0, status: "healthy" },
-      hash: "d764d425003",
-      created_at: new Date().toISOString(),
-    },
-    {
-      id: "3",
-      name: "Organization Gamma",
-      risk_score: 69.2,
-      posture: "MEDIUM",
-      quantum_readiness: { index: 85, category: "QUANTUM_READY", pqc: 85, hybrid: 90, agility: 80, migration: 85, vendor: 80, infra: 85 },
-      evidence_chain: { hash: "d764d425005", merkle_root: "d764d425006", worm: "JSONL S3 Object Lock 7y", integrity: 1, hmac: "HMAC-SHA256" },
-      pqc_migration: { phase: "Verify", effort: "$150/h", timeline: "1 week", team_required: 5 },
-      compliance: { soc2: "pass", iso27001: "pass", pci_dss: "pass", nist: "pass", cnsa: "pass" },
-      drift: { rules: 13, anomalies: 1, status: "warning" },
-      hash: "d764d425005",
-      created_at: new Date().toISOString(),
-    },
-  ];
 
   return (
     <div className="page">
       <PageHead
-        crumb="organization / real"
-        title="Organization — Real Product — 90% Production Ready"
-        sub="Organization real domain-specific 90% production ready — deterministic no AI beats QSE genuine first-mover — Organization — real domain-specific business logic deterministic no AI beats QSE genuine first-mover, 6-factor risk scoring, quantum readiness, PQC migration 6-phase, evidence chain SHA-256 HMAC Merkl"
+        crumb="Administration / Organization"
+        title="Organization Control Plane"
+        sub="Multi-tenant boundaries, teams, environments, RBAC roles, and sovereign data residency configuration."
         right={
-          <div className="row" style={{ gap: 6 }}>
-            <Badge tone={realtime.isConnected ? "green" : "red"}>{realtime.isConnected ? "● LIVE" : "○ OFFLINE"}</Badge>
-            <Badge>90% Ready</Badge>
-            <Badge>Real</Badge>
-            <Badge>Deterministic</Badge>
-            <Badge>No AI</Badge>
-            <Badge>d764d425</Badge>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button onClick={() => openDrawer("onboarding")} className="btn sm">
+              🚀 Onboarding Wizard
+            </button>
+            <button onClick={() => openDrawer("invitations")} className="btn sm primary">
+              ✉ Invite Members
+            </button>
           </div>
         }
       />
 
+      {/* Top Organization Summary Cards */}
       <Row>
-        <Col><Stat label="Total" value={stats.total} sub="CBOM CycloneDX 1.6 VEX diff" /></Col>
-        <Col><Stat label="Critical" value={stats.critical} tone="red" sub="7d SLA" /></Col>
-        <Col><Stat label="High" value={stats.high} tone="orange" sub="30d SLA" /></Col>
-        <Col><Stat label="Risk Avg" value={stats.riskAvg} sub="6-factor technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100" /></Col>
-        <Col><Stat label="Quantum Ready" value={stats.quantumReadinessAvg} sub="pqc*0.30 hybrid*0.20 agility*0.15 migration*0.15 vendor*0.10 infra*0.10" /></Col>
-        <Col><Stat label="p99" value={stats.p99} sub="342ms measured k6 100→1000 VUs PASS" /></Col>
-        <Col><Stat label="Throughput" value={stats.throughput} sub="100K+/sec exactly-once" /></Col>
+        <Col>
+          <div style={{ padding: "16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "8px" }}>
+            <div style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Active Entity</div>
+            <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--text)", marginTop: "4px" }}>{org.name}</div>
+            <div style={{ fontSize: "11px", color: "var(--cyan)", marginTop: "2px" }}>{org.subsidiary}</div>
+          </div>
+        </Col>
+        <Col>
+          <div style={{ padding: "16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "8px" }}>
+            <div style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Sovereign Residency</div>
+            <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--green)", marginTop: "4px" }}>{org.region}</div>
+            <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>Compliance: NESA / CyberSecure L2</div>
+          </div>
+        </Col>
+        <Col>
+          <div style={{ padding: "16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "8px" }}>
+            <div style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Audit & WORM Chain</div>
+            <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--text)", marginTop: "4px" }}>7 Years Lock</div>
+            <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>Immutable Merkle Append-Only</div>
+          </div>
+        </Col>
+        <Col>
+          <div style={{ padding: "16px", background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "8px" }}>
+            <div style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Current Environment</div>
+            <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--red)", marginTop: "4px" }}>{env}</div>
+            <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>Live Audited Discovery</div>
+          </div>
+        </Col>
       </Row>
 
-      <Panel title="Organization — Real Product — 90% Production Ready" sub="6-factor CBOM CycloneDX 1.6 VEX diff 150+ patterns quantum readiness PQC migration 6-phase evidence chain SHA-256 HMAC Merkle WORM realtime p99 342ms">
-        <div style={{ marginBottom: 12 }}>
-          <div>• <b>Organization Real Business Logic:</b> Organization — real domain-specific business logic deterministic no AI beats QSE genuine first-mover, 6-factor risk scoring, quantum readiness, PQC migration 6-phase, evidence chain SHA-256 HMAC Merkle WORM, realtime p99 342ms, compliance cross-standard, drift 13 rules TimescaleDB EWMA, scanners 7 types, HSM FIPS 140-3 Level3 quorum 3-of-5, K8s replicas 3 HPA 3-10 — deterministic no AI beats QSE genuine first-mover — 6-factor technical*0.25+business*0.25+compliance*0.20+exploitability*0.15+quantum*0.10+blast*0.05*100 categories CRITICAL≥80 7d SLA HIGH 60-79 30d MEDIUM 40-59 90d LOW 20-39 180d MINIMAL&lt;20 explainability full breakdown deterministic no AI auditable same input same output — CBOM CycloneDX 1.6 component type crypto asset algorithm key size protocol certificate VEX diff webhook real scanners 150+ patterns Shannon entropy &gt;4.5 TLS JA3/JA3S/JARM container Trivy Syft cloud AWS/Azure/GCP OT/ICS passive telecom SS7 payment HSM evidence chain SHA-256 HMAC Merkle WORM — quantum readiness index pqc*0.30 hybrid*0.20 agility*0.15 migration*0.15 vendor*0.10 infra*0.10 categories QUANTUM_READY HYBRID_READY PQC_AWARE LEGACY NOT_READY — PQC migration 6-phase Assess Protect Store Integrate Operate Verify effort formula timeline critical path cost $150/h team required quantum threat NIST FIPS 203/204/205 NSA CNSA 2.0 2024-2035 Shor Grover HNDL risk PQC migration deadlines hybrid ECDH-P256 ML-KEM-768 KDF HKDF-SHA256 classical share ECDH-P256 pqc_share ML-KEM-768 TLS 1.3 ClientHello groups ML-KEM X25519MLKEM768 SigAlgs ML-DSA-65 SLH-DSA — evidence chain hash-chained SHA-256 HMAC-SHA256 chain_prev_hash chain_index chain_merkle_root Merkle tree 1000 batch 5min root HMAC WORM JSONL S3 Object Lock 7y 7y retention legal hold packs strict whitelists never key material plaintext private key secret token password fingerprint chain OCSP rollback WORM audit pack exit report integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody — realtime system WebSocket /ws manager connection per user 1000 max per node Redis pub/sub horizontal scaling persistence fallback in-memory deque 1000 history replay last 10 exactly-once uuid p99&lt;500ms backpressure deterministic no AI beats QSE genuine first-mover single-writer per topic per region last-write-wins vector clocks or fail-closed eventstream bus Flink 5min windows Neo4j correlation_groups TimescaleDB behavioral baselines EWMA seasonal peer outlier throughput 100K+ events/sec p99 latency 342ms measured k6-realtime.js 100→1000 VUs p99&lt;500ms PASS — 90% production ready — file hash d764d425 — deterministic SHA-256 canonical JSON — risk base 79 — quantum readiness 75 HYBRID_READY — evidence chain SHA-256 HMAC Merkle WORM — realtime p99 342ms — compliance cross-standard single-pass 9 standards — drift 13 rules TimescaleDB EWMA — scanners 7 types — HSM FIPS 140-3 Level3 quorum 3-of-5 — K8s replicas 3 HPA 3-10 — RBAC 9 roles fail-closed JWT 401/403 — audit WORM — backup/DR — observability Prometheus/Grafana/Jaeger/Loki — E2E k6 100→1000 VUs — Bandit/SAST — 100% production ready</div>
-          <div style={{ marginTop: 8 }}>• <b>Risk Scoring 6-Factor:</b> technical*0.25 (CVE CVSS EPSS) + business*0.25 (data classification PII PHI PCI) + compliance*0.20 (SOC2 ISO27001 PCI-DSS HIPAA GDPR NIST PQC CNSA 2.0) + exploitability*0.15 (network exposure, auth, privilege) + quantum*0.10 (Shor Grover HNDL) + blast*0.05 (blast radius, dependencies) *100 = categories CRITICAL≥80 7d SLA HIGH 60-79 30d MEDIUM 40-59 90d LOW 20-39 180d MINIMAL&lt;20 — explainability full breakdown deterministic no AI auditable same input same output — hash d764d425001</div>
-          <div>• <b>Quantum Readiness Index:</b> pqc*0.30 (ML-KEM ML-DSA SLH-DSA adoption) + hybrid*0.20 (ECDH-P256 ML-KEM-768 KDF HKDF-SHA256) + agility*0.15 (crypto agility 6 factors) + migration*0.15 (6-phase Assess Protect Store Integrate Operate Verify) + vendor*0.10 (vendor PQC support) + infra*0.10 (HSM KMS TLS) = index 75 category HYBRID_READY — NIST FIPS 203 ML-KEM FIPS 204 ML-DSA FIPS 205 SLH-DSA CNSA 2.0 timeline 2024-2035 threat Shor Grover HNDL — hybrid ECDH-P256 ML-KEM-768 KDF HKDF-SHA256 classical share ECDH-P256 pqc_share ML-KEM-768 TLS 1.3 ClientHello groups ML-KEM X25519MLKEM768 X25519MLKEM1024 SecP256r1MLKEM768 SecP384r1MLKEM1024 X25519MLKEM768Draft00 SigAlgs ML-DSA-65 ML-DSA-87 SLH-DSA-SHA2-128s SLH-DSA-SHA2-128f Falcon-512 hybrid ECDSA_P256_ML-DSA-65 RSA3072_ML-DSA-65 cert chain ML-DSA hybrid leaf intermediate root OCSP stapling CT log SCT HSTS ALPN ECH TLS 1.2 fallback disabled implementation OpenSSL 3.3+ OQS provider oqsprovider BoringSSL fork NSS Rustls Go crypto/tls PQC branch Java BouncyCastle PQC Python oqs-python — file hash d764d425</div>
-          <div>• <b>Evidence Chain:</b> hash-chained SHA-256 HMAC-SHA256 chain_prev_hash chain_index chain_merkle_root Merkle tree 1000 batch 5min root HMAC WORM JSONL S3 Object Lock 7y 7y retention legal hold packs strict whitelists never key material plaintext private key secret token password fingerprint chain OCSP rollback WORM audit pack exit report integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody timeline event sourcing PostgreSQL audit log immutable append-only hash-chained time-series TimescaleDB correlation causal chain graph Neo4j forensics disk memory network crypto artifacts key recovery from HSM escrow quorum M-of-N verification evidence chain integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody fingerprint chain OCSP rollback WORM audit pack exit report — hash d764d425002</div>
-          <div>• <b>Realtime System:</b> WebSocket /ws manager connection per user 1000 max per node Redis pub/sub horizontal scaling persistence fallback in-memory deque 1000 history replay last 10 exactly-once uuid p99&lt;500ms backpressure deterministic no AI beats QSE genuine first-mover single-writer per topic per region last-write-wins vector clocks or fail-closed eventstream bus Flink 5min windows Neo4j correlation_groups TimescaleDB behavioral baselines EWMA seasonal peer outlier throughput 100K+ events/sec p99 latency 342ms measured k6-realtime.js 100→1000 VUs p99&lt;500ms PASS — 90% production ready — file hash d764d425 — deterministic SHA-256 canonical JSON — risk base 79 — quantum readiness 75 HYBRID_READY — evidence chain SHA-256 HMAC Merkle WORM — realtime p99 342ms — compliance cross-standard single-pass 9 standards — drift 13 rules TimescaleDB EWMA — scanners 7 types — HSM FIPS 140-3 Level3 quorum 3-of-5 — K8s replicas 3 HPA 3-10 — RBAC 9 roles fail-closed JWT 401/403 — audit WORM — backup/DR — observability Prometheus/Grafana/Jaeger/Loki — E2E k6 100→1000 VUs — Bandit/SAST — 100% production ready</div>
-        </div>
-        <LiveTable items={items} onSelect={setSelected} filter={filter} />
-        <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
-          <LiveStatusBadge status={realtime.isConnected ? "connected" : "disconnected"} />
-          <Badge>Deterministic SHA-256 d764d425</Badge>
-          <Badge>Risk 79</Badge>
-          <Badge>Quantum 75 HYBRID_READY</Badge>
-          <Badge>Evidence WORM</Badge>
-          <Badge>Realtime p99 342ms</Badge>
-          <Badge>Compliance 9 standards</Badge>
-          <Badge>Drift 13 rules</Badge>
-          <Badge>Scanners 7 types</Badge>
-          <Badge>HSM FIPS 140-3</Badge>
-          <Badge>K8s 3 replicas HPA 3-10</Badge>
-          <Badge>RBAC 9 roles</Badge>
-          <Badge>90% Production Ready</Badge>
-        </div>
-      </Panel>
+      {/* Navigation Sub-Tabs (Section 52: General, Security, Members, Teams, Roles, Environments, Integrations, API Access, Billing, Audit) */}
+      <div style={{ display: "flex", gap: "6px", borderBottom: "1px solid var(--line)", paddingBottom: "10px", margin: "16px 0", flexWrap: "wrap" }}>
+        {[
+          { id: "general", label: "General" },
+          { id: "security", label: "Security & MFA" },
+          { id: "members", label: "Members & Users" },
+          { id: "teams", label: "Teams & Ownership" },
+          { id: "roles", label: "RBAC Matrix" },
+          { id: "environments", label: "Environments" },
+          { id: "integrations", label: "Integrations" },
+          { id: "api", label: "API Credentials" },
+          { id: "billing", label: "Plan & Billing" },
+          { id: "retention", label: "Data Retention" },
+        ].map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setActiveTab(t.id as any)}
+            className="btn sm"
+            style={{
+              background: activeTab === t.id ? "rgba(0, 212, 255, 0.12)" : "transparent",
+              color: activeTab === t.id ? "var(--cyan)" : "var(--dim)",
+              borderColor: activeTab === t.id ? "var(--cyan)" : "transparent",
+              fontWeight: activeTab === t.id ? 600 : 400,
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
 
-      <Row>
-        <Col><Panel title="Live Events" sub="WebSocket SSE Event Bus Streaming Backbone exactly-once p99<500ms 100K+ events/sec"><LiveEventsPanel events={realtime.events} /></Panel></Col>
-        <Col><Panel title="Realtime Chart" sub="TimescaleDB hypertable drift_events time asset_id rule_id severity old_value new_value continuous aggregates 1h 1d 7d compression 7d retention 1y anomaly z-score seasonal decomposition EWMA 30d learning"><RealtimeChart data={realtime.chartData} /></Panel></Col>
-      </Row>
+      {/* Tab: General */}
+      {activeTab === "general" && (
+        <Panel title="General Organization Profile" sub="Primary organization attributes and sovereign parameters.">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+            <div>
+              <label style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Organization Legal Name</label>
+              <input disabled value={org.name} style={{ width: "100%", padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", color: "var(--text)", marginTop: "4px" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Sovereign Territory</label>
+              <input disabled value={org.region} style={{ width: "100%", padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", color: "var(--text)", marginTop: "4px" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Enterprise Subsidiary</label>
+              <input disabled value={org.subsidiary} style={{ width: "100%", padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", color: "var(--text)", marginTop: "4px" }} />
+            </div>
+            <div>
+              <label style={{ fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>Primary Security Contact</label>
+              <input defaultValue="ciso-office@zelnx.internal" style={{ width: "100%", padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", color: "var(--text)", marginTop: "4px" }} />
+            </div>
+          </div>
+        </Panel>
+      )}
 
-      <Panel title="PQC Migration 6-Phase" sub="Assess Protect Store Integrate Operate Verify effort $150/h timeline critical path weeks team_required 5 engineers total_hours 1000h total_cost $150000 quantum_threat NIST FIPS 203/204/205 NSA CNSA 2.0 2024-2035 Shor Grover HNDL risk_before 85 risk_after 20 hybrid ECDH-P256 ML-KEM-768 KDF HKDF-SHA256 classical share ECDH-P256 pqc_share ML-KEM-768 tls TLS 1.3 ClientHello groups ML-KEM X25519MLKEM768 X25519MLKEM1024 SecP256r1MLKEM768 SecP384r1MLKEM1024 X25519MLKEM768Draft00 SigAlgs ML-DSA-65 ML-DSA-87 SLH-DSA-SHA2-128s SLH-DSA-SHA2-128f Falcon-512 hybrid ECDSA_P256_ML-DSA-65 RSA3072_ML-DSA-65 cert chain ML-DSA hybrid leaf intermediate root OCSP stapling CT log SCT HSTS ALPN ECH TLS 1.2 fallback disabled implementation OpenSSL 3.3+ OQS provider oqsprovider BoringSSL fork NSS Rustls Go crypto/tls PQC branch Java BouncyCastle PQC Python oqs-python">
-        <div>• <b>6-Phase:</b> Assess (CBOM discovery, risk scoring 6-factor, quantum readiness index, compliance mapping, effort estimation $150/h) → Protect (HSM FIPS 140-3 Level3 quorum 3-of-5, KMS envelope encryption root→KEK→DEK, secrets rotation 90d) → Store (WORM JSONL S3 Object Lock 7y, evidence chain SHA-256 HMAC Merkle, TimescaleDB hypertable) → Integrate (TLS 1.3 ClientHello groups ML-KEM X25519MLKEM768 SigAlgs ML-DSA SLH-DSA, hybrid ECDH-P256 ML-KEM-768, K8s admission controller Kyverno OPA Gatekeeper) → Operate (realtime p99 342ms throughput 100K+/sec exactly-once Redis pub/sub horizontal scaling persistence fallback deque 1000 history replay last 10 uuid backpressure event_bus single-writer per topic per region last-write-wins vector clocks, monitoring Prometheus 6 jobs api worker postgres redis neo4j realtime-system cdt-real scrape_interval 15s alerts 7 HighErrorRate HighP99Latency RealtimeConnectionsHigh CDTSimulationsFailing EvidenceChainBroken QRNGEntropyLow QRNGEntropyCritical grafana 8 panels p99 latency throughput connections CDT simulations evidence chain QRNG risk compliance posture score agility quantum readiness jaeger tracing otel loki logs) → Verify (evidence chain integrity verification Merkle proof HMAC verification WORM immutability proof chain of custody, compliance cross-standard single-pass 9 standards, drift 13 rules TimescaleDB EWMA, scanners 7 types, HSM FIPS 140-3 Level3 quorum 3-of-5, K8s replicas 3 HPA 3-10, RBAC 9 roles fail-closed JWT 401/403, audit WORM, backup/DR, observability Prometheus/Grafana/Jaeger/Loki, E2E k6 100→1000 VUs, Bandit/SAST) — file hash d764d425 — deterministic SHA-256 canonical JSON — risk base 79 — quantum readiness 75 HYBRID_READY — evidence chain SHA-256 HMAC Merkle WORM — realtime p99 342ms — compliance cross-standard single-pass 9 standards — drift 13 rules TimescaleDB EWMA — scanners 7 types — HSM FIPS 140-3 Level3 quorum 3-of-5 — K8s replicas 3 HPA 3-10 — RBAC 9 roles fail-closed JWT 401/403 — audit WORM — backup/DR — observability Prometheus/Grafana/Jaeger/Loki — E2E k6 100→1000 VUs — Bandit/SAST — 100% production ready</div>
-      </Panel>
+      {/* Tab: Security */}
+      {activeTab === "security" && (
+        <Panel title="Organization Security & Authentication Settings" sub="Enforce multi-factor, session maximums, and SSO identity provider federation.">
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div>
+                <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13.5px" }}>Mandatory Two-Factor (MFA / TOTP)</div>
+                <div style={{ fontSize: "11.5px", color: "var(--dim)" }}>Require RFC 6238 TOTP or FIDO2 hardware passkeys for all organization users.</div>
+              </div>
+              <Badge tone="green">ENFORCED</Badge>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div>
+                <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13.5px" }}>Concurrent Session Limit</div>
+                <div style={{ fontSize: "11.5px", color: "var(--dim)" }}>Maximum concurrent active sessions per user account: 3 devices.</div>
+              </div>
+              <Badge tone="cyan">LIMIT 3</Badge>
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div>
+                <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13.5px" }}>SAML 2.0 / OIDC Enterprise Single Sign-On</div>
+                <div style={{ fontSize: "11.5px", color: "var(--dim)" }}>Okta, Azure AD, PingFederate, and Google Workspace SAML connectors.</div>
+              </div>
+              <button onClick={() => openDrawer("security_center")} className="btn sm">
+                Configure SSO
+              </button>
+            </div>
+          </div>
+        </Panel>
+      )}
 
-      <Panel title="Compliance Cross-Standard Single-Pass" sub="deduplicate by control evaluate once map to all standards PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA SOC2 ISO 3GPP compliance cube 9 standards control_mapping deterministic list all controls SOC2 ~60 controls map to platform capability identify evidence source automate evidence collection verify integrity evidence_automation scheduled daily weekly monthly automated query from PostgreSQL audit log sign store WORM index by control date standard artifacts access control matrix PDF change management log CSV incident response records JSON vulnerability scan results JSON encryption key inventory CBOM backup/restore test results PDF business continuity test PDF security awareness training CSV pen test report PDF risk assessment PDF auditor_portal read-only auditors view controls evidence verify integrity hashes signatures request additional evidence ask questions ticketing document findings sign off access control time-limited engagement period scoped specific controls audited all access logged continuous compliance after certification continuous control monitoring drift detection control failure alert on regression automated evidence refresh annual re-certification reports SOC2 Type I II ISO27001 FedRAMP Moderate IRAP C5 CyberSecure Canada PCI-DSS NIST CNSA FIPS HIPAA GDPR DORA 3GPP compliance cube 9 standards">
-        <div>• Cross-standard single-pass deduplicate by control evaluate once map to all standards — file hash d764d425 — 9 standards — deterministic no AI — evidence chain WORM — compliance cube</div>
-      </Panel>
+      {/* Tab: Members */}
+      {activeTab === "members" && (
+        <Panel
+          title="Organization Members"
+          sub="Enterprise team members with assigned RBAC roles and activity telemetry."
+          action={<button onClick={() => openDrawer("invitations")} className="btn sm primary">+ Invite</button>}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {[
+              { name: "Vikram R.", email: "security@company.com", role: "Security Administrator", team: "Security", status: "Active" },
+              { name: "Elena Rostova", email: "elena.r@company.com", role: "Security Engineer", team: "Cloud", status: "Active" },
+              { name: "David Chen", email: "d.chen@company.com", role: "Auditor", team: "Audit", status: "Active" },
+              { name: "Sarah Al-Mansoor", email: "s.mansoor@company.com", role: "Compliance Officer", team: "Compliance", status: "Active" },
+            ].map((m, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "var(--bg-2)", borderRadius: "6px" }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: "13px", color: "var(--text)" }}>{m.name}</div>
+                  <div style={{ fontSize: "11px", color: "var(--dim)" }}>{m.email} · Team: {m.team}</div>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <Badge tone="cyan">{m.role}</Badge>
+                  <button onClick={() => openDrawer("user_management")} className="btn sm" style={{ padding: "2px 8px", fontSize: "11px" }}>Manage</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
 
-      <Panel title="Scanners 7 Types + HSM + K8s + RBAC + Evidence Chain + Realtime" sub="code 150+ patterns Shannon entropy >4.5 TLS JA3/JA3S/JARM container Trivy Syft cloud AWS/Azure/GCP OT telecom SS7 QRNG Shannon/chi-square NIST SP800-90B HSM FIPS 140-3 Level3 quorum 3-of-5 K8s replicas 3 HPA 3-10 RBAC 9 roles evidence chain SHA-256 HMAC Merkle WORM realtime p99 342ms">
-        <div>• Scanners: code 150+ patterns Shannon entropy &gt;4.5 AWS AKIA GCP private_key Azure storage GitHub ghp_ Slack xox private keys passwords tokens bearer jwt oauth tls JA3 JA3S JARM fingerprinting downgrade cipher suite HSTS ALPN ECH PQC ClientHello groups ML-KEM X25519MLKEM768 SigAlgs ML-DSA SLH-DSA container Trivy image scan layers base images embedded certs private keys secrets CVEs NVD OSV GHSA CISA KEV CVSS 3.1 4.0 EPSS Syft SBOM CycloneDX SPDX PURL CPE K8s manifest mTLS Istio Linkerd admission controller SLSA cloud AWS KMS ListKeys GetKeyDescription KeySpec SYMMETRIC_256 RSA_2048_3072_4096 ECC NIST P-256 P-384 P-521 ML-KEM-768_1024 rotation 90d least-privilege IAM no wildcard Azure KV KeyClient RSA size Managed HSM FIPS 140-3 Level 3 RBAC purge protection GCP KMS CryptoKey algorithm IAM CMEK residency drift TimescaleDB z-score EWMA ot Modbus TCP function codes 1-4 HEALTHY 5-6 15-16 WARNING DNP3 start bytes 0x05 0x64 OPC-UA HELLO OPEN security policy None CRITICAL BACnet BVLC NPDU APDU S7comm EtherNet-IP Zigbee BLE MQTT CoAP DTLS PSK firmware binwalk SquashFS JFFS2 UBIFS ARM MIPS OpenSSL mbedTLS WolfSSL zero packets TAP safety guardrails 1000 pkt/sec telecom SS7 MTP SCCP TCAP MAP A5/1 A5/2 Diameter SIP GTP 5G SBA NRF AMF SMF UPF SEPP PQC 3GPP TS33.501/210 safety guardrails 1000 pkt/sec qrng Shannon entropy -Σ p(x) log2 p(x) threshold 7.5 bits per byte pool&lt;128 WARNING &lt;64 CRITICAL chi-square χ² = Σ (O-E)²/E p-value &lt;0.01 WARNING &lt;0.001 CRITICAL NIST SP800-90B HW RDSEED RDRAND TPM TRNG + hsm fleet FIPS 140-3 Level 3 Thales Luna 7.8.0 ML-KEM ML-DSA Entrust nShield 12.80 Utimaco 5.4.0 AWS CloudHSM quorum M-of-N 3-of-5 Shamir 5 shares threshold 3 key ceremony escrow PED key partition SO CO HA group 3 HSMs Security World smart card OCS softcard root master key never leaves HSM intermediate KEK rotation 90d leaf DEK per-tenant envelope encryption root→KEK→DEK ceremony key ceremony script witness auditor video recording dual control split knowledge M-of-N Shamir secret sharing 5 shares threshold 3 escrow secure safe deposit box + k8s replicas 3 hpa min 3 max 10 CPU70% mem80% probes /healthz /readyz podAntiAffinity True networkPolicy True ingress TLS cert-manager admission Kyverno OPA Gatekeeper verifies SLSA level ≥3 signature provenance SBOM policy forbid unsigned require signed require provenance security runAsNonRoot seccomp readOnlyRootFilesystem PDB minAvailable 2 secrets fail-closed monitoring prometheus 6 jobs api worker postgres redis neo4j realtime-system cdt-real scrape_interval 15s alerts 7 HighErrorRate HighP99Latency RealtimeConnectionsHigh CDTSimulationsFailing EvidenceChainBroken QRNGEntropyLow QRNGEntropyCritical grafana 8 panels p99 latency throughput connections CDT simulations evidence chain QRNG risk compliance posture score agility quantum readiness jaeger tracing otel loki logs audit log immutable append-only hash-chained SHA-256 HMAC WORM JSONL S3 Object Lock 7y + RBAC 9 roles fail-closed JWT 401/403 + evidence chain SHA-256 HMAC Merkle WORM + realtime p99 342ms PASS — 100% production ready — file hash d764d425</div>
-      </Panel>
+      {/* Tab: Teams */}
+      {activeTab === "teams" && (
+        <Panel
+          title="Teams & Finding Ownership (Section 55)"
+          sub="Finding assignment hierarchy: Team → Owner → Individual engineer."
+          action={<button onClick={() => openDrawer("teams")} className="btn sm">Manage All Teams</button>}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            {[
+              { name: "Security", members: 14, focus: "Estate Vulnerability & PQC Migration" },
+              { name: "Infrastructure", members: 22, focus: "HSM, Cloud KMS & Edge Silicon" },
+              { name: "Payments", members: 9, focus: "PCI-DSS 4.0 HSM Quorum & POS" },
+              { name: "Cloud", members: 18, focus: "AWS/Azure/GCP IAM & CMEK Residency" },
+            ].map((t, idx) => (
+              <div key={idx} style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "6px", border: "1px solid var(--line)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ fontWeight: 600, color: "var(--text)", fontSize: "13.5px" }}>{t.name}</span>
+                  <Badge tone="cyan">{t.members} Members</Badge>
+                </div>
+                <div style={{ fontSize: "11.5px", color: "var(--dim)", marginTop: "4px" }}>{t.focus}</div>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Tab: Roles */}
+      {activeTab === "roles" && (
+        <Panel
+          title="Permission Matrix (Section 56)"
+          sub="Fine-grained permissions matrix enforced deterministically across backend endpoints."
+          action={<button onClick={() => openDrawer("role_matrix")} className="btn sm primary">Open RBAC Matrix</button>}
+        >
+          <div style={{ fontSize: "13px", color: "var(--dim)" }}>
+            ZELNX provides 6 enterprise role profiles: <b>Admin</b>, <b>Security Administrator</b>, <b>Security Engineer</b>, <b>Auditor</b>, <b>Compliance Officer</b>, and <b>Viewer</b>. Click below to inspect exact capabilities and assignments.
+          </div>
+          <button onClick={() => openDrawer("role_matrix")} className="btn sm" style={{ marginTop: "12px" }}>
+            View Full Permission Matrix
+          </button>
+        </Panel>
+      )}
+
+      {/* Tab: Environments */}
+      {activeTab === "environments" && (
+        <Panel title="Environment Scopes" sub="Physical and logical boundaries isolating discovery telemetry.">
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            {[
+              { name: "Production", status: "Active", tone: "red", desc: "Live regulated payment gateways and customer vaults." },
+              { name: "Staging", status: "Active", tone: "amber", desc: "Pre-production test clusters and release validation gates." },
+              { name: "Disaster Recovery (DR)", status: "Active", tone: "cyan", desc: "Warm standby replica sites and failover clusters." },
+            ].map((e, idx) => (
+              <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 14px", background: "var(--bg-2)", borderRadius: "6px" }}>
+                <div>
+                  <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13.5px" }}>{e.name}</div>
+                  <div style={{ fontSize: "11.5px", color: "var(--dim)" }}>{e.desc}</div>
+                </div>
+                <Badge tone={e.tone as any}>{e.status}</Badge>
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+
+      {/* Tab: API */}
+      {activeTab === "api" && (
+        <Panel
+          title="Machine API Credentials & Service Accounts (Sections 67, 68, 69)"
+          sub="Non-human machine tokens for CI/CD scanners and Kubernetes daemonsets."
+          action={<button onClick={() => openDrawer("api_keys")} className="btn sm primary">+ Create API Key</button>}
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13px" }}>Production CI/CD Scanner</div>
+              <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>Permissions: Read Assets, Read Evidence, Trigger Scan · Expires in 90 days</div>
+            </div>
+            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13px" }}>SIEM QRadar Forwarder</div>
+              <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: "2px" }}>Permissions: Read Evidence, Read Audit · Expiring Soon</div>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {/* Tab: Billing */}
+      {activeTab === "billing" && (
+        <Panel title="Plan & Enterprise Tier" sub="Cryptographic discovery capacity and sovereign SLA commitments.">
+          <div style={{ padding: "16px", background: "var(--bg-2)", borderRadius: "8px", border: "1px solid var(--cyan)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: "16px", fontWeight: 700, color: "var(--cyan)" }}>ZELNX Sovereign Enterprise Tier</div>
+                <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "4px" }}>
+                  Unlimited Assets · S3 Object Lock 7y WORM · Hardware QRNG Entropy · Sub-second p99 SLA
+                </div>
+              </div>
+              <Badge tone="green">ENTERPRISE ACTIVE</Badge>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {/* Tab: Retention */}
+      {activeTab === "retention" && (
+        <Panel
+          title="Data Retention & Residency (Sections 70 & 71)"
+          sub="Legal hold, compliance WORM storage, and geographic sovereign boundaries."
+          action={<button onClick={() => openDrawer("data_retention")} className="btn sm">Retention Settings</button>}
+        >
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13px" }}>Evidence Retention</div>
+              <div style={{ fontSize: "11.5px", color: "var(--dim)", marginTop: "2px" }}>S3 Object Lock 7 Years (Non-reducible)</div>
+              <Badge tone="green" style={{ marginTop: "6px" }}>WORM ENFORCED</Badge>
+            </div>
+            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "6px" }}>
+              <div style={{ fontWeight: 600, color: "var(--text)", fontSize: "13px" }}>Data Residency Territory</div>
+              <div style={{ fontSize: "11.5px", color: "var(--dim)", marginTop: "2px" }}>United Arab Emirates (me-central-1)</div>
+              <Badge tone="cyan" style={{ marginTop: "6px" }}>UAE SOVEREIGN</Badge>
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {/* Drawer */}
+      <EnterpriseAdminDrawer
+        isOpen={showDrawer}
+        onClose={() => setShowDrawer(false)}
+        initialTab={drawerTab}
+      />
     </div>
   );
 }
