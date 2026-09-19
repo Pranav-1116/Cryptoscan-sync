@@ -1,3 +1,4 @@
+import DigitalTwin from "./pages/DigitalTwin";
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { RealtimeProvider } from "./components/realtime/RealtimeProvider";
@@ -938,6 +939,7 @@ function App() {
       <Route path="/cryptographic-debt-ledger" element={<CryptographicDebtLedger />} />
       <Route path="/cryptographic-debt-ledger-real" element={<CryptographicDebtLedgerReal />} />
       <Route path="/cryptographic-debt-real" element={<CryptographicDebtReal />} />
+      <Route path="/digital-twin" element={<DigitalTwin />} />
       <Route path="/cryptographic-digital-twin" element={<CryptographicDigitalTwin />} />
       <Route path="/cryptographic-digital-twin-real" element={<CryptographicDigitalTwinReal />} />
       <Route path="/cryptographic-simulation-engine" element={<CryptographicSimulationEngine />} />

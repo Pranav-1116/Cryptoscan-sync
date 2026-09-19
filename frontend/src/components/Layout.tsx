@@ -16,6 +16,7 @@ const PRIMARY_SECTIONS = [
     title: "Overview",
     items: [
       { to: "/command-center", label: "Dashboard", icon: "◈" },
+      { to: "/digital-twin", label: "Digital Twin", icon: "⬡" },
       { to: "/activity", label: "Activity", icon: "◉" },
     ]
   },
