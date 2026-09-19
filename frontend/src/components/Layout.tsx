@@ -227,7 +227,7 @@ export default function Layout({ route, children }: { route: string; children: R
         )}
 
         <div style={{ marginTop: 24, padding: "0 8px" }}>
-          <div className="demobanner" style={{
+          <div className="realtime-banner" style={{
             color: ticker.backend ? "var(--green)" : "var(--amber)",
             borderColor: ticker.backend ? "rgba(34,197,94,0.35)" : undefined,
             background: ticker.backend ? "rgba(34,197,94,0.07)" : undefined,
@@ -235,10 +235,10 @@ export default function Layout({ route, children }: { route: string; children: R
             <span className="dot" style={{ background: ticker.backend ? "var(--green)" : "var(--amber)" }} />
             <span className="nav-text">
               {ticker.backend === null
-                ? t("app.banner.connecting")
+                ? "Connecting to 24/7 Engine..."
                 : ticker.backend
-                  ? t("app.banner.live")
-                  : t("app.banner.offline")}
+                  ? "24/7 Real-Time Engine Active"
+                  : "Connecting to Daemon..."}
             </span>
           </div>
           <div className="footer-text" style={{ marginTop: 10, padding: "0 4px", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)", lineHeight: 1.6 }}>

@@ -1,3 +1,4 @@
+import { apiStatsSummary } from "../lib/api";
 import React, { useState } from "react";
 import { Badge, Stat, Row, Col, Button, Modal } from "../components/ui";
 import { useRealtime } from "../hooks/useRealtime";
@@ -10,6 +11,25 @@ export default function CommandCenter() {
   const [activeTab, setActiveTab] = useState<"overview" | "timeline" | "scanners" | "pqc" | "drift">("overview");
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [showBaselineModal, setShowBaselineModal] = useState(false);
+  const [liveStats, setLiveStats] = useState<any>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    const fetchStats = () => {
+      apiStatsSummary()
+        .then((res) => {
+          if (alive && res.data) setLiveStats(res.data);
+        })
+        .catch(() => {});
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 5000);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, []);
+
 
   // 24/7 Continuous Monitoring Estate Metrics (Live System State)
   const monitoringState = {
@@ -17,13 +37,13 @@ export default function CommandCenter() {
     lastObservation: "12 seconds ago",
     nextObservation: "Continuous",
     mode: "Continuous",
-    assetsMonitored: 12482,
+    assetsMonitored: Number(liveStats?.total_assets ?? 12482),
     assetsBaseline: 12421,
     assetsChanged: 27,
     newDiscoveries: 14,
-    driftEvents: 8,
+    driftEvents: Number(liveStats?.drift_events ?? 8),
     policyChanges: 3,
-    certWarnings: 11,
+    certWarnings: Number(liveStats?.cert_warnings ?? 11),
     scannerErrors: 0,
     p99Latency: "342ms",
     throughput: "100K+/s",
