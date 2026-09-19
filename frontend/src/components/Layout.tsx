@@ -49,6 +49,7 @@ const PRIMARY_SECTIONS = [
   {
     title: "Governance",
     items: [
+      { to: "/banking-regulatory", label: "Banking & SWIFT", icon: "🏛" },
       { to: "/security-policy", label: "Policies", icon: "⚖" },
       { to: "/compliance", label: "Compliance", icon: "✓" },
       { to: "/evidence", label: "Evidence", icon: "⛨" },

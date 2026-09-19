@@ -1,3 +1,4 @@
+const BankingRegulatory = lazy(() => import("./pages/BankingRegulatory"));
 const SystemHealth = lazy(() => import("./pages/SystemHealth"));
 import DigitalTwin from "./pages/DigitalTwin";
 import React, { Suspense, lazy, useEffect, useState } from "react";
@@ -718,6 +719,8 @@ function App() {
         <Suspense fallback={<div style={{ padding: 20 }}>Loading page — p99 342ms...</div>}>
           <Layout>
             <Routes>
+        <Route path="/banking-regulatory" element={<BankingRegulatory />} />
+
               <Route path="/" element={<Navigate to="/command-center" replace />} />
       <Route path="/accuracy" element={<Accuracy />} />
       <Route path="/accuracy-real" element={<AccuracyReal />} />
