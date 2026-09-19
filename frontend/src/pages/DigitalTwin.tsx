@@ -293,6 +293,44 @@ const INITIAL_EDGES: TwinEdge[] = [
 export default function DigitalTwin() {
   const { role, env, org } = useEnterprise();
   const realtime = useRealtime("digital-twin", { historyLimit: 50 });
+  const [nodes, setNodes] = useState<TwinNode[]>(INITIAL_NODES);
+  const [edges, setEdges] = useState<TwinEdge[]>(INITIAL_EDGES);
+
+  // Ingest live realtime events dynamically into the Digital Twin
+  useEffect(() => {
+    if (realtime.lastEvent && realtime.lastEvent.data) {
+      const evt = realtime.lastEvent;
+      // If event provides new asset or finding, insert or update node
+      if (evt.event_type === "asset_discovered" || evt.event_type === "scan_finding") {
+        const item = evt.data;
+        const newId = item.id || `live-${Date.now()}`;
+        setNodes((prev) => {
+          if (prev.some((n) => n.id === newId)) return prev;
+          const newNode: TwinNode = {
+            id: newId,
+            name: item.name || item.algorithm || "Live Discovered Asset",
+            category: (item.category as any) || "Algorithm",
+            status: item.severity === "CRITICAL" ? "Critical" : "Warning",
+            algorithm: item.algorithm || "RSA",
+            keySize: item.key_size || 2048,
+            environment: env,
+            owner: "SecOps Ingest",
+            pqcStatus: "Migration Required",
+            firstSeen: new Date().toISOString().slice(0, 10),
+            lastSeen: new Date().toISOString().slice(0, 10),
+            observationId: `OBS-${Math.floor(10000 + Math.random() * 90000)}`,
+            evidenceId: `EV-${Math.floor(10000 + Math.random() * 90000)}`,
+            scannerSource: "Realtime Event Stream",
+            verified: true,
+            x: 280 + (prev.length % 5) * 50,
+            y: 380 + (prev.length % 3) * 40,
+            description: "Asset discovered live via WebSocket continuous telemetry.",
+          };
+          return [...prev, newNode];
+        });
+      }
+    }
+  }, [realtime.lastEvent, env]);
 
   // Navigation & View Layer Filters (Section 123–131)
   const [activeLayer, setActiveLayer] = useState<
@@ -313,7 +351,7 @@ export default function DigitalTwin() {
 
   // Selected Node calculation
   const selectedNode = useMemo(() => {
-    return INITIAL_NODES.find((n) => n.id === selectedNodeId) || INITIAL_NODES[0];
+    return nodes.find((n) => n.id === selectedNodeId) || nodes[0];
   }, [selectedNodeId]);
 
   // Blast Radius calculation (Section 110)
@@ -334,7 +372,7 @@ export default function DigitalTwin() {
 
   // Filtered nodes
   const filteredNodes = useMemo(() => {
-    return INITIAL_NODES.filter((n) => {
+    return nodes.filter((n) => {
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matches =
@@ -366,7 +404,7 @@ export default function DigitalTwin() {
             <h1 style={{ fontSize: "20px", fontWeight: 700, margin: 0, color: "var(--text)" }}>
               Cryptographic Digital Twin
             </h1>
-            <Badge tone="green">● Live Synchronized</Badge>
+            <Badge tone={realtime.isConnected ? "green" : "cyan"}>{realtime.isConnected ? "● WebSocket Live" : "● Synchronized"}</Badge>
             <Badge tone="cyan">{org.region}</Badge>
             <Badge tone="red">{env}</Badge>
           </div>
@@ -537,8 +575,8 @@ export default function DigitalTwin() {
                 </marker>
               </defs>
               {INITIAL_EDGES.map((edge, idx) => {
-                const s = INITIAL_NODES.find((n) => n.id === edge.source);
-                const t = INITIAL_NODES.find((n) => n.id === edge.target);
+                const s = nodes.find((n) => n.id === edge.source);
+                const t = nodes.find((n) => n.id === edge.target);
                 if (!s || !t || s.x === undefined || s.y === undefined || t.x === undefined || t.y === undefined) return null;
                 const isSelected = selectedNodeId === s.id || selectedNodeId === t.id;
                 return (
@@ -856,7 +894,7 @@ export default function DigitalTwin() {
                   <div style={{ fontWeight: 600, fontSize: "11.5px", color: "var(--text)", marginBottom: "4px" }}>Used By (Upstream Parents):</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                     {INITIAL_EDGES.filter((e) => e.target === selectedNode.id).map((edge, i) => {
-                      const parent = INITIAL_NODES.find((n) => n.id === edge.source);
+                      const parent = nodes.find((n) => n.id === edge.source);
                       return (
                         <div
                           key={i}
@@ -875,7 +913,7 @@ export default function DigitalTwin() {
                   <div style={{ fontWeight: 600, fontSize: "11.5px", color: "var(--text)", marginBottom: "4px" }}>Depends On (Downstream Children):</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                     {INITIAL_EDGES.filter((e) => e.source === selectedNode.id).map((edge, i) => {
-                      const child = INITIAL_NODES.find((n) => n.id === edge.target);
+                      const child = nodes.find((n) => n.id === edge.target);
                       return (
                         <div
                           key={i}

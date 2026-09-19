@@ -71,3 +71,30 @@ def realtime_status(user: str = Depends(get_current_user)):
         "evidence_chain": "SHA-256 HMAC Merkle WORM JSONL S3 Object Lock 7y",
         "quantum_readiness": "pqc*0.30 hybrid*0.20 agility*0.15 migration*0.15 vendor*0.10 infra*0.10",
     }
+
+try:
+    from fastapi import WebSocket as _WS, WebSocketDisconnect as _WSD
+    from api.realtime.manager import manager as _rt_manager
+    @router.websocket("/ws")
+    async def websocket_live(websocket: _WS):
+        """WebSocket live streaming for digital twin."""
+        client_id = await _rt_manager.connect(websocket, "digital-twin")
+        try:
+            while True:
+                data = await websocket.receive_text()
+                await _rt_manager.broadcast("digital-twin", {
+                    "type": "client_message",
+                    "router": "digital-twin",
+                    "client_id": client_id,
+                    "data": data,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+        except _WSD:
+            await _rt_manager.disconnect(websocket, "digital-twin")
+        except Exception:
+            try:
+                await _rt_manager.disconnect(websocket, "digital-twin")
+            except Exception:
+                pass
+except Exception:
+    pass
