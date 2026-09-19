@@ -10,7 +10,7 @@ export function LiveEventsPanel({ topic, title }: { topic?: string; title?: stri
   const events = realtime.events;
 
   return (
-    <Panel title={title || `Live Events ${topic ? `— ${topic}` : '— Global'}`} sub={`Real-time streaming p99<500ms exactly-once ${realtime.isConnected ? '● LIVE' : '○ disconnected'}`}>
+    <Panel title={title || `Live Events ${topic ? `— ${topic}` : '— Global'}`} sub={`Real-time streaming p99&lt;500ms exactly-once ${realtime.isConnected ? '● LIVE' : '○ disconnected'}`}>
       <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <Badge tone={realtime.isConnected ? 'green' : 'red'}>{realtime.isConnected ? 'LIVE' : 'DISCONNECTED'}</Badge>
         <Badge tone="cyan">{events.length} events</Badge>
@@ -41,3 +41,5 @@ export function LiveEventsPanel({ topic, title }: { topic?: string; title?: stri
 export function GlobalLiveEventsPanel() {
   return <LiveEventsPanel title="Global Live Feed — All Routers Real-Time" />;
 }
+
+export default LiveEventsPanel;

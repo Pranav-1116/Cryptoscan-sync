@@ -12,7 +12,7 @@ export default function Pqc() {
   };
 
   const exposureBreakdown = [
-    { algo: "RSA", total: 5410, vulnerable: 3940, pct: 72, risk: "CRITICAL", desc: "Shor's algorithm breaks integer factorization. All RSA keys <4096 vulnerable." },
+    { algo: "RSA", total: 5410, vulnerable: 3940, pct: 72, risk: "CRITICAL", desc: "Shor's algorithm breaks integer factorization. All RSA keys &lt;4096 vulnerable." },
     { algo: "ECC / ECDSA", total: 3120, vulnerable: 2190, pct: 70, risk: "CRITICAL", desc: "Shor's algorithm solves elliptic curve discrete logs. P-256 and P-384 vulnerable." },
     { algo: "Diffie-Hellman", total: 1204, vulnerable: 1102, pct: 91, risk: "CRITICAL", desc: "Discrete logarithm breaks classical DH key exchange in polynomial time." },
     { algo: "AES", total: 6890, vulnerable: 0, pct: 0, risk: "LOW", desc: "Grover's algorithm halves effective security. AES-256 remains 128-bit quantum secure." },

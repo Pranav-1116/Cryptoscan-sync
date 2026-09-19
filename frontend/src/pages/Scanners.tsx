@@ -20,7 +20,7 @@ export default function Scanners() {
   const [progress, setProgress] = useState(82);
 
   const targets: { id: ScanTarget; label: string; desc: string; icon: string }[] = [
-    { id: "Source Repository", label: "Source Repository", desc: "150+ regex patterns & Shannon entropy >4.5 for hardcoded crypto secrets", icon: "⬡" },
+    { id: "Source Repository", label: "Source Repository", desc: "150+ regex patterns & Shannon entropy &gt;4.5 for hardcoded crypto secrets", icon: "⬡" },
     { id: "Network", label: "Network", desc: "Passive TLS JA3/JA3S/JARM fingerprinting and cipher suite audit", icon: "◈" },
     { id: "Cloud", label: "Cloud", desc: "AWS KMS, Azure Key Vault, GCP Cloud KMS key hierarchy audit", icon: "☁" },
     { id: "Container", label: "Container", desc: "Trivy & Syft image SBOM crypto package extraction", icon: "⧉" },

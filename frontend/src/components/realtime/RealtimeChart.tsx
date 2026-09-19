@@ -60,3 +60,5 @@ export function RealtimeChart({ topic, title }: { topic: string; title?: string 
     </Panel>
   );
 }
+
+export default RealtimeChart;

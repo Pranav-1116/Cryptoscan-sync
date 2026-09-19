@@ -28,3 +28,5 @@ export function LiveStatusBadge({ topic }: { topic?: string }) {
 export function GlobalLiveStatusBadge() {
   return <LiveStatusBadge />;
 }
+
+export default LiveStatusBadge;

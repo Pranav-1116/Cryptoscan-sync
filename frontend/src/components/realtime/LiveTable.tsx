@@ -36,7 +36,7 @@ export function LiveTable({ topic, fetchUrl, title }: { topic: string; fetchUrl:
   }, [lastEvent]);
 
   return (
-    <Panel title={title || `Live Table — ${topic}`} sub={`Real-time live updating table p99<500ms ${isConnected ? '● LIVE' : '○ offline'} ${lastEvent ? `last: ${lastEvent.event_type}` : ''}`}>
+    <Panel title={title || `Live Table — ${topic}`} sub={`Real-time live updating table p99&lt;500ms ${isConnected ? '● LIVE' : '○ offline'} ${lastEvent ? `last: ${lastEvent.event_type}` : ''}`}>
       <div className="row" style={{ gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
         <Badge tone={isConnected ? 'green' : 'red'}>{isConnected ? 'LIVE' : 'OFFLINE'}</Badge>
         <Badge tone="cyan">{data.length} items</Badge>
@@ -54,3 +54,5 @@ export function LiveTable({ topic, fetchUrl, title }: { topic: string; fetchUrl:
     </Panel>
   );
 }
+
+export default LiveTable;
