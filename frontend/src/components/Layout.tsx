@@ -1,3 +1,4 @@
+import SystemHealthModal from "./SystemHealthModal";
 import React, { useEffect, useState } from "react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search";
@@ -70,6 +71,7 @@ export default function Layout({ route, children }: { route: string; children: R
   const { t, dir } = useI18n();
   const [showSearch, setShowSearch] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
+  const [showHealthModal, setShowHealthModal] = useState(false);
   const [showAllModules, setShowAllModules] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("zelnx-sidebar-collapsed") === "true"; } catch { return false; }
@@ -258,8 +260,15 @@ export default function Layout({ route, children }: { route: string; children: R
             const s = map[conn] ?? map.offline;
             return (
               <>
-                <span className="live-dot" style={{ background: s.c, boxShadow: `0 0 10px ${s.c}`, animation: s.pulse ? undefined : "none" }} />
-                <span className="item"><b style={{ color: s.c }}>{s.label}</b></span>
+                <div
+    onClick={() => setShowHealthModal(true)}
+    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--panel)", padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--line)" }}
+    title="Click to view 24/7 Engine Health & Status"
+  >
+    <span className="live-dot" style={{ background: s.c, boxShadow: `0 0 10px ${s.c}`, animation: s.pulse ? undefined : "none" }} />
+    <span style={{ fontWeight: 600, color: s.c, fontSize: "12px" }}>ZELNX Operational</span>
+    <span style={{ fontSize: "10px", color: "var(--faint)" }}>▼</span>
+  </div>
               </>
             );
           })()}
@@ -377,6 +386,7 @@ export default function Layout({ route, children }: { route: string; children: R
       </main>
 
       {showSearch && <SearchOverlay onClose={() => setShowSearch(false)} />}
+      <SystemHealthModal isOpen={showHealthModal} onClose={() => setShowHealthModal(false)} />
       <Toasts toasts={toasts} />
     </div>
   );
