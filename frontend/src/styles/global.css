@@ -1053,3 +1053,61 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .fd-sec .fd-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12.5px; }
 .fd-sec .fd-kv .k { font-family: var(--mono); font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
 .fd-sec.verify { border-color: var(--line-strong); }
+
+/* ── Modern Minimal UI / ChatGPT-style Usability Additions ── */
+.btn.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--dim);
+}
+.btn.ghost:hover {
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: transparent;
+}
+.btn.danger {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+.btn.danger:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: var(--red);
+  color: #fff;
+}
+.btn.outline {
+  background: transparent;
+  border-color: var(--line-strong);
+}
+.btn.lg {
+  padding: 10px 20px;
+  font-size: 14px;
+}
+
+@keyframes skeleton-pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 0.3; }
+  100% { opacity: 0.6; }
+}
+
+/* Collapsible sidebar support */
+.shell.collapsed {
+  grid-template-columns: 68px minmax(0, 1fr);
+}
+.shell.collapsed .sidebar {
+  padding: 16px 8px 40px;
+}
+.shell.collapsed .sidebar .nav-label,
+.shell.collapsed .sidebar .logo-text,
+.shell.collapsed .sidebar a.nav span.nav-text,
+.shell.collapsed .sidebar .footer-text {
+  display: none;
+}
+.shell.collapsed .sidebar a.nav {
+  justify-content: center;
+  padding: 10px 0;
+}
+.shell.collapsed .sidebar a.nav .nav-icon {
+  width: auto;
+  font-size: 16px;
+}
