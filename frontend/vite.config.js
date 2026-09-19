@@ -1,8 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// The browser never calls localhost: the dev server proxies /api to the
-// backend when it is running. There is no demo/fallback dataset — when the
+// The browser never calls localhost: the dev server proxies /api and /healthz
+// to the backend when it is running. There is no demo/fallback dataset — when the
 // backend is unreachable the pages render honest empty/offline states.
 // Ports match the Docker contract: frontend 3003, backend 8010.
 export default defineConfig({
@@ -18,6 +18,18 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
         ws: true,
+      },
+      "/healthz": {
+        target: "http://127.0.0.1:8010",
+        changeOrigin: true,
+        secure: false,
+      },
+      "/ws": {
+        target: "http://127.0.0.1:8010",
+        ws: true,
+      },
+      "/events": {
+        target: "http://127.0.0.1:8010",
       },
     },
   },

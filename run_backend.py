@@ -1,15 +1,19 @@
-import sys, os, glob
+import os
+import sys
+import glob
 
-base = "/home/user/CryproScan"
-for s in glob.glob(f"{base}/services/*"):
-    if os.path.isdir(s):
-        sys.path.insert(0, s)
-for sh in glob.glob(f"{base}/shared/*"):
-    if os.path.isdir(sh):
-        sys.path.insert(0, sh)
+# Ensure all microservices and shared modules are discoverable on PYTHONPATH
+root_dir = os.path.dirname(os.path.abspath(__file__))
+for p in glob.glob(os.path.join(root_dir, 'services', '*')):
+    if os.path.isdir(p):
+        sys.path.insert(0, p)
+for p in glob.glob(os.path.join(root_dir, 'shared', '*')):
+    if os.path.isdir(p):
+        sys.path.insert(0, p)
 
 import uvicorn
-from api.main import app
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8010, log_level="info")
+    os.environ.setdefault("PORT", "8010")
+    os.environ.setdefault("HOST", "0.0.0.0")
+    uvicorn.run("api.main:app", host="0.0.0.0", port=8010, reload=False, log_level="info")
