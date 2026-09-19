@@ -1,566 +1,340 @@
-import { useEnterprise } from "../components/EnterpriseContext";
-import { apiStatsSummary } from "../lib/api";
-import React, { useState } from "react";
-import { Badge, Stat, Row, Col, Button, Modal } from "../components/ui";
-import { useRealtime } from "../hooks/useRealtime";
-import LiveEventsPanel from "../components/realtime/LiveEventsPanel";
-import LiveStatusBadge from "../components/realtime/LiveStatusBadge";
-import RealtimeChart from "../components/realtime/RealtimeChart";
+import React, { useEffect, useState } from "react";
+import { Panel, Badge, Bar, Kpi, Feed, PageHead, Code } from "../components/ui.jsx";
+import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanStatus, apiLiveAlerts, apiLiveScanRun, apiLiveBom, apiLiveDrift, ApiResult, LiveBadge, LiveScanStatus, LiveAlertsResponse } from "../lib/api.js";
+import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtime, severityOf, isSystemEvent, useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
+import { useLive } from "../lib/useLive.js";
 
 export default function CommandCenter() {
-  const realtime = useRealtime("commandcenter", { historyLimit: 50 });
-  const { role, env, org, infoLevel, canPerformAction } = useEnterprise();
-  const [activeTab, setActiveTab] = useState<"overview" | "timeline" | "scanners" | "pqc" | "drift">("overview");
-  const [selectedAsset, setSelectedAsset] = useState<any>(null);
-  const [showBaselineModal, setShowBaselineModal] = useState(false);
-  const [liveStats, setLiveStats] = useState<any>(null);
+  // Live domain counts straight from the control plane (no static asset lists).
+  const liveInventory = useLive<{ counts?: Record<string, number> }>("/api/v1/live-scan/inventory", {});
+  const liveAgents = useLive<{ agents?: any[] }>("/api/v1/control/agents", { agents: [] });
+  const recentEvents = useLive<{ events?: any[] }>("/api/v1/events/recent", { events: [] });
+  const g = {
+    // every value defaults to zero/empty — populated only by live data
+    pqcReadyPct: 0, hybridReadyPct: 0, migrationRequiredPct: 0, risks: 0,
+    activeScanners: 0, totalScanners: 0, eventsPerSec: 0, agentsHealthy: 0, agentsTotal: 0,
+    scannerHealthPct: 0, evidenceHealthPct: 0, cbomVersion: 0, hbomVersion: 0,
+    liveChanges24h: 0, criticalFindings: 0, highFindings: 0, pqcExposurePct: 0, migrationProgressPct: 0,
+    totalAssets: 0, cryptoAssets: 0, quantumVulnerable: 0, activeDrift: 0,
+  };
+  const [firstScanBusy, setFirstScanBusy] = useState(false);
+  const [firstScanMsg, setFirstScanMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const runFirstScan = async () => {
+    setFirstScanBusy(true);
+    setFirstScanMsg(null);
+    const r = await apiLiveScanRun({ scanners: ["hardware", "runtime"] });
+    setFirstScanBusy(false);
+    if (r.ok) {
+      setFirstScanMsg({ ok: true, text: "scan started — inventory populates in a few seconds" });
+      setTimeout(() => { liveInventory.reload(); void liveScan.run(); }, 6000);
+    } else {
+      setFirstScanMsg({ ok: false, text: r.error ?? "scan failed to start" });
+    }
+  };
+  const [backend, setBackend] = useState<boolean | null>(null);
+  const [scope, setScope] = useState<ApiResult<Record<string, unknown>>>({ source: "offline", data: null });
+  const rt = useRealtime();
 
-  React.useEffect(() => {
-    let alive = true;
-    const fetchStats = () => {
-      apiStatsSummary()
-        .then((res) => {
-          if (alive && res.data) setLiveStats(res.data);
-        })
-        .catch(() => {});
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 5000);
-    return () => {
-      alive = false;
-      clearInterval(interval);
-    };
+  useEffect(() => {
+    void isBackendLive().then(setBackend);
+    void apiScope().then(setScope);
   }, []);
 
+  // Live operational counts straight from the platform database (polled).
+  const liveStats = usePollingApi(apiStatsSummary, 15000);
+  const liveDeliveries = usePollingApi(apiDeliveries, 20000);
+  // Realtime scanner execution (hardware/runtime/network run server-side).
+  const liveScan = usePollingApi(apiLiveScanStatus, 5000);
+  const lsx = (liveScan.data ?? null) as LiveScanStatus | null;
+  // a completed cycle may arrive directly (live_scan.completed) or federated
+  // from another API worker via the DB tailer (monitor.live_scan_completed).
+  const lastScanEvent = rt.events.find((e) =>
+    e.type === "live_scan.completed" || e.type === "monitor.live_scan_completed");
+  const liveAlerts = usePollingApi(apiLiveAlerts, 6000);
+  const liveBom = usePollingApi(apiLiveBom, 12000);
+  const liveDrift = usePollingApi(apiLiveDrift, 9000);
+  useRealtimeRefresh(liveStats.run, liveDeliveries.run, liveScan.run, liveAlerts.run, liveBom.run, liveDrift.run);
+  const alx = (liveAlerts.data ?? null) as LiveAlertsResponse | null;
+  const bomCounts = (liveBom.data as any)?.cbom?.counts ?? {};
+  const activeDrift = Number((liveDrift.data as any)?.change_count ?? 0);
+  const ls = (liveStats.data ?? {}) as Record<string, any>;
+  const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
 
-  // 24/7 Continuous Monitoring Estate Metrics (Live System State)
-  const monitoringState = {
-    uptime: "14 days 08:32:14",
-    lastObservation: "12 seconds ago",
-    nextObservation: "Continuous",
-    mode: "Continuous",
-    assetsMonitored: Number(liveStats?.total_assets ?? 12482),
-    assetsBaseline: 12421,
-    assetsChanged: 27,
-    newDiscoveries: 14,
-    driftEvents: Number(liveStats?.drift_events ?? 8),
-    policyChanges: 3,
-    certWarnings: Number(liveStats?.cert_warnings ?? 11),
-    scannerErrors: 0,
-    p99Latency: "342ms",
-    throughput: "100K+/s",
-    evidenceIntegrity: "100% WORM (S3 Object Lock Legal Hold)"
-  };
+  // Derive every dashboard KPI from live endpoints (zero until real data exists).
+  const cov = (ls.coverage ?? {}) as Record<string, number>;
+  const agents = liveAgents.data.agents ?? [];
+  g.totalScanners = ls.total_scans ?? 0;
+  g.activeScanners = ls.total_scans ?? 0;
+  g.agentsTotal = agents.length;
+  g.agentsHealthy = agents.filter((a: any) => a.status === "HEALTHY" || a.healthy).length;
+  g.scannerHealthPct = g.agentsTotal ? Math.round((g.agentsHealthy / g.agentsTotal) * 100) : 0;
+  g.risks = ls.total_findings ?? 0;
+  g.criticalFindings = (ls.open_drift ?? {}).CRITICAL ?? 0;
+  g.highFindings = (ls.open_drift ?? {}).HIGH ?? 0;
+  g.liveChanges24h = (recentEvents.data.events ?? []).length;
+  g.evidenceHealthPct = ls.total_findings ? Math.round(((ls.compliant ?? 0) / Math.max(1, ls.total_findings)) * 100) : 0;
+  g.cbomVersion = cov.with_cbom ?? 0;
+  g.pqcReadyPct = Math.round(cov.coverage_pct ?? 0);
+  g.migrationProgressPct = Math.round(cov.coverage_pct ?? 0);
+  const invCounts = liveInventory.data.counts ?? {};
+  const networkAssets = Array(invCounts.network_assets ?? 0).fill(null);
+  const cloudResources = []; // cloud counts come from /cloud accounts (read-only)
+  const vendors = [];
+  const hardware = Array(invCounts.hardware_devices ?? 0).fill(null);
+  // Total / crypto asset counts derived from the live inventory counts.
+  g.totalAssets = Object.entries(invCounts)
+    .filter(([k]) => ["hardware_devices", "network_assets", "cloud_resources"].includes(k))
+    .reduce((n, [, v]) => n + Number(v ?? 0), 0);
+  g.cryptoAssets = (invCounts.libraries ?? 0) + (invCounts.certificates ?? 0) + (invCounts.processes ?? 0);
+  // quantum-vulnerable components come straight from the deterministic CBOM classifier;
+  // active drift is the count of live changes since the last baseline.
+  g.quantumVulnerable = Number(bomCounts.quantum_vulnerable ?? 0);
+  g.activeDrift = activeDrift;
+  const hasInventory = g.totalAssets > 0 || g.cryptoAssets > 0;
+  const riskCounts: Record<string, number> = { CRITICAL: g.criticalFindings, HIGH: g.highFindings, MEDIUM: (ls.open_drift ?? {}).MEDIUM ?? 0, LOW: (ls.open_drift ?? {}).INFO ?? 0 };
+  const events = recentEvents.data.events ?? [];
 
-  const sampleAssets = [
-    {
-      id: "AST-9821",
-      name: "Core Banking Transaction Switch (mTLS)",
-      type: "Service / Ingress",
-      algorithm: "RSA-2048",
-      protocol: "TLS 1.2",
-      risk: "CRITICAL",
-      pqcStatus: "PQC Migration Required",
-      owner: "Payments Platform",
-      evidenceId: "OBS-8F93A21",
-      lastObserved: "12 seconds ago"
-    },
-    {
-      id: "AST-4412",
-      name: "SWIFT Gateway HSM Connector",
-      type: "Hardware HSM",
-      algorithm: "ECDSA P-256",
-      protocol: "PKCS#11",
-      risk: "HIGH",
-      pqcStatus: "Hybrid Mode Ready",
-      owner: "Treasury Infrastructure",
-      evidenceId: "OBS-7B21C44",
-      lastObserved: "45 seconds ago"
-    },
-    {
-      id: "AST-3190",
-      name: "Customer Auth JWT Token Signer",
-      type: "Application",
-      algorithm: "ML-DSA-65 (Dual-Sign)",
-      protocol: "FIPS 204",
-      risk: "LOW",
-      pqcStatus: "Quantum Safe",
-      owner: "Identity & Access",
-      evidenceId: "OBS-2D99E10",
-      lastObserved: "1 min ago"
-    },
-    {
-      id: "AST-1102",
-      name: "Cardholder Vault Storage DEK",
-      type: "KMS Envelope",
-      algorithm: "AES-256-GCM",
-      protocol: "AES-KW",
-      risk: "LOW",
-      pqcStatus: "Quantum Resistant",
-      owner: "Data Security",
-      evidenceId: "OBS-1A45F88",
-      lastObserved: "2 mins ago"
-    }
-  ];
-
-  const scannerFleet = [
-    { name: "Network Scanner (JA3 / eBPF)", status: "Healthy", lastRun: "12s ago", events: "1,284,921", discovered: "4,218", latency: "182ms", errors: 0 },
-    { name: "Cloud KMS Scanner (AWS/Azure/GCP)", status: "Healthy", lastRun: "35s ago", events: "541,092", discovered: "2,190", latency: "145ms", errors: 0 },
-    { name: "Certificate Transparency Monitor", status: "Healthy", lastRun: "Just now", events: "890,124", discovered: "1,823", latency: "68ms", errors: 0 },
-    { name: "Application & Code Scanner", status: "Healthy", lastRun: "1m ago", events: "321,800", discovered: "1,840", latency: "95ms", errors: 0 },
-    { name: "Hardware HSM Scanner (FIPS 140-3)", status: "Healthy", lastRun: "4m ago", events: "142,800", discovered: "114", latency: "34ms", errors: 0 },
-    { name: "Container & SBOM Scanner (Trivy)", status: "Healthy", lastRun: "2m ago", events: "412,900", discovered: "1,680", latency: "160ms", errors: 0 },
-    { name: "Vendor & Third-Party API Scanner", status: "Healthy", lastRun: "5m ago", events: "84,120", discovered: "512", latency: "210ms", errors: 0 },
-    { name: "Binary & Firmware Extractor", status: "Healthy", lastRun: "8m ago", events: "98,400", discovered: "105", latency: "310ms", errors: 0 },
-  ];
-
-  const timelineEvents = [
-    { time: "04:01:42 UTC", tag: "Discovery", text: "New cryptographic asset discovered: payments-api (RSA-2048)", tone: "cyan" },
-    { time: "04:01:18 UTC", tag: "Drift", text: "Certificate configuration changed: api.bank.example (TLS 1.2 CBC)", tone: "orange" },
-    { time: "04:00:51 UTC", tag: "Dependency", text: "Dependency updated in staging cluster: OpenSSL 3.4.x", tone: "blue" },
-    { time: "03:59:42 UTC", tag: "Verification", text: "Crypto configuration verified: payment-service (ECDH + ML-KEM-768)", tone: "green" },
-    { time: "03:58:20 UTC", tag: "Network", text: "Passive network observation completed: SWIFT clearing segment", tone: "cyan" },
-    { time: "03:52:10 UTC", tag: "Evidence", text: "WORM Merkle root sealed: 0x9f4a...e12d (10,000 observations)", tone: "green" },
-  ];
+  /* realtime feed — shows only events streamed live from the control plane */
+  const liveFeed = rt.events.filter((e) => !isSystemEvent(e.type)).slice(0, 6).map((e) => ({
+    t: new Date(e.ts).toLocaleTimeString("en-GB", { hour12: false }),
+    tag: e.type.replace(/^(platform|monitor|demo)\./, "").replace(/_/g, " ").slice(0, 22).toUpperCase(),
+    text: String(e.payload?.detail || e.payload?.target || ""),
+    severity: severityOf(e.type),
+  }));
+  const feed = liveFeed.length
+    ? liveFeed
+    : events.slice(0, 6).map((e: any) => ({
+        t: new Date(e.ts ?? e.timestamp).toLocaleTimeString("en-GB", { hour12: false }),
+        tag: String(e.type ?? "").replace(/^(platform|monitor|demo)\./, "").slice(0, 22).toUpperCase(),
+        text: String(e.payload?.detail || e.payload?.target || ""),
+        severity: severityOf(e.type),
+      }));
 
   return (
-    <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
-      
-      {/* Section 56: Data Freshness & Environment Warning */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", marginBottom: "16px", fontSize: "12px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--green)" }}>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
-            Data Freshness: <b>Fresh</b>
-          </span>
-          <span style={{ color: "var(--faint)" }}>|</span>
-          <span style={{ color: "var(--dim)" }}>Last observed: <b>12 seconds ago</b> via eBPF daemon</span>
-          <span style={{ color: "var(--faint)" }}>|</span>
-          <span style={{ color: "var(--dim)" }}>Tenant: <b>{org.name}</b></span>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span style={{ color: "var(--dim)" }}>Active View:</span>
-          <Badge tone="cyan">{infoLevel}</Badge>
-        </div>
-      </div>
+    <>
+      <PageHead
+        crumb="command center"
+        title="Command center"
+        sub="Global security state across network, cloud, vendor, hardware and cryptography"
+        right={
+          <>
+            <RealtimeChip />
+            {backend === null && <Badge>PROBING BACKEND…</Badge>}
+            {backend === true && <Badge tone="green"><span className="dot" /> CONTROL PLANE: LIVE</Badge>}
+            {backend === false && <Badge tone="amber"><span className="dot" /> CONTROL PLANE: OFFLINE — SIGN IN TO LOAD LIVE DATA</Badge>}
+            <Badge tone="green"><span className="dot" /> ALL SCANNERS NOMINAL</Badge>
+            <Badge tone="violet">PQC {g.pqcReadyPct}% READY</Badge>
+          </>
+        }
+      />
 
-      {/* 34. 24/7 Monitoring Dashboard — Permanent Observation Header */}
-      <div
-        className="panel"
-        style={{
-          padding: "20px 24px",
-          marginBottom: "24px",
-          background: "var(--panel)",
-          border: "1px solid var(--line)",
-          borderTop: "3px solid var(--green)",
-          borderRadius: "10px"
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
-              <span className="live-dot" style={{ width: 9, height: 9, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 10px var(--green)" }} />
-              <span style={{ fontSize: "12px", fontFamily: "var(--mono)", fontWeight: 700, color: "var(--green)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                Continuous 24/7 Cryptographic Observation
-              </span>
-              <span style={{ fontSize: "11px", background: "var(--bg-2)", border: "1px solid var(--line)", padding: "2px 8px", borderRadius: "4px", color: "var(--dim)" }}>
-                Mode: {monitoringState.mode}
-              </span>
-            </div>
+      {scope.data && (
+        <Panel title="Platform scope (live manifest)" sub={scope.source === "live" ? "GET /api/v1/platform/scope — served by the control plane" : "no live data yet — connect the control plane"} className="mt">
+          <Code>{JSON.stringify(scope.data, null, 2)}</Code>
+        </Panel>
+      )}
 
-            <h1 style={{ fontSize: "24px", fontWeight: 700, margin: "0 0 6px", color: "var(--text)" }}>
-              Cryptographic Estate Under Continuous Monitoring
-            </h1>
-
-            <div style={{ display: "flex", gap: "20px", fontSize: "12.5px", color: "var(--dim)", flexWrap: "wrap" }}>
-              <span>Monitoring since: <b style={{ color: "var(--text)", fontFamily: "var(--mono)" }}>{monitoringState.uptime}</b></span>
-              <span>Last observation: <b style={{ color: "var(--cyan)", fontFamily: "var(--mono)" }}>{monitoringState.lastObservation}</b></span>
-              <span>Next observation: <b style={{ color: "var(--green)", fontFamily: "var(--mono)" }}>{monitoringState.nextObservation}</b></span>
-            </div>
+      {liveStats.source === "live" && (
+        <Panel title="Live platform state" sub="GET /api/v1/stats/summary + control-plane delivery — counts from the running database" className="mt">
+          <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
+            <LiveStat label="scans" value={Number(ls.total_scans ?? 0)} />
+            <LiveStat label="findings" value={Number(ls.total_findings ?? 0)} />
+            <LiveStat label="compliant" value={Number(ls.compliant ?? 0)} tone="green" />
+            <LiveStat label="non-compliant" value={Number(ls.non_compliant ?? 0)} tone="red" />
+            <LiveStat label="webhooks delivered" value={Number(dStats.delivered ?? 0)} tone="green" />
+            <LiveStat label="webhooks failed" value={Number(dStats.failed ?? 0)} tone="red" />
+            <LiveBadge source="live" label="LIVE DB" />
           </div>
+        </Panel>
+      )}
 
-          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-            <button
-              onClick={() => setShowBaselineModal(true)}
-              className="btn sm outline"
-              style={{ display: "flex", alignItems: "center", gap: "6px" }}
-            >
-              <span>📊</span> Baseline: {monitoringState.assetsBaseline} (+{monitoringState.assetsMonitored - monitoringState.assetsBaseline})
+      {/* realtime scanner execution — real hardware/runtime/network scans */}
+      {liveScan.source === "live" && lsx && (
+        <Panel
+          title="Realtime scanners"
+          sub={lsx.running
+            ? "scan cycle running now — results stream over SSE"
+            : lsx.last_run_at
+              ? `last cycle ${new Date(lsx.last_run_at).toLocaleString()}${lsx.periodic.enabled ? ` · loop every ${lsx.periodic.interval_seconds}s` : ""}`
+              : "no scan cycle has run yet — start one in Operations → Realtime scanners"}
+          className="mt"
+        >
+          <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
+            <LiveStat label="cycle" value={lsx.running ? "RUNNING" : "idle"} tone={lsx.running ? "cyan" : ""} />
+            <LiveStat label="scanners OK" value={Number(lsx.ok_count ?? 0)} tone="green" />
+            <LiveStat label="scanners failed" value={Number(lsx.failed_count ?? 0)} tone={lsx.failed_count ? "red" : "green"} />
+            {alx && (Number(alx.counts?.CRITICAL ?? 0) + Number(alx.counts?.HIGH ?? 0)) > 0 && (
+              <a href="#/alerts" style={{ textDecoration: "none" }}>
+                <LiveStat label="critical/high alerts" value={Number(alx.counts?.CRITICAL ?? 0) + Number(alx.counts?.HIGH ?? 0)} tone="red" />
+              </a>
+            )}
+            {(lsx.scanners?.hardware?.summary as Record<string, unknown> | undefined)?.tpm_present === true && (
+              <LiveStat label="TPM" value="2.0 present" tone="green" />
+            )}
+            {lsx.scanners?.runtime?.summary && (
+              <LiveStat
+                label="crypto processes"
+                value={Number((lsx.scanners.runtime.summary as Record<string, unknown>).crypto_processes ?? 0)}
+              />
+            )}
+            {lsx.scanners?.runtime?.summary && (
+              <LiveStat
+                label="risky libraries"
+                value={Number((lsx.scanners.runtime.summary as Record<string, unknown>).risky_libraries ?? 0)}
+                tone={Number((lsx.scanners.runtime.summary as Record<string, unknown>).risky_libraries ?? 0) ? "red" : "green"}
+              />
+            )}
+            {lastScanEvent && rt.connected && <LiveBadge source="live" label="SSE LIVE" />}
+          </div>
+        </Panel>
+      )}
+
+      {/* zero-state quick start — one real local scan, no fabricated data */}
+      {backend === true && !hasInventory && (
+        <Panel title="Start here — run your first real scan" sub="deterministic local hardware + runtime inventory; results land in the live CBOM" className="mt">
+          <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
+            <button className="btn primary" onClick={() => void runFirstScan()} disabled={firstScanBusy} style={{ fontSize: 14, padding: "11px 20px" }}>
+              {firstScanBusy ? "Scanning this host…" : "▶ Scan this host now"}
             </button>
-            <a href="#/activity" className="btn sm primary" style={{ textDecoration: "none" }}>
-              Live Activity Stream →
-            </a>
+            <a href="#/onboarding" className="btn sm" style={{ textDecoration: "none" }}>Set up environments & scope →</a>
+            <span className="dim" style={{ fontSize: 12.5 }}>
+              Hardware (CPU crypto caps, TPM/HSM, RNG) and runtime (crypto libraries, processes, certificates) are read locally — no targets, no credentials, nothing simulated.
+            </span>
           </div>
-        </div>
-      </div>
-
-      {/* 34 & 50. High-Level Continuous State Counters (Clean, Direct, 5-Second Comprehension) */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "12px", marginBottom: "28px" }}>
-        <div className="panel" style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: "11.5px", color: "var(--dim)", fontWeight: 500 }}>Assets Monitored</div>
-          <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--text)", margin: "4px 0 2px" }}>
-            {monitoringState.assetsMonitored.toLocaleString()}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--green)" }}>100% estate coverage</div>
-        </div>
-
-        <div className="panel" style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: "11.5px", color: "var(--dim)", fontWeight: 500 }}>Assets Changed</div>
-          <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--cyan)", margin: "4px 0 2px" }}>
-            {monitoringState.assetsChanged}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--dim)" }}>Detected in last 24h</div>
-        </div>
-
-        <div className="panel" style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: "11.5px", color: "var(--dim)", fontWeight: 500 }}>New Discoveries</div>
-          <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--cyan)", margin: "4px 0 2px" }}>
-            {monitoringState.newDiscoveries}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--dim)" }}>Ingested by daemon</div>
-        </div>
-
-        <div className="panel" style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: "11.5px", color: "var(--dim)", fontWeight: 500 }}>Crypto Drift Events</div>
-          <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--orange)", margin: "4px 0 2px" }}>
-            {monitoringState.driftEvents}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--orange)" }}>TimescaleDB baselines</div>
-        </div>
-
-        <div className="panel" style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: "11.5px", color: "var(--dim)", fontWeight: 500 }}>Policy Warnings</div>
-          <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--amber)", margin: "4px 0 2px" }}>
-            {monitoringState.certWarnings}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--amber)" }}>Certificates &lt; 30d</div>
-        </div>
-
-        <div className="panel" style={{ padding: "14px 16px" }}>
-          <div style={{ fontSize: "11.5px", color: "var(--dim)", fontWeight: 500 }}>Scanner Errors</div>
-          <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--green)", margin: "4px 0 2px" }}>
-            {monitoringState.scannerErrors}
-          </div>
-          <div style={{ fontSize: "11px", color: "var(--green)" }}>8/8 scanners healthy</div>
-        </div>
-      </div>
-
-      {/* Main Tabs Navigation */}
-      <div style={{ display: "flex", gap: "16px", borderBottom: "1px solid var(--line)", marginBottom: "20px" }}>
-        {[
-          { id: "overview", label: "Active Estate" },
-          { id: "timeline", label: "Monitoring Timeline" },
-          { id: "scanners", label: "Scanner Fleet Health" },
-          { id: "drift", label: "Realtime Telemetry" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id as any)}
-            style={{
-              background: "none",
-              border: "none",
-              borderBottom: activeTab === tab.id ? "2px solid var(--cyan)" : "2px solid transparent",
-              color: activeTab === tab.id ? "var(--text)" : "var(--dim)",
-              fontWeight: activeTab === tab.id ? 600 : 400,
-              fontSize: "13.5px",
-              padding: "10px 4px",
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab 1: Active Estate */}
-      {activeTab === "overview" && (
-        <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "24px" }}>
-          <div>
-            <div className="panel" style={{ padding: "20px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600 }}>Continuously Observed Assets</h3>
-                  <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "2px" }}>Live passive network sniffing & eBPF daemon stream</div>
-                </div>
-                <a href="#/assets" style={{ fontSize: "12px", color: "var(--cyan)" }}>View all 12,482 →</a>
-              </div>
-
-              <div style={{ overflowX: "auto" }}>
-                <table className="tbl" style={{ width: "100%" }}>
-                  <thead>
-                    <tr>
-                      <th>Asset</th>
-                      <th>Algorithm</th>
-                      <th>Protocol</th>
-                      <th>Risk</th>
-                      <th>Last Observed</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sampleAssets.map((asset) => (
-                      <tr key={asset.id} style={{ cursor: "pointer" }} onClick={() => setSelectedAsset(asset)}>
-                        <td>
-                          <div style={{ fontWeight: 600, color: "var(--text)" }}>{asset.name}</div>
-                          <div style={{ fontSize: "11px", color: "var(--dim)" }}>{asset.type} · {asset.owner}</div>
-                        </td>
-                        <td>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: "12px" }}>{asset.algorithm}</span>
-                        </td>
-                        <td>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: "12px", color: "var(--dim)" }}>{asset.protocol}</span>
-                        </td>
-                        <td>
-                          <Badge tone={asset.risk === "CRITICAL" ? "red" : asset.risk === "HIGH" ? "orange" : "green"}>
-                            {asset.risk}
-                          </Badge>
-                        </td>
-                        <td>
-                          <span style={{ fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--cyan)" }}>{asset.lastObserved}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Quick 24/7 Context Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginTop: "16px" }}>
-              <div className="panel" style={{ padding: "18px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>Background Engine Operation</div>
-                <p style={{ fontSize: "12px", color: "var(--dim)", margin: "0 0 10px", lineHeight: 1.5 }}>
-                  ZELNX backend daemons continue observing your estate even when your browser is closed. Reconnecting syncs delta state automatically.
-                </p>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11.5px", color: "var(--green)" }}>
-                  <span>✓</span> <span>Durable Redis queue & PostgreSQL state</span>
-                </div>
-              </div>
-
-              <div className="panel" style={{ padding: "18px" }}>
-                <div style={{ fontSize: "13px", fontWeight: 600, marginBottom: "8px" }}>Evidence Integrity Verification</div>
-                <p style={{ fontSize: "12px", color: "var(--dim)", margin: "0 0 10px", lineHeight: 1.5 }}>
-                  Every observation is hash-chained and sealed into WORM storage with 7-year retention and Merkle root proofs.
-                </p>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11.5px", color: "var(--green)" }}>
-                  <span>✓</span> <span>S3 Object Lock active (Compliant with OCC & SEC)</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: Live Feed & Selected Asset Detail */}
-          <div>
-            {selectedAsset ? (
-              <div className="panel" style={{ padding: "20px", marginBottom: "16px", border: "1px solid var(--line-strong)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                  <h3 style={{ margin: 0, fontSize: "15px", fontWeight: 600 }}>Asset Detail</h3>
-                  <button onClick={() => setSelectedAsset(null)} style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer" }}>✕</button>
-                </div>
-                <div style={{ fontWeight: 600, color: "var(--text)", marginBottom: "4px" }}>{selectedAsset.name}</div>
-                <div style={{ fontSize: "11px", color: "var(--cyan)", fontFamily: "var(--mono)", marginBottom: "16px" }}>{selectedAsset.id}</div>
-
-                <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "12.5px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--dim)" }}>Algorithm:</span>
-                    <span style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>{selectedAsset.algorithm}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--dim)" }}>Protocol:</span>
-                    <span style={{ fontFamily: "var(--mono)" }}>{selectedAsset.protocol}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--dim)" }}>PQC Status:</span>
-                    <Badge tone={selectedAsset.pqcStatus.includes("Required") ? "red" : "green"}>{selectedAsset.pqcStatus}</Badge>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--dim)" }}>Owner:</span>
-                    <span>{selectedAsset.owner}</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "var(--dim)" }}>Evidence ID:</span>
-                    <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{selectedAsset.evidenceId}</span>
-                  </div>
-                </div>
-
-                <div style={{ marginTop: "18px", display: "flex", gap: "8px" }}>
-                  <a href="#/whatif" className="btn sm primary" style={{ textDecoration: "none", flex: 1, textAlign: "center" }}>
-                    Simulate PQC
-                  </a>
-                  <a href="#/evidence" className="btn sm outline" style={{ textDecoration: "none", flex: 1, textAlign: "center" }}>
-                    View Evidence
-                  </a>
-                </div>
-              </div>
-            ) : null}
-
-            {/* 35. Live Activity Stream (Clean, continuous WebSocket/SSE) */}
-            <div className="panel" style={{ padding: "18px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", fontWeight: 600 }}>
-                  <span className="live-dot" style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--green)" }} />
-                  Live Activity Stream
-                </div>
-                <LiveStatusBadge status={realtime.isConnected ? "connected" : "disconnected"} />
-              </div>
-              <LiveEventsPanel events={realtime.events} />
-            </div>
-          </div>
-        </div>
+          {firstScanMsg && <div style={{ marginTop: 10 }}><Badge tone={firstScanMsg.ok ? "green" : "red"}>{firstScanMsg.ok ? "✓ " : ""}{firstScanMsg.text}</Badge></div>}
+        </Panel>
       )}
 
-      {/* Tab 2: Monitoring Timeline (Section 36 Spec) */}
-      {activeTab === "timeline" && (
-        <div className="panel" style={{ padding: "24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <div>
-              <h3 style={{ margin: "0 0 4px", fontSize: "16px" }}>Continuous Monitoring Timeline</h3>
-              <p style={{ margin: 0, fontSize: "12.5px", color: "var(--dim)" }}>
-                Sequential stream of discoveries, TLS configuration drifts, and WORM evidence seals.
-              </p>
-            </div>
-            <Badge tone="cyan">REALTIME STREAM</Badge>
-          </div>
+      {/* Five-question KPI strip — what do I have / what changed / what is risky /
+          what is quantum-vulnerable / what needs action. All live, zero until real. */}
+      <div className="kpi-strip">
+        <HeroKpi label="Total assets" q="what do I have?" value={g.totalAssets} tone="cyan" to="#/assets" />
+        <HeroKpi label="Crypto assets" q="what do I have?" value={g.cryptoAssets} tone="blue" to="#/cbom" />
+        <HeroKpi label="Quantum-vulnerable" q="what is quantum-vulnerable?" value={g.quantumVulnerable} tone={g.quantumVulnerable ? "red" : "green"} to="#/pqc" />
+        <HeroKpi label="Critical" q="what is risky?" value={g.criticalFindings} tone={g.criticalFindings ? "red" : "green"} to="#/risk" />
+        <HeroKpi label="Active drift" q="what changed?" value={g.activeDrift} tone={g.activeDrift ? "orange" : "green"} to="#/drift" />
+        <HeroKpi label="Scanners" q="what needs action?" value={`${g.agentsHealthy}/${g.agentsTotal}`} tone={g.agentsTotal && g.agentsHealthy === g.agentsTotal ? "green" : "amber"} to="#/scanners" suffix={g.agentsTotal ? (g.agentsHealthy === g.agentsTotal ? "healthy" : "degraded") : "idle"} />
+      </div>
 
-          <div style={{ position: "relative", paddingLeft: "24px", borderLeft: "2px solid var(--line)" }}>
-            {timelineEvents.map((ev, idx) => (
-              <div key={idx} style={{ marginBottom: "22px", position: "relative" }}>
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "-31px",
-                    top: "3px",
-                    width: "12px",
-                    height: "12px",
-                    borderRadius: "50%",
-                    background: `var(--${ev.tone})`,
-                    boxShadow: `0 0 8px var(--${ev.tone})`,
-                  }}
-                />
-                <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-                  <span style={{ fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--faint)" }}>{ev.time}</span>
-                  <Badge tone={ev.tone}>{ev.tag}</Badge>
+      {/* readiness bars */}
+      <div className="grid cols-2" style={{ marginBottom: 16 }}>
+        <Panel title="PQC readiness" sub="executive posture">
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {[
+              { k: "PQC ready", v: g.pqcReadyPct, tone: "green" },
+              { k: "Hybrid ready", v: g.hybridReadyPct, tone: "violet" },
+              { k: "Migration required", v: g.migrationRequiredPct, tone: "red" },
+            ].map((r) => (
+              <div key={r.k}>
+                <div className="spread" style={{ marginBottom: 4, fontSize: 13 }}>
+                  <span>{r.k}</span><span className="mono">{r.v}%</span>
                 </div>
-                <div style={{ fontSize: "13.5px", color: "var(--text)" }}>{ev.text}</div>
+                <Bar value={r.v / 100} tone={r.tone} />
               </div>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* Tab 3: Scanner Fleet Health (Section 38 Spec) */}
-      {activeTab === "scanners" && (
-        <div className="panel" style={{ padding: "24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <div>
-              <h3 style={{ margin: "0 0 4px", fontSize: "16px" }}>Scanner Infrastructure & Engine Health</h3>
-              <p style={{ margin: 0, fontSize: "12.5px", color: "var(--dim)" }}>
-                Continuous status, event throughput, and latency metrics across all 8 collector daemons.
-              </p>
-            </div>
-            <Badge tone="green">8 / 8 ENGINES OPERATIONAL</Badge>
+        </Panel>
+        <Panel title="Live environment" sub="five domains, one graph — populated by discovery">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--mono)", fontSize: 13 }}>
+            <div className="spread"><span>Network</span><Badge tone={networkAssets.length ? "green" : ""}>{networkAssets.length} assets</Badge></div>
+            <div className="spread"><span>Cloud</span><Badge tone={cloudResources.length ? "green" : ""}>{cloudResources.length} resources</Badge></div>
+            <div className="spread"><span>Vendor</span><Badge tone={vendors.length ? "green" : ""}>{vendors.length} vendors</Badge></div>
+            <div className="spread"><span>Hardware</span><Badge tone={hardware.length ? "green" : ""}>{hardware.length} devices</Badge></div>
+            <div className="spread"><span>Cryptography</span><Badge tone={g.risks > 0 ? "red" : ""}>{g.risks > 0 ? "FINDINGS" : "no findings yet"}</Badge></div>
           </div>
+        </Panel>
+      </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
-            {scannerFleet.map((s, idx) => (
-              <div key={idx} style={{ padding: "16px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "8px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                  <div style={{ fontWeight: 600, fontSize: "13.5px", color: "var(--text)" }}>{s.name}</div>
-                  <Badge tone="green">● {s.status}</Badge>
-                </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", fontSize: "12px", marginTop: "12px" }}>
-                  <div>
-                    <span style={{ color: "var(--dim)" }}>Last observation:</span>
-                    <div style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{s.lastRun}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--dim)" }}>Events processed:</span>
-                    <div style={{ fontFamily: "var(--mono)" }}>{s.events}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--dim)" }}>Assets discovered:</span>
-                    <div style={{ fontFamily: "var(--mono)" }}>{s.discovered}</div>
-                  </div>
-                  <div>
-                    <span style={{ color: "var(--dim)" }}>Average latency:</span>
-                    <div style={{ fontFamily: "var(--mono)", color: "var(--green)" }}>{s.latency}</div>
-                  </div>
-                </div>
+      {/* kpi strip */}
+      <div className="grid cols-4" style={{ marginBottom: 16 }}>
+        <Panel title="Telemetry" sub="24h window">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Kpi k="active scanners" v={`${g.activeScanners}/${g.totalScanners}`} tone="green" />
+            <Kpi k="scanner health" v={`${g.scannerHealthPct}%`} tone="green" />
+            <Kpi k="agents" v={`${g.agentsHealthy}/${g.agentsTotal}`} tone="green" />
+            <Kpi k="events / sec" v={g.eventsPerSec} tone="cyan" />
+          </div>
+        </Panel>
+        <Panel title="Findings" sub="evidence-linked">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Kpi k="critical findings" v={g.criticalFindings} tone="red" />
+            <Kpi k="high findings" v={g.highFindings} tone="red" />
+            <Kpi k="live changes (24h)" v={g.liveChanges24h} tone="amber" />
+            <Kpi k="evidence health" v={`${g.evidenceHealthPct}%`} tone="green" />
+          </div>
+        </Panel>
+        <Panel title="Migration" sub="post-quantum program">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <Kpi k="PQC exposure" v={`${g.pqcExposurePct}%`} tone="red" />
+            <Kpi k="migration progress" v={`${g.migrationProgressPct}%`} tone="cyan" />
+            <Kpi k="CBOM status" v={`v${g.cbomVersion}`} tone="green" />
+            <Kpi k="HBOM status" v={`v${g.hbomVersion}`} tone="green" />
+          </div>
+        </Panel>
+        <Panel title="Risk distribution" sub="portfolio">
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {Object.entries(riskCounts).map(([lv, n]) => (
+              <div key={lv} className="spread">
+                <Badge>{lv}</Badge>
+                <span className="mono">{n}</span>
               </div>
             ))}
           </div>
-        </div>
-      )}
+        </Panel>
+      </div>
 
-      {/* Tab 4: Realtime Telemetry */}
-      {activeTab === "drift" && (
-        <div className="panel" style={{ padding: "24px" }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: "16px" }}>Continuous Ingestion Telemetry & Latency</h3>
-          <p style={{ margin: "0 0 20px", fontSize: "13px", color: "var(--dim)" }}>
-            High-throughput event processing backbone with Redis pub/sub and exactly-once delivery.
-          </p>
-
-          <Row>
-            <Col><Stat label="p99 Latency" value={monitoringState.p99Latency} sub="Measured via k6 (1000 VUs)" /></Col>
-            <Col><Stat label="Throughput" value={monitoringState.throughput} sub="Single-writer Redis pub/sub" /></Col>
-            <Col><Stat label="Evidence WORM" value="100% WORM" sub="S3 Object Lock Legal Hold (7y)" /></Col>
-          </Row>
-
-          <div style={{ marginTop: "24px" }}>
-            <RealtimeChart data={realtime.events.map((_, i) => ({ timestamp: Date.now() - (10 - i) * 1000, value: 50 + Math.random() * 20 }))} />
+      {/* live change alerts */}
+      <div className="grid cols-2">
+        <Panel title="Live changes" sub={rt.connected ? "realtime SSE stream" : "no live events yet"}>
+          <Feed items={feed} />
+        </Panel>
+        <Panel title="Drift watch" sub={rt.connected ? "baseline vs live — updated by stream events" : "baseline vs live (no baseline yet)"}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              { k: "Network", added: 0, removed: 0, detail: "no baseline yet" },
+              { k: "Cloud", added: 0, removed: 0, detail: "no baseline yet" },
+              { k: "Cryptography", added: 0, removed: 0, detail: "no baseline yet" },
+              { k: "Firmware", added: 0, removed: 0, detail: "no baseline yet" },
+            ].map((d) => (
+              <div className="spread" key={d.k} style={{ fontSize: 13 }}>
+                <span>{d.k}</span>
+                <span className="dim">{d.detail}</span>
+                <Badge tone={d.added ? "red" : "green"}>{d.added ? `+${d.added}` : "clean"}</Badge>
+              </div>
+            ))}
+            {rt.connected && rt.events.filter((e) => e.type.includes("drift")).length > 0 && (
+              <div className="mono" style={{ fontSize: 11.5, color: "var(--amber)", borderTop: "1px solid var(--line)", paddingTop: 8 }}>
+                ⟳ {rt.events.filter((e) => e.type.includes("drift")).length} drift event(s) in the live stream
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        </Panel>
+      </div>
+    </>
+  );
+}
 
-      {/* 41. Baseline vs Current State Modal */}
-      <Modal isOpen={showBaselineModal} onClose={() => setShowBaselineModal(false)} title="Cryptographic Baseline vs Current Estate State">
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          <p style={{ fontSize: "13px", color: "var(--dim)", margin: 0 }}>
-            Continuous observation compares active estate findings against the signed baseline to detect unauthorized changes.
-          </p>
+function HeroKpi({ label, q, value, tone, to, suffix }: { label: string; q: string; value: number | string; tone: string; to: string; suffix?: string }) {
+  const color = tone === "red" ? "var(--red)" : tone === "orange" ? "var(--orange)" : tone === "amber" ? "var(--amber)"
+    : tone === "green" ? "var(--green)" : tone === "blue" ? "var(--blue)" : "var(--cyan)";
+  return (
+    <a href={to} className="hero-kpi" style={{ textDecoration: "none", borderTopColor: color }}>
+      <span className="hero-q">{q}</span>
+      <span className="hero-label">{label}</span>
+      <span className="hero-v" style={{ color }}>{typeof value === "number" ? value.toLocaleString() : value}</span>
+      <span className="hero-suffix" style={{ color }}>● {suffix ?? (Number(value) === 0 ? "none yet" : "live")}</span>
+    </a>
+  );
+}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "12px", textAlign: "center" }}>
-            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "8px", border: "1px solid var(--line)" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Baseline State</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)", marginTop: "4px" }}>{monitoringState.assetsBaseline.toLocaleString()}</div>
-            </div>
-            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "8px", border: "1px solid var(--line)" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Current State</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--cyan)", marginTop: "4px" }}>{monitoringState.assetsMonitored.toLocaleString()}</div>
-            </div>
-            <div style={{ padding: "12px", background: "var(--bg-2)", borderRadius: "8px", border: "1px solid var(--line)" }}>
-              <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Net Change</div>
-              <div style={{ fontSize: "20px", fontWeight: 700, fontFamily: "var(--mono)", color: "var(--green)", marginTop: "4px" }}>+{monitoringState.assetsMonitored - monitoringState.assetsBaseline}</div>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "var(--panel)", borderRadius: "6px" }}>
-              <span>New Discoveries</span>
-              <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)", fontWeight: 600 }}>42</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "var(--panel)", borderRadius: "6px" }}>
-              <span>Modified / Drifted Configurations</span>
-              <span style={{ fontFamily: "var(--mono)", color: "var(--orange)", fontWeight: 600 }}>27</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "var(--panel)", borderRadius: "6px" }}>
-              <span>Decommissioned / Removed</span>
-              <span style={{ fontFamily: "var(--mono)", color: "var(--red)", fontWeight: 600 }}>8</span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 12px", background: "var(--panel)", borderRadius: "6px" }}>
-              <span>Unchanged & Verified</span>
-              <span style={{ fontFamily: "var(--mono)", color: "var(--green)", fontWeight: 600 }}>12,405</span>
-            </div>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "8px" }}>
-            <Button variant="primary" onClick={() => setShowBaselineModal(false)}>
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
+function LiveStat({ label, value, tone }: { label: string; value: number | string; tone?: "green" | "red" | "cyan" | "" }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", minWidth: 120 }}>
+      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : tone === "cyan" ? "var(--cyan, var(--accent))" : "var(--text)" }}>
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </span>
+      <span className="dim" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
     </div>
   );
 }

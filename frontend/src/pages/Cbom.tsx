@@ -1,273 +1,340 @@
-import React, { useState } from "react";
-import { Badge, Button, Input } from "../components/ui";
+import React, { useMemo, useState } from "react";
+import { Panel, Badge, Table, Tabs, Code, PageHead } from "../components/ui.jsx";
+import { apiBom, apiLiveBom, LiveBadge, ApiResult, LiveBomResponse } from "../lib/api.js";
+import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 
-interface CbomComponent {
-  id: string;
-  algorithm: string;
-  keySize: string;
-  usage: string;
-  location: string;
-  owner: string;
-  risk: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
-  status: string;
-  pqcReady: boolean;
-  subComponents?: { name: string; type: string; details: string }[];
+/* CBOM — Cryptographic Bill of Materials (CycloneDX 1.6). Every panel is built
+   from the LIVE scan-derived BOM (GET /live-scan/bom): an interactive
+   dependency graph (components → dependencies, colored by quantum verdict) and
+   a real CycloneDX export (download .json / .xml or copy) assembled from the
+   same components — never a static placeholder. Empty until a scan runs. */
+
+const VIEWS = ["Graph", "Explorer", "Diff", "History", "Export"];
+
+interface BomComponent {
+  type?: string; name?: string; version?: string; ref?: string;
+  source?: string; quantum_status?: string | null; migration_priority?: string | null;
+  status?: string;
+}
+interface BomDependency { ref?: string; dependsOn?: string[]; }
+
+const QUANTUM_COLOR: Record<string, string> = {
+  vulnerable: "#ef4444", broken: "#ef4444", at_risk: "#f59e0b",
+  safe: "#22c55e", unknown: "#64748b",
+};
+const TYPE_COLOR: Record<string, string> = {
+  cryptography: "#00d4ff", library: "#f59e0b", device: "#f97316",
+  application: "#8b7cf6", firmware: "#f97316", certificate: "#22c55e",
+  package: "#f59e0b", algorithm: "#ef4444",
+};
+
+function quantumOf(c: BomComponent): string {
+  const q = String(c.quantum_status ?? "").toLowerCase();
+  if (q.includes("vuln") || q.includes("broken")) return "vulnerable";
+  if (q.includes("risk")) return "at_risk";
+  if (q.includes("safe")) return "safe";
+  return "unknown";
+}
+
+/* Build a real CycloneDX 1.6 JSON document from the live components/deps. */
+function toCycloneDx(components: BomComponent[], deps: BomDependency[], version: number) {
+  return {
+    bomFormat: "CycloneDX",
+    specVersion: "1.6",
+    version,
+    serialNumber: `urn:uuid:cryptoscan-cbom-${version}`,
+    metadata: {
+      component: { type: "platform", name: "CryptoScan CBOM" },
+      properties: [
+        { name: "cryptoscan:generator", value: "deterministic engine — no AI inference" },
+      ],
+    },
+    components: components.map((c, i) => ({
+      type: c.type === "library" || c.type === "package" ? "library"
+        : c.type === "device" || c.type === "firmware" ? "device"
+        : c.type === "certificate" ? "cryptographic-asset"
+        : "application",
+      "bom-ref": c.ref || `${c.type || "comp"}-${i}`,
+      name: c.name || `component-${i}`,
+      version: c.version || undefined,
+      properties: [
+        ...(c.source ? [{ name: "cryptoscan:source", value: c.source }] : []),
+        ...(c.quantum_status ? [{ name: "cryptoscan:quantum_status", value: c.quantum_status }] : []),
+        ...(c.migration_priority ? [{ name: "cryptoscan:migration_priority", value: String(c.migration_priority) }] : []),
+      ],
+    })),
+    dependencies: deps
+      .filter((d) => d.ref)
+      .map((d) => ({ ref: d.ref, dependsOn: d.dependsOn ?? [] })),
+  };
+}
+
+function download(filename: string, text: string, mime: string) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* Radial layout: components arranged in a circle, edges from dependencies. */
+function layoutGraph(components: BomComponent[]) {
+  const cx = 400, cy = 240, r = components.length > 1 ? 180 : 0;
+  return components.map((c, i) => {
+    const ang = components.length === 1 ? -Math.PI / 2 : (i / components.length) * Math.PI * 2 - Math.PI / 2;
+    return {
+      ...c,
+      x: cx + r * Math.cos(ang),
+      y: cy + r * Math.sin(ang) * 0.72,
+    };
+  });
 }
 
 export default function Cbom() {
-  const [search, setSearch] = useState("");
-  const [filterRisk, setFilterRisk] = useState<string>("ALL");
-  const [expandedRow, setExpandedRow] = useState<string | null>("CBOM-01");
+  const [tab, setTab] = useState(0);
+  const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [selNode, setSelNode] = useState<string | null>(null);
 
-  const components: CbomComponent[] = [
-    {
-      id: "CBOM-01",
-      algorithm: "RSA-2048",
-      keySize: "2048-bit",
-      usage: "mTLS Ingress Termination",
-      location: "api-gateway.production.us-east-1",
-      owner: "Payments Platform",
-      risk: "CRITICAL",
-      status: "PQC Migration Required",
-      pqcReady: false,
-      subComponents: [
-        { name: "API Gateway NGINX Ingress", type: "Service", details: "TLS 1.2 / TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384" },
-        { name: "Core Payment Settlement Service", type: "Upstream Microservice", details: "HTTP/2 internal RPC with client auth" },
-        { name: "Wildcard Production Certificate (*.bank.internal)", type: "X.509 Cert", details: "Expires in 184 days (DigiCert CA)" },
-        { name: "OpenSSL 1.1.1u Legacy Crypto Lib", type: "Dependency", details: "Vulnerable to post-quantum Shor's algorithm" }
-      ]
-    },
-    {
-      id: "CBOM-02",
-      algorithm: "ECDSA P-256",
-      keySize: "256-bit",
-      usage: "SWIFT Messaging Signing",
-      location: "swift-connector.sec.internal",
-      owner: "Treasury Infrastructure",
-      risk: "HIGH",
-      status: "Hybrid Mode Ready",
-      pqcReady: true,
-      subComponents: [
-        { name: "SWIFT Alliance Gateway", type: "Service", details: "ISO 20022 message envelope signer" },
-        { name: "Thales Luna 7 HSM Partition", type: "Hardware", details: "FIPS 140-2 Level 3 slot #4" },
-        { name: "PKCS#11 v2.40 Driver", type: "Dependency", details: "Firmware version 7.8.1" }
-      ]
-    },
-    {
-      id: "CBOM-03",
-      algorithm: "ML-KEM-768 (Dual-Key)",
-      keySize: "FIPS 203 Level 3",
-      usage: "Inter-Datacenter Wire Encapsulation",
-      location: "mesh-router-east-west.infra",
-      owner: "Core Network Operations",
-      risk: "LOW",
-      status: "Post-Quantum Ready",
-      pqcReady: true,
-      subComponents: [
-        { name: "Envoy Proxy v1.31 Hybrid TLS", type: "Proxy", details: "X25519MLKEM768 key exchange negotiated" },
-        { name: "Rustls PQC Crypto Provider", type: "Library", details: "Deterministic constant-time lattice primitives" }
-      ]
-    },
-    {
-      id: "CBOM-04",
-      algorithm: "AES-256-GCM",
-      keySize: "256-bit",
-      usage: "Cardholder Database DEK",
-      location: "rds-postgres-payments.vault",
-      owner: "Data Security",
-      risk: "LOW",
-      status: "Quantum Resistant (Grover Safe)",
-      pqcReady: true,
-      subComponents: [
-        { name: "PostgreSQL pgcrypto Table Encryption", type: "Database", details: "Column-level envelope with KMS KEK" },
-        { name: "AWS KMS Customer Managed Key", type: "KMS", details: "Annual 365d key rotation enabled" }
-      ]
-    },
-    {
-      id: "CBOM-05",
-      algorithm: "3DES / 2Key-Triple-DES",
-      keySize: "112-bit effective",
-      usage: "Legacy ATM Switch PIN Translation",
-      location: "mainframe-gateway.dc2",
-      owner: "Legacy Retail Banking",
-      risk: "CRITICAL",
-      status: "Deprecated / Immediate Sunset",
-      pqcReady: false,
-      subComponents: [
-        { name: "ISO 8583 Message Translator", type: "Mainframe", details: "ANSI X9.52 3DES mode" },
-        { name: "Hardware Security Module (SNA Link)", type: "Hardware", details: "Requires replacement before Dec 2026" }
-      ]
-    }
-  ];
+  const liveBomRes = usePollingApi(apiLiveBom, 8000);
+  useRealtimeRefresh(liveBomRes.run);
+  const liveBom = (liveBomRes.data ?? null) as LiveBomResponse | null;
+  const cbom = (liveBom?.cbom ?? {}) as any;
+  const bomComponents: BomComponent[] = cbom.components ?? [];
+  const bomDependencies: BomDependency[] = cbom.dependencies ?? [];
+  const bomDiff = cbom.diff ?? { added: [], removed: [], changed: [] };
+  const bomHistory: any[] = cbom.history ?? (liveBom as any)?.versions ?? [];
+  const cbomVersion = cbom.version ?? bomHistory.length;
+  const liveCounts: Record<string, number> = cbom.counts ?? {};
 
-  const filtered = components.filter(c => {
-    const matchesSearch =
-      c.algorithm.toLowerCase().includes(search.toLowerCase()) ||
-      c.location.toLowerCase().includes(search.toLowerCase()) ||
-      c.owner.toLowerCase().includes(search.toLowerCase()) ||
-      c.usage.toLowerCase().includes(search.toLowerCase());
-    const matchesRisk = filterRisk === "ALL" || c.risk === filterRisk;
-    return matchesSearch && matchesRisk;
-  });
+  const nodes = useMemo(() => layoutGraph(bomComponents), [bomComponents]);
+  const nodeByRef = useMemo(() => {
+    const m = new Map<string, (typeof nodes)[number]>();
+    nodes.forEach((n, i) => m.set(n.ref || `${n.type || "comp"}-${i}`, n));
+    return m;
+  }, [nodes]);
+
+  const cyclonedx = useMemo(
+    () => toCycloneDx(bomComponents, bomDependencies, cbomVersion || 1),
+    [bomComponents, bomDependencies, cbomVersion]);
+  const selectedComp = bomComponents.find((c, i) => (c.ref || `${c.type || "comp"}-${i}`) === selNode);
+
+  const fetchLive = async () => {
+    setBusy(true);
+    const res = await apiBom();
+    setLive(res);
+    setBusy(false);
+  };
+
+  const doCopy = async () => {
+    await navigator.clipboard.writeText(JSON.stringify(cyclonedx, null, 2));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  };
+
+  const qVuln = liveCounts.quantum_vulnerable ?? bomComponents.filter((c) => quantumOf(c) === "vulnerable").length;
 
   return (
-    <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
-      {/* 10. CBOM Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <div style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
-            CycloneDX 1.6 Cryptographic Specification
-          </div>
-          <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Cryptographic Bill of Materials</h1>
-          <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
-            Living inventory of <b>12,482</b> verified cryptographic components across cloud, container, network, and hardware estates.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Button variant="outline" onClick={() => alert("Exporting CBOM as CycloneDX 1.6 JSON with Merkle proof...")}>
-            Export CBOM (JSON/VEX)
-          </Button>
-          <a href="#/graph" className="btn primary" style={{ textDecoration: "none" }}>
-            View Dependency Graph
-          </a>
-        </div>
-      </div>
-
-      {/* Search and Filters */}
-      <div className="panel" style={{ padding: "16px", marginBottom: "20px", display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "center" }}>
-        <div style={{ flex: 1, minWidth: "260px" }}>
-          <input
-            type="text"
-            placeholder="Search by algorithm (RSA, AES), location, usage, or owner..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="inp"
-            style={{ fontSize: "13px" }}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-          <span style={{ fontSize: "12px", color: "var(--dim)", marginRight: "4px" }}>Risk Filter:</span>
-          {["ALL", "CRITICAL", "HIGH", "LOW"].map((r) => (
-            <button
-              key={r}
-              onClick={() => setFilterRisk(r)}
-              className="btn sm"
-              style={{
-                background: filterRisk === r ? "var(--cyan)" : undefined,
-                color: filterRisk === r ? "#000" : undefined,
-                fontWeight: filterRisk === r ? 700 : 500
-              }}
-            >
-              {r}
+    <>
+      <PageHead
+        crumb="boms / cbom"
+        title="CBOM"
+        sub="Cryptographic Bill of Materials — CycloneDX 1.6 · live with every crypto change"
+        right={
+          <div className="row">
+            <Badge tone="green"><span className="dot" /> v{cbomVersion} · latest</Badge>
+            <button className="btn sm" onClick={() => void fetchLive()} disabled={busy}>
+              {busy ? "Fetching…" : "Fetch control-plane BOM"}
             </button>
-          ))}
-        </div>
+          </div>
+        }
+      />
+
+      <div className="grid cols-4" style={{ margin: "4px 0 16px" }}>
+        {[["total", liveCounts.total ?? bomComponents.length],
+          ["algorithms", liveCounts.algorithms ?? 0],
+          ["libraries/packages", (liveCounts.libraries ?? 0) + (liveCounts.packages ?? 0)],
+          ["quantum vulnerable", qVuln]].map(([k, v]) => (
+          <div className="kpi" key={k as string}><span className="k">{k}</span>
+            <span className="v" style={{ color: k === "quantum vulnerable" && Number(v) ? "var(--red)" : undefined }}>{v as number}</span></div>
+        ))}
       </div>
 
-      {/* CBOM Table with Expandable Rows */}
-      <div className="panel" style={{ padding: "20px" }}>
-        <div style={{ overflowX: "auto" }}>
-          <table className="tbl" style={{ width: "100%" }}>
-            <thead>
-              <tr>
-                <th style={{ width: "36px" }}></th>
-                <th>Algorithm & Key</th>
-                <th>Usage & Purpose</th>
-                <th>Location / Service</th>
-                <th>Owner</th>
-                <th>PQC Status</th>
-                <th>Risk</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((item) => {
-                const isExpanded = expandedRow === item.id;
-                return (
-                  <React.Fragment key={item.id}>
-                    <tr
-                      onClick={() => setExpandedRow(isExpanded ? null : item.id)}
-                      style={{ cursor: "pointer", background: isExpanded ? "rgba(0, 212, 255, 0.05)" : undefined }}
-                    >
-                      <td style={{ color: "var(--cyan)", fontWeight: 700, fontSize: "14px" }}>
-                        {isExpanded ? "▼" : "▶"}
-                      </td>
-                      <td>
-                        <div style={{ fontWeight: 600, color: "var(--text)", fontFamily: "var(--mono)", fontSize: "13px" }}>{item.algorithm}</div>
-                        <div style={{ fontSize: "11px", color: "var(--dim)" }}>{item.keySize}</div>
-                      </td>
-                      <td>
-                        <div style={{ fontSize: "13px" }}>{item.usage}</div>
-                      </td>
-                      <td>
-                        <span style={{ fontFamily: "var(--mono)", fontSize: "12px", color: "var(--cyan)" }}>{item.location}</span>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: "12px" }}>{item.owner}</span>
-                      </td>
-                      <td>
-                        <span style={{ fontSize: "12px", color: item.pqcReady ? "var(--green)" : "var(--amber)" }}>
-                          {item.status}
-                        </span>
-                      </td>
-                      <td>
-                        <Badge tone={item.risk === "CRITICAL" ? "red" : item.risk === "HIGH" ? "orange" : "green"}>
-                          {item.risk}
-                        </Badge>
-                      </td>
-                    </tr>
+      <Tabs tabs={VIEWS} active={tab} onChange={setTab} />
 
-                    {/* Expandable Sub-Component Tree */}
-                    {isExpanded && item.subComponents && (
-                      <tr>
-                        <td colSpan={7} style={{ padding: "16px 20px 20px 48px", background: "var(--bg-2)", borderBottom: "1px solid var(--line)" }}>
-                          <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--faint)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" }}>
-                            Cryptographic Dependency Tree & Associated Assets
-                          </div>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {item.subComponents.map((sub, sIdx) => (
-                              <div
-                                key={sIdx}
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  padding: "8px 12px",
-                                  background: "var(--panel)",
-                                  border: "1px solid var(--line)",
-                                  borderRadius: "6px",
-                                  fontSize: "12.5px"
-                                }}
-                              >
-                                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                                  <span style={{ color: "var(--dim)" }}>├──</span>
-                                  <span style={{ fontWeight: 600, color: "var(--text)" }}>{sub.name}</span>
-                                  <span style={{ fontSize: "11px", background: "var(--bg-2)", padding: "2px 6px", borderRadius: "4px", color: "var(--dim)" }}>{sub.type}</span>
-                                </div>
-                                <span style={{ fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--dim)" }}>{sub.details}</span>
-                              </div>
-                            ))}
-                          </div>
+      {/* ── interactive dependency graph ─────────────────────────────── */}
+      {tab === 0 && (
+        <Panel
+          title="CBOM dependency graph"
+          sub={bomComponents.length
+            ? "components colored by quantum verdict · click a node for detail"
+            : "populates after a scan enumerates crypto components"}
+        >
+          {bomComponents.length === 0 ? (
+            <div className="dim" style={{ fontSize: 13, padding: "30px 6px", textAlign: "center" }}>
+              No crypto components yet — run runtime + universal/container scans in
+              Operations → Realtime scanners. The graph is built from observed components only.
+            </div>
+          ) : (
+            <>
+              <div className="graphwrap">
+                <svg viewBox="0 0 800 500" width="100%" style={{ minWidth: 720 }}>
+                  {bomDependencies.filter((d) => d.ref).map((d, i) =>
+                    (d.dependsOn ?? []).map((target) => {
+                      const a = nodeByRef.get(d.ref!);
+                      const b = nodeByRef.get(target);
+                      if (!a || !b) return null;
+                      const hit = quantumOf(a) === "vulnerable" || quantumOf(b) === "vulnerable";
+                      return (
+                        <line key={`${i}-${target}`} className={`cbom-edge ${hit ? "hit" : ""}`}
+                          x1={a.x} y1={a.y} x2={b.x} y2={b.y} />
+                      );
+                    })
+                  )}
+                  {nodes.map((n, i) => {
+                    const ref = n.ref || `${n.type || "comp"}-${i}`;
+                    const q = quantumOf(n);
+                    const col = q !== "unknown" ? QUANTUM_COLOR[q] : (TYPE_COLOR[String(n.type)] ?? "#1e3a52");
+                    const isSel = selNode === ref;
+                    return (
+                      <g key={ref} className={`cbom-node ${isSel ? "sel" : ""}`} onClick={() => setSelNode(isSel ? null : ref)}>
+                        <circle className="node-ring" cx={n.x} cy={n.y} r={30} stroke={col} />
+                        <text x={n.x} y={n.y - 1}>{(n.name || "?").slice(0, 10)}</text>
+                        <text className="gsub" x={n.x} y={n.y + 12}>{n.version || n.type || ""}</text>
+                      </g>
+                    );
+                  })}
+                </svg>
+              </div>
+              <div className="cbom-legend">
+                <span><span className="sw" style={{ background: QUANTUM_COLOR.vulnerable }} />quantum vulnerable</span>
+                <span><span className="sw" style={{ background: QUANTUM_COLOR.at_risk }} />at risk</span>
+                <span><span className="sw" style={{ background: QUANTUM_COLOR.safe }} />safe</span>
+                <span><span className="sw" style={{ background: QUANTUM_COLOR.unknown }} />unclassified</span>
+                <span><span className="sw" style={{ background: "#00d4ff" }} />crypto component</span>
+              </div>
+              {selectedComp && (
+                <div className="detail-kv" style={{ marginTop: 16 }}>
+                  <span className="k">component</span><span className="v mono">{selectedComp.name}</span>
+                  <span className="k">version</span><span className="v mono">{selectedComp.version || "—"}</span>
+                  <span className="k">type</span><span className="v">{selectedComp.type || "—"}</span>
+                  <span className="k">source</span><span className="v">{selectedComp.source || "—"}</span>
+                  <span className="k">quantum</span>
+                  <span className="v">{selectedComp.quantum_status
+                    ? <Badge tone={QUANTUM_COLOR[quantumOf(selectedComp)] === "#ef4444" ? "red" : QUANTUM_COLOR[quantumOf(selectedComp)] === "#f59e0b" ? "amber" : "green"}>{selectedComp.quantum_status}</Badge>
+                    : "unclassified"}</span>
+                  <span className="k">migration</span><span className="v">{selectedComp.migration_priority ?? "—"}</span>
+                </div>
+              )}
+            </>
+          )}
+        </Panel>
+      )}
 
-                          <div style={{ display: "flex", gap: "10px", marginTop: "14px", justifyContent: "flex-end" }}>
-                            <a href="#/whatif" className="btn sm primary" style={{ textDecoration: "none" }}>
-                              Run PQC Migration Simulation
-                            </a>
-                            <a href="#/evidence" className="btn sm outline" style={{ textDecoration: "none" }}>
-                              Inspect WORM Evidence Hash
-                            </a>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+      {/* ── explorer ─────────────────────────────────────────────────── */}
+      {tab === 1 && (
+        <Panel title="CBOM explorer" sub="all components and their dependencies">
+          <Table
+            head={["type", "component", "version", "source", "quantum status", "priority"]}
+            rows={bomComponents.map((c) => [
+              <Badge tone="cyan">{c.type}</Badge>,
+              <span className="mono" style={{ fontWeight: 600 }}>{c.name}</span>,
+              <span className="num">{c.version || "—"}</span>,
+              c.source,
+              c.quantum_status
+                ? <Badge tone={QUANTUM_COLOR[quantumOf(c)] === "#ef4444" ? "red" : QUANTUM_COLOR[quantumOf(c)] === "#f59e0b" ? "amber" : "green"}>{c.quantum_status}</Badge>
+                : <span className="faint">{c.status || "unclassified"}</span>,
+              <span>{c.migration_priority ?? "—"}</span>,
+            ])}
+          />
+          {!bomComponents.length && (
+            <div className="dim" style={{ fontSize: 13, marginTop: 8 }}>
+              No crypto components yet — run runtime + universal/container scans.
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {/* ── diff ─────────────────────────────────────────────────────── */}
+      {tab === 2 && (
+        <Panel title="CBOM diff" sub="exactly what changed between versions">
+          {bomDiff.added.length || bomDiff.removed.length || bomDiff.changed.length ? (
+            <Table
+              head={["change", "components"]}
+              rows={[
+                ["added", bomDiff.added.map((a: string) => <Badge key={a} tone="green">+ {a}</Badge>)],
+                ["removed", bomDiff.removed.map((a: string) => <Badge key={a} tone="red">− {a}</Badge>)],
+                ["changed", bomDiff.changed.map((a: string) => <Badge key={a} tone="amber">~ {a}</Badge>)],
+              ]}
+            />
+          ) : (
+            <div className="dim" style={{ fontSize: 13 }}>No diff available — run scans to build version history, then compare current vs previous / baseline / date / environment.</div>
+          )}
+        </Panel>
+      )}
+
+      {/* ── history ──────────────────────────────────────────────────── */}
+      {tab === 3 && (
+        <Panel title="CBOM history" sub="full version lineage — audit-safe">
+          {bomHistory.length ? (
+            <Table
+              head={["version", "time", "change", "by"]}
+              rows={bomHistory.map((h) => [
+                <span className="mono" style={{ fontWeight: 600 }}>{h.version}</span>,
+                <span className="mono">{h.at}</span>,
+                h.note,
+                <span className="mono">{h.by}</span>,
+              ])}
+            />
+          ) : (
+            <div className="dim" style={{ fontSize: 13 }}>No versions yet — the CBOM is created on the first scan.</div>
+          )}
+        </Panel>
+      )}
+
+      {/* ── real CycloneDX export ────────────────────────────────────── */}
+      {tab === 4 && (
+        <Panel title="CycloneDX 1.6 export" sub="assembled from the live scan-derived BOM — download or copy">
+          <div className="export-bar">
+            <span className="export-stat"><b>{bomComponents.length}</b> components · <b>{bomDependencies.filter((d) => d.ref).length}</b> dependency edges · specVersion <b>1.6</b></span>
+            <span style={{ marginInlineStart: "auto" }} />
+            <button className="btn sm primary"
+              onClick={() => download(`cryptoscan-cbom-v${cbomVersion || 1}.json`, JSON.stringify(cyclonedx, null, 2), "application/json")}
+              disabled={!bomComponents.length}>
+              Download .json
+            </button>
+            <button className="btn sm"
+              onClick={() => download(`cryptoscan-cbom-v${cbomVersion || 1}.xml`,
+                `<?xml version="1.0" encoding="UTF-8"?>\n<bom xmlns="http://cyclonedx.org/schema/bom/1.6" version="${cbomVersion || 1}">\n  <components>${bomComponents.map((c) => `\n    <component type="library"><name>${c.name}</name>${c.version ? `<version>${c.version}</version>` : ""}</component>`).join("")}\n  </components>\n</bom>\n`,
+                "application/xml")}
+              disabled={!bomComponents.length}>
+              Download .xml
+            </button>
+            <button className="btn sm" onClick={() => void doCopy()} disabled={!bomComponents.length}>
+              {copied ? "Copied ✓" : "Copy JSON"}
+            </button>
+          </div>
+          {bomComponents.length ? (
+            <Code>{JSON.stringify(cyclonedx, null, 2)}</Code>
+          ) : (
+            <div className="dim" style={{ fontSize: 13 }}>
+              No components to export yet — run a scan first; the export is generated from the live BOM, never a template.
+            </div>
+          )}
+        </Panel>
+      )}
+
+      {live?.data && (
+        <Panel title="GET /api/v1/platform/bom — control-plane engine response" sub="combined CycloneDX CBOM + HBOM produced by the control plane" className="mt">
+          {live.source === "live"
+            ? <Code>{JSON.stringify(live.data, null, 2)}</Code>
+            : <div className="dim" style={{ fontSize: 13 }}>Backend offline — control-plane BOM unavailable.</div>}
+          <div style={{ marginTop: 8 }}><LiveBadge source={live.source} label={live.source === "live" ? "live API result" : "backend offline"} /></div>
+        </Panel>
+      )}
+    </>
   );
 }

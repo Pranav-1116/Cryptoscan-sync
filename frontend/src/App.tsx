@@ -1,3 +1,4 @@
+const SystemHealth = lazy(() => import("./pages/SystemHealth"));
 import DigitalTwin from "./pages/DigitalTwin";
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
@@ -1296,6 +1297,7 @@ function App() {
       <Route path="/security-policy-real" element={<SecurityPolicyReal />} />
       <Route path="/security-posture-real" element={<SecurityPostureReal />} />
       <Route path="/security-real" element={<SecurityReal />} />
+      <Route path="/system-health" element={<SystemHealth />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/settings-real" element={<SettingsReal />} />
       <Route path="/siem-crypto-correlator" element={<SiemCryptoCorrelator />} />

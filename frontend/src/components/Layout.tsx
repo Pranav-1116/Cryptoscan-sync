@@ -65,6 +65,7 @@ const PRIMARY_SECTIONS = [
   {
     title: "Administration",
     items: [
+      { to: "/system-health", label: "System Health", icon: "♥" },
       { to: "/settings", label: "Settings & Org", icon: "⚙" },
       { to: "/security-center", label: "Security Center", icon: "⛨" },
       { to: "/identity", label: "Users & Teams", icon: "⛃" },
