@@ -398,6 +398,10 @@ const LiveStreamReal = lazy(() => import("./pages/LiveStreamReal"));
 const LivingCbom = lazy(() => import("./pages/LivingCbom"));
 const LivingCbomReal = lazy(() => import("./pages/LivingCbomReal"));
 const Login = lazy(() => import("./pages/Login"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const ResetPassword = lazy(() => import("./pages/ResetPassword"));
+const VerifyEmail = lazy(() => import("./pages/VerifyEmail"));
+
 const LoginReal = lazy(() => import("./pages/LoginReal"));
 const MarketplaceReal = lazy(() => import("./pages/MarketplaceReal"));
 const Migration = lazy(() => import("./pages/Migration"));
@@ -1101,6 +1105,10 @@ function App() {
       <Route path="/living-cbom" element={<LivingCbom />} />
       <Route path="/living-cbom-real" element={<LivingCbomReal />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route path="/verify-email" element={<VerifyEmail />} />
+
       <Route path="/login-real" element={<LoginReal />} />
       <Route path="/marketplace-real" element={<MarketplaceReal />} />
       <Route path="/migration" element={<Migration />} />
