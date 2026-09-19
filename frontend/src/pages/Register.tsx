@@ -1,206 +1,293 @@
 import React, { useState } from "react";
-import { apiRegister, isBackendLive } from "../lib/api.js";
+import { authService } from "../lib/authService";
+import { Button } from "../components/ui";
 
-/* The 8-role catalog — mirrors services/api/api/security/rbac.py */
-const ROLE_CATALOG: Array<{ role: string; desc: string; adminOnly?: boolean }> = [
-  { role: "ciso", desc: "All compliance, policy and exceptions" },
-  { role: "security_analyst", desc: "View findings, create exceptions" },
-  { role: "auditor", desc: "Read-only access to all reports" },
-  { role: "developer", desc: "View findings for own systems" },
-  { role: "business_owner", desc: "View findings for owned systems" },
-  { role: "scanner", desc: "API-only scan job submission" },
-  { role: "readonly", desc: "Dashboard view only" },
-  { role: "supervisor", desc: "Financial supervisor — read-only supervisory view" },
-  { role: "superadmin", desc: "Full platform access", adminOnly: true },
-];
-
-/* ── left brand / trust panel (matches sign-in) ────────────────────── */
-function BrandPanel() {
-  return (
-    <aside className="auth-brand">
-      <div className="auth-logo">
-        <span className="mark">◈</span>
-        <span>
-          ZELNX
-          <span className="tagline">CRYPTO INTELLIGENCE PLATFORM</span>
-        </span>
-      </div>
-
-      <div className="auth-hero">
-        <h2>Request access to the crypto control plane.</h2>
-        <p>
-          Accounts are scoped by role and constrained by hierarchical
-          Region → BU → Environment → Asset policy. You will only ever see the
-          assets your role is granted.
-        </p>
-        <ul className="auth-feats">
-          <li>
-            <span className="ic">◈</span>
-            <span>
-              <b>Role-based least privilege</b>
-              <span>Eight defined roles, from read-only auditor to platform owner.</span>
-            </span>
-          </li>
-          <li>
-            <span className="ic">▤</span>
-            <span>
-              <b>Every account action audited</b>
-              <span>Registrations, grants and changes enter the hash-chained audit log.</span>
-            </span>
-          </li>
-          <li>
-            <span className="ic">⬡</span>
-            <span>
-              <b>Superadmin is assigned, not self-selected</b>
-              <span>The platform-owner role is provisioned by an administrator only.</span>
-            </span>
-          </li>
-        </ul>
-      </div>
-
-      <div className="auth-trust">
-        <span className="lbl">Governed under</span>
-        <span className="badge cyan"><span className="dot" />FIPS 140-3</span>
-        <span className="badge cyan"><span className="dot" />NIST SP 800-131A</span>
-        <span className="badge cyan"><span className="dot" />SOC 2</span>
-        <span className="badge cyan"><span className="dot" />ISO 27001</span>
-      </div>
-    </aside>
-  );
-}
-
-/* Register — self-service account creation (POST /api/v1/auth/register).
-   The caller picks one of 8 RBAC roles; superadmin is admin-assigned only. */
 export default function Register() {
-  const [username, setUsername] = useState("");
-  const [displayName, setDisplayName] = useState("");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
+  const [organization, setOrganization] = useState("");
   const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [role, setRole] = useState("readonly");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [backendUp, setBackendUp] = useState<boolean | null>(null);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
 
-  React.useEffect(() => {
-    void isBackendLive().then(setBackendUp);
-  }, []);
+  // Password strength calculation
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return { score: 0, label: "None", tone: "slate" };
+    let score = 0;
+    if (pass.length >= 8) score += 1;
+    if (/[A-Z]/.test(pass) && /[a-z]/.test(pass)) score += 1;
+    if (/[0-9]/.test(pass) || /[^A-Za-z0-9]/.test(pass)) score += 1;
+    if (pass.length >= 14) score += 1;
 
-  const submit = async (e: React.FormEvent) => {
+    if (score <= 1) return { score: 25, label: "Weak", tone: "red" };
+    if (score === 2) return { score: 50, label: "Fair", tone: "amber" };
+    if (score === 3) return { score: 75, label: "Good", tone: "cyan" };
+    return { score: 100, label: "Strong", tone: "green" };
+  };
+
+  const strength = getPasswordStrength(password);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!fullName.trim()) {
+      setError("Please enter your full name.");
+      return;
+    }
+    if (!email.trim()) {
+      setError("Please enter your work email.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter a password.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+    if (!agreeTerms) {
+      setError("Please agree to the Terms of Service and Privacy Policy.");
+      return;
+    }
+
+    setLoading(true);
     setError(null);
-    const uname = username.trim();
-    if (uname.length < 2) return setError("Username must be at least 2 characters.");
-    if (password.length < 8) return setError("Password must be at least 8 characters.");
-    if (password !== confirm) return setError("Passwords do not match.");
-    setBusy(true);
-    const res = await apiRegister({
-      username: uname,
+
+    const res = await authService.register({
+      fullName: fullName.trim(),
+      email: email.trim(),
+      organization: organization.trim(),
       password,
-      role,
-      display_name: displayName.trim() || undefined,
-      email: email.trim() || undefined,
     });
-    setBusy(false);
+    setLoading(false);
+
     if (res.ok) {
-      window.location.hash = `#/login?u=${encodeURIComponent(uname)}&r=${encodeURIComponent(role)}`;
+      try {
+        sessionStorage.setItem("zelnx_pending_email", email.trim());
+      } catch { /* ignore */ }
+      window.location.hash = "#/verify-email";
     } else {
-      setError(res.error || "Registration failed. Please try again.");
+      setError(res.error || "Unable to complete registration. Please try again.");
     }
   };
 
   return (
-    <div className="auth">
-      <BrandPanel />
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        background: "var(--bg)",
+        padding: "32px 16px",
+      }}
+    >
+      <div style={{ textAlign: "center", marginBottom: "28px" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+          <span
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              display: "grid",
+              placeItems: "center",
+              background: "var(--grad)",
+              color: "#04121d",
+              fontSize: 18,
+              boxShadow: "var(--glow-cyan)",
+            }}
+          >
+            ◈
+          </span>
+          <span style={{ fontSize: "24px", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text)" }}>
+            ZELNX
+          </span>
+        </div>
+        <div style={{ fontSize: "13px", color: "var(--faint)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Cryptographic Security Platform
+        </div>
+      </div>
 
-      <main className="auth-panel">
-        <div className="auth-form wide">
-          <div className="auth-head">
-            <div className="kicker">Workspace onboarding</div>
-            <h1>Create account</h1>
-            <p>Register against the live control plane. Access is governed by your selected role and ABAC scope.</p>
-            <span className={`auth-status ${backendUp === null ? "" : backendUp ? "live" : "down"}`}>
-              <span className="dot" />
-              {backendUp === null
-                ? "Connecting to control plane…"
-                : backendUp
-                  ? "Control plane connected · accounts created live"
-                  : "Control plane offline · registration unavailable"}
-            </span>
-          </div>
-
-          {error && <div className="auth-alert err">✕ {error}</div>}
-
-          <form onSubmit={(e) => void submit(e)}>
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="reg-user">Username</label>
-                <input id="reg-user" placeholder="e.g. j.singh" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoFocus />
-              </div>
-              <div className="field">
-                <label htmlFor="reg-name">Display name</label>
-                <input id="reg-name" placeholder="Optional" value={displayName} onChange={(e) => setDisplayName(e.target.value)} autoComplete="name" />
-              </div>
-            </div>
-
-            <div className="field">
-              <label htmlFor="reg-email">Work email</label>
-              <input id="reg-email" type="email" placeholder="Optional · used for audit & notifications" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-            </div>
-
-            <div className="field-row">
-              <div className="field">
-                <label htmlFor="reg-pass">Password</label>
-                <input id="reg-pass" type="password" placeholder="Minimum 8 characters" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-              </div>
-              <div className="field">
-                <label htmlFor="reg-confirm">Confirm password</label>
-                <input id="reg-confirm" type="password" placeholder="Re-enter password" value={confirm} onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
-              </div>
-            </div>
-
-            <div className="field" style={{ marginTop: 6 }}>
-              <label>Select your role</label>
-              <div className="role-grid">
-                {ROLE_CATALOG.map(({ role: r, desc, adminOnly }) => {
-                  const selected = role === r;
-                  const disabled = !!adminOnly;
-                  return (
-                    <button
-                      key={r}
-                      type="button"
-                      disabled={disabled}
-                      onClick={() => setRole(r)}
-                      className={`role-opt${selected ? " sel" : ""}`}
-                      title={disabled ? "Superadmin is provisioned by an administrator only." : desc}
-                    >
-                      <div className="rname">
-                        {r}
-                        {adminOnly && <span className="lock">🔒 admin-assigned</span>}
-                      </div>
-                      <div className="rdesc">{desc}</div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <button className="btn primary auth-submit" type="submit" disabled={busy}>
-              {busy ? "Creating account…" : "Create account"}
-            </button>
-          </form>
-
-          <div className="auth-alt">
-            <span>Already have an account?</span>
-            <a href="#/login">Sign in</a>
-          </div>
+      <div
+        className="panel"
+        style={{
+          width: "100%",
+          maxWidth: "460px",
+          padding: "32px 28px",
+          background: "var(--panel)",
+          border: "1px solid var(--line)",
+          borderRadius: "12px",
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)",
+        }}
+      >
+        <div style={{ marginBottom: "20px" }}>
+          <h1 style={{ fontSize: "20px", fontWeight: 600, margin: "0 0 6px", color: "var(--text)" }}>
+            Create your ZELNX account
+          </h1>
+          <p style={{ margin: 0, fontSize: "13px", color: "var(--dim)" }}>
+            Set up secure access to your cryptographic security workspace.
+          </p>
         </div>
 
-        <div className="auth-foot">
-          Registration is recorded in the hash-chained audit log.
-          <br />Accounts receive least-privilege scope under fail-closed ABAC policy.
+        {error && (
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "8px",
+              color: "#fca5a5",
+              fontSize: "12.5px",
+              marginBottom: "16px",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 500, color: "var(--dim)", marginBottom: "5px" }}>
+              Full name
+            </label>
+            <input
+              type="text"
+              autoComplete="name"
+              placeholder="Vikram A."
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              className="inp"
+              style={{ fontSize: "13px", height: "40px" }}
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 500, color: "var(--dim)", marginBottom: "5px" }}>
+              Work email
+            </label>
+            <input
+              type="email"
+              autoComplete="username email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="inp"
+              style={{ fontSize: "13px", height: "40px" }}
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 500, color: "var(--dim)", marginBottom: "5px" }}>
+              Organization name
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Acme Financial Group"
+              value={organization}
+              onChange={(e) => setOrganization(e.target.value)}
+              className="inp"
+              style={{ fontSize: "13px", height: "40px" }}
+              disabled={loading}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 500, color: "var(--dim)", marginBottom: "5px" }}>
+              Password
+            </label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              placeholder="Create a strong password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              onFocus={() => setIsPasswordFocused(true)}
+              onBlur={() => setIsPasswordFocused(false)}
+              className="inp"
+              style={{ fontSize: "13px", height: "40px" }}
+              disabled={loading}
+            />
+
+            {/* Password strength & policy UX feedback */}
+            {password && (
+              <div style={{ marginTop: "8px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "11px", color: "var(--dim)", marginBottom: "4px" }}>
+                  <span>Password strength: <b style={{ color: `var(--${strength.tone})` }}>{strength.label}</b></span>
+                </div>
+                <div className="bar">
+                  <i className={strength.tone} style={{ width: `${strength.score}%` }} />
+                </div>
+              </div>
+            )}
+
+            {isPasswordFocused && (
+              <div style={{ marginTop: "8px", padding: "8px 10px", background: "var(--bg-2)", borderRadius: "6px", fontSize: "11px", color: "var(--dim)" }}>
+                <div>✓ Minimum 8 characters</div>
+                <div>✓ Uppercase, lowercase & number</div>
+                <div>✓ Enterprise cryptographic pass-policy</div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 500, color: "var(--dim)", marginBottom: "5px" }}>
+              Confirm password
+            </label>
+            <input
+              type="password"
+              autoComplete="new-password"
+              placeholder="Re-enter your password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="inp"
+              style={{ fontSize: "13px", height: "40px" }}
+              disabled={loading}
+            />
+            {confirmPassword && password !== confirmPassword && (
+              <span style={{ fontSize: "11px", color: "var(--red)", marginTop: "3px", display: "block" }}>
+                Passwords do not match.
+              </span>
+            )}
+          </div>
+
+          {/* 17. Terms & Privacy */}
+          <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", marginTop: "2px" }}>
+            <input
+              type="checkbox"
+              id="terms"
+              checked={agreeTerms}
+              onChange={(e) => setAgreeTerms(e.target.checked)}
+              style={{ marginTop: "3px", cursor: "pointer", accentColor: "var(--cyan)" }}
+            />
+            <label htmlFor="terms" style={{ fontSize: "12px", color: "var(--dim)", lineHeight: 1.4, cursor: "pointer" }}>
+              I agree to the <a href="#/terms" style={{ color: "var(--cyan)" }}>Terms of Service</a> and <a href="#/privacy" style={{ color: "var(--cyan)" }}>Privacy Policy</a>.
+            </label>
+          </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            disabled={loading}
+            style={{ width: "100%", height: "42px", fontSize: "13.5px", marginTop: "8px" }}
+          >
+            {loading ? "◌ Creating account..." : "Create account"}
+          </Button>
+        </form>
+
+        <div style={{ textAlign: "center", marginTop: "20px", fontSize: "12.5px", color: "var(--dim)" }}>
+          Already have an account?{" "}
+          <a href="#/login" style={{ color: "var(--cyan)", fontWeight: 500 }}>
+            Sign in
+          </a>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

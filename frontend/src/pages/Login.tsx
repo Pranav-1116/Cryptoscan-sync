@@ -1,218 +1,261 @@
 import React, { useState } from "react";
-import { apiLogin, apiSsoStatus, isBackendLive, getToken, getRoles, SsoStatus } from "../lib/api.js";
-import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
+import { authService } from "../lib/authService";
+import { Button } from "../components/ui";
 
-const ROLE_CATALOG: Array<{ role: string; desc: string }> = [
-  { role: "superadmin", desc: "Full platform access" },
-  { role: "ciso", desc: "Compliance, policy & exceptions" },
-  { role: "security_analyst", desc: "Findings & exceptions" },
-  { role: "developer", desc: "Findings for own systems" },
-  { role: "auditor", desc: "Read-only reports" },
-  { role: "business_owner", desc: "Owned systems" },
-  { role: "scanner", desc: "API scan submission" },
-  { role: "readonly", desc: "Dashboard only" },
-];
-
-/* ── shared left brand panel ───────────────────────────────────────── */
-function BrandPanel() {
-  const { t } = useI18n();
-  return (
-    <aside className="auth-brand">
-      <div style={{ display: "flex", justifyContent: "flex-end" }}><LanguageSwitcher /></div>
-      <div className="auth-logo">
-        <span className="mark">◈</span>
-        <span>
-          ZELNX
-          <span className="tagline">CRYPTO INTELLIGENCE PLATFORM</span>
-        </span>
-      </div>
-
-      <div className="auth-hero">
-        <h2>{t("login.heroTitle")}</h2>
-        <p>
-          {t("app.tagline")}
-        </p>
-        <ul className="auth-feats">
-          <li>
-            <span className="ic">◈</span>
-            <span>
-              <b>{t("login.hero1Title")}</b>
-              <span>{t("login.hero1Body")}</span>
-            </span>
-          </li>
-          <li>
-            <span className="ic">▤</span>
-            <span>
-              <b>{t("login.hero2Title")}</b>
-              <span>{t("login.hero2Body")}</span>
-            </span>
-          </li>
-          <li>
-            <span className="ic">⬡</span>
-            <span>
-              <b>{t("login.hero3Title")}</b>
-              <span>{t("login.hero3Body")}</span>
-            </span>
-          </li>
-        </ul>
-      </div>
-
-      <div className="auth-trust">
-        <span className="lbl">{t("login.alignedTo")}</span>
-        <span className="badge cyan"><span className="dot" />FIPS 140-3</span>
-        <span className="badge cyan"><span className="dot" />NIST SP 800-131A</span>
-        <span className="badge cyan"><span className="dot" />SOC 2</span>
-        <span className="badge cyan"><span className="dot" />PCI DSS 4.0</span>
-        <span className="badge cyan"><span className="dot" />ISO 27001</span>
-      </div>
-    </aside>
-  );
-}
-
-/* Login — authenticates against the control plane (POST /api/v1/auth/login).
-   There is no demo mode: the console requires a sign-in and shows only real
-   data from the live platform. */
 export default function Login() {
-  const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
-  const registered = params.get("u") || "";
-  const registeredRole = params.get("r") || "";
-  const [username, setUsername] = useState(registered || "admin");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(
-    registered ? `Account created — sign in as ${registered}${registeredRole ? ` (${registeredRole})` : ""}.` : null,
-  );
-  const [busy, setBusy] = useState(false);
-  const [backendUp, setBackendUp] = useState<boolean | null>(null);
-  const [sso, setSso] = useState<SsoStatus | null>(null);
-  const roles = getRoles();
-  const token = getToken();
-  const { t } = useI18n();
+  const [rateLimitCountdown, setRateLimitCountdown] = useState<number | null>(null);
 
-  React.useEffect(() => {
-    void isBackendLive().then(setBackendUp);
-    // the login screen only renders SSO options the platform actually has —
-    // an unconfigured IdP is an invisible option, never a dead button
-    void apiSsoStatus().then((res) => setSso(res.source === "live" ? (res.data ?? null) : null));
-  }, []);
-
-  const samlRedirect = async () => {
-    try {
-      const resp = await fetch("/api/v1/auth/saml/login", { credentials: "include" });
-      if (!resp.ok) {
-        setError(`SAML login unavailable (HTTP ${resp.status}).`);
-        return;
-      }
-      const body = (await resp.json()) as { redirect_to?: string };
-      if (body.redirect_to) window.location.href = body.redirect_to;
-      else setError("SAML IdP SSO URL is not configured.");
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const submit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
+    if (!email.trim()) {
+      setError("Please enter your work email.");
+      return;
+    }
+    if (!password) {
+      setError("Enter your password.");
+      return;
+    }
+
+    setLoading(true);
     setError(null);
-    setNotice(null);
-    const res = await apiLogin(username, password);
-    setBusy(false);
+
+    const res = await authService.login(email.trim(), password, rememberMe);
+    setLoading(false);
+
     if (res.ok) {
-      window.location.hash = "#/";
+      window.location.hash = "#/command-center";
+    } else if (res.rateLimited) {
+      setError(res.error || "Too many sign-in attempts. Please wait.");
+      if (res.retryAfterSec) {
+        setRateLimitCountdown(res.retryAfterSec);
+        const timer = setInterval(() => {
+          setRateLimitCountdown((prev) => {
+            if (prev === null || prev <= 1) {
+              clearInterval(timer);
+              return null;
+            }
+            return prev - 1;
+          });
+        }, 1000);
+      }
     } else {
-      setError(res.error || "Sign-in failed. Check your credentials and try again.");
+      setError(res.error || "Unable to sign in. The email or password is incorrect.");
     }
   };
 
   return (
-    <div className="auth">
-      <BrandPanel />
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: "center",
+        background: "var(--bg)",
+        padding: "24px 16px",
+      }}
+    >
+      {/* 3. ZELNX Branding Header */}
+      <div style={{ textAlign: "center", marginBottom: "28px" }}>
+        <div style={{ display: "inline-flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
+          <span
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 8,
+              display: "grid",
+              placeItems: "center",
+              background: "var(--grad)",
+              color: "#04121d",
+              fontSize: 18,
+              boxShadow: "var(--glow-cyan)",
+            }}
+          >
+            ◈
+          </span>
+          <span style={{ fontSize: "24px", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text)" }}>
+            ZELNX
+          </span>
+        </div>
+        <div style={{ fontSize: "13px", color: "var(--faint)", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+          Cryptographic Security Platform
+        </div>
+      </div>
 
-      <main className="auth-panel">
-        <div className="auth-form">
-          <div className="auth-head">
-            <div className="kicker">{t("login.kicker")}</div>
-            <h1>{t("login.title")}</h1>
-            <p>{t("login.subtitle")}</p>
-            <span className={`auth-status ${backendUp === null ? "" : backendUp ? "live" : "down"}`}>
-              <span className="dot" />
-              {backendUp === null
-                ? t("app.banner.connecting")
-                : backendUp
-                  ? t("app.banner.live")
-                  : t("app.banner.offline")}
-            </span>
+      {/* 4. Login Card (Centered, Minimal, Premium) */}
+      <div
+        className="panel"
+        style={{
+          width: "100%",
+          maxWidth: "420px",
+          padding: "32px 28px",
+          background: "var(--panel)",
+          border: "1px solid var(--line)",
+          borderRadius: "12px",
+          boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)",
+        }}
+      >
+        <div style={{ marginBottom: "22px" }}>
+          <h1 style={{ fontSize: "20px", fontWeight: 600, margin: "0 0 6px", color: "var(--text)" }}>
+            Welcome back
+          </h1>
+          <p style={{ margin: 0, fontSize: "13px", color: "var(--dim)" }}>
+            Sign in to your ZELNX workspace.
+          </p>
+        </div>
+
+        {error && (
+          <div
+            style={{
+              padding: "12px 14px",
+              background: "rgba(239, 68, 68, 0.08)",
+              border: "1px solid rgba(239, 68, 68, 0.3)",
+              borderRadius: "8px",
+              color: "#fca5a5",
+              fontSize: "12.5px",
+              marginBottom: "18px",
+              lineHeight: 1.4,
+            }}
+          >
+            <div style={{ fontWeight: 600, marginBottom: "2px" }}>Unable to sign in</div>
+            <div>{error}</div>
+            {rateLimitCountdown !== null && (
+              <div style={{ marginTop: "4px", fontSize: "11px", fontFamily: "var(--mono)", color: "var(--amber)" }}>
+                Retry available in {rateLimitCountdown}s
+              </div>
+            )}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          <div>
+            <label style={{ display: "block", fontSize: "12.5px", fontWeight: 500, color: "var(--dim)", marginBottom: "6px" }}>
+              Work email
+            </label>
+            <input
+              type="text"
+              autoComplete="username email"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="inp"
+              style={{ fontSize: "13.5px", height: "42px" }}
+              disabled={loading || rateLimitCountdown !== null}
+            />
           </div>
 
-          {notice && <div className="auth-alert ok">✓ {notice}</div>}
-          {error && <div className="auth-alert err">✕ {error}</div>}
-
-          <form onSubmit={(e) => void submit(e)}>
-            <div className="field">
-              <label htmlFor="login-user">{t("login.username")}</label>
-              <input
-                id="login-user"
-                placeholder={t("login.usernamePlaceholder")}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                autoFocus
-              />
+          <div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <label style={{ fontSize: "12.5px", fontWeight: 500, color: "var(--dim)" }}>
+                Password
+              </label>
+              <a
+                href="#/forgot-password"
+                style={{ fontSize: "12px", color: "var(--cyan)", textDecoration: "none" }}
+              >
+                Forgot password?
+              </a>
             </div>
-            <div className="field">
-              <label htmlFor="login-pass">{t("login.password")}</label>
+            <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
               <input
-                id="login-pass"
-                type="password"
-                placeholder={t("login.passwordPlaceholder")}
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                placeholder="Enter your password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
+                className="inp"
+                style={{ fontSize: "13.5px", height: "42px", paddingRight: "40px" }}
+                disabled={loading || rateLimitCountdown !== null}
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  position: "absolute",
+                  right: "12px",
+                  background: "none",
+                  border: "none",
+                  color: "var(--dim)",
+                  cursor: "pointer",
+                  fontSize: "14px",
+                  padding: "4px",
+                }}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "👁" : "👁‍🗨"}
+              </button>
             </div>
-
-            <button className="btn primary auth-submit" type="submit" disabled={busy}>
-              {busy ? t("login.signingIn") : t("login.signIn")}
-            </button>
-          </form>
-
-          <div className="auth-alt">
-            <span>{t("login.newHere")}</span>
-            <a href="#/register">{t("login.requestAccount")}</a>
           </div>
 
-          {token && roles.length > 0 ? (
-            <div className="auth-alert ok" style={{ marginTop: 16 }}>
-              <span>
-                ● {t("login.alreadySignedIn")} <b>{username}</b> — {roles.join(", ")}.{" "}
-                <a href="#/" style={{ color: "inherit", fontWeight: 700 }}>{t("login.enterConsole")} →</a>
-              </span>
-            </div>
-          ) : (
-            <details className="auth-note">
-              <summary>Seeded bootstrap credentials & role catalog</summary>
-              <div className="note-body">
-                The bootstrap platform-owner account is <code>admin / cryptoscan</code>
-                &nbsp;(alias → superadmin). Change it after first sign-in.
-                <div style={{ marginTop: 8 }}>8-role RBAC catalog:</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 6 }}>
-                  {ROLE_CATALOG.map(({ role }) => (
-                    <code key={role} style={{ background: "var(--panel-2)", padding: "2px 7px", borderRadius: 4, color: "var(--dim)" }}>
-                      {role}
-                    </code>
-                  ))}
-                </div>
-              </div>
-            </details>
-          )}
-        </div>
+          {/* 5. Remember Me */}
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input
+              type="checkbox"
+              id="remember"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              style={{ cursor: "pointer", accentColor: "var(--cyan)" }}
+            />
+            <label htmlFor="remember" style={{ fontSize: "12px", color: "var(--dim)", cursor: "pointer" }}>
+              Keep this session active on this device
+            </label>
+          </div>
 
-        <div className="auth-foot">
-          ZELNX Crypto Intelligence · policy-as-code · hash-chained audit · fail-closed RBAC
-          <br />No AI inference makes policy decisions. All findings are deterministic and replayable.
+          {/* 7. Sign In Button */}
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            disabled={loading || rateLimitCountdown !== null}
+            style={{ width: "100%", height: "42px", fontSize: "13.5px", marginTop: "4px" }}
+          >
+            {loading ? "◌ Signing in..." : "Sign in"}
+          </Button>
+
+          {/* 30 & 31. Enterprise SSO & Passkey Architecture Stubs */}
+          <div style={{ position: "relative", textAlign: "center", margin: "10px 0" }}>
+            <div style={{ position: "absolute", inset: "50% 0", borderTop: "1px solid var(--line)" }} />
+            <span style={{ position: "relative", background: "var(--panel)", padding: "0 10px", fontSize: "11px", color: "var(--faint)", textTransform: "uppercase" }}>
+              or
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              window.location.href = "/api/v1/auth/oidc/authorize";
+            }}
+            className="btn outline"
+            style={{ width: "100%", height: "40px", fontSize: "12.5px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px" }}
+          >
+            <span>🔐</span> Continue with Enterprise SSO (SAML / OIDC)
+          </button>
+        </form>
+
+        <div style={{ textAlign: "center", marginTop: "24px", fontSize: "12.5px", color: "var(--dim)" }}>
+          Don't have an account?{" "}
+          <a href="#/register" style={{ color: "var(--cyan)", fontWeight: 500 }}>
+            Create account
+          </a>
         </div>
-      </main>
+      </div>
+
+      {/* 35. Minimal Security Footer */}
+      <div style={{ marginTop: "32px", textAlign: "center", fontSize: "11px", color: "var(--faint)", display: "flex", flexDirection: "column", gap: "6px" }}>
+        <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
+          <span>Privacy</span>
+          <span>Terms</span>
+          <span>Security Controls</span>
+          <span>Status</span>
+        </div>
+        <div>Protected by ZELNX enterprise cryptographic access controls · © 2026 ZELNX</div>
+      </div>
     </div>
   );
 }
