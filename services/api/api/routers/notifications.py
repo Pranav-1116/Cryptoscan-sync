@@ -8,7 +8,7 @@ channel destinations are configured separately under /enterprise/integrations.
 from __future__ import annotations
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 

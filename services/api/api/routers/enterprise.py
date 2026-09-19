@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 import logging
 
 from db.repositories.enterprise_repository import EnterpriseRepository
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 

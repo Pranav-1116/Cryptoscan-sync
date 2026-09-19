@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel, Field
 
 from api.dependencies import (TenantContext, get_current_user,

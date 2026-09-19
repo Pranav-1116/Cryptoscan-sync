@@ -19,7 +19,7 @@ from anomaly.detect import (
     detect_series,
     frequency_shift,
 )
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session

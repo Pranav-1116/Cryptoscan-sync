@@ -19,7 +19,7 @@ from datalake.manifest import (
     verify_batch,
     verify_chain,
 )
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session

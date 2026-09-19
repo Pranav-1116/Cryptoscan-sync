@@ -6,7 +6,7 @@ Advisory only — compliance verdicts come solely from the policy engine.
 from __future__ import annotations
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 

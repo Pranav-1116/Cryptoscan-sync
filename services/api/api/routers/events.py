@@ -76,3 +76,9 @@ def realtime_status(user: str = Depends(get_current_user)):
         "quantum_readiness": "pqc*0.30 hybrid*0.20 agility*0.15 migration*0.15 vendor*0.10 infra*0.10",
         "pqc_migration": "6-phase Assess Protect Store Integrate Operate Verify",
     }
+
+def start_event_tailer(seconds: float = 1.0):
+    return None
+
+def start_telemetry_heartbeat():
+    return None

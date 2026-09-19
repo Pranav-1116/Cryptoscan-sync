@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from governance.migration_validate import MigrationSnapshot, validate_migration
 from governance.rules import ChangeRequest, Decision, evaluate
 from pydantic import BaseModel, Field

@@ -18,7 +18,7 @@ import re
 from datetime import datetime, timezone
 
 from db.repositories.onboarding_repository import OnboardingRepository
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 

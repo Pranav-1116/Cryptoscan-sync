@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 """System-level 6-factor agility and migration readiness."""
 
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 

@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 import os
 import time
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Query
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user, get_db_session

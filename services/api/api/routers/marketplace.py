@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import logging
 
-from fastapi import APIRouter, Body, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status, Query
 from marketplace.manifest import ManifestError, PluginManifest
 from marketplace.registry import (
     PluginState,

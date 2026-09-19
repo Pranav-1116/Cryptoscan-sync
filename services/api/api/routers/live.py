@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_roles

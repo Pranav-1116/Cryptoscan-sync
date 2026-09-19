@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import os
 import time
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Request, Response, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 

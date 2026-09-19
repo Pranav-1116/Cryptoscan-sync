@@ -14,7 +14,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from typing import Dict, Any, List
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user, get_db_session

@@ -22,7 +22,7 @@ import secrets
 from typing import Any
 
 from db.repositories.control_plane_repository import ControlPlaneRepository
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 

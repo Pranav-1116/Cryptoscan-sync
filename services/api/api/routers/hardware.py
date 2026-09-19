@@ -25,7 +25,7 @@ from universal_vendor.hardware.live import (
     LiveHardwareController,
 )
 
-from api.dependencies import get_db_session
+from api.dependencies import get_current_user, get_db_session
 from api.security.rbac import require_permission
 
 logger = logging.getLogger(__name__)
@@ -597,12 +597,12 @@ except Exception:
 
 @router.get("/scanners/detail")
 async def scanners_detail(current_user=Depends(get_current_user)):
-    from api.dependencies import require_roles
+    from api.dependencies import get_current_user, require_roles
     require_roles(current_user, ["admin", "analyst", "engineer"])
     return {"code": "150+ patterns Shannon >4.5 TLS JA3/JA3S/JARM Trivy Syft cloud AWS/Azure/GCP OT telecom SS7 QRNG Shannon/chi-square NIST SP800-90B", "hsm": "FIPS 140-3 Level3 quorum 3-of-5", "k8s": "replicas 3 HPA min3 max10"}
 @router.get("/realtime/live")
 async def live_stats(db=Depends(get_db_session), current_user=Depends(get_current_user), tenant_id: str = Query(...)):
-    from api.dependencies import require_roles
+    from api.dependencies import get_current_user, require_roles
     require_roles(current_user, ["admin", "analyst", "viewer"])
     return {"total_items": 100, "total_findings": 25, "p99": "342ms", "throughput": "100K+/sec", "exactly_once": True}
 

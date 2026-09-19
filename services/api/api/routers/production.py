@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import os
 import time
 from typing import Any, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from api.dependencies import get_current_user, get_db_session, require_roles
