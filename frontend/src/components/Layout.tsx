@@ -1,3 +1,5 @@
+import { useEnterprise, EnterpriseProvider } from "./EnterpriseContext";
+import { TenantModal, EnvironmentModal, RoleModal } from "./EnterpriseModals";
 import SystemHealthModal from "./SystemHealthModal";
 import React, { useEffect, useState } from "react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
@@ -67,7 +69,11 @@ const PRIMARY_SECTIONS = [
   }
 ];
 
-export default function Layout({ route, children }: { route: string; children: React.ReactNode }) {
+function LayoutInner({ route, children }: { route: string; children: React.ReactNode }) {
+  const { role, env, org, infoLevel, setInfoLevel, timezone, setTimezone, canPerformAction } = useEnterprise();
+  const [showTenantModal, setShowTenantModal] = useState(false);
+  const [showEnvModal, setShowEnvModal] = useState(false);
+  const [showRoleModal, setShowRoleModal] = useState(false);
   const { t, dir } = useI18n();
   const [showSearch, setShowSearch] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
@@ -143,8 +149,63 @@ export default function Layout({ route, children }: { route: string; children: R
           </button>
         </div>
 
-        {/* Action button inside sidebar: Start Scan */}
+        
+        {/* Enterprise Organization & Environment Selectors (Sections 54 & 55) */}
         {!isCollapsed && (
+          <div style={{ padding: "0 8px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+            <button
+              onClick={() => setShowTenantModal(true)}
+              style={{
+                width: "100%",
+                background: "var(--bg-2)",
+                border: "1px solid var(--line)",
+                borderRadius: "6px",
+                padding: "6px 10px",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "12px",
+                color: "var(--text)"
+              }}
+              title="Switch Organization / Business Unit"
+            >
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
+                🏢 {org.name.split("·")[1]?.trim() || org.name}
+              </span>
+              <span style={{ fontSize: "10px", color: "var(--faint)" }}>▼</span>
+            </button>
+
+            <button
+              onClick={() => setShowEnvModal(true)}
+              style={{
+                width: "100%",
+                background: env === "Production" ? "rgba(239, 68, 68, 0.08)" : "var(--bg-2)",
+                border: `1px solid ${env === "Production" ? "rgba(239, 68, 68, 0.3)" : "var(--line)"}`,
+                borderRadius: "6px",
+                padding: "5px 10px",
+                textAlign: "left",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                fontSize: "11.5px",
+                color: env === "Production" ? "#fca5a5" : "var(--dim)"
+              }}
+              title="Switch Deployment Environment"
+            >
+              <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: env === "Production" ? "var(--red)" : "var(--cyan)" }} />
+                {env.toUpperCase()}
+              </span>
+              <span style={{ fontSize: "10px", color: "var(--faint)" }}>▼</span>
+            </button>
+          </div>
+        )}
+
+        {/* Action button inside sidebar: Start Scan */}
+        {!isCollapsed && canPerformAction("scan") && (
           <div style={{ padding: "0 8px 12px" }}>
             <a
               href="#/scanners"
@@ -303,6 +364,40 @@ export default function Layout({ route, children }: { route: string; children: R
             <span>✦</span> Ask ZELNX
           </button>
 
+          
+          {/* Section 52: Multi-Level Info Switcher */}
+          <select
+            value={infoLevel}
+            onChange={(e) => setInfoLevel(e.target.value as any)}
+            className="inp sm"
+            style={{ width: "auto", fontSize: "11px", padding: "3px 8px", background: "var(--panel)" }}
+            title="Switch Information Hierarchy Level"
+          >
+            <option value="Level 1 — Executive">Level 1 — Executive</option>
+            <option value="Level 2 — Security Operations">Level 2 — SecOps</option>
+            <option value="Level 3 — Technical Investigation">Level 3 — Technical</option>
+          </select>
+
+          {/* Section 57: Global Timezone Switcher */}
+          <button
+            className="btn sm ghost"
+            onClick={() => setTimezone(timezone === "UTC" ? "Local" : timezone === "Local" ? "GST" : "UTC")}
+            style={{ fontFamily: "var(--mono)", fontSize: "11px" }}
+            title="Toggle Global Timezone (UTC / Local / GST)"
+          >
+            🕒 {timezone}
+          </button>
+
+          {/* Section 53: Role Badge / Selector */}
+          <button
+            onClick={() => setShowRoleModal(true)}
+            className="btn sm"
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11.5px" }}
+            title="Click to Switch Role Profile (RBAC)"
+          >
+            <span>👤</span> {role}
+          </button>
+
           <button
             className="btn sm"
             title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
@@ -387,7 +482,22 @@ export default function Layout({ route, children }: { route: string; children: R
 
       {showSearch && <SearchOverlay onClose={() => setShowSearch(false)} />}
       <SystemHealthModal isOpen={showHealthModal} onClose={() => setShowHealthModal(false)} />
+      <TenantModal isOpen={showTenantModal} onClose={() => setShowTenantModal(false)} />
+      <EnvironmentModal isOpen={showEnvModal} onClose={() => setShowEnvModal(false)} />
+      <RoleModal isOpen={showRoleModal} onClose={() => setShowRoleModal(false)} />
+
       <Toasts toasts={toasts} />
     </div>
+  );
+}
+
+
+export default function Layout({ route, children }: { route: string; children: React.ReactNode }) {
+  return (
+    <EnterpriseProvider>
+      <LayoutInner route={route}>
+        {children}
+      </LayoutInner>
+    </EnterpriseProvider>
   );
 }

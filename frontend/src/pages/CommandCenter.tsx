@@ -1,3 +1,4 @@
+import { useEnterprise } from "../components/EnterpriseContext";
 import { apiStatsSummary } from "../lib/api";
 import React, { useState } from "react";
 import { Badge, Stat, Row, Col, Button, Modal } from "../components/ui";
@@ -8,6 +9,7 @@ import RealtimeChart from "../components/realtime/RealtimeChart";
 
 export default function CommandCenter() {
   const realtime = useRealtime("commandcenter", { historyLimit: 50 });
+  const { role, env, org, infoLevel, canPerformAction } = useEnterprise();
   const [activeTab, setActiveTab] = useState<"overview" | "timeline" | "scanners" | "pqc" | "drift">("overview");
   const [selectedAsset, setSelectedAsset] = useState<any>(null);
   const [showBaselineModal, setShowBaselineModal] = useState(false);
@@ -123,6 +125,25 @@ export default function CommandCenter() {
 
   return (
     <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      
+      {/* Section 56: Data Freshness & Environment Warning */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 14px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", marginBottom: "16px", fontSize: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--green)" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)" }} />
+            Data Freshness: <b>Fresh</b>
+          </span>
+          <span style={{ color: "var(--faint)" }}>|</span>
+          <span style={{ color: "var(--dim)" }}>Last observed: <b>12 seconds ago</b> via eBPF daemon</span>
+          <span style={{ color: "var(--faint)" }}>|</span>
+          <span style={{ color: "var(--dim)" }}>Tenant: <b>{org.name}</b></span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ color: "var(--dim)" }}>Active View:</span>
+          <Badge tone="cyan">{infoLevel}</Badge>
+        </div>
+      </div>
+
       {/* 34. 24/7 Monitoring Dashboard — Permanent Observation Header */}
       <div
         className="panel"
