@@ -3172,3 +3172,13 @@ export const apiCbomCoverage = (): Promise<ApiResult<any>> =>
 
 export const apiCbomSearch = (query: string): Promise<ApiResult<any>> =>
   call(`/api/v1/cbom/search?q=${encodeURIComponent(query)}`);
+
+/* ── Governance, Drift & Compliance APIs ── */
+export const apiComplianceEvidence = (): Promise<ApiResult<any>> =>
+  call("/api/v1/compliance/evidence");
+
+export const apiComplianceRetention = (): Promise<ApiResult<any>> =>
+  call("/api/v1/compliance/retention");
+
+export const apiDriftEvents = (page = 1, pageSize = 50): Promise<ApiResult<any>> =>
+  call(`/api/v1/drift?page=${page}&page_size=${pageSize}`);
