@@ -190,15 +190,46 @@ _J = (
     {
         "code": "ae",
         "region": "United Arab Emirates",
-        "regulators": ["CBUAE", "DFSA (DIFC)", "FSRA (ADGM)"],
-        "display": "UAE — CBUAE / DFSA / FSRA",
-        "framework": "generic",
+        "regulators": ["CBUAE", "DFSA (DIFC)", "FSRA (ADGM)", "UAE Data Office (PDPL)"],
+        "display": "UAE — CBUAE / DFSA (DIFC) / FSRA (ADGM) / UAE Data Office",
+        "framework": "cbuae",
         "languages": ["en", "ar"],
         "milestones": [
-            {"label": "CBUAE information security standards", "date": None,
-             "note": "SANS/CSC-based control expectations"},
+            {"label": "DIFC Data Protection Law No. 5/2020 — in force", "date": "2020-07-01",
+             "note": "GDPR-aligned regime in the Dubai International Financial Centre; Art. 23 technical "
+                     "measures (pseudonymisation, encryption); 72h breach notification statutory; "
+                     "private right of action since July 2025"},
+            {"label": "ADGM Data Protection Regulations 2021 — in force", "date": "2021-08-14",
+             "note": "Abu Dhabi free zone; GDPR-equivalent technical measures; 72h breach notification "
+                     "statutory; fines up to USD 28M per offence"},
+            {"label": "UAE Federal PDPL (Decree-Law No. 45/2021) — in force", "date": "2022-01-02",
+             "note": "Mainland personal-data regime enforced by the UAE Data Office; Art. 20 names "
+                     "encryption and pseudonymisation; 72h breach notification per Data Office guidance; "
+                     "fines up to AED 5M; enforcement escalating from 2025; extraterritorial reach"},
+            {"label": "CBUAE Cybersecurity Framework — 9 domains, in force", "date": None,
+             "note": "Governance, risk management, architecture, identity management, third-party risk, "
+                     "data & information protection, threat management, incident management, awareness; "
+                     "applies to all licensed financial institutions (banks, exchange houses, finance "
+                     "companies, payment service providers)"},
+            {"label": "CBUAE Information Security Standards — ISO/IEC 27001-aligned, in force", "date": None,
+             "note": "Annual third-party security assessment, quarterly vulnerability scanning, annual "
+                     "penetration testing, MFA for privileged/remote/customer-facing access, 5-year log "
+                     "retention, RTO 4h / RPO 1h for critical systems"},
+            {"label": "DIFC private right of action under DP Law — live", "date": "2025-07-01",
+             "note": "Data subjects may bring claims in DIFC courts; documented technical measures are "
+                     "the primary defence — keep scan evidence current"},
+            {"label": "Post-quantum: track CBUAE/DIFC/ADGM supervisory notices", "date": None,
+             "note": "No UAE-specific PQC mandate published to date; NIST IR 8547 transition (public-key "
+                     "algorithms deprecated after 2030, disallowed after 2035) remains the de-facto "
+                     "reference examiners cite; HNDL register + migration roadmap are the expected evidence"},
         ],
-        "artifacts": ["Control crosswalk: GET /api/v1/banking/compliance-crosswalk"],
+        "artifacts": [
+            "UAE policy rule pack: services/policy/rule_definitions/uae/ (CBUAE/DIFC/PDPL/ADGM rules, deterministic)",
+            "Action plan pinned to this jurisdiction: GET /api/v1/banking/action-plan?jurisdiction=ae",
+            "Supervisor reference document: GET /api/v1/banking/action-plan/export?jurisdiction=ae&format=html",
+            "Control crosswalk: GET /api/v1/banking/compliance-crosswalk",
+            "HSM fleet + quantum exposure: GET /api/v1/banking/hsm",
+        ],
     },
 )
 

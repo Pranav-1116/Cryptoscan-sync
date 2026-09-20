@@ -1,0 +1,35 @@
+rule_id: "PDPL-001"
+rule_name: "UAE Federal PDPL Art. 20 — encryption/pseudonymisation of personal data"
+version: "1.0"
+effective_date: "2026-09-20"
+severity: "HIGH"
+standard_reference: "UAE Federal Decree-Law No. 45 of 2021 (Personal Data Protection Law), Art. 20(1) — technical and organisational measures; encryption and pseudonymisation named in the statute"
+description: >
+  The federal PDPL (in force since 2022-01-02, enforced by the UAE Data
+  Office) requires technical measures meeting the highest standard of
+  information security appropriate to the risk, and Art. 20 names
+  encryption and pseudonymisation specifically. Encryption of personal data
+  must therefore use an approved modern algorithm; legacy ciphers fail.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "PDPL"
+      - "PERSONAL_DATA"
+      - "UAE-PDPL-45-2021"
+    if_purpose:
+      - "ENCRYPTION"
+      - "DECRYPTION"
+    require_algorithms:
+      - "AES"
+      - "CHACHA20"
+      - "CHACHA20-POLY1305"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Personal-data encryption with {algorithm} does not meet PDPL Art. 20(1) technical measures"
+remediation: >
+  Re-key with AES-256-GCM (or CCM) or ChaCha20-Poly1305, apply
+  pseudonymisation where identifiers are not needed, and keep the evidence
+  for the 72-hour breach-notification capability the UAE Data Office
+  expects.
+enabled: true

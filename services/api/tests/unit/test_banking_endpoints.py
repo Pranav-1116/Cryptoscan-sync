@@ -259,6 +259,29 @@ async def test_jurisdictions_list_and_detail(app_db):
 
 
 @pytest.mark.asyncio
+async def test_uae_jurisdiction_and_cbuae_framework(app_db):
+    """The UAE pack carries CBUAE/DIFC/PDPL/ADGM milestones and drives a
+    cbuae-framework action plan (supervisor-ready, en/ar)."""
+    async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
+        ae = await client.get("/api/v1/banking/jurisdiction/ae")
+        plan = await client.get("/api/v1/banking/action-plan?framework=cbuae")
+        bad = await client.get("/api/v1/banking/action-plan?framework=madeup")
+        ar = await client.get("/api/v1/banking/action-plan/export?format=html&lang=ar&jurisdiction=ae")
+    pack = ae.json()["pack"]
+    assert pack["code"] == "ae" and pack["framework"] == "cbuae"
+    assert pack["languages"] == ["en", "ar"]
+    labels = " ".join(m["label"] for m in pack["milestones"])
+    assert "DIFC" in labels and "PDPL" in labels and "CBUAE" in labels and "ADGM" in labels
+    dated = [m["date"] for m in pack["milestones"] if m.get("date")]
+    assert "2020-07-01" in dated and "2022-01-02" in dated and "2025-07-01" in dated
+    refs = ae.json()["action_plan"]["references"]
+    assert refs and any("DIFC" in r for r in refs)
+    assert plan.status_code == 200 and plan.json()["framework"] == "cbuae"
+    assert bad.status_code == 422
+    assert ar.status_code == 200 and 'dir="rtl"' in ar.text and "CBUAE" in ar.text
+
+
+@pytest.mark.asyncio
 async def test_action_plan_export_language_and_jurisdiction(app_db):
     async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
         de = await client.get("/api/v1/banking/action-plan/export?format=html&lang=de&jurisdiction=eu")

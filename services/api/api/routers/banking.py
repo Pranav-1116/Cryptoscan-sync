@@ -154,7 +154,7 @@ def banking_hsm_fleet(
 @router.get("/action-plan")
 def banking_action_plan(
     version: int | None = Query(None),
-    framework: str = Query("generic", pattern="^(ecb|rbi|fca|generic)$"),
+    framework: str = Query("generic", pattern="^(ecb|rbi|fca|cbuae|generic)$"),
     institution: str = Query("", max_length=200),
     require_baseline: bool = Query(False),
     jurisdiction: str = Query("", max_length=8),
@@ -202,6 +202,16 @@ def banking_action_plan(
         "fca": [
             "FCA PS21/3 operational resilience — emerging-risk scenario testing "
             "including quantum compromise of public-key controls",
+        ],
+        "cbuae": [
+            "CBUAE Cybersecurity Framework (9 domains) + Information Security "
+            "Standards (ISO/IEC 27001-aligned) for all licensed financial "
+            "institutions",
+            "DIFC DP Law No. 5/2020 (in force 2020-07-01), ADGM DPR 2021 "
+            "(in force 2021-08-14) and Federal PDPL 45/2021 (in force "
+            "2022-01-02) — 72h breach-notification regimes",
+            "Quantum: no UAE-specific PQC mandate published to date; NIST IR "
+            "8547 transition (deprecated after 2030) is the de-facto reference",
         ],
         "generic": [
             "NIST IR 8547: public-key algorithms deprecated after 2030, "
@@ -506,7 +516,7 @@ def _system_owners(db: Session) -> dict[str, str]:
 def banking_action_plan_export(
     format: str = Query("html", pattern="^(html|csv|json)$"),
     version: int | None = Query(None),
-    framework: str = Query("ecb", pattern="^(ecb|rbi|fca|generic)$"),
+    framework: str = Query("ecb", pattern="^(ecb|rbi|fca|cbuae|generic)$"),
     institution: str = Query("", max_length=200),
     require_baseline: bool = Query(False),
     jurisdiction: str = Query("", max_length=8),

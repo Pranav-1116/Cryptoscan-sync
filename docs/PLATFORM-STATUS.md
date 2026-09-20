@@ -34,6 +34,29 @@ manifest, all sha256sum-verifiable), and the hardware catalog PQC refresh
 firmware-cited provenance, shipping-only evidence). Full regression lane at this
 commit: **1370 passed / 12 skipped / 0 failed**.
 
+**Update (2026-09-20, branch `arena/01a0b9c6-cryproscan`):** UAE
+regulatory pack (the #1 named gap for a Dubai-bank pilot). The policy
+engine ships a 7th pack, `services/policy/rule_definitions/uae/` — 10
+deterministic rules: CBUAE-001…005 (estate-wide forbidden-legacy floor;
+strong authenticated encryption for payment/card data — AES-256 GCM/CCM or
+ChaCha20-Poly1305; TLS ≥ 1.2 on customer-facing/remote channels; RSA ≥
+2048; ECC/DH ≥ 256) and DIFC-001/002 (DP Law No. 5/2020 Art. 23 technical
+measures), PDPL-001/002 (Federal Decree-Law 45/2021 Art. 20 — encryption
+and pseudonymisation are named in the statute), ADGM-001 (DPR 2021, GDPR
+Art. 32-equivalent). Rules are scope-activated by evidence tags (CBUAE /
+PAYMENT / CARD / SWIFT / CUSTOMER-FACING / REMOTE-ACCESS, DIFC /
+PERSONAL_DATA, PDPL, ADGM); the estate floor applies to everything. The
+`ae` jurisdiction pack is fleshed out (CBUAE, DFSA/DIFC, FSRA/ADGM, UAE
+Data Office; 7 milestones incl. in-force dates 2020-07-01 / 2021-08-14 /
+2022-01-02 / 2025-07-01) and now drives `GET /api/v1/banking/jurisdiction/ae`
+plus `?jurisdiction=ae` action plans and HTML exports (Arabic RTL
+supported); a `cbuae` framework option was added to the action-plan and
+export endpoints. Honest limits: the rules evaluate the cryptographic
+inventory (algorithm/mode/key-size/purpose/scope tags) — never prose
+claims; the pack asserts no PQC mandate the UAE regulators have not
+published, with NIST IR 8547 timelines stated as the de-facto reference
+examiners cite.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules
@@ -211,7 +234,7 @@ not durable across restarts. See `docs/user-guide/realtime.md`.
 
 Evidence hash chain (content + chained hashes, verification script) · CBOM
 export (CycloneDX 1.5 crypto-asset) · container SBOM (SPDX-2.3) · deterministic policy engine
-with 6 standards packs · multi-user auth with sessions + revocation · HMAC
+with 7 standards packs (baseline, cnsa, fips, hipaa, nist, pci_dss, uae) · multi-user auth with sessions + revocation · HMAC
 webhook signing (`X-CryptoScan-Signature`) · dedup via canonical identity
 tuples · dependency graph (Tarjan) + blast radius + reachability · drift
 detection with blocking severities · cloud/container/network/host scanning ·

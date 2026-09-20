@@ -1,0 +1,34 @@
+rule_id: "DIFC-001"
+rule_name: "DIFC DP Law 5/2020 — encryption/pseudonymisation of personal data"
+version: "1.0"
+effective_date: "2026-09-20"
+severity: "HIGH"
+standard_reference: "DIFC Data Protection Law No. 5 of 2020, Art. 23 (technical security measures — pseudonymisation and encryption of personal data)"
+description: >
+  Entities in the Dubai International Financial Centre must protect personal
+  data with technical measures appropriate to the risk; Art. 23 names
+  pseudonymisation and encryption. Encryption of personal data must use an
+  approved modern algorithm (AES or ChaCha20 family) — legacy ciphers are a
+  failing control regardless of key size.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "DIFC"
+      - "PERSONAL_DATA"
+      - "DIFC-DPL-5-2020"
+    if_purpose:
+      - "ENCRYPTION"
+      - "DECRYPTION"
+    require_algorithms:
+      - "AES"
+      - "CHACHA20"
+      - "CHACHA20-POLY1305"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Personal-data encryption with {algorithm} does not meet DIFC Art. 23 technical measures"
+remediation: >
+  Re-key with AES-256-GCM (or CCM) or ChaCha20-Poly1305, apply
+  pseudonymisation where direct identifiers are not required, and record the
+  measure in the Art. 23 technical-measures file for the DIFC Commissioner.
+enabled: true

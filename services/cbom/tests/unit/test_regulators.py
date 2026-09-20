@@ -45,6 +45,26 @@ def test_dora_in_force_milestone_present():
     assert dora and dora[0]["date"] == "2025-01-17"  # applies since Jan 2025
 
 
+def test_uae_pack_carries_cbuae_difc_pdpl_adgm_milestones():
+    ae = jurisdiction_pack("ae")
+    assert ae is not None
+    assert ae["framework"] == "cbuae"
+    assert {"CBUAE", "UAE Data Office (PDPL)"} <= set(ae["regulators"])
+    assert any("DIFC" in r for r in ae["regulators"])
+    assert any("ADGM" in r for r in ae["regulators"])
+    assert ae["languages"] == ["en", "ar"]
+    dated = {m["date"] for m in ae["milestones"] if m.get("date")}
+    # DIFC DP Law 5/2020, Federal PDPL 45/2021, ADGM DPR 2021, DIFC right of action
+    assert {"2020-07-01", "2021-08-14", "2022-01-02", "2025-07-01"} <= dated
+    labels = " ".join(m["label"] for m in ae["milestones"])
+    assert "CBUAE Cybersecurity Framework" in labels
+    # Quantum stance is honest: no fabricated UAE PQC mandate.
+    pqc = [m for m in ae["milestones"] if "Post-quantum" in m["label"]]
+    assert pqc and pqc[0]["date"] is None
+    assert "no uae-specific pqc mandate" in pqc[0]["note"].lower()
+    assert any("uae/" in a for a in ae["artifacts"])
+
+
 # --------------------------------------------------------------------------- #
 # SWIFT CSP / CSCF evidence mapping
 # --------------------------------------------------------------------------- #

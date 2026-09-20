@@ -1,0 +1,28 @@
+rule_id: "CBUAE-003"
+rule_name: "CBUAE — minimum TLS 1.2 for customer-facing channels"
+version: "1.0"
+effective_date: "2026-09-20"
+severity: "HIGH"
+standard_reference: "CBUAE Cybersecurity Framework — Domain 6 (Data & Information Protection); CBUAE Information Security Standards (secure remote access / customer-facing systems)"
+description: >
+  Customer-facing channels, remote access and inter-system transport in a
+  CBUAE-supervised estate must use TLS 1.2 or 1.3. SSLv3, TLS 1.0 and
+  TLS 1.1 are obsolete transport versions and are failing controls.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "CBUAE"
+      - "CUSTOMER-FACING"
+      - "REMOTE-ACCESS"
+    forbidden_algorithms:
+      - "SSLv3"
+      - "TLS1.0"
+      - "TLS1.1"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Transport {algorithm} is below the TLS 1.2 floor for customer-facing/remote channels"
+remediation: >
+  Disable SSLv3/TLS 1.0/1.1 on the endpoint, pin TLS 1.2 minimum (prefer
+  1.3), and re-scan the channel to capture the new version in evidence.
+enabled: true
