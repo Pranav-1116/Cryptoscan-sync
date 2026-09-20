@@ -26,9 +26,16 @@ from db.models.repo_configuration import RepoConfiguration  # noqa: F401
 # Alembic Config object
 config = context.config
 
-# Configure Python logging from the alembic.ini file
+# Configure Python logging from the alembic.ini file.
+#
+# disable_existing_loggers=False is load-bearing: with the default (True),
+# fileConfig sets ``disabled = True`` on every logger that already exists and
+# is not named in alembic.ini's [loggers] section. When alembic runs inside a
+# live process (tests, a worker that migrates at boot, ops tooling), that
+# permanently silences every other module's stdlib logging for the rest of
+# the process — records are dropped before any handler runs.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Use our ORM models' metadata for autogenerate
 target_metadata = Base.metadata

@@ -54,6 +54,39 @@ def test_migration_chain_matches_models_table_set(tmp_path):
     )
 
 
+def test_upgrade_does_not_disable_other_loggers(tmp_path):
+    """fileConfig(alembic.ini) must not poison the process's other loggers.
+
+    Regression: env.py used fileConfig() with the default
+    ``disable_existing_loggers=True``, which sets ``disabled = True`` on every
+    existing logger not named in alembic.ini. Any module imported before an
+    in-process ``alembic upgrade`` (worker, api, this test suite) had its
+    logging silently killed for the rest of the process — e.g.
+    worker.test_quantum_stage caplog assertions started failing after the
+    database tests ran.
+    """
+    import logging
+
+    from alembic import command
+    from alembic.config import Config
+
+    victim = logging.getLogger("cryptoscan.migration_chain_probe")
+    assert victim.disabled is False  # fresh logger, enabled
+    before = victim.level
+
+    db_path = tmp_path / "migrations.db"
+    ini = os.path.join(os.path.dirname(__file__), "..", "..", "migrations", "alembic.ini")
+    cfg = Config(ini)
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    command.upgrade(cfg, "head")
+
+    assert victim.disabled is False, (
+        "alembic upgrade disabled an unrelated pre-existing logger; "
+        "env.py must call fileConfig(disable_existing_loggers=False)"
+    )
+    assert victim.level == before
+
+
 def test_explicit_ini_url_wins_over_ambient_env(tmp_path, monkeypatch):
     """A leaked ambient DATABASE_URL must not redirect an explicit target.
 
