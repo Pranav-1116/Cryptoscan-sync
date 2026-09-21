@@ -403,7 +403,7 @@ def sign_report(report: dict, key: str | None):
 # Identity
 # --------------------------------------------------------------------------- #
 
-def identity() -> dict:
+def identity(release: str = "") -> dict:
     commit, dirty = "", False
     try:
         commit = subprocess.run(
@@ -420,6 +420,7 @@ def identity() -> dict:
         version = vfile.read_text().strip()
     return {
         "version": version,
+        "release": release,
         "git_commit": commit,
         "git_dirty": dirty,
         "host": platform.node(),
@@ -434,7 +435,7 @@ def identity() -> dict:
 
 def produce(args) -> int:
     phases: list[Phase] = []
-    idt = identity()
+    idt = identity(release=args.release)
 
     phases.append(run_guard())
     phases.append(run_drill(Path(args.compose_dir), enabled=not args.skip_drill))
@@ -502,8 +503,9 @@ def produce(args) -> int:
 
     # human summary
     print(f"\nproduction evidence — {artifact['overall']}")
+    release = f" for {idt.get('release')}" if idt.get("release") else ""
     print(f"  identity : {idt.get('version') or 'n/a'} @ {idt.get('git_commit') or 'n/a'}"
-          f"{' (dirty)' if idt.get('git_dirty') else ''} on {idt.get('host')}")
+          f"{' (dirty)' if idt.get('git_dirty') else ''}{release} on {idt.get('host')}")
     for p in phases:
         mark = {"PASS": "PASS", "FAIL": "FAIL", "SKIP": "SKIP"}[p.status]
         note = ""
@@ -569,6 +571,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--compose-dir", default=str(ROOT / "deploy" / "ha"))
     ap.add_argument("--skip-drill", action="store_true", help="do not attempt the DR drill")
     ap.add_argument("--chain-id", default="", help="chain id to append to (default: existing chain or new)")
+    ap.add_argument("--release", default="", help="release version this evidence is cut for (e.g. v1.0.0); recorded in identity")
     ap.add_argument("--key", default="", help="HS256 signing key (default: $CRYPTOSCAN_EVIDENCE_KEY)")
     ap.add_argument("--verify", action="store_true", help="verify the stored chain and exit")
     ap.add_argument("--evidence-id", default="", help="with --verify: also check this entry's JWS")

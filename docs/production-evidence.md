@@ -36,6 +36,27 @@ content hash `94e2d9db0c0d1c7e…` · signed **JWS HS256** via the cbom signer.
   capacity. Read the figure as "survives the offered load with the production
   limiter on," not as a raw throughput ceiling.
 
+## Release integration
+
+`scripts/release_check.py` (the gate run before every tag + deploy) now runs
+this evidence runner **for the release version** as a blocking check:
+
+```
+python3 scripts/release_check.py --allow-untagged
+  ...
+  info  [production-evidence] PASS (3 pass / 1 skip / 0 fail)
+        evidence=21a4c044-… digest=08ded31ba0cd844c… JWS HS256 via cbom signer
+```
+
+- the entry is stamped `identity.release = v<version>` so the chain shows
+  which release each evidence record was cut for;
+- any FAILED phase blocks the release (clean SKIPs — e.g. the drill without
+  docker — do not);
+- `--no-evidence` opts out explicitly and the output says plainly "release
+  cut without fresh production evidence";
+- set `CRYPTOSCAN_EVIDENCE_KEY` in the release environment and the release
+  entry is JWS-signed with it automatically.
+
 ## Honest skip (environment, not product)
 
 - **drill**: the DR failover drill (`deploy/ha/drill.sh` — kill an API

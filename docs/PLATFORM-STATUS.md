@@ -69,10 +69,14 @@ chain using the platform's own `ContentHasher`/`ChainHasher` and is JWS-signed
 re-checks signatures — editing any embedded report flips the verdict to
 `INVALID BROKEN_AT=n`. First recorded run: `docs/production-evidence.md`
 (3 PASS / 1 clean SKIP, 0 FAIL; 10,690 requests, 0 errors, limiter
-enforcing). Also fixed `migrations/env.py` calling `fileConfig` with
-`disable_existing_loggers=True`, which silently disabled every other logger
-in the process for the rest of the process after an in-process `alembic
-upgrade` (regression-tested).
+enforcing). The release gate
+(`scripts/release_check.py`) now runs this evidence runner for the release
+version as a **blocking** check — each cut release carries a fresh
+`identity.release = v<version>` evidence entry (clean SKIPs don't block;
+`--no-evidence` opts out loudly). Also fixed `migrations/env.py` calling
+`fileConfig` with `disable_existing_loggers=True`, which silently disabled
+every other logger in the process for the rest of the process after an
+in-process `alembic upgrade` (regression-tested).
 
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API

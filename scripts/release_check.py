@@ -13,10 +13,17 @@ coherent release:
     (``scripts/check_prod_guard.py --expect-reject``)
   * when run with ENVIRONMENT=production: the real config PASSES the guard
   * the self-SBOM artifact exists and is newer than the VERSION file
+  * fresh production evidence: scripts/production_evidence.py runs the full
+    gate (prod guard both ways, smoke, load with production rate limiting,
+    DR drill where the host can run it) and appends a signed, tamper-evident
+    entry to the evidence chain FOR THIS RELEASE version; any FAILED phase
+    blocks the release. Opt out explicitly with --no-evidence (the output
+    says plainly that the release was cut without fresh evidence).
 
 Usage:
-  python3 scripts/release_check.py                  # full gate
+  python3 scripts/release_check.py                  # full gate + evidence
   python3 scripts/release_check.py --allow-untagged # pre-tag dry run
+  python3 scripts/release_check.py --no-evidence    # no fresh evidence entry
 
 Exit codes: 0 = release-consistent, 1 = blocking findings (see output).
 """
@@ -149,11 +156,62 @@ def _prod_guard_findings() -> list[Finding]:
     return findings
 
 
-def collect(allow_untagged: bool) -> list[Finding]:
+def _production_evidence(version_text: str) -> tuple[list[Finding], dict | None]:
+    """Run the production evidence gate for this release and record the result.
+
+    Returns (findings, evidence_info). A failing phase blocks the release;
+    clean SKIPs (e.g. no docker for the DR drill) do not. evidence_info is a
+    dict to surface in the summary, or None when nothing ran.
+    """
+    import json
+
+    runner = ROOT / "scripts" / "production_evidence.py"
+    cmd = [sys.executable, str(runner), "--release", f"v{version_text.strip()}"]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=ROOT, timeout=1800
+        )
+    except Exception as exc:  # noqa: BLE001 — any runner fault is blocking
+        return ([Finding("production-evidence", ERROR,
+                         f"evidence runner did not complete: {exc}")], None)
+
+    # The runner prints a human summary then writes a JSON artifact; the last
+    # "report written:" line carries its path for the machine-readable record.
+    written = next(
+        (ln.split("report written:", 1)[1].strip()
+         for ln in reversed(proc.stdout.splitlines())
+         if "report written:" in ln), None)
+    info: dict | None = None
+    if written:
+        try:
+            info = json.loads(Path(written).read_text())
+        except Exception:  # noqa: BLE001 — fall back to the summary line
+            info = None
+
+    if proc.returncode == 0:
+        if info:
+            return [], {"evidence_id": info.get("evidence_id"),
+                        "overall": info.get("overall"),
+                        "summary": info.get("summary"),
+                        "content_hash": (info.get("content_hash") or "")[:16],
+                        "signing": info.get("signing"),
+                        "report": written}
+        return [], None
+
+    # Non-zero: surface the failing phase(s) as a blocking finding.
+    failed = [ln.strip() for ln in proc.stdout.splitlines()
+              if ln.strip().startswith("FAIL")]
+    detail = "; ".join(failed) if failed else (proc.stdout or proc.stderr).strip()[-400:]
+    return ([Finding("production-evidence", ERROR,
+                     f"production evidence gate failed for v{version_text.strip()}: {detail}")], info)
+
+
+def collect(allow_untagged: bool, run_evidence: bool = True) -> tuple[list[Finding], dict | None]:
     version_text = (ROOT / "VERSION").read_text()
     changelog_text = (ROOT / "CHANGELOG.md").read_text()
     tags = _git(["tag", "--list"]).split()
     migrations_dir = ROOT / "services" / "database" / "migrations" / "versions"
+    evidence_info: dict | None = None
 
     findings = validate_release(
         version_text=version_text,
@@ -179,7 +237,11 @@ def collect(allow_untagged: bool) -> list[Finding]:
         findings.append(sbom)
 
     findings.extend(_prod_guard_findings())
-    return findings
+
+    if run_evidence:
+        ev_findings, evidence_info = _production_evidence(version_text)
+        findings.extend(ev_findings)
+    return findings, evidence_info
 
 
 def main() -> int:
@@ -189,9 +251,15 @@ def main() -> int:
         action="store_true",
         help="pre-tag dry run: a missing v<version> tag warns instead of failing",
     )
+    parser.add_argument(
+        "--no-evidence",
+        action="store_true",
+        help="skip the fresh production-evidence gate (output says plainly)",
+    )
     args = parser.parse_args()
 
-    findings = collect(args.allow_untagged)
+    findings, evidence_info = collect(args.allow_untagged,
+                                      run_evidence=not args.no_evidence)
     errors = [f for f in findings if f.blocking]
     warns = [f for f in findings if not f.blocking]
 
@@ -204,6 +272,17 @@ def main() -> int:
         print(f"release-check: PASS — v{version} is release-consistent")
     for finding in warns:
         print(f"  warn  [{finding.check}] {finding.message}")
+    if evidence_info:
+        summary = evidence_info.get("summary") or {}
+        print(f"  info  [production-evidence] {evidence_info.get('overall')} "
+              f"({summary.get('pass')} pass / {summary.get('skip')} skip / "
+              f"{summary.get('fail')} fail) "
+              f"evidence={evidence_info.get('evidence_id')} "
+              f"digest={evidence_info.get('content_hash')}… "
+              f"{evidence_info.get('signing')}")
+    elif args.no_evidence:
+        print("  note  [production-evidence] SKIPPED via --no-evidence — "
+              "release cut without fresh production evidence")
     if not findings:
         print("  (no warnings)")
     return 1 if errors else 0
