@@ -139,10 +139,10 @@ straight from `data/evidence/` + audit exports.
 
 | When | Action |
 |---|---|
-| Wk 1–2 | Engagement signed; scope + CAQ sent; **pen test booked**; policy pack drafting starts from repo docs |
+| Wk 1–2 | Engagement signed; scope + CAQ sent; **pen test booked**; policy pack drafted in-repo ✅ (`docs/policies/`) — owners/sign-off collected |
 | Wk 2–4 | Pen test executed; findings triaged; CI workflows pushed; evidence chain running on every release + drill from day 1 |
-| Month 1–3 | **Observation window** — continuous operation; drills recorded; access reviews done; policies v1 signed |
-| Month 3–6 | Auditor fieldwork; PBC served from evidence chain + audit packs + compliance PDFs |
+| Month 1–3 | **Observation window** — continuous operation; drills recorded via `scripts/record_evidence.py`; access reviews done + minutes recorded (`/audit-export/access-reviews`); policies v1 signed |
+| Month 3–6 | Auditor fieldwork; PBC served from `scripts/compliance_pack.py` (single hash-verified evidence ZIP) + evidence chain + audit packs + compliance PDFs |
 | End | Type II report issued |
 
 ## Honest bottom line

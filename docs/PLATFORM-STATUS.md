@@ -128,6 +128,18 @@ August-2026 HSM event dates, which aged out of the payment rules' 30-day
 evaluation window and had silently disabled PAY-006 (auth-failure storm)
 — event dates are now computed relative to now.
 
+**Update (2026-09-21, continued — evidence pack):**
+`scripts/compliance_pack.py` assembles the SOC 2 evidence pack: one
+hash-verified ZIP carrying the policy pack, the committed
+production-evidence record, the signed evidence chain + artifacts, the
+access-review minutes (`--db-url`), the SBOM (`make sbom`), the DR runbook
+and the current gap analysis — with a per-file SHA-256 manifest, a
+`pack_hash` over the manifest, and honest `NO_*.txt` notes for anything
+absent (never faked, never silently omitted). `--verify` re-hashes any
+pack: a tampered, extra, or missing file all flip the verdict to
+INVALID. 7 new tests (build/verify, honest gaps, tamper ×3, DB path,
+empty-table note).
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules
