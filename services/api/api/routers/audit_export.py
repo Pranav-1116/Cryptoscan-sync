@@ -439,3 +439,149 @@ def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_
         },
     )
 
+
+@router.get("/access-review")
+def access_review(
+    stale_after_days: int = 90,
+    format: str = "json",
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Quarterly access-review report (SOC 2 CC6.3) — deterministic and signed.
+
+    Everything a reviewer needs in one artifact: every account (roles, MFA
+    state, last login), every API key (prefix only — never material), active
+    session counts, and computed review signals (privileged accounts, active
+    accounts without MFA, stale/no-login accounts, expired-but-unrevoked
+    keys). ``report_hash`` is the SHA-256 of the canonical data (excluding
+    ``generated_at``), so identical estate state produces an identical hash
+    and a reviewer can detect any post-export edit.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import func as _sa_func
+
+    from api.security.rbac import normalize_roles
+    from db.models.user import UserSession
+    from db.repositories.api_key_repository import ApiKeyRepository
+    from db.repositories.user_repository import UserRepository
+
+    def _aware(dt: datetime | None) -> datetime | None:
+        # SQLite returns naive datetimes, Postgres aware — normalize to UTC
+        if dt is None:
+            return None
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+    def _iso(dt: datetime | None) -> str | None:
+        norm = _aware(dt)
+        return norm.isoformat() if norm else None
+
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - timedelta(days=max(1, stale_after_days))
+
+    users = []
+    for u in UserRepository(db).list_users():
+        users.append({
+            "username": u.username,
+            "display_name": u.display_name,
+            "email": u.email,
+            "roles": normalize_roles(u.roles.split(",")),
+            "is_active": u.is_active,
+            "mfa_enabled": u.mfa_enabled,
+            "last_login_at": _iso(u.last_login_at),
+            "locked_until": _iso(u.locked_until),
+            "deleted_at": _iso(u.deleted_at),
+        })
+
+    keys = []
+    for k in ApiKeyRepository(db).list_keys(include_revoked=True):
+        keys.append({
+            "name": k.name,
+            "key_prefix": k.key_prefix,
+            "created_by": k.created_by,
+            "roles": normalize_roles((k.roles or "").split(",")),
+            "tenant_id": k.tenant_id,
+            "created_at": _iso(k.created_at),
+            "expires_at": _iso(k.expires_at),
+            "last_used_at": _iso(k.last_used_at),
+            "revoked_at": _iso(k.revoked_at),
+        })
+
+    session_counts: dict[str, int] = {}
+    for username, n in (
+        db.query(UserSession.username, _sa_func.count(UserSession.token_hash))
+        .filter(UserSession.revoked_at.is_(None), UserSession.expires_at > now)
+        .group_by(UserSession.username)
+        .all()
+    ):
+        session_counts[username] = int(n)
+
+    privileged_roles = {"superadmin", "ciso"}
+    active = [u for u in users if u["is_active"] and not u["deleted_at"]]
+    signals = {
+        "privileged_accounts": sorted(
+            u["username"] for u in active
+            if privileged_roles & set(u["roles"])),
+        "active_without_mfa": sorted(
+            u["username"] for u in active if not u["mfa_enabled"]),
+        "stale_accounts": sorted(
+            u["username"] for u in active
+            if u["last_login_at"] is None
+            or datetime.fromisoformat(u["last_login_at"]) < stale_cutoff),
+        "never_logged_in": sorted(
+            u["username"] for u in active if u["last_login_at"] is None),
+        "locked_accounts": sorted(
+            u["username"] for u in active if u["locked_until"]),
+        "expired_keys_not_revoked": sorted(
+            k["name"] for k in keys
+            if k["expires_at"] and not k["revoked_at"]
+            and datetime.fromisoformat(k["expires_at"]) < now),
+        "revoked_keys": sum(1 for k in keys if k["revoked_at"]),
+        "active_sessions_total": sum(session_counts.values()),
+    }
+
+    data = {
+        "review": {
+            "generated_at": now.isoformat(timespec="seconds"),
+            "stale_after_days": max(1, stale_after_days),
+            "requested_by": user,
+        },
+        "users": users,
+        "api_keys": keys,
+        "active_sessions": session_counts,
+        "signals": signals,
+        "totals": {
+            "users": len(users),
+            "active_users": len(active),
+            "api_keys": len(keys),
+        },
+    }
+    hashed = {k: v for k, v in data.items() if k != "review"}
+    report_hash = hashlib.sha256(_canonical(hashed)).hexdigest()
+
+    if format == "md":
+        lines = [
+            f"# Access review — {data['review']['generated_at']}",
+            "",
+            f"Requested by: {user} · stale threshold: {data['review']['stale_after_days']} days",
+            f"Report hash: `{report_hash}`",
+            "",
+            f"Users: {data['totals']['users']} ({data['totals']['active_users']} active) · "
+            f"API keys: {data['totals']['api_keys']} · "
+            f"active sessions: {signals['active_sessions_total']}",
+            "",
+            "| username | roles | MFA | active | last login |",
+            "|---|---|---|---|---|",
+        ]
+        for u in users:
+            lines.append(
+                f"| {u['username']} | {', '.join(u['roles']) or '-'} | "
+                f"{'yes' if u['mfa_enabled'] else 'NO'} | "
+                f"{'yes' if u['is_active'] else 'no'} | {u['last_login_at'] or 'never'} |")
+        lines += ["", "## Review signals", ""]
+        for name, value in signals.items():
+            shown = ", ".join(value) if isinstance(value, list) else str(value)
+            lines.append(f"- **{name}**: {shown or 'none'}")
+        return Response(content="\n".join(lines), media_type="text/markdown",
+                        headers={"X-Report-Hash": report_hash})
+    return {**data, "report_hash": report_hash}
