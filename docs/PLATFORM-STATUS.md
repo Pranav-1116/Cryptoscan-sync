@@ -57,6 +57,23 @@ claims; the pack asserts no PQC mandate the UAE regulators have not
 published, with NIST IR 8547 timelines stated as the de-facto reference
 examiners cite.
 
+**Update (2026-09-21):** production evidence runner
+(`scripts/production_evidence.py`). One command produces the signed,
+tamper-evident report a bank's auditors take away: the fails-closed prod
+guard exercised in both directions, a fresh-estate smoke, a real load/soak
+run through the repo's own harness (production rate limiting active), and a
+DR drill where the host can run it (honest SKIP otherwise — recorded with the
+exact command, never a fake PASS). Every run appends to an append-only hash
+chain using the platform's own `ContentHasher`/`ChainHasher` and is JWS-signed
+(HS256, cbom signer) when a key is present; `--verify` re-walks the chain and
+re-checks signatures — editing any embedded report flips the verdict to
+`INVALID BROKEN_AT=n`. First recorded run: `docs/production-evidence.md`
+(3 PASS / 1 clean SKIP, 0 FAIL; 10,690 requests, 0 errors, limiter
+enforcing). Also fixed `migrations/env.py` calling `fileConfig` with
+`disable_existing_loggers=True`, which silently disabled every other logger
+in the process for the rest of the process after an in-process `alembic
+upgrade` (regression-tested).
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules
