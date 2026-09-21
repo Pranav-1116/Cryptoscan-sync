@@ -78,7 +78,33 @@ version as a **blocking** check — each cut release carries a fresh
 platform already evidences (✅/🟡/❌ with pointers) and ranks the
 organization-side work; bottom line: technical controls are audit-ready,
 the remaining work is the observation window, a pen test, and the policy
-pack. Also fixed `migrations/env.py` calling
+pack.
+
+**Update (2026-09-21, continued):** the two most buildable SOC 2 gaps
+closed. (1) `GET /api/v1/audit-export/access-review` — the CC6.3 quarterly
+recertification export: the full access estate (users with roles/MFA/
+last-login/lock state, API keys as display-prefix + hash only — never key
+material, per-user active session counts) plus the standing review
+signals: privileged accounts, active accounts without MFA, stale and
+never-logged-in accounts, locked accounts, expired-but-unrevoked and
+revoked keys. `report_hash` is a SHA-256 signature over the canonical
+data (the review envelope excluded), so two reviews of an unchanged
+estate hash identically — the reviewed estate is reproducible. Auditor/
+admin role required; the `active_without_mfa` signal is the recurring
+control test for the MFA mandate. (2) `docs/policies/` — the draft
+information-security policy pack for the auditor: 11 policies (access
+control, authentication & MFA, data classification, data protection &
+privacy, incident response, vulnerability management, change management,
+BC/DR, vendor & third-party risk, acceptable use, umbrella infosec)
+grounded in the implemented controls with code-path citations, each
+carrying `[ORG: ...]` placeholders for the owners/dates/sign-offs that
+must be resolved before it can be presented as approved. (3)
+`scripts/record_evidence.py` — records externally-run evidence (DR drill
+on the docker host, restore verifications, pen-test reports, third-party
+assessments) into the same tamper-evident chain with the platform's own
+`ContentHasher`/`ChainHasher` and the same JWS signing, so the SOC 2
+observation window includes drills executed outside the runner. Also
+fixed `migrations/env.py` calling
 `fileConfig` with `disable_existing_loggers=True`, which silently disabled
 every other logger in the process for the rest of the process after an
 in-process `alembic upgrade` (regression-tested).

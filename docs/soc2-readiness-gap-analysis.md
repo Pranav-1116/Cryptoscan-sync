@@ -34,7 +34,7 @@ customer banks evidence *their* CBUAE/PCI posture — that is a separate use.)
 | CC6.1.2 role changes | ✅ | 9-role catalog, **action-based** permission model (`api/security/rbac.py`), per-tenant ABAC (`api/middleware/abac_middleware.py`), tenancy core (migration `0057_saas_tenancy_core`) |
 | CC6.2 credential issuance | ✅ | TOTP MFA + recovery (`api/security/totp.py`), signed sessions with TTL (`api/security/session_manager.py`, `SESSION_EXPIRE_HOURS`), bootstrap-admin-from-hash only (no plaintext in prod — prod guard enforces) |
 | CC6.2.1 revocation | ✅ | Session invalidation, account disable with audit (`auth.py` lifecycle), API-key allowlist rotation (migration `0052`) |
-| CC6.3 periodic re-authorization | 🟡 | Platform can produce the review data (user/role/last-activity exports via `audit-export` router); the **quarterly access-review process + minutes** is an org task |
+| CC6.3 periodic re-authorization | 🟡 | **Export built 2026-09-21**: `GET /api/v1/audit-export/access-review` produces the full estate (users/roles/MFA/last-login, API keys prefix+hash only, active sessions) plus the standing signals (privileged, no-MFA, stale, never-used, locked, expired-unrevoked keys) with a reproducible `report_hash` signature — archiving the export + sign-off per quarter is the process; the **quarterly review + minutes** itself is an org task (procedure in `docs/policies/access-control-policy.md` §3.7) |
 | CC6.6/6.7 segregation & role-based data access | ✅ | Action→role mapping prevents one role holding conflicting duties; tenant rows are ABAC-scoped |
 | CC6.9 no unauthorized software | 🟡 | Image build from repo only (`docker-build`), self-SBOM gate in `release_check.py`, devsecops SCA/SBOM (`devsecops/sbom.py`) — **but the CI workflows live locally and are unpushed** (token scope); the auditor will want the pipeline itself as evidence |
 | CC6.10 physical access | ❌ | Hosting provider's SOC 2 / ISO 27001 report — collect during sub-service scoping |
@@ -66,7 +66,7 @@ customer banks evidence *their* CBUAE/PCI posture — that is a separate use.)
 | CC9.2 privacy risk | ✅ | UAE/privacy packs (PDPL/DIFC/ADGM rules), `privacy/` service, **secret redaction on every log line** (`shared_logging/logger_factory.py::redact_secrets`), SCIM deprovisioning |
 | CC9.3/9.4 business continuity & resilience | ✅ | HA: 2× API, 2× worker with leader-lease failover, Postgres streaming replication (RPO≈0, RTO seconds), **automated DR drill** (`deploy/ha/drill.sh`) with runbook (`docs/runbooks/dr-recovery.md`) and region-failover doc |
 | CC10.1 stakeholder notification | 🟡 | Audit pack / compliance PDF / exit report exist as *product* exports; the provider's own notification **procedure** (who, when, to whom) is an org task |
-| CC10.2 incident response | 🟡 | Technical alerting is strong (CEF/webhook/SMTP, monitor, watch); the org **IR plan + on-call roster + post-mortem cadence** is not yet documented |
+| CC10.2 incident response | 🟡 | Technical alerting is strong (CEF/webhook/SMTP, monitor, watch); **IR procedure drafted 2026-09-21** (`docs/policies/incident-response-policy.md` — severity, containment levers that map to built-in controls, 72 h data-breach clock, drill→evidence-chain linkage); on-call roster and comms tree remain `[ORG: ...]` placeholders |
 
 ## 5. A-series criteria
 
@@ -117,14 +117,19 @@ straight from `data/evidence/` + audit exports.
 3. **Push the CI workflows** (currently local-only, token scope) — the
    pipeline is itself a CC8/CC6.9 exhibit. *(🟡 — one push away when scope
    allows.)*
-4. **Policy pack** (~15 docs): AUP, infosec, risk, backup, DR (convert the
-   existing runbooks — they're 80% done), access review, vendor management,
-   training, IR plan (convert alerting + runbooks), privacy. *Most content
-   already exists as docs in this repo; this is an editing + sign-off job,
-   ~2–3 weeks part-time.*
-5. **Access reviews + minutes** — quarterly, data from audit exports.
-6. **IR plan + on-call** — document the existing alerting into an org
-   procedure.
+4. **Policy pack** — **draft complete 2026-09-21**: `docs/policies/`
+   (11 policies + index), each grounded in the implemented controls with
+   code-path citations and `[ORG: ...]` placeholders. Remaining: resolve
+   the placeholders (owners, dates, sign-offs, sub-service matrix),
+   countersign, ~1 week of org time.
+5. **Access reviews + minutes** — **data export built 2026-09-21**
+   (`GET /audit-export/access-review`, signed, reproducible hash); the
+   quarterly execution + minutes is the org task, procedure in the
+   access-control policy.
+6. **IR plan + on-call** — **procedure drafted 2026-09-21** in
+   `docs/policies/incident-response-policy.md` (severity, phases, the
+   72 h data-breach clock, drills feeding the evidence chain); on-call
+   roster and comms tree are `[ORG: ...]` placeholders.
 7. **Vendor/sub-service SOC 2 collection** — host, email provider, etc.
 8. **Management representation letter** — CISO/CEO sign-off per period.
 9. **Org fundamentals** — background checks, NDAs, security training
