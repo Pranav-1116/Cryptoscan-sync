@@ -24,6 +24,10 @@ AND at least one grant exists in the store. A deployment that has not yet
 provisioned grants fails *open* for scope (RBAC still applies) with a logged
 warning — this protects greenfield installs and the self-hosted demo while a
 configured large-bank deployment is strictly fail-closed.
+
+Pure ASGI implementation (see asgi_utils.py for why): the disabled/greenfield
+fast path is a zero-overhead pass-through; body buffering happens only when
+enforcement is active.
 """
 
 from __future__ import annotations
@@ -33,8 +37,9 @@ import logging
 import os
 import time
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.requests import Request
+
+from api.middleware.asgi_utils import send_json
 
 logger = logging.getLogger(__name__)
 
@@ -151,26 +156,31 @@ def _resolve_principal(request) -> tuple[str | None, list[str]]:
 _MAX_SCOPE_BODY_BYTES = 256 * 1024
 
 
-async def _read_scope_body(request) -> dict | None:
-    """Extract scope attributes from a JSON body without disrupting the route.
+async def _buffer_body(receive) -> tuple[bytes, bool]:
+    """Read the full request body. Returns (body, client_disconnected)."""
+    chunks: list[bytes] = []
+    while True:
+        message = await receive()
+        if message["type"] == "http.disconnect":
+            return b"".join(chunks), True
+        chunks.append(message.get("body", b"") or b"")
+        if not message.get("more_body", False):
+            return b"".join(chunks), False
 
-    Starlette caches the body read via ``request.body()``, so the endpoint layer
-    can still consume it afterwards. A declared ``Content-Length`` over the cap
-    means we skip the body entirely (scope falls back to query/headers) rather
-    than buffering a huge payload — a multi-gigabyte POST cannot exhaust worker
-    memory through the scope read. Malformed JSON yields no scope, never an error.
-    """
-    try:
-        declared = request.headers.get("content-length")
-        if declared and declared.isdigit() and int(declared) > _MAX_SCOPE_BODY_BYTES:
-            return None  # too large to buffer for scope; route still streams/reads it
-        raw = await request.body()
-        if not raw:
-            return None
-        parsed = json.loads(raw)
-        return parsed if isinstance(parsed, dict) else None
-    except Exception:  # noqa: BLE001 - unreadable/non-JSON/oversized: scope from query/headers
-        return None
+
+def _replay_receive(body: bytes, socket_receive):
+    """A replacement ``receive`` that serves the buffered body once, then
+    forwards any later messages (disconnects) from the socket."""
+    served = False
+
+    async def receive():
+        nonlocal served
+        if not served:
+            served = True
+            return {"type": "http.request", "body": body, "more_body": False}
+        return await socket_receive()
+
+    return receive
 
 
 def _scope_from_request(request, body: dict | None):
@@ -215,128 +225,190 @@ def _record_denial(request, username, reason: str, scope) -> None:
         logger.debug("abac_deny_audit_failed", exc_info=True)
 
 
-class AbacMiddleware(BaseHTTPMiddleware):
+def _filter_body(body: bytes, grants, username, roles, tenant) -> tuple[bytes, int, bool]:
+    """Post-filter a GET response body. Returns (new_body, hidden_count, denied).
+
+    ``denied`` is True only for a single scoped object the caller may not
+    access at all (the 403 case).
+    """
+    try:
+        payload = json.loads(body)
+    except Exception:  # noqa: BLE001
+        return body, 0, False
+
+    from control_plane.abac import authorize_request, filter_rows, row_scope
+
+    def deny_object(obj: dict) -> bool:
+        scope = row_scope(obj)
+        if scope is None:
+            return False
+        ok, _ = authorize_request(grants, username=username, roles=roles,
+                                  method="GET", path="", scope=scope, tenant=tenant)
+        return not ok
+
+    if isinstance(payload, list):
+        visible, hidden = filter_rows(grants, payload, username=username,
+                                      roles=roles, tenant=tenant)
+        if hidden:
+            return json.dumps(visible, default=str).encode(), hidden, False
+        return body, 0, False
+    if isinstance(payload, dict):
+        if deny_object(payload):
+            return body, 0, True
+        hidden_total = 0
+        new_payload = payload
+        for key in _LIST_KEYS:
+            value = payload.get(key)
+            if isinstance(value, list):
+                visible, hidden = filter_rows(grants, value, username=username,
+                                              roles=roles, tenant=tenant)
+                if hidden:
+                    new_payload[key] = visible
+                    hidden_total += hidden
+        if hidden_total == 0:
+            return body, 0, False
+        return json.dumps(new_payload, default=str).encode(), hidden_total, False
+    return body, 0, False
+
+
+class AbacMiddleware:
     """Enforce hierarchical scope authorization across every API router."""
 
     def __init__(self, app, *, enabled: bool | None = None):
-        super().__init__(app)
+        self.app = app
         self.enabled = enabled
 
-    async def dispatch(self, request, call_next):
-        path = request.url.path
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        path = scope.get("path", "")
         if not path.startswith("/api/v1/") or any(f in path for f in _UNPROTECTED_FRAGMENTS):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         enabled = _enforced() if self.enabled is None else self.enabled
         if not enabled:
-            return await call_next(request)
+            await self.app(scope, receive, send)  # zero-overhead fast path
+            return
 
+        request = Request(scope, receive)
         username, roles = _resolve_principal(request)
         if not username:
             # Unauthenticated — the session gate / route deps answer 401.
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
+        method = request.method.upper()
         body_json: dict | None = None
-        if request.method.upper() not in {"GET", "HEAD", "OPTIONS"}:
+        if method not in {"GET", "HEAD", "OPTIONS"}:
             ctype = request.headers.get("content-type", "")
             if "application/json" in ctype:
-                body_json = await _read_scope_body(request)
+                declared = request.headers.get("content-length")
+                if declared and declared.isdigit() and int(declared) > _MAX_SCOPE_BODY_BYTES:
+                    body_json = None  # too large to buffer; scope from query/headers
+                else:
+                    raw, disconnected = await _buffer_body(receive)
+                    if disconnected:
+                        await self.app(scope, receive, send)
+                        return
+                    if raw:
+                        try:
+                            parsed = json.loads(raw)
+                            body_json = parsed if isinstance(parsed, dict) else None
+                        except Exception:  # noqa: BLE001 - malformed JSON: no scope
+                            body_json = None
+                    # replay the exact bytes to the route
+                    receive = _replay_receive(raw, receive)
 
         try:
-            scope = _scope_from_request(request, body_json)
-            grants, tenant = _load_grants_and_tenant(scope.tenant_id)
+            scope_obj = _scope_from_request(request, body_json)
+            grants, tenant = _load_grants_and_tenant(scope_obj.tenant_id)
         except Exception:
             logger.warning("abac_grant_store_unavailable; failing open for scope (RBAC still applies)",
                            exc_info=True)
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         if not grants:
             # Greenfield: nothing provisioned yet — warn and pass (RBAC still applies).
             logger.debug("abac_no_grants_provisioned; scope enforcement permissive")
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         from control_plane.abac import authorize_request
 
-        scoped = any((scope.region, scope.business_unit, scope.environment,
-                      scope.asset_id, scope.tenant_id))
+        scoped = any((scope_obj.region, scope_obj.business_unit, scope_obj.environment,
+                      scope_obj.asset_id, scope_obj.tenant_id))
         if scoped:
             allowed, reason = authorize_request(
                 grants, username=username, roles=roles, method=request.method,
-                path=path, scope=scope, tenant=tenant,
+                path=path, scope=scope_obj, tenant=tenant,
             )
             if not allowed:
-                _record_denial(request, username, reason, scope)
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": f"Access denied by scope policy: {reason}",
-                             "error_code": "ABAC_DENIED",
-                             "scope": {"region": scope.region, "business_unit": scope.business_unit,
-                                       "environment": scope.environment, "asset_id": scope.asset_id}},
-                )
+                _record_denial(request, username, reason, scope_obj)
+                await send_json(send, 403, {
+                    "detail": f"Access denied by scope policy: {reason}",
+                    "error_code": "ABAC_DENIED",
+                    "scope": {"region": scope_obj.region, "business_unit": scope_obj.business_unit,
+                              "environment": scope_obj.environment, "asset_id": scope_obj.asset_id},
+                })
+                return
+
         # Unscoped platform reads/writes are not gate-denied here (RBAC already
         # restricts the action); response post-filtering still strips any
         # out-of-scope rows the payload happens to contain.
-
-        response = await call_next(request)
-
-        # Post-filter reads so list/detail payloads never leak out-of-scope rows.
-        if request.method.upper() == "GET" and response.status_code == 200 and hasattr(response, "body"):
-            try:
-                response = self._filter_response(response, grants, username, roles, tenant)
-            except Exception:
-                logger.debug("abac_response_filter_failed", exc_info=True)
-        return response
+        if method == "GET":
+            await self._app_get_filtered(scope, receive, send, grants, username, roles, tenant)
+        else:
+            await self.app(scope, receive, send)
 
     # ------------------------------------------------------------------ filter
-    def _filter_response(self, response, grants, username, roles, tenant):
-        ctype = response.headers.get("content-type", "")
-        if "application/json" not in ctype:
-            return response
+    async def _app_get_filtered(self, scope, receive, send, grants, username, roles, tenant):
+        """Run the route with a buffered response so list payloads can be
+        post-filtered for out-of-scope rows (the BaseHTTPMiddleware version
+        did the same by reading response.body)."""
+        start: dict | None = None
+        chunks: list[bytes] = []
+        content_type = ""
+
+        async def send_wrapper(message):
+            nonlocal start, content_type
+            if message["type"] == "http.response.start":
+                start = message
+                for k, v in message.get("headers") or []:
+                    if k.lower() == b"content-type":
+                        content_type = v.decode("latin-1", "replace")
+            elif message["type"] == "http.response.body":
+                chunks.append(message.get("body", b"") or b"")
+
+        await self.app(scope, receive, send_wrapper)
+        if start is None:  # defensive: no response produced
+            return
+        status = start["status"]
+        if status != 200 or "application/json" not in content_type:
+            await send(start)
+            await send({"type": "http.response.body", "body": b"".join(chunks)})
+            return
+
+        new_body, hidden, denied = _filter_body(b"".join(chunks), grants, username, roles, tenant)
         try:
-            payload = json.loads(response.body)
-        except Exception:  # noqa: BLE001
-            return response
-
-        from control_plane.abac import authorize_request, filter_rows, row_scope
-
-        hidden_total = 0
-
-        def deny_object(obj: dict) -> bool:
-            scope = row_scope(obj)
-            if scope is None:
-                return False
-            ok, _ = authorize_request(grants, username=username, roles=roles,
-                                      method="GET", path="", scope=scope, tenant=tenant)
-            return not ok
-
-        if isinstance(payload, list):
-            visible, hidden = filter_rows(grants, payload, username=username,
-                                          roles=roles, tenant=tenant)
-            hidden_total += hidden
-            new_payload = visible
-        elif isinstance(payload, dict):
-            # single scoped object?
-            if deny_object(payload):
-                return JSONResponse(
-                    status_code=403,
-                    content={"detail": "Access denied by scope policy", "error_code": "ABAC_DENIED"},
-                )
-            new_payload = payload
-            for key in _LIST_KEYS:
-                value = payload.get(key)
-                if isinstance(value, list):
-                    visible, hidden = filter_rows(grants, value, username=username,
-                                                  roles=roles, tenant=tenant)
-                    if hidden:
-                        new_payload[key] = visible
-                        hidden_total += hidden
-        else:
-            return response
-
-        if hidden_total == 0:
-            return response
-        body = json.dumps(new_payload, default=str).encode()
-        response.body = body
-        response.headers["content-length"] = str(len(body))
-        response.headers["x-abac-hidden"] = str(hidden_total)
-        return response
+            if denied:
+                body = json.dumps({"detail": "Access denied by scope policy",
+                                   "error_code": "ABAC_DENIED"}).encode()
+                await send({"type": "http.response.start", "status": 403,
+                            "headers": [(b"content-type", b"application/json"),
+                                        (b"content-length", str(len(body)).encode())]})
+                await send({"type": "http.response.body", "body": body})
+                return
+            headers = list(start.get("headers") or [])
+            headers = [(k, v) for k, v in headers if k.lower() != b"content-length"]
+            headers.append((b"content-length", str(len(new_body)).encode()))
+            if hidden:
+                headers.append((b"x-abac-hidden", str(hidden).encode()))
+            await send({"type": "http.response.start", "status": status, "headers": headers})
+            await send({"type": "http.response.body", "body": new_body})
+        except Exception:
+            logger.debug("abac_response_filter_failed", exc_info=True)
+            await send(start)
+            await send({"type": "http.response.body", "body": b"".join(chunks)})

@@ -3,15 +3,18 @@
 Login, health, webhooks, and static assets stay open. Every other /api route
 requires a valid HMAC token that has NOT been revoked in the session store
 (production-strict; dev/test degrade gracefully when the store is missing).
+
+Pure ASGI implementation (see asgi_utils.py for why): the gate needs only
+path + cookies + headers, never the body.
 """
 
 from __future__ import annotations
 
 import logging
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.requests import Request
 
+from api.middleware.asgi_utils import send_json
 from api.security.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -52,19 +55,26 @@ def _store_allows(token: str, username: str) -> bool:
         return True
 
 
-class AuthMiddleware(BaseHTTPMiddleware):
+class AuthMiddleware:
     def __init__(self, app, settings=None):
-        super().__init__(app)
+        self.app = app
         self.settings = settings
 
-    async def dispatch(self, request, call_next):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope, receive)
         path = request.url.path
         if path == "/" or path.startswith("/login") or path.startswith("/static"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if any(path == p or path.startswith(p.rstrip("/") + "/") or path.startswith(p) for p in UNPROTECTED_PREFIXES):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if not path.startswith("/api/"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         token = request.cookies.get("cryptoscan_session") or request.cookies.get("session_token")
         header = request.headers.get("Authorization")
@@ -73,22 +83,22 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if request.headers.get("x-api-key"):
             # Machine keys are validated (SHA-256 lookup + RBAC + revocation)
             # at the route dependencies — pass through to that enforcement.
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if not token:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Missing Authorization header", "error_code": "MISSING_AUTH_HEADER"},
-            )
+            await send_json(send, 401, {"detail": "Missing Authorization header",
+                                        "error_code": "MISSING_AUTH_HEADER"})
+            return
         username = SessionManager().validate_session(token)
         if not username:
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Invalid token", "error_code": "INVALID_TOKEN"},
-            )
+            await send_json(send, 401, {"detail": "Invalid token",
+                                        "error_code": "INVALID_TOKEN"})
+            return
         if not _store_allows(token, username):
-            return JSONResponse(
-                status_code=401,
-                content={"detail": "Session revoked", "error_code": "SESSION_REVOKED"},
-            )
-        request.state.user_id = username
-        return await call_next(request)
+            await send_json(send, 401, {"detail": "Session revoked",
+                                        "error_code": "SESSION_REVOKED"})
+            return
+        # scope["state"] is the shared dict backing request.state for every
+        # Request built from this scope (starlette wraps it in a State view).
+        scope.setdefault("state", {})["user_id"] = username
+        await self.app(scope, receive, send)

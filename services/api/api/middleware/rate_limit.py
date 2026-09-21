@@ -7,6 +7,9 @@ a shared limiter (ingress/WAF) and keep these limits as the inner defense.
 Windows are keyed by identity (API key or session user when known, else client
 IP) and by endpoint class, so a busy scanner cannot lock out the whole org and
 login brute-force is throttled per source.
+
+Pure ASGI implementation (see asgi_utils.py for why): the decision needs only
+path + headers + identity, never the body.
 """
 
 from __future__ import annotations
@@ -15,8 +18,9 @@ import hashlib
 import time
 from collections import defaultdict, deque
 
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
+from starlette.requests import Request
+
+from api.middleware.asgi_utils import make_send_with_headers, send_json
 
 # endpoint class -> (limit, window_seconds)
 DEFAULT_RULES: dict[str, tuple[int, int]] = {
@@ -58,10 +62,10 @@ def _identity(request) -> str:
     return f"ip:{ip}"
 
 
-class RateLimitMiddleware(BaseHTTPMiddleware):
+class RateLimitMiddleware:
     def __init__(self, app, rules: dict[str, tuple[int, int]] | None = None, clock=time.monotonic,
                  redis_client=None):
-        super().__init__(app)
+        self.app = app
         self.rules = rules or DEFAULT_RULES
         self.clock = clock
         self.redis = redis_client  # None -> in-process windows
@@ -96,12 +100,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         except Exception:
             return None  # degrade to in-process limits, never error the request
 
-    async def dispatch(self, request, call_next):
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope, receive)
         path = request.url.path
         if not path.startswith("/api/"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
         if path.startswith(("/api/v1/healthz", "/api/v1/meta", "/health", "/ready", "/metrics")):
-            return await call_next(request)  # liveness probes are never throttled
+            await self.app(scope, receive, send)  # liveness probes are never throttled
+            return
 
         endpoint_class = _endpoint_class(request.method, path)
         limit, window = self.rules.get(endpoint_class, self.rules["api"])
@@ -113,17 +123,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         }
         if not allowed:
             headers["Retry-After"] = str(max(1, int(retry_after) + 1))
-            return JSONResponse(
-                status_code=429,
-                content={
-                    "detail": "rate limit exceeded",
-                    "limit": limit,
-                    "window_seconds": window,
-                    "scope": endpoint_class,
-                },
-                headers=headers,
-            )
-        response = await call_next(request)
-        for name, value in headers.items():
-            response.headers[name] = value
-        return response
+            await send_json(send, 429, {
+                "detail": "rate limit exceeded",
+                "limit": limit,
+                "window_seconds": window,
+                "scope": endpoint_class,
+            }, extra_headers=headers)
+            return
+        await self.app(scope, receive, make_send_with_headers(send, headers))

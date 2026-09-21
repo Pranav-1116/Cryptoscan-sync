@@ -15,6 +15,8 @@ Event design:
 Segments that already emit their own rich domain events (auth, api-keys,
 runtime ingestion) are skipped to avoid double-counting; the streaming and
 webhook endpoints are skipped too (they are not user-driven mutations).
+
+Pure ASGI implementation (see asgi_utils.py for why): post-response only.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from __future__ import annotations
 import logging
 from urllib.parse import unquote
 
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
@@ -70,25 +72,30 @@ def _segment_action_entity(path: str, method: str) -> tuple[str, str, str | None
     return segment, verb, entity
 
 
-class ControlEventMiddleware(BaseHTTPMiddleware):
-    """Publish an api.* realtime event for each successful mutating call."""
+class ControlEventMiddleware:
+    """Pure ASGI: publish an api.* realtime event for each successful mutating call."""
 
     def __init__(self, app, *, enabled: bool = True):
-        super().__init__(app)
+        self.app = app
         self.enabled = enabled
 
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not self.enabled:
+            await self.app(scope, receive, send)
+            return
 
-        if not self.enabled:
-            return response
+        from api.middleware.asgi_utils import capture_status
+        send_wrapper, status_box = capture_status(send)
+        await self.app(scope, receive, send_wrapper)
+
+        # post-response: emit for successful mutating calls only
         try:
-            self._maybe_emit(request, response)
+            request = Request(scope, receive)
+            self._maybe_emit(request, status_box["code"])
         except Exception:  # pragma: no cover - events must never break a response
             logger.debug("control_event_emit_failed", exc_info=True)
-        return response
 
-    def _maybe_emit(self, request, response) -> None:
+    def _maybe_emit(self, request, status_code: int) -> None:
         method = request.method.upper()
         if method not in _MUTATING:
             return
@@ -97,7 +104,7 @@ class ControlEventMiddleware(BaseHTTPMiddleware):
             return
         if any(frag in path for frag in _SKIP_PATH_FRAGMENTS):
             return
-        if response.status_code < 200 or response.status_code >= 300:
+        if status_code < 200 or status_code >= 300:
             return  # only surface actions that actually succeeded
 
         segment, action, entity = _segment_action_entity(path, method)
@@ -118,7 +125,7 @@ class ControlEventMiddleware(BaseHTTPMiddleware):
                 "segment": segment,
                 "action": action,
                 "entity": entity,
-                "status": response.status_code,
+                "status": status_code,
                 "request_id": request_id,
             },
             source="api",

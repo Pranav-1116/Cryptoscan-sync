@@ -184,6 +184,28 @@ documents themselves** (`ops/`, `compliance/`, `org/` sections +
 31 files, one hash, honest gap notes. 7 new tests; 26/26 green across
 the org/compliance/access suites; ruff clean.
 
+**Update (2026-09-21, continued — API performance pass, measured):**
+optimized the API tier step by step with before/after numbers on the
+live dev server (method + all figures in `docs/performance.md`).
+Findings via py-spy: (a) the event loop spent ~40% of its samples in
+`starlette.middleware.base` — all 8 custom middlewares were
+`BaseHTTPMiddleware`, which wraps every request in an anyio task group +
+memory streams; converted all 8 to pure ASGI (send-wrapping, zero
+task-group overhead; SSE responses no longer buffered through eight
+layers) — behavior pinned by tests incl. a regression test for the
+str/bytes setdefault bug the live SSE test caught. (b) SQLite was on
+`NullPool`: a fresh connection + 3 PRAGMAs per request (~2 ms), and the
+connect/lock churn serialized 8-way concurrency on the file lock — the
+dominant cause of the 7× p50 inflation; switched to `QueuePool(10)`
+(WAL readers share; single writer serialized by busy_timeout). (c)
+uvicorn's access log duplicated the structured `http_request` log;
+`--no-access-log` in the production launch commands (measured ~12% off
+sequential). Result, same endpoint/machine: sequential p50 15.0→6.4 ms;
+8-way p50 110.6→41.5 ms; throughput ~69→160 rps per process. Standing
+guidance: scale workers, not one process (GIL-bound; HA compose already
+ships `--workers 2`). 60+ middleware/RBAC/SSE tests green; live checks:
+401s, login-burst 429s, SSE, correlation headers all intact.
+
 **Update (2026-09-21, continued — pen-test readiness + collector audit):**
 verified on disk that the "unbuilt collectors" cited in the 88% readiness
 line were **already built and live-wired** (GCP Cloud KMS with algorithm

@@ -93,6 +93,11 @@ services:
       - "*"
       - --workers
       - "2"
+      # The structured http_request logger (LoggingMiddleware) records
+      # method/path/status/duration/request_id/trace_id/span_id for every
+      # request — uvicorn's access log is a redundant second line per request
+      # and measurably adds ~12% to sequential latency.
+      - --no-access-log
     logging: *json-log
     mem_limit: 1g
     security_opt:
