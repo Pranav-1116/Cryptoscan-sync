@@ -64,6 +64,65 @@ def _phase(name: str, status: str, detail: dict) -> dict:
     }
 
 
+def append_and_sign(report: dict, evidence_dir: Path, key: str | None,
+                    artifact_prefix: str = "external-evidence"):
+    """Append ``report`` to the chain in ``evidence_dir``, sign it, write the
+    standalone artifact. Returns (artifact_path, entry, chain_status, signing).
+
+    One code path for every externally-run evidence artifact: the runner,
+    this recorder, and the backup/restore drill all append through here, so
+    chain entries are produced by identical logic (same content hash, same
+    chain link, same signing).
+    """
+    chain_file = evidence_dir / "chain.jsonl"
+    entries: list[dict] = []
+    if chain_file.exists():
+        entries = [json.loads(ln) for ln in chain_file.read_text().splitlines()
+                   if ln.strip()]
+    if entries:
+        file_chain = entries[0]["chain_id"]
+        if report["chain"]["chain_id"] != file_chain:
+            raise ValueError(f"chain_id mismatch: report carries "
+                             f"{report['chain']['chain_id'][:8]}… but the chain file "
+                             f"carries {file_chain[:8]}… — use --chain-id / a "
+                             f"separate evidence dir")
+    chain_id = report["chain"]["chain_id"]
+    report["chain"]["entries_before"] = len(entries)
+
+    from evidence.hashing.chain_hasher import ChainHasher
+    from evidence.hashing.content_hasher import ContentHasher
+    content_hash = ContentHasher.compute_hash(report)
+    chain_hash = ChainHasher.compute_chain(
+        [e["content_hash"] for e in entries] + [content_hash], chain_id)[-1]
+    entry = {
+        "seq": len(entries),
+        "chain_id": chain_id,
+        "evidence_id": report["evidence_id"],
+        "created_at": report["created_at"],
+        "content_hash": content_hash,
+        "chain_hash": chain_hash,
+        "report": report,
+    }
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    with chain_file.open("a") as f:
+        f.write(json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n")
+    chain_status = pe.verify_chain(entries + [entry])
+
+    signature, signing = pe.sign_report(report, key)
+    artifact = {
+        **report,
+        "content_hash": entry["content_hash"],
+        "chain": {**report["chain"], "seq": entry["seq"], "chain_hash": entry["chain_hash"],
+                  "verified_after_append": chain_status["result"] == "VALID"},
+        "signature": signature,
+        "signing": signing,
+    }
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_file = evidence_dir / f"{artifact_prefix}-{stamp}-{entry['seq']}.json"
+    out_file.write_text(json.dumps(artifact, indent=2, sort_keys=True))
+    return out_file, entry, chain_status, signing
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="zelnx record-evidence",
@@ -147,40 +206,8 @@ def main(argv: list[str] | None = None) -> int:
         "provenance": "scripts/record_evidence.py (external evidence recorder)",
     }
 
-    signature, signing = pe.sign_report(report, args.key or os.environ.get("CRYPTOSCAN_EVIDENCE_KEY"))
-
-    # append with the platform's hashing primitives (same content hash, same
-    # chain link as the runner)
-    from evidence.hashing.chain_hasher import ChainHasher
-    from evidence.hashing.content_hasher import ContentHasher
-    content_hash = ContentHasher.compute_hash(report)
-    chain_hash = ChainHasher.compute_chain(
-        [e["content_hash"] for e in entries] + [content_hash], chain_id)[-1]
-    entry = {
-        "seq": len(entries),
-        "chain_id": chain_id,
-        "evidence_id": report["evidence_id"],
-        "created_at": report["created_at"],
-        "content_hash": content_hash,
-        "chain_hash": chain_hash,
-        "report": report,
-    }
-    evidence_dir.mkdir(parents=True, exist_ok=True)
-    with chain_file.open("a") as f:
-        f.write(json.dumps(entry, sort_keys=True, separators=(",", ":")) + "\n")
-    chain_status = pe.verify_chain(entries + [entry])
-
-    artifact = {
-        **report,
-        "content_hash": entry["content_hash"],
-        "chain": {**report["chain"], "seq": entry["seq"], "chain_hash": entry["chain_hash"],
-                  "verified_after_append": chain_status["result"] == "VALID"},
-        "signature": signature,
-        "signing": signing,
-    }
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    out_file = evidence_dir / f"external-evidence-{stamp}-{entry['seq']}.json"
-    out_file.write_text(json.dumps(artifact, indent=2, sort_keys=True))
+    out_file, entry, chain_status, signing = append_and_sign(
+        report, evidence_dir, args.key or os.environ.get("CRYPTOSCAN_EVIDENCE_KEY"))
 
     # human summary ----------------------------------------------------------
     print(f"\nexternal evidence recorded — {args.result}")
@@ -203,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
                       f"entries=[json.loads(l) for l in open('{chain_file}') if l.strip()]; "
                       f"print(pe.verify_chain(entries))\"")
     print(f"verify   : {verify_cmd}"
-          + (" --key $CRYPTOSCAN_EVIDENCE_KEY" if signature else ""))
+          + (" --key $CRYPTOSCAN_EVIDENCE_KEY" if "JWS" in signing else ""))
     if chain_status["result"] != "VALID":
         print("ERROR: chain verification failed after append — investigate", file=sys.stderr)
         return 1

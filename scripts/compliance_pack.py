@@ -135,12 +135,31 @@ def _collect_access_reviews(files: dict[str, bytes], notes: list[str],
                      f"table via {db_url.split('@')[-1]}: {exc}")
 
 
+def _collect_policy_signoff(files: dict[str, bytes], notes: list[str]) -> None:
+    """The pack always carries the CURRENT sign-off state — an honest
+    measurement, not a claim. Open items become a named gap note."""
+    import policy_signoff_check as psc
+
+    try:
+        signoff = psc.scan(ROOT / "docs" / "policies")
+        files["policy-signoff.json"] = json.dumps(
+            signoff, indent=2, sort_keys=True).encode("utf-8")
+        if not signoff["signed"]:
+            notes.append(f"POLICY_SIGNOFF_PENDING: {signoff['total_open']} [ORG:] "
+                         "placeholders open across the policy pack — see "
+                         "policy-signoff.json; close them (and countersign) "
+                         "before presenting the pack as approved")
+    except Exception as exc:
+        notes.append(f"NO_POLICY_SIGNOFF_REPORT: could not scan docs/policies/: {exc}")
+
+
 def build(out_dir: Path | None, db_url: str | None) -> Path:
     files: dict[str, bytes] = {}
     notes: list[str] = []
 
     _collect_static(files, notes)
     _collect_access_reviews(files, notes, db_url)
+    _collect_policy_signoff(files, notes)
 
     generated_at = datetime.now(timezone.utc)
     idt = pe.identity()

@@ -58,12 +58,20 @@ defines how those are collected and kept current.
 
 ## 4. Known Tier-1 dependencies (to be completed with owners)
 
+The working matrix — with CUECs, owners and rep-letter status — lives in
+[`docs/compliance/sub-service-matrix.md`](../compliance/sub-service-matrix.md).
+The summary below stays in sync with it.
+
 | Vendor | Role | Certification | Sub-service report on file |
 |--------|------|---------------|---------------------------|
 | keyassure | FIPS 140-3 HSM / MFA tokens | FIPS 140-3 validation | [ORG: collect] |
 | [ORG: cloud host] | hosting | [ORG: SOC 2] | [ORG: collect] |
 | [ORG: IdP, if used] | federation | [ORG: ISO 27001 / SOC 2] | [ORG: collect] |
 | [ORG: any other] | — | — | — |
+
+Where a vendor's report period does not cover the observation window, the
+representation letter from [`docs/compliance/rep-letter-template.md`](../compliance/rep-letter-template.md)
+covers the gap (see the matrix's "Rep letter for gap" column).
 
 ## 5. Evidence
 

@@ -1,6 +1,6 @@
 # Backup / restore drill
 
-Ran 2026-09-16T06:09:04Z. Hot online backup (SQLite backup API) + event-bus logs +
+Ran 2026-09-21T09:49:56Z. Hot online backup (SQLite backup API) + event-bus logs +
 live-CBOM store -> restored into a clean data dir -> second instance
 booted from the backup alone -> estate verified through the real API.
 

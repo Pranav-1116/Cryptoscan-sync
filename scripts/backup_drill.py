@@ -79,7 +79,17 @@ def main() -> int:
     ap.add_argument("--snapshot-dir", type=Path,
                     default=REPO / "data", help="bus/CBOM store parent")
     ap.add_argument("--out", type=Path, default=REPO / "docs" / "backup-drill.md")
+    ap.add_argument("--python", default=None,
+                    help="interpreter to boot the restored instance with "
+                         "(default: .venv if present, else the running one)")
+    ap.add_argument("--record-evidence", action="store_true",
+                    help="append the verdict to the signed production-evidence "
+                         "chain (BC/DR policy: drill results are an auditable "
+                         "artifact, not just a markdown note)")
     args = ap.parse_args()
+
+    venv_py = REPO / ".venv" / "bin" / "python"
+    args.python = args.python or (str(venv_py) if venv_py.exists() else sys.executable)
 
     db_path = Path(args.data_dir) / "cryptoscan.db"
     if not db_path.exists():
@@ -157,7 +167,7 @@ def main() -> int:
     })
     port = args.restore_port
     proc = subprocess.Popen(
-        [str(REPO / ".venv" / "bin" / "python"), "-m", "uvicorn",
+        [args.python, "-m", "uvicorn",
          "api.main:app", "--host", "127.0.0.1", "--port", str(port)],
         cwd=str(REPO), env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -222,6 +232,56 @@ def main() -> int:
     return _finish(args, None, None)
 
 
+def _record_evidence(verdict: str, passed: int, total: int) -> int:
+    """Append the drill verdict to the signed production-evidence chain.
+
+    Every check becomes a phase; a FAILED check makes overall FAIL exactly
+    like the production runner. Fail-closed: if the chain append fails, the
+    exit code is 1 even when the drill itself passed — an unrecorded drill
+    is not an evidenced drill.
+    """
+    import uuid
+
+    import production_evidence as pe
+    import record_evidence as rec
+
+    phases = {}
+    for r in RESULTS:
+        phases[r["check"]] = {
+            "name": r["check"],
+            "status": "PASS" if r["ok"] else "FAIL",
+            "ms": None,
+            "detail": r["detail"] or None,
+            "error": None if r["ok"] else (r["detail"] or "check failed"),
+        }
+    entries_before = pe._load_chain()
+    report = {
+        "schema": pe.SCHEMA,
+        "evidence_id": str(uuid.uuid4()),
+        "created_at": pe.utcnow(),
+        "identity": pe.identity(),
+        "phases": phases,
+        "overall": verdict,
+        "summary": {"pass": passed, "fail": total - passed, "skip": 0},
+        "chain": {"chain_id": entries_before[0]["chain_id"] if entries_before
+                  else str(uuid.uuid4()), "entries_before": len(entries_before)},
+        "provenance": "scripts/backup_drill.py (backup/restore drill)",
+    }
+    try:
+        out_file, entry, chain_status, signing = rec.append_and_sign(
+            report, pe.EVIDENCE_DIR, os.environ.get("CRYPTOSCAN_EVIDENCE_KEY"),
+            artifact_prefix="backup-restore-drill")
+    except Exception as exc:
+        print(f"EVIDENCE RECORD FAILED (fail-closed): {exc}", file=sys.stderr)
+        return 1
+    print(f"  chain    : {chain_status['result']} entries={chain_status['entries']} "
+          f"(seq {entry['seq']}, chain {entry['chain_id'][:8]}…)  "
+          f"digest={entry['content_hash'][:16]}…")
+    print(f"  signing  : {signing}")
+    print(f"  artifact : {out_file}")
+    return 0 if chain_status["result"] == "VALID" else 1
+
+
 def _finish(args, backup_root, restore_root) -> int:
     if backup_root:
         shutil.rmtree(backup_root, ignore_errors=True)
@@ -251,7 +311,12 @@ def _finish(args, backup_root, restore_root) -> int:
     ]
     args.out.write_text("\n".join(lines), encoding="utf-8")
     print(f"WROTE {args.out} — verdict {verdict}")
-    return 0 if verdict == "PASS" else 1
+    if verdict != "PASS":
+        return 1
+    if args.record_evidence:
+        if _record_evidence(verdict, passed, len(RESULTS)):
+            return 1
+    return 0
 
 
 if __name__ == "__main__":

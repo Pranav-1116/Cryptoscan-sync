@@ -140,6 +140,28 @@ pack: a tampered, extra, or missing file all flip the verdict to
 INVALID. 7 new tests (build/verify, honest gaps, tamper ×3, DB path,
 empty-table note).
 
+**Update (2026-09-21, continued — DR evidence + org artifacts):** the
+backup/restore drill was **executed end-to-end** in this environment
+(fresh dev estate, hot online backup, restore into a clean data dir,
+second instance booted from the backup alone, estate verified through
+the real API): **PASS 12/12 checks** — including CBOM hash chain
+verifying from genesis on the restored estate — and its verdict was
+appended to the signed production-evidence chain (VALID, each check a
+phase). `scripts/backup_drill.py` gains `--record-evidence` (fail-closed:
+a drill that can't be recorded exits 1 even when it passed) and a
+configurable interpreter for the restored instance; the append/sign logic
+now lives in one shared helper (`record_evidence.append_and_sign`) used
+by the recorder and the drill, so all external evidence goes through one
+code path. Org-side artifacts materialised: the missing umbrella
+`docs/policies/information-security-policy.md` (the index referenced it
+but the file didn't exist), `docs/ops/on-call-and-comms.md` (fillable
+roster/escalation/comms-SLA template), `docs/compliance/sub-service-matrix.md`
+and `rep-letter-template.md`. `scripts/policy_signoff_check.py`
+measures exactly what's still unsigned — **100 `[ORG:]` placeholders**
+at drafting, per policy, per line — and the compliance pack now embeds
+that report (`policy-signoff.json` + a named gap note) so the sign-off
+state is inside the auditor's artifact, not a claim. 5 new tests.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

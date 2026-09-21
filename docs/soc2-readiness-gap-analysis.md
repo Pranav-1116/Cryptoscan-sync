@@ -95,11 +95,18 @@ This platform produces it natively:
 
 1. **Per-release production evidence** (signed, chain-linked,
    `--verify`-reproducible) — `scripts/production_evidence.py`
-2. **Quarterly DR/backup/PITR drills** — already scripted
-   (`deploy/ha/drill.sh`, `scripts/backup_drill.py`, PITR drill) and their
-   outputs can be appended to the same evidence chain
-3. **Audit export / audit pack / compliance PDF** — `audit-export` router
-   (`/pack`, `/exit-report`, `/engagement-archive`)
+2. **Quarterly DR/backup/PITR drills** — scripted
+   (`deploy/ha/drill.sh`, `scripts/backup_drill.py`, PITR drill) and
+   appended to the same signed evidence chain: the backup/restore drill
+   does this directly via `--record-evidence` (each check becomes a
+   phase; a FAILED check makes the entry FAIL). Latest backup/restore
+   drill: **PASS, 12/12 checks, recorded to the chain 2026-09-21**
+   (`docs/backup-drill.md`).
+3. **Audit export / audit pack / compliance pack** — `audit-export`
+   router (`/pack`, `/exit-report`, `/engagement-archive`,
+   `/access-review`, `/access-reviews`) + `scripts/compliance_pack.py`
+   (the SOC 2 evidence ZIP, hash-verified, with the current
+   policy-sign-off state embedded)
 4. **Access-review data** on demand from the tenancy/RBAC stores
 
 Recommendation: from day 1 of the window, run the evidence runner at every
@@ -118,19 +125,28 @@ straight from `data/evidence/` + audit exports.
    pipeline is itself a CC8/CC6.9 exhibit. *(🟡 — one push away when scope
    allows.)*
 4. **Policy pack** — **draft complete 2026-09-21**: `docs/policies/`
-   (11 policies + index), each grounded in the implemented controls with
-   code-path citations and `[ORG: ...]` placeholders. Remaining: resolve
-   the placeholders (owners, dates, sign-offs, sub-service matrix),
-   countersign, ~1 week of org time.
-5. **Access reviews + minutes** — **data export built 2026-09-21**
-   (`GET /audit-export/access-review`, signed, reproducible hash); the
-   quarterly execution + minutes is the org task, procedure in the
+   (11 policies + index, incl. the umbrella infosec policy), each
+   grounded in the implemented controls with code-path citations and
+   `[ORG: ...]` placeholders. Remaining: resolve the placeholders
+   (owners, dates, sign-offs, sub-service matrix), countersign. Open-item
+   count is measured live by `scripts/policy_signoff_check.py`
+   (100 at drafting) and embedded in the compliance pack as
+   `policy-signoff.json` — the org works the number to zero.
+5. **Access reviews + minutes** — **export + minutes system of record
+   built 2026-09-21** (`GET/POST /audit-export/access-review(s)`,
+   signed, reproducible hash, append-only minutes); the quarterly
+   execution + sign-off is the org task, procedure in the
    access-control policy.
 6. **IR plan + on-call** — **procedure drafted 2026-09-21** in
    `docs/policies/incident-response-policy.md` (severity, phases, the
    72 h data-breach clock, drills feeding the evidence chain); on-call
-   roster and comms tree are `[ORG: ...]` placeholders.
-7. **Vendor/sub-service SOC 2 collection** — host, email provider, etc.
+   roster + escalation tree + comms SLAs are a fillable working document
+   at `docs/ops/on-call-and-comms.md` — names/dates to be filled.
+7. **Vendor/sub-service SOC 2 collection** — **tracking matrix +
+   rep-letter template built 2026-09-21** (`docs/compliance/
+   sub-service-matrix.md`, `rep-letter-template.md`); remaining:
+   collect the actual reports/CUECs for the named vendors (keyassure
+   first).
 8. **Management representation letter** — CISO/CEO sign-off per period.
 9. **Org fundamentals** — background checks, NDAs, security training
    records, board/committee reporting cadence. *(All org; none in code.)*

@@ -22,6 +22,12 @@ is *found by the system*, not discovered by a client.
 | DPO | [ORG: DPO] | data-protection notification decisions |
 | Legal/comms | [ORG: counsel] | regulator and client communications |
 
+The names above are filled in and kept current in the working document
+[`docs/ops/on-call-and-comms.md`](../ops/on-call-and-comms.md) — the
+on-call roster, escalation tree and communication SLAs. A stale roster is
+the most common incident-response failure; that document is reviewed at
+every rotation and at the quarterly access recertification.
+
 ## 3. Severity
 
 | Level | Definition | Response time | Example |

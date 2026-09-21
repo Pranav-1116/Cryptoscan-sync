@@ -49,7 +49,10 @@ contract is silent.
    when run under the evidence runner — appends the drill result to the
    signed production-evidence chain, so each drill is itself an
    auditable artifact. A drill that cannot run (no docker host) records
-   a clean SKIP rather than a silent gap.
+   a clean SKIP rather than a silent gap. The **backup/restore drill**
+   (`scripts/backup_drill.py --record-evidence`) likewise appends its
+   verdict to the same signed chain, so restore capability is evidenced,
+   not asserted; the latest run is recorded in `docs/backup-drill.md`.
 3. Drill findings are tracked to closure like any vulnerability
    (Vulnerability Management Policy), with a target of [ORG: 90 days]
    for Critical/High items.
