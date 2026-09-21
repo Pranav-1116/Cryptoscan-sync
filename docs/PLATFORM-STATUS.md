@@ -73,7 +73,12 @@ enforcing). The release gate
 (`scripts/release_check.py`) now runs this evidence runner for the release
 version as a **blocking** check — each cut release carries a fresh
 `identity.release = v<version>` evidence entry (clean SKIPs don't block;
-`--no-evidence` opts out loudly). Also fixed `migrations/env.py` calling
+`--no-evidence` opts out loudly). A SOC 2 Type II readiness gap analysis
+(`docs/soc2-readiness-gap-analysis.md`) maps every CC/A-criterion to what the
+platform already evidences (✅/🟡/❌ with pointers) and ranks the
+organization-side work; bottom line: technical controls are audit-ready,
+the remaining work is the observation window, a pen test, and the policy
+pack. Also fixed `migrations/env.py` calling
 `fileConfig` with `disable_existing_loggers=True`, which silently disabled
 every other logger in the process for the rest of the process after an
 in-process `alembic upgrade` (regression-tested).
