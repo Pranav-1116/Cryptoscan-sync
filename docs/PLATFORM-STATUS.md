@@ -162,6 +162,28 @@ at drafting, per policy, per line — and the compliance pack now embeds
 that report (`policy-signoff.json` + a named gap note) so the sign-off
 state is inside the auditor's artifact, not a claim. 5 new tests.
 
+**Update (2026-09-21, continued — org artifacts):** the remaining
+org-readiness gaps got their artifacts (all measured, not claimed).
+Living **risk register** (CC9.1): 12 scored risks, each with treatment,
+owner, target, review date — `docs/compliance/risk-register.md`,
+enforced so no risk sits without an owner/treatment. **Management
+representation letter** template (all 11 representations + CISO/CEO
+sign-off block), **quarterly board/audit-committee report** template
+(every metric carries a named data source), **security training &
+awareness program** (5 mandatory courses, audiences, cadence,
+completion records), and the **joiner/mover/leaver** access lifecycle
+(background check → NDA → least-privilege role → enforced MFA →
+same-day deactivation incl. SCIM DELETE + key revocation, verified
+against the access-review export). `scripts/org_readiness_check.py`
+runs 17 structural checks across these five documents (owner named,
+treatment valid, JML steps present, platform-enforced steps marked,
+rep letter signed…) and the compliance pack now embeds the result
+(`org-readiness.json` + `ORG_READINESS_PENDING` note) **plus the
+documents themselves** (`ops/`, `compliance/`, `org/` sections +
+`evidence/backup-drill.md`) — the pack is now self-contained:
+31 files, one hash, honest gap notes. 7 new tests; 26/26 green across
+the org/compliance/access suites; ruff clean.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

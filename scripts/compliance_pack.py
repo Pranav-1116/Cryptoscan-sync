@@ -70,11 +70,24 @@ def _collect_static(files: dict[str, bytes], notes: list[str]) -> None:
         ("self-assessment/soc2-readiness-gap-analysis.md",
          ROOT / "docs" / "soc2-readiness-gap-analysis.md",
          "NO_GAP_ANALYSIS: docs/soc2-readiness-gap-analysis.md missing"),
+        ("evidence/backup-drill.md", ROOT / "docs" / "backup-drill.md",
+         "NO_BACKUP_DRILL_REPORT: docs/backup-drill.md missing"),
     ):
         if src.exists():
             files[dest] = src.read_bytes()
         else:
             notes.append(note)
+
+    # operational + org exhibits (on-call/comms, sub-service matrix,
+    # rep letters, risk register, board report, training, JML)
+    for section in ("ops", "compliance", "org"):
+        base = ROOT / "docs" / section
+        if base.is_dir():
+            for p in sorted(base.iterdir()):
+                if p.suffix == ".md":
+                    files[f"{section}/{p.name}"] = p.read_bytes()
+        else:
+            notes.append(f"NO_{section.upper()}_DOCS: docs/{section}/ missing")
 
     # the signed production-evidence chain + standalone artifacts
     ev_dir = pe.EVIDENCE_DIR
@@ -153,6 +166,23 @@ def _collect_policy_signoff(files: dict[str, bytes], notes: list[str]) -> None:
         notes.append(f"NO_POLICY_SIGNOFF_REPORT: could not scan docs/policies/: {exc}")
 
 
+def _collect_org_readiness(files: dict[str, bytes], notes: list[str]) -> None:
+    import org_readiness_check as orc
+
+    try:
+        report = orc.scan(ROOT / "docs")
+        files["org-readiness.json"] = json.dumps(
+            report, indent=2, sort_keys=True).encode("utf-8")
+        if not report["ready"]:
+            pending = ", ".join(d["file"] for d in report["documents"]
+                                if d["status"] != "READY")
+            notes.append(f"ORG_READINESS_PENDING: {report['failed']} of "
+                         f"{report['total_checks']} org checks open — see "
+                         f"org-readiness.json ({pending})")
+    except Exception as exc:
+        notes.append(f"NO_ORG_READINESS_REPORT: could not scan org docs: {exc}")
+
+
 def build(out_dir: Path | None, db_url: str | None) -> Path:
     files: dict[str, bytes] = {}
     notes: list[str] = []
@@ -160,6 +190,7 @@ def build(out_dir: Path | None, db_url: str | None) -> Path:
     _collect_static(files, notes)
     _collect_access_reviews(files, notes, db_url)
     _collect_policy_signoff(files, notes)
+    _collect_org_readiness(files, notes)
 
     generated_at = datetime.now(timezone.utc)
     idt = pe.identity()

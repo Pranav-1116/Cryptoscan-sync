@@ -62,7 +62,7 @@ customer banks evidence *their* CBUAE/PCI posture — that is a separate use.)
 
 | Control | Status | What exists |
 |---|---|---|
-| CC9.1 risk identification | 🟡 | Written threat model (`docs/security/threat-model.md`), security questionnaire, risk services — but a living org **risk register** with owners is an org task |
+| CC9.1 risk identification | 🟡 | Written threat model (`docs/security/threat-model.md`), security questionnaire, risk services, and a **living risk register built 2026-09-21** (`docs/compliance/risk-register.md` — 12 risks, scored, each with treatment; owners/review dates are `[ORG:]` fill-ins, enforced by `scripts/org_readiness_check.py`) |
 | CC9.2 privacy risk | ✅ | UAE/privacy packs (PDPL/DIFC/ADGM rules), `privacy/` service, **secret redaction on every log line** (`shared_logging/logger_factory.py::redact_secrets`), SCIM deprovisioning |
 | CC9.3/9.4 business continuity & resilience | ✅ | HA: 2× API, 2× worker with leader-lease failover, Postgres streaming replication (RPO≈0, RTO seconds), **automated DR drill** (`deploy/ha/drill.sh`) with runbook (`docs/runbooks/dr-recovery.md`) and region-failover doc |
 | CC10.1 stakeholder notification | 🟡 | Audit pack / compliance PDF / exit report exist as *product* exports; the provider's own notification **procedure** (who, when, to whom) is an org task |
@@ -147,9 +147,19 @@ straight from `data/evidence/` + audit exports.
    sub-service-matrix.md`, `rep-letter-template.md`); remaining:
    collect the actual reports/CUECs for the named vendors (keyassure
    first).
-8. **Management representation letter** — CISO/CEO sign-off per period.
-9. **Org fundamentals** — background checks, NDAs, security training
-   records, board/committee reporting cadence. *(All org; none in code.)*
+8. **Management representation letter** — **template built 2026-09-21**
+   (`docs/compliance/management-rep-letter.md`, all 11 representations +
+   sign-off block); CISO + CEO signature per period is the org step.
+9. **Org fundamentals** — **scaffolding built 2026-09-21**: living risk
+   register (CC9.1, `docs/compliance/risk-register.md`), quarterly board
+   report cadence (`docs/compliance/quarterly-board-report.md`), security
+   training program + completion records (`docs/org/training-and-
+   awareness.md`), and the joiner/mover/leaver access lifecycle incl.
+   background check, NDA, MFA and same-day deactivation
+   (`docs/org/joiner-mover-leaver.md`). Readiness is measured, not
+   claimed: `scripts/org_readiness_check.py` (17 checks) is embedded in
+   the compliance pack as `org-readiness.json`. Remaining is filling the
+   `[ORG:]` decisions (owners, dates, signatures) — org, not code.
 
 ## 8. Suggested 90-day runway
 
