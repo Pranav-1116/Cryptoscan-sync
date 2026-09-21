@@ -61,15 +61,23 @@ legacy tokens and are normalised on every request.
    `GET /api/v1/audit-export/access-review` and signs off the signals:
    privileged accounts, active accounts without MFA, stale and
    never-logged-in accounts, locked accounts, expired/unrevoked and
-   revoked keys, active session counts. The `report_hash` in the export is
-   archived with the review record so the reviewed estate is
-   reproducible. Findings (e.g. an account inactive > 90 days) must be
-   remediated or risk-accepted by [ORG: CISO] within one review cycle.
-8. **Removal.** Departures trigger deactivation (the account is
+   revoked keys, active session counts.
+8. **Review minutes (system of record).** Each completed review is
+   recorded with `POST /api/v1/audit-export/access-reviews`, referencing
+   the export's `report_hash`. The platform recomputes the estate hash at
+   record time and stores `estate_unchanged`, so a review signed against
+   an estate that changed in the meantime says so. One record per period
+   (a quarter is reviewed, not re-issued); the minutes are append-only —
+   there is no update or delete path. `GET /api/v1/audit-export/
+   access-reviews` lists the standing record. Findings (e.g. an account
+   inactive > 90 days) are stored on the record with action and due date,
+   and must be remediated or risk-accepted by [ORG: CISO] within one
+   review cycle.
+9. **Removal.** Departures trigger deactivation (the account is
    soft-deleted and all sessions/keys are invalidated). Deactivation is
    verified in the next access review: deactivated accounts must not
    appear in active signals.
-9. **Rate limiting.** Unconditional, per-identity rate limiting
+10. **Rate limiting.** Unconditional, per-identity rate limiting
    (`api/middleware/rate_limit.py`) bounds abuse even if other controls
    fail: login 5/min/IP, registration 10/hour/IP, scan submission
    100/min/user, general API 600/min/identity.

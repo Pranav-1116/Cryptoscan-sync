@@ -17,10 +17,12 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import re
 import zipfile
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, HTTPException, Response
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.dependencies import require_auditor, get_db_session
@@ -440,22 +442,14 @@ def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_
     )
 
 
-@router.get("/access-review")
-def access_review(
-    stale_after_days: int = 90,
-    format: str = "json",
-    user: str = Depends(require_auditor),
-    db: Session = Depends(get_db_session),
-):
-    """Quarterly access-review report (SOC 2 CC6.3) — deterministic and signed.
+def _build_access_estate(db: Session, requested_by: str,
+                         stale_after_days: int = 90) -> tuple[dict, str]:
+    """Compute the CC6.3 estate snapshot and its signature.
 
-    Everything a reviewer needs in one artifact: every account (roles, MFA
-    state, last login), every API key (prefix only — never material), active
-    session counts, and computed review signals (privileged accounts, active
-    accounts without MFA, stale/no-login accounts, expired-but-unrevoked
-    keys). ``report_hash`` is the SHA-256 of the canonical data (excluding
-    ``generated_at``), so identical estate state produces an identical hash
-    and a reviewer can detect any post-export edit.
+    Shared by the export endpoint (``GET /access-review``) and the review-
+    record endpoint (``POST /access-reviews``), so a review record always
+    attests against a hash computed by exactly the code that produced the
+    export — the two can never drift apart.
     """
     from datetime import timedelta
 
@@ -544,7 +538,7 @@ def access_review(
         "review": {
             "generated_at": now.isoformat(timespec="seconds"),
             "stale_after_days": max(1, stale_after_days),
-            "requested_by": user,
+            "requested_by": requested_by,
         },
         "users": users,
         "api_keys": keys,
@@ -558,30 +552,120 @@ def access_review(
     }
     hashed = {k: v for k, v in data.items() if k != "review"}
     report_hash = hashlib.sha256(_canonical(hashed)).hexdigest()
+    return data, report_hash
+
+
+@router.get("/access-review")
+def access_review(
+    stale_after_days: int = 90,
+    format: str = "json",
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Quarterly access-review report (SOC 2 CC6.3) — deterministic and signed.
+
+    Everything a reviewer needs in one artifact: every account (roles, MFA
+    state, last login), every API key (prefix only — never material), active
+    session counts, and computed review signals (privileged accounts, active
+    accounts without MFA, stale/no-login accounts, expired-but-unrevoked
+    keys). ``report_hash`` is the SHA-256 of the canonical data (excluding
+    ``generated_at``), so identical estate state produces an identical hash
+    and a reviewer can detect any post-export edit.
+    """
+    data, report_hash = _build_access_estate(db, user, stale_after_days)
 
     if format == "md":
         lines = [
             f"# Access review — {data['review']['generated_at']}",
             "",
-            f"Requested by: {user} · stale threshold: {data['review']['stale_after_days']} days",
+            f"Requested by: {data['review']['requested_by']} · stale threshold: {data['review']['stale_after_days']} days",
             f"Report hash: `{report_hash}`",
             "",
             f"Users: {data['totals']['users']} ({data['totals']['active_users']} active) · "
             f"API keys: {data['totals']['api_keys']} · "
-            f"active sessions: {signals['active_sessions_total']}",
+            f"active sessions: {data['signals']['active_sessions_total']}",
             "",
             "| username | roles | MFA | active | last login |",
             "|---|---|---|---|---|",
         ]
-        for u in users:
+        for u in data["users"]:
             lines.append(
                 f"| {u['username']} | {', '.join(u['roles']) or '-'} | "
                 f"{'yes' if u['mfa_enabled'] else 'NO'} | "
                 f"{'yes' if u['is_active'] else 'no'} | {u['last_login_at'] or 'never'} |")
         lines += ["", "## Review signals", ""]
-        for name, value in signals.items():
+        for name, value in data["signals"].items():
             shown = ", ".join(value) if isinstance(value, list) else str(value)
             lines.append(f"- **{name}**: {shown or 'none'}")
         return Response(content="\n".join(lines), media_type="text/markdown",
                         headers={"X-Report-Hash": report_hash})
     return {**data, "report_hash": report_hash}
+
+
+class _AccessReviewRecordIn(BaseModel):
+    period: str                      # e.g. "2026-Q3" or "2026-Y"
+    report_hash: str                 # the /access-review report_hash being attested
+    findings: list[dict] | None = None
+    notes: str | None = None
+    stale_after_days: int = 90       # must match the export that produced report_hash
+
+
+_PERIOD_RE = re.compile(r"^\d{4}-(Q[1-4]|Y)$")
+_HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+@router.post("/access-reviews")
+def record_access_review(
+    payload: _AccessReviewRecordIn,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Record a completed quarterly access review (CC6.3 minutes).
+
+    Attestation is two-part and both parts are checked:
+
+    * ``report_hash`` — the reviewer exports ``GET /access-review``, does the
+      review, and records the hash of exactly the estate they reviewed;
+    * ``estate_unchanged`` — recomputed here at record time against the
+      *current* estate (same ``_build_access_estate`` code, same
+      ``stale_after_days``). If the estate changed between export and
+      sign-off, the record says so instead of silently pretending.
+
+    One record per period — a quarter is reviewed, not re-issued. Minutes
+    are append-only: there is no update or delete path.
+    """
+    from db.repositories.access_review_repository import AccessReviewRepository
+
+    if not _PERIOD_RE.match(payload.period):
+        raise HTTPException(400, detail='period must look like "2026-Q3" or "2026-Y"')
+    if not _HASH_RE.match(payload.report_hash or ""):
+        raise HTTPException(400, detail="report_hash must be the 64-char hex "
+                                        "SHA-256 from the access-review export")
+
+    repo = AccessReviewRepository(db)
+    if repo.get_by_period(payload.period):
+        raise HTTPException(409, detail=f"period {payload.period} already has a "
+                                        "recorded review; minutes are append-only")
+
+    _, current_hash = _build_access_estate(db, user, payload.stale_after_days)
+    row = repo.create(
+        period=payload.period,
+        report_hash=payload.report_hash,
+        estate_unchanged=(current_hash == payload.report_hash),
+        reviewer=user,
+        findings=payload.findings,
+        notes=payload.notes,
+    )
+    return {**row.to_dict(), "current_report_hash": current_hash}
+
+
+@router.get("/access-reviews")
+def list_access_reviews(
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """The standing record of completed quarterly access reviews (newest first)."""
+    from db.repositories.access_review_repository import AccessReviewRepository
+
+    rows = AccessReviewRepository(db).list_all()
+    return {"reviews": [r.to_dict() for r in rows], "count": len(rows)}

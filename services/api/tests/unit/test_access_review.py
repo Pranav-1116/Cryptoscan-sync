@@ -139,3 +139,101 @@ async def test_access_review_requires_auditor_role():
                                headers={"Authorization": "Bearer test-token"})
     assert res.status_code == 403
     assert res.json()["detail"].startswith("Requires one of roles")
+
+
+# --------------------------------------------------------------------------- #
+# Review records — the CC6.3 minutes (POST/GET /access-reviews)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.asyncio
+async def test_review_record_roundtrip():
+    app, session, _ = _make_app()
+    _seed(session)
+
+    body = {"period": "2026-Q3",
+            "findings": [{"signal": "stale_accounts", "subject": "stale",
+                          "action": "deactivate", "due": "2026-10-01"}],
+            "notes": "Quarterly review complete"}
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        export = await client.get("/api/v1/audit-export/access-review")
+        body["report_hash"] = export.json()["report_hash"]
+        res = await client.post("/api/v1/audit-export/access-reviews", json=body)
+        listing = await client.get("/api/v1/audit-export/access-reviews")
+
+    assert res.status_code == 200, res.text
+    rec = res.json()
+    assert rec["period"] == "2026-Q3"
+    assert rec["report_hash"] == export.json()["report_hash"]
+    # estate did not change between export and sign-off
+    assert rec["estate_unchanged"] is True
+    assert rec["current_report_hash"] == rec["report_hash"]
+    assert rec["reviewer"] == "auditor-1"
+    assert rec["findings"] == body["findings"]
+
+    assert listing.status_code == 200
+    data = listing.json()
+    assert data["count"] == 1
+    assert data["reviews"][0]["period"] == "2026-Q3"
+    assert data["reviews"][0]["notes"] == "Quarterly review complete"
+
+
+@pytest.mark.asyncio
+async def test_review_record_flags_changed_estate():
+    app, session, _ = _make_app()
+    _seed(session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        export = await client.get("/api/v1/audit-export/access-review")
+        report_hash = export.json()["report_hash"]
+        # the estate changes between export and sign-off (a new account appears)
+        session.add(User(username="late-joiner", password_hash="pbkdf2_sha256$x",
+                         roles="developer", is_active=True, mfa_enabled=True,
+                         last_login_at=NOW))
+        session.commit()
+        res = await client.post("/api/v1/audit-export/access-reviews",
+                                json={"period": "2026-Q3", "report_hash": report_hash})
+
+    assert res.status_code == 200, res.text
+    rec = res.json()
+    assert rec["estate_unchanged"] is False
+    assert rec["current_report_hash"] != rec["report_hash"]
+
+
+@pytest.mark.asyncio
+async def test_review_record_period_conflict_and_validation():
+    app, session, _ = _make_app()
+    _seed(session)
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        export = await client.get("/api/v1/audit-export/access-review")
+        h = export.json()["report_hash"]
+        ok1 = await client.post("/api/v1/audit-export/access-reviews",
+                                json={"period": "2026-Q3", "report_hash": h})
+        ok2 = await client.post("/api/v1/audit-export/access-reviews",
+                                json={"period": "2026-Q3", "report_hash": h})
+        bad_period = await client.post("/api/v1/audit-export/access-reviews",
+                                       json={"period": "Q3 2026", "report_hash": h})
+        bad_hash = await client.post("/api/v1/audit-export/access-reviews",
+                                     json={"period": "2026-Q4", "report_hash": "nothex"})
+    assert ok1.status_code == 200
+    assert ok2.status_code == 409                       # minutes are append-only
+    assert bad_period.status_code == 400
+    assert bad_hash.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_review_record_requires_auditor_role():
+    app, session, _ = _make_app(override_auditor=False, current_user="viewer-only")
+    session.add(User(username="viewer-only", password_hash="pbkdf2_sha256$x", roles="viewer",
+                     is_active=True, mfa_enabled=True, last_login_at=NOW))
+    session.commit()
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        res = await client.post(
+            "/api/v1/audit-export/access-reviews",
+            json={"period": "2026-Q3", "report_hash": "0" * 64},
+            headers={"Authorization": "Bearer test-token"})
+    assert res.status_code == 403
+    assert res.json()["detail"].startswith("Requires one of roles")

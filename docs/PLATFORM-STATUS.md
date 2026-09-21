@@ -109,6 +109,25 @@ fixed `migrations/env.py` calling
 every other logger in the process for the rest of the process after an
 in-process `alembic upgrade` (regression-tested).
 
+**Update (2026-09-21, continued — CC6.3 minutes):** the access-review
+**minutes** gained a system of record.
+`POST /api/v1/audit-export/access-reviews` records each completed
+quarterly review — period, reviewer, the attested `report_hash`, findings
+with actions and due dates — and recomputes the estate hash at sign-off,
+storing `estate_unchanged` so a review attested against a since-changed
+estate says so; one record per period (409 on re-attestation),
+append-only, no update or delete path.
+`GET /api/v1/audit-export/access-reviews` is the standing record. New
+`access_reviews` table (migration `0058`, schema-parity guarded) and
+`AccessReviewRecord` model; the estate computation was extracted into
+`_build_access_estate` so the export and the attestation can never drift
+apart. 4 new tests (round-trip, changed-estate detection, period
+conflict + validation, non-auditor 403). Also defused a fixture time bomb
+found by the full suite: `test_payment_crypto_api.py` hard-coded
+August-2026 HSM event dates, which aged out of the payment rules' 30-day
+evaluation window and had silently disabled PAY-006 (auth-failure storm)
+— event dates are now computed relative to now.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

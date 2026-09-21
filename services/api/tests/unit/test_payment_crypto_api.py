@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import create_engine
@@ -57,12 +59,18 @@ async def test_key_lifecycle_with_tr31_and_summary():
             "custodians": ["only-custodian"], "dual_control": False})
         assert ceremony.status_code == 200
 
+        # Event dates must stay inside the rule's 30-day evaluation window
+        # (PAY-006 storm / PAY-004 export) — hard-coded dates aged out of it
+        # and silently disabled the rules (time bomb, 2026-09-21).
+        now = datetime.now(timezone.utc)
         events = await client.post("/api/v1/payment-crypto/hsm-events", json={
             "format": "syslog",
             "text": "\n".join(
-                f'<30>2026-08-{day:02d}T09:00:00Z hsm-prod-1 crypto: event=auth_fail user=x'
-                for day in range(20, 26)
-            ) + "\n<30>2026-08-29T10:00:00Z hsm-prod-1 crypto: event=clear_export key_id=ZMK-01 user=svc",
+                f"<30>{(now - timedelta(days=i)).strftime('%Y-%m-%d')}T09:00:00Z "
+                f"hsm-prod-1 crypto: event=auth_fail user=x"
+                for i in range(1, 7)
+            ) + f"\n<30>{(now - timedelta(days=2)).strftime('%Y-%m-%d')}T10:00:00Z "
+               f"hsm-prod-1 crypto: event=clear_export key_id=ZMK-01 user=svc",
         })
         assert events.status_code == 200, events.text
         assert events.json()["by_type"]["AUTH_FAILURE"] == 6
