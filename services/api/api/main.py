@@ -76,6 +76,7 @@ from api.routers import (
     payment_crypto,
     telecom,
     audit_export,
+    pentest,
     repo_configs,
     runtime,
     scans,
@@ -353,6 +354,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
     app.include_router(findings.router, prefix=prefix)
+    app.include_router(pentest.router, prefix=prefix)
     app.include_router(drift.router, prefix=prefix)
     app.include_router(jobs.router, prefix=prefix)
     app.include_router(stats.router, prefix=prefix)

@@ -184,6 +184,30 @@ documents themselves** (`ops/`, `compliance/`, `org/` sections +
 31 files, one hash, honest gap notes. 7 new tests; 26/26 green across
 the org/compliance/access suites; ruff clean.
 
+**Update (2026-09-21, continued — pen-test readiness + collector audit):**
+verified on disk that the "unbuilt collectors" cited in the 88% readiness
+line were **already built and live-wired** (GCP Cloud KMS with algorithm
+mapping, AWS ACM, DB-TDE via RDS/Azure-SQL/Cloud-SQL `DATABASE_ENCRYPTION`
+findings, mainframe RACF/ICSF/DB2/CICS → unified BOM with a 4-endpoint
+banking API; 23 inventory + 18 mainframe tests green) — corrected the
+stale "Explicitly open" line that still claimed they were absent. The
+genuinely missing part of the "no independent pen test" gap is now
+built: **`POST /api/v1/pentest/findings`** ingests a third-party report's
+findings (severity-banded per the Vulnerability Management Policy —
+explicit name wins over CVSS, CVSS banded 9/7/4), deduplicated per
+report+title so re-ingestion is idempotent and **never re-opens a closed
+finding**, status-tracked (`OPEN→IN_PROGRESS→REMEDIATED/ACCEPTED/
+WONT_FIX`) with due dates; `GET /pentest/findings` + `/summary` (the
+board-report "open Critical/High" metric) + per-finding status updates;
+role-gated (write: ciso/security_analyst/superadmin; finding details: +auditor; the board-metric summary is additionally visible to readonly/supervisor).
+New `pentest_findings` table (migration `0059`, schema-parity guarded);
+`docs/security/pen-test-scope.md` is the tester's scope brief (in/out of
+scope, access & rules of engagement, report intake with SHA-256
+provenance, remediation SLAs). The compliance pack now carries
+`pentest-findings.json` (via `--db-url`) or an honest gap note. 5 new
+tests (ingest/bands, idempotency + closure respect, summary, validation,
+RBAC); 10/10 green with the schema guards; ruff clean.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules
@@ -370,7 +394,7 @@ air-gap install guide (`docs/admin-guide/air-gap-install.md`).
 ## Explicitly open (needs real credentials/infrastructure — never stubbed)
 
 - **SSO federation** — OIDC (token relay + server-side authorization-code flow with signed state/nonce), SAML 2.0 SP (metadata/AuthnRequest/ACS with signature verification) and LDAP/AD group→role login are all built, bring-your-own-IdP; what still needs yours: a real issuer/IdP. PKCE for pure-SPA public clients is the next hardening step (`docs/enterprise-readiness.md`)
-- **Cloud KMS collectors** — AWS KMS + Azure Key Vault are built (read-only metadata → the shared crypto-asset inventory; unknown key types skipped with their reason). GCP KMS / AWS ACM / DB-TDE / mainframe collectors are not built and will not be faked
+- **Cloud KMS / cert / DB-encryption / mainframe collectors** — all built and live-wired (verified 2026-09-21): AWS KMS, **GCP Cloud KMS** (algorithm-mapped), Azure Key Vault, **AWS ACM** certificates, **DB-TDE** (RDS `StorageEncrypted`+KMS key, Azure SQL TDE per-database status, GCP Cloud SQL encryption — all surfaced as `DATABASE_ENCRYPTION` findings), and **mainframe** z/OS crypto (RACF `RACDCERT LIST`, ICSF CKDS/PKDS, DB2 TLS, CICS TCPIPSERVICE → one unified BOM with ingest/inventory/analyze/assess API). Read-only metadata; unknown key types are skipped with their reason, never faked. (This line previously claimed GCP KMS/ACM/DB-TDE/mainframe were unbuilt — stale; corrected.)
 - **PKI-signed reports** — needs a signing certificate; reports carry an
   HMAC integrity hash today and `signature: null` honestly
 - **Live burn-ins** (10k scans/day, 100k assets, uptime) — needs production

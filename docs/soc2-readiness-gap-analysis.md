@@ -45,7 +45,7 @@ customer banks evidence *their* CBUAE/PCI posture — that is a separate use.)
 |---|---|---|
 | CC7.1/7.1.1 monitoring & security events | ✅ | Live monitor service (leader-lease, N replicas safe), CEF + signed webhook + SMTP alert router (`worker/monitor/alerting.py`), watch/change-detection engine, security-intelligence stack |
 | CC7.2 remediation | ✅ | Finding lifecycle service (`remediation/`), drift alerts (`drift/alerts/`) |
-| CC7.3/7.3.1 vulnerability management | 🟡 | Dependabot config + SCA/dependency graph + `security_scan.sh` exist; missing: **documented cadence, triage SLAs, and the third-party pen test** (see §5) |
+| CC7.3/7.3.1 vulnerability management | 🟡 | Dependabot config + SCA/dependency graph + `security_scan.sh` exist; **cadence + triage SLAs documented** in the Vulnerability Management Policy, and pen-test findings **ingest into the platform** (`POST /api/v1/pentest/findings` → severity-banded, deduped, tracked to closure). Missing: **the third-party pen test itself** (see §5) |
 | CC7.5 operations monitoring | ✅ | Metrics/observability/trace middlewares, `/health` + `/healthz`, burn-in harness (`scripts/burn_in.py`) |
 | CC7.6 backup | ✅ | Scheduled backup service with sweep (`governance/backup_schedule.py`), backup + PITR **drills with recorded results** (`docs/backup-drill.md`, `docs/pitr-drill.md`), restore verification script (`scripts/restore_evidence.py`) |
 
@@ -119,8 +119,14 @@ straight from `data/evidence/` + audit exports.
    sub-service orgs (host, email, any SaaS deps), answer the CAQ.
    *Calendar-bound; do first.*
 2. **Pen test** (CC11.3) — third party, against a production mirror;
-   2–4 weeks + remediation window. *(❌ today; the single biggest
-   technical gap.)*
+   2–4 weeks + remediation window. *(The test itself is the external
+   task — but its readiness is built: scope brief at
+   `docs/security/pen-test-scope.md`, and the report's findings ingest
+   straight into the platform via `POST /api/v1/pentest/findings`,
+   severity-banded, deduplicated per report, status-tracked to closure,
+   and surfaced in the board report + compliance pack. The single
+   biggest technical gap, and the one part of it that cannot be built
+   in-repo.)*
 3. **Push the CI workflows** (currently local-only, token scope) — the
    pipeline is itself a CC8/CC6.9 exhibit. *(🟡 — one push away when scope
    allows.)*

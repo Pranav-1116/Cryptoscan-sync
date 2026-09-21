@@ -148,6 +148,43 @@ def _collect_access_reviews(files: dict[str, bytes], notes: list[str],
                      f"table via {db_url.split('@')[-1]}: {exc}")
 
 
+def _collect_pentest(files: dict[str, bytes], notes: list[str],
+                     db_url: str | None) -> None:
+    if not db_url:
+        notes.append("NO_PENTEST_FINDINGS: no --db-url supplied — ingested "
+                     "pen-test findings (pentest_findings table) live in the "
+                     "database; re-pack with --db-url to include them")
+        return
+    try:
+        from sqlalchemy import create_engine, select
+        from sqlalchemy.orm import sessionmaker
+        from db.models.pentest_finding import PentestFinding
+
+        engine = create_engine(db_url)
+        session = sessionmaker(bind=engine)()
+        rows = session.execute(select(PentestFinding)).scalars().all()
+        open_rows = [r for r in rows if r.status in ("OPEN", "IN_PROGRESS")]
+        payload = {
+            "source": "pentest_findings table",
+            "reports": sorted({r.report for r in rows}),
+            "total": len(rows),
+            "open": len(open_rows),
+            "open_critical_high": sum(
+                1 for r in open_rows if r.severity in ("CRITICAL", "HIGH")),
+            "findings": [r.to_dict() for r in rows],
+        }
+        files["pentest-findings.json"] = json.dumps(
+            payload, indent=2, sort_keys=True, default=str).encode("utf-8")
+        if not rows:
+            notes.append("NO_PENTEST_FINDINGS: pentest_findings table is "
+                         "empty — no independent pen test has been ingested "
+                         "yet (POST /api/v1/pentest/findings); the scope "
+                         "brief is docs/security/pen-test-scope.md")
+    except Exception as exc:
+        notes.append(f"NO_PENTEST_FINDINGS: could not read pentest_findings "
+                     f"via {db_url.split('@')[-1]}: {exc}")
+
+
 def _collect_policy_signoff(files: dict[str, bytes], notes: list[str]) -> None:
     """The pack always carries the CURRENT sign-off state — an honest
     measurement, not a claim. Open items become a named gap note."""
@@ -189,6 +226,7 @@ def build(out_dir: Path | None, db_url: str | None) -> Path:
 
     _collect_static(files, notes)
     _collect_access_reviews(files, notes, db_url)
+    _collect_pentest(files, notes, db_url)
     _collect_policy_signoff(files, notes)
     _collect_org_readiness(files, notes)
 

@@ -28,6 +28,7 @@ from db.models.system_business_process_map import SystemBusinessProcessMap
 from db.models.system_dependency import SystemDependency
 from db.models.certificate_usage import CertificateUsage
 from db.models.access_review import AccessReviewRecord
+from db.models.pentest_finding import PentestFinding
 from db.models.ot_device import OtCryptoFinding, OtDevice
 from db.models.policy_exception import ExceptionReview, PolicyException
 from db.models.system_agility_score import SystemAgilityScore
@@ -39,6 +40,7 @@ from db.models.vulnerability import Vulnerability
 
 __all__ = [
     "AccessReviewRecord",
+    "PentestFinding",
     "AssetEvidenceLink",
     "AuditLog",
     "AssetSystemLink",
