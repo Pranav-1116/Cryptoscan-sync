@@ -422,6 +422,26 @@ def banking_hsm_parse(
     return {"assessment": assess_hsm_deep([row])}
 
 
+# --------------------------------------------------------------------------- #
+# ISO 20022 financial message signature / envelope assessment
+# --------------------------------------------------------------------------- #
+
+class Iso20022ParseRequest(BaseModel):
+    xml_payload: str
+
+
+@router.post("/iso20022/parse")
+def banking_iso20022_parse(
+    payload: Iso20022ParseRequest,
+    user: str = Depends(get_current_user),
+):
+    """Parse a pasted ISO 20022 AppHdr / financial message for signature,
+    key-strength, and quantum-exposure compliance (no persistence)."""
+    from payment_crypto.iso20022 import parse_iso20022_xml
+
+    return parse_iso20022_xml(payload.xml_payload).to_dict()
+
+
 @router.get("/hsm/deep")
 def banking_hsm_deep(
     user: str = Depends(get_current_user),

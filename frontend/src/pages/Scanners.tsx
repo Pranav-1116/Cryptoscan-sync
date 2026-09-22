@@ -65,10 +65,10 @@ export default function Scanners() {
         }, 1800);
       } else {
         // Fallback to network discovery if onboarding scope not yet configured
-        const netRes = await fetch("/api/v1/network/network/discover", {
+        const netRes = await fetch("/api/v1/network/discover", {
           method: "POST",
           headers,
-          body: JSON.stringify({ subnet: targetInput, rate_limit: 500 }),
+          body: JSON.stringify({ cidr: targetInput }),
           signal: AbortSignal.timeout(10000),
         });
         if (netRes.ok) {

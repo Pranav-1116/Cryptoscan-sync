@@ -37,7 +37,7 @@ def _signing_secret(db: Session | None = None) -> str:
         repo = SettingsRepository(db) if db is not None else None
         return keys.signing_secret(settings_repo=repo)
     except Exception:
-        return _ephemeral["secret"]
+        return _ephemeral.secret
 
 
 def _fernet_key(db: Session | None = None) -> bytes:

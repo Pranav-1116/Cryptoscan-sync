@@ -230,6 +230,32 @@ provenance, remediation SLAs). The compliance pack now carries
 tests (ingest/bands, idempotency + closure respect, summary, validation,
 RBAC); 10/10 green with the schema guards; ruff clean.
 
+**Update (2026-09-22, product-surface audit):** audited every UI→API
+contract on a FRESH deployment (168 distinct frontend endpoint paths
+probed; 72 routes / 71 pages cross-checked). Three genuine defects found
+and fixed: (1) `GET /resilience/audit/attestation` 500'd on every dev
+instance — `_ephemeral["secret"]` subscripted an object (`_ephemeral.secret`
+now) in the no-persisted-key fallback path; verified live: signed
+`VERIFIED` attestation with chain head + tamper counters. (2)
+`POST /api/v1/banking/iso20022/parse` was a dead UI button — the parser
+(`payment_crypto/iso20022.py`, xmldsig AppHdr extraction, key-strength +
+quantum-exposure scoring) and its unit tests existed, but the route was
+lost; restored in `banking.py` (auth-gated, no persistence); verified live
+against the test vector (rsa-sha256 extraction, weak-key finding).
+(3) `Scanners.tsx` network fallback called `/api/v1/network/network/discover`
+(doubled segment) with the wrong body (`subnet`/`rate_limit` instead of
+`cidr`); now hits the real `POST /network/discover` with `{cidr}`.
+Confirmed NON-defects (documented so the next audit doesn't re-chase
+them): SAML `404`s are the deliberate "not configured" guard (UI checks
+`/auth/sso/status` first); onboarding `GET /scope`/`/connections`/
+`discovery/*` 404-before-org is the deliberate "no organization yet"
+guard; SaaS `400 X-Tenant-ID` responses are tenant-context by design and
+the Tenancy page conditionally renders only with a tenant. Full
+onboarding wizard E2E verified on a fresh DB (org → sector → environment
+→ CIDR+domain scope → connector → checklist 5/7 with honest 409 gates).
+i18n: 217/217 flat keys in both en and ar. Routes: 0 dead, 0 orphan
+pages. `vite build` green; banking/iso20022/onboarding suites 37/37.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules
