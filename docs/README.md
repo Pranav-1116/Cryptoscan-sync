@@ -12,6 +12,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 
 | Doc | What it covers |
 |---|---|
+| [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |
 | [Platform boundaries](architecture/platform-boundaries.md) | what CryptoScan is and is not (single source of truth: `shared_models/platform_scope.py`) |
