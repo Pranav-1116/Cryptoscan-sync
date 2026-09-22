@@ -101,7 +101,18 @@ never promoted to an algorithm. New findings: `BIN-UNSIGNED-MACHO`, `BIN-ENTITLE
 Mach-O signed + unsigned, bare initramfs, uImage, deb, RPM, tar.gz, zstd, PE, class):
 11 binaries, 5 embedded, 6 containers followed, 1 refused, and a signed Mach-O scanned
 alone yields `Apple CommonCrypto` + `SHA-256` and a two-asset CBOM. Tests: 61 in
-`test_binary_scan.py` (+7 binary API, 331 across devsecops + binary API + cbom).
+`test_binary_scan.py` (+8 binary API, 332 across devsecops + binary API + cbom).
+
+**Update (2026-09-22, uImage firmware headers):** legacy U-Boot images are now read as
+images rather than as anonymous blobs: the 64-byte header is decoded (image name, OS,
+architecture, image type, compression, load/entry addresses, payload size, build date —
+all from the published U-Boot field tables, nothing guessed) and **both checksums are
+computed and reported**: the header CRC (over the header with its own field zeroed) and
+the payload CRC when present and within the 64 MiB verification cap, otherwise explicitly
+`data_crc_checked: false` with the reason. A header mismatch is `BIN-UIMAGE-CRC` (LOW), a
+payload mismatch or a truncated payload is `BIN-UIMAGE-PAYLOAD` (HIGH) — a firmware image
+that does not match its own checksum is reported, not silently accepted. The generic
+firmware pass still runs, so the compressed ramdisk at offset 64 is followed as before.
 
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**

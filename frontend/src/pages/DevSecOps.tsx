@@ -739,6 +739,15 @@ function BinaryPanel() {
   };
   // linkage, code signature and OS floor: what the file links against and who
   // signed it, read from the load commands / symbol tables rather than guessed
+  // a uImage states what it is in its own header (OS/arch/type/compression)
+  const formatOf = (b: any) => {
+    const base = b.format + (b.type?.endsWith(":efi") ? " · EFI" : "");
+    const image = b.uimage;
+    if (!image) return base;
+    const detail = [image.os, image.arch, image.image_type, image.compression]
+      .filter((v: any) => v && v !== "none").join(" / ");
+    return detail ? `${base} · ${detail}` : base;
+  };
   const linkageOf = (b: any) => {
     const bits: string[] = [];
     const dylibs = Object.keys(b.dylib_versions || {});
@@ -850,7 +859,7 @@ function BinaryPanel() {
                     {b.derived_from ? "└ " : ""}{b.path}
                     {b.derived_from && <span className="muted"> · depth {b.depth}</span>}
                   </span>,
-                  b.format + (b.type?.endsWith(":efi") ? " · EFI" : ""),
+                  formatOf(b),
                   b.arch || "—",
                   [b.publisher, b.product].filter(Boolean).join(" / ") || "—",
                   <span style={{ fontSize: 12 }}>{linkageOf(b)}</span>,

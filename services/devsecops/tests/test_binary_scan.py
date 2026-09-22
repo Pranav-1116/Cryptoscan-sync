@@ -6,6 +6,7 @@ happens to be installed on the build machine. Nothing here needs a compiler.
 """
 from __future__ import annotations
 
+import gzip
 import struct
 import zipfile
 
@@ -291,6 +292,26 @@ def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
     data[section_table:section_table + 8] = b".rdata\x00\x00"
     struct.pack_into("<IIII", data, section_table + 8, 0x1000, 0x1000, 0x1000, raw_offset)
     return bytes(data)
+
+
+def _uimage(*, payload: bytes | None = None, name: str = "Acme Linux-6.1.38",
+            os_id: int = 5, arch_id: int = 22, type_id: int = 3, comp_id: int = 1,
+            stamp: int = 1780000000, data_crc: int | None = None,
+            break_header_crc: bool = False, declare_size: int | None = None) -> bytes:
+    """Legacy uImage with a real header CRC (and options to break each one)."""
+    import zlib
+
+    if payload is None:
+        payload = _cpio([("lib/libacme.so", _elf64(soname="libacme.so.1"))])
+    size = len(payload) if declare_size is None else declare_size
+    if data_crc is None:
+        data_crc = zlib.crc32(payload) & 0xFFFFFFFF
+    header = bytearray(struct.pack(">7I4B32s", 0x27051956, 0, stamp, size, 0x80008000, 0x80008000,
+                                   data_crc, os_id, arch_id, type_id, comp_id,
+                                   name.encode()[:31].ljust(32, b"\x00")))
+    hcrc = zlib.crc32(bytes(header)) & 0xFFFFFFFF
+    struct.pack_into(">I", header, 4, (hcrc ^ 0xFFFF) if break_header_crc else hcrc)
+    return bytes(header) + payload
 
 
 def _macho(*, encrypted: bool = False, signed: bool = True, hardened: bool = True,
@@ -1197,6 +1218,60 @@ def test_macho_symbols_feed_crypto_evidence(tmp_path):
     assert "CC_SHA256" in evidence["SHA-256"]["sources"][0]
     libraries = {row["library"] for row in record["crypto"]["libraries"]}
     assert "Apple CommonCrypto" in libraries
+
+
+def test_uimage_header_is_decoded_and_crcs_are_verified(tmp_path):
+    """A firmware blob states its OS/arch/type/compression — and its own checksums."""
+    path = tmp_path / "firmware.img"
+    path.write_bytes(_uimage())
+    record = bs.scan_file(path)
+    image = record["uimage"]
+    assert image["os"] == "linux" and image["arch"] == "arm64"
+    assert image["image_type"] == "ramdisk" and image["compression"] == "gzip"
+    assert image["name"] == "Acme Linux-6.1.38"
+    assert image["load_address"] == hex(0x80008000)
+    assert image["payload_offset"] == 64
+    assert image["header_crc_verified"] is True
+    assert image["data_crc_verified"] is True
+    assert image["built"].startswith("20")
+    assert record["arch"] == "arm64"
+    assert not [f for f in record["findings"] if f["code"].startswith("BIN-UIMAGE")]
+
+
+def test_uimage_crc_mismatches_are_reported_not_ignored(tmp_path):
+    """A checksum mismatch is a fact about the file, so it is a finding."""
+    broken_header = tmp_path / "broken-header.img"
+    broken_header.write_bytes(_uimage(break_header_crc=True))
+    record = bs.scan_file(broken_header)
+    finding = [f for f in record["findings"] if f["code"] == "BIN-UIMAGE-CRC"][0]
+    assert record["uimage"]["header_crc_verified"] is False
+    assert "modified or damaged" in finding["detail"]
+
+    broken_payload = tmp_path / "broken-payload.img"
+    broken_payload.write_bytes(_uimage(declare_size=1 << 20))
+    record = bs.scan_file(broken_payload)
+    codes = {f["code"] for f in record["findings"]}
+    assert "BIN-UIMAGE-PAYLOAD" in codes
+    payload_finding = [f for f in record["findings"] if f["code"] == "BIN-UIMAGE-PAYLOAD"][0]
+    assert payload_finding["severity"] == "HIGH"
+    assert record["uimage"]["truncated"] is True
+
+
+def test_uimage_compression_governs_whether_the_payload_is_opened(tmp_path):
+    """The header's compression field decides if the ramdisk is followed, and how."""
+    inner = _cpio([("lib/libcrypto.so.3", _elf64(soname="libcrypto.so.3"))])
+    path = tmp_path / "firmware.img"
+    path.write_bytes(_uimage(payload=gzip.compress(inner), comp_id=1))
+    result = bs.sbom_result(bs.scan_path(tmp_path, recursive=True))
+    embedded = [row for row in result["binaries"] if row.get("derived_from")]
+    assert [row["file_name"] for row in embedded] == ["libcrypto.so.3"]
+    assert embedded[0]["path"] == "firmware.img@64!lib/libcrypto.so.3"
+
+    refused = tmp_path / "zstd.img"
+    refused.write_bytes(_uimage(payload=b"\x28\xb5\x2f\xfd" + bytes(64), comp_id=6))
+    scan = bs.scan_file(refused)
+    reasons = [r for c in scan.get("containers_followed") or [] for r in (c.get("refused") or [])]
+    assert any("zstd" in str(reason.get("format")) for reason in reasons)
 
 
 # ------------------------------------------------ turn-30 depth: RPM/deb --- #

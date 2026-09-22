@@ -2129,6 +2129,88 @@ def parse_firmware(data: bytes) -> dict[str, Any]:
     return out
 
 
+#: legacy U-Boot image header (64 bytes, big-endian) field values
+UIMAGE_OS: dict[int, str] = {0: "invalid", 1: "openbsd", 2: "netbsd", 3: "freebsd", 4: "4.4bsd",
+                             5: "linux", 6: "svr4", 7: "esix", 8: "solaris", 9: "irix",
+                             10: "sco", 11: "hpux", 12: "openrtos", 13: "arm-trusted-firmware",
+                             14: "tee", 15: "optee", 16: "efi", 17: "vxworks"}
+UIMAGE_ARCH: dict[int, str] = {1: "alpha", 2: "arm", 3: "i386", 4: "ia64", 5: "mips",
+                               6: "mips64", 7: "powerpc", 8: "s390", 9: "sh", 10: "sparc",
+                               11: "sparc64", 12: "m68k", 13: "nios", 14: "microblaze",
+                               15: "nios2", 16: "blackfin", 17: "avr32", 18: "st200",
+                               19: "sandbox", 20: "nds32", 21: "openrisc", 22: "arm64",
+                               23: "arc", 24: "x86-64", 25: "xtensa", 26: "riscv"}
+UIMAGE_TYPE: dict[int, str] = {1: "standalone", 2: "kernel", 3: "ramdisk", 4: "multi-image",
+                               5: "firmware", 6: "script", 7: "filesystem", 8: "binary",
+                               9: "flat-device-tree", 10: "kwbimage", 11: "imximage",
+                               12: "ubl", 13: "omapimage", 14: "kernel-self",
+                               15: "script-self", 16: "filesystem-self", 17: "flatdt-self"}
+UIMAGE_COMPRESSION: dict[int, str] = {0: "none", 1: "gzip", 2: "bzip2", 3: "lzma", 4: "lzo",
+                                      5: "lz4", 6: "zstd"}
+#: verifying the payload CRC means reading the whole image; past this it is skipped
+#: (and said so) rather than being reported as verified
+UIMAGE_CRC_LIMIT = 64 * 1024 * 1024
+
+
+def parse_uimage(data: bytes) -> dict[str, Any]:
+    """Legacy U-Boot (uImage) header: what the image is, and whether it is intact.
+
+    The header carries the OS, architecture, image type, compression, load/entry
+    addresses and the image name, plus two CRCs. Both CRCs are *checked* when they
+    are present and the image is small enough — a verified checksum is a fact about
+    the file, and a mismatch means the firmware was modified or truncated.
+    """
+    import zlib
+
+    if len(data) < 64 or data[:4] != b"\x27\x05\x19\x56":
+        raise ValueError("not a legacy uImage")
+    # magic, header CRC, timestamp, size, load, entry, data CRC — 7 u32 — then the
+    # four one-byte identity fields, then the 32-byte name
+    (_magic, hcrc, timestamp, size, load, entry, dcrc, os_id, arch_id, type_id,
+     comp_id) = struct.unpack_from(">7I4B", data, 0)
+    name = data[32:64].split(b"\x00")[0].decode("utf-8", "replace").strip()
+    out: dict[str, Any] = {
+        "format": "uimage",
+        "uimage": {
+            "name": name or None,
+            "os": UIMAGE_OS.get(os_id, f"os-{os_id}"),
+            "arch": UIMAGE_ARCH.get(arch_id, f"arch-{arch_id}"),
+            "image_type": UIMAGE_TYPE.get(type_id, f"type-{type_id}"),
+            "compression": UIMAGE_COMPRESSION.get(comp_id, f"comp-{comp_id}"),
+            "load_address": hex(load),
+            "entry_point": hex(entry),
+            "payload_size": size,
+            "payload_offset": 64,
+            "header_crc": hex(hcrc),
+            "data_crc": hex(dcrc) if dcrc else None,
+        },
+    }
+    if timestamp and timestamp < 0x80000000:      # 0 and clearly bogus values are skipped
+        from datetime import datetime, timezone
+
+        out["uimage"]["built"] = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+    # header CRC: computed over the header with the hcrc field treated as zero
+    header = bytearray(data[:64])
+    header[4:8] = b"\x00\x00\x00\x00"
+    expected = zlib.crc32(bytes(header)) & 0xFFFFFFFF
+    out["uimage"]["header_crc_verified"] = bool(hcrc) and expected == hcrc
+    if hcrc and expected != hcrc:
+        out["uimage"]["header_crc_expected"] = hex(expected)
+    payload = data[64:64 + size] if size else b""
+    if dcrc:
+        if size <= UIMAGE_CRC_LIMIT and len(payload) == size:
+            out["uimage"]["data_crc_verified"] = (zlib.crc32(payload) & 0xFFFFFFFF) == dcrc
+        else:
+            out["uimage"]["data_crc_checked"] = False
+            out["uimage"]["note"] = ("payload CRC not checked: image exceeds the "
+                                     f"{UIMAGE_CRC_LIMIT // (1024 * 1024)} MiB verification cap "
+                                     "or the payload is truncated")
+    if size and len(payload) < size:
+        out["uimage"]["truncated"] = True
+    out["arch"] = out["uimage"]["arch"]
+    return out
+
+
 def _parse_dtb(data: bytes, offset: int) -> dict[str, Any] | None:
     """Device-tree strings block: `model` and `compatible` name the hardware."""
     try:
@@ -2855,6 +2937,13 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
             parsed = parser(data)
             record.update(parsed)
             record["parsed"] = True
+        elif fmt == "uimage":
+            # the 64-byte header names the image; the generic firmware pass still
+            # finds what is inside it (the compressed ramdisk at offset 64)
+            record.update(parse_firmware(data))
+            record.update(parse_uimage(data))
+            record["format"] = "uimage"
+            record["parsed"] = True
         elif fmt in ("squashfs", "squashfs-be", "jffs2", "jffs2-le", "ubi", "ubifs",
                      "cramfs", "ext", "uimage", "dtb", "gzip", "xz", "zstd", "bzip2",
                      "lzma", "lz4", "raw", "cpio-odc"):
@@ -3184,6 +3273,32 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                            "flag; library validation and runtime checks are not enforced"),
                 "path": path,
             })
+    image = record.get("uimage") or {}
+    if image.get("header_crc_verified") is False:
+        findings.append({
+            "code": "BIN-UIMAGE-CRC", "severity": "LOW",
+            "title": "uImage header CRC mismatch",
+            "detail": (f"the header checksum does not match the file ({image.get('header_crc')} "
+                       f"stored vs {image.get('header_crc_expected')} computed) — the image was "
+                       "modified or damaged after it was built"),
+            "path": path,
+        })
+    if image.get("data_crc_verified") is False:
+        findings.append({
+            "code": "BIN-UIMAGE-PAYLOAD", "severity": "HIGH",
+            "title": "uImage payload CRC mismatch",
+            "detail": ("the payload checksum in the header does not match the payload bytes — "
+                       "the firmware image is corrupt or was re-packed"),
+            "path": path,
+        })
+    if image.get("truncated"):
+        findings.append({
+            "code": "BIN-UIMAGE-PAYLOAD", "severity": "HIGH",
+            "title": "uImage payload is truncated",
+            "detail": (f"the header declares {image.get('payload_size')} payload bytes but the "
+                       "file holds fewer"),
+            "path": path,
+        })
     for dll in record.get("delay_imports") or []:
         findings.append({
             "code": "BIN-DELAYED-IMPORT", "severity": "INFO",
@@ -3534,6 +3649,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "install_name": record.get("install_name"),
             "minimum_os": record.get("minimum_os"),
             "encrypted": record.get("encrypted"),
+            "uimage": record.get("uimage"),
             "symbols_sampled": record.get("symbols_sampled"),
             "import_count": len(record.get("imports") or []),
             "export_count": len(record.get("exports") or []),

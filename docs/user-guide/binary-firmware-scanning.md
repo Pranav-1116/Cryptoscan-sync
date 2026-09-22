@@ -41,7 +41,7 @@ was stored with the scan.
 | **Java class** | constant pool: referenced classes (`javax/crypto/Cipher`, `org/bouncycastle/…`), method names, transformation strings (`AES/GCM/NoPadding`), class file version; a truncated pool says where the walk stopped |
 | **RPM** | lead + signature header + main header: name, version, release, licence, vendor, architecture, `PROVIDES`/`REQUIRES` package names (the crypto sonames a package depends on), payload compressor and payload offset |
 | WASM | import and export names (where crypto markers live) |
-| Firmware | container chain with offsets (uImage, device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal, **cpio/initramfs member listing** |
+| Firmware | **uImage (legacy U-Boot) header decoded**: image name, OS, architecture, image type (kernel/ramdisk/filesystem/firmware/…), compression, load/entry addresses, payload size, build date — and **both CRCs verified** (header CRC over the header with its own field zeroed; payload CRC when present and the image is within the 64 MiB verification cap, with `data_crc_checked: false` and a reason when it is not). A mismatch or a truncated payload is a finding (`BIN-UIMAGE-CRC`, `BIN-UIMAGE-PAYLOAD`). Also: container chain with offsets (device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal, **cpio/initramfs member listing** |
 | Raw blobs | reported only when they carry crypto evidence — never as an unnameable "binary" |
 
 ### 2.1 Containers are followed, inside a budget
@@ -116,6 +116,8 @@ entitlements such as `get-task-allow`, `allow-unsigned-executable-memory`,
 structurally incomplete), `BIN-DELAYED-IMPORT` (a delay-loaded DLL still loads
 and still runs), `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
 `BIN-CONTAINER-REFUSED`, `BIN-NOT-PARSED`, `BIN-PARTIAL-PARSE`,
+`BIN-UIMAGE-CRC` (header checksum mismatch — the image was modified or damaged),
+`BIN-UIMAGE-PAYLOAD` (payload checksum mismatch or truncation),
 `BIN-FIRMWARE-NOT-EXTRACTED`.
 
 ## 4. What flows onward
@@ -148,6 +150,10 @@ and still runs), `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
   `BIN-FIRMWARE-NOT-EXTRACTED`. What *can* be opened (a gzip/xz stream or a cpio
   initramfs in the same image) is followed and reported alongside. To inventory
   what is inside a filesystem, scan the mounted or extracted tree.
+* **A uImage checksum is verified, not assumed.** When a CRC is present it is
+  computed and reported (`header_crc_verified`, `data_crc_verified`); a payload
+  CRC over the 64 MiB verification cap is reported as *not checked* with the
+  reason rather than as valid.
 * **zstd and lz4 are refused, not guessed.** There is no zstd/lz4 decoder in the
   standard library, so those containers are reported with the reason; nothing is
   claimed about their contents.
