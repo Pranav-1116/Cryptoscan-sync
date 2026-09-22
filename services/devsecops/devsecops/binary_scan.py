@@ -53,6 +53,12 @@ MIN_STRING = 6
 FIRMWARE_SCAN_LIMIT = 128 * 1024 * 1024     # container search window
 SKIP_DIRS = {"proc", "sys", "dev", "run", ".git", "__pycache__", ".mypy_cache",
              ".pytest_cache", ".tox", "node_modules"}
+MAX_CONSTANT_WINDOW = 96 * 1024 * 1024   # bytes of code/data searched for crypto tables
+MAX_EXTRACT_BYTES = 64 * 1024 * 1024     # decompressed payload budget per container
+MAX_EXTRACT_DEPTH = 2                    # containers followed inside containers
+MAX_EXTRACT_FILES = 60                   # members listed/parsed per archive
+MAX_MEMBER_BYTES = 16 * 1024 * 1024      # member size we are willing to parse
+MAX_RPM_ENTRIES = 400                    # header index entries read
 
 # ------------------------------------------------------------- detection ---- #
 MAGICS: tuple[tuple[str, bytes], ...] = (
@@ -93,6 +99,73 @@ PE_FORMATS = {"pe"}
 MACHO_FORMATS = {"macho", "macho64", "macho-be", "macho64-be", "macho-fat", "macho-fat-le"}
 EXECUTABLE_FORMATS = ELF_FORMATS | PE_FORMATS | MACHO_FORMATS | {"wasm"}
 
+#: Cipher transformation strings and TLS suite names, graded at the STRING level.
+#: These are the forms a name shows up in when it is *used* rather than exported:
+#: "AES/GCM/NoPadding" in a Java constant pool, "RSA/ECB/PKCS1Padding" in a config,
+#: "TLS_AES_256_GCM_SHA384" in a handshake table. The upstream engine detects
+#: algorithms from symbols and constants, so this pass covers the string layer and
+#: nothing else — every hit is reported as STRING_MATCH, never as a symbol claim.
+TRANSFORMATION_PATTERNS: tuple[tuple[str, str], ...] = (
+    (r"\bAES/(GCM|CBC|CTR|ECB|CCM|OFB|CFB|KW|Wrap)", "AES"),
+    (r"\b(TLS|SSL)_(AES|CHACHA20|3DES|RC4|CAMELLIA|ARIA|SM4)", "AES"),
+    (r"\bDESede|\bDES/|\bDES-EDE3|\b3DES\b|\bTripleDES\b", "3DES"),
+    (r"\bRSA/|\bRSA_PKCS1|\bRSASSA-PSS\b|\bRSA-OAEP\b", "RSA"),
+    (r"\bECIES\b|\bECDH_|\bECDHE\b|\bECDSA\b|\bEC/", "ECDH"),
+    (r"\bX25519\b|\bcurve25519\b", "X25519"),
+    (r"\bEd25519\b|\bEd448\b", "Ed25519"),
+    (r"\bChaCha20(-Poly1305)?\b", "ChaCha20"),
+    (r"\bPoly1305\b", "Poly1305"),
+    (r"\bHMAC[-_]?SHA(1|224|256|384|512)?\b|\bHMACSHA", "HMAC-SHA256"),
+    (r"\bSHA-?(1|224|256|384|512)\b|\bSHA3-?(224|256|384|512)\b", "SHA-256"),
+    (r"\b(MD5)\b|\bMD5/", "MD5"),
+    (r"\bPBKDF2(WithHMAC)?\b", "PBKDF2"),
+    (r"\bBlowfish\b|\bBF/", "Blowfish"),
+    (r"\bRC2\b|\bRC4\b|\bARCFOUR\b", "RC4"),
+    (r"\bCamellia\b", "Camellia"),
+    (r"\bSM4\b", "SM4"),
+    (r"\bSM2\b", "SM2"),
+    (r"\bSM3\b", "SM3"),
+    (r"\bARIA\b", "ARIA"),
+    (r"\bML-?KEM\b|\bML-?DSA\b|\bSLH-?DSA\b", "ML-KEM"),
+    (r"\bDSA/(SHA|NONE)", "DSA"),
+    (r"\bDH/(PKCS|NONE)|\bDiffieHellman\b", "DH"),
+)
+
+
+def _transformation_algorithms(strings: Iterable[str]) -> list[dict[str, Any]]:
+    """Algorithm names read out of transformation/TLS-suite strings."""
+    rows: dict[str, dict[str, Any]] = {}
+    for text in strings:
+        if len(text) < 3 or len(text) > 400:
+            continue
+        for pattern, algorithm in TRANSFORMATION_PATTERNS:
+            match = re.search(pattern, text)
+            if not match:
+                continue
+            row = rows.setdefault(algorithm, {"name": algorithm, "confidence": 0.4,
+                                              "strongest_evidence": "STRING", "sources": [],
+                                              "verdict": "POSSIBLE_CRYPTO"})
+            if len(row["sources"]) < 3:
+                row["sources"].append(f"transformation string {match.group(0)!r}")
+    return list(rows.values())
+
+
+#: packer/obfuscator signatures. A packed binary hides its strings and its symbol
+#: table, so crypto detection inside one is structurally incomplete — that is a
+#: finding, not a footnote.
+PACKER_SIGNATURES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("UPX", ("UPX!", "UPX0", "UPX1", "$Info: This file is packed")),
+    ("ASPack", (".aspack", ".adata", "ASPack")),
+    ("MPRESS", (".MPRESS1", ".MPRESS2")),
+    ("Themida/WinLicense", (".themida", ".winlice", "Themida")),
+    ("PECompact", ("PECompact2", "pec1", "pec2")),
+    ("Petite", (".petite", "petite")),
+    ("Enigma Protector", (".enigma1", ".enigma2")),
+    ("VMProtect", (".vmp0", ".vmp1", ".vmp2")),
+    ("PyInstaller", ("MEI\x0c\x0b\x0a\x0b\x0e", "pyi-", "PyInstaller")),
+    ("Electron/asar", ("app.asar", "ELECTRON_RUN_AS_NODE")),
+    ("Google Play Protect", ("SEALED_BUNDLE",)),
+)
 ELF_MACHINES = {
     0x03: "x86", 0x08: "MIPS", 0x14: "PowerPC", 0x15: "PowerPC64", 0x16: "S390",
     0x28: "ARM", 0x2A: "SuperH", 0x32: "IA-64", 0x3E: "x86-64", 0xB7: "AArch64",
@@ -101,6 +174,18 @@ ELF_MACHINES = {
 ELF_TYPES = {0: "none", 1: "relocatable", 2: "executable", 3: "shared", 4: "core"}
 PE_MACHINES = {0x014C: "x86", 0x8664: "x86-64", 0x01C0: "ARM", 0xAA64: "AArch64",
                0x0200: "IA-64", 0x01C4: "ARMv7", 0x0166: "MIPS"}
+PE_SUBSYSTEMS = {
+    1: "native", 2: "windows-gui", 3: "console", 5: "os2-console", 7: "posix-console",
+    9: "windows-ce", 10: "efi-application", 11: "efi-boot-service-driver",
+    12: "efi-runtime-driver", 13: "efi-rom", 14: "xbox", 16: "windows-boot-application",
+}
+#: version-info strings worth lifting into the SBOM (Microsoft's own vocabulary)
+VERSION_INFO_KEYS = {
+    "CompanyName": "vendor", "ProductName": "product", "FileDescription": "description",
+    "FileVersion": "version", "ProductVersion": "product_version",
+    "OriginalFilename": "original_filename", "InternalName": "internal_name",
+    "LegalCopyright": "copyright", "Comments": "comments",
+}
 MACHO_CPUS = {7: "x86", 0x01000007: "x86-64", 12: "ARM", 0x0100000C: "AArch64",
               18: "PowerPC", 0x01000012: "PowerPC64"}
 MACHO_PLATFORMS = {1: "macOS", 2: "iOS", 3: "tvOS", 4: "watchOS", 6: "macCatalyst"}
@@ -338,10 +423,255 @@ def parse_elf(data: bytes) -> dict[str, Any]:
 
     _elf_dynamic(reader, sections, by_name, end, word, out)
     _elf_symbols(reader, sections, by_name, end, word, out)
+    _elf_program_headers(reader, data, is64, end, out)
+    _elf_version_requirements(reader, sections, by_name, end, out)
+    _elf_properties(data, by_name, out)
+    _elf_hardening(reader, data, by_name, out, end)
+    constants = _crypto_constants(data, sections, by_name)
+    if constants["found"]:
+        out["crypto_constants"] = constants["found"]
+        out["_constant_blobs"] = constants["blobs"]
+    packed = detect_packer(sections)
+    if packed:
+        out["packer"] = packed
     go = parse_go_buildinfo(data, by_name, reader)
     if go:
         out["go"] = go
     return out
+
+
+def _elf_program_headers(reader: _Reader, data: bytes, is64: bool, end: str,
+                         out: dict[str, Any]) -> None:
+    """Segments worth knowing: interpreter, GNU_STACK (NX), GNU_RELRO."""
+    phoff = reader.unpack(end + ("Q" if is64 else "I"), 0x20 if is64 else 0x1C)[0]
+    phentsize = reader.unpack(end + "H", 0x36 if is64 else 0x2A)[0]
+    phnum = reader.unpack(end + "H", 0x38 if is64 else 0x2C)[0]
+    if not (0 < phnum < 512) or not phoff or not phentsize:
+        return
+    segments: list[str] = []
+    for index in range(phnum):
+        base = phoff + index * phentsize
+        try:
+            p_type = reader.unpack(end + "I", base)[0]
+        except Exception:  # noqa: BLE001
+            break
+        if p_type == 1:                                   # PT_LOAD
+            segments.append("load")
+        elif p_type == 2:
+            segments.append("dynamic")
+        elif p_type == 3:                                 # PT_INTERP
+            segments.append("interpreter")
+            offset, size = (reader.unpack(end + "QQ", base + 8) if is64
+                            else reader.unpack(end + "II", base + 4))
+            try:
+                text = reader.take(offset, min(size, 256)).split(b"\x00")[0]
+                out["interpreter"] = text.decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001
+                pass
+        elif p_type == 0x6474E551:                        # PT_GNU_STACK
+            segments.append("gnu_stack")
+            flags = (reader.unpack(end + "I", base + 4)[0] if is64
+                     else reader.unpack(end + "I", base + 24)[0])
+            out["executable_stack"] = bool(flags & 0x1)
+        elif p_type == 0x6474E552:                        # PT_GNU_RELRO
+            segments.append("gnu_relro")
+    if segments:
+        out["segments"] = segments
+
+
+def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
+                              by_name: dict[str, Any], end: str, out: dict[str, Any]) -> None:
+    """`.gnu.version_r`: which symbol versions each library must provide.
+
+    ``libcrypto.so.3`` requiring ``OPENSSL_3.0.0`` is a real version floor even
+    when no banner string survives — that is evidence, not a guess.
+    """
+    section = by_name.get(".gnu.version_r")
+    dynstr = by_name.get(".dynstr")
+    if not section or not dynstr:
+        return
+    try:
+        strtab = reader.take(dynstr["offset"], dynstr["size"])
+    except Exception:  # noqa: BLE001
+        return
+    requirements: dict[str, list[str]] = {}
+    offset = section["offset"]
+    end_of_section = section["offset"] + section["size"]
+    seen_files: set[int] = set()
+    while offset + 16 <= end_of_section and len(seen_files) < 64:
+        try:
+            _version, count, file_offset, aux_offset, next_offset = reader.unpack(
+                end + "HHIII", offset)
+        except Exception:  # noqa: BLE001
+            break
+        seen_files.add(offset)
+        library = _cstr(strtab, file_offset)
+        aux = offset + aux_offset
+        names: list[str] = []
+        for _ in range(min(count, 64)):
+            try:
+                _hash, _flags, _other, name_offset, aux_next = reader.unpack(
+                    end + "IHHII", aux)
+            except Exception:  # noqa: BLE001
+                break
+            version = _cstr(strtab, name_offset)
+            if version:
+                names.append(version)
+            if not aux_next:
+                break
+            aux += aux_next
+        if library and names:
+            requirements.setdefault(library, [])
+            for name in names:
+                if name not in requirements[library]:
+                    requirements[library].append(name)
+        if not next_offset:
+            break
+        offset += next_offset
+    if requirements:
+        out["symbol_versions"] = {lib: sorted(set(names))
+                                  for lib, names in requirements.items()}
+
+
+def _elf_properties(data: bytes, by_name: dict[str, Any], out: dict[str, Any]) -> None:
+    """`.note.gnu.property`: CET (IBT/SHSTK) and other build-time protections."""
+    section = by_name.get(".note.gnu.property")
+    if not section:
+        return
+    try:
+        note = data[section["offset"]:section["offset"] + min(section["size"], 4096)]
+    except Exception:  # noqa: BLE001 — a malformed note is skipped
+        return
+    position = 0
+    features: list[str] = []
+    while position + 12 <= len(note):
+        name_size, desc_size, note_type = struct.unpack_from("<III", note, position)
+        name = note[position + 12:position + 12 + name_size].rstrip(b"\x00")
+        desc_start = position + 12 + ((name_size + 3) // 4) * 4
+        descriptor = note[desc_start:desc_start + desc_size]
+        if name == b"GNU" and note_type == 5 and len(descriptor) >= 16:
+            # NT_GNU_PROPERTY_TYPE_0: (type, datasz, data) per property
+            inner = 0
+            while inner + 8 <= len(descriptor):
+                prop_type, prop_size = struct.unpack_from("<II", descriptor, inner)
+                prop_data = descriptor[inner + 8:inner + 8 + prop_size]
+                if prop_type == 0xC0000002 and len(prop_data) >= 4:   # X86_FEATURE_1_AND
+                    bits = struct.unpack_from("<I", prop_data, 0)[0]
+                    if bits & 0x1:
+                        features.append("IBT")
+                    if bits & 0x2:
+                        features.append("SHSTK")
+                elif prop_type == 0xC0000000:
+                    if len(prop_data) >= 4:
+                        features.append(f"stack-align-{struct.unpack_from('<I', prop_data, 0)[0]}")
+                inner += 8 + prop_size + ((8 - prop_size % 8) % 8)
+        position = desc_start + desc_size + ((4 - desc_size % 4) % 4)
+    if features:
+        out["cpu_features"] = sorted(set(features))
+
+
+def _elf_hardening(reader: _Reader, data: bytes, by_name: dict[str, Any],
+                   out: dict[str, Any], end: str) -> None:
+    """Summarise the exploit-mitigation posture actually present in the file."""
+    imports = set(out.get("imports") or [])
+    exports = set(out.get("exports") or [])
+    segments = set(out.get("segments") or [])
+    hardening: dict[str, Any] = {
+        "pie": bool(out.get("pie")),
+        "nx": (not out.get("executable_stack")) if "gnu_stack" in segments else None,
+        "relro": "gnu_relro" in segments,
+        "canary": "__stack_chk_fail" in imports or "__stack_chk_fail" in exports,
+        "fortified": any(name.endswith("_chk") for name in imports),
+        "bind_now": False,
+    }
+    dynamic = by_name.get(".dynamic")
+    if dynamic:
+        for index in range(min(dynamic["size"] // 16, 4096)):
+            try:
+                tag, value = reader.unpack(end + "QQ", dynamic["offset"] + index * 16)
+            except Exception:  # noqa: BLE001
+                break
+            if tag == 0:
+                break
+            if tag == 24:                      # DT_BIND_NOW
+                hardening["bind_now"] = True
+            elif tag == 30 and value & 8:      # DT_FLAGS: DF_BIND_NOW
+                hardening["bind_now"] = True
+            elif tag == 0x6FFFFFFB and value & 1:   # DT_FLAGS_1: DF_1_NOW
+                hardening["bind_now"] = True
+    hardening["full_relro"] = bool(hardening["relro"] and hardening["bind_now"])
+    out["hardening"] = hardening
+
+
+def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
+                      by_name: dict[str, Any]) -> dict[str, Any]:
+    """Look for known crypto constant tables in code and read-only data.
+
+    The universal-crypto detector can only raise evidence to CONSTANT_MATCH when
+    it is handed the exact constant blob, so this scans the loadable content for
+    each known table and passes through the ones that are really there. Finding
+    the AES S-box or the SHA-256 K table is implementation evidence (0.9), which
+    is much stronger than a symbol name or a banner string — and it also works on
+    stripped, statically linked binaries that have no symbols at all.
+    """
+    from universal_crypto.binary_engine import CRYPTO_CONSTANTS
+
+    blobs: list[bytes] = []
+    found: list[dict[str, Any]] = []
+    budget = MAX_CONSTANT_WINDOW
+    windows: list[tuple[str, bytes]] = []
+    for section in sections:
+        name = str(section.get("name") or "")
+        if name not in (".text", ".rodata", ".data", ".data.rel.ro", ".init", ".plt",
+                        ".rodata.1", ".data.rel.ro.local"):
+            continue
+        size = min(int(section.get("size") or 0), budget)
+        if size <= 0:
+            continue
+        try:
+            windows.append((name, data[section["offset"]:section["offset"] + size]))
+            budget -= size
+        except Exception:  # noqa: BLE001
+            continue
+        if budget <= 0:
+            break
+    for algorithm, constant in CRYPTO_CONSTANTS.items():
+        for section_name, window in windows:
+            index = window.find(constant)
+            if index < 0:
+                continue
+            blobs.append(constant)
+            found.append({
+                "algorithm": algorithm,
+                "section": section_name,
+                "offset": int(index),
+                "signature": constant[:8].hex(),
+                "evidence": "constant table present in the file",
+            })
+            break
+    return {"blobs": blobs, "found": found}
+
+
+def detect_packer(sections: Iterable[dict[str, Any]] | Iterable[str],
+                  text: str = "") -> dict[str, Any] | None:
+    """Recognise a known packer from section names or embedded markers.
+
+    Packing matters for a crypto scanner specifically: a packed binary carries
+    neither readable strings nor a symbol table, so "no crypto found" inside one
+    means "nothing was visible", which the caller must not read as clean.
+    """
+    names = {str(section.get("name") if isinstance(section, dict) else section or "")
+             for section in sections}
+    haystack = " ".join(sorted(names))
+    for packer, markers in PACKER_SIGNATURES:
+        hits = [marker for marker in markers if marker in haystack]
+        if not hits and text:
+            hits = [marker for marker in markers if marker in text]
+        if hits:
+            return {"name": packer, "markers": sorted(set(hits))[:4],
+                    "note": ("packed/obfuscated content hides strings and symbols, so string-level "
+                             "crypto detection is structurally incomplete here")}
+    return None
 
 
 def _elf_dynamic(reader: _Reader, sections: list[dict[str, Any]], by_name: dict[str, Any],
@@ -567,7 +897,10 @@ def parse_pe(data: bytes) -> dict[str, Any]:
             pass
     try:
         subsystem = reader.unpack("<H", optional + 68)[0]
-        out["subsystem"] = {2: "windows-gui", 3: "console"}.get(subsystem, str(subsystem))
+        out["subsystem"] = PE_SUBSYSTEMS.get(subsystem, str(subsystem))
+        if subsystem in (10, 11, 12, 13):
+            out["uefi"] = True
+            out["type"] = "efi-image"
     except Exception:  # noqa: BLE001
         pass
     number_of_dirs = reader.unpack("<I", optional + (108 if is64 else 92))[0]
@@ -593,22 +926,383 @@ def parse_pe(data: bytes) -> dict[str, Any]:
                 return raw_offset + (rva - virtual_address)
         return None
 
-    if number_of_dirs > 1:
+    directories: list[tuple[int, int]] = []
+    for index in range(min(number_of_dirs, 16)):
         try:
-            import_rva, import_size = reader.unpack("<II", directory_base + 8)
-            out["libraries"] = _pe_imports(reader, import_rva, import_size, rva_to_offset)
+            directories.append(reader.unpack("<II", directory_base + index * 8))
         except Exception:  # noqa: BLE001
-            pass
-    if number_of_dirs > 14:
-        try:
-            clr_rva, clr_size = reader.unpack("<II", directory_base + 14 * 8)
-            if clr_rva and clr_size:
-                out["dotnet"] = True
-                out["framework"] = ".NET"
-        except Exception:  # noqa: BLE001
-            pass
+            directories.append((0, 0))
+    if len(directories) > 1:
+        import_rva, import_size = directories[1]
+        out["libraries"] = _pe_imports(reader, import_rva, import_size, rva_to_offset)
+    if len(directories) > 13:
+        delay_rva, delay_size = directories[13]
+        delayed = _pe_delay_imports(reader, delay_rva, delay_size, rva_to_offset)
+        if delayed:
+            out["delay_imports"] = delayed
+            for dll in delayed:
+                if dll not in out["libraries"]:
+                    out["libraries"].append(dll)
+    if len(directories) > 2:
+        resource_rva, resource_size = directories[2]
+        resources = _pe_resources(reader, resource_rva, resource_size, rva_to_offset)
+        if resources:
+            out["resources"] = resources
+            for key in ("version", "vendor", "product", "description"):
+                if resources.get(key):
+                    out.setdefault("version_info", {})[key] = resources[key]
+    if len(directories) > 6:
+        debug_rva, debug_size = directories[6]
+        debug = _pe_debug_directory(reader, debug_rva, debug_size, rva_to_offset)
+        if debug:
+            out["debug"] = debug
+    if len(directories) > 4:
+        cert_offset, cert_size = directories[4]
+        if cert_offset and cert_size:
+            out["signature"] = _pe_certificate(reader, cert_offset, cert_size)
+        else:
+            out["signature"] = {"present": False,
+                                "note": "no Authenticode certificate table — unsigned or stripped"}
+    if len(directories) > 14:
+        clr_rva, clr_size = directories[14]
+        if clr_rva and clr_size:
+            clr_offset = rva_to_offset(clr_rva)
+            out["dotnet"] = True
+            out["framework"] = ".NET"
+            if clr_offset is not None:
+                metadata = _pe_dotnet_metadata(reader, clr_offset, rva_to_offset)
+                if metadata:
+                    out["dotnet"] = metadata
+                    version_label = (metadata.get("framework_version")
+                                     or metadata.get("runtime_version") or "")
+                    out["framework"] = f".NET {version_label}".strip()
+    rich = _pe_rich_header(data)
+    if rich:
+        out["linker"] = rich
     out["imports"] = [f"{dll}!" for dll in out["libraries"]]
     return out
+
+
+def _pe_delay_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str]:
+    """Delay-loaded DLLs are dependencies too — a crypto DLL can hide here."""
+    if not rva or not size:
+        return []
+    offset = rva_to_offset(rva)
+    if offset is None:
+        return []
+    names: list[str] = []
+    for index in range(64):
+        try:
+            _attrs, name_rva = reader.unpack("<II", offset + index * 32)
+        except Exception:  # noqa: BLE001
+            break
+        if not name_rva:
+            break
+        name_offset = rva_to_offset(name_rva)
+        if name_offset is None:
+            continue
+        end = reader.data.find(b"\x00", name_offset, name_offset + 256)
+        if end < 0:
+            continue
+        name = reader.data[name_offset:end].decode("ascii", "replace")
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _pe_resources(reader: _Reader, rva: int, size: int, rva_to_offset) -> dict[str, Any]:
+    """Version information out of the resource tree (RT_VERSION / id 1)."""
+    if not rva or not size:
+        return {}
+    root = rva_to_offset(rva)
+    if root is None:
+        return {}
+
+    def _entries(directory_offset: int) -> list[tuple[int, int]]:
+        try:
+            _chars, _ts, _major, _minor, named, ids = reader.unpack("<IIHHHH", directory_offset)
+        except Exception:  # noqa: BLE001
+            return []
+        found: list[tuple[int, int]] = []
+        for index in range(min(named + ids, 256)):
+            try:
+                name, child = reader.unpack("<II", directory_offset + 16 + index * 8)
+            except Exception:  # noqa: BLE001
+                break
+            found.append((name & 0x7FFFFFFF, child))
+        return found
+
+    def _child_offset(child: int) -> int:
+        """Resource entries point at another directory (high bit set) or at data."""
+        return root + (child & 0x7FFFFFFF) if child & 0x80000000 else root + child
+
+    data_entry: int | None = None
+    for resource_type, type_child in _entries(root):
+        if resource_type != 16:                       # RT_VERSION
+            continue
+        for _name, name_child in _entries(_child_offset(type_child)):
+            for _lang, lang_child in _entries(_child_offset(name_child)):
+                data_entry = _child_offset(lang_child)
+                break
+            if data_entry:
+                break
+        if data_entry:
+            break
+    if data_entry is None:
+        return {}
+    try:
+        data_rva, data_size, _codepage, _reserved = reader.unpack("<IIII", data_entry)
+    except Exception:  # noqa: BLE001
+        return {}
+    offset = rva_to_offset(data_rva)
+    if offset is None:
+        return {}
+    return _parse_version_info(reader.data[offset:offset + min(data_size, 65536)])
+
+
+def _vi_align4(value: int) -> int:
+    return value + ((4 - value % 4) % 4)
+
+
+def _vi_block(blob: bytes, position: int) -> tuple[int, int, int, int, str] | None:
+    """One VS_VERSIONINFO block: (start, length, value_length, value_start, key).
+
+    Keys are UTF-16LE NUL-terminated and 4-byte aligned; ``value_length`` is
+    counted in bytes for fixed/Var blocks and in UTF-16 code units for String
+    entries, so the caller decides how to interpret it.
+    """
+    if position + 6 > len(blob):
+        return None
+    try:
+        length, value_length, _block_type = struct.unpack_from("<HHH", blob, position)
+    except Exception:  # noqa: BLE001
+        return None
+    if length <= 0 or position + length > len(blob):
+        return None
+    # the key is a NUL-terminated UTF-16LE string; walk code units so an odd
+    # byte offset can never shift the value that follows it
+    cursor = position + 6
+    while cursor + 1 < len(blob) and blob[cursor:cursor + 2] != b"\x00\x00":
+        cursor += 2
+    if cursor + 1 >= len(blob):
+        return None
+    key = blob[position + 6:cursor].decode("utf-16-le", "replace").strip("\x00")
+    value_start = _vi_align4(cursor + 2)
+    return position, length, value_length, value_start, key
+
+
+def _vi_children_start(block: tuple, *, value_in_bytes: bool) -> int:
+    _position, _length, value_length, value_start, _key = block
+    size = value_length if value_in_bytes else value_length * 2
+    return _vi_align4(value_start + size)
+
+
+def _parse_version_info(blob: bytes) -> dict[str, Any]:
+    """VS_VERSIONINFO: fixed file info, StringFileInfo pairs and VarFileInfo.
+
+    The real structure is three levels deep (root → StringFileInfo → StringTable →
+    String), so the walk descends instead of stopping at the first block.
+    """
+    out: dict[str, Any] = {}
+    root = _vi_block(blob, 0)
+    if root is None or root[4] != "VS_VERSION_INFO":
+        return out
+    _start, root_length, _root_value_length, fixed_start, _key = root
+    if fixed_start + 52 <= len(blob) and struct.unpack_from("<I", blob, fixed_start)[0] == 0xFEEF04BD:
+        fields = struct.unpack_from("<13I", blob, fixed_start)
+        out["file_version"] = (f"{fields[2] >> 16}.{fields[2] & 0xFFFF}."
+                               f"{fields[3] >> 16}.{fields[3] & 0xFFFF}")
+        out["product_version"] = (f"{fields[4] >> 16}.{fields[4] & 0xFFFF}."
+                                  f"{fields[5] >> 16}.{fields[5] & 0xFFFF}")
+        out["file_flags"] = fields[6]
+        out["file_type"] = {1: "application", 2: "dll", 3: "driver"}.get(fields[9], fields[9])
+
+    strings: dict[str, str] = {}
+    position = _vi_children_start(root, value_in_bytes=True)
+    root_end = root[0] + root_length
+    while position + 6 <= root_end:
+        block = _vi_block(blob, position)
+        if block is None:
+            break
+        _bstart, blength, _bvalue_length, _bvalue_start, key = block
+        if key == "StringFileInfo":
+            table_position = _vi_children_start(block, value_in_bytes=True)
+            table_end = block[0] + blength
+            while table_position + 6 <= table_end:
+                table = _vi_block(blob, table_position)
+                if table is None:
+                    break
+                _tstart, tlength, _tv, _tvs, table_key = table
+                if table_key:
+                    out.setdefault("translations", []).append(table_key)
+                entry_position = _vi_children_start(table, value_in_bytes=True)
+                entry_end = table[0] + tlength
+                while entry_position + 6 <= entry_end:
+                    entry = _vi_block(blob, entry_position)
+                    if entry is None:
+                        break
+                    _estart, elength, evalue_length, evalue_start, name = entry
+                    value = blob[evalue_start:evalue_start + evalue_length * 2] \
+                        .decode("utf-16-le", "replace").strip("\x00")
+                    if name and value:
+                        strings[name] = value
+                    entry_position = _vi_align4(entry[0] + elength)
+                table_position = _vi_align4(table[0] + tlength)
+        elif key == "VarFileInfo":
+            var_position = _vi_children_start(block, value_in_bytes=True)
+            var_end = block[0] + blength
+            while var_position + 6 <= var_end:
+                var = _vi_block(blob, var_position)
+                if var is None:
+                    break
+                _vstart, vlength, vvalue_length, vvalue_start, var_key = var
+                if var_key == "Translation" and vvalue_length >= 2:
+                    pairs = []
+                    for index in range(min(vvalue_length // 4, 16)):
+                        language, codepage = struct.unpack_from("<HH", blob, vvalue_start + index * 4)
+                        pairs.append({"language": language, "codepage": codepage})
+                    if pairs:
+                        out["translation"] = pairs
+                var_position = _vi_align4(var[0] + vlength)
+        position = _vi_align4(block[0] + blength)
+
+    if strings:
+        out["strings"] = strings
+    for source_key, target in VERSION_INFO_KEYS.items():
+        if target in out or target == "version":
+            continue
+        if strings.get(source_key):
+            out[target] = strings[source_key]
+    if strings.get("FileVersion") and not out.get("version"):
+        out["version"] = strings["FileVersion"]
+    if strings.get("ProductVersion") and not out.get("product_version"):
+        out["product_version"] = strings["ProductVersion"]
+    return out
+
+
+def _pe_debug_directory(reader: _Reader, rva: int, size: int, rva_to_offset) -> dict[str, Any]:
+    """CodeView debug entries: the PDB path and its build identity.
+
+    A PDB path leaks the build machine's directory layout, and the GUID/age pair
+    is the key Microsoft's symbol server uses — both are useful provenance, and
+    neither is a guess.
+    """
+    if not rva or not size:
+        return {}
+    offset = rva_to_offset(rva)
+    if offset is None:
+        return {}
+    out: dict[str, Any] = {}
+    for index in range(min(size // 28, 16)):
+        try:
+            _chars, _ts, _major, _minor, entry_type, entry_size, entry_rva, entry_offset = (
+                reader.unpack("<IIHHIIII", offset + index * 28))
+        except Exception:  # noqa: BLE001
+            break
+        if entry_type != 2:                       # IMAGE_DEBUG_TYPE_CODEVIEW
+            continue
+        start = rva_to_offset(entry_rva) if entry_rva else entry_offset
+        if start is None:
+            continue
+        try:
+            blob = reader.data[start:start + min(entry_size, 4096)]
+        except Exception:  # noqa: BLE001
+            continue
+        if blob[:4] == b"RSDS":
+            raw = blob[24:].split(b"\x00")[0]
+            out["pdb"] = raw.decode("utf-8", "replace")
+            out["pdb_guid"] = blob[4:20].hex()
+            out["pdb_age"] = struct.unpack_from("<I", blob, 20)[0]
+        elif blob[:4] == b"NB10":
+            out["pdb"] = blob[16:].split(b"\x00")[0].decode("utf-8", "replace")
+        break
+    return out
+
+
+def _pe_certificate(reader: _Reader, offset: int, size: int) -> dict[str, Any]:
+    """Authenticode presence — reported, never asserted as valid.
+
+    Verifying a PKCS#7 signature needs a trust store and an ASN.1 parser; this
+    scanner does not have one, so it says exactly that instead of printing
+    "signed and verified".
+    """
+    try:
+        length, revision, cert_type = reader.unpack("<IHH", offset)
+    except Exception:  # noqa: BLE001
+        return {"present": True, "note": "certificate table present but unreadable"}
+    entries = 0
+    position = offset
+    end = offset + max(size, 0)
+    while position + 8 <= end and entries < 32:
+        try:
+            entry_length = reader.unpack("<I", position)[0]
+        except Exception:  # noqa: BLE001
+            break
+        if entry_length <= 0:
+            break
+        entries += 1
+        position += entry_length + ((8 - entry_length % 8) % 8)
+    return {
+        "present": True,
+        "entries": entries or 1,
+        "size": int(length),
+        "revision": {0x100: "1.0", 0x200: "2.0"}.get(revision, str(revision)),
+        "type": {1: "x509", 2: "pkcs7"}.get(cert_type, str(cert_type)),
+        "note": ("Authenticode signature present; this scanner reports presence and size "
+                 "only — validity and chain are NOT verified here"),
+    }
+
+
+def _pe_dotnet_metadata(reader: _Reader, clr_offset: int, rva_to_offset) -> dict[str, Any]:
+    """CLR header → metadata version string (e.g. v4.0.30319) and flags."""
+    try:
+        (_cb, major, minor, meta_rva, meta_size, flags,
+         _entry) = reader.unpack("<IHHIIII", clr_offset)
+    except Exception:  # noqa: BLE001
+        return {}
+    out: dict[str, Any] = {"runtime_version": f"v{major}.{minor}",
+                           "flags": hex(flags), "metadata_size": int(meta_size)}
+    offset = rva_to_offset(meta_rva)
+    if offset is None:
+        return out
+    try:
+        if reader.data[offset:offset + 4] != b"BSJB":
+            return out
+        version_length = reader.unpack("<I", offset + 12)[0]
+        raw = reader.take(offset + 16, min(version_length, 128)).split(b"\x00")[0]
+        out["framework_version"] = raw.decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001
+        pass
+    return out
+
+
+def _pe_rich_header(data: bytes) -> dict[str, Any] | None:
+    """The Rich header names the linker build that produced the file.
+
+    It is XOR-obfuscated with a key stored after the ``Rich`` marker; the
+    ``DanS`` marker ends the block. Microsoft tooling uses it to attribute
+    binaries to a toolchain, and so can we — no guessing involved.
+    """
+    rich = data.find(b"Rich", 0x80, 0x1000)
+    if rich < 0 or rich + 8 > len(data):
+        return None
+    key = struct.unpack_from("<I", data, rich + 4)[0]
+    dan = data.rfind(b"DanS", 0x80, rich)
+    if dan < 0:
+        return None
+    entries: list[dict[str, int]] = []
+    position = dan + 4
+    while position + 8 <= rich and len(entries) < 32:
+        low, high = struct.unpack_from("<II", data, position)
+        low ^= key
+        high ^= key
+        if low or high:
+            entries.append({"product_id": high >> 16, "build": high & 0xFFFF, "count": low})
+        position += 8
+    if not entries:
+        return None
+    return {"entries": entries,
+            "note": "linker product id/build pairs (Rich header) — attribution evidence only"}
 
 
 def _pe_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str]:
@@ -747,7 +1441,7 @@ def parse_ar(data: bytes) -> dict[str, Any]:
         elif raw_name in ("/", "/SYM64/"):         # symbol index — not a member
             symbols += 1
         else:
-            name = raw_name
+            name = raw_name.rstrip("/")
             if raw_name.startswith("/") and raw_name[1:].isdigit():
                 offset = int(raw_name[1:])
                 end = long_names.find(b"/\n", offset)
@@ -868,6 +1562,99 @@ def _python_metadata(data: bytes, entries: list[str]) -> dict[str, Any]:
     return out
 
 
+def parse_java_class(data: bytes) -> dict[str, Any]:
+    """Java class constant pool — where crypto providers and algorithms sit.
+
+    A class file is not just a blob: the constant pool names every class it
+    references (``javax/crypto/Cipher``, ``org/bouncycastle/...``) and usually
+    the transformation strings it passes around (``AES/GCM/NoPadding``). Reading
+    it turns a class file from "not parsed" into real evidence.
+    """
+    if len(data) < 10 or data[:4] != b"\xca\xfe\xba\xbe":
+        raise ValueError("not a Java class file")
+    reader = _Reader(data)
+    minor, major = reader.unpack(">HH", 4)
+    count = reader.unpack(">H", 8)[0]
+    out: dict[str, Any] = {"format": "java-class", "libraries": [], "imports": [], "exports": [],
+                           "java": {"class_version": f"{major}.{minor}"}}
+    java = out["java"]
+    position = 10
+    strings: list[str] = []
+    classes: list[str] = []
+    methods: list[str] = []
+    index = 1
+    while index < count and index < 3000:
+        if position >= len(data):
+            break
+        tag = data[position]
+        position += 1
+        try:
+            if tag == 1:                                    # CONSTANT_Utf8
+                length = reader.unpack(">H", position)[0]
+                position += 2
+                text = reader.take(position, length).decode("utf-8", "replace")
+                position += length
+                strings.append(text)
+            elif tag in (3, 4):                             # Integer / Float
+                position += 4
+            elif tag in (5, 6):                             # Long / Double (two slots)
+                position += 8
+                index += 1
+            elif tag == 7:                                  # Class
+                name_index = reader.unpack(">H", position)[0]
+                classes.append(_utf8_at(strings, name_index))
+                position += 2
+            elif tag == 8:                                  # String
+                position += 2
+            elif tag in (9, 10, 11):                        # Field/Method/InterfaceMethodref
+                _cls, name_and_type = reader.unpack(">HH", position)
+                methods.append(_utf8_at(strings, name_and_type))
+                position += 4
+            elif tag == 12:                                 # NameAndType
+                name_index, _descriptor = reader.unpack(">HH", position)
+                methods.append(_utf8_at(strings, name_index))
+                position += 4
+            elif tag == 15:                                 # MethodHandle
+                position += 3
+            elif tag == 16:                                 # MethodType
+                position += 2
+            elif tag in (17, 18):                           # Dynamic / InvokeDynamic
+                position += 4
+            elif tag in (19, 20):                           # Module / Package
+                name_index = reader.unpack(">H", position)[0]
+                classes.append(_utf8_at(strings, name_index))
+                position += 2
+            else:
+                java["constant_pool_truncated_at"] = index
+                break
+        except Exception:  # noqa: BLE001 — stop at the first structurally bad entry
+            java["constant_pool_truncated_at"] = index
+            break
+        index += 1
+    java["constant_pool_entries"] = index - 1
+    java["classes"] = sorted({name for name in classes if name})[:300]
+    java["member_names"] = sorted({name for name in methods if name})[:200]
+    java["strings"] = [text for text in strings if len(text) >= 3][:400]
+    # crypto-relevant class names become the evidence the fingerprint table reads
+    crypto_classes = [name for name in classes
+                      if any(token in name.lower() for token in (
+                          "crypto", "cipher", "bouncycastle", "bcprov", "openssl",
+                          "keypair", "keygenerator", "mac", "messagedigest", "signature",
+                          "security", "sodium", "conscrypt"))]
+    java["crypto_classes"] = sorted(set(crypto_classes))[:60]
+    out["imports"] = java["crypto_classes"]
+    if any("bouncycastle" in name.lower() or "bcprov" in name.lower() for name in crypto_classes):
+        out["libraries"].append("BouncyCastle")
+    return out
+
+
+def _utf8_at(strings: list[str], index: int) -> str:
+    """Constant-pool indices are 1-based; 0 means "none"."""
+    if index <= 0 or index > len(strings):
+        return ""
+    return strings[index - 1]
+
+
 def parse_wasm(data: bytes) -> dict[str, Any]:
     """WASM import/export names — crypto markers live in the import section."""
     out: dict[str, Any] = {"format": "wasm", "libraries": [], "imports": [], "exports": []}
@@ -896,6 +1683,107 @@ def parse_wasm(data: bytes) -> dict[str, Any]:
             break
         position = end
     return out
+
+
+# ------------------------------------------------------------------ RPM ----- #
+RPM_TAGS = {
+    1000: "name", 1001: "version", 1002: "release", 1004: "summary", 1005: "description",
+    1010: "distribution", 1011: "vendor", 1014: "license", 1015: "packager",
+    1016: "group", 1020: "url", 1021: "os", 1022: "arch", 1044: "source_rpm",
+    1046: "archive_size", 1047: "providename", 1049: "requirename", 1050: "requireversion",
+    1124: "payload_format", 1125: "payload_compressor", 1126: "payload_flags",
+}
+RPM_LEAD_MAGIC = b"\xed\xab\xee\xdb"
+RPM_HEADER_MAGIC = b"\x8e\xad\xe8\x01"
+_RPM_TYPE_SIZES = {0: 0, 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 1, 9: 1}
+
+
+def parse_rpm(data: bytes) -> dict[str, Any]:
+    """RPM package metadata (name/version/vendor/licence/requires/provides).
+
+    The payload itself is a compressed cpio archive; the header is where the
+    package identity lives, and reading it turns "identified, not parsed" into a
+    component with a version and a licence.
+    """
+    if not data.startswith(RPM_LEAD_MAGIC):
+        raise ValueError("not an RPM package")
+    reader = _Reader(data)
+    position = 96                                   # lead
+    out: dict[str, Any] = {"format": "rpm", "libraries": [], "imports": [], "exports": []}
+    for region in ("signature", "header"):
+        if position + 16 > len(data):
+            break
+        magic = data[position:position + 4]
+        if magic != RPM_HEADER_MAGIC:
+            offset = data.find(RPM_HEADER_MAGIC, position, position + 4096)
+            if offset < 0:
+                break
+            position = offset
+        index_count, store_size = reader.unpack(">II", position + 8)
+        table = position + 16
+        store = table + index_count * 16
+        if index_count > 20000 or store + store_size > len(data):
+            raise ValueError("RPM header out of bounds")
+        entries: dict[int, dict[str, Any]] = {}
+        for index in range(min(index_count, MAX_RPM_ENTRIES)):
+            try:
+                tag, dtype, offset, count = reader.unpack(">IIII", table + index * 16)
+            except Exception:  # noqa: BLE001
+                break
+            entries[tag] = {"type": dtype, "offset": offset, "count": count}
+        payload = data[store:store + store_size]
+        if region == "header":
+            out["header_entries"] = len(entries)
+            for tag, label in RPM_TAGS.items():
+                entry = entries.get(tag)
+                if not entry:
+                    continue
+                values = _rpm_values(payload, entry)
+                if not values:
+                    continue
+                if label in ("providename", "requirename", "requireversion"):
+                    out.setdefault(label, [])
+                    out[label].extend(values[:200])
+                else:
+                    out[label] = values[0] if len(values) == 1 else values
+            out["libraries"] = sorted({name.split("(")[0] for name in out.get("requirename") or []})
+            out["imports"] = [f"{name}" for name in (out.get("requirename") or [])][:200]
+            if out.get("payload_compressor"):
+                out["payload_compression"] = str(out["payload_compressor"])
+            out["payload_offset"] = store + store_size + ((8 - store_size % 8) % 8)
+        position = store + store_size + ((8 - store_size % 8) % 8)
+    if not out.get("name"):
+        out["parse_note"] = "RPM header read but the NAME tag was absent"
+    return out
+
+
+def _rpm_values(payload: bytes, entry: dict[str, Any]) -> list[str]:
+    """Decode one RPM header entry (string, string array or int array)."""
+    offset, count, dtype = entry["offset"], entry["count"], entry["type"]
+    if dtype in (6, 8, 9):                       # string / i18nstring
+        out: list[str] = []
+        position = offset
+        for _ in range(min(count, 64)):
+            end = payload.find(b"\x00", position)
+            if end < 0:
+                break
+            out.append(payload[position:end].decode("utf-8", "replace"))
+            position = end + 1
+        return [value for value in out if value]
+    if dtype == 7:                               # string array (NUL separated)
+        text = payload[offset:offset + 8192]
+        return [part.decode("utf-8", "replace") for part in text.split(b"\x00")[:count] if part]
+    if dtype in (3, 4, 5):                       # int16/int32/int64
+        size = _RPM_TYPE_SIZES.get(dtype, 4)
+        values: list[str] = []
+        for index in range(min(count, 32)):
+            start = offset + index * size
+            chunk = payload[start:start + size]
+            if len(chunk) < size:
+                break
+            values.append(str(int.from_bytes(chunk, "big", signed=False)))
+        return values
+    return []
 
 
 # ------------------------------------------------------------- firmware ----- #
@@ -969,6 +1857,348 @@ def _parse_dtb(data: bytes, offset: int) -> dict[str, Any] | None:
         return None
 
 
+# --------------------------------------------------------- extraction ------- #
+#: containers this scanner can actually open, and with what (stdlib only).
+#: squashfs/JFFS2/UBIFS/cramfs/zstd/lz4 are deliberately absent: pretending to
+#: look inside them would be the one thing worse than saying "not extracted".
+OPENABLE_COMPRESSION = {"gzip": "gzip", "xz": "lzma", "lzma": "lzma", "bzip2": "bz2"}
+REFUSED_COMPRESSION = {"zstd": "no stdlib zstd decoder", "lz4": "no stdlib lz4 decoder"}
+
+
+def _bounded_gzip(data: bytes, limit: int) -> bytes:
+    import zlib
+
+    decompressor = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    out = decompressor.decompress(data, limit)
+    return out
+
+
+def _bounded_lzma(data: bytes, limit: int) -> bytes:
+    import lzma
+
+    decompressor = lzma.LZMADecompressor()
+    return decompressor.decompress(data, limit)
+
+
+def _bounded_bz2(data: bytes, limit: int) -> bytes:
+    import bz2
+
+    decompressor = bz2.BZ2Decompressor()
+    return decompressor.decompress(data, limit)
+
+
+def decompress_payload(data: bytes, fmt: str, *, limit: int = MAX_EXTRACT_BYTES) -> bytes | None:
+    """Decompress one level, bounded — a zip bomb must not exhaust the scanner."""
+    try:
+        if fmt == "gzip":
+            return _bounded_gzip(data, limit)
+        if fmt in ("xz", "lzma"):
+            return _bounded_lzma(data, limit)
+        if fmt == "bzip2":
+            return _bounded_bz2(data, limit)
+    except Exception:  # noqa: BLE001 — a corrupt stream is reported by the caller
+        return None
+    return None
+
+
+def parse_cpio(data: bytes, *, limit: int = MAX_EXTRACT_FILES) -> dict[str, Any]:
+    """newc/crc cpio archives — the usual payload of an initramfs."""
+    magic = data[:6]
+    if magic not in (b"070701", b"070702"):
+        raise ValueError("not a newc cpio archive")
+    members: list[dict[str, Any]] = []
+    offset = 0
+    while offset + 110 <= len(data) and len(members) < limit:
+        header = data[offset:offset + 110]
+        if header[:6] not in (b"070701", b"070702"):
+            break
+        try:
+            fields = [int(header[6 + index * 8:6 + (index + 1) * 8], 16) for index in range(13)]
+        except ValueError:
+            break
+        _ino, _mode, _uid, _gid, _nlink, _mtime, filesize = fields[:7]
+        name_size = fields[11]
+        name_start = offset + 110
+        name = data[name_start:name_start + max(name_size - 1, 0)].decode("utf-8", "replace")
+        data_start = name_start + name_size
+        data_start += (4 - data_start % 4) % 4
+        if name == "TRAILER!!!":
+            members.append({"name": name, "size": 0, "trailer": True})
+            break
+        members.append({"name": name.lstrip("./") or name, "size": filesize,
+                        "is_dir": bool(fields[1] & 0o170000) and (fields[1] & 0o170000) == 0o040000,
+                        "is_symlink": (fields[1] & 0o170000) == 0o120000})
+        offset = data_start + filesize
+        offset += (4 - offset % 4) % 4
+    return {"format": "cpio", "members": members[:limit], "member_count": len(members)}
+
+
+def _tar_members(data: bytes, *, limit: int = MAX_EXTRACT_FILES) -> list[dict[str, Any]]:
+    import io
+    import tarfile
+
+    members: list[dict[str, Any]] = []
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as archive:
+            for info in archive:
+                if len(members) >= limit:
+                    break
+                members.append({"name": info.name.lstrip("./"), "size": int(info.size),
+                                "is_dir": bool(info.isdir()), "is_symlink": bool(info.issym() or info.islnk())})
+    except Exception:  # noqa: BLE001 — a truncated archive yields what was read
+        pass
+    return members
+
+
+def _tar_member_bytes(data: bytes, wanted: tuple[str, ...], *,
+                      limit: int = MAX_MEMBER_BYTES) -> list[tuple[str, bytes]]:
+    import io
+    import tarfile
+
+    found: list[tuple[str, bytes]] = []
+    try:
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:") as archive:
+            for info in archive:
+                if len(found) >= 12 or info.size > limit or not info.isfile():
+                    continue
+                if wanted and not any(info.name.endswith(suffix) for suffix in wanted):
+                    continue
+                handle = archive.extractfile(info)
+                if handle is None:
+                    continue
+                found.append((info.name.lstrip("./"), handle.read(limit)))
+    except Exception:  # noqa: BLE001
+        pass
+    return found
+
+
+def parse_cpio_members(data: bytes, wanted: tuple[str, ...] = (), *,
+                       limit: int = MAX_EXTRACT_FILES) -> list[tuple[str, bytes]]:
+    """Read cpio member payloads (initramfs contents), bounded."""
+    if data[:6] not in (b"070701", b"070702"):
+        return []
+    out: list[tuple[str, bytes]] = []
+    offset = 0
+    while offset + 110 <= len(data) and len(out) < 12:
+        header = data[offset:offset + 110]
+        if header[:6] not in (b"070701", b"070702"):
+            break
+        try:
+            fields = [int(header[6 + index * 8:6 + (index + 1) * 8], 16) for index in range(13)]
+        except ValueError:
+            break
+        filesize = fields[6]
+        name_size = fields[11]
+        name_start = offset + 110
+        name = data[name_start:name_start + max(name_size - 1, 0)].decode("utf-8", "replace")
+        data_start = name_start + name_size
+        data_start += (4 - data_start % 4) % 4
+        if name == "TRAILER!!!":
+            break
+        if filesize and filesize <= MAX_MEMBER_BYTES and (
+                not wanted or any(name.endswith(suffix) for suffix in wanted)):
+            out.append((name.lstrip("./"), data[data_start:data_start + filesize]))
+        offset = data_start + filesize
+        offset += (4 - offset % 4) % 4
+    return out
+
+
+def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
+                      parsed: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """Follow a container and scan what is inside it.
+
+    Depth-bounded, size-bounded, and it never claims more than it did: what was
+    opened is listed under ``opened``, what was refused is listed with the reason,
+    and every member that was parsed carries ``derived_from`` provenance.
+    """
+    summary: dict[str, Any] = {"format": fmt, "depth": depth, "opened": [], "members": [],
+                               "members_listed": 0, "parsed": 0, "refused": []}
+    payload: bytes | None = None
+    if fmt in OPENABLE_COMPRESSION:
+        payload = decompress_payload(data, fmt)
+        if payload is None:
+            summary["refused"].append({"format": fmt, "reason": "stream could not be decompressed"})
+            return summary
+        summary["opened"].append(f"{fmt} → {len(payload)} B")
+    elif fmt in REFUSED_COMPRESSION:
+        summary["refused"].append({"format": fmt, "reason": REFUSED_COMPRESSION[fmt]})
+        return summary
+    elif fmt in ("ustar",):
+        payload = data
+    elif fmt == "ar":
+        payload = None
+    elif fmt == "zip":
+        payload = None
+    else:
+        return None
+
+    inner_format = ""
+    members: list[dict[str, Any]] = []
+    if payload is not None:
+        inner = identify(payload, "")
+        inner_format = inner["format"]
+        if inner_format == "ustar":
+            members = _tar_members(payload)
+        elif inner_format == "raw" and payload[:6] in (b"070701", b"070702"):
+            inner_format = "cpio"
+            members = parse_cpio(payload)["members"]
+    elif fmt == "ar":
+        archive = parse_ar(data)
+        members = archive.get("members") or []
+        inner_format = archive.get("type") or "ar"
+    elif fmt == "zip":
+        members = [{"name": name} for name in (_zip_members(data))[:MAX_EXTRACT_FILES]]
+        inner_format = "zip"
+
+    summary["inner_format"] = inner_format
+    summary["members_listed"] = len(members)
+    summary["members"] = members[:40]
+
+    # .deb: the control file carries the package identity, data.tar the contents
+    payloads: list[tuple[str, bytes]] = []
+    if fmt == "ar" and payload is None:
+        for name, member in _ar_member_bytes(data, ("control.tar", "control.tar.gz", "control.tar.xz")):
+            control = _decompressed_member(name, member)
+            if not control:
+                continue
+            for member_name, control_bytes in _tar_member_bytes(control, ("control", "control/")):
+                package = _parse_deb_control(control_bytes)
+                if package:
+                    summary["package"] = package
+                    summary["opened"].append(
+                        f"deb control read: {package['name']} {package.get('version') or ''}".strip())
+            payloads.extend(_tar_member_bytes(control, ("",)))
+        for name, member in _ar_member_bytes(data, ("data.tar", "data.tar.gz", "data.tar.xz")):
+            data_tar = _decompressed_member(name, member)
+            if data_tar:
+                summary["data_members"] = _tar_members(data_tar)
+    elif inner_format == "cpio":
+        payloads = parse_cpio_members(payload or b"")
+    elif inner_format == "ustar" and payload:
+        payloads = _tar_member_bytes(payload, ("",))
+
+    _parse_member_payloads(payloads[:12], depth=depth, prefix=prefix, parsed=parsed,
+                           summary=summary)
+    return summary
+
+
+def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, prefix: str,
+                           parsed: list[dict[str, Any]], summary: dict[str, Any]) -> None:
+    """Parse the members that are real files in a known format, bounded.
+
+    A member that is not a format this scanner understands is deliberately absent
+    from the result rather than reported as an empty component — the member list
+    already says it was there.
+    """
+    for name, member in payloads:
+        if depth >= MAX_EXTRACT_DEPTH:
+            summary["refused"].append({"member": name, "reason": "depth limit reached"})
+            break
+        if len(member) > MAX_MEMBER_BYTES:
+            summary["refused"].append({"member": name, "reason": "member exceeds the parse budget"})
+            continue
+        if identify(member, name)["format"] == "raw":
+            continue
+        record = parse_bytes(member, name=Path(name).name)
+        # a member gets the same treatment as a top-level file, constant tables
+        # included — otherwise an implementation inside an archive looks weaker
+        # than the identical file scanned directly
+        constant_blobs = record.pop("_constant_blobs", [])
+        record["name"] = record.get("name") or Path(name).name
+        record["file_name"] = Path(name).name
+        record["path"] = f"{prefix}!{name}"
+        record["sha256"] = hashlib.sha256(member).hexdigest()
+        record["size"] = len(member)
+        strings = extract_strings(member)
+        record["strings_sampled"] = len(strings)
+        record["derived_from"] = prefix
+        record["depth"] = depth + 1
+        record["packer"] = record.get("packer") or detect_packer([], "\n".join(strings[:800]))
+        record["crypto_constants"] = record.get("crypto_constants") or []
+        record["crypto"] = crypto_evidence(member, strings, imports=record.get("imports") or [],
+                                           exports=record.get("exports") or [],
+                                           constants=constant_blobs)
+        record["findings"] = []
+        summary["opened"].append(f"parsed {record['path']} ({record['format']})")
+        summary["parsed"] += 1
+        parsed.append(record)
+
+
+def _parse_deb_control(text: bytes) -> dict[str, Any]:
+    """A Debian control file is a package identity — name, version, depends."""
+    out: dict[str, Any] = {}
+    current = ""
+    for line in text.decode("utf-8", "replace").splitlines():
+        if line.startswith((" ", "\t")) and current:
+            out[current] += "\n" + line.strip()
+            continue
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        current = key.strip().lower()
+        out[current] = value.strip()
+    if not out.get("package"):
+        return {}
+    dependencies = []
+    for field in ("depends", "pre-depends", "recommends"):
+        for item in (out.get(field) or "").split(","):
+            name = item.strip().split(" ")[0].split("(")[0].strip()
+            if name:
+                dependencies.append(name)
+    return {
+        "name": out["package"],
+        "version": out.get("version"),
+        "architecture": out.get("architecture"),
+        "maintainer": out.get("maintainer"),
+        "section": out.get("section"),
+        "homepage": out.get("homepage"),
+        "depends": dependencies[:60],
+        "description": (out.get("description") or "").split("\n")[0][:200],
+    }
+
+
+def _decompressed_member(name: str, data: bytes) -> bytes | None:
+    if name.endswith(".gz"):
+        return decompress_payload(data, "gzip")
+    if name.endswith(".xz"):
+        return decompress_payload(data, "xz")
+    if name.endswith(".bz2"):
+        return decompress_payload(data, "bzip2")
+    return data
+
+
+def _ar_member_bytes(data: bytes, wanted: tuple[str, ...]) -> list[tuple[str, bytes]]:
+    found: list[tuple[str, bytes]] = []
+    long_names = b""
+    position = 8
+    while position + 60 <= len(data) and len(found) < 16:
+        try:
+            header = data[position:position + 60]
+            raw_name = header[0:16].decode("ascii", "replace").strip()
+            size = int(header[48:58].decode("ascii", "replace").strip() or 0)
+        except ValueError:
+            break
+        if size <= 0 or position + 60 + size > len(data):
+            break
+        payload = data[position + 60:position + 60 + size]
+        if raw_name == "//":
+            long_names = payload
+        elif raw_name not in ("/", "/SYM64/"):
+            name = raw_name.rstrip("/")
+            if raw_name.startswith("/") and raw_name[1:].isdigit():
+                offset = int(raw_name[1:])
+                end = long_names.find(b"/\n", offset)
+                name = long_names[offset:end if end > 0 else offset + 64].decode("utf-8", "replace")
+            if any(name.startswith(suffix) for suffix in wanted) and len(payload) <= MAX_MEMBER_BYTES:
+                found.append((name, payload))
+        position += 60 + size + (size % 2)
+    return found
+
+
+def _zip_members(data: bytes, limit: int = MAX_EXTRACT_FILES) -> list[str]:
+    return [entry["name"] for entry in _zip_local_entries(data, limit=limit)]
+
+
 # ------------------------------------------------------ crypto evidence ----- #
 #: markers strong enough to assert a library from text alone (distinctive tokens)
 STRONG_MARKERS: dict[str, tuple[str, ...]] = {
@@ -976,7 +2206,8 @@ STRONG_MARKERS: dict[str, tuple[str, ...]] = {
     "BouncyCastle": ("BouncyCastleProvider", "org/bouncycastle", "org.bouncycastle"),
     "Crypto++": ("CryptoPP", "cryptopp"),
     ".NET cryptography": ("System.Security.Cryptography",),
-    "JCA-JCE": ("javax/crypto", "javax.crypto", "java/security/MessageDigest"),
+    "JCA-JCE": ("javax/crypto", "javax.crypto", "java/security/MessageDigest",
+                "javax/security/auth", "KeyPairGenerator"),
     "WebCrypto": ("SubtleCrypto", "crypto.subtle"),
     "RustCrypto": ("rustls", "ed25519-dalek", "aes_gcm::"),
     "PKCS#11": ("C_GetFunctionList", "C_Initialize"),
@@ -1042,7 +2273,7 @@ def _versions_from_bytes(data: bytes) -> dict[str, str]:
 
 
 def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] = (),
-                    exports: Iterable[str] = ()) -> dict[str, Any]:
+                    exports: Iterable[str] = (), constants: Iterable[bytes] = ()) -> dict[str, Any]:
     """Library fingerprints, graded algorithms and PQC posture for one binary.
 
     Delegates to the universal-crypto engine so the platform keeps ONE
@@ -1063,7 +2294,8 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
     versions = _versions_from_bytes(data)
 
     analysis = BinaryCryptoDetector().analyze(BinaryArtifact(
-        format="binary", imports=import_names, symbols=export_names, strings=strings[:MAX_STRINGS]))
+        format="binary", imports=import_names, symbols=export_names,
+        strings=strings[:MAX_STRINGS], constants=list(constants)))
     detections = analysis.get("detections") or []
     implementations = set(IMPLEMENTATION_FINGERPRINTS)
 
@@ -1084,6 +2316,17 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
             "sources": [str(item.get("detail")) for item in evidence][:5],
             "verdict": row.get("verdict"),
         })
+    # the string layer: transformations and TLS suites the symbol tables rarely show
+    by_name = {row["name"]: row for row in algorithm_rows}
+    for row in _transformation_algorithms(strings):
+        existing = by_name.get(row["name"])
+        if existing is None:
+            algorithm_rows.append(row)
+            by_name[row["name"]] = row
+            continue
+        existing["sources"] = list(dict.fromkeys(
+            (existing.get("sources") or []) + [f"{row['sources'][0]} (string layer)"]
+        ))[:5]
     algorithm_rows.sort(key=lambda row: (-row["confidence"], row["name"]))
 
     fingerprinter = LibraryFingerprinter()
@@ -1174,6 +2417,11 @@ def _apply_strict_markers(rows: list[dict[str, Any]], names: list[str],
     from universal_crypto.library_fingerprints import LIBRARIES
 
     markers_by_library = {str(entry["name"]): tuple(entry.get("markers") or ()) for entry in LIBRARIES}
+    # this scanner curates additional marker forms (JVM internal names use `/`
+    # where the engine's table writes `.`), so re-verify against both vocabularies
+    for library, curated in STRONG_MARKERS.items():
+        markers_by_library[library] = tuple(dict.fromkeys(
+            markers_by_library.get(library, ()) + tuple(curated)))
     kept: list[dict[str, Any]] = []
     suppressed: list[dict[str, str]] = []
     for row in rows:
@@ -1268,8 +2516,16 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
         "elf": parse_elf, "pe": parse_pe, "macho": parse_macho, "macho64": parse_macho,
         "macho-be": parse_macho, "macho64-be": parse_macho, "macho-fat": parse_macho,
         "macho-fat-le": parse_macho, "ar": parse_ar, "zip": lambda blob: parse_zip(blob, name),
-        "wasm": parse_wasm,
+        "wasm": parse_wasm, "rpm": parse_rpm, "java-class": parse_java_class,
     }.get(fmt)
+    if fmt == "ustar":
+        record.update({"format": "ustar", "parsed": True, "libraries": [], "imports": [],
+                       "exports": [], "members": _tar_members(data)})
+        parser = None
+    if fmt == "cpio":
+        record.update(parse_cpio(data))
+        record["parsed"] = True
+        parser = None
     try:
         if parser is not None:
             parsed = parser(data)
@@ -1277,7 +2533,7 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
             record["parsed"] = True
         elif fmt in ("squashfs", "squashfs-be", "jffs2", "jffs2-le", "ubi", "ubifs",
                      "cramfs", "ext", "uimage", "dtb", "gzip", "xz", "zstd", "bzip2",
-                     "lzma", "lz4", "ustar", "rpm", "java-class", "raw"):
+                     "lzma", "lz4", "raw"):
             parsed = parse_firmware(data) if (fmt in FILESYSTEM_FORMATS or fmt in COMPRESSION_FORMATS
                                               or fmt in ("uimage", "dtb", "ustar")) else {}
             record.update(parsed)
@@ -1294,14 +2550,9 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
 
 
 def _unparsed_note(fmt: str) -> str:
-    if fmt == "rpm":
-        return ("RPM header identified; the package header is not unpacked — components inside "
-                "an RPM are reported by the package-manager inventory, not by this file scan")
     if fmt in FILESYSTEM_FORMATS:
         return ("filesystem image identified; contents are NOT extracted (squashfs/JFFS2/UBIFS "
                 "need binwalk). Scan the mounted or extracted tree to inventory its packages")
-    if fmt == "java-class":
-        return "Java class file identified; the constant pool is not parsed"
     if fmt == "raw":
         return "no known container format; only string-level evidence is available"
     return f"{fmt} identified; container not unpacked"
@@ -1341,16 +2592,91 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
             return None
     record = parse_bytes(data, name=path.name)
     record["path"] = str(path if root is None else path.relative_to(root))
-    record["name"] = path.name
+    # parsers that read an identity out of the file itself (an RPM package name)
+    # keep it; the file's own name is always available as `file_name`
+    record["name"] = record.get("name") or path.name
+    record["file_name"] = path.name
     record["sha256"] = digest
     record["size"] = size
     strings = extract_strings(data)
+    declared = (record.get("java") or {}).get("strings") or []
+    if declared:                       # a class file's string table is its constant pool
+        strings = [text for text in declared if text not in strings] + strings
     record["strings_sampled"] = len(strings)
+    record.setdefault("packer", None)
+    record["packer"] = record["packer"] or detect_packer([], "\n".join(strings[:800]))
+    constant_blobs = record.pop("_constant_blobs", [])
     crypto = crypto_evidence(data, strings, imports=record.get("imports") or [],
-                             exports=record.get("exports") or [])
+                             exports=record.get("exports") or [],
+                             constants=constant_blobs)
     record["crypto"] = crypto
+    embedded_records: list[dict[str, Any]] = []
+    containers = follow_containers(data, record, parsed=embedded_records,
+                                   prefix=str(record["path"]))
+    if containers:
+        record["containers_followed"] = containers
+    if embedded_records:
+        record["embedded"] = embedded_records
+        for derived in embedded_records:
+            derived.pop("_constant_blobs", None)
     record["findings"] = _binary_findings(record)
     return record
+
+
+def follow_containers(data: bytes, record: dict[str, Any], *, parsed: list[dict[str, Any]],
+                      prefix: str) -> list[dict[str, Any]]:
+    """Open whatever the record's own container chain says can be opened."""
+    fmt = str(record.get("format") or "")
+    results: list[dict[str, Any]] = []
+    if fmt in COMPRESSION_FORMATS or fmt in ("ar", "ustar", "zip", "cpio"):
+        summary = explore_container(data, fmt, depth=0, prefix=prefix, parsed=parsed)
+        if summary:
+            results.append(summary)
+        return results
+    if fmt == "rpm":
+        compression = str(record.get("payload_compression") or "").lower()
+        offset = int(record.get("payload_offset") or 0)
+        if compression in OPENABLE_COMPRESSION and 0 < offset < len(data):
+            payload = decompress_payload(data[offset:], compression)
+            if payload and payload[:6] in (b"070701", b"070702"):
+                summary: dict[str, Any] = {"format": f"rpm/{compression}", "depth": 0,
+                                           "inner_format": "cpio", "opened": [], "members": [],
+                                           "refused": [], "parsed": 0}
+                members = parse_cpio(payload)["members"]
+                summary["members_listed"] = len(members)
+                summary["members"] = members[:40]
+                summary["opened"].append(f"cpio payload listed ({len(members)} members)")
+                _parse_member_payloads(parse_cpio_members(payload), depth=0, prefix=prefix,
+                                       parsed=parsed, summary=summary)
+                results.append(summary)
+            elif payload:
+                summary = {"format": f"rpm/{compression}", "depth": 0, "inner_format":
+                           identify(payload, "")["format"], "opened": [], "members": [],
+                           "refused": [], "parsed": 0}
+                results.append(summary)
+        elif compression:
+            results.append({"format": f"rpm/{compression}", "depth": 0, "opened": [], "members": [],
+                            "parsed": 0,
+                            "refused": [{"format": compression,
+                                         "reason": REFUSED_COMPRESSION.get(compression,
+                                                                           "payload not followed")}]})
+        return results
+    if fmt in ("uimage", "dtb", "ext", "gzip", "xz", "bzip2", "lzma") or fmt in FILESYSTEM_FORMATS:
+        for container in record.get("containers") or []:
+            container_format = str(container.get("format") or "")
+            if container_format not in COMPRESSION_FORMATS:
+                continue
+            offset = int(container.get("offset") or 0)
+            if offset <= 0 or offset >= len(data):
+                continue
+            # the compression stream starts at the offset the container search found
+            summary = explore_container(data[offset:], container_format, depth=0,
+                                        prefix=f"{prefix}@{offset}", parsed=parsed)
+            if summary:
+                summary["offset"] = offset
+                summary["container"] = container_format
+                results.append(summary)
+    return results
 
 
 def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1419,12 +2745,12 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                          "harvest-now-decrypt-later exposure"),
             "path": path,
         })
-    if record.get("packed_or_encrypted"):
+    if record.get("packed_or_encrypted") and not record.get("packer"):
         findings.append({
-            "code": "BIN-PACKED", "severity": "MEDIUM",
-            "title": "packed or encrypted content",
-            "detail": (f"entropy {record.get('entropy')} suggests compression/encryption, so "
-                       "string-level crypto detection may be incomplete"),
+            "code": "BIN-HIGH-ENTROPY", "severity": "MEDIUM",
+            "title": "high-entropy content (packed or encrypted)",
+            "detail": (f"entropy {record.get('entropy')} suggests compression/encryption and no known "
+                       "packer matched, so string-level crypto detection may be incomplete"),
             "path": path,
         })
     if record.get("static") and record.get("crypto", {}).get("libraries"):
@@ -1437,16 +2763,139 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
         })
     if record.get("embedded_filesystems"):
         detected = ", ".join(sorted({str(row.get("format")) for row in record["embedded_filesystems"]}))
+        followed = ", ".join(sorted({str(row.get("format")) for row in
+                                     (record.get("containers_followed") or [])}))
         findings.append({
             "code": "BIN-FIRMWARE-NOT-EXTRACTED", "severity": "LOW",
             "title": "filesystem inside the image was not extracted",
-            "detail": (f"detected {detected} container(s) inside the image; their contents are NOT "
-                       "unpacked by this scanner (that needs binwalk/squashfs-tools), so anything "
-                       "inside them is out of scope for this report — inventory the extracted tree "
-                       "separately"),
+            "detail": (f"detected {detected} filesystem(s) inside the image; their contents are NOT "
+                       "unpacked by this scanner (that needs binwalk/squashfs-tools). "
+                       + (f"What could be opened was followed ({followed}); "
+                          if followed else "")
+                       + "anything inside the unopened filesystems is out of scope for this report"),
             "path": path, "containers": detected,
         })
-    if record.get("format") in ("raw", "rpm", "java-class") or record.get("parsed") is False:
+    hardening = record.get("hardening") or {}
+    if record.get("executable_stack"):
+        findings.append({
+            "code": "BIN-EXECUTABLE-STACK", "severity": "HIGH",
+            "title": "GNU_STACK segment is executable (NX disabled)",
+            "detail": "the binary asks for an executable stack, which makes injected code runnable",
+            "path": path,
+        })
+    if hardening and hardening.get("nx") is True and record.get("dynamically_linked") and not hardening.get("relro"):
+        findings.append({
+            "code": "BIN-NO-RELRO", "severity": "LOW",
+            "title": "no RELRO segment",
+            "detail": ("GOT entries stay writable after load; full RELRO needs PT_GNU_RELRO "
+                       "(and BIND_NOW for the full form)"),
+            "path": path,
+        })
+    elif hardening.get("relro") and not hardening.get("full_relro") and record.get("dynamically_linked"):
+        findings.append({
+            "code": "BIN-PARTIAL-RELRO", "severity": "INFO",
+            "title": "partial RELRO only",
+            "detail": "PT_GNU_RELRO present but no BIND_NOW — the GOT is still lazily writable",
+            "path": path,
+        })
+    if (hardening and record.get("type") == "executable" and hardening.get("nx") is not None
+            and not hardening.get("canary")):
+        findings.append({
+            "code": "BIN-NO-STACK-CANARY", "severity": "LOW",
+            "title": "no stack canary",
+            "detail": "no __stack_chk_fail reference — stack-smashing protection is not compiled in",
+            "path": path,
+        })
+    packer = record.get("packer")
+    if packer:
+        findings.append({
+            "code": "BIN-PACKED", "severity": "MEDIUM",
+            "title": f"packed or obfuscated ({packer['name']})",
+            "detail": str(packer.get("note") or "packed content"),
+            "path": path, "markers": packer.get("markers"),
+        })
+    signature = record.get("signature")
+    if signature and signature.get("present") is False and record.get("format") == "pe":
+        findings.append({
+            "code": "BIN-UNSIGNED-PE", "severity": "INFO",
+            "title": "no Authenticode signature table",
+            "detail": ("the PE has no certificate table — unsigned, or the signature was stripped; "
+                       "code signing is not proven either way by this scanner"),
+            "path": path,
+        })
+    for library, versions in (record.get("symbol_versions") or {}).items():
+        if not any(token in library for token in ("crypto", "ssl", "sodium", "tls", "ssl3")):
+            continue
+        known = {row["library"].lower() for row in (crypto.get("libraries") or [])
+                 if row.get("version")}
+        if known:
+            continue
+        crypto_versions = [v for v in versions if v.upper().startswith(("OPENSSL", "LIBRESSL", "GNUTLS"))]
+        findings.append({
+            "code": "BIN-CRYPTO-VERSION-FLOOR", "severity": "INFO",
+            "title": f"{library} version floor from its symbol requirements",
+            "detail": (f"{path} requires {', '.join(sorted(crypto_versions)[:4]) or ', '.join(versions[:4])} "
+                       f"from {library} — the exact version is not embedded in this file, so CVEs "
+                       "cannot be matched from it alone"),
+            "path": path, "library": library,
+        })
+    if crypto.get("weak_primitives") and record.get("format") == "java-class":
+        findings.append({
+            "code": "BIN-WEAK-PRIMITIVE-CLASS", "severity": "MEDIUM",
+            "title": "weak primitive referenced by a Java class",
+            "detail": "the constant pool names " + ", ".join(sorted(crypto["weak_primitives"])[:6]),
+            "path": path,
+        })
+    java = record.get("java") or {}
+    if record.get("format") == "java-class" and java.get("constant_pool_truncated_at"):
+        findings.append({
+            "code": "BIN-PARTIAL-PARSE", "severity": "LOW",
+            "title": "Java constant pool parsed only in part",
+            "detail": (f"the walk stopped at entry {java['constant_pool_truncated_at']}; classes and "
+                       "strings after that point are not in this report"),
+            "path": path,
+        })
+    embedded = record.get("embedded") or []
+    for derived in embedded:
+        derived_crypto = derived.get("crypto") or {}
+        libraries = derived_crypto.get("libraries") or []
+        if not libraries and not derived_crypto.get("algorithms"):
+            continue
+        eol = [row for row in libraries if row.get("end_of_life")]
+        detail = (f"{derived.get('path')} contains "
+                  + ", ".join(f"{row['library']} {row.get('version') or '(no version)'}"
+                              for row in libraries[:4])
+                  if libraries else
+                  f"{derived.get('path')} references "
+                  + ", ".join(derived_crypto.get("algorithms")[:6]))
+        findings.append({
+            "code": "BIN-EMBEDDED-CRYPTO", "severity": "HIGH" if eol else "MEDIUM",
+            "title": "cryptographic implementation inside an embedded container",
+            "detail": (detail + (" — includes end-of-life components: "
+                                 + ", ".join(f"{row['library']} {row.get('version')}" for row in eol)
+                                 if eol else "")),
+            "path": derived.get("path"), "derived_from": path,
+            "libraries": [{"library": row["library"], "version": row.get("version"),
+                           "end_of_life": bool(row.get("end_of_life"))} for row in libraries[:8]],
+        })
+    for container in record.get("containers_followed") or []:
+        if container.get("parsed") or container.get("members_listed"):
+            findings.append({
+                "code": "BIN-CONTAINER-FOLLOWED", "severity": "INFO",
+                "title": f"container followed ({container.get('format')})",
+                "detail": "; ".join(container.get("opened") or []) or
+                          f"listed {container.get('members_listed')} member(s)",
+                "path": path,
+            })
+        for refused in container.get("refused") or []:
+            findings.append({
+                "code": "BIN-CONTAINER-REFUSED", "severity": "LOW",
+                "title": f"container not opened ({refused.get('format') or 'member'})",
+                "detail": f"reason: {refused.get('reason')}",
+                "path": path,
+            })
+    parsed = record.get("parsed")
+    if record.get("format") == "raw" or parsed is False or (parsed is None and record.get("parse_note")):
         findings.append({
             "code": "BIN-NOT-PARSED", "severity": "LOW",
             "title": f"{record.get('format')} identified but not parsed",
@@ -1511,6 +2960,51 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
     }
 
 
+def _record_packages(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Packages the file declares about itself, in any of the formats we parse."""
+    packages: list[dict[str, Any]] = []
+    if record.get("name") and record.get("version") and record.get("format") == "rpm":
+        packages.append({"name": record["name"], "version": record.get("version"),
+                         "manager": "rpm", "license": record.get("license"),
+                         "vendor": record.get("vendor"), "arch": record.get("arch_package")})
+    for container in record.get("containers_followed") or []:
+        package = container.get("package")
+        if package:
+            packages.append({"name": package["name"], "version": package.get("version"),
+                             "manager": "deb", "arch": package.get("architecture"),
+                             "depends": package.get("depends")})
+    go = record.get("go") or {}
+    if go.get("module"):
+        packages.append({"name": go["module"], "version": go.get("module_version"),
+                         "manager": "go", "scope": "root"})
+    java = record.get("java") or {}
+    if java.get("artifact"):
+        name = f"{java['group']}:{java['artifact']}" if java.get("group") else java["artifact"]
+        packages.append({"name": name, "version": java.get("version"), "manager": "maven"})
+    python = record.get("python") or {}
+    if python.get("name"):
+        packages.append({"name": python["name"], "version": python.get("version"),
+                         "manager": "pip", "license": python.get("license")})
+    return packages
+
+
+def _flatten_records(records: Iterable[dict[str, Any]],
+                     depth: int = 0) -> list[dict[str, Any]]:
+    """Top-level binaries plus everything that was extracted from a container.
+
+    An implementation found inside an embedded image is part of the artefact's
+    inventory, and it carries ``derived_from`` so the report can say where it came
+    from instead of presenting it as a loose file.
+    """
+    out: list[dict[str, Any]] = []
+    if depth > MAX_EXTRACT_DEPTH + 1:
+        return out
+    for record in records:
+        out.append(record)
+        out.extend(_flatten_records(record.get("embedded") or [], depth + 1))
+    return out
+
+
 def _counts(values: Iterable[str]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for value in values:
@@ -1533,7 +3027,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
     seen_packages: set[tuple[str, str]] = set()
     seen_libraries: set[tuple[str, str]] = set()
 
-    for record in scan.get("binaries") or []:
+    for record in _flatten_records(scan.get("binaries") or []):
         path = record.get("path") or record.get("name")
         go = record.get("go") or {}
         if go.get("module"):
@@ -1616,12 +3110,13 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             dependencies.append({"from": record.get("name"), "to": go["module"]})
         findings.extend(record.get("findings") or [])
 
+    all_records = _flatten_records(scan.get("binaries") or [])
     crypto_libraries = [row for row in libraries]
-    algorithms = sorted({algorithm for record in scan.get("binaries") or []
+    algorithms = sorted({algorithm for record in all_records
                          for algorithm in (record.get("crypto") or {}).get("algorithms") or []})
-    pqc = sorted({marker for record in scan.get("binaries") or []
+    pqc = sorted({marker for record in all_records
                   for marker in (record.get("crypto") or {}).get("pqc_markers") or []})
-    quantum_vulnerable = sorted({name for record in scan.get("binaries") or []
+    quantum_vulnerable = sorted({name for record in all_records
                                  for name in (record.get("crypto") or {}).get("quantum_vulnerable") or []})
     return {
         "target": scan.get("target"),
@@ -1631,10 +3126,15 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
         "binaries": [{
             "name": record.get("name"),
             "path": record.get("path"),
-            "version": next((lib.get("version") for lib in (record.get("crypto") or {}).get("libraries") or []
-                             if lib.get("version")), None),
+            "file_name": record.get("file_name") or record.get("name"),
+            "version": ((record.get("version_info") or {}).get("version")
+                        or record.get("version")
+                        or next((lib.get("version")
+                                 for lib in (record.get("crypto") or {}).get("libraries") or []
+                                 if lib.get("version")), None)),
             "sha256": record.get("sha256"),
-            "type": f"{record.get('format')}:{record.get('arch') or 'unknown'}",
+            "type": f"{record.get('format')}:{record.get('arch') or 'unknown'}"
+                    + (":efi" if record.get("uefi") else ""),
             "detection_method": "magic+parser",
             "algorithms": (record.get("crypto") or {}).get("algorithms") or [],
             "libraries": record.get("libraries") or [],
@@ -1643,7 +3143,21 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "static": record.get("static"),
             "format": record.get("format"),
             "arch": record.get("arch") or record.get("machine"),
-        } for record in scan.get("binaries") or []],
+            "hardening": record.get("hardening"),
+            "packer": (record.get("packer") or {}).get("name"),
+            "interpreter": record.get("interpreter"),
+            "publisher": (record.get("version_info") or {}).get("vendor"),
+            "product": (record.get("version_info") or {}).get("product"),
+            "symbol_versions": record.get("symbol_versions"),
+            "crypto_constants": [row.get("algorithm") for row in record.get("crypto_constants") or []],
+            "packages_inside": [{"name": pkg.get("name"), "version": pkg.get("version"),
+                                 "manager": pkg.get("manager")}
+                                for pkg in _record_packages(record)],
+            "derived_from": record.get("derived_from"),
+            "depth": record.get("depth"),
+            "container": (record.get("containers_followed") or [{}])[0].get("format")
+            if record.get("containers_followed") else None,
+        } for record in _flatten_records(scan.get("binaries") or [])],
         "vulnerabilities": [],
         "manifests": [],
         "manifest_count": 0,
@@ -1653,11 +3167,24 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
                    "libraries": [{"name": row["name"], "version": row.get("version"),
                                   "end_of_life": row.get("deprecated")} for row in libraries]},
         "findings": findings,
+        "findings_by_severity": _counts(str(row.get("severity"))
+                                        for row in findings),
         "binaries_scanned": scan.get("binaries_scanned", 0),
         "files_walked": scan.get("files_walked", 0),
         "by_format": scan.get("by_format") or {},
         "by_arch": scan.get("by_arch") or {},
+        "embedded_binaries": sum(1 for record in all_records if record.get("derived_from")),
+        "containers_followed": sum(len(record.get("containers_followed") or [])
+                                   for record in scan.get("binaries") or []),
+        "containers_refused": sum(len(container.get("refused") or [])
+                                  for record in scan.get("binaries") or []
+                                  for container in record.get("containers_followed") or []),
+        "packed_binaries": sum(1 for record in all_records if record.get("packer")),
         "limits": scan.get("limits") or {},
+        "extraction_limits": {"max_payload_bytes": MAX_EXTRACT_BYTES,
+                              "max_depth": MAX_EXTRACT_DEPTH,
+                              "max_members": MAX_EXTRACT_FILES,
+                              "max_member_bytes": MAX_MEMBER_BYTES},
     }
 
 
@@ -1706,9 +3233,53 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
     components: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     seen_libraries: set[str] = set()
-    for record in scan.get("binaries") or []:
+    # the same implementation shows up in the top-level file *and* inside every
+    # container that carries it, so an existing asset gains locations instead of
+    # being reported once and then ignored
+    by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    def _add_algorithm_asset(name: str, version: str | None, library_row: dict[str, Any],
+                             algorithm: str, record: dict[str, Any], path: str) -> None:
+        """One algorithm asset per (implementation, algorithm), locations merged."""
+        key = (name, str(algorithm))
+        if key in by_key:
+            occurrences = by_key[key]["evidence"]["occurrences"]
+            if not any(row["location"] == str(path) for row in occurrences):
+                occurrences.append({"location": str(path)})
+            return
+        vulnerable = any(token.lower() in str(algorithm).lower()
+                         for token in QUANTUM_VULNERABLE_ALGORITHMS)
+        properties = _asset_properties(name, version, library_row, path,
+                                       derived_from=record.get("derived_from"),
+                                       depth=record.get("depth"))
+        properties.append({"name": "cryptoscan:quantum-vulnerable",
+                           "value": "true" if vulnerable else "false"})
+        components.append({
+            "type": "cryptographic-asset",
+            "bom-ref": f"cryptoscan:binary/{name}@{version or 'unknown'}/{algorithm}",
+            "name": str(algorithm),
+            "cryptoProperties": {
+                "assetType": "algorithm",
+                "algorithmProperties": {
+                    "primitive": algorithm_primitive(str(algorithm)),
+                    "implementationPlatform": "binary",
+                    # absent when it does not apply — a null would be schema-invalid
+                    **({"nistQuantumSecurityLevel": 0} if vulnerable else {}),
+                },
+            },
+            "evidence": {"occurrences": [{"location": str(path)}]},
+            "properties": properties,
+        })
+        by_key[key] = components[-1]
+
+    for record in _flatten_records(scan.get("binaries") or []):
         path = record.get("path") or record.get("name")
         crypto = record.get("crypto") or {}
+        if not crypto.get("libraries"):
+            # an algorithm proven by a constant table or a transformation string
+            # with no implementation claimed: still a cryptographic asset
+            for algorithm in crypto.get("algorithms") or []:
+                _add_algorithm_asset("unattributed", None, {}, str(algorithm), record, path)
+            continue
         for library in crypto.get("libraries") or []:
             name = str(library.get("library"))
             version = library.get("version")
@@ -1717,7 +3288,9 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
                 if name in seen_libraries:
                     continue
                 seen_libraries.add(name)
-                components.append({
+                if (name, "") in by_key:
+                    continue
+                component = {
                     "type": "cryptographic-asset",
                     "bom-ref": f"cryptoscan:binary/{name}@{version or 'unknown'}",
                     "name": name,
@@ -1725,35 +3298,15 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
                         "assetType": "algorithm",
                         "algorithmProperties": {"primitive": "implementation"},
                     },
-                    "properties": _asset_properties(name, version, library, path),
-                })
+                    "properties": _asset_properties(name, version, library, path,
+                                                    derived_from=record.get("derived_from"),
+                                                    depth=record.get("depth")),
+                }
+                by_key[(name, "")] = component
+                components.append(component)
                 continue
             for algorithm in algorithms:
-                key = (name, str(algorithm))
-                if key in seen:
-                    continue
-                seen.add(key)
-                vulnerable = any(token.lower() in str(algorithm).lower()
-                                 for token in QUANTUM_VULNERABLE_ALGORITHMS)
-                properties = _asset_properties(name, version, library, path)
-                properties.append({"name": "cryptoscan:quantum-vulnerable",
-                                   "value": "true" if vulnerable else "false"})
-                components.append({
-                    "type": "cryptographic-asset",
-                    "bom-ref": f"cryptoscan:binary/{name}@{version or 'unknown'}/{algorithm}",
-                    "name": str(algorithm),
-                    "cryptoProperties": {
-                        "assetType": "algorithm",
-                        "algorithmProperties": {
-                            "primitive": algorithm_primitive(str(algorithm)),
-                            "implementationPlatform": "binary",
-                            # absent when it does not apply — a null would be schema-invalid
-                            **( {"nistQuantumSecurityLevel": 0} if vulnerable else {} ),
-                        },
-                    },
-                    "evidence": {"occurrences": [{"location": str(path)}]},
-                    "properties": properties,
-                })
+                _add_algorithm_asset(name, version, library, str(algorithm), record, path)
         for marker in crypto.get("pqc_markers") or []:
             key = ("post-quantum", str(marker))
             if key in seen:
@@ -1800,9 +3353,14 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
 
 
 def _asset_properties(library: str, version: str | None, library_row: dict[str, Any],
-                      path: str) -> list[dict[str, str]]:
+                      path: str, *, derived_from: str | None = None,
+                      depth: int | None = None) -> list[dict[str, str]]:
+    """Asset properties, including where an embedded asset came from."""
     properties = [{"name": "cryptoscan:library", "value": str(library)},
                   {"name": "cryptoscan:found-in", "value": str(path)}]
+    if derived_from:
+        properties.append({"name": "cryptoscan:derived-from", "value": str(derived_from)})
+        properties.append({"name": "cryptoscan:depth", "value": str(depth or 1)})
     if version:
         properties.append({"name": "cryptoscan:library-version", "value": str(version)})
     if library_row.get("evidence_classes"):

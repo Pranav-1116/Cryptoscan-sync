@@ -41,12 +41,41 @@ rescan. New: `POST /devsecops/binary/scan`,
 `POST /devsecops/sbom/scan`, and a **Binaries** tab in the DevSecOps console. Component
 diffs now key on name *and* reference, so a binary called `openssl` and the `OpenSSL`
 library inside it are tracked separately. Stated limits: firmware filesystems are not
-extracted (`BIN-FIRMWARE-NOT-EXTRACTED`), RPM headers are not unpacked, Java class
-constant pools are not read, and every cap (512 MiB/file, 4 000 files, 750 binaries) is
-surfaced in the manifest. Tests: `services/devsecops/tests/test_binary_scan.py` (24) +
-`services/api/tests/unit/test_binary_scan_api.py` (7), on byte-level ELF/PE/ar/zip/
-firmware fixtures — including regression tests for the `RustCrypto`-in-OpenSSL
-false-positive class.
+extracted (`BIN-FIRMWARE-NOT-EXTRACTED`), Stated limits: firmware filesystems are not
+extracted (`BIN-FIRMWARE-NOT-EXTRACTED`) and every cap (512 MiB/file, 4 000 files,
+750 binaries, 64 MiB per decompression level, depth 2) is surfaced in the manifest and
+in `summary.extraction_limits`. Tests: `services/devsecops/tests/test_binary_scan.py`
+(46) + `services/api/tests/unit/test_binary_scan_api.py` (7), on byte-level ELF/PE/ar/zip/
+firmware/RPM/cpio/Java-class/VS_VERSIONINFO fixtures — including regression tests for the
+`RustCrypto`-in-OpenSSL false-positive class.
+
+**Update (2026-09-22, binary scanning depth):** the parser and the container walk went
+deeper. ELF now reads **program headers** (segments, `PT_INTERP` interpreter,
+`PT_GNU_STACK` executable-stack), **`.gnu.version_r` symbol-version floors**
+(`libcrypto.so.3 → OPENSSL_3.0.3`, reported as a floor with the reason CVEs cannot be
+matched from it), `.note.gnu.property` CPU features, **hardening flags** (PIE, NX, RELRO,
+full RELRO/BIND_NOW, canary, `_FORTIFY_SOURCE`) and **crypto constant tables** located in
+`.rodata`/`.text`/`.data` (⇒ `CONSTANT_MATCH` 0.9). PE now reads **delay-load imports**,
+**`RT_VERSION` resources** (StringFileInfo strings, `VS_FIXEDFILEINFO`, translation
+table), the **debug directory** (CodeView `RSDS` PDB + GUID + age), **Authenticode
+presence** (presence and size only — validity is explicitly not claimed), **CLR metadata**
+(BSJB → framework version) and the **Rich header**; UEFI subsystems are labelled
+`efi-image`. Java **class constant pools** and **RPM headers** (name, version, release,
+licence, vendor, `REQUIRES`/`PROVIDES`) are parsed, and a **`.deb` control file** gives
+the package identity.
+
+Containers are now **followed, not just listed**: gzip/xz/bzip2/tar/cpio and the payloads
+of RPM/deb are opened inside a stated budget and their parseable members are analysed with
+the same evidence strength as a loose file (constant tables included). Anything found is
+reported as `<container>!<member>` (with `@offset` when the stream sat inside an image) —
+`derived_from`, `depth`, SBOM components and CBOM assets carry that provenance, and the
+same algorithm found in four containers is one asset with four `evidence.occurrences`.
+zstd/lz4 and filesystem images are **refused with the reason** (`BIN-CONTAINER-REFUSED`),
+never silently skipped. New findings: `BIN-EXECUTABLE-STACK`, `BIN-NO-RELRO`,
+`BIN-PARTIAL-RELRO`, `BIN-NO-STACK-CANARY`, `BIN-UNSIGNED-PE`, `BIN-EMBEDDED-CRYPTO`,
+`BIN-CONTAINER-FOLLOWED`, `BIN-CONTAINER-REFUSED`, `BIN-CRYPTO-VERSION-FLOOR`,
+`BIN-WEAK-PRIMITIVE-CLASS`, `BIN-PARTIAL-PARSE`, `BIN-HIGH-ENTROPY`; a summary carries
+`embedded_binaries`, `containers_followed`, `containers_refused`, `packed_binaries`.
 
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**

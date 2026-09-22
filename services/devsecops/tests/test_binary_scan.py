@@ -17,7 +17,9 @@ from devsecops import binary_scan as bs
 # --------------------------------------------------------------- builders --- #
 def _elf64(*, e_type: int = 3, machine: int = 0x3E, deps=(), soname: str | None = None,
            runpath: str | None = None, comment: bytes | None = None, build_id: bytes | None = None,
-           imports=(), exports=(), strings=(), go_section: bytes | None = None) -> bytes:
+           imports=(), exports=(), strings=(), go_section: bytes | None = None,
+           dynamic_extra=(), symbol_versions: dict | None = None,
+           segments: tuple = (), constants: bytes = b"") -> bytes:
     """Assemble a real ELF64 with dynamic/symbol/comment/note sections."""
     dynstr = bytearray(b"\x00")
     offsets: dict[str, int] = {}
@@ -29,6 +31,9 @@ def _elf64(*, e_type: int = 3, machine: int = 0x3E, deps=(), soname: str | None 
         dynstr.extend(text.encode() + b"\x00")
         return offsets[text]
 
+    version_r = b""
+    if symbol_versions:
+        version_r = _elf_version_needs(symbol_versions, _intern)
     dynamic: list[tuple[int, int]] = []
     for dep in deps:
         dynamic.append((1, _intern(dep)))
@@ -36,6 +41,7 @@ def _elf64(*, e_type: int = 3, machine: int = 0x3E, deps=(), soname: str | None 
         dynamic.append((14, _intern(soname)))
     if runpath:
         dynamic.append((29, _intern(runpath)))
+    dynamic.extend(tuple(dynamic_extra))
     dynamic.append((0, 0))
 
     symtab = bytearray()
@@ -62,6 +68,10 @@ def _elf64(*, e_type: int = 3, machine: int = 0x3E, deps=(), soname: str | None 
         sections.append((".note.gnu.build-id", 7, note, 0, 0))
     if go_section is not None:
         sections.append((".go.buildinfo", 1, go_section, 0, 1))
+    if version_r:
+        sections.append((".gnu.version_r", 0x6FFFFFFE, version_r, 2, 0))
+    if constants:
+        sections.append((".rodata", 1, constants, 0, 0))
     # .data before .shstrtab so e_shstrndx stays the last section index
     sections.append((".data", 1, b"".join(s.encode() + b"\x00" for s in strings), 0, 0))
     sections.append((".shstrtab", 3, b"", 0, 0))
@@ -89,14 +99,55 @@ def _elf64(*, e_type: int = 3, machine: int = 0x3E, deps=(), soname: str | None 
             body.append(0)
             cursor += 1
 
+    phoff = 0
+    phnum = 0
+    phdr_bytes = b""
+    if segments:
+        phoff = cursor
+        phnum = len(segments)
+        body.extend(b"\x00" * (phnum * 56))          # program header table, patched below
+        cursor += phnum * 56
+        placements: list[int] = []
+        for _seg_type, _flags, _vaddr, payload in segments:
+            while cursor % 8:
+                body.append(0)
+                cursor += 1
+            placements.append(cursor)
+            body.extend(payload)
+            cursor += len(payload)
+        # `body` starts at file offset 64 (the ELF header is prepended), so the
+        # program header table is patched at its file offset minus that header
+        for index, (seg_type, flags, vaddr, payload) in enumerate(segments):
+            struct.pack_into("<IIQQQQQQ", body, phoff - 64 + index * 56, seg_type, flags,
+                             placements[index], vaddr, vaddr, len(payload), len(payload), 0x1000)
     shoff = cursor
     header = struct.pack("<16sHHIQQQIHHHHHH", b"\x7fELF\x02\x01\x01\x00" + bytes(8), e_type,
-                         machine, 1, 0, 0, shoff, 0, 64, 0, 0, 64, len(file_sections), len(file_sections) - 1)
+                         machine, 1, 0, phoff, shoff, 0, 64, 56 if phnum else 0, phnum, 64,
+                         len(file_sections), len(file_sections) - 1)
     section_headers = b""
     for index, (name, stype, data, link, entsize, offset) in enumerate(file_sections):
         section_headers += struct.pack("<IIQQQQIIQQ", name_offsets[index], stype, 0, 0, offset,
                                        len(data), link, 0, 0x1000 if index == 1 else 0, entsize)
     return header + bytes(body) + section_headers
+
+
+def _elf_version_needs(symbol_versions: dict, intern) -> bytes:
+    """Build a .gnu.version_r (verneed/vernaux) block for the given library map."""
+    needs: list[bytes] = []
+    for library, versions in symbol_versions.items():
+        aux = b""
+        for index, version in enumerate(versions):
+            last = index == len(versions) - 1
+            aux += struct.pack("<IHHII", 0, 0, index + 2, intern(version), 16 if not last else 0)
+        file_offset = intern(library)
+        needs.append(struct.pack("<HHIII", 1, len(versions), file_offset, 16, 0) + aux)
+    blob = b""
+    for index, need in enumerate(needs):
+        if index < len(needs) - 1:
+            need = need[:12] + struct.pack("<I", 16 + 16 * len(symbol_versions[
+                list(symbol_versions)[index]])) + need[16:]
+        blob += need
+    return blob
 
 
 def _go_section(module: str, version: str, deps, toolchain: str = "go1.21.5") -> bytes:
@@ -138,6 +189,234 @@ def _pe(*, machine: int = 0x8664, imports=("KERNEL32.dll",), dotnet: bool = Fals
     blob = b"".join(dll.encode() + b"\x00" for dll in imports)
     data[raw_offset + 0x40:raw_offset + 0x40 + len(blob)] = blob
     return bytes(data)
+
+
+def _version_info_blob(version: str = "9.1.0.0", product: str = "Acme Toolkit") -> bytes:
+    """VS_VERSIONINFO with a fixed file info block and StringFileInfo entries."""
+
+    def _utf16(text: str) -> bytes:
+        return text.encode("utf-16-le") + b"\x00\x00"
+
+    def _pad4(value: bytes) -> bytes:
+        return value + b"\x00" * ((4 - len(value) % 4) % 4)
+
+    def _block(key: str, value_length: int, value: bytes = b"", children: bytes = b"",
+               value_type: int = 1) -> bytes:
+        raw = struct.pack("<HHH", 0, value_length, value_type) + _utf16(key)
+        raw = _pad4(raw) + value
+        raw = _pad4(raw) + children
+        raw = _pad4(raw)
+        return struct.pack("<H", len(raw)) + raw[2:]
+
+    fixed = struct.pack("<13I", 0xFEEF04BD, 0x00010000, (9 << 16) | 1, 0, (9 << 16) | 1, 0,
+                        0x3F, 0, 4, 1, 0, 0, 0)
+    entries = b""
+    for key, value in (("CompanyName", "Acme Corp"), ("ProductName", product),
+                       ("FileVersion", version), ("OriginalFilename", "acme.exe"),
+                       ("LegalCopyright", "Copyright Acme")):
+        entries += _block(key, len(value) + 1, _utf16(value))
+    table = _block("040904b0", 0, b"", entries)
+    strings = _block("StringFileInfo", 0, b"", table)
+    var = _block("VarFileInfo", 0, b"", _block("Translation", 4, struct.pack("<HH", 0x409, 1200)))
+    return _block("VS_VERSION_INFO", len(fixed), fixed, strings + var, value_type=0)
+
+
+def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
+             pdb: str = "C:\\build\\acme\\acme.pdb", subsystem: int = 3,
+             clr: bool = False) -> bytes:
+    """PE32+ with version resources, debug dir, delay imports, cert table, Rich."""
+    raw_offset = 0x400
+    pe_offset = 0x100
+    rdata = bytearray(0x1000)
+    data = bytearray(raw_offset + 0x1000)
+
+    # .rdata, RVA 0x1000 (== file offset 0x400): imports, delay imports, debug,
+    # certificate, resource tree, version blob
+    struct.pack_into("<IIIII", rdata, 0x00, 0, 0, 0, 0x1040, 0)
+    rdata[0x40:0x40 + 13] = b"KERNEL32.dll\x00"
+    struct.pack_into("<II", rdata, 0x100, 1, 0x1140)          # delay descriptor
+    rdata[0x140:0x140 + len(delay_dll) + 1] = delay_dll.encode() + b"\x00"
+    rsds = (b"RSDS" + bytes.fromhex("00112233445566778899aabbccddeeff")
+            + struct.pack("<I", 3) + pdb.encode() + b"\x00")
+    rdata[0x200:0x200 + len(rsds)] = rsds
+    struct.pack_into("<IIHHIIII", rdata, 0x180, 0, 0, 0, 0, 2, len(rsds), 0x1200, 0x600)
+    certificate = struct.pack("<IHH", 0x120, 0x200, 2) + b"\x30\x82fake-pkcs7-signature"
+    cert_offset = raw_offset + 0x280
+    rdata[0x280:0x280 + len(certificate)] = certificate
+
+    def _directory(entries: list[tuple[int, int]]) -> bytes:
+        header = struct.pack("<IIHHHH", 0, 0, 0, 0, 0, len(entries))
+        return header + b"".join(struct.pack("<II", name, child) for name, child in entries)
+
+    # resource tree: root (types) -> name -> language -> data entry. The three
+    # directory levels are all there is; the fourth hop is the data entry itself.
+    version = _version_info_blob()
+    rdata[0x500:0x500 + len(version)] = version
+    struct.pack_into("<IIII", rdata, 0x360, 0x1500, len(version), 1200, 0)   # data entry
+    rdata[0x340:0x340 + 24] = _directory([(0x409, 0x60)])                    # language
+    rdata[0x320:0x320 + 24] = _directory([(1, 0x80000000 | 0x40)])           # name
+    rdata[0x300:0x300 + 24] = _directory([(16, 0x80000000 | 0x20)])          # type = root
+
+    if clr:
+        version = b"v4.0.30319\x00\x00"
+        metadata = (b"BSJB" + struct.pack("<HHI", 1, 1, 0) + struct.pack("<I", len(version))
+                    + version + bytes(4 - len(version) % 4) + b"\x00\x00\x00\x00")
+        rdata[0x800:0x800 + 72] = struct.pack("<IHHIIII", 72, 2, 5, 0x1840, len(metadata),
+                                              1, 0) + bytes(72 - 28)
+        rdata[0x840:0x840 + len(metadata)] = metadata
+    data[raw_offset:raw_offset + 0x1000] = rdata
+
+    # headers: DOS stub, Rich header at 0x80, PE signature at 0x100
+    data[0:2] = b"MZ"
+    struct.pack_into("<I", data, 0x3C, pe_offset)
+    key = 0x536E6144
+    pairs = struct.pack("<II", 5 ^ key, ((0x10B << 16) | 0x2E07) ^ key)
+    rich_block = b"DanS" + struct.pack("<III", key, key, key) + pairs + b"Rich" + struct.pack("<I", key)
+    data[0x80:0x80 + len(rich_block)] = rich_block
+    data[pe_offset:pe_offset + 4] = b"PE\x00\x00"
+    struct.pack_into("<HHIIIHH", data, pe_offset + 4, 0x8664, 1, 0x5F5E1000, 0, 0, 240, 0x0022)
+    optional = pe_offset + 24
+    struct.pack_into("<H", data, optional, 0x20B)
+    struct.pack_into("<H", data, optional + 68, subsystem)
+    struct.pack_into("<I", data, optional + 108, 16)
+    base = optional + 112
+    struct.pack_into("<II", data, base + 1 * 8, 0x1000, 0x28)      # imports
+    struct.pack_into("<II", data, base + 2 * 8, 0x1300, 0x180)     # resources
+    struct.pack_into("<II", data, base + 4 * 8, cert_offset if signed else 0,
+                     len(certificate) if signed else 0)            # certificate table
+    struct.pack_into("<II", data, base + 6 * 8, 0x1180, 28)        # debug
+    struct.pack_into("<II", data, base + 13 * 8, 0x1100, 0x60)     # delay imports
+    if clr:
+        struct.pack_into("<II", data, base + 14 * 8, 0x1800, 72)   # COM descriptor
+    section_table = optional + 240
+    data[section_table:section_table + 8] = b".rdata\x00\x00"
+    struct.pack_into("<IIII", data, section_table + 8, 0x1000, 0x1000, 0x1000, raw_offset)
+    return bytes(data)
+
+
+def _rpm(*, name: str = "acme-crypto", version: str = "3.4.5", release: str = "1.el9",
+         license_: str = "Apache-2.0", payload_compressor: str = "gzip",
+         requires: tuple = ("libcrypto.so.3", "libssl.so.3"), cpio_payload: bytes = b"") -> bytes:
+    """A real RPM: lead + signature header + header (with NAME/VERSION/…) + payload."""
+    import gzip as _gzip
+
+    def _header(tags: list[tuple[int, int, bytes, int]]) -> bytes:
+        store = bytearray()
+        entries = b""
+        for tag, dtype, payload, count in tags:
+            entries += struct.pack(">IIII", tag, dtype, len(store), count)
+            store.extend(payload)
+        head = (b"\x8e\xad\xe8\x01" + bytes(4)
+                + struct.pack(">II", len(tags), len(store)) + entries + bytes(store))
+        return head + bytes((8 - len(head) % 8) % 8)
+
+    def _string(text: str) -> bytes:
+        return text.encode() + b"\x00"
+
+    signature = _header([(1004, 7, bytes.fromhex("00" * 16), 16),
+                         (1000, 4, struct.pack(">I", 4096), 1)])
+    main = _header([
+        (1000, 6, _string(name), 1),
+        (1001, 6, _string(version), 1),
+        (1002, 6, _string(release), 1),
+        (1014, 6, _string(license_), 1),
+        (1011, 6, _string("Acme Corp"), 1),
+        (1022, 6, _string("x86_64"), 1),
+        (1049, 8, b"".join(_string(item) for item in requires), len(requires)),
+        (1047, 8, b"".join(_string("acme-crypto.so") for _ in requires), len(requires)),
+        (1125, 6, _string(payload_compressor), 1),
+    ])
+    payload = _gzip.compress(cpio_payload, mtime=0) if cpio_payload else b""
+    return (b"\xed\xab\xee\xdb" + bytes(4) + struct.pack(">HH", 3, 0) + bytes(84)
+            + signature + main + payload)
+
+
+def _deb(*, control: bytes, data: list[tuple[str, bytes]] | None = None,
+         control_name: str = "control.tar.gz") -> bytes:
+    """A real .deb: ar archive with control.tar.* and data.tar.* members."""
+    import gzip as _gzip
+
+    def _ar_member(name: str, payload: bytes) -> bytes:
+        header = f"{name + '/':<16}{0:<12}{0:<6}{0:<6}{0o100644:<8}{len(payload):<10}`\n`".encode()
+        header = header[:58] + b"`\n"
+        return header + payload + (b"\n" if len(payload) % 2 else b"")
+
+    control_tar = _tar([("./control", control)])
+    data_tar = _tar(data or [("usr/bin/acme", b"\x7fELF\x02\x01\x01\x00" + bytes(64))])
+    return (b"!<arch>\n"
+            + _ar_member("debian-binary", b"2.0\n")
+            + _ar_member(control_name, _gzip.compress(control_tar, mtime=0))
+            + _ar_member("data.tar.gz", _gzip.compress(data_tar, mtime=0)))
+
+
+def _write_tmp(tmp_path, name: str, payload: bytes):
+    target = tmp_path / name
+    target.write_bytes(payload)
+    return target
+
+
+def _cpio(members: list[tuple[str, bytes]]) -> bytes:
+    """newc cpio archive (initramfs payload)."""
+    out = b""
+    for index, (name, payload) in enumerate(members, start=1):
+        name_bytes = name.encode() + b"\x00"
+        header = b"070701" + b"".join(
+            f"{value:08x}".encode() for value in (
+                index, 0o100644, 0, 0, 1, 0, len(payload), 0, 0, 0, 0, len(name_bytes), 0))
+        out += header + name_bytes
+        out += b"\x00" * ((4 - len(out) % 4) % 4)
+        out += payload
+        out += b"\x00" * ((4 - len(out) % 4) % 4)
+    trailer = b"070701" + b"".join(
+        f"{value:08x}".encode() for value in (0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 11, 0))
+    out += trailer + b"TRAILER!!!\x00"
+    out += b"\x00" * ((4 - len(out) % 4) % 4)
+    return out
+
+
+def _java_class(version_major: int = 61) -> bytes:
+    """A class file whose constant pool names a crypto provider and a transform."""
+    pool: list[bytes] = []
+    utf8: dict[str, int] = {}
+
+    def _utf8(text: str) -> int:
+        if text not in utf8:
+            pool.append(bytes([1]) + struct.pack(">H", len(text)) + text.encode())
+            utf8[text] = len(pool)
+        return utf8[text]
+
+    cipher = _utf8("javax/crypto/Cipher")
+    transform = _utf8("AES/GCM/NoPadding")
+    _utf8("MD5")
+    provider = _utf8("org/bouncycastle/jce/provider/BouncyCastleProvider")
+    name_type = _utf8("getInstance")
+    descriptor = _utf8("(Ljava/lang/String;)V")
+    class_ref = len(pool) + 1
+    pool.append(bytes([7]) + struct.pack(">H", cipher))                      # Class
+    class_ref_provider = len(pool) + 1
+    pool.append(bytes([7]) + struct.pack(">H", provider))                    # Class
+    name_type_ref = len(pool) + 1
+    pool.append(bytes([12]) + struct.pack(">HH", name_type, descriptor))     # NameAndType
+    pool.append(bytes([10]) + struct.pack(">HH", class_ref, name_type_ref))  # Methodref
+    pool.append(bytes([8]) + struct.pack(">H", transform))                   # String
+    body = b"".join(pool)
+    return (b"\xca\xfe\xba\xbe" + struct.pack(">HH", 0, version_major)
+            + struct.pack(">H", len(pool) + 1) + body + b"\x00\x21\x00\x00\x00\x00")
+
+
+def _tar(members: list[tuple[str, bytes]]) -> bytes:
+    import io
+    import tarfile
+
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w") as archive:
+        for name, payload in members:
+            import tarfile as tf
+
+            info = tf.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    return buffer.getvalue()
 
 
 def _firmware(*, model: str = "FriendlyARM NanoPi R5S",
@@ -372,17 +651,22 @@ def test_raw_files_need_crypto_evidence_to_be_reported(tmp_path):
     assert any(finding["code"] == "BIN-NOT-PARSED" for finding in record["findings"])
 
 
-def test_unparsed_containers_state_their_limit(tmp_path):
+def test_a_broken_header_is_reported_rather_than_invented(tmp_path):
+    """RPM and Java class files are parsed now — a damaged one says so."""
     rpm = tmp_path / "pkg.rpm"
     rpm.write_bytes(b"\xed\xab\xee\xdb" + b"\x00" * 200)
     record = bs.scan_file(rpm)
-    assert record["format"] == "rpm" and record["parsed"] is False
-    assert "not unpacked" in record["parse_note"]
+    assert record["format"] == "rpm" and record["parsed"] is True
+    assert "NAME tag was absent" in record["parse_note"]
+
     cls = tmp_path / "Demo.class"
-    cls.write_bytes(b"\xca\xfe\xba\xbe" + b"\x00\x00\x00\x3d" + b"\x00" * 100)
+    # magic + version, constant_pool_count = 5, then an unknown pool tag
+    cls.write_bytes(b"\xca\xfe\xba\xbe" + struct.pack(">HH", 0, 61) + struct.pack(">H", 5)
+                    + b"\x63" + bytes(40))
     class_record = bs.scan_file(cls)
     assert class_record["format"] == "java-class"
-    assert any(finding["code"] == "BIN-NOT-PARSED" for finding in class_record["findings"])
+    assert class_record["java"]["constant_pool_truncated_at"] == 1
+    assert any(finding["code"] == "BIN-PARTIAL-PARSE" for finding in class_record["findings"])
 
 
 def test_strings_and_entropy_are_bounded():
@@ -510,3 +794,278 @@ def test_diff_still_detects_an_upgrade_by_name():
                        _bom("2.32.0", "pkg:pypi/requests@2.32.0"))
     assert report["verdict"] == "UPDATED"
     assert [(c["name"], c["direction"]) for c in report["changed"]] == [("requests", "upgrade")]
+
+
+# ----------------------------------------------- turn-30 depth: ELF/PE/java -- #
+def test_elf_program_headers_and_hardening_flags():
+    """PT_INTERP, PT_GNU_STACK and PT_GNU_RELRO are read, not guessed."""
+    elf = _elf64(deps=("libc.so.6",), dynamic_extra=((24, 0),), soname="libacme.so.1",
+                 segments=((3, 4, 0x2000, b"/lib64/ld-linux-x86-64.so.2"),
+                           (1, 4, 0x1000, b"x" * 32),
+                           (0x6474E552, 4, 0x3000, b"y" * 16),
+                           (0x6474E551, 6, 0, b"")))
+    parsed = bs.parse_elf(elf)
+    assert parsed["interpreter"] == "/lib64/ld-linux-x86-64.so.2"
+    assert "gnu_relro" in parsed["segments"] and "gnu_stack" in parsed["segments"]
+    assert parsed["executable_stack"] is False
+    hardening = parsed["hardening"]
+    assert hardening["nx"] is True and hardening["relro"] is True
+    assert hardening["full_relro"] is True          # PT_GNU_RELRO + BIND_NOW
+    assert hardening["pie"] is True                 # ET_DYN
+
+
+def test_elf_executable_stack_is_reported_as_a_finding(tmp_path):
+    path = tmp_path / "legacy"
+    path.write_bytes(_elf64(segments=((1, 5, 0x400000, b"x" * 16), (0x6474E551, 7, 0, b""))))
+    record = bs.scan_file(path)
+    assert record["executable_stack"] is True
+    codes = {finding["code"] for finding in record["findings"]}
+    assert "BIN-EXECUTABLE-STACK" in codes
+    assert any(finding["severity"] == "HIGH" for finding in record["findings"])
+
+
+def test_elf_symbol_version_floor_becomes_a_finding(tmp_path):
+    """A crypto soname with no embedded version is a floor, labelled as one."""
+    path = tmp_path / "app"
+    path.write_bytes(_elf64(deps=("libc.so.6", "libcrypto.so.3"),
+                            symbol_versions={"libcrypto.so.3": ["OPENSSL_3.0.0", "OPENSSL_3.0.3"]},
+                            exports=("EVP_EncryptInit_ex",)))
+    record = bs.scan_file(path)
+    assert record["symbol_versions"] == {"libcrypto.so.3": ["OPENSSL_3.0.0", "OPENSSL_3.0.3"]}
+    floor = [f for f in record["findings"] if f["code"] == "BIN-CRYPTO-VERSION-FLOOR"]
+    assert floor and "3.0.3" in floor[0]["detail"]
+    assert "cannot be matched" in floor[0]["detail"]
+
+
+def test_elf_crypto_constants_grade_as_constant_match(tmp_path):
+    """A known table in .rodata is stronger evidence than a symbol name."""
+    from universal_crypto.binary_engine import CRYPTO_CONSTANTS
+
+    path = tmp_path / "libacme.so"
+    path.write_bytes(_elf64(soname="libacme.so", constants=CRYPTO_CONSTANTS["AES"]))
+    record = bs.scan_file(path)
+    constants = record["crypto_constants"]
+    assert [row["algorithm"] for row in constants] == ["AES"]
+    assert constants[0]["section"] == ".rodata"
+    evidence = [row for row in record["crypto"]["algorithm_evidence"] if row["name"] == "AES"]
+    assert evidence and evidence[0]["strongest_evidence"] == "CONSTANT_MATCH"
+    assert evidence[0]["confidence"] >= 0.9
+
+
+def test_pe_delay_imports_resources_and_version_strings():
+    """RT_VERSION gives the publisher and the product, not just a version."""
+    parsed = bs.parse_pe(_pe_rich())
+    assert parsed["delay_imports"] == ["CRYPT32.dll"]
+    assert "CRYPT32.dll" in parsed["libraries"]
+    info = parsed["version_info"]
+    assert info["version"] == "9.1.0.0"
+    assert info["vendor"] == "Acme Corp" and info["product"] == "Acme Toolkit"
+    resources = parsed["resources"]
+    assert resources["strings"]["OriginalFilename"] == "acme.exe"
+    assert resources["translation"] == [{"language": 1033, "codepage": 1200}]
+    assert resources["file_type"] == "application"
+
+
+def test_pe_debug_directory_and_signature_presence():
+    parsed = bs.parse_pe(_pe_rich())
+    assert parsed["debug"]["pdb"].endswith("acme.pdb")
+    assert parsed["debug"]["pdb_guid"] == "00112233445566778899aabbccddeeff"
+    assert parsed["debug"]["pdb_age"] == 3
+    signature = parsed["signature"]
+    assert signature["present"] is True and signature["type"] == "pkcs7"
+    assert "validity and chain are NOT verified" in signature["note"]
+
+
+def test_pe_unsigned_and_rich_header_are_reported():
+    signed = bs.parse_pe(_pe_rich())
+    unsigned = bs.parse_pe(_pe_rich(signed=False))
+    assert unsigned["signature"]["present"] is False
+    assert signed["linker"]["entries"] == [{"product_id": 267, "build": 11783, "count": 5}]
+
+
+def test_pe_uefi_subsystem_marks_the_image():
+    parsed = bs.parse_pe(_pe_rich(subsystem=12))
+    assert parsed["subsystem"] == "efi-runtime-driver"
+    assert parsed["uefi"] is True and parsed["type"] == "efi-image"
+
+
+def test_pe_clr_metadata_reports_the_framework():
+    parsed = bs.parse_pe(_pe_rich(clr=True))
+    assert parsed["dotnet"]["framework_version"] == "v4.0.30319"
+    assert parsed["framework"] == ".NET v4.0.30319"
+
+
+def test_unsigned_pe_raises_an_informational_finding(tmp_path):
+    path = tmp_path / "acme.exe"
+    path.write_bytes(_pe_rich(signed=False))
+    record = bs.scan_file(path)
+    assert any(finding["code"] == "BIN-UNSIGNED-PE" and finding["severity"] == "INFO"
+               for finding in record["findings"])
+
+
+def test_packer_signature_is_named_and_flagged(tmp_path):
+    path = tmp_path / "packed.bin"
+    path.write_bytes(b"\x7fELF\x02\x01\x01\x00" + bytes(56) + b"UPX!UPX!" + bytes(512))
+    record = bs.scan_file(path)
+    assert record["packer"]["name"] == "UPX"
+    assert any(finding["code"] == "BIN-PACKED" for finding in record["findings"])
+
+
+def test_java_class_constant_pool_is_read(tmp_path):
+    path = tmp_path / "Crypto.class"
+    path.write_bytes(_java_class())
+    record = bs.scan_file(path)
+    assert record["format"] == "java-class" and record["parsed"] is True
+    assert "javax/crypto/Cipher" in record["java"]["classes"]
+    assert "BouncyCastle" in record["libraries"]
+    assert "MD5" in record["crypto"]["weak_primitives"]
+    assert record["java"]["class_version"] == "61.0"
+    assert "AES/GCM/NoPadding" in record["java"]["strings"]
+    assert any(finding["code"] == "BIN-WEAK-PRIMITIVE-CLASS" for finding in record["findings"])
+
+
+# ------------------------------------------------ turn-30 depth: RPM/deb --- #
+def test_rpm_header_is_parsed_into_a_package():
+    parsed = bs.parse_rpm(_rpm())
+    assert (parsed["name"], parsed["version"], parsed["release"]) == ("acme-crypto", "3.4.5", "1.el9")
+    assert parsed["license"] == "Apache-2.0" and parsed["vendor"] == "Acme Corp"
+    assert parsed["payload_compression"] == "gzip"
+    assert parsed["requirename"] == ["libcrypto.so.3", "libssl.so.3"]
+    assert parsed["libraries"] == ["libcrypto.so.3", "libssl.so.3"]
+
+
+def test_rpm_payload_cpio_is_followed_to_the_binary_inside(tmp_path):
+    inner = _elf64(soname="libacme.so", exports=("EVP_EncryptInit_ex",),
+                   strings=("OpenSSL 3.0.20 7 Apr 2026",))
+    path = tmp_path / "acme-crypto.rpm"
+    path.write_bytes(_rpm(cpio_payload=_cpio([("usr/lib64/libacme.so", inner),
+                                              ("usr/share/doc/README", b"plain text")])))
+    record = bs.scan_file(path)
+    container = record["containers_followed"][0]
+    assert container["inner_format"] == "cpio" and container["members_listed"] == 3
+    assert container["parsed"] == 1
+    embedded = record["embedded"][0]
+    assert embedded["path"].endswith("!usr/lib64/libacme.so")
+    assert embedded["derived_from"] == str(path)
+    assert embedded["depth"] == 1
+    assert [row["library"] for row in embedded["crypto"]["libraries"]] == ["OpenSSL"]
+    assert any(finding["code"] == "BIN-EMBEDDED-CRYPTO" for finding in record["findings"])
+
+
+def test_rpm_packages_inside_are_reported():
+    record = bs.parse_rpm(_rpm())
+    record = dict(record, path="acme.rpm", name="acme.rpm")
+    packages = bs._record_packages(record)
+    assert packages and packages[0]["manager"] == "rpm"
+    assert packages[0]["license"] == "Apache-2.0"
+
+
+def test_deb_control_file_identifies_the_package(tmp_path):
+    control = (b"Package: acme-crypto\nVersion: 1.2.3\nArchitecture: amd64\n"
+               b"Maintainer: Acme <ops@acme.example>\nDepends: libssl3 (>= 3.0), libc6\n"
+               b"Description: Acme crypto helper\n long form line\n")
+    path = tmp_path / "acme-crypto.deb"
+    path.write_bytes(_deb(control=control))
+    record = bs.scan_file(path)
+    packages = bs._record_packages(record)
+    assert packages == [{"name": "acme-crypto", "version": "1.2.3", "manager": "deb",
+                         "arch": "amd64", "depends": ["libssl3", "libc6"]}]
+    assert any("deb control read" in row for row in record["containers_followed"][0]["opened"])
+
+
+# ------------------------------------------------ turn-30 depth: extraction -- #
+def test_tar_gz_member_is_parsed_with_provenance(tmp_path):
+    import gzip
+
+    inner = _elf64(soname="libacme.so", exports=("EVP_EncryptInit_ex",))
+    path = tmp_path / "bundle.tar.gz"
+    path.write_bytes(gzip.compress(_tar([("lib/libacme.so", inner), ("README", b"hello")]), mtime=0))
+    record = bs.scan_file(path)
+    container = record["containers_followed"][0]
+    assert container["format"] == "gzip" and container["inner_format"] == "ustar"
+    assert container["members_listed"] == 2 and container["parsed"] == 1
+    embedded = record["embedded"][0]
+    assert embedded["format"] == "elf" and embedded["derived_from"] == str(path)
+    import hashlib
+
+    assert embedded["sha256"] == hashlib.sha256(inner).hexdigest()
+    assert any(finding["code"] == "BIN-CONTAINER-FOLLOWED" for finding in record["findings"])
+
+
+def test_initramfs_cpio_members_are_listed(tmp_path):
+    import gzip
+
+    archive = _cpio([("bin/busybox", b"\x7fELF\x02\x01\x01\x00" + bytes(120)),
+                     ("etc/init.d/rcS", b"#!/bin/sh\n")])
+    path = tmp_path / "initramfs.gz"
+    path.write_bytes(gzip.compress(archive, mtime=0))
+    record = bs.scan_file(path)
+    container = record["containers_followed"][0]
+    assert container["inner_format"] == "cpio"
+    assert [member["name"] for member in container["members"]][:2] == ["bin/busybox", "etc/init.d/rcS"]
+
+
+def test_refused_compression_states_the_reason(tmp_path):
+    path = tmp_path / "firmware.zst"
+    path.write_bytes(b"\x28\xb5\x2f\xfd" + bytes(600))
+    record = bs.scan_file(path)
+    refused = record["containers_followed"][0]["refused"]
+    assert refused and "no stdlib zstd decoder" in refused[0]["reason"]
+    assert any(finding["code"] == "BIN-CONTAINER-REFUSED" for finding in record["findings"])
+
+
+def test_extraction_budget_stops_a_compression_bomb(tmp_path):
+    import gzip
+
+    path = tmp_path / "bomb.gz"
+    path.write_bytes(gzip.compress(b"\x00" * (8 * 1024 * 1024), mtime=0))
+    record = bs.scan_file(path)
+    container = record["containers_followed"][0]
+    # it opens what fits the budget and says so, instead of trying to hold it all
+    assert container["opened"] and "B" in container["opened"][0]
+    assert bs.MAX_EXTRACT_BYTES <= 96 * 1024 * 1024
+
+
+def test_an_embedded_file_gets_the_same_evidence_as_a_loose_one(tmp_path):
+    """Depth must not dilute evidence: constants inside a container still count."""
+    import gzip
+
+    from universal_crypto.binary_engine import CRYPTO_CONSTANTS
+
+    inner = _elf64(soname="libacme.so", constants=CRYPTO_CONSTANTS["AES"] + CRYPTO_CONSTANTS["MD5"])
+    (tmp_path / "libacme.so").write_bytes(inner)
+    (tmp_path / "bundle.tar.gz").write_bytes(gzip.compress(_tar([("lib/libacme.so", inner)]), mtime=0))
+    scan = bs.scan_path(tmp_path)
+    records = bs._flatten_records(scan["binaries"])
+    loose = [row for row in records if row["path"] == "libacme.so"][0]
+    embedded = [row for row in records if row["path"].endswith("!lib/libacme.so")][0]
+    assert [row["algorithm"] for row in embedded["crypto_constants"]] == ["AES", "MD5"]
+    assert embedded["crypto"]["algorithms"] == loose["crypto"]["algorithms"]
+    evidence = {row["name"]: row["strongest_evidence"] for row in embedded["crypto"]["algorithm_evidence"]}
+    assert evidence.get("AES") == "CONSTANT_MATCH"
+    cbom = bs.cbom_document(scan)
+    aes = [row for row in cbom["components"] if row["name"] == "AES"][0]
+    locations = {occurrence["location"] for occurrence in aes["evidence"]["occurrences"]}
+    assert locations == {"libacme.so", "bundle.tar.gz!lib/libacme.so"}
+
+
+def test_embedded_crypto_reaches_the_sbom_and_cbom(tmp_path):
+    import gzip
+
+    inner = _elf64(soname="libacme.so", exports=("EVP_EncryptInit_ex",),
+                   strings=("OpenSSL 3.0.20 7 Apr 2026",))
+    (tmp_path / "bundle.tar.gz").write_bytes(gzip.compress(_tar([("lib/libacme.so", inner)]), mtime=0))
+    scan = bs.scan_path(tmp_path)
+    result = bs.sbom_result(scan)
+    paths = [row["path"] for row in result["binaries"]]
+    assert any("!lib/libacme.so" in path for path in paths)
+    derived = [row for row in result["binaries"] if "!lib/libacme.so" in row["path"]][0]
+    assert derived["derived_from"].endswith("bundle.tar.gz") and derived["depth"] == 1
+    cbom = bs.cbom_document(scan)
+    libraries = [component["name"] for component in cbom["components"]]
+    assert "OpenSSL" in libraries, cbom["components"]
+    openssl = [component for component in cbom["components"] if component["name"] == "OpenSSL"][0]
+    provenance = {row["name"]: row["value"] for row in openssl["properties"]}
+    assert provenance["cryptoscan:derived-from"].endswith("bundle.tar.gz")
+    assert provenance["cryptoscan:depth"] == "1"
+    assert provenance["cryptoscan:found-in"].endswith("!lib/libacme.so")

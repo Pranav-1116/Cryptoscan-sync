@@ -413,12 +413,19 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     """Scan binaries, shared libraries, archives and firmware images end to end.
 
     Deterministic and offline: magic-byte format identification, real parsing
-    (ELF dynamic/static/symbol/Go-buildinfo, PE imports/subsystem, Mach-O load
-    commands, ``ar``/zip members, WASM imports, firmware container chains and
-    device-tree identity), graded crypto evidence, then the same artefact
-    pipeline as every other scan — CycloneDX/SPDX SBOM, NTIA score, signing,
-    licence policy, gate, VEX, diff — plus a CycloneDX CBOM of the cryptographic
-    assets. Filesystems inside firmware are reported, never silently unpacked.
+    (ELF dynamic/static/symbol/Go-buildinfo/program-headers/hardening, PE
+    imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence,
+    Mach-O load commands, ``ar``/zip/RPM/deb members, Java class constant pools,
+    WASM imports, firmware container chains and device-tree identity), graded
+    crypto evidence, then the same artefact pipeline as every other scan —
+    CycloneDX/SPDX SBOM, NTIA score, signing, licence policy, gate, VEX, diff —
+    plus a CycloneDX CBOM of the cryptographic assets.
+
+    Archive and compression members are followed (gzip/xz/bzip2/tar/cpio/zip/ar
+    as well as RPM/deb payloads) within a bounded budget; an embedded file that
+    parses is reported with the container it came from, and a compression format
+    this scanner cannot open (zstd/lz4, filesystem images) is reported as refused
+    with the reason rather than silently skipped.
     """
     from datetime import datetime, timezone
 
@@ -508,6 +515,11 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
             "findings_by_severity": _severity_counts(findings),
             "cbom_components": len(cbom.get("components") or []),
             "truncated": bool((result.get("limits") or {}).get("truncated")),
+            "embedded_binaries": result.get("embedded_binaries", 0),
+            "containers_followed": result.get("containers_followed", 0),
+            "containers_refused": result.get("containers_refused", 0),
+            "packed_binaries": result.get("packed_binaries", 0),
+            "extraction_limits": result.get("extraction_limits") or {},
         },
     }
     secret, key_id = _sbom_signing_secret(db)

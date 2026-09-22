@@ -725,11 +725,21 @@ function BinaryPanel() {
   const summary = d?.summary;
   const libraries: any[] = d?.crypto_libraries || [];
   const findings: any[] = d?.findings || [];
+  const binaries: any[] = d?.binaries || [];
+  const containers: any[] = binaries.flatMap((b: any) =>
+    (b.containers_followed || []).map((c: any) => ({ ...c, binary: b.path })));
+  const derived = binaries.filter((b: any) => b.derived_from);
   const formats = Object.entries(summary?.by_format || {});
+  const hardeningOf = (b: any) => {
+    const h = b.hardening || {};
+    if (!h || Object.keys(h).length === 0) return "—";
+    return ["pie", "nx", "relro", "canary", "fortified"]
+      .map((k) => `${h[k] ? "+" : "−"}${k}`).join(" ") + (h.full_relro ? " +full-relro" : "");
+  };
   const severityTone = (s: string) => (s === "CRITICAL" || s === "HIGH" ? "red" : (s === "MEDIUM" ? "amber" : "gray"));
   return (
     <Panel title="Binaries, archives & firmware — parse, not guess"
-      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go buildinfo, PE imports, Mach-O load commands, ar/zip members, WASM imports, firmware container chains and device-tree identity — with graded crypto evidence, then the same SBOM/CBOM pipeline" className="mt">
+      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence, Mach-O load commands, Java constant pools, RPM headers, ar/zip members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
       <div className="grid" style={{ gridTemplateColumns: "1fr 130px", gap: 8, marginBottom: 8 }}>
         <input className="inp" placeholder="file or directory (e.g. /opt/app, /tmp/firmware.img, /lib/x86_64-linux-gnu/libcrypto.so.3)"
           value={target} onChange={(e) => setTarget(e.target.value)} />
@@ -769,6 +779,18 @@ function BinaryPanel() {
             <Badge tone={(summary?.crypto_libraries || 0) > 0 ? "amber" : "gray"}>{summary?.crypto_libraries ?? 0} crypto implementations</Badge>
             <Badge tone={(summary?.findings || 0) > 0 ? "amber" : "green"}>{summary?.findings ?? 0} findings</Badge>
             <Badge tone="">CBOM {summary?.cbom_components ?? 0} assets</Badge>
+            <Badge tone={(summary?.embedded_binaries || 0) > 0 ? "amber" : "gray"}>
+              {summary?.embedded_binaries ?? 0} embedded
+            </Badge>
+            <Badge tone={(summary?.containers_followed || 0) > 0 ? "amber" : "gray"}>
+              {summary?.containers_followed ?? 0} containers followed
+            </Badge>
+            {(summary?.containers_refused || 0) > 0 && (
+              <Badge tone="gray">{summary?.containers_refused} containers refused</Badge>
+            )}
+            {(summary?.packed_binaries || 0) > 0 && (
+              <Badge tone="amber">{summary?.packed_binaries} packed</Badge>
+            )}
             {summary?.truncated && <Badge tone="red">TRUNCATED — walk cap hit</Badge>}
             {d.manifest?.feed_supplied ? <Badge tone="amber">FEED SUPPLIED</Badge> : <Badge tone="">no feed</Badge>}
           </div>
@@ -788,6 +810,53 @@ function BinaryPanel() {
               {(summary.ecc_markers || []).length > 0 && (
                 <Badge tone="amber">classical ECC present{summary.pqc_markers?.length ? " alongside PQC" : ""}</Badge>
               )}
+            </div>
+          )}
+          {binaries.length > 0 && (
+            <div className="mt" style={{ marginBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+                binaries parsed ({binaries.length}) — embedded files are listed under the container they came from
+              </div>
+              <Table head={["path", "format", "arch", "publisher / product", "hardening", "packer", "crypto", "packages inside"]}
+                rows={binaries.map((b: any) => [
+                  <span style={{ fontSize: 12 }}>
+                    {b.derived_from ? "└ " : ""}{b.path}
+                    {b.derived_from && <span className="muted"> · depth {b.depth}</span>}
+                  </span>,
+                  b.format + (b.type?.endsWith(":efi") ? " · EFI" : ""),
+                  b.arch || "—",
+                  [b.publisher, b.product].filter(Boolean).join(" / ") || "—",
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>{hardeningOf(b)}</span>,
+                  b.packer ? <Badge tone="amber">{b.packer}</Badge> : "—",
+                  (b.crypto_constants || []).length > 0
+                    ? `${(b.algorithms || []).length} algos · tables: ${(b.crypto_constants || []).join(", ")}`
+                    : `${(b.algorithms || []).length} algos`,
+                  (b.packages_inside || []).length > 0
+                    ? (b.packages_inside || []).map((p: any) => `${p.name}${p.version ? "@" + p.version : ""} (${p.manager})`).join(", ")
+                    : "—",
+                ])} />
+            </div>
+          )}
+          {containers.length > 0 && (
+            <div className="mt" style={{ marginBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+                containers opened ({containers.length}) — what was inside, and what could not be opened
+              </div>
+              <Table head={["container", "inside", "members", "parsed", "opened / refused"]}
+                rows={containers.map((c: any) => [
+                  c.format + (c.offset ? ` @0x${c.offset.toString(16)}` : ""),
+                  c.inner_format || "—",
+                  String(c.members_listed ?? 0),
+                  String(c.parsed ?? 0),
+                  <span style={{ fontSize: 12 }}>
+                    {(c.opened || []).join("; ") || "—"}
+                    {(c.refused || []).map((r: any) => (
+                      <div key={String(r.member || r.format)} style={{ color: "var(--amber, #d97706)" }}>
+                        refused {r.member || r.format}: {r.reason}
+                      </div>
+                    ))}
+                  </span>,
+                ])} />
             </div>
           )}
           {libraries.length > 0 && (
@@ -829,6 +898,19 @@ function BinaryPanel() {
               </span>
             )}
           </div>
+          {summary?.extraction_limits && (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+              extraction budget: {Math.round((summary.extraction_limits.max_payload_bytes || 0) / (1024 * 1024))} MiB per level,
+              depth {summary.extraction_limits.max_depth}, {summary.extraction_limits.max_members} members listed,
+              {Math.round((summary.extraction_limits.max_member_bytes || 0) / (1024 * 1024))} MiB per member
+            </div>
+          )}
+          {derived.length > 0 && (
+            <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+              {derived.length} file(s) were found inside a container and are reported with their provenance —
+              they are SBOM components and CBOM assets in their own right.
+            </div>
+          )}
           {storedCbom && <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{storedCbom}</div>}
           {showBom && <Code>{JSON.stringify(d.bom, null, 2)}</Code>}
           {showCbom && <Code>{JSON.stringify(d.cbom, null, 2)}</Code>}

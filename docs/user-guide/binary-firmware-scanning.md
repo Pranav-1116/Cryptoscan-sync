@@ -33,14 +33,36 @@ was stored with the scan.
 
 | Format | Depth |
 |---|---|
-| ELF (32/64, LE/BE) | type (exec/PIE/shared/core), machine, `DT_NEEDED` libraries, `RPATH`/`RUNPATH`, `DT_SONAME`, `.note.gnu.build-id`, `.comment` compiler string, dynamic symbols split into imports/exports, stripped/static detection, **Go build info** (toolchain + module graph with exact versions and sums) |
-| PE (PE32/PE32+) | machine, subsystem, COFF timestamp, sections, imported DLLs resolved through the section table, .NET/CLR flag |
+| ELF (32/64, LE/BE) | type (exec/PIE/shared/core), machine, `DT_NEEDED` libraries, `RPATH`/`RUNPATH`, `DT_SONAME`, `.note.gnu.build-id`, `.comment` compiler string, dynamic symbols split into imports/exports, stripped/static detection, **Go build info** (toolchain + module graph with exact versions and sums), **program headers** (segment list, `PT_INTERP` interpreter, `PT_GNU_STACK` executable-stack flag), **`.gnu.version_r` symbol-version floors** (e.g. `libcrypto.so.3` requires `OPENSSL_3.0.3`), **`.note.gnu.property`** CPU features (CET IBT/SHSTK), **hardening flags** (PIE, NX, RELRO, full RELRO/BIND_NOW, stack canary, `_FORTIFY_SOURCE`), **crypto constant tables** (known AES/SHA/MD5/ChaCha20 tables located in `.rodata`/`.text`/`.data` → `CONSTANT_MATCH` 0.9) |
+| PE (PE32/PE32+) | machine, subsystem (incl. UEFI runtime/boot → `type: efi-image`), COFF timestamp, sections, imported DLLs resolved through the section table, **delay-load imports**, **`RT_VERSION` resources** (StringFileInfo: company/product/file version/original filename, `VS_FIXEDFILEINFO`, translation table), **debug directory** (CodeView `RSDS` PDB path, GUID, age), **Authenticode presence** (entries, size, PKCS#7 — validity and chain are explicitly *not* verified), **CLR/`.NET` metadata** (BSJB → framework version), **Rich header** (linker product/build pairs — attribution evidence only) |
 | Mach-O (thin + fat) | CPU type, file type, `LC_UUID`, platform, linked dylibs, `LC_RPATH` |
-| `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, `.deb` identification |
+| `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, **Debian `control` file** (package, version, architecture, maintainer, section, homepage, `Depends`) |
 | zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), native extensions |
+| **Java class** | constant pool: referenced classes (`javax/crypto/Cipher`, `org/bouncycastle/…`), method names, transformation strings (`AES/GCM/NoPadding`), class file version; a truncated pool says where the walk stopped |
+| **RPM** | lead + signature header + main header: name, version, release, licence, vendor, architecture, `PROVIDES`/`REQUIRES` package names (the crypto sonames a package depends on), payload compressor and payload offset |
 | WASM | import and export names (where crypto markers live) |
-| Firmware | container chain with offsets (uImage, device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal |
-| Java class, RPM, raw | identified; string-level evidence only — see the gaps below |
+| Firmware | container chain with offsets (uImage, device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal, **cpio/initramfs member listing** |
+| Raw blobs | reported only when they carry crypto evidence — never as an unnameable "binary" |
+
+### 2.1 Containers are followed, inside a budget
+
+Compression and archive formats are actually opened, one member at a time:
+
+| Container | What happens |
+|---|---|
+| gzip, xz/lzma, bzip2 | decompressed with a hard output cap, then identified again (tar/cpio get their member list) |
+| tar, cpio (initramfs) | members listed; members that are themselves a parseable format are parsed |
+| zip, `ar`/`.deb` | members listed; the Debian `control` file becomes the package identity |
+| RPM | payload decompressed and the cpio member list read; parseable members are parsed |
+| zstd, lz4, squashfs/JFFS2/UBIFS/cramfs/ext | **refused with the reason** (`BIN-CONTAINER-REFUSED`) — there is no stdlib decoder for zstd/lz4, and filesystem images need external tooling |
+
+Anything found inside a container keeps its provenance: the path is
+`<container>!<member>` (`firmware.bin@0x1f0000!lib/libcrypto.so.3` when the stream
+sat at an offset), `derived_from` names the container, and `depth` records how
+deep the chain went. Parsed members become components in the SBOM and assets in
+the CBOM with `cryptoscan:derived-from` / `cryptoscan:depth` properties — an
+implementation inside an image is never presented as a loose file at the top
+level.
 
 ## 3. Evidence, not assertions
 
@@ -66,10 +88,20 @@ STRING_MATCH 0.4  <  SYMBOL_MATCH 0.7  <  IMPORT_MATCH 0.8  <  CONSTANT_MATCH 0.
 * **Weak primitives** are matched on token boundaries against detected
   algorithms, so `ACCESS_DESCRIPTION_new` is not reported as DES.
 
+* **String-layer evidence is labelled as such.** Transformation strings
+  (`AES/GCM/NoPadding`, `TLS_AES_256_GCM_SHA384`, `HMAC-SHA256`) and Java
+  constant-pool entries are reported at the `STRING` level (0.4) with the matched
+  text as the source — enough to look, never enough to claim a dependency.
+
 Finding codes: `BIN-EOL-CRYPTO`, `BIN-CRYPTO-NO-VERSION`,
-`BIN-WEAK-PRIMITIVE-PRESENT`, `BIN-QUANTUM-VULNERABLE`, `BIN-PQC-CAPABLE`,
-`BIN-ECC-NO-PQC`, `BIN-PACKED`, `BIN-STATIC-CRYPTO`, `BIN-RPATH-WRITABLE`,
-`BIN-NOT-PARSED`, `BIN-FIRMWARE-NOT-EXTRACTED`.
+`BIN-WEAK-PRIMITIVE-PRESENT`, `BIN-WEAK-PRIMITIVE-CLASS`,
+`BIN-QUANTUM-VULNERABLE`, `BIN-PQC-CAPABLE`, `BIN-ECC-NO-PQC`,
+`BIN-CRYPTO-VERSION-FLOOR`, `BIN-PACKED`, `BIN-HIGH-ENTROPY`,
+`BIN-STATIC-CRYPTO`, `BIN-RPATH-WRITABLE`, `BIN-EXECUTABLE-STACK`,
+`BIN-NO-RELRO`, `BIN-PARTIAL-RELRO`, `BIN-NO-STACK-CANARY`,
+`BIN-UNSIGNED-PE`, `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
+`BIN-CONTAINER-REFUSED`, `BIN-NOT-PARSED`, `BIN-PARTIAL-PARSE`,
+`BIN-FIRMWARE-NOT-EXTRACTED`.
 
 ## 4. What flows onward
 
@@ -98,17 +130,31 @@ Finding codes: `BIN-EOL-CRYPTO`, `BIN-CRYPTO-NO-VERSION`,
 * **Firmware filesystems are not extracted.** squashfs/JFFS2/UBIFS/cramfs are
   identified with offsets; their contents are out of scope for this scanner
   (binwalk/squashfs-tools territory) and every such image carries
-  `BIN-FIRMWARE-NOT-EXTRACTED`. Scan the mounted or extracted tree to inventory
-  what is inside.
-* **RPM headers are not unpacked**; package contents come from the package
-  manager inventory, not from this file scan.
-* **Java class constant pools are not parsed** — only the archive metadata.
+  `BIN-FIRMWARE-NOT-EXTRACTED`. What *can* be opened (a gzip/xz stream or a cpio
+  initramfs in the same image) is followed and reported alongside. To inventory
+  what is inside a filesystem, scan the mounted or extracted tree.
+* **zstd and lz4 are refused, not guessed.** There is no zstd/lz4 decoder in the
+  standard library, so those containers are reported with the reason; nothing is
+  claimed about their contents.
+* **Authenticode signatures are reported as present or absent only.** No chain,
+  revocation or trust decision is made — `signature.note` says so in the output.
+* **Symbol-version floors are floors, not versions.** `libcrypto.so.3 →
+  OPENSSL_3.0.3` means the binary needs at least that ABI; CVEs are matched
+  against banners read from the file, and the floor finding states the limit.
+  A `SONAME` in `REQUIRES` (RPM) is a dependency name, not a version.
+* **Packed binaries are labelled, not unpacked.** A recognised packer (UPX,
+  ASPack, MPRESS, Themida, VMProtect, Enigma, PECompact, Petite, PyInstaller,
+  Electron/asar) yields `BIN-PACKED` and a warning that string-level detection is
+  structurally incomplete for that file.
 * **Name matching still exists for container images** (`container_scanner`
   `_discover_binaries`) as a cheap pre-filter; the deep parser is this scanner.
 * **Caps, on purpose**: 512 MiB per file, 4 000 files walked, 750 binaries parsed,
-  6 000 strings sampled, firmware container search bounded to the first 128 MiB.
-  A truncated walk is flagged in the manifest (`binary_summary.truncated`), never
-  silently reported as a complete scan.
+  6 000 strings sampled, firmware container search bounded to the first 128 MiB,
+  and the extraction budget: 64 MiB decompressed per level, depth 2, 60 members
+  listed per container, 16 MiB per member, 400 RPM header entries, 96 MiB scanned
+  for crypto constant tables. Every one of these is reported in
+  `summary.extraction_limits`, and a truncated walk is flagged in the manifest
+  (`binary_summary.truncated`) — never silently reported as a complete scan.
 * **A raw blob is only reported when it carries crypto evidence** (version banner,
   library marker); otherwise it is skipped rather than listed as an unnameable
   "binary".
