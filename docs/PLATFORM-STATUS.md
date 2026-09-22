@@ -426,8 +426,12 @@ and *did anything change under me since I approved it?*
    `cookie` 0.6.0 → 0.7.0 in the tree produced `UPDATED` with both upgrades
    named and the fresh artifact gating clean. Advisory feeds are deliberately
    not persisted (they can be large and are supplied per scan), so a re-scan of
-   a fed artifact says so in `notes` instead of quietly reporting zero
-   advisories.
+   a fed artifact says so in `notes` — naming the advisories the previous
+   artifact recorded — instead of quietly reporting zero. A drill that reverted
+   `jws` 3.2.3 → 3.2.2 and `cookie` 0.7.0 → 0.6.0 made the hazard concrete:
+   both show as `downgrade`, and the note lists the two advisories the earlier
+   feed had matched, so a "clean" gate verdict on that build cannot be mistaken
+   for a checked one.
 4. **Stronger provenance and reachable data.** Component hashes are now
    decoded from the ecosystems' real integrity formats — npm/NuGet SRI
    (`sha512-<base64>`, strongest algorithm wins), hex digests, and CycloneDX +

@@ -127,8 +127,11 @@ the `gate` verdict for the new document. A version bump that pulls in a crypto
 library reads as `CRYPTO_REVIEW`, not as a quiet update.
 
 Advisory feeds are not persisted (they can be large and are supplied per scan),
-so re-scanning a fed artifact runs without one and says so in `notes` — it never
-reports "0 advisories" as if it had checked.
+so re-scanning a fed artifact runs without one and says so in `notes`, naming the
+advisories the previous artifact recorded. That matters when a revert is the
+change: rolling `jws` back to a version an earlier feed flagged still shows as a
+`downgrade` in the diff, and the note tells you the fresh gate verdict is
+unchecked rather than clean — re-run the scan with a feed before trusting it.
 
 ## Provenance
 

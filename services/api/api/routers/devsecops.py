@@ -622,16 +622,28 @@ def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
         raise HTTPException(status_code=exc.status_code,
                             detail=f"re-scan of {opts['target']} failed: {exc.detail}")
 
+    old_bom: dict = {}
     try:
         old_bom = json.loads(blob.decode("utf-8"))
-        delta = diff_boms(old_bom, fresh["bom"])
+    except Exception:  # noqa: BLE001 — the fresh artifact is still valid evidence
+        old_bom = {}
+    try:
+        delta = diff_boms(old_bom, fresh["bom"]) if old_bom else None
+        diff_error = "" if delta is not None else "the previous document could not be read"
     except Exception as exc:  # noqa: BLE001 — the fresh artifact still stands on its own
         delta = None
         diff_error = str(exc)
     notes = []
     if opts.get("feed_supplied"):
-        notes.append("the previous artifact was generated with an advisory feed, which is not "
-                     "persisted — the fresh artifact has no advisory matches")
+        recorded = [str(v.get("id")) for v in (old_bom.get("vulnerabilities") or [])
+                    if isinstance(v, dict) and v.get("id")]
+        note = ("the previous artifact was generated with an advisory feed, which is not persisted — "
+                "the fresh artifact reports no advisories")
+        if recorded:
+            shown = ", ".join(recorded[:5]) + ("…" if len(recorded) > 5 else "")
+            note += (f"; it recorded {len(recorded)} ({shown}), so re-run the scan with a feed "
+                     "before trusting a clean gate verdict on this build")
+        notes.append(note)
     if delta is None:
         notes.append(f"diff unavailable: {diff_error}")
     new_man = fresh["manifest"]

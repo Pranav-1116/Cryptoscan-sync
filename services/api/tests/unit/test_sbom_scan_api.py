@@ -449,6 +449,11 @@ async def test_scan_with_advisory_feed_records_vulnerabilities(app_db):
             ungated = await client.post("/api/v1/devsecops/sbom/scan",
                                         json={"kind": "source", "target": str(src)},
                                         headers={"Authorization": "Bearer test-token"})
+            # a re-scan runs without the (unpersisted) feed, and must say which
+            # advisories the previous artifact recorded so a "clean" verdict
+            # cannot be mistaken for a checked one
+            rescan = await client.post(f"/api/v1/devsecops/sbom/{artifact_id}/rescan", json={},
+                                       headers={"Authorization": "Bearer test-token"})
 
     assert body["manifest"]["vulnerability_count"] == 2
     ids = {v["id"] for v in body["bom"]["vulnerabilities"]}
@@ -470,6 +475,10 @@ async def test_scan_with_advisory_feed_records_vulnerabilities(app_db):
     assert ungated.json()["manifest"]["vulnerability_count"] == 0
     assert ungated.json()["manifest"]["feed_supplied"] is False
     assert ungated.json()["bom"]["vulnerabilities"] == []
+
+    note = rescan.json()["notes"][0]
+    assert "not persisted" in note
+    assert "CVE-2024-21538" in note and "CVE-2023-32681" in note
 
 
 @pytest.mark.asyncio
