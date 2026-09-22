@@ -327,6 +327,67 @@ SPDX 2.3 path green). Tests: 17 new (10 service + 6 API + 1 rootfs), full
 devsecops service suite 58/58, `tsc --noEmit` + `vite build` green, ruff
 clean.
 
+**Update (2026-09-22, SBOM scanner extension — resolved graphs, assurance,
+provenance):** four upgrades on top of the E2E scanner, each closing a gap a
+real SBOM consumer hits:
+
+1. **Lockfile resolution (transitive dependencies).** Scan results now merge
+   the *resolved* graphs from ten lockfile formats — `package-lock.json` (v2/v3
+   `packages` map + v1 fallback), `yarn.lock`, `poetry.lock`, `Pipfile.lock`,
+   `Cargo.lock`, `composer.lock`, `Gemfile.lock`, `go.sum`,
+   `packages.lock.json` (NuGet) and `gradle.lockfile` — alongside the declared
+   manifests. A manifest-only SBOM under-reports the tree (the usual reason a
+   supplier SBOM is rejected): the demo tree goes from **3 declared components
+   to 11 with 5 direct / 6 transitive and 5 dependency edges**. Resolved
+   versions win while the manifest specifier is retained
+   (`declared_spec`, exactly what caught `express ^4.18.0 → 4.19.2`), and
+   `direct` is only asserted when the lockfile or sibling manifest actually
+   supports it (never guessed — Pipfile.lock's `default` section holds direct
+   *and* transitive packages, so it stays unknown without a `Pipfile`).
+   `use_lockfiles: false` reproduces the declared-only view on demand.
+2. **NTIA minimum-elements validation** (`POST /devsecops/sbom/validate`, also
+   returned by every scan). Checks supplier, component name, version, unique
+   identifiers, dependency relationships, author and timestamp against
+   CycloneDX or SPDX input, with per-element coverage (`PARTIAL 1/2
+   components`) and the exact gaps — a supplier SBOM missing the purl on one
+   component scores `5/7` and names it. Our own scans now record the operator
+   as the SBOM author and fill component suppliers from the curated vendor
+   registry where it is actually known (`ring → Mozilla`), so they score
+   **6/7 with the one honest gap being third-party suppliers we have no data
+   for** — the element is never invented.
+3. **SBOM diffing** (`POST /devsecops/sbom/diff`): components added/removed,
+   version changes with upgrade/downgrade direction, license changes, and
+   crypto-relevant deltas, with a verdict (`UNCHANGED` / `UPDATED` /
+   `CRYPTO_REVIEW`). Normalizes both formats, so a CycloneDX SBOM can be
+   diffed against the equivalent SPDX one (verified: same scan in both formats
+   diffs as UNCHANGED).
+4. **Signed provenance + retention + reports.** Every artifact manifest is
+   HMAC-SHA256 signed (platform vault/settings key, stable across restarts —
+   a process-random key would make verification disagree with itself after a
+   reboot, so that fallback was deliberately rejected);
+   `GET /sbom/{id}/verify` recomputes the blob digest *and* the manifest
+   signature and reports which check failed and why;
+   `GET /sbom/{id}/report` renders an auditor summary (crypto inventory,
+   pinning findings, minimum-elements table, provenance) as markdown;
+   `DELETE /sbom/artifacts?older_than_days=N` applies retention.
+   BOM enrichment also adds the resolved dependency graph
+   (`dependencies: [{ref, dependsOn}]` in CycloneDX, `DEPENDS_ON`
+   relationships in SPDX), declared licenses and package checksums in each
+   format's own vocabulary.
+
+Verified live (2026-09-22): scan of the demo tree → 11 components, 5
+direct/6 transitive, 3 lockfiles, 5 edges, `6/7` minimum elements, signed
+`key_id=settings`, 29 ms; diff declared-vs-resolved → `CRYPTO_REVIEW`, 13
+changes including 8 previously invisible transitive dependencies; validation
+of a supplier document → `5/7` naming its two real gaps; report markdown
+downloaded with attachment headers; **tamper drill** — flipping one byte in a
+stored BOM and separately editing its manifest both yield `TAMPERED` with the
+correct per-check explanation, and repairing returns `OK`; **restart
+persistence** — an artifact signed before an API restart still verifies `OK`
+after it. Tests: 98 in the SBOM surface (lockfile parsers per format,
+cross-format diff, compliance scoring, signing round-trip, provenance checks,
+retention, role gating); ruff clean; `tsc --noEmit` + `vite build` green.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

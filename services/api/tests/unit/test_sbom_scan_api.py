@@ -211,3 +211,189 @@ async def test_scan_forbidden_for_viewer(app_db, tmp_path, monkeypatch):
                                   headers={"Authorization": "Bearer viewer-token"})
     assert r1.status_code == 403
     assert r2.status_code == 403
+
+
+# ------------------------------------------------- new capabilities --------- #
+async def _scan(client, tmp_path, name, *, kind="source", fmt="cyclonedx", extra=None):
+    src = tmp_path / name
+    src.mkdir(parents=True, exist_ok=True)
+    (src / "requirements.txt").write_text("requests==2.31.0\ncryptography==42.0.0\n")
+    body = {"kind": kind, "target": str(src), "format": fmt}
+    body.update(extra or {})
+    return await client.post("/api/v1/devsecops/sbom/scan", json=body,
+                             headers={"Authorization": "Bearer test-token"})
+
+
+@pytest.mark.asyncio
+async def test_scan_reports_compliance_and_signature(app_db):
+    application, session, tmp_path = app_db
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await _scan(client, tmp_path, "app")
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    compliance = body["compliance"]
+    assert compliance["compliant"] is False  # third-party suppliers are unknown
+    assert "Supplier name" in " ".join(compliance["gaps"])
+    by_id = {e["id"]: e for e in compliance["elements"]}
+    assert by_id["author"]["status"] == "PASS"   # operator recorded
+    assert by_id["timestamp"]["status"] == "PASS"
+    assert body["bom"]["metadata"]["authors"] == [{"name": "operator"}]
+    assert body["manifest"].get("signature_alg") == "HMAC-SHA256"
+    assert body["manifest"].get("signature")
+
+
+@pytest.mark.asyncio
+async def test_verify_artifact_ok_and_tamper_detected(app_db):
+    application, session, tmp_path = app_db
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await _scan(client, tmp_path, "app")
+            artifact_id = scan.json()["artifact_id"]
+            headers = {"Authorization": "Bearer test-token"}
+            good = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/verify", headers=headers)
+    assert good.status_code == 200
+    payload = good.json()
+    assert payload["verdict"] == "OK" and payload["signed"] is True
+    assert all(c["ok"] for c in payload["checks"])
+
+    # tamper with the stored manifest -> signature check fails, blob still matches
+    import api.routers.devsecops as ds
+
+    store = ds._sbom_storage()
+    man = next(m for m in store.list_manifests() if m["artifact_id"] == artifact_id)
+    store.put_manifest(man["storage_key"], dict(man, component_count=999))
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            bad = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/verify",
+                                   headers={"Authorization": "Bearer test-token"})
+    assert bad.json()["verdict"] == "TAMPERED"
+    checks = {c["check"]: c["ok"] for c in bad.json()["checks"]}
+    assert checks["blob_sha256"] is True and checks["manifest_signature"] is False
+
+
+@pytest.mark.asyncio
+async def test_diff_two_artifacts(app_db):
+    application, session, tmp_path = app_db
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await _scan(client, tmp_path, "old")
+            second = await _scan(client, tmp_path, "new")
+            headers = {"Authorization": "Bearer test-token"}
+            resp = await client.post(
+                "/api/v1/devsecops/sbom/diff",
+                json={"from_artifact": first.json()["artifact_id"],
+                      "to_artifact": second.json()["artifact_id"]},
+                headers=headers)
+            missing = await client.post("/api/v1/devsecops/sbom/diff", json={}, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["verdict"] == "UNCHANGED"
+    assert resp.json()["sources"]["from"]["target"].endswith("old")
+    assert missing.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_diff_inline_docs(app_db):
+    application, session, tmp_path = app_db
+    old = {"bomFormat": "CycloneDX", "specVersion": "1.5", "components": [
+        {"type": "library", "name": "openssl", "version": "3.0.9", "purl": "pkg:generic/openssl@3.0.9",
+         "properties": [{"name": "cryptoscan:crypto-library", "value": "true"}]}]}
+    new = {"bomFormat": "CycloneDX", "specVersion": "1.5", "components": [
+        {"type": "library", "name": "openssl", "version": "3.1.0", "purl": "pkg:generic/openssl@3.1.0",
+         "properties": [{"name": "cryptoscan:crypto-library", "value": "true"}]}]}
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/v1/devsecops/sbom/diff",
+                                     json={"from_doc": old, "to_doc": new},
+                                     headers={"Authorization": "Bearer test-token"})
+    assert resp.status_code == 200
+    assert resp.json()["verdict"] == "CRYPTO_REVIEW"
+    assert resp.json()["changed"][0]["direction"] == "upgrade"
+
+
+@pytest.mark.asyncio
+async def test_validate_endpoint_scores_supplier_document(app_db):
+    application, session, tmp_path = app_db
+    doc = {"bomFormat": "CycloneDX", "specVersion": "1.5",
+           "metadata": {"timestamp": "2026-09-22T00:00:00Z", "authors": [{"name": "vendor"}]},
+           "components": [{"type": "library", "name": "libfoo", "version": "1.0",
+                           "purl": "pkg:generic/libfoo@1.0", "supplier": {"name": "ACME"}}],
+           "dependencies": [{"ref": "pkg:generic/libfoo@1.0", "dependsOn": []}]}
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            resp = await client.post("/api/v1/devsecops/sbom/validate", json={"doc": doc},
+                                     headers={"Authorization": "Bearer test-token"})
+            bad = await client.post("/api/v1/devsecops/sbom/validate", json={"doc": {"nope": 1}},
+                                    headers={"Authorization": "Bearer test-token"})
+    assert resp.status_code == 200
+    assert resp.json()["compliant"] is True and resp.json()["score"] == "7/7"
+    assert bad.json()["compliant"] is False
+
+
+@pytest.mark.asyncio
+async def test_report_markdown_and_json(app_db):
+    application, session, tmp_path = app_db
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await _scan(client, tmp_path, "app")
+            artifact_id = scan.json()["artifact_id"]
+            headers = {"Authorization": "Bearer test-token"}
+            md = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/report", headers=headers)
+            js = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=json", headers=headers)
+    assert md.status_code == 200 and "attachment" in md.headers.get("content-disposition", "")
+    text = md.text
+    assert "# SBOM report" in text and "Minimum elements (NTIA)" in text
+    assert "cryptography" in text and "Crypto-relevant components" in text
+    assert js.status_code == 200
+    body = js.json()
+    assert body["artifact"]["artifact_id"] == artifact_id
+    assert body["compliance"]["score"].endswith("/7")
+    assert any(c["name"] == "cryptography" for c in body["crypto_components"])
+
+
+@pytest.mark.asyncio
+async def test_prune_respects_age(app_db):
+    application, session, tmp_path = app_db
+    import api.routers.devsecops as ds
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await _scan(client, tmp_path, "app")
+            artifact_id = scan.json()["artifact_id"]
+            headers = {"Authorization": "Bearer test-token"}
+            # a just-created artifact survives a 1-day retention window
+            keep = await client.delete("/api/v1/devsecops/sbom/artifacts?older_than_days=1",
+                                       headers=headers)
+            # backdate the manifest, then prune
+            store = ds._sbom_storage()
+            man = next(m for m in store.list_manifests() if m["artifact_id"] == artifact_id)
+            store.put_manifest(man["storage_key"], dict(man, created_at="2020-01-01T00:00:00+00:00"))
+            removed = await client.delete("/api/v1/devsecops/sbom/artifacts?older_than_days=30",
+                                          headers=headers)
+            gone = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/download", headers=headers)
+            bad = await client.delete("/api/v1/devsecops/sbom/artifacts?older_than_days=0",
+                                      headers=headers)
+    assert keep.json() == {"deleted": 0, "kept": 1, "older_than_days": 1, "artifacts": []}
+    assert removed.json()["deleted"] == 1
+    assert gone.status_code == 404
+    assert bad.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_spdx_report_excludes_document_root(app_db):
+    """An SPDX report must not count the document's own subject as a component
+    (it has no version, so it would surface as a phantom unpinned finding)."""
+    application, session, tmp_path = app_db
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await _scan(client, tmp_path, "app", fmt="spdx")
+            artifact_id = scan.json()["artifact_id"]
+            resp = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=json",
+                                    headers={"Authorization": "Bearer test-token"})
+    assert resp.status_code == 200
+    body = resp.json()
+    manifest_components = scan.json()["manifest"]["component_count"]
+    assert body["pinning"]["total_components"] == manifest_components
+    assert body["pinning"]["unpinned"] == 0
+    assert not [f for f in body["pinning"]["findings"] if f["code"] == "PIN-MISSING"]
+    assert body["compliance"]["component_count"] == manifest_components

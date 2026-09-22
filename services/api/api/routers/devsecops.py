@@ -152,6 +152,37 @@ def _sbom_storage():
     return _SBOM_STORE
 
 
+def _sbom_signing_secret(db: Session | None) -> tuple[str | None, str]:
+    """(secret, key_id) for signing SBOM manifests.
+
+    Preference order matches the rest of the platform: vault ref > persisted
+    settings key > HKDF from the platform master. When no platform SECRET_KEY
+    is configured (dev without a vault), the API's configured SECRET_KEY is
+    used — it is *stable across restarts*, unlike a process-random fallback,
+    so /verify keeps agreeing with artifacts signed earlier in the same
+    deployment. Returns ``(None, "unsigned")`` when nothing is available, which
+    /verify reports honestly as an unsigned artifact rather than a failure.
+    """
+    import logging
+
+    try:
+        from db.repositories.settings_repository import SettingsRepository
+        from governance.keys import signing_secret
+
+        return signing_secret(settings_repo=SettingsRepository(db) if db is not None else None), "platform"
+    except Exception as exc:  # noqa: BLE001 — signing must never break a scan
+        logging.getLogger(__name__).warning("sbom_platform_signing_key_unavailable: %s", exc)
+    try:
+        from api.config.settings import get_settings
+
+        configured = (get_settings().SECRET_KEY or "").strip()
+        if configured:
+            return configured, "settings"
+    except Exception:  # noqa: BLE001
+        pass
+    return None, "unsigned"
+
+
 class SbomScanRequest(BaseModel):
     kind: str = Field(..., description="source | container")
     target: str = Field(..., min_length=1, max_length=512,
@@ -159,6 +190,7 @@ class SbomScanRequest(BaseModel):
     format: str = Field("cyclonedx", description="cyclonedx | spdx")
     as_image: bool = Field(False, description="treat the target as a registry image even if a path exists")
     include_vendored: bool = Field(False, description="source kind: also parse manifests under vendor/")
+    use_lockfiles: bool = Field(True, description="source kind: merge resolved dependency lockfiles")
 
 
 @router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
@@ -192,7 +224,8 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         if resolved.startswith(("http://", "https://", "git@")):
             raise HTTPException(400, "remote git URLs are not supported by the SBOM scanner — point it at a local source tree")
         try:
-            result = sb.scan_source(resolved, include_vendored=body.include_vendored)
+            result = sb.scan_source(resolved, include_vendored=body.include_vendored,
+                                    use_lockfiles=body.use_lockfiles)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
     else:
@@ -219,7 +252,7 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
             raise HTTPException(status_code=503, detail=f"container scan unavailable: {exc}")
 
     try:
-        bom = sb.render_sbom(result, fmt=fmt)
+        bom = sb.render_sbom(result, fmt=fmt, created_by=user)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
@@ -231,10 +264,13 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     key = f"{artifact_id}.{ext}"
 
     components = [{"name": p.get("name"),
-                   "version": p.get("raw_spec") or p.get("version"),
+                   "version": p.get("declared_spec") or p.get("raw_spec") or p.get("version"),
                    "ecosystem": p.get("manager")} for p in packages]
     pinning = check_pinning(components)
     component_count = len(packages) + len(result.get("binaries") or [])
+    from devsecops.sbom_assurance import check_minimum_elements
+
+    compliance = check_minimum_elements(bom)
     manifest = {
         "artifact_id": artifact_id,
         "kind": kind,
@@ -245,12 +281,23 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         "binary_count": len(result.get("binaries") or []),
         "crypto_components": len(result.get("libraries") or []),
         "manifest_count": result.get("manifest_count", 0),
+        "lockfile_count": result.get("lockfile_count", 0),
+        "direct_count": sum(1 for p in packages if p.get("direct") is True),
+        "transitive_count": sum(1 for p in packages if p.get("direct") is False),
+        "dependency_edges": len(result.get("dependencies") or []),
+        "minimum_elements": compliance["score"],
+        "compliant": compliance["compliant"],
         "pinned": pinning["pinned"],
         "unpinned": pinning["unpinned"],
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user,
         "storage_key": key,
     }
+    secret, key_id = _sbom_signing_secret(db)
+    if secret:
+        manifest["signature_alg"] = "HMAC-SHA256"
+        manifest["signature_key"] = key_id
+        manifest["signature"] = sb.sign_manifest(manifest, secret)
     store = _sbom_storage()
     store.put(key, payload)
     store.put_manifest(key, manifest)
@@ -259,8 +306,10 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
                              detail={"kind": kind, "target": manifest["target"], "format": fmt,
                                      "components": component_count, "sha256": sha256[:16]})
     db.commit()
-    return {"artifact_id": artifact_id, "manifest": manifest,
-            "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download", "bom": bom}
+    return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
+            "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
+            "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
+            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom}
 
 
 @router.get("/sbom/artifacts")
@@ -269,6 +318,256 @@ def sbom_artifacts(user: str = Depends(require_roles(*_SBOM_OPERATORS))):
     items = _sbom_storage().list_manifests()
     items.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
     return {"artifacts": items[:50], "total": len(items)}
+
+
+class SbomValidateRequest(BaseModel):
+    doc: dict = Field(..., description="CycloneDX or SPDX JSON document")
+
+
+@router.post("/sbom/validate")
+def sbom_validate(body: SbomValidateRequest,
+                  user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """NTIA minimum-elements check for a CycloneDX/SPDX document: supplier,
+    component name, version, unique identifiers, dependency relationships,
+    SBOM author and timestamp — per-element coverage plus the exact gaps.
+    Use it on a supplier's SBOM before accepting it, or on our own output."""
+    from devsecops.sbom_assurance import check_minimum_elements
+
+    return check_minimum_elements(body.doc)
+
+
+class SbomDiffRequest(BaseModel):
+    from_artifact: str | None = Field(None, description="artifact id (baseline)")
+    to_artifact: str | None = Field(None, description="artifact id (current)")
+    from_doc: dict | None = Field(None, description="or an inline cyclonedx/spdx document")
+    to_doc: dict | None = Field(None, description="or an inline cyclonedx/spdx document")
+
+
+@router.post("/sbom/diff")
+def sbom_diff(body: SbomDiffRequest,
+              user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Diff two SBOMs (stored artifacts or inline docs): components added,
+    removed, version-changed (upgrade/downgrade), license changes, crypto
+    deltas and a review verdict."""
+    from devsecops.sbom_assurance import diff_boms
+
+    store = _sbom_storage()
+
+    def _load(artifact_id: str) -> tuple[dict, dict]:
+        if not _ARTIFACT_ID_RE.match(artifact_id):
+            raise HTTPException(status_code=404, detail=f"artifact not found: {artifact_id}")
+        man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+        if man is None or not man.get("storage_key"):
+            raise HTTPException(status_code=404, detail=f"artifact not found: {artifact_id}")
+        try:
+            doc = json.loads(store.get(man["storage_key"]))
+        except Exception:  # noqa: BLE001 — manifest without a readable blob
+            raise HTTPException(status_code=404, detail=f"artifact not found: {artifact_id}")
+        return doc, man
+
+    meta: dict = {}
+    if body.from_artifact and body.to_artifact:
+        old, old_man = _load(body.from_artifact)
+        new, new_man = _load(body.to_artifact)
+        meta = {"from": {k: old_man.get(k) for k in ("artifact_id", "target", "format", "created_at")},
+                "to": {k: new_man.get(k) for k in ("artifact_id", "target", "format", "created_at")}}
+    elif body.from_doc is not None and body.to_doc is not None:
+        old, new = body.from_doc, body.to_doc
+    else:
+        raise HTTPException(status_code=422, detail=("pass from_artifact+to_artifact, "
+                                                     "or from_doc+to_doc"))
+    result = diff_boms(old, new)
+    result["sources"] = meta
+    return result
+
+
+@router.get("/sbom/{artifact_id}/verify")
+def sbom_verify(artifact_id: str, db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Re-verify a stored artifact: recompute the blob digest and the manifest
+    HMAC signature. Returns OK only when both match."""
+    from devsecops.sbom_scan import verify_artifact
+
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    store = _sbom_storage()
+    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    if man is None or not man.get("storage_key"):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    try:
+        blob = store.get(man["storage_key"])
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail="artifact not found")
+    secret, key_id = _sbom_signing_secret(db)
+    result = verify_artifact(man, blob, secret)
+    result["key_id"] = key_id
+    failed = {c["check"] for c in result["checks"] if not c["ok"]}
+    notes = []
+    if "blob_sha256" in failed:
+        notes.append("the stored BOM bytes no longer match the recorded sha256 — "
+                     "the artifact was modified or corrupted after generation")
+    if "manifest_signature" in failed:
+        notes.append("the stored manifest does not match its HMAC signature — it was "
+                     "modified after signing, or the signing key changed since "
+                     f"(signed with: {man.get('signature_key') or 'unknown'})")
+    if notes:
+        result["note"] = "; ".join(notes)
+    if result["verdict"] != "OK":
+        UserRepository(db).audit(user, "devsecops.sbom_verify_failed", target_type="sbom_artifact",
+                                 target_id=artifact_id,
+                                 detail={"checks": result["checks"]}, outcome="FAILURE")
+        db.commit()
+    return {"artifact_id": artifact_id, **result, "manifest": {
+        "format": man.get("format"), "kind": man.get("kind"), "target": man.get("target"),
+        "sha256": man.get("sha256"), "created_at": man.get("created_at"),
+        "signature_alg": man.get("signature_alg")}}
+
+
+@router.get("/sbom/{artifact_id}/report")
+def sbom_report(artifact_id: str, fmt: str = "markdown",
+                user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Auditor-friendly summary of a stored SBOM: components, crypto inventory,
+    pinning, minimum-elements status and provenance (markdown or json)."""
+    from devsecops.sbom_assurance import check_minimum_elements
+    from devsecops.sbom import check_pinning
+
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    store = _sbom_storage()
+    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    if man is None or not man.get("storage_key"):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    try:
+        bom = json.loads(store.get(man["storage_key"]))
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail="artifact not found")
+
+    compliance = check_minimum_elements(bom)
+    components = _bom_components(bom)
+    pinning = check_pinning(components)
+    crypto = [c for c in components if _is_crypto_component(c, bom)]
+    payload = {
+        "artifact": {k: man.get(k) for k in ("artifact_id", "kind", "target", "format", "sha256",
+                                             "component_count", "crypto_components", "pinned",
+                                             "unpinned", "manifest_count", "created_at", "created_by",
+                                             "signature_alg")},
+        "compliance": compliance,
+        "pinning": pinning,
+        "crypto_components": crypto,
+    }
+    if fmt.lower() in ("json", "raw"):
+        return payload
+    lines = [
+        f"# SBOM report — {man.get('target')}",
+        "",
+        f"- Artifact: `{man.get('artifact_id')}` ({man.get('kind')}, {man.get('format')})",
+        f"- Generated: {man.get('created_at')} by {man.get('created_by')}",
+        f"- SHA-256: `{man.get('sha256')}`",
+        f"- Signature: {man.get('signature_alg') or 'none'}",
+        f"- Components: {man.get('component_count')} ({man.get('crypto_components')} crypto-relevant)",
+        f"- Pinning: {man.get('pinned')} pinned / {man.get('unpinned')} unpinned",
+        f"- Minimum elements: {compliance['score']} — {'COMPLIANT' if compliance['compliant'] else 'GAPS'}",
+        "",
+        "## Minimum elements (NTIA)",
+        "",
+        "| Element | Status | Detail |",
+        "| --- | --- | --- |",
+    ]
+    for element in compliance["elements"]:
+        lines.append(f"| {element['label']} | {element['status']} | {element['detail']} |")
+    lines += ["", "## Crypto-relevant components", "",
+              "| Component | Version | Vendor | Source |", "| --- | --- | --- | --- |"]
+    if crypto:
+        for comp in sorted(crypto, key=lambda c: str(c.get("name"))):
+            lines.append(f"| {comp.get('name')} | {comp.get('version') or '-'} | "
+                         f"{comp.get('vendor') or '-'} | {comp.get('ecosystem') or '-'} |")
+    else:
+        lines.append("| _none_ | | | |")
+    if pinning["findings"]:
+        lines += ["", "## Pinning findings", "", "| Coordinate | Code | Severity | Detail |",
+                  "| --- | --- | --- | --- |"]
+        for finding in pinning["findings"]:
+            lines.append(f"| {finding['coordinate']} | {finding['code']} | {finding['severity']} | "
+                         f"{finding['detail']} |")
+    if compliance["gaps"]:
+        lines += ["", "## Gaps", ""] + [f"- {gap}" for gap in compliance["gaps"]]
+    body = "\n".join(lines) + "\n"
+    ext = "md" if fmt.lower() in ("markdown", "md") else "txt"
+    return Response(content=body.encode("utf-8"), media_type="text/markdown",
+                    headers={"Content-Disposition": f'attachment; filename="cryptoscan-sbom-{artifact_id[:8]}.{ext}"'})
+
+
+@router.delete("/sbom/artifacts")
+def sbom_prune(older_than_days: int = 90, db: Session = Depends(get_db_session),
+               user: str = Depends(require_roles("admin", "superadmin"))):
+    """Retention: delete artifacts older than N days (default 90, min 1)."""
+    from datetime import datetime, timedelta, timezone
+
+    if older_than_days < 1:
+        raise HTTPException(status_code=422, detail="older_than_days must be >= 1")
+    cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
+    store = _sbom_storage()
+    deleted, kept = [], 0
+    for man in store.list_manifests():
+        created = str(man.get("created_at") or "")
+        try:
+            stamp = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if stamp.tzinfo is None:
+                stamp = stamp.replace(tzinfo=timezone.utc)
+        except ValueError:
+            kept += 1
+            continue
+        if stamp < cutoff and man.get("storage_key"):
+            store.delete(man["storage_key"])
+            deleted.append({"artifact_id": man.get("artifact_id"), "created_at": created,
+                            "target": man.get("target")})
+        else:
+            kept += 1
+    if deleted:
+        UserRepository(db).audit(user, "devsecops.sbom_prune", target_type="sbom_artifact",
+                                 target_id="retention",
+                                 detail={"older_than_days": older_than_days,
+                                         "deleted": len(deleted)})
+        db.commit()
+    return {"deleted": len(deleted), "kept": kept, "older_than_days": older_than_days,
+            "artifacts": deleted[:20]}
+
+
+def _bom_components(bom: dict) -> list[dict]:
+    """Components of either BOM format in the scanner's component shape.
+
+    SPDX documents describe their own subject as a package, which is not a
+    component — counting it would add a phantom unpinned component to reports.
+    """
+    from devsecops.sbom_assurance import spdx_components
+
+    out = []
+    if str(bom.get("bomFormat") or "").lower() == "cyclonedx":
+        for comp in bom.get("components") or []:
+            out.append({"name": comp.get("name"), "version": comp.get("version"),
+                        "ecosystem": (comp.get("purl") or "").split(":")[1].split("/")[0]
+                        if comp.get("purl") else None})
+        return out
+    for pkg in spdx_components(bom):
+        purl = None
+        for ref in pkg.get("externalRefs") or []:
+            if str(ref.get("referenceType") or "").lower() == "purl":
+                purl = str(ref.get("referenceLocator") or "")
+        version = str(pkg.get("versionInfo") or "")
+        out.append({"name": pkg.get("name"),
+                    "version": None if version == "NOASSERTION" else version,
+                    "ecosystem": purl.split(":")[1].split("/")[0] if purl else None})
+    return out
+
+
+def _is_crypto_component(component: dict, bom: dict) -> bool:
+    if str(bom.get("bomFormat") or "").lower() != "cyclonedx":
+        return False
+    for comp in bom.get("components") or []:
+        if comp.get("name") == component.get("name"):
+            return any(isinstance(p, dict) and p.get("name") == "cryptoscan:crypto-library"
+                       and str(p.get("value")) == "true" for p in (comp.get("properties") or []))
+    return False
 
 
 @router.get("/sbom/{artifact_id}/download")

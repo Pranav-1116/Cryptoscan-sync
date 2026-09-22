@@ -17,6 +17,7 @@ only the ``vendor/`` directory.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -126,9 +127,21 @@ def _parse_manifest(path: Path, parsers: dict[str, Any]) -> list[dict[str, Any]]
         return []
 
 
-def scan_source(root: str, *, include_vendored: bool = False) -> dict[str, Any]:
-    """Walk a source tree and build the canonical scan result from manifests."""
+def scan_source(root: str, *, include_vendored: bool = False,
+                use_lockfiles: bool = True) -> dict[str, Any]:
+    """Walk a source tree and build the canonical scan result.
+
+    Declared dependencies come from the package manifests; when
+    ``use_lockfiles`` is on (default) the resolved graphs in lockfiles
+    (package-lock.json, yarn.lock, poetry.lock, Pipfile.lock, Cargo.lock,
+    composer.lock, Gemfile.lock, go.sum, packages.lock.json, gradle.lockfile)
+    are merged in — resolved versions win for a component that appears in
+    both, and transitive (lockfile-only) components are included, each row
+    tagged ``scope`` = declared|resolved and ``direct`` where determinable.
+    """
     from container_scanner.parsers import package_parsers as pp
+
+    from devsecops import sbom_lockfiles as lf
 
     base = Path(root).expanduser().resolve()
     if not base.is_dir():
@@ -149,6 +162,7 @@ def scan_source(root: str, *, include_vendored: bool = False) -> dict[str, Any]:
 
     packages: list[dict[str, Any]] = []
     manifests: list[str] = []
+    lockfiles: list[str] = []
     files_walked = 0
     for dirpath, dirnames, filenames in os.walk(base):
         dirnames[:] = [d for d in dirnames if d not in skip]
@@ -159,6 +173,14 @@ def scan_source(root: str, *, include_vendored: bool = False) -> dict[str, Any]:
             path = Path(dirpath) / fn
             rel = path.relative_to(base)
             if len(rel.parts) > 12:  # pathological nesting guard
+                continue
+            if use_lockfiles and lf.is_lockfile(fn):
+                found_locked = lf.parse_lockfile(path)
+                if found_locked:
+                    lockfiles.append(str(rel))
+                    for item in found_locked:
+                        item["manifest"] = str(rel)
+                    packages.extend(found_locked)
                 continue
             if fn in parsers:
                 found = _parse_manifest(path, parsers)
@@ -171,20 +193,18 @@ def scan_source(root: str, *, include_vendored: bool = False) -> dict[str, Any]:
                 raw_specs = _raw_pip_specs(path) if fn.startswith("requirements") else {}
                 for item in found:
                     item["manifest"] = str(rel)
-                    if item.get("manager") == "pip" and item.get("name") in raw_specs:
-                        item["raw_spec"] = raw_specs[item["name"]]
+                    item["scope"] = "declared"
+                    spec = raw_specs.get(item.get("name"))
+                    if spec:
+                        item["raw_spec"] = spec
+                        digest = _pip_hash_for(path, item.get("name"))
+                        if digest:
+                            item["integrity"] = digest
                 packages.extend(found)
         if files_walked > _MAX_FILES_WALKED:
             break
 
-    # de-duplicate on (manager, name, version) — keep first manifest seen
-    dedup: dict[tuple[str, str, str], dict[str, Any]] = {}
-    for pkg in packages:
-        key = (str(pkg.get("manager") or "generic"),
-               str(pkg.get("name") or "").lower(),
-               str(pkg.get("version") or ""))
-        dedup.setdefault(key, pkg)
-    components = list(dedup.values())
+    components = _merge_declared_and_resolved(packages)
 
     return {
         "target": str(base),
@@ -195,8 +215,109 @@ def scan_source(root: str, *, include_vendored: bool = False) -> dict[str, Any]:
         "vulnerabilities": [],
         "manifests": manifests,
         "manifest_count": len(set(manifests)),
+        "lockfiles": lockfiles,
+        "lockfile_count": len(set(lockfiles)),
+        "dependencies": _dependency_edges(components),
         "files_walked": files_walked,
     }
+
+
+def _pip_hash_for(path: Path, name: str | None) -> str | None:
+    """sha256 from a ``--hash=sha256:…`` option on the package's line."""
+    if not name:
+        return None
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    target = str(name).lower()
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        m = re.match(r"^([A-Za-z0-9_.-]+)\s*(?:==|>=|<=|~=|!=|>|<)", stripped)
+        if not m or m.group(1).lower() != target:
+            continue
+        h = re.search(r"--hash[= ]sha256:([0-9a-fA-F]{64})", stripped)
+        if h:
+            return f"sha256:{h.group(1).lower()}"
+    return None
+
+
+def _merge_declared_and_resolved(packages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per (manager, name).
+
+    Resolved (lockfile) rows carry the real version; a declared row for the
+    same component contributes its specifier (``declared_spec``) so a range
+    pin stays visible. Lockfile-only rows are transitive dependencies.
+    """
+    merged: dict[tuple[str, str], dict[str, Any]] = {}
+    declared_meta: dict[tuple[str, str], dict[str, Any]] = {}
+    for pkg in packages:
+        manager = str(pkg.get("manager") or "generic")
+        name = str(pkg.get("name") or "").lower()
+        if not name:
+            continue
+        key = (manager, name)
+        if str(pkg.get("scope")) == "resolved":
+            row = merged.get(key)
+            if row is None:
+                merged[key] = dict(pkg, scope="resolved")
+            elif row.get("scope") == "declared":
+                # the lockfile is authoritative for the version — replace the
+                # declared row but keep what the manifest asked for
+                spec = str(row.get("raw_spec") or row.get("version") or "")
+                replacement = dict(pkg, scope="resolved")
+                if spec:
+                    replacement["declared_spec"] = spec
+                if row.get("integrity") and not replacement.get("integrity"):
+                    replacement["integrity"] = row["integrity"]
+                merged[key] = replacement
+            else:
+                # two lockfiles disagree — keep the first, record the other
+                other = str(pkg.get("version") or "")
+                if other and other != str(row.get("version") or ""):
+                    row.setdefault("also_resolved_as", []).append(other)
+            continue
+        declared_meta.setdefault(key, pkg)
+        if key not in merged:
+            # a dependency declared in a manifest is a direct dependency
+            merged[key] = dict(pkg, scope="declared", direct=True)
+        else:
+            row = merged[key]
+            spec = str(pkg.get("raw_spec") or "")
+            if spec:
+                row["declared_spec"] = spec
+            if not row.get("integrity") and pkg.get("integrity"):
+                row["integrity"] = pkg["integrity"]
+
+    for key, declared in declared_meta.items():
+        row = merged.get(key)
+        if row is None:
+            continue
+        spec = str(declared.get("raw_spec") or declared.get("version") or "")
+        if spec and not row.get("declared_spec"):
+            row["declared_spec"] = spec
+        if declared.get("integrity") and not row.get("integrity"):
+            row["integrity"] = declared["integrity"]
+        if row.get("scope") == "resolved":
+            row["direct"] = True
+    return [merged[k] for k in sorted(merged)]
+
+
+def _dependency_edges(components: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Edges between components, resolved by name (lockfiles reference names)."""
+    by_name = {str(c.get("name") or "").lower(): c for c in components}
+    edges: list[dict[str, str]] = []
+    for comp in components:
+        parent = str(comp.get("name") or "").lower()
+        if not parent or parent not in by_name:
+            continue
+        for dep in comp.get("depends_on") or []:
+            child = str(dep).lower()
+            if child in by_name and child != parent:
+                edges.append({"from": parent, "to": child})
+    return edges
 
 
 def scan_container(target: str, *, as_image: bool = False) -> dict[str, Any]:
@@ -232,12 +353,195 @@ def scan_container(target: str, *, as_image: bool = False) -> dict[str, Any]:
     return result
 
 
-def render_sbom(result: dict[str, Any], *, fmt: str) -> dict[str, Any]:
-    """Render a canonical scan result as CycloneDX 1.5 or SPDX 2.3 JSON."""
+def render_sbom(result: dict[str, Any], *, fmt: str, enrich: bool = True,
+                created_by: str | None = None) -> dict[str, Any]:
+    """Render a canonical scan result as CycloneDX 1.5 or SPDX 2.3 JSON.
+
+    ``enrich`` adds what the base renderer does not know about: the resolved
+    dependency graph (lockfile edges), declared licenses, scope/direct
+    metadata, and package checksums in the format's own vocabulary.
+    """
     if fmt in ("cyclonedx", "cdx"):
         from container_scanner.reports.sbom import build_sbom
-        return build_sbom(result)
-    if fmt == "spdx":
+        bom = build_sbom(result)
+    elif fmt == "spdx":
         from container_scanner.reports.spdx import build_spdx
-        return build_spdx(result)
-    raise ValueError(f"unsupported SBOM format: {fmt}")
+        bom = build_spdx(result)
+    else:
+        raise ValueError(f"unsupported SBOM format: {fmt}")
+    return enrich_bom(bom, result, created_by=created_by) if enrich else bom
+
+
+_SPDX_ID_SAFE = re.compile(r"^[A-Za-z0-9.+-]+$")
+
+
+def _license_node(value: str | None) -> dict[str, Any] | None:
+    """CycloneDX license object for a declared license string."""
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text or text.upper() in ("NOASSERTION", "UNKNOWN"):
+        return None
+    if "," in text:
+        return {"expression": text}
+    if _SPDX_ID_SAFE.match(text):
+        return {"license": {"id": text}}
+    return {"license": {"name": text}}
+
+
+def enrich_bom(bom: dict[str, Any], result: dict[str, Any],
+               *, created_by: str | None = None) -> dict[str, Any]:
+    """Attach dependency graph, licenses, supplier and scope metadata to a BOM.
+
+    ``created_by`` records the SBOM author (the NTIA "author of SBOM data"
+    element) when the scan was run by a known operator. Component suppliers are
+    filled in only where the curated registry actually knows the vendor — an
+    unknown supplier stays absent rather than being invented.
+    """
+    packages = {}
+    for pkg in result.get("packages") or []:
+        name = str(pkg.get("name") or "").strip().lower()
+        if name:
+            packages.setdefault(name, pkg)
+    binaries = {str(b.get("name") or "").strip().lower() for b in (result.get("binaries") or [])}
+    vendors = {str(lib.get("name") or "").strip().lower(): str(lib.get("vendor") or "")
+               for lib in (result.get("libraries") or [])}
+    edges = result.get("dependencies")
+    if edges is None:
+        edges = _dependency_edges(list(packages.values()))
+
+    if str(bom.get("bomFormat") or "").lower() == "cyclonedx":
+        metadata = bom.get("metadata") if isinstance(bom.get("metadata"), dict) else {}
+        if created_by and not metadata.get("authors"):
+            metadata["authors"] = [{"name": str(created_by)}]
+        bom["metadata"] = metadata
+        refs: dict[str, str] = {}
+        for comp in bom.get("components") or []:
+            name = str(comp.get("name") or "").strip().lower()
+            ref = comp.get("bom-ref")
+            if name and ref:
+                refs.setdefault(name, str(ref))
+            vendor = vendors.get(name)
+            if vendor and not comp.get("supplier"):
+                comp["supplier"] = {"name": vendor}
+            if name in binaries or name not in packages:
+                continue
+            pkg = packages[name]
+            props = [p for p in (comp.get("properties") or []) if isinstance(p, dict)]
+            seen = {p.get("name") for p in props}
+            extra = [
+                ("cryptoscan:scope", str(pkg.get("scope") or "")),
+                ("cryptoscan:direct", "" if pkg.get("direct") is None else str(bool(pkg["direct"])).lower()),
+                ("cryptoscan:declared-spec", str(pkg.get("declared_spec") or "")),
+                ("cryptoscan:integrity", str(pkg.get("integrity") or "")),
+            ]
+            for prop_name, value in extra:
+                if prop_name not in seen:
+                    props.append({"name": prop_name, "value": value})
+            props = [p for p in props if p.get("value") not in (None, "")]
+            if props:
+                comp["properties"] = props
+            if pkg.get("license") and not comp.get("licenses"):
+                node = _license_node(str(pkg["license"]))
+                if node:
+                    comp["licenses"] = [node]
+            integrity = str(pkg.get("integrity") or "")
+            if integrity.startswith("sha256:") and not comp.get("hashes"):
+                comp["hashes"] = [{"alg": "SHA-256", "content": integrity.split(":", 1)[1]}]
+        if edges:
+            depends: dict[str, list[str]] = {}
+            for edge in edges:
+                parent = refs.get(str(edge.get("from") or "").lower())
+                child = refs.get(str(edge.get("to") or "").lower())
+                if parent and child:
+                    depends.setdefault(parent, [])
+                    if child not in depends[parent]:
+                        depends[parent].append(child)
+            if depends:
+                bom["dependencies"] = [{"ref": ref, "dependsOn": sorted(children)}
+                                       for ref, children in sorted(depends.items())]
+        return bom
+
+    # SPDX 2.3
+    pkg_ids: dict[str, str] = {}
+    for entry in bom.get("packages") or []:
+        name = str(entry.get("name") or "").strip().lower()
+        spdx_id = entry.get("SPDXID")
+        if name and spdx_id:
+            pkg_ids.setdefault(name, str(spdx_id))
+        vendor = vendors.get(name)
+        if vendor and str(entry.get("supplier") or "") in ("", "NOASSERTION"):
+            entry["supplier"] = f"Organization: {vendor}"
+        meta = packages.get(name)
+        if meta is None:
+            continue
+        if meta.get("license"):
+            node = _license_node(str(meta["license"]))
+            license_id = None
+            if node and "license" in node:
+                license_id = node["license"].get("id") or node["license"].get("name")
+            elif node and "expression" in node:
+                license_id = node["expression"]
+            if license_id:
+                entry["licenseDeclared"] = license_id
+        integrity = str(meta.get("integrity") or "")
+        if integrity.startswith("sha256:") and not entry.get("checksums"):
+            entry["checksums"] = [{"algorithm": "SHA256", "checksumValue": integrity.split(":", 1)[1]}]
+    if edges:
+        relationships = [r for r in (bom.get("relationships") or []) if isinstance(r, dict)]
+        existing = {(r.get("spdxElementId"), r.get("relatedSpdxElement"), r.get("relationshipType"))
+                    for r in relationships}
+        for edge in edges:
+            parent = pkg_ids.get(str(edge.get("from") or "").lower())
+            child = pkg_ids.get(str(edge.get("to") or "").lower())
+            if parent and child and (parent, child, "DEPENDS_ON") not in existing:
+                relationships.append({"spdxElementId": parent, "relationshipType": "DEPENDS_ON",
+                                      "relatedSpdxElement": child})
+                existing.add((parent, child, "DEPENDS_ON"))
+        bom["relationships"] = relationships
+    return bom
+
+
+# ------------------------------------------------------------ signing ------- #
+def canonical_manifest(manifest: dict[str, Any]) -> bytes:
+    """Canonical bytes for signing (signature fields excluded)."""
+    body = {k: v for k, v in manifest.items() if k not in ("signature", "signature_alg")}
+    return json.dumps(body, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+
+
+def sign_manifest(manifest: dict[str, Any], secret: str) -> str:
+    import hashlib
+    import hmac
+
+    return hmac.new(str(secret).encode("utf-8"), canonical_manifest(manifest), hashlib.sha256).hexdigest()
+
+
+def verify_manifest(manifest: dict[str, Any], secret: str) -> bool:
+    import hmac
+
+    signature = str(manifest.get("signature") or "")
+    if not signature:
+        return False
+    return hmac.compare_digest(signature, sign_manifest(manifest, secret))
+
+
+def verify_artifact(manifest: dict[str, Any], blob: bytes, secret: str | None) -> dict[str, Any]:
+    """Provenance check for a stored artifact: blob digest + manifest signature."""
+    import hashlib
+
+    checks: list[dict[str, Any]] = []
+    expected = str(manifest.get("sha256") or "")
+    actual = hashlib.sha256(blob).hexdigest()
+    blob_ok = bool(expected) and actual == expected
+    checks.append({"check": "blob_sha256", "ok": blob_ok,
+                   "expected": expected[:16], "actual": actual[:16]})
+    if manifest.get("signature"):
+        sig_ok = bool(secret) and verify_manifest(manifest, str(secret))
+        checks.append({"check": "manifest_signature", "ok": sig_ok,
+                       "expected": "HMAC-SHA256", "actual": str(manifest.get("signature_alg") or "none")})
+        verdict = "OK" if (blob_ok and sig_ok) else "TAMPERED"
+    else:
+        checks.append({"check": "manifest_signature", "ok": False, "expected": "HMAC-SHA256",
+                       "actual": "unsigned (no platform signing secret)"})
+        verdict = "OK" if blob_ok else "TAMPERED"
+    return {"verdict": verdict, "signed": bool(manifest.get("signature")), "checks": checks}

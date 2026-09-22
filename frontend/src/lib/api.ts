@@ -1624,11 +1624,60 @@ export const apiSbomImport = (doc: any) =>
 export const apiSbomExport = (components: any[], format: "cyclonedx" | "spdx") =>
   _ds<any>("/api/v1/devsecops/sbom/export", { components, format });
 
-export const apiSbomScan = (body: { kind: string; target: string; format: string; as_image?: boolean; include_vendored?: boolean }) =>
-  _ds<any>("/api/v1/devsecops/sbom/scan", body);
+/* SBOM endpoints need their own timeouts: a source-tree scan walks the tree
+   plus lockfiles (up to 120 s) rather than the 8–20 s used elsewhere. */
+async function _sbomReq<T>(path: string, method: string, body?: unknown, timeoutMs = 120000): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(path, {
+      method,
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      credentials: "include",
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return { source: "live", ok: false, error: _idErr(data, resp.status), data: null };
+    return { source: "live", ok: true, data: data as T };
+  } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
+}
+
+export const apiSbomScan = (body: { kind: string; target: string; format: string; as_image?: boolean; include_vendored?: boolean; use_lockfiles?: boolean }) =>
+  _sbomReq<any>("/api/v1/devsecops/sbom/scan", "POST", body);
 
 export const apiSbomArtifacts = () =>
-  _ds<any>("/api/v1/devsecops/sbom/artifacts");
+  _sbomReq<any>("/api/v1/devsecops/sbom/artifacts", "GET", undefined, 20000);
+
+export const apiSbomValidate = (doc: any) =>
+  _sbomReq<any>("/api/v1/devsecops/sbom/validate", "POST", { doc }, 30000);
+
+export const apiSbomDiff = (body: { from_artifact?: string; to_artifact?: string; from_doc?: any; to_doc?: any }) =>
+  _sbomReq<any>("/api/v1/devsecops/sbom/diff", "POST", body, 30000);
+
+export const apiSbomVerify = (artifactId: string) =>
+  _sbomReq<any>(`/api/v1/devsecops/sbom/${artifactId}/verify`, "GET", undefined, 30000);
+
+export const apiSbomPrune = (olderThanDays: number) =>
+  _sbomReq<any>(`/api/v1/devsecops/sbom/artifacts?older_than_days=${olderThanDays}`, "DELETE", undefined, 30000);
+
+export const apiSbomReport = (artifactId: string, fmt = "markdown"): Promise<Response> =>
+  fetch(`/api/v1/devsecops/sbom/${artifactId}/report?fmt=${encodeURIComponent(fmt)}`, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+
+export async function downloadSbomReport(artifactId: string): Promise<void> {
+  const resp = await apiSbomReport(artifactId, "markdown");
+  if (!resp.ok) throw new Error(`report failed: ${resp.status}`);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `cryptoscan-sbom-${artifactId.slice(0, 8)}-report.md`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
 
 export const apiSbomDownload = (artifactId: string): Promise<Response> =>
   fetch(`/api/v1/devsecops/sbom/${artifactId}/download`, {

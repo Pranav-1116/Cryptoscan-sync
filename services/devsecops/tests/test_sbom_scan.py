@@ -113,7 +113,11 @@ def test_render_cyclonedx_1_5(tmp_path):
     assert names.get("cryptoscan:crypto-library") == "true"
     assert names.get("cryptoscan:vendor") == "pyca"
     assert names.get("cryptoscan:deprecated") == "false"
-    assert not comps["flask"].get("properties")  # only crypto libs are enriched
+    # every component carries provenance metadata; only crypto libs carry vendor
+    flask_props = {p["name"]: p["value"] for p in comps["flask"].get("properties") or []}
+    assert flask_props.get("cryptoscan:scope") == "declared"
+    assert flask_props.get("cryptoscan:direct") == "true"
+    assert "cryptoscan:crypto-library" not in flask_props
 
 
 def test_render_spdx_2_3(tmp_path):

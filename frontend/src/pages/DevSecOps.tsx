@@ -3,7 +3,8 @@ import { Panel, Badge, Table, PageHead, Code, Tabs } from "../components/ui.jsx"
 import { ApiResult } from "../lib/api.js";
 import {
   apiContainerScan, apiK8sScan, apiCloudPosture, apiSbomImport,
-  apiSbomScan, apiSbomArtifacts, downloadSbomArtifact,
+  apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
+  apiSbomPrune, downloadSbomArtifact, downloadSbomReport,
   apiConnectorPreview,
 } from "../lib/api.js";
 
@@ -121,40 +122,251 @@ function PosturePanel() {
   );
 }
 
-/* ---- 16. SBOM — scanner (E2E) + artifacts + import ---- */
-function SbomPanel() {
-  // scanner state
+/* ---- 16. SBOM — scan · artifacts · diff · validate · import ---- */
+function ScoreBadge({ score, compliant }: { score: string; compliant: boolean }) {
+  return <Badge tone={compliant ? "green" : "amber"}>NTIA {score}{compliant ? " · compliant" : " · gaps"}</Badge>;
+}
+
+function SbomScanTab() {
   const [kind, setKind] = useState("source");
   const [target, setTarget] = useState("");
   const [fmt, setFmt] = useState("cyclonedx");
   const [asImage, setAsImage] = useState(false);
   const [includeVendored, setIncludeVendored] = useState(false);
+  const [useLockfiles, setUseLockfiles] = useState(true);
   const [scanRes, setScanRes] = useState<ApiResult<any> | null>(null);
   const [scanning, setScanning] = useState(false);
   const [showBom, setShowBom] = useState(false);
-  // artifacts state
-  const [artRes, setArtRes] = useState<ApiResult<any> | null>(null);
-  const [artBusy, setArtBusy] = useState(false);
   const [dlBusy, setDlBusy] = useState<string | null>(null);
-  const refreshArtifacts = async () => {
-    setArtBusy(true);
-    try { setArtRes(await apiSbomArtifacts()); }
-    catch (e) { setArtRes({ source: "live", ok: false, data: null, error: String(e) }); }
-    setArtBusy(false);
-  };
-  React.useEffect(() => { void refreshArtifacts(); }, []);
   const scan = async () => {
     if (!target.trim()) { setScanRes({ source: "live", ok: false, data: null, error: "target is required" }); return; }
     setScanning(true); setShowBom(false);
     try {
-      setScanRes(await apiSbomScan({ kind, target: target.trim(), format: fmt, as_image: asImage, include_vendored: includeVendored }));
-      void refreshArtifacts();
+      setScanRes(await apiSbomScan({ kind, target: target.trim(), format: fmt, as_image: asImage, include_vendored: includeVendored, use_lockfiles: useLockfiles }));
     } catch (e) { setScanRes({ source: "live", ok: false, data: null, error: String(e) }); }
     setScanning(false);
   };
   const m = scanRes?.data?.manifest;
+  const compliance = scanRes?.data?.compliance;
+  return (
+    <Panel title="SBOM scanner — source tree / container → CycloneDX 1.5 · SPDX 2.3" sub="Walks manifests + lockfiles (resolved/transitive graph) or the container scanner, enriches crypto-relevant components with suppliers, checks pinning, and persists a signed artifact" className="mt">
+      <div className="grid" style={{ gridTemplateColumns: "130px 1fr 130px", gap: 8, marginBottom: 8 }}>
+        <select className="inp" value={kind} onChange={(e) => setKind(e.target.value)}>
+          <option value="source">source tree</option>
+          <option value="container">container</option>
+        </select>
+        <input className="inp" placeholder={kind === "source" ? "source tree path (e.g. /tmp/cryptoscan-sources/myapp)" : "filesystem root, docker-save .tar, or registry image (e.g. nginx:1.27)"} value={target} onChange={(e) => setTarget(e.target.value)} />
+        <select className="inp" value={fmt} onChange={(e) => setFmt(e.target.value)}>
+          <option value="cyclonedx">CycloneDX 1.5</option>
+          <option value="spdx">SPDX 2.3</option>
+        </select>
+      </div>
+      <div className="row" style={{ gap: 14, marginBottom: 8, fontSize: 12.5, flexWrap: "wrap" }}>
+        {kind === "container" && <label><input type="checkbox" checked={asImage} onChange={(e) => setAsImage(e.target.checked)} /> treat as registry image</label>}
+        {kind === "source" && <label><input type="checkbox" checked={useLockfiles} onChange={(e) => setUseLockfiles(e.target.checked)} /> resolve lockfiles (transitive deps)</label>}
+        {kind === "source" && <label><input type="checkbox" checked={includeVendored} onChange={(e) => setIncludeVendored(e.target.checked)} /> include vendor/ dirs</label>}
+      </div>
+      <button className="btn sm primary" onClick={() => void scan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan & generate SBOM"}</button>
+      <div className="mt" style={{ marginBottom: 8 }}><Err res={scanRes} /></div>
+      {m && (
+        <>
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <Badge tone=""><span className="dot" /> {m.component_count} components</Badge>
+            {kind === "source" && <Badge tone="">{m.direct_count} direct · {m.transitive_count} transitive{m.lockfile_count ? ` · ${m.lockfile_count} lockfiles` : ""}</Badge>}
+            <Badge tone={m.crypto_components ? "blue" : ""}>{m.crypto_components} crypto-relevant</Badge>
+            <Badge tone={m.unpinned ? "amber" : "green"}>{m.pinned} pinned / {m.unpinned} unpinned</Badge>
+            {typeof m.dependency_edges === "number" && <Badge tone="">{m.dependency_edges} deps edges</Badge>}
+            {compliance && <ScoreBadge score={compliance.score} compliant={compliance.compliant} />}
+            <Badge tone={m.signature_alg ? "green" : "gray"}>{m.signature_alg ? "signed" : "unsigned"} · sha256 {String(m.sha256).slice(0, 10)}…</Badge>
+          </div>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button className="btn sm" onClick={async () => {
+              setDlBusy(m.artifact_id);
+              try { await downloadSbomArtifact(m.artifact_id); }
+              catch (e) { setScanRes({ source: "live", ok: false, data: m, error: "download: " + String(e) }); }
+              setDlBusy(null);
+            }} disabled={dlBusy === m.artifact_id}>{dlBusy === m.artifact_id ? "Downloading…" : "Download artifact"}</button>
+            <button className="btn sm" onClick={() => setShowBom(!showBom)}>{showBom ? "Hide BOM" : "View BOM JSON"}</button>
+          </div>
+          {compliance && !compliance.compliant && (
+            <div className="mt" style={{ fontSize: 12.5 }}>
+              <div className="muted" style={{ marginBottom: 4 }}>Minimum-elements gaps</div>
+              <ul style={{ margin: 0, paddingLeft: 18 }}>{compliance.gaps.map((g: string) => <li key={g}>{g}</li>)}</ul>
+            </div>
+          )}
+          {showBom && <pre className="code" style={{ marginTop: 8, maxHeight: 320, overflow: "auto" }}>{JSON.stringify(scanRes?.data?.bom, null, 1)}</pre>}
+        </>
+      )}
+    </Panel>
+  );
+}
 
-  // import state (existing)
+function SbomArtifactsTab() {
+  const [artRes, setArtRes] = useState<ApiResult<any> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [rowBusy, setRowBusy] = useState<string | null>(null);
+  const [verdicts, setVerdicts] = useState<Record<string, any>>({});
+  const [pruneDays, setPruneDays] = useState(90);
+  const [pruned, setPruned] = useState<string | null>(null);
+  const refresh = async () => {
+    setBusy(true);
+    try { setArtRes(await apiSbomArtifacts()); }
+    catch (e) { setArtRes({ source: "live", ok: false, data: null, error: String(e) }); }
+    setBusy(false);
+  };
+  React.useEffect(() => { void refresh(); }, []);
+  const arts = artRes?.data?.artifacts || [];
+  const verify = async (id: string) => {
+    setRowBusy(id);
+    try {
+      const res = await apiSbomVerify(id);
+      setVerdicts((v) => ({ ...v, [id]: res.data || { verdict: res.error || "ERROR" } }));
+    } finally { setRowBusy(null); }
+  };
+  return (
+    <Panel title="SBOM artifacts — persisted, hash-signed" sub="Each artifact stores the exact bytes, their sha256, and an HMAC-SHA256 manifest signature; verify re-checks both. Reports summarise crypto inventory, pinning and minimum-elements status" className="mt">
+      <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn sm" onClick={() => void refresh()} disabled={busy}>{busy ? "Refreshing…" : "Refresh"}</button>
+        <span className="muted" style={{ fontSize: 12.5 }}>retention:</span>
+        <input className="inp" style={{ width: 70 }} type="number" min={1} value={pruneDays} onChange={(e) => setPruneDays(Number(e.target.value))} />
+        <span className="muted" style={{ fontSize: 12.5 }}>days</span>
+        <button className="btn sm" onClick={async () => {
+          const res = await apiSbomPrune(pruneDays);
+          setPruned(res.ok ? `deleted ${res.data.deleted}, kept ${res.data.kept}` : (res.error || "failed"));
+          void refresh();
+        }}>Prune older</button>
+        {pruned && <Badge tone="amber">{pruned}</Badge>}
+      </div>
+      <div className="mt" style={{ marginBottom: 8 }}><Err res={artRes} /></div>
+      {arts.length > 0 ? (
+        <Table
+          head={["created", "format", "kind", "target", "components", "direct/trans", "NTIA", "provenance", ""]}
+          rows={arts.map((a: any) => [
+            String(a.created_at || "").replace("T", " ").slice(0, 19),
+            a.format,
+            a.kind,
+            String(a.target || "").slice(0, 40),
+            a.component_count,
+            `${a.direct_count ?? "-"}/${a.transitive_count ?? "-"}`,
+            a.minimum_elements || "-",
+            verdicts[a.artifact_id]
+              ? <Badge tone={verdicts[a.artifact_id].verdict === "OK" ? "green" : "red"}>{verdicts[a.artifact_id].verdict}</Badge>
+              : <Badge tone={a.signature_alg ? "gray" : ""}>{a.signature_alg ? "signed" : "unsigned"}</Badge>,
+            <span key={a.artifact_id} className="row" style={{ gap: 6 }}>
+              <button className="btn sm" onClick={() => void verify(a.artifact_id)} disabled={rowBusy === a.artifact_id}>{rowBusy === a.artifact_id ? "…" : "Verify"}</button>
+              <button className="btn sm" onClick={async () => { try { await downloadSbomReport(a.artifact_id); } catch (e) { window.alert("report failed: " + String(e)); } }}>Report</button>
+              <button className="btn sm" onClick={async () => { try { await downloadSbomArtifact(a.artifact_id); } catch (e) { window.alert("download failed: " + String(e)); } }}>SBOM</button>
+            </span>,
+          ])}
+        />
+      ) : <div className="muted" style={{ fontSize: 12.5 }}>No artifacts yet — run a scan.</div>}
+    </Panel>
+  );
+}
+
+function SbomDiffTab() {
+  const [arts, setArts] = useState<any[]>([]);
+  const [fromId, setFromId] = useState("");
+  const [toId, setToId] = useState("");
+  const [res, setRes] = useState<ApiResult<any> | null>(null);
+  const [busy, setBusy] = useState(false);
+  React.useEffect(() => {
+    void (async () => {
+      const r = await apiSbomArtifacts();
+      const list = r.data?.artifacts || [];
+      setArts(list);
+      if (list[1]) setFromId(list[1].artifact_id);
+      if (list[0]) setToId(list[0].artifact_id);
+    })();
+  }, []);
+  const d = res?.data;
+  const run = async () => {
+    if (!fromId || !toId) { setRes({ source: "live", ok: false, data: null, error: "pick two artifacts" }); return; }
+    setBusy(true);
+    try { setRes(await apiSbomDiff({ from_artifact: fromId, to_artifact: toId })); }
+    catch (e) { setRes({ source: "live", ok: false, data: null, error: String(e) }); }
+    setBusy(false);
+  };
+  return (
+    <Panel title="SBOM diff — what changed between two bills of materials" sub="Components added/removed, version changes with upgrade/downgrade direction, license changes, and crypto-relevant deltas (supply-chain change review)" className="mt">
+      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 8 }}>
+        <select className="inp" value={fromId} onChange={(e) => setFromId(e.target.value)}>
+          <option value="">baseline artifact…</option>
+          {arts.map((a) => <option key={a.artifact_id} value={a.artifact_id}>{String(a.created_at).slice(0, 16)} · {a.format} · {String(a.target).slice(0, 34)}</option>)}
+        </select>
+        <select className="inp" value={toId} onChange={(e) => setToId(e.target.value)}>
+          <option value="">current artifact…</option>
+          {arts.map((a) => <option key={a.artifact_id} value={a.artifact_id}>{String(a.created_at).slice(0, 16)} · {a.format} · {String(a.target).slice(0, 34)}</option>)}
+        </select>
+        <button className="btn sm primary" onClick={() => void run()} disabled={busy}>{busy ? "Diffing…" : "Diff"}</button>
+      </div>
+      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+      {d && (
+        <>
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <Badge tone={d.verdict === "UNCHANGED" ? "green" : d.verdict === "CRYPTO_REVIEW" ? "red" : "amber"}>{d.verdict}</Badge>
+            <Badge tone="">{d.summary.added} added</Badge>
+            <Badge tone="">{d.summary.removed} removed</Badge>
+            <Badge tone="">{d.summary.changed} changed</Badge>
+            <Badge tone="">{d.summary.from.components} → {d.summary.to.components} components</Badge>
+          </div>
+          {(d.added.length + d.removed.length + d.changed.length) > 0 && (
+            <Table
+              head={["change", "component", "from", "to", "crypto"]}
+              rows={[
+                ...d.added.map((x: any) => ["ADDED", x.name, "-", x.version ?? "-", x.crypto ? "yes" : ""]),
+                ...d.removed.map((x: any) => ["REMOVED", x.name, x.version ?? "-", "-", x.crypto ? "yes" : ""]),
+                ...d.changed.map((x: any) => [x.direction.toUpperCase(), x.name, x.from ?? "-", x.to ?? "-", x.crypto ? "yes" : ""]),
+              ]}
+            />
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function SbomValidateTab() {
+  const [doc, setDoc] = useState(JSON.stringify({
+    bomFormat: "CycloneDX",
+    specVersion: "1.5",
+    metadata: { timestamp: "2026-09-22T00:00:00Z", authors: [{ name: "supplier-ci" }] },
+    components: [{ type: "library", name: "libfoo", version: "1.0", purl: "pkg:generic/libfoo@1.0", supplier: { name: "ACME" } }],
+    dependencies: [{ ref: "pkg:generic/libfoo@1.0", dependsOn: [] }],
+  }, null, 2));
+  const [res, setRes] = useState<ApiResult<any> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const d = res?.data;
+  return (
+    <Panel title="SBOM validation — NTIA minimum elements" sub="Score a supplier's CycloneDX/SPDX document before accepting it: supplier, name, version, unique identifiers, dependency relationships, author, timestamp" className="mt">
+      <textarea className="inp" rows={10} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
+      <button className="btn sm primary" onClick={async () => {
+        setBusy(true);
+        try { setRes(await apiSbomValidate(JSON.parse(doc))); }
+        catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
+        setBusy(false);
+      }} disabled={busy}>{busy ? "Validating…" : "Validate document"}</button>
+      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+      {d && (
+        <>
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <Badge tone={d.compliant ? "green" : "amber"}>{d.score} minimum elements</Badge>
+            <Badge tone="">{d.format} {d.spec_version}</Badge>
+            <Badge tone="">{d.component_count} components</Badge>
+          </div>
+          <Table head={["element", "status", "detail"]} rows={d.elements.map((e: any) => [e.label, e.status, e.detail])} />
+          {d.recommended?.length > 0 && (
+            <div className="mt">
+              <Table head={["recommended", "status", "detail"]} rows={d.recommended.map((e: any) => [e.label, e.status, e.detail])} />
+            </div>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function SbomImportTab() {
   const [doc, setDoc] = useState(JSON.stringify({
     bomFormat: "CycloneDX",
     components: [
@@ -165,96 +377,41 @@ function SbomPanel() {
   const [res, setRes] = useState<ApiResult<any> | null>(null);
   const [busy, setBusy] = useState(false);
   const d = res?.data;
-  const arts = artRes?.data?.artifacts || [];
+  return (
+    <Panel title="SBOM import — CycloneDX / SPDX + pinning" sub="Normalizes an incoming SBOM to the component model, checks version/digest pinning, and builds the dependency graph" className="mt">
+      <textarea className="inp" rows={8} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
+      <button className="btn sm primary" onClick={async () => {
+        setBusy(true);
+        try { setRes(await apiSbomImport(JSON.parse(doc))); }
+        catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
+        setBusy(false);
+      }} disabled={busy}>{busy ? "Importing…" : "Import SBOM"}</button>
+      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+      {d && (
+        <>
+          <div className="row" style={{ gap: 8, marginBottom: 10 }}>
+            <Badge tone=""><span className="dot" /> {d.component_count} components</Badge>
+            <Badge tone={d.pinning.unpinned ? "amber" : "green"}>{d.pinning.pinned} pinned / {d.pinning.unpinned} unpinned</Badge>
+            <Badge tone={d.graph.has_cycle ? "red" : "green"}>{d.graph.edge_count} edges{d.graph.has_cycle ? " · CYCLE" : ""}</Badge>
+          </div>
+          <FindingTable rows={d.pinning.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity === "HIGH" ? "HIGH" : "MEDIUM"} />
+        </>
+      )}
+    </Panel>
+  );
+}
 
+function SbomPanel() {
+  const [sub, setSub] = useState(0);
+  const tabs = ["Scan & generate", "Artifacts", "Diff", "Validate", "Import"];
   return (
     <>
-      <Panel title="SBOM scanner — source tree / container → CycloneDX 1.5 · SPDX 2.3" sub="End-to-end: walk manifests (8 ecosystems) or run the container scanner, enrich crypto-relevant components, check pinning, and persist a hash-signed artifact" className="mt">
-        <div className="grid" style={{ gridTemplateColumns: "130px 1fr 120px", gap: 8, marginBottom: 8 }}>
-          <select className="inp" value={kind} onChange={(e) => setKind(e.target.value)}>
-            <option value="source">source tree</option>
-            <option value="container">container</option>
-          </select>
-          <input className="inp" placeholder={kind === "source" ? "source tree path (e.g. /home/user/myapp)" : "filesystem root, docker-save .tar, or registry image (e.g. nginx:1.27)"} value={target} onChange={(e) => setTarget(e.target.value)} />
-          <select className="inp" value={fmt} onChange={(e) => setFmt(e.target.value)}>
-            <option value="cyclonedx">CycloneDX 1.5</option>
-            <option value="spdx">SPDX 2.3</option>
-          </select>
-        </div>
-        <div className="row" style={{ gap: 14, marginBottom: 8, fontSize: 12.5 }}>
-          {kind === "container" && <label><input type="checkbox" checked={asImage} onChange={(e) => setAsImage(e.target.checked)} /> treat as registry image</label>}
-          {kind === "source" && <label><input type="checkbox" checked={includeVendored} onChange={(e) => setIncludeVendored(e.target.checked)} /> include vendor/ dirs</label>}
-        </div>
-        <button className="btn sm primary" onClick={() => void scan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan & generate SBOM"}</button>
-        <div className="mt" style={{ marginBottom: 8 }}><Err res={scanRes} /></div>
-        {m && (
-          <>
-            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
-              <Badge tone=""><span className="dot" /> {m.component_count} components</Badge>
-              <Badge tone={m.crypto_components ? "blue" : ""}>{m.crypto_components} crypto-relevant</Badge>
-              <Badge tone={m.unpinned ? "amber" : "green"}>{m.pinned} pinned / {m.unpinned} unpinned</Badge>
-              <Badge tone="">{m.manifest_count} manifests · {m.format}</Badge>
-              <Badge tone="gray">sha256 {String(m.sha256).slice(0, 12)}…</Badge>
-            </div>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="btn sm" onClick={async () => {
-                setDlBusy(m.artifact_id);
-                try { await downloadSbomArtifact(m.artifact_id); }
-                catch (e) { setScanRes({ source: "live", ok: false, data: m, error: "download: " + String(e) }); }
-                setDlBusy(null);
-              }} disabled={dlBusy === m.artifact_id}>{dlBusy === m.artifact_id ? "Downloading…" : "Download artifact"}</button>
-              <button className="btn sm" onClick={() => setShowBom(!showBom)}>{showBom ? "Hide BOM" : "View BOM JSON"}</button>
-            </div>
-            {showBom && <pre className="code" style={{ marginTop: 8, maxHeight: 320, overflow: "auto" }}>{JSON.stringify(scanRes?.data?.bom, null, 1)}</pre>}
-          </>
-        )}
-      </Panel>
-
-      <Panel title="SBOM artifacts — persisted, hash-signed" sub="Generated SBOMs survive restarts; each download is verified against its recorded sha256 (X-SBOM-SHA256)" className="mt">
-        <button className="btn sm" onClick={() => void refreshArtifacts()} disabled={artBusy}>{artBusy ? "Refreshing…" : "Refresh"}</button>
-        <div className="mt" style={{ marginBottom: 8 }}><Err res={artRes} /></div>
-        {arts.length > 0 ? (
-          <Table
-            head={["created", "format", "kind", "target", "components", "crypto", "pinning", ""]}
-            rows={arts.map((a: any) => [
-              String(a.created_at || "").replace("T", " ").slice(0, 19),
-              a.format,
-              a.kind,
-              String(a.target || "").slice(0, 48),
-              a.component_count,
-              a.crypto_components,
-              `${a.pinned}p/${a.unpinned}u`,
-              <button key={a.artifact_id} className="btn sm" onClick={async () => {
-                setDlBusy(a.artifact_id);
-                try { await downloadSbomArtifact(a.artifact_id); }
-                catch (e) { window.alert("download failed: " + String(e)); }
-                setDlBusy(null);
-              }} disabled={dlBusy === a.artifact_id}>{dlBusy === a.artifact_id ? "…" : "Download"}</button>,
-            ])}
-          />
-        ) : <div className="muted" style={{ fontSize: 12.5 }}>No artifacts yet — run a scan above.</div>}
-      </Panel>
-
-      <Panel title="SBOM import — CycloneDX / SPDX + pinning" sub="Normalizes an SBOM to the component model, checks version/digest pinning, and builds the dependency graph" className="mt">
-        <textarea className="inp" rows={8} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
-        <button className="btn sm primary" onClick={async () => {
-          setBusy(true);
-          try { setRes(await apiSbomImport(JSON.parse(doc))); }
-          catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
-          setBusy(false);
-        }} disabled={busy}>{busy ? "Importing…" : "Import SBOM"}</button>
-        <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
-        {d && (
-          <>
-            <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-              <Badge tone=""><span className="dot" /> {d.component_count} components</Badge>
-              <Badge tone={d.pinning.unpinned ? "amber" : "green"}>{d.pinning.pinned} pinned / {d.pinning.unpinned} unpinned</Badge>
-              <Badge tone={d.graph.has_cycle ? "red" : "green"}>{d.graph.edge_count} edges{d.graph.has_cycle ? " · CYCLE" : ""}</Badge>
-            </div>
-            <FindingTable rows={d.pinning.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity === "HIGH" ? "HIGH" : "MEDIUM"} />
-          </>
-        )}
-      </Panel>
+      <div className="mt"><Tabs tabs={tabs} active={sub} onChange={setSub} /></div>
+      {sub === 0 && <SbomScanTab />}
+      {sub === 1 && <SbomArtifactsTab />}
+      {sub === 2 && <SbomDiffTab />}
+      {sub === 3 && <SbomValidateTab />}
+      {sub === 4 && <SbomImportTab />}
     </>
   );
 }
