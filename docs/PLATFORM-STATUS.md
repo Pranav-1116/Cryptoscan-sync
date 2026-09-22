@@ -289,6 +289,44 @@ outstanding-AuthnRequest map bounded (abandoned SAML logins leaked entries
 in long-running processes). Ruff clean; DB suite 77/77; identity 25/25;
 vite build green.
 
+**Update (2026-09-22, E2E SBOM scanner — new capability):** the SBOM surface
+previously had **import** (normalize a CycloneDX/SPDX doc someone else
+produced) and **export** (render components *passed in by the client*) — but
+nothing that actually **scanned a target and generated the BOM end to end**,
+which is what an SBOM request in a supplier/regulator questionnaire means.
+Now built: `POST /devsecops/sbom/scan` (roles: admin/auditor/security_analyst/
+superadmin) scans either a **source tree** (walks requirements*.txt,
+package.json, pom.xml, go.mod, Cargo.toml, Gemfile, composer.json, *.csproj —
+8 ecosystems, reusing the deterministic manifest parsers; `node_modules`/
+`dist`/`build`/`target`/VCS directories always skipped, `vendor/` opt-in via
+`include_vendored`) or a **container target** (filesystem rootfs, docker-save
+`.tar`, or registry image via the real `ContainerScanner`), enriches
+crypto-relevant components from a curated name registry (pyca, OpenSSL,
+Bouncy Castle, libsodium, ring, RustCrypto, AWS-LC, mbedTLS, …), and renders
+**CycloneDX 1.5** or **SPDX 2.3**. Every scan is persisted as a **hash-signed
+artifact** (`sha256` of the exact bytes, listed by
+`GET /devsecops/sbom/artifacts`, downloaded via
+`GET /devsecops/sbom/{id}/download` with an `X-SBOM-SHA256` provenance
+header) and written to the audit chain (`devsecops.sbom_scan`). Fail-closed
+throughout: source paths go through the same allow-listed
+`validate_source_target` policy as the scanners (secret paths refused,
+escapes rejected), unknown `kind`/`format` values are 422 (never silently
+coerced), registry pulls are blocked in air-gap mode (`scan.sbom.container`),
+and a missing container runtime returns an honest 503 naming what to install
+rather than a fake BOM. Pinning accuracy fix found while building it: the
+canonical requirements parser normalizes `pkg>=1.0` down to `1.0`, which
+made range pins look exact — raw specifiers are now preserved for the
+pinning check (`PIN-RANGE`/`PIN-MISSING`/`PIN-NO-DIGEST`). Frontend: the
+DevSecOps → SBOM tab now has the scanner form (kind/target/format + flags),
+result badges (components, crypto-relevant, pinned/unpinned, sha256),
+BOM preview, artifact download, and the persisted-artifact table — plus the
+existing import panel. Verified live end to end (demo tree pip+npm+maven+cargo
+→ 10 components, 4 crypto-enriched, 8 pinned/2 unpinned, 31 ms; rootfs scan →
+3 components incl. binary; download sha256 recomputed == manifest == header;
+SPDX 2.3 path green). Tests: 17 new (10 service + 6 API + 1 rootfs), full
+devsecops service suite 58/58, `tsc --noEmit` + `vite build` green, ruff
+clean.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

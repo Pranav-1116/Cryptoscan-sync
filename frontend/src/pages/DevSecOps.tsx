@@ -3,6 +3,7 @@ import { Panel, Badge, Table, PageHead, Code, Tabs } from "../components/ui.jsx"
 import { ApiResult } from "../lib/api.js";
 import {
   apiContainerScan, apiK8sScan, apiCloudPosture, apiSbomImport,
+  apiSbomScan, apiSbomArtifacts, downloadSbomArtifact,
   apiConnectorPreview,
 } from "../lib/api.js";
 
@@ -120,8 +121,40 @@ function PosturePanel() {
   );
 }
 
-/* ---- 16. SBOM ---- */
+/* ---- 16. SBOM — scanner (E2E) + artifacts + import ---- */
 function SbomPanel() {
+  // scanner state
+  const [kind, setKind] = useState("source");
+  const [target, setTarget] = useState("");
+  const [fmt, setFmt] = useState("cyclonedx");
+  const [asImage, setAsImage] = useState(false);
+  const [includeVendored, setIncludeVendored] = useState(false);
+  const [scanRes, setScanRes] = useState<ApiResult<any> | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [showBom, setShowBom] = useState(false);
+  // artifacts state
+  const [artRes, setArtRes] = useState<ApiResult<any> | null>(null);
+  const [artBusy, setArtBusy] = useState(false);
+  const [dlBusy, setDlBusy] = useState<string | null>(null);
+  const refreshArtifacts = async () => {
+    setArtBusy(true);
+    try { setArtRes(await apiSbomArtifacts()); }
+    catch (e) { setArtRes({ source: "live", ok: false, data: null, error: String(e) }); }
+    setArtBusy(false);
+  };
+  React.useEffect(() => { void refreshArtifacts(); }, []);
+  const scan = async () => {
+    if (!target.trim()) { setScanRes({ source: "live", ok: false, data: null, error: "target is required" }); return; }
+    setScanning(true); setShowBom(false);
+    try {
+      setScanRes(await apiSbomScan({ kind, target: target.trim(), format: fmt, as_image: asImage, include_vendored: includeVendored }));
+      void refreshArtifacts();
+    } catch (e) { setScanRes({ source: "live", ok: false, data: null, error: String(e) }); }
+    setScanning(false);
+  };
+  const m = scanRes?.data?.manifest;
+
+  // import state (existing)
   const [doc, setDoc] = useState(JSON.stringify({
     bomFormat: "CycloneDX",
     components: [
@@ -132,27 +165,97 @@ function SbomPanel() {
   const [res, setRes] = useState<ApiResult<any> | null>(null);
   const [busy, setBusy] = useState(false);
   const d = res?.data;
+  const arts = artRes?.data?.artifacts || [];
+
   return (
-    <Panel title="SBOM import — CycloneDX / SPDX + pinning" sub="Normalizes an SBOM to the component model, checks version/digest pinning, and builds the dependency graph" className="mt">
-      <textarea className="inp" rows={8} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
-      <button className="btn sm primary" onClick={async () => {
-        setBusy(true);
-        try { setRes(await apiSbomImport(JSON.parse(doc))); }
-        catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
-        setBusy(false);
-      }} disabled={busy}>{busy ? "Importing…" : "Import SBOM"}</button>
-      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
-      {d && (
-        <>
-          <div className="row" style={{ gap: 8, marginBottom: 10 }}>
-            <Badge tone=""><span className="dot" /> {d.component_count} components</Badge>
-            <Badge tone={d.pinning.unpinned ? "amber" : "green"}>{d.pinning.pinned} pinned / {d.pinning.unpinned} unpinned</Badge>
-            <Badge tone={d.graph.has_cycle ? "red" : "green"}>{d.graph.edge_count} edges{d.graph.has_cycle ? " · CYCLE" : ""}</Badge>
-          </div>
-          <FindingTable rows={d.pinning.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity === "HIGH" ? "HIGH" : "MEDIUM"} />
-        </>
-      )}
-    </Panel>
+    <>
+      <Panel title="SBOM scanner — source tree / container → CycloneDX 1.5 · SPDX 2.3" sub="End-to-end: walk manifests (8 ecosystems) or run the container scanner, enrich crypto-relevant components, check pinning, and persist a hash-signed artifact" className="mt">
+        <div className="grid" style={{ gridTemplateColumns: "130px 1fr 120px", gap: 8, marginBottom: 8 }}>
+          <select className="inp" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="source">source tree</option>
+            <option value="container">container</option>
+          </select>
+          <input className="inp" placeholder={kind === "source" ? "source tree path (e.g. /home/user/myapp)" : "filesystem root, docker-save .tar, or registry image (e.g. nginx:1.27)"} value={target} onChange={(e) => setTarget(e.target.value)} />
+          <select className="inp" value={fmt} onChange={(e) => setFmt(e.target.value)}>
+            <option value="cyclonedx">CycloneDX 1.5</option>
+            <option value="spdx">SPDX 2.3</option>
+          </select>
+        </div>
+        <div className="row" style={{ gap: 14, marginBottom: 8, fontSize: 12.5 }}>
+          {kind === "container" && <label><input type="checkbox" checked={asImage} onChange={(e) => setAsImage(e.target.checked)} /> treat as registry image</label>}
+          {kind === "source" && <label><input type="checkbox" checked={includeVendored} onChange={(e) => setIncludeVendored(e.target.checked)} /> include vendor/ dirs</label>}
+        </div>
+        <button className="btn sm primary" onClick={() => void scan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan & generate SBOM"}</button>
+        <div className="mt" style={{ marginBottom: 8 }}><Err res={scanRes} /></div>
+        {m && (
+          <>
+            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              <Badge tone=""><span className="dot" /> {m.component_count} components</Badge>
+              <Badge tone={m.crypto_components ? "blue" : ""}>{m.crypto_components} crypto-relevant</Badge>
+              <Badge tone={m.unpinned ? "amber" : "green"}>{m.pinned} pinned / {m.unpinned} unpinned</Badge>
+              <Badge tone="">{m.manifest_count} manifests · {m.format}</Badge>
+              <Badge tone="gray">sha256 {String(m.sha256).slice(0, 12)}…</Badge>
+            </div>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn sm" onClick={async () => {
+                setDlBusy(m.artifact_id);
+                try { await downloadSbomArtifact(m.artifact_id); }
+                catch (e) { setScanRes({ source: "live", ok: false, data: m, error: "download: " + String(e) }); }
+                setDlBusy(null);
+              }} disabled={dlBusy === m.artifact_id}>{dlBusy === m.artifact_id ? "Downloading…" : "Download artifact"}</button>
+              <button className="btn sm" onClick={() => setShowBom(!showBom)}>{showBom ? "Hide BOM" : "View BOM JSON"}</button>
+            </div>
+            {showBom && <pre className="code" style={{ marginTop: 8, maxHeight: 320, overflow: "auto" }}>{JSON.stringify(scanRes?.data?.bom, null, 1)}</pre>}
+          </>
+        )}
+      </Panel>
+
+      <Panel title="SBOM artifacts — persisted, hash-signed" sub="Generated SBOMs survive restarts; each download is verified against its recorded sha256 (X-SBOM-SHA256)" className="mt">
+        <button className="btn sm" onClick={() => void refreshArtifacts()} disabled={artBusy}>{artBusy ? "Refreshing…" : "Refresh"}</button>
+        <div className="mt" style={{ marginBottom: 8 }}><Err res={artRes} /></div>
+        {arts.length > 0 ? (
+          <Table
+            head={["created", "format", "kind", "target", "components", "crypto", "pinning", ""]}
+            rows={arts.map((a: any) => [
+              String(a.created_at || "").replace("T", " ").slice(0, 19),
+              a.format,
+              a.kind,
+              String(a.target || "").slice(0, 48),
+              a.component_count,
+              a.crypto_components,
+              `${a.pinned}p/${a.unpinned}u`,
+              <button key={a.artifact_id} className="btn sm" onClick={async () => {
+                setDlBusy(a.artifact_id);
+                try { await downloadSbomArtifact(a.artifact_id); }
+                catch (e) { window.alert("download failed: " + String(e)); }
+                setDlBusy(null);
+              }} disabled={dlBusy === a.artifact_id}>{dlBusy === a.artifact_id ? "…" : "Download"}</button>,
+            ])}
+          />
+        ) : <div className="muted" style={{ fontSize: 12.5 }}>No artifacts yet — run a scan above.</div>}
+      </Panel>
+
+      <Panel title="SBOM import — CycloneDX / SPDX + pinning" sub="Normalizes an SBOM to the component model, checks version/digest pinning, and builds the dependency graph" className="mt">
+        <textarea className="inp" rows={8} value={doc} onChange={(e) => setDoc(e.target.value)} style={{ fontFamily: "var(--mono)", fontSize: 11.5, marginBottom: 8 }} />
+        <button className="btn sm primary" onClick={async () => {
+          setBusy(true);
+          try { setRes(await apiSbomImport(JSON.parse(doc))); }
+          catch (e) { setRes({ source: "live", ok: false, data: null, error: "JSON: " + String(e) }); }
+          setBusy(false);
+        }} disabled={busy}>{busy ? "Importing…" : "Import SBOM"}</button>
+        <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+        {d && (
+          <>
+            <div className="row" style={{ gap: 8, marginBottom: 10 }}>
+              <Badge tone=""><span className="dot" /> {d.component_count} components</Badge>
+              <Badge tone={d.pinning.unpinned ? "amber" : "green"}>{d.pinning.pinned} pinned / {d.pinning.unpinned} unpinned</Badge>
+              <Badge tone={d.graph.has_cycle ? "red" : "green"}>{d.graph.edge_count} edges{d.graph.has_cycle ? " · CYCLE" : ""}</Badge>
+            </div>
+            <FindingTable rows={d.pinning.findings} codeKey={(r) => r.code} sevKey={(r) => r.severity === "HIGH" ? "HIGH" : "MEDIUM"} />
+          </>
+        )}
+      </Panel>
+    </>
   );
 }
 

@@ -36,10 +36,12 @@ for path, methods in paths.items():
         tag = (op.get("tags") or ["ungrouped"])[0]
         groups[tag].append((path, method, op.get("summary") or ""))
 
+from datetime import date as _date
+
 lines = [
     "# REST API reference",
     "",
-    "Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-15:",
+    f"Generated from the live OpenAPI schema (`GET /api/openapi.json`) on {_date.today().isoformat()}:",
     f"**{len(paths)} paths, {op_count} operations** across {len(groups)} tagged groups.",
     "Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.",
     "",

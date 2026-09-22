@@ -1624,6 +1624,34 @@ export const apiSbomImport = (doc: any) =>
 export const apiSbomExport = (components: any[], format: "cyclonedx" | "spdx") =>
   _ds<any>("/api/v1/devsecops/sbom/export", { components, format });
 
+export const apiSbomScan = (body: { kind: string; target: string; format: string; as_image?: boolean; include_vendored?: boolean }) =>
+  _ds<any>("/api/v1/devsecops/sbom/scan", body);
+
+export const apiSbomArtifacts = () =>
+  _ds<any>("/api/v1/devsecops/sbom/artifacts");
+
+export const apiSbomDownload = (artifactId: string): Promise<Response> =>
+  fetch(`/api/v1/devsecops/sbom/${artifactId}/download`, {
+    credentials: "include",
+    ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
+  });
+
+export async function downloadSbomArtifact(artifactId: string): Promise<void> {
+  const resp = await apiSbomDownload(artifactId);
+  if (!resp.ok) throw new Error(`download failed: ${resp.status}`);
+  const cd = resp.headers.get("content-disposition") || "";
+  const match = cd.match(/filename="?([^";]+)"?/);
+  const blob = await resp.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = match?.[1] || `cryptoscan-sbom-${artifactId.slice(0, 8)}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export const apiConnectorPreview = (provider: string, finding: any, target: Record<string, unknown>, deliverLive = false) =>
   _ds<any>("/api/v1/devsecops/connectors/preview", { provider, finding, target, deliver_live: deliverLive });
 

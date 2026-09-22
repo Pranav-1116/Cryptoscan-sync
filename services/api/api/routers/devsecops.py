@@ -11,9 +11,12 @@ exercise the payload builders with an injected transport.
 
 from __future__ import annotations
 
+import json
 import os
+import re
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -125,6 +128,169 @@ def sbom_export(body: SbomExportRequest,
     if body.format.lower() == "spdx":
         return {"format": "spdx", "bom": export_spdx(body.components)}
     raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
+
+
+# ------------------------------------------- 16b. SBOM scanner (E2E) ---- #
+_SBOM_OPERATORS = ("admin", "auditor", "security_analyst", "superadmin")
+_SBOM_STORE = None
+_ARTIFACT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+
+
+def _sbom_storage():
+    """Persistent on-disk SBOM artifact store (survives restarts)."""
+    import tempfile
+
+    from governance.backup_jobs import DiskBackupStorage
+
+    global _SBOM_STORE
+    if _SBOM_STORE is None:
+        root = os.environ.get("SBOM_STORAGE_DIR", "/var/lib/cryptoscan/sboms")
+        try:
+            _SBOM_STORE = DiskBackupStorage(root)
+        except Exception:
+            _SBOM_STORE = DiskBackupStorage(os.path.join(tempfile.gettempdir(), "cryptoscan-sboms"))
+    return _SBOM_STORE
+
+
+class SbomScanRequest(BaseModel):
+    kind: str = Field(..., description="source | container")
+    target: str = Field(..., min_length=1, max_length=512,
+                        description="source tree path, filesystem root, docker-save .tar, or registry image")
+    format: str = Field("cyclonedx", description="cyclonedx | spdx")
+    as_image: bool = Field(False, description="treat the target as a registry image even if a path exists")
+    include_vendored: bool = Field(False, description="source kind: also parse manifests under vendor/")
+
+
+@router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
+def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
+              user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """End-to-end SBOM generation: scan a source tree or container target and
+    produce a deterministic CycloneDX 1.5 / SPDX 2.3 bill of materials with
+    crypto-relevance enrichment, pinning summary, and a signed-by-hash
+    persistent artifact (download via GET /sbom/{artifact_id}/download)."""
+    from datetime import datetime, timezone
+
+    import hashlib
+    import uuid
+
+    from devsecops import sbom_scan as sb
+    from devsecops.sbom import check_pinning
+    from api.security.target_validation import TargetValidationError, validate_source_target
+
+    kind = body.kind.lower()
+    if kind not in ("source", "container"):
+        raise HTTPException(status_code=422, detail="kind must be source or container")
+    if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
+        raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
+    fmt = "spdx" if body.format.lower() == "spdx" else "cyclonedx"
+
+    if kind == "source":
+        try:
+            resolved = validate_source_target(body.target, label="target")
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if resolved.startswith(("http://", "https://", "git@")):
+            raise HTTPException(400, "remote git URLs are not supported by the SBOM scanner — point it at a local source tree")
+        try:
+            result = sb.scan_source(resolved, include_vendored=body.include_vendored)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    else:
+        raw = str(body.target).strip()
+        raw_path = Path(raw).expanduser()
+        looks_path = body.as_image is False and (
+            raw_path.exists() or raw.startswith(("/", "~", ".")))
+        if looks_path:
+            try:
+                raw = validate_source_target(raw, label="target")
+            except TargetValidationError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+        elif not (sb.is_image_ref(raw) and (":" in raw or "/" in raw)):
+            raise HTTPException(400, detail=("target must be a local path, docker-save .tar, "
+                                             "or a registry image reference (e.g. nginx:1.27)"))
+        if not looks_path:
+            # a registry pull is a networked operation — fail closed in airgap
+            _enforce_airgap_writable("scan.sbom.container")
+        try:
+            result = sb.scan_container(raw, as_image=body.as_image)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=f"container target not found: {exc}")
+        except Exception as exc:  # noqa: BLE001 — docker/pull unavailability: report honestly
+            raise HTTPException(status_code=503, detail=f"container scan unavailable: {exc}")
+
+    try:
+        bom = sb.render_sbom(result, fmt=fmt)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+    packages = result.get("packages") or []
+    payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sha256 = hashlib.sha256(payload).hexdigest()
+    artifact_id = str(uuid.uuid4())
+    ext = "cdx.json" if fmt == "cyclonedx" else "spdx.json"
+    key = f"{artifact_id}.{ext}"
+
+    components = [{"name": p.get("name"),
+                   "version": p.get("raw_spec") or p.get("version"),
+                   "ecosystem": p.get("manager")} for p in packages]
+    pinning = check_pinning(components)
+    component_count = len(packages) + len(result.get("binaries") or [])
+    manifest = {
+        "artifact_id": artifact_id,
+        "kind": kind,
+        "target": str(result.get("target") or body.target),
+        "format": fmt,
+        "sha256": sha256,
+        "component_count": component_count,
+        "binary_count": len(result.get("binaries") or []),
+        "crypto_components": len(result.get("libraries") or []),
+        "manifest_count": result.get("manifest_count", 0),
+        "pinned": pinning["pinned"],
+        "unpinned": pinning["unpinned"],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user,
+        "storage_key": key,
+    }
+    store = _sbom_storage()
+    store.put(key, payload)
+    store.put_manifest(key, manifest)
+    UserRepository(db).audit(user, "devsecops.sbom_scan", target_type="sbom_artifact",
+                             target_id=artifact_id,
+                             detail={"kind": kind, "target": manifest["target"], "format": fmt,
+                                     "components": component_count, "sha256": sha256[:16]})
+    db.commit()
+    return {"artifact_id": artifact_id, "manifest": manifest,
+            "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download", "bom": bom}
+
+
+@router.get("/sbom/artifacts")
+def sbom_artifacts(user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """List generated SBOM artifacts (newest first, capped at 50)."""
+    items = _sbom_storage().list_manifests()
+    items.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
+    return {"artifacts": items[:50], "total": len(items)}
+
+
+@router.get("/sbom/{artifact_id}/download")
+def sbom_download(artifact_id: str, user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Download a persisted SBOM artifact (JSON) with its provenance header."""
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    store = _sbom_storage()
+    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    if man is None or not man.get("storage_key"):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    try:
+        blob = store.get(man["storage_key"])
+    except Exception:  # noqa: BLE001 — manifest without a readable blob
+        raise HTTPException(status_code=404, detail="artifact not found")
+    ext = "cdx.json" if man.get("format") == "cyclonedx" else "spdx.json"
+    return Response(
+        content=blob, media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="cryptoscan-sbom-{artifact_id[:8]}.{ext}"',
+            "X-SBOM-SHA256": str(man.get("sha256") or ""),
+        })
 
 
 # ------------------------------------------------- 17-20. connector previews #

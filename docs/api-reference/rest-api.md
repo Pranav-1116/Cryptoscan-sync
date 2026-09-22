@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-15:
-**609 paths, 671 operations** across 81 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-22:
+**631 paths, 695 operations** across 85 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -37,10 +37,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
-| `GET` | `/api/v1/algorithms` | List Algorithms |
-| `GET` | `/api/v1/algorithms/` | List Algorithms |
-| `GET` | `/api/v1/algorithms/parse` | Parse |
-| `GET` | `/api/v1/algorithms/parse-many` | Parse Many |
+| `GET` | `/api/v1/algorithms` | List Catalog |
+| `GET` | `/api/v1/algorithms/parse` | Parse Endpoint |
+| `GET` | `/api/v1/algorithms/parse/many` | Parse Many Endpoint |
 
 ## analytics
 
@@ -85,6 +84,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/audit-export/access-review` | Access Review |
+| `GET` | `/api/v1/audit-export/access-reviews` | List Access Reviews |
+| `POST` | `/api/v1/audit-export/access-reviews` | Record Access Review |
 | `GET` | `/api/v1/audit-export/engagement-archive` | Engagement Archive |
 | `GET` | `/api/v1/audit-export/exit-report` | Exit Report |
 | `GET` | `/api/v1/audit-export/pack` | Export Pack |
@@ -169,6 +171,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/banking/hsm/parse` | Banking Hsm Parse |
 | `GET` | `/api/v1/banking/integrations/qualys` | Banking Integrations Qualys |
 | `GET` | `/api/v1/banking/integrations/servicenow` | Banking Integrations Servicenow |
+| `POST` | `/api/v1/banking/iso20022/parse` | Banking Iso20022 Parse |
 | `GET` | `/api/v1/banking/jurisdiction/{code}` | Banking Jurisdiction |
 | `GET` | `/api/v1/banking/jurisdictions` | Banking Jurisdictions |
 | `GET` | `/api/v1/banking/keys` | Banking Key Lifecycle |
@@ -186,6 +189,14 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/baselines` | List Baselines |
 | `POST` | `/api/v1/baselines/approve` | Approve |
+
+## billing
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/saas/billing/checkout` | Create Checkout |
+| `GET` | `/api/v1/saas/billing/status` | Billing Status |
+| `POST` | `/api/v1/saas/billing/webhook` | Stripe Webhook |
 
 ## business
 
@@ -279,6 +290,17 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/cloud-scans` | Trigger Cloud Scan |
 | `GET` | `/api/v1/cloud-scans/` | List Cloud Scans |
 | `POST` | `/api/v1/cloud-scans/` | Trigger Cloud Scan |
+
+## compliance
+
+| Method | Path | Summary |
+|---|---|---|
+| `POST` | `/api/v1/compliance/attestations` | Create Attestation |
+| `POST` | `/api/v1/compliance/attestations/verify` | Verify Attestation |
+| `GET` | `/api/v1/compliance/audit/evidence` | Audit Evidence |
+| `GET` | `/api/v1/compliance/audit/retention` | Audit Retention |
+| `GET` | `/api/v1/compliance/evidence` | Evidence |
+| `GET` | `/api/v1/compliance/retention` | Retention Policy |
 
 ## connectors
 
@@ -397,8 +419,11 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/devsecops/connectors/preview` | Connector Preview |
 | `POST` | `/api/v1/devsecops/container-scan` | Container Scan |
 | `POST` | `/api/v1/devsecops/k8s-manifest-scan` | K8S Scan |
+| `GET` | `/api/v1/devsecops/sbom/artifacts` | Sbom Artifacts |
 | `POST` | `/api/v1/devsecops/sbom/export` | Sbom Export |
 | `POST` | `/api/v1/devsecops/sbom/import` | Sbom Import |
+| `POST` | `/api/v1/devsecops/sbom/scan` | Sbom Scan |
+| `GET` | `/api/v1/devsecops/sbom/{artifact_id}/download` | Sbom Download |
 | `POST` | `/api/v1/devsecops/tickets/sync-pull` | Ticket Sync Pull |
 
 ## drift
@@ -723,6 +748,16 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `DELETE` | `/api/v1/onboarding/scope/{entry_id}` | Delete Scope |
 | `GET` | `/api/v1/onboarding/state` | Onboarding State |
 
+## ops
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/ops/alerts` | Self Alerts |
+| `GET` | `/api/v1/ops/capacity/forecast` | Capacity Forecast |
+| `GET` | `/api/v1/ops/metrics` | Prometheus Metrics |
+| `GET` | `/api/v1/ops/slo` | Slo Status |
+| `GET` | `/api/v1/ops/traces` | Recent Traces |
+
 ## ot
 
 | Method | Path | Summary |
@@ -762,6 +797,15 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/payment-crypto/transactions` | Record Transactions |
 | `POST` | `/api/v1/payment-crypto/transactions/bulk` | Record Transactions Bulk |
 | `GET` | `/api/v1/payment-crypto/usage` | Usage |
+
+## pentest
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/pentest/findings` | List Findings |
+| `POST` | `/api/v1/pentest/findings` | Ingest Findings |
+| `POST` | `/api/v1/pentest/findings/{finding_id}/status` | Set Status |
+| `GET` | `/api/v1/pentest/summary` | Summary |
 
 ## platform
 
