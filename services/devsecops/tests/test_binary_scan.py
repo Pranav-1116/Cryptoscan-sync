@@ -101,7 +101,6 @@ def _elf64(*, e_type: int = 3, machine: int = 0x3E, deps=(), soname: str | None 
 
     phoff = 0
     phnum = 0
-    phdr_bytes = b""
     if segments:
         phoff = cursor
         phnum = len(segments)
@@ -294,6 +293,123 @@ def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
     return bytes(data)
 
 
+def _macho(*, encrypted: bool = False, signed: bool = True, hardened: bool = True,
+           flags: int = 0x200000) -> bytes:
+    """Mach-O 64 (arm64) with dylib versions, symbols, build version, signature."""
+    def _v(text: str, width: int) -> bytes:
+        raw = text.encode() + b"\x00"
+        return raw + b"\x00" * (width - len(raw))
+
+    def _u32_version(value: str) -> int:
+        major, minor, patch = (int(part) for part in (value.split(".") + ["0", "0"])[:3])
+        return (major << 16) | (minor << 8) | patch
+
+    strtab = bytearray(b"\x00")
+    sym_offsets: dict[str, int] = {}
+
+    def _intern(text: str) -> int:
+        sym_offsets[text] = len(strtab)
+        strtab.extend(text.encode() + b"\x00")
+        return sym_offsets[text]
+
+    _intern("_EVP_EncryptInit_ex")     # defined (statically linked OpenSSL)
+    _intern("_CC_SHA256")              # defined (statically linked CommonCrypto)
+    _intern("_CCCryptorCreate")        # undefined (CommonCrypto)
+    _intern("_SecKeyEncrypt")          # undefined (Security.framework)
+    nlist = (struct.pack("<IBBHQ", sym_offsets["_EVP_EncryptInit_ex"], 0x0F, 1, 0, 0x1000)
+             + struct.pack("<IBBHQ", sym_offsets["_CC_SHA256"], 0x0F, 1, 0, 0x1008)
+             + struct.pack("<IBBHQ", sym_offsets["_CCCryptorCreate"], 0x01, 0, 0, 0)
+             + struct.pack("<IBBHQ", sym_offsets["_SecKeyEncrypt"], 0x01, 0, 0, 0))
+
+    def _name16(text: str) -> bytes:
+        raw = text.encode() + b"\x00"
+        return raw + b"\x00" * (16 - len(raw))
+
+    def _seg() -> bytes:
+        # section_64 is 80 bytes: names are 16 bytes each, including the NUL
+        sect = (_name16("__text") + _name16("__TEXT")
+                + struct.pack("<QQIIIIIII", 0x1000, 0x40, 0x200, 4, 0, 0, 0x80000400, 0, 0))
+        body = (_name16("__TEXT") + struct.pack("<QQQQIIII", 0x100000000, 0x2000, 0x200, 0x2000,
+                5, 5, 1, 0) + sect)
+        return struct.pack("<II", 0x19, 8 + len(body)) + body
+
+    def _dylib(name: str, current: str, compat: str = "3.0.0", cmd: int = 0x0C) -> bytes:
+        name_offset = 24
+        body = struct.pack("<IIII", name_offset, 2, _u32_version(current),
+                          _u32_version(compat)) + name.encode() + b"\x00"
+        body += b"\x00" * ((8 - len(body) % 8) % 8)
+        return struct.pack("<II", cmd, 8 + len(body)) + body
+
+    def _cmd(cmd: int, payload: bytes) -> bytes:
+        body = payload + b"\x00" * ((8 - (8 + len(payload)) % 8) % 8)
+        return struct.pack("<II", cmd, 8 + len(body)) + body
+
+    uuid = _cmd(0x1B, bytes.fromhex("aabbccddeeff00112233445566778899"))
+    rpath = _cmd(0x1C, struct.pack("<I", 12) + b"@executable_path/../Frameworks\x00")
+    build = _cmd(0x32, struct.pack("<IIII", 1, (13 << 16) | 1, (14 << 16) | 4, 0))
+    main = _cmd(0x80000028, struct.pack("<QQ", 0x1000, 0))
+
+    symoff = 0x400
+    stroff = symoff + len(nlist)
+    symtab_data = nlist + bytes(strtab)
+    symtab = _cmd(0x02, struct.pack("<IIII", symoff, 4, stroff, len(strtab)))
+    # iextdef = 0, nextdef = 2 → exported; iundef = 2, nundef = 2 → imported
+    dysymtab = _cmd(0x0B, struct.pack("<IIIIII", 0, 0, 0, 2, 2, 2))
+
+    commands = [_seg(), build, _dylib("/usr/lib/libcrypto.44.dylib", "3.0.20"),
+                _dylib("/System/Library/Frameworks/Security.framework/Versions/A/Security",
+                       "1.0.0"), rpath, uuid, symtab, dysymtab, main]
+    if encrypted:
+        commands.append(_cmd(0x2C, struct.pack("<III", 0x200, 0x100, 1)))
+
+    signature = b""
+    if signed:
+        entitlements_xml = (b'<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0">'
+                            b"<dict><key>com.apple.security.get-task-allow</key><true/>"
+                            b"<key>com.apple.security.cs.allow-jit</key><true/></dict></plist>")
+        entitlement_blob = struct.pack(">II", 0xFADE7171, 8 + len(entitlements_xml)) \
+            + entitlements_xml
+        identifier = b"com.acme.toolkit\x00"
+        team = b"ACME1234\x00"
+        # CodeDirectory: 9 u32 fields, then hashSize/hashType/platform/pageSize,
+        # then spare2 + scatterOffset, then teamOffset — the team string follows
+        team_offset = 52
+        ident_offset = team_offset + len(team)
+        directory = (struct.pack(">IIIIIIIII", 0xFADE0C02, 0, 0x20400,
+                                 0x10000 if hardened else 0, 0, ident_offset, 0, 0, 0x2000)
+                     + bytes([32, 2, 0, 12]) + struct.pack(">II", 0, 0)
+                     + struct.pack(">I", team_offset) + team + identifier)
+        directory = struct.pack(">II", 0xFADE0C02, len(directory)) + directory[8:]
+        blob = (struct.pack(">III", 0xFADE0CC0, 0, 2)
+                + struct.pack(">II", 0, 28)
+                + struct.pack(">II", 5, 28 + len(directory))
+                + directory + entitlement_blob)
+        blob = struct.pack(">II", 0xFADE0CC0, len(blob)) + blob[8:]
+        signature = blob
+
+    header_size = 32
+    if signature:
+        commands.append(_cmd(0x1D, struct.pack("<II", 0, 0)))
+    commands_size = sum(len(cmd) for cmd in commands)
+    if signature:
+        # the signature lives after the symbol table, so its offsets are known
+        # before assembly and the placeholder can be filled in place
+        sig_offset = max(header_size + commands_size, symoff) + len(symtab_data)
+        last = len(commands) - 1
+        commands[last] = _cmd(0x1D, struct.pack("<II", sig_offset, len(signature)))
+        commands_size = sum(len(cmd) for cmd in commands)
+    data = bytearray(header_size) + bytearray(b"".join(commands))
+    while len(data) < symoff:
+        data.append(0)
+    data.extend(symtab_data)
+    if signature:
+        assert len(data) == sig_offset, (len(data), sig_offset)  # offsets line up
+        data.extend(signature)
+    struct.pack_into("<IIIIIIII", data, 0, 0xFEEDFACF, 0x0100000C, 0, 2,
+                     len(commands), commands_size, flags, 0)
+    return bytes(data)
+
+
 def _rpm(*, name: str = "acme-crypto", version: str = "3.4.5", release: str = "1.el9",
          license_: str = "Apache-2.0", payload_compressor: str = "gzip",
          requires: tuple = ("libcrypto.so.3", "libssl.so.3"), cpio_payload: bytes = b"") -> bytes:
@@ -393,7 +509,6 @@ def _java_class(version_major: int = 61) -> bytes:
     descriptor = _utf8("(Ljava/lang/String;)V")
     class_ref = len(pool) + 1
     pool.append(bytes([7]) + struct.pack(">H", cipher))                      # Class
-    class_ref_provider = len(pool) + 1
     pool.append(bytes([7]) + struct.pack(">H", provider))                    # Class
     name_type_ref = len(pool) + 1
     pool.append(bytes([12]) + struct.pack(">HH", name_type, descriptor))     # NameAndType
@@ -911,6 +1026,26 @@ def test_packer_signature_is_named_and_flagged(tmp_path):
     assert any(finding["code"] == "BIN-PACKED" for finding in record["findings"])
 
 
+def test_a_class_file_with_a_bad_pool_entry_says_where_it_stopped():
+    """A truncated constant pool is a partial read, not a clean parse."""
+    data = bytearray(_java_class())
+    data[10] = 0x63                       # first pool entry: unknown tag
+    record = bs.parse_bytes(bytes(data), name="Broken.class")
+    java = record["java"]
+    assert java["constant_pool_truncated_at"] == 1
+    assert java["class_version"] == "61.0"
+    assert java.get("classes") is None or "Cipher" not in " ".join(java.get("classes") or [])
+
+
+def test_jvm_internal_names_are_marker_evidence():
+    """Class files name packages with slashes; JCA evidence must not be dropped."""
+    crypto = bs.crypto_evidence(b"", ["javax/crypto/Cipher"],
+                                imports=["javax/crypto/Cipher"])
+    libraries = {row["library"]: row for row in crypto["libraries"]}
+    assert "JCA-JCE" in libraries, crypto["suppressed_libraries"]
+    assert libraries["JCA-JCE"]["evidence_classes"] == ["marker"]
+
+
 def test_java_class_constant_pool_is_read(tmp_path):
     path = tmp_path / "Crypto.class"
     path.write_bytes(_java_class())
@@ -922,6 +1057,146 @@ def test_java_class_constant_pool_is_read(tmp_path):
     assert record["java"]["class_version"] == "61.0"
     assert "AES/GCM/NoPadding" in record["java"]["strings"]
     assert any(finding["code"] == "BIN-WEAK-PRIMITIVE-CLASS" for finding in record["findings"])
+
+
+def test_pe_version_info_names_the_publisher():
+    """RT_VERSION is where a PE states who built it and what it is."""
+    parsed = bs.parse_pe(_pe_rich())
+    info = parsed["version_info"]
+    assert info["version"] == "9.1.0.0"
+    assert info["vendor"] == "Acme Corp" and info["product"] == "Acme Toolkit"
+    strings = parsed["resources"]["strings"]
+    assert strings["CompanyName"] == "Acme Corp"
+    assert strings["ProductName"] == "Acme Toolkit"
+    assert strings["OriginalFilename"] == "acme.exe"
+    assert strings["LegalCopyright"] == "Copyright Acme"
+    assert parsed["resources"]["translations"] == ["040904b0"]
+
+
+def test_pe_delay_loaded_dependency_is_a_finding(tmp_path):
+    """A delayed import still runs code, so it is reported rather than dropped."""
+    path = tmp_path / "acme.exe"
+    path.write_bytes(_pe_rich())
+    record = bs.scan_file(path)
+    assert record["delay_imports"] == ["CRYPT32.dll"]
+    assert "CRYPT32.dll" in record["libraries"]
+    finding = [f for f in record["findings"] if f["code"] == "BIN-DELAYED-IMPORT"][0]
+    assert finding["severity"] == "INFO"
+    assert "still loaded" in finding["detail"]
+
+
+def test_ambiguous_platform_constructors_are_not_promoted():
+    """CC_SHA256 names a primitive; CCCryptorCreate and EVP_CIPHER_CTX_new do not."""
+    ambiguous = bs.crypto_evidence(b"", [], imports=["CCCryptorCreate", "EVP_CIPHER_CTX_new"])
+    assert not any("platform API" in source
+                   for row in ambiguous["algorithm_evidence"] for source in row["sources"])
+    clear = bs.crypto_evidence(b"", [], imports=["CC_SHA256", "getrandom"])
+    evidence = {row["name"]: row for row in clear["algorithm_evidence"]}
+    assert evidence["SHA-256"]["strongest_evidence"] == "IMPORT"
+    assert evidence["CSPRNG"]["strongest_evidence"] == "IMPORT"
+    assert all("platform API" in row["sources"][0] for row in evidence.values())
+
+
+def test_elf_section_names_are_listed_with_hardening():
+    """The section table shows what a binary still carries; hardening reads it."""
+    parsed = bs.parse_elf(_elf64(deps=("libc.so.6",), imports=("__stack_chk_fail",),
+                                 symbol_versions={"libc.so.6": ["GLIBC_2.34"]},
+                                 segments=((1, 5, 0x400000, b"x" * 16), (0x6474E551, 6, 0, b""))))
+    assert ".gnu.version_r" in parsed["sections"]
+    assert ".dynsym" in parsed["sections"] and ".shstrtab" in parsed["sections"]
+    assert len(parsed["sections"]) == len(set(parsed["sections"]))
+    assert parsed["segments"] == ["load", "gnu_stack"]
+    assert parsed["hardening"]["nx"] is True
+    assert parsed["hardening"]["canary"] is True
+
+
+def test_macho_dylibs_build_version_and_symbols():
+    """Linked dylibs carry their own versions; the symbol table names the calls."""
+    parsed = bs.parse_macho(_macho())
+    assert parsed["arch"] == "AArch64" and parsed["type"] == "executable"
+    versions = parsed["dylib_versions"]
+    assert versions["/usr/lib/libcrypto.44.dylib"]["current"] == "3.0.20"
+    assert versions["/usr/lib/libcrypto.44.dylib"]["compat"] == "3.0.0"
+    assert parsed["platform"] == "macOS"
+    assert parsed["minimum_os"] == "13.0.1" and parsed["sdk"] == "14.0.4"
+    assert parsed["rpath"] == ["@executable_path/../Frameworks"]
+    assert parsed["sections"] == ["__TEXT,__text"]
+    # dyld leading underscores are stripped, so symbols key the crypto tables
+    assert parsed["exports"] == ["EVP_EncryptInit_ex", "CC_SHA256"]
+    assert sorted(parsed["imports"]) == ["CCCryptorCreate", "SecKeyEncrypt"]
+    assert parsed["stripped"] is False
+    assert parsed["hardening"]["pie"] is True
+
+
+def test_macho_code_signature_identity_and_entitlements():
+    parsed = bs.parse_macho(_macho())
+    signature = parsed["signature"]
+    assert signature["present"] is True
+    assert signature["identifier"] == "com.acme.toolkit"
+    assert signature["team_id"] == "ACME1234"
+    assert signature["hash_type"] == "sha256"
+    assert signature["hardened_runtime"] is True
+    assert "com.apple.security.get-task-allow" in signature["entitlements"]
+    assert "validity, certificate chain and notarisation are NOT verified" in signature["note"]
+
+
+def test_macho_signature_and_entitlement_findings(tmp_path):
+    path = tmp_path / "acme-tool"
+    path.write_bytes(_macho(signed=False))
+    record = bs.scan_file(path)
+    codes = {finding["code"] for finding in record["findings"]}
+    assert "BIN-UNSIGNED-MACHO" in codes
+
+    (tmp_path / "signed-tool").write_bytes(_macho(hardened=False))
+    signed = bs.scan_file(tmp_path / "signed-tool")
+    findings = {finding["code"]: finding for finding in signed["findings"]}
+    assert findings["BIN-ENTITLEMENT"]["severity"] == "MEDIUM"
+    assert findings["BIN-ENTITLEMENT"]["entitlement"] == "com.apple.security.get-task-allow"
+    assert "BIN-NO-HARDENED-RUNTIME" in findings
+
+
+def test_encrypted_macho_is_reported_as_such(tmp_path):
+    path = tmp_path / "protected"
+    path.write_bytes(_macho(encrypted=True))
+    record = bs.scan_file(path)
+    assert record["encrypted"] is True
+    finding = [f for f in record["findings"] if f["code"] == "BIN-ENCRYPTED"][0]
+    assert finding["severity"] == "HIGH"
+    assert "structurally incomplete" in finding["detail"]
+
+
+def test_macho_stack_exec_flag_is_a_finding(tmp_path):
+    path = tmp_path / "legacy"
+    path.write_bytes(_macho(flags=0x200000 | 0x20000))
+    record = bs.scan_file(path)
+    assert record["hardening"]["stack_exec"] is True
+    assert any(finding["code"] == "BIN-EXECUTABLE-STACK" for finding in record["findings"])
+
+
+def test_fat_macho_lists_every_slice(tmp_path):
+    thin = _macho()
+    fat = (b"\xca\xfe\xba\xbe" + struct.pack(">I", 2)
+           + struct.pack(">IIIII", 0x0100000C, 0, 0x1000, len(thin), 14)     # arm64
+           + struct.pack(">IIIII", 0x01000007, 3, 0x1000 + len(thin), len(thin), 14)
+           + bytes(0x1000 - 48) + thin + thin)
+    parsed = bs.parse_macho(fat)
+    assert parsed["type"] == "universal"
+    assert parsed["slices"] == ["AArch64", "x86-64"]
+    assert parsed["parsed_slice"] == "AArch64"
+    assert parsed["dylib_versions"]["/usr/lib/libcrypto.44.dylib"]["current"] == "3.0.20"
+
+
+def test_macho_symbols_feed_crypto_evidence(tmp_path):
+    """CommonCrypto/OpenSSL symbols are the Mach-O equivalent of an import table."""
+    path = tmp_path / "acme-tool"
+    path.write_bytes(_macho())
+    record = bs.scan_file(path)
+    evidence = {row["name"]: row for row in record["crypto"]["algorithm_evidence"]}
+    assert "SHA-256" in evidence, record["crypto"]["algorithm_evidence"]
+    assert evidence["SHA-256"]["strongest_evidence"] == "SYMBOL"
+    assert "CC_SHA256" in evidence["SHA-256"]["sources"][0]
+    libraries = {row["library"] for row in record["crypto"]["libraries"]}
+    assert "Apple CommonCrypto" in libraries
 
 
 # ------------------------------------------------ turn-30 depth: RPM/deb --- #
@@ -990,6 +1265,33 @@ def test_tar_gz_member_is_parsed_with_provenance(tmp_path):
 
     assert embedded["sha256"] == hashlib.sha256(inner).hexdigest()
     assert any(finding["code"] == "BIN-CONTAINER-FOLLOWED" for finding in record["findings"])
+
+
+def test_a_bare_cpio_archive_is_opened(tmp_path):
+    """A cpio that is not wrapped in gzip is still an initramfs-style container."""
+    path = tmp_path / "firmware.img"
+    path.write_bytes(_cpio([("lib/libcrypto.so.3", _elf64()), ("bin/busybox", _elf64())]))
+    assert bs.identify(path.read_bytes(), "")["format"] == "cpio"
+    scan = bs.scan_path(tmp_path, recursive=True)
+    result = bs.sbom_result(scan)
+    embedded = [row for row in result["binaries"] if row.get("derived_from")]
+    assert len(embedded) == 2, [row["path"] for row in result["binaries"]]
+    names = sorted(row["file_name"] for row in embedded)
+    assert names == ["busybox", "libcrypto.so.3"]
+    for row in embedded:
+        assert row["derived_from"] == "firmware.img"
+        assert row["path"].startswith("firmware.img!")
+        assert row["format"] == "elf"
+
+
+def test_cpio_old_ascii_format_is_identified_but_not_claimed_as_parsed(tmp_path):
+    """An odc archive is identified and refused honestly, not silently skipped."""
+    path = tmp_path / "old.cpio"
+    path.write_bytes(b"070707" + bytes(64))
+    record = bs.parse_bytes(path.read_bytes(), name="old.cpio")
+    assert record["format"] == "cpio-odc"
+    assert record["parsed"] is False
+    assert "repack it with `cpio -H newc`" in record["parse_note"]
 
 
 def test_initramfs_cpio_members_are_listed(tmp_path):

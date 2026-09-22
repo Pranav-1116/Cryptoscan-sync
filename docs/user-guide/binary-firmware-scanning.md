@@ -35,7 +35,7 @@ was stored with the scan.
 |---|---|
 | ELF (32/64, LE/BE) | type (exec/PIE/shared/core), machine, `DT_NEEDED` libraries, `RPATH`/`RUNPATH`, `DT_SONAME`, `.note.gnu.build-id`, `.comment` compiler string, dynamic symbols split into imports/exports, stripped/static detection, **Go build info** (toolchain + module graph with exact versions and sums), **program headers** (segment list, `PT_INTERP` interpreter, `PT_GNU_STACK` executable-stack flag), **`.gnu.version_r` symbol-version floors** (e.g. `libcrypto.so.3` requires `OPENSSL_3.0.3`), **`.note.gnu.property`** CPU features (CET IBT/SHSTK), **hardening flags** (PIE, NX, RELRO, full RELRO/BIND_NOW, stack canary, `_FORTIFY_SOURCE`), **crypto constant tables** (known AES/SHA/MD5/ChaCha20 tables located in `.rodata`/`.text`/`.data` → `CONSTANT_MATCH` 0.9) |
 | PE (PE32/PE32+) | machine, subsystem (incl. UEFI runtime/boot → `type: efi-image`), COFF timestamp, sections, imported DLLs resolved through the section table, **delay-load imports**, **`RT_VERSION` resources** (StringFileInfo: company/product/file version/original filename, `VS_FIXEDFILEINFO`, translation table), **debug directory** (CodeView `RSDS` PDB path, GUID, age), **Authenticode presence** (entries, size, PKCS#7 — validity and chain are explicitly *not* verified), **CLR/`.NET` metadata** (BSJB → framework version), **Rich header** (linker product/build pairs — attribution evidence only) |
-| Mach-O (thin + fat) | CPU type, file type, `LC_UUID`, platform, linked dylibs, `LC_RPATH` |
+| Mach-O (thin + fat) | CPU type/subtype, file type, `LC_UUID`, platform + minimum OS + SDK (`LC_BUILD_VERSION` / `LC_VERSION_MIN_*`), **linked dylibs with their current/compatibility versions** (`LC_LOAD_DYLIB`/weak/reexport/lazy), `install_name`, `LC_RPATH`, section list, **symbol table split into imports/exports** via `LC_DYSYMTAB` (dyld's leading `_` is stripped so the C name keys the crypto tables), **code signature**: signing identifier, team id, hash type, flags (hardened runtime, library validation, ad-hoc), **entitlements** (with the notable ones called out), **encryption** (`LC_ENCRYPTION_INFO*` cryptid → the file's strings and symbols are not readable) |
 | `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, **Debian `control` file** (package, version, architecture, maintainer, section, homepage, `Depends`) |
 | zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), native extensions |
 | **Java class** | constant pool: referenced classes (`javax/crypto/Cipher`, `org/bouncycastle/…`), method names, transformation strings (`AES/GCM/NoPadding`), class file version; a truncated pool says where the walk stopped |
@@ -51,7 +51,7 @@ Compression and archive formats are actually opened, one member at a time:
 | Container | What happens |
 |---|---|
 | gzip, xz/lzma, bzip2 | decompressed with a hard output cap, then identified again (tar/cpio get their member list) |
-| tar, cpio (initramfs) | members listed; members that are themselves a parseable format are parsed |
+| tar, cpio (initramfs) | members listed; members that are themselves a parseable format are parsed. A **bare** `.cpio`/`initramfs` (newc/crc magic at offset 0, not wrapped in gzip) is identified and opened the same way; the old ASCII `odc` format is identified and refused with the reason |
 | zip, `ar`/`.deb` | members listed; the Debian `control` file becomes the package identity |
 | RPM | payload decompressed and the cpio member list read; parseable members are parsed |
 | zstd, lz4, squashfs/JFFS2/UBIFS/cramfs/ext | **refused with the reason** (`BIN-CONTAINER-REFUSED`) — there is no stdlib decoder for zstd/lz4, and filesystem images need external tooling |
@@ -71,6 +71,16 @@ Crypto detection is graded, and every claim keeps the evidence that produced it:
 ```
 STRING_MATCH 0.4  <  SYMBOL_MATCH 0.7  <  IMPORT_MATCH 0.8  <  CONSTANT_MATCH 0.9  <  FINGERPRINT 1.0
 ```
+
+One deliberate exception sits next to those levels: **platform crypto APIs**. A call
+to `CC_SHA256` (Apple CommonCrypto), `BCryptGenRandom` (Windows CNG),
+`SecKeyEncrypt` (Apple Security.framework), `getrandom`, `SSLCreateContext` or
+`AES_set_encrypt_key` names the primitive directly, so it is reported at
+`IMPORT`/`SYMBOL` level with the symbol as its source. Constructors that say only
+*that* a cipher is used — `CCCryptorCreate`, `BCryptEncrypt`,
+`EVP_CIPHER_CTX_new`, `BCryptOpenAlgorithmProvider` — are reported as library
+markers and are **never** promoted to an algorithm: an ambiguous constructor is
+not evidence of AES.
 
 * **Versions** come from banners read out of the file itself (`OpenSSL 3.0.20 …`),
   not from a filename.
@@ -99,7 +109,12 @@ Finding codes: `BIN-EOL-CRYPTO`, `BIN-CRYPTO-NO-VERSION`,
 `BIN-CRYPTO-VERSION-FLOOR`, `BIN-PACKED`, `BIN-HIGH-ENTROPY`,
 `BIN-STATIC-CRYPTO`, `BIN-RPATH-WRITABLE`, `BIN-EXECUTABLE-STACK`,
 `BIN-NO-RELRO`, `BIN-PARTIAL-RELRO`, `BIN-NO-STACK-CANARY`,
-`BIN-UNSIGNED-PE`, `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
+`BIN-UNSIGNED-PE`, `BIN-UNSIGNED-MACHO`, `BIN-ENTITLEMENT` (notable
+entitlements such as `get-task-allow`, `allow-unsigned-executable-memory`,
+`disable-library-validation`), `BIN-NO-HARDENED-RUNTIME`, `BIN-ENCRYPTED`
+(Mach-O `cryptid` — the file is encrypted, so string/symbol evidence for it is
+structurally incomplete), `BIN-DELAYED-IMPORT` (a delay-loaded DLL still loads
+and still runs), `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
 `BIN-CONTAINER-REFUSED`, `BIN-NOT-PARSED`, `BIN-PARTIAL-PARSE`,
 `BIN-FIRMWARE-NOT-EXTRACTED`.
 
@@ -136,8 +151,12 @@ Finding codes: `BIN-EOL-CRYPTO`, `BIN-CRYPTO-NO-VERSION`,
 * **zstd and lz4 are refused, not guessed.** There is no zstd/lz4 decoder in the
   standard library, so those containers are reported with the reason; nothing is
   claimed about their contents.
-* **Authenticode signatures are reported as present or absent only.** No chain,
-  revocation or trust decision is made — `signature.note` says so in the output.
+* **Signatures are reported, never trusted.** For PE this is Authenticode
+  presence (entries, size, revision); for Mach-O it is the code signature's
+  identifier, team id, hash type and entitlements. No chain, revocation,
+  notarisation or trust decision is made, and `signature.note` says so in the
+  output. An entitlement is evidence about what the binary *may* do, not proof of
+  what it does.
 * **Symbol-version floors are floors, not versions.** `libcrypto.so.3 →
   OPENSSL_3.0.3` means the binary needs at least that ABI; CVEs are matched
   against banners read from the file, and the floor finding states the limit.
@@ -146,6 +165,9 @@ Finding codes: `BIN-EOL-CRYPTO`, `BIN-CRYPTO-NO-VERSION`,
   ASPack, MPRESS, Themida, VMProtect, Enigma, PECompact, Petite, PyInstaller,
   Electron/asar) yields `BIN-PACKED` and a warning that string-level detection is
   structurally incomplete for that file.
+* **A container member that is not a format this scanner knows is listed, not
+  parsed.** The member list is the honest statement: the file's name and size were
+  read, its contents were not interpreted.
 * **Name matching still exists for container images** (`container_scanner`
   `_discover_binaries`) as a cheap pre-filter; the deep parser is this scanner.
 * **Caps, on purpose**: 512 MiB per file, 4 000 files walked, 750 binaries parsed,

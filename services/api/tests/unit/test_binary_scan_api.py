@@ -179,6 +179,34 @@ async def test_binary_scan_end_to_end(app_db):
 
 
 @pytest.mark.asyncio
+async def test_binary_scan_reports_signature_and_encryption_posture(app_db):
+    """Signing state and encryption reach the manifest summary, not just the rows."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "machos"
+    directory.mkdir()
+    (directory / "acme-tool").write_bytes(fixtures._macho())
+    (directory / "acme-tool-unsigned").write_bytes(fixtures._macho(signed=False))
+    (directory / "acme-protected").write_bytes(fixtures._macho(encrypted=True))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    summary = body["manifest"]["binary_summary"]
+    assert summary["by_format"] == {"macho": 3}
+    assert summary["signature_posture"] == {"signed": 2, "unsigned": 1}
+    assert summary["encrypted_binaries"] == 1
+    rows = {row["file_name"]: row for row in body["binaries"]}
+    assert rows["acme-tool"]["signature"]["identifier"] == "com.acme.toolkit"
+    assert rows["acme-tool"]["dylib_versions"]["/usr/lib/libcrypto.44.dylib"]["current"] == "3.0.20"
+    assert rows["acme-tool"]["minimum_os"] == "13.0.1"
+    assert rows["acme-protected"]["encrypted"] is True
+    codes = {finding["code"] for finding in body["findings"]}
+    assert {"BIN-UNSIGNED-MACHO", "BIN-ENTITLEMENT", "BIN-ENCRYPTED"} <= codes
+    # the implementation the Mach-O links against becomes a crypto component
+    assert "Apple CommonCrypto" in {component["name"] for component in body["bom"]["components"]}
+
+
+@pytest.mark.asyncio
 async def test_binary_scan_matches_advisories_and_gates(app_db):
     application, _session, tmp_path = app_db
     directory = _target_dir(tmp_path)

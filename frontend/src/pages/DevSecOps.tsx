@@ -734,12 +734,30 @@ function BinaryPanel() {
     const h = b.hardening || {};
     if (!h || Object.keys(h).length === 0) return "—";
     return ["pie", "nx", "relro", "canary", "fortified"]
-      .map((k) => `${h[k] ? "+" : "−"}${k}`).join(" ") + (h.full_relro ? " +full-relro" : "");
+      .map((k) => `${h[k] ? "+" : "−"}${k}`).join(" ") + (h.full_relro ? " +full-relro" : "")
+      + (h.hardened_runtime ? " +hardened-runtime" : "");
+  };
+  // linkage, code signature and OS floor: what the file links against and who
+  // signed it, read from the load commands / symbol tables rather than guessed
+  const linkageOf = (b: any) => {
+    const bits: string[] = [];
+    const dylibs = Object.keys(b.dylib_versions || {});
+    if (dylibs.length) bits.push(`${dylibs.length} dylibs`);
+    else if (b.import_count) bits.push(`${b.import_count} imports`);
+    if (b.minimum_os) bits.push(`min ${b.minimum_os}`);
+    const sig = b.signature;
+    if (sig && b.format === "macho") {
+      bits.push(sig.present ? `signed${sig.team_id ? ` ${sig.team_id}` : ""}` : "unsigned");
+    } else if (sig && b.format === "pe") {
+      bits.push(sig.present ? "signed" : "unsigned");
+    }
+    if (b.encrypted) bits.push("ENCRYPTED");
+    return bits.join(" · ") || "—";
   };
   const severityTone = (s: string) => (s === "CRITICAL" || s === "HIGH" ? "red" : (s === "MEDIUM" ? "amber" : "gray"));
   return (
     <Panel title="Binaries, archives & firmware — parse, not guess"
-      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence, Mach-O load commands, Java constant pools, RPM headers, ar/zip members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
+      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors/section table, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence, Mach-O dylib versions + symbol table + code-signature entitlements + signing team, Java constant pools, RPM headers, ar/zip/cpio(initramfs)/deb members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
       <div className="grid" style={{ gridTemplateColumns: "1fr 130px", gap: 8, marginBottom: 8 }}>
         <input className="inp" placeholder="file or directory (e.g. /opt/app, /tmp/firmware.img, /lib/x86_64-linux-gnu/libcrypto.so.3)"
           value={target} onChange={(e) => setTarget(e.target.value)} />
@@ -788,6 +806,15 @@ function BinaryPanel() {
             {(summary?.containers_refused || 0) > 0 && (
               <Badge tone="gray">{summary?.containers_refused} containers refused</Badge>
             )}
+            {(summary?.signature_posture?.signed || 0) > 0 && (
+              <Badge tone="green">{summary?.signature_posture?.signed} signed</Badge>
+            )}
+            {(summary?.signature_posture?.unsigned || 0) > 0 && (
+              <Badge tone="amber">{summary?.signature_posture?.unsigned} unsigned</Badge>
+            )}
+            {(summary?.encrypted_binaries || 0) > 0 && (
+              <Badge tone="red">{summary?.encrypted_binaries} encrypted</Badge>
+            )}
             {(summary?.packed_binaries || 0) > 0 && (
               <Badge tone="amber">{summary?.packed_binaries} packed</Badge>
             )}
@@ -817,7 +844,7 @@ function BinaryPanel() {
               <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
                 binaries parsed ({binaries.length}) — embedded files are listed under the container they came from
               </div>
-              <Table head={["path", "format", "arch", "publisher / product", "hardening", "packer", "crypto", "packages inside"]}
+              <Table head={["path", "format", "arch", "publisher / product", "linkage / signature", "hardening", "packer", "crypto", "packages inside"]}
                 rows={binaries.map((b: any) => [
                   <span style={{ fontSize: 12 }}>
                     {b.derived_from ? "└ " : ""}{b.path}
@@ -826,6 +853,7 @@ function BinaryPanel() {
                   b.format + (b.type?.endsWith(":efi") ? " · EFI" : ""),
                   b.arch || "—",
                   [b.publisher, b.product].filter(Boolean).join(" / ") || "—",
+                  <span style={{ fontSize: 12 }}>{linkageOf(b)}</span>,
                   <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>{hardeningOf(b)}</span>,
                   b.packer ? <Badge tone="amber">{b.packer}</Badge> : "—",
                   (b.crypto_constants || []).length > 0

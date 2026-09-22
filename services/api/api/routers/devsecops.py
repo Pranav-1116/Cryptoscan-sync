@@ -351,6 +351,7 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
             "findings": len(result.get("findings") or []),
             "findings_by_severity": _severity_counts(result.get("findings") or []),
             "truncated": bool((result.get("limits") or {}).get("truncated")),
+            **_binary_posture(result),
         } if kind == "binary" else None),
         # whether an advisory feed was actually applied — an SBOM with zero
         # advisories because nothing was checked reads differently from one
@@ -393,6 +394,28 @@ def _severity_counts(findings: list[dict]) -> dict[str, int]:
         severity = str(finding.get("severity") or "INFO").upper()
         counts[severity] = counts.get(severity, 0) + 1
     return dict(sorted(counts.items()))
+
+
+def _binary_posture(result: dict) -> dict:
+    """How the scanned binaries are signed and whether any are encrypted.
+
+    A manifest that says "3 unsigned, 1 encrypted" is actionable; one that only
+    lists formats is not. Only formats that *have* a signature story are counted
+    as signed/unsigned — an ELF has no signature field and is not "unsigned".
+    """
+    signature_formats = {"pe", "macho"}
+    signed = unsigned = encrypted = 0
+    for row in result.get("binaries") or []:
+        signature = row.get("signature") or {}
+        if str(row.get("format")) in signature_formats:
+            if signature.get("present"):
+                signed += 1
+            else:
+                unsigned += 1
+        if row.get("encrypted"):
+            encrypted += 1
+    return {"signature_posture": {"signed": signed, "unsigned": unsigned},
+            "encrypted_binaries": encrypted}
 
 
 class BinaryScanRequest(BaseModel):
@@ -519,6 +542,7 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
             "containers_followed": result.get("containers_followed", 0),
             "containers_refused": result.get("containers_refused", 0),
             "packed_binaries": result.get("packed_binaries", 0),
+            **_binary_posture(result),
             "extraction_limits": result.get("extraction_limits") or {},
         },
     }

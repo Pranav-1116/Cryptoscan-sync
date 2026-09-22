@@ -77,6 +77,32 @@ never silently skipped. New findings: `BIN-EXECUTABLE-STACK`, `BIN-NO-RELRO`,
 `BIN-WEAK-PRIMITIVE-CLASS`, `BIN-PARTIAL-PARSE`, `BIN-HIGH-ENTROPY`; a summary carries
 `embedded_binaries`, `containers_followed`, `containers_refused`, `packed_binaries`.
 
+**Update (2026-09-22, Mach-O, cpio and platform APIs):** everything the remaining
+formats expose that bears on crypto is now read. **Mach-O** earns its own parser depth:
+linked dylibs with their current/compatibility versions, `install_name`, `LC_RPATH`,
+platform/minimum-OS/SDK, the section list, the symbol table split into imports and exports
+through `LC_DYSYMTAB` (with dyld's leading `_` stripped so the C name keys the fingerprint
+and algorithm tables), and the **code signature** — signing identifier, team id, hash
+type, flags (hardened runtime, library validation, ad-hoc) and **entitlements**, with
+`get-task-allow`/`allow-unsigned-executable-memory`/`disable-library-validation` called
+out as findings. Mach-O signature validity, certificate chain and notarisation are *not*
+verified, and `signature.note` says so. A **fat** binary lists every slice and parses the
+native one; a `cryptid`-encrypted slice is reported as `BIN-ENCRYPTED` rather than being
+presented as a file whose strings were read. **Bare cpio/initramfs** archives (newc/crc at
+offset 0) are now identified and opened like any other container, and the old ASCII `odc`
+form is identified and refused with the reason. **Platform crypto APIs** are mapped to
+primitives — `CC_SHA256`/`CCCryptorGCM*`/`CCKeyDerivationPBKDF` (CommonCrypto),
+`SecKeyEncrypt`/`SSLCreateContext` (Security.framework), `BCryptGenRandom`/`CryptGenRandom`
+(CNG/CryptoAPI), `getrandom`/`getentropy`, `AES_set_encrypt_key`, `RAND_bytes`,
+`PKCS5_PBKDF2_HMAC` — at `IMPORT`/`SYMBOL` level, while cipher-agnostic constructors
+(`CCCryptorCreate`, `BCryptEncrypt`, `EVP_CIPHER_CTX_new`) stay library markers and are
+never promoted to an algorithm. New findings: `BIN-UNSIGNED-MACHO`, `BIN-ENTITLEMENT`,
+`BIN-NO-HARDENED-RUNTIME`, `BIN-ENCRYPTED`, `BIN-DELAYED-IMPORT`. Live drill (11 files:
+Mach-O signed + unsigned, bare initramfs, uImage, deb, RPM, tar.gz, zstd, PE, class):
+11 binaries, 5 embedded, 6 containers followed, 1 refused, and a signed Mach-O scanned
+alone yields `Apple CommonCrypto` + `SHA-256` and a two-asset CBOM. Tests: 61 in
+`test_binary_scan.py` (+7 binary API, 331 across devsecops + binary API + cbom).
+
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC

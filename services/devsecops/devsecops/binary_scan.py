@@ -89,6 +89,9 @@ MAGICS: tuple[tuple[str, bytes], ...] = (
     ("bzip2", b"BZh"),
     ("lzma", b"\x5d\x00\x00\x00"),
     ("lz4", b"\x04\x22\x4d\x18"),
+    ("cpio", b"070701"),                       # newc initramfs archive
+    ("cpio", b"070702"),                       # crc variant
+    ("cpio-odc", b"070707"),                   # old ASCII format: identified, not parsed
     ("java-class", b"\xca\xfe\xba\xbe"),      # ambiguous with fat Mach-O — resolved below
 )
 COMPRESSION_FORMATS = {"gzip", "xz", "zstd", "bzip2", "lzma", "lz4"}
@@ -98,6 +101,67 @@ ELF_FORMATS = {"elf"}
 PE_FORMATS = {"pe"}
 MACHO_FORMATS = {"macho", "macho64", "macho-be", "macho64-be", "macho-fat", "macho-fat-le"}
 EXECUTABLE_FORMATS = ELF_FORMATS | PE_FORMATS | MACHO_FORMATS | {"wasm"}
+
+#: Platform crypto APIs whose *symbol names are unambiguous*: linking against
+#: CommonCrypto's ``CC_SHA256`` or calling ``BCryptGenRandom`` says which primitive
+#: is in use, whereas ``CCCryptorCreate`` only says that a symmetric cipher is used —
+#: that stays a library marker and is never promoted to an algorithm. Hits here are
+#: call sites (IMPORT/SYMBOL evidence), which is why they outrank a string match.
+PLATFORM_SYMBOL_ALGORITHMS: tuple[tuple[str, str], ...] = (
+    # Apple CommonCrypto
+    ("CC_SHA1", "SHA-1"), ("CC_SHA224", "SHA-224"), ("CC_SHA256", "SHA-256"),
+    ("CC_SHA384", "SHA-384"), ("CC_SHA512", "SHA-512"), ("CC_MD5", "MD5"),
+    ("CCCryptorGCM", "AES-GCM"), ("CCCryptorGCMFinal", "AES-GCM"),
+    ("CCCryptorGCMSetIV", "AES-GCM"), ("CCCryptorGCMAddIV", "AES-GCM"),
+    ("CCKeyDerivationPBKDF", "PBKDF2"), ("CCCalibratePBKDF", "PBKDF2"),
+    ("CCRandomGenerateBytes", "CSPRNG"), ("CCRandomCopyBytes", "CSPRNG"),
+    # Apple Security.framework / SecureTransport
+    ("SSLCreateContext", "TLS"), ("SSLHandshake", "TLS"), ("SSLSetIOFuncs", "TLS"),
+    ("SecKeyCreateRandomKey", "CSPRNG"),
+    # Windows CNG / CryptoAPI
+    ("BCryptGenRandom", "CSPRNG"), ("CryptGenRandom", "CSPRNG"), ("RtlGenRandom", "CSPRNG"),
+    ("BCryptOpenAlgorithmProvider", "CNG-provider"),
+    # kernel/libc randomness
+    ("getrandom", "CSPRNG"), ("getentropy", "CSPRNG"), ("arc4random_buf", "CSPRNG"),
+    # OpenSSL entry points the shared symbol table does not list
+    ("AES_set_encrypt_key", "AES"), ("AES_encrypt", "AES"), ("AES_cbc_encrypt", "AES"),
+    ("ChaCha20_ctr32", "ChaCha20"), ("Poly1305_Update", "Poly1305"),
+    ("SHA256_Update", "SHA-256"), ("SHA512_Update", "SHA-512"), ("SHA1_Update", "SHA-1"),
+    ("MD5_Update", "MD5"), ("HMAC_Update", "HMAC-SHA256"), ("RAND_bytes", "CSPRNG"),
+    ("PKCS5_PBKDF2_HMAC", "PBKDF2"), ("crypto_scrypt", "scrypt"),
+)
+
+
+def _platform_symbol_algorithms(imports: Iterable[str],
+                                exports: Iterable[str]) -> list[dict[str, Any]]:
+    """Algorithm rows for unambiguous platform API calls (imports outrank symbols)."""
+    rows: dict[str, dict[str, Any]] = {}
+    import_names = list(imports)
+    export_names = list(exports)
+
+    def _hit(names: list[str], symbol: str) -> str | None:
+        return next((name for name in names
+                     if name == symbol or name.startswith(symbol + "_")), None)
+
+    for symbol, algorithm in PLATFORM_SYMBOL_ALGORITHMS:
+        found = _hit(import_names, symbol)
+        level, detail = ("IMPORT", "import") if found else (None, "")
+        if found is None:
+            found = _hit(export_names, symbol)
+            level, detail = ("SYMBOL", "symbol") if found else (None, "")
+        if found is None:
+            continue
+        row = rows.setdefault(algorithm, {"name": algorithm,
+                                          "confidence": 0.8 if level == "IMPORT" else 0.7,
+                                          "strongest_evidence": level, "sources": [],
+                                          "verdict": "POSSIBLE_CRYPTO"})
+        if len(row["sources"]) < 3:
+            row["sources"].append(f"{detail} {found} (platform API)")
+        if level == "IMPORT":
+            row["confidence"] = max(row["confidence"], 0.8)
+            row["strongest_evidence"] = "IMPORT"
+    return list(rows.values())
+
 
 #: Cipher transformation strings and TLS suite names, graded at the STRING level.
 #: These are the forms a name shows up in when it is *used* rather than exported:
@@ -189,6 +253,25 @@ VERSION_INFO_KEYS = {
 MACHO_CPUS = {7: "x86", 0x01000007: "x86-64", 12: "ARM", 0x0100000C: "AArch64",
               18: "PowerPC", 0x01000012: "PowerPC64"}
 MACHO_PLATFORMS = {1: "macOS", 2: "iOS", 3: "tvOS", 4: "watchOS", 6: "macCatalyst"}
+#: dylib-ish load commands (LC_REQ_DYLD sets the high bit)
+MACHO_DYLIB_COMMANDS = {0x0C: "load", 0x18: "weak", 0x1F: "reexport", 0x20: "lazy",
+                        0x23: "upward", 0x80000018: "weak", 0x8000001F: "reexport",
+                        0x80000023: "upward"}
+#: code-signature superblob entry types
+MACHO_CS_TYPES = {0: "CodeDirectory", 1: "Info.plist", 2: "Requirements", 5: "Entitlements",
+                  7: "DEREntitlements", 0x10000: "Signature", 0x10001: "Requirements"}
+#: hardened-runtime and debugging code-signature flags we care about
+MACHO_CS_FLAGS = {0x2: "adhoc", 0x10000: "hardened-runtime", 0x20000: "library-validation",
+                  0x40000: "runtime-checks"}
+#: entitlements that change what the process is allowed to do
+MACHO_NOTABLE_ENTITLEMENTS = ("com.apple.security.get-task-allow",
+                              "com.apple.security.cs.disable-library-validation",
+                              "com.apple.security.cs.allow-unsigned-executable-memory",
+                              "com.apple.security.cs.allow-dyld-environment-variables",
+                              "com.apple.security.cs.allow-jit",
+                              "com.apple.security.cs.disable-executable-page-protection",
+                              "com.apple.private.security.no-sandbox",
+                              "task_for_pid-allow")
 
 # ------------------------------------------------------- crypto knowledge --- #
 #: library version strings embedded by the libraries themselves
@@ -209,6 +292,8 @@ LIBRARY_MARKERS: dict[str, tuple[str, ...]] = {
     "BoringSSL": ("BoringSSL", "boringssl", "openSSLIsBoringSSL"),
     "BouncyCastle": ("org/bouncycastle", "BouncyCastleProvider", "bcprov"),
     "Crypto++": ("CryptoPP", "cryptopp"),
+    "Apple CommonCrypto": ("CCCryptorCreate", "CC_SHA256", "CCKeyDerivationPBKDF"),
+    "Apple Security.framework": ("SecKeyEncrypt", "SecTrustEvaluate", "SSLCreateContext"),
     ".NET cryptography": ("System.Security.Cryptography",),
     "JCA-JCE": ("javax/crypto", "java/security/MessageDigest"),
     "WebCrypto": ("crypto.subtle", "SubtleCrypto"),
@@ -393,6 +478,9 @@ def parse_elf(data: bytes) -> dict[str, Any]:
         except Exception:  # noqa: BLE001
             continue
     by_name = {s["name"]: s for s in sections if s["name"]}
+    # the section names are the cheapest view of what a binary still carries:
+    # .symtab (not stripped), .note.gnu.property (CET), .gnu.version_r (floors)
+    out["sections"] = sorted(by_name)[:64]
     out["section_count"] = len(sections)
     out["stripped"] = ".symtab" not in by_name
     out["dynamically_linked"] = ".dynamic" in by_name or ".dynsym" in by_name
@@ -1342,26 +1430,162 @@ def parse_macho(data: bytes) -> dict[str, Any]:
         architectures: list[dict[str, Any]] = []
         for index in range(min(count, 20)):
             try:
-                cpu, _sub, offset, size = struct.unpack_from(">IIII", data, 8 + index * 20)
+                cpu, sub, offset, size = struct.unpack_from(">IIII", data, 8 + index * 20)
             except Exception:  # noqa: BLE001
                 break
-            architectures.append({"cpu": MACHO_CPUS.get(cpu, hex(cpu)), "size": size, "offset": offset})
+            architectures.append({"cpu": MACHO_CPUS.get(cpu, hex(cpu)),
+                                  "subtype": sub, "size": size, "offset": offset})
         out: dict[str, Any] = {"format": "macho", "type": "universal",
-                               "architectures": architectures, "libraries": []}
-        if architectures and architectures[0]["offset"]:
-            sliced = data[architectures[0]["offset"]:]
+                               "architectures": architectures, "libraries": [],
+                               "slices": [row["cpu"] for row in architectures]}
+        # parse the slice the host would pick first, but keep every slice listed
+        preferred = next((row for row in architectures
+                          if row["cpu"] in ("AArch64", "x86-64")), None) \
+            or (architectures[0] if architectures else None)
+        if preferred and preferred["offset"]:
+            sliced = data[preferred["offset"]:preferred["offset"] + preferred["size"]]
             try:
                 thin = _parse_macho_thin(sliced)
                 out.update({k: v for k, v in thin.items() if k not in ("format", "type")})
                 out["type"] = "universal"
                 out["architectures"] = architectures
+                out["slices"] = [row["cpu"] for row in architectures]
+                out["parsed_slice"] = preferred["cpu"]
             except Exception:  # noqa: BLE001
                 pass
         return out
     return _parse_macho_thin(data)
 
 
+def _macho_version(value: int) -> str:
+    """Mach-O packs a version into 32 bits as X.Y.Z (16/8/8)."""
+    return f"{value >> 16}.{(value >> 8) & 0xFF}.{value & 0xFF}"
+
+
+def _macho_symbols(data: bytes, end: str, is64: bool, symoff: int, nsyms: int, stroff: int,
+                   strsize: int, dysymtab: tuple[int, ...] | None,
+                   limit: int = 4000) -> tuple[list[str], list[str], int]:
+    """External symbols from LC_SYMTAB (optionally classified by LC_DYSYMTAB).
+
+    A Mach-O import table names the frameworks and functions the binary calls —
+    ``_CCCryptorCreate`` (CommonCrypto), ``_SecKeyEncrypt`` (Security) or a
+    statically linked ``_EVP_EncryptInit_ex`` — which is exactly the evidence
+    level the crypto engine grades highest short of a constant table.
+    """
+    if not symoff or not nsyms or stroff + strsize > len(data) or symoff >= len(data):
+        return [], [], 0
+    entry = 16 if is64 else 12
+    defined_range: range = range(0)
+    undefined_range: range = range(0)
+    if dysymtab and len(dysymtab) >= 6:
+        iextdef, nextdef, iundef, nundef = dysymtab[2], dysymtab[3], dysymtab[4], dysymtab[5]
+        defined_range = range(iextdef, min(iextdef + nextdef, nsyms))
+        undefined_range = range(iundef, min(iundef + nundef, nsyms))
+    imports: list[str] = []
+    exports: list[str] = []
+    seen = 0
+    for index in range(min(nsyms, limit)):
+        base = symoff + index * entry
+        if base + entry > len(data):
+            break
+        try:
+            strx, n_type = struct.unpack_from(end + "IB", data, base)
+        except Exception:  # noqa: BLE001
+            break
+        if not strx or stroff + strx >= len(data):
+            continue
+        raw = data[stroff + strx:stroff + strx + 512].split(b"\x00")[0]
+        if not raw or len(raw) > 256:
+            continue
+        name = raw.decode("utf-8", "replace")
+        # dyld prefixes C symbols with an underscore; the C identifier is what the
+        # fingerprint and algorithm tables are keyed on, so report it without it
+        if name.startswith("_") and not name.startswith("__"):
+            name = name[1:]
+        seen += 1
+        external = bool(n_type & 0x01)          # N_EXT
+        undefined = (n_type & 0x0E) == 0        # N_UNDF
+        if not external:
+            continue
+        if dysymtab and len(dysymtab) >= 6:
+            if index in undefined_range:
+                imports.append(name)
+            elif index in defined_range:
+                exports.append(name)
+            continue
+        (imports if undefined else exports).append(name)
+    return imports[:2000], exports[:2000], seen
+
+
+def _macho_code_signature(data: bytes, end: str, offset: int, size: int) -> dict[str, Any]:
+    """Code-signature superblob: signing identity, entitlements, hash algorithm.
+
+    Presence, identifier and entitlements are facts in the file; whether the
+    signature *validates*, whether the certificate chains to Apple and whether
+    the binary is notarised are NOT verified here and the result says so.
+    """
+    out: dict[str, Any] = {"present": False}
+    if offset <= 0 or size <= 0 or offset + size > len(data):
+        return out
+    blob = data[offset:offset + size]
+    if len(blob) < 12 or struct.unpack_from(">I", blob, 0)[0] != 0xFADE0CC0:
+        return out
+    out["present"] = True
+    out["size"] = size
+    count = struct.unpack_from(">I", blob, 8)[0]
+    entries: dict[int, tuple[int, int]] = {}
+    for index in range(min(count, 32)):
+        try:
+            blob_type, blob_offset = struct.unpack_from(">II", blob, 12 + index * 8)
+        except Exception:  # noqa: BLE001
+            break
+        next_offset = size
+        if index + 1 < count:
+            try:
+                next_offset = struct.unpack_from(">I", blob, 12 + (index + 1) * 8 + 4)[0]
+            except Exception:  # noqa: BLE001
+                pass
+        entries[blob_type] = (blob_offset, max(next_offset - blob_offset, 0))
+    out["blobs"] = sorted({MACHO_CS_TYPES.get(key, hex(key)) for key in entries})
+    directory = entries.get(0)
+    if directory:
+        block = blob[directory[0]:directory[0] + directory[1]]
+        if len(block) >= 44 and struct.unpack_from(">I", block, 0)[0] == 0xFADE0C02:
+            version = struct.unpack_from(">I", block, 8)[0]
+            flags = struct.unpack_from(">I", block, 12)[0]
+            ident_offset = struct.unpack_from(">I", block, 20)[0]
+            hash_type = block[37] if len(block) > 37 else 0
+            out["identifier"] = _cstr(block, ident_offset).strip("\x00")
+            out["flags"] = [name for bit, name in MACHO_CS_FLAGS.items() if flags & bit]
+            out["flags_raw"] = hex(flags)
+            out["hash_type"] = {1: "sha1", 2: "sha256", 3: "sha256-truncated",
+                                4: "sha384"}.get(hash_type, str(hash_type))
+            out["version"] = hex(version)
+            if version >= 0x20200:
+                team_offset = struct.unpack_from(">I", block, 48)[0]
+                if team_offset:
+                    out["team_id"] = _cstr(block, team_offset).strip("\x00")
+            out["hardened_runtime"] = bool(flags & 0x10000)
+    entitlements = entries.get(5) or entries.get(7)
+    if entitlements:
+        block = blob[entitlements[0]:entitlements[0] + entitlements[1]]
+        if len(block) > 8 and struct.unpack_from(">I", block, 0)[0] == 0xFADE7171:
+            xml = block[8:].decode("utf-8", "replace")
+            keys = re.findall(r"<key>([^<]{1,120})</key>", xml)
+            out["entitlements"] = sorted(set(keys))[:80]
+            out["entitlement_count"] = len(keys)
+            notable = [key for key in out["entitlements"] if key in MACHO_NOTABLE_ENTITLEMENTS]
+            if notable:
+                out["notable_entitlements"] = notable
+    out["note"] = ("code signature present; this scanner reports the signing identifier, "
+                   "team and entitlements only — signature validity, certificate chain and "
+                   "notarisation are NOT verified here")
+    return out
+
+
 def _parse_macho_thin(data: bytes) -> dict[str, Any]:
+    """One Mach-O slice: load commands, linked dylibs (with their versions),
+    symbol table, code signature and hardening flags."""
     magic = struct.unpack_from("<I", data, 0)[0]
     if magic == 0xFEEDFACE:
         end, is64 = "<", False
@@ -1373,14 +1597,21 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
         end, is64 = ">", True
     else:
         raise ValueError("unsupported Mach-O magic")
-    cpu, _sub, filetype = struct.unpack_from(end + "III", data, 4)
-    ncmds, _sizeofcmds = struct.unpack_from(end + "II", data, 16)
+    cpu, _sub, filetype, ncmds = struct.unpack_from(end + "IIII", data, 4)[:4]
+    flags = struct.unpack_from(end + "I", data, 24)[0]
     out: dict[str, Any] = {
         "format": "macho", "bits": 64 if is64 else 32,
         "arch": MACHO_CPUS.get(cpu, hex(cpu)),
-        "type": {1: "object", 2: "executable", 6: "dylib", 8: "bundle"}.get(filetype, "other"),
-        "libraries": [], "imports": [], "rpath": [],
+        "type": {1: "object", 2: "executable", 6: "dylib", 8: "bundle", 9: "dylib-stub",
+                 11: "kext"}.get(filetype, "other"),
+        "libraries": [], "imports": [], "exports": [], "rpath": [], "sections": [],
+        "dylib_versions": {},
+        "hardening": {"pie": bool(flags & 0x200000), "stack_exec": bool(flags & 0x20000),
+                      "heap_exec": not bool(flags & 0x1000000)},
     }
+    symtab: tuple[int, int, int, int] | None = None
+    dysymtab: tuple[int, ...] | None = None
+    signature_offset = signature_size = 0
     position = 32 if is64 else 28
     for _ in range(min(ncmds, 8192)):
         try:
@@ -1389,32 +1620,99 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
             break
         if cmdsize <= 0 or position + cmdsize > len(data):
             break
-        if cmd in (0xC, 0x18, 0x1F):          # LC_LOAD_DYLIB / LC_LOAD_WEAK_DYLIB / reexport
-            try:
-                name_offset = struct.unpack_from(end + "I", data, position + 8)[0]
-                name = data[position + name_offset:position + cmdsize].split(b"\x00")[0].decode("utf-8", "replace")
-                if name and name not in out["libraries"]:
-                    out["libraries"].append(name)
-            except Exception:  # noqa: BLE001
-                pass
-        elif cmd == 0x1B:                     # LC_UUID
-            out["uuid"] = data[position + 8:position + 24].hex()
-        elif cmd == 0x32:                     # LC_BUILD_VERSION
-            try:
-                platform = struct.unpack_from(end + "I", data, position + 8)[0]
+        try:
+            if cmd in MACHO_DYLIB_COMMANDS or cmd == 0x0D:            # dylibs + own id
+                name_offset, _ts, current, compat = struct.unpack_from(end + "IIII", data,
+                                                                      position + 8)
+                name = _cstr(data[position:position + cmdsize], name_offset)
+                if name:
+                    kind = "id" if cmd == 0x0D else MACHO_DYLIB_COMMANDS[cmd]
+                    out["dylib_versions"][name] = {"current": _macho_version(current),
+                                                   "compat": _macho_version(compat),
+                                                   "kind": kind}
+                    if kind != "id" and name not in out["libraries"]:
+                        out["libraries"].append(name)
+                    if kind == "id":
+                        out["install_name"] = name
+            elif cmd == 0x1B:                                        # LC_UUID
+                out["uuid"] = data[position + 8:position + 24].hex()
+            elif cmd in (0x24, 0x25, 0x2F, 0x30):                     # version-min commands
+                platform, minos, sdk = struct.unpack_from(end + "III", data, position + 8)
+                out.setdefault("platform", MACHO_PLATFORMS.get(
+                    {0x24: 1, 0x25: 2, 0x2F: 3, 0x30: 4}.get(cmd, platform), str(platform)))
+                out["minimum_os"] = _macho_version(minos)
+                out["sdk"] = _macho_version(sdk)
+                out["platform_source"] = "LC_VERSION_MIN"
+            elif cmd == 0x32:                                         # LC_BUILD_VERSION
+                platform, minos, sdk, _ntools = struct.unpack_from(end + "IIII", data,
+                                                                   position + 8)
                 out["platform"] = MACHO_PLATFORMS.get(platform, str(platform))
-            except Exception:  # noqa: BLE001
-                pass
-        elif cmd == 0x1C:                     # LC_RPATH
-            try:
+                out["minimum_os"] = _macho_version(minos)
+                out["sdk"] = _macho_version(sdk)
+                out["platform_source"] = "LC_BUILD_VERSION"
+            elif cmd == 0x1C:                                         # LC_RPATH
                 name_offset = struct.unpack_from(end + "I", data, position + 8)[0]
-                rpath = data[position + name_offset:position + cmdsize].split(b"\x00")[0].decode("utf-8", "replace")
+                rpath = _cstr(data[position:position + cmdsize], name_offset)
                 if rpath and rpath not in out["rpath"]:
                     out["rpath"].append(rpath)
-            except Exception:  # noqa: BLE001
-                pass
+            elif cmd in (0x01, 0x19):                                 # LC_SEGMENT(_64)
+                segname = _cstr(data[position + 8:position + 24], 0)
+                if is64:
+                    nsects = struct.unpack_from(end + "I", data, position + 64)[0]
+                    section_base = position + 72
+                    section_size = 80
+                else:
+                    nsects = struct.unpack_from(end + "I", data, position + 48)[0]
+                    section_base = position + 56
+                    section_size = 68
+                for index in range(min(nsects, 64)):
+                    base = section_base + index * section_size
+                    if base + 16 > len(data):
+                        break
+                    sectname = _cstr(data[base:base + 16], 0)
+                    if sectname:
+                        out["sections"].append(f"{segname},{sectname}")
+            elif cmd == 0x02:                                         # LC_SYMTAB
+                symtab = struct.unpack_from(end + "IIII", data, position + 8)
+            elif cmd == 0x0B:                                         # LC_DYSYMTAB
+                dysymtab = struct.unpack_from(end + "IIIIII", data, position + 8)
+            elif cmd == 0x1D:                                         # LC_CODE_SIGNATURE
+                signature_offset, signature_size = struct.unpack_from(end + "II", data,
+                                                                     position + 8)
+            elif cmd in (0x21, 0x2C):                                 # encryption info
+                _cryptoff, _cryptsize, cryptid = struct.unpack_from(end + "III", data,
+                                                                    position + 8)
+                if cryptid:
+                    out["encrypted"] = True
+                    out["encryption_id"] = cryptid
+            elif cmd == 0x80000028:                                   # LC_MAIN
+                out["entry_offset"] = struct.unpack_from(end + "Q", data, position + 8)[0]
+        except Exception:  # noqa: BLE001 — a malformed command must not lose the file
+            pass
         position += cmdsize
-    out["imports"] = [f"@rpath/{lib.split('/')[-1]}" for lib in out["libraries"]]
+
+    if symtab:
+        imports, exports, sampled = _macho_symbols(data, end, is64, *symtab, dysymtab)
+        out["imports"] = imports
+        out["exports"] = exports
+        out["symbols_sampled"] = sampled
+        out["stripped"] = not exports
+    out["library_count"] = len(out["libraries"])
+    if any(name.endswith(".so") or ".dylib" in name for name in out["libraries"]):
+        out.setdefault("dependency_kind", "dynamic")
+    if signature_offset:
+        signature = _macho_code_signature(data, end, signature_offset, signature_size)
+        if signature.get("present"):
+            out["signature"] = signature
+            if signature.get("hardened_runtime"):
+                out["hardening"]["hardened_runtime"] = True
+        else:
+            out["signature"] = {"present": False,
+                                "note": "no code-signature superblob found"}
+    else:
+        out["signature"] = {"present": False,
+                            "note": "no LC_CODE_SIGNATURE — unsigned, or the signature was "
+                                    "stripped"}
     return out
 
 
@@ -2023,7 +2321,7 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
     elif fmt in REFUSED_COMPRESSION:
         summary["refused"].append({"format": fmt, "reason": REFUSED_COMPRESSION[fmt]})
         return summary
-    elif fmt in ("ustar",):
+    elif fmt in ("ustar", "cpio"):
         payload = data
     elif fmt == "ar":
         payload = None
@@ -2039,6 +2337,8 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
         inner_format = inner["format"]
         if inner_format == "ustar":
             members = _tar_members(payload)
+        elif inner_format == "cpio":
+            members = parse_cpio(payload)["members"]
         elif inner_format == "raw" and payload[:6] in (b"070701", b"070702"):
             inner_format = "cpio"
             members = parse_cpio(payload)["members"]
@@ -2204,10 +2504,16 @@ def _zip_members(data: bytes, limit: int = MAX_EXTRACT_FILES) -> list[str]:
 STRONG_MARKERS: dict[str, tuple[str, ...]] = {
     "BoringSSL": ("BoringSSL", "openSSLIsBoringSSL"),
     "BouncyCastle": ("BouncyCastleProvider", "org/bouncycastle", "org.bouncycastle"),
+    "Apple CommonCrypto": ("CCCryptorCreate", "CC_SHA256", "CCKeyDerivationPBKDF",
+                           "kCCAlgorithmAES"),
+    "Apple Security.framework": ("SecKeyEncrypt", "SecTrustEvaluate", "SecItemCopyMatching",
+                                 "SSLCreateContext"),
     "Crypto++": ("CryptoPP", "cryptopp"),
     ".NET cryptography": ("System.Security.Cryptography",),
     "JCA-JCE": ("javax/crypto", "javax.crypto", "java/security/MessageDigest",
                 "javax/security/auth", "KeyPairGenerator"),
+    "Java SecureRandom": ("java/security/SecureRandom", "java.security.SecureRandom",
+                          "SecureRandom"),
     "WebCrypto": ("SubtleCrypto", "crypto.subtle"),
     "RustCrypto": ("rustls", "ed25519-dalek", "aes_gcm::"),
     "PKCS#11": ("C_GetFunctionList", "C_Initialize"),
@@ -2316,6 +2622,21 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
             "sources": [str(item.get("detail")) for item in evidence][:5],
             "verdict": row.get("verdict"),
         })
+    # the platform layer: CommonCrypto/CNG/SecureTransport calls the shared tables
+    # do not model, reported at the evidence level a call site deserves
+    by_name = {row["name"]: row for row in algorithm_rows}
+    for row in _platform_symbol_algorithms(import_names, export_names):
+        existing = by_name.get(row["name"])
+        if existing is None:
+            algorithm_rows.append(row)
+            by_name[row["name"]] = row
+            continue
+        if row["confidence"] > existing["confidence"]:
+            existing["confidence"] = row["confidence"]
+            existing["strongest_evidence"] = row["strongest_evidence"]
+        existing["sources"] = list(dict.fromkeys(
+            (existing.get("sources") or []) + [row["sources"][0]]))[:5]
+
     # the string layer: transformations and TLS suites the symbol tables rarely show
     by_name = {row["name"]: row for row in algorithm_rows}
     for row in _transformation_algorithms(strings):
@@ -2465,7 +2786,10 @@ def _strict_marker_evidence(markers: Iterable[str], names: list[str],
             continue
         plain.append(marker)
         for suffix in ("::", "/", "@", "!"):
-            pattern = re.compile(_BOUNDARY.format(token=re.escape(marker + suffix)), re.IGNORECASE)
+            # the delimiter itself closes the token, so only the *head* of the
+            # occurrence needs an identifier boundary: "javax/crypto/Cipher" is a
+            # qualified hit, while "string::" must not read as "ring::"
+            pattern = re.compile(r"(?:^|[^0-9a-z])" + re.escape(marker + suffix), re.IGNORECASE)
             if any(pattern.search(name) for name in names[:6000]):
                 qualified.append(f"{marker}{suffix}")
                 break
@@ -2533,7 +2857,7 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
             record["parsed"] = True
         elif fmt in ("squashfs", "squashfs-be", "jffs2", "jffs2-le", "ubi", "ubifs",
                      "cramfs", "ext", "uimage", "dtb", "gzip", "xz", "zstd", "bzip2",
-                     "lzma", "lz4", "raw"):
+                     "lzma", "lz4", "raw", "cpio-odc"):
             parsed = parse_firmware(data) if (fmt in FILESYSTEM_FORMATS or fmt in COMPRESSION_FORMATS
                                               or fmt in ("uimage", "dtb", "ustar")) else {}
             record.update(parsed)
@@ -2550,6 +2874,9 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
 
 
 def _unparsed_note(fmt: str) -> str:
+    if fmt == "cpio-odc":
+        return ("old ASCII cpio (odc) identified; this scanner unpacks newc/crc archives — "
+                "repack it with `cpio -H newc` to inventory the contents")
     if fmt in FILESYSTEM_FORMATS:
         return ("filesystem image identified; contents are NOT extracted (squashfs/JFFS2/UBIFS "
                 "need binwalk). Scan the mounted or extracted tree to inventory its packages")
@@ -2776,10 +3103,12 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
             "path": path, "containers": detected,
         })
     hardening = record.get("hardening") or {}
-    if record.get("executable_stack"):
+    if record.get("executable_stack") or hardening.get("stack_exec"):
         findings.append({
             "code": "BIN-EXECUTABLE-STACK", "severity": "HIGH",
-            "title": "GNU_STACK segment is executable (NX disabled)",
+            "title": ("GNU_STACK segment is executable (NX disabled)"
+                      if record.get("executable_stack")
+                      else "MH_ALLOW_STACK_EXECUTION is set (executable stack)"),
             "detail": "the binary asks for an executable stack, which makes injected code runnable",
             "path": path,
         })
@@ -2813,6 +3142,56 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
             "title": f"packed or obfuscated ({packer['name']})",
             "detail": str(packer.get("note") or "packed content"),
             "path": path, "markers": packer.get("markers"),
+        })
+    if record.get("encrypted"):
+        findings.append({
+            "code": "BIN-ENCRYPTED", "severity": "HIGH",
+            "title": "binary is encrypted (Mach-O cryptid set)",
+            "detail": ("the load command marks the segment as encrypted, so its strings and "
+                       "symbols are not readable from the file — crypto evidence for this "
+                       "binary is structurally incomplete"),
+            "path": path,
+        })
+    if record.get("format") == "macho":
+        signature = record.get("signature") or {}
+        if signature.get("present") is False:
+            findings.append({
+                "code": "BIN-UNSIGNED-MACHO", "severity": "INFO",
+                "title": "no Mach-O code signature",
+                "detail": str(signature.get("note") or "no LC_CODE_SIGNATURE"),
+                "path": path,
+            })
+        for entitlement in signature.get("notable_entitlements") or []:
+            severity = "MEDIUM" if entitlement in (
+                "com.apple.security.get-task-allow",
+                "com.apple.security.cs.allow-unsigned-executable-memory",
+                "com.apple.security.cs.disable-library-validation",
+                "task_for_pid-allow") else "LOW"
+            findings.append({
+                "code": "BIN-ENTITLEMENT", "severity": severity,
+                "title": f"notable entitlement granted ({entitlement})",
+                "detail": ("the code signature grants this entitlement — it widens what the "
+                           "process may do and is worth a human look"),
+                "path": path, "entitlement": entitlement,
+            })
+        if record.get("type") == "executable" and not (signature.get("hardened_runtime")
+                                                       or record.get("hardening", {}).get(
+                                                           "hardened_runtime")):
+            findings.append({
+                "code": "BIN-NO-HARDENED-RUNTIME", "severity": "LOW",
+                "title": "no hardened-runtime flag",
+                "detail": ("the code signature (when present) does not set the hardened-runtime "
+                           "flag; library validation and runtime checks are not enforced"),
+                "path": path,
+            })
+    for dll in record.get("delay_imports") or []:
+        findings.append({
+            "code": "BIN-DELAYED-IMPORT", "severity": "INFO",
+            "title": f"delay-loaded dependency ({dll})",
+            "detail": ("this DLL is imported through the delay-load table: it is absent from the "
+                       "static import directory, but it is still loaded (and its code still runs) "
+                       "the first time a delayed call is made"),
+            "path": path,
         })
     signature = record.get("signature")
     if signature and signature.get("present") is False and record.get("format") == "pe":
@@ -3149,6 +3528,16 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "publisher": (record.get("version_info") or {}).get("vendor"),
             "product": (record.get("version_info") or {}).get("product"),
             "symbol_versions": record.get("symbol_versions"),
+            "dylib_versions": record.get("dylib_versions"),
+            "signature": {k: v for k, v in (record.get("signature") or {}).items()
+                          if k != "entitlements"} if record.get("signature") else None,
+            "install_name": record.get("install_name"),
+            "minimum_os": record.get("minimum_os"),
+            "encrypted": record.get("encrypted"),
+            "symbols_sampled": record.get("symbols_sampled"),
+            "import_count": len(record.get("imports") or []),
+            "export_count": len(record.get("exports") or []),
+            "sections": (record.get("sections") or [])[:16],
             "crypto_constants": [row.get("algorithm") for row in record.get("crypto_constants") or []],
             "packages_inside": [{"name": pkg.get("name"), "version": pkg.get("version"),
                                  "manager": pkg.get("manager")}
