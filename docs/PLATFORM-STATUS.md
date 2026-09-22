@@ -256,6 +256,39 @@ onboarding wizard E2E verified on a fresh DB (org → sector → environment
 i18n: 217/217 flat keys in both en and ar. Routes: 0 dead, 0 orphan
 pages. `vite build` green; banking/iso20022/onboarding suites 37/37.
 
+**Update (2026-09-22, backend code optimization — measured):** audited the
+backend for code-level inefficiency (data-driven: slowest real endpoints,
+polling frequency of each UI call, O(N)-over-unbounded-table patterns).
+Headline fix: **audit-chain attestation was 3× O(chain) per call** — the
+router loaded every row, `verify_audit_chain` walked + re-hashed all of them,
+and `build_attestation` re-walked them in memory. At a 5-year CBUAE retention
+chain that is seconds-to-tens-of-seconds per click, forever. Now
+`verify_audit_chain_incremental` (user_repository): re-anchors at the
+persisted chain head (`app_settings.audit_chain_anchor`) and verifies only
+the appended suffix — a full walk runs on cold start, after any
+invalidation, when forced (`?full=true`), or when the last full walk is
+older than 7 days (bounding the pre-anchor tamper window; the signed report
+states `mode` + `full_verified_at` + total `entry_count`, so consumers see
+exactly what was verified). New capability: **tail truncation is now
+detectable** (chain shrank below the anchored head — undetectable by a plain
+walk of the surviving prefix). `build_attestation` accepts a pre-computed
+verification (no duplicate in-memory walk); the router no longer loads the
+table. Switched to incremental: `GET /resilience/audit/attestation`,
+`GET /auth/audit/verify`, and the control-plane posture tick. The audit
+**export** deliberately keeps a full walk (WORM artifact — correctness over
+speed). Measured on the live 40,019-row dev chain: full walk 735 ms/call →
+incremental steady state **3.4 ms (213×)**; endpoint over HTTP 1.46 s cold →
+**10.7 ms** steady. 12 new security tests (cold start, O(0) steady state,
+suffix-only verification, content/reorder/tamper, truncation, pre-anchor
+window + full-walk fallback, stale anchor, forced full, empty chain,
+signed-attestation interop). Secondary fixes: `stats/summary` four COUNTs →
+one conditional aggregation (unbounded evidence table, polled by 3 pages);
+`onboarding/state` discovery-run history bounded to 20 (JSON plan/summary
+payloads grew unbounded; the UI reads only checklist fields); SSO
+outstanding-AuthnRequest map bounded (abandoned SAML logins leaked entries
+in long-running processes). Ruff clean; DB suite 77/77; identity 25/25;
+vite build green.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

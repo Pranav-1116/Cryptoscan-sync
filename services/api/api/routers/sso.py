@@ -16,6 +16,7 @@ unsigned/expired assertions.
 from __future__ import annotations
 
 import json
+from collections import OrderedDict
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -64,8 +65,17 @@ def _saml_config():
 
 
 # Outstanding AuthnRequest ids (SP-side CSRF / replay correlation). Kept in an
-# in-memory set; the ACS requires InResponseTo to match one of these.
-_OUTSTANDING_REQUESTS: set[str] = set()
+# in-memory ORDERED map; the ACS requires InResponseTo to match one of these.
+# Bounded: abandoned logins that never reach the ACS would otherwise leak
+# entries forever in a long-running process.
+_MAX_OUTSTANDING = 256
+_OUTSTANDING_REQUESTS: "OrderedDict[str, None]" = OrderedDict()
+
+
+def _remember_outstanding(request_id: str) -> None:
+    _OUTSTANDING_REQUESTS[request_id] = None
+    while len(_OUTSTANDING_REQUESTS) > _MAX_OUTSTANDING:
+        _OUTSTANDING_REQUESTS.popitem(last=False)
 
 
 class SamlLoginStarted(BaseModel):
@@ -120,7 +130,7 @@ def saml_login() -> SamlLoginStarted:
     cfg = _saml_config()
     settings = get_settings()
     req = make_authn_request(sp_entity_id=cfg.sp_entity_id, acs_url=cfg.acs_url)
-    _OUTSTANDING_REQUESTS.add(req["id"])
+    _remember_outstanding(req["id"])
     sso_url = settings.SAML_IDP_SSO_URL or ""
     return SamlLoginStarted(
         idp_sso_url=sso_url,

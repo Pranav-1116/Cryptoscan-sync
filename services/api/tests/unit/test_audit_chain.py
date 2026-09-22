@@ -82,15 +82,33 @@ async def test_tampered_entry_is_detected_at_verify_time():
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         assert (await client.get("/api/v1/auth/audit/verify")).json()["status"] == "OK"
 
-        # forge history: rewrite the newest stored entry in place, keep the old hash
-        target = repo.list_audit(page=1, page_size=10)[0]  # list_audit is newest-first
+        # A new entry lands after the anchor, then is forged in place
+        # (content rewritten, stored hash kept): the next verify re-hashes
+        # the suffix and must catch it. Select by chain_sequence — the
+        # created_at ordering in list_audit is not a stable tiebreaker when
+        # events share a timestamp.
+        repo.audit("eve", "audit.forged", detail={"note": "pending edit"})
+        session.flush()
+        target = next(r for r in repo.list_audit(page=1, page_size=10) if r.chain_sequence == 4)
         target.detail = "innocent edit"
         session.flush()
 
         verify = (await client.get("/api/v1/auth/audit/verify")).json()
         assert verify["status"] == "TAMPERED"
-        assert verify["break_at_sequence"] == 3
+        assert verify["break_at_sequence"] == 4
+        assert verify["mode"] == "incremental"
         assert "modified" in verify["reason"]
+
+        # A pre-anchor edit sits inside the reported full-walk window (the
+        # incremental report states mode + full_verified_at); the forced full
+        # walk closes it on demand.
+        row2 = next(r for r in repo.list_audit(page=1, page_size=10) if r.chain_sequence == 2)
+        row2.detail = "pre-anchor forgery"
+        session.flush()
+        verify_full = (await client.get("/api/v1/auth/audit/verify?full=true")).json()
+        assert verify_full["status"] == "TAMPERED"
+        assert verify_full["break_at_sequence"] == 2
+        assert verify_full["mode"] == "full"
 
 
 @pytest.mark.asyncio
@@ -99,10 +117,13 @@ async def test_deleted_entry_breaks_the_chain():
     repo = _three_events(session)
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        rows = (
-            repo.list_audit(page=1, page_size=10)[::-1]
-        )  # oldest first (list_audit is newest-first)
-        session.delete(rows[1])  # remove the middle entry
+        # Select by chain_sequence: list_audit orders by created_at, which is
+        # not a stable tiebreaker when events share a timestamp.
+        rows = sorted(
+            repo.list_audit(page=1, page_size=10),
+            key=lambda r: r.chain_sequence,
+        )
+        session.delete(rows[1])  # remove the middle entry (sequence 2)
         session.flush()
 
         verify = (await client.get("/api/v1/auth/audit/verify")).json()

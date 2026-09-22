@@ -1267,11 +1267,15 @@ def list_audit(
 def verify_audit(
     admin: str = Depends(require_admin),
     db: Session = Depends(get_db_session),
+    full: bool = Query(False, description="Force a full-chain re-verification"),
 ):
-    """Walk the audit hash chain and report the first break (W57-58)."""
-    from db.repositories.user_repository import verify_audit_chain
+    """Verify the audit hash chain and report the first break (W57-58).
 
-    return verify_audit_chain(db)
+    Incremental by default (re-anchors at the last verified chain head; see
+    verify_audit_chain_incremental) — pass ?full=true for a complete walk."""
+    from db.repositories.user_repository import verify_audit_chain_incremental
+
+    return verify_audit_chain_incremental(db, force_full=full)
 
 
 @router.get("/audit/export")

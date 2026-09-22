@@ -15,14 +15,12 @@ import os
 from typing import Any
 
 from cryptography.fernet import Fernet
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_db_session, require_roles
-from db.models.user import AuditLog
 from db.repositories.user_repository import UserRepository
 from db.repositories.settings_repository import SettingsRepository
 
@@ -383,23 +381,36 @@ def backup_key_info(user: str = Depends(require_roles("admin", "superadmin"))):
 # ============================================================== 25 attest == #
 @router.get("/audit/attestation")
 def audit_attestation(db: Session = Depends(get_db_session),
+                      full: bool = Query(False, description="Force a full-chain re-verification"),
                       user: str = Depends(require_roles("admin", "auditor", "superadmin"))):
-    """Verify the hash-chained audit log end to end and return a signed
-    attestation report (tamper evidence + HMAC signature)."""
-    from governance import audit_attest as aa
-    from db.repositories.user_repository import verify_audit_chain
+    """Verify the hash-chained audit log and return a signed attestation report
+    (tamper evidence + HMAC signature).
 
-    base = verify_audit_chain(db)
-    rows = list(db.execute(
-        select(AuditLog).where(AuditLog.chain_sequence.is_not(None))
-        .order_by(AuditLog.chain_sequence)).scalars())
-    entries = [{"actor": r.actor, "action": r.action, "target_type": r.target_type,
-                "target_id": r.target_id, "detail": r.detail, "ip_address": r.ip_address,
-                "outcome": r.outcome, "created_at": r.created_at,
-                "chain_sequence": r.chain_sequence, "previous_hash": r.previous_hash,
-                "entry_hash": r.entry_hash} for r in rows]
-    report = aa.build_attestation(entries, org=os.environ.get("ORG_NAME", "CryptoScan Tenant"),
-                                  signer=user, secret=_signing_secret(db))
+    Incremental by default: re-anchors at the persisted chain head and checks
+    only entries appended since the last verification (a full walk runs on
+    cold start, after any invalidation, when forced via ?full=true, or when
+    the last full walk is older than a week). The signed body states the mode,
+    the total chain size, and when the chain was last fully walked."""
+    from governance import audit_attest as aa
+    from db.repositories.user_repository import verify_audit_chain_incremental
+
+    base = verify_audit_chain_incremental(db, force_full=full)
+    verification = {
+        "status": "VERIFIED" if base["status"] == "OK" else "TAMPERED",
+        "entries_checked": base["checked"],
+        "chain_head": base.get("chain_head"),
+        "mismatches": ([{"sequence": base.get("break_at_sequence"),
+                         "detail": base.get("reason") or "chain break"}]
+                       if base["status"] != "OK" else []),
+        "sequence_gaps": [],
+        "verified_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "mode": base.get("mode"),
+        "entry_count": base.get("entry_count"),
+        "full_verified_at": base.get("full_verified_at"),
+    }
+    report = aa.build_attestation([], org=os.environ.get("ORG_NAME", "CryptoScan Tenant"),
+                                  signer=user, secret=_signing_secret(db),
+                                  verification=verification)
     report["chain_verification"] = base
     return report
 

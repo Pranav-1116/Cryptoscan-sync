@@ -102,9 +102,11 @@ def build_security_posture(
     failed_logins = 0
     try:
         from db.models.user import AuditLog
-        from db.repositories.user_repository import verify_audit_chain
+        from db.repositories.user_repository import verify_audit_chain_incremental
 
-        verify = verify_audit_chain(session)
+        # Incremental: the posture tick runs periodically, so re-anchoring at
+        # the last verified head keeps this O(new rows) instead of O(chain).
+        verify = verify_audit_chain_incremental(session)
         audit_entries = int(verify.get("entry_count", 0) or 0)
         # An intact chain with at least one entry is a positive signal; a
         # provably empty audit trail is NOT a green posture for a compliance

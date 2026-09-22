@@ -93,10 +93,19 @@ def verify_entries(entries: Iterable[dict]) -> dict[str, Any]:
 
 
 def build_attestation(entries: Iterable[dict], *, org: str, signer: str,
-                      secret: str, now: dt.datetime | None = None) -> dict[str, Any]:
-    """Produce a signed attestation over the verification result."""
+                      secret: str, now: dt.datetime | None = None,
+                      verification: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Produce a signed attestation over the verification result.
+
+    ``verification`` may carry a pre-computed result in the shape returned by
+    :func:`verify_entries` (e.g. from the repository's incremental chain
+    verification). When supplied it is used as-is — the entries iterable is
+    then ignored, which avoids re-walking an already-verified chain in memory.
+    Extra keys (``mode``, ``entry_count``, ``full_verified_at``) are copied
+    into the signed body so third parties can see exactly what was verified.
+    """
     ref = (now or dt.datetime.now(dt.timezone.utc)).astimezone(dt.timezone.utc)
-    result = verify_entries(entries)
+    result = verification if verification is not None else verify_entries(entries)
     body = {
         "org": org,
         "signer": signer,
@@ -108,6 +117,9 @@ def build_attestation(entries: Iterable[dict], *, org: str, signer: str,
         "mismatch_count": len(result["mismatches"]),
         "sequence_gap_count": len(result["sequence_gaps"]),
     }
+    for extra in ("mode", "entry_count", "full_verified_at"):
+        if result.get(extra) is not None:
+            body[extra] = result[extra]
     canonical = json.dumps(body, sort_keys=True, separators=(",", ":")).encode()
     signature = hmac.new(secret.encode(), canonical, hashlib.sha256).hexdigest()
     return {
