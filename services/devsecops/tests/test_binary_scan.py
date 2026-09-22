@@ -433,7 +433,8 @@ def _macho(*, encrypted: bool = False, signed: bool = True, hardened: bool = Tru
 
 def _rpm(*, name: str = "acme-crypto", version: str = "3.4.5", release: str = "1.el9",
          license_: str = "Apache-2.0", payload_compressor: str = "gzip",
-         requires: tuple = ("libcrypto.so.3", "libssl.so.3"), cpio_payload: bytes = b"") -> bytes:
+         requires: tuple = ("libcrypto.so.3", "libssl.so.3"), cpio_payload: bytes = b"",
+         rsa_signature: bytes | None = None, sha256_digest: bytes | None = None) -> bytes:
     """A real RPM: lead + signature header + header (with NAME/VERSION/…) + payload."""
     import gzip as _gzip
 
@@ -450,8 +451,14 @@ def _rpm(*, name: str = "acme-crypto", version: str = "3.4.5", release: str = "1
     def _string(text: str) -> bytes:
         return text.encode() + b"\x00"
 
-    signature = _header([(1004, 7, bytes.fromhex("00" * 16), 16),
-                         (1000, 4, struct.pack(">I", 4096), 1)])
+    signature_tags: list[tuple[int, int, bytes, int]] = [
+        (1004, 7, bytes.fromhex("00" * 16), 16),
+        (1000, 4, struct.pack(">I", 4096), 1)]
+    if rsa_signature:
+        signature_tags.append((268, 7, rsa_signature, len(rsa_signature)))
+    if sha256_digest:
+        signature_tags.append((273, 8, sha256_digest, len(sha256_digest)))
+    signature = _header(signature_tags)
     main = _header([
         (1000, 6, _string(name), 1),
         (1001, 6, _string(version), 1),
@@ -1275,6 +1282,35 @@ def test_uimage_compression_governs_whether_the_payload_is_opened(tmp_path):
 
 
 # ------------------------------------------------ turn-30 depth: RPM/deb --- #
+def test_rpm_signature_header_decides_whether_the_package_is_signed():
+    """A digest tag is integrity metadata; only RSA/DSA/PGP says "signed"."""
+    digest = bytes(range(32))
+    unsigned = bs.parse_rpm(_rpm())
+    assert unsigned["signed"] is False
+    assert unsigned["signature"]["present"] is False
+    assert unsigned["signature"]["digest_algorithms"] == ["md5"]
+    assert unsigned["signature"]["digests"]["md5"] == "00" * 16
+
+    signed = bs.parse_rpm(_rpm(rsa_signature=b"\x01\x02\x03", sha256_digest=digest))
+    assert signed["signed"] is True
+    assert signed["signature"]["kinds"] == ["rsa", "sha256"] or "rsa" in signed["signature"]["kinds"]
+    assert signed["signature"]["digests"]["sha256"] == digest.hex()
+
+
+def test_unsigned_rpm_is_a_finding(tmp_path):
+    path = tmp_path / "acme-crypto.rpm"
+    path.write_bytes(_rpm())
+    record = bs.scan_file(path)
+    finding = [f for f in record["findings"] if f["code"] == "BIN-RPM-UNSIGNED"][0]
+    assert finding["severity"] == "MEDIUM"
+    assert "provenance cannot be established" in finding["detail"]
+
+    path.write_bytes(_rpm(rsa_signature=b"\x01\x02\x03", sha256_digest=bytes(range(32))))
+    signed_record = bs.scan_file(path)
+    assert signed_record["signed"] is True
+    assert not [f for f in signed_record["findings"] if f["code"] == "BIN-RPM-UNSIGNED"]
+
+
 def test_rpm_header_is_parsed_into_a_package():
     parsed = bs.parse_rpm(_rpm())
     assert (parsed["name"], parsed["version"], parsed["release"]) == ("acme-crypto", "3.4.5", "1.el9")
@@ -1308,6 +1344,18 @@ def test_rpm_packages_inside_are_reported():
     packages = bs._record_packages(record)
     assert packages and packages[0]["manager"] == "rpm"
     assert packages[0]["license"] == "Apache-2.0"
+
+
+def test_deb_without_a_detached_signature_says_so_without_crying_wolf(tmp_path):
+    """Absent `_gpgorigin` is a provenance signal, not evidence of tampering."""
+    path = tmp_path / "acme-tools.deb"
+    path.write_bytes(_deb(control=b"Package: acme-tools\nVersion: 2.4.0\nArchitecture: amd64\n"))
+    record = bs.scan_file(path)
+    summary = (record.get("containers_followed") or [{}])[0]
+    assert summary.get("package_signed") is False
+    finding = [f for f in record["findings"] if f["code"] == "BIN-DEB-UNSIGNED"][0]
+    assert finding["severity"] == "LOW"
+    assert "repository metadata" in finding["detail"]
 
 
 def test_deb_control_file_identifies_the_package(tmp_path):

@@ -1990,7 +1990,15 @@ RPM_TAGS = {
     1016: "group", 1020: "url", 1021: "os", 1022: "arch", 1044: "source_rpm",
     1046: "archive_size", 1047: "providename", 1049: "requirename", 1050: "requireversion",
     1124: "payload_format", 1125: "payload_compressor", 1126: "payload_flags",
+    5011: "payload_digest", 5092: "payload_digest_algo",
 }
+#: RPM signature-header tags: whether the package is signed, and with what
+RPM_SIGNATURE_TAGS = {
+    267: "dsa", 268: "rsa", 269: "sha1", 273: "sha256",
+    1002: "pgp", 1004: "md5", 1005: "gpg", 1006: "pgp",
+}
+#: digest tags hold raw bytes; these are the digest sizes we understand
+RPM_DIGEST_SIZES = {"sha1": 20, "sha256": 32, "md5": 16}
 RPM_LEAD_MAGIC = b"\xed\xab\xee\xdb"
 RPM_HEADER_MAGIC = b"\x8e\xad\xe8\x01"
 _RPM_TYPE_SIZES = {0: 0, 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 6: 1, 7: 1, 8: 1, 9: 1}
@@ -2030,6 +2038,31 @@ def parse_rpm(data: bytes) -> dict[str, Any]:
                 break
             entries[tag] = {"type": dtype, "offset": offset, "count": count}
         payload = data[store:store + store_size]
+        if region == "signature":
+            # the signature header says whether the package is signed at all, and
+            # which digests it carries — a package with no signature has no
+            # provenance, and that is a fact worth reporting
+            signature: dict[str, Any] = {"kinds": [], "digests": {}}
+            for tag, label in RPM_SIGNATURE_TAGS.items():
+                entry = entries.get(tag)
+                if not entry:
+                    continue
+                if label not in signature["kinds"]:
+                    signature["kinds"].append(label)
+                size = RPM_DIGEST_SIZES.get(label)
+                # digest tags are RPM_BIN_TYPE (7) or RPM_STRING_TYPE (8)
+                if size and entry.get("type") in (7, 8) and entry.get("count") == size:
+                    raw = payload[entry["offset"]:entry["offset"] + size]
+                    if len(raw) == size:
+                        signature["digests"][label] = raw.hex()
+            # a digest tag is integrity metadata, not a signature: only RSA/DSA/PGP
+            # entries say the package was signed by someone
+            signature["present"] = any(kind in ("rsa", "dsa", "pgp", "gpg")
+                                       for kind in signature["kinds"])
+            if signature["digests"]:
+                signature["digest_algorithms"] = sorted(signature["digests"])
+            out["signature"] = signature
+            out["signed"] = bool(signature.get("present"))
         if region == "header":
             out["header_entries"] = len(entries)
             for tag, label in RPM_TAGS.items():
@@ -2439,6 +2472,13 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
     # .deb: the control file carries the package identity, data.tar the contents
     payloads: list[tuple[str, bytes]] = []
     if fmt == "ar" and payload is None:
+        # a signed .deb carries a `_gpgorigin` member (dpkg-sig / debsigs); most
+        # .debs are unsigned because the signature lives in the archive metadata
+        member_names = [str(entry.get("name") or "") for entry in (parse_ar(data).get("members") or [])]
+        summary["package_signed"] = any(name.startswith("_gpgorigin") or name.startswith("_gpgbuilder")
+                                        for name in member_names)
+        if summary["package_signed"]:
+            summary["opened"].append("detached package signature present (_gpgorigin)")
         for name, member in _ar_member_bytes(data, ("control.tar", "control.tar.gz", "control.tar.xz")):
             control = _decompressed_member(name, member)
             if not control:
@@ -3299,6 +3339,27 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                        "file holds fewer"),
             "path": path,
         })
+    for container in record.get("containers_followed") or []:
+        if container.get("package") and container.get("package_signed") is False:
+            findings.append({
+                "code": "BIN-DEB-UNSIGNED", "severity": "LOW",
+                "title": "no detached signature on the .deb",
+                "detail": ("the archive has no `_gpgorigin` member, so this package's contents "
+                           "are not covered by a signature inside the file. Note that .deb "
+                           "signatures normally live in the repository metadata (Release/InRelease) "
+                           "rather than in the package, so this is a provenance signal, not evidence "
+                           "of tampering"),
+                "path": path,
+            })
+    if record.get("format") == "rpm" and record.get("signed") is False:
+        findings.append({
+            "code": "BIN-RPM-UNSIGNED", "severity": "MEDIUM",
+            "title": "RPM package carries no signature",
+            "detail": ("the signature header has no RSA/DSA/PGP entry, so the package's "
+                       "provenance cannot be established from the file — anyone who can write "
+                       "this artefact can rewrite its contents"),
+            "path": path,
+        })
     for dll in record.get("delay_imports") or []:
         findings.append({
             "code": "BIN-DELAYED-IMPORT", "severity": "INFO",
@@ -3650,6 +3711,9 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "minimum_os": record.get("minimum_os"),
             "encrypted": record.get("encrypted"),
             "uimage": record.get("uimage"),
+            "signature_package": record.get("signature") if record.get("format") == "rpm" else None,
+            "package_signed": (record.get("containers_followed") or [{}])[0].get("package_signed"),
+            "signed_package": record.get("signed"),
             "symbols_sampled": record.get("symbols_sampled"),
             "import_count": len(record.get("imports") or []),
             "export_count": len(record.get("exports") or []),

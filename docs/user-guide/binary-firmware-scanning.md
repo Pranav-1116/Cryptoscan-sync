@@ -39,7 +39,7 @@ was stored with the scan.
 | `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, **Debian `control` file** (package, version, architecture, maintainer, section, homepage, `Depends`) |
 | zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), native extensions |
 | **Java class** | constant pool: referenced classes (`javax/crypto/Cipher`, `org/bouncycastle/…`), method names, transformation strings (`AES/GCM/NoPadding`), class file version; a truncated pool says where the walk stopped |
-| **RPM** | lead + signature header + main header: name, version, release, licence, vendor, architecture, `PROVIDES`/`REQUIRES` package names (the crypto sonames a package depends on), payload compressor and payload offset |
+| **RPM** | lead + **signature header** + main header: whether the package is **signed** (RSA/DSA/PGP/GPG tags) and which digests it carries (sha256/sha1/md5, read as raw bytes and reported as hex — a digest tag is integrity metadata, not a signature), name, version, release, licence, vendor, architecture, `PROVIDES`/`REQUIRES` package names (the crypto sonames a package depends on), payload digest algorithm, payload compressor and payload offset |
 | WASM | import and export names (where crypto markers live) |
 | Firmware | **uImage (legacy U-Boot) header decoded**: image name, OS, architecture, image type (kernel/ramdisk/filesystem/firmware/…), compression, load/entry addresses, payload size, build date — and **both CRCs verified** (header CRC over the header with its own field zeroed; payload CRC when present and the image is within the 64 MiB verification cap, with `data_crc_checked: false` and a reason when it is not). A mismatch or a truncated payload is a finding (`BIN-UIMAGE-CRC`, `BIN-UIMAGE-PAYLOAD`). Also: container chain with offsets (device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal, **cpio/initramfs member listing** |
 | Raw blobs | reported only when they carry crypto evidence — never as an unnameable "binary" |
@@ -52,7 +52,7 @@ Compression and archive formats are actually opened, one member at a time:
 |---|---|
 | gzip, xz/lzma, bzip2 | decompressed with a hard output cap, then identified again (tar/cpio get their member list) |
 | tar, cpio (initramfs) | members listed; members that are themselves a parseable format are parsed. A **bare** `.cpio`/`initramfs` (newc/crc magic at offset 0, not wrapped in gzip) is identified and opened the same way; the old ASCII `odc` format is identified and refused with the reason |
-| zip, `ar`/`.deb` | members listed; the Debian `control` file becomes the package identity |
+| zip, `ar`/`.deb` | members listed; the Debian `control` file becomes the package identity, and a detached package signature (`_gpgorigin`/`_gpgbuilder` member) is reported when present |
 | RPM | payload decompressed and the cpio member list read; parseable members are parsed |
 | zstd, lz4, squashfs/JFFS2/UBIFS/cramfs/ext | **refused with the reason** (`BIN-CONTAINER-REFUSED`) — there is no stdlib decoder for zstd/lz4, and filesystem images need external tooling |
 
@@ -118,6 +118,8 @@ and still runs), `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
 `BIN-CONTAINER-REFUSED`, `BIN-NOT-PARSED`, `BIN-PARTIAL-PARSE`,
 `BIN-UIMAGE-CRC` (header checksum mismatch — the image was modified or damaged),
 `BIN-UIMAGE-PAYLOAD` (payload checksum mismatch or truncation),
+`BIN-RPM-UNSIGNED` (the RPM signature header has no RSA/DSA/PGP entry),
+`BIN-DEB-UNSIGNED` (no `_gpgorigin` member),
 `BIN-FIRMWARE-NOT-EXTRACTED`.
 
 ## 4. What flows onward
@@ -150,6 +152,14 @@ and still runs), `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
   `BIN-FIRMWARE-NOT-EXTRACTED`. What *can* be opened (a gzip/xz stream or a cpio
   initramfs in the same image) is followed and reported alongside. To inventory
   what is inside a filesystem, scan the mounted or extracted tree.
+* **Package signatures are read from the file, with their real meaning.** An RPM
+  with no RSA/DSA/PGP entry in its signature header is reported
+  (`BIN-RPM-UNSIGNED`, MEDIUM): anyone who can write the artefact can rewrite its
+  contents. A digest tag (sha256/sha1/md5) is reported as integrity metadata and
+  explicitly **not** counted as a signature. A `.deb` without a `_gpgorigin`
+  member is reported as `BIN-DEB-UNSIGNED` at LOW, because `.deb` signatures
+  normally live in the repository metadata (`Release`/`InRelease`) rather than in
+  the package — the finding says so instead of implying tampering.
 * **A uImage checksum is verified, not assumed.** When a CRC is present it is
   computed and reported (`header_crc_verified`, `data_crc_verified`); a payload
   CRC over the 64 MiB verification cap is reported as *not checked* with the

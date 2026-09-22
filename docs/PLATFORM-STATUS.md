@@ -114,6 +114,16 @@ payload mismatch or a truncated payload is `BIN-UIMAGE-PAYLOAD` (HIGH) — a fir
 that does not match its own checksum is reported, not silently accepted. The generic
 firmware pass still runs, so the compressed ramdisk at offset 64 is followed as before.
 
+**Update (2026-09-22, package signatures):** the RPM **signature header** is now read
+rather than skipped: RSA/DSA/PGP/GPG entries decide `signed` (a sha256/sha1/md5 digest tag
+is integrity metadata and is explicitly *not* counted as a signature, though the digests
+themselves are reported as hex), and a package with no signature entry is
+`BIN-RPM-UNSIGNED` (MEDIUM — its provenance cannot be established from the file). A `.deb`
+is checked for a detached `_gpgorigin`/`_gpgbuilder` member and reported as
+`BIN-DEB-UNSIGNED` at LOW with the reason stated (`.deb` signatures normally live in the
+repository metadata, not in the package), so the finding informs without implying
+tampering. Tests: 66 in `test_binary_scan.py`, 338 across devsecops + binary API + cbom.
+
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC
