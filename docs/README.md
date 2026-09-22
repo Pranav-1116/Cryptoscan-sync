@@ -16,6 +16,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |
 | [Platform boundaries](architecture/platform-boundaries.md) | what CryptoScan is and is not (single source of truth: `shared_models/platform_scope.py`) |
 | [Real-world comparison](architecture/real-world-comparison.md) | honest benchmark vs. Venafi, SandboxAQ, Prowler, Trivy, testssl.sh, Nozomi, SAST |
+| [SBOM scanner architecture vs. what ships](architecture/sbom-scanner-architecture.md) | the 11-source / Kafka-Flink target architecture mapped against this repo, gap by gap |
 
 ## User guide
 

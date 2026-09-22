@@ -4,7 +4,8 @@ import { ApiResult } from "../lib/api.js";
 import {
   apiContainerScan, apiK8sScan, apiCloudPosture, apiSbomImport,
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
-  apiSbomGate, apiSbomRescan, apiSbomPrune, downloadSbomArtifact, downloadSbomReport,
+  apiSbomGate, apiSbomRescan, apiSbomPrune, apiSbomLicense, apiSbomComponents,
+  apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
   apiConnectorPreview,
 } from "../lib/api.js";
 
@@ -500,9 +501,158 @@ function SbomImportTab() {
   );
 }
 
+function SbomLicenseTab() {
+  const [docs, setDocs] = useState<any[]>([]);
+  const [artifactId, setArtifactId] = useState("");
+  const [forbidden, setForbidden] = useState("");
+  const [restricted, setRestricted] = useState("");
+  const [requireDeclared, setRequireDeclared] = useState(false);
+  const [res, setRes] = useState<ApiResult<any> | null>(null);
+  const [busy, setBusy] = useState(false);
+  React.useEffect(() => {
+    void (async () => {
+      const r = await apiSbomArtifacts({ limit: 50 });
+      if (r.ok) setDocs(r.data.artifacts || []);
+    })();
+  }, []);
+  const run = async () => {
+    if (!artifactId) { setRes({ source: "live", ok: false, data: null, error: "pick an artifact" }); return; }
+    setBusy(true);
+    try {
+      setRes(await apiSbomLicense({
+        artifact_id: artifactId,
+        policy: {
+          forbidden: forbidden.split(",").map((x) => x.trim()).filter(Boolean),
+          restricted: restricted.split(",").map((x) => x.trim()).filter(Boolean),
+          require_declared: requireDeclared,
+        },
+      }));
+    } catch (e) { setRes({ source: "live", ok: false, data: null, error: String(e) }); }
+    setBusy(false);
+  };
+  const d = res?.data;
+  return (
+    <Panel title="License compliance" sub="Every declared license grouped by SPDX id with the components carrying it, the components that declare nothing, and policy violations. The copyleft trigger is a policy flag for human review — the engine never rules on license compatibility" className="mt">
+      <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
+        <select className="inp" value={artifactId} onChange={(e) => setArtifactId(e.target.value)}>
+          <option value="">select an artifact…</option>
+          {docs.map((a: any) => <option key={a.artifact_id} value={a.artifact_id}>{String(a.target).slice(0, 44)} · {a.format}</option>)}
+        </select>
+        <div className="row" style={{ gap: 8 }}>
+          <input className="inp" placeholder="forbidden ids (comma separated)" value={forbidden} onChange={(e) => setForbidden(e.target.value)} />
+          <input className="inp" placeholder="restricted ids" value={restricted} onChange={(e) => setRestricted(e.target.value)} />
+        </div>
+      </div>
+      <div className="row" style={{ gap: 12, marginBottom: 8, fontSize: 12.5, alignItems: "center" }}>
+        <label><input type="checkbox" checked={requireDeclared} onChange={(e) => setRequireDeclared(e.target.checked)} /> require every component to declare a license</label>
+        <button className="btn sm primary" onClick={() => void run()} disabled={busy}>{busy ? "Evaluating…" : "Evaluate licenses"}</button>
+      </div>
+      <Err res={res} />
+      {d && (
+        <>
+          <div className="row" style={{ gap: 8, margin: "10px 0", flexWrap: "wrap" }}>
+            <Badge tone={d.verdict === "PASS" ? "green" : (d.verdict === "FAIL" ? "red" : "amber")}>license {d.verdict}</Badge>
+            <Badge tone="">{d.inventory.distinct_licenses} distinct</Badge>
+            <Badge tone={d.inventory.undeclared.length ? "amber" : "green"}>{d.inventory.undeclared.length} undeclared</Badge>
+            {Object.entries(d.inventory.classes || {}).map(([k, v]) => <Badge key={k} tone="">{k}: {String(v)}</Badge>)}
+          </div>
+          {d.inventory.licenses.length > 0 && (
+            <Table head={["license", "class", "components", "carried by"]}
+              rows={d.inventory.licenses.map((row: any) => [
+                row.spdx_id + (row.exceptions?.length ? ` (WITH ${row.exceptions.join(", ")})` : ""),
+                row.class, row.count,
+                (row.components || []).slice(0, 4).map((c: any) => c.component).join(", "),
+              ])} />
+          )}
+          {d.inventory.undeclared.length > 0 && (
+            <div className="mt" style={{ fontSize: 12.5 }}>
+              <div className="muted">Undeclared licenses — reported as unknown, never as permitted or denied</div>
+              <div>{d.inventory.undeclared.map((u: any) => u.component).join(", ")}</div>
+            </div>
+          )}
+          {d.violations.length > 0 && (
+            <div className="mt">
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>Findings</div>
+              <Table head={["code", "severity", "detail"]}
+                rows={d.violations.map((v: any) => [v.code, v.severity, v.detail])} />
+            </div>
+          )}
+        </>
+      )}
+    </Panel>
+  );
+}
+
+function SbomInventoryTab() {
+  const [q, setQ] = useState("");
+  const [cryptoOnly, setCryptoOnly] = useState(false);
+  const [severity, setSeverity] = useState("");
+  const [comps, setComps] = useState<ApiResult<any> | null>(null);
+  const [advs, setAdvs] = useState<ApiResult<any> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const load = async () => {
+    setBusy(true);
+    try {
+      const [c, a] = await Promise.all([
+        apiSbomComponents({ q: q || undefined, crypto: cryptoOnly || undefined, limit: 200 }),
+        apiSbomAdvisories({ severity: severity || undefined }),
+      ]);
+      setComps(c); setAdvs(a);
+    } finally { setBusy(false); }
+  };
+  React.useEffect(() => { void load(); }, []);
+  const compRows = comps?.data?.components || [];
+  const advRows = advs?.data?.advisories || [];
+  return (
+    <Panel title="Component & advisory index" sub="Cross-artifact view: which artifact carries which component, and every advisory recorded across artifacts that were actually matched against a feed. Scans without a feed contribute no advisories and are counted separately" className="mt">
+      <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <input className="inp" style={{ width: 220 }} placeholder="component name or purl…" value={q} onChange={(e) => setQ(e.target.value)} />
+        <label style={{ fontSize: 12.5 }}><input type="checkbox" checked={cryptoOnly} onChange={(e) => setCryptoOnly(e.target.checked)} /> crypto-relevant only</label>
+        <select className="inp" style={{ width: 140 }} value={severity} onChange={(e) => setSeverity(e.target.value)}>
+          <option value="">any severity</option>
+          {["CRITICAL", "HIGH", "MEDIUM", "LOW"].map((s) => <option key={s} value={s}>{s}</option>)}
+        </select>
+        <button className="btn sm" onClick={() => void load()} disabled={busy}>{busy ? "Loading…" : "Apply"}</button>
+      </div>
+      <Err res={comps} />
+      <div className="mt" style={{ marginTop: 10 }}>
+        {compRows.length > 0 ? (
+          <>
+            <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+              {comps?.data?.total} component row(s) from {comps?.data?.artifacts_scanned} artifact(s)
+              {comps?.data?.truncated ? " — truncated, raise the limit or narrow the filter" : ""}
+            </div>
+            <Table head={["component", "version", "crypto", "artifact", "target"]}
+              rows={compRows.slice(0, 60).map((c: any) => [
+                c.name, c.version || "-",
+                c.crypto ? <Badge tone="blue">crypto</Badge> : "",
+                String(c.artifact_id || "").slice(0, 8), String(c.target || "").slice(0, 40),
+              ])} />
+          </>
+        ) : <div className="muted" style={{ fontSize: 12.5 }}>No components indexed — run a scan.</div>}
+      </div>
+      <div className="mt">
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          Advisories: {advs?.data?.total ?? 0} across {advs?.data?.artifacts_checked ?? 0} checked artifact(s)
+          {(advs?.data?.artifacts_without_feed ?? 0) > 0 ? ` · ${advs?.data?.artifacts_without_feed} artifact(s) were never checked (no feed)` : ""}
+        </div>
+        {advRows.length > 0 ? (
+          <Table head={["CVE", "severity", "fix", "affected components"]}
+            rows={advRows.map((a: any) => [
+              a.cve,
+              <Badge tone={a.severity === "CRITICAL" ? "red" : (a.severity === "HIGH" ? "amber" : "gray")}>{a.severity}</Badge>,
+              a.recommendation || "-",
+              (a.affected || []).slice(0, 3).map((x: any) => `${x.ref} (${String(x.artifact_id).slice(0, 8)})`).join(", "),
+            ])} />
+        ) : <div className="muted" style={{ fontSize: 12.5 }}>No advisories recorded — scan with an advisory feed to populate this view.</div>}
+      </div>
+    </Panel>
+  );
+}
+
 function SbomPanel() {
   const [sub, setSub] = useState(0);
-  const tabs = ["Scan & generate", "Artifacts", "Diff", "Validate", "Import"];
+  const tabs = ["Scan & generate", "Artifacts", "Diff", "Validate", "Licenses", "Index", "Import"];
   return (
     <>
       <div className="mt"><Tabs tabs={tabs} active={sub} onChange={setSub} /></div>
@@ -510,7 +660,9 @@ function SbomPanel() {
       {sub === 1 && <SbomArtifactsTab />}
       {sub === 2 && <SbomDiffTab />}
       {sub === 3 && <SbomValidateTab />}
-      {sub === 4 && <SbomImportTab />}
+      {sub === 4 && <SbomLicenseTab />}
+      {sub === 5 && <SbomInventoryTab />}
+      {sub === 6 && <SbomImportTab />}
     </>
   );
 }

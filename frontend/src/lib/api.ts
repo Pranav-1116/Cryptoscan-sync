@@ -1671,6 +1671,33 @@ export const apiSbomDiff = (body: { from_artifact?: string; to_artifact?: string
 export const apiSbomVerify = (artifactId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/sbom/${artifactId}/verify`, "GET", undefined, 30000);
 
+/** License inventory + policy verdict for a document or stored artifact. */
+export const apiSbomLicense = (body: { doc?: any; artifact_id?: string; policy?: Record<string, any>; fmt?: "json" | "markdown" }) =>
+  _sbomReq<any>("/api/v1/devsecops/sbom/license", "POST", body, 30000);
+
+/** Deterministic VEX statements (json = CycloneDX VEX document). */
+export const apiSbomVex = (body: { doc?: any; artifact_id?: string; analyses?: Record<string, any>; fmt?: "json" | "markdown" }) =>
+  _sbomReq<any>("/api/v1/devsecops/sbom/vex", "POST", body, 30000);
+
+/** Cross-artifact component index: which artifact carries which component. */
+export const apiSbomComponents = (filters: { q?: string; crypto?: boolean; limit?: number } = {}) => {
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.crypto !== undefined) params.set("crypto", String(filters.crypto));
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return _sbomReq<any>(`/api/v1/devsecops/sbom/components${qs ? `?${qs}` : ""}`, "GET", undefined, 30000);
+};
+
+/** Advisories recorded across checked artifacts (matched scans only). */
+export const apiSbomAdvisories = (filters: { severity?: string; cve?: string } = {}) => {
+  const params = new URLSearchParams();
+  if (filters.severity) params.set("severity", filters.severity);
+  if (filters.cve) params.set("cve", filters.cve);
+  const qs = params.toString();
+  return _sbomReq<any>(`/api/v1/devsecops/sbom/advisories${qs ? `?${qs}` : ""}`, "GET", undefined, 30000);
+};
+
 export const apiSbomPrune = (olderThanDays: number) =>
   _sbomReq<any>(`/api/v1/devsecops/sbom/artifacts?older_than_days=${olderThanDays}`, "DELETE", undefined, 30000);
 

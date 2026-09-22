@@ -627,3 +627,224 @@ async def test_artifact_listing_filters(app_db):
     # the listing hands out the provenance links a caller needs
     first = all_items.json()["artifacts"][0]
     assert first["verify_url"].endswith("/verify") and first["report_url"].endswith("/report")
+
+
+# ------------------------------------- license / VEX / cross-artifact index --- #
+@pytest.mark.asyncio
+async def test_license_endpoint_policy_and_inventory(app_db):
+    application, session, tmp_path = app_db
+    src = tmp_path / "lic2"
+    src.mkdir()
+    (src / "package-lock.json").write_text(json.dumps({
+        "name": "app", "lockfileVersion": 3,
+        "packages": {"": {"name": "app", "version": "1.0.0"},
+                     "node_modules/picocolors": {"version": "1.0.0", "license": "Apache-2.0"},
+                     "node_modules/leftpad": {"version": "2.0.0", "license": "GPL-3.0-or-later"},
+                     "node_modules/mystery": {"version": "3.0.0"}},
+    }, indent=1))
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await client.post("/api/v1/devsecops/sbom/scan",
+                                     json={"kind": "source", "target": str(src)},
+                                     headers={"Authorization": "Bearer test-token"})
+            artifact_id = scan.json()["artifact_id"]
+            headers = {"Authorization": "Bearer test-token"}
+
+            inventory = await client.post("/api/v1/devsecops/sbom/license",
+                                          json={"artifact_id": artifact_id}, headers=headers)
+            strict = await client.post("/api/v1/devsecops/sbom/license",
+                                       json={"artifact_id": artifact_id,
+                                             "policy": {"forbidden": ["GPL-3.0-only"],
+                                                        "require_declared": True}},
+                                       headers=headers)
+            inline = await client.post("/api/v1/devsecops/sbom/license",
+                                       json={"doc": {"bomFormat": "CycloneDX", "components": [
+                                           {"type": "library", "name": "x", "version": "1",
+                                            "licenses": [{"license": {"id": "MIT"}}]}]}},
+                                       headers=headers)
+            quiet = await client.post("/api/v1/devsecops/sbom/license",
+                                      json={"artifact_id": artifact_id,
+                                            "policy": {"review_copyleft": False},
+                                            "fmt": "markdown"},
+                                      headers=headers)
+            both = await client.post("/api/v1/devsecops/sbom/license",
+                                     json={"doc": {"bomFormat": "CycloneDX"},
+                                           "artifact_id": artifact_id}, headers=headers)
+            neither = await client.post("/api/v1/devsecops/sbom/license",
+                                        json={}, headers=headers)
+
+    assert inventory.status_code == 200, inventory.text
+    body = inventory.json()
+    by_id = {row["spdx_id"]: row for row in body["inventory"]["licenses"]}
+    assert by_id["Apache-2.0"]["class"] == "permissive"
+    assert by_id["GPL-3.0-or-later"]["class"] == "strong_copyleft"
+    # no policy was supplied, so nothing is denied — but strong copyleft next to
+    # a component with no declared license is a review trigger by default
+    assert body["verdict"] == "REVIEW"
+    assert [v["code"] for v in body["violations"]] == ["LICENSE-REVIEW-COPYLEFT"]
+    assert "not a compatibility ruling" in body["violations"][0]["detail"]
+    assert [u["component"] for u in body["inventory"]["undeclared"]] == ["mystery"]
+
+    # a forbidden *family* catches the -or-later variant
+    assert strict.json()["verdict"] == "FAIL"
+    codes = {v["code"] for v in strict.json()["violations"]}
+    assert {"LICENSE-FORBIDDEN", "LICENSE-UNDECLARED"} <= codes
+
+    assert inline.json()["verdict"] == "PASS" and inline.json()["inventory"]["distinct_licenses"] == 1
+    # the review trigger is switchable, and the markdown view renders it
+    assert quiet.json()["verdict"] == "PASS"
+    assert "License verdict: **PASS**" in quiet.json()["markdown"]
+    # exactly one source of the document, and a clear error when neither is given
+    assert both.status_code == 422 and neither.status_code == 422
+    assert "exactly one" in both.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_vex_endpoint_states_and_overrides(app_db):
+    application, session, tmp_path = app_db
+    src = tmp_path / "vex"
+    src.mkdir()
+    (src / "requirements.txt").write_text("requests==2.25.0\n")
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            headers = {"Authorization": "Bearer test-token"}
+            scan = await client.post("/api/v1/devsecops/sbom/scan",
+                                     json={"kind": "source", "target": str(src), "feed": _FEED},
+                                     headers=headers)
+            artifact_id = scan.json()["artifact_id"]
+
+            derived = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/vex", headers=headers)
+            overridden = await client.post(
+                "/api/v1/devsecops/sbom/vex",
+                json={"artifact_id": artifact_id,
+                      "analyses": {"CVE-2023-32681": {"state": "not_affected",
+                                                      "justification": "code_not_reachable",
+                                                      "detail": "client never sets a proxy"}}},
+                headers=headers)
+            bad_state = await client.post("/api/v1/devsecops/sbom/vex",
+                                          json={"artifact_id": artifact_id,
+                                                "analyses": {"CVE-2023-32681": {"state": "not_affected"}}},
+                                          headers=headers)
+            markdown = await client.post("/api/v1/devsecops/sbom/vex",
+                                         json={"artifact_id": artifact_id, "fmt": "markdown"},
+                                         headers=headers)
+
+    assert derived.status_code == 200, derived.text
+    rows = {row["cve"]: row for row in derived.json()["statements"]}
+    # the matched high advisory with a fix recorded is exploitable + update
+    assert rows["CVE-2023-32681"]["state"] == "exploitable"
+    assert rows["CVE-2023-32681"]["fixed_version"] == "2.31.0"
+    assert rows["CVE-2023-32681"]["response"] == ["update"]
+    # only the advisory whose component is actually present survives matching,
+    # so exactly one statement — and it is the advisory's own claim
+    assert derived.json()["summary"] == {"exploitable": 1}
+    assert derived.json()["statement_count"] == 1
+    document = derived.json()["vex_document"]
+    assert document["bomFormat"] == "CycloneDX" and document["metadata"]["component"]
+    assert document["vulnerabilities"][0]["analysis"]["state"] == "exploitable"
+    assert document["vulnerabilities"][0]["recommendation"].startswith("upgrade to")
+
+    override = {row["cve"]: row for row in overridden.json()["statements"]}["CVE-2023-32681"]
+    assert override["state"] == "not_affected" and override["source"] == "operator"
+    assert override["justification"] == "code_not_reachable"
+    # "not affected" without a justification is refused — the rubber stamp VEX exists to stop
+    assert bad_state.status_code == 422
+    assert "requires a justification" in bad_state.json()["detail"]
+    assert "# VEX statements" in markdown.json()["markdown"]
+
+
+@pytest.mark.asyncio
+async def test_component_and_advisory_indexes_only_count_checked_scans(app_db):
+    application, session, tmp_path = app_db
+    src = tmp_path / "index"
+    src.mkdir()
+    (src / "requirements.txt").write_text("requests==2.25.0\ncryptography==42.0.0\n")
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            headers = {"Authorization": "Bearer test-token"}
+            fed = await client.post("/api/v1/devsecops/sbom/scan",
+                                    json={"kind": "source", "target": str(src), "feed": _FEED},
+                                    headers=headers)
+            await client.post("/api/v1/devsecops/sbom/scan",
+                              json={"kind": "source", "target": str(src)}, headers=headers)
+
+            components = await client.get("/api/v1/devsecops/sbom/components", headers=headers)
+            crypto_only = await client.get("/api/v1/devsecops/sbom/components?crypto=true", headers=headers)
+            searched = await client.get("/api/v1/devsecops/sbom/components?q=requests", headers=headers)
+            bounded = await client.get("/api/v1/devsecops/sbom/components?limit=1", headers=headers)
+            advisories = await client.get("/api/v1/devsecops/sbom/advisories", headers=headers)
+            critical = await client.get("/api/v1/devsecops/sbom/advisories?severity=CRITICAL", headers=headers)
+            medium = await client.get("/api/v1/devsecops/sbom/advisories?severity=MEDIUM", headers=headers)
+            by_cve = await client.get("/api/v1/devsecops/sbom/advisories?cve=CVE-2023-32681", headers=headers)
+            missing_cve = await client.get("/api/v1/devsecops/sbom/advisories?cve=CVE-2024-21538",
+                                           headers=headers)
+
+    assert components.status_code == 200, components.text
+    # both artifacts contribute components
+    assert components.json()["artifacts_scanned"] == 2
+    names = {row["name"] for row in components.json()["components"]}
+    assert {"requests", "cryptography"} <= names
+    assert all(row["crypto"] for row in crypto_only.json()["components"])
+    assert [row["name"] for row in searched.json()["components"]] == ["requests", "requests"]
+    assert bounded.json()["returned"] == 1 and bounded.json()["truncated"] is True
+
+    body = advisories.json()
+    # the advisory index only counts artifacts that were actually checked
+    assert body["artifacts_checked"] == 1 and body["artifacts_without_feed"] == 1
+    # the npm advisory in the feed has no npm component in this tree, so it was
+    # never matched and must not appear here
+    assert {a["cve"] for a in body["advisories"]} == {"CVE-2023-32681"}
+    assert body["affected_components"] == 1
+    assert body["advisories"][0]["severity"] == "MEDIUM"
+    assert critical.json()["advisories"] == []
+    assert medium.json()["advisories"][0]["cve"] == "CVE-2023-32681"
+    assert by_cve.json()["total"] == 1
+    assert missing_cve.json()["total"] == 0
+    assert fed.json()["manifest"]["feed_supplied"] is True
+
+
+@pytest.mark.asyncio
+async def test_vex_authoring_requires_an_operator_role(app_db, tmp_path, monkeypatch):
+    """A read-only account may derive VEX statements (they come from the
+    document) but may not author one — that is a judgement that ends up in a
+    compliance artefact."""
+    application, session, _root = app_db
+    src = tmp_path / "vexrole"
+    src.mkdir()
+    (src / "requirements.txt").write_text("requests==2.25.0\n")
+
+    headers = {"Authorization": "Bearer test-token"}
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await client.post("/api/v1/devsecops/sbom/scan",
+                                     json={"kind": "source", "target": str(src), "feed": _FEED},
+                                     headers=headers)
+            assert scan.status_code == 201, scan.text
+            artifact_id = scan.json()["artifact_id"]
+    # the viewer app re-scopes the allowed source roots and storage dir, so it
+    # is built only after the operator scan has run
+    viewer_app = _viewer_app(tmp_path, monkeypatch)  # same storage dir so the artifact is visible
+    async with ASGITransport(app=viewer_app) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            derived = await client.get(f"/api/v1/devsecops/sbom/{artifact_id}/vex",
+                                       headers={"Authorization": "Bearer viewer-token"})
+            derived_post = await client.post("/api/v1/devsecops/sbom/vex",
+                                             json={"artifact_id": artifact_id},
+                                             headers={"Authorization": "Bearer viewer-token"})
+            authored = await client.post(
+                "/api/v1/devsecops/sbom/vex",
+                json={"artifact_id": artifact_id,
+                      "analyses": {"CVE-2023-32681": {"state": "not_affected",
+                                                      "justification": "code_not_reachable"}}},
+                headers={"Authorization": "Bearer viewer-token"})
+            gated = await client.post(f"/api/v1/devsecops/sbom/{artifact_id}/gate", json={},
+                                      headers={"Authorization": "Bearer viewer-token"})
+
+    # deriving is a read and stays available; the gate is a read-only evaluation
+    assert derived.status_code == 200 and derived_post.status_code == 200
+    assert gated.status_code == 200
+    assert authored.status_code == 403
+    assert "requires one of roles" in authored.json()["detail"]

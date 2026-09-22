@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-22:
-**637 paths, 702 operations** across 85 tagged groups.
+**642 paths, 707 operations** across 85 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -419,18 +419,23 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/devsecops/connectors/preview` | Connector Preview |
 | `POST` | `/api/v1/devsecops/container-scan` | Container Scan |
 | `POST` | `/api/v1/devsecops/k8s-manifest-scan` | K8S Scan |
+| `GET` | `/api/v1/devsecops/sbom/advisories` | Sbom Advisories |
 | `GET` | `/api/v1/devsecops/sbom/artifacts` | Sbom Artifacts |
 | `DELETE` | `/api/v1/devsecops/sbom/artifacts` | Sbom Prune |
+| `GET` | `/api/v1/devsecops/sbom/components` | Sbom Components |
 | `POST` | `/api/v1/devsecops/sbom/diff` | Sbom Diff |
 | `POST` | `/api/v1/devsecops/sbom/export` | Sbom Export |
 | `POST` | `/api/v1/devsecops/sbom/import` | Sbom Import |
+| `POST` | `/api/v1/devsecops/sbom/license` | Sbom License |
 | `POST` | `/api/v1/devsecops/sbom/scan` | Sbom Scan |
 | `POST` | `/api/v1/devsecops/sbom/validate` | Sbom Validate |
+| `POST` | `/api/v1/devsecops/sbom/vex` | Sbom Vex |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/download` | Sbom Download |
 | `POST` | `/api/v1/devsecops/sbom/{artifact_id}/gate` | Sbom Gate |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/report` | Sbom Report |
 | `POST` | `/api/v1/devsecops/sbom/{artifact_id}/rescan` | Sbom Rescan |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/verify` | Sbom Verify |
+| `GET` | `/api/v1/devsecops/sbom/{artifact_id}/vex` | Sbom Vex For Artifact |
 | `POST` | `/api/v1/devsecops/tickets/sync-pull` | Ticket Sync Pull |
 
 ## drift

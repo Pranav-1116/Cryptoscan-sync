@@ -135,6 +135,24 @@ _SBOM_OPERATORS = ("admin", "auditor", "security_analyst", "superadmin")
 # reading an SBOM (list/download/report/diff/validate/gate) is an auditor task —
 # the read-only role may do those; mutating operations stay restricted.
 _SBOM_READERS = (*_SBOM_OPERATORS, "readonly")
+
+
+def _require_sbom_operator(user: str, db: "Session | None") -> None:
+    """Issuing a VEX statement is a judgement call, not a read.
+
+    Read-only accounts may *derive* statements (they come straight from the
+    document), but authoring one asserts something about exploitability that
+    ends up in a compliance artefact, so it needs an operator role. Tokens with
+    no roles at all keep the platform's legacy admin fallback.
+    """
+    from api.dependencies import _user_roles
+    from api.security.rbac import normalize_roles
+
+    roles = normalize_roles(_user_roles(user, None, db))
+    if roles and not (set(roles) & set(normalize_roles(list(_SBOM_OPERATORS)))):
+        raise HTTPException(status_code=403, detail=(
+            "issuing VEX statements requires one of roles: "
+            + ", ".join(_SBOM_OPERATORS)))
 _SBOM_STORE = None
 _ARTIFACT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -653,6 +671,233 @@ def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
             "target": new_man.get("target"), "scan_options": new_man.get("scan_options"),
             "diff": delta, "gate": gate, "manifest": new_man, "notes": notes,
             "verify_url": fresh["verify_url"], "download_url": fresh["download_url"]}
+
+
+# ------------------------------------------------- SBOM license / VEX / index --- #
+# Artifact manifests are cheap to scan but the listing is I/O bound; a short
+# in-process cache keeps the index and license endpoints snappy without ever
+# serving a stale body (bodies are always read from the store).
+_INDEX_CACHE: dict[str, object] = {"signature": None, "rows": []}
+_INDEX_CACHE_TTL_SECONDS = 10.0
+
+
+class SbomLicenseRequest(BaseModel):
+    doc: dict | None = Field(None, description="CycloneDX or SPDX JSON document")
+    artifact_id: str | None = Field(None, description="stored artifact instead of an inline document")
+    policy: dict | None = Field(None, description=("forbidden/restricted/require_declared/"
+                                                   "review_copyleft — see DEFAULT_LICENSE_POLICY"))
+    fmt: str = Field("json", description="json, or markdown for a renderable section")
+
+
+class SbomVexRequest(BaseModel):
+    doc: dict | None = Field(None, description="CycloneDX or SPDX JSON document")
+    artifact_id: str | None = Field(None, description="stored artifact instead of an inline document")
+    analyses: dict | None = Field(None, description=("operator statements, keyed by CVE: "
+                                                     "{state, justification, detail, response}"))
+    fmt: str = Field("json", description="json (CycloneDX VEX) or markdown")
+
+
+def _resolve_sbom_doc(doc: dict | None, artifact_id: str | None) -> dict:
+    """Exactly one of an inline document or a stored artifact id."""
+    if bool(doc) == bool(artifact_id):
+        raise HTTPException(status_code=422,
+                            detail="provide exactly one of `doc` or `artifact_id`")
+    if doc:
+        return doc
+    _man, blob = _load_sbom_artifact(str(artifact_id))
+    try:
+        return json.loads(blob.decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 — corrupt storage is a real error
+        raise HTTPException(status_code=422, detail=f"stored SBOM could not be parsed: {exc}")
+
+
+@router.post("/sbom/license")
+def sbom_license(body: SbomLicenseRequest,
+                 user: str = Depends(require_roles(*_SBOM_READERS))):
+    """License inventory and policy evaluation for a document or stored artifact.
+
+    Reports declared licenses grouped by SPDX identifier with the components
+    carrying them, the components that declare nothing, and policy violations.
+    The copyleft review trigger is a policy flag, not a compatibility ruling:
+    the engine never claims two licenses are or are not compatible.
+    """
+    from devsecops.sbom_license import check_license_policy, render_license_report
+
+    doc = _resolve_sbom_doc(body.doc, body.artifact_id)
+    report = check_license_policy(doc, policy=body.policy)
+    payload: dict = {"artifact_id": body.artifact_id, "verdict": report["verdict"], **report}
+    if str(body.fmt).lower() == "markdown":
+        payload["markdown"] = render_license_report(report)
+    return payload
+
+
+@router.post("/sbom/vex")
+def sbom_vex(body: SbomVexRequest, db: Session = Depends(get_db_session),
+             user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Deterministic VEX statements for a document or stored artifact.
+
+    Advisory matches the platform found are reported ``exploitable`` (that is
+    what the advisory asserts for the version range it matched). ``not_affected``
+    is only ever produced by an operator statement with a valid justification,
+    or when the affected component is provably absent — the platform does not
+    invent reachability analysis.
+    """
+    from devsecops import sbom_vex as vx
+
+    if body.analyses:
+        _require_sbom_operator(user, db)
+    doc = _resolve_sbom_doc(body.doc, body.artifact_id)
+    try:
+        rows = vx.statements(doc, analyses=body.analyses)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if str(body.fmt).lower() == "markdown":
+        return {"artifact_id": body.artifact_id, "statement_count": len(rows),
+                "summary": vx.counts(rows), "statements": rows,
+                "markdown": vx.render_markdown(rows, target=manifest_target(doc))}
+    return {"artifact_id": body.artifact_id, "statement_count": len(rows),
+            "summary": vx.counts(rows), "statements": rows,
+            "vex_document": vx.build_vex_document(doc, analyses=body.analyses, author=user)}
+
+
+@router.get("/sbom/{artifact_id}/vex")
+def sbom_vex_for_artifact(artifact_id: str, dl: bool = False,
+                          user: str = Depends(require_roles(*_SBOM_READERS))):
+    """VEX document for a stored artifact (download as .vex.json with ?dl=true)."""
+    from devsecops import sbom_vex as vx
+
+    doc = _resolve_sbom_doc(None, artifact_id)
+    rows = vx.statements(doc)
+    document = vx.build_vex_document(doc, author=user)
+    if dl:
+        from fastapi.responses import Response
+
+        body = json.dumps(document, indent=2).encode("utf-8")
+        return Response(content=body, media_type="application/json", headers={
+            "Content-Disposition": f'attachment; filename="cryptoscan-vex-{artifact_id[:8]}.json"'})
+    return {"artifact_id": artifact_id, "statement_count": len(rows),
+            "summary": vx.counts(rows), "statements": rows, "vex_document": document}
+
+
+def manifest_target(doc: dict) -> str | None:
+    component = ((doc.get("metadata") or {}).get("component") or {}) if isinstance(doc, dict) else {}
+    if isinstance(component, dict) and component.get("name"):
+        return str(component["name"])
+    name = doc.get("name") if isinstance(doc, dict) else None
+    return str(name) if name else None
+
+
+def _artifact_rows() -> list[dict]:
+    """Cached listing of stored artifacts (manifests only — bodies are not read)."""
+    import time
+
+    store = _sbom_storage()
+    rows = store.list_manifests()
+    signature = (len(rows), max((str(r.get("created_at") or "") for r in rows), default=""))
+    cached_at = _INDEX_CACHE.get("at")
+    if (_INDEX_CACHE["signature"] == signature
+            and isinstance(cached_at, float)
+            and time.monotonic() - cached_at < _INDEX_CACHE_TTL_SECONDS):
+        return _INDEX_CACHE["rows"]  # type: ignore[return-value]
+    for row in rows:
+        base = str(row.get("storage_key") or "").split("/")[-1]
+        row["artifact_id"] = base.split(".")[0] or None
+    _INDEX_CACHE.update({"signature": signature, "rows": rows, "at": time.monotonic()})
+    return rows
+
+
+@router.get("/sbom/components")
+def sbom_components(q: str | None = None, crypto: bool | None = None, limit: int = 100,
+                    artifact_id: str | None = None,
+                    user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Cross-artifact component index: which artifact carries which component.
+
+    Reads each artifact body once (metadata is not stored per component in the
+    manifest), so the response is bounded by ``limit`` and says how many rows it
+    saw. ``crypto=true`` narrows to crypto-relevant components, ``q`` matches
+    name/purl substrings.
+    """
+    bounded = max(1, min(limit, 500))
+    needle = (q or "").strip().lower()
+    rows = []
+    scanned = 0
+    for man in sorted(_artifact_rows(), key=lambda m: str(m.get("created_at") or ""), reverse=True):
+        if artifact_id and man.get("artifact_id") != artifact_id:
+            continue
+        if not man.get("artifact_id"):
+            continue
+        scanned += 1
+        try:
+            doc = json.loads(_sbom_storage().get(str(man.get("storage_key"))).decode("utf-8"))
+        except Exception:  # noqa: BLE001 — a corrupt artifact must not break the index
+            continue
+        for comp in _bom_components(doc):
+            is_crypto = bool(comp.get("crypto")) or _is_crypto_component(comp, doc)
+            if crypto is True and not is_crypto:
+                continue
+            if crypto is False and is_crypto:
+                continue
+            name = str(comp.get("name") or "")
+            if needle and needle not in name.lower() and needle not in str(comp.get("purl") or "").lower():
+                continue
+            rows.append({"name": name, "version": comp.get("version"),
+                         "purl": comp.get("purl"), "crypto": is_crypto,
+                         "artifact_id": man.get("artifact_id"),
+                         "target": man.get("target"), "format": man.get("format"),
+                         "created_at": man.get("created_at")})
+            if len(rows) >= bounded:
+                return {"total": len(rows), "returned": len(rows), "truncated": True,
+                        "artifacts_scanned": scanned, "components": rows}
+    return {"total": len(rows), "returned": len(rows), "truncated": False,
+            "artifacts_scanned": scanned, "components": rows}
+
+
+@router.get("/sbom/advisories")
+def sbom_advisories(severity: str | None = None, cve: str | None = None,
+                    user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Advisories recorded across stored artifacts (matched scans only).
+
+    Only artifacts whose manifests record ``feed_supplied`` are counted — an
+    artifact scanned without a feed contributes nothing here, and the response
+    states how many artifacts were actually checked.
+    """
+    wanted = str(severity or "").strip().upper()
+    needle = str(cve or "").strip().upper()
+    index: dict[str, dict] = {}
+    checked = 0
+    unchecked = 0
+    for man in _artifact_rows():
+        if not man.get("artifact_id"):
+            continue
+        if not man.get("feed_supplied"):
+            unchecked += 1
+            continue
+        checked += 1
+        try:
+            doc = json.loads(_sbom_storage().get(str(man.get("storage_key"))).decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            continue
+        for vuln in doc.get("vulnerabilities") or []:
+            if not isinstance(vuln, dict):
+                continue
+            cve_id = str(vuln.get("id") or "")
+            if not cve_id or (needle and needle != cve_id.upper()):
+                continue
+            ratings = vuln.get("ratings") or [{}]
+            level = str(ratings[0].get("severity") or "unknown").upper()
+            if wanted and level != wanted:
+                continue
+            entry = index.setdefault(cve_id, {"cve": cve_id, "severity": level,
+                                              "recommendation": vuln.get("recommendation"),
+                                              "affected": []})
+            for affect in vuln.get("affects") or []:
+                ref = affect.get("ref") if isinstance(affect, dict) else None
+                entry["affected"].append({"ref": ref, "artifact_id": man.get("artifact_id"),
+                                          "target": man.get("target")})
+    count = sum(len(v["affected"]) for v in index.values())
+    return {"total": len(index), "affected_components": count,
+            "artifacts_checked": checked, "artifacts_without_feed": unchecked,
+            "advisories": sorted(index.values(), key=lambda v: (v["severity"], v["cve"]))}
 
 
 @router.delete("/sbom/artifacts")

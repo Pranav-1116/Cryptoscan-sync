@@ -460,6 +460,79 @@ raised allowance/0, stdin+policy file, and 2/3 for bad input. Tests: 107 in the
 SBOM surface (99 service + 8 CLI) plus 19 API route tests; API unit suite
 re-run green; ruff, `tsc --noEmit` and `vite build` clean.
 
+**Update (2026-09-22, SBOM scanner — license compliance, VEX, cross-artifact
+index):** the third round closes the reviewer-facing questions that follow a
+scan: *what licences did we just adopt, is anything owed legal review, what are
+we actually doing about each advisory, and where else is this component used?*
+
+1. **License compliance** (`devsecops/sbom_license.py`,
+   `POST /devsecops/sbom/license`, console **Licenses** tab). Every declared
+   license is grouped by SPDX identifier with the components carrying it, plus
+   the components that declare nothing. SPDX expressions are parsed the way the
+   spec defines them (`AND`/`OR` split, `WITH` keeps the base license and
+   records the exception), and comparison is **family-aware**: a policy
+   forbidding `GPL-3.0-only` also catches a component declaring
+   `GPL-3.0-or-later`, never the other way round. Verdicts are `FAIL`
+   (forbidden present), `REVIEW` (restricted, undeclared, or a copyleft
+   combination needing a human) and `PASS`. Two deliberate refusals: an
+   **undeclared** license is reported as undeclared — never permitted, never
+   denied — and the strong-copyleft trigger is worded as a **policy flag for
+   legal review, not a compatibility ruling**, because the platform will not
+   fabricate a license compatibility matrix. The gate can run the same engine
+   via `license_policy` in its policy object, where forbidden licenses become
+   blockers and the rest become warnings.
+2. **VEX statements** (`devsecops/sbom_vex.py`, `POST /devsecops/sbom/vex`,
+   `GET /sbom/{id}/vex?dl=true`, CycloneDX 1.5 exchange document). An advisory
+   the platform matched is reported `exploitable` — that is what the advisory
+   asserts for the version range it matched — and when a fix is known it travels
+   with the statement (`recommendation`, plus `affects[].versions[{version,
+   status:"unaffected"}]`). `not_affected` is produced only two ways: the
+   affected component is provably absent (`code_not_present`), or an operator
+   supplied a statement **with a valid justification**. A `not_affected` claim
+   without one is rejected 422 — the rubber stamp VEX exists to prevent — and
+   inventing a state is refused against the CycloneDX enum. Everything else is
+   `in_triage` / `can_not_fix`, because the platform performs no reachability
+   analysis and will not imply that a vulnerable path is unreachable.
+   **Authoring a statement needs an operator role**: read-only accounts may
+   derive statements and gate an artifact, but a statement is a judgement that
+   ends up in a compliance artefact, so it is not something a view-only account
+   can assert (403, verified live).
+3. **Cross-artifact index** (`GET /sbom/components`, `GET /sbom/advisories`,
+   console **Index** tab) answers "where is this component used?" and "what does
+   this CVE affect across the estate?" The advisory view counts **only artifacts
+   that were actually matched against a feed** and reports how many were not, so
+   a scan run without a feed can never contribute a "no advisories" row.
+4. **Remediation travels with the document** — every matched advisory now
+   carries `recommendation` and the fixed version in the CycloneDX-idiomatic
+   `affects[].versions` form, so a consumer can plan an upgrade without asking
+   the platform again.
+5. **Fixes found while testing:** the SPDX `WITH` tokenizer treated the
+   exception clause as a second license; `-or-later`/`+` variants of a license
+   did not classify at all (`GPL-3.0-or-later` came back `unknown`); the license
+   route built a string from a dict and called `.get` on it, 500-ing the
+   markdown branch.
+6. **New doc: `docs/architecture/sbom-scanner-architecture.md`** maps the
+   target 11-source / Kafka-Flink / Neo4j / S3-WORM architecture against what
+   this repository actually runs, row by row, with the gaps named (no live
+   NVD/OSV/KEV fetch, no host agent runtime SBOM, no SLSA/in-toto ingestion, no
+   Kafka/Flink/Neo4j/WORM deployment, SWID + CycloneDX 1.6 + SPDX 3.0 and
+   XML/PDF exports absent, no license compatibility matrix — deliberately).
+
+Live drill (2026-09-22, demo tree with npm lockfile licences): scan with a
+3-advisory feed → 2 matches, both carrying `upgrade to … or later`; VEX derived
+2 `exploitable` statements and a CycloneDX VEX document downloadable as
+`cryptoscan-vex-<id>.json`; operator override → `not_affected` /
+`code_not_reachable` attributed to its issuer, unjustified override → 422,
+invented state → 422; licence policy `forbidden:[GPL-3.0-only]` caught the
+declared **`GPL-3.0-or-later`** (family matching) with 4 undeclared components
+named and the copyleft trigger wording checked; gate with `license_policy` →
+`FAIL` on `GATE-LICENSE-FORBIDDEN` with undeclared/copyleft as warnings; index
+returned 11 component rows from 1 artifact, `crypto=true` narrowed to
+`cryptography`, and after an unfed scan of the same tree the advisory view
+reported "2 across 1 checked artifact; 1 was never checked". Tests: 122 service
+(118 previous + 14 new licence/VEX) and 23 API route tests; API unit suite
+re-run green; ruff, `tsc --noEmit`, `vite build` clean.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

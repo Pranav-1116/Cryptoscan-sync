@@ -369,7 +369,9 @@ def render_sbom(result: dict[str, Any], *, fmt: str, enrich: bool = True,
         bom = build_spdx(result)
     else:
         raise ValueError(f"unsupported SBOM format: {fmt}")
-    return enrich_bom(bom, result, created_by=created_by) if enrich else bom
+    if not enrich:
+        return bom
+    return attach_remediation(enrich_bom(bom, result, created_by=created_by), result)
 
 
 # manager -> advisory-feed ecosystem name (mirrors the purl type vocabulary
@@ -392,6 +394,42 @@ MANAGER_ECOSYSTEM = {
 
 _SPDX_ID_SAFE = re.compile(r"^[A-Za-z0-9.+-]+$")
 _INTEGRITY_PREFIX = re.compile(r"^(sha1|sha256|sha384|sha512|sha3-256|sha3-512)[-_](.+)$")
+
+def attach_remediation(bom: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Add remediation data to the document's advisories.
+
+    CycloneDX expresses "this version is fixed" as
+    ``affects[].versions[{version, status: "unaffected"}]`` — that is what a
+    consumer reads to plan an upgrade, so the scanner fills it from the matched
+    advisory instead of leaving the document with a bare CVE id.
+    """
+    fixes = {}
+    for vuln in result.get("vulnerabilities") or []:
+        cve = str(vuln.get("cve") or "").strip()
+        fixed = vuln.get("fixed_version")
+        if cve and fixed:
+            fixes[cve] = str(fixed)
+    if not fixes:
+        return bom
+    for vuln in bom.get("vulnerabilities") or []:
+        if not isinstance(vuln, dict):
+            continue
+        fixed = fixes.get(str(vuln.get("id") or ""))
+        if not fixed:
+            continue
+        vuln["recommendation"] = f"upgrade to {fixed} or later"
+        for entry in vuln.get("affects") or []:
+            if not isinstance(entry, dict):
+                continue
+            versions = [v for v in (entry.get("versions") or []) if isinstance(v, dict)]
+            versions.append({"version": fixed, "status": "unaffected"})
+            entry["versions"] = versions
+        props = [x for x in (vuln.get("properties") or []) if isinstance(x, dict)]
+        if not any(x.get("name") == "cryptoscan:fixed-version" for x in props):
+            props.append({"name": "cryptoscan:fixed-version", "value": fixed})
+            vuln["properties"] = props
+    return bom
+
 _ALG_NAMES = {
     "sha1": "SHA-1", "sha256": "SHA-256", "sha384": "SHA-384", "sha512": "SHA-512",
     "sha3-256": "SHA3-256", "sha3-512": "SHA3-512",

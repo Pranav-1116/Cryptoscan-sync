@@ -294,6 +294,9 @@ DEFAULT_GATE_POLICY: dict[str, Any] = {
     "require_minimum_elements": False,
     "max_unpinned": None,        # None = do not gate on pinning
     "require_signed": False,
+    # full license policy (see devsecops.sbom_license); `deny_licenses` above
+    # remains as the simple, backwards-compatible deny list
+    "license_policy": None,
 }
 
 
@@ -371,6 +374,17 @@ def evaluate_gate(bom: dict[str, Any] | None, *,
             warnings.append({"code": "GATE-LICENSE-DENIED-TRUNCATED", "severity": "INFO",
                              "detail": f"{len(hits) - 50} further license findings omitted"})
 
+    license_report = None
+    if effective["license_policy"]:
+        from devsecops.sbom_license import check_license_policy
+
+        license_report = check_license_policy(bom, policy=effective["license_policy"])
+        for violation in license_report["violations"]:
+            severity = "CRITICAL" if violation["code"] == "LICENSE-FORBIDDEN" else "HIGH"
+            target = blockers if violation["code"] == "LICENSE-FORBIDDEN" else warnings
+            target.append({"code": violation["code"].replace("LICENSE-", "GATE-LICENSE-"),
+                           "severity": severity, "detail": violation["detail"]})
+
     compliance = check_minimum_elements(bom)
     if effective["require_minimum_elements"] and not compliance["compliant"]:
         blockers.append({"code": "GATE-MINIMUM-ELEMENTS", "severity": "MEDIUM",
@@ -392,7 +406,7 @@ def evaluate_gate(bom: dict[str, Any] | None, *,
         blockers.append({"code": "GATE-UNSIGNED", "severity": "MEDIUM",
                          "detail": "artifact manifest is not signed"})
 
-    return {
+    result = {
         "verdict": "FAIL" if blockers else "PASS",
         "policy": effective,
         "counts": {"components": compliance["component_count"], **counts,
@@ -400,3 +414,11 @@ def evaluate_gate(bom: dict[str, Any] | None, *,
         "blockers": blockers,
         "warnings": warnings,
     }
+    if license_report is not None:
+        result["license_verdict"] = license_report["verdict"]
+        result["license_inventory"] = {
+            "distinct_licenses": license_report["inventory"]["distinct_licenses"],
+            "undeclared": len(license_report["inventory"]["undeclared"]),
+            "classes": license_report["inventory"]["classes"],
+        }
+    return result

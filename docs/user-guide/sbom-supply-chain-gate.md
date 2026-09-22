@@ -133,6 +133,63 @@ change: rolling `jws` back to a version an earlier feed flagged still shows as a
 `downgrade` in the diff, and the note tells you the fresh gate verdict is
 unchecked rather than clean — re-run the scan with a feed before trusting it.
 
+## License compliance
+
+`POST /api/v1/devsecops/sbom/license` (and the console's **Licenses** tab)
+returns every declared license grouped by SPDX identifier with the components
+carrying it, the components that declare nothing, and policy violations:
+
+```bash
+curl -fsS -X POST "$API/api/v1/devsecops/sbom/license" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"artifact_id":"'"$ARTIFACT_ID"'",
+       "policy":{"forbidden":["AGPL-3.0-only"],"restricted":["LGPL-2.1-only"],
+                 "require_declared":true}}'
+```
+
+* Verdicts: `FAIL` (a forbidden license is present), `REVIEW` (restricted,
+  undeclared, or a copyleft combination needing a human), `PASS`.
+* License **families** are the comparison unit, so a policy forbidding
+  `GPL-3.0-only` also catches `GPL-3.0-or-later` — never the reverse.
+* An **undeclared** license is reported as undeclared. It is never treated as
+  permitted, and never treated as denied.
+* Strong copyleft next to undeclared or proprietary components raises a
+  `LICENSE-REVIEW-COPYLEFT` finding. The wording is deliberate: it is a **policy
+  trigger for legal review, not a compatibility ruling** — the platform does not
+  model license compatibility matrices.
+
+The gate can run the same engine with `"license_policy"` in its policy object,
+in which case forbidden licenses become blockers and the rest become warnings.
+
+## VEX statements
+
+`POST /api/v1/devsecops/sbom/vex` and `GET /api/v1/devsecops/sbom/{id}/vex`
+produce CycloneDX VEX statements (download with `?dl=true`):
+
+* An advisory the platform matched is reported `exploitable` — that is what the
+  advisory asserts for the version range it matched. When a fixed version is
+  known it is carried as `recommendation` and in the document as
+  `affects[].versions[{version, status:"unaffected"}]`.
+* `not_affected` is only produced two ways: the affected component is provably
+  absent from the document (`code_not_present`), or an operator supplied an
+  explicit statement **with a justification**. A `not_affected` claim without a
+  justification is rejected with 422 — the rubber stamp VEX exists to prevent.
+* Everything else is `in_triage` with `can_not_fix`. The platform performs no
+  reachability analysis, so it will not pretend a vulnerable path is unreachable.
+* **Issuing a statement needs an operator role.** Read-only accounts may derive
+  statements and gate an artifact, but authoring one asserts something about
+  exploitability that ends up in a compliance artefact, so it returns 403 for
+  view-only accounts.
+
+## Cross-artifact index
+
+* `GET /sbom/components?q=&crypto=&limit=` — which artifact carries which
+  component (bounded, and it reports how many artifacts it scanned).
+* `GET /sbom/advisories?severity=&cve=` — advisories recorded across stored
+  artifacts, counting **only artifacts that were matched against a feed**, and
+  reporting how many were not. A scan run without a feed can never contribute a
+  "no advisories" row.
+
 ## Provenance
 
 Everything the gate reads is verifiable after the fact: the artifact stores the
