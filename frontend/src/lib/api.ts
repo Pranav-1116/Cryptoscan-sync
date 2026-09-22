@@ -1689,6 +1689,16 @@ export const apiSbomComponents = (filters: { q?: string; crypto?: boolean; limit
   return _sbomReq<any>(`/api/v1/devsecops/sbom/components${qs ? `?${qs}` : ""}`, "GET", undefined, 30000);
 };
 
+/** Binary/firmware scan: real parsing + graded crypto evidence -> SBOM + CBOM. */
+export const apiBinaryScan = (body: {
+  target: string; recursive?: boolean; include_raw?: boolean; format?: string;
+  feed?: any[]; ingest_cbom?: boolean;
+}) => _sbomReq<any>("/api/v1/devsecops/binary/scan", "POST", body, 60000);
+
+/** The CBOM stored next to a binary-scan artifact. */
+export const apiBinaryCbom = (artifactId: string) =>
+  _sbomReq<any>(`/api/v1/devsecops/binary/artifacts/${artifactId}/cbom`, "GET", undefined, 30000);
+
 /** Advisories recorded across checked artifacts (matched scans only). */
 export const apiSbomAdvisories = (filters: { severity?: string; cve?: string } = {}) => {
   const params = new URLSearchParams();

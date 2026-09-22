@@ -205,7 +205,7 @@ def _sbom_signing_secret(db: Session | None) -> tuple[str | None, str]:
 
 
 class SbomScanRequest(BaseModel):
-    kind: str = Field(..., description="source | container")
+    kind: str = Field(..., description="source | container | binary")
     target: str = Field(..., min_length=1, max_length=512,
                         description="source tree path, filesystem root, docker-save .tar, or registry image")
     format: str = Field("cyclonedx", description="cyclonedx | spdx")
@@ -214,6 +214,9 @@ class SbomScanRequest(BaseModel):
     use_lockfiles: bool = Field(True, description="source kind: merge resolved dependency lockfiles")
     feed: list[dict] | None = Field(None, description=("optional NVD-style advisory feed; matched "
                                                         "deterministically offline (no network)"))
+    recursive: bool = Field(True, description="binary kind: descend into subdirectories")
+    include_raw: bool = Field(False, description=("binary kind: also record files with no recognised "
+                                                  "container format but crypto-library evidence"))
 
 
 @router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
@@ -228,13 +231,14 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     import hashlib
     import uuid
 
+    from devsecops import binary_scan as binary
     from devsecops import sbom_scan as sb
     from devsecops.sbom import check_pinning
     from api.security.target_validation import TargetValidationError, validate_source_target
 
     kind = body.kind.lower()
-    if kind not in ("source", "container"):
-        raise HTTPException(status_code=422, detail="kind must be source or container")
+    if kind not in ("source", "container", "binary"):
+        raise HTTPException(status_code=422, detail="kind must be source, container or binary")
     if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
         raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
     fmt = "spdx" if body.format.lower() == "spdx" else "cyclonedx"
@@ -251,6 +255,20 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
                                     use_lockfiles=body.use_lockfiles)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+    elif kind == "binary":
+        try:
+            resolved = validate_source_target(body.target, label="target")
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        target_path = Path(resolved).expanduser()
+        if not target_path.exists():
+            raise HTTPException(status_code=404, detail=f"scan target not found: {resolved}")
+        try:
+            binary_result = binary.scan_path(target_path, recursive=body.recursive,
+                                             include_raw=body.include_raw)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        result = binary.sbom_result(binary_result)
     else:
         raw = str(body.target).strip()
         raw_path = Path(raw).expanduser()
@@ -320,6 +338,20 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         "pinned": pinning["pinned"],
         "unpinned": pinning["unpinned"],
         "vulnerability_count": len(result.get("vulnerabilities") or []),
+        # provenance of a binary scan: what was walked, what was parsed, and what
+        # the parser refused to claim (so "0 findings" reads honestly)
+        "binary_summary": ({
+            "files_walked": result.get("files_walked", 0),
+            "binaries_scanned": result.get("binaries_scanned", 0),
+            "by_format": result.get("by_format") or {},
+            "by_arch": result.get("by_arch") or {},
+            "crypto_libraries": len(result.get("libraries") or []),
+            "algorithms": (result.get("crypto") or {}).get("algorithms") or [],
+            "pqc_markers": (result.get("crypto") or {}).get("pqc_markers") or [],
+            "findings": len(result.get("findings") or []),
+            "findings_by_severity": _severity_counts(result.get("findings") or []),
+            "truncated": bool((result.get("limits") or {}).get("truncated")),
+        } if kind == "binary" else None),
         # whether an advisory feed was actually applied — an SBOM with zero
         # advisories because nothing was checked reads differently from one
         # that was checked against a feed and came back clean
@@ -332,6 +364,8 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
                          "as_image": bool(body.as_image),
                          "include_vendored": bool(body.include_vendored),
                          "use_lockfiles": bool(body.use_lockfiles),
+                         "recursive": bool(body.recursive),
+                         "include_raw": bool(body.include_raw),
                          "format": fmt, "feed_supplied": bool(body.feed)},
     }
     secret, key_id = _sbom_signing_secret(db)
@@ -351,6 +385,193 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
             "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
             "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
             "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom}
+
+
+def _severity_counts(findings: list[dict]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for finding in findings:
+        severity = str(finding.get("severity") or "INFO").upper()
+        counts[severity] = counts.get(severity, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+class BinaryScanRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=512,
+                        description="file or directory to scan for binaries and firmware")
+    recursive: bool = Field(True, description="descend into subdirectories")
+    include_raw: bool = Field(False, description="record unrecognised files that carry crypto evidence")
+    format: str = Field("cyclonedx", description="cyclonedx | spdx for the SBOM half")
+    feed: list[dict] | None = Field(None, description="optional NVD-style advisory feed")
+    ingest_cbom: bool = Field(False, description=("also load the CBOM into the platform crypto "
+                                                  "inventory (POST /cbom/ingest does the same)"))
+    system_name: str | None = Field(None, max_length=200, description="CBOM: system the assets belong to")
+
+
+@router.post("/binary/scan", status_code=status.HTTP_201_CREATED)
+def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Scan binaries, shared libraries, archives and firmware images end to end.
+
+    Deterministic and offline: magic-byte format identification, real parsing
+    (ELF dynamic/static/symbol/Go-buildinfo, PE imports/subsystem, Mach-O load
+    commands, ``ar``/zip members, WASM imports, firmware container chains and
+    device-tree identity), graded crypto evidence, then the same artefact
+    pipeline as every other scan — CycloneDX/SPDX SBOM, NTIA score, signing,
+    licence policy, gate, VEX, diff — plus a CycloneDX CBOM of the cryptographic
+    assets. Filesystems inside firmware are reported, never silently unpacked.
+    """
+    from datetime import datetime, timezone
+
+    import hashlib
+    import uuid
+
+    from devsecops import binary_scan as bs
+    from devsecops import sbom_scan as sb
+    from devsecops.sbom import check_pinning
+    from devsecops.sbom_assurance import check_minimum_elements
+    from api.security.target_validation import TargetValidationError, validate_source_target
+
+    if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
+        raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
+    fmt = "spdx" if body.format.lower() == "spdx" else "cyclonedx"
+    try:
+        resolved = validate_source_target(body.target, label="target")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    target_path = Path(resolved).expanduser()
+    if not target_path.exists():
+        raise HTTPException(status_code=404, detail=f"scan target not found: {resolved}")
+
+    try:
+        scan = bs.scan_path(target_path, recursive=body.recursive, include_raw=body.include_raw)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    result = bs.sbom_result(scan)
+    if body.feed:
+        try:
+            sb.enrich_vulnerabilities(result, body.feed)
+        except Exception as exc:  # noqa: BLE001 — a bad feed must not yield a fake-clean SBOM
+            raise HTTPException(status_code=422, detail=f"advisory feed could not be applied: {exc}")
+    else:
+        result.setdefault("vulnerabilities", [])
+    try:
+        bom = sb.render_sbom(result, fmt=fmt, created_by=user)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    cbom = bs.cbom_document(scan, target=str(scan.get("target")), created_by=user)
+
+    packages = result.get("packages") or []
+    payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sha256 = hashlib.sha256(payload).hexdigest()
+    artifact_id = str(uuid.uuid4())
+    artifact_key = f"{artifact_id}.{'cdx.json' if fmt == 'cyclonedx' else 'spdx.json'}"
+    cbom_key = f"{artifact_id}.cbom.json"
+    compliance = check_minimum_elements(bom)
+    components = [{"name": p.get("name"), "version": p.get("version") or p.get("declared_spec"),
+                   "ecosystem": p.get("manager")} for p in packages]
+    pinning = check_pinning(components)
+    findings = result.get("findings") or []
+    manifest = {
+        "artifact_id": artifact_id,
+        "kind": "binary",
+        "target": str(scan.get("target") or body.target),
+        "format": fmt,
+        "sha256": sha256,
+        "component_count": len(packages) + len(result.get("binaries") or []),
+        "binary_count": len(result.get("binaries") or []),
+        "crypto_components": len(result.get("libraries") or []),
+        "dependency_edges": len(result.get("dependencies") or []),
+        "minimum_elements": compliance["score"],
+        "compliant": compliance["compliant"],
+        "pinned": pinning["pinned"],
+        "unpinned": pinning["unpinned"],
+        "vulnerability_count": len(result.get("vulnerabilities") or []),
+        "feed_supplied": bool(body.feed),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_by": user,
+        "storage_key": artifact_key,
+        "cbom_storage_key": cbom_key,
+        "scan_options": {"kind": "binary", "target": str(scan.get("target") or body.target),
+                         "as_image": False, "include_vendored": False, "use_lockfiles": False,
+                         "recursive": bool(body.recursive), "include_raw": bool(body.include_raw),
+                         "format": fmt, "feed_supplied": bool(body.feed)},
+        "binary_summary": {
+            "files_walked": result.get("files_walked", 0),
+            "binaries_scanned": result.get("binaries_scanned", 0),
+            "by_format": result.get("by_format") or {},
+            "by_arch": result.get("by_arch") or {},
+            "crypto_libraries": len(result.get("libraries") or []),
+            "algorithms": (result.get("crypto") or {}).get("algorithms") or [],
+            "pqc_markers": (result.get("crypto") or {}).get("pqc_markers") or [],
+            "ecc_markers": (result.get("crypto") or {}).get("ecc_markers") or [],
+            "findings": len(findings),
+            "findings_by_severity": _severity_counts(findings),
+            "cbom_components": len(cbom.get("components") or []),
+            "truncated": bool((result.get("limits") or {}).get("truncated")),
+        },
+    }
+    secret, key_id = _sbom_signing_secret(db)
+    if secret:
+        manifest["signature_alg"] = "HMAC-SHA256"
+        manifest["signature_key"] = key_id
+        manifest["signature"] = sb.sign_manifest(manifest, secret)
+    store = _sbom_storage()
+    store.put(artifact_key, payload)
+    store.put(cbom_key, json.dumps(cbom, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    store.put_manifest(artifact_key, manifest)
+
+    cbom_result: dict = {"components": len(cbom.get("components") or []), "ingested": False}
+    if body.ingest_cbom:
+        # ingest through the same path POST /cbom/ingest uses, so "ingested" means
+        # the assets really are in the inventory (and not merely well-formed)
+        from api.routers.cbom import ingest_document
+
+        try:
+            loaded = ingest_document(bom=cbom, db=db,
+                                     system_name=body.system_name or f"binaries:{Path(resolved).name}",
+                                     owner=user)
+            cbom_result = {"components": len(cbom.get("components") or []),
+                           "records": loaded["imported"], "ingested": True,
+                           "system": loaded["system"].get("name"),
+                           "ingest_endpoint": "/api/v1/cbom/ingest"}
+            db.commit()
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001 — inventory unavailable is reported, never faked
+            cbom_result = {"components": len(cbom.get("components") or []), "ingested": False,
+                           "error": f"CBOM inventory unavailable: {exc}"}
+    UserRepository(db).audit(user, "devsecops.binary_scan", target_type="sbom_artifact",
+                             target_id=artifact_id,
+                             detail={"target": manifest["target"], "binaries": manifest["binary_count"],
+                                     "findings": len(findings), "sha256": sha256[:16]})
+    db.commit()
+    return {
+        "artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
+        "summary": manifest["binary_summary"],
+        "findings": findings[:200],
+        "crypto_libraries": result.get("libraries") or [],
+        "binaries": result.get("binaries") or [],
+        "cbom": cbom,
+        "cbom_result": cbom_result,
+        "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
+        "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
+        "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",
+        "bom": bom,
+    }
+
+
+@router.get("/binary/artifacts/{artifact_id}/cbom")
+def binary_cbom(artifact_id: str, user: str = Depends(require_roles(*_SBOM_READERS))):
+    """The CBOM stored alongside a binary-scan artifact."""
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    store = _sbom_storage()
+    key = f"{artifact_id}.cbom.json"
+    try:
+        blob = store.get(key)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail="no CBOM stored for this artifact")
+    return json.loads(blob.decode("utf-8"))
 
 
 @router.get("/sbom/artifacts")
@@ -633,7 +854,9 @@ def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
                "include_vendored": (overrides.include_vendored if overrides.include_vendored is not None
                                     else bool(opts.get("include_vendored"))),
                "use_lockfiles": (overrides.use_lockfiles if overrides.use_lockfiles is not None
-                                 else bool(opts.get("use_lockfiles")))}
+                                 else bool(opts.get("use_lockfiles"))),
+               "recursive": bool(opts.get("recursive", True)),
+               "include_raw": bool(opts.get("include_raw", False))}
     try:
         fresh = sbom_scan(SbomScanRequest(**request), db=db, user=user)
     except HTTPException as exc:

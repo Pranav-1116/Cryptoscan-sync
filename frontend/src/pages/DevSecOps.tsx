@@ -6,7 +6,7 @@ import {
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
   apiSbomGate, apiSbomRescan, apiSbomPrune, apiSbomLicense, apiSbomComponents,
   apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
-  apiConnectorPreview,
+  apiBinaryScan, apiBinaryCbom, apiConnectorPreview,
 } from "../lib/api.js";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
@@ -667,6 +667,177 @@ function SbomPanel() {
   );
 }
 
+
+/* ---- binaries & firmware ---- */
+function BinaryPanel() {
+  const [target, setTarget] = useState("");
+  const [fmt, setFmt] = useState("cyclonedx");
+  const [recursive, setRecursive] = useState(true);
+  const [includeRaw, setIncludeRaw] = useState(false);
+  const [feedText, setFeedText] = useState("");
+  const [feedError, setFeedError] = useState<string | null>(null);
+  const [res, setRes] = useState<ApiResult<any> | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [showBom, setShowBom] = useState(false);
+  const [showCbom, setShowCbom] = useState(false);
+  const [storedCbom, setStoredCbom] = useState<string | null>(null);
+  const [storedBusy, setStoredBusy] = useState(false);
+
+  /** Prove the CBOM was persisted: read it back from the artifact store. */
+  const fetchStoredCbom = async () => {
+    if (!res?.data?.artifact_id) return;
+    setStoredBusy(true);
+    try {
+      const answered = await apiBinaryCbom(res.data.artifact_id);
+      const stored = answered.data;
+      setStoredCbom(stored
+        ? `stored CBOM: ${stored.components?.length ?? 0} assets, serial ${stored.serialNumber}`
+        : `stored CBOM unavailable: ${answered.error ?? "empty response"}`);
+    } catch (e) { setStoredCbom("stored CBOM unavailable: " + String(e)); }
+    setStoredBusy(false);
+  };
+
+  const scan = async () => {
+    if (!target.trim()) { setRes({ source: "live", ok: false, data: null, error: "target is required" }); return; }
+    let feed: any[] | undefined;
+    if (feedText.trim()) {
+      try {
+        const parsed = JSON.parse(feedText);
+        feed = Array.isArray(parsed) ? parsed : (parsed?.vulnerabilities || parsed?.advisories);
+        if (!Array.isArray(feed)) throw new Error("expected a JSON array of advisories");
+        setFeedError(null);
+      } catch (e) {
+        // a malformed feed must not read as "no advisories found"
+        setFeedError("advisory feed is not valid JSON: " + String(e));
+        return;
+      }
+    } else { setFeedError(null); }
+    setBusy(true); setShowBom(false); setShowCbom(false); setStoredCbom(null);
+    try {
+      setRes(await apiBinaryScan({
+        target: target.trim(), recursive, include_raw: includeRaw, format: fmt, feed,
+      }));
+    } catch (e) { setRes({ source: "live", ok: false, data: null, error: String(e) }); }
+    setBusy(false);
+  };
+
+  const d = res?.data;
+  const summary = d?.summary;
+  const libraries: any[] = d?.crypto_libraries || [];
+  const findings: any[] = d?.findings || [];
+  const formats = Object.entries(summary?.by_format || {});
+  const severityTone = (s: string) => (s === "CRITICAL" || s === "HIGH" ? "red" : (s === "MEDIUM" ? "amber" : "gray"));
+  return (
+    <Panel title="Binaries, archives & firmware — parse, not guess"
+      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go buildinfo, PE imports, Mach-O load commands, ar/zip members, WASM imports, firmware container chains and device-tree identity — with graded crypto evidence, then the same SBOM/CBOM pipeline" className="mt">
+      <div className="grid" style={{ gridTemplateColumns: "1fr 130px", gap: 8, marginBottom: 8 }}>
+        <input className="inp" placeholder="file or directory (e.g. /opt/app, /tmp/firmware.img, /lib/x86_64-linux-gnu/libcrypto.so.3)"
+          value={target} onChange={(e) => setTarget(e.target.value)} />
+        <select className="inp" value={fmt} onChange={(e) => setFmt(e.target.value)}>
+          <option value="cyclonedx">CycloneDX 1.5</option>
+          <option value="spdx">SPDX 2.3</option>
+        </select>
+      </div>
+      <div className="row" style={{ gap: 14, marginBottom: 8, fontSize: 12.5, flexWrap: "wrap" }}>
+        <label><input type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} /> descend into subdirectories</label>
+        <label><input type="checkbox" checked={includeRaw} onChange={(e) => setIncludeRaw(e.target.checked)} /> include unrecognised blobs that carry crypto evidence</label>
+      </div>
+      <div className="mt" style={{ marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          advisory feed (JSON array, optional) — binary-detected crypto implementations match against ecosystem &#34;generic&#34; rows
+        </div>
+        <textarea className="inp" rows={2} style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          placeholder='[{"cve_id":"CVE-2026-0001","severity":"HIGH","affected":[{"ecosystem":"generic","package":"OpenSSL","ranges":[{"introduced":"3.0.0","fixed":"3.0.21"}]}]}]'
+          value={feedText} onChange={(e) => setFeedText(e.target.value)} />
+        {feedError && <div style={{ color: "var(--red, #e5484d)", fontSize: 12.5, marginTop: 4 }}>{feedError}</div>}
+      </div>
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn sm primary" onClick={() => void scan()} disabled={busy}>{busy ? "scanning…" : "Scan binaries"}</button>
+        {d?.artifact_id && (
+          <>
+            <Badge tone={d.manifest?.signature ? "green" : "gray"}>{d.manifest?.signature ? "signed artifact" : "unsigned artifact"}</Badge>
+            <span className="muted" style={{ fontSize: 12 }}>artifact {String(d.artifact_id).slice(0, 8)}</span>
+          </>
+        )}
+      </div>
+      <div className="mt" style={{ marginBottom: 8 }}><Err res={res} /></div>
+      {d && (
+        <>
+          <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+            <Badge tone="">{summary?.binaries_scanned ?? 0} binaries</Badge>
+            <Badge tone="">{summary?.files_walked ?? 0} files walked</Badge>
+            <Badge tone={(summary?.crypto_libraries || 0) > 0 ? "amber" : "gray"}>{summary?.crypto_libraries ?? 0} crypto implementations</Badge>
+            <Badge tone={(summary?.findings || 0) > 0 ? "amber" : "green"}>{summary?.findings ?? 0} findings</Badge>
+            <Badge tone="">CBOM {summary?.cbom_components ?? 0} assets</Badge>
+            {summary?.truncated && <Badge tone="red">TRUNCATED — walk cap hit</Badge>}
+            {d.manifest?.feed_supplied ? <Badge tone="amber">FEED SUPPLIED</Badge> : <Badge tone="">no feed</Badge>}
+          </div>
+          <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>formats</div>
+              <Table head={["format", "count"]} rows={formats.map(([k, v]) => [k, String(v)])} />
+            </div>
+            <div>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>architectures</div>
+              <Table head={["arch", "count"]} rows={Object.entries(summary?.by_arch || {}).map(([k, v]) => [k, String(v)])} />
+            </div>
+          </div>
+          {(summary?.pqc_markers?.length > 0 || summary?.ecc_markers?.length > 0) && (
+            <div className="row" style={{ gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+              {(summary.pqc_markers || []).map((m: string) => <Badge key={m} tone="green">PQC · {m}</Badge>)}
+              {(summary.ecc_markers || []).length > 0 && (
+                <Badge tone="amber">classical ECC present{summary.pqc_markers?.length ? " alongside PQC" : ""}</Badge>
+              )}
+            </div>
+          )}
+          {libraries.length > 0 && (
+            <div className="mt" style={{ marginBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>crypto implementations found in the images</div>
+              <Table head={["library", "version", "evidence", "found in", "state"]}
+                rows={libraries.map((l: any) => [
+                  l.name,
+                  l.version || "not embedded",
+                  (l.evidence || []).join(", ") || "-",
+                  (l.found_in || []).join(", "),
+                  l.deprecated ? <Badge tone="red">END OF LIFE</Badge> : <Badge tone="green">current line</Badge>,
+                ])} />
+            </div>
+          )}
+          {findings.length > 0 && (
+            <div className="mt" style={{ marginBottom: 10 }}>
+              <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>findings (each cites its evidence)</div>
+              <Table head={["code", "severity", "path", "detail"]}
+                rows={findings.map((f: any) => [
+                  f.code,
+                  <Badge tone={severityTone(f.severity)}>{f.severity}</Badge>,
+                  f.path,
+                  <span style={{ fontSize: 12 }}>{f.detail}</span>,
+                ])} />
+            </div>
+          )}
+          <div className="row" style={{ gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+            <button className="btn sm" onClick={() => setShowBom(!showBom)}>{showBom ? "Hide" : "Show"} SBOM</button>
+            <button className="btn sm" onClick={() => setShowCbom(!showCbom)}>{showCbom ? "Hide" : "Show"} CBOM</button>
+            {d.artifact_id && (
+              <button className="btn sm" onClick={() => void fetchStoredCbom()} disabled={storedBusy}>
+                {storedBusy ? "…" : "Fetch stored CBOM"}
+              </button>
+            )}
+            {d.artifact_id && (
+              <span className="muted" style={{ fontSize: 12 }}>
+                gate, license, VEX, diff and rescan are on the SBOM tab — this artifact has kind=binary
+              </span>
+            )}
+          </div>
+          {storedCbom && <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>{storedCbom}</div>}
+          {showBom && <Code>{JSON.stringify(d.bom, null, 2)}</Code>}
+          {showCbom && <Code>{JSON.stringify(d.cbom, null, 2)}</Code>}
+        </>
+      )}
+    </Panel>
+  );
+}
+
 /* ---- 17-20. connectors ---- */
 const CONNECTORS = [
   { id: "servicenow", label: "ServiceNow (incident)" },
@@ -721,13 +892,13 @@ function ConnectorPanel() {
 
 export default function DevSecOps() {
   const [tab, setTab] = useState(0);
-  const tabs = ["Container scan", "K8s manifests", "Cloud posture", "SBOM", "Connectors"];
+  const tabs = ["Container scan", "K8s manifests", "Cloud posture", "SBOM", "Binaries", "Connectors"];
   return (
     <>
       <PageHead
         crumb="operate / devsecops pipeline"
         title="DevSecOps pipeline"
-        sub="Container CVE scan on push · K8s misconfig rules · cloud CIS posture · CycloneDX/SPDX SBOM + pinning · ITSM/SIEM/bus/chat connectors — deterministic, fail-closed"
+        sub="Container CVE scan on push · K8s misconfig rules · cloud CIS posture · CycloneDX/SPDX SBOM + pinning · binary & firmware crypto evidence · ITSM/SIEM/bus/chat connectors — deterministic, fail-closed"
         right={<Badge tone=""><span className="dot" /> SHIFT-LEFT GATES</Badge>}
       />
       <div className="mt"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
@@ -735,7 +906,8 @@ export default function DevSecOps() {
       {tab === 1 && <K8sPanel />}
       {tab === 2 && <PosturePanel />}
       {tab === 3 && <SbomPanel />}
-      {tab === 4 && <ConnectorPanel />}
+      {tab === 4 && <BinaryPanel />}
+      {tab === 5 && <ConnectorPanel />}
     </>
   );
 }

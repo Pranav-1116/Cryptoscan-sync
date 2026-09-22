@@ -418,45 +418,49 @@ def cbom_assess(
         db.close()
 
 
-@router.post("/ingest")
-def cbom_ingest(
-    body: IngestCbomRequest,
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
-    check = validate_document(body.bom)
+def ingest_document(
+    *,
+    bom: dict,
+    db: Session,
+    system_name: str | None = None,
+    owner: str | None = None,
+    environment: str | None = None,
+) -> dict:
+    """Load a validated CBOM document into the crypto inventory.
+
+    Shared by POST /cbom/ingest and any scanner that wants to persist what it
+    just produced, so there is exactly one ingestion path: same validation, same
+    signature gate, same asset replacement semantics.
+    """
+    check = validate_document(bom)
     if not check["ok"]:
         raise HTTPException(status_code=422, detail="; ".join(check["errors"]))
-    # A signed CBOM must verify before it enters inventory — a tampered
-    # import would poison the estate with attacker-chosen components.
     props = {
         item.get("name")
-        for item in ((body.bom.get("metadata") or {}).get("properties") or [])
+        for item in ((bom.get("metadata") or {}).get("properties") or [])
     }
     if props & {"cryptoscan:jws", "cryptoscan:signature"}:
-        signature = CbomGenerator().verify_report(body.bom, _server_keyring())
+        signature = CbomGenerator().verify_report(bom, _server_keyring())
         if not signature["ok"]:
             raise HTTPException(
                 status_code=422,
                 detail=f"CBOM signature verification failed: {signature['error']}",
             )
-    records = records_from_bom(body.bom)
+    records = records_from_bom(bom)
     if not records:
         raise HTTPException(status_code=422, detail="No cryptographic components in document")
-    name = (body.system_name or bom_system_name(body.bom)).strip()
+    name = (system_name or bom_system_name(bom)).strip()
     if not name:
         raise HTTPException(status_code=422, detail="system_name is required")
     sys_repo = SystemRepository(db)
     system = sys_repo.get_or_create(
-        name,
-        owner=body.owner,
-        environment=body.environment,
+        name, owner=owner, environment=environment,
         description="Imported from CycloneDX CBOM",
     )
     extra = dict(system.extra or {})
     extra["cbom"] = {
-        "spec_version": body.bom.get("specVersion"),
-        "serial_number": body.bom.get("serialNumber"),
+        "spec_version": bom.get("specVersion"),
+        "serial_number": bom.get("serialNumber"),
         "imported_at": datetime.now(timezone.utc).isoformat(),
         "component_count": len(records),
         "source": "ingest",
@@ -497,6 +501,19 @@ def cbom_ingest(
         environment=system.environment,
     )
     return {"system": system.to_dict(), "imported": len(stored), "summary": summary}
+
+
+@router.post("/ingest")
+def cbom_ingest(
+    body: IngestCbomRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    check = validate_document(body.bom)
+    if not check["ok"]:
+        raise HTTPException(status_code=422, detail="; ".join(check["errors"]))
+    return ingest_document(bom=body.bom, db=db, system_name=body.system_name,
+                           owner=body.owner, environment=body.environment)
 
 
 @router.post("/diff")

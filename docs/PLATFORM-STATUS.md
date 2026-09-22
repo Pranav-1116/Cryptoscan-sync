@@ -21,6 +21,34 @@ across every service suite (collected at the release commit). Releases are cut t
 `python3 scripts/release_check.py` (VERSION == API version == `v` tag,
 dated CHANGELOG section, contiguous migrations, prod-guard intact).
 
+**Update (2026-09-22, binary & firmware scanning):** binaries are now *parsed*, not
+name-matched. `services/devsecops/devsecops/binary_scan.py` (stdlib only) reads ELF
+dynamic sections/RPATH/build-id/compiler/dynamic symbols and **Go build info including
+the module graph**, PE imports/subsystem/.NET, Mach-O fat+thin load commands, `ar`/`.deb`
+members with GNU long names, zip archives with Maven/Python metadata, WASM imports, Java
+class, RPM and raw blobs, plus firmware container chains (uImage, device-tree
+`model`/`compatible`, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd) with offsets and
+entropy. Crypto evidence is graded through the existing universal-crypto model, version
+banners are read out of the file, weak single-marker library claims are re-verified on
+identifier boundaries and anything dropped is reported with its reason
+(`suppressed_libraries`), PQC designations are captured in full (`ML-KEM-768`) while
+X25519/Ed25519 are classified as classical ECC. Output feeds the existing pipeline
+unchanged: CycloneDX/SPDX SBOM (crypto implementations and Go module graphs become
+components and dependency edges), CycloneDX CBOM ingested through the same
+`ingest_document` path as `POST /cbom/ingest`, then gate / licence / VEX / diff /
+rescan. New: `POST /devsecops/binary/scan`,
+`GET /devsecops/binary/artifacts/{id}/cbom`, `kind: "binary"` on
+`POST /devsecops/sbom/scan`, and a **Binaries** tab in the DevSecOps console. Component
+diffs now key on name *and* reference, so a binary called `openssl` and the `OpenSSL`
+library inside it are tracked separately. Stated limits: firmware filesystems are not
+extracted (`BIN-FIRMWARE-NOT-EXTRACTED`), RPM headers are not unpacked, Java class
+constant pools are not read, and every cap (512 MiB/file, 4 000 files, 750 binaries) is
+surfaced in the manifest. Tests: `services/devsecops/tests/test_binary_scan.py` (24) +
+`services/api/tests/unit/test_binary_scan_api.py` (7), on byte-level ELF/PE/ar/zip/
+firmware fixtures — including regression tests for the `RustCrypto`-in-OpenSSL
+false-positive class.
+
+
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC
 roles. New since the last measurement: six first-class scanner languages

@@ -40,6 +40,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Migration tracking](user-guide/migration-tracking.md) | PQC program progress |
 | [Drift detection](user-guide/drift-detection.md) | baseline vs. observed |
 | [CI/CD gates](user-guide/cicd-gates.md) · [CI drift gate](user-guide/ci-drift-gate.md) | pipeline enforcement |
+| [Binary & firmware scanning](user-guide/binary-firmware-scanning.md) | what is parsed in ELF/PE/Mach-O/archives/firmware, how crypto evidence is graded, and which limits are stated up front |
 | [SBOM supply-chain gate](user-guide/sbom-supply-chain-gate.md) | generate an SBOM, match advisories offline, block the build, re-scan and diff |
 | [Evidence pack](user-guide/evidence-pack.md) | hash-manifested exports |
 | **[Audit pack, exit report, engagement archive](user-guide/audit-pack-and-exit-report.md)** | the three hash-sealed engagement deliverables, SC-1…4 scorecard |

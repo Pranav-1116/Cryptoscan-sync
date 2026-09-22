@@ -178,9 +178,29 @@ def check_minimum_elements(bom: dict[str, Any] | None) -> dict[str, Any]:
 
 
 # ------------------------------------------------------------------- diff ---- #
+def _stable_ref_key(ref: str, name: str) -> str:
+    """A version-independent identity for a component reference.
+
+    A purl carries the version (``pkg:pypi/requests@2.31.0``), so keying a diff
+    on the raw ref would turn every upgrade into "removed + added". Stripping the
+    version keeps upgrades, downgrades and licence changes recognisable.
+    """
+    if not ref:
+        return name
+    head = ref.split("@", 1)[0] if "@" in ref else ref
+    return head.strip().lower()
+
+
 def _norm_components(bom: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    """name(lowercased) -> {version, crypto, purl, license} for either format."""
-    out: dict[str, dict[str, Any]] = {}
+    """Key -> {name, version, crypto, purl, license} for either format.
+
+    The key is the lowercased component name, which is what every caller of the
+    diff expects. Names are not unique, though: a binary called ``openssl`` and
+    the ``OpenSSL`` library inside it are two components. When one name covers
+    several components the key becomes the version-independent reference, so a
+    collision cannot hide a component from the diff.
+    """
+    rows: list[dict[str, Any]] = []
     if _is_cdx(bom):
         for comp in _cdx_components(bom):
             name = str(comp.get("name") or "").strip().lower()
@@ -194,12 +214,18 @@ def _norm_components(bom: dict[str, Any]) -> dict[str, dict[str, Any]]:
                 license_str = ((licenses[0].get("license") or {}).get("id")
                                or (licenses[0].get("license") or {}).get("name")
                                or licenses[0].get("expression"))
-            out[name] = {
-                "version": str(comp.get("version") or "") or None,
-                "crypto": props.get("cryptoscan:crypto-library") == "true",
-                "purl": str(comp.get("purl") or "") or None,
-                "license": license_str,
-            }
+            ref = str(comp.get("bom-ref") or "").strip()
+            rows.append({
+                "name": name, "ref": ref,
+                "payload": {
+                    "name": name,
+                    "ref": ref,
+                    "version": str(comp.get("version") or "") or None,
+                    "crypto": props.get("cryptoscan:crypto-library") == "true",
+                    "purl": str(comp.get("purl") or "") or None,
+                    "license": license_str,
+                },
+            })
     else:
         for pkg in spdx_components(bom):
             name = str(pkg.get("name") or "").strip().lower()
@@ -211,12 +237,37 @@ def _norm_components(bom: dict[str, Any]) -> dict[str, dict[str, Any]]:
                     purl = str(ref.get("referenceLocator") or "") or None
                     break
             lic = str(pkg.get("licenseDeclared") or "")
-            out[name] = {
-                "version": str(pkg.get("versionInfo") or "") or None,
-                "crypto": False,
-                "purl": purl,
-                "license": None if lic in ("", "NOASSERTION") else lic,
-            }
+            spdx_id = str(pkg.get("SPDXID") or "")
+            rows.append({
+                "name": name,
+                "ref": "" if spdx_id in ("", "NOASSERTION") else spdx_id,
+                "payload": {
+                    "name": name,
+                    "ref": spdx_id if spdx_id not in ("", "NOASSERTION") else None,
+                    "version": str(pkg.get("versionInfo") or "") or None,
+                    "crypto": False,
+                    "purl": purl,
+                    "license": None if lic in ("", "NOASSERTION") else lic,
+                },
+            })
+
+    out: dict[str, dict[str, Any]] = {}
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in rows:
+        grouped.setdefault(row["name"], []).append(row)
+    for name, group in grouped.items():
+        if len(group) == 1:
+            out[name] = group[0]["payload"]
+            continue
+        # deterministic: the entry with the shortest stable key keeps the plain
+        # name, the others are keyed by their own reference
+        for row in sorted(group, key=lambda r: (_stable_ref_key(r["ref"], name), r["ref"])):
+            key = _stable_ref_key(row["ref"], name)
+            if key == name or key in out:
+                key = (row["ref"] or name).strip().lower()
+            while key in out:
+                key = f"{key}#{len(out)}"
+            out[key] = row["payload"]
     return out
 
 
@@ -239,24 +290,30 @@ def diff_boms(old: dict[str, Any] | None, new: dict[str, Any] | None) -> dict[st
     """Component-level diff between two SBOM documents (CycloneDX or SPDX)."""
     before, after = _norm_components(old or {}), _norm_components(new or {})
     added, removed, changed = [], [], []
-    for name in sorted(set(after) - set(before)):
-        row = after[name]
-        added.append({"name": name, "version": row["version"], "crypto": row["crypto"]})
-    for name in sorted(set(before) - set(after)):
-        row = before[name]
-        removed.append({"name": name, "version": row["version"], "crypto": row["crypto"]})
-    for name in sorted(set(before) & set(after)):
-        old_row, new_row = before[name], after[name]
+
+    def _row(key: str, row: dict[str, Any]) -> dict[str, Any]:
+        return {"name": row.get("name") or key, "ref": row.get("ref") or key,
+                "version": row["version"], "crypto": row["crypto"]}
+
+    for key in sorted(set(after) - set(before)):
+        added.append(_row(key, after[key]))
+    for key in sorted(set(before) - set(after)):
+        removed.append(_row(key, before[key]))
+    for key in sorted(set(before) & set(after)):
+        old_row, new_row = before[key], after[key]
+        name = new_row.get("name") or key
         if (old_row["version"] or "") != (new_row["version"] or ""):
             direction = "change"
             if old_row["version"] and new_row["version"]:
                 cmp = _vercmp(new_row["version"], old_row["version"])
                 direction = "upgrade" if cmp > 0 else ("downgrade" if cmp < 0 else "change")
-            changed.append({"name": name, "from": old_row["version"], "to": new_row["version"],
-                            "direction": direction, "crypto": new_row["crypto"] or old_row["crypto"]})
+            changed.append({"name": name, "ref": key, "from": old_row["version"],
+                            "to": new_row["version"], "direction": direction,
+                            "crypto": new_row["crypto"] or old_row["crypto"]})
         if (old_row["license"] or "") != (new_row["license"] or ""):
-            changed.append({"name": name, "from": old_row["license"], "to": new_row["license"],
-                            "direction": "license_change", "crypto": new_row["crypto"] or old_row["crypto"]})
+            changed.append({"name": name, "ref": key, "from": old_row["license"],
+                            "to": new_row["license"], "direction": "license_change",
+                            "crypto": new_row["crypto"] or old_row["crypto"]})
     crypto_delta = {
         "added": [r for r in added if r["crypto"]],
         "removed": [r for r in removed if r["crypto"]],

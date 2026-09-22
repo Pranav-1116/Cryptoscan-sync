@@ -52,6 +52,7 @@ inventing a finding.
 | **Network / TLS** | live TLS endpoints, protocol+cipher posture, certificate chains, STARTTLS | `services/network_scanner` |
 | **Certificates** | inventory, expiry, chain validation + full lifecycle (CSR → issue → renew → revoke) | `services/api` certificates group, `Certificates` page |
 | **Cloud** | AWS KMS, Azure Key Vault, GCP Cloud KMS key metadata; AWS ACM certificates (fingerprint = real SHA-256 of the DER) | `services/cloud_scanner` |
+| **Binaries / firmware** | **real parsing, not name matching**: ELF (deps, RPATH, build-id, compiler, symbols, Go build-info + module graph), PE, Mach-O, `ar`/`.deb`, jars/wheels/nupkgs, WASM, firmware container chains + device-tree identity — graded crypto evidence, then SBOM components and an ingestible CBOM | `services/devsecops/devsecops/binary_scan.py`, `POST /devsecops/binary/scan` |
 | **Containers / IaC** | image and filesystem package inventory, crypto binaries, Dockerfile/IaC rules | `services/container_scanner`, `container_scans` group |
 | **OT / ICS** | **passive — zero packets sent**; PLC/RTU/SCADA crypto posture | `services/ot_scanner`, `services/ot_safety` |
 | **Telecom** | 5GC / EPC / IMS / roaming verdicts, SEPP PQC readiness, per-carrier packs, closed-network ingest | `services/telecom_scanner` |

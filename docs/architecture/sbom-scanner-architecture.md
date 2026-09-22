@@ -19,7 +19,7 @@ Two rules govern this document:
 |---|---|---|
 | Source code manifests (13 ecosystems) | **Shipped** — manifest + lockfile parsers, resolved/transitive graph | `devsecops/sbom_scan.py`, `devsecops/sbom_lockfiles.py` |
 | Container image | **Shipped** — deterministic rootfs/`docker save`/as-image path; registry pull fails closed with an honest 503 when Docker is unavailable | `devsecops/sbom_scan.py`, `POST /devsecops/sbom/scan {kind: container}` |
-| Binary / firmware | **Partial** — binaries matching the crypto library name set are discovered, sha256-hashed into the BOM and fingerprinted with crypto metadata. **No ELF/PE/Mach-O symbol extraction, no `go version -m` build-info reader, no `binwalk`** — the target diagram's symbol/string analysis is not implemented | `container_scanner/core/scanner.py` (`_discover_binaries`, `_fingerprint`) |
+| Binary / firmware | **Shipped (parse) / Partial (extract)** — real parsers for ELF (dynamic deps, RPATH, build-id, compiler, dynamic symbols, **Go build info incl. the module graph**), PE (imports via RVA mapping, subsystem, .NET), Mach-O (fat + thin, load commands, UUID), `ar`/`.deb`, zip (jar/wheel/nupkg/APK metadata), WASM, Java class, RPM header, raw blobs, and firmware container chains (uImage, device-tree `model`/`compatible`, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd…). Crypto evidence is graded (string < symbol < import < constant < fingerprint) with per-file provenance. **Squashfs/JFFS2 contents are NOT extracted (that needs binwalk); an RPM header is not unpacked; Java class constant pools are not read** — each of these is reported as a finding, never implied | `services/devsecops/devsecops/binary_scan.py`, `POST /devsecops/binary/scan`, `container_scanner/core/scanner.py` (`_discover_binaries` remains for image-wide name matching) |
 | Build system (CI plugins, SLSA) | **Partial** — CI gate ships (`devsecops.sbom_gate` CLI + `scripts/ci_gate.py`); SLSA/in-toto attestation ingestion is **not implemented** | `services/devsecops/devsecops/sbom_gate.py` |
 | Vendor SBOM ingestion | **Shipped (ingest + assurance)** — stored as artifacts, format detected, signature/digest verified, NTIA scored, licensed, gated | `POST /devsecops/sbom/import`, `/sbom/validate`, `/sbom/license`, `/sbom/{id}/gate` |
 | Manual upload | **Shipped** — same import endpoint, console tab | console → DevSecOps → SBOM → Import |
@@ -27,8 +27,23 @@ Two rules govern this document:
 | Runtime SBOM (eBPF) | **Not implemented** — no kernel agent, no `/proc/{pid}/maps` collector | — |
 | Cloud resource SBOM (Lambda, Functions, Cloud Run…) | **Partial** — cloud scanning exists (`services/cloud_scanner`) but does not emit SBOM components for managed runtimes | `services/cloud_scanner` |
 | Third-party API (Venafi, Snyk, Black Duck…) | **Partial** — `services/vendor_intel` imports CycloneDX **cryptographic-asset** components from a vendor SBOM/CBOM into the inventory; per-vendor SBOM exporters (Snyk, Black Duck, FOSSA…) are not implemented | `vendor_intel/sbom_import.py`, `services/connector_sdk` |
-| Firmware (binwalk, SquashFS/JFFS2) | **Partial** — firmware images can be scanned as container/rootfs targets; binwalk extraction and filesystem mounting are not implemented | `container_scanner` |
+| Firmware (binwalk, SquashFS/JFFS2) | **Partial** — firmware images are identified and their container chain mapped (offsets for uImage/DTB/squashfs/JFFS2/UBIFS/gzip/xz/zstd), device-tree identity extracted, entropy reported; **no extraction and no filesystem mounting** (binwalk needed), and the finding `BIN-FIRMWARE-NOT-EXTRACTED` says so on every such image | `devsecops/binary_scan.py` (`parse_firmware`, `_parse_dtb`) |
 | Registry webhooks (ECR, ACR, Harbor…) | **Shipped** — a single authenticated endpoint handles push events from ACR/GCR/ECR/Harbor/Docker Hub style registries (HMAC signature or machine API key, fail-closed), documented in the admin guide | `api/routers/webhooks.py::container_registry_webhook` |
+
+### 1.1 Binary scanning — how a binary becomes a component
+
+The binary scanner is not a separate stack: it produces the same canonical result
+shape the SBOM renderer consumes, so binaries flow through rendering, NTIA
+scoring, licence policy, gate, signing, VEX, diff and CBOM like any other scan.
+
+| Step | What happens | Evidence kept |
+|---|---|---|
+| Identify | magic bytes only; `MZ` must carry `PE\0\0` at `e_lfanew`, fat Mach-O is told apart from a Java class file by arch count | format, arch, bits |
+| Parse | ELF/PE/Mach-O/ar/zip/WASM/class/RPM/firmware parsers (stdlib only, every read bounds-checked) | dependencies, symbols, compiler, build-id, Go module graph, archive members, DTB model |
+| Fingerprint | universal-crypto tables plus version banners read from the file, with identifier-boundary matching | per library: `evidence_classes`, verdict, and the versions of anything the strict pass refused to confirm (`suppressed_libraries`, with the reason) |
+| Classify crypto | AES/RSA/ECDSA/MD5/SHA-1… graded per detection; PQC designations captured in full (`ML-KEM-768`, not `ML-KEM`); X25519/Ed25519 counted as **classical ECC** (Shor-vulnerable), never as PQC | confidence level + strongest evidence + the strings/symbols that produced it |
+| Report | findings cite the file and the evidence; EOL versions, weak primitives, statically linked crypto, packed content, non-system RPATH, and every "we did not parse this" gap | `BIN-*` codes with severity |
+| Emit | CycloneDX SBOM (crypto libraries become components, Go module graph becomes the dependency tree) and CycloneDX CBOM (`cryptographic-asset` per algorithm, ingestible via `POST /cbom/ingest`) | component `bom-ref`, sha256, `cryptoscan:*` properties |
 
 ## 2. Ingestion and processing
 

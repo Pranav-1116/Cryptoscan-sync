@@ -390,6 +390,10 @@ MANAGER_ECOSYSTEM = {
     "dpkg": "deb",
     "apk": "apk",
     "rpm": "rpm",
+    # a crypto implementation parsed out of a binary has no package ecosystem;
+    # "generic" is the honest bucket, and it is what the purl says too, so a feed
+    # row carrying ecosystem "generic" can match it by name and version
+    "binary": "generic",
 }
 
 _SPDX_ID_SAFE = re.compile(r"^[A-Za-z0-9.+-]+$")

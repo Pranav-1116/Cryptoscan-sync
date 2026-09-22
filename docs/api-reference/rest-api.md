@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-22:
-**642 paths, 707 operations** across 85 tagged groups.
+**644 paths, 709 operations** across 85 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -414,6 +414,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/cbom` | Binary Cbom |
+| `POST` | `/api/v1/devsecops/binary/scan` | Binary Scan |
 | `POST` | `/api/v1/devsecops/chat/action` | Chat Action |
 | `POST` | `/api/v1/devsecops/cloud-posture` | Cloud Posture |
 | `POST` | `/api/v1/devsecops/connectors/preview` | Connector Preview |
