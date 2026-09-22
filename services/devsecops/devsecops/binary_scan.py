@@ -991,6 +991,16 @@ def parse_pe(data: bytes) -> dict[str, Any]:
             out["type"] = "efi-image"
     except Exception:  # noqa: BLE001
         pass
+    try:
+        dll_characteristics = reader.unpack("<H", optional + 70)[0]
+    except Exception:  # noqa: BLE001 — an image too short for the field is just not scored
+        dll_characteristics = 0
+    hardening: dict[str, Any] = {"dll_characteristics": hex(dll_characteristics)}
+    for bit, (label, expected) in PE_DLL_CHARACTERISTICS.items():
+        hardening[label] = bool(dll_characteristics & bit) if expected else not bool(
+            dll_characteristics & bit)
+    out["hardening"] = hardening
+
     number_of_dirs = reader.unpack("<I", optional + (108 if is64 else 92))[0]
     directory_base = optional + (112 if is64 else 96)
 
@@ -1064,11 +1074,56 @@ def parse_pe(data: bytes) -> dict[str, Any]:
                     version_label = (metadata.get("framework_version")
                                      or metadata.get("runtime_version") or "")
                     out["framework"] = f".NET {version_label}".strip()
+    if len(directories) > 10:
+        load_config_rva, load_config_size = directories[10]
+        if load_config_rva and load_config_size:
+            load_config = _pe_load_config(reader, load_config_rva, load_config_size, rva_to_offset,
+                                          is64)
+            if load_config:
+                out["load_config"] = load_config
+                hardening["gs"] = bool(load_config.get("security_cookie"))
+                if load_config.get("guard_flags") is not None:
+                    # GUARD_CF says the image was *compiled* with CFG; the guard flags
+                    # say whether the check function is actually wired up
+                    hardening["cfg_instrumented"] = bool(
+                        load_config["guard_flags"] & PE_GUARD_CF_INSTRUMENTED)
     rich = _pe_rich_header(data)
     if rich:
         out["linker"] = rich
     out["imports"] = [f"{dll}!" for dll in out["libraries"]]
     return out
+
+
+def _pe_load_config(reader: _Reader, rva: int, size: int, rva_to_offset,
+                    is64: bool) -> dict[str, Any]:
+    """IMAGE_LOAD_CONFIG_DIRECTORY: /GS cookie, CFG guard flags, SafeSEH table.
+
+    The mitigation *policy* lives in DllCharacteristics; the load config says
+    whether the mechanism is actually initialised (a security cookie pointer that
+    is not null, CFG instrumented), which is the difference between "built with
+    /GS" and "the stack cookie is live in this image".
+    """
+    offset = rva_to_offset(rva)
+    if offset is None:
+        return {}
+    try:
+        out: dict[str, Any] = {}
+        declared = reader.unpack("<I", offset)[0]
+        out["declared_size"] = declared
+        if is64:
+            cookie = reader.unpack("<Q", offset + 0x40)[0]
+            seh_table = reader.unpack("<Q", offset + 0x58)[0]
+            guard_flags = reader.unpack("<I", offset + 0x70)[0]
+        else:
+            cookie = reader.unpack("<I", offset + 0x3C)[0]
+            seh_table = reader.unpack("<I", offset + 0x40)[0]
+            guard_flags = reader.unpack("<I", offset + 0x48)[0]
+        out["security_cookie"] = hex(cookie) if cookie else None
+        out["safe_seh_table"] = hex(seh_table) if seh_table else None
+        out["guard_flags"] = guard_flags
+        return out
+    except Exception:  # noqa: BLE001 — a truncated load config is simply not scored
+        return {}
 
 
 def _pe_delay_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str]:
@@ -2161,6 +2216,18 @@ def parse_firmware(data: bytes) -> dict[str, Any]:
     out["packed_or_encrypted"] = out["entropy"] > 7.2
     return out
 
+
+#: IMAGE_DLLCHARACTERISTICS_* — the PE equivalent of ELF's hardening bits
+PE_DLL_CHARACTERISTICS = {
+    0x0020: ("high_entropy_va", True), 0x0040: ("aslr", True),
+    0x0080: ("force_integrity", True), 0x0100: ("dep", True),
+    0x0200: ("isolation", False), 0x0400: ("seh", False),
+    0x0800: ("bind", False), 0x1000: ("appcontainer", True),
+    0x2000: ("wdm_driver", True), 0x4000: ("cfg", True),
+    0x8000: ("terminal_server_aware", True),
+}
+#: LOAD_CONFIG GuardFlags bit that says Control Flow Guard is actually instrumented
+PE_GUARD_CF_INSTRUMENTED = 0x100
 
 #: legacy U-Boot image header (64 bytes, big-endian) field values
 UIMAGE_OS: dict[int, str] = {0: "invalid", 1: "openbsd", 2: "netbsd", 3: "freebsd", 4: "4.4bsd",
@@ -3360,6 +3427,49 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                        "this artefact can rewrite its contents"),
             "path": path,
         })
+    if record.get("format") == "pe":
+        hardening = record.get("hardening") or {}
+        if hardening.get("aslr") is False:
+            findings.append({
+                "code": "BIN-NO-ASLR", "severity": "MEDIUM",
+                "title": "PE image is not position independent (no DYNAMIC_BASE)",
+                "detail": ("IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE is not set, so the image "
+                           "loads at its preferred base address and its addresses are stable "
+                           "across runs — a ROP target"),
+                "path": path,
+            })
+        if hardening.get("dep") is False:
+            findings.append({
+                "code": "BIN-NO-DEP", "severity": "HIGH",
+                "title": "PE image does not opt into DEP (no NX_COMPAT)",
+                "detail": ("IMAGE_DLLCHARACTERISTICS_NX_COMPAT is not set, so the loader may "
+                           "map writable pages as executable"),
+                "path": path,
+            })
+        if hardening.get("cfg") is False:
+            findings.append({
+                "code": "BIN-NO-CFG", "severity": "LOW",
+                "title": "PE image is not compiled with Control Flow Guard",
+                "detail": ("IMAGE_DLLCHARACTERISTICS_GUARD_CF is not set — indirect calls are "
+                           "not checked"),
+                "path": path,
+            })
+        elif hardening.get("cfg_instrumented") is False:
+            findings.append({
+                "code": "BIN-NO-CFG", "severity": "LOW",
+                "title": "Control Flow Guard is declared but not instrumented",
+                "detail": ("GUARD_CF is set but the load config does not mark the image as CFG "
+                           "instrumented, so the check function may not be called"),
+                "path": path,
+            })
+        if record.get("load_config") and hardening.get("gs") is False:
+            findings.append({
+                "code": "BIN-NO-STACK-CANARY", "severity": "LOW",
+                "title": "PE image has a load config but no security cookie (/GS)",
+                "detail": ("the load config directory is present and its SecurityCookie pointer "
+                           "is null, so stack-cookie protection is not initialised"),
+                "path": path,
+            })
     for dll in record.get("delay_imports") or []:
         findings.append({
             "code": "BIN-DELAYED-IMPORT", "severity": "INFO",
@@ -3712,6 +3822,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "encrypted": record.get("encrypted"),
             "uimage": record.get("uimage"),
             "signature_package": record.get("signature") if record.get("format") == "rpm" else None,
+            "load_config": record.get("load_config"),
             "package_signed": (record.get("containers_followed") or [{}])[0].get("package_signed"),
             "signed_package": record.get("signed"),
             "symbols_sampled": record.get("symbols_sampled"),

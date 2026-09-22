@@ -124,6 +124,17 @@ is checked for a detached `_gpgorigin`/`_gpgbuilder` member and reported as
 repository metadata, not in the package), so the finding informs without implying
 tampering. Tests: 66 in `test_binary_scan.py`, 338 across devsecops + binary API + cbom.
 
+**Update (2026-09-22, PE mitigations):** PE now has the mitigation reporting ELF has had.
+`DllCharacteristics` is decoded into a hardening map (ASLR/DYNAMIC_BASE, high-entropy VA,
+DEP/NX_COMPAT, SEH, isolation, CFG, force-integrity, AppContainer), and
+`IMAGE_LOAD_CONFIG_DIRECTORY` is read for the facts that say whether the mechanism is
+*live*: a non-null SecurityCookie (`/GS`), the SafeSEH table, and `GuardFlags`
+(`GUARD_CF_INSTRUMENTED`). Findings: `BIN-NO-ASLR` (MEDIUM — stable addresses across runs),
+`BIN-NO-DEP` (HIGH), `BIN-NO-CFG` (LOW, including the "declared but not instrumented"
+case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null cookie.
+The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
+renderer. Tests: 70 in `test_binary_scan.py`.
+
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC

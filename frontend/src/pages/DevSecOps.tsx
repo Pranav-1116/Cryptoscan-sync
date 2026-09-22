@@ -730,11 +730,16 @@ function BinaryPanel() {
     (b.containers_followed || []).map((c: any) => ({ ...c, binary: b.path })));
   const derived = binaries.filter((b: any) => b.derived_from);
   const formats = Object.entries(summary?.by_format || {});
+  // one renderer for every format's mitigation vocabulary: ELF (pie/nx/relro/
+  // canary/fortified), PE (aslr/dep/cfg/gs/seh) and Mach-O (pie/hardened-runtime)
   const hardeningOf = (b: any) => {
     const h = b.hardening || {};
-    if (!h || Object.keys(h).length === 0) return "—";
-    return ["pie", "nx", "relro", "canary", "fortified"]
-      .map((k) => `${h[k] ? "+" : "−"}${k}`).join(" ") + (h.full_relro ? " +full-relro" : "")
+    const keys = ["pie", "nx", "aslr", "dep", "relro", "canary", "gs", "cfg", "fortified"]
+      .filter((k) => k in h);
+    if (!keys.length) return "—";
+    return keys.map((k) => `${h[k] ? "+" : "−"}${k}`).join(" ")
+      + (h.full_relro ? " +full-relro" : "")
+      + (h.cfg_instrumented ? " +cfg-instrumented" : "")
       + (h.hardened_runtime ? " +hardened-runtime" : "");
   };
   // linkage, code signature and OS floor: what the file links against and who
@@ -766,7 +771,7 @@ function BinaryPanel() {
   const severityTone = (s: string) => (s === "CRITICAL" || s === "HIGH" ? "red" : (s === "MEDIUM" ? "amber" : "gray"));
   return (
     <Panel title="Binaries, archives & firmware — parse, not guess"
-      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors/section table, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence, Mach-O dylib versions + symbol table + code-signature entitlements + signing team, Java constant pools, RPM headers, ar/zip/cpio(initramfs)/deb members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
+      sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors/section table, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence/ASLR-DEP-CFG-GS mitigations, Mach-O dylib versions + symbol table + code-signature entitlements + signing team, Java constant pools, RPM headers, ar/zip/cpio(initramfs)/deb members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
       <div className="grid" style={{ gridTemplateColumns: "1fr 130px", gap: 8, marginBottom: 8 }}>
         <input className="inp" placeholder="file or directory (e.g. /opt/app, /tmp/firmware.img, /lib/x86_64-linux-gnu/libcrypto.so.3)"
           value={target} onChange={(e) => setTarget(e.target.value)} />

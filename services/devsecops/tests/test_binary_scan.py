@@ -223,7 +223,9 @@ def _version_info_blob(version: str = "9.1.0.0", product: str = "Acme Toolkit") 
 
 def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
              pdb: str = "C:\\build\\acme\\acme.pdb", subsystem: int = 3,
-             clr: bool = False) -> bytes:
+             clr: bool = False, dll_characteristics: int = 0x4160,
+             load_config: bool = False, security_cookie: int = 0x140002000,
+             guard_flags: int = 0x100) -> bytes:
     """PE32+ with version resources, debug dir, delay imports, cert table, Rich."""
     raw_offset = 0x400
     pe_offset = 0x100
@@ -278,6 +280,15 @@ def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
     optional = pe_offset + 24
     struct.pack_into("<H", data, optional, 0x20B)
     struct.pack_into("<H", data, optional + 68, subsystem)
+    struct.pack_into("<H", data, optional + 70, dll_characteristics)
+    if load_config:
+        # IMAGE_LOAD_CONFIG_DIRECTORY64: security cookie at 0x40, guard flags at 0x70
+        config = bytearray(0x80)
+        struct.pack_into("<I", config, 0, len(config))
+        struct.pack_into("<Q", config, 0x40, security_cookie)
+        struct.pack_into("<Q", config, 0x58, 0x140003000)          # SafeSEH table
+        struct.pack_into("<I", config, 0x70, guard_flags)
+        data[raw_offset + 0x700:raw_offset + 0x700 + len(config)] = config
     struct.pack_into("<I", data, optional + 108, 16)
     base = optional + 112
     struct.pack_into("<II", data, base + 1 * 8, 0x1000, 0x28)      # imports
@@ -286,6 +297,8 @@ def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
                      len(certificate) if signed else 0)            # certificate table
     struct.pack_into("<II", data, base + 6 * 8, 0x1180, 28)        # debug
     struct.pack_into("<II", data, base + 13 * 8, 0x1100, 0x60)     # delay imports
+    if load_config:
+        struct.pack_into("<II", data, base + 10 * 8, 0x1700, 0x80)  # load config
     if clr:
         struct.pack_into("<II", data, base + 14 * 8, 0x1800, 72)   # COM descriptor
     section_table = optional + 240
@@ -1085,6 +1098,50 @@ def test_java_class_constant_pool_is_read(tmp_path):
     assert record["java"]["class_version"] == "61.0"
     assert "AES/GCM/NoPadding" in record["java"]["strings"]
     assert any(finding["code"] == "BIN-WEAK-PRIMITIVE-CLASS" for finding in record["findings"])
+
+
+def test_pe_mitigations_are_read_from_dllcharacteristics():
+    """PE hardening parity with ELF: ASLR, DEP, CFG, SEH, GS from the header."""
+    hardening = bs.parse_pe(_pe_rich(dll_characteristics=0x4160))["hardening"]
+    assert hardening["aslr"] is True and hardening["dep"] is True
+    assert hardening["high_entropy_va"] is True and hardening["cfg"] is True
+    assert hardening["seh"] is True and hardening["isolation"] is True
+    # 0x0400 (NO_SEH) and 0x0200 (NO_ISOLATION) are inverted when set
+    legacy = bs.parse_pe(_pe_rich(dll_characteristics=0x0600))["hardening"]
+    assert legacy["seh"] is False and legacy["isolation"] is False
+    assert legacy["aslr"] is False and legacy["dep"] is False
+
+
+def test_pe_load_config_says_whether_gs_and_cfg_are_live():
+    """DllCharacteristics declares the policy; the load config says it is wired up."""
+    parsed = bs.parse_pe(_pe_rich(load_config=True))
+    assert parsed["load_config"]["security_cookie"] == "0x140002000"
+    assert parsed["load_config"]["guard_flags"] == 0x100
+    assert parsed["hardening"]["gs"] is True
+    assert parsed["hardening"]["cfg_instrumented"] is True
+
+    without = bs.parse_pe(_pe_rich(load_config=True, security_cookie=0, guard_flags=0))
+    assert without["hardening"]["gs"] is False
+    assert without["hardening"]["cfg_instrumented"] is False
+
+
+def test_unmitigated_pe_raises_aslr_dep_cfg_and_gs_findings(tmp_path):
+    path = tmp_path / "legacy.exe"
+    path.write_bytes(_pe_rich(dll_characteristics=0x0000, load_config=True, security_cookie=0,
+                              guard_flags=0))
+    record = bs.scan_file(path)
+    findings = {finding["code"]: finding for finding in record["findings"]}
+    assert findings["BIN-NO-ASLR"]["severity"] == "MEDIUM"
+    assert findings["BIN-NO-DEP"]["severity"] == "HIGH"
+    assert findings["BIN-NO-CFG"]["severity"] == "LOW"
+    assert findings["BIN-NO-STACK-CANARY"]["severity"] == "LOW"
+    assert "not position independent" in findings["BIN-NO-ASLR"]["title"]
+
+    # a fully mitigated image raises none of them
+    hardened = tmp_path / "hardened.exe"
+    hardened.write_bytes(_pe_rich(dll_characteristics=0x4160, load_config=True))
+    codes = {finding["code"] for finding in bs.scan_file(hardened)["findings"]}
+    assert not codes & {"BIN-NO-ASLR", "BIN-NO-DEP", "BIN-NO-CFG", "BIN-NO-STACK-CANARY"}
 
 
 def test_pe_version_info_names_the_publisher():
