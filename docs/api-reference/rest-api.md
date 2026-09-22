@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-22:
-**635 paths, 700 operations** across 85 tagged groups.
+**637 paths, 702 operations** across 85 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -427,7 +427,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/devsecops/sbom/scan` | Sbom Scan |
 | `POST` | `/api/v1/devsecops/sbom/validate` | Sbom Validate |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/download` | Sbom Download |
+| `POST` | `/api/v1/devsecops/sbom/{artifact_id}/gate` | Sbom Gate |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/report` | Sbom Report |
+| `POST` | `/api/v1/devsecops/sbom/{artifact_id}/rescan` | Sbom Rescan |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/verify` | Sbom Verify |
 | `POST` | `/api/v1/devsecops/tickets/sync-pull` | Ticket Sync Pull |
 

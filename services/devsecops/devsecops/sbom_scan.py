@@ -372,7 +372,104 @@ def render_sbom(result: dict[str, Any], *, fmt: str, enrich: bool = True,
     return enrich_bom(bom, result, created_by=created_by) if enrich else bom
 
 
+# manager -> advisory-feed ecosystem name (mirrors the purl type vocabulary
+# used by the container scanner's CVE matcher)
+MANAGER_ECOSYSTEM = {
+    "pip": "pypi",
+    "pip-site-packages": "pypi",
+    "npm": "npm",
+    "cargo": "cargo",
+    "go": "golang",
+    "composer": "composer",
+    "bundler": "gem",
+    "maven": "maven",
+    "gradle": "maven",
+    "nuget": "nuget",
+    "dpkg": "deb",
+    "apk": "apk",
+    "rpm": "rpm",
+}
+
 _SPDX_ID_SAFE = re.compile(r"^[A-Za-z0-9.+-]+$")
+_INTEGRITY_PREFIX = re.compile(r"^(sha1|sha256|sha384|sha512|sha3-256|sha3-512)[-_](.+)$")
+_ALG_NAMES = {
+    "sha1": "SHA-1", "sha256": "SHA-256", "sha384": "SHA-384", "sha512": "SHA-512",
+    "sha3-256": "SHA3-256", "sha3-512": "SHA3-512",
+}
+
+
+def decode_integrity(value: str | None) -> list[dict[str, str]]:
+    """CycloneDX hash entries for an SRI/hex integrity string.
+
+    Understands ``sha512-<base64>`` (npm/ NuGet SRI), plain ``sha256:<hex>``,
+    and the strongest algorithm when several are present. Go's ``h1:`` hashes
+    are *not* file digests (they hash a canonical directory listing), so they
+    are deliberately not converted into component hashes.
+    """
+    import base64
+
+    raw = str(value or "").strip()
+    if not raw or raw.startswith("h1:"):
+        return []  # go module dirhash — not a component content digest
+    strength = {"sha1": 1, "sha256": 2, "sha384": 3, "sha512": 4, "sha3-256": 3, "sha3-512": 4}
+    best: tuple[int, dict[str, str]] | None = None
+    for token in raw.split():
+        if token.startswith("h1:"):
+            continue
+        m = _INTEGRITY_PREFIX.match(token)
+        if m:
+            alg, payload = m.group(1), m.group(2)
+            if len(payload) == 64 and re.fullmatch(r"[0-9a-fA-F]+", payload) and alg == "sha256":
+                candidate = {"alg": "SHA-256", "content": payload.lower()}
+            else:
+                try:
+                    digest = base64.b64decode(payload + "=" * (-len(payload) % 4), validate=True).hex()
+                except Exception:  # noqa: BLE001 — malformed integrity is skipped, not guessed
+                    continue
+                candidate = {"alg": _ALG_NAMES.get(alg, alg.upper()), "content": digest}
+        else:
+            m = re.fullmatch(r"(sha1|sha256|sha384|sha512|sha3-256|sha3-512):([0-9a-fA-F]{16,})", token)
+            if not m:
+                continue
+            alg = m.group(1)
+            candidate = {"alg": _ALG_NAMES[alg], "content": m.group(2).lower()}
+        rank = strength.get(alg, 0)
+        if best is None or rank > best[0]:
+            best = (rank, candidate)
+    return [best[1]] if best else []
+
+
+def enrich_vulnerabilities(result: dict[str, Any], feed: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    """Deterministically match discovered components against an NVD-style feed.
+
+    ``feed`` rows follow the container scanner's advisory shape
+    (``{"cve_id", "severity", "affected": [{"ecosystem", "package", "ranges"}]}``);
+    passing an empty/absent feed leaves the SBOM with no vulnerabilities rather
+    than inventing any. Ecosystem is derived from the package manager so the
+    same feed works for source and container scans.
+    """
+    from devsecops.container_scan import match_packages
+
+    packages = result.get("packages") or []
+    if not feed:
+        result.setdefault("vulnerabilities", [])
+        return []
+    rows = [
+        {"name": p.get("name"), "version": p.get("version"),
+         "ecosystem": MANAGER_ECOSYSTEM.get(str(p.get("manager") or ""), str(p.get("manager") or ""))}
+        for p in packages
+        if p.get("name") and p.get("version")
+    ]
+    matches = match_packages(rows, feed)
+    by_name = {str(p.get("name") or "").lower(): str(p.get("manager") or "") for p in packages}
+    entries = [
+        {"cve": m.cve_id, "severity": m.severity, "package": m.package, "version": m.version,
+         "manager": by_name.get(m.package.lower(), m.ecosystem),
+         "fixed_version": m.fixed_version, "summary": m.summary}
+        for m in matches
+    ]
+    result["vulnerabilities"] = entries
+    return entries
 
 
 def _license_node(value: str | None) -> dict[str, Any] | None:
@@ -445,9 +542,10 @@ def enrich_bom(bom: dict[str, Any], result: dict[str, Any],
                 node = _license_node(str(pkg["license"]))
                 if node:
                     comp["licenses"] = [node]
-            integrity = str(pkg.get("integrity") or "")
-            if integrity.startswith("sha256:") and not comp.get("hashes"):
-                comp["hashes"] = [{"alg": "SHA-256", "content": integrity.split(":", 1)[1]}]
+            if not comp.get("hashes"):
+                hashes = decode_integrity(pkg.get("integrity"))
+                if hashes:
+                    comp["hashes"] = hashes
         if edges:
             depends: dict[str, list[str]] = {}
             for edge in edges:
@@ -484,9 +582,14 @@ def enrich_bom(bom: dict[str, Any], result: dict[str, Any],
                 license_id = node["expression"]
             if license_id:
                 entry["licenseDeclared"] = license_id
-        integrity = str(meta.get("integrity") or "")
-        if integrity.startswith("sha256:") and not entry.get("checksums"):
-            entry["checksums"] = [{"algorithm": "SHA256", "checksumValue": integrity.split(":", 1)[1]}]
+        if not entry.get("checksums"):
+            spdx_alg = {"SHA-1": "SHA1", "SHA-256": "SHA256", "SHA-384": "SHA384",
+                        "SHA-512": "SHA512", "SHA3-256": "SHA3-256", "SHA3-512": "SHA3-512"}
+            checksums = [{"algorithm": spdx_alg[h["alg"]], "checksumValue": h["content"]}
+                         for h in decode_integrity(meta.get("integrity"))
+                         if h["alg"] in spdx_alg]
+            if checksums:
+                entry["checksums"] = checksums
     if edges:
         relationships = [r for r in (bom.get("relationships") or []) if isinstance(r, dict)]
         existing = {(r.get("spdxElementId"), r.get("relatedSpdxElement"), r.get("relationshipType"))

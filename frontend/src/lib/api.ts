@@ -1641,11 +1641,26 @@ async function _sbomReq<T>(path: string, method: string, body?: unknown, timeout
   } catch (e) { return { source: "offline", ok: false, error: String(e), data: null }; }
 }
 
-export const apiSbomScan = (body: { kind: string; target: string; format: string; as_image?: boolean; include_vendored?: boolean; use_lockfiles?: boolean }) =>
+export const apiSbomScan = (body: { kind: string; target: string; format: string; as_image?: boolean; include_vendored?: boolean; use_lockfiles?: boolean; feed?: any[] }) =>
   _sbomReq<any>("/api/v1/devsecops/sbom/scan", "POST", body);
 
-export const apiSbomArtifacts = () =>
-  _sbomReq<any>("/api/v1/devsecops/sbom/artifacts", "GET", undefined, 20000);
+export const apiSbomArtifacts = (filters: { kind?: string; fmt?: string; q?: string; limit?: number } = {}) => {
+  const params = new URLSearchParams();
+  if (filters.kind) params.set("kind", filters.kind);
+  if (filters.fmt) params.set("fmt", filters.fmt);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return _sbomReq<any>(`/api/v1/devsecops/sbom/artifacts${qs ? `?${qs}` : ""}`, "GET", undefined, 20000);
+};
+
+/** Supply-chain gate: blockers fail a pipeline, warnings inform. Read-only safe. */
+export const apiSbomGate = (artifactId: string, policy?: Record<string, any>) =>
+  _sbomReq<any>(`/api/v1/devsecops/sbom/${artifactId}/gate`, "POST", { policy: policy ?? null }, 30000);
+
+/** Re-scan the stored target with the stored options and diff old -> new. */
+export const apiSbomRescan = (artifactId: string, body: { policy?: Record<string, any>; use_lockfiles?: boolean; include_vendored?: boolean } = {}) =>
+  _sbomReq<any>(`/api/v1/devsecops/sbom/${artifactId}/rescan`, "POST", body);
 
 export const apiSbomValidate = (doc: any) =>
   _sbomReq<any>("/api/v1/devsecops/sbom/validate", "POST", { doc }, 30000);

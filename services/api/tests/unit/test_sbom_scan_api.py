@@ -209,8 +209,14 @@ async def test_scan_forbidden_for_viewer(app_db, tmp_path, monkeypatch):
             )
             r2 = await client.get("/api/v1/devsecops/sbom/artifacts",
                                   headers={"Authorization": "Bearer viewer-token"})
+            r3 = await client.delete(
+                "/api/v1/devsecops/sbom/artifacts?older_than_days=0",
+                headers={"Authorization": "Bearer viewer-token"})
+    # generating and pruning SBOMs mutates state — operators only
     assert r1.status_code == 403
-    assert r2.status_code == 403
+    assert r3.status_code == 403
+    # reading the inventory is an auditor task, so the read-only role is allowed
+    assert r2.status_code == 200
 
 
 # ------------------------------------------------- new capabilities --------- #
@@ -397,3 +403,218 @@ async def test_spdx_report_excludes_document_root(app_db):
     assert body["pinning"]["unpinned"] == 0
     assert not [f for f in body["pinning"]["findings"] if f["code"] == "PIN-MISSING"]
     assert body["compliance"]["component_count"] == manifest_components
+
+
+# --------------------------------------------------- gate + rescan + feeds --- #
+_FEED = [
+    {"cve_id": "CVE-2024-21538", "severity": "CRITICAL",
+     "summary": "ReDoS in cross-spawn",
+     "affected": [{"ecosystem": "npm", "package": "cross-spawn",
+                   "ranges": [{"introduced": "0", "fixed": "7.0.5"}]}]},
+    {"cve_id": "CVE-2023-32681", "severity": "MEDIUM",
+     "summary": "proxy credential leak",
+     "affected": [{"ecosystem": "pypi", "package": "requests",
+                   "ranges": [{"introduced": "0", "fixed": "2.31.0"}]}]},
+]
+
+
+@pytest.mark.asyncio
+async def test_scan_with_advisory_feed_records_vulnerabilities(app_db):
+    """A feed is matched by manager->ecosystem, appears in the document and the
+    gate fails on the critical one."""
+    application, session, tmp_path = app_db
+    src = tmp_path / "fed"
+    src.mkdir()
+    (src / "requirements.txt").write_text("requests==2.25.0\n")
+    (src / "package.json").write_text(json.dumps({"dependencies": {"cross-spawn": "7.0.3"}}))
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await client.post(
+                "/api/v1/devsecops/sbom/scan",
+                json={"kind": "source", "target": str(src), "format": "cyclonedx", "feed": _FEED},
+                headers={"Authorization": "Bearer test-token"},
+            )
+            assert scan.status_code == 201, scan.text
+            body = scan.json()
+            artifact_id = body["artifact_id"]
+
+            gate = await client.post(f"/api/v1/devsecops/sbom/{artifact_id}/gate",
+                                     json={},
+                                     headers={"Authorization": "Bearer test-token"})
+            gate_allow = await client.post(
+                f"/api/v1/devsecops/sbom/{artifact_id}/gate",
+                json={"policy": {"allow_critical": 5, "max_unpinned": 5}},
+                headers={"Authorization": "Bearer test-token"})
+            ungated = await client.post("/api/v1/devsecops/sbom/scan",
+                                        json={"kind": "source", "target": str(src)},
+                                        headers={"Authorization": "Bearer test-token"})
+
+    assert body["manifest"]["vulnerability_count"] == 2
+    ids = {v["id"] for v in body["bom"]["vulnerabilities"]}
+    assert ids == {"CVE-2024-21538", "CVE-2023-32681"}
+    # the pypi advisory matched the pip component: version 2.25.0 < fixed 2.31.0
+    pypi = next(v for v in body["bom"]["vulnerabilities"] if v["id"] == "CVE-2023-32681")
+    assert pypi["affects"][0]["ref"].startswith("pkg:pypi/requests@2.25.0")
+
+    assert gate.status_code == 200, gate.text
+    assert gate.json()["verdict"] == "FAIL"
+    codes = {b["code"] for b in gate.json()["blockers"]}
+    assert "GATE-CVE-CRITICAL" in codes
+    assert gate.json()["counts"]["CRITICAL"] == 1
+
+    assert gate_allow.json()["verdict"] == "PASS"
+    # no feed -> no advisory claims, and the manifest says so (an empty array
+    # with feed_supplied=false is "not checked", not "verified clean")
+    assert body["manifest"]["feed_supplied"] is True
+    assert ungated.json()["manifest"]["vulnerability_count"] == 0
+    assert ungated.json()["manifest"]["feed_supplied"] is False
+    assert ungated.json()["bom"]["vulnerabilities"] == []
+
+
+@pytest.mark.asyncio
+async def test_gate_defaults_and_license_policy(app_db):
+    """Default policy passes a clean SBOM; a deny-list policy blocks on the
+    declared license it actually carries."""
+    application, session, tmp_path = app_db
+    src = tmp_path / "lic"
+    src.mkdir()
+    # a lockfile is where declared licenses actually live
+    (src / "package-lock.json").write_text(json.dumps({
+        "name": "app", "lockfileVersion": 3,
+        "packages": {"": {"name": "app", "version": "1.0.0"},
+                     "node_modules/picocolors": {"version": "1.0.0", "license": "Apache-2.0"}},
+    }))
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            scan = await client.post("/api/v1/devsecops/sbom/scan",
+                                     json={"kind": "source", "target": str(src)},
+                                     headers={"Authorization": "Bearer test-token"})
+            artifact_id = scan.json()["artifact_id"]
+            clean = await client.post(f"/api/v1/devsecops/sbom/{artifact_id}/gate",
+                                      headers={"Authorization": "Bearer test-token"})
+            denied = await client.post(
+                f"/api/v1/devsecops/sbom/{artifact_id}/gate",
+                json={"policy": {"deny_licenses": ["Apache-2.0"], "require_minimum_elements": True}},
+                headers={"Authorization": "Bearer test-token"})
+            permissive = await client.post(
+                f"/api/v1/devsecops/sbom/{artifact_id}/gate",
+                json={"policy": {"deny_licenses": ["GPL-3.0-only"]}},
+                headers={"Authorization": "Bearer test-token"})
+            unknown = await client.get("/api/v1/devsecops/sbom/11111111-2222-3333-4444-555555555555/gate",
+                                       headers={"Authorization": "Bearer test-token"})
+
+    assert clean.status_code == 200, clean.text  # no body at all -> default policy
+    assert clean.json()["verdict"] == "PASS"
+    licenses = {b["detail"] for b in denied.json()["blockers"] if b["code"] == "GATE-LICENSE-DENIED"}
+    assert any("picocolors" in d and "Apache-2.0" in d for d in licenses)
+    assert denied.json()["verdict"] == "FAIL"
+    assert permissive.json()["verdict"] == "PASS"  # the deny list is honored exactly
+    assert unknown.status_code in (404, 405)  # GET is not a gate operation
+
+
+@pytest.mark.asyncio
+async def test_rescan_detects_upstream_change(app_db):
+    """Re-scanning a stored artifact after the tree changes must report the
+    delta and produce a fresh artifact."""
+    application, session, tmp_path = app_db
+    src = tmp_path / "moving"
+    src.mkdir()
+    (src / "requirements.txt").write_text("requests==2.31.0\n")
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await client.post("/api/v1/devsecops/sbom/scan",
+                                      json={"kind": "source", "target": str(src)},
+                                      headers={"Authorization": "Bearer test-token"})
+            assert first.status_code == 201, first.text
+            artifact_id = first.json()["artifact_id"]
+
+            unchanged = await client.post(f"/api/v1/devsecops/sbom/{artifact_id}/rescan",
+                                         json={},
+                                         headers={"Authorization": "Bearer test-token"})
+            assert unchanged.status_code == 200, unchanged.text
+            assert unchanged.json()["diff"]["verdict"] == "UNCHANGED"
+            assert unchanged.json()["artifact_id"] != artifact_id
+
+            # upstream bumped a version -> an ordinary update
+            (src / "requirements.txt").write_text("requests==2.32.0\n")
+            bumped = await client.post(f"/api/v1/devsecops/sbom/{unchanged.json()['artifact_id']}/rescan",
+                                       json={},
+                                       headers={"Authorization": "Bearer test-token"})
+            assert bumped.status_code == 200, bumped.text
+            delta = bumped.json()["diff"]
+            assert delta["verdict"] == "UPDATED"
+            assert any(c["name"] == "requests" and c["direction"] == "upgrade"
+                       for c in delta["changed"])
+            assert not delta["crypto_delta"]["added"]
+
+            # ... and then pulled in a crypto library -> review, not a quiet update
+            (src / "requirements.txt").write_text("requests==2.32.0\ncryptography==42.0.0\n")
+            changed = await client.post(f"/api/v1/devsecops/sbom/{bumped.json()['artifact_id']}/rescan",
+                                        json={},
+                                        headers={"Authorization": "Bearer test-token"})
+            assert changed.status_code == 200, changed.text
+            delta = changed.json()["diff"]
+            assert delta["verdict"] == "CRYPTO_REVIEW"
+            assert any(a["name"] == "cryptography" and a["crypto"] for a in delta["crypto_delta"]["added"])
+            # the fresh artifact carries the options needed to re-scan it again
+            assert changed.json()["manifest"]["scan_options"]["target"] == str(src)
+            assert changed.json()["gate"]["verdict"] == "PASS"
+
+    # the recorded options describe the scan honestly (no feed was supplied)
+    assert changed.json()["manifest"]["scan_options"]["feed_supplied"] is False
+    assert changed.json()["notes"] == []
+
+
+@pytest.mark.asyncio
+async def test_rescan_reports_unavailable_target(app_db):
+    """A target that has since disappeared fails loudly, not silently."""
+    application, session, tmp_path = app_db
+    src = tmp_path / "gone"
+    src.mkdir()
+    (src / "requirements.txt").write_text("requests==2.31.0\n")
+
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            first = await client.post("/api/v1/devsecops/sbom/scan",
+                                      json={"kind": "source", "target": str(src)},
+                                      headers={"Authorization": "Bearer test-token"})
+            artifact_id = first.json()["artifact_id"]
+            import shutil
+
+            shutil.rmtree(src)
+            resp = await client.post(f"/api/v1/devsecops/sbom/{artifact_id}/rescan", json={},
+                                     headers={"Authorization": "Bearer test-token"})
+
+    assert resp.status_code == 400
+    assert "re-scan" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_artifact_listing_filters(app_db):
+    application, session, tmp_path = app_db
+    async with ASGITransport(app=application) as transport:
+        async with AsyncClient(transport=transport, base_url="http://test") as client:
+            await _scan(client, tmp_path, "one", fmt="cyclonedx")
+            await _scan(client, tmp_path, "two", fmt="spdx")
+
+            def url(query=""):
+                return f"/api/v1/devsecops/sbom/artifacts{query}"
+
+            all_items = await client.get(url(), headers={"Authorization": "Bearer test-token"})
+            only_spdx = await client.get(url("?fmt=spdx"), headers={"Authorization": "Bearer test-token"})
+            by_query = await client.get(url(f"?q={tmp_path.name}"), headers={"Authorization": "Bearer test-token"})
+            none_match = await client.get(url("?q=no-such-target-xyz"), headers={"Authorization": "Bearer test-token"})
+            limited = await client.get(url("?limit=1"), headers={"Authorization": "Bearer test-token"})
+
+    assert all_items.json()["total"] == 2
+    assert only_spdx.json()["total"] == 1
+    assert only_spdx.json()["artifacts"][0]["format"] == "spdx"
+    assert by_query.json()["total"] == 2
+    assert none_match.json()["total"] == 0
+    assert limited.json()["returned"] == 1
+    # the listing hands out the provenance links a caller needs
+    first = all_items.json()["artifacts"][0]
+    assert first["verify_url"].endswith("/verify") and first["report_url"].endswith("/report")

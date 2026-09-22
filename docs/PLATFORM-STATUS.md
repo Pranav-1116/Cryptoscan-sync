@@ -388,6 +388,74 @@ after it. Tests: 98 in the SBOM surface (lockfile parsers per format,
 cross-format diff, compliance scoring, signing round-trip, provenance checks,
 retention, role gating); ruff clean; `tsc --noEmit` + `vite build` green.
 
+**Update (2026-09-22, SBOM scanner — advisory matching, pipeline gate,
+re-scan control):** the scanner now answers the two questions a release
+engineer actually asks of it: *is this build's dependency set safe to ship?*
+and *did anything change under me since I approved it?*
+
+1. **Deterministic advisory matching.** `POST /sbom/scan` accepts an
+   NVD-style advisory feed (offline — no network, no AI) and matches it
+   against the discovered versions using the same version-range engine as the
+   container scanner, with the manager mapped to the feed's ecosystem
+   vocabulary (`pip → pypi`, `go → golang`, `gradle → maven`, …). Matches land
+   in the document's own vocabulary (CycloneDX `vulnerabilities[]` with
+   severity ratings and `affects` refs onto the exact purls) and are counted in
+   the manifest. Version boundaries are honoured in both directions — a
+   component at or above the advisory's `fixed` version is not reported.
+   **Honesty rule:** an SBOM with zero advisories because nothing was checked
+   reads differently from one checked against a feed and found clean, so the
+   manifest carries `feed_supplied` alongside `vulnerability_count`; the
+   scanner never implies a clean result it did not verify.
+2. **Supply-chain gate** (`POST /sbom/{id}/gate`, and a CLI for pipelines).
+   One policy object decides pass/fail: critical/high advisory allowances, a
+   denied-license list, the NTIA minimum-elements requirement, a maximum
+   unpinned count and whether an unsigned artifact is acceptable. Blockers fail
+   the build and name the rule that fired (`GATE-CVE-CRITICAL`,
+   `GATE-LICENSE-DENIED`, `GATE-UNPINNED`, `GATE-UNSIGNED`,
+   `GATE-MINIMUM-ELEMENTS`); everything else is a warning that never changes
+   the verdict. Because a gate living only behind an authenticated API cannot
+   stop a pipeline, the same engine ships as a CLI:
+   `python -m devsecops.sbom_gate sbom.json --policy gate.json` (or stdin),
+   with release-manager-grade exit codes — **0** passed, **1** blocked,
+   **2** usage/IO error, **3** unparseable document — and `--json` for
+   archiving the evaluation as evidence.
+3. **Re-scan control** (`POST /sbom/{id}/rescan`). Every artifact now records
+   the options that produced it, so the platform can re-run the identical scan
+   later, store the fresh artifact, diff it against the previous one and gate
+   the result in a single call. Verified live: bumping `jws` 3.2.2 → 3.2.3 and
+   `cookie` 0.6.0 → 0.7.0 in the tree produced `UPDATED` with both upgrades
+   named and the fresh artifact gating clean. Advisory feeds are deliberately
+   not persisted (they can be large and are supplied per scan), so a re-scan of
+   a fed artifact says so in `notes` instead of quietly reporting zero
+   advisories.
+4. **Stronger provenance and reachable data.** Component hashes are now
+   decoded from the ecosystems' real integrity formats — npm/NuGet SRI
+   (`sha512-<base64>`, strongest algorithm wins), hex digests, and CycloneDX +
+   SPDX vocabularies — while Go's `h1:` directory hashes are deliberately *not*
+   converted to component digests (they hash a file listing, not the package).
+   Artifact listing gained `kind`/`fmt`/`q`/`limit` filters and provenance
+   links; read-only (`readonly`/`viewer`) accounts may now list, download,
+   verify, report, diff, validate and gate SBOMs — reading an inventory is an
+   auditor task — while scanning, re-scanning and retention pruning stay
+   operator-restricted.
+5. **Fixed while drilling:** `check_minimum_elements()` returned no
+   `component_count` for empty/unsupported documents, which crashed the gate
+   for any caller that indexed it; dead leftover lines in the SPDX hashing
+   branch; the verify note blamed the signature even when only the blob
+   digest failed; the SPDX report counted the document's own subject as an
+   unpinned component.
+
+Live drill (2026-09-22, artifacts signed with `key_id=settings`): feed with a
+critical golang advisory and a high npm advisory → 2 matches on the demo tree
+and `FAIL` with `GATE-CVE-CRITICAL`; the same artifact with
+`{"allow_critical": 1}` → `PASS` with both advisories still counted; a
+component above the advisory's fixed version correctly not reported; filters
+(`fmt=spdx` → 2 of 11, `limit=3` → 3 of 9, unknown target → 0); read-only
+account → 200 on reads, 403 on scan and prune; gate CLI → PASS/0, FAIL/1,
+raised allowance/0, stdin+policy file, and 2/3 for bad input. Tests: 107 in the
+SBOM surface (99 service + 8 CLI) plus 19 API route tests; API unit suite
+re-run green; ruff, `tsc --noEmit` and `vite build` clean.
+
 **Update (2026-09-19):** enterprise hardening pass on the SaaS branch. The
 2026-09-17 router rewrite (hollow "real router" templates) broke the API
 import chain and the frontend build; both are repaired: 25 router modules

@@ -86,10 +86,12 @@ def check_minimum_elements(bom: dict[str, Any] | None) -> dict[str, Any]:
     bom = bom or {}
     if not isinstance(bom, dict) or not bom:
         return {"format": "unknown", "compliant": False, "elements": [],
-                "gaps": ["document is empty or not a JSON object"], "score": "0/7"}
+                "component_count": 0, "gaps": ["document is empty or not a JSON object"],
+                "score": "0/7"}
     cdx = _is_cdx(bom)
     if not cdx and not bom.get("spdxVersion"):
         return {"format": "unknown", "compliant": False, "elements": [],
+                "component_count": 0,
                 "gaps": ["unsupported document: expected CycloneDX or SPDX JSON"],
                 "score": "0/7"}
 
@@ -117,11 +119,8 @@ def check_minimum_elements(bom: dict[str, Any] | None) -> dict[str, Any]:
         id_hits = _count(components, lambda c: any(
             isinstance(ref, dict) and str(ref.get("referenceType") or "").lower() in ("purl", "cpe23type", "cpe22type")
             for ref in (c.get("externalRefs") or [])))
-        license_hits = 0
-        del license_hits
-        hash_hits = _count(components, lambda c: any(
-            str(ref.get("referenceType") or "").lower() == "purl" for ref in (c.get("externalRefs") or []))
-            and False) or 0
+        # SPDX records component digests as checksums (purl lives in externalRefs
+        # and is counted under unique identifiers above)
         hash_hits = _count(components, lambda c: bool(c.get("checksums")))
         dep_edges = bom.get("relationships") or []
         has_deps = bool(dep_edges)
@@ -161,12 +160,9 @@ def check_minimum_elements(bom: dict[str, Any] | None) -> dict[str, Any]:
         recommended.append({"id": element_id, "label": label, "why": why,
                             "status": _status(hash_hits), "detail": _coverage(hash_hits, total)})
 
-    required = [e for e in results]
+    required = list(results)
     satisfied = sum(1 for e in required if e["status"] == "PASS")
-    gaps = [
-        f"{e['label']}: {e['detail']}" if e["status"] == "PARTIAL" else f"{e['label']}: {e['detail']}"
-        for e in required if e["status"] != "PASS"
-    ]
+    gaps = [f"{e['label']}: {e['detail']}" for e in required if e["status"] != "PASS"]
     if not total:
         gaps.insert(0, "document declares no components")
     return {
@@ -286,4 +282,121 @@ def diff_boms(old: dict[str, Any] | None, new: dict[str, Any] | None) -> dict[st
         "removed": removed,
         "changed": changed,
         "crypto_delta": crypto_delta,
+    }
+
+
+# ------------------------------------------------------------------- gate ---- #
+DEFAULT_GATE_POLICY: dict[str, Any] = {
+    # fail on any critical CVE unless the policy raises the allowance
+    "allow_critical": 0,
+    "allow_high": None,          # None = unlimited
+    "deny_licenses": [],         # e.g. ["GPL-3.0-only", "AGPL-3.0-only"]
+    "require_minimum_elements": False,
+    "max_unpinned": None,        # None = do not gate on pinning
+    "require_signed": False,
+}
+
+
+def _cve_counts(bom: dict[str, Any]) -> dict[str, int]:
+    counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "UNKNOWN": 0}
+    for vuln in bom.get("vulnerabilities") or []:
+        if not isinstance(vuln, dict):
+            continue
+        severity = "UNKNOWN"
+        ratings = vuln.get("ratings") or []
+        if ratings and isinstance(ratings[0], dict):
+            severity = str(ratings[0].get("severity") or "unknown").upper()
+        elif vuln.get("severity"):
+            severity = str(vuln["severity"]).upper()
+        counts[severity if severity in counts else "UNKNOWN"] += 1
+    return counts
+
+
+def _licenses(bom: dict[str, Any]) -> list[tuple[str, str]]:
+    """(component, license) pairs from either format."""
+    out: list[tuple[str, str]] = []
+    if _is_cdx(bom):
+        for comp in _cdx_components(bom):
+            for lic in comp.get("licenses") or []:
+                if not isinstance(lic, dict):
+                    continue
+                value = (lic.get("expression")
+                         or (lic.get("license") or {}).get("id")
+                         or (lic.get("license") or {}).get("name"))
+                if value:
+                    out.append((str(comp.get("name") or "?"), str(value)))
+    else:
+        for pkg in spdx_components(bom):
+            value = str(pkg.get("licenseDeclared") or "")
+            if value and value != "NOASSERTION":
+                out.append((str(pkg.get("name") or "?"), value))
+    return out
+
+
+def evaluate_gate(bom: dict[str, Any] | None, *,
+                  policy: dict[str, Any] | None = None,
+                  unpinned: int | None = None,
+                  signed: bool | None = None) -> dict[str, Any]:
+    """Deterministic supply-chain gate for a rendered SBOM.
+
+    Blockers fail a pipeline; warnings inform. Every finding names the policy
+    field that produced it, and counts come from the document itself.
+    """
+    bom = bom or {}
+    effective = dict(DEFAULT_GATE_POLICY)
+    effective.update({k: v for k, v in (policy or {}).items() if k in DEFAULT_GATE_POLICY})
+    blockers: list[dict[str, Any]] = []
+    warnings: list[dict[str, Any]] = []
+
+    counts = _cve_counts(bom)
+    if counts["CRITICAL"] > int(effective["allow_critical"]):
+        blockers.append({"code": "GATE-CVE-CRITICAL", "severity": "CRITICAL",
+                         "detail": f"{counts['CRITICAL']} critical CVE(s) "
+                                   f"(allowed: {effective['allow_critical']})"})
+    allow_high = effective["allow_high"]
+    if allow_high is not None and counts["HIGH"] > int(allow_high):
+        blockers.append({"code": "GATE-CVE-HIGH", "severity": "HIGH",
+                         "detail": f"{counts['HIGH']} high CVE(s) (allowed: {allow_high})"})
+    elif allow_high is None and counts["HIGH"]:
+        warnings.append({"code": "GATE-CVE-HIGH-PRESENT", "severity": "HIGH",
+                         "detail": f"{counts['HIGH']} high CVE(s) present (no limit configured)"})
+
+    denied = {str(x).lower() for x in (effective["deny_licenses"] or [])}
+    if denied:
+        hits = sorted({(name, lic) for name, lic in _licenses(bom) if lic.lower() in denied})
+        for name, lic in hits[:50]:
+            blockers.append({"code": "GATE-LICENSE-DENIED", "severity": "HIGH",
+                             "detail": f"{name} declares denied license {lic}"})
+        if len(hits) > 50:
+            warnings.append({"code": "GATE-LICENSE-DENIED-TRUNCATED", "severity": "INFO",
+                             "detail": f"{len(hits) - 50} further license findings omitted"})
+
+    compliance = check_minimum_elements(bom)
+    if effective["require_minimum_elements"] and not compliance["compliant"]:
+        blockers.append({"code": "GATE-MINIMUM-ELEMENTS", "severity": "MEDIUM",
+                         "detail": f"minimum elements {compliance['score']}: "
+                                   + "; ".join(compliance["gaps"])})
+    elif not compliance["compliant"]:
+        warnings.append({"code": "GATE-MINIMUM-ELEMENTS-GAPS", "severity": "MEDIUM",
+                         "detail": f"{compliance['score']} — " + "; ".join(compliance["gaps"])})
+
+    if effective["max_unpinned"] is not None and unpinned is not None:
+        if unpinned > int(effective["max_unpinned"]):
+            blockers.append({"code": "GATE-UNPINNED", "severity": "MEDIUM",
+                             "detail": f"{unpinned} unpinned component(s) (allowed: {effective['max_unpinned']})"})
+        elif unpinned:
+            warnings.append({"code": "GATE-UNPINNED-PRESENT", "severity": "LOW",
+                             "detail": f"{unpinned} unpinned component(s) within the allowance"})
+
+    if effective["require_signed"] and signed is False:
+        blockers.append({"code": "GATE-UNSIGNED", "severity": "MEDIUM",
+                         "detail": "artifact manifest is not signed"})
+
+    return {
+        "verdict": "FAIL" if blockers else "PASS",
+        "policy": effective,
+        "counts": {"components": compliance["component_count"], **counts,
+                   "unpinned": unpinned, "minimum_elements": compliance["score"]},
+        "blockers": blockers,
+        "warnings": warnings,
     }

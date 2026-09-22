@@ -4,7 +4,7 @@ import { ApiResult } from "../lib/api.js";
 import {
   apiContainerScan, apiK8sScan, apiCloudPosture, apiSbomImport,
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
-  apiSbomPrune, downloadSbomArtifact, downloadSbomReport,
+  apiSbomGate, apiSbomRescan, apiSbomPrune, downloadSbomArtifact, downloadSbomReport,
   apiConnectorPreview,
 } from "../lib/api.js";
 
@@ -134,15 +134,30 @@ function SbomScanTab() {
   const [asImage, setAsImage] = useState(false);
   const [includeVendored, setIncludeVendored] = useState(false);
   const [useLockfiles, setUseLockfiles] = useState(true);
+  const [feedText, setFeedText] = useState("");
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [scanRes, setScanRes] = useState<ApiResult<any> | null>(null);
   const [scanning, setScanning] = useState(false);
   const [showBom, setShowBom] = useState(false);
   const [dlBusy, setDlBusy] = useState<string | null>(null);
   const scan = async () => {
     if (!target.trim()) { setScanRes({ source: "live", ok: false, data: null, error: "target is required" }); return; }
+    let feed: any[] | undefined;
+    if (feedText.trim()) {
+      try {
+        const parsed = JSON.parse(feedText);
+        feed = Array.isArray(parsed) ? parsed : (parsed?.vulnerabilities || parsed?.advisories);
+        if (!Array.isArray(feed)) throw new Error("expected a JSON array of advisories");
+        setFeedError(null);
+      } catch (e) {
+        // a malformed feed must not turn into a silent no-advisory scan
+        setFeedError("advisory feed is not valid JSON: " + String(e));
+        return;
+      }
+    } else { setFeedError(null); }
     setScanning(true); setShowBom(false);
     try {
-      setScanRes(await apiSbomScan({ kind, target: target.trim(), format: fmt, as_image: asImage, include_vendored: includeVendored, use_lockfiles: useLockfiles }));
+      setScanRes(await apiSbomScan({ kind, target: target.trim(), format: fmt, as_image: asImage, include_vendored: includeVendored, use_lockfiles: useLockfiles, feed }));
     } catch (e) { setScanRes({ source: "live", ok: false, data: null, error: String(e) }); }
     setScanning(false);
   };
@@ -166,6 +181,15 @@ function SbomScanTab() {
         {kind === "source" && <label><input type="checkbox" checked={useLockfiles} onChange={(e) => setUseLockfiles(e.target.checked)} /> resolve lockfiles (transitive deps)</label>}
         {kind === "source" && <label><input type="checkbox" checked={includeVendored} onChange={(e) => setIncludeVendored(e.target.checked)} /> include vendor/ dirs</label>}
       </div>
+      <div className="mt" style={{ marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          advisory feed (JSON array, optional) — matched offline against the discovered versions; without one the SBOM claims no advisories
+        </div>
+        <textarea className="inp" rows={2} style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
+          placeholder='[{"cve_id":"CVE-2024-21538","severity":"CRITICAL","affected":[{"ecosystem":"npm","package":"jws","ranges":[{"introduced":"0","fixed":"3.2.3"}]}]}]'
+          value={feedText} onChange={(e) => setFeedText(e.target.value)} />
+        {feedError && <div style={{ color: "var(--red, #e5484d)", fontSize: 12.5, marginTop: 4 }}>{feedError}</div>}
+      </div>
       <button className="btn sm primary" onClick={() => void scan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan & generate SBOM"}</button>
       <div className="mt" style={{ marginBottom: 8 }}><Err res={scanRes} /></div>
       {m && (
@@ -175,6 +199,9 @@ function SbomScanTab() {
             {kind === "source" && <Badge tone="">{m.direct_count} direct · {m.transitive_count} transitive{m.lockfile_count ? ` · ${m.lockfile_count} lockfiles` : ""}</Badge>}
             <Badge tone={m.crypto_components ? "blue" : ""}>{m.crypto_components} crypto-relevant</Badge>
             <Badge tone={m.unpinned ? "amber" : "green"}>{m.pinned} pinned / {m.unpinned} unpinned</Badge>
+            <Badge tone={!m.feed_supplied ? "gray" : (m.vulnerability_count ? "red" : "green")}>
+              {m.feed_supplied ? `${m.vulnerability_count} advisories matched` : "no feed — advisories unchecked"}
+            </Badge>
             {typeof m.dependency_edges === "number" && <Badge tone="">{m.dependency_edges} deps edges</Badge>}
             {compliance && <ScoreBadge score={compliance.score} compliant={compliance.compliant} />}
             <Badge tone={m.signature_alg ? "green" : "gray"}>{m.signature_alg ? "signed" : "unsigned"} · sha256 {String(m.sha256).slice(0, 10)}…</Badge>
@@ -206,27 +233,93 @@ function SbomArtifactsTab() {
   const [busy, setBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const [verdicts, setVerdicts] = useState<Record<string, any>>({});
+  // filters mirror the API: kind / format / target substring
+  const [fKind, setFKind] = useState("");
+  const [fFmt, setFFmt] = useState("");
+  const [fQuery, setFQuery] = useState("");
   const [pruneDays, setPruneDays] = useState(90);
   const [pruned, setPruned] = useState<string | null>(null);
-  const refresh = async () => {
+  const refresh = async (filters?: { kind?: string; fmt?: string; q?: string }) => {
     setBusy(true);
-    try { setArtRes(await apiSbomArtifacts()); }
+    try { setArtRes(await apiSbomArtifacts({ kind: filters?.kind ?? fKind, fmt: filters?.fmt ?? fFmt, q: filters?.q ?? fQuery })); }
     catch (e) { setArtRes({ source: "live", ok: false, data: null, error: String(e) }); }
     setBusy(false);
   };
   React.useEffect(() => { void refresh(); }, []);
   const arts = artRes?.data?.artifacts || [];
+  const remember = (id: string, value: any) => setVerdicts((v) => ({ ...v, [id]: value }));
   const verify = async (id: string) => {
     setRowBusy(id);
     try {
       const res = await apiSbomVerify(id);
-      setVerdicts((v) => ({ ...v, [id]: res.data || { verdict: res.error || "ERROR" } }));
+      remember(id, res.data || { verdict: res.error || "ERROR" });
     } finally { setRowBusy(null); }
   };
+  const gate = async (id: string) => {
+    setRowBusy(id);
+    try {
+      const res = await apiSbomGate(id);
+      remember(id, res.data || { verdict: res.error || "ERROR" });
+    } finally { setRowBusy(null); }
+  };
+  const rescan = async (id: string) => {
+    setRowBusy(id);
+    try {
+      const res = await apiSbomRescan(id);
+      if (!res.ok || !res.data) { remember(id, { verdict: res.error || "ERROR" }); return; }
+      const d = res.data;
+      remember(id, {
+        verdict: d.gate?.verdict || "?", kind: "rescan", fresh: d.artifact_id,
+        diff: d.diff, gate: d.gate, notes: d.notes || [],
+      });
+      await refresh();
+    } finally { setRowBusy(null); }
+  };
+  const verdictCell = (a: any) => {
+    const v = verdicts[a.artifact_id];
+    if (!v) return <Badge tone={a.signature_alg ? "gray" : ""}>{a.signature_alg ? "signed" : "unsigned"}</Badge>;
+    if (v.kind === "rescan") {
+      const summary = v.diff
+        ? `${v.diff.verdict} · +${v.diff.added?.length || 0} / −${v.diff.removed?.length || 0} / Δ${v.diff.changed?.length || 0}`
+        : "re-scanned (no diff)";
+      return <Badge tone={v.gate?.verdict === "PASS" ? "green" : "red"}>{`rescan ${v.gate?.verdict || "?"} · ${summary}`}</Badge>;
+    }
+    if (v.counts) {
+      // gate result: show the verdict plus the first blocker
+      const blocker = (v.blockers || [])[0];
+      return <Badge tone={v.verdict === "PASS" ? "green" : "red"}>{`gate ${v.verdict}${blocker ? ` · ${blocker.code}` : ""}`}</Badge>;
+    }
+    return <Badge tone={v.verdict === "OK" ? "green" : "red"}>{v.verdict}</Badge>;
+  };
+  const detailCell = (a: any) => {
+    const v = verdicts[a.artifact_id];
+    if (!v) return "";
+    if (v.kind === "rescan") {
+      const moved = (v.diff?.changed || []).slice(0, 3).map((c: any) => `${c.name} ${c.from}→${c.to}`).join(", ");
+      const added = (v.diff?.added || []).slice(0, 3).map((c: any) => `+${c.name}`).join(" ");
+      return <span className="muted" style={{ fontSize: 12 }}>{[moved, added].filter(Boolean).join(" · ") || "no component changes"}{(v.notes || []).length ? ` — ${v.notes[0]}` : ""}</span>;
+    }
+    if (v.counts) {
+      return <span className="muted" style={{ fontSize: 12 }}>{(v.blockers || []).map((b: any) => b.detail).join("; ") || (v.warnings || []).map((w: any) => w.detail).join("; ")}</span>;
+    }
+    const failed = (v.checks || []).filter((c: any) => !c.ok).map((c: any) => c.check);
+    return failed.length ? <span className="muted" style={{ fontSize: 12 }}>failed: {failed.join(", ")}</span> : "";
+  };
   return (
-    <Panel title="SBOM artifacts — persisted, hash-signed" sub="Each artifact stores the exact bytes, their sha256, and an HMAC-SHA256 manifest signature; verify re-checks both. Reports summarise crypto inventory, pinning and minimum-elements status" className="mt">
+    <Panel title="SBOM artifacts — persisted, hash-signed" sub="Each artifact stores the exact bytes, their sha256, and an HMAC-SHA256 manifest signature; verify re-checks both, gate applies a supply-chain policy, rescan re-runs the same scan and diffs it. Reports summarise crypto inventory, pinning and minimum-elements status" className="mt">
       <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn sm" onClick={() => void refresh()} disabled={busy}>{busy ? "Refreshing…" : "Refresh"}</button>
+        <select className="inp" style={{ width: 120 }} value={fKind} onChange={(e) => setFKind(e.target.value)}>
+          <option value="">all kinds</option>
+          <option value="source">source</option>
+          <option value="container">container</option>
+        </select>
+        <select className="inp" style={{ width: 130 }} value={fFmt} onChange={(e) => setFFmt(e.target.value)}>
+          <option value="">all formats</option>
+          <option value="cyclonedx">CycloneDX</option>
+          <option value="spdx">SPDX</option>
+        </select>
+        <input className="inp" style={{ width: 190 }} placeholder="target contains…" value={fQuery} onChange={(e) => setFQuery(e.target.value)} />
+        <button className="btn sm" onClick={() => void refresh()} disabled={busy}>{busy ? "Refreshing…" : "Apply / refresh"}</button>
         <span className="muted" style={{ fontSize: 12.5 }}>retention:</span>
         <input className="inp" style={{ width: 70 }} type="number" min={1} value={pruneDays} onChange={(e) => setPruneDays(Number(e.target.value))} />
         <span className="muted" style={{ fontSize: 12.5 }}>days</span>
@@ -240,7 +333,7 @@ function SbomArtifactsTab() {
       <div className="mt" style={{ marginBottom: 8 }}><Err res={artRes} /></div>
       {arts.length > 0 ? (
         <Table
-          head={["created", "format", "kind", "target", "components", "direct/trans", "NTIA", "provenance", ""]}
+          head={["created", "format", "kind", "target", "components", "direct/trans", "NTIA", "advisories", "provenance", ""]}
           rows={arts.map((a: any) => [
             String(a.created_at || "").replace("T", " ").slice(0, 19),
             a.format,
@@ -249,17 +342,23 @@ function SbomArtifactsTab() {
             a.component_count,
             `${a.direct_count ?? "-"}/${a.transitive_count ?? "-"}`,
             a.minimum_elements || "-",
-            verdicts[a.artifact_id]
-              ? <Badge tone={verdicts[a.artifact_id].verdict === "OK" ? "green" : "red"}>{verdicts[a.artifact_id].verdict}</Badge>
-              : <Badge tone={a.signature_alg ? "gray" : ""}>{a.signature_alg ? "signed" : "unsigned"}</Badge>,
-            <span key={a.artifact_id} className="row" style={{ gap: 6 }}>
-              <button className="btn sm" onClick={() => void verify(a.artifact_id)} disabled={rowBusy === a.artifact_id}>{rowBusy === a.artifact_id ? "…" : "Verify"}</button>
-              <button className="btn sm" onClick={async () => { try { await downloadSbomReport(a.artifact_id); } catch (e) { window.alert("report failed: " + String(e)); } }}>Report</button>
-              <button className="btn sm" onClick={async () => { try { await downloadSbomArtifact(a.artifact_id); } catch (e) { window.alert("download failed: " + String(e)); } }}>SBOM</button>
+            <span key={`${a.artifact_id}-v`} title={a.feed_supplied ? "matched against an advisory feed" : "no advisory feed was supplied"}>
+              {a.vulnerability_count ?? "-"}{a.feed_supplied ? "" : " (unchecked)"}
+            </span>,
+            verdictCell(a),
+            <span key={a.artifact_id} style={{ display: "grid", gap: 6 }}>
+              <span className="row" style={{ gap: 6 }}>
+                <button className="btn sm" onClick={() => void verify(a.artifact_id)} disabled={rowBusy === a.artifact_id}>{rowBusy === a.artifact_id ? "…" : "Verify"}</button>
+                <button className="btn sm" onClick={() => void gate(a.artifact_id)} disabled={rowBusy === a.artifact_id}>Gate</button>
+                <button className="btn sm" onClick={() => void rescan(a.artifact_id)} disabled={rowBusy === a.artifact_id}>Rescan</button>
+                <button className="btn sm" onClick={async () => { try { await downloadSbomReport(a.artifact_id); } catch (e) { window.alert("report failed: " + String(e)); } }}>Report</button>
+                <button className="btn sm" onClick={async () => { try { await downloadSbomArtifact(a.artifact_id); } catch (e) { window.alert("download failed: " + String(e)); } }}>SBOM</button>
+              </span>
+              {detailCell(a)}
             </span>,
           ])}
         />
-      ) : <div className="muted" style={{ fontSize: 12.5 }}>No artifacts yet — run a scan.</div>}
+      ) : <div className="muted" style={{ fontSize: 12.5 }}>No artifacts match — clear the filters or run a scan.</div>}
     </Panel>
   );
 }

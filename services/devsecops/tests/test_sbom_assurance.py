@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 
 from devsecops import sbom_scan as sb
-from devsecops.sbom_assurance import check_minimum_elements, diff_boms
+from devsecops.sbom_assurance import check_minimum_elements, diff_boms, evaluate_gate
 
 
 def _write(path, text: str) -> None:
@@ -200,3 +200,112 @@ def test_rendered_bom_carries_graph_and_author(tmp_path):
     cookie_spdx = next(p for p in spdx["packages"] if p["name"] == "cookie")
     assert cookie_spdx["licenseDeclared"] == "MIT"
     assert any(r["relationshipType"] == "DEPENDS_ON" for r in spdx["relationships"])
+
+
+# ------------------------------------------------------------------ gate ---- #
+def _bom(components=None, vulns=None, licenses=None, complete=True):
+    """A gate fixture that satisfies the NTIA minimum elements by default, so
+    each test isolates the rule it is about rather than tripping the
+    minimum-elements rule too."""
+    comps = []
+    for name, version in (components or [("lodash", "4.17.20")]):
+        comp = {"type": "library", "name": name, "version": version,
+                "bom-ref": f"pkg:npm/{name}@{version}"}
+        if complete:
+            comp["purl"] = f"pkg:npm/{name}@{version}"
+            comp["supplier"] = {"name": "ACME"}
+        if licenses and name in licenses:
+            comp["licenses"] = [{"license": {"id": licenses[name]}}]
+        comps.append(comp)
+    bom = {"bomFormat": "CycloneDX", "specVersion": "1.5", "components": comps,
+           "metadata": {"timestamp": "2026-09-01T00:00:00Z", "authors": [{"name": "ci"}]}}
+    if complete:
+        bom["dependencies"] = [{"ref": c["bom-ref"], "dependsOn": []} for c in comps]
+    if vulns:
+        bom["vulnerabilities"] = vulns
+    return bom
+
+
+def _vuln(cve, severity):
+    return {"id": cve, "ratings": [{"severity": severity}],
+            "affects": [{"ref": "pkg:npm/lodash@4.17.20"}]}
+
+
+def test_gate_passes_a_clean_documented_bom():
+    g = evaluate_gate(_bom(), unpinned=0, signed=True)
+    assert g["verdict"] == "PASS"
+    assert g["blockers"] == []
+    assert g["counts"]["CRITICAL"] == 0 and g["counts"]["unpinned"] == 0
+
+
+def test_gate_blocks_on_critical_and_honors_the_allowance():
+    bom = _bom(vulns=[_vuln("CVE-1", "critical")])
+    assert evaluate_gate(bom)["verdict"] == "FAIL"
+    assert [b["code"] for b in evaluate_gate(bom)["blockers"]] == ["GATE-CVE-CRITICAL"]
+    allowed = evaluate_gate(bom, policy={"allow_critical": 1})
+    assert allowed["verdict"] == "PASS"
+    assert allowed["counts"]["CRITICAL"] == 1
+
+
+def test_gate_complete_fixture_scores_full_marks():
+    # guards the fixture itself: the gate tests below are about their own rule
+    report = check_minimum_elements(_bom())
+    assert report["score"] == "7/7" and report["compliant"] is True
+
+
+def test_gate_high_severity_is_a_warning_unless_limited():
+    bom = _bom(vulns=[_vuln("CVE-2", "high")])
+    default = evaluate_gate(bom)
+    assert default["verdict"] == "PASS"
+    assert [w["code"] for w in default["warnings"]] == ["GATE-CVE-HIGH-PRESENT"]
+    limited = evaluate_gate(bom, policy={"allow_high": 0})
+    assert limited["verdict"] == "FAIL"
+    assert limited["blockers"][0]["code"] == "GATE-CVE-HIGH"
+
+
+def test_gate_denies_listed_licenses():
+    bom = _bom(licenses={"lodash": "GPL-3.0-only"})
+    assert evaluate_gate(bom)["verdict"] == "PASS"
+    denied = evaluate_gate(bom, policy={"deny_licenses": ["gpl-3.0-only"]})
+    assert denied["verdict"] == "FAIL"
+    assert denied["blockers"][0]["detail"] == "lodash declares denied license GPL-3.0-only"
+
+
+def test_gate_pinning_and_signature_rules():
+    bom = _bom([("a", "1.0.0"), ("b", None)])
+    assert evaluate_gate(bom, unpinned=1)["verdict"] == "PASS"
+    blocked = evaluate_gate(bom, unpinned=1, policy={"max_unpinned": 0})
+    assert [b["code"] for b in blocked["blockers"]] == ["GATE-UNPINNED"]
+    unsigned = evaluate_gate(bom, policy={"require_signed": True}, signed=False)
+    assert [b["code"] for b in unsigned["blockers"]] == ["GATE-UNSIGNED"]
+    assert evaluate_gate(bom, policy={"require_signed": True}, signed=True)["verdict"] == "PASS"
+
+
+def test_gate_minimum_elements_and_policy_echo():
+    incomplete = _bom(complete=False)   # no supplier/purl/dependencies
+    assert evaluate_gate(incomplete)["verdict"] == "PASS"       # gap is a warning by default
+    report = evaluate_gate(incomplete, policy={"require_minimum_elements": True})
+    assert report["verdict"] == "FAIL"
+    assert report["blockers"][0]["code"] == "GATE-MINIMUM-ELEMENTS"
+    assert "Supplier name" in report["blockers"][0]["detail"]
+    # unknown policy keys are ignored, the effective policy is echoed back
+    echoed = evaluate_gate(incomplete, policy={"nonsense": True})["policy"]
+    assert "nonsense" not in echoed and echoed["allow_critical"] == 0
+
+
+def test_gate_empty_document_reports_zero_components():
+    spdx = {"spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT",
+            "name": "x", "documentNamespace": "https://x", "dataLicense": "CC0-1.0",
+            "packages": [{"SPDXID": "SPDXRef-Package-a", "name": "a", "versionInfo": "1",
+                          "licenseDeclared": "AGPL-3.0-only"},
+                         {"SPDXID": "SPDXRef-Package-b", "name": "b", "versionInfo": "2",
+                          "licenseDeclared": "NOASSERTION"}]}
+    denied = evaluate_gate(spdx, policy={"deny_licenses": ["AGPL-3.0-only"]})
+    assert [b["detail"] for b in denied["blockers"]] == ["a declares denied license AGPL-3.0-only"]
+    # an empty/unrecognized document gates clean on CVEs rather than crashing,
+    # and reports zero components (a consumer can still gate on minimum elements)
+    empty = evaluate_gate({})
+    assert empty["verdict"] == "PASS" and empty["counts"]["components"] == 0
+    assert empty["counts"]["minimum_elements"] == "0/7"
+    unsupported = evaluate_gate({"hello": "world"})
+    assert unsupported["verdict"] == "PASS"

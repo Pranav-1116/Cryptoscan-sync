@@ -149,3 +149,83 @@ def test_is_image_ref():
     assert not sb.is_image_ref("with space:1")
     assert not sb.is_image_ref("")
     assert not sb.is_image_ref("$(`id`)")
+
+
+# ------------------------------------------------------- integrity hashes --- #
+def test_decode_integrity_understands_sri_and_hex():
+    import base64
+
+    sha512 = base64.b64encode(b"a" * 64).decode()
+    assert sb.decode_integrity(f"sha512-{sha512}")[0]["alg"] == "SHA-512"
+    assert sb.decode_integrity("sha256:" + "ab" * 32) == [
+        {"alg": "SHA-256", "content": "ab" * 32}]
+    # the strongest algorithm wins when several are present
+    sha1 = base64.b64encode(b"b" * 20).decode()
+    assert sb.decode_integrity(f"sha1-{sha1} sha512-{sha512}")[0]["alg"] == "SHA-512"
+
+
+def test_decode_integrity_ignores_what_it_must_not_convert():
+    # Go's h1: is a directory-listing hash, not a component content digest
+    assert sb.decode_integrity("h1:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=") == []
+    assert sb.decode_integrity("not-a-hash") == []
+    assert sb.decode_integrity("") == []
+    assert sb.decode_integrity(None) == []
+    assert sb.decode_integrity("sha512-!!!!") == []   # malformed base64 is skipped, not guessed
+
+
+def test_npm_integrity_lands_in_both_formats(tmp_path):
+    import base64
+
+    integrity = "sha512-" + base64.b64encode(b"c" * 64).decode()
+    _write(tmp_path / "package-lock.json", json.dumps({
+        "name": "app", "lockfileVersion": 3,
+        "packages": {"": {"name": "app"},
+                     "node_modules/nanoid": {"version": "3.3.7", "integrity": integrity}}}))
+
+    result = sb.scan_source(str(tmp_path))
+    cdx = sb.render_sbom(result, fmt="cyclonedx", created_by="t")
+    nanoid = next(c for c in cdx["components"] if c["name"] == "nanoid")
+    assert nanoid["hashes"][0]["alg"] == "SHA-512"
+
+    spdx = sb.render_sbom(result, fmt="spdx", created_by="t")
+    pkg = next(p for p in spdx["packages"] if p["name"] == "nanoid")
+    assert pkg["checksums"] == [{"algorithm": "SHA512",
+                                 "checksumValue": "63" * 64}]
+
+
+# ----------------------------------------------------- vulnerability feed --- #
+_FEED = [
+    {"cve_id": "CVE-2024-0001", "severity": "HIGH", "summary": "boom",
+     "affected": [{"ecosystem": "npm", "package": "lodash",
+                   "ranges": [{"introduced": "0", "fixed": "4.17.21"}]}]},
+]
+
+
+def test_enrich_vulnerabilities_maps_manager_to_ecosystem(tmp_path):
+    _write(tmp_path / "package.json", json.dumps({"dependencies": {"lodash": "4.17.20"}}))
+    result = sb.scan_source(str(tmp_path))
+    found = sb.enrich_vulnerabilities(result, _FEED)
+    assert [v["cve"] for v in found] == ["CVE-2024-0001"]
+    assert found[0]["manager"] == "npm" and found[0]["fixed_version"] == "4.17.21"
+
+    cdx = sb.render_sbom(result, fmt="cyclonedx", created_by="t")
+    vuln = cdx["vulnerabilities"][0]
+    assert vuln["id"] == "CVE-2024-0001"
+    assert vuln["affects"][0]["ref"].startswith("pkg:npm/lodash@4.17.20")
+
+
+def test_enrich_vulnerabilities_without_feed_claims_nothing(tmp_path):
+    _write(tmp_path / "package.json", json.dumps({"dependencies": {"lodash": "4.17.20"}}))
+    result = sb.scan_source(str(tmp_path))
+    assert sb.enrich_vulnerabilities(result, []) == []
+    assert result["vulnerabilities"] == []
+    # an unpinned component cannot be matched — versions are never guessed
+    _write(tmp_path / "other" / "package.json", json.dumps({"dependencies": {"lodash": "4.17.20"}}))
+    result["packages"][0]["version"] = None
+    assert sb.enrich_vulnerabilities(result, _FEED) == []
+
+
+def test_enrich_vulnerabilities_ignores_unaffected_versions(tmp_path):
+    _write(tmp_path / "package.json", json.dumps({"dependencies": {"lodash": "4.17.21"}}))
+    result = sb.scan_source(str(tmp_path))
+    assert sb.enrich_vulnerabilities(result, _FEED) == []

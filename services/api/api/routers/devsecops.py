@@ -132,6 +132,9 @@ def sbom_export(body: SbomExportRequest,
 
 # ------------------------------------------- 16b. SBOM scanner (E2E) ---- #
 _SBOM_OPERATORS = ("admin", "auditor", "security_analyst", "superadmin")
+# reading an SBOM (list/download/report/diff/validate/gate) is an auditor task —
+# the read-only role may do those; mutating operations stay restricted.
+_SBOM_READERS = (*_SBOM_OPERATORS, "readonly")
 _SBOM_STORE = None
 _ARTIFACT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
@@ -191,6 +194,8 @@ class SbomScanRequest(BaseModel):
     as_image: bool = Field(False, description="treat the target as a registry image even if a path exists")
     include_vendored: bool = Field(False, description="source kind: also parse manifests under vendor/")
     use_lockfiles: bool = Field(True, description="source kind: merge resolved dependency lockfiles")
+    feed: list[dict] | None = Field(None, description=("optional NVD-style advisory feed; matched "
+                                                        "deterministically offline (no network)"))
 
 
 @router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
@@ -251,6 +256,13 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         except Exception as exc:  # noqa: BLE001 — docker/pull unavailability: report honestly
             raise HTTPException(status_code=503, detail=f"container scan unavailable: {exc}")
 
+    if body.feed:
+        try:
+            sb.enrich_vulnerabilities(result, body.feed)
+        except Exception as exc:  # noqa: BLE001 — a bad feed must not yield a fake-clean SBOM
+            raise HTTPException(status_code=422, detail=f"advisory feed could not be applied: {exc}")
+    else:
+        result.setdefault("vulnerabilities", [])
     try:
         bom = sb.render_sbom(result, fmt=fmt, created_by=user)
     except ValueError as exc:
@@ -289,9 +301,20 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         "compliant": compliance["compliant"],
         "pinned": pinning["pinned"],
         "unpinned": pinning["unpinned"],
+        "vulnerability_count": len(result.get("vulnerabilities") or []),
+        # whether an advisory feed was actually applied — an SBOM with zero
+        # advisories because nothing was checked reads differently from one
+        # that was checked against a feed and came back clean
+        "feed_supplied": bool(body.feed),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user,
         "storage_key": key,
+        # what it takes to re-scan the very same target with the same options
+        "scan_options": {"kind": kind, "target": str(result.get("target") or body.target),
+                         "as_image": bool(body.as_image),
+                         "include_vendored": bool(body.include_vendored),
+                         "use_lockfiles": bool(body.use_lockfiles),
+                         "format": fmt, "feed_supplied": bool(body.feed)},
     }
     secret, key_id = _sbom_signing_secret(db)
     if secret:
@@ -313,11 +336,28 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
 
 
 @router.get("/sbom/artifacts")
-def sbom_artifacts(user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+def sbom_artifacts(kind: str | None = None, fmt: str | None = None,
+                  q: str | None = None, limit: int = 50,
+                  user: str = Depends(require_roles(*_SBOM_READERS))):
     """List generated SBOM artifacts (newest first, capped at 50)."""
     items = _sbom_storage().list_manifests()
     items.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
-    return {"artifacts": items[:50], "total": len(items)}
+    if kind:
+        wanted = kind.strip().lower()
+        items = [i for i in items if str(i.get("kind") or "").lower() == wanted]
+    if fmt:
+        wanted = "cyclonedx" if fmt.strip().lower() in ("cyclonedx", "cdx") else fmt.strip().lower()
+        items = [i for i in items if str(i.get("format") or "").lower() == wanted]
+    if q:
+        needle = q.strip().lower()
+        items = [i for i in items if needle in str(i.get("target") or "").lower()]
+    bounded = items[:max(1, min(limit, 200))]
+    for item in bounded:
+        aid = item.get("artifact_id")
+        item["download_url"] = f"/api/v1/devsecops/sbom/{aid}/download" if aid else None
+        item["verify_url"] = f"/api/v1/devsecops/sbom/{aid}/verify" if aid else None
+        item["report_url"] = f"/api/v1/devsecops/sbom/{aid}/report" if aid else None
+    return {"total": len(items), "returned": len(bounded), "artifacts": bounded}
 
 
 class SbomValidateRequest(BaseModel):
@@ -326,7 +366,7 @@ class SbomValidateRequest(BaseModel):
 
 @router.post("/sbom/validate")
 def sbom_validate(body: SbomValidateRequest,
-                  user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+                  user: str = Depends(require_roles(*_SBOM_READERS))):
     """NTIA minimum-elements check for a CycloneDX/SPDX document: supplier,
     component name, version, unique identifiers, dependency relationships,
     SBOM author and timestamp — per-element coverage plus the exact gaps.
@@ -345,7 +385,7 @@ class SbomDiffRequest(BaseModel):
 
 @router.post("/sbom/diff")
 def sbom_diff(body: SbomDiffRequest,
-              user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+              user: str = Depends(require_roles(*_SBOM_READERS))):
     """Diff two SBOMs (stored artifacts or inline docs): components added,
     removed, version-changed (upgrade/downgrade), license changes, crypto
     deltas and a review verdict."""
@@ -383,7 +423,7 @@ def sbom_diff(body: SbomDiffRequest,
 
 @router.get("/sbom/{artifact_id}/verify")
 def sbom_verify(artifact_id: str, db: Session = Depends(get_db_session),
-                user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+                user: str = Depends(require_roles(*_SBOM_READERS))):
     """Re-verify a stored artifact: recompute the blob digest and the manifest
     HMAC signature. Returns OK only when both match."""
     from devsecops.sbom_scan import verify_artifact
@@ -425,7 +465,7 @@ def sbom_verify(artifact_id: str, db: Session = Depends(get_db_session),
 
 @router.get("/sbom/{artifact_id}/report")
 def sbom_report(artifact_id: str, fmt: str = "markdown",
-                user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+                user: str = Depends(require_roles(*_SBOM_READERS))):
     """Auditor-friendly summary of a stored SBOM: components, crypto inventory,
     pinning, minimum-elements status and provenance (markdown or json)."""
     from devsecops.sbom_assurance import check_minimum_elements
@@ -495,6 +535,112 @@ def sbom_report(artifact_id: str, fmt: str = "markdown",
     ext = "md" if fmt.lower() in ("markdown", "md") else "txt"
     return Response(content=body.encode("utf-8"), media_type="text/markdown",
                     headers={"Content-Disposition": f'attachment; filename="cryptoscan-sbom-{artifact_id[:8]}.{ext}"'})
+
+
+class SbomGateRequest(BaseModel):
+    policy: dict | None = Field(None, description="gate policy overrides (see DEFAULT_GATE_POLICY)")
+
+
+class SbomRescanRequest(BaseModel):
+    policy: dict | None = Field(None, description="gate policy for the fresh artifact")
+    include_vendored: bool | None = Field(None, description="override the stored scan option")
+    use_lockfiles: bool | None = Field(None, description="override the stored scan option")
+
+
+def _load_sbom_artifact(artifact_id: str) -> tuple[dict, bytes]:
+    """(manifest, blob) for a stored artifact, or 404."""
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    store = _sbom_storage()
+    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    if man is None or not man.get("storage_key"):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    try:
+        return man, store.get(man["storage_key"])
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=404, detail="artifact not found")
+
+
+@router.post("/sbom/{artifact_id}/gate")
+def sbom_gate(artifact_id: str, body: SbomGateRequest | None = None,
+              user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Evaluate a stored artifact against a supply-chain gate policy.
+
+    Deterministic and offline: counts critical/high advisories recorded in the
+    document, checks declared licenses against the deny list, checks the NTIA
+    minimum-elements score, the pinning summary and the signature. A FAIL
+    verdict means the policy's blocker thresholds were crossed — the caller
+    should stop the pipeline; warnings are advisory.
+    """
+    from devsecops.sbom_assurance import evaluate_gate
+
+    man, blob = _load_sbom_artifact(artifact_id)
+    try:
+        bom = json.loads(blob.decode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 — a corrupt blob is a real failure, not a pass
+        raise HTTPException(status_code=422, detail=f"stored SBOM could not be parsed: {exc}")
+    result = evaluate_gate(bom, policy=(body.policy if body else None),
+                           unpinned=man.get("unpinned"),
+                           signed=bool(man.get("signature")))
+    return {"artifact_id": artifact_id, "target": man.get("target"), "format": man.get("format"),
+            "generated_at": man.get("created_at"), **result}
+
+
+@router.post("/sbom/{artifact_id}/rescan")
+def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
+                db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Re-scan the stored target with the stored options and diff old -> new.
+
+    This is the "did anything change under me?" control: it re-runs the same
+    scan (source kind, lockfile preference, format), stores the fresh artifact,
+    diffs it against the previous one (added/removed/upgrade/downgrade/license/
+    crypto deltas) and gates the result. Advisory feeds are not persisted (they
+    can be large and are supplied per scan), so a rescan of a fed artifact runs
+    without one and says so in ``notes`` rather than silently reporting zero
+    advisories.
+    """
+    from devsecops.sbom_assurance import diff_boms, evaluate_gate
+
+    man, blob = _load_sbom_artifact(artifact_id)
+    opts = man.get("scan_options") or {}
+    if not opts.get("target"):
+        raise HTTPException(status_code=409, detail=(
+            "this artifact predates recorded scan options — scan the target again "
+            "to enable re-scan"))
+    overrides = body or SbomRescanRequest()
+    request = {"kind": opts.get("kind") or "source", "target": opts["target"],
+               "format": opts.get("format") or "cyclonedx",
+               "as_image": bool(opts.get("as_image")),
+               "include_vendored": (overrides.include_vendored if overrides.include_vendored is not None
+                                    else bool(opts.get("include_vendored"))),
+               "use_lockfiles": (overrides.use_lockfiles if overrides.use_lockfiles is not None
+                                 else bool(opts.get("use_lockfiles")))}
+    try:
+        fresh = sbom_scan(SbomScanRequest(**request), db=db, user=user)
+    except HTTPException as exc:
+        raise HTTPException(status_code=exc.status_code,
+                            detail=f"re-scan of {opts['target']} failed: {exc.detail}")
+
+    try:
+        old_bom = json.loads(blob.decode("utf-8"))
+        delta = diff_boms(old_bom, fresh["bom"])
+    except Exception as exc:  # noqa: BLE001 — the fresh artifact still stands on its own
+        delta = None
+        diff_error = str(exc)
+    notes = []
+    if opts.get("feed_supplied"):
+        notes.append("the previous artifact was generated with an advisory feed, which is not "
+                     "persisted — the fresh artifact has no advisory matches")
+    if delta is None:
+        notes.append(f"diff unavailable: {diff_error}")
+    new_man = fresh["manifest"]
+    gate = evaluate_gate(fresh["bom"], policy=(overrides.policy),
+                         unpinned=new_man.get("unpinned"), signed=bool(new_man.get("signature")))
+    return {"artifact_id": fresh["artifact_id"], "previous_artifact_id": artifact_id,
+            "target": new_man.get("target"), "scan_options": new_man.get("scan_options"),
+            "diff": delta, "gate": gate, "manifest": new_man, "notes": notes,
+            "verify_url": fresh["verify_url"], "download_url": fresh["download_url"]}
 
 
 @router.delete("/sbom/artifacts")
@@ -571,7 +717,7 @@ def _is_crypto_component(component: dict, bom: dict) -> bool:
 
 
 @router.get("/sbom/{artifact_id}/download")
-def sbom_download(artifact_id: str, user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+def sbom_download(artifact_id: str, user: str = Depends(require_roles(*_SBOM_READERS))):
     """Download a persisted SBOM artifact (JSON) with its provenance header."""
     if not _ARTIFACT_ID_RE.match(artifact_id):
         raise HTTPException(status_code=404, detail="artifact not found")
