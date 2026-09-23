@@ -1,5 +1,6 @@
 # CryptoScan documentation
 
+> **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
 > **How production-ready is it?** [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) — ~80% overall, core path ~92%, with the evidence and the gaps.
 > **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview (33 / 30 / 8), labelled in the UI and served at `GET /api/v1/platform/capabilities`.
 
@@ -15,6 +16,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 
 | Doc | What it covers |
 |---|---|
+| **[The product, end to end](product/README.md)** | seven documents with rendered diagrams: what it is, every feature, architecture, data flow, a scan step by step, scope & readiness, glossary |
 | [Production readiness](PRODUCTION-READINESS.md) | the number, what moved it, what holds it back — each line pointing at its evidence |
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
