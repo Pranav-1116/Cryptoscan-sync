@@ -34,3 +34,13 @@ tests fake).
 - **container**: needs a Docker daemon to build/scan an image.
 
 Verdict: **6 passed/skipped, 0 failed.**
+
+## Long-running soak (Postgres + Redis)
+
+`scripts/burn_in.py` proves integrations once; `scripts/soak.py` proves the
+whole stack over time. `deploy/staging/staging-up.sh` brings up a real
+PostgreSQL 16 + Redis 7 stack with `ENVIRONMENT=production` and no Docker;
+the soak cycles the real pipeline (queue → worker → 14 stages → evidence chain
+verify → dashboards → signed export → SSE) and samples RSS, fds, connections
+and queue depth every cycle. Runs, raw data, pass criteria and what the first
+run found: [`docs/soak-evidence/`](soak-evidence/README.md).

@@ -140,9 +140,10 @@ def burn_github(api: str, username: str, password: str, secret: str, timeout: in
 
 # ------------------------------------------------------------------------ tls
 
-def burn_tls(host: str, port: int) -> None:
+def burn_tls(host: str, port: int, ca_file: str | None = None) -> None:
     try:
-        ctx = ssl.create_default_context()
+        # System trust by default; --ca-file adds a private CA (staging / internal PKI).
+        ctx = ssl.create_default_context(cafile=ca_file) if ca_file else ssl.create_default_context()
         with socket.create_connection((host, port), timeout=10) as sock:
             with ctx.wrap_socket(sock, server_hostname=host) as tls:
                 cert = tls.getpeercert()
@@ -350,6 +351,7 @@ def main() -> int:
     parser.add_argument("--webhook-secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", "dev-webhook-secret-change-me-32chars!!"))
     parser.add_argument("--host", default=os.environ.get("BURN_TLS_HOST", "github.com"))
     parser.add_argument("--port", type=int, default=443)
+    parser.add_argument("--ca-file", default=os.environ.get("BURN_IN_CA_FILE"), help="extra CA bundle to trust for --target tls (staging PKI)")
     parser.add_argument("--smtp-host", default="127.0.0.1")
     parser.add_argument("--smtp-port", type=int, default=1025)
     parser.add_argument("--no-smtp-sink", action="store_true", help="target a real relay instead of the built-in sink")
@@ -358,7 +360,7 @@ def main() -> int:
 
     targets = {
         "github": lambda: burn_github(args.api, args.username, args.password, args.webhook_secret, args.github_timeout),
-        "tls": lambda: burn_tls(args.host, args.port),
+        "tls": lambda: burn_tls(args.host, args.port, args.ca_file),
         "smtp": lambda: burn_smtp(args.smtp_host, args.smtp_port, local_sink=not args.no_smtp_sink),
         "neo4j": burn_neo4j,
         "cloud": burn_cloud,

@@ -71,6 +71,7 @@ CRYPTOSCAN_SNAPSHOT_DIR=$STAGE/data
 SBOM_STORAGE_DIR=$STAGE/data/sboms
 CRYPTOSCAN_SOURCE_ROOTS=$ROOT/demo
 WORKSPACE_DIR=$STAGE/work
+WORKSPACE_BASE_PATH=$STAGE/work
 MAX_CONCURRENT_JOBS=2
 EVENT_TAILER_SECONDS=2
 CRYPTOSCAN_CVE_LIVE=0
@@ -90,7 +91,7 @@ pg_up() {
     "$PY" - <<PY
 import pgserver
 pg = pgserver.get_server("$STAGE/pg", cleanup_mode=None)
-pg.psql("create user cryptoscan with password 'staging-only-pw';")
+pg.psql("create user cryptoscan with password 'staging-only-pw' createdb;")
 pg.psql("create database cryptoscan owner cryptoscan;")
 PY
     "$PGBIN/pg_ctl" -D "$STAGE/pg" stop -m fast >/dev/null 2>&1 || true
@@ -186,6 +187,15 @@ case "${1:-up}" in
     log "admin password: see STAGING_ADMIN_PASSWORD in $ENV_FILE"
     ;;
   status) status ;;
+  restart-apps)  # redeploy code mid-soak: api/worker/monitor only, data untouched
+    load_env
+    for n in monitor worker api; do
+      pf="$STAGE/run/$n.pid"
+      if [[ -f "$pf" ]]; then kill "$(cat "$pf")" 2>/dev/null || true; rm -f "$pf"; log "stopped $n"; fi
+    done
+    sleep 1
+    migrate; api_up; worker_up; monitor_up; status
+    ;;
   down) down ;;
-  *) echo "usage: $0 [up|status|down]"; exit 2 ;;
+  *) echo "usage: $0 [up|status|down|restart-apps]"; exit 2 ;;
 esac

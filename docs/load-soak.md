@@ -47,3 +47,13 @@ benchmarked separately at ~2,300 files/s — `performance.md`).
 _Re-run after every deployment: `scripts/load_test.py --url … --users 5
 --duration 90 --username … ` (logins are budget-limited to 5/min/IP by
 design; the harness staggers them)._
+
+## 2026-09-23: 20 users × 180 s on the Postgres staging stack
+
+78,039 requests, 433 rps, **0 errors**, p50 164 ms / p99 321 ms — but 75,665
+of them were 429. All twenty virtual users log in as the same `admin`, so the
+production per-identity budget (600 req/min) was the ceiling; the API tier
+answered every one of those 433 rps correctly and stayed up, which is the
+resilience result, not a capacity result. Raw output and the concurrent soak
+in [`docs/soak-evidence/2026-09-23-staging/`](soak-evidence/2026-09-23-staging/REPORT.md).
+To measure capacity, give each virtual user its own API key.
