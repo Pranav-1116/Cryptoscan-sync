@@ -134,6 +134,8 @@ second time.
 
 ---
 
+![Data model — the tables that matter](img/21-data-model.png)
+
 ## The trust boundary
 
 Nothing in B–E can change what A recorded:

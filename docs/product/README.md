@@ -52,6 +52,36 @@ is fabricated: it is empty until a real scan produces evidence.
 | Tests | 4,808 backend test functions, hermetic and parallel (~8 min); frontend vitest suite; live PostgreSQL migration test |
 | Readiness | ~80 % overall, core path ~92 % — [PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) |
 
+## Image index
+
+Two sets of images. The first nine are structural diagrams; images 10–21 are
+explanatory posters that carry the detailed explanation of each part of the
+product on the image itself.
+
+| # | Image | Explains | Used in |
+|---|---|---|---|
+| 01 | [product overview](img/01-product-overview.png) | what the product does, in one picture | this page |
+| 02 | [layered architecture](img/02-layered-architecture.png) | frontend / API / services / stores | [03](03-architecture.md) |
+| 03 | [runtime topology](img/03-runtime-topology.png) | the processes that run and how they connect | [03](03-architecture.md) |
+| 04 | [scan pipeline](img/04-scan-pipeline.png) | the stages of one job | [05](05-scan-walkthrough.md) |
+| 05 | [data flows](img/05-dataflows.png) | ingest, materialise, export, live delivery | [04](04-dataflow.md) |
+| 06 | [evidence chain](img/06-evidence-chain.png) | how records chain and verify | [03](03-architecture.md) |
+| 07 | [console map](img/07-console-map.png) | the pages and sections | [03](03-architecture.md) |
+| 08 | [security model](img/08-security-model.png) | identity, RBAC, tenancy, guards | [03](03-architecture.md) |
+| 09 | [scope and readiness](img/09-scope-readiness.png) | GA / beta / preview and readiness | [06](06-scope-and-readiness.md) |
+| 10 | [collection in depth](img/10-collection-in-depth.png) | eleven collectors, what each finds, the "unknown is unknown" rule | [02](02-features.md) |
+| 11 | [evidence explained](img/11-evidence-explained.png) | canonicalise → content hash → chain hash → manifest → verify; what tampering looks like | [02](02-features.md) |
+| 12 | [Technology BOM explained](img/12-technology-bom-explained.png) | one inventory, four views, immutable versions, signed export | [02](02-features.md) |
+| 13 | [assessment explained](img/13-assessment-explained.png) | a rule as YAML, 7 packs / 37 rules, per-finding evaluation, drift, PQC, agility, risk | [02](02-features.md) |
+| 14 | [gate and automation](img/14-gate-and-automation-explained.png) | CI gate, SBOM gate, monitor, alerts, WHEN/IF/THEN with approval | [02](02-features.md) |
+| 15 | [prove](img/15-prove-explained.png) | exports, reports, evidence pack, audit pack, how an auditor checks without trusting the server | [02](02-features.md) |
+| 16 | [real-time and console](img/16-realtime-and-console-explained.png) | the delivery path, one API client, nothing fabricated, labelled maturity | [03](03-architecture.md) |
+| 17 | [identity](img/17-identity-explained.png) | 9 roles, the middleware chain, how people and machines sign in | [03](03-architecture.md) |
+| 18 | [operations](img/18-operations-explained.png) | dev / staging / production / air-gap / HA, health, backups, migrations, release, soak | [02](02-features.md) |
+| 19 | [testing](img/19-testing-explained.png) | the test gate, frontend, live tests, soak; what the first real-database run found | [06](06-scope-and-readiness.md) |
+| 20 | [user journeys](img/20-user-journeys.png) | analyst, developer, CISO, auditor, operator, machine | [01](01-what-it-is.md) |
+| 21 | [data model](img/21-data-model.png) | the tables that matter and how they relate | [04](04-dataflow.md) |
+
 ## Where the rest of the documentation lives
 
 This folder is the narrative. The detailed references it points to are the
@@ -60,4 +90,4 @@ existing ones: [user guide](../user-guide/), [admin guide](../admin-guide/),
 [runbooks](../runbooks/), [security](../security/), and the
 [soak evidence](../soak-evidence/README.md). The index is [docs/README.md](../README.md).
 
-Regenerate the diagrams: `python scripts/gen_docs_diagrams.py` (matplotlib only, no browser or Graphviz).
+Regenerate the images: `python scripts/gen_docs_diagrams.py` (01–09) and `python scripts/gen_docs_posters.py` (10–21) — matplotlib only, no browser or Graphviz.

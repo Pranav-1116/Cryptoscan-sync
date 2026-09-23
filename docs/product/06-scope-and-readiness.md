@@ -89,6 +89,9 @@ database said otherwise.
 
 ## How to check any of this yourself
 
+![Testing and quality — how the product proves itself](img/19-testing-explained.png)
+
+
 ```bash
 make test                          # hermetic backend gate
 make test-frontend                 # vitest

@@ -26,6 +26,9 @@ _"What am I responsible for?" Everything downstream is filtered by this._
 
 ## Stage 2 — Collect
 
+![Collection in depth — eleven collectors, one inventory](img/10-collection-in-depth.png)
+
+
 _Eleven kinds of input into one inventory. Every collector is read-only and
 deterministic; an unreachable target is reported as unreachable._
 
@@ -48,6 +51,9 @@ deterministic; an unreachable target is reported as unreachable._
 
 ## Stage 3 — Evidence
 
+![Evidence and integrity explained](img/11-evidence-explained.png)
+
+
 _Every finding becomes a record whose integrity can be checked later by
 someone who does not trust the server._
 
@@ -60,6 +66,9 @@ someone who does not trust the server._
 | WORM retention gate | append-only stores refuse truncation or deletion | — · `compliance` | GA |
 
 ## Stage 4 — Inventory and BOMs
+
+![Inventory and the Technology BOM explained](img/12-technology-bom-explained.png)
+
 
 _One asset model; a key seen by two collectors is one asset with two evidence sources._
 
@@ -78,6 +87,9 @@ _One asset model; a key seen by two collectors is one asset with two evidence so
 
 ## Stage 5 — Assess
 
+![Assessment explained — policy, drift, PQC, agility, risk](img/13-assessment-explained.png)
+
+
 _Inventory becomes posture. Every verdict is a rule or a formula._
 
 | Feature | What it does | Page · API · service | Tier |
@@ -94,6 +106,9 @@ _Inventory becomes posture. Every verdict is a rule or a formula._
 | Security intelligence | cross-scanner correlation into incidents | `/security-intelligence` · `security` | preview |
 
 ## Stage 6 — Gate and act
+
+![Gate and automation explained](img/14-gate-and-automation-explained.png)
+
 
 _Stop bad change at the pipeline; act only with the required human authorisation._
 
@@ -112,6 +127,9 @@ _Stop bad change at the pipeline; act only with the required human authorisation
 
 ## Stage 7 — Prove
 
+![Prove — the artefacts a regulator receives](img/15-prove-explained.png)
+
+
 _A regulator needs an artefact, not a dashboard._
 
 | Feature | What it does | Page · API · service | Tier |
@@ -129,6 +147,9 @@ _A regulator needs an artefact, not a dashboard._
 ---
 
 ## Cross-cutting: operating the platform
+
+![Deployment and operations explained](img/18-operations-explained.png)
+
 
 | Feature | What it does | Where | Tier |
 |---|---|---|---|

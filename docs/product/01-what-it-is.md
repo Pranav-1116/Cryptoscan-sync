@@ -49,6 +49,9 @@ Read the layers top to bottom:
 
 ## Who it is for
 
+![Six journeys through the same platform](img/20-user-journeys.png)
+
+
 | Role | What they get | Where |
 |---|---|---|
 | **Security / crypto team** | findings with evidence, the inventory, drift alerts, PQC and agility scores, remediation work orders | Findings · Assets · Drift · PQC · Agility · Reports |

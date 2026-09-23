@@ -75,6 +75,9 @@ Two ways to bring this up:
 
 ## 3.3 Security model
 
+![Identity, roles and the request path](img/17-identity-explained.png)
+
+
 ![Security model](img/08-security-model.png)
 
 **Who you are.** Local accounts use an Argon-class password hash and TOTP
@@ -131,6 +134,9 @@ faster than a full walk), for SBOM/binary artifacts (`/sbom/{id}/verify`
 detects byte flips and manifest edits) and for backup manifests.
 
 ## 3.5 The console
+
+![Real-time delivery and the console](img/16-realtime-and-console-explained.png)
+
 
 ![Console map](img/07-console-map.png)
 
