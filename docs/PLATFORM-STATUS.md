@@ -135,6 +135,49 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, GraphQL + WebSocket surfaces):** the binary scanner
+is a service other software calls, and two shapes of caller had no reasonable path in: a
+dashboard that wants one round-trip for facts that currently take five REST calls, and a
+console that wants scan progress without polling. Both are now served from the data the
+REST surface already returns — no new source of truth, and no second opinion about state.
+`api/graphql_lang.py` is a **read-only GraphQL subset with no dependencies**: a lexer,
+parser and executor for `query` operations with arguments, variables, aliases, fragments,
+inline fragments, `@skip`/`@include` and `__typename`; nothing else is accepted, and the
+refusals are deliberate and tested — mutations, subscriptions, unknown directives,
+duplicate or cyclic fragments, undeclared variables, untyped/fragment-without-type
+conditions, and empty selection sets (`{}` selects nothing; answering it with `{}` would
+read as "no data", which is a different statement). Limits are enforced *during* execution
+and reported in `extensions`: depth 12, 500 resolved fields, 200 rows per list, 100 kB per
+query; an over-limit list is truncated and flagged (`LIST_TRUNCATED`) rather than silently
+shortened. A bad field is a field-level error with its `path` and a code
+(`FIELD_NOT_IN_SCHEMA`, `MISSING_VARIABLE`, `RESOLVER_ERROR`), not a 500: partial results
+come back with the errors that describe what is missing. `POST|GET /graphql` serves the
+roots `binaryArtifacts`/`binaryArtifact` (findings with severity filter, crypto, CBOM,
+YARA), `binaryJobs`/`binaryJob`, `binaryBatch`, `knowledge`, `runtimeFindings` and
+`__schema`; writes are refused with 405 `READ_ONLY_SURFACE` naming where they *do* live
+(every mutation is a REST endpoint with its own roles and audit trail, and reaching the
+same write through a query language would quietly bypass that). `GET /graphql/schema`
+returns the field list, the limits and the refused operations for client authors.
+`api/job_view.py` is now the single job card REST, GraphQL and the socket all serialise,
+so a job that reads `binary_ingest / 100 / COMPLETED` in a stream cannot read differently
+in a status page. `WS /ws/binary/jobs/{id}` sends `hello` → `snapshot` → `update` → `final`
+and closes 1000; missing jobs close 4404, auth failures 1008, an idle job 4429 after 30
+minutes. Its honesty note is in the first frame: the server **polls the job row** (1s
+default, `?interval=` clamped 0.25–10s) because the worker is a separate process and the
+in-process bus does not cross that boundary — a socket that called this "push" would be
+polling with a nicer name. `WS /ws/events` exposes the same bus as the SSE stream with
+`topics=` prefixes and `since=`/`last_event_id` resume, pings every 25s, and reports drops
+it caused (`warning`, with the count) rather than losing them silently. Reader roles are
+admin/superadmin/security_analyst/auditor/readonly on both sockets; a session with no
+roles keeps the legacy admin fallback, an API key with no reader role is refused — key
+roles are explicit by design. Tests: +50 `test_graphql_lang.py`, +27 `test_graphql_api.py`,
++10 `test_websocket_api.py`; live drill on the running API: `mutation { deleteEverything }`
+→ 400 `INVALID_QUERY`, scan of `/usr/bin/openssl` → artifact `002f0eb6` (11 algorithms,
+3 findings HIGH/MEDIUM/LOW, CBOM present) read back through GraphQL with the same counts
+REST reports → queued job streamed `hello → snapshot QUEUED → update RUNNING → update
+COMPLETED → final COMPLETED` then closed 1000 → the events socket replayed 7 events with
+`scan.queued` visible under `topics=scan.,binary.`.
+
 **Update (2026-09-23, commit pending, installed knowledge packs / offline detection
 updates):** the air-gapped parity gap that mattered most was not feeds — feature 26 already
 ingests offline CVE feeds — but **detections**: a disconnected install could only be updated
@@ -930,7 +973,7 @@ via public internet scanning of configured targets.
 | 53–54 | Migration tracking (auto-project from scan, tasks/milestones, derived progress, velocity forecast, GitHub export + sync) | Built | `POST /migrations/from-scan`, `GET /migrations/{id}/{tasks,progress,forecast}`, `export/github-issues`, `POST /sync`; demo: 207 assets → 207 tasks, 50 done → 24.2% |
 | 55–56 | Compliance reports (6 templates, requirement-by-requirement from policy evidence, attestation + canonical SHA-256 hash) | Built | `reporting/report_templates.py`, `GET /scans/{id}/report[.html]`, `GET /scans/{id}/report.pdf`, `GET /report-templates`. NOT_EVALUATED never guessed as PASS. **PDF built**: deterministic A4 rendering of the same report JSON (`reporting/pdf_export.py`, `fpdf2`) — a basic structured PDF, not branded layout. PKI signing built: set `REPORT_SIGNING_KEY` and reports carry a real RS256 signature (OpenSSL-verifiable, `POST /report/verify`); absent when unconfigured — never faked. Scheduling built: `POST /report-schedules` + `run-due` cron entry, immutable `report_snapshots` (migration 0027), email via configured SMTP (`SKIPPED_NO_SMTP` recorded honestly) |
 | 57–58 | Hardening: MFA (RFC 6238 TOTP + recovery codes), lockout, RBAC, rate limiting, tamper-evident audit, security headers, prod config fail-closed | Partial (honest) | Migration 0022 (MFA), 0025 (audit chain); `RateLimitMiddleware`; `GET /auth/audit/{verify,export}` (WORM-ready JSONL); OIDC SSO verification (`POST /auth/oidc`, bring-your-own-IdP). RBAC ships 3 roles (admin/auditor/viewer), not the spec's 8. **Not claimed:** mTLS, WAF/DDoS, multi-AZ/DR, Prometheus/ELK/Jaeger, 7-year WORM storage — infrastructure, deployed by you (see `docs/admin-guide/hardening.md`) |
-| 59–60 | Performance & polish: measured scan benchmark, hot-path composite indexes, gzip, estate CSV export | Partial (honest) | `scripts/benchmark_scan.py` (10k files in 59.1 s vs 300 s budget, regression-caught history in `docs/admin-guide/performance.md`); migration 0026 indexes; `GET /export/findings.csv` with honest truncation headers. **Not claimed:** Redis caching, materialized views/partitioning, GraphQL, PWA/frontend polish, Lighthouse, uptime numbers |
+| 59–60 | Performance & polish: measured scan benchmark, hot-path composite indexes, gzip, estate CSV export | Partial (honest) | `scripts/benchmark_scan.py` (10k files in 59.1 s vs 300 s budget, regression-caught history in `docs/admin-guide/performance.md`); migration 0026 indexes; `GET /export/findings.csv` with honest truncation headers. **Not claimed:** Redis caching, materialized views/partitioning, a general GraphQL server (a read-only query subset ships — see the 2026-09-23 update), PWA/frontend polish, Lighthouse, uptime numbers |
 
 ## Beyond the plan: live monitoring (24/7)
 

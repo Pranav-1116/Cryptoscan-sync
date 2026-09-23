@@ -24,6 +24,7 @@ from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
     agility,
     analytics,
+    graphql,
     billing,
     compliance,
     ops,
@@ -109,6 +110,7 @@ from api.routers import (
     resilience,
 )
 from api.routers import metrics as metrics_router
+from api.routers import ws
 from api.security.exceptions import AuthenticationError, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -434,6 +436,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(datalake_router.router, prefix=prefix)
     app.include_router(anomaly_router.router, prefix=prefix)
     app.include_router(governance_router.router, prefix=prefix)
+    app.include_router(graphql.router, prefix=prefix)  # POST/GET /graphql (read-only)
+    app.include_router(ws.router, prefix=prefix)  # /ws/binary/jobs/{id}, /ws/events
     app.include_router(metrics_router.router)  # /metrics (no /api prefix)
 
     dashboard_dist = Path(__file__).resolve().parents[2] / "dashboard" / "dist"
