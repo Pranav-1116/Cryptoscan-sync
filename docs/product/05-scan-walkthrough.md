@@ -7,6 +7,8 @@ were run against the Postgres+Redis staging stack on 2026-09-23
 
 ![Scan pipeline](img/04-scan-pipeline.png)
 
+_Figure 4 — one scan job from trigger to verifiable result: clone, language detect, scan, evidence, load, normalise, policy, drift, quantum, gate, CBOM, alert._
+
 ## 0. Trigger
 
 Four things can start a scan; all of them end in the same queue.

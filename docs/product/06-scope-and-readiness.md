@@ -7,6 +7,8 @@ what is still open. Sources: `shared_models/capability_maturity.py`
 
 ![Scope and readiness](img/09-scope-readiness.png)
 
+_Figure 9 — the three maturity tiers (33 GA · 30 beta · 8 preview) and the readiness score per area; the console shows the same labels._
+
 ## Three tiers, one source of truth
 
 Every console route has a tier. The table lives in Python, is generated into
@@ -90,6 +92,52 @@ database said otherwise.
 ## How to check any of this yourself
 
 ![Testing and quality — how the product proves itself](img/19-testing-explained.png)
+
+_Figure 19 — the four test gates and what the first real-database run
+found._
+
+### How the product proves itself
+
+- **`make test` — the gate.** 4,808 tests in one hermetic, parallel session
+  (pytest-xdist, `--dist loadfile`), about 8 minutes on 2 cores. Hermetic
+  means `pytest-socket` blocks every non-loopback socket, so a test that
+  reaches for GitHub, a cloud API or SMTP fails instantly with
+  `SocketBlockedError` instead of hanging on DNS — the failure that used to
+  keep the suite out of CI. `--import-mode=importlib` lets duplicate test
+  basenames across services coexist; a 120 s per-test timeout bounds the
+  worst case.
+- **`make test-frontend`.** `tsc --noEmit`, then vitest + Testing Library on
+  jsdom with `fetch` mocked: the app boots and routes; every one of the 71
+  pages mounts without throwing; UI primitives; the API client's
+  auth/refresh/error shaping; maturity lookup matches the generated table.
+  Smoke-level by design — a page that throws on mount cannot ship.
+- **`make test-live`.** Tests marked `live` need a real network or a real
+  PostgreSQL. `test_migration_chain_postgres.py` proves the 60-revision chain
+  applies on a fresh database, no `uuid` columns remain where the ORM says
+  `String(36)`, migrated schema == models, and downgrade −1 and back works.
+  Skips without a server; `staging-up.sh` provides one.
+- **Soak · burn-in · load.** `scripts/soak.py`: trigger → wait → verify chain
+  → every dashboard → signed export → SSE probe → sample RSS / fds / PG
+  connections / Redis queue, every cycle, for days; failures are recorded,
+  never skipped. `scripts/burn_in.py`: GitHub signed-webhook round trip, live
+  TLS, SMTP, Neo4j, cloud, container — PASS / FAIL / honest SKIP.
+  `scripts/load_test.py`: bank-estate-shaped traffic with an honest exit on
+  error rate.
+
+**What the first real-database run found (2026-09-23).** Development and
+tests had built the schema with `create_all` on SQLite, so three defects
+survived 4,000+ green tests: the migration chain did not apply on a fresh
+PostgreSQL (0011); with that patched, every scan failed at the policy stage
+(15 `uuid` columns vs `String(36)`); and every job leaked its workspace
+directory. All three are fixed with regression tests. The lesson is encoded:
+the Postgres chain test exists and the staging stack is one command.
+
+**Quality rules the code follows.** No AI decides compliance. Unknowns are
+reported with a reason. Unchecked ≠ clean (an SBOM with no advisories says
+whether a feed was applied). Every claim is verifiable after the fact by
+someone who does not trust the platform. Repositories, not raw SQL, in
+routers. Injected clients so scanners test without a network. `ruff` +
+`pip-audit` + secret hygiene in `make security-scan`.
 
 
 ```bash

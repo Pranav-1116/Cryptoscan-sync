@@ -6,6 +6,8 @@ reference with every table and event name is [DATAFLOW.md](../DATAFLOW.md)._
 
 ![The five data flows](img/05-dataflows.png)
 
+_Figure 5 — the five flows described below: ingest (A), materialise and version (B), export and audit (C), live delivery (D), scheduled exports (E)._
+
 There are five flows. **A–D run continuously**; **E** is the only
 timer-triggered path. Read them as a pipeline: facts are gathered (A), turned
 into the one BOM (B), exported and audited (C), streamed live (D), and
@@ -135,6 +137,37 @@ second time.
 ---
 
 ![Data model — the tables that matter](img/21-data-model.png)
+
+_Figure 21 — the tables that matter (of 102) and how they reference each
+other. Arrows read "references"._
+
+## The data model
+
+| Group | Table | Key columns | References |
+|---|---|---|---|
+| Jobs & scans | `scan_jobs` | id, status (QUEUED/RUNNING/COMPLETED/FAILED), repo_url, branch, progress (stages, %, logs), scan_id, error_message, created/started/completed_at | → `scans` |
+| | `scans` | id, repo, commit, started/completed, manifest_hash, status, finding counts, cbom | → `evidence_records` |
+| | `evidence_records` | id, scan_id, content (canonical JSON), content_hash, chain_hash, sequence, created_at | → `verification_log` |
+| | `verification_log` | id, scan_id, result PASS/FAIL, chain_intact, first_broken_index, verified_at | |
+| Inventory | `systems` | id, name, owner, environment, criticality, business_process | ← `system_asset` |
+| | `crypto_assets` | id, algorithm, key_size, mode, purpose, libraries, file_path, confidence, quantum_bucket, normalized_* | ← `crypto_asset_evidence` |
+| | `crypto_asset_evidence` | asset_id → crypto_assets, evidence_id → evidence_records | many-to-many: one asset, N observations |
+| | `certificates` · `hardware_live` · `vendors` | fingerprint_sha256, subject, expiry, revocation · manufacturer, model, firmware, hsm/tpm · product, lifecycle, risk | |
+| Assessment | `baselines` | id, system/repo, approved_by, approved_at, state (fingerprint of approved assets) | → `drift_events` |
+| | `drift_events` | id, baseline_id, scan_id, kind ADDED/REMOVED/CHANGED, severity, detail | → `scans` |
+| | `gate_evaluations` · `policy_exceptions` | scan_id, profile, verdict, blocking rules · rule_id, scope, approved_by, expires_at | |
+| | `system_dependency` · `graph_snapshots` | parent_id → child_id edges; blast radius; snapshot of the graph per scan | |
+| BOM | `technology_bom_snapshots` | version, snapshot_id, fingerprint, parent_fingerprint, state, diff, environment, created_by | ← inventory |
+| | `technology_bom_export_schedules` / `_runs` | frequency, fmt, layer, filters, next_run_at · snapshot_id, content_sha256, signature_hmac, artifact, audit_event_id | → snapshots |
+| Events | `monitor_events` · `audit_log` | kind, payload, target, ts (durable stream) · actor, action, prev_hash, hash (chained) | |
+| Identity | `users` · `api_keys` · `tenants` · `access_reviews` | password_hash, mfa, role, tenant · scope, allowlist, rotated_at · invites | |
+
+Reading the arrows: a scan job produces a scan; a scan owns evidence
+records; evidence links to assets through `crypto_asset_evidence`; baselines
+and drift reference scans; snapshots are built from the inventory; every
+table change emits a `monitor_event` and, if it is an action, an `audit_log`
+row. The schema is PostgreSQL in production (SQLite for development) and is
+applied by Alembic migrations 0001–0060.
 
 ## The trust boundary
 

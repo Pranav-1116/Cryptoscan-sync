@@ -8,6 +8,8 @@ repository, not from a plan. Version 1.0.0, 2026-09-23._
 
 ![What the product does](img/01-product-overview.png)
 
+_Figure 1 — CryptoScan in one picture. Each block is explained in depth in the pages below and in the explanatory posters (images 10–21)._
+
 ## Read in this order
 
 | # | Document | What it answers |

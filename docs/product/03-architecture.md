@@ -10,6 +10,8 @@ and the security model. Diagrams are rendered from
 
 ![Layered architecture](img/02-layered-architecture.png)
 
+_Figure 2 — the layers and what lives in each. Routers call services through repositories; no router talks to SQL directly._
+
 The layering is strict in one direction: **facts flow down and nothing below
 can alter what a layer above recorded.** A scanner produces facts; the
 evidence layer hashes them; the data layer stores them; normalisation,
@@ -46,6 +48,8 @@ Two consequences worth stating:
 
 ![Runtime topology](img/03-runtime-topology.png)
 
+_Figure 3 — the processes that actually run: nginx, API workers, the pipeline worker, the monitor daemon, PostgreSQL, Redis; which ports are published and which are internal only._
+
 There are **five long-running processes** and **three stores**. Everything
 above the store row is stateless and can be restarted or scaled
 independently.
@@ -77,8 +81,59 @@ Two ways to bring this up:
 
 ![Identity, roles and the request path](img/17-identity-explained.png)
 
+_Figure 17 — the nine roles, the middleware every request passes through,
+and how people and machines sign in._
+
+**Nine RBAC roles** (`api/security/rbac.py`; aliases `admin → superadmin`,
+`viewer → readonly`):
+
+| Role | Scope |
+|---|---|
+| `superadmin` | platform configuration, users, everything |
+| `ciso` | all security data, API keys, approvals |
+| `security_analyst` | scans, findings, drift, baselines |
+| `developer` | own repositories' scans and gate results |
+| `auditor` | read-only + audit export |
+| `business_owner` | own systems' posture and impact |
+| `scanner` | machine role: submit scan results |
+| `readonly` | read everything permitted, change nothing |
+| `supervisor` | read-only for regulators / external review |
+
+**Every request** passes: request-id → security headers → rate limit
+(600/min per identity) → authenticate (session / API key / IdP) →
+`require_permission` (RBAC) → ABAC attributes → tenancy scope → route →
+`audit_log` (chained) → platform event. Everything is fail-closed: no
+permission match → 403; no approver → blocked; unsafe configuration → the
+process does not boot.
+
+**How people sign in.** Local accounts: Argon-class password hash, TOTP MFA,
+lockout, self-service reset over SMTP. OIDC: token relay, authorization-code
+and PKCE for public clients; RS256 id_tokens verified against JWKS
+(discovery, or a file in air-gap); issuer, audience and expiry enforced; the
+PKCE verifier rides a callback-scoped HttpOnly cookie, never front-channel
+state. SAML 2.0 SP with enveloped-signature verification and `InResponseTo`
+binding. LDAP/AD: bind + explicit group → role map. SCIM 2.0: provisioning
+from a directory.
+
+**How machines sign in.** Scoped API keys with rotation and IP allow-lists
+(migration 0052). The `scanner` role can submit results and nothing else.
+GitHub and registry webhooks are HMAC-verified against a per-deployment
+secret; the production guard refuses the demo secret. Rate limiting is per
+identity, so one noisy key cannot starve the console — the 20-user load test
+shows exactly this: 78k requests, 0 errors, the budget was the ceiling.
+
+**What no integration can do.** Mint a superadmin (SCIM, LDAP and OIDC
+auto-provision as viewer/readonly only; elevation is a superadmin action,
+audited). Weaken production (`ENVIRONMENT=production` refuses SQLite, demo
+`SECRET_KEY`, weak webhook secret, `CORS_ORIGINS=*`, plaintext
+`ADMIN_PASSWORD` — tested in both directions and runnable standalone as
+`scripts/check_prod_guard.py`). Skip the audit log — it is written by
+middleware, not by the route.
+
 
 ![Security model](img/08-security-model.png)
+
+_Figure 8 — identity sources, the RBAC/ABAC/tenancy checks each request passes, and the production guards that refuse to boot an unsafe configuration._
 
 **Who you are.** Local accounts use an Argon-class password hash and TOTP
 MFA. Enterprise identity arrives through OIDC (token relay, authorization
@@ -115,6 +170,8 @@ treatment: [security/threat-model.md](../security/threat-model.md) and
 
 ![Evidence chain](img/06-evidence-chain.png)
 
+_Figure 6 — the chain: each record's hash includes the previous record's, the manifest covers all of them, and verification recomputes the whole thing from stored rows._
+
 For each scan, findings are canonicalised (`canonical_serializer`: sorted
 keys, stable formatting) and hashed (`content_hasher` → `content_hash`). Each
 record's `chain_hash` is `SHA-256(content_hash ‖ previous chain_hash)`
@@ -137,8 +194,49 @@ detects byte flips and manifest edits) and for backup manifests.
 
 ![Real-time delivery and the console](img/16-realtime-and-console-explained.png)
 
+_Figure 16 — how a screen stays true without refresh._
+
+**The delivery path.** Any operation calls `emit_platform_event()` → the
+event is persisted to `monitor_events` (durable, replayable) → the in-process
+`EventBus` fans it out to per-subscriber queues → the **DB tailer** picks up
+rows written by the worker and monitor processes → **Redis federation**
+shares them across API nodes → SSE / WebSocket delivers them with
+`Last-Event-ID` resume → the browser holds one subscription and fans out to
+pages.
+
+**Why three hops.** The bus is in-process, so events from the worker and
+monitor would never reach a browser connected to the API — the DB tailer
+closes that gap by reading `monitor_events`. Several API instances behind
+nginx would each see only their own bus — Redis federation closes that one.
+Persisting first means a disconnected client can resume with `Last-Event-ID`
+and the Activity page can replay history.
+
+**Overflow is explicit.** A slow subscriber gets an `events.dropped` advice
+and reconnects with resume rather than silently missing events. Cooldown
+dedup keeps recoveries from spamming. Event families: `scan.*`,
+`job.*/stage.*`, `finding.*`, `drift.*`, `alerts.*`, `live_scan.*`,
+`technology_bom.*`, `automation.*`.
+
+**One API client.** `lib/api.ts` adds the bearer token, refreshes on 401
+once, shapes errors uniformly, and is the only way pages reach `/api/v1`.
+Pages never call `fetch` directly, which is what makes them smoke-testable
+against a mocked API.
+
+**Nothing fabricated.** Every panel renders zero / empty / offline until a
+real scan produces evidence; there is no seeded demo data in the product.
+Unreachable services show as unreachable. This is a product rule
+(`platform_scope.py`), not a styling choice.
+
+**Labelled maturity.** `lib/maturity.ts` is generated from
+`shared_models/capability_maturity.py`. Beta and Preview badges appear in
+the sidebar and page header, so the 33 GA surfaces are not presented as
+equal to the 30 beta and 8 preview ones. 71 pages, 6 sections, EN + AR, all
+smoke-tested to mount.
+
 
 ![Console map](img/07-console-map.png)
+
+_Figure 7 — the 71 pages grouped into 6 sidebar sections, with GA / beta / preview badges as the user sees them._
 
 The SPA has one API client (`lib/api.ts`: bearer header, 401 → refresh,
 error shaping), one SSE subscription shared by every page

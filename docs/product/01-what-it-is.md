@@ -32,6 +32,8 @@ change, gates it in CI, and produces artefacts a regulator can verify.
 
 ![Layered architecture](img/02-layered-architecture.png)
 
+_Figure 2 — the four layers: the React console, the FastAPI API tier, 51 backend service packages, and the stores (PostgreSQL, Redis, optional Neo4j). Requests only flow downward; evidence only flows upward._
+
 Read the layers top to bottom:
 
 | Layer | What it is | Package(s) |
@@ -50,6 +52,66 @@ Read the layers top to bottom:
 ## Who it is for
 
 ![Six journeys through the same platform](img/20-user-journeys.png)
+
+_Figure 20 — six people, one platform. Every journey reads the same
+`evidence_records`, `crypto_assets` and snapshots; roles change what is
+visible and what can be changed, never what was recorded._
+
+### The six journeys, step by step
+
+**Security analyst — a new finding.** The Activity page shows
+`job.completed` for a repository scan. The analyst opens Findings, filters
+to CRITICAL, and opens the row. The finding carries the rule that fired
+(`BASELINE-001`, forbidden algorithm), the file and line, and a link to
+its evidence record. Clicking *verify* runs `GET /scans/{id}/verify`,
+which recomputes the chain from the stored rows and returns `PASS` with
+`chain_intact = true`. The analyst assigns a remediation template (for
+example *replace 3DES with AES-256-GCM*), which produces a work order,
+or approves a time-boxed exception, which is audited and shown on the
+finding. When the fix lands, the next scan clears the drift event and the
+baseline is re-approved — a recorded human action.
+
+**Developer — a blocked build.** A `git push` triggers the GitHub webhook
+(HMAC-verified). The CI gate (`scripts/ci_gate.py`) runs the scan, applies
+the gate profile and exits `1`. GitHub code scanning shows the SARIF 2.1.0
+result; the PR comment names the rule, `file:line` and the remediation. The
+developer fixes the line and pushes; the gate passes with exit `0`. The SBOM
+diff on the DevSecOps page shows exactly which component changed. Nothing
+else in the product is needed for this journey.
+
+**CISO — quarterly posture.** Executive dashboard for unified risk and
+trend; PQC Readiness for the NIST IR 8547 buckets and harvest-now-decrypt-
+later exposure; Migration for project velocity; Priorities for the
+deterministic rank (business impact × severity ÷ effort); a compliance
+report per framework (PCI-DSS 4.0, DORA, NIST SP 800-131A …); and a signed
+export for the board pack, carrying `integrity_sha256` and a JWS signature.
+
+**Auditor — an engagement.** A `supervisor` or `auditor` role is read-only
+by construction. The auditor opens Evidence, verifies each scan's chain,
+takes the CBOM snapshot for the period, reads the compliance report
+requirement by requirement, downloads the audit-export pack (deterministic
+JSON + SHA-256 manifest of the chained audit log) and finishes with the exit
+report and its SC-1…4 scorecard.
+
+**Operator — a normal week.** System Health (`/readyz`, DB, queue), Alerts
+(certificate expiring in 30 days, drift on a production system), the monitor
+daemon re-scanning the watch-list, the nightly `db_backup.sh` with manifest
+and a restore drill, the weekly soak report, and `release_check.py` before
+any upgrade.
+
+**Machine — CI and connectors.** An API key scoped to the `scanner` role can
+submit scan results and nothing else. Webhooks (HMAC) start scans; GraphQL
+and REST read the inventory; SCIM provisions users; ServiceNow receives
+idempotent incidents (stable `correlation_id`); the SIEM receives `alerts.*`.
+
+| Journey | Role(s) | Pages | Can change |
+|---|---|---|---|
+| Analyst | `security_analyst` | Activity · Findings · Evidence · Drift · Baselines | exceptions, baselines, work orders |
+| Developer | `developer` | DevSecOps · CI gate results | own repos' scans |
+| CISO | `ciso` | Executive · PQC · Migration · Priorities · Reports | approvals, API keys |
+| Auditor | `auditor`, `supervisor` | Evidence · CBOM · Reports · Audit export | nothing |
+| Operator | `superadmin` | System Health · Alerts · Backups · Settings | configuration, users |
+| Machine | `scanner` API key | none — API only | submit scan results |
 
 
 | Role | What they get | Where |
