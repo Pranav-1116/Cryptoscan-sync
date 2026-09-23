@@ -221,6 +221,98 @@ async def test_binary_scan_reports_signature_and_encryption_posture(app_db):
 
 
 @pytest.mark.asyncio
+async def test_binary_scan_summary_reports_what_the_constant_search_covered(app_db):
+    """Coverage reaches the manifest: "no AES constants" needs a denominator."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "tables"
+    directory.mkdir()
+    (directory / "libacme.so").write_bytes(
+        fixtures._elf64(soname="libacme.so",
+                        constants=fixtures.cc.aes_sbox() + fixtures.cc.sha256_k()))
+    (directory / "quiet.so").write_bytes(fixtures._elf64(soname="quiet.so"))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    coverage = body["manifest"]["binary_summary"]["constants"]
+    assert coverage["artefacts_searched"] == 2 and coverage["searched_bytes"] > 0
+    assert coverage["complete_tables"] == 2
+    assert coverage["algorithms"] == ["AES", "SHA-256"]
+    rows = {row["file_name"]: row for row in body["binaries"]}
+    assert rows["libacme.so"]["constants"]["tables_matched"] == 2
+    assert rows["quiet.so"]["constants"]["tables_matched"] == 0
+    assert rows["quiet.so"]["constants"]["searched_bytes"] > 0
+
+    # coverage counts what the ladder will not name. An eight-byte prefix of the
+    # AES S-box is matched, and is not enough to report AES.
+    weak = tmp_path / "weak"
+    weak.mkdir()
+    (weak / "libweak.so").write_bytes(
+        fixtures._elf64(soname="libweak.so", constants=fixtures.cc.aes_sbox()[:8]))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(weak), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    coverage = resp.json()["manifest"]["binary_summary"]["constants"]
+    assert coverage["tables_matched"] == 1 and coverage["complete_tables"] == 0
+    assert coverage["algorithms"] == []
+
+    # SHA-256's H and BLAKE2s's IV are the same words: the one that stores its IV
+    # this way is named, the other is a counted ambiguity that is never confirmed
+    shared = tmp_path / "shared"
+    shared.mkdir()
+    (shared / "libshared.so").write_bytes(
+        fixtures._elf64(soname="libshared.so", constants=fixtures.cc.sha256_h()))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(shared), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    coverage = body["manifest"]["binary_summary"]["constants"]
+    assert coverage["tables_matched"] == 2 and coverage["algorithms"] == ["SHA-256"]
+    row = body["binaries"][0]
+    assert row["crypto_constants"] == ["SHA-256"]      # BLAKE2s is counted, not confirmed
+    assert row["constants"]["by_level"] == {"CONSTANT_COMPLETE": 1, "CONSTANT_WEAK": 1}
+    assert row["algorithms"] == ["SHA-256"]
+
+
+@pytest.mark.asyncio
+async def test_stored_report_carries_the_scan_findings_and_constant_coverage(app_db):
+    """The stored artefact is what an auditor reads; it has to name the findings."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "reportme"
+    directory.mkdir()
+    (directory / "libacme.so").write_bytes(
+        fixtures._elf64(soname="libacme.so",
+                        constants=fixtures.cc.aes_sbox() + fixtures.cc.sha256_h()))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    artifact_id = resp.json()["artifact_id"]
+
+    report = await _get(application,
+                        f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown")
+    assert report.status_code == 200, report.text
+    text = report.text
+    assert "## Binary scan" in text
+    assert "Constant tables:" in text and "byte(s) searched" in text
+    assert "Confirmed by constant table: AES, SHA-256" in text
+    assert "## Scan findings" in text and "BIN-CRYPTO-CONSTANT-TABLE" in text
+    # the ambiguity is in the report as the ambiguity it is
+    assert "BIN-CRYPTO-CONSTANT-SHARED" in text and "shared with SHA-256" in text
+
+    payload = (await _get(application,
+                          f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=json")).json()
+    assert payload["binary"]["constants"]["searched_bytes"] > 0
+    excerpt = payload["binary"]["findings_excerpt"]
+    assert {row["code"] for row in excerpt} >= {"BIN-CRYPTO-CONSTANT-TABLE",
+                                                "BIN-CRYPTO-CONSTANT-SHARED"}
+    assert all(row["severity"] in ("CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO")
+               for row in excerpt)
+    assert [row["severity"] for row in excerpt] == sorted(
+        (row["severity"] for row in excerpt),
+        key=lambda severity: {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}[severity])
+
+
+@pytest.mark.asyncio
 async def test_binary_scan_matches_advisories_and_gates(app_db):
     application, _session, tmp_path = app_db
     directory = _target_dir(tmp_path)
@@ -379,6 +471,15 @@ async def test_binary_scan_inventories_embedded_key_material(app_db):
                                     f"{body['artifact_id']}/cbom")
     assert stored.status_code == 200
     assert [c for c in stored.json()["components"] if "key/" in str(c.get("bom-ref", ""))]
+
+    # the stored report counts the key material *and* names the finding
+    report = await _get(application,
+                        f"/api/v1/devsecops/sbom/{body['artifact_id']}/report")
+    assert "Embedded key material: 1 private key(s) (1 unencrypted)" in report.text
+    assert "BIN-EMBEDDED-PRIVATE-KEY" in report.text
+    # and the report never carries the key itself either
+    for secret in (key_fixtures.MODULUS, key_fixtures.PRIVATE_EXPONENT):
+        assert secret.hex() not in report.text
 
     # nothing in the response — summary, findings, SBOM or CBOM — carries the key itself
     dumped = json.dumps(body, sort_keys=True)

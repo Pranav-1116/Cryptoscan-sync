@@ -524,9 +524,11 @@ def parse_elf(data: bytes) -> dict[str, Any]:
     _elf_properties(data, by_name, out)
     _elf_hardening(reader, data, by_name, out, end)
     constants = _crypto_constants(data, sections, by_name)
-    if constants["found"]:
-        out["crypto_constants"] = constants["found"]
-        out["_constant_blobs"] = constants["blobs"]
+    # the search result is attached even when it found nothing: how much was
+    # searched is part of the evidence, and "no tables" is not "not looked at"
+    out["crypto_constants"] = constants["found"]
+    out["_constant_blobs"] = constants["blobs"]
+    out["_constant_evidence"] = constants["deep"]
     packed = detect_packer(sections)
     if packed:
         out["packer"] = packed
@@ -699,27 +701,52 @@ def _elf_hardening(reader: _Reader, data: bytes, by_name: dict[str, Any],
     out["hardening"] = hardening
 
 
+def _constant_evidence_text(row: dict[str, Any]) -> str:
+    """One sentence per matched table, stating exactly what the bytes support."""
+    if row["ambiguous_with"]:
+        return (f"{row['bytes_matched']} of {row['table_bytes']} table bytes — the same bytes "
+                f"are the constants of {' or '.join(row['ambiguous_with'])} read in the opposite "
+                f"byte order, so this does not identify the algorithm on its own")
+    if row["complete"]:
+        return ("complete constant table present in the file"
+                + (" (stored byte-swapped)" if row["byte_swapped_storage"] else ""))
+    return (f"{row['bytes_matched']} of {row['table_bytes']} table bytes present"
+            + (" (stored byte-swapped)" if row["byte_swapped_storage"] else ""))
+
+
+#: sections a constant table can live in — code, read-only data, and the relaxed
+#: variants a static-linked binary produces. PE and Mach-O names are included so
+#: the search is not an ELF-only capability.
+CONSTANT_SECTIONS = (".text", ".rodata", ".data", ".data.rel.ro", ".init", ".plt",
+                     ".rodata.1", ".data.rel.ro.local",
+                     ".rdata", ".CRT",                  # PE
+                     "__TEXT,__const", "__TEXT,__rodata", "__TEXT,__text",
+                     "__DATA,__const", "__DATA,__data")  # Mach-O
+
+
 def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
                       by_name: dict[str, Any]) -> dict[str, Any]:
     """Look for known crypto constant tables in code and read-only data.
 
-    The universal-crypto detector can only raise evidence to CONSTANT_MATCH when
-    it is handed the exact constant blob, so this scans the loadable content for
-    each known table and passes through the ones that are really there. Finding
-    the AES S-box or the SHA-256 K table is implementation evidence (0.9), which
-    is much stronger than a symbol name or a banner string — and it also works on
+    The deep database in :mod:`devsecops.crypto_constants` holds whole tables
+    (AES S-box, SHA-2 round constants, Keccak rounds, Blowfish's pi-derived
+    tables, ...), so a hit is graded by *how much* of the table is present
+    rather than by one prefix. The same matches are also handed to the shared
+    universal-crypto engine — both as whole tables and as the eight-byte
+    prefixes its own table uses — so its CONSTANT_MATCH level still fires, while
+    a partial prefix is reported as the weak evidence it is.
+
+    Finding the AES S-box or the SHA-256 constants is implementation evidence
+    (0.9), much stronger than a symbol name or a banner string, and it works on
     stripped, statically linked binaries that have no symbols at all.
     """
-    from universal_crypto.binary_engine import CRYPTO_CONSTANTS
+    from devsecops.crypto_constants import scan_constants
 
-    blobs: list[bytes] = []
-    found: list[dict[str, Any]] = []
     budget = MAX_CONSTANT_WINDOW
     windows: list[tuple[str, bytes]] = []
     for section in sections:
         name = str(section.get("name") or "")
-        if name not in (".text", ".rodata", ".data", ".data.rel.ro", ".init", ".plt",
-                        ".rodata.1", ".data.rel.ro.local"):
+        if name not in CONSTANT_SECTIONS:
             continue
         size = min(int(section.get("size") or 0), budget)
         if size <= 0:
@@ -731,21 +758,44 @@ def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
             continue
         if budget <= 0:
             break
-    for algorithm, constant in CRYPTO_CONSTANTS.items():
-        for section_name, window in windows:
-            index = window.find(constant)
-            if index < 0:
-                continue
-            blobs.append(constant)
-            found.append({
-                "algorithm": algorithm,
-                "section": section_name,
-                "offset": int(index),
-                "signature": constant[:8].hex(),
-                "evidence": "constant table present in the file",
-            })
-            break
-    return {"blobs": blobs, "found": found}
+
+    deep = scan_constants(windows)
+    if not deep["tables"] and not deep["partials"]:
+        return {"blobs": [], "found": [], "deep": deep}
+    blobs = list(deep["engine_blobs"]) + list(deep["engine_prefixes"])
+    found = [{
+        "algorithm": row["algorithm"],
+        "table": row["table"],
+        "section": row["section"],
+        "offset": int(row["offset"]),
+        "signature": row.get("signature") or "",
+        "bytes_matched": row["bytes_matched"],
+        "table_bytes": row["table_bytes"],
+        "complete": row["complete"],
+        "byte_swapped_storage": row["byte_swapped_storage"],
+        "ambiguous_with": row["ambiguous_with"],
+        "evidence": _constant_evidence_text(row),
+    } for row in deep["tables"]]        # every matched table, complete or partial
+    return {"blobs": blobs, "found": found, "deep": deep}
+
+
+def _attach_constants(data: bytes, out: dict[str, Any],
+                      sections: Iterable[tuple[int, int, int, int, str]]) -> None:
+    """Run the constant search over PE/Mach-O sections, recorded the same way.
+
+    ``sections`` is the ``(virtual_address, virtual_size, raw_offset, raw_size,
+    name)`` tuple list both parsers build, so a table found in a PE's ``.rdata``
+    and one found in an ELF's ``.rodata`` end up in identical evidence rows.
+    """
+    windows = [{"name": name, "offset": raw_offset, "size": raw_size}
+               for _vaddr, _vsize, raw_offset, raw_size, name in sections
+               if name in CONSTANT_SECTIONS and raw_size > 0 and raw_offset < len(data)]
+    if not windows:
+        return
+    constants = _crypto_constants(data, windows, {})
+    out["crypto_constants"] = constants["found"]
+    out["_constant_blobs"] = constants["blobs"]
+    out["_constant_evidence"] = constants["deep"]
 
 
 def detect_packer(sections: Iterable[dict[str, Any]] | Iterable[str],
@@ -1024,6 +1074,8 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         sections.append((virtual_address, virtual_size, raw_offset, raw_size, name))
         if name:
             out.setdefault("sections", []).append(name)
+
+    _attach_constants(data, out, sections)
 
     def rva_to_offset(rva: int) -> int | None:
         for virtual_address, virtual_size, raw_offset, raw_size, _name in sections:
@@ -1674,6 +1726,7 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
     }
     symtab: tuple[int, int, int, int] | None = None
     dysymtab: tuple[int, ...] | None = None
+    const_sections: list[tuple[int, int, int, int, str]] = []
     signature_offset = signature_size = 0
     position = 32 if is64 else 28
     for _ in range(min(ncmds, 8192)):
@@ -1733,8 +1786,24 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
                     if base + 16 > len(data):
                         break
                     sectname = _cstr(data[base:base + 16], 0)
-                    if sectname:
-                        out["sections"].append(f"{segname},{sectname}")
+                    if not sectname:
+                        continue
+                    out["sections"].append(f"{segname},{sectname}")
+                    # section_64 { addr(8) size(8) offset(4) ... } after the two
+                    # 16-byte names; section uses 4-byte addr/size. The raw file
+                    # offset is what the constant search needs.
+                    try:
+                        if is64:
+                            size = struct.unpack_from(end + "Q", data, base + 40)[0]
+                            offset = struct.unpack_from(end + "I", data, base + 48)[0]
+                        else:
+                            size = struct.unpack_from(end + "I", data, base + 36)[0]
+                            offset = struct.unpack_from(end + "I", data, base + 40)[0]
+                        if size and offset and offset < len(data):
+                            const_sections.append((0, size, offset, size,
+                                                    f"{segname},{sectname}"))
+                    except Exception:  # noqa: BLE001 — a truncated section table
+                        continue
             elif cmd == 0x02:                                         # LC_SYMTAB
                 symtab = struct.unpack_from(end + "IIII", data, position + 8)
             elif cmd == 0x0B:                                         # LC_DYSYMTAB
@@ -1761,6 +1830,7 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
         out["symbols_sampled"] = sampled
         out["stripped"] = not exports
     out["library_count"] = len(out["libraries"])
+    _attach_constants(data, out, const_sections)
     if any(name.endswith(".so") or ".dylib" in name for name in out["libraries"]):
         out.setdefault("dependency_kind", "dynamic")
     if signature_offset:
@@ -2603,6 +2673,7 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         # included — otherwise an implementation inside an archive looks weaker
         # than the identical file scanned directly
         constant_blobs = record.pop("_constant_blobs", [])
+        constant_evidence = record.pop("_constant_evidence", None)
         record["name"] = record.get("name") or Path(name).name
         record["file_name"] = Path(name).name
         record["path"] = f"{prefix}!{name}"
@@ -2616,7 +2687,8 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         record["crypto_constants"] = record.get("crypto_constants") or []
         record["crypto"] = crypto_evidence(member, strings, imports=record.get("imports") or [],
                                            exports=record.get("exports") or [],
-                                           constants=constant_blobs)
+                                           constants=constant_blobs,
+                                           constant_evidence=constant_evidence)
         if carries_keys:
             record["embedded_keys"] = member_keys
         # a member does not repeat its libraries as findings, but key material in it
@@ -2782,7 +2854,8 @@ def _versions_from_bytes(data: bytes) -> dict[str, str]:
 
 
 def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] = (),
-                    exports: Iterable[str] = (), constants: Iterable[bytes] = ()) -> dict[str, Any]:
+                    exports: Iterable[str] = (), constants: Iterable[bytes] = (),
+                    constant_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
     """Library fingerprints, graded algorithms and PQC posture for one binary.
 
     Delegates to the universal-crypto engine so the platform keeps ONE
@@ -2851,6 +2924,40 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
         existing["sources"] = list(dict.fromkeys(
             (existing.get("sources") or []) + [f"{row['sources'][0]} (string layer)"]
         ))[:5]
+    # the count-based constant ladder: a table the engine has no entry for (or a
+    # complete one it does) is named here at the level its byte count earns, and
+    # never named at all on a short prefix
+    from devsecops.crypto_constants import NAMING_LEVEL, CONSTANT_LEVELS
+
+    level_rank = {level[0]: index for index, level in enumerate(CONSTANT_LEVELS)}
+    naming_bar = level_rank[NAMING_LEVEL]
+    by_name = {row["name"]: row for row in algorithm_rows}
+    for algorithm, evidence in sorted((constant_evidence or {}).get("algorithms", {}).items()):
+        level, confidence = evidence["level"], float(evidence["confidence"])
+        if level_rank.get(level, 99) > naming_bar:
+            continue
+        tables = evidence.get("tables") or []
+        where = ", ".join("{table}@{section}".format(**row) for row in tables[:3])
+        source = ("constant table: {complete} complete, {matched} bytes matched ({where})"
+                  .format(complete=evidence["complete_tables"],
+                          matched=evidence["bytes_matched"], where=where))
+        existing = by_name.get(algorithm)
+        if existing is None:
+            algorithm_rows.append({
+                "name": algorithm, "confidence": confidence,
+                "strongest_evidence": "CONSTANT_MATCH", "sources": [source],
+                "verdict": "CONFIRMED_CRYPTO" if confidence >= 0.9 else "LIKELY_CRYPTO",
+                "constant_level": level, "constant_reason": evidence["reason"],
+            })
+            by_name[algorithm] = algorithm_rows[-1]
+            continue
+        if confidence > float(existing.get("confidence") or 0):
+            existing["confidence"] = confidence
+            existing["strongest_evidence"] = "CONSTANT_MATCH"
+        existing.setdefault("sources", [])
+        existing["sources"] = list(dict.fromkeys(existing["sources"] + [source]))[:5]
+        existing["constant_level"] = level
+        existing["constant_reason"] = evidence["reason"]
     algorithm_rows.sort(key=lambda row: (-row["confidence"], row["name"]))
 
     fingerprinter = LibraryFingerprinter()
@@ -2905,6 +3012,41 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
         "ecc_markers": ecc_markers,
         "quantum_vulnerable": vulnerable,
         "weak_primitives": weak,
+        "constant_evidence": (constant_evidence or {}).get("algorithms") or {},
+        "constants_found": (constant_evidence or {}).get("tables") or [],
+        "constants_summary": _constants_summary(constant_evidence),
+    }
+
+
+def _constants_summary(evidence: dict[str, Any] | None) -> dict[str, Any]:
+    """Counts for the constant-table search, so a quiet file is not read as clean.
+
+    ``named_algorithms`` is the part that may be reported as a finding: a shared
+    table on its own (MD5's H read little-endian *is* SHA-1's H) never reaches the
+    naming level, so it appears in the counts but not in this list.
+    """
+    from devsecops.crypto_constants import CONSTANT_LEVELS, NAMING_LEVEL
+
+    deep = evidence or {}
+    algorithms = deep.get("algorithms") or {}
+    by_level: dict[str, int] = {}
+    for row in algorithms.values():
+        by_level[row["level"]] = by_level.get(row["level"], 0) + 1
+    rank = {level[0]: index for index, level in enumerate(CONSTANT_LEVELS)}
+    named = sorted(name for name, row in algorithms.items()
+                   if rank.get(str(row.get("level")), 99) <= rank[NAMING_LEVEL])
+    return {
+        "searched_bytes": int(deep.get("searched_bytes") or 0),
+        "tables_matched": len(deep.get("tables") or []),
+        "complete_tables": sum(int(row.get("complete_tables") or 0)
+                               for row in algorithms.values()),
+        "algorithms": len(algorithms),
+        "named_algorithms": named,
+        "by_level": dict(sorted(by_level.items())),
+        "partial_matches": len(deep.get("partials") or []),
+        "truncated": bool(deep.get("truncated")),
+        "note": deep.get("note") or ("no constant window was searched for this format "
+                                    "(constant tables are read from ELF/PE/Mach-O sections)"),
     }
 
 
@@ -3147,9 +3289,10 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
     record.setdefault("packer", None)
     record["packer"] = record["packer"] or detect_packer([], "\n".join(strings[:800]))
     constant_blobs = record.pop("_constant_blobs", [])
+    constant_evidence = record.pop("_constant_evidence", None)
     crypto = crypto_evidence(data, strings, imports=record.get("imports") or [],
                              exports=record.get("exports") or [],
-                             constants=constant_blobs)
+                             constants=constant_blobs, constant_evidence=constant_evidence)
     record["crypto"] = crypto
     keys = raw_keys if raw_keys is not None else detect_embedded_keys(data)
     if keys["keys"] or keys["test_vectors"]:
@@ -3162,7 +3305,9 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
     if embedded_records:
         record["embedded"] = embedded_records
         for derived in embedded_records:
+            # the evidence is already folded into each derived record's `crypto`
             derived.pop("_constant_blobs", None)
+            derived.pop("_constant_evidence", None)
     record["findings"] = _binary_findings(record)
     return record
 
@@ -3320,11 +3465,73 @@ def _key_summary(row: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in out.items() if value is not None}
 
 
+def _constant_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Findings from the constant-table search, graded by how much was found.
+
+    A complete table is implementation proof and worth stating; a partial prefix
+    is weak evidence and is stated *as* weak, because a scanner that calls a
+    sixteen-byte prefix "AES implemented" is guessing with extra steps. A whole
+    table that another algorithm also stores — SHA-256's H read little-endian is
+    BLAKE2s's IV — is complete and still cannot name anything, so it is reported
+    as the ambiguity it is.
+    """
+    crypto = record.get("crypto") or {}
+    path = record.get("path") or record.get("name")
+    findings: list[dict[str, Any]] = []
+    for algorithm, row in sorted((crypto.get("constant_evidence") or {}).items()):
+        tables = row.get("tables") or []
+        complete = [item for item in tables if item.get("complete")]
+        ambiguous = bool(row.get("ambiguous_with"))
+        if complete and ambiguous:
+            where = ", ".join("{table} in {section} at 0x{offset:x}".format(**item)
+                              for item in complete[:3])
+            twins = ", ".join(str(name) for name in row["ambiguous_with"])
+            findings.append({
+                "code": "BIN-CRYPTO-CONSTANT-SHARED", "severity": "LOW",
+                "title": f"{algorithm} constant table present but shared with {twins}",
+                "detail": (f"{len(complete)} complete {algorithm} table(s) found in {path} "
+                           f"({where}), but {row['reason']} — counted as weak evidence "
+                           f"({row['bytes_matched']} of the byte budget), never used to name "
+                           f"an implementation"),
+                "path": path, "algorithm": algorithm, "level": row["level"],
+                "confidence": row["confidence"], "ambiguous_with": list(row["ambiguous_with"]),
+                "bytes_matched": row["bytes_matched"],
+                "tables_matched": row["tables_matched"], "tables_known": row["tables_known"],
+            })
+            continue
+        if complete:
+            where = ", ".join("{table} in {section} at 0x{offset:x}".format(**item)
+                              for item in complete[:3])
+            findings.append({
+                "code": "BIN-CRYPTO-CONSTANT-TABLE", "severity": "INFO",
+                "title": f"{algorithm} constant table present in the file",
+                "detail": (f"{len(complete)} complete {algorithm} table(s) found in {path} "
+                           f"({where}) — implementation evidence that does not depend on "
+                           f"symbols or strings, and {row['reason']}"),
+                "path": path, "algorithm": algorithm, "level": row["level"],
+                "confidence": row["confidence"], "bytes_matched": row["bytes_matched"],
+                "tables_matched": row["tables_matched"], "tables_known": row["tables_known"],
+            })
+            continue
+        findings.append({
+            "code": "BIN-CRYPTO-CONSTANT-PARTIAL", "severity": "LOW",
+            "title": f"partial {algorithm} constant table",
+            "detail": (f"{path} holds {row['bytes_matched']} byte(s) of an {algorithm} constant "
+                       f"table ({row['tables_matched']} of {row['tables_known']} known tables, none "
+                       f"complete) — weak evidence, reported as such and not used to claim an "
+                       f"implementation"),
+            "path": path, "algorithm": algorithm, "level": row["level"],
+            "confidence": row["confidence"], "bytes_matched": row["bytes_matched"],
+        })
+    return findings
+
+
 def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Per-file findings — each one cites the evidence that produced it."""
     findings: list[dict[str, Any]] = []
     path = record.get("path") or record.get("name")
     crypto = record.get("crypto") or {}
+    findings.extend(_constant_findings(record))
 
     for library in crypto.get("libraries") or []:
         name, version = library.get("library"), library.get("version")
@@ -3727,6 +3934,45 @@ def _embedded_keys_summary(record: dict[str, Any]) -> dict[str, Any] | None:
     return out
 
 
+def _named_constant_algorithms(record: dict[str, Any]) -> list[str]:
+    """Algorithms the constant tables confirm — never a table shared with another.
+
+    ``record["crypto_constants"]`` holds every table that matched, ambiguity and
+    all; the ladder decides which of those may be reported as an algorithm. Where
+    the ladder ran, its answer is the answer.
+    """
+    summary = (record.get("crypto") or {}).get("constants_summary")
+    if summary is not None:
+        return list(summary.get("named_algorithms") or [])
+    return sorted({str(row.get("algorithm")) for row in record.get("crypto_constants") or []})
+
+
+def _constant_totals(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Constant-table totals across a scan — searched bytes and what was found.
+
+    ``searched_bytes`` is part of the answer, not a detail: a file whose sections
+    were never searched is not a file that has no crypto in it.
+    """
+    totals: dict[str, Any] = {"artefacts_searched": 0, "searched_bytes": 0,
+                              "tables_matched": 0, "complete_tables": 0,
+                              "algorithms": [], "partial_matches": 0, "truncated": False}
+    algorithms: set[str] = set()
+    for record in records:
+        summary = ((record.get("crypto") or {}).get("constants_summary") or {})
+        if not summary or not summary.get("searched_bytes"):
+            continue
+        totals["artefacts_searched"] += 1
+        totals["searched_bytes"] += int(summary.get("searched_bytes") or 0)
+        totals["tables_matched"] += int(summary.get("tables_matched") or 0)
+        totals["complete_tables"] += int(summary.get("complete_tables") or 0)
+        totals["partial_matches"] += int(summary.get("partial_matches") or 0)
+        totals["truncated"] = totals["truncated"] or bool(summary.get("truncated"))
+        # only algorithms the ladder allowed a name for
+        algorithms.update(summary.get("named_algorithms") or [])
+    totals["algorithms"] = sorted(algorithms)
+    return totals
+
+
 def _scan_key_counts(records: list[dict[str, Any]]) -> dict[str, int]:
     """Key-material counters for a whole walk, embedded members included."""
     flat = _flatten_records(records)
@@ -4000,8 +4246,9 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "import_count": len(record.get("imports") or []),
             "export_count": len(record.get("exports") or []),
             "sections": (record.get("sections") or [])[:16],
-            "crypto_constants": [row.get("algorithm") for row in record.get("crypto_constants") or []],
+            "crypto_constants": _named_constant_algorithms(record),
             "embedded_keys": _embedded_keys_summary(record),
+            "constants": (record.get("crypto") or {}).get("constants_summary"),
             "packages_inside": [{"name": pkg.get("name"), "version": pkg.get("version"),
                                  "manager": pkg.get("manager")}
                                 for pkg in _record_packages(record)],
@@ -4032,6 +4279,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
                                   for record in scan.get("binaries") or []
                                   for container in record.get("containers_followed") or []),
         "packed_binaries": sum(1 for record in all_records if record.get("packer")),
+        "constants": _constant_totals(all_records),
         "embedded_keys": {
             "artefacts_with_keys": sum(1 for record in all_records if record.get("embedded_keys")),
             "private_keys": sum(int((record.get("embedded_keys") or {}).get("private_keys") or 0)

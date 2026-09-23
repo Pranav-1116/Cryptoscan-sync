@@ -160,6 +160,33 @@ from the document and so gated a leaked private key `PASS`. Tests: 41 in
 `test_embedded_keys.py`, +2 binary API tests (10 in `test_binary_scan_api.py`),
 108 across the two binary suites, 379 across devsecops + binary API + cbom, 694 API unit.
 
+**Update (2026-09-23, commit pending, deep crypto constant database):** the constant
+search is now a **table database** instead of seven eight-byte prefixes: ~20 whole tables
+(AES S-box/inverse/`Rcon`, SHA-1 H/K, SHA-256 H/K, SHA-512 H/K, Keccak round constants,
+MD5 H/K, BLAKE2b/BLAKE2s IVs, BLAKE2 sigma, BLAKE3 marker, Blowfish P-array/S-boxes,
+ChaCha20 sigma, TEA delta), each generated from its definition and checked against the
+published values (`test_crypto_constants.py` recomputes SHA-256/SHA-1/MD5 digests with
+the generated tables; the S-box is checked bijective with the inverse as its inverse).
+Matches are graded by a byte-count ladder (FULL .95 / COMPLETE .9 / STRONG .8 /
+MODERATE .7 / WEAK .5) and only MODERATE and above may name an algorithm. Two rules the
+ladder enforces: a trigger may not be a run of zeros with a bit in it (Keccak's first
+round constant otherwise matches padding in every second file, so the whole table is
+required where no prefix discriminates), and a table another algorithm also stores
+(MD5's H read little-endian *is* SHA-1's H; SHA-256's H *is* BLAKE2s's IV) is reported as
+`ambiguous_with`, excluded from the graded byte count, and never named — the tie-breaker
+is a second table nothing else shares. The search now runs over PE `.rdata` and Mach-O
+`__TEXT,__const` as well as ELF sections (it was ELF-only), every file reports what was
+searched (`searched_bytes`) beside what was found, and the manifest carries
+`binary_summary.constants` (artefacts searched, bytes, tables, complete tables, named
+algorithms) so "no AES constants" always has a denominator. New findings
+`BIN-CRYPTO-CONSTANT-TABLE` (INFO), `BIN-CRYPTO-CONSTANT-SHARED` (LOW) and the existing
+`BIN-CRYPTO-CONSTANT-PARTIAL` (LOW). The **stored report** now carries a binary-scan
+section and a bounded, worst-first excerpt of the scan's findings (`findings_excerpt`,
+capped at 60 with the cap stated) — previously an artifact whose manifest said "1 HIGH"
+could not say which one, and an embedded private key never appeared in the report at all.
+Tests: +17 in `test_crypto_constants.py`, 77 in `test_binary_scan.py`, 13 in
+`test_binary_scan_api.py`.
+
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC

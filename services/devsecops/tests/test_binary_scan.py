@@ -13,6 +13,7 @@ import zipfile
 import pytest
 
 from devsecops import binary_scan as bs
+from devsecops import crypto_constants as cc
 
 
 # --------------------------------------------------------------- builders --- #
@@ -221,7 +222,7 @@ def _version_info_blob(version: str = "9.1.0.0", product: str = "Acme Toolkit") 
     return _block("VS_VERSION_INFO", len(fixed), fixed, strings + var, value_type=0)
 
 
-def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
+def _pe_rich(*, constants: bytes = b"", delay_dll: str = "CRYPT32.dll", signed: bool = True,
              pdb: str = "C:\\build\\acme\\acme.pdb", subsystem: int = 3,
              clr: bool = False, dll_characteristics: int = 0x4160,
              load_config: bool = False, security_cookie: int = 0x140002000,
@@ -266,6 +267,8 @@ def _pe_rich(*, delay_dll: str = "CRYPT32.dll", signed: bool = True,
         rdata[0x800:0x800 + 72] = struct.pack("<IHHIIII", 72, 2, 5, 0x1840, len(metadata),
                                               1, 0) + bytes(72 - 28)
         rdata[0x840:0x840 + len(metadata)] = metadata
+    # a real constant table planted where a compiler would leave one
+    rdata[0xC00:0xC00 + len(constants)] = constants
     data[raw_offset:raw_offset + 0x1000] = rdata
 
     # headers: DOS stub, Rich header at 0x80, PE signature at 0x100
@@ -328,7 +331,7 @@ def _uimage(*, payload: bytes | None = None, name: str = "Acme Linux-6.1.38",
 
 
 def _macho(*, encrypted: bool = False, signed: bool = True, hardened: bool = True,
-           flags: int = 0x200000) -> bytes:
+           flags: int = 0x200000, constants: bytes = b"") -> bytes:
     """Mach-O 64 (arm64) with dylib versions, symbols, build version, signature."""
     def _v(text: str, width: int) -> bytes:
         raw = text.encode() + b"\x00"
@@ -359,10 +362,11 @@ def _macho(*, encrypted: bool = False, signed: bool = True, hardened: bool = Tru
         raw = text.encode() + b"\x00"
         return raw + b"\x00" * (16 - len(raw))
 
-    def _seg() -> bytes:
+    def _seg(section_offset: int = 0x200, section_size: int = 0x40) -> bytes:
         # section_64 is 80 bytes: names are 16 bytes each, including the NUL
         sect = (_name16("__text") + _name16("__TEXT")
-                + struct.pack("<QQIIIIIII", 0x1000, 0x40, 0x200, 4, 0, 0, 0x80000400, 0, 0))
+                + struct.pack("<QQIIIIIII", 0x1000, section_size, section_offset, 4, 0, 0,
+                              0x80000400, 0, 0))
         body = (_name16("__TEXT") + struct.pack("<QQQQIIII", 0x100000000, 0x2000, 0x200, 0x2000,
                 5, 5, 1, 0) + sect)
         return struct.pack("<II", 0x19, 8 + len(body)) + body
@@ -439,6 +443,13 @@ def _macho(*, encrypted: bool = False, signed: bool = True, hardened: bool = Tru
     if signature:
         assert len(data) == sig_offset, (len(data), sig_offset)  # offsets line up
         data.extend(signature)
+    if constants:
+        # plant the table past everything else and point __TEXT,__text at it; the
+        # command keeps its length, so the assembled file does not shift
+        replacement = _seg(len(data), len(constants))
+        assert len(replacement) == len(commands[0])
+        data[header_size:header_size + len(replacement)] = replacement
+        data.extend(constants)
     struct.pack_into("<IIIIIIII", data, 0, 0xFEEDFACF, 0x0100000C, 0, 2,
                      len(commands), commands_size, flags, 0)
     return bytes(data)
@@ -994,18 +1005,44 @@ def test_elf_symbol_version_floor_becomes_a_finding(tmp_path):
 
 
 def test_elf_crypto_constants_grade_as_constant_match(tmp_path):
-    """A known table in .rodata is stronger evidence than a symbol name."""
-    from universal_crypto.binary_engine import CRYPTO_CONSTANTS
+    """A complete table in .rodata is stronger evidence than a symbol name."""
+    from devsecops.crypto_constants import aes_inverse_sbox, aes_sbox
 
     path = tmp_path / "libacme.so"
-    path.write_bytes(_elf64(soname="libacme.so", constants=CRYPTO_CONSTANTS["AES"]))
+    path.write_bytes(_elf64(soname="libacme.so",
+                            constants=aes_sbox() + aes_inverse_sbox()))
     record = bs.scan_file(path)
     constants = record["crypto_constants"]
-    assert [row["algorithm"] for row in constants] == ["AES"]
-    assert constants[0]["section"] == ".rodata"
+    assert [row["algorithm"] for row in constants] == ["AES", "AES"]
+    assert {row["table"] for row in constants} == {"S-box", "inverse S-box"}
+    assert all(row["section"] == ".rodata" and row["complete"] for row in constants)
     evidence = [row for row in record["crypto"]["algorithm_evidence"] if row["name"] == "AES"]
     assert evidence and evidence[0]["strongest_evidence"] == "CONSTANT_MATCH"
     assert evidence[0]["confidence"] >= 0.9
+    assert evidence[0]["constant_level"] == "CONSTANT_FULL"
+    level = record["crypto"]["constant_evidence"]["AES"]
+    assert level["complete_tables"] == 2 and level["bytes_matched"] == 512
+    assert level["reason"] == "two or more complete tables present"
+    codes = {finding["code"] for finding in record["findings"]}
+    assert "BIN-CRYPTO-CONSTANT-TABLE" in codes
+
+
+def test_an_eight_byte_prefix_is_reported_as_weak_evidence_not_as_aes(tmp_path):
+    """The count decides the claim: two words of a table prove nothing."""
+    from universal_crypto.binary_engine import CRYPTO_CONSTANTS
+
+    path = tmp_path / "libfragment.so"
+    path.write_bytes(_elf64(soname="libfragment.so", constants=CRYPTO_CONSTANTS["AES"]))
+    record = bs.scan_file(path)
+    level = record["crypto"]["constant_evidence"]["AES"]
+    assert level["level"] == "CONSTANT_WEAK" and level["bytes_matched"] == 8
+    assert level["complete_tables"] == 0
+    assert "AES" not in [row["name"] for row in record["crypto"]["algorithm_evidence"]]
+    partial = [finding for finding in record["findings"]
+               if finding["code"] == "BIN-CRYPTO-CONSTANT-PARTIAL"]
+    assert len(partial) == 1 and partial[0]["severity"] == "LOW"
+    assert "weak evidence" in partial[0]["detail"]
+    assert "not used to claim an implementation" in partial[0]["detail"]
 
 
 def test_pe_delay_imports_resources_and_version_strings():
@@ -1514,14 +1551,27 @@ def test_an_embedded_file_gets_the_same_evidence_as_a_loose_one(tmp_path):
 
     from universal_crypto.binary_engine import CRYPTO_CONSTANTS
 
-    inner = _elf64(soname="libacme.so", constants=CRYPTO_CONSTANTS["AES"] + CRYPTO_CONSTANTS["MD5"])
+    from devsecops.crypto_constants import aes_sbox
+
+    inner = _elf64(soname="libacme.so", constants=aes_sbox() + CRYPTO_CONSTANTS["MD5"])
     (tmp_path / "libacme.so").write_bytes(inner)
     (tmp_path / "bundle.tar.gz").write_bytes(gzip.compress(_tar([("lib/libacme.so", inner)]), mtime=0))
     scan = bs.scan_path(tmp_path)
     records = bs._flatten_records(scan["binaries"])
     loose = [row for row in records if row["path"] == "libacme.so"][0]
     embedded = [row for row in records if row["path"].endswith("!lib/libacme.so")][0]
-    assert [row["algorithm"] for row in embedded["crypto_constants"]] == ["AES", "MD5"]
+    # the AES S-box is complete; the bare eight-byte MD5 prefix also matches the
+    # reverse view of SHA-1's H, so those bytes are reported as ambiguous rather
+    # than as a second algorithm
+    assert {row["algorithm"] for row in embedded["crypto_constants"]} == {"AES", "MD5", "SHA-1"}
+    assert embedded["crypto_constants"][0]["complete"] is True
+    ambiguous = [(row["algorithm"], row["ambiguous_with"], row["bytes_matched"])
+                 for row in embedded["crypto_constants"] if row["ambiguous_with"]]
+    assert ambiguous == [("SHA-1", ["MD5"], 8)]
+    md5 = [row for row in embedded["crypto_constants"] if row["algorithm"] == "MD5"][0]
+    assert md5["ambiguous_with"] == [] and "8 of 16 table bytes present" in md5["evidence"]
+    assert [row["algorithm"] for row in embedded["crypto_constants"]] == \
+        [row["algorithm"] for row in loose["crypto_constants"]]
     assert embedded["crypto"]["algorithms"] == loose["crypto"]["algorithms"]
     evidence = {row["name"]: row["strongest_evidence"] for row in embedded["crypto"]["algorithm_evidence"]}
     assert evidence.get("AES") == "CONSTANT_MATCH"
@@ -1551,3 +1601,89 @@ def test_embedded_crypto_reaches_the_sbom_and_cbom(tmp_path):
     assert provenance["cryptoscan:derived-from"].endswith("bundle.tar.gz")
     assert provenance["cryptoscan:depth"] == "1"
     assert provenance["cryptoscan:found-in"].endswith("!lib/libacme.so")
+
+
+# --------------------------------------------------------------------------- #
+# constants in PE and Mach-O, plus the trigger rule
+# --------------------------------------------------------------------------- #
+
+def test_pe_sections_are_searched_for_constant_tables():
+    """The constant search is not an ELF-only capability."""
+    parsed = bs.parse_pe(_pe_rich(constants=cc.aes_sbox() + cc.sha256_k()))
+    deep = parsed["_constant_evidence"]
+    assert deep["searched_bytes"] >= len(cc.aes_sbox()) + len(cc.sha256_k())
+    found = {(row["algorithm"], row["table"]) for row in parsed["crypto_constants"]}
+    assert ("AES", "S-box") in found and ("SHA-256", "K") in found
+    assert all(row["section"] == ".rdata" for row in parsed["crypto_constants"])
+
+    # and a PE without tables still says how much was looked at
+    quiet = bs.parse_pe(_pe_rich())
+    assert quiet["crypto_constants"] == [] and quiet["_constant_evidence"]["searched_bytes"] >= 0x1000
+
+
+def test_macho_sections_are_searched_for_constant_tables():
+    parsed = bs.parse_macho(_macho(constants=cc.blowfish_p()))
+    deep = parsed["_constant_evidence"]
+    assert deep["searched_bytes"] > 0
+    found = {(row["algorithm"], row["table"]) for row in parsed["crypto_constants"]}
+    assert ("Blowfish", "P-array") in found
+
+
+def test_sbom_reports_how_much_was_searched_not_only_what_was_found(tmp_path):
+    """`searched_bytes: 0` and "nothing there" are different answers."""
+    (tmp_path / "libacme.so").write_bytes(
+        _elf64(soname="libacme.so", constants=cc.aes_sbox() + cc.sha256_k()))
+    (tmp_path / "libquiet.so").write_bytes(_elf64(soname="libquiet.so"))
+    result = bs.sbom_result(bs.scan_path(tmp_path))
+    totals = result["constants"]
+    # both ELFs were searched, even though only one had a table in it
+    assert totals["artefacts_searched"] == 2 and totals["searched_bytes"] > 0
+    assert totals["complete_tables"] == 2 and totals["partial_matches"] == 0
+    assert totals["algorithms"] == ["AES", "SHA-256"]
+    rows = {row["file_name"]: row["constants"] for row in result["binaries"]}
+    assert rows["libacme.so"]["tables_matched"] == 2
+    assert rows["libquiet.so"]["tables_matched"] == 0 and rows["libquiet.so"]["searched_bytes"] > 0
+
+
+def test_a_shared_table_is_reported_as_an_ambiguity_not_a_confirmation():
+    """A complete table that another algorithm also stores may not name anything."""
+    parsed = bs.parse_elf(_elf64(soname="libshared.so", constants=cc.sha256_h()))
+    record = dict(parsed)
+    record["crypto"] = bs.crypto_evidence(b"", [], constants=parsed.get("_constant_blobs") or [],
+                                          constant_evidence=parsed["_constant_evidence"])
+    by_code = {finding["code"]: finding for finding in bs._constant_findings(record)}
+    shared = by_code["BIN-CRYPTO-CONSTANT-SHARED"]
+    assert shared["severity"] == "LOW" and shared["algorithm"] == "BLAKE2s"
+    assert shared["ambiguous_with"] == ["SHA-256"]
+    assert "byte order" in shared["detail"]
+    # and the algorithm whose own table it is, is reported normally
+    assert by_code["BIN-CRYPTO-CONSTANT-TABLE"]["algorithm"] == "SHA-256"
+    assert by_code["BIN-CRYPTO-CONSTANT-TABLE"]["severity"] == "INFO"
+    # the ambiguity is not allowed into the SBOM's algorithm claim
+    record["path"] = "libshared.so"
+    assert bs._named_constant_algorithms(record) == ["SHA-256"]
+
+
+def test_a_trigger_cannot_be_a_run_of_zeros():
+    """Keccak's first round constant is 01 then zeros — that is not a fingerprint."""
+    assert cc.keccak_rc()[:8] == b"\x01" + bytes(7)
+    # every prefix of the table is that repetitive, so the whole table is required
+    table = cc.ConstantTable("SHA-3", "round constants", cc.keccak_rc(), 8)
+    assert table.prefix == table.data
+    assert cc.scan_constants([(".rodata", cc.keccak_rc()[:32])])["tables"] == []
+    assert cc.scan_constants([(".rodata", cc.keccak_rc())])["tables"][0]["complete"] is True
+    # padding full of zeros must not match anything
+    noise = cc.scan_constants([(".rodata", bytes(4096))])
+    assert noise["tables"] == [] and noise["engine_blobs"] == []
+    # and nor may a byte of the pattern followed by zeros
+    assert cc.scan_constants([(".rodata", b"\x01" + bytes(255))])["tables"] == []
+
+
+def test_every_table_trigger_is_long_enough_to_be_evidence():
+    """A trigger either discriminates (distinct bytes) or is the whole table."""
+    for table in cc.constant_tables():
+        prefix = table.prefix
+        assert prefix == table.data[:len(prefix)]
+        assert len(prefix) >= min(len(table.data), cc.TABLE_TRIGGER)
+        assert (len(set(prefix)) >= cc.TRIGGER_MIN_DISTINCT
+                or prefix == table.data), (table.algorithm, table.table, prefix)

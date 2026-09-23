@@ -33,7 +33,7 @@ was stored with the scan.
 
 | Format | Depth |
 |---|---|
-| ELF (32/64, LE/BE) | type (exec/PIE/shared/core), machine, `DT_NEEDED` libraries, `RPATH`/`RUNPATH`, `DT_SONAME`, `.note.gnu.build-id`, `.comment` compiler string, dynamic symbols split into imports/exports, stripped/static detection, **Go build info** (toolchain + module graph with exact versions and sums), **program headers** (segment list, `PT_INTERP` interpreter, `PT_GNU_STACK` executable-stack flag), **`.gnu.version_r` symbol-version floors** (e.g. `libcrypto.so.3` requires `OPENSSL_3.0.3`), **`.note.gnu.property`** CPU features (CET IBT/SHSTK), **hardening flags** (PIE, NX, RELRO, full RELRO/BIND_NOW, stack canary, `_FORTIFY_SOURCE`), **crypto constant tables** (known AES/SHA/MD5/ChaCha20 tables located in `.rodata`/`.text`/`.data` → `CONSTANT_MATCH` 0.9) |
+| ELF (32/64, LE/BE) | type (exec/PIE/shared/core), machine, `DT_NEEDED` libraries, `RPATH`/`RUNPATH`, `DT_SONAME`, `.note.gnu.build-id`, `.comment` compiler string, dynamic symbols split into imports/exports, stripped/static detection, **Go build info** (toolchain + module graph with exact versions and sums), **program headers** (segment list, `PT_INTERP` interpreter, `PT_GNU_STACK` executable-stack flag), **`.gnu.version_r` symbol-version floors** (e.g. `libcrypto.so.3` requires `OPENSSL_3.0.3`), **`.note.gnu.property`** CPU features (CET IBT/SHSTK), **hardening flags** (PIE, NX, RELRO, full RELRO/BIND_NOW, stack canary, `_FORTIFY_SOURCE`), **crypto constant tables** (whole AES/SHA-1/SHA-2/SHA-3/MD5/BLAKE2/Blowfish/ChaCha20/TEA tables located in `.rodata`/`.text`/`.data`, graded by the byte-count ladder in §3.1) |
 | PE (PE32/PE32+) | machine, subsystem (incl. UEFI runtime/boot → `type: efi-image`), COFF timestamp, sections, **mitigations from `DllCharacteristics`** (ASLR/DYNAMIC_BASE, high-entropy VA, DEP/NX_COMPAT, SEH, isolation, CFG, force-integrity) and **`IMAGE_LOAD_CONFIG_DIRECTORY`** (SecurityCookie ⇒ `/GS` is really initialised, SafeSEH table, `GuardFlags` ⇒ CFG is instrumented, not merely declared), imported DLLs resolved through the section table, **delay-load imports**, **`RT_VERSION` resources** (StringFileInfo: company/product/file version/original filename, `VS_FIXEDFILEINFO`, translation table), **debug directory** (CodeView `RSDS` PDB path, GUID, age), **Authenticode presence** (entries, size, PKCS#7 — validity and chain are explicitly *not* verified), **CLR/`.NET` metadata** (BSJB → framework version), **Rich header** (linker product/build pairs — attribution evidence only) |
 | Mach-O (thin + fat) | CPU type/subtype, file type, `LC_UUID`, platform + minimum OS + SDK (`LC_BUILD_VERSION` / `LC_VERSION_MIN_*`), **linked dylibs with their current/compatibility versions** (`LC_LOAD_DYLIB`/weak/reexport/lazy), `install_name`, `LC_RPATH`, section list, **symbol table split into imports/exports** via `LC_DYSYMTAB` (dyld's leading `_` is stripped so the C name keys the crypto tables), **code signature**: signing identifier, team id, hash type, flags (hardened runtime, library validation, ad-hoc), **entitlements** (with the notable ones called out), **encryption** (`LC_ENCRYPTION_INFO*` cryptid → the file's strings and symbols are not readable) |
 | `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, **Debian `control` file** (package, version, architecture, maintainer, section, homepage, `Depends`) |
@@ -103,7 +103,61 @@ not evidence of AES.
   constant-pool entries are reported at the `STRING` level (0.4) with the matched
   text as the source — enough to look, never enough to claim a dependency.
 
-### 3.1 Embedded key material
+### 3.1 Crypto constant tables
+
+Symbols and strings can be stripped out of a binary; the constants of an AES
+S-box or a SHA-256 round table cannot. The scanner holds whole tables, searched
+in the byte order each algorithm stores them in:
+
+| Algorithm | Tables | Notes |
+| --- | --- | --- |
+| AES | S-box, inverse S-box, `Rcon` | |
+| SHA-1 | H, K | H is shared with MD5's H in the other byte order |
+| SHA-256 | H, K | H is BLAKE2s's IV read the other way round |
+| SHA-512 | H, K | H is BLAKE2b's IV read the other way round |
+| SHA-3 | Keccak round constants | every prefix is repetitive, so the whole table is required |
+| MD5 | H, `abs(sin)` K | |
+| BLAKE2b / BLAKE2s / BLAKE2 / BLAKE3 | IVs, sigma schedule, marker | |
+| Blowfish | P-array, S-boxes | π digits |
+| ChaCha20 | sigma | |
+| TEA | delta | |
+
+Tables are searched in `.text`/`.rodata`/`.data` (and the PE/Mach-O equivalents,
+`.rdata`/`__TEXT,__const`), and a match is graded by a **byte-count ladder**, not
+by a yes/no prefix:
+
+```
+CONSTANT_FULL 0.95   more than one complete table
+CONSTANT_COMPLETE 0.9 exactly one complete table
+CONSTANT_STRONG 0.8  32+ bytes across the tables
+CONSTANT_MODERATE 0.7 16-31 bytes       <- the level at which a name may be reported
+CONSTANT_WEAK 0.5  8-15 bytes
+```
+
+Four things the ladder refuses to do:
+
+* **It never guesses from a trigger.** A match needs at least eight bytes of a
+  table (32 bits of luck, not 8), and a trigger may not be a run of zeros with a
+  bit in it — otherwise Keccak's first round constant (`01` then seven zero
+  bytes) matches padding in every second file. Where no prefix discriminates, the
+  whole table is required.
+* **A shared table names nothing on its own.** MD5's H read little-endian *is*
+  SHA-1's H read big-endian; SHA-256's H *is* BLAKE2s's IV. Those bytes are
+  reported with `ambiguous_with: ["SHA-1"]`, kept out of the byte count the ladder
+  grades, and never named as an implementation. The tie-breaker is a second table
+  nothing else shares — SHA-256's round constants, MD5's `abs(sin)` constants —
+  which is exactly why the ladder counts bytes instead of patterns.
+* **A match is reported at the level it earned.** `BIN-CRYPTO-CONSTANT-TABLE`
+  (INFO) cites the table, section and offset; `BIN-CRYPTO-CONSTANT-SHARED` (LOW)
+  reports a complete table that another algorithm also stores;
+  `BIN-CRYPTO-CONSTANT-PARTIAL` (LOW) reports a prefix as the weak evidence it
+  is. Only `CONSTANT_MODERATE` and above may name an algorithm.
+* **Absence is never reported as absence.** Every scan reports how much was
+  searched (`searched_bytes`, `artefacts_searched`) next to what was found, and
+  the note lists the algorithms the database holds. A file whose sections were
+  never searched is not a file with no crypto in it.
+
+### 3.2 Embedded key material
 
 A key inside a shipped binary is the most direct way a build leaks a secret, so
 the key itself is searched for byte-first — not only through the symbols and

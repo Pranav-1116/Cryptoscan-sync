@@ -350,6 +350,8 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
             "pqc_markers": (result.get("crypto") or {}).get("pqc_markers") or [],
             "findings": len(result.get("findings") or []),
             "findings_by_severity": _severity_counts(result.get("findings") or []),
+            "findings_excerpt": _finding_excerpt(result.get("findings") or []),
+            "findings_excerpt_limit": MAX_REPORT_FINDINGS,
             "truncated": bool((result.get("limits") or {}).get("truncated")),
             **_binary_posture(result),
         } if kind == "binary" else None),
@@ -400,6 +402,27 @@ def _scanner_findings(manifest: dict) -> dict[str, int] | None:
     return counts if isinstance(counts, dict) and counts else None
 
 
+#: how many scanner findings a manifest carries for the report; the counts in
+#: ``findings_by_severity`` are always complete, this is the readable excerpt
+MAX_REPORT_FINDINGS = 60
+_SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
+
+
+def _finding_excerpt(findings: list[dict], limit: int = MAX_REPORT_FINDINGS) -> list[dict]:
+    """The findings a stored report can list, worst first and bounded.
+
+    A manifest that says "1 HIGH" and cannot say which one is not evidence, so the
+    scan's findings travel with the artifact. The list is capped and the cap is
+    stated, so "12 findings" never silently becomes "12 findings shown".
+    """
+    rows = sorted(findings, key=lambda row: (
+        _SEVERITY_ORDER.get(str(row.get("severity") or "INFO").upper(), 9),
+        str(row.get("code") or ""), str(row.get("path") or "")))
+    return [{"code": row.get("code"), "severity": str(row.get("severity") or "INFO").upper(),
+             "title": row.get("title"), "path": row.get("path"),
+             "detail": (str(row.get("detail") or "")[:240] or None)} for row in rows[:limit]]
+
+
 def _severity_counts(findings: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for finding in findings:
@@ -409,16 +432,20 @@ def _severity_counts(findings: list[dict]) -> dict[str, int]:
 
 
 def _binary_posture(result: dict) -> dict:
-    """How the scanned binaries are signed and whether any are encrypted.
+    """How the scanned binaries are signed, encrypted, and how much was searched.
 
     A manifest that says "3 unsigned, 1 encrypted" is actionable; one that only
     lists formats is not. Only formats that *have* a signature story are counted
     as signed/unsigned — an ELF has no signature field and is not "unsigned".
+    The constant coverage is reported alongside, because "no AES constants" means
+    something different when only 16 bytes of a file were searched.
     """
     signature_formats = {"pe", "macho"}
     signed = unsigned = encrypted = 0
     keys = {"private_keys": 0, "unencrypted_private_keys": 0, "certificates": 0,
             "keystores": 0, "artefacts_with_keys": 0, "test_vectors": 0}
+    coverage = {"artefacts_searched": 0, "searched_bytes": 0, "tables_matched": 0,
+                "complete_tables": 0, "algorithms": set()}
     for row in result.get("binaries") or []:
         signature = row.get("signature") or {}
         if str(row.get("format")) in signature_formats:
@@ -436,8 +463,18 @@ def _binary_posture(result: dict) -> dict:
             keys["certificates"] += int(embedded.get("certificates") or 0)
             keys["keystores"] += int(embedded.get("keystores") or 0)
             keys["test_vectors"] += len(embedded.get("test_vectors") or [])
+        summary = row.get("constants") or {}
+        if summary:
+            if int(summary.get("searched_bytes") or 0):
+                coverage["artefacts_searched"] += 1
+            coverage["searched_bytes"] += int(summary.get("searched_bytes") or 0)
+            coverage["tables_matched"] += int(summary.get("tables_matched") or 0)
+            for name in summary.get("named_algorithms") or []:
+                coverage["algorithms"].add(str(name))
+        coverage["complete_tables"] += int(summary.get("complete_tables") or 0)
     return {"signature_posture": {"signed": signed, "unsigned": unsigned},
-            "encrypted_binaries": encrypted, "key_material": keys}
+            "encrypted_binaries": encrypted, "key_material": keys,
+            "constants": {**coverage, "algorithms": sorted(coverage["algorithms"])}}
 
 
 class BinaryScanRequest(BaseModel):
@@ -558,6 +595,8 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
             "ecc_markers": (result.get("crypto") or {}).get("ecc_markers") or [],
             "findings": len(findings),
             "findings_by_severity": _severity_counts(findings),
+            "findings_excerpt": _finding_excerpt(findings),
+            "findings_excerpt_limit": MAX_REPORT_FINDINGS,
             "cbom_components": len(cbom.get("components") or []),
             "truncated": bool((result.get("limits") or {}).get("truncated")),
             "embedded_binaries": result.get("embedded_binaries", 0),
@@ -792,6 +831,7 @@ def sbom_report(artifact_id: str, fmt: str = "markdown",
         "compliance": compliance,
         "pinning": pinning,
         "crypto_components": crypto,
+        "binary": man.get("binary_summary"),
     }
     if fmt.lower() in ("json", "raw"):
         return payload
@@ -827,6 +867,43 @@ def sbom_report(artifact_id: str, fmt: str = "markdown",
         for finding in pinning["findings"]:
             lines.append(f"| {finding['coordinate']} | {finding['code']} | {finding['severity']} | "
                          f"{finding['detail']} |")
+    binary = man.get("binary_summary") or {}
+    if binary:
+        lines += ["", "## Binary scan", "",
+                  f"- Files walked: {binary.get('files_walked', 0)}, "
+                  f"binaries scanned: {binary.get('binaries_scanned', 0)}",
+                  f"- Formats: {json.dumps(binary.get('by_format') or {}, sort_keys=True)}",
+                  f"- Crypto libraries: {binary.get('crypto_libraries', 0)}",
+                  f"- Signed/unsigned: {json.dumps(binary.get('signature_posture') or {})}, "
+                  f"encrypted: {binary.get('encrypted_binaries', 0)}"]
+        constants = binary.get("constants") or {}
+        if constants:
+            searched = constants.get("searched_bytes", 0)
+            lines.append(
+                f"- Constant tables: {constants.get('tables_matched', 0)} matched "
+                f"({constants.get('complete_tables', 0)} complete) in "
+                f"{searched} byte(s) searched across "
+                f"{constants.get('artefacts_searched', 0)} artefact(s)")
+            named = constants.get("algorithms") or []
+            lines.append(f"- Confirmed by constant table: {', '.join(named) if named else '_none_'}")
+        keys = binary.get("key_material") or {}
+        if keys.get("artefacts_with_keys"):
+            lines.append(f"- Embedded key material: {keys.get('private_keys', 0)} private key(s) "
+                         f"({keys.get('unencrypted_private_keys', 0)} unencrypted), "
+                         f"{keys.get('certificates', 0)} certificate(s) in "
+                         f"{keys.get('artefacts_with_keys')} artefact(s)")
+        excerpt = binary.get("findings_excerpt") or []
+        counts = binary.get("findings_by_severity") or {}
+        if excerpt:
+            lines += ["", f"## Scan findings ({binary.get('findings', len(excerpt))} total)", "",
+                      "| Severity | Code | Finding | Path |", "| --- | --- | --- | --- |"]
+            for row in excerpt:
+                lines.append(f"| {row.get('severity')} | {row.get('code')} | "
+                             f"{row.get('title')} | {row.get('path') or '-'} |")
+            limit = int(binary.get("findings_excerpt_limit") or len(excerpt))
+            if sum(counts.values()) > len(excerpt):
+                lines += ["", f"_Showing {len(excerpt)} of {sum(counts.values())} findings "
+                              f"(limit {limit}); severity counts above are complete._"]
     if compliance["gaps"]:
         lines += ["", "## Gaps", ""] + [f"- {gap}" for gap in compliance["gaps"]]
     body = "\n".join(lines) + "\n"
