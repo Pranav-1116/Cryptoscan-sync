@@ -203,7 +203,11 @@ Flow Guard, or CFG declared but not instrumented),
 * **Gate / licence / VEX / diff** — the artifact is a normal SBOM artefact, so
   `POST /sbom/{id}/gate`, `/sbom/license`, `/sbom/vex`, `/sbom/{id}/rescan` and
   the Diff tab all work. Feed rows for binary-detected implementations match on
-  ecosystem `generic`.
+  ecosystem `generic`. The gate also weighs the scan's **own** findings
+  (`allow_scanner_critical`, default 0; `allow_scanner_high`, unlimited by
+  default): they are not CVEs and are not in the document, so without that a
+  binary shipping a private key would gate `PASS`. `GATE-SCAN-CRITICAL` blocks,
+  `GATE-SCAN-HIGH-PRESENT` warns, and both say the finding is not a CVE.
 * **Rescan** re-walks the same target with the recorded options. A component
   diff keys on name **and** reference, so a binary called `openssl` and the
   `OpenSSL` library it contains are tracked separately.

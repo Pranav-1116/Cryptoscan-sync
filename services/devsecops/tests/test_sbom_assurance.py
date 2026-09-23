@@ -293,6 +293,32 @@ def test_gate_minimum_elements_and_policy_echo():
     assert "nonsense" not in echoed and echoed["allow_critical"] == 0
 
 
+def test_gate_blocks_on_a_critical_finding_the_document_cannot_hold():
+    """A binary scan's critical finding is not a CVE — but it is still a blocker."""
+    bom = _bom()
+    assert evaluate_gate(bom)["verdict"] == "PASS"          # the document is clean
+    blocked = evaluate_gate(bom, scanner_findings={"CRITICAL": 1, "LOW": 4})
+    assert blocked["verdict"] == "FAIL"
+    assert [b["code"] for b in blocked["blockers"]] == ["GATE-SCAN-CRITICAL"]
+    assert "not a CVE" in blocked["blockers"][0]["detail"]
+    assert blocked["counts"]["scanner_findings"]["CRITICAL"] == 1
+
+
+def test_gate_scanner_high_is_a_warning_that_can_be_limited():
+    bom = _bom()
+    default = evaluate_gate(bom, scanner_findings={"HIGH": 2})
+    assert default["verdict"] == "PASS"
+    assert [w["code"] for w in default["warnings"]] == ["GATE-SCAN-HIGH-PRESENT"]
+    limited = evaluate_gate(bom, policy={"allow_scanner_high": 1}, scanner_findings={"HIGH": 2})
+    assert limited["verdict"] == "FAIL"
+    assert limited["blockers"][0]["code"] == "GATE-SCAN-HIGH"
+    allowed = evaluate_gate(bom, policy={"allow_scanner_critical": 2},
+                            scanner_findings={"CRITICAL": 2})
+    assert allowed["verdict"] == "PASS"
+    assert [w["code"] for w in allowed["warnings"]] == ["GATE-SCAN-CRITICAL-PRESENT"]
+    assert "scanner_findings" not in evaluate_gate(bom)["counts"]
+
+
 def test_gate_empty_document_reports_zero_components():
     spdx = {"spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT",
             "name": "x", "documentNamespace": "https://x", "dataLicense": "CC0-1.0",

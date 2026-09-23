@@ -388,6 +388,18 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
             "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom}
 
 
+def _scanner_findings(manifest: dict) -> dict[str, int] | None:
+    """Findings a scan recorded about the artifact, for the gate to weigh.
+
+    The gate reads CVEs out of the SBOM document; a binary scan's own findings (a
+    private key shipped inside the binary) are not in that document, so they are
+    handed to the gate explicitly — otherwise a leaked key gates PASS.
+    """
+    summary = manifest.get("binary_summary") or {}
+    counts = summary.get("findings_by_severity")
+    return counts if isinstance(counts, dict) and counts else None
+
+
 def _severity_counts(findings: list[dict]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for finding in findings:
@@ -867,7 +879,8 @@ def sbom_gate(artifact_id: str, body: SbomGateRequest | None = None,
         raise HTTPException(status_code=422, detail=f"stored SBOM could not be parsed: {exc}")
     result = evaluate_gate(bom, policy=(body.policy if body else None),
                            unpinned=man.get("unpinned"),
-                           signed=bool(man.get("signature")))
+                           signed=bool(man.get("signature")),
+                           scanner_findings=_scanner_findings(man))
     return {"artifact_id": artifact_id, "target": man.get("target"), "format": man.get("format"),
             "generated_at": man.get("created_at"), **result}
 
@@ -936,7 +949,8 @@ def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
         notes.append(f"diff unavailable: {diff_error}")
     new_man = fresh["manifest"]
     gate = evaluate_gate(fresh["bom"], policy=(overrides.policy),
-                         unpinned=new_man.get("unpinned"), signed=bool(new_man.get("signature")))
+                         unpinned=new_man.get("unpinned"), signed=bool(new_man.get("signature")),
+                         scanner_findings=_scanner_findings(new_man))
     return {"artifact_id": fresh["artifact_id"], "previous_artifact_id": artifact_id,
             "target": new_man.get("target"), "scan_options": new_man.get("scan_options"),
             "diff": delta, "gate": gate, "manifest": new_man, "notes": notes,

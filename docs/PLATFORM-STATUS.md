@@ -154,7 +154,9 @@ surrounding bytes declare as samples — inventoried, no false alarm). A bare `.
 than dropped, and nested DER candidates are one finding, not two. The SBOM binary row
 carries the key facts, `manifest.binary_summary.key_material` counts them, and the CBOM
 inventories keys as `related-crypto-material` assets (certificates as `assetType:
-certificate`), identified by hash and merged when the same key ships twice. Tests: 41 in
+certificate`), identified by hash and merged when the same key ships twice. Critical scan findings now also reach the gate
+(`GATE-SCAN-CRITICAL`, `allow_scanner_critical`), which previously read only CVEs
+from the document and so gated a leaked private key `PASS`. Tests: 41 in
 `test_embedded_keys.py`, +2 binary API tests (10 in `test_binary_scan_api.py`),
 108 across the two binary suites, 379 across devsecops + binary API + cbom, 694 API unit.
 

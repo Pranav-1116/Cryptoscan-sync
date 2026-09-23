@@ -351,6 +351,11 @@ DEFAULT_GATE_POLICY: dict[str, Any] = {
     "require_minimum_elements": False,
     "max_unpinned": None,        # None = do not gate on pinning
     "require_signed": False,
+    # findings a *scanner* raised about the artifact itself (a binary that ships
+    # a private key) are not CVEs and never appear in the document, so they are
+    # gated separately — a leaked key must not be a PASS
+    "allow_scanner_critical": 0,
+    "allow_scanner_high": None,
     # full license policy (see devsecops.sbom_license); `deny_licenses` above
     # remains as the simple, backwards-compatible deny list
     "license_policy": None,
@@ -396,11 +401,16 @@ def _licenses(bom: dict[str, Any]) -> list[tuple[str, str]]:
 def evaluate_gate(bom: dict[str, Any] | None, *,
                   policy: dict[str, Any] | None = None,
                   unpinned: int | None = None,
-                  signed: bool | None = None) -> dict[str, Any]:
+                  signed: bool | None = None,
+                  scanner_findings: dict[str, int] | None = None) -> dict[str, Any]:
     """Deterministic supply-chain gate for a rendered SBOM.
 
     Blockers fail a pipeline; warnings inform. Every finding names the policy
-    field that produced it, and counts come from the document itself.
+    field that produced it, and counts come from the document itself — except
+    ``scanner_findings``, which the caller passes because they are facts the
+    scanning service recorded about the artifact (a binary that ships a private
+    key) and are not CVEs in the document. A scanner finding is a blocker above
+    the allowance and a warning within it, so a critical one never reads PASS.
     """
     bom = bom or {}
     effective = dict(DEFAULT_GATE_POLICY)
@@ -463,11 +473,34 @@ def evaluate_gate(bom: dict[str, Any] | None, *,
         blockers.append({"code": "GATE-UNSIGNED", "severity": "MEDIUM",
                          "detail": "artifact manifest is not signed"})
 
+    scanner_counts = {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0, "INFO": 0}
+    for severity, value in (scanner_findings or {}).items():
+        key = str(severity).upper()
+        if key in scanner_counts:
+            scanner_counts[key] = int(value or 0)
+    for severity, limit_field, code in (("CRITICAL", "allow_scanner_critical", "GATE-SCAN-CRITICAL"),
+                                        ("HIGH", "allow_scanner_high", "GATE-SCAN-HIGH")):
+        if not scanner_counts[severity]:
+            continue
+        limit = effective[limit_field]
+        if limit is not None and scanner_counts[severity] > int(limit):
+            blockers.append({"code": code, "severity": severity,
+                             "detail": f"{scanner_counts[severity]} {severity} finding(s) from the "
+                                       f"scan itself (allowed: {limit}) — a finding about the "
+                                       f"artifact is not a CVE and is not in the document"})
+        else:
+            # within the allowance (or no allowance configured for this severity):
+            # reported, never silently dropped
+            warnings.append({"code": f"{code}-PRESENT", "severity": severity,
+                             "detail": f"{scanner_counts[severity]} {severity} finding(s) from the "
+                                       f"scan itself"})
+
     result = {
         "verdict": "FAIL" if blockers else "PASS",
         "policy": effective,
         "counts": {"components": compliance["component_count"], **counts,
-                   "unpinned": unpinned, "minimum_elements": compliance["score"]},
+                   "unpinned": unpinned, "minimum_elements": compliance["score"],
+                   **({"scanner_findings": scanner_counts} if scanner_findings else {})},
         "blockers": blockers,
         "warnings": warnings,
     }

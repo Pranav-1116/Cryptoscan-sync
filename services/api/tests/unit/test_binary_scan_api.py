@@ -414,3 +414,33 @@ async def test_binary_scan_distinguishes_encrypted_and_test_key_material(app_db)
     assert by_code["BIN-EMBEDDED-PRIVATE-KEY"][0]["path"] == "vendor-lib"
     assert by_code["BIN-EMBEDDED-TEST-KEY"][0]["severity"] == "INFO"
     assert by_code["BIN-EMBEDDED-TEST-KEY"][0]["path"] == "vendor-sample"
+
+
+@pytest.mark.asyncio
+async def test_a_critical_scan_finding_fails_the_gate(app_db):
+    """A leaked private key is not a CVE — the gate must still not say PASS."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "fleet"
+    directory.mkdir()
+    (directory / "acme-agent").write_bytes(
+        key_fixtures._elf_with(key_fixtures._rsa_pem()))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert body["manifest"]["binary_summary"]["findings_by_severity"]["CRITICAL"] == 1
+    assert body["bom"] and not body["bom"].get("vulnerabilities")
+
+    gate = await _post(application, f"/api/v1/devsecops/sbom/{body['artifact_id']}/gate", {})
+    assert gate.status_code == 200, gate.text
+    verdict = gate.json()
+    assert verdict["verdict"] == "FAIL"
+    assert [b["code"] for b in verdict["blockers"]] == ["GATE-SCAN-CRITICAL"]
+    assert verdict["counts"]["scanner_findings"]["CRITICAL"] == 1
+
+    # a policy that allows one critical finding lets it through, as a warning
+    allowed = await _post(application, f"/api/v1/devsecops/sbom/{body['artifact_id']}/gate",
+                          {"policy": {"allow_scanner_critical": 1}})
+    allowed_body = allowed.json()
+    assert allowed_body["verdict"] == "PASS"
+    assert "GATE-SCAN-CRITICAL-PRESENT" in {w["code"] for w in allowed_body["warnings"]}
