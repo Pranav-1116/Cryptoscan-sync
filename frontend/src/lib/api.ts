@@ -1779,6 +1779,63 @@ export const apiBinaryBatch = (body: {
 export const apiBinaryBatchStatus = (batchId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/binary/batches/${encodeURIComponent(batchId)}`, "GET", undefined, 20000);
 
+export interface KnowledgePackEntry {
+  version?: string | null; digest: string; description?: string | null;
+  signed_by?: string | null; installed_at?: string; rule_names?: string[];
+  rules?: { name: string }[];
+}
+
+export interface KnowledgeState {
+  builtin: { rules: number; digest: string; private_rules?: number };
+  installed: Record<string, KnowledgePackEntry>;
+  installed_rule_files: string[];
+  rules_dir: string;
+  ruleset: { rules: number; digest: string; error_count: number; private_rules?: number; errors?: any[] };
+  registry_note?: string | null;
+  note?: string;
+}
+
+/**
+ * What this host will load: the built-in rules plus every installed pack, with the
+ * digest of the set a scan actually uses. Reading it is a read-only operation.
+ */
+export const apiKnowledge = () =>
+  _sbomReq<KnowledgeState>("/api/v1/devsecops/knowledge", "GET", undefined, 20000);
+
+/**
+ * Install a signed rule pack (a directory or a .tar.gz on this host) so every scan
+ * loads it. A refused pack is a gate, not a failure to hide: the 400 body carries
+ * the reasons (bad signature, edited file, a rule that will not load), so this one
+ * keeps them.
+ */
+export async function apiKnowledgeInstall(body: {
+  pack: string; dry_run?: boolean; allow_unsigned?: boolean; secret?: string;
+}): Promise<{ ok: boolean; status: number; data: any | null; reasons: string[]; error: string }> {
+  try {
+    const resp = await fetch("/api/v1/devsecops/knowledge/install", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      credentials: "include",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60000),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const detail = payload?.detail;
+      const reasons = detail && typeof detail === "object" && Array.isArray(detail.reasons) ? detail.reasons : [];
+      const error = typeof detail === "string" ? detail : (detail?.message || `HTTP ${resp.status}`);
+      return { ok: false, status: resp.status, data: null, reasons, error };
+    }
+    return { ok: true, status: resp.status, data: payload, reasons: [], error: "" };
+  } catch (e) {
+    return { ok: false, status: 0, data: null, reasons: [], error: String(e) };
+  }
+}
+
+/** Remove an installed pack so its rules stop being loaded. */
+export const apiKnowledgeUninstall = (name: string) =>
+  _sbomReq<any>("/api/v1/devsecops/knowledge/uninstall", "POST", { name }, 20000);
+
 /** The CBOM stored next to a binary-scan artifact. */
 export const apiBinaryCbom = (artifactId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/binary/artifacts/${artifactId}/cbom`, "GET", undefined, 30000);

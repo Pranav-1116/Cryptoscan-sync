@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
@@ -507,6 +508,7 @@ def binary_scan_job(
     from api.security.target_validation import TargetValidationError, validate_source_target
     from api.routers.trigger import enqueue_scan_job
 
+    _enforce_airgap_writable("devsecops.binary_scan_job")
     if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
         raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
     try:
@@ -542,7 +544,6 @@ def binary_scan_job(
         scan_options=options,
     )
     job_id = str(getattr(queued, "job_id", "") or "")
-    _enforce_airgap_writable("devsecops.binary_scan_job")
     return BinaryScanJobResponse(
         job_id=job_id,
         artifact_id=artifact_id,
@@ -608,6 +609,9 @@ def binary_batch(
     from api.security.target_validation import TargetValidationError, validate_source_target
     from api.routers.trigger import enqueue_scan_job
     from devsecops.intake import load_state, plan_intake, record_outcome, save_state, state_path_for
+
+    if not body.dry_run:
+        _enforce_airgap_writable("devsecops.binary_batch")
 
     try:
         spool = validate_source_target(body.spool, label="spool")
@@ -878,6 +882,10 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     from devsecops import sbom_scan as sb
     from api.security.target_validation import TargetValidationError, validate_source_target
 
+    # air-gap read-only mode blocks starting work, exactly as it does for the
+    # queued path; reading what is already stored stays available
+    _enforce_airgap_writable("devsecops.binary_scan")
+
     if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
         raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
     fmt = "spdx" if body.format.lower() == "spdx" else "cyclonedx"
@@ -1111,6 +1119,116 @@ def yara_validate(body: YaraValidateRequest,
                  "run — the scan's findings will say so too, so a ruleset error cannot be "
                  "mistaken for a clean scan"),
     }
+
+
+# ------------------------------------------------------- knowledge packs --- #
+class KnowledgeInstallRequest(BaseModel):
+    pack: str = Field(..., description=(
+        "a pack directory (built by devsecops.knowledge) or a .tar.gz bundle on this host"))
+    dry_run: bool = Field(False, description=(
+        "verify and report what would happen, without installing anything"))
+    secret: str | None = Field(None, max_length=512, description=(
+        "signing secret to verify the pack; omit to use CRYPTOSCAN_BUNDLE_SECRET/SECRET_KEY"))
+    allow_unsigned: bool = Field(False, description=(
+        "accept a pack with no signature (recorded as unsigned in the registry)"))
+
+
+class KnowledgeUninstallRequest(BaseModel):
+    name: str = Field(..., max_length=128, description="installed pack name")
+
+
+def _knowledge_result(report: dict) -> dict:
+    """Report shape the API returns: the ruleset object is summarised, not serialised."""
+    ruleset = report.pop("ruleset", None)
+    report["loaded_rules"] = ({"rules": len(ruleset.rules),
+                               "digest": ruleset.digest,
+                               "names": sorted(rule.name for rule in ruleset.rules)}
+                              if ruleset is not None else None)
+    return report
+
+
+@router.get("/knowledge")
+def knowledge_list(user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Which detection rules this host will load: the built-ins plus installed packs.
+
+    This is the answer to "what does the scanner actually match?" — and in a
+    disconnected install it is the answer to "did the update pack take?": the packs
+    and their digests are listed, next to the digest of the set a scan will use.
+    """
+    from devsecops.knowledge import knowledge_state
+
+    return knowledge_state()
+
+
+@router.post("/knowledge/install")
+def knowledge_install(body: KnowledgeInstallRequest,
+                      user: str = Depends(require_roles(*_SBOM_OPERATORS)),
+                      db: Session = Depends(get_db_session)):
+    """Verify a signed rule pack, then install it so every scan loads it.
+
+    The pack is verified — signature, per-file digests, and that its rules actually
+    load in this platform's engine — before anything is written; a pack that fails
+    comes back with the reasons and nothing changes on disk. Air-gap mode does not
+    block this: an offline update arriving on media *is* how a disconnected install
+    is updated.
+    """
+    from devsecops.knowledge import KnowledgeError, extract_bundle, install_pack, resolve_secret
+
+    if not body.dry_run:
+        _enforce_airgap_writable("knowledge.install")
+    target = str(body.pack)
+    extracted: dict | None = None
+    try:
+        if target.endswith((".tar.gz", ".tgz")):
+            extracted = extract_bundle(target, tempfile.mkdtemp(prefix="cryptoscan-knowledge-"))
+            entries = sorted(Path(extracted["dest"]).iterdir())
+            target = str(entries[0]) if len(entries) == 1 and entries[0].is_dir() else extracted["dest"]
+        secret, key_id = resolve_secret(body.secret)
+        if body.allow_unsigned:
+            secret = None
+        report = install_pack(target, secret=secret, dry_run=body.dry_run,
+                              require_signature=not body.allow_unsigned)
+    except (KnowledgeError, OSError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    result = _knowledge_result({**report, "extracted": extracted, "verified_with": key_id})
+    if report.get("action") == "refused":
+        UserRepository(db).audit(
+            user, "devsecops.knowledge_refused", target_type="knowledge_pack",
+            target_id=str((report.get("manifest") or {}).get("name") or body.pack),
+            detail={"reasons": report["reasons"]}, outcome="FAILURE")
+        db.commit()
+        raise HTTPException(status_code=400, detail={
+            "message": "the pack was refused and nothing was installed",
+            "reasons": report["reasons"]})
+    if not body.dry_run:
+        manifest = report.get("manifest") or {}
+        UserRepository(db).audit(
+            user, f"devsecops.knowledge_{report['action'].replace('-', '_')}",
+            target_type="knowledge_pack", target_id=str(manifest.get("name") or body.pack),
+            detail={"version": manifest.get("version"), "digest": manifest.get("digest"),
+                    "verified_with": key_id, "replaced": (report.get("replaced") or {}).get("version"),
+                    "rules": [row["name"] for row in report.get("files") or []]})
+        db.commit()
+    result["note"] = ("a pack is refused or it is installed — never half-applied: the rules load "
+                      "only when every file verifies and the rule text loads in this engine")
+    return result
+
+
+@router.post("/knowledge/uninstall")
+def knowledge_uninstall(body: KnowledgeUninstallRequest,
+                        user: str = Depends(require_roles(*_SBOM_OPERATORS)),
+                        db: Session = Depends(get_db_session)):
+    """Remove an installed pack so its rules stop being loaded."""
+    from devsecops.knowledge import uninstall_pack
+
+    _enforce_airgap_writable("knowledge.uninstall")
+    report = uninstall_pack(body.name)
+    if report.get("removed"):
+        UserRepository(db).audit(user, "devsecops.knowledge_uninstalled",
+                                 target_type="knowledge_pack", target_id=body.name,
+                                 detail={"version": (report.get("removed_entry") or {}).get("version")})
+        db.commit()
+    return report
 
 
 @router.get("/binary/artifacts/{artifact_id}/cbom")

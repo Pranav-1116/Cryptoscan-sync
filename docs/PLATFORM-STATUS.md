@@ -135,6 +135,40 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, installed knowledge packs / offline detection
+updates):** the air-gapped parity gap that mattered most was not feeds — feature 26 already
+ingests offline CVE feeds — but **detections**: a disconnected install could only be updated
+by updating the image, and a customer who wrote their own rules had no way in at all. New
+`devsecops/knowledge.py` splits rule knowledge into **built-in rules** (in the release) and
+**installed packs** (signed bundles on removable media), and `scan_path` now loads the
+installed set automatically — `include_installed_rules=True` by default — so an update pack
+changes what the next scan finds with no call site, flag or restart involved. A pack is
+`pack.json` (per-file SHA-256 + pack digest) + `pack.sig` (HMAC-SHA256 over the manifest,
+`--key-id` recorded) + the rule files; **installation is a gate, not a copy**: missing/bad
+signature, missing file, edited file, a file the manifest never listed, or rule text this
+engine refuses all produce a refusal *with reasons* and leave the install untouched — a
+half-applied ruleset that quietly stops matching is the failure this prevents. Installs are
+idempotent (same digest → `already-installed`), a new digest under the same name replaces
+and reports the old version, and both installs and refusals are audited (pack digest,
+version, signer). New API: `GET /devsecops/knowledge` (built-in count/digest, every installed
+pack, and the digest of the set a scan will actually use), `POST /devsecops/knowledge/install`
+(bundle or directory, `dry_run`, `allow_unsigned`; 400 with `reasons` when refused) and
+`POST /devsecops/knowledge/uninstall`. New CLI: `python -m devsecops.knowledge
+build|sign|verify|install|uninstall|export|extract|list` (exit 0/2/4). Air-gap mode allows
+installing — an update on media is what the air gap is *for* — via the governance allowlist
+(`knowledge.install`/`knowledge.uninstall`), while the sync and queued scan endpoints now
+enforce read-only mode *before* doing work (the queued path previously checked after
+queueing). Bundles are unpacked defensively (absolute paths, `..`, links and non-regular
+members refused; 3.12+ data filter where available). The scan report already carried the
+ruleset digest; it now cites the digest of the set that was actually loaded, packs included.
+Tests: +59 `test_knowledge.py`, +17 `test_knowledge_api.py`; live drill on a running install:
+8 built-in rules (digest `989031cfc9346db6`) → scan `/usr/bin/openssl` = 3 findings → install a
+signed Acme pack from a `.tar.gz` (`verified_with: env:CRYPTOSCAN_BUNDLE_SECRET`) → 9 rules
+(digest `0991af73d0ce877c`) → same scan = 4 findings, including `BIN-YARA-MATCH` on
+`acme_legacy_dsa_signatures` citing `$dsa x49` at bytes 62975/728455/… → an unsigned pack and
+a pack edited after signing both refused (400, file named) → uninstall → back to 8 rules and
+3 findings, same digests.
+
 **Update (2026-09-23, commit pending, fleet intake):** the orchestrator-shaped half of the
 binary spec is now filled by the queue the platform already has (no Kafka, no Flink).
 `devsecops/intake.py` takes a spool directory and decides, file by file, what is worth

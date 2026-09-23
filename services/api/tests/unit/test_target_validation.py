@@ -6,9 +6,17 @@ import os
 
 import pytest
 
-# ensure a known source root exists for the allow-list tests
-os.environ.setdefault("CRYPTOSCAN_SOURCE_ROOTS", "/tmp/cryptoscan-test-sources")
-os.makedirs("/tmp/cryptoscan-test-sources/repo", exist_ok=True)
+# A known source root for the allow-list tests. This is set per test (not at import
+# time): an import-time os.environ write outlives this file and changes what every
+# later test sees — it silently turned one dynamic-scan refusal into two in an
+# unrelated suite. The directory is created once here because it is just a path.
+TEST_SOURCE_ROOT = "/tmp/cryptoscan-test-sources"
+os.makedirs(f"{TEST_SOURCE_ROOT}/repo", exist_ok=True)
+
+
+@pytest.fixture(autouse=True)
+def _source_root(monkeypatch):
+    monkeypatch.setenv("CRYPTOSCAN_SOURCE_ROOTS", TEST_SOURCE_ROOT)
 
 from api.security.target_validation import (  # noqa: E402
     TargetValidationError,

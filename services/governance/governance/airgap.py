@@ -70,6 +70,10 @@ _MUTATING_OPERATIONS = frozenset({
 _READ_ONLY_ALLOWED = frozenset({
     "feed.import", "report.read", "audit.verify", "finding.read",
     "ot.decode", "backup.create", "dashboard.read",
+    # an offline update pack arriving on media is the only way a disconnected
+    # install gets new detections, so installing/removing one is not a mutation
+    # that air-gap mode should block (it still never reaches the network)
+    "knowledge.install", "knowledge.uninstall",
 })
 
 

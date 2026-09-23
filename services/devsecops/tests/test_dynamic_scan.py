@@ -77,7 +77,12 @@ def _compiled(root: Path, source: str, name: str = "sample") -> Path:
 # --------------------------------------------------------------------------- #
 
 def test_execution_is_off_until_the_host_says_so(monkeypatch):
+    # the whole environment is cleared, not just the switch: with a root configured
+    # there is a second, equally honest refusal ("not under the allowed roots"), and
+    # this test is about the switch
     monkeypatch.delenv("BINARY_EXECUTION_ENABLED", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_SOURCE_ROOTS", raising=False)
+    monkeypatch.delenv("BINARY_EXECUTION_ALLOWLIST", raising=False)
     policy = dyn.ExecutionPolicy.from_env()
     assert policy.allowed is False
     result = dyn.dynamic_scan("/bin/true", policy=policy)
@@ -183,6 +188,8 @@ def test_a_missing_file_is_refused(monkeypatch, tmp_path):
 
 def test_every_refusal_is_a_finding_so_absence_is_not_confused_with_silence(monkeypatch, tmp_path):
     monkeypatch.delenv("BINARY_EXECUTION_ENABLED", raising=False)
+    monkeypatch.delenv("CRYPTOSCAN_SOURCE_ROOTS", raising=False)
+    monkeypatch.delenv("BINARY_EXECUTION_ALLOWLIST", raising=False)
     result = dyn.dynamic_scan(_executable(tmp_path))
     codes = [f["code"] for f in result["findings"]]
     assert codes == ["BIN-DYNAMIC-REFUSED"]

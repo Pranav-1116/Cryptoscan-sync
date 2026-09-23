@@ -8,7 +8,8 @@ import {
   apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
   apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiBinaryDynamic, apiBinaryBatch,
   apiBinaryBatchStatus, apiJobStatus, apiYaraValidate, apiConnectorPreview,
-  DynamicScanResult, BinaryBatchResult,
+  DynamicScanResult, BinaryBatchResult, KnowledgeState,
+  apiKnowledge, apiKnowledgeInstall, apiKnowledgeUninstall,
 } from "../lib/api.js";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
@@ -694,6 +695,13 @@ function BinaryPanel() {
   const [jobError, setJobError] = useState<string | null>(null);
   const [jobBusy, setJobBusy] = useState(false);
   const rules = () => (rulesPath.trim() ? [rulesPath.trim()] : []);
+  // installed detection packs: signed rule bundles that arrive on media and are
+  // loaded by every scan. What the scanner will actually match is a digest, not a
+  // claim — so the state (built-in + packs + the set a scan uses) is shown here.
+  const [knowledge, setKnowledge] = useState<KnowledgeState | null>(null);
+  const [packPath, setPackPath] = useState("");
+  const [packBusy, setPackBusy] = useState(false);
+  const [packInfo, setPackInfo] = useState<{ ok: boolean; text: string; reasons: string[] } | null>(null);
 
   // dynamic analysis (ADR-012 LD_PRELOAD tracer). The host has to allow it and the
   // sample has to pass the preflight; a refusal is shown with its reasons, never as
@@ -746,6 +754,9 @@ function BinaryPanel() {
     return () => { stop = true; };
   }, [batch?.batch_id, batch?.dry_run]);
 
+  // which rules this host will load: read once, refreshed after every install
+  React.useEffect(() => { void loadKnowledge(); }, []);
+
   /** Preflight only: no process is started, and the refusals are the answer. */
   const preflight = async () => {
     if (!target.trim()) { setDynError("target is required"); return; }
@@ -770,6 +781,49 @@ function BinaryPanel() {
       if (!answer.ok && !answer.refusals.length) setDynError(answer.error);
     } catch (e) { setDynError(String(e)); }
     setDynBusy(false);
+  };
+
+  const loadKnowledge = async () => {
+    const answer = await apiKnowledge();
+    if (answer.ok && answer.data) setKnowledge(answer.data);
+  };
+
+  /** Verify (dry run) or verify-and-install a pack. Refusal reasons are the answer. */
+  const installPack = async (dryRun: boolean) => {
+    if (!packPath.trim()) { setPackInfo({ ok: false, text: "a pack path is required", reasons: [] }); return; }
+    setPackBusy(true); setPackInfo(null);
+    try {
+      const answer = await apiKnowledgeInstall({ pack: packPath.trim(), dry_run: dryRun });
+      if (!answer.ok) {
+        setPackInfo({ ok: false, text: answer.error, reasons: answer.reasons });
+      } else {
+        const data = answer.data || {};
+        const names = (data.loaded_rules?.names || []).join(", ");
+        setPackInfo({
+          ok: true,
+          text: `${data.action}: ${data.manifest?.name} v${data.manifest?.version}`
+            + ` · ${(data.files || []).length} rule file(s)`
+            + (names ? ` · rules: ${names}` : "")
+            + (data.replaced ? ` · replaced v${data.replaced.version}` : "")
+            + (data.dry_run ? " (nothing was installed — this was the check)" : ""),
+          reasons: [],
+        });
+        await loadKnowledge();
+      }
+    } catch (e) { setPackInfo({ ok: false, text: String(e), reasons: [] }); }
+    setPackBusy(false);
+  };
+
+  const removePack = async (name: string) => {
+    setPackBusy(true);
+    try {
+      const answer = await apiKnowledgeUninstall(name);
+      setPackInfo(answer.ok
+        ? { ok: true, text: answer.data?.removed ? `${name} removed — its rules no longer load` : `${name} was not installed`, reasons: [] }
+        : { ok: false, text: answer.error || "uninstall failed", reasons: [] });
+      await loadKnowledge();
+    } catch (e) { setPackInfo({ ok: false, text: String(e), reasons: [] }); }
+    setPackBusy(false);
   };
 
   /** What the ruleset will do — before trusting a scan to it. */
@@ -1117,6 +1171,49 @@ function BinaryPanel() {
         {rulesInfo && (
           <div style={{ fontSize: 12.5, marginTop: 4, color: rulesInfo.ok ? "var(--green, #30a46c)" : "var(--red, #e5484d)" }}>
             {rulesInfo.text}
+          </div>
+        )}
+      </div>
+      <div className="mt" style={{ marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          detection packs — signed rule bundles for an install that never sees the internet. A pack is verified
+          (signature, per-file digests, and that its rules load here) before anything is written, so it is refused
+          or installed, never half-applied.
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input className="inp" style={{ flex: 1, minWidth: 260 }}
+            placeholder="/media/acme-fips-2026.09.tar.gz or a pack directory on this host"
+            value={packPath} onChange={(e) => setPackPath(e.target.value)} />
+          <button className="btn sm" onClick={() => void installPack(true)} disabled={packBusy}>
+            {packBusy ? "working…" : "Verify only"}
+          </button>
+          <button className="btn sm" onClick={() => void installPack(false)} disabled={packBusy}>Install pack</button>
+        </div>
+        {packInfo && (
+          <div style={{ fontSize: 12.5, marginTop: 4, color: packInfo.ok ? "var(--green, #30a46c)" : "var(--red, #e5484d)" }}>
+            {packInfo.text}
+            {packInfo.reasons.map((reason, i) => (
+              <div key={i} className="muted">refused: {reason}</div>
+            ))}
+          </div>
+        )}
+        {knowledge && (
+          <div style={{ fontSize: 12.5, marginTop: 6 }}>
+            <div className="muted">
+              a scan loads <b>{knowledge.ruleset.rules}</b> rules · digest{" "}
+              <span className="mono">{String(knowledge.ruleset.digest).slice(0, 16)}</span> · built-in{" "}
+              {knowledge.builtin.rules} · {Object.keys(knowledge.installed).length} pack(s) installed
+            </div>
+            {Object.entries(knowledge.installed).map(([name, entry]) => (
+              <div key={name} className="row" style={{ gap: 8, alignItems: "center", marginTop: 3 }}>
+                <Badge tone="green">{name} v{entry.version}</Badge>
+                <span className="muted mono">digest {String(entry.digest).slice(0, 12)}</span>
+                <span className="muted">{entry.signed_by ? `signed by ${entry.signed_by}` : "unsigned"}</span>
+                <span className="muted">{(entry.rule_names || []).length} rule(s)</span>
+                <button className="btn sm" onClick={() => void removePack(name)} disabled={packBusy}>Remove</button>
+              </div>
+            ))}
+            {knowledge.registry_note && <div className="muted">{knowledge.registry_note}</div>}
           </div>
         )}
       </div>

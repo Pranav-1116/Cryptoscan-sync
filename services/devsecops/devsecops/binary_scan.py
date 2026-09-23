@@ -4171,19 +4171,43 @@ def _scan_key_counts(records: list[dict[str, Any]]) -> dict[str, int]:
 def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool = False,
               max_binaries: int = MAX_BINARIES,
               yara_rules: Iterable[str | Path] = (),
-              yara_ruleset: Any = None) -> dict[str, Any]:
+              yara_ruleset: Any = None,
+              include_installed_rules: bool = True) -> dict[str, Any]:
     """Walk a file or directory and scan every recognisable binary.
 
     ``yara_rules`` are rule files or directories, loaded once for the walk;
     ``yara_ruleset`` takes an already-compiled ruleset (the API loads one so the
     digest can be reported before the walk). With neither, the built-in rules
     still run — the scanner should look for known tooling out of the box.
+
+    ``include_installed_rules`` (default on) also loads the rule packs installed on
+    this host (see :mod:`devsecops.knowledge`). That is what makes a disconnected
+    install updatable: new detections arrive as a signed pack, and the next scan
+    walks the new rules without the scan call site changing. The ruleset digest in
+    the report covers whichever set was actually loaded.
     """
     from devsecops.yara_rules import load_rules
 
     ruleset = yara_ruleset
     if ruleset is None:
-        ruleset = load_rules(yara_rules) if yara_rules else load_rules()
+        installed: list[Path] = []
+        installed_error: str | None = None
+        if include_installed_rules:
+            from devsecops.knowledge import installed_rule_files
+
+            try:
+                installed = installed_rule_files()
+            except Exception as exc:  # noqa: BLE001 — a scan must not fail on pack state…
+                # …but it must not look clean either: the failure is recorded in the
+                # ruleset errors, which the report surfaces and the scan summary counts
+                installed_error = f"{type(exc).__name__}: {exc}"
+        paths = [*installed, *(yara_rules or [])]
+        ruleset = load_rules(paths) if paths else load_rules()
+        if installed_error:
+            ruleset.errors.append({
+                "source": "installed-knowledge",
+                "error": (f"the installed rule packs could not be read ({installed_error}); "
+                          "this scan ran with the built-in rules only")})
     base = Path(target).expanduser()
     if not base.exists():
         raise FileNotFoundError(f"target not found: {base}")

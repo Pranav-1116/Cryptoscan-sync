@@ -453,6 +453,88 @@ behaviour lands in one inventory, with one verdict vocabulary and one SSE stream
 `GET /scans/runtime-findings` shows it beside the agents' rows, with the sample's
 SHA-256, the function that made the call, and the classification it received.
 
+### 3.6 Update packs — new detections for an install that never sees the internet
+
+An air-gapped estate has a problem that a hosted one does not: when the vendor
+adds a detection, or the customer writes their own rule, there is no way to get it
+in. So detections come in two layers:
+
+* **built-in rules** — the platform's own, compiled into the release (the eight in
+  §3.4);
+* **installed packs** — rule bundles that arrive on removable media, are verified
+  *before* anything is read out of them, and are then loaded by every scan
+  automatically. No call site changes, no restart, no scan API flag.
+
+A pack is a directory: a `pack.json` manifest naming each rule file with its
+SHA-256, a `pack.sig` HMAC over the manifest, and the rule files themselves.
+
+```bash
+# 1) build on the connected workstation — building never touches the key
+python -m devsecops.knowledge build acme-fips --rules acme-fips.yar \
+  --version 2026.09 --description "Acme Bank crypto policy" --out /srv/media
+# -> /srv/media/acme-fips/pack.json (per-file digests + pack digest)
+
+# 2) sign it — the key step, done where the key lives
+CRYPTOSCAN_BUNDLE_SECRET=… python -m devsecops.knowledge sign /srv/media/acme-fips \
+  --key-id offline-2026-09
+
+# 3) carry one file across the gap
+python -m devsecops.knowledge export /srv/media/acme-fips --out acme-fips-2026.09.tar.gz
+
+# 4) on the disconnected install: verify, then install (or `--dry-run` first)
+python -m devsecops.knowledge verify acme-fips-2026.09.tar.gz --secret …
+python -m devsecops.knowledge install acme-fips-2026.09.tar.gz --secret …
+python -m devsecops.knowledge list      # what a scan will load, and its digest
+```
+
+The same thing over the API, which is what the console and a remote operator use:
+
+```bash
+curl -X POST /api/v1/devsecops/knowledge/install \
+  -d '{"pack": "/srv/media/acme-fips-2026.09.tar.gz", "dry_run": false}'
+# 200 {action: installed, verified_with: env:CRYPTOSCAN_BUNDLE_SECRET,
+#      loaded_rules: {names: [...], digest: ...}, rules_dir: ...}
+# 400 {message: "the pack was refused and nothing was installed", reasons: [...]}
+
+curl /api/v1/devsecops/knowledge
+# -> built-in rule count + digest, every installed pack (version, digest, who
+#    signed it, when), and the digest of the set a scan will actually use
+curl -X POST /api/v1/devsecops/knowledge/uninstall -d '{"name": "acme-fips"}'
+```
+
+The console's binary panel carries the same gate (a pack path, *Verify only*,
+*Install pack*, and one *Remove* per installed pack) and shows the digest of the
+set a scan currently uses, so an operator who never touches a shell can answer
+"did the update take?" without leaving the page.
+
+**Installation is a gate, not a copy.** A pack is refused, with the reasons, when
+the signature is missing or does not match the manifest, when a listed file is
+missing, when a file's content does not match its manifest digest, when the pack
+carries rule files the manifest never listed, or when the rule text does not load
+in this platform's own engine. A pack that is refused changes nothing on disk —
+the alternative, a half-installed ruleset that quietly stops matching, is the one
+failure mode this whole path exists to prevent. Refusals are audited
+(`devsecops.knowledge_refused`), as are installs
+(`devsecops.knowledge_installed`), with the pack digest and the version replaced.
+
+An install is idempotent: the same digest is reported as `already-installed`. A
+new digest under the same pack name **replaces** it and reports what it replaced,
+because two versions of one pack must never both be loaded.
+
+Installing is allowed **while air-gapped** — an update arriving on media is not a
+network mutation, it is the whole point of the air gap (the read-only guard
+allowlists `knowledge.install`/`knowledge.uninstall` and still blocks starting
+scans). Bundles are unpacked defensively: absolute paths, `..`, links and
+non-regular members are refused, so the media cannot write outside the directory
+it is read into.
+
+What a scan reports is unchanged in shape and better in provenance: matches cite
+the **ruleset digest of the set that was loaded**, rule sources include the
+installed pack file, and `GET /devsecops/knowledge` answers "did the update
+take?" with digests rather than a shrug. Only rule *text* and its metadata come
+across the gap — never key material, never anything the platform would have to
+execute.
+
 ## 4. What flows onward
 
 * **SBOM (CycloneDX 1.5 / SPDX 2.3)** — every parsed binary is a component
@@ -577,6 +659,18 @@ that did run is the kind of answer that costs an afternoon.
   is the point — but a file whose content merely *looks* unrelated (a rebuilt
   binary with one byte changed) is a new scan. Two copies of the same file are
   one scan; that is a deduplication rule, not a statement about provenance.
+* **An installed pack is data, and only data.** A rule in this engine is text: no
+  module functions, no loops, no `include`, nothing that runs — so a pack cannot
+  execute code on the install, and a pack signed by the wrong hand still only
+  changes what the scanner *looks for*. It does change detection behaviour, which
+  is why installing needs an operator role and is audited, and why a pack that does
+  not verify is refused rather than partially applied.
+* **Packs carry rules, not keys and not findings.** The signing secret is
+  symmetric (the same value on the workstation and on the install, sourced from
+  `CRYPTOSCAN_BUNDLE_SECRET`/`SECRET_KEY`), so it authorises updates — it is not a
+  per-appliance identity. Registry state lives beside the packs
+  (`CRYPTOSCAN_KNOWLEDGE_DIR`, default `/var/lib/cryptoscan/knowledge`); if that
+  directory is lost, the packs are gone and the built-ins still run.
 * **A dynamic run is not a sandbox.** There is no gVisor, no seccomp, no network
   namespace and no user separation: the sample runs as the scanning user, with
   that user's filesystem access and network reach. What bounds it is an explicit
