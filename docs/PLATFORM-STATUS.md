@@ -135,6 +135,52 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, constant tables in update bundles):** the air-gap
+update path reached rules first; the *constant database* was still release-only, so an
+algorithm the scanner's tables do not cover could not be taught to a disconnected
+install. Packs now carry `tables/*.json` next to `rules/`, and the scanner searches
+them exactly like the built-ins — the same `scan_constants` search, the same
+byte-count ladder, the same ambiguity handling — with one addition that matters for
+evidence: every matched table reports its `source` (`null` for the release's own
+tables, `pack:<name>@<version>` for one an operator installed), every scan reports
+the table set it searched (`constant_tables`: built-in/installed counts, digest,
+sources, errors), and the manifest carries that block next to `binary_summary`.
+Validation is strict in the direction that protects the evidence: a table document
+must state `algorithm`/`table`/`encoding: hex`/`bytes`, a `minimum` between 4 and the
+table length, a `kind`/`weight` from the ladder's vocabularies — and **unknown fields
+are refused, not ignored** (a pack author who writes `"mimimum"` has stated a
+threshold that would not be applied). A table may not shadow a built-in by name or
+relabel its bytes: a pack adds evidence, it never rewrites what a match means for
+everyone else. The same checks run at `build` (on the workstation, so an unusable
+table never reaches the media) and at `verify`/`install` (on the isolated host, so a
+pack from any other tool still cannot get in). Installed tables are re-hashed against
+the digest the registry recorded before they are searched — a table edited on the
+host after installation is reported as an error on the scan rather than searched as
+if it were signed — and the table overlay is scoped to one walk (a context variable
+set around `scan_path`, reset after), so two scans cannot leak tables into each other.
+The drill found two holes, both fixed and now covered by tests. **The bundle was
+rules-only.** `export_bundle` wrote `rules/` and stopped, so a pack built correctly on
+the workstation arrived through the air gap with its tables missing and was refused on
+the far side as incomplete — a table that never crossed. The bundle now carries
+`tables/` too, there is a test that exports, unpacks, verifies and installs a table pack
+as one artefact, and a test that strips the tables out of an archive and asserts the
+arrival is refused rather than half-installed. **`already-installed` could be a lie.**
+Install matched on the pack digest alone, so a table edited on the host after
+installation made the next install answer `already-installed` and leave the damaged
+copy in place: present, and not what was signed. Re-installing now compares each file
+against the digest the registry recorded, and answers `would-repair` (dry run) or
+`repaired` with the drifted files named (`changed`/`missing`) — the drill's tampered
+table became an error on the scan, then a repair, then `ACME-Cipher` again. Tests: +23
+`test_knowledge.py` (incl. bundle round-trip, stripped bundle, repair of edited and
+deleted files), +1 end-to-end scan test proving an installed table changes what the next
+scan *names* (an algorithm absent before installation, cited as `CONSTANT_MATCH` with
+`CONSTANT_COMPLETE`, removed again with the pack), +21 `test_crypto_constants.py` for the
+document loader and the collision rules, +3 `test_knowledge_api.py` for the API path
+(table-only packs install, a hand-signed pack that relabels the AES S-box is refused 400
+with reasons, and a scan over the API names the algorithm the pack taught it). Console:
+the knowledge panel shows the table set, each pack's table count, and any table that was
+not searched.
+
 **Update (2026-09-23, commit pending, GraphQL + WebSocket surfaces):** the binary scanner
 is a service other software calls, and two shapes of caller had no reasonable path in: a
 dashboard that wants one round-trip for facts that currently take five REST calls, and a

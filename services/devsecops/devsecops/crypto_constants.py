@@ -45,8 +45,10 @@ ladder is for.
 from __future__ import annotations
 
 import hashlib
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator, Mapping
 
 # ------------------------------------------------------------------ limits --- #
 MAX_TABLE_MATCHES = 512          # table candidates accepted per call
@@ -56,6 +58,23 @@ MAX_REPORTED_TABLES = 64         # rows returned per call
 #: ladder grades. ``minimum`` on a table overrides this where the whole table is
 #: the trigger (a short constant, a text marker).
 TABLE_TRIGGER = 8
+#: what a table loaded from an update bundle may claim. The ceiling is a real
+#: number of bytes a table can have and still be a *table* — anything larger is a
+#: file being smuggled in through the constant database, and would make every scan
+#: search for it.
+MAX_TABLE_BYTES = 65536
+TABLE_KINDS = ("table", "text", "constant")
+TABLE_WEIGHTS = ("normal", "low")
+#: the shortest trigger a loaded table may declare; below this a "table" is a
+#: string, and a string that names an algorithm is a claim this database does not
+#: make from eight bytes or fewer
+MIN_TABLE_MINIMUM = 4
+
+
+class TableError(ValueError):
+    """A constant table document that cannot be trusted as evidence."""
+
+
 #: a trigger also has to be *worth* triggering on. Keccak's first round constant
 #: is ``01`` followed by seven zeros — eight bytes that occur in padding, in
 #: zero-filled structures and in every second Mach-O header. A trigger is
@@ -95,6 +114,9 @@ class ConstantTable:
     weight: str = "normal"       # normal | low  (low can never prove an algorithm)
     aliases: tuple[bytes, ...] = field(default_factory=tuple)
     note: str = ""
+    #: where the table came from, when it did not come from this module — a pack
+    #: name and version, so evidence resting on it can name its source
+    source: str = ""
 
     @property
     def length(self) -> int:
@@ -382,6 +404,125 @@ def _build_tables() -> tuple[ConstantTable, ...]:
     return tuple(tables)
 
 
+def table_digest(table: ConstantTable) -> str:
+    """SHA-256 of a table's canonical bytes — how a pack lists what it carries."""
+    return hashlib.sha256(table.data).hexdigest()
+
+
+def constant_table_from_document(document: Mapping[str, Any], *, source: str = "") -> ConstantTable:
+    """Build a table from a JSON document, refusing anything it cannot honour.
+
+    Every field is checked against what the scanner actually does, and unknown
+    fields are *refused* rather than ignored: a pack author who writes
+    ``"mimimum"`` has stated a threshold that will not be applied, and installing
+    that quietly would mean the installed evidence no longer says what the file
+    says.
+
+    The rules enforce what makes a loaded table worth as much as a built-in one:
+    bounded hex bytes, a declared minimum the table can satisfy, and a kind and a
+    weight from the vocabularies the confidence ladder understands.
+    """
+    if not isinstance(document, Mapping):
+        raise TableError(f"a table is a JSON object, got {type(document).__name__}")
+
+    known = {"algorithm", "table", "encoding", "bytes", "minimum", "kind", "weight",
+             "aliases", "note"}
+    unknown = sorted(set(document) - known)
+    if unknown:
+        raise TableError("unknown field(s) " + ", ".join(repr(key) for key in unknown)
+                         + " — a field the scanner does not honour must not be installed")
+
+    if "algorithm" not in document:
+        raise TableError("the table has no 'algorithm'")
+    if "table" not in document:
+        raise TableError("the table has no 'table'")
+    algorithm = str(document.get("algorithm") or "").strip()
+    name = str(document.get("table") or "").strip()
+    for label, value in (("algorithm", algorithm), ("table", name)):
+        if not value:
+            raise TableError(f"the table has no {label}")
+        if len(value) > 64 or not all(character.isprintable() for character in value):
+            raise TableError(f"the {label} name must be at most 64 printable characters")
+
+    encoding = str(document.get("encoding") or "").strip().lower()
+    if encoding != "hex":
+        raise TableError(f"unsupported encoding {encoding!r}: constant tables are hex")
+
+    def _hex(raw: Any, label: str) -> bytes:
+        text = str(raw or "").strip().replace(" ", "")
+        if not text:
+            raise TableError(f"the table has no {label}")
+        if len(text) % 2:
+            raise TableError(f"{label} has an odd number of hex digits")
+        try:
+            return bytes.fromhex(text)
+        except ValueError as exc:
+            raise TableError(f"{label} is not hex: {exc}") from exc
+
+    data = _hex(document.get("bytes"), "bytes")
+    if len(data) > MAX_TABLE_BYTES:
+        raise TableError(f"the table carries {len(data)} bytes; the ceiling is {MAX_TABLE_BYTES}")
+
+    minimum_raw = document.get("minimum")
+    minimum = min(TABLE_TRIGGER, len(data)) if minimum_raw is None else int(minimum_raw)
+    if minimum < MIN_TABLE_MINIMUM:
+        raise TableError(f"minimum {minimum} is below {MIN_TABLE_MINIMUM}: a trigger that short "
+                         "cannot carry evidence")
+    if minimum > len(data):
+        raise TableError(f"minimum {minimum} exceeds the {len(data)} bytes the table carries")
+
+    kind = str(document.get("kind") or "table").strip()
+    if kind not in TABLE_KINDS:
+        raise TableError(f"unknown kind {kind!r}: expected one of {', '.join(TABLE_KINDS)}")
+    weight = str(document.get("weight") or "normal").strip()
+    if weight not in TABLE_WEIGHTS:
+        raise TableError(f"unknown weight {weight!r}: expected one of {', '.join(TABLE_WEIGHTS)}")
+
+    aliases_raw = document.get("aliases") or []
+    if isinstance(aliases_raw, (str, bytes)) or not isinstance(aliases_raw, Iterable):
+        raise TableError("aliases must be a list of hex strings")
+    aliases = tuple(_hex(item, "an alias") for item in aliases_raw)
+    for alias in aliases:
+        if len(alias) != len(data):
+            raise TableError(f"an alias is {len(alias)} bytes where the table is {len(data)}: "
+                             "aliases are the same table in another storage order")
+
+    note = str(document.get("note") or "").strip()
+    if len(note) > 200:
+        raise TableError("the note is longer than 200 characters")
+
+    return ConstantTable(algorithm=algorithm, table=name, data=data, minimum=minimum,
+                         kind=kind, weight=weight, aliases=aliases, note=note, source=source)
+
+
+def constant_table_problems(document: Mapping[str, Any], *,
+                            existing: Iterable[ConstantTable] | None = None) -> list[str]:
+    """Everything wrong with one table document, as reasons.
+
+    Collisions are checked here because they are the failure a signature cannot
+    catch: bytes already in the database are evidence for *that* algorithm,
+    whoever else claims them. A pack may add evidence, never relabel it.
+
+    ``existing`` defaults to the built-in database — the safe comparison — and a
+    caller checking a whole pack passes the built-ins plus the tables already
+    accepted from that pack.
+    """
+    try:
+        table = constant_table_from_document(document)
+    except TableError as exc:
+        return [str(exc)]
+    others = constant_tables() if existing is None else tuple(existing)
+    problems: list[str] = []
+    for other in others:
+        if other.algorithm == table.algorithm and other.table == table.table:
+            problems.append(f"{table.algorithm}/{table.table} already exists in the database "
+                            "and would be shadowed; a pack adds evidence, it does not replace it")
+        elif other.data == table.data:
+            problems.append(f"these bytes are already the {other.algorithm}/{other.table} table; "
+                            "renaming an existing table would make every match ambiguous")
+    return problems
+
+
 _TABLES: tuple[ConstantTable, ...] | None = None
 
 
@@ -391,6 +532,40 @@ def constant_tables() -> tuple[ConstantTable, ...]:
     if _TABLES is None:
         _TABLES = _build_tables()
     return _TABLES
+
+
+#: tables an installed pack adds to the current scan. A context variable rather
+#: than an argument threaded through four format parsers: the search is called from
+#: inside them, the *set* is a property of the scan, and a token-scoped set cannot
+#: leak tables from one scan into the next
+_EXTRA_TABLES: ContextVar[tuple[ConstantTable, ...]] = ContextVar("cryptoscan_extra_tables",
+                                                                 default=())
+
+
+@contextmanager
+def use_constant_tables(extra: Iterable[ConstantTable]) -> Iterator[tuple[ConstantTable, ...]]:
+    """Search ``extra`` tables, plus the built-ins, for the duration of the block."""
+    token = _EXTRA_TABLES.set(tuple(extra))
+    try:
+        yield active_constant_tables()
+    finally:
+        _EXTRA_TABLES.reset(token)
+
+
+def active_constant_tables() -> tuple[ConstantTable, ...]:
+    """What a scan searches right now: the built-in database plus any added set."""
+    return constant_tables() + _EXTRA_TABLES.get()
+
+
+def tableset_digest(tables: Iterable[ConstantTable]) -> str:
+    """Digest of a table set: sorted ``algorithm/table/sha256`` lines, hashed.
+
+    The counterpart of the ruleset digest. A report that says "the AES S-box table
+    matched" has to be reproducible, and *which* tables were searched is half of
+    what made the match mean something.
+    """
+    lines = sorted(f"{table.algorithm}/{table.table}/{table_digest(table)}" for table in tables)
+    return hashlib.sha256("\n".join(lines).encode("utf-8")).hexdigest()
 
 
 # ------------------------------------------------------------- the ladder --- #
@@ -451,8 +626,12 @@ def scan_constants(windows: Iterable[tuple[str, bytes]], *,
     how many bytes matched, whether the table is complete and where it was
     found; the *level* then follows from those counts, not from the fact of a
     hit — a two-word prefix and a full 256-byte S-box are not the same evidence.
+
+    With no explicit ``tables``, the search uses the active set — the built-in
+    database plus whatever a scan added with ``use_constant_tables`` — so a search
+    inside a packaged scan cannot accidentally run on the built-ins alone.
     """
-    table_list = tables if tables is not None else constant_tables()
+    table_list = active_constant_tables() if tables is None else tables
     window_list = [(name, data) for name, data in windows if data]
     #: canonical bytes of every table, as a list — two tables can hold identical
     #: bytes (that is the whole point), so a dict keyed by the bytes would silently
@@ -503,6 +682,9 @@ def scan_constants(windows: Iterable[tuple[str, bytes]], *,
                 "byte_swapped_storage": byte_swapped,
                 "ambiguous_with": ambiguous_with,
                 "note": table.note or None,
+                # which table set this row rests on: a built-in, or a pack that an
+                # operator installed across the air gap
+                "source": table.source or None,
             }
 
     rows = sorted(results.values(),
@@ -570,22 +752,33 @@ def scan_constants(windows: Iterable[tuple[str, bytes]], *,
         "engine_blobs": engine_blobs,
         "engine_prefixes": [blob[:8] for blob in engine_blobs],
         "truncated": candidates >= MAX_TABLE_MATCHES,
-        "note": _catalogue_note(),
+        "tables_in_use": len(table_list),
+        "installed_tables": sum(1 for table in table_list if table.source),
+        "tableset_digest": tableset_digest(table_list),
+        "sources": sorted({table.source for table in table_list if table.source}),
+        "note": _catalogue_note(table_list),
     }
 
 
-def _catalogue_note() -> str:
+def _catalogue_note(tables: Iterable[ConstantTable] | None = None) -> str:
     """What this catalogue covers — stated, so absence is not read as cleanliness."""
-    families = sorted({table.algorithm for table in constant_tables()})
-    return ("constant tables are held for " + ", ".join(families)
+    table_list = tuple(tables) if tables is not None else constant_tables()
+    families = sorted({table.algorithm for table in table_list})
+    installed = sorted({table.source for table in table_list if table.source})
+    note = ("constant tables are held for " + ", ".join(families)
             + "; an algorithm outside this list is not searched for by table, "
               "and its absence from the evidence is not evidence of absence")
+    if installed:
+        note += ("; tables from installed packs are included: " + ", ".join(installed))
+    return note
 
 
-def table_catalogue() -> list[dict[str, Any]]:
+def table_catalogue(tables: Iterable[ConstantTable] | None = None) -> list[dict[str, Any]]:
     """The database itself, for the API to expose and a reviewer to inspect."""
+    table_list = tuple(tables) if tables is not None else constant_tables()
     return [{"algorithm": table.algorithm, "table": table.table, "bytes": table.length,
              "minimum": table.minimum, "kind": table.kind, "weight": table.weight,
              "aliases": len([alias for alias in table.aliases if alias]),
-             "sha256": hashlib.sha256(table.data).hexdigest(), "note": table.note or None}
-            for table in constant_tables()]
+             "sha256": table_digest(table), "note": table.note or None,
+             "source": table.source or None}
+            for table in table_list]

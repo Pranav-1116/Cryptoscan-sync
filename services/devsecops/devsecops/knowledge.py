@@ -41,6 +41,11 @@ MANIFEST_NAME = "pack.json"
 SIGNATURE_NAME = "pack.sig"
 RULES_DIRNAME = "rules"
 RULE_SUFFIXES = (".yar", ".yara")
+#: constant tables a pack adds to the scanner's database. They are data, not rule
+#: text, and they are verified the same way: listed in the manifest, digest
+#: checked, and parsed by the same loader the scan uses.
+TABLES_DIRNAME = "tables"
+TABLE_SUFFIX = ".json"
 SIGN_ALG = "HMAC-SHA256"
 #: a pack is rule text and a manifest; anything larger is not what it claims to be
 MAX_PACK_BYTES = 32 * 1024 * 1024
@@ -117,6 +122,77 @@ def installed_rule_files(root: str | Path | None = None) -> list[Path]:
     return sorted(files)
 
 
+def installed_table_files(root: str | Path | None = None) -> list[Path]:
+    """Every constant-table file from an installed pack, sorted.
+
+    Same rule as the rule files: a pack that is installed *and* still on disk
+    counts, and the registry says which file it was.
+    """
+    registry = load_registry(root)
+    files: list[Path] = []
+    for name, entry in sorted((registry.get("packs") or {}).items()):
+        base = packs_dir(root) / str(name) / TABLES_DIRNAME
+        for row in entry.get("tables") or []:
+            candidate = base / str(row.get("name"))
+            if candidate.is_file():
+                files.append(candidate)
+    return sorted(files)
+
+
+def installed_constant_tables(root: str | Path | None = None) -> dict[str, Any]:
+    """The constant tables installed packs contribute, plus anything unreadable.
+
+    A pack table that cannot be parsed is *reported*, not silently dropped: a scan
+    that quietly lost a table would look like a scan that found nothing, and the
+    two are different claims. The caller adds these to the built-in database for
+    the duration of a scan (see ``crypto_constants.use_constant_tables``).
+    """
+    import json as _json
+
+    from devsecops.crypto_constants import (constant_table_from_document,
+                                           constant_tables, constant_table_problems)
+
+    registry = load_registry(root)
+    tables: list[Any] = []
+    errors: list[dict[str, Any]] = []
+    sources: list[str] = []
+    builtin = constant_tables()
+    for path in installed_table_files(root):
+        pack = path.parent.parent.name if path.parent.name == TABLES_DIRNAME else path.parent.name
+        entry = (registry.get("packs") or {}).get(pack) or {}
+        source = f"pack:{pack}" + (f"@{entry.get('version')}" if entry.get("version") else "")
+        # the registry recorded the digest of the table that was verified; a file
+        # that no longer hashes to it was changed on this host after installation,
+        # and searching it would be searching bytes nobody signed
+        recorded = next((str(row.get("sha256")) for row in entry.get("tables") or []
+                         if str(row.get("name")) == path.name), None)
+        try:
+            actual = _sha256_bytes(path.read_bytes())
+        except OSError as exc:
+            errors.append({"source": source, "file": path.name,
+                           "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        if recorded and recorded != actual:
+            errors.append({"source": source, "file": path.name,
+                           "error": ("the table changed after it was verified "
+                                     f"({actual[:12]} != {recorded[:12]}); it was not searched")})
+            continue
+        try:
+            document = _json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, _json.JSONDecodeError) as exc:
+            errors.append({"source": source, "file": path.name,
+                           "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        problems = constant_table_problems(document, existing=(*builtin, *tables))
+        if problems:
+            errors.append({"source": source, "file": path.name, "error": "; ".join(problems)})
+            continue
+        tables.append(constant_table_from_document(document, source=source))
+        sources.append(source)
+    return {"tables": tuple(tables), "errors": errors, "sources": sorted(set(sources)),
+            "files": [str(path) for path in installed_table_files(root)]}
+
+
 # --------------------------------------------------------------------------- #
 # building and signing a pack
 # --------------------------------------------------------------------------- #
@@ -145,17 +221,27 @@ def build_pack(
     name: str,
     *,
     rules: dict[str, str] | Iterable[str | Path],
+    tables: dict[str, str | Any] | Iterable[str | Path] | None = None,
     version: str = "1.0.0",
     description: str = "",
     created_by: str = "offline-updater",
     out_dir: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Write a pack directory from rule sources (text or files) — unsigned.
+    """Write a pack directory from rule sources and constant tables — unsigned.
 
     ``rules`` maps a filename to its text, or is a list of files to copy in.
+    ``tables`` adds constant tables: a filename (``acme.json``) to a JSON document
+    or its text, or a list of ``.json`` files. Tables are parsed here with the same
+    loader the scanner uses, so a table that cannot be loaded cannot be built —
+    an unbuildable table never reaches an operator.
+
     Nothing is signed here on purpose: building is a workstation step, signing is
     the keyed step, and separating them keeps the key off the workstation.
     """
+    from devsecops.crypto_constants import (ConstantTable, constant_tables,
+                                            constant_table_from_document,
+                                            constant_table_problems)
+
     clean = name.strip()
     if not clean or "/" in clean or clean.startswith("."):
         raise KnowledgeError(f"pack name must be a simple name, got {name!r}")
@@ -169,13 +255,45 @@ def build_pack(
             if not path.is_file():
                 raise KnowledgeError(f"rule file not found: {path}")
             sources[path.name] = path.read_text(encoding="utf-8", errors="replace")
-    if not sources:
-        raise KnowledgeError("a pack needs at least one rule file")
     for filename in sources:
         if Path(filename).name != filename or filename.startswith("."):
             raise KnowledgeError(f"{filename}: pack file names are simple names, not paths")
         if not filename.endswith(RULE_SUFFIXES):
-            raise KnowledgeError(f"{filename}: packs carry .yar/.yara files")
+            raise KnowledgeError(f"{filename}: packs carry .yar/.yara rule files")
+
+    table_sources: dict[str, Any] = {}
+    if tables is not None:
+        if isinstance(tables, dict):
+            table_sources = {str(filename): document for filename, document in tables.items()}
+        else:
+            for entry in tables:
+                path = Path(entry).expanduser()
+                if not path.is_file():
+                    raise KnowledgeError(f"table file not found: {path}")
+                table_sources[path.name] = path.read_text(encoding="utf-8")
+    for filename in table_sources:
+        if Path(filename).name != filename or filename.startswith("."):
+            raise KnowledgeError(f"{filename}: pack file names are simple names, not paths")
+        if not filename.endswith(TABLE_SUFFIX):
+            raise KnowledgeError(f"{filename}: constant tables are JSON (.json) files")
+    if not sources and not table_sources:
+        raise KnowledgeError("a pack needs at least one rule file or constant table")
+
+    # build-time validation: a table the scanner would refuse must not be shipped
+    # in the first place, so the refusal happens on the workstation. The comparison
+    # includes the tables already staged into this pack, so a pack cannot carry two
+    # tables with the same name or the same bytes.
+    staged: list[ConstantTable] = []
+    for filename, document in sorted(table_sources.items()):
+        if isinstance(document, str):
+            try:
+                document = json.loads(document)
+            except json.JSONDecodeError as exc:
+                raise KnowledgeError(f"{filename}: not valid JSON: {exc}") from exc
+        problems = constant_table_problems(document, existing=(*constant_tables(), *staged))
+        if problems:
+            raise KnowledgeError(f"{filename}: " + "; ".join(problems))
+        staged.append(constant_table_from_document(document))
 
     root = Path(out_dir).expanduser() if out_dir else Path(tempfile.mkdtemp(prefix="cryptoscan-pack-"))
     pack_dir = root / clean
@@ -185,6 +303,20 @@ def build_pack(
         data = text.encode("utf-8")
         (pack_dir / RULES_DIRNAME / filename).write_bytes(data)
         files.append({"name": filename, "sha256": _sha256_bytes(data), "size": len(data)})
+    table_rows: list[dict[str, Any]] = []
+    if table_sources:
+        (pack_dir / TABLES_DIRNAME).mkdir(parents=True, exist_ok=True)
+        for filename, document in sorted(table_sources.items()):
+            # written canonically (sorted keys, one-space indent): the same table
+            # built twice must produce the same bytes, or two operators get two
+            # digests for one table and cannot tell whether they agree
+            payload = json.loads(document) if isinstance(document, str) else document
+            data = json.dumps(payload, indent=1, sort_keys=True).encode("utf-8")
+            (pack_dir / TABLES_DIRNAME / filename).write_bytes(data)
+            table = constant_table_from_document(payload)
+            table_rows.append({"name": filename, "sha256": _sha256_bytes(data), "size": len(data),
+                               "algorithm": table.algorithm, "table": table.table,
+                               "bytes": table.length})
     manifest: dict[str, Any] = {
         "format": PACK_FORMAT,
         "name": clean,
@@ -194,6 +326,10 @@ def build_pack(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "files": files,
     }
+    if table_rows:
+        # only present when the pack carries tables, so a rule-only pack built today
+        # is byte-identical to one built before tables existed
+        manifest["tables"] = table_rows
     manifest["digest"] = manifest_digest(manifest)
     (pack_dir / MANIFEST_NAME).write_text(json.dumps(manifest, indent=1, sort_keys=True), encoding="utf-8")
     return {"pack_dir": str(pack_dir), "manifest": manifest}
@@ -228,7 +364,8 @@ def verify_pack(pack_dir: str | Path, *, secret: str | None = None,
     directory = Path(pack_dir).expanduser()
     reasons: list[str] = []
     result: dict[str, Any] = {"pack_dir": str(directory), "ok": False, "reasons": reasons,
-                              "manifest": None, "files": [], "ruleset": None, "signature": None}
+                              "manifest": None, "files": [], "table_files": [], "tables": [],
+                              "ruleset": None, "signature": None}
     manifest_file = directory / MANIFEST_NAME
     if not manifest_file.is_file():
         reasons.append(f"no {MANIFEST_NAME} in {directory}: this is not a knowledge pack")
@@ -274,6 +411,7 @@ def verify_pack(pack_dir: str | Path, *, secret: str | None = None,
 
     listed: set[str] = set()
     rules_dir = directory / RULES_DIRNAME
+    tables_dir = directory / TABLES_DIRNAME
     for row in manifest.get("files") or []:
         filename = str(row.get("name") or "")
         if not filename:
@@ -297,17 +435,48 @@ def verify_pack(pack_dir: str | Path, *, secret: str | None = None,
             reasons.append(f"{filename}: size does not match the manifest")
             continue
         result["files"].append({"name": filename, "sha256": digest, "size": len(data)})
+    listed_tables: set[str] = set()
+    for row in manifest.get("tables") or []:
+        filename = str(row.get("name") or "")
+        if not filename:
+            reasons.append("a manifest table entry has no file name")
+            continue
+        if Path(filename).name != filename or filename.startswith("."):
+            reasons.append(f"{filename}: pack file names are simple names, not paths")
+            continue
+        listed_tables.add(filename)
+        target = tables_dir / filename
+        if not target.is_file():
+            reasons.append(f"{filename}: listed in the manifest but missing from the pack")
+            continue
+        data = target.read_bytes()
+        digest = _sha256_bytes(data)
+        if digest != row.get("sha256"):
+            reasons.append(f"{filename}: content does not match the manifest "
+                           f"({digest[:12]} != {str(row.get('sha256'))[:12]})")
+            continue
+        if row.get("size") is not None and int(row["size"]) != len(data):
+            reasons.append(f"{filename}: size does not match the manifest")
+            continue
+        result["table_files"].append({"name": filename, "sha256": digest, "size": len(data)})
+
     if rules_dir.is_dir():
         extra = sorted(p.name for p in rules_dir.iterdir()
                        if p.is_file() and p.name not in listed and p.name.endswith(RULE_SUFFIXES))
         if extra:
             reasons.append(f"the pack carries rule files the manifest does not list: {', '.join(extra)}")
-    if not result["files"]:
-        reasons.append("the pack contains no verifiable rule files")
+    if tables_dir.is_dir():
+        extra = sorted(p.name for p in tables_dir.iterdir()
+                       if p.is_file() and p.name not in listed_tables and p.name.endswith(TABLE_SUFFIX))
+        if extra:
+            reasons.append("the pack carries constant tables the manifest does not list: "
+                           f"{', '.join(extra)}")
+    if not result["files"] and not result["table_files"]:
+        reasons.append("the pack contains no verifiable rule files or constant tables")
 
     # the pack has to *load*, or installing it would quietly change what the scanner
     # matches. This uses the same engine the scans use, so the answer is the same one.
-    if not reasons:
+    if not reasons and result["files"]:
         from devsecops.yara_rules import load_rules
 
         ruleset = load_rules([rules_dir / row["name"] for row in result["files"]], include_builtin=False)
@@ -316,9 +485,9 @@ def verify_pack(pack_dir: str | Path, *, secret: str | None = None,
             for error in ruleset.errors[:5]:
                 source, text = str(error.get("source") or ""), str(error.get("error") or "")
                 reasons.append(text if source and source in text else f"{source}: {text}".strip(": "))
-        if not ruleset.rules:
+        if not ruleset.rules and not result["table_files"]:
             reasons.append("no rules could be loaded from this pack")
-        else:
+        elif ruleset.rules:
             from devsecops.yara_rules import BUILTIN_RULES, parse_rules
 
             builtin = {f"{r.meta.get('namespace') or ''}:{r.name}" for r in parse_rules(BUILTIN_RULES, "builtin")}
@@ -326,6 +495,32 @@ def verify_pack(pack_dir: str | Path, *, secret: str | None = None,
             if clash:
                 reasons.append("these rules already exist in the built-in set and would be "
                                f"ignored: {', '.join(clash[:5])}")
+    # the tables have to load in the scanner's own loader, and must not shadow or
+    # relabel a built-in: a signature says who sent the bytes, not that renaming
+    # the AES S-box is a fine idea
+    if result["table_files"]:
+        from devsecops.crypto_constants import (constant_table_from_document,
+                                               constant_tables, constant_table_problems)
+
+        seen: list[Any] = []
+        for row in result["table_files"]:
+            try:
+                document = json.loads((tables_dir / row["name"]).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                reasons.append(f"{row['name']}: not valid JSON: {exc}")
+                continue
+            problems = constant_table_problems(document, existing=(*constant_tables(), *seen))
+            if problems:
+                for problem in problems:
+                    reasons.append(f"{row['name']}: {problem}")
+                continue
+            table = constant_table_from_document(document)
+            seen.append(table)
+            result["tables"].append({"name": row["name"], "algorithm": table.algorithm,
+                                     "table": table.table, "bytes": table.length,
+                                     "minimum": table.minimum, "kind": table.kind,
+                                     "weight": table.weight, "note": table.note or None,
+                                     "sha256": row["sha256"]})
     result["ok"] = not reasons
     return result
 
@@ -346,7 +541,7 @@ def install_pack(pack_dir: str | Path, *, secret: str | None = None, root: str |
     report = verify_pack(pack_dir, secret=secret, require_signature=require_signature)
     base = {"pack_dir": str(pack_dir), "installed": False, "dry_run": bool(dry_run),
             "reasons": report["reasons"], "manifest": report["manifest"],
-            "files": report["files"]}
+            "files": report["files"], "tables": report.get("tables") or []}
     if not report["ok"]:
         return {**base, "action": "refused"}
     # the loaded rules ride along so a caller can report what it just installed
@@ -356,14 +551,22 @@ def install_pack(pack_dir: str | Path, *, secret: str | None = None, root: str |
     registry = load_registry(root)
     existing = (registry.get("packs") or {}).get(name)
 
+    destination = packs_dir(root) / name
+    repair: list[dict[str, Any]] = []
     if existing and existing.get("digest") == digest:
-        return {**base, "action": "already-installed", "installed": True,
-                "registry_entry": existing, "version": manifest.get("version")}
+        repair = installed_file_drift(existing, destination)
+        if not repair:
+            return {**base, "action": "already-installed", "installed": True,
+                    "registry_entry": existing, "version": manifest.get("version")}
+        if dry_run:
+            return {**base, "action": "would-repair", "installed": True, "drift": repair,
+                    "version": manifest.get("version"),
+                    "note": "the pack is installed but these files no longer match what was "
+                            "verified; installing it again restores them"}
     if dry_run:
         return {**base, "action": "would-install", "version": manifest.get("version"),
                 "replaces": existing}
 
-    destination = packs_dir(root) / name
     # name-based suffixes, not Path.with_suffix: a pack called "acme.fips" must not
     # turn into "acme.installing"
     staging = destination.parent / f"{destination.name}.installing"
@@ -376,6 +579,11 @@ def install_pack(pack_dir: str | Path, *, secret: str | None = None, root: str |
         shutil.copy2(signature_file, staging / SIGNATURE_NAME)
     for row in report["files"]:
         shutil.copy2(Path(pack_dir) / RULES_DIRNAME / row["name"], staging / RULES_DIRNAME / row["name"])
+    if report.get("table_files"):
+        (staging / TABLES_DIRNAME).mkdir(parents=True, exist_ok=True)
+        for row in report["table_files"]:
+            shutil.copy2(Path(pack_dir) / TABLES_DIRNAME / row["name"],
+                         staging / TABLES_DIRNAME / row["name"])
     destination.parent.mkdir(parents=True, exist_ok=True)
     # a replace is two atomic renames with the new copy already complete in between:
     # the destination is never missing, so an interrupted update leaves either the
@@ -393,13 +601,53 @@ def install_pack(pack_dir: str | Path, *, secret: str | None = None, root: str |
              "installed_at": datetime.now(timezone.utc).isoformat(),
              "signed_by": (report.get("signature") or {}).get("key_id"),
              "rules": [{"name": row["name"], "sha256": row["sha256"]} for row in report["files"]],
+             "tables": [{"name": row["name"], "sha256": row["sha256"],
+                         "algorithm": row["algorithm"], "table": row["table"],
+                         "bytes": row["bytes"]} for row in report.get("tables") or []],
              "rule_names": sorted(rule.name for rule in (report["ruleset"].rules if report["ruleset"] else []))}
     packs = dict(registry.get("packs") or {})
     packs[name] = entry
     save_registry(root, {"packs": packs})
-    return {**base, "action": "installed", "installed": True, "version": manifest.get("version"),
-            "registry_entry": entry, "replaced": existing,
-            "rules_dir": str(destination / RULES_DIRNAME)}
+    installed = {**base, "action": "repaired" if repair else "installed", "installed": True,
+                 "version": manifest.get("version"), "registry_entry": entry, "replaced": existing,
+                 "rules_dir": str(destination / RULES_DIRNAME)}
+    if report.get("table_files"):
+        installed["tables_dir"] = str(destination / TABLES_DIRNAME)
+    if repair:
+        installed["repaired"] = repair
+        installed["note"] = ("the pack was already installed with this digest, but these files no "
+                             "longer matched what was verified; they were restored from the pack")
+    return installed
+
+
+def installed_file_drift(entry: dict[str, Any], destination: Path) -> list[dict[str, Any]]:
+    """Files of an installed pack that no longer match what was verified.
+
+    The registry records a digest per file at install time. If a file on this host
+    has changed since — an edit, a truncation, a restore from another machine —
+    re-installing the same pack used to answer ``already-installed`` and leave the
+    damaged copy in place, which is the worst of both: the install looks present
+    and the evidence silently differs from what was signed. Comparing tells the
+    difference between "it is already here" and "it is here and wrong".
+    """
+    drift: list[dict[str, Any]] = []
+    for kind, key, dirname in (("rule", "rules", RULES_DIRNAME),
+                               ("table", "tables", TABLES_DIRNAME)):
+        for row in entry.get(key) or []:
+            name = str(row.get("name") or "")
+            if not name:
+                continue
+            path = destination / dirname / name
+            expected = str(row.get("sha256") or "")
+            if not path.is_file():
+                drift.append({"file": name, "kind": kind, "reason": "missing",
+                              "expected": expected, "actual": None})
+                continue
+            actual = _sha256_bytes(path.read_bytes())
+            if expected and actual != expected:
+                drift.append({"file": name, "kind": kind, "reason": "changed",
+                              "expected": expected, "actual": actual})
+    return drift
 
 
 def uninstall_pack(name: str, *, root: str | Path | None = None) -> dict[str, Any]:
@@ -417,18 +665,36 @@ def uninstall_pack(name: str, *, root: str | Path | None = None) -> dict[str, An
 
 
 def knowledge_state(root: str | Path | None = None) -> dict[str, Any]:
-    """What the scanner will load: built-in rules plus every installed pack."""
+    """What the scanner will load: built-in rules and tables plus installed packs."""
+    from devsecops.crypto_constants import constant_tables, tableset_digest
     from devsecops.yara_rules import BUILTIN_RULES, load_rules, parse_rules
 
     registry = load_registry(root)
     builtin = parse_rules(BUILTIN_RULES, "builtin:devsecops.yar")
     installed = installed_rule_files(root)
+    # the tables an installed pack adds, and the reasons any of them would not load:
+    # a pack whose table is unreadable must be visible here, not discovered as
+    # "the new table never matches anything"
+    installed_tables = installed_constant_tables(root)
+    table_list = tuple(constant_tables()) + tuple(installed_tables["tables"])
+    tables_block = {
+        "builtin": len(constant_tables()),
+        "installed": len(installed_tables["tables"]),
+        "total": len(table_list),
+        "digest": tableset_digest(table_list),
+        "builtin_digest": tableset_digest(constant_tables()),
+        "files": installed_tables["files"],
+        "sources": installed_tables["sources"],
+        "errors": installed_tables["errors"],
+        "algorithms": sorted({table.algorithm for table in table_list}),
+    }
     try:
         combined = load_rules(installed) if installed else load_rules()
     except Exception as exc:  # noqa: BLE001 — a broken pack must be visible, not fatal
         return {"builtin": {"rules": len(builtin), "digest": _sha256_bytes(BUILTIN_RULES.encode())},
                 "installed": registry.get("packs") or {}, "rules_dir": str(packs_dir(root)),
-                "registry_note": registry.get("note"), "error": f"{type(exc).__name__}: {exc}",
+                "tables": tables_block, "registry_note": registry.get("note"),
+                "error": f"{type(exc).__name__}: {exc}",
                 "note": "the rule set could not be loaded; scans will refuse rather than run "
                         "without the rules they claim to apply"}
     return {
@@ -440,9 +706,10 @@ def knowledge_state(root: str | Path | None = None) -> dict[str, Any]:
         "ruleset": {"rules": len(combined.rules), "private_rules": sum(1 for r in combined.rules if r.private),
                     "digest": combined.digest, "errors": combined.errors[:10],
                     "error_count": len(combined.errors)},
+        "tables": tables_block,
         "registry_note": registry.get("note"),
-        "note": ("built-in rules always run; installed packs add to them. Every scan reports the "
-                 "digest of the set it actually used."),
+        "note": ("built-in rules and constant tables always run; installed packs add to both. "
+                 "Every scan reports the digest of the rule and table sets it actually used."),
     }
 
 
@@ -458,7 +725,10 @@ def export_bundle(pack_dir: str | Path, out_path: str | Path | None = None) -> d
     name = directory.name
     target = Path(out_path).expanduser() if out_path else directory.parent / f"{name}.tar.gz"
     with tarfile.open(target, "w:gz") as archive:
-        for relative in [MANIFEST_NAME, SIGNATURE_NAME, RULES_DIRNAME]:
+        # both content directories travel: a bundle that carried only rules would
+        # arrive with the tables missing and be refused on the far side as an
+        # incomplete pack (the manifest lists what should be there)
+        for relative in [MANIFEST_NAME, SIGNATURE_NAME, RULES_DIRNAME, TABLES_DIRNAME]:
             candidate = directory / relative
             if candidate.exists():
                 archive.add(candidate, arcname=f"{name}/{relative}")
@@ -530,6 +800,8 @@ def _parse_args(argv: list[str] | None) -> Any:
     parser.add_argument("action", choices=("list", "build", "sign", "verify", "install", "uninstall", "export", "extract"))
     parser.add_argument("target", nargs="?", help="pack directory, bundle, or pack name")
     parser.add_argument("--rules", action="append", default=[], help="rule file to include (repeatable)")
+    parser.add_argument("--table", action="append", default=[], dest="tables",
+                        help="constant-table JSON file to include (repeatable)")
     parser.add_argument("--name", default=None, help="pack name (default: the output directory name)")
     parser.add_argument("--version", default="1.0.0")
     parser.add_argument("--description", default="")
@@ -554,14 +826,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "list":
             result = knowledge_state(args.root)
         elif args.action == "build":
-            if not args.rules:
-                print("build needs at least one --rules FILE", file=sys.stderr)
+            if not args.rules and not args.tables:
+                print("build needs at least one --rules FILE or --table FILE", file=sys.stderr)
                 return 4
             out = args.out or "."
             name = args.name or args.target or "pack"
-            result = build_pack(name, rules=args.rules, version=args.version,
-                                description=args.description, created_by=args.created_by,
-                                out_dir=out)
+            result = build_pack(name, rules=args.rules, tables=args.tables or None,
+                                version=args.version, description=args.description,
+                                created_by=args.created_by, out_dir=out)
         elif args.action == "sign":
             if not args.target:
                 print("sign needs a pack directory", file=sys.stderr)
@@ -639,11 +911,18 @@ def _print_result(action: str, result: dict[str, Any]) -> None:
         ruleset = result.get("ruleset") or {}
         print(f"what a scan will load: {ruleset.get('rules')} rules, digest "
               f"{str(ruleset.get('digest'))[:16]}, {ruleset.get('error_count')} error(s)")
+        tables = result.get("tables") or {}
+        print(f"constant tables: {tables.get('total')} ({tables.get('builtin')} built-in, "
+              f"{tables.get('installed')} from packs), digest {str(tables.get('digest'))[:16]}")
+        for error in tables.get("errors") or []:
+            print(f"  table error: {error.get('file')} ({error.get('source')}): {error.get('error')}")
         return
     if action == "build":
         manifest = result["manifest"]
+        tables = len(manifest.get("tables") or [])
         print(f"built {manifest['name']} v{manifest['version']} at {result['pack_dir']} "
-              f"({len(manifest['files'])} rule file(s), digest {manifest['digest'][:16]})")
+              f"({len(manifest['files'])} rule file(s), {tables} table(s), "
+              f"digest {manifest['digest'][:16]})")
         print("  next: sign it (python -m devsecops.knowledge sign <dir> --secret …) — an "
               "unsigned pack will not install")
         return
@@ -654,7 +933,8 @@ def _print_result(action: str, result: dict[str, Any]) -> None:
     if action in ("verify", "install"):
         manifest = result.get("manifest") or {}
         print(f"{result.get('action', 'verify')}: {manifest.get('name')} v{manifest.get('version')} "
-              f"({len(result.get('files') or [])} rule file(s))")
+              f"({len(result.get('files') or [])} rule file(s), "
+              f"{len(result.get('tables') or [])} table(s))")
         if result.get("replaced"):
             print(f"  replaced {result['replaced'].get('version')} "
                   f"({str(result['replaced'].get('digest'))[:12]})")

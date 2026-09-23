@@ -194,6 +194,14 @@ Four things the ladder refuses to do:
   searched (`searched_bytes`, `artefacts_searched`) next to what was found, and
   the note lists the algorithms the database holds. A file whose sections were
   never searched is not a file with no crypto in it.
+* **The database is extensible, and the report says with what.** Signed update
+  packs can add tables (§3.6), so a scan reports the set it searched
+  (`constant_tables`: counts, digest, sources) and every matched table carries
+  `source` — `null` for the release's own tables, `pack:<name>@<version>` for one
+  an operator installed. Two installs with different table sets therefore produce
+  different digests for the same file, which is the only way "the new table
+  changed the result" can be told apart from "the scanner behaved differently
+  today".
 
 ### 3.2 Fingerprints — the same build, and near-builds
 
@@ -467,11 +475,38 @@ in. So detections come in two layers:
 
 A pack is a directory: a `pack.json` manifest naming each rule file with its
 SHA-256, a `pack.sig` HMAC over the manifest, and the rule files themselves.
+The exported `.tar.gz` carries **every content directory the manifest lists** —
+`rules/` *and* `tables/` — because the bundle is the one artefact that crosses the
+gap: a pack that verified on the workstation must not arrive incomplete, and a
+manifest listing a file the archive lacks is refused on arrival rather than
+half-installed.
+It may also carry **constant tables** (`tables/*.json`), which is how an
+air-gapped install gets a new entry into the constant database of §3.1 without
+waiting for a release:
+
+```json
+{
+  "algorithm": "ACME-Cipher", "table": "rounds", "encoding": "hex",
+  "bytes": "00010203…3f", "minimum": 32,
+  "kind": "table", "weight": "normal", "note": "Acme's proprietary constants"
+}
+```
+
+Every field is checked against what the scanner actually honours, and unknown
+fields are **refused rather than ignored** — a pack author who writes
+`"mimimum"` has stated a threshold that would not be applied, and installing that
+quietly would mean the installed evidence no longer says what the file says. A
+table also may not *shadow or relabel* the built-in database (the same
+`algorithm`/`table` name, or the same bytes under another name): a pack adds
+evidence, it never rewrites what a match means for everyone else. Both checks run
+at build time on the workstation **and** at verify time on the isolated host, so
+a pack assembled by some other tool still cannot get in.
 
 ```bash
 # 1) build on the connected workstation — building never touches the key
 python -m devsecops.knowledge build acme-fips --rules acme-fips.yar \
-  --version 2026.09 --description "Acme Bank crypto policy" --out /srv/media
+  --table acme-cipher.json --version 2026.09 \
+  --description "Acme Bank crypto policy" --out /srv/media
 # -> /srv/media/acme-fips/pack.json (per-file digests + pack digest)
 
 # 2) sign it — the key step, done where the key lives
@@ -521,6 +556,19 @@ An install is idempotent: the same digest is reported as `already-installed`. A
 new digest under the same pack name **replaces** it and reports what it replaced,
 because two versions of one pack must never both be loaded.
 
+`already-installed` is a statement about the *files*, not just the digest. Each
+installed file is re-hashed against the digest the registry recorded at install
+time, and a file that changed or went missing since — an edit on the host, a bad
+restore, a half-copied media directory — makes the next install answer
+`would-repair` (dry run) or `repaired`, naming the drifted files and their
+verification. Installing the same media again therefore either restores exactly
+what was signed or says nothing needed restoring; it never leaves a copy that is
+present but is not what was verified. (It used to: a table edited after
+installation came back as `already-installed`, and the scan then reported the
+drift as an error — a table that is not searched is a search that lost a table,
+which reads like a search that found nothing.) The same check is what the scan
+itself does before it searches an installed table, so the two answers agree.
+
 Installing is allowed **while air-gapped** — an update arriving on media is not a
 network mutation, it is the whole point of the air gap (the read-only guard
 allowlists `knowledge.install`/`knowledge.uninstall` and still blocks starting
@@ -531,9 +579,14 @@ it is read into.
 What a scan reports is unchanged in shape and better in provenance: matches cite
 the **ruleset digest of the set that was loaded**, rule sources include the
 installed pack file, and `GET /devsecops/knowledge` answers "did the update
-take?" with digests rather than a shrug. Only rule *text* and its metadata come
-across the gap — never key material, never anything the platform would have to
-execute.
+take?" with digests rather than a shrug. The same holds for tables: a scan reports
+the **table set it searched** (`constant_tables`: built-in count, installed
+count, sources, digest), every matched table says whether it came from the release
+or from a pack, and a table that will not load is reported as an error on the scan
+instead of being silently skipped — a search that quietly lost a table would look
+like a search that found nothing, and those are different claims. Only rule text,
+table data and their metadata come across the gap — never key material, never
+anything the platform would have to execute.
 
 ## 4. What flows onward
 

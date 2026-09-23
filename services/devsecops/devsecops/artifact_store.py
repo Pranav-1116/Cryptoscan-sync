@@ -112,7 +112,9 @@ def binary_posture(result: dict) -> dict:
     lists formats is not. Only formats that *have* a signature story are counted
     as signed/unsigned — an ELF has no signature field and is not "unsigned".
     The constant coverage is reported alongside, because "no AES constants" means
-    something different when only 16 bytes of a file were searched.
+    something different when only 16 bytes of a file were searched — and so is the
+    table set that was searched: which tables a scan used, and where the ones an
+    installed pack contributed came from.
     """
     signature_formats = {"pe", "macho"}
     signed = unsigned = encrypted = 0
@@ -146,9 +148,24 @@ def binary_posture(result: dict) -> dict:
             for name in summary.get("named_algorithms") or []:
                 coverage["algorithms"].add(str(name))
         coverage["complete_tables"] += int(summary.get("complete_tables") or 0)
+    tables = result.get("constant_tables") or {}
+    constants = {**coverage, "algorithms": sorted(coverage["algorithms"])}
+    if tables:
+        # provenance of the search itself: a report that names an algorithm from a
+        # pack's table has to say so, and a table that failed to load is a reason
+        # the search was narrower than it looks
+        constants["tables"] = {
+            "builtin": tables.get("builtin", 0),
+            "installed": tables.get("installed", 0),
+            "total": tables.get("total", 0),
+            "digest": tables.get("digest"),
+            "sources": tables.get("sources") or [],
+            "error_count": len(tables.get("errors") or []),
+            "errors": (tables.get("errors") or [])[:5],
+        }
     return {"signature_posture": {"signed": signed, "unsigned": unsigned},
             "encrypted_binaries": encrypted, "key_material": keys,
-            "constants": {**coverage, "algorithms": sorted(coverage["algorithms"])}}
+            "constants": constants}
 
 
 def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: dict[str, Any],

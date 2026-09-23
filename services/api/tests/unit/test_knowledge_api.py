@@ -7,6 +7,7 @@ match, which is how a disconnected install gets new detections.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -26,9 +27,15 @@ _SERVICES = Path(__file__).resolve().parents[3]
 if str(_SERVICES / "devsecops") not in sys.path:
     sys.path.insert(0, str(_SERVICES / "devsecops"))
 
+from devsecops import crypto_constants as cc  # noqa: E402
 from devsecops import knowledge as kb  # noqa: E402
 
 SECRET = "offline-transport-key"
+TABLE_BYTES = bytes(range(1, 65))
+TABLE_DOCUMENT = {
+    "algorithm": "ACME-Cipher", "table": "rounds", "encoding": "hex",
+    "bytes": TABLE_BYTES.hex(), "minimum": 32,
+}
 MARKER = b"ACME-BANNED-CIPHER-MARKER"
 PACK_RULE = """
 rule acme_banned_cipher
@@ -62,8 +69,10 @@ _elf64 = fixtures._elf64
 
 
 def _signed_pack(tmp_path: Path, *, name: str = "acme-fips", version: str = "1.0.0",
-                 text: str = PACK_RULE, secret: str = SECRET) -> Path:
-    built = kb.build_pack(name, rules={"acme.yar": text}, version=version, out_dir=tmp_path / "built")
+                 text: str = PACK_RULE, secret: str = SECRET,
+                 tables: dict | None = None) -> Path:
+    built = kb.build_pack(name, rules={"acme.yar": text} if text else {},
+                          tables=tables, version=version, out_dir=tmp_path / "built")
     pack = Path(built["pack_dir"])
     kb.sign_pack(pack, secret=secret, key_id="offline-2026")
     return pack
@@ -141,6 +150,13 @@ async def test_knowledge_reports_what_a_scan_will_load(app_db):
     assert body["installed_rule_files"] == []
     assert body["ruleset"]["rules"] == body["builtin"]["rules"]
     assert body["ruleset"]["digest"]
+    # the constant database is reported next to the rules: what a scan searches is
+    # two sets, and an operator auditing a scan needs both digests
+    assert body["tables"]["builtin"] == len(cc.constant_tables())
+    assert body["tables"]["installed"] == 0
+    assert body["tables"]["digest"] == cc.tableset_digest(cc.constant_tables())
+    assert body["tables"]["errors"] == []
+    assert "AES" in body["tables"]["algorithms"]
 
 
 @pytest.mark.asyncio
@@ -334,3 +350,89 @@ async def test_airgap_mode_still_blocks_an_active_scan(app_db, monkeypatch):
     sample.write_bytes(_elf64(constants=MARKER))
     response = await _post(application, "/api/v1/devsecops/binary/scan", {"target": str(sample)})
     assert response.status_code == 423
+
+
+# ------------------------------------------------- constant tables over the API -- #
+
+@pytest.mark.asyncio
+async def test_installing_a_table_only_pack_reports_the_table_it_added(app_db, tmp_path):
+    """A pack with no rules is a valid update — it updates the constant database."""
+    application, _session, _tmp = app_db
+    pack = _signed_pack(tmp_path, name="acme-tables", text="",
+                        tables={"acme.json": TABLE_DOCUMENT})
+    response = await _post(application, "/api/v1/devsecops/knowledge/install",
+                           {"pack": str(pack), "secret": SECRET})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["action"] == "installed" and body["loaded_rules"] is None
+    assert [row["algorithm"] for row in body["tables"]] == ["ACME-Cipher"]
+    assert body["tables"][0]["bytes"] == 64
+
+    state = (await _get(application, "/api/v1/devsecops/knowledge")).json()
+    assert state["tables"]["installed"] == 1
+    assert state["tables"]["sources"] == ["pack:acme-tables@1.0.0"]
+    assert state["installed"]["acme-tables"]["tables"][0]["table"] == "rounds"
+
+
+@pytest.mark.asyncio
+async def test_a_table_that_would_shadow_the_built_ins_is_refused_with_reasons(app_db, tmp_path):
+    """A correctly signed pack can still be refused, and the reason names the table.
+
+    The build refuses this too, so the pack is assembled by hand the way a pack
+    built by some other tool would be: signature valid, contents a relabelled
+    built-in table. The install gate is what has to catch it.
+    """
+    application, _session, _tmp = app_db
+    pack = _signed_pack(tmp_path, name="shadow", tables={"aes.json": TABLE_DOCUMENT})
+    document = {"algorithm": "AES", "table": "S-box", "encoding": "hex",
+                "bytes": cc.aes_sbox().hex(), "minimum": 32}
+    table_file = pack / kb.TABLES_DIRNAME / "aes.json"
+    table_file.write_text(json.dumps(document, indent=1, sort_keys=True))
+    manifest = json.loads((pack / kb.MANIFEST_NAME).read_text())
+    raw = table_file.read_bytes()
+    manifest["tables"][0].update({"sha256": hashlib.sha256(raw).hexdigest(), "size": len(raw),
+                                  "algorithm": "AES", "table": "S-box", "bytes": 256})
+    manifest["digest"] = kb.manifest_digest(manifest)
+    (pack / kb.MANIFEST_NAME).write_text(json.dumps(manifest, indent=1, sort_keys=True))
+    kb.sign_pack(pack, secret=SECRET, key_id="offline-2026")
+
+    verify = kb.verify_pack(pack, secret=SECRET)
+    assert verify["ok"] is False
+    assert any("already exists in the database" in reason for reason in verify["reasons"])
+
+    response = await _post(application, "/api/v1/devsecops/knowledge/install",
+                           {"pack": str(pack), "secret": SECRET})
+    assert response.status_code == 400
+    reasons = response.json()["detail"]["reasons"]
+    assert any("already exists in the database" in reason for reason in reasons)
+    assert (await _get(application, "/api/v1/devsecops/knowledge")).json()["tables"]["installed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_a_scan_over_the_api_names_an_algorithm_from_an_installed_table(app_db, tmp_path):
+    """End to end: the update arrives over the API, and the next scan is different."""
+    application, _session, _tmp = app_db
+    target = tmp_path / "images"
+    target.mkdir()
+    (target / "app.bin").write_bytes(fixtures._elf64(soname="app.so",
+                                                    constants=TABLE_BYTES * 2))
+
+    before = await _post(application, "/api/v1/devsecops/binary/scan", {"target": str(target)})
+    assert before.status_code == 201
+    assert "ACME-Cipher" not in before.json()["manifest"]["binary_summary"]["algorithms"]
+
+    pack = _signed_pack(tmp_path, name="acme-tables", text="",
+                        tables={"acme.json": TABLE_DOCUMENT})
+    assert (await _post(application, "/api/v1/devsecops/knowledge/install",
+                        {"pack": str(pack), "secret": SECRET})).status_code == 200
+
+    after = await _post(application, "/api/v1/devsecops/binary/scan", {"target": str(target)})
+    assert after.status_code == 201
+    manifest = after.json()["manifest"]
+    assert "ACME-Cipher" in manifest["binary_summary"]["algorithms"]
+    # the report states the table set it searched, next to the rule set
+    tables = manifest["binary_summary"]["constants"]["tables"]
+    assert tables["installed"] == 1 and tables["sources"] == ["pack:acme-tables@1.0.0"]
+    assert tables["digest"] and tables["error_count"] == 0
+    assert tables["total"] == tables["builtin"] + 1
+    assert after.json()["artifact_id"] != before.json()["artifact_id"]

@@ -707,16 +707,22 @@ def _elf_hardening(reader: _Reader, data: bytes, by_name: dict[str, Any],
 
 
 def _constant_evidence_text(row: dict[str, Any]) -> str:
-    """One sentence per matched table, stating exactly what the bytes support."""
+    """One sentence per matched table, stating exactly what the bytes support.
+
+    When the table came from an installed pack the sentence says so: the reader of
+    a finding has to be able to tell evidence shipped with the platform from
+    evidence an operator added across the air gap.
+    """
+    source = f" (table from {row['source'].replace('pack:', 'pack ', 1)})" if row.get("source") else ""
     if row["ambiguous_with"]:
         return (f"{row['bytes_matched']} of {row['table_bytes']} table bytes — the same bytes "
                 f"are the constants of {' or '.join(row['ambiguous_with'])} read in the opposite "
-                f"byte order, so this does not identify the algorithm on its own")
+                f"byte order, so this does not identify the algorithm on its own") + source
     if row["complete"]:
         return ("complete constant table present in the file"
-                + (" (stored byte-swapped)" if row["byte_swapped_storage"] else ""))
+                + (" (stored byte-swapped)" if row["byte_swapped_storage"] else "")) + source
     return (f"{row['bytes_matched']} of {row['table_bytes']} table bytes present"
-            + (" (stored byte-swapped)" if row["byte_swapped_storage"] else ""))
+            + (" (stored byte-swapped)" if row["byte_swapped_storage"] else "")) + source
 
 
 #: how many sections a record keeps the geometry for; a real binary has tens, a
@@ -749,7 +755,7 @@ def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
     (0.9), much stronger than a symbol name or a banner string, and it works on
     stripped, statically linked binaries that have no symbols at all.
     """
-    from devsecops.crypto_constants import scan_constants
+    from devsecops.crypto_constants import active_constant_tables, scan_constants
 
     budget = MAX_CONSTANT_WINDOW
     windows: list[tuple[str, bytes]] = []
@@ -768,7 +774,10 @@ def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
         if budget <= 0:
             break
 
-    deep = scan_constants(windows)
+    # the active set is the built-in database plus whatever installed packs added
+    # for this walk (see scan_path); a pack table is searched exactly like a
+    # built-in one, and every row says which of the two it came from
+    deep = scan_constants(windows, tables=active_constant_tables())
     if not deep["tables"] and not deep["partials"]:
         return {"blobs": [], "found": [], "deep": deep}
     blobs = list(deep["engine_blobs"]) + list(deep["engine_prefixes"])
@@ -783,6 +792,7 @@ def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
         "complete": row["complete"],
         "byte_swapped_storage": row["byte_swapped_storage"],
         "ambiguous_with": row["ambiguous_with"],
+        "source": row.get("source"),
         "evidence": _constant_evidence_text(row),
     } for row in deep["tables"]]        # every matched table, complete or partial
     return {"blobs": blobs, "found": found, "deep": deep}
@@ -4172,7 +4182,8 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
               max_binaries: int = MAX_BINARIES,
               yara_rules: Iterable[str | Path] = (),
               yara_ruleset: Any = None,
-              include_installed_rules: bool = True) -> dict[str, Any]:
+              include_installed_rules: bool = True,
+              include_installed_tables: bool = True) -> dict[str, Any]:
     """Walk a file or directory and scan every recognisable binary.
 
     ``yara_rules`` are rule files or directories, loaded once for the walk;
@@ -4185,7 +4196,16 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
     install updatable: new detections arrive as a signed pack, and the next scan
     walks the new rules without the scan call site changing. The ruleset digest in
     the report covers whichever set was actually loaded.
+
+    ``include_installed_tables`` (default on) does the same for the **constant
+    database**: a pack can carry constant tables, and they are searched alongside
+    the built-ins for this walk only. The report states the table set it searched
+    (`constant_tables`: counts, digest, sources, errors), and every matched table
+    says whether it came from the release or from a pack — evidence that cannot say
+    where it came from is evidence nobody can review.
     """
+    from devsecops.crypto_constants import (ConstantTable, constant_tables, tableset_digest,
+                                            use_constant_tables)
     from devsecops.yara_rules import load_rules
 
     ruleset = yara_ruleset
@@ -4242,28 +4262,61 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
             continue
     skipped_rule_sources = 0
 
-    records: list[dict[str, Any]] = []
-    for candidate in candidates:
-        if len(records) >= max_binaries:
-            break
+    extra_tables: tuple[ConstantTable, ...] = ()
+    table_errors: list[dict[str, Any]] = []
+    table_sources: list[str] = []
+    if include_installed_tables:
+        from devsecops.knowledge import installed_constant_tables
+
         try:
-            if candidate.is_file() and candidate.resolve() in rule_sources:
-                skipped_rule_sources += 1
+            installed_tables = installed_constant_tables()
+            extra_tables = installed_tables["tables"]
+            table_errors = installed_tables["errors"]
+            table_sources = installed_tables["sources"]
+        except Exception as exc:  # noqa: BLE001 — a scan must not fail on pack state…
+            # …but it must not look complete either: the report says the built-in
+            # tables were all that could be searched
+            table_errors = [{"source": "installed-knowledge", "file": None,
+                             "error": (f"the installed constant tables could not be read "
+                                       f"({type(exc).__name__}: {exc}); this scan searched the "
+                                       "built-in tables only")}]
+    table_list = (*constant_tables(), *extra_tables)
+    table_set = {
+        "builtin": len(constant_tables()),
+        "installed": len(extra_tables),
+        "total": len(table_list),
+        "digest": tableset_digest(table_list),
+        "builtin_digest": tableset_digest(constant_tables()),
+        "sources": table_sources,
+        "errors": table_errors,
+        "note": ("installed packs add tables to the search; a table that will not load is "
+                 "reported here rather than dropped, because a search that quietly lost a "
+                 "table would look like a search that found nothing"),
+    }
+
+    records: list[dict[str, Any]] = []
+    with use_constant_tables(extra_tables):
+        for candidate in candidates:
+            if len(records) >= max_binaries:
+                break
+            try:
+                if candidate.is_file() and candidate.resolve() in rule_sources:
+                    skipped_rule_sources += 1
+                    continue
+            except OSError:  # pragma: no cover — a path that cannot be resolved is scanned
+                pass
+            record = scan_file(candidate, root=root, yara=ruleset)
+            if record is None:
                 continue
-        except OSError:  # pragma: no cover — a path that cannot be resolved is scanned
-            pass
-        record = scan_file(candidate, root=root, yara=ruleset)
-        if record is None:
-            continue
-        # a file whose format we cannot name is still kept when it carries key
-        # material or matched a rule: both are evidence, and dropping the file
-        # would hide a leaked key or the ransom note the ruleset just named
-        keys = record.get("embedded_keys") or {}
-        carries_evidence = bool(keys.get("keys") or keys.get("test_vectors")
-                               or (record.get("yara") or {}).get("matches"))
-        if record["format"] == "raw" and not include_raw and not carries_evidence:
-            continue
-        records.append(record)
+            # a file whose format we cannot name is still kept when it carries key
+            # material or matched a rule: both are evidence, and dropping the file
+            # would hide a leaked key or the ransom note the ruleset just named
+            keys = record.get("embedded_keys") or {}
+            carries_evidence = bool(keys.get("keys") or keys.get("test_vectors")
+                                   or (record.get("yara") or {}).get("matches"))
+            if record["format"] == "raw" and not include_raw and not carries_evidence:
+                continue
+            records.append(record)
 
     return {
         "target": str(base),
@@ -4280,6 +4333,7 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
                  "rule_files_note": ("rule files under the target are not matched against "
                                      "their own rules — they contain the strings by "
                                      "definition")},
+        "constant_tables": table_set,
         "limits": {"max_binaries": max_binaries, "max_file_bytes": MAX_FILE_BYTES,
                    "truncated": len(records) >= max_binaries},
     }
@@ -4649,6 +4703,9 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
                                   for container in record.get("containers_followed") or []),
         "packed_binaries": sum(1 for record in all_records if record.get("packer")),
         "constants": _constant_totals(all_records),
+        # the table set the search ran over, carried through to the manifest: which
+        # tables were in play, and which of them an installed pack contributed
+        "constant_tables": scan.get("constant_tables") or {},
         "embedded_keys": {
             "artefacts_with_keys": sum(1 for record in all_records if record.get("embedded_keys")),
             "private_keys": sum(int((record.get("embedded_keys") or {}).get("private_keys") or 0)

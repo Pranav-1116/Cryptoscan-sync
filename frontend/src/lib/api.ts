@@ -1783,6 +1783,21 @@ export interface KnowledgePackEntry {
   version?: string | null; digest: string; description?: string | null;
   signed_by?: string | null; installed_at?: string; rule_names?: string[];
   rules?: { name: string }[];
+  /** constant tables the pack contributes to the scanner's database */
+  tables?: { name: string; algorithm?: string; table?: string; bytes?: number }[];
+}
+
+/** The constant-table set a scan searches, alongside the rule set. */
+export interface KnowledgeTables {
+  builtin: number;
+  installed: number;
+  total: number;
+  digest: string;
+  builtin_digest?: string;
+  files?: string[];
+  sources?: string[];
+  errors?: { source?: string; file?: string | null; error?: string }[];
+  algorithms?: string[];
 }
 
 export interface KnowledgeState {
@@ -1791,6 +1806,8 @@ export interface KnowledgeState {
   installed_rule_files: string[];
   rules_dir: string;
   ruleset: { rules: number; digest: string; error_count: number; private_rules?: number; errors?: any[] };
+  /** Constant tables: an update pack can add them, and a scan searches them. */
+  tables?: KnowledgeTables;
   registry_note?: string | null;
   note?: string;
 }

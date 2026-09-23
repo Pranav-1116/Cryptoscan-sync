@@ -799,12 +799,19 @@ function BinaryPanel() {
       } else {
         const data = answer.data || {};
         const names = (data.loaded_rules?.names || []).join(", ");
+        // `repaired` means the pack was already here but a file no longer matched
+        // what was verified; say which, so "it was already installed" is never
+        // mistaken for "the copy on this host is the one that was signed"
+        const drifted = (data.repaired || data.drift || []) as { file: string; reason: string }[];
+        const tables = (data.tables || []) as { algorithm?: string; name: string }[];
         setPackInfo({
           ok: true,
           text: `${data.action}: ${data.manifest?.name} v${data.manifest?.version}`
             + ` · ${(data.files || []).length} rule file(s)`
             + (names ? ` · rules: ${names}` : "")
+            + (tables.length ? ` · tables: ${tables.map((row) => row.algorithm ?? row.name).join(", ")}` : "")
             + (data.replaced ? ` · replaced v${data.replaced.version}` : "")
+            + (drifted.length ? ` · restored ${drifted.map((row) => `${row.file} (${row.reason})`).join(", ")}` : "")
             + (data.dry_run ? " (nothing was installed — this was the check)" : ""),
           reasons: [],
         });
@@ -1204,13 +1211,29 @@ function BinaryPanel() {
               <span className="mono">{String(knowledge.ruleset.digest).slice(0, 16)}</span> · built-in{" "}
               {knowledge.builtin.rules} · {Object.keys(knowledge.installed).length} pack(s) installed
             </div>
+            {knowledge.tables && (
+              <div className="muted">
+                constant tables <b>{knowledge.tables.total}</b> · digest{" "}
+                <span className="mono">{String(knowledge.tables.digest).slice(0, 16)}</span> ·{" "}
+                {knowledge.tables.builtin} built-in
+                {knowledge.tables.installed > 0 ? ` · ${knowledge.tables.installed} from pack(s)` : ""}
+              </div>
+            )}
             {Object.entries(knowledge.installed).map(([name, entry]) => (
               <div key={name} className="row" style={{ gap: 8, alignItems: "center", marginTop: 3 }}>
                 <Badge tone="green">{name} v{entry.version}</Badge>
                 <span className="muted mono">digest {String(entry.digest).slice(0, 12)}</span>
                 <span className="muted">{entry.signed_by ? `signed by ${entry.signed_by}` : "unsigned"}</span>
                 <span className="muted">{(entry.rule_names || []).length} rule(s)</span>
+                {(entry.tables || []).length > 0 && (
+                  <span className="muted">{(entry.tables || []).length} table(s)</span>
+                )}
                 <button className="btn sm" onClick={() => void removePack(name)} disabled={packBusy}>Remove</button>
+              </div>
+            ))}
+            {knowledge.tables?.errors?.map((problem, i) => (
+              <div key={i} className="muted" style={{ color: "var(--red, #e5484d)" }}>
+                table not searched: {problem.file} ({problem.source}) — {problem.error}
               </div>
             ))}
             {knowledge.registry_note && <div className="muted">{knowledge.registry_note}</div>}

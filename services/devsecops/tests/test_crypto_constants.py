@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import struct
 
+import pytest
+
 from devsecops import crypto_constants as cc
 
 
@@ -303,3 +305,112 @@ def test_random_bytes_and_empty_windows_yield_nothing():
     assert result["tables"] == [] and result["algorithms"] == {}
     assert result["searched_bytes"] == 4096
     assert cc.scan_constants([])["searched_bytes"] == 0
+
+
+# ----------------------------------------------- tables loaded from a pack --- #
+
+ACME_TABLE = bytes(range(1, 65))
+ACME_DOCUMENT = {
+    "algorithm": "ACME-Cipher", "table": "rounds", "encoding": "hex",
+    "bytes": ACME_TABLE.hex(), "minimum": 32,
+    "note": "Acme's proprietary round constants",
+}
+
+
+def test_a_loaded_table_is_the_same_shape_as_a_built_in_one():
+    table = cc.constant_table_from_document(ACME_DOCUMENT, source="pack:acme@2026.09")
+    assert (table.algorithm, table.table, table.length) == ("ACME-Cipher", "rounds", 64)
+    assert table.minimum == 32 and table.kind == "table" and table.weight == "normal"
+    assert table.source == "pack:acme@2026.09"
+    assert table.note == "Acme's proprietary round constants"
+    assert table.prefix == ACME_TABLE[:32]  # the declared minimum is the trigger
+
+
+def test_a_loaded_table_is_searched_and_says_where_it_came_from():
+    table = cc.constant_table_from_document(ACME_DOCUMENT, source="pack:acme@2026.09")
+    with cc.use_constant_tables([table]) as active:
+        assert table in active and len(active) == len(cc.constant_tables()) + 1
+        result = cc.scan_constants([(".rodata", b"\x00" * 16 + ACME_TABLE)])
+    row = next(row for row in result["tables"] if row["algorithm"] == "ACME-Cipher")
+    assert row["complete"] is True and row["bytes_matched"] == 64
+    assert row["source"] == "pack:acme@2026.09"
+    assert result["installed_tables"] == 1
+    assert result["sources"] == ["pack:acme@2026.09"]
+    # outside the block the built-in database is what is searched again
+    outside = cc.scan_constants([(".rodata", b"\x00" * 16 + ACME_TABLE)])
+    assert "ACME-Cipher" not in {row["algorithm"] for row in outside["tables"]}
+    assert outside["installed_tables"] == 0 and outside["sources"] == []
+    assert cc.constant_tables() == active[:len(cc.constant_tables())]
+
+
+def test_a_table_set_has_a_digest_that_changes_when_the_set_does():
+    builtin = cc.tableset_digest(cc.constant_tables())
+    table = cc.constant_table_from_document(ACME_DOCUMENT, source="pack:acme@2026.09")
+    assert cc.tableset_digest((*cc.constant_tables(), table)) != builtin
+    assert cc.tableset_digest(cc.constant_tables()) == builtin
+
+
+@pytest.mark.parametrize("patch,expected", [
+    ({"algorithm": ""}, "has no algorithm"),
+    ({"table": ""}, "has no table"),
+    ({"encoding": "base64"}, "unsupported encoding"),
+    ({"bytes": "001"}, "odd number of hex digits"),
+    ({"bytes": "zz"}, "is not hex"),
+    ({"bytes": "0001", "minimum": 8}, "exceeds the 2 bytes"),
+    ({"minimum": 2}, "below 4"),
+    ({"kind": "symbol"}, "unknown kind"),
+    ({"weight": "strong"}, "unknown weight"),
+    ({"note": "x" * 201}, "longer than 200"),
+    ({"aliases": ["00" * 63]}, "where the table is 64"),
+    ({"mimimum": 8}, "unknown field"),
+    ({"algorithm": "A" * 65}, "at most 64 printable characters"),
+])
+def test_a_table_document_is_refused_with_the_reason(patch, expected):
+    document = {**ACME_DOCUMENT, **patch}
+    with pytest.raises(cc.TableError) as refused:
+        cc.constant_table_from_document(document)
+    assert expected in str(refused.value)
+
+
+def test_a_hand_written_threshold_that_would_be_ignored_is_refused():
+    """A typo'd field is a rule the pack author believes is applied."""
+    with pytest.raises(cc.TableError) as refused:
+        cc.constant_table_from_document({**ACME_DOCUMENT, "byte_order": "little"})
+    assert "byte_order" in str(refused.value)
+    assert "does not honour" in str(refused.value)
+
+
+def test_the_alias_form_is_kept_and_searched():
+    swapped = cc._swapped(ACME_TABLE, 4)
+    table = cc.constant_table_from_document({**ACME_DOCUMENT, "aliases": [swapped.hex()]})
+    assert table.aliases == (swapped,)
+    result = cc.scan_constants([(".rodata", swapped)], tables=(table,))
+    assert result["tables"][0]["byte_swapped_storage"] is True
+
+
+def test_a_table_may_not_shadow_or_relabel_the_built_in_database():
+    """A pack adds evidence; it does not get to rename the AES S-box."""
+    shadow = {**ACME_DOCUMENT, "algorithm": "AES", "table": "S-box"}
+    problems = cc.constant_table_problems(shadow)
+    assert problems and "already exists in the database" in problems[0]
+
+    relabel = {**ACME_DOCUMENT, "algorithm": "ACME-Cipher", "table": "s-box copy",
+               "bytes": cc.aes_sbox().hex(), "minimum": 32}
+    problems = cc.constant_table_problems(relabel)
+    assert problems and "already the AES/S-box table" in problems[0]
+
+
+def test_two_tables_in_one_pack_cannot_collide_with_each_other():
+    first = cc.constant_table_from_document(ACME_DOCUMENT)
+    second = {**ACME_DOCUMENT, "table": "rounds-2"}
+    problems = cc.constant_table_problems(second, existing=(first,))
+    assert problems and "already the ACME-Cipher/rounds table" in problems[0]
+
+
+def test_the_catalogue_can_describe_the_set_a_scan_used():
+    table = cc.constant_table_from_document(ACME_DOCUMENT, source="pack:acme@2026.09")
+    catalogue = cc.table_catalogue((*cc.constant_tables(), table))
+    loaded = next(row for row in catalogue if row["algorithm"] == "ACME-Cipher")
+    assert loaded["source"] == "pack:acme@2026.09"
+    assert loaded["sha256"] == cc.table_digest(table)
+    assert all(row["source"] is None for row in catalogue if row["algorithm"] == "AES")
