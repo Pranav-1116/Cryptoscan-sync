@@ -313,6 +313,94 @@ async def test_stored_report_carries_the_scan_findings_and_constant_coverage(app
 
 
 @pytest.mark.asyncio
+async def test_binary_scan_manifest_carries_the_fleet_fingerprint_comparison(app_db):
+    """Same build, same code, resemblance — counted on the manifest, not inferred."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "fleet"
+    directory.mkdir()
+    base = fixtures._elf64(soname="libacme.so", constants=fixtures.cc.aes_sbox() * 3)
+    (directory / "libacme-a.so").write_bytes(base)
+    (directory / "libacme-b.so").write_bytes(base)
+    patched = bytearray(base)
+    patched[patched.find(fixtures.cc.aes_sbox()) + 500] ^= 0xFF
+    (directory / "variant.so").write_bytes(bytes(patched))
+    (directory / "unrelated.so").write_bytes(fixtures._elf64(soname="other.so",
+                                                            strings=("zzz",)))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    summary = body["manifest"]["binary_summary"]["fingerprints"]
+    assert summary["artefacts_fingerprinted"] == 4
+    assert summary["exact_duplicate_groups"] == 1
+    assert summary["exact_duplicate_artefacts"] == 2      # the two copies, not the variant
+    assert summary["near_duplicate_pairs"] >= 1
+    assert summary["duplicate_groups"][0]["byte_identical"] is True
+    assert summary["similarity_threshold"] == 85
+
+    rows = {row["file_name"]: row["fingerprints"] for row in body["binaries"]}
+    assert rows["libacme-a.so"]["build_fingerprint"] == rows["libacme-b.so"]["build_fingerprint"]
+    assert rows["libacme-a.so"]["build_id"] == rows["libacme-b.so"]["build_id"]
+    assert rows["variant.so"]["build_fingerprint"] != rows["libacme-a.so"]["build_fingerprint"]
+    assert rows["variant.so"]["code_sha256"] != rows["libacme-a.so"]["code_sha256"]
+    codes = {finding["code"] for finding in body["findings"]}
+    assert {"BIN-FINGERPRINT-DUPLICATE", "BIN-FINGERPRINT-NEAR-DUPLICATE"} <= codes
+
+
+@pytest.mark.asyncio
+async def test_fingerprint_match_answers_identical_same_code_and_similar(app_db):
+    """Incident response: does this build appear elsewhere, and does anything resemble it?"""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "fleet"
+    directory.mkdir()
+    base = fixtures._elf64(soname="libacme.so", constants=fixtures.cc.aes_sbox() * 3)
+    (directory / "libacme-a.so").write_bytes(base)
+    (directory / "libacme-b.so").write_bytes(base)
+    (directory / "reimported.so").write_bytes(fixtures._elf64(
+        soname="libacme.so", constants=fixtures.cc.aes_sbox() * 3,
+        imports=("RAND_bytes",)))
+    patched = bytearray(base)
+    patched[patched.find(fixtures.cc.aes_sbox()) + 500] ^= 0xFF
+    (directory / "variant.so").write_bytes(bytes(patched))
+    (directory / "unrelated.so").write_bytes(fixtures._elf64(soname="other.so",
+                                                            strings=("zzz",)))
+
+    resp = await _post(application, "/api/v1/devsecops/fingerprints/match",
+                       {"target": str(directory),
+                        "reference": str(directory / "libacme-a.so"),
+                        "similarity": 40})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["query"]["source"]["path"].endswith("libacme-a.so")
+    assert body["identical"] == 2                     # itself and its byte-identical twin
+    assert body["same_code"] == 1                     # reimported: code matches, imports do not
+    assert body["similar"] == 1                       # the patched copy
+    matches = {row["path"]: row for row in body["matches"]}
+    assert matches["variant.so"]["verdict"] == "similar"
+    assert 40 <= matches["variant.so"]["score"] < 100
+    assert "unrelated.so" not in matches
+    assert body["limits"]["files_read"] == 5 and body["limits"]["truncated"] is False
+    assert body["similarity_threshold"] == 40 and "resemblance, not identity" in body["note"]
+    # identical first, then same-code, then resemblance
+    assert [row["verdict"] for row in body["matches"]] == ["identical", "identical",
+                                                           "same-code", "similar"]
+
+    # an explicit fingerprint is a valid query, and a query with nothing in it is not
+    query = {"target": str(directory),
+             "build_fingerprint": matches["variant.so"]["build_fingerprint"]}
+    resp = await _post(application, "/api/v1/devsecops/fingerprints/match", query)
+    assert resp.status_code == 200 and resp.json()["identical"] == 1
+    resp = await _post(application, "/api/v1/devsecops/fingerprints/match",
+                       {"target": str(directory), "similarity": 85})
+    assert resp.status_code == 400 and "needs a reference file" in resp.json()["detail"]
+
+    # and the target is confined to the same allowed roots as every other scan
+    resp = await _post(application, "/api/v1/devsecops/fingerprints/match",
+                       {"target": "/etc", "code_sha256": "a" * 64})
+    assert resp.status_code == 400 and "allowed source roots" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
 async def test_binary_scan_matches_advisories_and_gates(app_db):
     application, _session, tmp_path = app_db
     directory = _target_dir(tmp_path)

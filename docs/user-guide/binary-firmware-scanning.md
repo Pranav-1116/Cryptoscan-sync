@@ -157,7 +157,81 @@ Four things the ladder refuses to do:
   the note lists the algorithms the database holds. A file whose sections were
   never searched is not a file with no crypto in it.
 
-### 3.2 Embedded key material
+### 3.2 Fingerprints — the same build, and near-builds
+
+Symbols, strings and constants all answer "what is inside this file". Fingerprints
+answer a different question a fleet asks constantly: **which of these artefacts are
+the same build**, and **which merely resemble each other**.
+
+Exact fingerprints are SHA-256 over things that do not change between two
+compilations of the same source with the same toolchain:
+
+| Fingerprint | Covers | Changes when |
+| --- | --- | --- |
+| `file_sha256` | every byte | anything at all, including a comment or a debug path |
+| `code_sha256` | the code/read-only sections, framed with their names and sizes | the code changes, a section is renamed or split |
+| `imports_sha256` / `exports_sha256` | the sorted ABI surface | a dependency symbol is added or removed |
+| `build_id` | what the format declares: ELF `.note.gnu.build-id`, PE CodeView GUID + age, Mach-O `LC_UUID` | the linker emits a new identity |
+| `build_fingerprint` | `code_sha256` + `imports_sha256` + format | the build changes, *not* its packaging |
+
+The split matters: rebuilding with a different `-g` path or a changed `.comment`
+string moves `file_sha256` and leaves `build_fingerprint` alone, which is exactly
+how "the same build, repackaged" is distinguished from "a different build".
+
+Fuzzy fingerprints are **ssdeep** (CTPH, context-triggered piecewise hashing),
+implemented from the ssdeep specification: a rolling seven-byte window triggers
+piece boundaries, each piece is hashed with FNV-1a, and the result is
+`blocksize:base:doubled`. Comparison is the reference edit-distance score from
+0 to 100. Two departures are stated because they are deliberate: the fuzzy pass
+reads at most 512 KiB of code per file (your `ssdeep`-style tool would read the
+whole file; a scan has a throughput budget, and `fuzzy_bytes` / `fuzzy_truncated`
+report the sample), and two *empty* fingerprints score 0 here where ssdeep scores
+them 100 — a sample that produced no pieces has not been matched to anything.
+
+What a scan reports:
+
+```
+summary.fingerprints  exact_duplicate_groups, exact_duplicate_artefacts,
+                      near_duplicate_pairs, similarity_threshold, comparisons,
+                      comparisons_skipped, duplicate_groups[], near_duplicates[]
+BIN-FINGERPRINT-DUPLICATE      INFO  N artefacts are the same build (byte-identical or not)
+BIN-FINGERPRINT-SHARED-CODE    INFO  identical code, different import surface
+BIN-FINGERPRINT-NEAR-DUPLICATE INFO  resemblance at or above 85 of 100 — never identity
+```
+
+A near pair whose score is 100 deserves its own sentence, because it is the most
+interesting result the comparison can produce: **the fuzzy sample could not see the
+difference the exact digests found**. That is what a hand-patched copy looks like —
+a few bytes changed inside a piece that the rolling hash never split — and the
+finding says exactly that instead of "100% similar", which would read as "same
+file".
+
+Near pairs are also collapsed per *build*, not per file: a variant that resembles
+twelve identical copies resembles one build, reported once with
+`also_matched: 12`.
+
+A duplicated build is not a vulnerability; it is the reason one is *actionable*:
+"the OpenSSL 1.0.2k binary is in 40 images" is a migration plan, and "one of these
+40 has an extra 64 bytes of code" is an incident. Near-duplicates are reported as
+resemblance with the score and never as identity — the comparison says what it
+measured, not what it suspects.
+
+For a single suspect binary there is a targeted lookup that skips everything else:
+
+```bash
+POST /api/v1/devsecops/fingerprints/match
+{"target": "/srv/binaries", "reference": "/srv/quarantine/unknown-7f3a",
+ "similarity": 85}
+```
+
+It fingerprints every file under an allowed source root, compares each with the
+reference (or with an explicit `build_fingerprint` / `code_sha256` / `ssdeep`),
+and answers `identical` / `same-code` / `similar` / nothing — with the score, the
+threshold, the limits (`files_read`, `skipped`, `truncated`) and its `fuzzy_bytes`
+sample. `fuzzy_bytes` can be raised to 8 MiB for that lookup, because it only has
+a handful of files to read.
+
+### 3.3 Embedded key material
 
 A key inside a shipped binary is the most direct way a build leaks a secret, so
 the key itself is searched for byte-first — not only through the symbols and

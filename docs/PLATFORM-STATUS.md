@@ -187,6 +187,32 @@ could not say which one, and an embedded private key never appeared in the repor
 Tests: +17 in `test_crypto_constants.py`, 77 in `test_binary_scan.py`, 13 in
 `test_binary_scan_api.py`.
 
+**Update (2026-09-23, commit pending, fingerprints):** a binary scanner now answers the
+two fleet questions offline. **Exact**: `file_sha256`, `code_sha256` (code/read-only
+sections framed with their names and sizes, so a renamed or split section is visible and a
+changed debug path is not), `imports_sha256`/`exports_sha256`, the identity the format
+declares (ELF `.note.gnu.build-id`, PE CodeView `GUID`+age, Mach-O `LC_UUID`) and
+`build_fingerprint` = code + import surface + format. Rebuilding with a different debug
+path moves the file digest and leaves the build fingerprint alone — that is how "same
+build, repackaged" is told apart from "different build". **Fuzzy**: ssdeep (CTPH)
+implemented from the specification (rolling seven-byte window, FNV-1a pieces,
+`blocksize:base:doubled`, reference edit-distance score 0-100); the implementation was
+cross-checked against `ssdeep`/`ppdeep` on 3 649 hashes and comparisons during
+development, zero divergences after two real fixes, and the vectors are checked in so the
+suite needs neither tool. Two deliberate departures, both stated in the docs and tests:
+the fuzzy pass samples at most 512 KiB of code per file (`fuzzy_bytes`/`fuzzy_truncated`
+report it; a targeted lookup can raise it to 8 MiB), and two empty fingerprints score 0
+where ssdeep scores them 100. Scans cluster what they find: `BIN-FINGERPRINT-DUPLICATE`
+(INFO, with byte-identical vs repackaged distinguished by the file digests),
+`BIN-FINGERPRINT-SHARED-CODE` (identical code, different imports) and
+`BIN-FINGERPRINT-NEAR-DUPLICATE` (INFO, resemblance with the score, never identity), plus
+`manifest.binary_summary.fingerprints` with complete counts and bounded group lists. New
+`POST /devsecops/fingerprints/match` fingerprints a directory inside the same allowed
+source roots and answers `identical` / `same-code` / `similar` / nothing for one suspect
+binary, with limits and thresholds reported. The console shows duplicate and
+near-duplicate counts and a build-fingerprint column. Tests: +27 `test_fingerprints.py`,
++2 API tests (15 in `test_binary_scan_api.py`); frontend typechecks and builds.
+
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC

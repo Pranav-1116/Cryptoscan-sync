@@ -408,6 +408,20 @@ MAX_REPORT_FINDINGS = 60
 _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
 
 
+def _fingerprint_summary(result: dict) -> dict | None:
+    """The scan's fleet comparison, in a manifest-sized form.
+
+    Counts are complete; the group and pair lists are bounded, and the bound is
+    reported, so "2 duplicate groups" never hides a third.
+    """
+    from devsecops.fingerprints import summarise
+
+    clusters = result.get("fingerprints")
+    if not clusters:
+        return None
+    return summarise(clusters)
+
+
 def _finding_excerpt(findings: list[dict], limit: int = MAX_REPORT_FINDINGS) -> list[dict]:
     """The findings a stored report can list, worst first and bounded.
 
@@ -604,6 +618,7 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
             "containers_refused": result.get("containers_refused", 0),
             "packed_binaries": result.get("packed_binaries", 0),
             "key_material": (result.get("embedded_keys") or {}),
+            "fingerprints": _fingerprint_summary(result),
             **_binary_posture(result),
             "extraction_limits": result.get("extraction_limits") or {},
         },
@@ -655,6 +670,98 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
         "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
         "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",
         "bom": bom,
+    }
+
+
+class FingerprintMatchRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=512,
+                        description="file or directory to fingerprint and search")
+    reference: str | None = Field(None, max_length=512, description=(
+        "a file whose fingerprint is the query (typically the suspect binary)"))
+    build_fingerprint: str | None = Field(None, max_length=128,
+                                          description="explicit build fingerprint to look for")
+    code_sha256: str | None = Field(None, max_length=128,
+                                    description="explicit code-section digest to look for")
+    ssdeep: str | None = Field(None, max_length=512,
+                               description="explicit fuzzy fingerprint (ssdeep) to compare against")
+    similarity: int = Field(85, ge=0, le=100,
+                            description="fuzzy score at or above which a pair is reported")
+    recursive: bool = Field(True, description="descend into subdirectories")
+    fuzzy_bytes: int | None = Field(None, ge=1024, le=8 * 1024 * 1024, description=(
+        "how much code the fuzzy pass reads, up to 8 MiB (a full scan reads 512 KiB)"))
+
+
+@router.post("/fingerprints/match")
+def fingerprint_match(body: FingerprintMatchRequest,
+                      user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Find whether a build appears elsewhere, or whether anything resembles it.
+
+    Deterministic and offline: every file under ``target`` is fingerprinted (exact
+    code/ABI digests plus an ssdeep similarity score) and compared with the query,
+    which is either a reference file inside the same allowed roots or an explicit
+    fingerprint. The answer says *which* of the two things it is — an identical
+    build, the same code with a different import surface, a resemblance with the
+    score, or nothing — and never reports a resemblance as identity.
+    """
+    from api.security.target_validation import TargetValidationError, validate_source_target
+    from devsecops import binary_scan as bs
+    from devsecops.fingerprints import match as match_fingerprints
+
+    try:
+        target = validate_source_target(body.target, label="target")
+        reference = (validate_source_target(body.reference, label="reference")
+                     if body.reference else None)
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    query: dict = {"build_fingerprint": body.build_fingerprint,
+                   "code_sha256": body.code_sha256, "ssdeep": body.ssdeep,
+                   "source": None}
+    if reference:
+        walked = bs.fingerprint_path(reference, recursive=False,
+                                     fuzzy_bytes=body.fuzzy_bytes, max_files=1)
+        if not walked["artefacts"]:
+            raise HTTPException(status_code=400,
+                                detail=f"reference could not be fingerprinted: {reference}")
+        row = walked["artefacts"][0]["fingerprints"]
+        query.update({"build_fingerprint": row.get("build_fingerprint"),
+                      "code_sha256": row.get("code_sha256"), "ssdeep": row.get("ssdeep"),
+                      "source": {"path": reference, "format": walked["artefacts"][0]["format"],
+                                 "fingerprints": row}})
+    if not any(query.get(key) for key in ("build_fingerprint", "code_sha256", "ssdeep")):
+        raise HTTPException(status_code=400, detail=(
+            "a query needs a reference file or at least one of build_fingerprint, "
+            "code_sha256 or ssdeep"))
+
+    walked = bs.fingerprint_path(target, recursive=body.recursive,
+                                 fuzzy_bytes=body.fuzzy_bytes)
+    matches = []
+    for artefact in walked["artefacts"]:
+        verdict = match_fingerprints(query, {"fingerprints": artefact.get("fingerprints") or {}},
+                                     similarity=body.similarity)
+        if verdict["verdict"] == "different":
+            continue
+        matches.append({**verdict, "path": artefact["path"], "format": artefact.get("format"),
+                        "size": artefact.get("size")})
+    order = {"identical": 0, "same-code": 1, "similar": 2, "different": 3}
+    matches.sort(key=lambda row: (order[row["verdict"]], -int(row["score"]), str(row["path"])))
+    return {
+        "query": {key: query.get(key) for key in
+                  ("build_fingerprint", "code_sha256", "ssdeep", "source")},
+        "matches": matches,
+        "identical": sum(1 for row in matches if row["verdict"] == "identical"),
+        "same_code": sum(1 for row in matches if row["verdict"] == "same-code"),
+        "similar": sum(1 for row in matches if row["verdict"] == "similar"),
+        "compared": walked["fingerprinted"],
+        "similarity_threshold": body.similarity,
+        "fuzzy_bytes": walked["fuzzy_bytes"],
+        "limits": {"files_read": walked["files_read"], "skipped": walked["skipped"],
+                   "truncated": walked["truncated"]},
+        "note": ("an identical verdict means the same build fingerprint (code plus import "
+                 "surface); same-code means the code matched but the imports differ; similar "
+                 f"is an ssdeep score at or above {body.similarity} and is a resemblance, "
+                 "not identity. A similar match at 100 says the fuzzy sample could not see "
+                 "the difference the exact digests found"),
     }
 
 

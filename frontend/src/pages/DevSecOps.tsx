@@ -832,6 +832,12 @@ function BinaryPanel() {
             {(summary?.packed_binaries || 0) > 0 && (
               <Badge tone="amber">{summary?.packed_binaries} packed</Badge>
             )}
+            {(summary?.fingerprints?.exact_duplicate_groups || 0) > 0 && (
+              <Badge tone="gray">{summary.fingerprints.exact_duplicate_groups} duplicated build{summary.fingerprints.exact_duplicate_groups === 1 ? "" : "s"}</Badge>
+            )}
+            {(summary?.fingerprints?.near_duplicate_pairs || 0) > 0 && (
+              <Badge tone="amber">{summary.fingerprints.near_duplicate_pairs} near-duplicate pair{summary.fingerprints.near_duplicate_pairs === 1 ? "" : "s"}</Badge>
+            )}
             {summary?.truncated && <Badge tone="red">TRUNCATED — walk cap hit</Badge>}
             {d.manifest?.feed_supplied ? <Badge tone="amber">FEED SUPPLIED</Badge> : <Badge tone="">no feed</Badge>}
           </div>
@@ -858,7 +864,7 @@ function BinaryPanel() {
               <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
                 binaries parsed ({binaries.length}) — embedded files are listed under the container they came from
               </div>
-              <Table head={["path", "format", "arch", "publisher / product", "linkage / signature", "hardening", "packer", "crypto", "packages inside"]}
+              <Table head={["path", "format", "arch", "publisher / product", "linkage / signature", "hardening", "packer", "crypto", "build fingerprint", "packages inside"]}
                 rows={binaries.map((b: any) => [
                   <span style={{ fontSize: 12 }}>
                     {b.derived_from ? "└ " : ""}{b.path}
@@ -873,6 +879,14 @@ function BinaryPanel() {
                   (b.crypto_constants || []).length > 0
                     ? `${(b.algorithms || []).length} algos · tables: ${(b.crypto_constants || []).join(", ")}`
                     : `${(b.algorithms || []).length} algos`,
+                  <span style={{ fontFamily: "var(--mono)", fontSize: 11 }} title={b.fingerprints?.build_fingerprint || ""}>
+                    {b.fingerprints?.build_fingerprint
+                      ? b.fingerprints.build_fingerprint.slice(0, 12)
+                      : "—"}
+                    {b.fingerprints?.code_bytes
+                      ? <span className="muted"> · {b.fingerprints.code_bytes} B code</span>
+                      : <span className="muted"> · whole file</span>}
+                  </span>,
                   (b.packages_inside || []).length > 0
                     ? (b.packages_inside || []).map((p: any) => `${p.name}${p.version ? "@" + p.version : ""} (${p.manager})`).join(", ")
                     : "—",

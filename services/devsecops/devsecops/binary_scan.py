@@ -490,6 +490,11 @@ def parse_elf(data: bytes) -> dict[str, Any]:
     # .symtab (not stripped), .note.gnu.property (CET), .gnu.version_r (floors)
     out["sections"] = sorted(by_name)[:64]
     out["section_count"] = len(sections)
+    # geometry for the fingerprint pass: which bytes of the file *are* the build
+    out["_code_windows"] = [(section["name"], int(section["offset"]), int(section["size"]))
+                            for section in sections
+                            if section["name"] and section["size"]
+                            and 0 <= section["offset"] < len(data)][:MAX_CODE_WINDOWS]
     out["stripped"] = ".symtab" not in by_name
     out["dynamically_linked"] = ".dynamic" in by_name or ".dynsym" in by_name
     out["pie"] = out["type"] == "shared" and (".interp" in by_name or e_phnum > 0)
@@ -713,6 +718,10 @@ def _constant_evidence_text(row: dict[str, Any]) -> str:
     return (f"{row['bytes_matched']} of {row['table_bytes']} table bytes present"
             + (" (stored byte-swapped)" if row["byte_swapped_storage"] else ""))
 
+
+#: how many sections a record keeps the geometry for; a real binary has tens, a
+#: malformed one can claim 20 000, and the fingerprint pass needs the first few
+MAX_CODE_WINDOWS = 256
 
 #: sections a constant table can live in — code, read-only data, and the relaxed
 #: variants a static-linked binary produces. PE and Mach-O names are included so
@@ -1076,6 +1085,9 @@ def parse_pe(data: bytes) -> dict[str, Any]:
             out.setdefault("sections", []).append(name)
 
     _attach_constants(data, out, sections)
+    out["_code_windows"] = [(name, int(offset), int(size))
+                            for _vaddr, _vsize, offset, size, name in sections
+                            if name and size and 0 <= offset < len(data)][:MAX_CODE_WINDOWS]
 
     def rva_to_offset(rva: int) -> int | None:
         for virtual_address, virtual_size, raw_offset, raw_size, _name in sections:
@@ -1726,7 +1738,7 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
     }
     symtab: tuple[int, int, int, int] | None = None
     dysymtab: tuple[int, ...] | None = None
-    const_sections: list[tuple[int, int, int, int, str]] = []
+    file_sections: list[tuple[int, int, int, int, str]] = []
     signature_offset = signature_size = 0
     position = 32 if is64 else 28
     for _ in range(min(ncmds, 8192)):
@@ -1800,8 +1812,8 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
                             size = struct.unpack_from(end + "I", data, base + 36)[0]
                             offset = struct.unpack_from(end + "I", data, base + 40)[0]
                         if size and offset and offset < len(data):
-                            const_sections.append((0, size, offset, size,
-                                                    f"{segname},{sectname}"))
+                            file_sections.append((0, size, offset, size,
+                                                  f"{segname},{sectname}"))
                     except Exception:  # noqa: BLE001 — a truncated section table
                         continue
             elif cmd == 0x02:                                         # LC_SYMTAB
@@ -1830,7 +1842,9 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
         out["symbols_sampled"] = sampled
         out["stripped"] = not exports
     out["library_count"] = len(out["libraries"])
-    _attach_constants(data, out, const_sections)
+    _attach_constants(data, out, file_sections)
+    out["_code_windows"] = [(name, int(offset), int(size))
+                            for _vaddr, _vsize, offset, size, name in file_sections][:MAX_CODE_WINDOWS]
     if any(name.endswith(".so") or ".dylib" in name for name in out["libraries"]):
         out.setdefault("dependency_kind", "dynamic")
     if signature_offset:
@@ -2674,6 +2688,7 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         # than the identical file scanned directly
         constant_blobs = record.pop("_constant_blobs", [])
         constant_evidence = record.pop("_constant_evidence", None)
+        record.pop("_code_windows", None)
         record["name"] = record.get("name") or Path(name).name
         record["file_name"] = Path(name).name
         record["path"] = f"{prefix}!{name}"
@@ -3222,6 +3237,16 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 — a malformed file is reported, never fatal
         record["parsed"] = False
         record["parse_error"] = f"{type(exc).__name__}: {exc}"
+    # identity is computed last, when imports/exports/build-id and the section
+    # geometry the parsers found are all in hand
+    try:
+        from devsecops.fingerprints import fingerprint_record
+
+        record["fingerprints"] = fingerprint_record(data, record)
+    except Exception as exc:  # noqa: BLE001 — a fingerprint is never worth a failed scan
+        record.pop("_code_windows", None)
+        record["fingerprints"] = None
+        record["fingerprint_error"] = f"{type(exc).__name__}: {exc}"
     return record
 
 
@@ -3290,6 +3315,7 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
     record["packer"] = record["packer"] or detect_packer([], "\n".join(strings[:800]))
     constant_blobs = record.pop("_constant_blobs", [])
     constant_evidence = record.pop("_constant_evidence", None)
+    record.pop("_code_windows", None)
     crypto = crypto_evidence(data, strings, imports=record.get("imports") or [],
                              exports=record.get("exports") or [],
                              constants=constant_blobs, constant_evidence=constant_evidence)
@@ -3308,6 +3334,7 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
             # the evidence is already folded into each derived record's `crypto`
             derived.pop("_constant_blobs", None)
             derived.pop("_constant_evidence", None)
+            derived.pop("_code_windows", None)
     record["findings"] = _binary_findings(record)
     return record
 
@@ -4042,6 +4069,82 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
     }
 
 
+#: how many files one fingerprint walk will read; stated in the result when hit
+MAX_FINGERPRINT_FILES = 2000
+
+
+def fingerprint_path(target: str | Path, *, recursive: bool = True,
+                     fuzzy_bytes: int | None = None,
+                     max_files: int = MAX_FINGERPRINT_FILES) -> dict[str, Any]:
+    """Fingerprint every file under ``target`` without the rest of the scan.
+
+    Used for the question a fleet asks during an incident — "does this binary
+    appear anywhere else, or does anything resemble it?" — so it parses format
+    structure and hashes code, and skips the crypto/string/key work that a full
+    scan does. Limits are part of the answer: ``files_read``, ``skipped`` and
+    ``truncated`` are reported, never implied.
+    """
+    from devsecops.fingerprints import (MAX_FUZZY_BYTES, MAX_FUZZY_LIMIT,
+                                        fingerprint_record)
+
+    limit = MAX_FUZZY_BYTES if fuzzy_bytes is None else max(1, min(int(fuzzy_bytes),
+                                                                   MAX_FUZZY_LIMIT))
+    base = Path(target).expanduser()
+    if not base.exists():
+        raise FileNotFoundError(f"target not found: {base}")
+    if base.is_file():
+        candidates = [base]
+        root: Path | None = base.parent
+    else:
+        root = base
+        walker = base.rglob("*") if recursive else base.glob("*")
+        candidates = [path for path in sorted(walker) if path.is_file()]
+    rows: list[dict[str, Any]] = []
+    skipped = 0
+    for path in candidates:
+        if len(rows) >= max_files:
+            skipped = len(candidates) - len(rows)
+            break
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        if size == 0 or size > MAX_FILE_BYTES:
+            skipped += 1
+            continue
+        try:
+            with path.open("rb") as handle:
+                data = handle.read(min(size, MAX_FILE_BYTES))
+        except OSError:
+            skipped += 1
+            continue
+        record = parse_bytes(data, name=path.name)
+        row = record.get("fingerprints")
+        if row and fuzzy_bytes is not None and record.get("_code_windows"):
+            # the caller asked for a longer fuzzy sample than a scan uses; the
+            # geometry is still in hand, so the row is re-derived with their bound
+            try:
+                row = fingerprint_record(data, record, fuzzy_limit=limit)
+            except Exception:  # noqa: BLE001 — keep the fingerprint we already have
+                row = record.get("fingerprints")
+        record.pop("_code_windows", None)
+        if not row:
+            skipped += 1
+            continue
+        rows.append({"path": str(path.relative_to(root)) if root else str(path),
+                     "size": len(data), "format": record.get("format"),
+                     "fingerprints": row})
+    return {
+        "target": str(base),
+        "files_read": len(rows),
+        "skipped": skipped,
+        "fingerprinted": len(rows),
+        "truncated": len(rows) + skipped >= max_files,
+        "fuzzy_bytes": limit,
+        "artefacts": rows,
+    }
+
+
 def _record_packages(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Packages the file declares about itself, in any of the formats we parse."""
     packages: list[dict[str, Any]] = []
@@ -4193,6 +4296,12 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
         findings.extend(record.get("findings") or [])
 
     all_records = _flatten_records(scan.get("binaries") or [])
+    # identity across the fleet: which of these are the same build, which merely
+    # resemble each other — computed from the rows the parsers already produced
+    from devsecops.fingerprints import cluster, fingerprint_findings
+
+    clusters = cluster(all_records)
+    findings.extend(fingerprint_findings(clusters))
     crypto_libraries = [row for row in libraries]
     algorithms = sorted({algorithm for record in all_records
                          for algorithm in (record.get("crypto") or {}).get("algorithms") or []})
@@ -4218,6 +4327,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "type": f"{record.get('format')}:{record.get('arch') or 'unknown'}"
                     + (":efi" if record.get("uefi") else ""),
             "detection_method": "magic+parser",
+            "fingerprints": record.get("fingerprints"),
             "algorithms": (record.get("crypto") or {}).get("algorithms") or [],
             "libraries": record.get("libraries") or [],
             "size": record.get("size"),
@@ -4268,6 +4378,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
         "findings": findings,
         "findings_by_severity": _counts(str(row.get("severity"))
                                         for row in findings),
+        "fingerprints": clusters,
         "binaries_scanned": scan.get("binaries_scanned", 0),
         "files_walked": scan.get("files_walked", 0),
         "by_format": scan.get("by_format") or {},
