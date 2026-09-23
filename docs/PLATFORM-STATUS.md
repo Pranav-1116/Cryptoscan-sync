@@ -135,6 +135,28 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, fleet intake):** the orchestrator-shaped half of the
+binary spec is now filled by the queue the platform already has (no Kafka, no Flink).
+`devsecops/intake.py` takes a spool directory and decides, file by file, what is worth
+scanning: **identity is content, not path** — the same bytes at eleven paths is one scan
+(`new content` / `content changed` / `unchanged since the last pass` / `already scanned
+under another path` / bounds / pass limit, each a stated reason with the covering artifact id
+where one exists). The memory lives beside the spool (`<spool>/.cryptoscan-intake.json`,
+written atomically, no database or broker) so a second pass is free, survives restarts and
+works air-gapped; an unwritable spool reports `state_saved: false` instead of re-scanning the
+fleet in silence. New `POST /devsecops/binary/batch` (dry run by default, `limit` capped per
+pass, audited) queues one `BINARY` job per distinct binary with `batch_id` in
+`progress.scan_options`, and `GET /devsecops/binary/batches/{id}` aggregates those jobs
+(counts by state, per-job stage + report link, running totals) over the most recent 500 jobs,
+saying so when that window is exhausted. New CLI: `python -m devsecops.intake DIR
+[--queue] [--watch --interval N] [--force] [--limit N] [--patterns …] [--dry-run is the
+default]`, exit 0/4/2. `JobRepository.list_by_scan_option` does the batch lookup through a
+JSON path (with a Python fallback). Console: *Plan pass* / *Queue pass* with the decision
+table and live batch totals. Tests: +25 `test_intake.py`, +12 `test_binary_batch_api.py`;
+live drill: 5-file drop → 2 jobs (a duplicate copy and noise skipped with reasons) → both
+`COMPLETED` at `binary_ingest` with artifacts, second pass 0 queued naming the covering
+artifacts, and a CLI pass whose batch was pollable and whose job completed.
+
 **Update (2026-09-23, commit pending, dynamic analysis under the tracer):** the binary
 scanner's one structural gap — it can say what is *in* a file, never what the file *does* —
 is now closable without building a sandbox. `devsecops/dynamic_scan.py` drives the platform's

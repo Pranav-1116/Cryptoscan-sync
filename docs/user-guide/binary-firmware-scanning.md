@@ -504,7 +504,64 @@ SHA-256, the function that made the call, and the classification it received.
   diff keys on name **and** reference, so a binary called `openssl` and the
   `OpenSSL` library it contains are tracked separately.
 
-## 5. Limits, stated up front
+## 5. Fleet intake — a drop directory, deduplicated
+
+Scanning one binary is a request. A release train is a *drop*: hundreds of files
+appearing at once, most of them unchanged, some of them the same library copied
+into forty places. The platform has no Kafka and no Flink — the queue is the
+existing scan-job queue — so intake is the piece that feeds it:
+
+```bash
+# plan a pass: what would be scanned, and why the rest would not (nothing is queued)
+python -m devsecops.intake /var/spool/cryptoscan/binaries
+
+# queue it, and remember what was queued
+CRYPTOSCAN_API_BASE=https://cryptoscan.example CRYPTOSCAN_API_KEY=csk_… \
+python -m devsecops.intake /var/spool/cryptoscan/binaries --queue
+
+# or run it as a watcher: one pass every 30s, forever (the air-gapped consumer)
+python -m devsecops.intake /var/spool/cryptoscan/binaries --queue --watch --interval 30
+```
+
+The same pass is available over the API, which is what the console's *Plan pass*
+/ *Queue pass* buttons call:
+
+```bash
+curl -X POST /api/v1/devsecops/binary/batch \
+  -d '{"spool": "/var/spool/cryptoscan/binaries", "dry_run": false, "limit": 50}'
+# -> {batch_id, considered, queued, planned, skipped, files:[…], state_path, poll_url}
+curl /api/v1/devsecops/binary/batches/<batch_id>
+# -> {jobs, by_status:{COMPLETED:…}, totals:{binaries_scanned, findings, yara_matches}, files:[…]}
+```
+
+**Identity is content, not path.** Four decisions, all of them reported:
+
+| Decision | Why |
+| --- | --- |
+| `queue` — new content | the bytes have not been scanned before |
+| `queue` — content changed | the same path hashes differently from the recorded scan, so it is a new artifact |
+| skip — unchanged | the same path *and* the same bytes as the last pass, with the artifact that covers it |
+| skip — already scanned under another path | identical bytes elsewhere: one scan, eleven copies |
+| skip — too small / too large / not binary-shaped / over this pass's limit | each with the bound that produced it |
+
+So a drop of 2,000 files where 12 changed is 12 scans, and the answer says so
+instead of leaving an operator to guess whether "0 queued" meant "clean" or
+"broken". The memory of what was scanned lives **beside the spool**
+(`<spool>/.cryptoscan-intake.json`, written atomically) so it survives restarts,
+needs no database or broker, and travels with the data — and if that file cannot
+be written the pass reports `state_saved: false` rather than silently re-scanning
+the fleet next time. `--force` (or `force: true`) re-queues known content; even
+then one pass never queues the same bytes twice.
+
+Every queued file becomes a normal `BINARY` job carrying `batch_id` in
+`progress.scan_options` — the same options the single-job endpoint writes, so the
+artifact is identical either way, and a retry re-runs the same options. Batch
+status is computed from those jobs (no second table to drift): counts by state,
+per-job stage and report link, and running totals. It searches the most recent
+500 jobs and says so when that window was exhausted, because "0 jobs" for a pass
+that did run is the kind of answer that costs an afternoon.
+
+## 6. Limits, stated up front
 
 * **Firmware filesystems are not extracted.** squashfs/JFFS2/UBIFS/cramfs are
   identified with offsets; their contents are out of scope for this scanner
@@ -512,6 +569,14 @@ SHA-256, the function that made the call, and the classification it received.
   `BIN-FIRMWARE-NOT-EXTRACTED`. What *can* be opened (a gzip/xz stream or a cpio
   initramfs in the same image) is followed and reported alongside. To inventory
   what is inside a filesystem, scan the mounted or extracted tree.
+* **Intake decides by name, size and content hash — not by parsing.** A file is
+  a candidate because of its name (or an extension-less execute bit), it is
+  skipped if it is outside the size bounds, and it is deduplicated by SHA-256. A
+  "binary" whose content hash matches a previous scan is skipped even if it is
+  actually a different build with identical bytes at the end of the day — which
+  is the point — but a file whose content merely *looks* unrelated (a rebuilt
+  binary with one byte changed) is a new scan. Two copies of the same file are
+  one scan; that is a deduplication rule, not a statement about provenance.
 * **A dynamic run is not a sandbox.** There is no gVisor, no seccomp, no network
   namespace and no user separation: the sample runs as the scanning user, with
   that user's filesystem access and network reach. What bounds it is an explicit

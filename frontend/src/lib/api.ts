@@ -1752,6 +1752,33 @@ export async function apiBinaryDynamic(body: {
   }
 }
 
+export interface BatchFileDecision {
+  path: string; size: number; sha256?: string | null; action: string; reason: string;
+  artifact_id?: string | null; prior_path?: string | null; job_id?: string | null;
+}
+
+export interface BinaryBatchResult {
+  batch_id: string; spool: string; dry_run: boolean; considered: number;
+  queued: number; planned: number; skipped: number; files: BatchFileDecision[];
+  state_path: string; state_saved: boolean; state_note?: string | null;
+  poll_url: string; message: string;
+}
+
+/**
+ * Fleet intake over a spool directory: plan it (dry run, the default) or queue it.
+ * Identity is content, not path, so a release drop with the same library at ten
+ * paths is one scan; every file that is not queued comes back with its reason.
+ */
+export const apiBinaryBatch = (body: {
+  spool: string; dry_run?: boolean; force?: boolean; limit?: number; recursive?: boolean;
+  format?: string; include_raw?: boolean; ingest_cbom?: boolean; system_name?: string;
+  yara_rules?: string[];
+}) => _sbomReq<BinaryBatchResult>("/api/v1/devsecops/binary/batch", "POST", body, 120000);
+
+/** How a fleet pass is going: counts by state, per job, and the totals so far. */
+export const apiBinaryBatchStatus = (batchId: string) =>
+  _sbomReq<any>(`/api/v1/devsecops/binary/batches/${encodeURIComponent(batchId)}`, "GET", undefined, 20000);
+
 /** The CBOM stored next to a binary-scan artifact. */
 export const apiBinaryCbom = (artifactId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/binary/artifacts/${artifactId}/cbom`, "GET", undefined, 30000);

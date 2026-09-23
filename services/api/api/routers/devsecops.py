@@ -38,6 +38,9 @@ from devsecops.artifact_store import (
 
 router = APIRouter(prefix="/devsecops", tags=["devsecops"])
 
+#: how many recent jobs a batch status looks at (the batch lives on the jobs)
+_BATCH_WINDOW = 500
+
 
 def _enforce_airgap_writable(operation: str) -> None:
     """Block mutating/networked operations when AIRGAP_MODE is on (fail-closed)."""
@@ -437,6 +440,9 @@ class BinaryScanJobRequest(BaseModel):
     artifact_id: str | None = Field(None, max_length=64, description=(
         "the artifact id to write; minted here when omitted, so the caller can poll the "
         "artifact before the scan has finished"))
+    batch_id: str | None = Field(None, max_length=64, description=(
+        "record this job as part of an intake batch, so "
+        "GET /devsecops/binary/batches/{batch_id} reports on the whole pass"))
 
 
 class BinaryScanJobResponse(BaseModel):
@@ -448,6 +454,31 @@ class BinaryScanJobResponse(BaseModel):
     report_url: str
     verify_url: str
     poll_url: str
+
+
+def _binary_options(*, target: str, artifact_id: str, rules: list[str] | None = None,
+                     fmt: str = "cyclonedx", recursive: bool = True, include_raw: bool = False,
+                     ingest_cbom: bool = False, system_name: str | None = None,
+                     batch_id: str | None = None) -> dict:
+    """The options a queued binary scan runs with — one builder for both entry points.
+
+    A single queued scan and a fleet pass have to produce the same artifact, so
+    the options are assembled here instead of at each call site.
+    """
+    options: dict = {
+        "kind": "binary",
+        "target": target,
+        "yara_rules": list(rules or []),
+        "format": "spdx" if str(fmt).lower() == "spdx" else "cyclonedx",
+        "recursive": bool(recursive),
+        "include_raw": bool(include_raw),
+        "ingest_cbom": bool(ingest_cbom),
+        "system_name": system_name,
+        "artifact_id": artifact_id,
+    }
+    if batch_id:
+        options["batch_id"] = batch_id
+    return options
 
 
 @router.post("/binary/jobs", status_code=status.HTTP_202_ACCEPTED,
@@ -495,17 +526,12 @@ def binary_scan_job(
             raise HTTPException(status_code=404, detail=f"rule path not found: {rule_paths[-1]}")
 
     artifact_id = body.artifact_id or str(_uuid.uuid4())
-    options = {
-        "kind": "binary",
-        "target": resolved,
-        "yara_rules": rule_paths,
-        "format": "spdx" if body.format.lower() == "spdx" else "cyclonedx",
-        "recursive": bool(body.recursive),
-        "include_raw": bool(body.include_raw),
-        "ingest_cbom": bool(body.ingest_cbom),
-        "system_name": body.system_name,
-        "artifact_id": artifact_id,
-    }
+    options = _binary_options(
+        target=resolved, artifact_id=artifact_id, rules=rule_paths, fmt=body.format,
+        recursive=bool(body.recursive), include_raw=bool(body.include_raw),
+        ingest_cbom=bool(body.ingest_cbom), system_name=body.system_name,
+        batch_id=body.batch_id,
+    )
     queued = enqueue_scan_job(
         job_repo, background_tasks,
         repo_url=f"binary://{resolved}",
@@ -528,6 +554,214 @@ def binary_scan_job(
         verify_url=f"/api/v1/devsecops/sbom/{artifact_id}/verify",
         poll_url=f"/api/v1/jobs/{job_id}",
     )
+
+
+class BinaryBatchRequest(BaseModel):
+    """Take a directory of binaries and queue what actually needs scanning."""
+
+    spool: str = Field(..., min_length=1, max_length=4096,
+                       description="directory the binaries are dropped into")
+    dry_run: bool = Field(True, description="plan the pass and queue nothing (the default)")
+    patterns: list[str] | None = Field(None, description=(
+        "glob patterns to take; defaults to the usual binary/archive names, plus "
+        "extension-less files with the execute bit"))
+    min_size: int | None = Field(None, ge=0, description="skip files smaller than this (default 64)")
+    max_size: int | None = Field(None, ge=1, description="skip files larger than this (default 512 MiB)")
+    limit: int = Field(50, ge=1, le=500, description=(
+        "queue at most this many files in one pass — a fleet arrives faster than it is "
+        "worth queueing blindly, and the rest is reported rather than dropped"))
+    force: bool = Field(False, description="re-queue content that was scanned in an earlier pass")
+    recursive: bool = True
+    format: str = Field("cyclonedx", description="cyclonedx | spdx for the SBOM half")
+    include_raw: bool = Field(False, description="keep raw hex context in findings")
+    ingest_cbom: bool = Field(False, description="load each CBOM into the crypto inventory")
+    system_name: str | None = Field(None, max_length=200, description="CBOM: system the assets belong to")
+    system_id: str | None = Field(None, max_length=64, description="stamp this system on every queued job")
+    yara_rules: list[str] | None = Field(None, description="rule files/directories for every file in the pass")
+    batch_id: str | None = Field(None, max_length=64, description="reuse a batch id (a retry of the pass)")
+
+
+@router.post("/binary/batch")
+def binary_batch(
+    body: BinaryBatchRequest,
+    background_tasks: BackgroundTasks,
+    job_repo: JobRepository = Depends(get_job_repository),
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_OPERATORS)),
+):
+    """Queue a pass over a spool directory — once per *distinct* binary.
+
+    Identity here is content, not path: the same library shipped at eleven paths
+    is one scan, and a file whose content changed is a new scan even at the path
+    that was scanned yesterday. Every file that is not queued comes back with the
+    reason and, where one exists, the artifact that already covers it — because
+    "0 queued" and "everything was already scanned" must not look the same.
+
+    ``dry_run`` (the default) returns the plan and starts nothing, so an operator
+    can see exactly what a pass would do before it does it. The memory of what was
+    scanned lives beside the spool (``<spool>/.cryptoscan-intake.json``); if that
+    file cannot be written the pass says so rather than re-scanning the fleet in
+    silence next time.
+    """
+    import uuid as _uuid
+
+    from api.security.target_validation import TargetValidationError, validate_source_target
+    from api.routers.trigger import enqueue_scan_job
+    from devsecops.intake import load_state, plan_intake, record_outcome, save_state, state_path_for
+
+    try:
+        spool = validate_source_target(body.spool, label="spool")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not Path(spool).expanduser().is_dir():
+        raise HTTPException(status_code=404, detail=f"spool directory not found: {spool}")
+
+    rule_paths: list[str] = []
+    for entry in body.yara_rules or []:
+        try:
+            rule_paths.append(validate_source_target(entry, label="rule path"))
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+    batch_id = body.batch_id or str(_uuid.uuid4())
+    state_file = state_path_for(spool)
+    plan_kwargs: dict = {"limit": body.limit, "force": bool(body.force), "recursive": bool(body.recursive)}
+    if body.patterns:
+        plan_kwargs["patterns"] = tuple(body.patterns)
+    if body.min_size is not None:
+        plan_kwargs["min_size"] = body.min_size
+    if body.max_size is not None:
+        plan_kwargs["max_size"] = body.max_size
+    plan = plan_intake(spool, state_file=state_file, **plan_kwargs)
+
+    # the plan's own answer, filled in with job/artifact ids once anything is queued:
+    # a dry run must report what it *would* do, not an empty list plus a message
+    queued_files: list[dict] = [
+        {"path": candidate.path, "sha256": candidate.sha256, "size": candidate.size,
+         "reason": candidate.reason, "job_id": None, "artifact_id": None}
+        for candidate in plan.queued
+    ]
+    artifact_ids: dict[str, str] = {}
+    job_ids: dict[str, str] = {}
+    if not body.dry_run:
+        for row, candidate in zip(queued_files, plan.queued):
+            artifact_id = str(_uuid.uuid4())
+            options = _binary_options(
+                target=candidate.path, artifact_id=artifact_id, rules=rule_paths, fmt=body.format,
+                recursive=bool(body.recursive), include_raw=bool(body.include_raw),
+                ingest_cbom=bool(body.ingest_cbom), system_name=body.system_name, batch_id=batch_id,
+            )
+            queued = enqueue_scan_job(
+                job_repo, background_tasks, repo_url=f"binary://{candidate.path}", branch="main",
+                triggered_by=user, job_type="BINARY", system_id=body.system_id, scan_options=options,
+            )
+            candidate.job_id = str(getattr(queued, "job_id", "") or "") or None
+            candidate.artifact_id = artifact_id
+            artifact_ids[candidate.path] = artifact_id
+            job_ids[candidate.path] = candidate.job_id or ""
+            row.update({"job_id": candidate.job_id, "artifact_id": artifact_id})
+
+    state_saved, state_note = True, None
+    if not body.dry_run and plan.queued:
+        try:
+            state = record_outcome(load_state(state_file), plan,
+                                   artifact_ids=artifact_ids, job_ids=job_ids)
+            state["batch_id"] = batch_id
+            save_state(state_file, state)
+        except OSError as exc:
+            # the queue is already fed; the memory is what failed. Say it loudly:
+            # a lost memory means every pass re-scans the fleet.
+            state_saved, state_note = False, (
+                f"the intake state could not be written ({type(exc).__name__}: {exc}); "
+                "the next pass will re-scan this content unless the spool is writable")
+    elif queued_files:
+        state_saved = False
+
+    UserRepository(db).audit(
+        user, "devsecops.binary_batch", target_type="binary_spool", target_id=spool,
+        detail={"batch_id": batch_id, "dry_run": bool(body.dry_run), "considered": plan.considered,
+                "planned": len(plan.queued),
+                "queued": 0 if body.dry_run else len(queued_files),
+                "skipped": len(plan.skipped), "state_saved": state_saved, "limit": body.limit},
+    )
+    db.commit()
+    payload = plan.as_dict()
+    payload.update({
+        "batch_id": batch_id,
+        "dry_run": bool(body.dry_run),
+        "queued": len(plan.queued) if body.dry_run else len(queued_files),
+        "planned": len(plan.queued),
+        "queued_files": queued_files,
+        "state_path": str(state_file),
+        "state_saved": state_saved,
+        "state_note": state_note,
+        "poll_url": f"/api/v1/devsecops/binary/batches/{batch_id}",
+        "ops": {"kind": "binary", "yara_rules": rule_paths, "format": body.format,
+                "recursive": bool(body.recursive), "include_raw": bool(body.include_raw),
+                "ingest_cbom": bool(body.ingest_cbom), "system_name": body.system_name},
+        "message": ("Dry run: nothing was queued. POST the same body with dry_run=false to queue "
+                    "these files." if body.dry_run else
+                    f"{len(queued_files)} scan(s) queued; poll /api/v1/devsecops/binary/batches/{batch_id}."),
+    })
+    return payload
+
+
+@router.get("/binary/batches/{batch_id}")
+def binary_batch_status(
+    batch_id: str,
+    job_repo: JobRepository = Depends(get_job_repository),
+    user: str = Depends(require_roles(*_SBOM_READERS)),
+):
+    """How a fleet pass is going: counts by state, and what each job has produced.
+
+    The batch lives on the jobs themselves (``progress.scan_options.batch_id``),
+    so there is no second source of truth to drift. Jobs are looked up over a
+    bounded window of the most recent rows, and the answer says when that window
+    was exhausted rather than reporting "0 jobs" for a pass that did happen.
+    """
+    jobs = job_repo.list_by_scan_option("batch_id", batch_id, limit=_BATCH_WINDOW)
+    by_status: dict[str, int] = {}
+    files: list[dict] = []
+    artifacts: list[str] = []
+    binaries = findings = matches = 0
+    for job in jobs:
+        options = ((job.progress or {}).get("scan_options") or {})
+        progress = job.progress or {}
+        binary = progress.get("binary") or {}
+        status = str(getattr(job, "status", "") or "")
+        by_status[status] = by_status.get(status, 0) + 1
+        binaries += int(binary.get("binaries_scanned") or 0)
+        findings += int(binary.get("findings") or 0)
+        matches += int(binary.get("yara_matches") or 0)
+        artifact_id = binary.get("artifact_id") or options.get("artifact_id")
+        if artifact_id:
+            artifacts.append(str(artifact_id))
+        files.append({
+            "job_id": str(getattr(job, "job_id", "") or ""),
+            "target": options.get("target") or getattr(job, "target_repo", None),
+            "status": status,
+            "stage": binary.get("stage") or progress.get("current_stage"),
+            "percent": progress.get("percent"),
+            "error": getattr(job, "error_message", None),
+            "artifact_id": artifact_id,
+            "report_url": binary.get("report_url") or (f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown"
+                                                      if artifact_id else None),
+            "binaries_scanned": binary.get("binaries_scanned"),
+            "findings": binary.get("findings"),
+            "yara_matches": binary.get("yara_matches"),
+        })
+    return {
+        "batch_id": batch_id,
+        "jobs": len(files),
+        "by_status": by_status,
+        "artifacts": artifacts,
+        "totals": {"binaries_scanned": binaries, "findings": findings, "yara_matches": matches},
+        "files": files,
+        "window": {"looked_at": len(jobs), "limit": _BATCH_WINDOW,
+                   "truncated": len(jobs) >= _BATCH_WINDOW,
+                   "note": ("the batch is stored on the jobs themselves; only the most recent "
+                            f"{_BATCH_WINDOW} jobs are searched — an older batch may report 0 here")},
+    }
 
 
 class BinaryDynamicRequest(BaseModel):

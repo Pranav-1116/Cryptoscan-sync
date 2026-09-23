@@ -6,8 +6,9 @@ import {
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
   apiSbomGate, apiSbomRescan, apiSbomPrune, apiSbomLicense, apiSbomComponents,
   apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
-  apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiBinaryDynamic, apiJobStatus,
-  apiYaraValidate, apiConnectorPreview, DynamicScanResult,
+  apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiBinaryDynamic, apiBinaryBatch,
+  apiBinaryBatchStatus, apiJobStatus, apiYaraValidate, apiConnectorPreview,
+  DynamicScanResult, BinaryBatchResult,
 } from "../lib/api.js";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
@@ -705,6 +706,46 @@ function BinaryPanel() {
   const [dynBusy, setDynBusy] = useState(false);
   const dynArgv = () => dynArgs.trim().split(/\s+/).filter(Boolean);
 
+  // fleet intake: a spool directory in, jobs out — deduplicated by content
+  const [spool, setSpool] = useState("");
+  const [batch, setBatch] = useState<BinaryBatchResult | null>(null);
+  const [batchStatus, setBatchStatus] = useState<any | null>(null);
+  const [batchError, setBatchError] = useState<string | null>(null);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchAll, setBatchAll] = useState(false);
+
+  /** Plan a pass (the default) or queue it — the same decision either way, shown. */
+  const runPass = async (queue: boolean) => {
+    if (!spool.trim()) { setBatchError("a spool directory is required"); return; }
+    setBatchBusy(true); setBatchError(null); setBatchStatus(null);
+    try {
+      const answer = await apiBinaryBatch({
+        spool: spool.trim(), dry_run: !queue, recursive, include_raw: includeRaw,
+        format: fmt, yara_rules: rules(),
+      });
+      if (!answer.ok || !answer.data) setBatchError(answer.error || "the pass could not be planned");
+      else setBatch(answer.data);
+    } catch (e) { setBatchError(String(e)); }
+    setBatchBusy(false);
+  };
+
+  // follow a queued pass until nothing is still moving
+  React.useEffect(() => {
+    if (!batch?.batch_id || batch.dry_run) return;
+    let stop = false;
+    const tick = async () => {
+      const answer = await apiBinaryBatchStatus(batch.batch_id);
+      if (stop) return;
+      if (!answer.ok || !answer.data) { setBatchError(answer.error || "batch status unavailable"); return; }
+      setBatchStatus(answer.data);
+      const moving = (answer.data.by_status?.QUEUED || 0) + (answer.data.by_status?.RUNNING || 0);
+      if (moving === 0) { stop = true; return; }
+      window.setTimeout(() => void tick(), 3000);
+    };
+    void tick();
+    return () => { stop = true; };
+  }, [batch?.batch_id, batch?.dry_run]);
+
   /** Preflight only: no process is started, and the refusals are the answer. */
   const preflight = async () => {
     if (!target.trim()) { setDynError("target is required"); return; }
@@ -972,6 +1013,90 @@ function BinaryPanel() {
                   {dyn.limits.map((l, i) => <li key={i}>{l}</li>)}
                 </ul>
               </details>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="mt" style={{ marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          fleet intake — point at a directory of dropped binaries and queue what needs scanning:
+          the same bytes at two paths are one scan, changed content is a new scan, and every file
+          that is <em>not</em> queued says why. The memory of what was scanned lives in
+          &lt;spool&gt;/.cryptoscan-intake.json
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input className="inp" style={{ flex: 1, minWidth: 260 }}
+            placeholder="/srv/release-drop or /var/spool/cryptoscan/binaries"
+            value={spool} onChange={(e) => setSpool(e.target.value)} />
+          <button className="btn sm" onClick={() => void runPass(false)} disabled={batchBusy}>
+            {batchBusy ? "working…" : "Plan pass"}
+          </button>
+          <button className="btn sm" onClick={() => void runPass(true)} disabled={batchBusy}>Queue pass</button>
+          {batchError && <Badge tone="red"><span className="dot" /> {batchError}</Badge>}
+        </div>
+        {batch && (
+          <div style={{ fontSize: 12.5, marginTop: 4 }}>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Badge tone={batch.queued > 0 ? "amber" : "gray"}>
+                {batch.dry_run ? `${batch.planned} would be queued` : `${batch.queued} queued`}
+              </Badge>
+              <Badge tone="gray">{batch.considered} considered</Badge>
+              <Badge tone="gray">{batch.skipped} skipped</Badge>
+              {!batch.dry_run && (
+                <Badge tone={batch.state_saved ? "green" : "red"}>
+                  {batch.state_saved ? "intake memory written" : "intake memory NOT written"}
+                </Badge>
+              )}
+              <span className="muted mono">batch {batch.batch_id.slice(0, 8)}</span>
+              {batch.dry_run && (
+                <button className="btn sm" onClick={() => void runPass(true)}>queue these</button>
+              )}
+            </div>
+            {batch.state_note && (
+              <div style={{ color: "var(--red, #e5484d)", marginTop: 2 }}>{batch.state_note}</div>
+            )}
+            <Table
+              head={["file", "decision", "why", "covers"]}
+              rows={(batchAll ? batch.files : batch.files.slice(0, 12)).map((f) => [
+                <span className="mono">{f.path.split("/").slice(-1)[0]}</span>,
+                <Badge tone={f.action === "queue" ? "amber" : "gray"}>{f.action}</Badge>,
+                <span title={f.path}>{f.reason}</span>,
+                <span className="mono" style={{ fontSize: 11.5 }}>
+                  {f.artifact_id ? String(f.artifact_id).slice(0, 8) : "—"}
+                </span>,
+              ])}
+            />
+            {batch.files.length > 12 && (
+              <button className="btn sm" onClick={() => setBatchAll((v) => !v)}>
+                {batchAll ? "show fewer" : `show all ${batch.files.length}`}
+              </button>
+            )}
+            {batchStatus && (
+              <div style={{ marginTop: 4 }}>
+                {Object.entries(batchStatus.by_status || {}).map(([status, count]) => (
+                  <Badge key={status} tone={status === "COMPLETED" ? "green" : status === "FAILED" ? "red" : "amber"}>
+                    {String(count)} {status.toLowerCase()}
+                  </Badge>
+                ))}
+                <span className="muted" style={{ marginLeft: 6 }}>
+                  {batchStatus.totals.binaries_scanned} binaries · {batchStatus.totals.findings} findings ·{" "}
+                  {batchStatus.totals.yara_matches} rule matches
+                </span>
+                {batchStatus.files.map((row: any, i: number) => (
+                  <div key={i} className="muted" style={{ marginTop: 2 }}>
+                    {String(row.target || "").split("/").slice(-1)[0]} — {row.status}
+                    {row.stage ? ` @ ${row.stage}` : ""}
+                    {typeof row.percent === "number" ? ` ${row.percent}%` : ""}
+                    {row.error ? ` · ${row.error}` : ""}
+                    {row.report_url ? (
+                      <>
+                        {" · "}
+                        <a href={row.report_url} target="_blank" rel="noreferrer">report</a>
+                      </>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
