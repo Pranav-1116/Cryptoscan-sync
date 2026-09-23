@@ -23,6 +23,20 @@ from sqlalchemy.orm import Session
 from api.dependencies import get_db_session, require_roles
 from db.repositories.user_repository import UserRepository
 
+# the manifest/store half of a binary artifact lives in the devsecops package:
+# the same functions serve this router (synchronous scan) and the worker process
+# (queued job), so both produce one artifact, not two dialects of one
+from devsecops.artifact_store import (
+    MAX_REPORT_FINDINGS,
+    audit_artifact,
+    binary_posture as _binary_posture,
+    build_binary_manifest,
+    finding_excerpt as _finding_excerpt,
+    resolve_signing_secret,
+    severity_counts as _severity_counts,
+    store_binary_artifact,
+)
+
 router = APIRouter(prefix="/devsecops", tags=["devsecops"])
 
 
@@ -158,50 +172,34 @@ _ARTIFACT_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 
 
 def _sbom_storage():
-    """Persistent on-disk SBOM artifact store (survives restarts)."""
-    import tempfile
+    """Persistent on-disk SBOM artifact store (survives restarts).
 
-    from governance.backup_jobs import DiskBackupStorage
+    The store itself lives in :mod:`devsecops.artifact_store`, so a worker process
+    writing the same job produces an artifact these endpoints serve unchanged.
+    """
+    from devsecops.artifact_store import artifact_storage
 
     global _SBOM_STORE
     if _SBOM_STORE is None:
-        root = os.environ.get("SBOM_STORAGE_DIR", "/var/lib/cryptoscan/sboms")
-        try:
-            _SBOM_STORE = DiskBackupStorage(root)
-        except Exception:
-            _SBOM_STORE = DiskBackupStorage(os.path.join(tempfile.gettempdir(), "cryptoscan-sboms"))
+        _SBOM_STORE = artifact_storage()
     return _SBOM_STORE
 
 
 def _sbom_signing_secret(db: Session | None) -> tuple[str | None, str]:
-    """(secret, key_id) for signing SBOM manifests.
+    """(secret, key_id) for signing SBOM manifests — the platform-wide order.
 
-    Preference order matches the rest of the platform: vault ref > persisted
-    settings key > HKDF from the platform master. When no platform SECRET_KEY
-    is configured (dev without a vault), the API's configured SECRET_KEY is
-    used — it is *stable across restarts*, unlike a process-random fallback,
-    so /verify keeps agreeing with artifacts signed earlier in the same
-    deployment. Returns ``(None, "unsigned")`` when nothing is available, which
-    /verify reports honestly as an unsigned artifact rather than a failure.
+    Vault ref > persisted settings key > HKDF from the platform master > this
+    process's configured ``SECRET_KEY``. The last one is stable across restarts
+    (unlike a process-random fallback), so ``/verify`` keeps agreeing with
+    artifacts signed earlier in the same deployment.
     """
-    import logging
-
-    try:
-        from db.repositories.settings_repository import SettingsRepository
-        from governance.keys import signing_secret
-
-        return signing_secret(settings_repo=SettingsRepository(db) if db is not None else None), "platform"
-    except Exception as exc:  # noqa: BLE001 — signing must never break a scan
-        logging.getLogger(__name__).warning("sbom_platform_signing_key_unavailable: %s", exc)
     try:
         from api.config.settings import get_settings
 
-        configured = (get_settings().SECRET_KEY or "").strip()
-        if configured:
-            return configured, "settings"
-    except Exception:  # noqa: BLE001
-        pass
-    return None, "unsigned"
+        configured = (get_settings().SECRET_KEY or "").strip() or None
+    except Exception:  # noqa: BLE001 — settings must never break a scan
+        configured = None
+    return resolve_signing_secret(db, fallback_secret=configured)
 
 
 class SbomScanRequest(BaseModel):
@@ -226,6 +224,7 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     produce a deterministic CycloneDX 1.5 / SPDX 2.3 bill of materials with
     crypto-relevance enrichment, pinning summary, and a signed-by-hash
     persistent artifact (download via GET /sbom/{artifact_id}/download)."""
+
     from datetime import datetime, timezone
 
     import hashlib
@@ -402,123 +401,6 @@ def _scanner_findings(manifest: dict) -> dict[str, int] | None:
     return counts if isinstance(counts, dict) and counts else None
 
 
-#: how many scanner findings a manifest carries for the report; the counts in
-#: ``findings_by_severity`` are always complete, this is the readable excerpt
-MAX_REPORT_FINDINGS = 60
-_SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
-
-
-def _fingerprint_summary(result: dict) -> dict | None:
-    """The scan's fleet comparison, in a manifest-sized form.
-
-    Counts are complete; the group and pair lists are bounded, and the bound is
-    reported, so "2 duplicate groups" never hides a third.
-    """
-    from devsecops.fingerprints import summarise
-
-    clusters = result.get("fingerprints")
-    if not clusters:
-        return None
-    return summarise(clusters)
-
-
-def _yara_summary(result: dict) -> dict | None:
-    """What the ruleset was and what it matched, in a manifest-sized form.
-
-    The rule list is bounded but the counts are not, and the ruleset digest is
-    always present: a match without the digest of the rules that produced it is
-    not reproducible, so the manifest would be asking to be taken on trust.
-    """
-    summary = result.get("yara") or {}
-    if not summary:
-        return None
-    return {
-        "rules": summary.get("rules", 0),
-        "private_rules": summary.get("private_rules", 0),
-        "digest": summary.get("digest"),
-        "sources": (summary.get("sources") or [])[:20],
-        "matches": summary.get("matches", 0),
-        "files_matched": summary.get("files_matched", 0),
-        "by_rule": dict(list((summary.get("by_rule") or {}).items())[:20]),
-        "by_severity": summary.get("by_severity") or {},
-        "truncated_scans": summary.get("truncated_scans", 0),
-        "rule_files_skipped": summary.get("rule_files_skipped", 0),
-        "error_count": summary.get("error_count", 0),
-        "errors": (summary.get("errors") or [])[:10],
-        "note": ("a rule the loader refused did not run; rule errors are findings, so "
-                 "an empty match list next to an error is not a clean result"),
-    }
-
-
-def _finding_excerpt(findings: list[dict], limit: int = MAX_REPORT_FINDINGS) -> list[dict]:
-    """The findings a stored report can list, worst first and bounded.
-
-    A manifest that says "1 HIGH" and cannot say which one is not evidence, so the
-    scan's findings travel with the artifact. The list is capped and the cap is
-    stated, so "12 findings" never silently becomes "12 findings shown".
-    """
-    rows = sorted(findings, key=lambda row: (
-        _SEVERITY_ORDER.get(str(row.get("severity") or "INFO").upper(), 9),
-        str(row.get("code") or ""), str(row.get("path") or "")))
-    return [{"code": row.get("code"), "severity": str(row.get("severity") or "INFO").upper(),
-             "title": row.get("title"), "path": row.get("path"),
-             "detail": (str(row.get("detail") or "")[:240] or None)} for row in rows[:limit]]
-
-
-def _severity_counts(findings: list[dict]) -> dict[str, int]:
-    counts: dict[str, int] = {}
-    for finding in findings:
-        severity = str(finding.get("severity") or "INFO").upper()
-        counts[severity] = counts.get(severity, 0) + 1
-    return dict(sorted(counts.items()))
-
-
-def _binary_posture(result: dict) -> dict:
-    """How the scanned binaries are signed, encrypted, and how much was searched.
-
-    A manifest that says "3 unsigned, 1 encrypted" is actionable; one that only
-    lists formats is not. Only formats that *have* a signature story are counted
-    as signed/unsigned — an ELF has no signature field and is not "unsigned".
-    The constant coverage is reported alongside, because "no AES constants" means
-    something different when only 16 bytes of a file were searched.
-    """
-    signature_formats = {"pe", "macho"}
-    signed = unsigned = encrypted = 0
-    keys = {"private_keys": 0, "unencrypted_private_keys": 0, "certificates": 0,
-            "keystores": 0, "artefacts_with_keys": 0, "test_vectors": 0}
-    coverage = {"artefacts_searched": 0, "searched_bytes": 0, "tables_matched": 0,
-                "complete_tables": 0, "algorithms": set()}
-    for row in result.get("binaries") or []:
-        signature = row.get("signature") or {}
-        if str(row.get("format")) in signature_formats:
-            if signature.get("present"):
-                signed += 1
-            else:
-                unsigned += 1
-        if row.get("encrypted"):
-            encrypted += 1
-        embedded = row.get("embedded_keys") or {}
-        if embedded:
-            keys["artefacts_with_keys"] += 1
-            keys["private_keys"] += int(embedded.get("private_keys") or 0)
-            keys["unencrypted_private_keys"] += int(embedded.get("unencrypted_private_keys") or 0)
-            keys["certificates"] += int(embedded.get("certificates") or 0)
-            keys["keystores"] += int(embedded.get("keystores") or 0)
-            keys["test_vectors"] += len(embedded.get("test_vectors") or [])
-        summary = row.get("constants") or {}
-        if summary:
-            if int(summary.get("searched_bytes") or 0):
-                coverage["artefacts_searched"] += 1
-            coverage["searched_bytes"] += int(summary.get("searched_bytes") or 0)
-            coverage["tables_matched"] += int(summary.get("tables_matched") or 0)
-            for name in summary.get("named_algorithms") or []:
-                coverage["algorithms"].add(str(name))
-        coverage["complete_tables"] += int(summary.get("complete_tables") or 0)
-    return {"signature_posture": {"signed": signed, "unsigned": unsigned},
-            "encrypted_binaries": encrypted, "key_material": keys,
-            "constants": {**coverage, "algorithms": sorted(coverage["algorithms"])}}
-
-
 class BinaryScanRequest(BaseModel):
     target: str = Field(..., min_length=1, max_length=512,
                         description="file or directory to scan for binaries and firmware")
@@ -532,6 +414,11 @@ class BinaryScanRequest(BaseModel):
     ingest_cbom: bool = Field(False, description=("also load the CBOM into the platform crypto "
                                                   "inventory (POST /cbom/ingest does the same)"))
     system_name: str | None = Field(None, max_length=200, description="CBOM: system the assets belong to")
+    artifact_id: str | None = Field(None, max_length=64, description=(
+        "reuse an existing artifact id instead of minting one — a retried job then rewrites "
+        "its own artifact instead of adding a duplicate"))
+    job_id: str | None = Field(None, max_length=64, description=(
+        "the queued job this scan belongs to, recorded in the manifest and the audit trail"))
 
 
 @router.post("/binary/scan", status_code=status.HTTP_201_CREATED)
@@ -554,7 +441,6 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     this scanner cannot open (zstd/lz4, filesystem images) is reported as refused
     with the reason rather than silently skipped.
     """
-    from datetime import datetime, timezone
 
     import hashlib
     import uuid
@@ -607,73 +493,19 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     packages = result.get("packages") or []
     payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
     sha256 = hashlib.sha256(payload).hexdigest()
-    artifact_id = str(uuid.uuid4())
-    artifact_key = f"{artifact_id}.{'cdx.json' if fmt == 'cyclonedx' else 'spdx.json'}"
-    cbom_key = f"{artifact_id}.cbom.json"
+    artifact_id = body.artifact_id or str(uuid.uuid4())
     compliance = check_minimum_elements(bom)
     components = [{"name": p.get("name"), "version": p.get("version") or p.get("declared_spec"),
                    "ecosystem": p.get("manager")} for p in packages]
     pinning = check_pinning(components)
     findings = result.get("findings") or []
-    manifest = {
-        "artifact_id": artifact_id,
-        "kind": "binary",
-        "target": str(scan.get("target") or body.target),
-        "format": fmt,
-        "sha256": sha256,
-        "component_count": len(packages) + len(result.get("binaries") or []),
-        "binary_count": len(result.get("binaries") or []),
-        "crypto_components": len(result.get("libraries") or []),
-        "dependency_edges": len(result.get("dependencies") or []),
-        "minimum_elements": compliance["score"],
-        "compliant": compliance["compliant"],
-        "pinned": pinning["pinned"],
-        "unpinned": pinning["unpinned"],
-        "vulnerability_count": len(result.get("vulnerabilities") or []),
-        "feed_supplied": bool(body.feed),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "created_by": user,
-        "storage_key": artifact_key,
-        "cbom_storage_key": cbom_key,
-        "scan_options": {"kind": "binary", "target": str(scan.get("target") or body.target),
-                         "as_image": False, "include_vendored": False, "use_lockfiles": False,
-                         "recursive": bool(body.recursive), "include_raw": bool(body.include_raw),
-                         "format": fmt, "feed_supplied": bool(body.feed)},
-        "binary_summary": {
-            "files_walked": result.get("files_walked", 0),
-            "binaries_scanned": result.get("binaries_scanned", 0),
-            "by_format": result.get("by_format") or {},
-            "by_arch": result.get("by_arch") or {},
-            "crypto_libraries": len(result.get("libraries") or []),
-            "algorithms": (result.get("crypto") or {}).get("algorithms") or [],
-            "pqc_markers": (result.get("crypto") or {}).get("pqc_markers") or [],
-            "ecc_markers": (result.get("crypto") or {}).get("ecc_markers") or [],
-            "findings": len(findings),
-            "findings_by_severity": _severity_counts(findings),
-            "findings_excerpt": _finding_excerpt(findings),
-            "findings_excerpt_limit": MAX_REPORT_FINDINGS,
-            "cbom_components": len(cbom.get("components") or []),
-            "truncated": bool((result.get("limits") or {}).get("truncated")),
-            "embedded_binaries": result.get("embedded_binaries", 0),
-            "containers_followed": result.get("containers_followed", 0),
-            "containers_refused": result.get("containers_refused", 0),
-            "packed_binaries": result.get("packed_binaries", 0),
-            "key_material": (result.get("embedded_keys") or {}),
-            "fingerprints": _fingerprint_summary(result),
-            "yara": _yara_summary(result),
-            **_binary_posture(result),
-            "extraction_limits": result.get("extraction_limits") or {},
-        },
-    }
-    secret, key_id = _sbom_signing_secret(db)
-    if secret:
-        manifest["signature_alg"] = "HMAC-SHA256"
-        manifest["signature_key"] = key_id
-        manifest["signature"] = sb.sign_manifest(manifest, secret)
-    store = _sbom_storage()
-    store.put(artifact_key, payload)
-    store.put(cbom_key, json.dumps(cbom, sort_keys=True, separators=(",", ":")).encode("utf-8"))
-    store.put_manifest(artifact_key, manifest)
+    manifest = build_binary_manifest(
+        scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt,
+        target=str(scan.get("target") or body.target), created_by=user, artifact_id=artifact_id,
+        payload_sha256=sha256, compliance=compliance, pinning=pinning,
+        feed_supplied=bool(body.feed), recursive=body.recursive, include_raw=body.include_raw,
+        job_id=body.job_id, ruleset_digest=(result.get("yara") or {}).get("digest"))
+    store_binary_artifact(manifest=manifest, payload=payload, cbom=cbom, secret=_sbom_signing_secret(db))
 
     cbom_result: dict = {"components": len(cbom.get("components") or []), "ingested": False}
     if body.ingest_cbom:
@@ -695,10 +527,9 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
         except Exception as exc:  # noqa: BLE001 — inventory unavailable is reported, never faked
             cbom_result = {"components": len(cbom.get("components") or []), "ingested": False,
                            "error": f"CBOM inventory unavailable: {exc}"}
-    UserRepository(db).audit(user, "devsecops.binary_scan", target_type="sbom_artifact",
-                             target_id=artifact_id,
-                             detail={"target": manifest["target"], "binaries": manifest["binary_count"],
-                                     "findings": len(findings), "sha256": sha256[:16]})
+    audit_artifact(db, user, artifact_id=artifact_id, target=manifest["target"],
+                   binaries=manifest["binary_count"], findings=len(result.get("findings") or []),
+                   sha256=sha256, job_id=body.job_id)
     db.commit()
     return {
         "artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,

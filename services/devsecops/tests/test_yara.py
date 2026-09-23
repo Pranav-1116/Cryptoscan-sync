@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from devsecops import binary_scan as bs
+from devsecops.artifact_store import yara_summary
 from devsecops import yara_rules as yr
 
 _SERVICES = Path(__file__).resolve().parents[2]
@@ -425,11 +426,11 @@ def test_the_manifest_summary_is_manifest_sized():
                        "by_rule": {f"rule_{index}": 1 for index in range(50)},
                        "errors": [{"source": f"f{index}", "error": "x"} for index in range(30)],
                        "sources": [f"r{index}.yar" for index in range(40)]}}
-    summary = _api()._yara_summary(result)
+    summary = yara_summary(result)
     assert summary["rules"] == 120 and summary["matches"] == 7
     assert len(summary["by_rule"]) == 20 and len(summary["errors"]) == 10
     assert len(summary["sources"]) == 20 and summary["digest"] == "ab" * 32
-    assert _api()._yara_summary({}) is None
+    assert yara_summary({}) is None
 
 
 def _api():
