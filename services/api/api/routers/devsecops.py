@@ -16,11 +16,12 @@ import os
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_db_session, require_roles
+from api.dependencies import get_db_session, get_job_repository, require_roles
+from db.repositories.job_repository import JobRepository
 from db.repositories.user_repository import UserRepository
 
 # the manifest/store half of a binary artifact lives in the devsecops package:
@@ -30,9 +31,7 @@ from devsecops.artifact_store import (
     MAX_REPORT_FINDINGS,
     audit_artifact,
     binary_posture as _binary_posture,
-    build_binary_manifest,
     finding_excerpt as _finding_excerpt,
-    resolve_signing_secret,
     severity_counts as _severity_counts,
     store_binary_artifact,
 )
@@ -193,6 +192,8 @@ def _sbom_signing_secret(db: Session | None) -> tuple[str | None, str]:
     (unlike a process-random fallback), so ``/verify`` keeps agreeing with
     artifacts signed earlier in the same deployment.
     """
+    from devsecops.artifact_store import resolve_signing_secret
+
     try:
         from api.config.settings import get_settings
 
@@ -421,6 +422,114 @@ class BinaryScanRequest(BaseModel):
         "the queued job this scan belongs to, recorded in the manifest and the audit trail"))
 
 
+class BinaryScanJobRequest(BaseModel):
+    """Queue a binary scan instead of waiting for it in the request."""
+
+    target: str = Field(..., min_length=1, max_length=4096)
+    yara_rules: list[str] | None = Field(None, description=(
+        "rule files or directories; the built-in rules always run"))
+    format: str = Field("cyclonedx", description="cyclonedx | spdx for the SBOM half")
+    recursive: bool = True
+    include_raw: bool = Field(False, description="keep raw hex context in findings")
+    ingest_cbom: bool = Field(False, description="load the CBOM into the crypto inventory")
+    system_name: str | None = Field(None, max_length=200, description="CBOM: system the assets belong to")
+    system_id: str | None = Field(None, max_length=64, description="stamp this system when the job finishes")
+    artifact_id: str | None = Field(None, max_length=64, description=(
+        "the artifact id to write; minted here when omitted, so the caller can poll the "
+        "artifact before the scan has finished"))
+
+
+class BinaryScanJobResponse(BaseModel):
+    job_id: str
+    artifact_id: str
+    status: str
+    queued_options: dict
+    message: str
+    report_url: str
+    verify_url: str
+    poll_url: str
+
+
+@router.post("/binary/jobs", status_code=status.HTTP_202_ACCEPTED,
+             response_model=BinaryScanJobResponse)
+def binary_scan_job(
+    body: BinaryScanJobRequest,
+    background_tasks: BackgroundTasks,
+    job_repo: JobRepository = Depends(get_job_repository),
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_OPERATORS)),
+):
+    """Queue a binary/firmware scan; poll the job, then read the artifact.
+
+    The synchronous endpoint above is the right call for a directory a request
+    can afford to wait for. A firmware image, a release bundle, or a fleet of
+    artefacts is not that: this queues the same scan as a job, so it can be
+    retried, followed in the console, and failed visibly.
+
+    The artifact id is chosen *now* and returned with the job id, which means the
+    report URL is pollable from the moment of acceptance — a scan that has not
+    finished has no artifact to read, and the endpoints say so rather than
+    inventing one.
+    """
+    import uuid as _uuid
+
+    from api.security.target_validation import TargetValidationError, validate_source_target
+    from api.routers.trigger import enqueue_scan_job
+
+    if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
+        raise HTTPException(status_code=422, detail="format must be cyclonedx or spdx")
+    try:
+        resolved = validate_source_target(body.target, label="target")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not Path(resolved).expanduser().exists():
+        raise HTTPException(status_code=404, detail=f"scan target not found: {resolved}")
+
+    rule_paths: list[str] = []
+    for entry in body.yara_rules or []:
+        try:
+            rule_paths.append(validate_source_target(entry, label="rule path"))
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        if not Path(rule_paths[-1]).expanduser().exists():
+            raise HTTPException(status_code=404, detail=f"rule path not found: {rule_paths[-1]}")
+
+    artifact_id = body.artifact_id or str(_uuid.uuid4())
+    options = {
+        "kind": "binary",
+        "target": resolved,
+        "yara_rules": rule_paths,
+        "format": "spdx" if body.format.lower() == "spdx" else "cyclonedx",
+        "recursive": bool(body.recursive),
+        "include_raw": bool(body.include_raw),
+        "ingest_cbom": bool(body.ingest_cbom),
+        "system_name": body.system_name,
+        "artifact_id": artifact_id,
+    }
+    queued = enqueue_scan_job(
+        job_repo, background_tasks,
+        repo_url=f"binary://{resolved}",
+        branch="main",
+        triggered_by=user,
+        job_type="BINARY",
+        system_id=body.system_id,
+        scan_options=options,
+    )
+    job_id = str(getattr(queued, "job_id", "") or "")
+    _enforce_airgap_writable("devsecops.binary_scan_job")
+    return BinaryScanJobResponse(
+        job_id=job_id,
+        artifact_id=artifact_id,
+        status=str(getattr(queued, "status", "") or "QUEUED"),
+        queued_options=options,
+        message=(f"Binary scan queued. Poll /api/v1/jobs/{job_id} for status; the "
+                 f"artifact appears at the report URL when it exists."),
+        report_url=f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
+        verify_url=f"/api/v1/devsecops/sbom/{artifact_id}/verify",
+        poll_url=f"/api/v1/jobs/{job_id}",
+    )
+
+
 @router.post("/binary/scan", status_code=status.HTTP_201_CREATED)
 def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_OPERATORS))):
@@ -442,13 +551,8 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     with the reason rather than silently skipped.
     """
 
-    import hashlib
-    import uuid
-
     from devsecops import binary_scan as bs
     from devsecops import sbom_scan as sb
-    from devsecops.sbom import check_pinning
-    from devsecops.sbom_assurance import check_minimum_elements
     from api.security.target_validation import TargetValidationError, validate_source_target
 
     if body.format.lower() not in ("cyclonedx", "cdx", "spdx"):
@@ -490,22 +594,16 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
         raise HTTPException(status_code=422, detail=str(exc))
     cbom = bs.cbom_document(scan, target=str(scan.get("target")), created_by=user)
 
-    packages = result.get("packages") or []
-    payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    sha256 = hashlib.sha256(payload).hexdigest()
-    artifact_id = body.artifact_id or str(uuid.uuid4())
-    compliance = check_minimum_elements(bom)
-    components = [{"name": p.get("name"), "version": p.get("version") or p.get("declared_spec"),
-                   "ecosystem": p.get("manager")} for p in packages]
-    pinning = check_pinning(components)
     findings = result.get("findings") or []
-    manifest = build_binary_manifest(
-        scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt,
-        target=str(scan.get("target") or body.target), created_by=user, artifact_id=artifact_id,
-        payload_sha256=sha256, compliance=compliance, pinning=pinning,
-        feed_supplied=bool(body.feed), recursive=body.recursive, include_raw=body.include_raw,
-        job_id=body.job_id, ruleset_digest=(result.get("yara") or {}).get("digest"))
-    store_binary_artifact(manifest=manifest, payload=payload, cbom=cbom, secret=_sbom_signing_secret(db))
+    stored = store_binary_artifact(
+        scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt, created_by=user, db=db,
+        artifact_id=body.artifact_id, job_id=body.job_id, feed_supplied=bool(body.feed),
+        recursive=body.recursive, include_raw=body.include_raw,
+        secret=_sbom_signing_secret(db))
+    artifact_id = stored["artifact_id"]
+    manifest = stored["manifest"]
+    compliance = stored["compliance"]
+    sha256 = stored["payload_sha256"]
 
     cbom_result: dict = {"components": len(cbom.get("components") or []), "ingested": False}
     if body.ingest_cbom:

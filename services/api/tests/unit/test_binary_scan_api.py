@@ -738,3 +738,120 @@ async def test_yara_validate_says_what_will_run_and_what_was_refused(app_db):
 
     outside = await _post(application, "/api/v1/devsecops/yara/validate", {"rules": ["/etc"]})
     assert outside.status_code == 400 and "allowed source roots" in outside.json()["detail"]
+
+
+# --------------------------------------------------------------- queued --- #
+@pytest.mark.asyncio
+async def test_binary_scan_can_be_queued_with_the_artifact_id_known_up_front(app_db, monkeypatch):
+    """The job carries its options, and the caller can poll the artifact id now."""
+    from types import SimpleNamespace
+
+    application, _session, tmp_path = app_db
+    directory = _target_dir(tmp_path)
+    captured = {}
+
+    def _enqueue(job_repo, background_tasks, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(job_id="job-42", status="QUEUED")
+
+    monkeypatch.setattr("api.routers.trigger.enqueue_scan_job", _enqueue)
+    resp = await _post(application, "/api/v1/devsecops/binary/jobs",
+                       {"target": str(directory), "format": "spdx", "ingest_cbom": True,
+                        "system_name": "payment-hsm", "system_id": "sys-9"})
+    assert resp.status_code == 202, resp.text
+    body = resp.json()
+    assert body["job_id"] == "job-42"
+    assert body["queued_options"]["artifact_id"] == body["artifact_id"]
+    assert captured["repo_url"] == f"binary://{directory}"
+    assert captured["job_type"] == "BINARY" and captured["system_id"] == "sys-9"
+    options = captured["scan_options"]
+    assert options["format"] == "spdx" and options["ingest_cbom"] is True
+    assert options["system_name"] == "payment-hsm" and options["recursive"] is True
+    assert body["report_url"].endswith(f"/sbom/{body['artifact_id']}/report?fmt=markdown")
+    assert body["poll_url"] == "/api/v1/jobs/job-42"
+
+
+@pytest.mark.asyncio
+async def test_queued_binary_scan_refuses_a_target_outside_the_roots(app_db):
+    application, _session, _tmp_path = app_db
+    resp = await _post(application, "/api/v1/devsecops/binary/jobs", {"target": "/etc/ssl"})
+    assert resp.status_code == 400, resp.text
+    resp = await _post(application, "/api/v1/devsecops/binary/jobs",
+                       {"target": "/tmp/cryptoscan-sources", "format": "tar"})
+    assert resp.status_code == 422, resp.text
+
+
+def test_the_job_row_carries_the_scan_options_into_the_queue(app_db, monkeypatch):
+    """A queued binary scan keeps its rules and format across a restart."""
+    from fastapi import BackgroundTasks
+
+    from api.routers.trigger import enqueue_scan_job
+    from db.repositories.job_repository import JobRepository
+
+    _application, session, _tmp_path = app_db
+    from types import SimpleNamespace
+
+    published = {}
+    monkeypatch.setattr("api.routers.trigger._publish_job", lambda payload: published.update(payload))
+    monkeypatch.setattr("api.routers.trigger.get_settings",
+                        lambda: SimpleNamespace(REDIS_URL="redis://queue:6379/0",
+                                                SCAN_JOB_QUEUE_KEY="cryptoscan:jobs:queue"))
+    tasks = BackgroundTasks()
+    queued = enqueue_scan_job(
+        JobRepository(session), tasks,
+        repo_url="binary:///tmp/cryptoscan-sources/yara-drill",
+        triggered_by="operator", job_type="BINARY", system_id="sys-9",
+        scan_options={"format": "cyclonedx", "yara_rules": ["/tmp/rules"], "artifact_id": "art-9"},
+    )
+    for task in tasks.tasks:  # FastAPI runs these after the response; here, explicitly
+        task.func(*task.args, **task.kwargs)
+    row = JobRepository(session).get_by_id(queued.job_id)
+    assert row.target_repo.startswith("binary://")
+    assert row.progress["scan_options"]["artifact_id"] == "art-9"
+    assert published["progress"]["scan_options"]["yara_rules"] == ["/tmp/rules"]
+
+
+def test_the_inline_fallback_runs_queued_binary_scans(monkeypatch):
+    """Without Redis the job still runs — through the same binary job code."""
+    from api.routers import trigger
+
+    called = {}
+
+    def _fake_run(job):
+        called["job"] = job
+        return True
+
+    monkeypatch.setattr("worker.pipeline.binary_job.run_binary_job", _fake_run)
+    trigger._run_inline({"job_id": "job-7", "target_repo": "binary:///tmp/target",
+                         "triggered_by": "operator", "progress": {"scan_options": {"format": "spdx"}}})
+    assert called["job"].job_id == "job-7"
+    assert called["job"].target_repo == "binary:///tmp/target"
+    assert called["job"].scan_options == {"format": "spdx"}
+
+
+@pytest.mark.asyncio
+async def test_retrying_a_queued_binary_scan_re_runs_it_with_its_own_options(app_db, monkeypatch):
+    """A retry must actually be scheduled, and must not fall back to defaults."""
+    from db.repositories.job_repository import JobRepository
+
+    application, session, _tmp_path = app_db
+    repo = JobRepository(session)
+    row = repo.create(job_type="BINARY", target_repo="binary:///tmp/cryptoscan-sources/yara-drill",
+                      target_branch="main", triggered_by="operator",
+                      progress={"scan_options": {"format": "spdx", "yara_rules": ["/tmp/rules"],
+                                                 "artifact_id": "art-r"}})
+    session.commit()
+
+    from types import SimpleNamespace
+
+    scheduled = {}
+    monkeypatch.setattr("api.routers.trigger._run_inline", lambda payload: scheduled.update(payload))
+    monkeypatch.setattr("api.routers.trigger.get_settings",
+                        lambda: SimpleNamespace(REDIS_URL="", SCAN_JOB_QUEUE_KEY="cryptoscan:jobs:queue"))
+    resp = await _post(application, f"/api/v1/jobs/{row.job_id}/retry", {})
+    assert resp.status_code == 200, resp.text
+    # the background task runs after the response: if retry_job built its own
+    # BackgroundTasks, nothing would ever have been scheduled
+    assert scheduled["target_repo"] == "binary:///tmp/cryptoscan-sources/yara-drill"
+    assert scheduled["job_type"] == "RETRY"
+    assert scheduled["progress"]["scan_options"]["artifact_id"] == "art-r"

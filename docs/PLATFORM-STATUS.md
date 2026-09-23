@@ -214,6 +214,31 @@ near-duplicate counts and a build-fingerprint column. Tests: +27 `test_fingerpri
 +2 API tests (15 in `test_binary_scan_api.py`); frontend typechecks and builds.
 
 
+**Update (2026-09-23, commit pending, queued binary scans):** a binary scan no longer has to
+fit inside one request. `POST /devsecops/binary/jobs` queues it as a real job (202 + job id +
+**artifact id chosen up front**, so the report URL is pollable from acceptance), the worker
+dispatches `binary://<path>` targets to a binary job instead of the git pipeline
+(`worker/pipeline/binary_job.py`), and progress is reported per stage
+(`binary_target → binary_scan → binary_sbom → binary_store → binary_ingest`) with the
+artifact, counts and by-severity breakdown on the completed job. Failure is explicit: an
+unreadable or refused target, a render error or a storage error marks the job FAILED with the
+reason, while a walk that finds nothing parseable *completes* and says how many files were
+walked (zero findings never reads as zero files looked at). The manifest, signature and
+storage keys now come from one shared builder (`devsecops.artifact_store.store_binary_artifact`)
+called by both the endpoint and the job, so the same target produces the same artifact either
+way — signed with the same key (a queued artifact verifies `OK` against the API's key
+resolution). Scan options live on the job row (`progress.scan_options`), so a retry re-runs the
+*same* scan rather than silently falling back to defaults, and a job with no artifact id of its
+own is keyed by its **job id**: re-running rewrites one artifact instead of adding a duplicate
+(verified live: two runs, three files on disk, one artifact). This also fixed a real bug —
+`POST /jobs/{id}/retry` declared `background_tasks` without the annotation that makes FastAPI
+inject it, so every retry was recorded as QUEUED and never executed. Tests: +10
+`services/worker/tests/unit/test_binary_job.py` (real scan, real artifact store, signature
+verified and wrong-key rejected, refusal leaves no artifact, idempotent by job id),
++5 API tests (22 in `test_binary_scan_api.py`). 493 passed across
+`services/devsecops/tests` + `test_binary_scan_api.py` + `services/cbom/tests` + the worker
+unit tests touched here; ruff clean.
+
 **Update (2026-09-23, commit pending, rule matching):** the binary scanner can now be told
 what to look for. It runs a **documented subset of YARA**, implemented in Python so the
 platform stays air-gapped with no C toolchain and no native `yara`: `private` rules,

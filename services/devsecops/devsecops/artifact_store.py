@@ -19,8 +19,10 @@ never multiplies it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -273,7 +275,53 @@ def resolve_signing_secret(db: Any = None, *, fallback_secret: str | None = None
     return None, "unsigned"
 
 
-def store_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom: dict[str, Any],
+def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: dict[str, Any],
+                          cbom: dict[str, Any], fmt: str = "cyclonedx", created_by: str,
+                          db: Any = None, artifact_id: str | None = None, job_id: str | None = None,
+                          feed_supplied: bool = False, recursive: bool = True,
+                          include_raw: bool = False,
+                          secret: tuple[str | None, str] | None = None) -> dict[str, Any]:
+    """Build the manifest for a finished scan and store it, signed.
+
+    This is the one place a binary artifact is written. The synchronous endpoint
+    and the worker job both call it, so scanning the same target produces the
+    same artifact — same keys, same manifest shape, same signature — whether the
+    work happened inside a request or inside a job.
+
+    The artifact id is the caller's choice: a job passes its own id, so a retry
+    rewrites its artifact instead of adding a duplicate.
+
+    ``secret`` is the caller's resolved signing material; when it is not given the
+    platform order is used (vault ref > persisted settings key > HKDF from the
+    master). A caller that also has a configured ``SECRET_KEY`` should pass
+    :func:`resolve_signing_secret` with it as the fallback, so the worker signs
+    with the key the API verifies with.
+    """
+    from devsecops.sbom import check_pinning
+    from devsecops.sbom_assurance import check_minimum_elements
+
+    payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sha256 = hashlib.sha256(payload).hexdigest()
+    artifact_id = str(artifact_id or uuid.uuid4())
+    compliance = check_minimum_elements(bom)
+    components = [{"name": row.get("name"),
+                   "version": row.get("version") or row.get("declared_spec"),
+                   "ecosystem": row.get("manager")} for row in (result.get("packages") or [])]
+    pinning = check_pinning(components)
+    manifest = build_binary_manifest(
+        scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt,
+        target=str(scan.get("target") or ""), created_by=created_by, artifact_id=artifact_id,
+        payload_sha256=sha256, compliance=compliance, pinning=pinning,
+        feed_supplied=feed_supplied, recursive=recursive, include_raw=include_raw,
+        job_id=job_id, ruleset_digest=(result.get("yara") or {}).get("digest"))
+    written = write_binary_artifact(
+        manifest=manifest, payload=payload, cbom=cbom,
+        secret=resolve_signing_secret(db) if secret is None else secret)
+    return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
+            "pinning": pinning, "payload_sha256": sha256, "components": components, **written}
+
+
+def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom: dict[str, Any],
                           secret: tuple[str | None, str] = (None, "unsigned")) -> dict[str, Any]:
     """Write the SBOM, the CBOM and the manifest under the manifest's own key.
 

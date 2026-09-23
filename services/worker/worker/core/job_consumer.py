@@ -25,6 +25,15 @@ class ScanJob:
     created_at: datetime | str | None = None
     job_type: str = "MANUAL"
     system_id: str | None = None
+    #: the job row's progress JSON as queued — carries ``scan_options`` for the
+    #: non-git targets (a binary scan needs its rules, format and artifact id)
+    progress: dict | None = None
+
+    @property
+    def scan_options(self) -> dict:
+        """Scan options carried on the payload, defaulting to none."""
+        options = (self.progress or {}).get("scan_options")
+        return dict(options) if isinstance(options, dict) else {}
 
 
 _MEMORY_QUEUE: Queue = Queue()
@@ -163,6 +172,7 @@ class JobConsumer:
             created_at=datetime.fromisoformat(created) if created else datetime.utcnow(),
             job_type=data.get("job_type") or "MANUAL",
             system_id=data.get("system_id"),
+            progress=data.get("progress"),
         )
 
 

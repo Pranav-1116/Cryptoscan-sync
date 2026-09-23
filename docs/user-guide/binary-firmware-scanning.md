@@ -21,6 +21,31 @@ curl -sX POST https://host/api/v1/devsecops/sbom/scan \
   -d '{"kind":"binary","target":"/opt/app","format":"cyclonedx"}'
 ```
 
+A firmware image or a release bundle is usually too big to wait for inside a
+request, so the same scan can be queued instead. The artifact id is minted up
+front and returned with the job, which means the report URL is pollable from the
+moment the scan is accepted:
+
+```bash
+# queue it (202) — note the artifact_id you get back
+curl -sX POST https://host/api/v1/devsecops/binary/jobs \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"target":"/opt/app","yara_rules":["/etc/cryptoscan/rules"],"ingest_cbom":true}'
+
+# poll the job: stages, percent, and the artifact when it exists
+curl -s https://host/api/v1/jobs/<job_id> -H "Authorization: Bearer $TOKEN"
+curl -s "https://host/api/v1/devsecops/sbom/<artifact_id>/report?fmt=markdown" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The job runs on the platform's worker (`binary://<path>` targets are dispatched to
+the binary job, not to the git pipeline), reports progress per stage
+(`binary_target → binary_scan → binary_sbom → binary_store → binary_ingest`), and
+fails visibly: an unreadable or refused target, a render error or a storage error
+marks the job FAILED with the reason. Its options live on the job row, so a retry
+(`POST /api/v1/jobs/{id}/retry`) re-runs the *same* scan — same rules, same
+format — and rewrites the same artifact instead of adding a duplicate.
+
 Console: **DevSecOps → Binaries** — path, format, feed, then *Scan binaries*.
 The result shows formats/architectures, crypto implementations, graded findings,
 and the SBOM/CBOM documents; the artifact id works on the SBOM tab for gate,
@@ -407,6 +432,13 @@ dropped.
   signature/encryption posture, key material, constant-table coverage with
   `searched_bytes`) and the finding list with code, severity, title and path —
   the same findings the API returned, not just their counts.
+* **One artifact, two entry points.** The synchronous endpoint and the queued job
+  build the manifest, signature and storage keys by calling the same function
+  (`devsecops.artifact_store.store_binary_artifact`), so scanning the same target
+  produces the same artifact either way — a job is a scheduling decision, not a
+  different scan. The job signs with the same key the API signs with (and the API
+  verifies with); a job with no artifact id of its own uses its **job id**, so
+  re-running it rewrites one artifact instead of leaving two.
 * **Rescan** re-walks the same target with the recorded options. A component
   diff keys on name **and** reference, so a binary called `openssl` and the
   `OpenSSL` library it contains are tracked separately.
@@ -494,3 +526,9 @@ dropped.
   window, 32 MiB for encoded-blob runs, 64 key rows per file, 64 PEM blocks,
   ASN.1 nesting depth 8 and 1 MiB per ASN.1 element. A search that stops at a
   cap says so instead of implying there was nothing more to find.
+* **Queued scans need somewhere to queue.** With `REDIS_URL` configured the job is
+  published for the worker fleet; without it the API runs the same job code
+  in-process so a single-node install still works — but then the "queue" is the
+  API process, and a restart loses whatever was still running. The job row is
+  written first either way, so the retry (`POST /api/v1/jobs/{id}/retry`) is the
+  recovery path, and it re-runs with the options the job was queued with.
