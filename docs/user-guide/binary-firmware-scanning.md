@@ -534,7 +534,7 @@ curl /api/v1/devsecops/binary/batches/<batch_id>
 # -> {jobs, by_status:{COMPLETED:…}, totals:{binaries_scanned, findings, yara_matches}, files:[…]}
 ```
 
-**Identity is content, not path.** Four decisions, all of them reported:
+**Identity is content, not path.** Five outcomes, all of them reported:
 
 | Decision | Why |
 | --- | --- |
