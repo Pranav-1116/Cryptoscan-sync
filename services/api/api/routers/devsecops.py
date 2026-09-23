@@ -530,6 +530,95 @@ def binary_scan_job(
     )
 
 
+class BinaryDynamicRequest(BaseModel):
+    """Run a sample under the ADR-012 LD_PRELOAD tracer — or only preflight it."""
+
+    target: str = Field(..., min_length=1, max_length=4096, description="the sample to analyse")
+    args: list[str] = Field(default_factory=list, max_length=32,
+                            description="argv handed to the sample (bounded: count and length)")
+    cwd: str | None = Field(None, max_length=512,
+                            description="working directory for the run (default: a scratch dir, removed after)")
+    timeout: int | None = Field(None, ge=1, le=60,
+                                description="wall-clock seconds; killed (whole process group) on expiry")
+    execute: bool = Field(False, description=(
+        "actually run the sample. Off by default; refused unless the host sets "
+        "BINARY_EXECUTION_ENABLED=true (ADR-012: opt-in, never a default)"))
+    submit: bool = Field(False, description=(
+        "ingest the observations as runtime findings, so dynamic evidence sits beside the "
+        "eBPF/mesh agent rows in the same inventory"))
+    hostname: str | None = Field(None, max_length=255,
+                                 description="host to attribute the observations to")
+    scanner_id: str = Field("ld-preload-agent-v1.0", max_length=100,
+                            description="scanner id recorded on every ingested finding")
+
+
+@router.post("/binary/dynamic")
+def binary_dynamic(
+    body: BinaryDynamicRequest,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_OPERATORS)),
+):
+    """Dynamic analysis of one sample under the LD_PRELOAD tracer (ADR-012).
+
+    Without ``execute`` this is the preflight: it says exactly what would happen
+    ("this host allows execution", "the sample is statically linked, the tracer
+    cannot load", "the run budget is spent") and starts no process — which is the
+    answer most callers want, because the static scan already covered the file.
+
+    With ``execute`` the sample runs only if the host opted in *and* the sample
+    passed the preflight. A refusal is a 403 with every reason, not a quiet
+    "no dynamic findings": an empty dynamic result must never be readable as
+    "the sample was clean".
+
+    ``submit`` hands the observations to the runtime-findings ingest, so a
+    binary's runtime crypto behaviour lands in the same inventory, verdicts and
+    SSE stream as the always-on agents.
+    """
+    from api.security.target_validation import TargetValidationError, validate_source_target
+    from devsecops import dynamic_scan as dyn
+
+    try:
+        resolved = validate_source_target(body.target, label="target")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not Path(resolved).expanduser().exists():
+        raise HTTPException(status_code=404, detail=f"sample not found: {resolved}")
+
+    policy = dyn.ExecutionPolicy.from_env()
+    result = dyn.dynamic_scan(
+        resolved, args=body.args, timeout=body.timeout, policy=policy,
+        cwd=body.cwd, execute=body.execute,
+    )
+    if body.execute and not result["executed"]:
+        # asked to run, did not run: the caller must not have to read the body to notice
+        raise HTTPException(status_code=403, detail={
+            "message": "the sample was not executed",
+            "refusals": result["refusals"],
+            "checks": result["checks"],
+            "limits": result["limits"],
+        })
+    if result["executed"]:
+        _enforce_airgap_writable("devsecops.binary_dynamic")
+
+    ingested = None
+    if body.submit and result["executed"]:
+        from api.routers.runtime import RuntimeFindingsBody, ingest_runtime_findings
+
+        payload = dyn.to_runtime_findings(result, hostname=body.hostname, scanner_id=body.scanner_id)
+        ingested = ingest_runtime_findings(RuntimeFindingsBody(**payload), user=user, db=db)
+
+    UserRepository(db).audit(
+        user, "devsecops.binary_dynamic", target_type="binary", target_id=str(result["target"]),
+        detail={"executed": result["executed"], "refusals": result["refusals"],
+                "observations": len(result["observations"]),
+                "findings": len(result["findings"]), "timed_out": result["timed_out"],
+                "runtime_findings_ingested": (ingested or {}).get("accepted"),
+                "sha256": (result.get("sha256_before") or "")[:16]},
+    )
+    db.commit()
+    return {**result, "runtime_ingest": ingested}
+
+
 @router.post("/binary/scan", status_code=status.HTTP_201_CREATED)
 def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_OPERATORS))):

@@ -1713,6 +1713,45 @@ export const apiJobRetry = (jobId: string) =>
 export const apiYaraValidate = (body: { rules?: string[]; text?: string }) =>
   _sbomReq<any>("/api/v1/devsecops/yara/validate", "POST", body, 30000);
 
+export interface DynamicScanResult {
+  target: string; executed: boolean; runnable: boolean; refusals: string[];
+  findings: any[]; observations: any[]; limits: string[]; tracer?: string | null;
+  duration_ms: number; timed_out: boolean; returncode?: number | null;
+  changed: boolean; sha256_before?: string | null; sha256_after?: string | null;
+  runtime_ingest?: { accepted?: number; anomalies?: number; persisted?: any } | null;
+}
+
+/**
+ * Dynamic analysis of one sample under the LD_PRELOAD tracer (ADR-012).
+ * Without `execute` this is the preflight and starts nothing. With it, a 403 is
+ * not an error to swallow: the body carries every reason the sample did not run,
+ * which is exactly what the operator needs to see — so this one keeps the body.
+ */
+export async function apiBinaryDynamic(body: {
+  target: string; args?: string[]; timeout?: number; execute?: boolean;
+  submit?: boolean; hostname?: string;
+}): Promise<{ ok: boolean; status: number; data: DynamicScanResult | null; refusals: string[]; error: string }> {
+  try {
+    const resp = await fetch("/api/v1/devsecops/binary/dynamic", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      credentials: "include",
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(90000),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const detail = payload?.detail;
+      const refusals = detail && typeof detail === "object" && Array.isArray(detail.refusals) ? detail.refusals : [];
+      const error = typeof detail === "string" ? detail : (detail?.message || `HTTP ${resp.status}`);
+      return { ok: false, status: resp.status, data: null, refusals, error };
+    }
+    return { ok: true, status: resp.status, data: payload as DynamicScanResult, refusals: [], error: "" };
+  } catch (e) {
+    return { ok: false, status: 0, data: null, refusals: [], error: String(e) };
+  }
+}
+
 /** The CBOM stored next to a binary-scan artifact. */
 export const apiBinaryCbom = (artifactId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/binary/artifacts/${artifactId}/cbom`, "GET", undefined, 30000);

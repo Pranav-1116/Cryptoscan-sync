@@ -78,7 +78,10 @@ def _verdict_rows(body: RuntimeFindingsBody) -> list[dict[str, Any]]:
         suite = item.cipher_suite
         version = (item.tls_version or "").upper()
         if kind == "session":
-            info = parse_algorithm(str(suite or "TLS"))
+            # an agent that reports a TLS suite gives us the suite; an agent that
+            # reports a bare crypto call (LD_PRELOAD tracer, ADR-012) gives us the
+            # algorithm — either way, that string is what the registry must judge
+            info = parse_algorithm(str(suite or item.algorithm or "TLS"))
             status = extra.get("suite_status") or info.status
             algorithm = info.canonical
             bulk = next((c for c in info.components if c.get("role") == "bulk_cipher"), None)

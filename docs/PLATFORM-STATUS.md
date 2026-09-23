@@ -135,6 +135,36 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, dynamic analysis under the tracer):** the binary
+scanner's one structural gap — it can say what is *in* a file, never what the file *does* —
+is now closable without building a sandbox. `devsecops/dynamic_scan.py` drives the platform's
+existing **ADR-012 LD_PRELOAD crypto tracer** (no kernel agent, no privileges, no gVisor) and
+is off unless the host turns it on: `BINARY_EXECUTION_ENABLED=true` **and** the sample inside
+`CRYPTOSCAN_SOURCE_ROOTS`/`BINARY_EXECUTION_ALLOWLIST`, **and** an executable, dynamically
+linked ELF/PE/Mach-O matching the host architecture, **and** inside the hourly run budget
+(`BINARY_EXECUTION_MAX_RUNS_PER_HOUR`, default 20). Every refusal is a finding
+(`BIN-DYNAMIC-REFUSED`, `BIN-DYNAMIC-DRY-RUN`, `BIN-DYNAMIC-TRACER-UNAVAILABLE`), never an
+empty result — "not run" must never read as "nothing found". A run is bounded by an explicit
+allow, a cache-cleared scratch cwd, a credential-blanked environment, and a wall-clock timeout
+that kills the whole **process group** (a forking sample is bounded, not contained); the
+result carries `limits[]` saying exactly what is *not* isolating it, and the sample's
+sha256 before/after, so a self-modifying binary is a `HIGH` finding. Observations
+(`EVP_CipherInit_ex`/`_DigestInit_ex`/`EVP_PKEY_*`/`SSL_CTX_set_*`) are aggregated per
+process/function/algorithm and classified by the platform's own registry + quantum
+classifiers — `AES-256-ECB` → `HIGH` (registry DISALLOWED), `MD5` → `HIGH` (classically
+broken), `AES-128-CBC` → `MEDIUM` (Grover), an unresolvable name →
+`BIN-DYNAMIC-UNIDENTIFIED-CIPHER` (`LOW`) instead of a false all-clear. `--submit` /
+`submit: true` posts to `POST /scans/runtime-findings`, so binary runtime crypto sits in the
+same inventory, verdicts and SSE stream as the eBPF/mesh agents; the ingest now judges a bare
+crypto call by its own algorithm (previously only TLS suites were judged) and the runtime
+dedup key includes the algorithm and mode, so two ciphers from one process are two rows.
+New `POST /devsecops/binary/dynamic` (dry run 200, or 403 with every refusal when
+`execute: true` cannot be honoured) and a CLI (`python -m devsecops.dynamic_scan SAMPLE
+--execute --submit -- <argv>`, exit 0/4/2/1). Tests: +47 `test_dynamic_scan.py`, +12
+`test_binary_dynamic_api.py`, +3 runtime ingest; live drill: `openssl dgst -md5` under the
+tracer → `2` observations → `MD5 DISALLOWED` row in the runtime inventory, and a CLI run
+landed `7` rows (`AES-256-ECB` DISALLOWED, `AES-128-CBC` ALLOWED+Grover, `SHA-256` hash-marginal).
+
 **Update (2026-09-23, commit pending, embedded key material):** the binary scanner now
 finds **key material inside binaries**, byte-first, with a hand-rolled DER/ASN.1 reader
 (no third-party crypto dependency): PEM armour for every key/certificate/request label

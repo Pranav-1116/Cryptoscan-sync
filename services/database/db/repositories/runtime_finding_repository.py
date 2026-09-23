@@ -23,6 +23,10 @@ def dedup_key_for(row: dict[str, Any]) -> str:
             row.get("pid"),
             row.get("tls_version"),
             row.get("cipher_suite"),
+            # bare crypto calls carry no suite: without the algorithm the key,
+            # two different ciphers from one process would fold into one row
+            row.get("algorithm"),
+            extra.get("mode"),
             extra.get("library"),
             extra.get("library_version"),
         )

@@ -6,8 +6,8 @@ import {
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
   apiSbomGate, apiSbomRescan, apiSbomPrune, apiSbomLicense, apiSbomComponents,
   apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
-  apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiJobStatus, apiYaraValidate,
-  apiConnectorPreview,
+  apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiBinaryDynamic, apiJobStatus,
+  apiYaraValidate, apiConnectorPreview, DynamicScanResult,
 } from "../lib/api.js";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
@@ -694,6 +694,43 @@ function BinaryPanel() {
   const [jobBusy, setJobBusy] = useState(false);
   const rules = () => (rulesPath.trim() ? [rulesPath.trim()] : []);
 
+  // dynamic analysis (ADR-012 LD_PRELOAD tracer). The host has to allow it and the
+  // sample has to pass the preflight; a refusal is shown with its reasons, never as
+  // an empty result. The preflight starts nothing, so it is safe to click first.
+  const [dynArgs, setDynArgs] = useState("");
+  const [dynSubmit, setDynSubmit] = useState(true);
+  const [dyn, setDyn] = useState<DynamicScanResult | null>(null);
+  const [dynRefusals, setDynRefusals] = useState<string[]>([]);
+  const [dynError, setDynError] = useState<string | null>(null);
+  const [dynBusy, setDynBusy] = useState(false);
+  const dynArgv = () => dynArgs.trim().split(/\s+/).filter(Boolean);
+
+  /** Preflight only: no process is started, and the refusals are the answer. */
+  const preflight = async () => {
+    if (!target.trim()) { setDynError("target is required"); return; }
+    setDynBusy(true); setDynError(null); setDynRefusals([]); setDyn(null);
+    try {
+      const answer = await apiBinaryDynamic({ target: target.trim(), args: dynArgv() });
+      setDyn(answer.data); setDynRefusals(answer.refusals);
+      if (!answer.ok && !answer.refusals.length) setDynError(answer.error);
+    } catch (e) { setDynError(String(e)); }
+    setDynBusy(false);
+  };
+
+  /** Run it under the tracer — only where the host has opted in and the sample passed. */
+  const runDynamic = async () => {
+    if (!target.trim()) { setDynError("target is required"); return; }
+    setDynBusy(true); setDynError(null); setDynRefusals([]); setDyn(null);
+    try {
+      const answer = await apiBinaryDynamic({
+        target: target.trim(), args: dynArgv(), execute: true, submit: dynSubmit,
+      });
+      setDyn(answer.data); setDynRefusals(answer.refusals);
+      if (!answer.ok && !answer.refusals.length) setDynError(answer.error);
+    } catch (e) { setDynError(String(e)); }
+    setDynBusy(false);
+  };
+
   /** What the ruleset will do — before trusting a scan to it. */
   const validateRules = async () => {
     setRulesBusy(true); setRulesInfo(null);
@@ -882,6 +919,63 @@ function BinaryPanel() {
           {jobError && <div style={{ color: "var(--red, #e5484d)", marginTop: 4 }}>{jobError}</div>}
         </div>
       )}
+      <div className="mt" style={{ marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          dynamic analysis (ADR-012 LD_PRELOAD tracer) — off unless the host sets BINARY_EXECUTION_ENABLED.
+          The sample would run with this process&#39;s privileges and network reach, so the preflight and the
+          result both state their limits; nothing is executed until you ask for it.
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <input className="inp" style={{ flex: 1, minWidth: 220 }}
+            placeholder="arguments for the sample (space separated, optional)"
+            value={dynArgs} onChange={(e) => setDynArgs(e.target.value)} />
+          <label style={{ fontSize: 12.5 }}>
+            <input type="checkbox" checked={dynSubmit} onChange={(e) => setDynSubmit(e.target.checked)} />
+            {" "}record as runtime findings
+          </label>
+          <button className="btn sm" onClick={() => void preflight()} disabled={dynBusy}>Preflight</button>
+          <button className="btn sm" onClick={() => void runDynamic()} disabled={dynBusy}>
+            {dynBusy ? "working…" : "Run under tracer"}
+          </button>
+          {dynError && <Badge tone="red"><span className="dot" /> {dynError}</Badge>}
+        </div>
+        {dynRefusals.length > 0 && (
+          <div style={{ color: "var(--red, #e5484d)", fontSize: 12.5, marginTop: 4 }}>
+            not executed: {dynRefusals.join("; ")}
+          </div>
+        )}
+        {dyn && (
+          <div style={{ fontSize: 12.5, marginTop: 4 }}>
+            <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <Badge tone={dyn.executed ? "green" : "gray"}>{dyn.executed ? "executed" : "not executed"}</Badge>
+              <Badge tone="gray">{dyn.tracer || "no tracer"}</Badge>
+              <span className="muted">
+                {dyn.observations.length} crypto observations · {dyn.duration_ms} ms
+                {dyn.timed_out ? " · killed at the timeout" : ""}
+                {dyn.returncode !== null && dyn.returncode !== undefined ? ` · exit ${dyn.returncode}` : ""}
+                {dyn.changed ? " · the sample's bytes changed while it ran" : ""}
+              </span>
+              {dyn.runtime_ingest?.accepted ? (
+                <Badge tone="green">{dyn.runtime_ingest.accepted} runtime findings recorded</Badge>
+              ) : null}
+            </div>
+            {dyn.findings.slice(0, 8).map((f: any, i: number) => (
+              <div key={i} className="muted" style={{ marginTop: 2 }}>
+                <Badge tone={f.severity === "HIGH" ? "red" : f.severity === "MEDIUM" ? "amber" : "gray"}>{f.severity}</Badge>{" "}
+                <span className="mono">{f.code}</span> {f.title}
+              </div>
+            ))}
+            {dyn.executed && dyn.limits.length > 0 && (
+              <details style={{ marginTop: 4 }}>
+                <summary className="muted">what did not isolate this run ({dyn.limits.length})</summary>
+                <ul className="muted" style={{ margin: "4px 0 0 18px" }}>
+                  {dyn.limits.map((l, i) => <li key={i}>{l}</li>)}
+                </ul>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
       <div className="mt" style={{ marginBottom: 8 }}>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
           rule files or directories (YARA subset, optional) — the platform&#39;s own rules always run; a rule that cannot

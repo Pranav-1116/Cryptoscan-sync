@@ -398,6 +398,61 @@ the scanned tree is **not** matched against its own rules — and the count of f
 skipped for that reason is reported (`rule_files_skipped`) rather than silently
 dropped.
 
+### 3.5 Running a sample under the tracer — opt-in, and never the default
+
+Static analysis answers "what is in this file". The one question it cannot answer
+is "what does this file *do*", and the honest answer for a binary scanner is:
+only if you deliberately run it. This scanner ships the platform's existing
+**LD_PRELOAD crypto tracer** (ADR-012) as an opt-in step — no kernel agent, no
+privileges, no gVisor build:
+
+```bash
+# dry run: the preflight, with no process started (this is the default)
+python -m devsecops.dynamic_scan /srv/images/payment-gw
+
+# actually run it, and send what was observed to the runtime inventory
+BINARY_EXECUTION_ENABLED=true CRYPTOSCAN_SOURCE_ROOTS=/srv \
+CRYPTOSCAN_API_BASE=https://cryptoscan.example CRYPTOSCAN_API_KEY=csk_… \
+python -m devsecops.dynamic_scan /srv/images/payment-gw --execute --submit -- \
+  --config /etc/gw.conf
+```
+
+Everything after `--` is the sample's own argv. Exit codes: `0` did what was
+asked, `4` was asked to execute and refused (every reason is printed), `2`
+executed but could not submit (the payload is in the JSON so it can be replayed),
+`1` a hard error. The same step is available over the API:
+
+```bash
+curl -X POST /api/v1/devsecops/binary/dynamic \
+  -d '{"target": "/srv/images/payment-gw", "execute": true, "submit": true,
+       "hostname": "gw-01", "timeout": 10}'
+# 200 with the run, or 403 with every refusal and the limits of the environment
+```
+
+**Execution is off unless the host says otherwise.** `BINARY_EXECUTION_ENABLED=true`
+is required, and a run additionally has to be inside `CRYPTOSCAN_SOURCE_ROOTS`
+(and `BINARY_EXECUTION_ALLOWLIST`, when set), be an executable ELF/PE/Mach-O, be
+**dynamically linked** (you cannot preload into a static binary), match the host
+architecture, and fit the hourly run budget (`BINARY_EXECUTION_MAX_RUNS_PER_HOUR`,
+default 20). Any of those failing is a **finding** (`BIN-DYNAMIC-REFUSED`), never a
+silent empty result — "we did not run it" must not read as "it did nothing".
+
+What is *observed*: `EVP_CipherInit_ex`, `EVP_DigestInit_ex`, `EVP_PKEY_*`,
+`EVP_PKEY_keygen`, and the `SSL_CTX_set_*` version/cipher hooks, aggregated per
+process, function and algorithm with a count. Algorithms are metadata only — the
+tracer records names, key sizes and modes, **never key material**. Each
+observation is classified by the platform's own registry and quantum classifiers,
+so `AES-256-ECB` comes back `HIGH` (the registry disallows ECB), `MD5` `HIGH`
+(classically broken), `AES-128-CBC` `MEDIUM` (Grover), and a cipher whose name the
+shim could not resolve comes back `BIN-DYNAMIC-UNIDENTIFIED-CIPHER` at `LOW`
+rather than being called clean.
+
+With `submit`, the observations are posted to `POST /scans/runtime-findings` —
+the same ingest the always-on eBPF/mesh agents use — so a binary's runtime crypto
+behaviour lands in one inventory, with one verdict vocabulary and one SSE stream:
+`GET /scans/runtime-findings` shows it beside the agents' rows, with the sample's
+SHA-256, the function that made the call, and the classification it received.
+
 ## 4. What flows onward
 
 * **SBOM (CycloneDX 1.5 / SPDX 2.3)** — every parsed binary is a component
@@ -457,6 +512,16 @@ dropped.
   `BIN-FIRMWARE-NOT-EXTRACTED`. What *can* be opened (a gzip/xz stream or a cpio
   initramfs in the same image) is followed and reported alongside. To inventory
   what is inside a filesystem, scan the mounted or extracted tree.
+* **A dynamic run is not a sandbox.** There is no gVisor, no seccomp, no network
+  namespace and no user separation: the sample runs as the scanning user, with
+  that user's filesystem access and network reach. What bounds it is an explicit
+  allow, the allowlist/root checks, a process-group wall-clock timeout, a scratch
+  working directory, a credential-blanked environment and an hourly run budget —
+  and every one of those is echoed back in `limits` so "it ran here" is never
+  mistaken for "it was contained". The tracer only sees **dynamically linked**
+  crypto (OpenSSL/libcrypto/BoringSSL); a sample carrying its own AES is invisible
+  to it, and a sample that performs no crypto in this run looks exactly like one
+  that never does. A run also proves nothing about paths it did not take.
 * **A mitigation flag is not the same as a live mitigation.** `DllCharacteristics`
   says what the image was *built* for; the load config says whether the security
   cookie is initialised and CFG is instrumented. Both are reported, and the
