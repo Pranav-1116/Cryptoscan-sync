@@ -6,7 +6,8 @@ import {
   apiSbomScan, apiSbomArtifacts, apiSbomValidate, apiSbomDiff, apiSbomVerify,
   apiSbomGate, apiSbomRescan, apiSbomPrune, apiSbomLicense, apiSbomComponents,
   apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
-  apiBinaryScan, apiBinaryCbom, apiConnectorPreview,
+  apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiJobStatus, apiYaraValidate,
+  apiConnectorPreview,
 } from "../lib/api.js";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
@@ -682,6 +683,72 @@ function BinaryPanel() {
   const [showCbom, setShowCbom] = useState(false);
   const [storedCbom, setStoredCbom] = useState<string | null>(null);
   const [storedBusy, setStoredBusy] = useState(false);
+  // rule files / directories for the YARA subset (the built-in rules always run)
+  const [rulesPath, setRulesPath] = useState("");
+  const [rulesInfo, setRulesInfo] = useState<{ ok: boolean; text: string } | null>(null);
+  const [rulesBusy, setRulesBusy] = useState(false);
+  // a queued scan: the job id and its progress, polled until it stops moving
+  const [job, setJob] = useState<{ job_id: string; artifact_id: string; status: string } | null>(null);
+  const [jobProgress, setJobProgress] = useState<any | null>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const [jobBusy, setJobBusy] = useState(false);
+  const rules = () => (rulesPath.trim() ? [rulesPath.trim()] : []);
+
+  /** What the ruleset will do — before trusting a scan to it. */
+  const validateRules = async () => {
+    setRulesBusy(true); setRulesInfo(null);
+    try {
+      const answer = await apiYaraValidate({ rules: rules() });
+      const summary = answer.data?.summary;
+      if (!answer.ok || !summary) {
+        setRulesInfo({ ok: false, text: answer.error || "ruleset could not be loaded" });
+      } else {
+        const errors = (summary.errors || []).map((e: any) => `${e.source}: ${e.error}`);
+        setRulesInfo({
+          ok: (summary.error_count || 0) === 0,
+          text: `${summary.rules} rules (${summary.private_rules} private) · digest ${String(summary.digest).slice(0, 16)}`
+            + (errors.length ? ` · ${summary.error_count} refused: ${errors.slice(0, 3).join("; ")}` : ""),
+        });
+      }
+    } catch (e) { setRulesInfo({ ok: false, text: String(e) }); }
+    setRulesBusy(false);
+  };
+
+  /** Queue the scan; the artifact id is known now, so the report URL is pollable. */
+  const queue = async () => {
+    if (!target.trim()) { setJobError("target is required"); return; }
+    setJobBusy(true); setJobError(null); setJobProgress(null);
+    try {
+      const answer = await apiBinaryScanJob({
+        target: target.trim(), recursive, include_raw: includeRaw, format: fmt,
+        yara_rules: rules(),
+      });
+      if (!answer.ok || !answer.data?.job_id) {
+        setJobError(answer.error || "the scan could not be queued");
+      } else {
+        setJob({ job_id: answer.data.job_id, artifact_id: answer.data.artifact_id, status: answer.data.status });
+      }
+    } catch (e) { setJobError(String(e)); }
+    setJobBusy(false);
+  };
+
+  // poll the queued job: progress while it runs, the artifact when it is done
+  React.useEffect(() => {
+    if (!job?.job_id) return;
+    let stop = false;
+    const tick = async () => {
+      const answer = await apiJobStatus(job.job_id);
+      if (stop) return;
+      const data = answer.data;
+      if (!answer.ok || !data) { setJobError(answer.error || "job status unavailable"); return; }
+      setJobProgress(data.progress || null);
+      setJob((prev) => (prev ? { ...prev, status: data.status } : prev));
+      if (data.status === "COMPLETED" || data.status === "FAILED") { stop = true; return; }
+      window.setTimeout(() => void tick(), 2000);
+    };
+    void tick();
+    return () => { stop = true; };
+  }, [job?.job_id]);
 
   /** Prove the CBOM was persisted: read it back from the artifact store. */
   const fetchStoredCbom = async () => {
@@ -716,6 +783,7 @@ function BinaryPanel() {
     try {
       setRes(await apiBinaryScan({
         target: target.trim(), recursive, include_raw: includeRaw, format: fmt, feed,
+        yara_rules: rules(),
       }));
     } catch (e) { setRes({ source: "live", ok: false, data: null, error: String(e) }); }
     setBusy(false);
@@ -784,6 +852,55 @@ function BinaryPanel() {
         <label><input type="checkbox" checked={recursive} onChange={(e) => setRecursive(e.target.checked)} /> descend into subdirectories</label>
         <label><input type="checkbox" checked={includeRaw} onChange={(e) => setIncludeRaw(e.target.checked)} /> include unrecognised blobs that carry crypto evidence</label>
       </div>
+      {job && (
+        <div className="mt" style={{ marginBottom: 8, fontSize: 12.5 }}>
+          <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            <Badge tone={job.status === "COMPLETED" ? "green" : job.status === "FAILED" ? "red" : "amber"}>
+              job {job.status.toLowerCase()}
+            </Badge>
+            <span className="mono">{job.job_id}</span>
+            <span className="muted">
+              {jobProgress?.current_stage ? `stage ${jobProgress.current_stage}` : "waiting for the worker"}
+              {typeof jobProgress?.percent === "number" ? ` · ${jobProgress.percent}%` : ""}
+            </span>
+            <button className="btn sm" onClick={() => setJob(null)}>dismiss</button>
+          </div>
+          {jobProgress?.binary && (
+            <div className="muted" style={{ marginTop: 4 }}>
+              {jobProgress.binary.binaries_scanned} binaries from {jobProgress.binary.files_walked} files ·{" "}
+              {jobProgress.binary.findings} findings
+              {jobProgress.binary.yara_matches ? ` · ${jobProgress.binary.yara_matches} rule matches` : ""}
+              {" · artifact "}<span className="mono">{jobProgress.binary.artifact_id}</span>
+              {jobProgress.binary.report_url ? (
+                <>
+                  {" · "}
+                  <a href={jobProgress.binary.report_url} target="_blank" rel="noreferrer">report</a>
+                </>
+              ) : null}
+            </div>
+          )}
+          {jobError && <div style={{ color: "var(--red, #e5484d)", marginTop: 4 }}>{jobError}</div>}
+        </div>
+      )}
+      <div className="mt" style={{ marginBottom: 8 }}>
+        <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
+          rule files or directories (YARA subset, optional) — the platform&#39;s own rules always run; a rule that cannot
+          be parsed is refused and reported, never silently skipped
+        </div>
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input className="inp" style={{ flex: 1, minWidth: 260 }}
+            placeholder="/etc/cryptoscan/rules/vendor.yar or a directory of .yar files"
+            value={rulesPath} onChange={(e) => setRulesPath(e.target.value)} />
+          <button className="btn sm" onClick={() => void validateRules()} disabled={rulesBusy}>
+            {rulesBusy ? "loading…" : "Check rules"}
+          </button>
+        </div>
+        {rulesInfo && (
+          <div style={{ fontSize: 12.5, marginTop: 4, color: rulesInfo.ok ? "var(--green, #30a46c)" : "var(--red, #e5484d)" }}>
+            {rulesInfo.text}
+          </div>
+        )}
+      </div>
       <div className="mt" style={{ marginBottom: 8 }}>
         <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
           advisory feed (JSON array, optional) — binary-detected crypto implementations match against ecosystem &#34;generic&#34; rows
@@ -795,6 +912,10 @@ function BinaryPanel() {
       </div>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn sm primary" onClick={() => void scan()} disabled={busy}>{busy ? "scanning…" : "Scan binaries"}</button>
+        <button className="btn sm" onClick={() => void queue()} disabled={jobBusy}>
+          {jobBusy ? "queueing…" : "Queue as job"}
+        </button>
+        {jobError && <Badge tone="red"><span className="dot" /> {jobError}</Badge>}
         {d?.artifact_id && (
           <>
             <Badge tone={d.manifest?.signature ? "green" : "gray"}>{d.manifest?.signature ? "signed artifact" : "unsigned artifact"}</Badge>

@@ -1692,8 +1692,26 @@ export const apiSbomComponents = (filters: { q?: string; crypto?: boolean; limit
 /** Binary/firmware scan: real parsing + graded crypto evidence -> SBOM + CBOM. */
 export const apiBinaryScan = (body: {
   target: string; recursive?: boolean; include_raw?: boolean; format?: string;
-  feed?: any[]; ingest_cbom?: boolean;
-}) => _sbomReq<any>("/api/v1/devsecops/binary/scan", "POST", body, 60000);
+  feed?: any[]; ingest_cbom?: boolean; yara_rules?: string[];
+}) => _sbomReq<any>("/api/v1/devsecops/binary/scan", "POST", body, 120000);
+
+/** Queue the same scan as a job (202): poll the job, then read the artifact. */
+export const apiBinaryScanJob = (body: {
+  target: string; recursive?: boolean; include_raw?: boolean; format?: string;
+  yara_rules?: string[]; ingest_cbom?: boolean; system_name?: string;
+}) => _sbomReq<any>("/api/v1/devsecops/binary/jobs", "POST", body, 30000);
+
+/** Job status/progress (the binary job reports its stages here). */
+export const apiJobStatus = (jobId: string) =>
+  _sbomReq<any>(`/api/v1/jobs/${encodeURIComponent(jobId)}`, "GET", undefined, 15000);
+
+/** Re-queue a job with the options it was queued with. */
+export const apiJobRetry = (jobId: string) =>
+  _sbomReq<any>(`/api/v1/jobs/${encodeURIComponent(jobId)}/retry`, "POST", {}, 15000);
+
+/** What a ruleset will do, rule by rule, before anything is scanned. */
+export const apiYaraValidate = (body: { rules?: string[]; text?: string }) =>
+  _sbomReq<any>("/api/v1/devsecops/yara/validate", "POST", body, 30000);
 
 /** The CBOM stored next to a binary-scan artifact. */
 export const apiBinaryCbom = (artifactId: string) =>

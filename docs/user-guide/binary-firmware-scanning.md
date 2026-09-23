@@ -46,10 +46,16 @@ marks the job FAILED with the reason. Its options live on the job row, so a retr
 (`POST /api/v1/jobs/{id}/retry`) re-runs the *same* scan — same rules, same
 format — and rewrites the same artifact instead of adding a duplicate.
 
-Console: **DevSecOps → Binaries** — path, format, feed, then *Scan binaries*.
-The result shows formats/architectures, crypto implementations, graded findings,
-and the SBOM/CBOM documents; the artifact id works on the SBOM tab for gate,
-licence, VEX, diff and rescan.
+Console: **DevSecOps → Binaries** — path, format, optional rule files, feed, then
+*Scan binaries*. The result shows formats/architectures, crypto implementations,
+graded findings, and the SBOM/CBOM documents; the artifact id works on the SBOM
+tab for gate, licence, VEX, diff and rescan.
+
+The same panel can do the two things the CLI examples above do: **Check rules**
+loads the rule files and reports how many rules will run, the bundle digest and
+every rule that was refused — before a scan is trusted to them; **Queue as job**
+submits the scan and shows the job's stage and percentage as it runs, then the
+artifact, counts and a link to the report.
 
 `GET /api/v1/devsecops/binary/artifacts/{artifact_id}/cbom` returns the CBOM that
 was stored with the scan.

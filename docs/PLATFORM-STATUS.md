@@ -235,7 +235,11 @@ own is keyed by its **job id**: re-running rewrites one artifact instead of addi
 inject it, so every retry was recorded as QUEUED and never executed. Tests: +10
 `services/worker/tests/unit/test_binary_job.py` (real scan, real artifact store, signature
 verified and wrong-key rejected, refusal leaves no artifact, idempotent by job id),
-+5 API tests (22 in `test_binary_scan_api.py`). 493 passed across
++5 API tests (22 in `test_binary_scan_api.py`). The console **Binaries** panel gained
+**Check rules** (`POST /devsecops/yara/validate`: rules loaded, digest, every rule refused) and
+**Queue as job** (`POST /devsecops/binary/jobs` + polling of `/jobs/{id}`: stage, percent,
+then artifact, per-severity counts and a report link); frontend typechecks and builds.
+493 passed across
 `services/devsecops/tests` + `test_binary_scan_api.py` + `services/cbom/tests` + the worker
 unit tests touched here; ruff clean.
 
