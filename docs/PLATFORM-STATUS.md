@@ -135,6 +135,52 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, binary artifacts are tenant-scoped and sealed at
+rest):** a binary artifact is the most sensitive document this platform writes down —
+the SBOM lists every component and path in a shipped image, the CBOM names the algorithms
+in use, the manifest counts private keys — and until now all of it sat in one shared
+directory in the clear, readable by any reader role in any organization. Two changes fix
+that. **Location:** every artifact is written under `tenants/<tenant>/…`, the manifest
+records `tenant_id`/`tenant_bucket`, and every read path (list, report, download, verify,
+CBOM, diff, gate, licence, VEX, components, advisories, retention) resolves the manifest
+through one tenant-filtered lookup — another tenant's artifact is answered as *absent*
+(404, no existence oracle), never listed, and never counted in its owner's views. **Key:**
+`devsecops/artifact_crypto.py` derives one key per tenant by HKDF-SHA256 from a master
+secret (`CRYPTOSCAN_ARTIFACT_KEY`, falling back to `SECRET_KEY`), seals each payload and
+CBOM with AES-256-GCM under a random nonce, and stores only the key *id* — so a database
+or volume dump carries no key material, two tenants' ciphertexts are unreadable with each
+other's key even for identical documents, and a leaked backup of one prefix is not a key
+to the other. The manifest stays readable on disk on purpose: it is the index a listing,
+gate and diff read without needing a key, which is why it carries counts, labels and an
+excerpt rather than the whole document — and that limit is written down here rather than
+left implied. The artifact's own `sha256` and HMAC signature stay over the **plaintext**,
+so verification, gating, diffing and the SBOM/CBOM digests are unchanged by sealing; a
+tampered or key-mismatched object fails authentication (`tampered`/`wrong_key`/`no_key`)
+instead of decrypting to an empty document. Sealing is recorded *inside* the signed
+manifest (`at_rest: {algorithm, key_id, key_source}`), so "is this scan encrypted, and
+under whose key" travels with the artifact; the scan response carries it as `at_rest`,
+and `GET /devsecops/binary/at-rest` answers the auditor's two questions together —
+algorithm and key id, plus how many artifacts in this tenant are still plaintext, because
+"encryption is configured" and "every artifact is encrypted" are different statements.
+A queued job carries `tenant_id` in its scan options (a worker has no request to ask), and
+an install with no tenant context uses the `platform` estate — where artifacts written
+before this existed already live, so nothing on disk became unreadable: a legacy plaintext
+object is returned with `at_rest.algorithm: none` rather than assumed encrypted or lost.
+No key configured is likewise recorded, not glossed over: the object is written plain and
+the manifest says so. Tests: +14 `test_artifact_crypto.py` (round-trip, per-tenant key
+stability, tenant separation, tamper and rotation detection, no-key and legacy paths,
+scope escaping) and +10 `test_artifact_tenancy.py` (prefix and object-level separation,
+the same document under two keys differing, cross-tenant refusal reasons, the platform
+estate, a refused tenant id writing nothing), +5 `test_artifact_tenancy_api.py` (a
+tenant's scan seals its own artifact; another tenant gets 404 on report/download/cbom/
+diff and an empty list while the owner sees it; the at-rest endpoint's counts and key
+ids; a session caller cannot name a tenant it is not a member of; a platform scan stays
+readable) against a 631-test sweep. Console: the binary panel shows the stored-artifact
+sealing line (algorithm + key id, or a red plaintext warning) beside the table set.
+Stated limit: the manifest's own body is the index and is not sealed yet, so it should
+not be given document-sized content; sealing it needs the store to decrypt on listing,
+which is the next step, not a claim made here.
+
 **Update (2026-09-23, commit pending, constant tables in update bundles):** the air-gap
 update path reached rules first; the *constant database* was still release-only, so an
 algorithm the scanner's tables do not cover could not be taught to a disconnected
@@ -158,13 +204,15 @@ the digest the registry recorded before they are searched — a table edited on 
 host after installation is reported as an error on the scan rather than searched as
 if it were signed — and the table overlay is scoped to one walk (a context variable
 set around `scan_path`, reset after), so two scans cannot leak tables into each other.
-The drill found two holes, both fixed and now covered by tests. **The bundle was
-rules-only.** `export_bundle` wrote `rules/` and stopped, so a pack built correctly on
-the workstation arrived through the air gap with its tables missing and was refused on
-the far side as incomplete — a table that never crossed. The bundle now carries
-`tables/` too, there is a test that exports, unpacks, verifies and installs a table pack
-as one artefact, and a test that strips the tables out of an archive and asserts the
-arrival is refused rather than half-installed. **`already-installed` could be a lie.**
+The drill found two holes, both fixed and now covered by tests. **A pack that lists
+tables could cross the gap without them.** `export_bundle` copies the content
+directories the manifest lists, so an archive built from an older pack (before tables
+existed) arrived, correctly, without any — and an installer that trusted presence over
+the manifest would have installed a pack that is not the pack that was signed. Arrival
+now checks the manifest against what is actually in the archive: a listed table that is
+missing is a refusal with the file named, not a half-installed pack. There is a test
+that exports, unpacks, verifies and installs a table pack as one artefact, and a test
+that strips the tables out of an archive and asserts the refusal. **`already-installed` could be a lie.**
 Install matched on the pack digest alone, so a table edited on the host after
 installation made the next install answer `already-installed` and leave the damaged
 copy in place: present, and not what was signed. Re-installing now compares each file

@@ -9,7 +9,7 @@ import {
   apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiBinaryDynamic, apiBinaryBatch,
   apiBinaryBatchStatus, apiJobStatus, apiYaraValidate, apiConnectorPreview,
   DynamicScanResult, BinaryBatchResult, KnowledgeState,
-  apiKnowledge, apiKnowledgeInstall, apiKnowledgeUninstall,
+  apiBinaryAtRest, apiKnowledge, apiKnowledgeInstall, apiKnowledgeUninstall,
 } from "../lib/api.js";
 
 /* DevSecOps pipeline gates — deterministic, rule-based: container CVE scan
@@ -701,6 +701,11 @@ function BinaryPanel() {
   const [knowledge, setKnowledge] = useState<KnowledgeState | null>(null);
   const [packPath, setPackPath] = useState("");
   const [packBusy, setPackBusy] = useState(false);
+  const [atRest, setAtRest] = useState<{
+    tenant: string; artifacts: number; plaintext_artifacts: number;
+    by_algorithm: Record<string, number>;
+    at_rest: { algorithm: string; encrypted: boolean; key_id?: string; key_source: string; note?: string };
+  } | null>(null);
   const [packInfo, setPackInfo] = useState<{ ok: boolean; text: string; reasons: string[] } | null>(null);
 
   // dynamic analysis (ADR-012 LD_PRELOAD tracer). The host has to allow it and the
@@ -754,8 +759,11 @@ function BinaryPanel() {
     return () => { stop = true; };
   }, [batch?.batch_id, batch?.dry_run]);
 
-  // which rules this host will load: read once, refreshed after every install
+  // which rules and constant tables this host will load: read once, refreshed
+  // after every install
   React.useEffect(() => { void loadKnowledge(); }, []);
+  // how this tenant's stored artifacts are protected on disk (algorithm, key id)
+  React.useEffect(() => { void loadAtRest(); }, []);
 
   /** Preflight only: no process is started, and the refusals are the answer. */
   const preflight = async () => {
@@ -786,6 +794,11 @@ function BinaryPanel() {
   const loadKnowledge = async () => {
     const answer = await apiKnowledge();
     if (answer.ok && answer.data) setKnowledge(answer.data);
+  };
+
+  const loadAtRest = async () => {
+    const answer = await apiBinaryAtRest();
+    if (answer.ok) setAtRest(answer.data);
   };
 
   /** Verify (dry run) or verify-and-install a pack. Refusal reasons are the answer. */
@@ -1211,6 +1224,23 @@ function BinaryPanel() {
               <span className="mono">{String(knowledge.ruleset.digest).slice(0, 16)}</span> · built-in{" "}
               {knowledge.builtin.rules} · {Object.keys(knowledge.installed).length} pack(s) installed
             </div>
+            {atRest && (
+              <div className="muted">
+                stored artifacts <b>{atRest.artifacts}</b> ·{" "}
+                {atRest.at_rest.encrypted ? (
+                  <>
+                    sealed <b>{atRest.at_rest.algorithm}</b> · key{" "}
+                    <span className="mono">{atRest.at_rest.key_id}</span>
+                  </>
+                ) : (
+                  <span style={{ color: "var(--red, #e5484d)" }}>
+                    plaintext — {atRest.at_rest.note || "no artifact key configured"}
+                  </span>
+                )}
+                {atRest.plaintext_artifacts > 0 && atRest.at_rest.encrypted
+                  ? ` · ${atRest.plaintext_artifacts} plaintext from before` : ""}
+              </div>
+            )}
             {knowledge.tables && (
               <div className="muted">
                 constant tables <b>{knowledge.tables.total}</b> · digest{" "}

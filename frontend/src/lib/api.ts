@@ -1816,6 +1816,30 @@ export interface KnowledgeState {
  * What this host will load: the built-in rules plus every installed pack, with the
  * digest of the set a scan actually uses. Reading it is a read-only operation.
  */
+export interface BinaryAtRest {
+  tenant: string;
+  artifacts: number;
+  by_algorithm: Record<string, number>;
+  by_key_id: Record<string, number>;
+  plaintext_artifacts: number;
+  at_rest: {
+    algorithm: string;
+    encrypted: boolean;
+    key_id?: string;
+    key_source: string;
+    note?: string;
+  };
+}
+
+/**
+ * How stored binary artifacts are protected on disk: the algorithm, the key *id*
+ * (never the key), and how many artifacts in this tenant are still plaintext —
+ * because "encryption is configured" and "every artifact is encrypted" are
+ * different statements, and the second one is the auditable one.
+ */
+export const apiBinaryAtRest = () =>
+  _sbomReq<BinaryAtRest>("/api/v1/devsecops/binary/at-rest", "GET", undefined, 20000);
+
 export const apiKnowledge = () =>
   _sbomReq<KnowledgeState>("/api/v1/devsecops/knowledge", "GET", undefined, 20000);
 

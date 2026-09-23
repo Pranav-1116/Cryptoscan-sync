@@ -15,6 +15,14 @@ the rest of this package, so importing it costs nothing.
 Idempotency: pass ``artifact_id`` and the artifact is rewritten under that id
 instead of a fresh one. A retried job therefore replaces its own artifact; it
 never multiplies it.
+
+Tenancy: an artifact belongs to the tenant that asked for it. Its objects are
+written under that tenant's own prefix and sealed with that tenant's own key
+(:mod:`devsecops.artifact_crypto`), so a backup of one organization's storage
+prefix is not readable with another's key — and reading an artifact back checks
+the bucket before the bytes. An install with no tenant context uses the platform
+estate (``platform``), which is also where artifacts written before this existed
+live, so nothing on disk became unreadable.
 """
 
 from __future__ import annotations
@@ -26,6 +34,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from devsecops import artifact_crypto
 
 #: how many scanner findings a manifest carries for the report; the counts in
 #: ``findings_by_severity`` are always complete, this is the readable excerpt
@@ -168,21 +178,33 @@ def binary_posture(result: dict) -> dict:
             "constants": constants}
 
 
+def artifact_tenant_bucket(tenant_id: Any) -> str:
+    """The storage/int-key scope for a tenant (blank -> the platform estate)."""
+    return artifact_crypto.normalize_tenant(tenant_id)
+
+
 def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: dict[str, Any],
                           cbom: dict[str, Any], fmt: str, target: str, created_by: str,
                           artifact_id: str, payload_sha256: str, compliance: dict[str, Any],
                           pinning: dict[str, Any], feed_supplied: bool = False,
                           recursive: bool = True, include_raw: bool = False,
-                          job_id: str | None = None, ruleset_digest: str | None = None) -> dict:
+                          job_id: str | None = None, ruleset_digest: str | None = None,
+                          tenant_id: str | None = None, at_rest: dict[str, Any] | None = None) -> dict:
     """Assemble the manifest both the API response and the stored report read.
 
     ``job_id``/``ruleset_digest`` are recorded when the scan came from the queue
     or ran with rules, so a stored artifact can be traced back to the job that
     produced it and the exact rule text that was applied.
+
+    ``tenant_id`` scopes the storage keys and is recorded on the manifest, and
+    ``at_rest`` records how the payload was sealed (algorithm, key id, key
+    source) so the answer to "is this encrypted?" travels with the artifact
+    rather than living in a runbook.
     """
     packages = result.get("packages") or []
     findings = result.get("findings") or []
-    artifact_key = f"{artifact_id}.{'cdx.json' if fmt == 'cyclonedx' else 'spdx.json'}"
+    bucket = artifact_tenant_bucket(tenant_id)
+    artifact_key = f"tenants/{bucket}/{artifact_id}.{'cdx.json' if fmt == 'cyclonedx' else 'spdx.json'}"
     # the fleet comparison is reported exactly when it ran; ``None`` here means
     # "this scan was not a fleet scan", not "no duplicates were found"
     fingerprints = fingerprint_summary(result)
@@ -204,8 +226,12 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
         "feed_supplied": bool(feed_supplied),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": created_by,
+        "tenant_id": str(tenant_id) if tenant_id else None,
+        "tenant_bucket": bucket,
+        "at_rest": at_rest or {"algorithm": "none", "encrypted": False,
+                               "note": "sealing was not recorded for this artifact"},
         "storage_key": artifact_key,
-        "cbom_storage_key": f"{artifact_id}.cbom.json",
+        "cbom_storage_key": f"tenants/{bucket}/{artifact_id}.cbom.json",
         "job_id": job_id,
         "ruleset_digest": ruleset_digest,
         "scan_options": {"kind": "binary", "target": target, "as_image": False,
@@ -297,7 +323,9 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                           db: Any = None, artifact_id: str | None = None, job_id: str | None = None,
                           feed_supplied: bool = False, recursive: bool = True,
                           include_raw: bool = False,
-                          secret: tuple[str | None, str] | None = None) -> dict[str, Any]:
+                          secret: tuple[str | None, str] | None = None,
+                          tenant_id: str | None = None,
+                          encryption_secret: str | None = None) -> dict[str, Any]:
     """Build the manifest for a finished scan and store it, signed.
 
     This is the one place a binary artifact is written. The synchronous endpoint
@@ -313,13 +341,29 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
     master). A caller that also has a configured ``SECRET_KEY`` should pass
     :func:`resolve_signing_secret` with it as the fallback, so the worker signs
     with the key the API verifies with.
+
+    ``tenant_id`` is the artifact's owner: the payload and the CBOM are sealed
+    with that tenant's key and written under its prefix, and the manifest records
+    the tenant and the sealing, before it is signed — so the signature covers the
+    statement about how the artifact was protected, not just its content. With no
+    key material configured the objects are written plain and the manifest says
+    ``algorithm: none``: a downgrade that is recorded is one an auditor can find,
+    an unrecorded one is not.
     """
     from devsecops.sbom import check_pinning
     from devsecops.sbom_assurance import check_minimum_elements
 
     payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    # the digest and the signature stay over the *plaintext*: verification, gating
+    # and diffing must not change because the bytes at rest are sealed
     sha256 = hashlib.sha256(payload).hexdigest()
     artifact_id = str(artifact_id or uuid.uuid4())
+    scope = artifact_tenant_bucket(tenant_id)
+    sealed_payload, at_rest = artifact_crypto.encrypt_blob(
+        payload, tenant_id=scope, secret=encryption_secret)
+    cbom_bytes = json.dumps(cbom, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    sealed_cbom, _ = artifact_crypto.encrypt_blob(cbom_bytes, tenant_id=scope,
+                                                 secret=encryption_secret)
     compliance = check_minimum_elements(bom)
     components = [{"name": row.get("name"),
                    "version": row.get("version") or row.get("declared_spec"),
@@ -330,26 +374,33 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
         target=str(scan.get("target") or ""), created_by=created_by, artifact_id=artifact_id,
         payload_sha256=sha256, compliance=compliance, pinning=pinning,
         feed_supplied=feed_supplied, recursive=recursive, include_raw=include_raw,
-        job_id=job_id, ruleset_digest=(result.get("yara") or {}).get("digest"))
+        job_id=job_id, ruleset_digest=(result.get("yara") or {}).get("digest"),
+        tenant_id=tenant_id, at_rest=at_rest)
     written = write_binary_artifact(
-        manifest=manifest, payload=payload, cbom=cbom,
+        manifest=manifest, payload=sealed_payload, cbom_blob=sealed_cbom,
         secret=resolve_signing_secret(db) if secret is None else secret)
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
             "pinning": pinning, "payload_sha256": sha256, "components": components, **written}
 
 
-def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom: dict[str, Any],
+def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob: bytes,
                           secret: tuple[str | None, str] = (None, "unsigned")) -> dict[str, Any]:
     """Write the SBOM, the CBOM and the manifest under the manifest's own key.
 
-    Signing is applied here, once, so both callers produce the same signature for
-    the same manifest. Returns the storage keys for the caller's response.
+    ``payload``/``cbom_blob`` arrive already sealed (see
+    :func:`store_binary_artifact`), so this function never decides the protection
+    story — it writes what the manifest it is given says was written. Signing is
+    applied here, once, so both callers produce the same signature for the same
+    manifest. The manifest itself stays readable on disk on purpose: it is the
+    artifact's index (it is what a listing, a gate and a diff read without a
+    key), which is why it carries counts, labels and an excerpt rather than the
+    whole document.
     """
     key = str(manifest["storage_key"])
     cbom_key = str(manifest["cbom_storage_key"])
     store = artifact_storage()
     store.put(key, payload)
-    store.put(cbom_key, json.dumps(cbom, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+    store.put(cbom_key, cbom_blob)
     signing_secret_value, key_id = secret
     if signing_secret_value:
         from devsecops import sbom_scan as sb
@@ -360,6 +411,83 @@ def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom: dic
     store.put_manifest(key, manifest)
     return {"artifact_key": key, "cbom_key": cbom_key, "signed": bool(signing_secret_value),
             "signature_key": key_id}
+
+
+# --------------------------------------------------------------------------- #
+# reading back: one tenant at a time
+# --------------------------------------------------------------------------- #
+
+def manifest_tenant(manifest: dict[str, Any]) -> str:
+    """Which bucket an artifact belongs to.
+
+    A manifest written before tenancy recorded nothing, and lands in the platform
+    estate — the same bucket an install without tenants uses, so a single-tenant
+    deployment's history stays readable after the upgrade.
+    """
+    raw = manifest.get("tenant_bucket") or manifest.get("tenant_id")
+    try:
+        return artifact_tenant_bucket(raw)
+    except artifact_crypto.ArtifactCryptoError:  # noqa: PERF203 — a bad stored value is not a scope
+        return artifact_crypto.PLATFORM_TENANT
+
+
+def visible_manifests(store: Any, *, tenant_id: str | None = None) -> list[dict[str, Any]]:
+    """Every manifest this tenant may see (its own bucket, nothing else)."""
+    scope = artifact_tenant_bucket(tenant_id)
+    return [row for row in store.list_manifests() if manifest_tenant(row) == scope]
+
+
+def find_manifest(store: Any, artifact_id: str, *, tenant_id: str | None = None,
+                  ) -> dict[str, Any] | None:
+    """The tenant's manifest for an id — another tenant's artifact is *absent*.
+
+    Not "forbidden": an id that exists elsewhere is not something this caller
+    needs to learn, and a 403 would say it exists.
+    """
+    scope = artifact_tenant_bucket(tenant_id)
+    for row in store.list_manifests():
+        if str(row.get("artifact_id")) == artifact_id and manifest_tenant(row) == scope:
+            return row
+    return None
+
+
+def read_artifact_blob(store: Any, manifest: dict[str, Any], *, tenant_id: str | None = None,
+                       encryption_secret: str | None = None,
+                       label: str = "stored SBOM") -> tuple[bytes, dict[str, Any]]:
+    """The plaintext bytes of a stored artifact, for its tenant.
+
+    Raises :class:`devsecops.artifact_crypto.ArtifactCryptoError` when the object
+    cannot be opened with this tenant's key (``wrong_tenant``/``no_key``/
+    ``tampered``/``malformed``), so a caller can answer with the reason instead of
+    an empty document.
+    """
+    scope = artifact_tenant_bucket(tenant_id)
+    owner = manifest_tenant(manifest)
+    if owner != scope:
+        raise artifact_crypto.ArtifactCryptoError(
+            "wrong_tenant",
+            f"{label} belongs to tenant {owner!r}, not {scope!r} — tenants read their own artifacts")
+    key = manifest.get("storage_key")
+    if not key:
+        raise artifact_crypto.ArtifactCryptoError("malformed", f"{label} has no storage key")
+    blob = store.get(str(key))
+    return artifact_crypto.decrypt_blob(blob, tenant_id=scope, secret=encryption_secret, label=label)
+
+
+def read_artifact_cbom(store: Any, manifest: dict[str, Any], *, tenant_id: str | None = None,
+                       encryption_secret: str | None = None) -> tuple[bytes, dict[str, Any]]:
+    """The plaintext CBOM of a stored artifact, for its tenant."""
+    key = manifest.get("cbom_storage_key")
+    if not key:
+        raise artifact_crypto.ArtifactCryptoError("malformed", "the artifact has no CBOM key")
+    scoped = dict(manifest, storage_key=key)
+    return read_artifact_blob(store, scoped, tenant_id=tenant_id,
+                              encryption_secret=encryption_secret, label="stored CBOM")
+
+
+def at_rest_status(tenant_id: str | None = None, *, secret: str | None = None) -> dict[str, Any]:
+    """What a store would do for this tenant — for a status/health answer."""
+    return artifact_crypto.at_rest_report(tenant_id, secret)
 
 
 def audit_artifact(db: Any, actor: str, *, artifact_id: str, target: str, binaries: int,

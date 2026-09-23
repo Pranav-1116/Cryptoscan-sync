@@ -17,7 +17,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -28,13 +28,19 @@ from db.repositories.user_repository import UserRepository
 # the manifest/store half of a binary artifact lives in the devsecops package:
 # the same functions serve this router (synchronous scan) and the worker process
 # (queued job), so both produce one artifact, not two dialects of one
+from devsecops.artifact_crypto import ArtifactCryptoError
 from devsecops.artifact_store import (
     MAX_REPORT_FINDINGS,
+    at_rest_status as _at_rest_status,
     audit_artifact,
     binary_posture as _binary_posture,
     finding_excerpt as _finding_excerpt,
+    find_manifest as _find_manifest,
+    read_artifact_blob as _read_artifact_blob,
+    read_artifact_cbom as _read_artifact_cbom,
     severity_counts as _severity_counts,
     store_binary_artifact,
+    visible_manifests as _visible_manifests,
 )
 
 router = APIRouter(prefix="/devsecops", tags=["devsecops"])
@@ -186,6 +192,91 @@ def _sbom_storage():
     if _SBOM_STORE is None:
         _SBOM_STORE = artifact_storage()
     return _SBOM_STORE
+
+
+def _artifact_tenant(request: Request, db: Session | None = None,
+                     user: str | None = None) -> str | None:
+    """Which tenant's artifacts this request may read and write.
+
+    Three cases, in order: an API key minted inside a tenant is hard-bound to it
+    (the auth middleware puts the binding on the request, and a mismatched
+    ``X-Tenant-ID`` was already refused) — that is the path scanners use; a
+    session caller naming an ``X-Tenant-ID`` may use it only with a membership in
+    it; anything else is the **platform estate** (``None``), which is also where
+    artifacts written before tenancy live. So nothing on disk became unreadable,
+    and a tenant-bound key can never reach another tenant's bucket by accident.
+    """
+    binding = getattr(request.state, "tenant_id", None)
+    if binding:
+        return str(binding)
+    header = (request.headers.get("x-tenant-id") or "").strip()
+    if not header:
+        return None
+    if db is None or not user:
+        raise HTTPException(status_code=403, detail="X-Tenant-ID needs a tenant-scoped principal")
+    from db.repositories.tenant_repository import TenantRepository
+
+    if TenantRepository(db).membership(header, user) is None:
+        raise HTTPException(status_code=403, detail=f"not a member of tenant {header}")
+    return header
+
+
+def _sealed_error(exc: ArtifactCryptoError) -> HTTPException:
+    """Map a sealing failure to an answer that names the reason.
+
+    A cross-tenant object is *absent* (the manifest lookup already filtered it);
+    an object this tenant owns but cannot open — no key on this host, a rotated
+    master, an edited object — is a 422 carrying the reason, never an empty
+    document that would read as "the artifact says nothing".
+    """
+    if exc.reason == "wrong_tenant":
+        return HTTPException(status_code=404, detail="artifact not found")
+    return HTTPException(status_code=422, detail={"message": str(exc), "reason": exc.reason})
+
+
+def _artifact_blob(store, manifest: dict, tenant_id: str | None,
+                   *, label: str = "stored SBOM"):
+    """(plaintext, at_rest) for an artifact of this tenant, or a 404/422."""
+    try:
+        return _read_artifact_blob(store, manifest, tenant_id=tenant_id, label=label)
+    except ArtifactCryptoError as exc:
+        raise _sealed_error(exc) from exc
+
+
+def _artifact_cbom_blob(store, manifest: dict, tenant_id: str | None):
+    try:
+        return _read_artifact_cbom(store, manifest, tenant_id=tenant_id)
+    except ArtifactCryptoError as exc:
+        raise _sealed_error(exc) from exc
+
+
+@router.get("/binary/at-rest")
+def binary_at_rest(request: Request, db: Session = Depends(get_db_session),
+                   user: str = Depends(require_roles(*_SBOM_READERS))):
+    """How this tenant's artifacts are protected on disk — and what is on the disk.
+
+    An auditor asks two questions this endpoint answers together: is the payload
+    encrypted, with which key (id only), and are there artifacts in my bucket that
+    are *not*? Counting by algorithm is what turns "encryption is configured" into
+    "every artifact but the three from before the upgrade".
+    """
+    tenant = _artifact_tenant(request, db, user)
+    store = _sbom_storage()
+    rows = _visible_manifests(store, tenant_id=tenant)
+    counts: dict[str, int] = {}
+    key_ids: dict[str, int] = {}
+    for row in rows:
+        at_rest = row.get("at_rest") or {}
+        algorithm = str(at_rest.get("algorithm") or "unrecorded")
+        counts[algorithm] = counts.get(algorithm, 0) + 1
+        if at_rest.get("key_id"):
+            key_ids[str(at_rest["key_id"])] = key_ids.get(str(at_rest["key_id"]), 0) + 1
+    return {"tenant": tenant or "platform",
+            "at_rest": _at_rest_status(tenant),
+            "artifacts": len(rows),
+            "by_algorithm": counts,
+            "by_key_id": key_ids,
+            "plaintext_artifacts": counts.get("none", 0) + counts.get("unrecorded", 0)}
 
 
 def _sbom_signing_secret(db: Session | None) -> tuple[str | None, str]:
@@ -460,11 +551,14 @@ class BinaryScanJobResponse(BaseModel):
 def _binary_options(*, target: str, artifact_id: str, rules: list[str] | None = None,
                      fmt: str = "cyclonedx", recursive: bool = True, include_raw: bool = False,
                      ingest_cbom: bool = False, system_name: str | None = None,
-                     batch_id: str | None = None) -> dict:
+                     batch_id: str | None = None, tenant_id: str | None = None) -> dict:
     """The options a queued binary scan runs with — one builder for both entry points.
 
     A single queued scan and a fleet pass have to produce the same artifact, so
-    the options are assembled here instead of at each call site.
+    the options are assembled here instead of at each call site. ``tenant_id``
+    travels with them because a worker process has no request to ask: without it
+    the job would store the artifact in the platform estate and its tenant would
+    then have no way to read back its own scan.
     """
     options: dict = {
         "kind": "binary",
@@ -476,6 +570,7 @@ def _binary_options(*, target: str, artifact_id: str, rules: list[str] | None = 
         "ingest_cbom": bool(ingest_cbom),
         "system_name": system_name,
         "artifact_id": artifact_id,
+        "tenant_id": tenant_id,
     }
     if batch_id:
         options["batch_id"] = batch_id
@@ -486,6 +581,7 @@ def _binary_options(*, target: str, artifact_id: str, rules: list[str] | None = 
              response_model=BinaryScanJobResponse)
 def binary_scan_job(
     body: BinaryScanJobRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     job_repo: JobRepository = Depends(get_job_repository),
     db: Session = Depends(get_db_session),
@@ -532,7 +628,7 @@ def binary_scan_job(
         target=resolved, artifact_id=artifact_id, rules=rule_paths, fmt=body.format,
         recursive=bool(body.recursive), include_raw=bool(body.include_raw),
         ingest_cbom=bool(body.ingest_cbom), system_name=body.system_name,
-        batch_id=body.batch_id,
+        batch_id=body.batch_id, tenant_id=_artifact_tenant(request, db, user),
     )
     queued = enqueue_scan_job(
         job_repo, background_tasks,
@@ -585,6 +681,7 @@ class BinaryBatchRequest(BaseModel):
 @router.post("/binary/batch")
 def binary_batch(
     body: BinaryBatchRequest,
+    request: Request,
     background_tasks: BackgroundTasks,
     job_repo: JobRepository = Depends(get_job_repository),
     db: Session = Depends(get_db_session),
@@ -647,13 +744,15 @@ def binary_batch(
     ]
     artifact_ids: dict[str, str] = {}
     job_ids: dict[str, str] = {}
+    tenant_id = _artifact_tenant(request, db, user)
     if not body.dry_run:
         for row, candidate in zip(queued_files, plan.queued):
             artifact_id = str(_uuid.uuid4())
             options = _binary_options(
                 target=candidate.path, artifact_id=artifact_id, rules=rule_paths, fmt=body.format,
                 recursive=bool(body.recursive), include_raw=bool(body.include_raw),
-                ingest_cbom=bool(body.ingest_cbom), system_name=body.system_name, batch_id=batch_id,
+                ingest_cbom=bool(body.ingest_cbom), system_name=body.system_name,
+                batch_id=batch_id, tenant_id=tenant_id,
             )
             queued = enqueue_scan_job(
                 job_repo, background_tasks, repo_url=f"binary://{candidate.path}", branch="main",
@@ -858,7 +957,8 @@ def binary_dynamic(
 
 
 @router.post("/binary/scan", status_code=status.HTTP_201_CREATED)
-def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
+def binary_scan(body: BinaryScanRequest, request: Request,
+                db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_OPERATORS))):
     """Scan binaries, shared libraries, archives and firmware images end to end.
 
@@ -930,7 +1030,8 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
         scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt, created_by=user, db=db,
         artifact_id=body.artifact_id, job_id=body.job_id, feed_supplied=bool(body.feed),
         recursive=body.recursive, include_raw=body.include_raw,
-        secret=_sbom_signing_secret(db))
+        secret=_sbom_signing_secret(db),
+        tenant_id=_artifact_tenant(request, db, user))
     artifact_id = stored["artifact_id"]
     manifest = stored["manifest"]
     compliance = stored["compliance"]
@@ -962,6 +1063,10 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     db.commit()
     return {
         "artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
+        # "is this scan encrypted at rest, and under whose key" is part of the
+        # answer, not something to go and read off the disk afterwards
+        "at_rest": manifest.get("at_rest") or {},
+        "tenant": manifest.get("tenant_id"),
         "summary": manifest["binary_summary"],
         "findings": findings[:200],
         "crypto_libraries": result.get("libraries") or [],
@@ -1232,25 +1337,30 @@ def knowledge_uninstall(body: KnowledgeUninstallRequest,
 
 
 @router.get("/binary/artifacts/{artifact_id}/cbom")
-def binary_cbom(artifact_id: str, user: str = Depends(require_roles(*_SBOM_READERS))):
-    """The CBOM stored alongside a binary-scan artifact."""
+def binary_cbom(artifact_id: str, request: Request, db: Session = Depends(get_db_session),
+                user: str = Depends(require_roles(*_SBOM_READERS))):
+    """The CBOM stored alongside a binary-scan artifact (this tenant's only)."""
     if not _ARTIFACT_ID_RE.match(artifact_id):
         raise HTTPException(status_code=404, detail="artifact not found")
     store = _sbom_storage()
-    key = f"{artifact_id}.cbom.json"
-    try:
-        blob = store.get(key)
-    except Exception:  # noqa: BLE001
+    man = _find_manifest(store, artifact_id, tenant_id=_artifact_tenant(request, db, user))
+    if man is None:
         raise HTTPException(status_code=404, detail="no CBOM stored for this artifact")
+    blob, _at_rest = _artifact_cbom_blob(store, man, _artifact_tenant(request, db, user))
     return json.loads(blob.decode("utf-8"))
 
 
 @router.get("/sbom/artifacts")
-def sbom_artifacts(kind: str | None = None, fmt: str | None = None,
+def sbom_artifacts(request: Request, kind: str | None = None, fmt: str | None = None,
                   q: str | None = None, limit: int = 50,
+                  db: Session = Depends(get_db_session),
                   user: str = Depends(require_roles(*_SBOM_READERS))):
-    """List generated SBOM artifacts (newest first, capped at 50)."""
-    items = _sbom_storage().list_manifests()
+    """List generated SBOM artifacts (newest first, capped at 50).
+
+    Only this caller's tenant: an artifact written by another organization is not
+    in this list at all, which is the point of listing it here.
+    """
+    items = _visible_manifests(_sbom_storage(), tenant_id=_artifact_tenant(request, db, user))
     items.sort(key=lambda m: str(m.get("created_at") or ""), reverse=True)
     if kind:
         wanted = kind.strip().lower()
@@ -1294,7 +1404,7 @@ class SbomDiffRequest(BaseModel):
 
 
 @router.post("/sbom/diff")
-def sbom_diff(body: SbomDiffRequest,
+def sbom_diff(body: SbomDiffRequest, request: Request, db: Session = Depends(get_db_session),
               user: str = Depends(require_roles(*_SBOM_READERS))):
     """Diff two SBOMs (stored artifacts or inline docs): components added,
     removed, version-changed (upgrade/downgrade), license changes, crypto
@@ -1303,14 +1413,19 @@ def sbom_diff(body: SbomDiffRequest,
 
     store = _sbom_storage()
 
+    tenant = _artifact_tenant(request, db, user)
+
     def _load(artifact_id: str) -> tuple[dict, dict]:
         if not _ARTIFACT_ID_RE.match(artifact_id):
             raise HTTPException(status_code=404, detail=f"artifact not found: {artifact_id}")
-        man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+        man = _find_manifest(store, artifact_id, tenant_id=tenant)
         if man is None or not man.get("storage_key"):
             raise HTTPException(status_code=404, detail=f"artifact not found: {artifact_id}")
         try:
-            doc = json.loads(store.get(man["storage_key"]))
+            blob, _at_rest = _artifact_blob(store, man, tenant)
+            doc = json.loads(blob)
+        except HTTPException:
+            raise
         except Exception:  # noqa: BLE001 — manifest without a readable blob
             raise HTTPException(status_code=404, detail=f"artifact not found: {artifact_id}")
         return doc, man
@@ -1332,7 +1447,7 @@ def sbom_diff(body: SbomDiffRequest,
 
 
 @router.get("/sbom/{artifact_id}/verify")
-def sbom_verify(artifact_id: str, db: Session = Depends(get_db_session),
+def sbom_verify(artifact_id: str, request: Request, db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_READERS))):
     """Re-verify a stored artifact: recompute the blob digest and the manifest
     HMAC signature. Returns OK only when both match."""
@@ -1341,14 +1456,13 @@ def sbom_verify(artifact_id: str, db: Session = Depends(get_db_session),
     if not _ARTIFACT_ID_RE.match(artifact_id):
         raise HTTPException(status_code=404, detail="artifact not found")
     store = _sbom_storage()
-    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    man = _find_manifest(store, artifact_id, tenant_id=_artifact_tenant(request, db, user))
     if man is None or not man.get("storage_key"):
         raise HTTPException(status_code=404, detail="artifact not found")
-    try:
-        blob = store.get(man["storage_key"])
-    except Exception:  # noqa: BLE001
-        raise HTTPException(status_code=404, detail="artifact not found")
+    blob, at_rest = _artifact_blob(store, man, _artifact_tenant(request, db, user))
     secret, key_id = _sbom_signing_secret(db)
+    # verification is over the *plaintext* envelope contents: sealing an artifact
+    # changes where it sits, not what it says or whether its signature holds
     result = verify_artifact(man, blob, secret)
     result["key_id"] = key_id
     failed = {c["check"] for c in result["checks"] if not c["ok"]}
@@ -1374,7 +1488,8 @@ def sbom_verify(artifact_id: str, db: Session = Depends(get_db_session),
 
 
 @router.get("/sbom/{artifact_id}/report")
-def sbom_report(artifact_id: str, fmt: str = "markdown",
+def sbom_report(artifact_id: str, request: Request, fmt: str = "markdown",
+                db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_READERS))):
     """Auditor-friendly summary of a stored SBOM: components, crypto inventory,
     pinning, minimum-elements status and provenance (markdown or json)."""
@@ -1384,11 +1499,14 @@ def sbom_report(artifact_id: str, fmt: str = "markdown",
     if not _ARTIFACT_ID_RE.match(artifact_id):
         raise HTTPException(status_code=404, detail="artifact not found")
     store = _sbom_storage()
-    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    man = _find_manifest(store, artifact_id, tenant_id=_artifact_tenant(request, db, user))
     if man is None or not man.get("storage_key"):
         raise HTTPException(status_code=404, detail="artifact not found")
     try:
-        bom = json.loads(store.get(man["storage_key"]))
+        blob, _at_rest = _artifact_blob(store, man, _artifact_tenant(request, db, user))
+        bom = json.loads(blob)
+    except HTTPException:
+        raise
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=404, detail="artifact not found")
 
@@ -1495,22 +1613,31 @@ class SbomRescanRequest(BaseModel):
     use_lockfiles: bool | None = Field(None, description="override the stored scan option")
 
 
-def _load_sbom_artifact(artifact_id: str) -> tuple[dict, bytes]:
-    """(manifest, blob) for a stored artifact, or 404."""
+def _load_sbom_artifact(artifact_id: str, tenant_id: str | None = None) -> tuple[dict, bytes]:
+    """(manifest, plaintext blob) for a stored artifact of this tenant, or 404.
+
+    Both halves are tenanted: the manifest lookup filters by bucket, and the
+    bytes are unsealed with the tenant's key, so neither "which artifacts exist"
+    nor "what an artifact says" crosses a tenant boundary here.
+    """
     if not _ARTIFACT_ID_RE.match(artifact_id):
         raise HTTPException(status_code=404, detail="artifact not found")
     store = _sbom_storage()
-    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    man = _find_manifest(store, artifact_id, tenant_id=tenant_id)
     if man is None or not man.get("storage_key"):
         raise HTTPException(status_code=404, detail="artifact not found")
     try:
-        return man, store.get(man["storage_key"])
+        blob, _at_rest = _artifact_blob(store, man, tenant_id)
+    except HTTPException:
+        raise
     except Exception:  # noqa: BLE001
         raise HTTPException(status_code=404, detail="artifact not found")
+    return man, blob
 
 
 @router.post("/sbom/{artifact_id}/gate")
-def sbom_gate(artifact_id: str, body: SbomGateRequest | None = None,
+def sbom_gate(artifact_id: str, request: Request, body: SbomGateRequest | None = None,
+              db: Session = Depends(get_db_session),
               user: str = Depends(require_roles(*_SBOM_READERS))):
     """Evaluate a stored artifact against a supply-chain gate policy.
 
@@ -1522,7 +1649,7 @@ def sbom_gate(artifact_id: str, body: SbomGateRequest | None = None,
     """
     from devsecops.sbom_assurance import evaluate_gate
 
-    man, blob = _load_sbom_artifact(artifact_id)
+    man, blob = _load_sbom_artifact(artifact_id, _artifact_tenant(request, db, user))
     try:
         bom = json.loads(blob.decode("utf-8"))
     except Exception as exc:  # noqa: BLE001 — a corrupt blob is a real failure, not a pass
@@ -1536,7 +1663,7 @@ def sbom_gate(artifact_id: str, body: SbomGateRequest | None = None,
 
 
 @router.post("/sbom/{artifact_id}/rescan")
-def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
+def sbom_rescan(artifact_id: str, request: Request, body: SbomRescanRequest | None = None,
                 db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_OPERATORS))):
     """Re-scan the stored target with the stored options and diff old -> new.
@@ -1551,7 +1678,7 @@ def sbom_rescan(artifact_id: str, body: SbomRescanRequest | None = None,
     """
     from devsecops.sbom_assurance import diff_boms, evaluate_gate
 
-    man, blob = _load_sbom_artifact(artifact_id)
+    man, blob = _load_sbom_artifact(artifact_id, _artifact_tenant(request, db, user))
     opts = man.get("scan_options") or {}
     if not opts.get("target"):
         raise HTTPException(status_code=409, detail=(
@@ -1631,14 +1758,15 @@ class SbomVexRequest(BaseModel):
     fmt: str = Field("json", description="json (CycloneDX VEX) or markdown")
 
 
-def _resolve_sbom_doc(doc: dict | None, artifact_id: str | None) -> dict:
-    """Exactly one of an inline document or a stored artifact id."""
+def _resolve_sbom_doc(doc: dict | None, artifact_id: str | None,
+                      tenant_id: str | None = None) -> dict:
+    """Exactly one of an inline document or a stored artifact id (this tenant's)."""
     if bool(doc) == bool(artifact_id):
         raise HTTPException(status_code=422,
                             detail="provide exactly one of `doc` or `artifact_id`")
     if doc:
         return doc
-    _man, blob = _load_sbom_artifact(str(artifact_id))
+    _man, blob = _load_sbom_artifact(str(artifact_id), tenant_id)
     try:
         return json.loads(blob.decode("utf-8"))
     except Exception as exc:  # noqa: BLE001 — corrupt storage is a real error
@@ -1646,7 +1774,8 @@ def _resolve_sbom_doc(doc: dict | None, artifact_id: str | None) -> dict:
 
 
 @router.post("/sbom/license")
-def sbom_license(body: SbomLicenseRequest,
+def sbom_license(body: SbomLicenseRequest, request: Request,
+                 db: Session = Depends(get_db_session),
                  user: str = Depends(require_roles(*_SBOM_READERS))):
     """License inventory and policy evaluation for a document or stored artifact.
 
@@ -1657,7 +1786,7 @@ def sbom_license(body: SbomLicenseRequest,
     """
     from devsecops.sbom_license import check_license_policy, render_license_report
 
-    doc = _resolve_sbom_doc(body.doc, body.artifact_id)
+    doc = _resolve_sbom_doc(body.doc, body.artifact_id, _artifact_tenant(request, db, user))
     report = check_license_policy(doc, policy=body.policy)
     payload: dict = {"artifact_id": body.artifact_id, "verdict": report["verdict"], **report}
     if str(body.fmt).lower() == "markdown":
@@ -1666,7 +1795,7 @@ def sbom_license(body: SbomLicenseRequest,
 
 
 @router.post("/sbom/vex")
-def sbom_vex(body: SbomVexRequest, db: Session = Depends(get_db_session),
+def sbom_vex(body: SbomVexRequest, request: Request, db: Session = Depends(get_db_session),
              user: str = Depends(require_roles(*_SBOM_READERS))):
     """Deterministic VEX statements for a document or stored artifact.
 
@@ -1680,7 +1809,7 @@ def sbom_vex(body: SbomVexRequest, db: Session = Depends(get_db_session),
 
     if body.analyses:
         _require_sbom_operator(user, db)
-    doc = _resolve_sbom_doc(body.doc, body.artifact_id)
+    doc = _resolve_sbom_doc(body.doc, body.artifact_id, _artifact_tenant(request, db, user))
     try:
         rows = vx.statements(doc, analyses=body.analyses)
     except ValueError as exc:
@@ -1695,12 +1824,13 @@ def sbom_vex(body: SbomVexRequest, db: Session = Depends(get_db_session),
 
 
 @router.get("/sbom/{artifact_id}/vex")
-def sbom_vex_for_artifact(artifact_id: str, dl: bool = False,
+def sbom_vex_for_artifact(artifact_id: str, request: Request, dl: bool = False,
+                          db: Session = Depends(get_db_session),
                           user: str = Depends(require_roles(*_SBOM_READERS))):
     """VEX document for a stored artifact (download as .vex.json with ?dl=true)."""
     from devsecops import sbom_vex as vx
 
-    doc = _resolve_sbom_doc(None, artifact_id)
+    doc = _resolve_sbom_doc(None, artifact_id, _artifact_tenant(request, db, user))
     rows = vx.statements(doc)
     document = vx.build_vex_document(doc, author=user)
     if dl:
@@ -1721,13 +1851,15 @@ def manifest_target(doc: dict) -> str | None:
     return str(name) if name else None
 
 
-def _artifact_rows() -> list[dict]:
-    """Cached listing of stored artifacts (manifests only — bodies are not read)."""
+def _artifact_rows(tenant_id: str | None = None) -> list[dict]:
+    """Cached listing of this tenant's stored artifacts (bodies are not read)."""
     import time
 
     store = _sbom_storage()
-    rows = store.list_manifests()
-    signature = (len(rows), max((str(r.get("created_at") or "") for r in rows), default=""))
+    rows = _visible_manifests(store, tenant_id=tenant_id)
+    # the tenant is part of the cache signature: one tenant's listing must never
+    # be served for another from a warm cache
+    signature = (tenant_id, len(rows), max((str(r.get("created_at") or "") for r in rows), default=""))
     cached_at = _INDEX_CACHE.get("at")
     if (_INDEX_CACHE["signature"] == signature
             and isinstance(cached_at, float)
@@ -1741,8 +1873,9 @@ def _artifact_rows() -> list[dict]:
 
 
 @router.get("/sbom/components")
-def sbom_components(q: str | None = None, crypto: bool | None = None, limit: int = 100,
-                    artifact_id: str | None = None,
+def sbom_components(request: Request, q: str | None = None, crypto: bool | None = None,
+                    limit: int = 100, artifact_id: str | None = None,
+                    db: Session = Depends(get_db_session),
                     user: str = Depends(require_roles(*_SBOM_READERS))):
     """Cross-artifact component index: which artifact carries which component.
 
@@ -1755,7 +1888,9 @@ def sbom_components(q: str | None = None, crypto: bool | None = None, limit: int
     needle = (q or "").strip().lower()
     rows = []
     scanned = 0
-    for man in sorted(_artifact_rows(), key=lambda m: str(m.get("created_at") or ""), reverse=True):
+    tenant = _artifact_tenant(request, db, user)
+    for man in sorted(_artifact_rows(tenant), key=lambda m: str(m.get("created_at") or ""),
+                      reverse=True):
         if artifact_id and man.get("artifact_id") != artifact_id:
             continue
         if not man.get("artifact_id"):
@@ -1787,7 +1922,8 @@ def sbom_components(q: str | None = None, crypto: bool | None = None, limit: int
 
 
 @router.get("/sbom/advisories")
-def sbom_advisories(severity: str | None = None, cve: str | None = None,
+def sbom_advisories(request: Request, severity: str | None = None, cve: str | None = None,
+                    db: Session = Depends(get_db_session),
                     user: str = Depends(require_roles(*_SBOM_READERS))):
     """Advisories recorded across stored artifacts (matched scans only).
 
@@ -1800,7 +1936,7 @@ def sbom_advisories(severity: str | None = None, cve: str | None = None,
     index: dict[str, dict] = {}
     checked = 0
     unchecked = 0
-    for man in _artifact_rows():
+    for man in _artifact_rows(_artifact_tenant(request, db, user)):
         if not man.get("artifact_id"):
             continue
         if not man.get("feed_supplied"):
@@ -1835,7 +1971,8 @@ def sbom_advisories(severity: str | None = None, cve: str | None = None,
 
 
 @router.delete("/sbom/artifacts")
-def sbom_prune(older_than_days: int = 90, db: Session = Depends(get_db_session),
+def sbom_prune(request: Request, older_than_days: int = 90,
+               db: Session = Depends(get_db_session),
                user: str = Depends(require_roles("admin", "superadmin"))):
     """Retention: delete artifacts older than N days (default 90, min 1)."""
     from datetime import datetime, timedelta, timezone
@@ -1845,7 +1982,9 @@ def sbom_prune(older_than_days: int = 90, db: Session = Depends(get_db_session),
     cutoff = datetime.now(timezone.utc) - timedelta(days=older_than_days)
     store = _sbom_storage()
     deleted, kept = [], 0
-    for man in store.list_manifests():
+    # retention deletes this tenant's artifacts; another tenant's are not this
+    # endpoint's to expire, and a platform-wide sweep would have to say so
+    for man in _visible_manifests(store, tenant_id=_artifact_tenant(request, db, user)):
         created = str(man.get("created_at") or "")
         try:
             stamp = datetime.fromisoformat(created.replace("Z", "+00:00"))
@@ -1908,16 +2047,19 @@ def _is_crypto_component(component: dict, bom: dict) -> bool:
 
 
 @router.get("/sbom/{artifact_id}/download")
-def sbom_download(artifact_id: str, user: str = Depends(require_roles(*_SBOM_READERS))):
+def sbom_download(artifact_id: str, request: Request, db: Session = Depends(get_db_session),
+                  user: str = Depends(require_roles(*_SBOM_READERS))):
     """Download a persisted SBOM artifact (JSON) with its provenance header."""
     if not _ARTIFACT_ID_RE.match(artifact_id):
         raise HTTPException(status_code=404, detail="artifact not found")
     store = _sbom_storage()
-    man = next((m for m in store.list_manifests() if m.get("artifact_id") == artifact_id), None)
+    man = _find_manifest(store, artifact_id, tenant_id=_artifact_tenant(request, db, user))
     if man is None or not man.get("storage_key"):
         raise HTTPException(status_code=404, detail="artifact not found")
     try:
-        blob = store.get(man["storage_key"])
+        blob, _at_rest = _artifact_blob(store, man, _artifact_tenant(request, db, user))
+    except HTTPException:
+        raise
     except Exception:  # noqa: BLE001 — manifest without a readable blob
         raise HTTPException(status_code=404, detail="artifact not found")
     ext = "cdx.json" if man.get("format") == "cyclonedx" else "spdx.json"

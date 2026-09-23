@@ -189,10 +189,14 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
     # this job rewrites this artifact instead of adding a duplicate
     artifact_id = str(options.get("artifact_id") or job.job_id)
     report("binary_store", note=f"storing artifact {artifact_id}", artifact_id=artifact_id)
+    # the tenant travels in the options: a worker has no request to ask, and an
+    # artifact stored in the wrong bucket is one its tenant cannot read back
+    tenant_id = options.get("tenant_id")
     stored = store_binary_artifact(
         scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt, created_by=actor, db=session,
         artifact_id=artifact_id, job_id=job.job_id, feed_supplied=False,
-        recursive=recursive, include_raw=include_raw, secret=_signing_secret(session))
+        recursive=recursive, include_raw=include_raw, secret=_signing_secret(session),
+        tenant_id=str(tenant_id) if tenant_id else None)
     manifest = stored["manifest"]
     audit_artifact(session, actor, artifact_id=stored["artifact_id"], target=manifest["target"],
                    binaries=manifest["binary_count"], findings=len(result.get("findings") or []),

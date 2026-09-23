@@ -588,6 +588,71 @@ like a search that found nothing, and those are different claims. Only rule text
 table data and their metadata come across the gap — never key material, never
 anything the platform would have to execute.
 
+### 3.7 Tenancy and encryption at rest
+
+An artifact is a description of someone's estate, so it is stored as *that
+tenant's* artifact rather than as a file in a shared directory:
+
+* **its own prefix** — `tenants/<tenant>/…` under the storage root, recorded on
+  the manifest (`tenant_id`, `tenant_bucket`). Listings, reports, downloads,
+  verification, CBOMs, diffs, gates and retention all resolve the artifact
+  through one tenant-filtered lookup, so another organization's artifact is
+  **absent** (a 404, which also avoids confirming it exists), is never listed,
+  and is never counted in this tenant's views;
+* **its own key** — the payload and the CBOM are sealed with **AES-256-GCM**
+  under a key derived (HKDF-SHA256) from a master secret
+  (`CRYPTOSCAN_ARTIFACT_KEY`, falling back to `SECRET_KEY`). The key itself is
+  never stored — only its short id — so a dump of the database or the volume
+  carries no key material, and two tenants' ciphertexts are unreadable with each
+  other's key even when the documents are identical. A random nonce per object
+  means identical payloads do not produce identical bytes;
+* **the same evidence** — the artifact's `sha256` and its HMAC signature stay
+  over the **plaintext**, so verification, gating, diffing and the SBOM/CBOM
+  digests are exactly what they were before sealing. A tampered or
+  key-mismatched object fails authentication (`tampered`, `wrong_key`, `no_key`)
+  instead of decrypting to something that reads like an empty document.
+
+What was sealed travels with the artifact: `manifest.at_rest` records the
+algorithm, the key id and where the key came from, inside the **signed**
+manifest — so "is this scan encrypted, and under whose key" is answered by the
+artifact itself. The scan response carries the same block as `at_rest`, and the
+console's binary panel shows it:
+
+```bash
+curl /api/v1/devsecops/binary/at-rest
+# -> {tenant, artifacts, by_algorithm: {"AES-256-GCM": 12}, by_key_id: {"cs1-…": 12},
+#     plaintext_artifacts: 3, at_rest: {algorithm, key_id, key_source, encrypted}}
+```
+
+Three honest cases, all reported rather than assumed:
+
+* **an artifact written before this existed** is plaintext on disk; it is returned
+  with `at_rest.algorithm: none` and the note says so, instead of being called
+  encrypted or quietly become unreadable;
+* **a host with no key configured** writes plaintext and records
+  `algorithm: none` with `key_source: none` — a downgrade that is written down is
+  one an auditor can find; an unrecorded one is not. `plaintext_artifacts` in the
+  response above counts them, because *"encryption is configured"* and *"every
+  artifact is encrypted"* are different statements;
+* **a rotated master secret or an edited object** is a 422 naming the reason
+  (the encryption envelope names its key id, so a rotation is visible before
+  decryption is attempted) — never an empty document.
+
+A queued job carries its tenant in the scan options, because a worker process has
+no request to ask; a scan with no tenant context belongs to the `platform`
+estate, which is also where pre-tenancy artifacts live, so a single-organization
+install keeps working unchanged. Session callers name a tenant with
+`X-Tenant-ID` and only for a tenant they are a member of; an API key minted inside
+a tenant is hard-bound to it, which is the path scanners use.
+
+**The manifest is the index, and is not sealed.** It carries counts, formats,
+labels, the findings excerpt and the key id — deliberately, because a listing, a
+gate and a diff read it without needing a key. The full inventory (components,
+paths, crypto assets) lives in the sealed SBOM/CBOM payloads next to it. If you
+need the manifest's own body protected as well, that is a change to how a listing
+works rather than a flag, and the platform says so here instead of implying the
+whole artifact is encrypted.
+
 ## 4. What flows onward
 
 * **SBOM (CycloneDX 1.5 / SPDX 2.3)** — every parsed binary is a component
@@ -788,6 +853,11 @@ that did run is the kind of answer that costs an afternoon.
   library marker, **key material, or a rule match**); otherwise it is skipped
   rather than listed as an unnameable "binary". A key found inside a container is
   never dropped for being in an unparsed member.
+* **A sealed artifact's index is not sealed.** The manifest is the index (counts,
+  formats, labels, findings excerpt, key id) and stays readable so a listing, a
+  gate and a diff do not need a key; the inventory itself is in the sealed
+  SBOM/CBOM next to it (§3.7). A tenant-bound caller never sees another tenant's
+  index at all — the filter is in the lookup, not in the rendering.
 * **The rule engine is a subset, and says which.** Constructs outside the table in
   §3.4 are refused with a reason rather than half-implemented; a rule that needs
   `for`, `xor`, `base64` or a module function must be rewritten or reviewed by
