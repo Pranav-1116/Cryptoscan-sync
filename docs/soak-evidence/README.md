@@ -7,7 +7,7 @@ evidence; the report is a reading of them.
 
 | run | stack | duration | result |
 |---|---|---|---|
-| [2026-09-23-staging](2026-09-23-staging/REPORT.md) | PostgreSQL 16 + Redis 7.2, `ENVIRONMENT=production`, api/worker/monitor as separate processes | see REPORT.md (started 2026-09-23 14:21 UTC, 2-min cycles) | in progress — see below |
+| [2026-09-23-staging](2026-09-23-staging/REPORT.md) | PostgreSQL 16 + Redis 7.2, `ENVIRONMENT=production`, api/worker/monitor as separate processes | started 2026-09-23 14:21 UTC, 2-min cycles; see REPORT.md for the latest count | running, clean so far — see below |
 
 ## How to run one
 

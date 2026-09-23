@@ -12,6 +12,15 @@ real infrastructure or credentials.
 > commits; they are retained for traceability and should not be read as the
 > current state.
 
+> **Current state (2026-09-23):** **60 migrations** (0001–0060), **71 frontend pages**,
+> **4,808 backend test functions** running hermetically in parallel (`make test`, ~8 min)
+> plus a vitest frontend suite, and every console surface labelled GA / beta / preview
+> ([CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)). The migration chain has now been
+> applied on a real PostgreSQL for the first time; it did not work before 2026-09-23
+> (see [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) and
+> [soak-evidence/](soak-evidence/README.md) for what was found and fixed). The paragraphs
+> below record earlier measurements.
+
 Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer + enterprise readiness, 2026-09-11):
 **583 OpenAPI paths** (measured from the live schema), **56 ordered database migrations** (0001–0056),
 **64 frontend pages**, **9 RBAC roles** (superadmin, ciso, security_analyst,

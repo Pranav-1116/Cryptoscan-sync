@@ -43,7 +43,7 @@ docker volume rm ha_pgdata
 docker compose up -d postgres
 gunzip -c backups/pg-<date>.sql.gz | \
   docker compose exec -T postgres psql -U cryptoscan cryptoscan
-python -m alembic -c services/database/migrations/alembic.ini current   # confirm revision
+python -m alembic -c services/database/migrations/alembic.ini current   # confirm revision (0060 at this release)
 docker compose up -d                                                   # migrate runs, api/worker/monitor follow
 python scripts/backup_evidence.py --verify ...   # chain integrity after restore
 ```

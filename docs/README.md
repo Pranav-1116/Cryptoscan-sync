@@ -1,6 +1,7 @@
 # CryptoScan documentation
 
-> **Which parts are production-supported?** See [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview, labelled in the UI and served at `GET /api/v1/platform/capabilities`.
+> **How production-ready is it?** [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) — ~80% overall, core path ~92%, with the evidence and the gaps.
+> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview (33 / 30 / 8), labelled in the UI and served at `GET /api/v1/platform/capabilities`.
 
 Production cryptographic inventory and compliance platform: deterministic
 scanners, hashed evidence, YAML policy, drift, and a dashboard. Policy is
@@ -14,6 +15,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 
 | Doc | What it covers |
 |---|---|
+| [Production readiness](PRODUCTION-READINESS.md) | the number, what moved it, what holds it back — each line pointing at its evidence |
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |
@@ -128,7 +130,11 @@ crypto engine.
 [DR recovery](runbooks/dr-recovery.md) ·
 [Telecom operations](runbooks/telecom-operations.md) ·
 [Live scanning](dev/LIVE-SCANNING.md) ·
-[Load test](dev/load-test-2026-08-30.md)
+[Testing](dev/TESTING.md) ·
+[Staging without Docker](../deploy/staging/README.md) ·
+[Soak / burn-in evidence](soak-evidence/README.md) ·
+[Burn-in](burn-in.md) · [Load / soak](load-soak.md) ·
+[Load test 2026-08-30](dev/load-test-2026-08-30.md)
 
 ## PoC playbook (FAB engagement)
 

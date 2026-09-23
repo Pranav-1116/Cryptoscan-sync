@@ -25,6 +25,11 @@ Legend: ✅ exists · 🔨 improved r30 · ⛔ infra-blocked · 📋 planned · 
 | 12 | Registry webhook live | 🟨 ACR/DockerHub/ECR/Harbor handlers shipped; live registry round-trip ⛔ needs a registry |
 | 13 | Real GitHub round-trip | 🟨 webhook handler shipped + secret-verified; end-to-end needs a repo webhook config (ops task) |
 | 14 | Email delivery proof | ⛔ needs an SMTP relay; channel plumbing + preference routing shipped |
+| 16 | Migration chain on real PostgreSQL | ✅ 2026-09-23: chain failed at 0011 on fresh Postgres and 15 columns were `uuid` vs ORM `String(36)` (every scan failed). Fixed (0011 patch, 0060), guarded by `test_migration_chain_postgres.py` |
+| 17 | 7-day soak on Postgres+Redis | 🟨 harness + staging stack shipped, first run clean (`docs/soak-evidence/`); the week itself ⛔ needs a host that stays up |
+| 18 | Worker workspace leak | ✅ 2026-09-23: cleanup refused every path (relative vs resolved base); fixed + tests |
+| 19 | Crashed job stays QUEUED | 📋 no requeue / dead-letter when a worker dies mid-run; observed once in staging |
+| 20 | Test suite as a real CI gate | ✅ hermetic (loopback-only sockets) + xdist, ~8 min; frontend vitest suite |
 | 15 | Perf benchmark 10K files | 🔨 r30: `scripts/perf_benchmark.py` + `docs/performance.md` — measured 10,000-file deterministic corpus: ~2,300 files/s end-to-end, 16,050 findings, 0 parse errors (sandbox, 2 CPUs, reproducible) |
 
 ## B. Missing features (by family)

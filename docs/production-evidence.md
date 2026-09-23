@@ -4,6 +4,11 @@ Ran 2026-09-21T04:46:14+00:00 against a fresh staging estate
 (`scripts/production_evidence.py` — the one-command runner that bundles the
 verifiable production gates into a single signed, tamper-evident report).
 
+> **Update 2026-09-23:** this run used SQLite. The staging estate is now real PostgreSQL 16 +
+> Redis 7 (`deploy/staging/staging-up.sh`), and the PostgreSQL run found and fixed defects
+> a SQLite estate cannot show — see [soak-evidence/](soak-evidence/README.md). Re-run
+> `scripts/production_evidence.py` against that stack for the next signed report.
+
 Staging estate: `uvicorn` + SQLite, fresh boot, random bootstrap admin,
 **production rate limiting active** (the rate-limit middleware is unconditional
 in `api.main` — it is never weakened for the run).

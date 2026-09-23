@@ -10,14 +10,14 @@
     "python": "3.11.2"
   },
   "started_at": "2026-09-23T14:21:27+00:00",
-  "updated_at": "2026-09-23T14:39:36+00:00",
-  "elapsed_hours": 0.3,
-  "cycles": 10,
-  "cycles_ok": 10,
+  "updated_at": "2026-09-23T14:52:50+00:00",
+  "elapsed_hours": 0.52,
+  "cycles": 13,
+  "cycles_ok": 13,
   "cycles_failed": 0,
   "failure_counts": {},
   "scans": {
-    "completed": 10,
+    "completed": 13,
     "failed": 0,
     "timed_out": 0,
     "wall_s_p50": 0.003,
@@ -25,35 +25,35 @@
     "wall_s_max": 0.005
   },
   "evidence_chain": {
-    "verified": 10,
+    "verified": 13,
     "broken": 0,
-    "records_total": 140
+    "records_total": 182
   },
   "api_reads": {
-    "count": 100,
-    "ms_p50": 12.2,
-    "ms_p95": 231.1,
+    "count": 130,
+    "ms_p50": 11.0,
+    "ms_p95": 228.0,
     "ms_p99": 281.9,
     "ms_max": 305.0,
     "errors_5xx": 0
   },
   "sse": {
-    "probes": 10,
-    "with_frames": 10,
+    "probes": 13,
+    "with_frames": 13,
     "errors": 0
   },
   "rss_mb": {
     "api": {
       "first": 153.2,
-      "last": 152.0,
+      "last": 158.2,
       "max": 193.7,
-      "growth_pct": -0.8
+      "growth_pct": 3.3
     },
     "worker": {
       "first": 142.3,
-      "last": 141.2,
+      "last": 141.4,
       "max": 142.6,
-      "growth_pct": -0.8
+      "growth_pct": -0.6
     },
     "monitor": {
       "first": 83.8,
@@ -89,16 +89,16 @@
   },
   "postgres_last": {
     "connections": 6,
-    "size_mb": 16.9,
+    "size_mb": 17.5,
     "rows": {
-      "scans": 11,
-      "evidence_records": 154,
-      "scan_jobs": 11,
-      "monitor_events": 21,
+      "scans": 14,
+      "evidence_records": 196,
+      "scan_jobs": 14,
+      "monitor_events": 27,
       "drift_events": 0,
       "audit_log": 42
     },
-    "dead_tuples": 217
+    "dead_tuples": 153
   },
   "redis_last": {
     "used_memory_mb": 1.23,

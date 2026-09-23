@@ -18,6 +18,8 @@ on the host network.
 - [ ] `curl -sSI https://<host> | head -1` → HTTP/2 200; `http://` → 301
 
 ## 3. Post-deploy verification
+- [ ] Migrations at head on the real database: `alembic current` shows `0060 (head)` (chain verified on PostgreSQL 16 by `make test-live`; before 2026-09-23 it did not apply on Postgres)
+- [ ] Rehearsed on the Docker-free staging stack first: `deploy/staging/staging-up.sh up` then `python scripts/soak.py --cycles 3 --out /tmp/pre-golive` → `cycles_failed: 0`
 - [ ] `make smoke BASE=https://<host> USER=admin PASSWORD='…'` (health, ready, metrics, login, BOM/assurance/banking)
 - [ ] `GET /api/v1/meta` shows `environment=production`, `docs_enabled=false`
 
@@ -48,7 +50,11 @@ on the host network.
 - [ ] Jurisdiction packs reviewed per legal entity; action-plan export regenerated per reporting cycle
 - [ ] SWIFT CSP evidence reviewed (`GET /api/v1/banking/swift-csp`) ahead of attestation window
 
-## 9. Recovery & change control
+## 9. Soak evidence
+- [ ] 7-day soak on Postgres+Redis staging completed against the release commit and its `REPORT.md` committed under `docs/soak-evidence/` (pass criteria in the README there)
+- [ ] `scripts/burn_in.py --target all` with Neo4j, cloud credentials and Docker present — no SKIPs left that the target deployment relies on
+
+## 10. Recovery & change control
 - [ ] DR runbook read + drill scheduled: `docs/runbooks/dr-recovery.md`
 - [ ] Evidence chain verify scheduled: `scripts/backup_evidence.py --verify`
 - [ ] CHANGELOG.md updated per release; VERSION tagged

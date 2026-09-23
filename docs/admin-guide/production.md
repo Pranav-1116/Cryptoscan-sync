@@ -77,7 +77,7 @@ GitHub Actions run on every PR and push to `main`:
 |---|---|
 | `ci.yml` | ruff, backend unit tests (15 core services), frontend typecheck + build, and that the production config guard **rejects** demo secrets and **accepts** a real configuration |
 | `scanner-tests.yml` | the five scanner suites, hard-offline (`CRYPTOSCAN_*_LIVE=0`), nightly too |
-| `db-migration.yml` | `alembic upgrade head` from empty on real PostgreSQL 15 + idempotency |
+| `db-migration.yml` | `alembic upgrade head` from empty on real PostgreSQL 15 + idempotency (also runnable locally: `deploy/staging/staging-up.sh up` then `make test-live`) |
 | `docker-build.yml` | all six runtime images build |
 
 ## 7. What this overlay changes

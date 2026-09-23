@@ -19,6 +19,6 @@
 | ot_scanner         | `services/ot_scanner`        | Passive OT/ICS crypto (never sends pkts)  |
 | vendor_intel       | `services/vendor_intel`      | Questionnaire, CBOM, docs, vendor risk    |
 
-Local entrypoints: `make api`, `make worker`, `make test`. Combined pytest
-across services hits `ImportPathMismatchError` because several packages ship
-a `tests.conftest` — always run per-service as `make test` does.
+Local entrypoints: `make api`, `make worker`, `make test`. `make test` runs the
+whole tree in one hermetic, parallel pytest session (xdist, `--import-mode=importlib`
+so duplicate test basenames no longer collide); see [dev/TESTING.md](../dev/TESTING.md).
