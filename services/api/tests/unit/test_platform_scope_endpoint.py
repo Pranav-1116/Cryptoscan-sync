@@ -41,7 +41,7 @@ async def test_scope_endpoint_returns_manifest(app_client):
     assert response.status_code == 200
     body = response.json()
     assert body["platform"] == "CryptoScan"
-    assert body["schema_version"] == 1
+    assert body["schema_version"] == 2  # v2: adds capabilities (GA/beta/preview)
     assert body["mission"]
     assert body["covered_areas"]
     assert body["non_goals"]
@@ -71,3 +71,21 @@ async def test_scope_invariants_include_metadata_only(app_client):
     assert "metadata-only" in invariant_ids
     assert "read-only-collection" in invariant_ids
     assert "evidence-chained" in invariant_ids
+
+
+@pytest.mark.asyncio
+async def test_capabilities_endpoint_serves_the_maturity_table(app_client):
+    """GA / beta / preview per route; unknown defaults to preview."""
+    r = await app_client.get("/api/v1/platform/capabilities")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert set(body["tiers"]) == {"ga", "beta", "preview"}
+    assert body["default_for_unknown"] == "preview"
+    by_route = {row["route"]: row for row in body["capabilities"]}
+    assert by_route["/cbom"]["tier"] == "ga"
+    assert by_route["/telecom"]["tier"] == "beta"
+    assert by_route["/what-if"]["tier"] == "preview"
+    assert all(row["why"] for row in body["capabilities"])
+    # the scope manifest carries the same table
+    scope = (await app_client.get("/api/v1/platform/scope")).json()
+    assert scope["capabilities"]["counts"] == body["counts"]

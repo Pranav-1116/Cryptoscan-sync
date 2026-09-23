@@ -44,20 +44,41 @@ def _store():
     return artifact_storage()
 
 
-def _manifests() -> list[dict[str, Any]]:
+def _tenant(context: "ExecutionContext | None") -> str | None:
+    """The tenant the request may read (None = the platform estate)."""
+    return (context.data.get("tenant_id") if context is not None else None) or None
+
+
+def _manifests(context: "ExecutionContext | None" = None) -> list[dict[str, Any]]:
+    """This tenant's manifests. Another tenant's artifacts are absent, not hidden."""
+    from devsecops.artifact_store import artifact_tenant_bucket, manifest_tenant
+
+    scope = artifact_tenant_bucket(_tenant(context))
     try:
-        return list(_store().list_manifests())
+        rows = list(_store().list_manifests())
     except Exception:  # noqa: BLE001 — an unreadable store is an empty store, reported by the caller
         return []
+    return [row for row in rows if manifest_tenant(row) == scope]
 
 
-def _manifest(artifact_id: str) -> dict[str, Any] | None:
-    return next((row for row in _manifests() if str(row.get("artifact_id")) == str(artifact_id)), None)
+def _manifest(artifact_id: str, context: "ExecutionContext | None" = None) -> dict[str, Any] | None:
+    return next((row for row in _manifests(context)
+                 if str(row.get("artifact_id")) == str(artifact_id)), None)
 
 
-def _artifact_components(manifest: dict[str, Any]) -> list[dict[str, Any]]:
+def _artifact_components(manifest: dict[str, Any],
+                         context: "ExecutionContext | None" = None) -> list[dict[str, Any]]:
+    """The SBOM components, read through the tenant's sealing key.
+
+    Objects are sealed at rest; an object that cannot be opened for this tenant
+    (no key on this host, tampered, rotated master) reads as empty here and the
+    reason is available on the REST surface, which answers 422 with it.
+    """
+    from devsecops.artifact_store import read_artifact_blob
+
     try:
-        payload = json.loads(_store().get(manifest["storage_key"]).decode("utf-8"))
+        raw, _at_rest = read_artifact_blob(_store(), manifest, tenant_id=_tenant(context))
+        payload = json.loads(raw.decode("utf-8"))
     except Exception:  # noqa: BLE001 — a manifest whose blob is gone is reported empty, not fatal
         return []
     rows = payload.get("components") or []
@@ -74,12 +95,15 @@ def _artifact_components(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     return components
 
 
-def _artifact_cbom(manifest: dict[str, Any]) -> dict[str, Any] | None:
-    key = manifest.get("cbom_storage_key")
-    if not key:
+def _artifact_cbom(manifest: dict[str, Any],
+                   context: "ExecutionContext | None" = None) -> dict[str, Any] | None:
+    from devsecops.artifact_store import read_artifact_cbom
+
+    if not manifest.get("cbom_storage_key"):
         return None
     try:
-        return json.loads(_store().get(key).decode("utf-8"))
+        raw, _at_rest = read_artifact_cbom(_store(), manifest, tenant_id=_tenant(context))
+        return json.loads(raw.decode("utf-8"))
     except Exception:  # noqa: BLE001
         return None
 
@@ -175,7 +199,7 @@ def _binary_artifacts(arguments: dict[str, Any], context: ExecutionContext) -> l
     kind = _text(arguments.get("kind")) or "binary"
     search = (_text(arguments.get("q")) or "").lower()
     limit = _limit(arguments)
-    rows = [row for row in _manifests() if str(row.get("kind") or "").lower() == kind.lower()]
+    rows = [row for row in _manifests(context) if str(row.get("kind") or "").lower() == kind.lower()]
     if search:
         rows = [row for row in rows
                 if search in str(row.get("target") or "").lower()
@@ -191,12 +215,12 @@ def _binary_artifact(arguments: dict[str, Any], context: ExecutionContext) -> di
     artifact_id = _text(arguments.get("id"))
     if not artifact_id:
         raise ValueError("binaryArtifact needs an id")
-    manifest = _manifest(artifact_id)
+    manifest = _manifest(artifact_id, context)
     if manifest is None:
         return None
     card = _manifest_card(manifest)
-    card["components"] = _artifact_components(manifest)
-    cbom = _artifact_cbom(manifest)
+    card["components"] = _artifact_components(manifest, context)
+    cbom = _artifact_cbom(manifest, context)
     card["cbom"] = {
         "__type__": "Cbom",
         "components": (cbom or {}).get("components") or [],
@@ -207,7 +231,7 @@ def _binary_artifact(arguments: dict[str, Any], context: ExecutionContext) -> di
 
 
 def _artifact_findings(arguments: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-    manifest = arguments.get("_manifest") or _manifest(_text(arguments.get("artifactId")) or "")
+    manifest = arguments.get("_manifest") or _manifest(_text(arguments.get("artifactId")) or "", context)
     if manifest is None:
         raise ValueError("that artifact is not in this install's artifact store")
     summary = manifest.get("binary_summary") or {}
@@ -236,11 +260,11 @@ def _artifact_crypto(arguments: dict[str, Any], context: ExecutionContext) -> di
     manifest-sized on purpose); the library rows live in the CBOM next to it, so
     this reads them from there and says which of the two it has.
     """
-    manifest = arguments.get("_manifest") or _manifest(_text(arguments.get("artifactId")) or "")
+    manifest = arguments.get("_manifest") or _manifest(_text(arguments.get("artifactId")) or "", context)
     if manifest is None:
         raise ValueError("that artifact is not in this install's artifact store")
     summary = manifest.get("binary_summary") or {}
-    cbom = _artifact_cbom(manifest) or {}
+    cbom = _artifact_cbom(manifest, context) or {}
     libraries: dict[str, dict[str, Any]] = {}
     for component in cbom.get("components") or []:
         if not isinstance(component, dict):
@@ -268,7 +292,7 @@ def _artifact_crypto(arguments: dict[str, Any], context: ExecutionContext) -> di
 
 
 def _artifact_yara(arguments: dict[str, Any], context: ExecutionContext) -> dict[str, Any]:
-    manifest = arguments.get("_manifest") or _manifest(_text(arguments.get("artifactId")) or "")
+    manifest = arguments.get("_manifest") or _manifest(_text(arguments.get("artifactId")) or "", context)
     if manifest is None:
         raise ValueError("that artifact is not in this install's artifact store")
     block = (manifest.get("binary_summary") or {}).get("yara") or {}
@@ -528,7 +552,8 @@ def _with_children(resolver):
 
 
 def query(query_text: str, *, variables: dict[str, Any] | None = None,
-          session: Any = None, limit: int = MAX_LIST) -> dict[str, Any]:
+          session: Any = None, limit: int = MAX_LIST,
+          tenant_id: str | None = None) -> dict[str, Any]:
     """Parse and execute a query, returning the GraphQL-shaped response body.
 
     A document that does not parse comes back in the same envelope as a resolver
@@ -544,7 +569,7 @@ def query(query_text: str, *, variables: dict[str, Any] | None = None,
         return {"data": None, "errors": [{"message": str(exc), "path": [],
                                           "extensions": {"code": "SYNTAX_ERROR"}}],
                 "extensions": {"limits": envelope_limits, "read_only": True}}
-    context = ExecutionContext(data={"session": session}, limit=limit)
+    context = ExecutionContext(data={"session": session, "tenant_id": tenant_id}, limit=limit)
     root = dict(ROOT_SCHEMA)
     for name in ("binaryArtifacts", "binaryArtifact"):
         root[name] = _with_children(ROOT_SCHEMA[name])

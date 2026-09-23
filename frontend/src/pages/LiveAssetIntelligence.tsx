@@ -825,7 +825,14 @@ export default function LiveAssetIntelligence() {
       {view === 0 && (
         <div className="grid" style={{ gridTemplateColumns: "1fr 1fr", gap: 14 }}>
           <Panel title="Dependency Graph" sub={`${total} components · ${state?.dependency_count ?? 0} edges`} frame>
-            <BomGraph state={state!} />
+            {state ? (
+              <BomGraph state={state} />
+            ) : (
+              <div className="faint" style={{ padding: 12 }}>
+                No Technology BOM yet — the graph appears after the first materialisation
+                (backend offline or no scan has run).
+              </div>
+            )}
           </Panel>
           <Panel title="Live Event Feed" sub="Platform events from the SSE stream" frame>
             {liveEvents.length ? (

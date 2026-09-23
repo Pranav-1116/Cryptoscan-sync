@@ -41,7 +41,7 @@ class GraphQLRequest(BaseModel):
 
 
 @router.post("/graphql")
-def graphql_post(body: GraphQLRequest, db: Session = Depends(get_db_session),
+def graphql_post(body: GraphQLRequest, request: Request, db: Session = Depends(get_db_session),
                  user: str = Depends(require_roles(*READER_ROLES))):
     """Run one read-only query. 200 with an ``errors`` array, or 400 for a non-query document.
 
@@ -62,13 +62,20 @@ def graphql_post(body: GraphQLRequest, db: Session = Depends(get_db_session),
                                      "errors": [{"message": str(exc), "path": [],
                                                  "extensions": {"code": "INVALID_QUERY"}}],
                                      "extensions": {"read_only": True}})
-    result = graphql_schema.query(body.query, variables=body.variables, session=db)
+    # the same tenant resolution the REST artifact surface uses: a tenant-bound
+    # key reads its own bucket, a session may name X-Tenant-ID with a membership,
+    # anything else is the platform estate
+    from api.routers.devsecops import _artifact_tenant
+
+    tenant_id = _artifact_tenant(request, db, user)
+    result = graphql_schema.query(body.query, variables=body.variables, session=db,
+                                  tenant_id=tenant_id)
     result.setdefault("extensions", {})["surface"] = "/api/v1/graphql"
     return result
 
 
 @router.get("/graphql")
-def graphql_get(query: str, variables: str | None = None,
+def graphql_get(request: Request, query: str, variables: str | None = None,
                 db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*READER_ROLES))):
     """The same query over GET, for a browser address bar or a curl smoke test.
@@ -93,7 +100,7 @@ def graphql_get(query: str, variables: str | None = None,
                                 content={"errors": [{"message": "variables must be a JSON object",
                                                      "extensions": {"code": "BAD_VARIABLES"}}],
                                          "data": None})
-    return graphql_post(GraphQLRequest(query=query, variables=bound), db=db, user=user)
+    return graphql_post(GraphQLRequest(query=query, variables=bound), request=request, db=db, user=user)
 
 
 @router.get("/graphql/schema")

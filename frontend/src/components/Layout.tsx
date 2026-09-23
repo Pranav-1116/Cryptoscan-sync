@@ -9,6 +9,7 @@ import SearchOverlay from "./Search";
 import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
+import { tierOf, TIER_LABEL, TIER_DETAIL, type Tier } from "../lib/maturity.js";
 
 // Core categories per UX Prompt:
 // Overview, Discovery, Intelligence, Governance, Output, Administration
@@ -17,8 +18,8 @@ const PRIMARY_SECTIONS = [
     title: "Overview",
     items: [
       { to: "/command-center", label: "Dashboard", icon: "◈" },
-      { to: "/digital-twin", label: "Digital Twin", icon: "⬡" },
-      { to: "/activity", label: "Activity", icon: "◉" },
+      { to: "/live-asset-intelligence", label: "Live Asset Intelligence", icon: "⬡" },
+      { to: "/live-stream", label: "Activity", icon: "◉" },
     ]
   },
   {
@@ -28,7 +29,7 @@ const PRIMARY_SECTIONS = [
       { to: "/assets", label: "Assets", icon: "▤" },
       { to: "/network", label: "Network", icon: "◈" },
       { to: "/cloud", label: "Cloud", icon: "☁" },
-      { to: "/devsecops", label: "Applications", icon: "⛀" },
+      { to: "/dev-sec-ops", label: "Applications", icon: "⛀" },
       { to: "/hardware", label: "Hardware", icon: "⌬" },
       { to: "/certificates", label: "Certificates", icon: "⊞" },
       { to: "/vendor", label: "Vendors", icon: "▤" },
@@ -53,14 +54,14 @@ const PRIMARY_SECTIONS = [
       { to: "/security-policy", label: "Policies", icon: "⚖" },
       { to: "/compliance", label: "Compliance", icon: "✓" },
       { to: "/evidence", label: "Evidence", icon: "⛨" },
-      { to: "/audit-merkle", label: "Audit Log", icon: "◷" },
+      { to: "/security-center", label: "Audit Log", icon: "◷" },
     ]
   },
   {
     title: "Output",
     items: [
       { to: "/reports", label: "Reports", icon: "▤" },
-      { to: "/twin-analysis-output", label: "Exports & Twin", icon: "▦" },
+      { to: "/what-if", label: "What-If Analysis", icon: "▦" },
     ]
   },
   {
@@ -74,6 +75,58 @@ const PRIMARY_SECTIONS = [
     ]
   }
 ];
+
+const TIER_STYLE: Record<Tier, { bg: string; fg: string; border: string }> = {
+  ga: { bg: "rgba(34,197,94,0.10)", fg: "var(--green)", border: "rgba(34,197,94,0.35)" },
+  beta: { bg: "rgba(245,158,11,0.10)", fg: "var(--amber)", border: "rgba(245,158,11,0.40)" },
+  preview: { bg: "rgba(148,163,184,0.12)", fg: "var(--slate)", border: "rgba(148,163,184,0.45)" },
+};
+
+/* TierPill — GA surfaces carry no pill (the default); beta/preview are marked
+ * so the sidebar itself says which parts of the product are proven. */
+export function TierPill({ tier, compact = false }: { tier: Tier; compact?: boolean }) {
+  if (tier === "ga" && compact) return null;
+  const st = TIER_STYLE[tier];
+  return (
+    <span
+      className={`tier-pill tier-${tier}`}
+      data-tier={tier}
+      title={TIER_DETAIL[tier]}
+      style={{
+        marginLeft: compact ? "auto" : 8, fontSize: compact ? 9 : 10, fontWeight: 700, letterSpacing: 0.5,
+        textTransform: "uppercase", padding: compact ? "1px 5px" : "2px 7px", borderRadius: 4,
+        background: st.bg, color: st.fg, border: `1px solid ${st.border}`, lineHeight: 1.4, whiteSpace: "nowrap",
+      }}
+    >
+      {TIER_LABEL[tier]}
+    </span>
+  );
+}
+
+/* MaturityBanner — one line under the header for beta/preview pages: what the
+ * tier means, and where the full table lives. GA pages render nothing. */
+export function MaturityBanner({ tier, route }: { tier: Tier; route: string }) {
+  if (tier === "ga") return null;
+  const st = TIER_STYLE[tier];
+  return (
+    <div
+      className={`maturity-banner maturity-${tier}`}
+      data-tier={tier}
+      role="note"
+      style={{
+        display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "6px 12px",
+        borderRadius: 7, background: st.bg, border: `1px solid ${st.border}`, fontSize: 12, color: "var(--dim)",
+      }}
+    >
+      <TierPill tier={tier} />
+      <span>
+        <b style={{ color: st.fg }}>{TIER_LABEL[tier]} surface.</b> {TIER_DETAIL[tier]}{" "}
+        <Link to="/scope" style={{ color: st.fg }}>See capability maturity →</Link>
+      </span>
+      <span style={{ marginLeft: "auto", fontFamily: "var(--mono)", fontSize: 10, color: "var(--faint)" }}>{route}</span>
+    </div>
+  );
+}
 
 function LayoutInner({ route: propRoute, children }: { route?: string; children: React.ReactNode }) {
   const location = useLocation();
@@ -89,7 +142,6 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const [showSearch, setShowSearch] = useState(false);
   const [showAiAssistant, setShowAiAssistant] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
-  const [showAllModules, setShowAllModules] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("zelnx-sidebar-collapsed") === "true"; } catch { return false; }
   });
@@ -251,61 +303,12 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                 >
                   <span className="nav-icon">{item.icon}</span>
                   <span className="nav-text">{item.label}</span>
+                  <TierPill tier={tierOf(item.to)} compact />
                 </Link>
               );
             })}
           </React.Fragment>
         ))}
-
-        {/* Expandable full inventory access (preserves 689 routes) */}
-        {!isCollapsed && (
-          <div style={{ marginTop: 12, padding: "0 8px" }}>
-            <button
-              onClick={() => setShowAllModules(!showAllModules)}
-              style={{
-                width: "100%",
-                background: "transparent",
-                border: "1px dashed var(--line)",
-                borderRadius: "6px",
-                color: "var(--dim)",
-                padding: "6px 8px",
-                fontSize: "11px",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between"
-              }}
-            >
-              <span>Deep Engines & Tools</span>
-              <span>{showAllModules ? "▲" : "▼"}</span>
-            </button>
-            {showAllModules && (
-              <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "2px" }}>
-                <Link to="/cryptographic-digital-twin" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">◈</span> <span className="nav-text">CDT Simulation Twin</span>
-                </Link>
-                <Link to="/realtime-system" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">◉</span> <span className="nav-text">Realtime Backbone</span>
-                </Link>
-                <Link to="/quantum-entropy-fabric" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">◎</span> <span className="nav-text">Quantum Entropy</span>
-                </Link>
-                <Link to="/pqc-code-signing-orchestrator" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">✓</span> <span className="nav-text">PQC Code Signing</span>
-                </Link>
-                <Link to="/zero-trust-crypto-enforcer" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">⛨</span> <span className="nav-text">Zero Trust Enforcer</span>
-                </Link>
-                <Link to="/telecom-signaling-analyzer" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">⌬</span> <span className="nav-text">Telecom Signaling</span>
-                </Link>
-                <Link to="/hsm-fleet-orchestrator" className="nav" style={{ fontSize: "12px", padding: "5px 8px" }}>
-                  <span className="nav-icon">⚿</span> <span className="nav-text">HSM Fleet</span>
-                </Link>
-              </div>
-            )}
-          </div>
-        )}
 
         <div style={{ marginTop: 24, padding: "0 8px" }}>
           <div className="realtime-banner" style={{
@@ -354,9 +357,9 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             );
           })()}
           <span className="item">{t("head.lastEvent")} <b>{ticker.ago === null ? "—" : `${ticker.ago}s`}</b></span>
-          <span className="item">{t("head.eventsPerSec")} <b>{ticker.eps || "100K+/s"}</b></span>
-          <span className="item">Scans <b>{Number(st?.total_scans ?? 128)}</b></span>
-          <span className="item">Findings <b>{Number(st?.total_findings ?? 2193)}</b></span>
+          <span className="item">{t("head.eventsPerSec")} <b>{ticker.backend ? (ticker.eps || 0) : "—"}</b></span>
+          <span className="item">Scans <b>{st ? Number(st.total_scans ?? 0) : "—"}</b></span>
+          <span className="item">Findings <b>{st ? Number(st.total_findings ?? 0) : "—"}</b></span>
           {abac && (
             <span className="item" title={t("head.abac")}>
               ABAC <b style={{ color: abac.enforced ? "var(--green)" : "var(--amber)" }}>
@@ -452,6 +455,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
         {/* Layout with optional Right-Side Assistant Panel */}
         <div style={{ display: "flex", gap: "24px", minWidth: 0 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
+            <MaturityBanner tier={tierOf(route)} route={route} />
             {children}
           </div>
 

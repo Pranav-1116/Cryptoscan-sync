@@ -6,6 +6,8 @@ import {
   apiScopeEnvelope, apiTenantIsolation, apiConnectorCatalog, apiScopeAuthorize,
   ScopeEnvelope, TenantIsolation, ConnectorCatalog,
 } from "../lib/api.js";
+import { CAPABILITIES_JSON, TIER_DETAIL, TIER_LABEL, tierCounts, type Tier } from "../lib/maturity.js";
+import { TierPill } from "../components/Layout.jsx";
 
 /* Scope & Authorization + Multi-Tenant isolation (#2 / #11).
 
@@ -52,6 +54,8 @@ export default function Scope() {
         sub="Customer → Authorized Scope → Allowed Targets → Allowed Methods → Credentials → Scanner · exclusions, maintenance windows, rate limits, read-only"
         right={<>{envelope.source === "live" ? <Badge tone="green"><span className="dot" /> AUTHORIZED SCOPE: LIVE</Badge> : <Badge tone="amber">SCOPE: OFFLINE</Badge>}</>}
       />
+
+      <CapabilityMaturityPanel />
 
       {!env && envelope.source === "live" && (
         <Panel title="No scope yet" sub="POST /onboarding/organization to create a tenant">
@@ -163,5 +167,46 @@ export default function Scope() {
         )}
       </Panel>
     </>
+  );
+}
+
+
+/* CapabilityMaturityPanel — which console surfaces are GA / beta / preview.
+   The table is generated from shared_models/capability_maturity.py (the same
+   one GET /api/v1/platform/capabilities serves), so the console cannot claim
+   more than the backend declares. Static by design: it is a product statement,
+   not a live metric. */
+export function CapabilityMaturityPanel() {
+  const counts = tierCounts();
+  const tiers: Tier[] = ["ga", "beta", "preview"];
+  const rows = Object.entries(CAPABILITIES_JSON as Record<string, Tier>).sort(
+    ([a, ta], [b, tb]) => tiers.indexOf(ta) - tiers.indexOf(tb) || a.localeCompare(b),
+  );
+  return (
+    <Panel
+      title="Capability maturity"
+      sub="Not every surface is equally proven. GA is production-supported; beta and preview are labelled on their pages."
+      frame
+    >
+      <div className="grid" style={{ gridTemplateColumns: "repeat(3, 1fr)", gap: 10, marginBottom: 12 }} data-testid="tier-counts">
+        {tiers.map((t) => (
+          <div key={t} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <TierPill tier={t} />
+            <b style={{ fontSize: 20 }}>{counts[t]}</b>
+            <span style={{ fontSize: 11, color: "var(--faint)" }}>{TIER_DETAIL[t]}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+        {rows.map(([slug, tier]) => (
+          <span key={slug} data-tier={tier} title={`${TIER_LABEL[tier]} — ${TIER_DETAIL[tier]}`}
+            style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--mono)", fontSize: 11,
+              padding: "3px 8px", border: "1px solid var(--line)", borderRadius: 5 }}>
+            /{slug}
+            <TierPill tier={tier} />
+          </span>
+        ))}
+      </div>
+    </Panel>
   );
 }

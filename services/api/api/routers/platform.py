@@ -47,6 +47,19 @@ class _Platform:
         return cls._engine
 
 
+@router.get("/capabilities")
+def platform_capabilities(user: str = Depends(get_current_user)):
+    """GA / beta / preview tier for every console surface.
+
+    The console reads this to label pages; the same table is embedded in
+    ``/platform/scope`` and rendered to docs/CAPABILITY-MATURITY.md. Unknown
+    routes are ``preview`` by default — nothing is promoted by omission.
+    """
+    from shared_models.capability_maturity import capability_manifest
+
+    return capability_manifest()
+
+
 @router.post("/discover")
 def platform_discover(body: dict[str, Any],
                       user: str = Depends(require_permission("crypto.manage"))):

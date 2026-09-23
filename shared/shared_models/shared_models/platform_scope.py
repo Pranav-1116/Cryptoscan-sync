@@ -249,5 +249,13 @@ def scope_manifest() -> dict[str, Any]:
         "non_goals": NON_GOALS,
         "access_model": ACCESS_MODEL,
         "invariants": INVARIANTS,
-        "schema_version": 1,
+        "capabilities": _capabilities(),
+        "schema_version": 2,
     }
+
+
+def _capabilities() -> dict[str, Any]:
+    """GA / beta / preview tier of every console surface (capability_maturity)."""
+    from shared_models.capability_maturity import capability_manifest
+
+    return capability_manifest()
