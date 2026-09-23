@@ -135,6 +135,29 @@ case) and the existing `BIN-NO-STACK-CANARY` (LOW) for a load config with a null
 The console renders all three vocabularies (ELF, PE, Mach-O) through one hardening
 renderer. Tests: 70 in `test_binary_scan.py`.
 
+**Update (2026-09-23, commit pending, embedded key material):** the binary scanner now
+finds **key material inside binaries**, byte-first, with a hand-rolled DER/ASN.1 reader
+(no third-party crypto dependency): PEM armour for every key/certificate/request label
+(including legacy `Proc-Type`/`DEK-Info`), `PKCS#1`/`PKCS#8` (plain and the encrypted
+`PBES2` wrapper, identified and *not* decrypted), `SEC1`, `SubjectPublicKeyInfo`, X.509
+v1/v3 (subject, issuer, validity, signature algorithm, `CA`, `keyUsage`,
+`extendedKeyUsage`, SANs), `PKCS#10` requests, `PKCS#7`/CMS, `PKCS#12`, `ML-KEM`/`ML-DSA`
+by OID, OpenSSH `openssh-key-v1` (cipher/KDF/rounds), PuTTY files, OpenPGP packets with
+the armour CRC-24 verified or reported as unverified, JKS/JCEKS entries with aliases and
+the certificates inside them, `ssh-*` host keys, plus base64/hex-encoded copies wherever
+they sit — including inside a filesystem image the scanner does not unpack. Rows carry
+kind/type/size/curve/detector/encryption/`material_sha256`/offsets and **never the key
+bytes**. Findings: `BIN-EMBEDDED-PRIVATE-KEY` (CRITICAL unencrypted / HIGH encrypted),
+`BIN-EMBEDDED-KEYSTORE` (HIGH with private keys, else MEDIUM), `BIN-EMBEDDED-CERTIFICATE`
+(MEDIUM, explicitly not a verification), `BIN-EMBEDDED-TEST-KEY` (INFO for keys the
+surrounding bytes declare as samples — inventoried, no false alarm). A bare `.jks`/`.der` with no magic is still scanned rather
+than dropped, and nested DER candidates are one finding, not two. The SBOM binary row
+carries the key facts, `manifest.binary_summary.key_material` counts them, and the CBOM
+inventories keys as `related-crypto-material` assets (certificates as `assetType:
+certificate`), identified by hash and merged when the same key ships twice. Tests: 41 in
+`test_embedded_keys.py`, +2 binary API tests (10 in `test_binary_scan_api.py`),
+108 across the two binary suites, 379 across devsecops + binary API + cbom, 694 API unit.
+
 
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC

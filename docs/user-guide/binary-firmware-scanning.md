@@ -103,6 +103,57 @@ not evidence of AES.
   constant-pool entries are reported at the `STRING` level (0.4) with the matched
   text as the source — enough to look, never enough to claim a dependency.
 
+### 3.1 Embedded key material
+
+A key inside a shipped binary is the most direct way a build leaks a secret, so
+the key itself is searched for byte-first — not only through the symbols and
+strings a format exposes. The DER/ASN.1 reader is hand-rolled (no third-party
+crypto dependency), so it works on containers the scanner refuses to unpack, on
+stripped binaries, and on a raw blob.
+
+What is recognised, and what is reported about it:
+
+* **PEM armour** for every key/certificate/request label, including the legacy
+  `Proc-Type: 4,ENCRYPTED` + `DEK-Info` form (header ignored, `encrypted: true`).
+* **DER structures**, classified by their real inner layout rather than by the
+  file that contained them: RSA `PKCS#1`, `PKCS#8` (plain, and the encrypted
+  `PBES2` wrapper, which is identified and **not** decrypted), SEC1 EC keys,
+  `SubjectPublicKeyInfo`, X.509 v1/v3 certificates, PKCS#10 requests,
+  PKCS#7/CMS containers, PKCS#12 bundles, ML-KEM/ML-DSA via OID.
+* **Non-PEM containers**: OpenSSH `openssh-key-v1` (cipher, KDF, KDF rounds,
+  note that the private section was not read), PuTTY key files, OpenPGP
+  packets with their armour CRC-24 verified or reported as unverified, JKS/JCEKS
+  keystores with aliases, entry types and the certificate inside each trusted
+  entry, and `ssh-*`/`ecdsa-sha2-*` host keys.
+* **Encoded copies**: a base64 or hex blob that decodes to a key structure is
+  found wherever it sits — including inside a filesystem image the scanner does
+  not unpack.
+
+Certificates are read for their public facts: version, serial, subject, issuer,
+validity window, signature algorithm, key type and curve, `self_signed`,
+`basicConstraints CA`, `keyUsage`, `extendedKeyUsage` and SANs. For every key
+the report carries kind, type, size, curve, detector, encryption state,
+`material_sha256`, byte length, offset(s) and occurrence count — **never the key
+material itself**, not even a fragment of it.
+
+* `BIN-EMBEDDED-PRIVATE-KEY` — **CRITICAL** when the key is unencrypted (a
+  plaintext secret shipped to every customer), HIGH when it is passphrase- or
+  container-encrypted. The detail says what to do: rotate, remove from source,
+  keep the key in a KMS/HSM.
+* `BIN-EMBEDDED-KEYSTORE` — HIGH when the store holds private keys (a JKS is
+  protected by its store password alone, which the detail states), otherwise
+  MEDIUM for a trust store.
+* `BIN-EMBEDDED-CERTIFICATE` — MEDIUM, and explicitly *not* a verification: the
+  finding says the certificate was not chain-validated, not revoked-checked and
+  not treated as an anchor.
+* `BIN-EMBEDDED-TEST-KEY` — INFO for a key the surrounding bytes call a sample,
+  an example key, a placeholder or "do not use". These are inventoried and
+  counted, but they do not raise a false alarm.
+
+Keys that are structurally identical in wording are one row: the same material
+found twice (once loose, once in an archive) is reported once with both offsets
+and both locations.
+
 Finding codes: `BIN-EOL-CRYPTO`, `BIN-CRYPTO-NO-VERSION`,
 `BIN-WEAK-PRIMITIVE-PRESENT`, `BIN-WEAK-PRIMITIVE-CLASS`,
 `BIN-QUANTUM-VULNERABLE`, `BIN-PQC-CAPABLE`, `BIN-ECC-NO-PQC`,
@@ -123,6 +174,8 @@ and still runs), `BIN-EMBEDDED-CRYPTO`, `BIN-CONTAINER-FOLLOWED`,
 Flow Guard, or CFG declared but not instrumented),
 `BIN-RPM-UNSIGNED` (the RPM signature header has no RSA/DSA/PGP entry),
 `BIN-DEB-UNSIGNED` (no `_gpgorigin` member),
+`BIN-EMBEDDED-PRIVATE-KEY`, `BIN-EMBEDDED-KEYSTORE`,
+`BIN-EMBEDDED-CERTIFICATE`, `BIN-EMBEDDED-TEST-KEY`,
 `BIN-FIRMWARE-NOT-EXTRACTED`.
 
 ## 4. What flows onward
@@ -138,7 +191,15 @@ Flow Guard, or CFG declared but not instrumented),
   quantum-vulnerable algorithms (absent when it does not apply), `evidence.occurrences`
   pointing at the file, and `cryptoscan:*` properties. Validated and ingested
   through the same path as `POST /cbom/ingest`; `ingest_cbom: true` marks the
-  assets in the crypto inventory under `system_name`.
+  assets in the crypto inventory under `system_name`. Key material is inventoried
+  under `assetType: related-crypto-material` (type, size, `securedBy`, test
+  vectors as `seed`) and certificates under `assetType: certificate` (subject,
+  issuer, validity window); a key is identified by
+  `cryptoscan:material-sha256` — the material itself is not in the document, and
+  the same key shipped in two binaries is one asset with two locations.
+  `manifest.binary_summary.key_material` counts what was found
+  (`private_keys`, `unencrypted_private_keys`, `certificates`, `keystores`,
+  `test_vectors`, `artefacts_with_keys`).
 * **Gate / licence / VEX / diff** — the artifact is a normal SBOM artefact, so
   `POST /sbom/{id}/gate`, `/sbom/license`, `/sbom/vex`, `/sbom/{id}/rescan` and
   the Diff tab all work. Feed rows for binary-detected implementations match on
@@ -201,5 +262,16 @@ Flow Guard, or CFG declared but not instrumented),
   `summary.extraction_limits`, and a truncated walk is flagged in the manifest
   (`binary_summary.truncated`) — never silently reported as a complete scan.
 * **A raw blob is only reported when it carries crypto evidence** (version banner,
-  library marker); otherwise it is skipped rather than listed as an unnameable
-  "binary".
+  library marker, **or key material**); otherwise it is skipped rather than
+  listed as an unnameable "binary". A key found inside a container is never
+  dropped for being in an unparsed member.
+* **Encrypted key material is reported, never cracked.** An encrypted PKCS#8,
+  a PKCS#12 bundle, a JKS private entry, a passphrase-protected OpenSSH key and
+  an OpenPGP string-to-key packet are all identified and flagged — the scanner
+  does not attempt to decrypt anything, and the finding says so. Absence of a
+  decrypt attempt is not absence of a finding: an encrypted private key in a
+  shipped binary is still HIGH.
+* **Key detection has its own caps**, reported like the rest: a 64 MiB search
+  window, 32 MiB for encoded-blob runs, 64 key rows per file, 64 PEM blocks,
+  ASN.1 nesting depth 8 and 1 MiB per ASN.1 element. A search that stops at a
+  cap says so instead of implying there was nothing more to find.

@@ -37,7 +37,21 @@ def _binary_fixtures():
     return module
 
 
+def _key_fixtures():
+    """Import the embedded-key suite's builders (DER/PEM/PGP/JKS key fixtures)."""
+    path = _SERVICES / "devsecops" / "tests" / "test_embedded_keys.py"
+    name = "embedded_key_fixtures"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 fixtures = _binary_fixtures()
+key_fixtures = _key_fixtures()
 OPENSSL_BANNER = "OpenSSL 3.0.20 7 Apr 2026"
 
 #: a feed row for the OpenSSL found inside the fixture binary (generic ecosystem,
@@ -314,3 +328,89 @@ async def test_cbom_endpoint_404s_for_unknown_artifact(app_db):
     assert resp.status_code == 404
     bad = await _get(application, "/api/v1/devsecops/binary/artifacts/not-a-uuid/cbom")
     assert bad.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_binary_scan_inventories_embedded_key_material(app_db):
+    """A key inside a binary is a critical finding, a CBOM asset and an SBOM row."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "fleet"
+    directory.mkdir()
+    private_key = key_fixtures._rsa_pem()
+    (directory / "acme-agent").write_bytes(
+        key_fixtures._elf_with(private_key + key_fixtures._pem("CERTIFICATE",
+                                                               key_fixtures._certificate())))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+
+    summary = body["manifest"]["binary_summary"]["key_material"]
+    assert summary["private_keys"] == 1
+    assert summary["unencrypted_private_keys"] == 1
+    assert summary["certificates"] == 1
+    assert summary["keystores"] == 0
+    assert summary["artefacts_with_keys"] == 1
+    assert body["manifest"]["binary_summary"]["signature_posture"] == {"signed": 0, "unsigned": 0}
+
+    critical = [f for f in body["findings"] if f["code"] == "BIN-EMBEDDED-PRIVATE-KEY"]
+    assert len(critical) == 1 and critical[0]["severity"] == "CRITICAL"
+    assert critical[0]["path"] == "acme-agent"
+    assert critical[0]["key"]["material_sha256"] and "material" not in critical[0]["key"]
+    assert {f["code"] for f in body["findings"]} >= {"BIN-EMBEDDED-CERTIFICATE"}
+
+    row = next(b for b in body["binaries"] if b["file_name"] == "acme-agent")
+    assert row["embedded_keys"]["private_keys"] == 1
+    key_row = next(k for k in row["embedded_keys"]["keys"] if k["kind"] == "private-key")
+    assert key_row["key_bits"] == 1024 and key_row["key_type"] == "rsa"
+
+    # the CBOM inventories the key as an asset, identified by its hash
+    assets = [c for c in body["cbom"]["components"]
+              if str(c.get("bom-ref", "")).startswith("cryptoscan:binary/key/")]
+    assert len(assets) == 2
+    private = next(c for c in assets
+                   if c["cryptoProperties"]["assetType"] == "related-crypto-material")
+    properties = {p["name"]: p["value"] for p in private["properties"]}
+    assert properties["cryptoscan:key-type"] == "rsa"
+    assert properties["cryptoscan:encrypted"] == "false"
+    assert properties["cryptoscan:quantum-vulnerable"] == "true"
+    assert len(properties["cryptoscan:material-sha256"]) == 64
+    stored = await _get(application, f"/api/v1/devsecops/binary/artifacts/"
+                                    f"{body['artifact_id']}/cbom")
+    assert stored.status_code == 200
+    assert [c for c in stored.json()["components"] if "key/" in str(c.get("bom-ref", ""))]
+
+    # nothing in the response — summary, findings, SBOM or CBOM — carries the key itself
+    dumped = json.dumps(body, sort_keys=True)
+    for secret in (key_fixtures.MODULUS, key_fixtures.PRIVATE_EXPONENT):
+        assert secret.hex() not in dumped
+        assert secret.decode("latin-1") not in dumped
+    assert key_fixtures._rsa_pkcs1().hex() not in dumped
+
+
+@pytest.mark.asyncio
+async def test_binary_scan_distinguishes_encrypted_and_test_key_material(app_db):
+    """Encrypted keys are HIGH, keys labelled as samples do not cry wolf."""
+    application, _session, tmp_path = app_db
+    directory = tmp_path / "vendor"
+    directory.mkdir()
+    (directory / "vendor-lib").write_bytes(key_fixtures._elf_with(
+        key_fixtures._pem("ENCRYPTED PRIVATE KEY", key_fixtures._rsa_pkcs8_encrypted())))
+    (directory / "vendor-sample").write_bytes(key_fixtures._elf_with(
+        b"# DO NOT USE - example key\n" + key_fixtures._rsa_pem()))
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(directory), "format": "cyclonedx"})
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    summary = body["manifest"]["binary_summary"]["key_material"]
+    # the sample key is counted as a test vector, so it is not also a private-key leak
+    assert summary["private_keys"] == 1
+    assert summary["unencrypted_private_keys"] == 0
+    assert summary["test_vectors"] == 1
+    by_code = {}
+    for finding in body["findings"]:
+        by_code.setdefault(finding["code"], []).append(finding)
+    assert by_code["BIN-EMBEDDED-PRIVATE-KEY"][0]["severity"] == "HIGH"
+    assert by_code["BIN-EMBEDDED-PRIVATE-KEY"][0]["path"] == "vendor-lib"
+    assert by_code["BIN-EMBEDDED-TEST-KEY"][0]["severity"] == "INFO"
+    assert by_code["BIN-EMBEDDED-TEST-KEY"][0]["path"] == "vendor-sample"

@@ -26,6 +26,12 @@ What is parsed, and how deep:
 * **WASM**, **Java class** files, **Python bytecode**, **RPM** and **raw** blobs
   — identified and string-scanned; a format we cannot parse is reported as
   identified-but-not-parsed rather than silently passed.
+* **Embedded key material** — PEM/OpenSSH/PuTTY/OpenPGP armour, ASN.1 structures
+  read by hand (PKCS#1, SEC1, PKCS#8 clear and encrypted, SubjectPublicKeyInfo,
+  X.509, PKCS#7, PKCS#12), base64/hex-encoded copies of the same structures, Java
+  keystores and SSH host-key lines. The key material itself is never emitted: a
+  report cites kind, type, size, curve, offset and a SHA-256 of the material, so
+  the same key can be correlated across artefacts without being republished.
 
 Crypto evidence is graded, never asserted from one string: the engine delegates
 to the universal-crypto fingerprint table and evidence-level model
@@ -43,6 +49,8 @@ import re
 import struct
 from pathlib import Path
 from typing import Any, Iterable
+
+from devsecops.embedded_keys import detect_embedded_keys
 
 # ----------------------------------------------------------------- bounds --- #
 MAX_FILE_BYTES = 512 * 1024 * 1024          # scan a file up to 512 MiB
@@ -2586,7 +2594,9 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         if len(member) > MAX_MEMBER_BYTES:
             summary["refused"].append({"member": name, "reason": "member exceeds the parse budget"})
             continue
-        if identify(member, name)["format"] == "raw":
+        member_keys = detect_embedded_keys(member)
+        carries_keys = bool(member_keys["keys"] or member_keys["test_vectors"])
+        if identify(member, name)["format"] == "raw" and not carries_keys:
             continue
         record = parse_bytes(member, name=Path(name).name)
         # a member gets the same treatment as a top-level file, constant tables
@@ -2607,7 +2617,11 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         record["crypto"] = crypto_evidence(member, strings, imports=record.get("imports") or [],
                                            exports=record.get("exports") or [],
                                            constants=constant_blobs)
-        record["findings"] = []
+        if carries_keys:
+            record["embedded_keys"] = member_keys
+        # a member does not repeat its libraries as findings, but key material in it
+        # is a fact about this artefact and must survive the extraction boundary
+        record["findings"] = _key_findings(record)
         summary["opened"].append(f"parsed {record['path']} ({record['format']})")
         summary["parsed"] += 1
         parsed.append(record)
@@ -3096,6 +3110,7 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
     except OSError:
         return None
     ident = identify(data, path.name)
+    raw_keys: dict[str, Any] | None = None
     if ident["format"] == "raw":
         # a raw blob (trimmed firmware, memory dump, vendor blob without magic)
         # is only interesting when it carries crypto evidence — a version banner,
@@ -3111,7 +3126,10 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
         if not interesting:
             interesting = any(re.search(pattern, text, re.MULTILINE)
                               for _lib, pattern, _vendor in VERSION_PATTERNS)
-        if not interesting:
+        # a key is evidence too: a bare .jks/.p12/.der has no magic this scanner
+        # names, and dropping it here would hide exactly what we look for
+        raw_keys = detect_embedded_keys(data)
+        if not interesting and not (raw_keys["keys"] or raw_keys["test_vectors"]):
             return None
     record = parse_bytes(data, name=path.name)
     record["path"] = str(path if root is None else path.relative_to(root))
@@ -3133,6 +3151,9 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
                              exports=record.get("exports") or [],
                              constants=constant_blobs)
     record["crypto"] = crypto
+    keys = raw_keys if raw_keys is not None else detect_embedded_keys(data)
+    if keys["keys"] or keys["test_vectors"]:
+        record["embedded_keys"] = keys
     embedded_records: list[dict[str, Any]] = []
     containers = follow_containers(data, record, parsed=embedded_records,
                                    prefix=str(record["path"]))
@@ -3202,6 +3223,103 @@ def follow_containers(data: bytes, record: dict[str, Any], *, parsed: list[dict[
     return results
 
 
+def _key_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """Findings for key material found in the bytes — evidence, never the key.
+
+    Kept separate from :func:`_binary_findings` because key material inside an
+    archive member must be reported even though members do not get the rest of the
+    per-file findings (their libraries and packages are reported as components).
+    """
+    path = record.get("path") or record.get("name")
+    findings: list[dict[str, Any]] = []
+    keys = record.get("embedded_keys") or {}
+    for row in keys.get("keys") or []:
+        if row["kind"] == "private-key":
+            encrypted = bool(row.get("encrypted"))
+            findings.append({
+                "code": "BIN-EMBEDDED-PRIVATE-KEY",
+                "severity": "HIGH" if encrypted else "CRITICAL",
+                "title": ("password-protected private key embedded in the artefact" if encrypted
+                          else "private key embedded in the artefact"),
+                "detail": (_key_description(row) + " at offset " + str(row.get("offset"))
+                           + " (material sha256 " + str(row.get("material_sha256"))[:16]
+                           + "; the material itself is not reproduced here). "
+                           + ("The container is password-protected, so the passphrase is the only "
+                              "thing between a reader and the key. " if encrypted else "")
+                           + "Anyone holding a copy of this artefact holds the key: rotate it and "
+                             "deliver it by reference (KMS/HSM) instead of shipping it"),
+                "path": path, "key": _key_summary(row),
+            })
+        elif row["kind"] == "keystore":
+            from_keys = int((row.get("detail") or {}).get("private_keys") or 0)
+            findings.append({
+                "code": "BIN-EMBEDDED-KEYSTORE",
+                "severity": "HIGH" if from_keys else "MEDIUM",
+                "title": (f"{row.get('format', 'keystore')} keystore with {from_keys} private key(s) "
+                          "embedded in the artefact" if from_keys else
+                          f"{row.get('format', 'keystore')} keystore embedded in the artefact"),
+                "detail": ("keystore entries: " + _key_description(row)
+                           + "; protection relies on the store password and the entries travel with "
+                             "the artefact"),
+                "path": path, "key": _key_summary(row),
+            })
+        elif row["kind"] == "certificate":
+            detail = row.get("detail") or {}
+            notes = []
+            if detail.get("ca"):
+                notes.append("it carries CA:TRUE, so it acts as a trust anchor")
+            if detail.get("not_after"):
+                notes.append("valid until " + str(detail["not_after"]))
+            if detail.get("subject"):
+                notes.append("issued to " + str(detail["subject"])[:120])
+            findings.append({
+                "code": "BIN-EMBEDDED-CERTIFICATE",
+                "severity": "MEDIUM",
+                "title": "X.509 certificate embedded in the artefact",
+                "detail": (_key_description(row) + " at offset " + str(row.get("offset"))
+                           + ("; " + "; ".join(notes) if notes else "")
+                           + ". The signature chain was NOT verified — this is the certificate's "
+                             "own content, not a trust decision"),
+                "path": path, "key": _key_summary(row),
+            })
+    if keys.get("test_vectors"):
+        reasons = sorted({str(row.get("reason")) for row in keys["test_vectors"]
+                          if row.get("reason")})
+        findings.append({
+            "code": "BIN-EMBEDDED-TEST-KEY", "severity": "INFO",
+            "title": "test key material present (explicitly not a secret)",
+            "detail": (f"{len(keys['test_vectors'])} value(s) parse as key material but are named "
+                       "test vectors, carry a test label or are degenerate placeholders"
+                       + (" (" + "; ".join(reasons[:3]) + ")" if reasons else "")
+                       + " — reported for inventory completeness, not as a leak"),
+            "path": path,
+        })
+    return findings
+
+
+def _key_description(row: dict[str, Any]) -> str:
+    """One phrase naming a key without ever naming its bytes."""
+    label = {"private-key": "private key", "public-key": "public key",
+             "certificate": "X.509 certificate", "keystore": "keystore",
+             "csr": "PKCS#10 certificate request",
+             "crl": "certificate revocation list"}.get(str(row.get("kind")), "key material")
+    size = f"{row['key_bits']}-bit " if row.get("key_bits") else ""
+    key_type = f"{str(row['key_type']).upper()} " if row.get("key_type") else ""
+    curve = f" on {row['curve']}" if row.get("curve") else ""
+    return (f"a {size}{key_type}{label}{curve} "
+            f"(stored as {row.get('format')}, found via {row.get('detector')})")
+
+
+def _key_summary(row: dict[str, Any]) -> dict[str, Any]:
+    """Facts about a key — enough to correlate it across artefacts, never the key."""
+    out = {"kind": row.get("kind"), "key_type": row.get("key_type"),
+           "key_bits": row.get("key_bits"), "curve": row.get("curve"),
+           "format": row.get("format"), "detector": row.get("detector"),
+           "encrypted": row.get("encrypted"), "offset": row.get("offset"),
+           "occurrences": row.get("occurrences"), "material_sha256": row.get("material_sha256")}
+    return {key: value for key, value in out.items() if value is not None}
+
+
 def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Per-file findings — each one cites the evidence that produced it."""
     findings: list[dict[str, Any]] = []
@@ -3268,6 +3386,7 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                          "harvest-now-decrypt-later exposure"),
             "path": path,
         })
+    findings.extend(_key_findings(record))
     if record.get("packed_or_encrypted") and not record.get("packer"):
         findings.append({
             "code": "BIN-HIGH-ENTROPY", "severity": "MEDIUM",
@@ -3578,6 +3697,53 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
     return findings
 
 
+def _embedded_keys_summary(record: dict[str, Any]) -> dict[str, Any] | None:
+    """Key facts for an SBOM row — kinds, sizes and hashes, never the material."""
+    keys = record.get("embedded_keys")
+    if not keys:
+        return None
+    rows = [{"kind": row.get("kind"), "key_type": row.get("key_type"),
+             "key_bits": row.get("key_bits"), "curve": row.get("curve"),
+             "format": row.get("format"), "detector": row.get("detector"),
+             "encrypted": row.get("encrypted"), "offset": row.get("offset"),
+             "occurrences": row.get("occurrences"),
+             "material_sha256": row.get("material_sha256"),
+             "detail": row.get("detail")}
+            for row in keys.get("keys") or []]
+    out: dict[str, Any] = {"private_keys": keys.get("private_keys") or 0,
+                           # of those, how many the reader could read as material and
+                           # how many are private-key entries a keystore declares
+                           "private_key_material_rows": keys.get("private_key_material_rows") or 0,
+                           "keystore_private_keys": keys.get("keystore_private_keys") or 0,
+                           "public_keys": keys.get("public_keys") or 0,
+                           "certificates": keys.get("certificates") or 0,
+                           "keystores": keys.get("keystores") or 0,
+                           "unencrypted_private_keys": keys.get("unencrypted_private_keys") or 0,
+                           "keys": rows}
+    if keys.get("test_vectors"):
+        out["test_vectors"] = [{"kind": row.get("kind"), "format": row.get("format"),
+                                "reason": row.get("reason"), "offset": row.get("offset")}
+                               for row in keys["test_vectors"]]
+    return out
+
+
+def _scan_key_counts(records: list[dict[str, Any]]) -> dict[str, int]:
+    """Key-material counters for a whole walk, embedded members included."""
+    flat = _flatten_records(records)
+    return {
+        "artefacts_with_keys": sum(1 for record in flat if record.get("embedded_keys")),
+        "private_keys": sum(int((record.get("embedded_keys") or {}).get("private_keys") or 0)
+                            for record in flat),
+        "unencrypted_private_keys": sum(
+            int((record.get("embedded_keys") or {}).get("unencrypted_private_keys") or 0)
+            for record in flat),
+        "certificates": sum(int((record.get("embedded_keys") or {}).get("certificates") or 0)
+                            for record in flat),
+        "keystores": sum(int((record.get("embedded_keys") or {}).get("keystores") or 0)
+                         for record in flat),
+    }
+
+
 def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool = False,
               max_binaries: int = MAX_BINARIES) -> dict[str, Any]:
     """Walk a file or directory and scan every recognisable binary."""
@@ -3607,7 +3773,11 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
         record = scan_file(candidate, root=root)
         if record is None:
             continue
-        if record["format"] == "raw" and not include_raw:
+        # a file whose format we cannot name is still kept when it carries key
+        # material: that is evidence, and dropping it would hide a leaked key
+        carries_keys = bool((record.get("embedded_keys") or {}).get("keys")
+                            or (record.get("embedded_keys") or {}).get("test_vectors"))
+        if record["format"] == "raw" and not include_raw and not carries_keys:
             continue
         records.append(record)
 
@@ -3620,6 +3790,7 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
         "by_format": _counts(record["format"] for record in records),
         "by_arch": _counts(str(record.get("arch") or record.get("machine") or "unknown")
                            for record in records),
+        "embedded_keys": _scan_key_counts(records),
         "limits": {"max_binaries": max_binaries, "max_file_bytes": MAX_FILE_BYTES,
                    "truncated": len(records) >= max_binaries},
     }
@@ -3830,6 +4001,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "export_count": len(record.get("exports") or []),
             "sections": (record.get("sections") or [])[:16],
             "crypto_constants": [row.get("algorithm") for row in record.get("crypto_constants") or []],
+            "embedded_keys": _embedded_keys_summary(record),
             "packages_inside": [{"name": pkg.get("name"), "version": pkg.get("version"),
                                  "manager": pkg.get("manager")}
                                 for pkg in _record_packages(record)],
@@ -3860,6 +4032,20 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
                                   for record in scan.get("binaries") or []
                                   for container in record.get("containers_followed") or []),
         "packed_binaries": sum(1 for record in all_records if record.get("packer")),
+        "embedded_keys": {
+            "artefacts_with_keys": sum(1 for record in all_records if record.get("embedded_keys")),
+            "private_keys": sum(int((record.get("embedded_keys") or {}).get("private_keys") or 0)
+                                for record in all_records),
+            "unencrypted_private_keys": sum(
+                int((record.get("embedded_keys") or {}).get("unencrypted_private_keys") or 0)
+                for record in all_records),
+            "certificates": sum(int((record.get("embedded_keys") or {}).get("certificates") or 0)
+                                for record in all_records),
+            "keystores": sum(int((record.get("embedded_keys") or {}).get("keystores") or 0)
+                             for record in all_records),
+            "test_vectors": sum(len((record.get("embedded_keys") or {}).get("test_vectors") or [])
+                                for record in all_records),
+        },
         "limits": scan.get("limits") or {},
         "extraction_limits": {"max_payload_bytes": MAX_EXTRACT_BYTES,
                               "max_depth": MAX_EXTRACT_DEPTH,
@@ -3951,8 +4137,87 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
         })
         by_key[key] = components[-1]
 
+    keys_by_hash: dict[str, dict[str, Any]] = {}
+
+    def _add_key_asset(key: dict[str, Any], record: dict[str, Any], path: str, *,
+                       test_vector: bool = False) -> None:
+        """One asset per key, identified by the hash of its material — never itself.
+
+        The same key found in a library and in the firmware that ships it is one
+        asset with two locations, exactly like an algorithm implementation.
+        """
+        digest = str(key.get("material_sha256") or "")
+        if not digest:
+            return
+        if digest in keys_by_hash:
+            asset = keys_by_hash[digest]
+            occurrences = asset["evidence"]["occurrences"]
+            if not any(row["location"] == str(path) for row in occurrences):
+                occurrences.append({"location": str(path)})
+            asset["properties"].append({"name": "cryptoscan:occurrences",
+                                        "value": str(len(occurrences))})
+            return
+        kind, key_type = str(key.get("kind") or "key"), key.get("key_type")
+        bits, curve = key.get("key_bits"), key.get("curve")
+        encrypted = bool(key.get("encrypted"))
+        properties: list[dict[str, str]] = [
+            {"name": "cryptoscan:key-kind", "value": kind},
+            {"name": "cryptoscan:detector", "value": str(key.get("detector") or "")},
+            {"name": "cryptoscan:material-sha256", "value": digest},
+            {"name": "cryptoscan:encrypted", "value": "true" if encrypted else "false"},
+            {"name": "cryptoscan:found-in", "value": str(path)},
+        ]
+        if key_type:
+            properties.append({"name": "cryptoscan:key-type", "value": str(key_type)})
+        if bits:
+            properties.append({"name": "cryptoscan:key-bits", "value": str(bits)})
+        if curve:
+            properties.append({"name": "cryptoscan:curve", "value": str(curve)})
+        if record.get("derived_from"):
+            properties.append({"name": "cryptoscan:derived-from",
+                               "value": str(record.get("derived_from"))})
+        if str(key_type) in SHOR_VULNERABLE_KEY_TYPES:
+            properties.append({"name": "cryptoscan:quantum-vulnerable", "value": "true"})
+        if test_vector:
+            properties.append({"name": "cryptoscan:test-vector", "value": "true"})
+        detail = key.get("detail") or {}
+        component: dict[str, Any] = {
+            "type": "cryptographic-asset",
+            "bom-ref": f"cryptoscan:binary/key/{digest[:32]}",
+            "name": str(key.get("name") or f"{key_type or 'unknown'} {kind}"),
+            "evidence": {"occurrences": [{"location": str(path)}]},
+            "properties": properties,
+        }
+        if kind == "certificate":
+            certificate = {"certificateFormat": "X.509",
+                           "subjectName": detail.get("subject"),
+                           "issuerName": detail.get("issuer"),
+                           "notValidBefore": detail.get("not_before"),
+                           "notValidAfter": detail.get("not_after")}
+            # a null is schema-invalid, so a field we could not read is absent
+            component["cryptoProperties"] = {
+                "assetType": "certificate",
+                "certificateProperties": {field: value for field, value in certificate.items()
+                                          if value is not None},
+            }
+        else:
+            material_type = "seed" if test_vector else KEY_MATERIAL_TYPES.get(kind, "key")
+            related: dict[str, Any] = {"type": material_type}
+            if bits:
+                related["size"] = int(bits)
+            if encrypted:
+                related["securedBy"] = "software"
+            component["cryptoProperties"] = {"assetType": "related-crypto-material",
+                                             "relatedCryptoMaterialProperties": related}
+        keys_by_hash[digest] = component
+        components.append(component)
+
     for record in _flatten_records(scan.get("binaries") or []):
         path = record.get("path") or record.get("name")
+        for key in (record.get("embedded_keys") or {}).get("keys") or []:
+            _add_key_asset(key, record, path)
+        for vector in (record.get("embedded_keys") or {}).get("test_vectors") or []:
+            _add_key_asset(vector, record, path, test_vector=True)
         crypto = record.get("crypto") or {}
         if not crypto.get("libraries"):
             # an algorithm proven by a constant table or a transformation string
@@ -4009,6 +4274,7 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
                                {"name": "cryptoscan:found-in", "value": str(path)}],
             })
 
+    metadata_keys = len(keys_by_hash)
     metadata: dict[str, Any] = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "tools": [{"vendor": "CryptoScan", "name": "binary scanner", "version": "1.0"}],
@@ -4017,6 +4283,7 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
         "properties": [
             {"name": "cryptoscan:binaries-scanned", "value": str(result.get("binaries_scanned", 0))},
             {"name": "cryptoscan:files-walked", "value": str(result.get("files_walked", 0))},
+            {"name": "cryptoscan:key-material-assets", "value": str(metadata_keys)},
         ],
     }
     if created_by:
@@ -4030,6 +4297,16 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
         "components": components,
     }
     return document
+
+
+#: CBOM ``relatedCryptoMaterialProperties.type`` per detected key kind
+KEY_MATERIAL_TYPES = {"private-key": "private-key", "public-key": "public-key",
+                      "csr": "public-key", "keystore": "key", "certificate": "certificate",
+                      "test-vector": "seed"}
+
+#: public-key families broken by Shor's algorithm — a fact, not a judgement
+SHOR_VULNERABLE_KEY_TYPES = {"rsa", "ec", "dsa", "dh", "ecdh", "ed25519", "ed448",
+                             "x25519", "x448", "openpgp", "ssh"}
 
 
 def _asset_properties(library: str, version: str | None, library_row: dict[str, Any],

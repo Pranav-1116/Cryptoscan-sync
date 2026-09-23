@@ -405,6 +405,8 @@ def _binary_posture(result: dict) -> dict:
     """
     signature_formats = {"pe", "macho"}
     signed = unsigned = encrypted = 0
+    keys = {"private_keys": 0, "unencrypted_private_keys": 0, "certificates": 0,
+            "keystores": 0, "artefacts_with_keys": 0, "test_vectors": 0}
     for row in result.get("binaries") or []:
         signature = row.get("signature") or {}
         if str(row.get("format")) in signature_formats:
@@ -414,8 +416,16 @@ def _binary_posture(result: dict) -> dict:
                 unsigned += 1
         if row.get("encrypted"):
             encrypted += 1
+        embedded = row.get("embedded_keys") or {}
+        if embedded:
+            keys["artefacts_with_keys"] += 1
+            keys["private_keys"] += int(embedded.get("private_keys") or 0)
+            keys["unencrypted_private_keys"] += int(embedded.get("unencrypted_private_keys") or 0)
+            keys["certificates"] += int(embedded.get("certificates") or 0)
+            keys["keystores"] += int(embedded.get("keystores") or 0)
+            keys["test_vectors"] += len(embedded.get("test_vectors") or [])
     return {"signature_posture": {"signed": signed, "unsigned": unsigned},
-            "encrypted_binaries": encrypted}
+            "encrypted_binaries": encrypted, "key_material": keys}
 
 
 class BinaryScanRequest(BaseModel):
@@ -542,6 +552,7 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
             "containers_followed": result.get("containers_followed", 0),
             "containers_refused": result.get("containers_refused", 0),
             "packed_binaries": result.get("packed_binaries", 0),
+            "key_material": (result.get("embedded_keys") or {}),
             **_binary_posture(result),
             "extraction_limits": result.get("extraction_limits") or {},
         },
