@@ -345,10 +345,11 @@ so "the ACME rule matched" can be reproduced on another machine. Matching is
 bounded at 64 MiB per file, and a file matched against a prefix says so
 (`BIN-YARA-SAMPLE-TRUNCATED`, INFO) rather than reporting "no match".
 
-Nine rules ship with the platform (private-key material, miner markers, ransom
-notes, credential dumpers, reverse shells, UPX, hardcoded test credentials…), all
-deliberately specific: a rule that fires on the word `crypto` is noise dressed as
-detection. Yours are added, not replaced:
+Eight rules ship with the platform — seven detections plus a private helper
+against which they are written (private-key material, miner markers, ransom
+notes, credential dumpers, reverse shells, UPX, hardcoded test credentials). All
+are deliberately specific: a rule that fires on the word `crypto` is noise
+dressed as detection. Yours are added, not replaced:
 
 ```bash
 curl -X POST /api/v1/devsecops/yara/validate \
