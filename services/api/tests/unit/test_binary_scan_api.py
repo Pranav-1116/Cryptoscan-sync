@@ -670,6 +670,9 @@ async def test_binary_scan_runs_customer_rules_and_publishes_the_ruleset(app_db)
     assert yara["by_rule"] == {"vendor_debug_socket": 1}
     assert yara["by_severity"] == {"HIGH": 1}
     assert yara["error_count"] == 0
+    # the rules live outside the scanned tree here; when they sit inside it, the
+    # rule files themselves are skipped and counted (test_yara.py covers that)
+    assert yara["rule_files_skipped"] == 0
     assert summary["findings_by_severity"].get("HIGH", 0) >= 1
 
     # the same rule matches inside a container, and the row says which rule fired

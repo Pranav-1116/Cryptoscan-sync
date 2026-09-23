@@ -442,6 +442,7 @@ def _yara_summary(result: dict) -> dict | None:
         "by_rule": dict(list((summary.get("by_rule") or {}).items())[:20]),
         "by_severity": summary.get("by_severity") or {},
         "truncated_scans": summary.get("truncated_scans", 0),
+        "rule_files_skipped": summary.get("rule_files_skipped", 0),
         "error_count": summary.get("error_count", 0),
         "errors": (summary.get("errors") or [])[:10],
         "note": ("a rule the loader refused did not run; rule errors are findings, so "
