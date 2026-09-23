@@ -496,13 +496,15 @@ async def test_telecom_metrics_in_prometheus_exposition(app_db, monkeypatch, tmp
     target = normalize_target({"nf_id": "amf-prod-01", "nf_type": "amf",
                                "endpoint": "sba.example:443", "carrier_code": "de-telekom"})
     down = classify_target(target, {"status": "TIMEOUT"})
-    with telecom_router._LOCK:
-        telecom_router._SNAPSHOT = {
-            "generated_at": __import__("datetime").datetime.now(
-                __import__("datetime").timezone.utc).isoformat(),
-            "targets_registered": 3,
-            "rows": [down], "state": {}, "events": [],
-        }
+    # go through the module's own writer so the in-memory cache and the file's
+    # mtime agree — a bare `_SNAPSHOT = ...` is discarded by `_load_snapshot()`
+    # whenever an earlier test left a snapshot file behind (order-dependent)
+    telecom_router._store_snapshot({
+        "generated_at": __import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc).isoformat(),
+        "targets_registered": 3,
+        "rows": [down], "state": {}, "events": [],
+    })
     try:
         with TestClient(create_app()) as client:
             body = client.get("/metrics").text

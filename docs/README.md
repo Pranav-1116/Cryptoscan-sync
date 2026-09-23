@@ -1,5 +1,7 @@
 # CryptoScan documentation
 
+> **Which parts are production-supported?** See [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview, labelled in the UI and served at `GET /api/v1/platform/capabilities`.
+
 Production cryptographic inventory and compliance platform: deterministic
 scanners, hashed evidence, YAML policy, drift, and a dashboard. Policy is
 never decided by AI; unknowns are skipped with reasons, never faked.

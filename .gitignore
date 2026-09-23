@@ -67,3 +67,6 @@ scan-results/
 
 # local SQLite DBs
 data/
+
+# frontend test artefacts
+frontend/coverage/

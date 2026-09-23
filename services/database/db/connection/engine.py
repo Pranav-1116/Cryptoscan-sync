@@ -109,16 +109,49 @@ def create_db_engine(
     return engine
 
 
+_ENGINE_URL: str | None = None
+
+
+def _configured_url() -> str:
+    return _normalize_url(os.environ.get("DATABASE_URL", "sqlite:///./data/cryptoscan.db"))
+
+
 def get_engine() -> Engine:
-    global _ENGINE
+    """The process engine for the *currently configured* ``DATABASE_URL``.
+
+    The singleton follows the environment: if ``DATABASE_URL`` changed since
+    the engine was built (a test module pointing at its own file, a process
+    reconfigured between runs), the stale engine is disposed and a new one is
+    created for the new URL. An engine installed explicitly with
+    :func:`set_engine` is pinned and never swapped by this check.
+    """
+    global _ENGINE, _ENGINE_URL
+    url = _configured_url()
     if _ENGINE is None:
-        _ENGINE = create_db_engine()
+        _ENGINE = create_db_engine(url)
+        _ENGINE_URL = url
+    elif _ENGINE_URL is not None and _ENGINE_URL != url:
+        stale = _ENGINE
+        _ENGINE = create_db_engine(url)
+        _ENGINE_URL = url
+        try:
+            stale.dispose()
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            from db.connection.session import configure_session
+
+            configure_session(_ENGINE)
+        except Exception:  # noqa: BLE001
+            pass
     return _ENGINE
 
 
 def set_engine(engine: Engine) -> None:
-    global _ENGINE
+    """Pin an explicit engine (tests, one-off scripts); env changes won't swap it."""
+    global _ENGINE, _ENGINE_URL
     _ENGINE = engine
+    _ENGINE_URL = None
 
 
 def check_db_health(engine: Engine | None = None) -> dict[str, Any]:

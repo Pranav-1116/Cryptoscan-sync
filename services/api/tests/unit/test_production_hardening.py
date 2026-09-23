@@ -119,10 +119,33 @@ def test_login_lockout(monkeypatch):
     get_settings.cache_clear()
 
 
-def test_login_me_meta_and_security_headers():
+def test_login_me_meta_and_security_headers(monkeypatch, tmp_path):
+    # a fresh database: this test logs in with the bootstrap credentials, and
+    # another test in the same process may have rotated the shared admin row
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'hardening.db'}")
+    monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("ADMIN_PASSWORD", "cryptoscan")
+    monkeypatch.setenv("ADMIN_PASSWORD_HASH", "")
     get_settings.cache_clear()
     from api.main import create_app
+    from db.connection import engine as _engine_mod
+    from db.connection.session import configure_session, init_db
 
+    previous_engine = _engine_mod.get_engine()
+    fresh = _engine_mod.create_db_engine()
+    _engine_mod.set_engine(fresh)
+    init_db(fresh)
+    reset_lockout_state()
+    try:
+        _run_login_me_meta(create_app)
+    finally:
+        _engine_mod.set_engine(previous_engine)
+        configure_session(previous_engine)
+        fresh.dispose()
+        get_settings.cache_clear()
+
+
+def _run_login_me_meta(create_app):
     with TestClient(create_app()) as client:
         denied = client.get("/api/v1/auth/me")
         assert denied.status_code == 401

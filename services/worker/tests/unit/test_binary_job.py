@@ -100,9 +100,13 @@ def test_binary_job_scans_stores_and_reports_the_artifact(monkeypatch, tmp_path)
     assert progress["binary"]["binaries_scanned"] == 1
     assert progress["binary"]["target"].endswith("/firmware")
     assert progress["binary"]["report_url"].endswith("/sbom/art-1/report?fmt=markdown")
-    # the SBOM and the manifest are on disk, under the artifact id the caller chose
+    # the SBOM and the manifest are on disk, under the artifact id the caller
+    # chose, inside the tenant bucket (an install with no tenant context uses
+    # the platform bucket)
     stored = sorted(p.name for p in (tmp_path / "sboms").iterdir())
-    assert "art-1.cdx.json.enc" in stored and "art-1.cdx.json.manifest.json" in stored
+    assert any(n.endswith("art-1.cdx.json.enc") for n in stored)
+    assert any(n.endswith("art-1.cdx.json.manifest.json") for n in stored)
+    assert all(n.startswith("tenants__") for n in stored), "artifacts must be tenant-scoped"
 
 
 def test_every_progress_write_keeps_the_scan_options(monkeypatch, tmp_path):
@@ -136,9 +140,9 @@ def test_the_queued_artifact_is_signed_and_verifiable(monkeypatch, tmp_path):
                   target_repo=f"binary://{target}", job_type="BINARY",
                   progress={"scan_options": {}})
     assert binary_job.run_binary_job(job) is True
-    manifest = json.loads(
-        (tmp_path / "sboms" / "22222222-3333-4444-5555-666666666666.cdx.json.manifest.json")
-        .read_text("utf-8"))
+    manifest_path = next(p for p in (tmp_path / "sboms").iterdir()
+                         if p.name.endswith("22222222-3333-4444-5555-666666666666.cdx.json.manifest.json"))
+    manifest = json.loads(manifest_path.read_text("utf-8"))
     assert manifest["signature_alg"] == "HMAC-SHA256"
     assert manifest["signature_key"] == "tests"
     assert sb.verify_manifest(manifest, "unit-test-secret") is True
@@ -159,7 +163,7 @@ def test_the_artifact_is_keyed_by_the_job_so_a_retry_overwrites_it(monkeypatch, 
     assert binary_job.run_binary_job(job) is True
     second = sorted(p.name for p in (tmp_path / "sboms").iterdir())
     assert first == second
-    assert all(name.startswith("11111111-2222-3333-4444-555555555555.") for name in second)
+    assert all("11111111-2222-3333-4444-555555555555." in name for name in second)
 
 
 def test_binary_job_fails_closed_when_the_target_is_gone(monkeypatch, tmp_path):

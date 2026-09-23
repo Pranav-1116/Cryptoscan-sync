@@ -38,6 +38,11 @@ not a universal "scan everything" tool.
   **key *metadata* only — never key material or secret values** (enforced by
   tests; evidence packs use strict field whitelists).
 
+Not every surface is equally proven: **33 GA · 30 beta · 8 preview** console
+surfaces, labelled on every page and listed in
+[docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md)
+(`GET /api/v1/platform/capabilities`, source `shared_models/capability_maturity.py`).
+
 The boundaries are a single source of truth
 (`shared_models/platform_scope.py`), served at `GET /api/v1/platform/scope`,
 enforced by tests, and documented in

@@ -1,4 +1,4 @@
-.PHONY: help setup seed api worker test scan verify
+.PHONY: help setup seed api worker test test-serial test-live test-frontend test-all scan verify
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # Prefer the repo-standard .venv created by `make setup`; fall back to a venv/
@@ -36,11 +36,29 @@ worker:
 lock:
 	@echo "# Pinning to the exact versions the test gate ran against"; 	$(PY) -m pip freeze --exclude-editable | grep -vE '^(pip|setuptools|wheel)==' > requirements.lock.txt; 	echo "wrote requirements.lock.txt ($$(wc -l < requirements.lock.txt) pins)"
 
+# Every suite in one hermetic, parallel pytest run (xdist across all CPUs;
+# pytest-socket blocks any non-loopback network call). ~4 min on 2 cores,
+# was ~25+ min serial. `make test-serial` keeps the old one-suite-at-a-time
+# loop for bisecting; `make test-live` opts into the network-dependent tests.
+TEST_DIRS := $(shell find $(ROOT)/services $(ROOT)/shared -type d -name tests -not -path '*/node_modules/*' | sed 's|$(ROOT)/||' | sort)
+JOBS ?= auto
+
 test:
-	@for d in services/policy/tests services/evidence/tests services/normalization/tests services/scanner/tests services/database/tests/unit services/drift/tests services/worker/tests/unit services/api/tests/unit services/api/tests/integration services/deduplication/tests services/cbom/tests services/container_scanner/tests services/network_scanner/tests services/cloud_scanner/tests services/runtime/tests services/graph_engine/tests services/business_context/tests services/quantum/tests services/remediation/tests services/reporting/tests services/ot_scanner/tests services/vendor_intel/tests services/agility/tests services/payment_crypto/tests services/universal_vendor/tests services/universal_crypto/tests services/universal_platform/tests services/sector_profiles/tests shared/shared_models/tests; do \
+	$(PY) -m pytest -q -n $(JOBS) --dist loadfile $(TEST_DIRS)
+
+test-serial:
+	@for d in $(TEST_DIRS); do \
 		echo "===== $$d ====="; \
-		$(PY) -m pytest -q $$d || exit 1; \
+		$(PY) -m pytest -q -p no:xdist $$d || exit 1; \
 	done
+
+test-frontend:
+	cd $(ROOT)/frontend && npm run typecheck && npm test
+
+test-all: test test-frontend
+
+test-live:
+	$(PY) -m pytest -q -n $(JOBS) -m live --override-ini='addopts=--import-mode=importlib' $(TEST_DIRS)
 
 monitor:
 	$(PY) $(ROOT)/scripts/run_monitor.py

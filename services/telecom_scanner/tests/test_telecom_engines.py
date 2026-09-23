@@ -203,8 +203,12 @@ def test_lost_and_recovered_and_findings_changed():
 
 def test_cert_expiring_transition_fires_once():
     soon = _probe()
+    # relative to now: a fixed date would drift from EXPIRING_SOON into
+    # EXPIRING_CRITICAL as the calendar advances
+    from datetime import datetime, timedelta, timezone
+    not_after = (datetime.now(timezone.utc) + timedelta(days=25)).isoformat()
     soon["certificates"][0].update({"expiry_status": "EXPIRING_SOON", "days_until_expiry": 25,
-                                    "not_after": "2026-10-01T00:00:00+00:00"})
+                                    "not_after": not_after})
     v = classify_target(_target(), soon)
     valid = classify_target(_target(), _probe())
     fired = evaluate_changes({"amf-prod-01": valid}, [v])
