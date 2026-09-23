@@ -1918,9 +1918,63 @@ def _zip_local_entries(data: bytes, limit: int = 2000):
             start = position + 30 + name_length + extra_length
         except Exception:  # noqa: BLE001
             return
-        yield {"name": name, "method": method,
+        yield {"name": name, "method": method, "flags": _flags,
                "payload": data[start:start + min(max(compressed, 0), 1 << 20)]}
         position = start + max(compressed, 0)
+
+
+#: zip methods this scanner can open, and what it says about the ones it cannot
+ZIP_OPENABLE = {0: "stored", 8: "deflate"}
+ZIP_METHOD_NAMES = {1: "shrink", 6: "implode", 9: "deflate64", 12: "bzip2", 14: "lzma",
+                    93: "zstd", 95: "xz", 99: "aes-encrypted"}
+
+
+def _zip_member_payloads(data: bytes, *, limit: int = MAX_EXTRACT_FILES,
+                         budget: int = MAX_EXTRACT_BYTES) -> tuple[list[tuple[str, bytes]],
+                                                                  list[dict[str, str]]]:
+    """Decompress the zip members this scanner can open; name the ones it cannot.
+
+    A zip is where a build system puts a binary, so its members are followed like
+    any other container's. An encrypted or zstd-compressed member is *reported*
+    with the reason instead of being silently absent — "12 members listed" and
+    "3 members parsed" are both true statements, and the report should make it
+    obvious which one it is making.
+    """
+    import zlib
+
+    payloads: list[tuple[str, bytes]] = []
+    refused: list[dict[str, str]] = []
+    spent = 0
+    for entry in _zip_local_entries(data, limit=limit * 4):
+        if len(payloads) >= limit:
+            break
+        name = entry["name"]
+        if name.endswith("/"):
+            continue
+        if entry["flags"] & 0x1:
+            refused.append({"member": name, "reason": "member is encrypted"})
+            continue
+        method = int(entry["method"])
+        if method not in ZIP_OPENABLE:
+            refused.append({"member": name,
+                            "reason": (ZIP_METHOD_NAMES.get(method, f"method {method}")
+                                       + " is not supported")})
+            continue
+        try:
+            member = entry["payload"] if method == 0 else zlib.decompress(entry["payload"], -15)
+        except Exception as exc:  # noqa: BLE001 — a corrupt member is refused, not guessed
+            refused.append({"member": name,
+                            "reason": f"member could not be decompressed ({type(exc).__name__})"})
+            continue
+        if len(member) > MAX_MEMBER_BYTES:
+            refused.append({"member": name, "reason": "member exceeds the parse budget"})
+            continue
+        if spent + len(member) > budget:
+            refused.append({"member": name, "reason": "container budget reached"})
+            break
+        spent += len(member)
+        payloads.append((name, member))
+    return payloads, refused
 
 
 def _zip_member(data: bytes, suffix: str) -> bytes | None:
@@ -2576,7 +2630,7 @@ def parse_cpio_members(data: bytes, wanted: tuple[str, ...] = (), *,
 
 
 def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
-                      parsed: list[dict[str, Any]]) -> dict[str, Any] | None:
+                      parsed: list[dict[str, Any]], yara: Any = None) -> dict[str, Any] | None:
     """Follow a container and scan what is inside it.
 
     Depth-bounded, size-bounded, and it never claims more than it did: what was
@@ -2657,14 +2711,20 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
         payloads = parse_cpio_members(payload or b"")
     elif inner_format == "ustar" and payload:
         payloads = _tar_member_bytes(payload, ("",))
+    elif inner_format == "zip":
+        payloads, zip_refused = _zip_member_payloads(data)
+        if payloads:
+            summary["opened"].append(f"zip members read ({len(payloads)} openable)")
+        summary["refused"].extend(zip_refused)
 
     _parse_member_payloads(payloads[:12], depth=depth, prefix=prefix, parsed=parsed,
-                           summary=summary)
+                           summary=summary, yara=yara)
     return summary
 
 
 def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, prefix: str,
-                           parsed: list[dict[str, Any]], summary: dict[str, Any]) -> None:
+                           parsed: list[dict[str, Any]], summary: dict[str, Any],
+                           yara: Any = None) -> None:
     """Parse the members that are real files in a known format, bounded.
 
     A member that is not a format this scanner understands is deliberately absent
@@ -2682,7 +2742,7 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         carries_keys = bool(member_keys["keys"] or member_keys["test_vectors"])
         if identify(member, name)["format"] == "raw" and not carries_keys:
             continue
-        record = parse_bytes(member, name=Path(name).name)
+        record = parse_bytes(member, name=Path(name).name, yara=yara)
         # a member gets the same treatment as a top-level file, constant tables
         # included — otherwise an implementation inside an archive looks weaker
         # than the identical file scanned directly
@@ -2706,9 +2766,10 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
                                            constant_evidence=constant_evidence)
         if carries_keys:
             record["embedded_keys"] = member_keys
-        # a member does not repeat its libraries as findings, but key material in it
-        # is a fact about this artefact and must survive the extraction boundary
-        record["findings"] = _key_findings(record)
+        # a member does not repeat its libraries as findings, but key material and a
+        # rule match in it are facts about this artefact and must survive the
+        # extraction boundary
+        record["findings"] = _key_findings(record) + _yara_findings(record)
         summary["opened"].append(f"parsed {record['path']} ({record['format']})")
         summary["parsed"] += 1
         parsed.append(record)
@@ -3190,8 +3251,14 @@ def is_end_of_life(library: str, version: str | None) -> bool:
 
 
 # ------------------------------------------------------------- pipeline ----- #
-def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
-    """Dispatch one buffer to its parser; unknown formats are identified only."""
+def parse_bytes(data: bytes, *, name: str = "", yara: Any = None) -> dict[str, Any]:
+    """Dispatch one buffer to its parser; unknown formats are identified only.
+
+    ``yara`` is a compiled ruleset (see :mod:`devsecops.yara_rules`); when given,
+    the buffer is matched and the matches are attached to the record. Matching
+    happens here rather than on the file path so a member extracted from a
+    container is matched too.
+    """
     ident = identify(data, name)
     fmt = ident["format"]
     record: dict[str, Any] = {"format": fmt, "size": len(data),
@@ -3247,6 +3314,18 @@ def parse_bytes(data: bytes, *, name: str = "") -> dict[str, Any]:
         record.pop("_code_windows", None)
         record["fingerprints"] = None
         record["fingerprint_error"] = f"{type(exc).__name__}: {exc}"
+    if yara is not None and getattr(yara, "rules", None):
+        # the buffer is matched, not the file, so a member extracted from a
+        # container is matched against the rules the same way a file is
+        try:
+            matched = yara.scan(data)
+            record["yara"] = {"matches": matched["matches"],
+                              "bytes_scanned": matched["bytes_scanned"],
+                              "truncated": matched["truncated"],
+                              "ruleset_digest": (yara.digest or "")[:16]}
+        except Exception as exc:  # noqa: BLE001 — a rule engine must never fail a scan
+            record["yara"] = {"matches": [], "error": f"{type(exc).__name__}: {exc}",
+                              "ruleset_digest": (getattr(yara, "digest", "") or "")[:16]}
     return record
 
 
@@ -3262,7 +3341,7 @@ def _unparsed_note(fmt: str) -> str:
     return f"{fmt} identified; container not unpacked"
 
 
-def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
+def scan_file(path: Path, *, root: Path | None = None, yara: Any = None) -> dict[str, Any] | None:
     """Scan one file if it is a recognisable binary/archive/firmware image."""
     try:
         size = path.stat().st_size
@@ -3278,6 +3357,15 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
         return None
     ident = identify(data, path.name)
     raw_keys: dict[str, Any] | None = None
+    raw_rule_hits: dict[str, Any] | None = None
+    if ident["format"] == "raw" and yara is not None and getattr(yara, "rules", None):
+        # rules run *before* the decision to drop a raw file, because a rule match
+        # is itself the evidence that the file belongs in the report — a ransom
+        # note has no magic bytes and would otherwise be skipped as noise
+        try:
+            raw_rule_hits = yara.scan(data)
+        except Exception:  # noqa: BLE001 — a rule engine must never fail a scan
+            raw_rule_hits = None
     if ident["format"] == "raw":
         # a raw blob (trimmed firmware, memory dump, vendor blob without magic)
         # is only interesting when it carries crypto evidence — a version banner,
@@ -3297,8 +3385,15 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
         # names, and dropping it here would hide exactly what we look for
         raw_keys = detect_embedded_keys(data)
         if not interesting and not (raw_keys["keys"] or raw_keys["test_vectors"]):
-            return None
-    record = parse_bytes(data, name=path.name)
+            if not (raw_rule_hits or {}).get("matches"):
+                return None
+    record = parse_bytes(data, name=path.name,
+                         yara=None if raw_rule_hits is not None else yara)
+    if raw_rule_hits is not None:
+        record["yara"] = {"matches": raw_rule_hits["matches"],
+                          "bytes_scanned": raw_rule_hits["bytes_scanned"],
+                          "truncated": raw_rule_hits["truncated"],
+                          "ruleset_digest": (getattr(yara, "digest", "") or "")[:16]}
     record["path"] = str(path if root is None else path.relative_to(root))
     # parsers that read an identity out of the file itself (an RPM package name)
     # keep it; the file's own name is always available as `file_name`
@@ -3325,7 +3420,7 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
         record["embedded_keys"] = keys
     embedded_records: list[dict[str, Any]] = []
     containers = follow_containers(data, record, parsed=embedded_records,
-                                   prefix=str(record["path"]))
+                                   prefix=str(record["path"]), yara=yara)
     if containers:
         record["containers_followed"] = containers
     if embedded_records:
@@ -3340,12 +3435,13 @@ def scan_file(path: Path, *, root: Path | None = None) -> dict[str, Any] | None:
 
 
 def follow_containers(data: bytes, record: dict[str, Any], *, parsed: list[dict[str, Any]],
-                      prefix: str) -> list[dict[str, Any]]:
+                      prefix: str, yara: Any = None) -> list[dict[str, Any]]:
     """Open whatever the record's own container chain says can be opened."""
     fmt = str(record.get("format") or "")
     results: list[dict[str, Any]] = []
     if fmt in COMPRESSION_FORMATS or fmt in ("ar", "ustar", "zip", "cpio"):
-        summary = explore_container(data, fmt, depth=0, prefix=prefix, parsed=parsed)
+        summary = explore_container(data, fmt, depth=0, prefix=prefix, parsed=parsed,
+                                    yara=yara)
         if summary:
             results.append(summary)
         return results
@@ -3363,6 +3459,7 @@ def follow_containers(data: bytes, record: dict[str, Any], *, parsed: list[dict[
                 summary["members"] = members[:40]
                 summary["opened"].append(f"cpio payload listed ({len(members)} members)")
                 _parse_member_payloads(parse_cpio_members(payload), depth=0, prefix=prefix,
+                                       yara=yara,
                                        parsed=parsed, summary=summary)
                 results.append(summary)
             elif payload:
@@ -3386,7 +3483,7 @@ def follow_containers(data: bytes, record: dict[str, Any], *, parsed: list[dict[
             if offset <= 0 or offset >= len(data):
                 continue
             # the compression stream starts at the offset the container search found
-            summary = explore_container(data[offset:], container_format, depth=0,
+            summary = explore_container(data[offset:], container_format, depth=0, yara=yara,
                                         prefix=f"{prefix}@{offset}", parsed=parsed)
             if summary:
                 summary["offset"] = offset
@@ -3553,6 +3650,59 @@ def _constant_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
     return findings
 
 
+def _yara_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
+    """One finding per rule that fired, quoting the rule and the bytes it matched.
+
+    The offsets are the evidence: a rule name alone is an opinion, a rule name
+    with the string that fired and where it fired can be checked. A truncated
+    sample is its own finding, because "no match in the first 64 MiB" is not the
+    same claim as "no match".
+    """
+    yara = record.get("yara") or {}
+    if not yara:
+        return []
+    path = record.get("path") or record.get("name")
+    findings: list[dict[str, Any]] = []
+    for match in yara.get("matches") or []:
+        meta = match.get("meta") or {}
+        strings = match.get("strings") or []
+        hits = "; ".join(f"{row['id']} x{row['count']} at "
+                         f"{', '.join(str(offset) for offset in (row['offsets'] or [])[:4])}"
+                         for row in strings[:6])
+        description = meta.get("description") or meta.get("desc") or ""
+        findings.append({
+            "code": "BIN-YARA-MATCH",
+            "severity": match.get("severity") or "MEDIUM",
+            "title": f"YARA rule {match['rule']} matched",
+            "detail": ((description + ". " if description else "")
+                       + f"Rule {match['rule']}"
+                       + (f" (tags: {', '.join(match['tags'])})" if match.get("tags") else "")
+                       + f" matched {hits or 'without a reported string'}"
+                       + (f"; category {meta['category']}" if meta.get("category") else "")
+                       + (f". Ruleset digest {yara['ruleset_digest']}"
+                          if yara.get("ruleset_digest") else "")
+                       + (". The file was matched against a prefix — this is a sample, not "
+                          "the whole file" if yara.get("truncated") else "")
+                       + ". A rule match is a named suspicion, not a verdict: confirm it "
+                         "against the bytes at the offsets given"),
+            "path": path, "rule": match["rule"], "tags": match.get("tags") or [],
+            "severity_from_rule": True,
+            "strings": [{"id": row["id"], "count": row["count"],
+                         "offsets": (row["offsets"] or [])[:8]} for row in strings[:8]],
+        })
+    if yara.get("truncated"):
+        findings.append({
+            "code": "BIN-YARA-SAMPLE-TRUNCATED",
+            "severity": "INFO",
+            "title": "YARA rules ran against a prefix of the file",
+            "detail": (f"only {yara.get('bytes_scanned')} bytes were matched, so a rule that "
+                       f"would have fired later in the file did not get the chance; the "
+                       f"result is 'no match in the sample', not 'no match'"),
+            "path": path,
+        })
+    return findings
+
+
 def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
     """Per-file findings — each one cites the evidence that produced it."""
     findings: list[dict[str, Any]] = []
@@ -3620,6 +3770,7 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                          "harvest-now-decrypt-later exposure"),
             "path": path,
         })
+    findings.extend(_yara_findings(record))
     findings.extend(_key_findings(record))
     if record.get("packed_or_encrypted") and not record.get("packer"):
         findings.append({
@@ -4018,8 +4169,21 @@ def _scan_key_counts(records: list[dict[str, Any]]) -> dict[str, int]:
 
 
 def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool = False,
-              max_binaries: int = MAX_BINARIES) -> dict[str, Any]:
-    """Walk a file or directory and scan every recognisable binary."""
+              max_binaries: int = MAX_BINARIES,
+              yara_rules: Iterable[str | Path] = (),
+              yara_ruleset: Any = None) -> dict[str, Any]:
+    """Walk a file or directory and scan every recognisable binary.
+
+    ``yara_rules`` are rule files or directories, loaded once for the walk;
+    ``yara_ruleset`` takes an already-compiled ruleset (the API loads one so the
+    digest can be reported before the walk). With neither, the built-in rules
+    still run — the scanner should look for known tooling out of the box.
+    """
+    from devsecops.yara_rules import load_rules
+
+    ruleset = yara_ruleset
+    if ruleset is None:
+        ruleset = load_rules(yara_rules) if yara_rules else load_rules()
     base = Path(target).expanduser()
     if not base.exists():
         raise FileNotFoundError(f"target not found: {base}")
@@ -4039,18 +4203,41 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
                 continue
             candidates.append(candidate)
 
+    # a rule file contains the very strings its rules look for, so scanning the
+    # directory the rules live in would report the rules as matches; the files are
+    # skipped and *counted*, because a silent skip is its own kind of lie
+    rule_sources: set[Path] = set()
+    for source in ruleset.sources if ruleset is not None else []:
+        if str(source).startswith("builtin:"):
+            continue
+        try:
+            path = Path(source).expanduser()
+            if path.is_file():
+                rule_sources.add(path.resolve())
+        except OSError:  # pragma: no cover — an unreadable source is already a load error
+            continue
+    skipped_rule_sources = 0
+
     records: list[dict[str, Any]] = []
     for candidate in candidates:
         if len(records) >= max_binaries:
             break
-        record = scan_file(candidate, root=root)
+        try:
+            if candidate.is_file() and candidate.resolve() in rule_sources:
+                skipped_rule_sources += 1
+                continue
+        except OSError:  # pragma: no cover — a path that cannot be resolved is scanned
+            pass
+        record = scan_file(candidate, root=root, yara=ruleset)
         if record is None:
             continue
         # a file whose format we cannot name is still kept when it carries key
-        # material: that is evidence, and dropping it would hide a leaked key
-        carries_keys = bool((record.get("embedded_keys") or {}).get("keys")
-                            or (record.get("embedded_keys") or {}).get("test_vectors"))
-        if record["format"] == "raw" and not include_raw and not carries_keys:
+        # material or matched a rule: both are evidence, and dropping the file
+        # would hide a leaked key or the ransom note the ruleset just named
+        keys = record.get("embedded_keys") or {}
+        carries_evidence = bool(keys.get("keys") or keys.get("test_vectors")
+                               or (record.get("yara") or {}).get("matches"))
+        if record["format"] == "raw" and not include_raw and not carries_evidence:
             continue
         records.append(record)
 
@@ -4064,9 +4251,42 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
         "by_arch": _counts(str(record.get("arch") or record.get("machine") or "unknown")
                            for record in records),
         "embedded_keys": _scan_key_counts(records),
+        "yara": {**_scan_yara_summary(records, ruleset),
+                 "rule_files_skipped": skipped_rule_sources,
+                 "rule_files_note": ("rule files under the target are not matched against "
+                                     "their own rules — they contain the strings by "
+                                     "definition")},
         "limits": {"max_binaries": max_binaries, "max_file_bytes": MAX_FILE_BYTES,
                    "truncated": len(records) >= max_binaries},
     }
+
+
+def _scan_yara_summary(records: list[dict[str, Any]], ruleset: Any) -> dict[str, Any]:
+    """What the ruleset was and what it found, at the scan level.
+
+    The ruleset digest is the part that matters for evidence: without it, "the
+    WannaCry rule matched" cannot be reproduced by anyone else.
+    """
+    by_rule: dict[str, int] = {}
+    by_severity: dict[str, int] = {}
+    files_matched: set[str] = set()
+    for record in _flatten_records(records):
+        block = record.get("yara") or {}
+        for match in block.get("matches") or []:
+            by_rule[match["rule"]] = by_rule.get(match["rule"], 0) + 1
+            severity = match.get("severity") or "MEDIUM"
+            by_severity[severity] = by_severity.get(severity, 0) + 1
+            files_matched.add(str(record.get("path") or record.get("name")))
+    summary = {
+        "matches": sum(by_rule.values()),
+        "files_matched": len(files_matched),
+        "by_rule": dict(sorted(by_rule.items(), key=lambda item: (-item[1], item[0]))),
+        "by_severity": dict(sorted(by_severity.items())),
+        "truncated_scans": sum(1 for record in _flatten_records(records)
+                               if (record.get("yara") or {}).get("truncated")),
+    }
+    summary.update(ruleset.summary() if ruleset is not None else {})
+    return summary
 
 
 #: how many files one fingerprint walk will read; stated in the result when hit
@@ -4302,6 +4522,17 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
 
     clusters = cluster(all_records)
     findings.extend(fingerprint_findings(clusters))
+    yara_summary = scan.get("yara") or {}
+    for error in yara_summary.get("errors") or []:
+        findings.append({
+            "code": "BIN-YARA-RULE-ERROR",
+            "severity": "MEDIUM",
+            "title": "a YARA rule could not be loaded",
+            "detail": (f"{error.get('source')} was dropped: {error.get('error')}. The rule did "
+                       f"not run, so a match that rule would have made is missing from this "
+                       f"report — fix the rule and rescan rather than reading this as clean"),
+            "path": None, "rule_source": error.get("source"),
+        })
     crypto_libraries = [row for row in libraries]
     algorithms = sorted({algorithm for record in all_records
                          for algorithm in (record.get("crypto") or {}).get("algorithms") or []})
@@ -4358,6 +4589,8 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "sections": (record.get("sections") or [])[:16],
             "crypto_constants": _named_constant_algorithms(record),
             "embedded_keys": _embedded_keys_summary(record),
+            "yara_rules_matched": [match["rule"] for match in
+                                   (record.get("yara") or {}).get("matches") or []],
             "constants": (record.get("crypto") or {}).get("constants_summary"),
             "packages_inside": [{"name": pkg.get("name"), "version": pkg.get("version"),
                                  "manager": pkg.get("manager")}
@@ -4379,6 +4612,7 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
         "findings_by_severity": _counts(str(row.get("severity"))
                                         for row in findings),
         "fingerprints": clusters,
+        "yara": scan.get("yara") or {},
         "binaries_scanned": scan.get("binaries_scanned", 0),
         "files_walked": scan.get("files_walked", 0),
         "by_format": scan.get("by_format") or {},

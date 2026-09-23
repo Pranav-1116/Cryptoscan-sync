@@ -214,6 +214,37 @@ near-duplicate counts and a build-fingerprint column. Tests: +27 `test_fingerpri
 +2 API tests (15 in `test_binary_scan_api.py`); frontend typechecks and builds.
 
 
+**Update (2026-09-23, commit pending, rule matching):** the binary scanner can now be told
+what to look for. It runs a **documented subset of YARA**, implemented in Python so the
+platform stays air-gapped with no C toolchain and no native `yara`: `private` rules,
+`meta`/`strings`/`condition`, text strings with `nocase`/`wide`/`ascii`/`fullword`, hex
+blocks with wildcards, jumps and alternatives, regex strings, `$a`/`#a`/`@a`,
+`any/all/N of them`, `any of ($prefix*)`, `filesize`, integer and boolean comparisons,
+arithmetic, `not/and/or`, parentheses, and **other rules by name** (including private
+helpers and forward references; a reference cycle is reported, not recursed). What is not
+supported is refused out loud — `for`, `xor`/`base64`, module functions (`uint16()`,
+`math.*`), jumps past 2000 bytes, references to strings or rules that do not exist — and a
+refused rule becomes a finding (`BIN-YARA-RULE-ERROR`) because a half-loaded ruleset must
+never read as "checked and clean". Nine deliberately specific rules ship with the platform
+(key material, miner markers, ransom notes, credential dumpers, reverse shells, UPX,
+hardcoded test credentials); customers add theirs. Every match is `BIN-YARA-MATCH` at the
+rule's own severity with the strings, counts and offsets that fired, and the manifest
+carries the **ruleset digest** (SHA-256 over every source) so a match can be reproduced
+elsewhere; matching is bounded at 64 MiB per file and a truncated scan says so
+(`BIN-YARA-SAMPLE-TRUNCATED`). Rules are matched against **container members** as well as
+the container — and zip members are now actually extracted (stored/deflate, bounded, with
+encrypted or unsupported-method members refused by name), so a binary inside a jar reports
+its rules the same way a loose file does. A rule file inside the scanned tree is not
+matched against its own strings, and the count skipped for that reason is published
+(`rule_files_skipped`). New `POST /devsecops/yara/validate` says exactly what will run
+(every rule with tags, severity, strings and rule references) and what was refused, before
+anything is scanned. Scanner findings are also converted into the artefact pipeline's own
+term as `evidence.detectedBy` entries (identity preserved, capped and counted, injected
+once — the consumer drops duplicates), so a CycloneDX reader shows *which mechanism* named
+each crypto component instead of one undifferentiated blob. Tests: +30 `test_yara.py`,
++2 API tests (17 in `test_binary_scan_api.py`). 475 passed across
+`services/devsecops/tests` + `test_binary_scan_api.py` + `services/cbom/tests`; ruff clean.
+
 **Update (2026-09-12, commit `e90cdd8`):** **585 OpenAPI paths / 644 operations**
 (measured live), migrations still 0001–0056, **64 frontend pages**, same 9 RBAC
 roles. New since the last measurement: six first-class scanner languages

@@ -37,12 +37,12 @@ was stored with the scan.
 | PE (PE32/PE32+) | machine, subsystem (incl. UEFI runtime/boot → `type: efi-image`), COFF timestamp, sections, **mitigations from `DllCharacteristics`** (ASLR/DYNAMIC_BASE, high-entropy VA, DEP/NX_COMPAT, SEH, isolation, CFG, force-integrity) and **`IMAGE_LOAD_CONFIG_DIRECTORY`** (SecurityCookie ⇒ `/GS` is really initialised, SafeSEH table, `GuardFlags` ⇒ CFG is instrumented, not merely declared), imported DLLs resolved through the section table, **delay-load imports**, **`RT_VERSION` resources** (StringFileInfo: company/product/file version/original filename, `VS_FIXEDFILEINFO`, translation table), **debug directory** (CodeView `RSDS` PDB path, GUID, age), **Authenticode presence** (entries, size, PKCS#7 — validity and chain are explicitly *not* verified), **CLR/`.NET` metadata** (BSJB → framework version), **Rich header** (linker product/build pairs — attribution evidence only) |
 | Mach-O (thin + fat) | CPU type/subtype, file type, `LC_UUID`, platform + minimum OS + SDK (`LC_BUILD_VERSION` / `LC_VERSION_MIN_*`), **linked dylibs with their current/compatibility versions** (`LC_LOAD_DYLIB`/weak/reexport/lazy), `install_name`, `LC_RPATH`, section list, **symbol table split into imports/exports** via `LC_DYSYMTAB` (dyld's leading `_` is stripped so the C name keys the crypto tables), **code signature**: signing identifier, team id, hash type, flags (hardened runtime, library validation, ad-hoc), **entitlements** (with the notable ones called out), **encryption** (`LC_ENCRYPTION_INFO*` cryptid → the file's strings and symbols are not readable) |
 | `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, **Debian `control` file** (package, version, architecture, maintainer, section, homepage, `Depends`) |
-| zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), native extensions |
+| zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), native extensions, and the members themselves are decompressed and parsed (§2.1) |
 | **Java class** | constant pool: referenced classes (`javax/crypto/Cipher`, `org/bouncycastle/…`), method names, transformation strings (`AES/GCM/NoPadding`), class file version; a truncated pool says where the walk stopped |
 | **RPM** | lead + **signature header** + main header: whether the package is **signed** (RSA/DSA/PGP/GPG tags) and which digests it carries (sha256/sha1/md5, read as raw bytes and reported as hex — a digest tag is integrity metadata, not a signature), name, version, release, licence, vendor, architecture, `PROVIDES`/`REQUIRES` package names (the crypto sonames a package depends on), payload digest algorithm, payload compressor and payload offset |
 | WASM | import and export names (where crypto markers live) |
 | Firmware | **uImage (legacy U-Boot) header decoded**: image name, OS, architecture, image type (kernel/ramdisk/filesystem/firmware/…), compression, load/entry addresses, payload size, build date — and **both CRCs verified** (header CRC over the header with its own field zeroed; payload CRC when present and the image is within the 64 MiB verification cap, with `data_crc_checked: false` and a reason when it is not). A mismatch or a truncated payload is a finding (`BIN-UIMAGE-CRC`, `BIN-UIMAGE-PAYLOAD`). Also: container chain with offsets (device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal, **cpio/initramfs member listing** |
-| Raw blobs | reported only when they carry crypto evidence — never as an unnameable "binary" |
+| Raw blobs | reported only when they carry crypto evidence **or a rule matched** — a ransom note has no magic bytes, and a rule match is the evidence that the file belongs in the report |
 
 ### 2.1 Containers are followed, inside a budget
 
@@ -52,7 +52,8 @@ Compression and archive formats are actually opened, one member at a time:
 |---|---|
 | gzip, xz/lzma, bzip2 | decompressed with a hard output cap, then identified again (tar/cpio get their member list) |
 | tar, cpio (initramfs) | members listed; members that are themselves a parseable format are parsed. A **bare** `.cpio`/`initramfs` (newc/crc magic at offset 0, not wrapped in gzip) is identified and opened the same way; the old ASCII `odc` format is identified and refused with the reason |
-| zip, `ar`/`.deb` | members listed; the Debian `control` file becomes the package identity, and a detached package signature (`_gpgorigin`/`_gpgbuilder` member) is reported when present |
+| zip, `ar`/`.deb` | members listed **and** extracted: stored/deflate members are decompressed within the budget and parseable ones are parsed, so a binary inside a jar/zip is inventoried like any other file (and matched against the rules); the Debian `control` file becomes the package identity, and a detached package signature (`_gpgorigin`/`_gpgbuilder` member) is reported when present. An encrypted or zstd/lzma-compressed member is refused with the reason, and the count of what was opened vs listed is in the container summary |
+| any container | the container's own bytes are parsed *and* its members, so a match on the archive itself (a stored, uncompressed member) is reported as well as a match inside a deflated one |
 | RPM | payload decompressed and the cpio member list read; parseable members are parsed |
 | zstd, lz4, squashfs/JFFS2/UBIFS/cramfs/ext | **refused with the reason** (`BIN-CONTAINER-REFUSED`) — there is no stdlib decoder for zstd/lz4, and filesystem images need external tooling |
 
@@ -146,7 +147,13 @@ Four things the ladder refuses to do:
   reported with `ambiguous_with: ["SHA-1"]`, kept out of the byte count the ladder
   grades, and never named as an implementation. The tie-breaker is a second table
   nothing else shares — SHA-256's round constants, MD5's `abs(sin)` constants —
-  which is exactly why the ladder counts bytes instead of patterns.
+  which is exactly why the ladder counts bytes instead of patterns. **The same
+  table stored byte-swapped counts as the same table**: a canonical spelling that
+  is another algorithm's table read the other way round is flagged, so an
+  implementation that stores its constants in host order is reported with the
+  ambiguity named rather than resolved by a guess. The SBOM row (`crypto_constants`)
+  therefore names only what the ladder confirmed; the count in `constants.tables_matched`
+  still includes the ambiguous match, because it *is* evidence that those bytes are there.
 * **A match is reported at the level it earned.** `BIN-CRYPTO-CONSTANT-TABLE`
   (INFO) cites the table, section and offset; `BIN-CRYPTO-CONSTANT-SHARED` (LOW)
   reports a complete table that another algorithm also stores;
@@ -304,7 +311,60 @@ Flow Guard, or CFG declared but not instrumented),
 `BIN-DEB-UNSIGNED` (no `_gpgorigin` member),
 `BIN-EMBEDDED-PRIVATE-KEY`, `BIN-EMBEDDED-KEYSTORE`,
 `BIN-EMBEDDED-CERTIFICATE`, `BIN-EMBEDDED-TEST-KEY`,
-`BIN-FIRMWARE-NOT-EXTRACTED`.
+`BIN-FIRMWARE-NOT-EXTRACTED`, `BIN-YARA-MATCH` (a rule fired — the severity is
+the rule's own, and the detail carries the strings and offsets that matched),
+`BIN-YARA-RULE-ERROR` (a rule could not be loaded, so it did **not** run),
+`BIN-YARA-SAMPLE-TRUNCATED` (the rules saw only a prefix of the file).
+
+### 3.4 Rule matching — a YARA subset that refuses what it cannot do
+
+Rules are how a shop encodes "what this binary must never contain". This scanner
+runs a **documented subset of YARA**, implemented in Python so the platform works
+air-gapped with no C toolchain and no native `yara` binary:
+
+| Supported | |
+| --- | --- |
+| `private` rules | evaluated, usable as conditions, never reported on their own |
+| `meta:` | string/integer/boolean values; `severity` and `namespace` are read by the platform |
+| text strings | `nocase`, `wide` (UTF-16LE), `ascii`, `fullword` |
+| hex strings | `63 7C ?? [4-6] ( 01 \| 02 )` — wildcards, jumps, alternatives |
+| regex strings | `/…/` with `i`/`s` — Python's regex syntax, not PCRE |
+| conditions | `$a`, `#a`, `@a`, `any of them`, `all of them`, `N of them`, `any of ($a*)`, `filesize`, integer/boolean comparisons, `+`/`-`, `and`/`or`/`not`, parentheses, other rules by name |
+
+What is *not* supported is **refused out loud**: `for` loops, `xor`/`base64`
+modifiers, module functions (`uint16()`, `math.*`), jumps past 2000 bytes, and
+rules that refer to a string or a rule that does not exist. A refused rule is a
+**finding** (`BIN-YARA-RULE-ERROR`, MEDIUM) and its matches are missing from the
+report, so a ruleset that half-loaded can never read as "checked and clean".
+
+Every match is reported as `BIN-YARA-MATCH` at the rule's own severity, with the
+rule name, tags, the meta that made it, and the string that fired with its count
+and offsets — a rule name alone is an opinion, a rule name plus the offset is
+evidence. The manifest carries the **ruleset digest** (SHA-256 over every source),
+so "the ACME rule matched" can be reproduced on another machine. Matching is
+bounded at 64 MiB per file, and a file matched against a prefix says so
+(`BIN-YARA-SAMPLE-TRUNCATED`, INFO) rather than reporting "no match".
+
+Nine rules ship with the platform (private-key material, miner markers, ransom
+notes, credential dumpers, reverse shells, UPX, hardcoded test credentials…), all
+deliberately specific: a rule that fires on the word `crypto` is noise dressed as
+detection. Yours are added, not replaced:
+
+```bash
+curl -X POST /api/v1/devsecops/yara/validate \
+  -d '{"rules": ["/srv/rules"], "text": "rule x { condition: filesize > 0 }"}'
+# -> every rule that will run, its tags/severity/strings/rule references,
+#    the bundle digest, and summary.errors for what was refused
+
+curl -X POST /api/v1/devsecops/binary/scan \
+  -d '{"target": "/srv/images", "yara_rules": ["/srv/rules"]}'
+```
+
+Rule files are validated against the same allowed source roots as any other scan
+target. They also contain the very strings they look for, so a rule file inside
+the scanned tree is **not** matched against its own rules — and the count of files
+skipped for that reason is reported (`rule_files_skipped`) rather than silently
+dropped.
 
 ## 4. What flows onward
 
@@ -336,6 +396,16 @@ Flow Guard, or CFG declared but not instrumented),
   default): they are not CVEs and are not in the document, so without that a
   binary shipping a private key would gate `PASS`. `GATE-SCAN-CRITICAL` blocks,
   `GATE-SCAN-HIGH-PRESENT` warns, and both say the finding is not a CVE.
+* **Rule matches are findings, not verdicts.** `manifest.binary_summary.yara`
+  carries the ruleset digest, the rules loaded, the errors, and the match counts
+  by rule and severity; every match is a `BIN-YARA-MATCH` finding with the
+  strings and offsets that produced it, so a claim can be checked against the
+  bytes rather than believed.
+* **The stored report carries the binary findings.** The markdown/JSON report of
+  a binary artifact includes a "Binary scan" section (files walked, formats,
+  signature/encryption posture, key material, constant-table coverage with
+  `searched_bytes`) and the finding list with code, severity, title and path —
+  the same findings the API returned, not just their counts.
 * **Rescan** re-walks the same target with the recorded options. A component
   diff keys on name **and** reference, so a binary called `openssl` and the
   `OpenSSL` library it contains are tracked separately.
@@ -364,6 +434,11 @@ Flow Guard, or CFG declared but not instrumented),
   computed and reported (`header_crc_verified`, `data_crc_verified`); a payload
   CRC over the 64 MiB verification cap is reported as *not checked* with the
   reason rather than as valid.
+* **The rule engine is a subset, and says which one.** Constructs outside the
+  table in §3.4 are refused with a reason rather than half-implemented; a rule that
+  needs `for` or a module function must be rewritten or reviewed by hand. Regexes
+  are Python's, so a PCRE-only construct fails to compile and lands in
+  `summary.errors` — visible, never silent.
 * **zstd and lz4 are refused, not guessed.** There is no zstd/lz4 decoder in the
   standard library, so those containers are reported with the reason; nothing is
   claimed about their contents.
@@ -394,9 +469,20 @@ Flow Guard, or CFG declared but not instrumented),
   `summary.extraction_limits`, and a truncated walk is flagged in the manifest
   (`binary_summary.truncated`) — never silently reported as a complete scan.
 * **A raw blob is only reported when it carries crypto evidence** (version banner,
-  library marker, **or key material**); otherwise it is skipped rather than
-  listed as an unnameable "binary". A key found inside a container is never
-  dropped for being in an unparsed member.
+  library marker, **key material, or a rule match**); otherwise it is skipped
+  rather than listed as an unnameable "binary". A key found inside a container is
+  never dropped for being in an unparsed member.
+* **The rule engine is a subset, and says which.** Constructs outside the table in
+  §3.4 are refused with a reason rather than half-implemented; a rule that needs
+  `for`, `xor`, `base64` or a module function must be rewritten or reviewed by
+  hand. Regexes use Python's semantics, so a PCRE-only construct fails to compile
+  and is reported as a load error — visible, never silent.
+* **Rules are matched against at most 64 MiB per file, and a match is a sample
+  when the file is larger** (`BIN-YARA-SAMPLE-TRUNCATED`); loading is bounded to
+  five thousand rules, 32 recorded offsets per string and 256 per rule (the
+  occurrence counts stay exact). A rule file inside the scanned tree is not
+  matched against its own rules, and the number skipped for that reason is
+  reported (`rule_files_skipped`).
 * **Encrypted key material is reported, never cracked.** An encrypted PKCS#8,
   a PKCS#12 bundle, a JKS private entry, a passphrase-protected OpenSSH key and
   an OpenPGP string-to-key packet are all identified and flagged — the scanner

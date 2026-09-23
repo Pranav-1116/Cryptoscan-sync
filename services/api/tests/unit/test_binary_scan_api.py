@@ -633,3 +633,105 @@ async def test_a_critical_scan_finding_fails_the_gate(app_db):
     allowed_body = allowed.json()
     assert allowed_body["verdict"] == "PASS"
     assert "GATE-SCAN-CRITICAL-PRESENT" in {w["code"] for w in allowed_body["warnings"]}
+
+
+@pytest.mark.asyncio
+async def test_binary_scan_runs_customer_rules_and_publishes_the_ruleset(app_db):
+    """A rule is only evidence if the manifest says which rules produced it."""
+    application, _session, tmp_path = app_db
+    rules = tmp_path / "rules"
+    rules.mkdir()
+    (rules / "vendor.yar").write_text('''
+        rule vendor_debug_socket {
+            meta:
+                description = "vendor build with the debug socket compiled in"
+                severity = "HIGH"
+                category = "vendor"
+            strings:
+                $listen = "debug-listen:0.0.0.0:31337"
+            condition:
+                $listen
+        }
+    ''', "utf-8")
+    target = tmp_path / "images"
+    target.mkdir()
+    (target / "libcrypto.so.3").write_bytes(fixtures._elf64(
+        soname="libcrypto.so.3", strings=(OPENSSL_BANNER, "debug-listen:0.0.0.0:31337")))
+
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(target), "yara_rules": [str(rules)]})
+    assert resp.status_code == 201, resp.text
+    summary = resp.json()["manifest"]["binary_summary"]
+    yara = summary["yara"]
+    from devsecops import yara_rules as yr
+
+    assert yara["digest"] == yr.load_rules([rules]).digest
+    assert yara["matches"] == 1 and yara["files_matched"] == 1
+    assert yara["by_rule"] == {"vendor_debug_socket": 1}
+    assert yara["by_severity"] == {"HIGH": 1}
+    assert yara["error_count"] == 0
+    assert summary["findings_by_severity"].get("HIGH", 0) >= 1
+
+    # the same rule matches inside a container, and the row says which rule fired
+    archive = target / "bundle.zip"
+    import zipfile
+
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as handle:
+        # deflated, so the marker exists *inside* the archive and nowhere in the
+        # container's own bytes — a match can only come from the member
+        handle.writestr("lib/payload.so", b"\x7fELF\x02\x01\x01" + b"\x00" * 32
+                        + b"debug-listen:0.0.0.0:31337")
+    resp = await _post(application, "/api/v1/devsecops/binary/scan",
+                       {"target": str(archive), "yara_rules": [str(rules)]})
+    assert resp.status_code == 201, resp.text
+    rows = resp.json()["bom"].get("metadata", {}).get("component", {})
+    assert rows, "the SBOM still renders when rules are supplied"
+    assert resp.json()["manifest"]["binary_summary"]["yara"]["by_rule"] \
+        == {"vendor_debug_socket": 1}
+
+    # a rule path outside the allowed roots, and a path that does not exist
+    outside = await _post(application, "/api/v1/devsecops/binary/scan",
+                          {"target": str(target), "yara_rules": ["/etc/yara"]})
+    assert outside.status_code == 400 and "allowed source roots" in outside.json()["detail"]
+    missing = await _post(application, "/api/v1/devsecops/binary/scan",
+                          {"target": str(target), "yara_rules": [str(tmp_path / "nope.yar")]})
+    assert missing.status_code == 404 and "rule path not found" in missing.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_yara_validate_says_what_will_run_and_what_was_refused(app_db):
+    """The check before trusting a ruleset: what loaded, and what did not."""
+    application, _session, tmp_path = app_db
+    rules = tmp_path / "rules"
+    rules.mkdir()
+    (rules / "good.yar").write_text('''
+        private rule helper { strings: $h = "internal-marker" condition: $h }
+        rule uses_helper : vendor {
+            meta: description = "uses the shared helper" severity = "LOW"
+            strings: $a = "second-marker"
+            condition: helper or $a
+        }
+    ''', "utf-8")
+
+    resp = await _post(application, "/api/v1/devsecops/yara/validate", {"rules": [str(rules)]})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    names = {row["name"] for row in body["rules"]}
+    assert {"helper", "uses_helper"} <= names
+    row = next(r for r in body["rules"] if r["name"] == "uses_helper")
+    assert row["tags"] == ["vendor"] and row["severity"] == "LOW"
+    assert row["condition_refers_to"] == ["helper"]
+    assert body["summary"]["error_count"] == 0
+    assert body["summary"]["digest"]
+
+    # rule text can be checked without writing a file, and unsupported syntax is refused
+    text = await _post(application, "/api/v1/devsecops/yara/validate",
+                       {"text": 'rule pasted { strings: $a = "x" base64 condition: $a }'})
+    assert text.status_code == 422 and "does not parse" in text.json()["detail"]
+    good = await _post(application, "/api/v1/devsecops/yara/validate",
+                       {"text": 'rule pasted { meta: severity = "INFO" condition: filesize > 0 }'})
+    assert good.status_code == 200
+    assert good.json()["text_rules"][0]["name"] == "pasted"
+
+    outside = await _post(application, "/api/v1/devsecops/yara/validate", {"rules": ["/etc"]})
+    assert outside.status_code == 400 and "allowed source roots" in outside.json()["detail"]

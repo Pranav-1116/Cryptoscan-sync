@@ -422,6 +422,33 @@ def _fingerprint_summary(result: dict) -> dict | None:
     return summarise(clusters)
 
 
+def _yara_summary(result: dict) -> dict | None:
+    """What the ruleset was and what it matched, in a manifest-sized form.
+
+    The rule list is bounded but the counts are not, and the ruleset digest is
+    always present: a match without the digest of the rules that produced it is
+    not reproducible, so the manifest would be asking to be taken on trust.
+    """
+    summary = result.get("yara") or {}
+    if not summary:
+        return None
+    return {
+        "rules": summary.get("rules", 0),
+        "private_rules": summary.get("private_rules", 0),
+        "digest": summary.get("digest"),
+        "sources": (summary.get("sources") or [])[:20],
+        "matches": summary.get("matches", 0),
+        "files_matched": summary.get("files_matched", 0),
+        "by_rule": dict(list((summary.get("by_rule") or {}).items())[:20]),
+        "by_severity": summary.get("by_severity") or {},
+        "truncated_scans": summary.get("truncated_scans", 0),
+        "error_count": summary.get("error_count", 0),
+        "errors": (summary.get("errors") or [])[:10],
+        "note": ("a rule the loader refused did not run; rule errors are findings, so "
+                 "an empty match list next to an error is not a clean result"),
+    }
+
+
 def _finding_excerpt(findings: list[dict], limit: int = MAX_REPORT_FINDINGS) -> list[dict]:
     """The findings a stored report can list, worst first and bounded.
 
@@ -496,6 +523,9 @@ class BinaryScanRequest(BaseModel):
                         description="file or directory to scan for binaries and firmware")
     recursive: bool = Field(True, description="descend into subdirectories")
     include_raw: bool = Field(False, description="record unrecognised files that carry crypto evidence")
+    yara_rules: list[str] | None = Field(None, description=(
+        "rule files or directories (YARA subset, see /devsecops/yara/validate); the "
+        "built-in rules always run, these are added to them"))
     format: str = Field("cyclonedx", description="cyclonedx | spdx for the SBOM half")
     feed: list[dict] | None = Field(None, description="optional NVD-style advisory feed")
     ingest_cbom: bool = Field(False, description=("also load the CBOM into the platform crypto "
@@ -545,8 +575,18 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
     if not target_path.exists():
         raise HTTPException(status_code=404, detail=f"scan target not found: {resolved}")
 
+    rule_paths: list[str] = []
+    for entry in body.yara_rules or []:
+        try:
+            rule_paths.append(validate_source_target(entry, label="rule path"))
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    for entry in rule_paths:
+        if not Path(entry).expanduser().exists():
+            raise HTTPException(status_code=404, detail=f"rule path not found: {entry}")
     try:
-        scan = bs.scan_path(target_path, recursive=body.recursive, include_raw=body.include_raw)
+        scan = bs.scan_path(target_path, recursive=body.recursive, include_raw=body.include_raw,
+                            yara_rules=rule_paths)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
     result = bs.sbom_result(scan)
@@ -619,6 +659,7 @@ def binary_scan(body: BinaryScanRequest, db: Session = Depends(get_db_session),
             "packed_binaries": result.get("packed_binaries", 0),
             "key_material": (result.get("embedded_keys") or {}),
             "fingerprints": _fingerprint_summary(result),
+            "yara": _yara_summary(result),
             **_binary_posture(result),
             "extraction_limits": result.get("extraction_limits") or {},
         },
@@ -762,6 +803,60 @@ def fingerprint_match(body: FingerprintMatchRequest,
                  f"is an ssdeep score at or above {body.similarity} and is a resemblance, "
                  "not identity. A similar match at 100 says the fuzzy sample could not see "
                  "the difference the exact digests found"),
+    }
+
+
+class YaraValidateRequest(BaseModel):
+    rules: list[str] | None = Field(None, description=(
+        "rule files or directories to load, on top of the built-in rules"))
+    text: str | None = Field(None, max_length=200_000, description=(
+        "rule text to parse without reading a file (for a pasted or downloaded rule)"))
+
+
+@router.post("/yara/validate")
+def yara_validate(body: YaraValidateRequest,
+                  user: str = Depends(require_roles(*_SBOM_OPERATORS))):
+    """Load a ruleset and report exactly what it will do, rule by rule.
+
+    An operator who ships rules needs two answers before trusting a scan: which
+    rules are loaded, and which were refused and why. This returns both, plus the
+    bundle digest a match will cite. Nothing is scanned here — this is the check
+    that the ruleset itself is what it claims to be.
+    """
+    from devsecops.yara_rules import YaraError, load_rules, parse_rules
+    from api.security.target_validation import TargetValidationError, validate_source_target
+
+    paths: list[str] = []
+    for entry in body.rules or []:
+        try:
+            paths.append(validate_source_target(entry, label="rule path"))
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    for entry in paths:
+        if not Path(entry).expanduser().exists():
+            raise HTTPException(status_code=404, detail=f"rule path not found: {entry}")
+
+    extra: list[dict] = []
+    if body.text:
+        try:
+            parsed = parse_rules(body.text, "request:text")
+        except YaraError as exc:
+            raise HTTPException(status_code=422, detail=f"rule text does not parse: {exc}")
+        extra = [{"name": rule.name, "tags": rule.tags, "severity": rule.severity(),
+                  "private": rule.private, "strings": len(rule.patterns),
+                  "source": rule.source, "meta": rule.meta} for rule in parsed]
+
+    ruleset = load_rules(paths)
+    return {
+        "rules": [{"name": rule.name, "tags": rule.tags, "severity": rule.severity(),
+                   "private": rule.private, "strings": sorted(rule.patterns),
+                   "condition_refers_to": sorted(rule.references()),
+                   "source": rule.source, "meta": rule.meta} for rule in ruleset.rules],
+        "summary": ruleset.summary(),
+        "text_rules": extra,
+        "note": ("a rule that did not load is reported under summary.errors and will not "
+                 "run — the scan's findings will say so too, so a ruleset error cannot be "
+                 "mistaken for a clean scan"),
     }
 
 
