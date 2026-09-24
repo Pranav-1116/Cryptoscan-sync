@@ -185,7 +185,7 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
         normalized_hash = _normalize_algorithm(hash_part)
         return ParsedAlgorithm(
             raw_input=raw,
-            algorithm=f"Hmac{normalized_hash}",
+            algorithm=f"HMAC-{normalized_hash}",
             mode=None,
             padding=None,
             hash_algorithm=normalized_hash,

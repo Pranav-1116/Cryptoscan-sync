@@ -61,3 +61,17 @@ Fetched with `npm pack` / `git clone --depth 1`, scanned unmodified, every findi
 
 Regression tests for every fix: `tests/unit/test_external_validation_regressions.py`.
 Labelled corpus after these changes: still 348/348 (`scripts/accuracy_benchmark.py`).
+
+## Round 3 — JWT libraries in five languages (the same problem domain, five parsers)
+
+| Project | Lang | Files | Findings | Review |
+|---|---|---|---|---|
+| firebase/php-jwt | PHP | 13 | 317 | JWT algs, RSA/ECDSA/EdDSA, `hash_equals`, `openssl_pkey_*` ✔; no FPs |
+| jwt/ruby-jwt | Ruby | 87 | 887 | **bug:** `Digest::SHA256.hexdigest` was reported as UNKNOWN (an over-broad "dynamic digest" rule shadowed the concrete one) → fixed; `JWT.decode(..., algorithms: ['RS512'])` only surfaced as UNKNOWN → now RS512 |
+| golang-jwt/jwt | Go | 47 | 406 | see round 2 |
+| Keats/jsonwebtoken | Rust | 36 | 430 | `Algorithm::HS256…EdDSA`, ring `RSA_PSS_2048_8192_SHA512`, `sha2::Sha256`, `rand` ✔; no FPs in sample |
+| jwtk/jjwt | Java | 407 | 1,821 | **bug:** `Cipher.getInstance(jcaName)` / `new SecretKeySpec(bytes, alg.getJcaName())` with a *non-literal* name produced findings with `algorithm = None` (22 occurrences) → now `UNKNOWN`; `HmacSHA256` transformations were normalised to the non-vocabulary string `HmacSHA-256` → now `HMAC-SHA-256` |
+| jwt-dotnet/jwt | C# | 106 | 104 | JWT, RSA/ECDSA, SHA-2, HMAC, X509 ✔ |
+
+Cumulative external sample: **~2,900 files across 20 projects in 6 languages**; 9 scanner defects found and fixed,
+each with a regression test; hand-labelled corpus unchanged at 348/348.

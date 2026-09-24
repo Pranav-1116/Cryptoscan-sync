@@ -423,7 +423,7 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
                 CryptoEvent(
                     start=call.offset,
                     api_type=ApiType.HARDCODED_KEY.value if hardcoded else ApiType.SECRET_KEY_SPEC.value,
-                    algorithm=parsed.algorithm if parsed else algo,
+                    algorithm=parsed.algorithm if parsed else (algo or "UNKNOWN"),
                     purpose=Purpose.KEY_GENERATION.value,
                     library="javax.crypto",
                     is_string_literal=literal,
@@ -468,7 +468,7 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
         if call.args:
             raw, literal, varname = _first_string(call.args[0], locals_map)
         parsed = parse_transformation(raw) if raw else None
-        algorithm = parsed.algorithm if parsed else raw
+        algorithm = parsed.algorithm if parsed else (raw or "UNKNOWN")
         mode = parsed.mode if parsed else None
         padding = parsed.padding if parsed else None
         if type_name == "SSLContext" and raw:

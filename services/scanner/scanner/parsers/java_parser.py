@@ -304,7 +304,7 @@ class JavaParser:
             match_start=event.start,
             context=context,
             api_type=event.api_type,
-            algorithm=event.algorithm,
+            algorithm=event.algorithm or "UNKNOWN",
             mode=event.mode,
             padding=event.padding,
             key_size=event.key_size,

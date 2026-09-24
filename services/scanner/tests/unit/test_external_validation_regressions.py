@@ -54,3 +54,31 @@ def test_build_dir_that_is_a_python_package_is_scanned(tmp_path):
     found = {p.relative_to(tmp_path).as_posix() for p in FileDiscovery().discover(tmp_path)}
     assert "ops/build/tracker.py" in found
     assert "build/out.py" not in found
+
+
+def test_ruby_digest_sha256_hexdigest_is_sha256(tmp_path):
+    from scanner.parsers.ruby_parser import parse_ruby_file
+    # ruby-jwt lib/jwt/jwk/thumbprint.rb
+    p = _write(tmp_path, "t.rb", "require 'digest'\ndef thumbprint(jwk)\n  Digest::SHA256.hexdigest(jwk.to_json)\nend\n")
+    algos = _algos(parse_ruby_file(p, tmp_path))
+    assert "SHA-256" in algos and "UNKNOWN" not in algos
+
+
+def test_ruby_jwt_decode_algorithms_option(tmp_path):
+    from scanner.parsers.ruby_parser import parse_ruby_file
+    p = _write(tmp_path, "d.rb", "JWT.decode(token, nil, true, { algorithms: ['RS512'] })\n")
+    assert "RS512" in _algos(parse_ruby_file(p, tmp_path))
+
+
+def test_java_dynamic_jca_name_never_yields_none_algorithm(tmp_path):
+    from scanner.parsers.java_parser import parse_java_file
+    # jjwt JcaTemplate / SigningKeyResolverAdapter
+    p = _write(tmp_path, "J.java", "import javax.crypto.*;\nimport javax.crypto.spec.SecretKeySpec;\nclass J {\n  Cipher c(String jcaName) throws Exception { return Cipher.getInstance(jcaName); }\n  SecretKeySpec k(byte[] b, String n) { return new SecretKeySpec(b, n); }\n}\n")
+    findings = parse_java_file(p, tmp_path)
+    assert findings
+    assert all(f.crypto.algorithm for f in findings)
+
+
+def test_java_hmac_transformation_uses_hmac_prefix():
+    from scanner.extractors.algorithm_extractor import parse_transformation
+    assert parse_transformation("HmacSHA256").algorithm == "HMAC-SHA-256"
