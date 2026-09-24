@@ -27,7 +27,6 @@ _PASSWORD = re.compile(r"\bpassword_hash\s*\(\s*[^,]+,\s*(PASSWORD_[A-Z0-9_]+)",
 _SIMPLE = [
     (re.compile(r"\bmd5\s*\("), "MD5", "MESSAGE_DIGEST", "HASHING", "php-hash"),
     (re.compile(r"\bsha1\s*\("), "SHA-1", "MESSAGE_DIGEST", "HASHING", "php-hash"),
-    (re.compile(r"\bcrc32\s*\("), "CRC32", "MESSAGE_DIGEST", "HASHING", "php-hash"),
     (re.compile(r"\bmcrypt_", re.IGNORECASE), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "mcrypt"),
     (re.compile(r"\bpassword_hash\s*\("), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "password_hash"),
     (re.compile(r"\bopenssl_pkey_new\s*\("), "RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
@@ -95,7 +94,7 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
         return []
     from scanner.parsers.c_like import strip_php_comments
 
-    text = strip_php_comments(raw)
+    text = _desugar_php(strip_php_comments(raw))
     findings: list[RawFinding] = []
     claimed: set[tuple[int, str]] = set()
 
@@ -181,7 +180,11 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
             key_size=bits,
         )
     for match in _MCRYPT.finditer(text):
-        algo, mode, _ = _split_openssl(match.group(1))
+        raw_name = match.group(1)
+        if raw_name.upper().startswith("MCRYPT_"):
+            # constants are resolved by php_rules (MCRYPT_RIJNDAEL_128 -> AES ...)
+            continue
+        algo, mode, _ = _split_openssl(raw_name)
         add(
             text[: match.start()].count("\n") + 1,
             api_type="CIPHER_INSTANCE",
@@ -209,7 +212,59 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
                 library=library,
             )
     findings.extend(_resolved_php_calls(file_path, repo_root, text, claimed))
+    try:
+        from scanner.parsers.php_rules import run_php_rules
+
+        seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in findings}
+        findings.extend(run_php_rules(file_path, repo_root, text, SCANNER_ID, seen=seen))
+    except Exception:  # pragma: no cover - supplementary pass must never break the parser
+        pass
     return findings
+
+
+_PHP_CONCAT = re.compile(r"""(['"])([^'"\n]*)\1\s*\.\s*(['"])([^'"\n]*)\3""")
+_PHP_STR_VAR = re.compile(r"""\$(\w+)\s*=\s*(['"])([^'"\n]{1,80})\2\s*;""")
+_PHP_PREFIX_VAR = re.compile(r"""(\$(\w+)\s*=\s*)(['"])([A-Za-z0-9_-]{2,40})\3\s*\.\s*\$\w+[^;\n]*;""")
+_PHP_KNOWN = re.compile(r"(?i)\b(?:aes|des|des-ede|des3|3des|rc4|rc2|bf|blowfish|camellia|chacha|aria|seed|sm4|sha|md5|md4|ripemd|whirlpool|rijndael)")
+_PHP_INTERP = re.compile(r"\{?\$(\w+)\}?")
+
+
+def _desugar_php(source: str) -> str:
+    """Fold literal string constructions so variable-function calls and
+    concatenated algorithm names are visible to the pattern layer:
+
+    * ``"md" . "5"``                     -> ``"md5"``
+    * ``$fn = "md5"; $fn($x)``           -> ``md5($x)``
+    * ``$c = "aes-256-" . $mode``        -> ``$c = "aes-256-"`` (prefix carries the family)
+    * ``"{$alg}-cbc"`` / ``"$alg-cbc"``  -> substituted from single-file string constants
+    Line-preserving.
+    """
+    for _ in range(4):
+        new = _PHP_CONCAT.sub(lambda m: '"' + m.group(2) + m.group(4) + '"', source)
+        if new == source:
+            break
+        source = new
+
+    def _prefix(m: re.Match) -> str:
+        if _PHP_KNOWN.search(m.group(4)):
+            return f'{m.group(1)}"{m.group(4)}";'
+        return m.group(0)
+
+    source = _PHP_PREFIX_VAR.sub(_prefix, source)
+    consts = {m.group(1): m.group(3) for m in _PHP_STR_VAR.finditer(source)}
+    if not consts:
+        return source
+    func_like = {k: v for k, v in consts.items() if re.fullmatch(r"[A-Za-z_]\w*", v)}
+    for var, fn in func_like.items():
+        source = re.sub(rf"(?<![\w$])\${re.escape(var)}\s*\(", fn + "(", source)
+
+    def _interp(m: re.Match) -> str:
+        body = m.group(0)
+        if "$" not in body:
+            return body
+        return _PHP_INTERP.sub(lambda mm: consts.get(mm.group(1), mm.group(0)), body)
+
+    return re.sub(r'"(?:[^"\\\n]|\\.)*"', _interp, source)
 
 
 def _resolved_php_calls(
