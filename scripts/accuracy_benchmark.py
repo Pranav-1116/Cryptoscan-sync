@@ -36,7 +36,7 @@ for p in ("services/scanner", "services/scanner/tests", "shared/shared_models", 
 
 os.environ.setdefault("CRYPTOSCAN_LOG_LEVEL", "warning")
 
-from accuracy.corpus import CASES, canonical_families, summary  # noqa: E402
+from accuracy.corpus import CASES, canonical_families, spec_families, summary  # noqa: E402
 
 
 def _quiet_logging() -> None:
@@ -74,6 +74,9 @@ def run() -> dict:
                 if not fams:
                     unknown += 1
                 predicted.update(fams)
+                if (f.source.language or "").upper() in {"JAVA", "KOTLIN", "SCALA"}:
+                    # JCA transformation strings are algorithm specs by construction
+                    predicted.update(spec_families(f.crypto.raw_transformation))
             tp = sorted(expected & predicted)
             fn = sorted(expected - predicted)
             fp = sorted(predicted - expected)

@@ -24,6 +24,11 @@ GETINSTANCE_APIS: dict[str, tuple[str, str, str]] = {
     "KeyStore": (ApiType.KEY_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
     "KeyAgreement": (ApiType.KEY_AGREEMENT.value, "KEY_EXCHANGE", "javax.crypto"),
     "SecureRandom": (ApiType.KEY_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
+    "SecretKeyFactory": (ApiType.KEY_GENERATOR.value, Purpose.KEY_GENERATION.value, "javax.crypto"),
+    "KeyFactory": (ApiType.KEY_PAIR_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
+    "AlgorithmParameters": (ApiType.CIPHER_INSTANCE.value, Purpose.ENCRYPTION.value, "java.security"),
+    "AlgorithmParameterGenerator": (ApiType.KEY_PAIR_GENERATOR.value, Purpose.KEY_GENERATION.value, "java.security"),
+    "CertificateFactory": (ApiType.SIGNATURE.value, "VERIFICATION", "java.security.cert"),
 }
 
 TLS_MAP = {
@@ -228,6 +233,7 @@ def _atom(tokens: list[Token]) -> object:
         "numbers": numbers,
         "text": text,
         "offset": tokens[0].offset,
+        "tokens": [(t.kind, t.value) for t in tokens],
     }
 
 
@@ -293,9 +299,42 @@ def extract_calls(tokens: list[Token]) -> tuple[list[Call], dict[str, str]]:
     return calls, locals_map
 
 
+def _concat_string(arg: dict, locals_map: dict[str, str]) -> tuple[Optional[str], Optional[str]]:
+    """Fold ``ALG + "/ECB/PKCS5Padding"`` / ``"AES" + mode`` when every piece is a
+    literal or a string constant bound in the file.  Returns (value, variable)."""
+    toks = arg.get("tokens") or []
+    if not any(k == "symbol" and v == "+" for k, v in toks):
+        return None, None
+    pieces: list[str] = []
+    var: Optional[str] = None
+    expect_operand = True
+    for kind, value in toks:
+        if kind == "symbol" and value == "+":
+            expect_operand = True
+            continue
+        if kind == "symbol" and value in {"(", ")"}:
+            continue
+        if not expect_operand:
+            return None, None
+        if kind == "string":
+            pieces.append(value)
+        elif kind == "ident" and value in locals_map:
+            pieces.append(locals_map[value])
+            var = var or value
+        elif kind == "ident" and value in {"String", "valueOf", "toString"}:
+            continue
+        else:
+            return None, None
+        expect_operand = False
+    return ("".join(pieces) if pieces else None), var
+
+
 def _first_string(arg: object, locals_map: dict[str, str]) -> tuple[Optional[str], bool, Optional[str]]:
     if not isinstance(arg, dict):
         return None, False, None
+    folded, folded_var = _concat_string(arg, locals_map)
+    if folded:
+        return folded, True, folded_var
     if arg.get("strings"):
         return str(arg["strings"][0]), True, None
     for ident in arg.get("idents") or []:
@@ -429,6 +468,13 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
             algorithm = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)
         if type_name == "SecureRandom" and raw:
             algorithm = "SHA1PRNG" if raw.upper() == "SHA1PRNG" else "CSPRNG"
+        if type_name == "SecretKeyFactory" and raw:
+            upper = raw.upper()
+            if upper.startswith("PBKDF2") or upper.startswith("PBE") or upper in {"SCRYPT", "BCRYPT", "ARGON2"}:
+                purpose = "PASSWORD_HASHING"
+                algorithm = "PBKDF2" if upper.startswith("PBKDF2") else algorithm
+        if type_name == "CertificateFactory" and raw:
+            algorithm = raw.upper().replace(".", "")
         if len(call.args) > 1 and isinstance(call.args[1], dict):
             provider = None
             if call.args[1].get("strings"):

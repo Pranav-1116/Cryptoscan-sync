@@ -261,7 +261,7 @@ class JavaParser:
     def __init__(self, repo_root: Optional[Path] = None):
         self._repo_root = repo_root
 
-    def parse_file(self, file_path: Path) -> list[RawFinding]:
+    def parse_file(self, file_path: Path, source: str | None = None) -> list[RawFinding]:
         """
         Parse a single Java file and return all crypto findings.
 
@@ -270,11 +270,12 @@ class JavaParser:
         """
         log = logger.bind(file=str(file_path))
 
-        try:
-            source = file_path.read_text(encoding="utf-8", errors="replace")
-        except OSError as e:
-            log.error("cannot_read_file", error=str(e))
-            raise
+        if source is None:
+            try:
+                source = file_path.read_text(encoding="utf-8", errors="replace")
+            except OSError as e:
+                log.error("cannot_read_file", error=str(e))
+                raise
 
         validate_java_syntax(source)
 
@@ -288,6 +289,7 @@ class JavaParser:
             ]
             findings.extend(self._detect_insecure_tls(source, source_lines, context))
             self._mark_bouncycastle(source, findings)
+            findings.extend(self._supplementary_rules(file_path, source, findings))
             log.debug("file_parsed_ast", findings_count=len(findings))
             return findings
         except Exception as exc:
@@ -335,8 +337,20 @@ class JavaParser:
         findings.extend(self._detect_pbe(source, source_lines, context))
         findings.extend(self._detect_insecure_tls(source, source_lines, context))
         self._mark_bouncycastle(source, findings)
+        findings.extend(self._supplementary_rules(file_path, source, findings))
         log.debug("file_parsed", findings_count=len(findings))
         return findings
+
+    def _supplementary_rules(self, file_path: Path, source: str, existing: list[RawFinding]) -> list[RawFinding]:
+        """Library APIs that never pass through a JCA getInstance string."""
+        try:
+            from scanner.parsers.java_rules import run_java_rules
+
+            seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in existing}
+            return run_java_rules(file_path, self._repo_root, source, "JAVA", "static-java-scanner-v0.1", seen=seen)
+        except Exception as exc:  # pragma: no cover - never let the extra pass break the parser
+            logger.warning("java_supplementary_rules_failed", file=str(file_path), error=str(exc))
+            return []
 
     def _extract_file_context(
         self, file_path: Path, source: str, source_lines: list[str]

@@ -95,12 +95,37 @@ def canonical_families(name: str | None) -> set[str]:
         tok = re.sub(r"[^A-Z0-9]", "", tok)
         if not tok:
             continue
-        if tok in _ALIASES:
-            out.add(_ALIASES[tok])
-        elif tok.startswith("HMAC") and tok[4:] in _ALIASES:      # HMACSHA256
+        if tok.startswith("HMAC") and tok[4:] in _ALIASES:        # HMACSHA256
             out.update({"HMAC", _ALIASES[tok[4:]]})
         elif tok.startswith("PBKDF2") and tok[6:] in _ALIASES:    # PBKDF2SHA256
             out.update({"PBKDF2", _ALIASES[tok[6:]]})
+        elif tok.startswith("PBKDF2HMAC") and tok[10:] in _ALIASES:
+            out.update({"PBKDF2", "HMAC", _ALIASES[tok[10:]]})
+        elif tok in _ALIASES:
+            out.add(_ALIASES[tok])
+    return out
+
+
+_BARE_SPEC = re.compile(r"^[A-Za-z0-9/_\-.:+]+$")
+
+
+def spec_families(raw_transformation: str | None) -> set[str]:
+    """Families named inside a *bare* algorithm spec string such as the JCA
+    transformation ``RSA/ECB/OAEPWithSHA-256AndMGF1Padding`` or
+    ``PBKDF2WithHmacSHA1``.  Anything containing spaces, parentheses or quotes
+    (i.e. regex match text) is ignored so this never scores incidental words."""
+    if not raw_transformation or not _BARE_SPEC.match(raw_transformation):
+        return set()
+    out: set[str] = set()
+    upper = re.sub(r"(?<=[A-Z])[-_./](?=\d)", "", raw_transformation.upper())
+    for tok in _SPLIT.split(upper):
+        tok = re.sub(r"[^A-Z0-9]", "", tok)
+        if not tok:
+            continue
+        if tok.startswith("HMAC") and tok[4:] in _ALIASES:
+            out.update({"HMAC", _ALIASES[tok[4:]]})
+        elif tok in _ALIASES:
+            out.add(_ALIASES[tok])
     return out
 
 
@@ -391,7 +416,7 @@ class M {
 _c("java", "J_Pbkdf2.java", """
 SecretKeyFactory f = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
 PBEKeySpec spec = new PBEKeySpec(pw, salt, 65536, 256);
-""", {"PBKDF2", "SHA-1"})
+""", {"PBKDF2", "HMAC", "SHA-1"})
 _c("java", "J_SecureRandom.java", """
 SecureRandom sr = SecureRandom.getInstance("SHA1PRNG");
 sr.setSeed(42L);

@@ -231,7 +231,20 @@ def run_rules(
                     key_size = int(match.group(spec["key_from_group"]))
                 except (IndexError, TypeError, ValueError):
                     key_size = None
-            if spec.get("algo_from_group"):
+            if spec.get("transformation_group"):
+                # JCA-style "ALG/MODE/PADDING" string → registry parser
+                token = match.group(spec["transformation_group"]) or ""
+                try:
+                    from scanner.extractors.algorithm_extractor import parse_transformation
+
+                    parsed = parse_transformation(token)
+                    algorithm = parsed.algorithm or token
+                    mode = parsed.mode
+                except Exception:  # pragma: no cover - defensive
+                    algorithm = token
+                if not algorithm:
+                    continue
+            elif spec.get("algo_from_group"):
                 token = match.group(spec["algo_from_group"]) or ""
                 if spec.get("algo_map") is CIPHER_TOKENS or spec.get("split_cipher"):
                     algorithm, mode, size = split_cipher_token(token)
