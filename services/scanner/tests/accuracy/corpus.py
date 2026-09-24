@@ -43,7 +43,7 @@ _ALIASES = {
     "PBKDF2": "PBKDF2", "PBKDF2WITHHMACSHA256": "PBKDF2", "PBKDF2WITHHMACSHA1": "PBKDF2", "PBKDF2HMAC": "PBKDF2",
     "BCRYPT": "BCRYPT", "SCRYPT": "SCRYPT", "ARGON2": "ARGON2", "ARGON2ID": "ARGON2", "ARGON2I": "ARGON2", "HKDF": "HKDF",
     "TLS": "TLS", "TLS10": "TLS", "TLS11": "TLS", "TLS12": "TLS", "TLS13": "TLS", "SSLV3": "TLS", "SSLV2": "TLS", "SSL": "TLS",
-    "TLSUNVERIFIED": "TLS", "TLSCIPHERS": "TLS", "TRUSTALL": "TLS", "SSH": "SSH", "X509": "X509", "OCSP": "X509",
+    "TLSUNVERIFIED": "TLS", "TLSCIPHERS": "TLS", "TRUSTALL": "TLS", "SSH": "SSH", "SSHHOSTKEYNONE": "SSH", "X509": "X509", "OCSP": "X509",
     "CSPRNG": "RNG", "PRNG": "RNG", "SHA1PRNG": "RNG", "SECURERANDOM": "RNG", "RNG": "RNG",
     "JWT": "JWT", "HS256": "JWT", "HS512": "JWT", "RS256": "JWT", "ES256": "JWT",
     "MLKEM": "MLKEM", "MLKEM768": "MLKEM", "KYBER": "MLKEM", "MLDSA": "MLDSA", "DILITHIUM": "MLDSA", "SLHDSA": "SLHDSA", "SPHINCS": "SLHDSA",
@@ -1115,7 +1115,7 @@ _c("c", "c_openssl_ssl.c", """
 SSL_CTX *ctx = SSL_CTX_new(SSLv23_method());
 SSL_CTX_set_verify(ctx, SSL_VERIFY_NONE, NULL);
 SSL_CTX_set_cipher_list(ctx, "RC4-SHA:DES-CBC3-SHA");
-""", {"TLS"})
+""", {"TLS", "RC4", "3DES", "SHA-1"})
 _c("c", "c_openssl_rand.c", """
 #include <openssl/rand.h>
 unsigned char buf[32];
@@ -1207,12 +1207,12 @@ server {
     ssl_protocols SSLv3 TLSv1 TLSv1.1;
     ssl_ciphers 'RC4-SHA:DES-CBC3-SHA:AES128-SHA';
 }
-""", {"TLS"}, "config")
+""", {"TLS", "RC4", "3DES", "AES", "SHA-1"}, "config")
 _c("config", "application.properties", """
 server.ssl.enabled-protocols=TLSv1.2,TLSv1.3
 server.ssl.ciphers=TLS_AES_256_GCM_SHA384
 app.crypto.algorithm=AES/GCM/NoPadding
-""", {"TLS", "AES"}, "config")
+""", {"TLS", "AES", "SHA-384"}, "config")
 _c("config", "sshd_config.conf", """
 Ciphers 3des-cbc,aes128-ctr
 MACs hmac-md5,hmac-sha1
@@ -1256,6 +1256,13 @@ DATABASE_URL=postgres://u:p@db/app
 LOG_LEVEL=info
 FEATURE_DESIGN_V2=true
 """, set(), "negative")
+
+
+try:  # wave 2: harder real-world idioms (same _c registrar)
+    from .corpus_wave2 import register as _register_wave2
+except ImportError:  # imported as a top-level module
+    from corpus_wave2 import register as _register_wave2  # type: ignore[no-redef]
+_register_wave2(_c)
 
 
 def summary() -> dict[str, int]:

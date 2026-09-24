@@ -336,6 +336,18 @@ def _first_string(arg: object, locals_map: dict[str, str]) -> tuple[Optional[str
     if folded:
         return folded, True, folded_var
     if arg.get("strings"):
+        # A literal that is itself an argument of a lookup call
+        # (props.getProperty("crypto.alg"), System.getenv("ALG"), cfg.getString(..))
+        # names a *configuration key*, not an algorithm: the value is dynamic.
+        toks = arg.get("tokens") or []
+        callee = None
+        for kind, value in toks:
+            if kind == "string":
+                break
+            if kind == "symbol" and value == "(" and callee not in (None, "String", "valueOf", "toString"):
+                return None, False, callee
+            if kind == "ident":
+                callee = value
         return str(arg["strings"][0]), True, None
     for ident in arg.get("idents") or []:
         if ident in locals_map:

@@ -117,6 +117,7 @@ _RULES: list[Rule] = [
     _r(r"\bring::agreement::X25519\b", _KA, "ring", algorithm="X25519"),
     _r(r"\bring::agreement::ECDH_P(?:256|384)\b", _KA, "ring", algorithm="ECDH"),
     _r(r"\bring::pbkdf2::|\bPBKDF2_HMAC_(SHA1|SHA256|SHA384|SHA512)\b", _KDF, "ring", algorithm="PBKDF2", emit_digest_group=1),
+    _r(r"\bPBKDF2_HMAC_(?:SHA1|SHA256|SHA384|SHA512)\b", _M, "ring", algorithm="HMAC", confidence="MEDIUM", confidence_reason="PBKDF2 PRF is HMAC"),
     _r(r"\bring::hkdf::|\bHKDF_(SHA256|SHA384|SHA512)\b", _KDF, "ring", algorithm="HKDF", emit_digest_group=1, purpose="KEY_GENERATION"),
     _r(r"\bring::rand::SystemRandom\b|\bSystemRandom::new\(\)", _RNG, "ring", algorithm="CSPRNG", confidence="MEDIUM"),
     # ------------------------------------------------------------ openssl crate

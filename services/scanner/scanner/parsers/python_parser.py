@@ -312,6 +312,15 @@ _HASHLIB_NEW_EXTRA = {
 _MODULE_ATTR_DIGEST = {**HASHLIB_ALGOS, **_HASHLIB_NEW_EXTRA}
 
 
+_PASSLIB_SCHEME = {
+    "bcrypt": "BCRYPT", "bcrypt_sha256": "BCRYPT", "argon2": "ARGON2", "scrypt": "SCRYPT",
+    "pbkdf2_sha256": "PBKDF2-SHA256", "pbkdf2_sha512": "PBKDF2-SHA512", "pbkdf2_sha1": "PBKDF2-SHA1",
+    "sha256_crypt": "SHA-256", "sha512_crypt": "SHA-512", "sha1_crypt": "SHA-1", "md5_crypt": "MD5",
+    "des_crypt": "DES", "bsdi_crypt": "DES", "nthash": "MD4", "ldap_md5": "MD5", "ldap_sha1": "SHA-1",
+    "django_pbkdf2_sha256": "PBKDF2-SHA256", "django_bcrypt": "BCRYPT", "plaintext": "PLAINTEXT",
+}
+
+
 def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
@@ -574,6 +583,39 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 confidence="HIGH",
                 confidence_reason="unverified-tls-context",
             )
+        if func.endswith(("set_cipher_list", "set_ciphers", "set_ciphersuites")) and node.args:
+            first = node.args[0]
+            raw = first.value.decode("ascii", "ignore") if isinstance(first, ast.Constant) and isinstance(first.value, bytes) else _string_literal(first)
+            if raw:
+                self._add(
+                    node,
+                    api_type="KEY_AGREEMENT",
+                    algorithm="TLS-CIPHERS",
+                    purpose="NETWORK_ENCRYPTION",
+                    library="ssl",
+                    confidence="MEDIUM",
+                    confidence_reason="cipher-suite-list",
+                    raw_transformation=raw[:80],
+                )
+        if self._verify_disabled(node, func):
+            self._add(
+                node,
+                api_type="KEY_AGREEMENT",
+                algorithm="TLS-CERT-NONE",
+                purpose="NETWORK_ENCRYPTION",
+                library=func.split(".")[0] or "requests",
+                confidence="HIGH",
+                confidence_reason="certificate-verification-disabled",
+            )
+        if func.endswith("CryptContext") or func.endswith("passlib.context.CryptContext"):
+            for kw in node.keywords:
+                if kw.arg in {"schemes", "default", "deprecated"} :
+                    values = kw.value.elts if isinstance(kw.value, (ast.List, ast.Tuple)) else [kw.value]
+                    for v in values:
+                        scheme = _string_literal(v)
+                        algo = _PASSLIB_SCHEME.get((scheme or "").lower())
+                        if algo:
+                            self._add(node, api_type="KEY_GENERATOR", algorithm=algo, purpose="PASSWORD_HASHING", library="passlib", confidence_reason="passlib-scheme")
         if self._is_insecure_random(func) and self._looks_like_key_context(node):
             self._add(
                 node,
@@ -668,6 +710,18 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         imported = self._aliases.get(name, "")
         return imported.endswith(f"hashlib.{name}") or imported == f"hashlib.{name}"
 
+
+    def _verify_disabled(self, node: ast.Call, func: str) -> bool:
+        """requests/httpx/aiohttp/urllib3 style ``verify=False`` / ``ssl=False``."""
+        head = func.split(".")[0]
+        root = self._aliases.get(head, head)
+        http_like = any(t in (func + " " + root).lower() for t in ("requests", "httpx", "aiohttp", "urllib3", "session", "client", "http"))
+        if not http_like:
+            return False
+        for kw in node.keywords:
+            if kw.arg in {"verify", "verify_ssl", "ssl"} and isinstance(kw.value, ast.Constant) and kw.value.value is False:
+                return True
+        return False
 
     def _is_insecure_random(self, func: str) -> bool:
         tail = func.split(".")[-1]

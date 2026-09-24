@@ -338,11 +338,12 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         add(
             match,
             api_type="CIPHER_INSTANCE" if method in {"encrypt", "decrypt"} else "KEY_GENERATOR",
-            algorithm="WebCrypto",
+            algorithm="UNKNOWN",
             purpose=purpose,
             library="Web Crypto API",
-            confidence="MEDIUM",
+            confidence="LOW",
             confidence_reason="WebCrypto call without algorithm object inspection",
+            raw_transformation="subtle." + method,
         )
     for match in FORGE_MD.finditer(source):
         add(

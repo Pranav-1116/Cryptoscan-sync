@@ -23,6 +23,7 @@ import re
 from pathlib import Path
 from typing import Callable, Iterable
 
+from scanner.extractors.cipher_suites import suite_components
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding
 
@@ -104,7 +105,7 @@ def _ssh_items(directive: str, value: str) -> Iterable[tuple[str, str, str]]:
 # Generic key = value rules
 # ---------------------------------------------------------------------------
 _SEP = r"\s*[=:]\s*['\"]?"  # mandatory separator (env / yaml / ini / properties)
-_LIST = r"^\s*-?\s*"  # optional yaml list dash
+_LIST = r"^\s*(?:-\s*|(?:ENV|ARG|export|SET|setenv)\s+)?"  # yaml list dash / Dockerfile ENV / shell export
 
 _TLSV = {
     "1.0": "TLS1.0", "1": "TLS1.0", "10": "TLS1.0", "1.1": "TLS1.1", "11": "TLS1.1",
@@ -120,14 +121,14 @@ _TLS_VERSION_KEY = re.compile(
     _LIST
     + r"(?:[A-Za-z0-9_.\-]*?(?:tls|ssl)[_.\-]?(?:min|max|minimum|maximum)?[_.\-]?(?:version|protocols?|protocol[_.\-]version)|"
     r"(?:min|max|minimum|maximum)[_.\-]?(?:tls|ssl)[_.\-]?version|enabled[_.\-]protocols|ssl[_.\-]?protocol)"
-    + _SEP
+    + r"(?:" + _SEP + r"|\s+['\"]?(?=[TtSs][LlSs][SsLl]))"
     + r"([A-Za-z0-9._,\s+\-]+?)['\"]?\s*(?:#.*)?$",
     re.I | re.M,
 )
 
 _JWT_ALG_KEY = re.compile(
     _LIST + r"(?:[A-Za-z0-9_.\-]*?jwt[_.\-]?(?:alg|algorithm|signing[_.\-]?alg(?:orithm)?)|"
-    r"(?:token|oauth2?|oidc)[_.\-]?(?:signing[_.\-]?)?alg(?:orithm)?)" + _SEP
+    r"(?:token|oauth2?|oidc)[_.\-]?(?:signing[_.\-]?)?alg(?:orithm)?|jws[_.\-]?alg(?:orithm)?s?|signing[_.\-]?algorithm|id[_.\-]token[_.\-]signing[_.\-]alg(?:orithm)?)" + _SEP
     + r"((?:HS|RS|PS|ES)(?:256|384|512)|EdDSA|none)\b",
     re.I | re.M,
 )
@@ -137,21 +138,6 @@ _CIPHER_SUITE_KEY = re.compile(
     + r"([A-Za-z0-9_:+!@\-,\s]+?)['\"]?\s*(?:#.*)?$",
     re.I | re.M,
 )
-_SUITE_ALGOS = [
-    (re.compile(r"_WITH_3DES|3DES|DES-CBC3", re.I), "3DES"),
-    (re.compile(r"(?<![A-Z0-9])DES(?:_|-)(?:CBC|40)(?!3)", re.I), "DES"),
-    (re.compile(r"RC4", re.I), "RC4"),
-    (re.compile(r"NULL", re.I), "NULL-CIPHER"),
-    (re.compile(r"MD5", re.I), "MD5"),
-    (re.compile(r"_SHA\b|-SHA\b|_SHA_|SHA1", re.I), "SHA-1"),
-    (re.compile(r"AES", re.I), "AES"),
-    (re.compile(r"CHACHA20", re.I), "ChaCha20-Poly1305"),
-    (re.compile(r"ECDHE|ECDH", re.I), "ECDH"),
-    (re.compile(r"(?<![A-Z])DHE?(?:_|-)|EDH", re.I), "DH"),
-    (re.compile(r"RSA", re.I), "RSA"),
-    (re.compile(r"ECDSA", re.I), "ECDSA"),
-    (re.compile(r"EXPORT|EXP-", re.I), "EXPORT-CIPHER"),
-]
 
 _JCA_TRANSFORMATION_KEY = re.compile(
     _LIST + r"[A-Za-z0-9_.\-]*?(?:algorithm|transformation|cipher)" + _SEP
@@ -162,7 +148,7 @@ _JCA_TRANSFORMATION_KEY = re.compile(
 )
 
 _PASSWORD_HASH_KEY = re.compile(
-    _LIST + r"[A-Za-z0-9_.\-]*?(?:password[_.\-]?(?:hash(?:er|ing)?|encoder|algorithm|scheme)|hash[_.\-]?(?:algorithm|scheme|method))" + _SEP
+    _LIST + r"[A-Za-z0-9_.\-]*?(?:password[_.\-]?(?:hash(?:er|ing)?|encoder|algorithm|scheme|encryption)|hash[_.\-]?(?:algorithm|scheme|method))" + _SEP
     + r"(bcrypt|scrypt|argon2(?:id?|d)?|pbkdf2(?:[_-]?sha(?:1|256|512))?|md5(?:[_-]?crypt)?|sha[_-]?(?:1|256|512)(?:[_-]?crypt)?|plaintext|noop|clear(?:text)?|crypt)\b",
     re.I | re.M,
 )
@@ -183,7 +169,7 @@ _VERIFY_OFF = re.compile(
 _PEM_BLOCK = re.compile(r"^-----BEGIN ((?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY|CERTIFICATE|PUBLIC KEY|(?:RSA |EC |DSA )?PUBLIC KEY)-----", re.M)
 _PEM_DEK = re.compile(r"^DEK-Info:\s*([A-Z0-9-]+)", re.M)
 _CURVE_KEY = re.compile(
-    _LIST + r"[A-Za-z0-9_.\-]*?(?:curves?|ecdh[_.\-]?curve|named[_.\-]?groups?|groups)" + _SEP
+    _LIST + r"(?![A-Za-z0-9_.\-]*ecdsa)[A-Za-z0-9_.\-]*?(?:curves?|ecdh[_.\-]?curve|named[_.\-]?groups?|groups)" + _SEP
     + r"([A-Za-z0-9:,_\s\-]+?)['\"]?\s*(?:#.*)?$",
     re.I | re.M,
 )
@@ -272,9 +258,8 @@ def run_config_rules(
             continue
         emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "tls-config", value,
              confidence="MEDIUM", reason="cipher-suite-list")
-        for rx, algo in _SUITE_ALGOS:
-            if rx.search(value):
-                emit(m.start(), algo, "CIPHER_SUITE", "NETWORK_ENCRYPTION", "tls-config", value, reason="cipher-suite-list")
+        for algo, api_type in suite_components(value):
+            emit(m.start(), algo, api_type, "NETWORK_ENCRYPTION", "tls-config", value, reason="cipher-suite-list")
 
     # --- JWT --------------------------------------------------------------
     for m in _JWT_ALG_KEY.finditer(text):
@@ -331,7 +316,7 @@ def run_config_rules(
         if not disabled:
             continue
         if k == "stricthostkeychecking":
-            emit(m.start(), "SSH", "PROTOCOL", "SSH", "openssh", m.group(0).strip(), reason="host-key-verification-disabled")
+            emit(m.start(), "SSH-HOSTKEY-NONE", "KEY_AGREEMENT", "SSH", "openssh", m.group(0).strip(), reason="host-key-verification-disabled")
         else:
             emit(m.start(), "TLS-CERT-NONE", "TLS_CONTEXT", "NETWORK_ENCRYPTION", "tls-config", m.group(0).strip(),
                  reason="certificate-verification-disabled")

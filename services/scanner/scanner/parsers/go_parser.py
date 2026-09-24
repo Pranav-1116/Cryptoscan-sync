@@ -182,7 +182,7 @@ RULES: list[Rule] = [
     _r(r"\bx509\.(?:RSA|ECDSA|Ed25519|DSA)\b(?!\w)", _K, "crypto/x509", algorithm="UNKNOWN", confidence="LOW"),
     _r(r"\bpem\.(?:Decode|Encode|EncodeToMemory)\b", _X, "encoding/pem", algorithm="X509", confidence="LOW"),
     _r(r"\bssh\.(?:NewPublicKey|ParsePrivateKey|ParsePrivateKeyWithPassphrase|ParseRawPrivateKey|ParseAuthorizedKey|ParsePublicKey|NewSignerFromKey|NewSignerFromSigner|FingerprintSHA256|FingerprintLegacyMD5|Dial|NewClient|NewServerConn|NewClientConn|NewSession|ClientConfig|ServerConfig|InsecureIgnoreHostKey|FixedHostKey|PublicKeys|Password|KeyboardInteractive|MarshalAuthorizedKey|MarshalPrivateKey|MarshalPrivateKeyWithPassphrase|CertChecker|NewCertSigner|Certificate)\b", _S, "golang.org/x/crypto/ssh", algorithm="SSH", confidence="MEDIUM"),
-    _r(r"\bssh\.InsecureIgnoreHostKey\s*\(", _TLS, "golang.org/x/crypto/ssh", algorithm="TLS-CERT-NONE", confidence_reason="SSH host key verification disabled"),
+    _r(r"\bssh\.InsecureIgnoreHostKey\s*\(", {"api_type": "KEY_AGREEMENT", "purpose": "NETWORK_ENCRYPTION"}, "golang.org/x/crypto/ssh", algorithm="SSH-HOSTKEY-NONE", confidence_reason="SSH host key verification disabled"),
     _r(r"\bssh\.FingerprintLegacyMD5\b", _D, "golang.org/x/crypto/ssh", algorithm="MD5"),
     _r(r"\bssh\.(?:KeyAlgoRSA|SigAlgoRSA|KeyAlgoRSASHA256|KeyAlgoRSASHA512|SigAlgoRSASHA2256|SigAlgoRSASHA2512|CertAlgoRSAv01)\b|\bssh\.InsecureAlgorithms\b", _S, "golang.org/x/crypto/ssh", algorithm="RSA"),
     _r(r"\bssh\.(?:KeyAlgoDSA|CertAlgoDSAv01)\b", _S, "golang.org/x/crypto/ssh", algorithm="DSA"),

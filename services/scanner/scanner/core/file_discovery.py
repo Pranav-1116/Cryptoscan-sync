@@ -68,7 +68,36 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".hxx",
     ".m",
     ".mm",
+    # deployment / framework configuration carries TLS, SSH, JWT and cipher
+    # settings that never appear in source: scanned by config_crypto_parser
+    ".conf",
+    ".cnf",
+    ".yml",
+    ".yaml",
+    ".properties",
+    ".env",
+    ".ini",
+    ".tf",
+    ".tfvars",
+    ".cfg",
 )
+
+_NAMED_CONFIG_EXACT = frozenset({
+    "dockerfile", "containerfile", ".env", "nginx.conf", "openssl.cnf", "ssh_config", "sshd_config",
+    "postgresql.conf", "pg_hba.conf", "my.cnf", "redis.conf", "haproxy.cfg", "httpd.conf", "apache2.conf",
+    "krb5.conf", "ipsec.conf", "strongswan.conf", "smb.conf", "ldap.conf", "slapd.conf",
+})
+
+
+def is_named_config_file(name: str) -> bool:
+    """Suffix-less / well-known config files the config parser should read
+    (``Dockerfile``, ``api.Dockerfile``, ``.env.production``, ``sshd_config`` ...)."""
+    low = name.lower()
+    if low in _NAMED_CONFIG_EXACT:
+        return True
+    if low.startswith(("dockerfile", "containerfile", ".env.", "sshd_config", "ssh_config")):
+        return True
+    return low.endswith((".dockerfile", "_config"))
 
 
 class FileDiscovery:
@@ -126,7 +155,7 @@ class FileDiscovery:
             current_dir = Path(dirpath)
 
             for filename in filenames:
-                if not filename.lower().endswith(self._extensions):
+                if not filename.lower().endswith(self._extensions) and not is_named_config_file(filename):
                     continue
 
                 file_path = current_dir / filename
