@@ -12,7 +12,6 @@ from scanner.config.scanner_config import ScannerConfig
 from scanner.core.file_discovery import FileDiscovery
 from scanner.core.language_detector import detect_languages_in_repo
 from scanner.core.scan_context import ScanContext
-from scanner.detectors.java.jar_string_scanner import scan_jar
 from scanner.git.git_client import GitClient
 from scanner.models.raw_finding import GitContext, RawFinding
 from scanner.models.scan_result import ScanResult, ScanTarget
@@ -129,19 +128,9 @@ class Scanner:
         except Exception as exc:
             logger.warning("material_scan_failed", extra={"error": str(exc)})
 
-        try:
-            from scanner.core.file_discovery import DEFAULT_EXCLUDED_DIRS
-
-            for jar in path.rglob("*.jar"):
-                if any(part in DEFAULT_EXCLUDED_DIRS or part.startswith(".") for part in jar.parts):
-                    continue
-                jar_findings = scan_jar(jar, path)
-                if git_ctx:
-                    for finding in jar_findings:
-                        finding.git_context = git_ctx
-                findings.extend(jar_findings)
-        except Exception as exc:
-            logger.warning("jar_scan_failed", extra={"error": str(exc)})
+        # JAR/WAR/EAR and .NET assemblies are archive "source files": FileDiscovery lists them and
+        # scan_file() dispatches to the bytecode scanners, so no separate rglob pass (it used to
+        # produce every archive finding twice).
 
         scanner_id = "static-multi-scanner-v1.0" if set(languages) - {"JAVA"} else "static-java-scanner-v0.1"
         scanner_version = "1.0.0" if scanner_id.endswith("v1.0") else "0.1.0"

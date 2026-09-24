@@ -62,3 +62,19 @@ def test_garbage_is_not_a_class_file(tmp_path: Path):
         archive.writestr("a/B.class", b"\x00Cipher.getInstance\x00AES/ECB\x00")
         archive.writestr("a/C.class", b"\xca\xfe\xba\xbe\x00\x00\x00\x34\xff\xff\x01")
     assert scan_jar(jar, tmp_path) == []
+
+
+def test_full_pipeline_scans_each_archive_once(tmp_path):
+    import io
+    import zipfile
+
+    from scanner.core.scanner import Scanner
+
+    (tmp_path / "lib").mkdir()
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("com/x/A.class", _class_file(["javax/crypto/Cipher"], ["AES/GCM/NoPadding"]))
+    (tmp_path / "lib" / "a.jar").write_bytes(buf.getvalue())
+    result = Scanner().scan(root_path=tmp_path, target_type="LOCAL_DIRECTORY", target_location=str(tmp_path))
+    keys = [(f.source.file_path, f.crypto.algorithm) for f in result.findings]
+    assert keys == [("lib/a.jar!com/x/A.class", "AES")]
