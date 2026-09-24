@@ -246,6 +246,8 @@ def run_rules(
                     continue
             elif spec.get("algo_from_group"):
                 token = match.group(spec["algo_from_group"]) or ""
+                if not token:  # alternation: take the first populated capture
+                    token = next((g for g in match.groups() if g), "")
                 if spec.get("algo_map") is CIPHER_TOKENS or spec.get("split_cipher"):
                     algorithm, mode, size = split_cipher_token(token)
                     key_size = key_size or size
@@ -260,6 +262,8 @@ def run_rules(
                     dtoken = match.group(spec["emit_digest_group"]) or ""
                 except IndexError:
                     dtoken = ""
+                if not dtoken and spec["emit_digest_group"] != spec.get("algo_from_group"):
+                    dtoken = next((g for g in match.groups() if g and resolve_token(g, DIGEST_TOKENS)), "")
                 digest = resolve_token(dtoken, DIGEST_TOKENS)
                 if digest:
                     emit(line, digest, spec, match, api_type="MESSAGE_DIGEST", purpose="HASHING")

@@ -744,7 +744,7 @@ package main
 import ("crypto/sha1"; "crypto/sha512")
 var a = sha1.Sum(b)
 var c = sha512.Sum384(b)
-""", {"SHA-1", "SHA-512"})
+""", {"SHA-1", "SHA-384"})
 _c("go", "n_hash_fnv.go", """
 package main
 import ("hash/fnv"; "hash/crc32"; "encoding/base64")
