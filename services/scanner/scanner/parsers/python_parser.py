@@ -36,6 +36,12 @@ CRYPTOGRAPHY_HASH = {
     "SHA384": "SHA-384",
     "SHA512": "SHA-512",
     "SHA3_256": "SHA3-256",
+    "SHA3_384": "SHA3-384",
+    "SHA3_512": "SHA3-512",
+    "SHA224": "SHA-224",
+    "BLAKE2b": "BLAKE2b",
+    "BLAKE2s": "BLAKE2s",
+    "SM3": "SM3",
 }
 
 WEAK_SECRET_NAMES = {
@@ -49,6 +55,261 @@ WEAK_SECRET_NAMES = {
     "aes_key",
     "encryption_key",
 }
+
+# Suffix table for library APIs whose *fully-resolved* dotted name (after import
+# alias expansion) identifies the primitive.  Matched with endswith on the
+# resolved name, longest suffix first.  Entries: suffix -> (algorithm, api_type,
+# purpose, library, mode).
+_API_TABLE: dict[str, tuple[str, str, str, str, Optional[str]]] = {
+    # cryptography.hazmat asymmetric
+    "asymmetric.ec.generate_private_key": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.ec.ECDSA": ("ECDSA", "SIGNATURE", "SIGNING", "cryptography", None),
+    "asymmetric.ec.ECDH": ("ECDH", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.ec.derive_private_key": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.ed25519.Ed25519PrivateKey.generate": ("Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.ed25519.Ed25519PrivateKey.from_private_bytes": ("Ed25519", "SIGNATURE", "SIGNING", "cryptography", None),
+    "asymmetric.ed25519.Ed25519PublicKey.from_public_bytes": ("Ed25519", "SIGNATURE", "VERIFICATION", "cryptography", None),
+    "asymmetric.ed448.Ed448PrivateKey.generate": ("Ed448", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.x25519.X25519PrivateKey.generate": ("X25519", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.x25519.X25519PrivateKey.from_private_bytes": ("X25519", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.x25519.X25519PublicKey.from_public_bytes": ("X25519", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.x448.X448PrivateKey.generate": ("X448", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.dsa.generate_private_key": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.dsa.generate_parameters": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.dh.generate_parameters": ("DH", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.dh.DHParameterNumbers": ("DH", "KEY_AGREEMENT", "KEY_EXCHANGE", "cryptography", None),
+    "asymmetric.rsa.RSAPrivateNumbers": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.rsa.RSAPublicNumbers": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "asymmetric.padding.OAEP": ("RSA", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "asymmetric.padding.PSS": ("RSA", "SIGNATURE", "SIGNING", "cryptography", None),
+    "asymmetric.padding.PKCS1v15": ("RSA", "SIGNATURE", "SIGNING", "cryptography", None),
+    # cryptography.hazmat symmetric / aead / mac / kdf
+    "ciphers.aead.AESGCM": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", "GCM"),
+    "ciphers.aead.AESGCMSIV": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", "GCM-SIV"),
+    "ciphers.aead.AESCCM": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", "CCM"),
+    "ciphers.aead.AESOCB3": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", "OCB"),
+    "ciphers.aead.AESSIV": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", "SIV"),
+    "ciphers.aead.ChaCha20Poly1305": ("ChaCha20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.AES": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.AES128": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.AES256": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.Camellia": ("Camellia", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.TripleDES": ("3DES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.Blowfish": ("Blowfish", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.CAST5": ("CAST5", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.ARC4": ("RC4", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.IDEA": ("IDEA", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.SEED": ("SEED", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.SM4": ("SM4", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "ciphers.algorithms.ChaCha20": ("ChaCha20", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography", None),
+    "primitives.hmac.HMAC": ("HMAC", "MAC", "MAC_GENERATION", "cryptography", None),
+    "primitives.cmac.CMAC": ("CMAC", "MAC", "MAC_GENERATION", "cryptography", None),
+    "primitives.poly1305.Poly1305": ("Poly1305", "MAC", "MAC_GENERATION", "cryptography", None),
+    "kdf.hkdf.HKDF": ("HKDF", "KEY_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "kdf.hkdf.HKDFExpand": ("HKDF", "KEY_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "kdf.pbkdf2.PBKDF2HMAC": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "cryptography", None),
+    "kdf.scrypt.Scrypt": ("SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "cryptography", None),
+    "kdf.argon2.Argon2id": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "cryptography", None),
+    "kdf.concatkdf.ConcatKDFHash": ("ConcatKDF", "KEY_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "kdf.x963kdf.X963KDF": ("X963KDF", "KEY_GENERATOR", "KEY_GENERATION", "cryptography", None),
+    "keywrap.aes_key_wrap": ("AES", "CIPHER_INSTANCE", "KEY_WRAPPING", "cryptography", "KW"),
+    "keywrap.aes_key_unwrap": ("AES", "CIPHER_INSTANCE", "KEY_WRAPPING", "cryptography", "KW"),
+    "primitives.hashes.SHA1": ("SHA-1", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.MD5": ("MD5", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SHA224": ("SHA-224", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SHA256": ("SHA-256", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SHA384": ("SHA-384", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SHA512": ("SHA-512", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SHA3_256": ("SHA3-256", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SHA3_512": ("SHA3-512", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.BLAKE2b": ("BLAKE2b", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.BLAKE2s": ("BLAKE2s", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "primitives.hashes.SM3": ("SM3", "MESSAGE_DIGEST", "HASHING", "cryptography", None),
+    "cryptography.fernet.Fernet": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography.fernet", "CBC"),
+    "cryptography.fernet.MultiFernet": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "cryptography.fernet", "CBC"),
+    "cryptography.x509.CertificateBuilder": ("X509", "SIGNATURE", "SIGNING", "cryptography.x509", None),
+    "cryptography.x509.load_pem_x509_certificate": ("X509", "SIGNATURE", "VERIFICATION", "cryptography.x509", None),
+    "cryptography.x509.load_der_x509_certificate": ("X509", "SIGNATURE", "VERIFICATION", "cryptography.x509", None),
+    # pycryptodome / pycrypto
+    "Crypto.Cipher.AES.new": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.DES.new": ("DES", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.DES3.new": ("3DES", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.ARC4.new": ("RC4", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.ARC2.new": ("RC2", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.Blowfish.new": ("Blowfish", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.CAST.new": ("CAST5", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.ChaCha20.new": ("ChaCha20", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.ChaCha20_Poly1305.new": ("ChaCha20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.Salsa20.new": ("Salsa20", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.PKCS1_OAEP.new": ("RSA", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Cipher.PKCS1_v1_5.new": ("RSA", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodome", None),
+    "Crypto.Signature.pkcs1_15.new": ("RSA", "SIGNATURE", "SIGNING", "pycryptodome", None),
+    "Crypto.Signature.PKCS1_v1_5.new": ("RSA", "SIGNATURE", "SIGNING", "pycryptodome", None),
+    "Crypto.Signature.pss.new": ("RSA", "SIGNATURE", "SIGNING", "pycryptodome", None),
+    "Crypto.Signature.PKCS1_PSS.new": ("RSA", "SIGNATURE", "SIGNING", "pycryptodome", None),
+    "Crypto.Signature.DSS.new": ("ECDSA", "SIGNATURE", "SIGNING", "pycryptodome", None),
+    "Crypto.Signature.eddsa.new": ("Ed25519", "SIGNATURE", "SIGNING", "pycryptodome", None),
+    "Crypto.PublicKey.RSA.generate": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.RSA.import_key": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.RSA.importKey": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.RSA.construct": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.DSA.generate": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.DSA.import_key": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.ECC.generate": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.ECC.import_key": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.PublicKey.ElGamal.generate": ("ElGamal", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.Hash.MD2.new": ("MD2", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.MD4.new": ("MD4", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.MD5.new": ("MD5", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA.new": ("SHA-1", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA1.new": ("SHA-1", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA224.new": ("SHA-224", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA256.new": ("SHA-256", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA384.new": ("SHA-384", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA512.new": ("SHA-512", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA3_256.new": ("SHA3-256", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.SHA3_512.new": ("SHA3-512", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.BLAKE2b.new": ("BLAKE2b", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.BLAKE2s.new": ("BLAKE2s", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.RIPEMD160.new": ("RIPEMD-160", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.RIPEMD.new": ("RIPEMD-160", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.keccak.new": ("SHA3-256", "MESSAGE_DIGEST", "HASHING", "pycryptodome", None),
+    "Crypto.Hash.HMAC.new": ("HMAC", "MAC", "MAC_GENERATION", "pycryptodome", None),
+    "Crypto.Hash.CMAC.new": ("CMAC", "MAC", "MAC_GENERATION", "pycryptodome", None),
+    "Crypto.Hash.Poly1305.new": ("Poly1305", "MAC", "MAC_GENERATION", "pycryptodome", None),
+    "Crypto.Protocol.KDF.PBKDF2": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "pycryptodome", None),
+    "Crypto.Protocol.KDF.PBKDF1": ("PBKDF1", "KEY_GENERATOR", "PASSWORD_HASHING", "pycryptodome", None),
+    "Crypto.Protocol.KDF.scrypt": ("SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "pycryptodome", None),
+    "Crypto.Protocol.KDF.bcrypt": ("BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "pycryptodome", None),
+    "Crypto.Protocol.KDF.HKDF": ("HKDF", "KEY_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.Random.get_random_bytes": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    "Crypto.Random.new": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "pycryptodome", None),
+    # PyNaCl
+    "nacl.secret.SecretBox": ("XSalsa20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "pynacl", None),
+    "nacl.secret.Aead": ("XChaCha20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "pynacl", None),
+    "nacl.public.PrivateKey.generate": ("X25519", "KEY_AGREEMENT", "KEY_EXCHANGE", "pynacl", None),
+    "nacl.public.PrivateKey": ("X25519", "KEY_AGREEMENT", "KEY_EXCHANGE", "pynacl", None),
+    "nacl.public.Box": ("XSalsa20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "pynacl", None),
+    "nacl.public.SealedBox": ("XSalsa20-Poly1305", "CIPHER_INSTANCE", "ENCRYPTION", "pynacl", None),
+    "nacl.signing.SigningKey.generate": ("Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pynacl", None),
+    "nacl.signing.SigningKey": ("Ed25519", "SIGNATURE", "SIGNING", "pynacl", None),
+    "nacl.signing.VerifyKey": ("Ed25519", "SIGNATURE", "VERIFICATION", "pynacl", None),
+    "nacl.pwhash.argon2id.kdf": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "pynacl", None),
+    "nacl.pwhash.argon2id.str": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "pynacl", None),
+    "nacl.pwhash.argon2i.kdf": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "pynacl", None),
+    "nacl.pwhash.scryptsalsa208sha256.kdf": ("SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "pynacl", None),
+    "nacl.pwhash.str": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "pynacl", None),
+    "nacl.pwhash.kdf": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "pynacl", None),
+    "nacl.hash.sha256": ("SHA-256", "MESSAGE_DIGEST", "HASHING", "pynacl", None),
+    "nacl.hash.sha512": ("SHA-512", "MESSAGE_DIGEST", "HASHING", "pynacl", None),
+    "nacl.hash.blake2b": ("BLAKE2b", "MESSAGE_DIGEST", "HASHING", "pynacl", None),
+    "nacl.utils.random": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "pynacl", None),
+    # paramiko / ssh
+    "paramiko.RSAKey.generate": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.RSAKey.from_private_key_file": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.RSAKey": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.DSSKey.generate": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.DSSKey": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.ECDSAKey.generate": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.ECDSAKey": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.Ed25519Key": ("Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.SSHClient": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "paramiko", None),
+    "paramiko.Transport": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "paramiko", None),
+    "asyncssh.connect": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "asyncssh", None),
+    "asyncssh.generate_private_key": ("SSH", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "asyncssh", None),
+    # password hashing libraries
+    "argon2.PasswordHasher": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),
+    "argon2.hash_password": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),
+    "argon2.hash_password_raw": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),
+    "argon2.low_level.hash_secret": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),
+    "argon2.low_level.hash_secret_raw": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),
+    "bcrypt.hashpw": ("BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "bcrypt", None),
+    "bcrypt.checkpw": ("BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "bcrypt", None),
+    "bcrypt.kdf": ("BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "bcrypt", None),
+    "passlib.hash.bcrypt.hash": ("BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.bcrypt.verify": ("BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.argon2.hash": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.pbkdf2_sha256.hash": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.pbkdf2_sha512.hash": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.sha256_crypt.hash": ("SHA-256", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.sha512_crypt.hash": ("SHA-512", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.md5_crypt.hash": ("MD5", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.des_crypt.hash": ("DES", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "passlib.hash.scrypt.hash": ("SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "passlib", None),
+    "django.contrib.auth.hashers.make_password": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "django", None),
+    "werkzeug.security.generate_password_hash": ("SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "werkzeug", None),
+    # stdlib randomness
+    "secrets.token_bytes": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "secrets", None),
+    "secrets.token_hex": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "secrets", None),
+    "secrets.token_urlsafe": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "secrets", None),
+    "secrets.randbits": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "secrets", None),
+    "secrets.choice": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "secrets", None),
+    "secrets.SystemRandom": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "secrets", None),
+    "random.SystemRandom": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "random", None),
+    "os.urandom": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "os", None),
+    "os.getrandom": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "os", None),
+    # jose / authlib / itsdangerous / other JWT stacks
+    "jose.jwt.encode": ("JWT", "SIGNATURE", "SIGNING", "python-jose", None),
+    "jose.jwt.decode": ("JWT", "SIGNATURE", "VERIFICATION", "python-jose", None),
+    "jose.jws.sign": ("JWT", "SIGNATURE", "SIGNING", "python-jose", None),
+    "authlib.jose.jwt.encode": ("JWT", "SIGNATURE", "SIGNING", "authlib", None),
+    "authlib.jose.JsonWebSignature": ("JWT", "SIGNATURE", "SIGNING", "authlib", None),
+    "itsdangerous.URLSafeTimedSerializer": ("HMAC-SHA-1", "MAC", "MAC_GENERATION", "itsdangerous", None),
+    "itsdangerous.TimestampSigner": ("HMAC-SHA-1", "MAC", "MAC_GENERATION", "itsdangerous", None),
+    "itsdangerous.Signer": ("HMAC-SHA-1", "MAC", "MAC_GENERATION", "itsdangerous", None),
+    # TLS stacks
+    "ssl.create_default_context": ("TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ssl", None),
+    "OpenSSL.SSL.Context": ("TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "pyOpenSSL", None),
+    "OpenSSL.crypto.PKey": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pyOpenSSL", None),
+    "OpenSSL.crypto.X509": ("X509", "SIGNATURE", "SIGNING", "pyOpenSSL", None),
+    "OpenSSL.crypto.load_certificate": ("X509", "SIGNATURE", "VERIFICATION", "pyOpenSSL", None),
+    # gnupg / age / misc
+    "gnupg.GPG": ("PGP", "CIPHER_INSTANCE", "ENCRYPTION", "python-gnupg", None),
+    "pgpy.PGPKey.new": ("PGP", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pgpy", None),
+    "Cryptodome.Cipher.AES.new": ("AES", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodomex", None),
+    "Cryptodome.Cipher.DES3.new": ("3DES", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodomex", None),
+    "Cryptodome.Cipher.DES.new": ("DES", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodomex", None),
+    "Cryptodome.Cipher.ARC4.new": ("RC4", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodomex", None),
+    "Cryptodome.Cipher.Blowfish.new": ("Blowfish", "CIPHER_INSTANCE", "ENCRYPTION", "pycryptodomex", None),
+    "Cryptodome.Hash.MD5.new": ("MD5", "MESSAGE_DIGEST", "HASHING", "pycryptodomex", None),
+    "Cryptodome.Hash.SHA1.new": ("SHA-1", "MESSAGE_DIGEST", "HASHING", "pycryptodomex", None),
+    "Cryptodome.Hash.SHA256.new": ("SHA-256", "MESSAGE_DIGEST", "HASHING", "pycryptodomex", None),
+    "Cryptodome.PublicKey.RSA.generate": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodomex", None),
+    "Cryptodome.PublicKey.ECC.generate": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pycryptodomex", None),
+    "ecdsa.SigningKey.generate": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "python-ecdsa", None),
+    "ecdsa.SigningKey.from_string": ("ECDSA", "SIGNATURE", "SIGNING", "python-ecdsa", None),
+    "ecdsa.VerifyingKey.from_string": ("ECDSA", "SIGNATURE", "VERIFICATION", "python-ecdsa", None),
+    "rsa.newkeys": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "python-rsa", None),
+    "rsa.encrypt": ("RSA", "CIPHER_INSTANCE", "ENCRYPTION", "python-rsa", None),
+    "rsa.sign": ("RSA", "SIGNATURE", "SIGNING", "python-rsa", None),
+    "Cryptodome.Random.get_random_bytes": ("CSPRNG", "KEY_GENERATOR", "KEY_GENERATION", "pycryptodomex", None),
+    "hashlib.pbkdf2_hmac": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "hashlib", None),
+    "hashlib.scrypt": ("SCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "hashlib", None),
+    "hashlib.blake2b": ("BLAKE2b", "MESSAGE_DIGEST", "HASHING", "hashlib", None),
+    "hashlib.blake2s": ("BLAKE2s", "MESSAGE_DIGEST", "HASHING", "hashlib", None),
+    "hashlib.shake_128": ("SHAKE128", "MESSAGE_DIGEST", "HASHING", "hashlib", None),
+    "hashlib.shake_256": ("SHAKE256", "MESSAGE_DIGEST", "HASHING", "hashlib", None),
+    "hashlib.file_digest": ("UNKNOWN", "MESSAGE_DIGEST", "HASHING", "hashlib", None),
+    "zlib.crc32": ("CRC32", "CHECKSUM", "INTEGRITY", "zlib", None),
+}
+# CRC is a checksum, not crypto — listed so we consciously *skip* it.
+_NON_CRYPTO_ALGOS = {"CRC32"}
+_API_SUFFIXES = sorted(_API_TABLE, key=len, reverse=True)
+
+# Additional hashlib spellings accepted by hashlib.new()/getattr(hashlib, ...)
+_HASHLIB_NEW_EXTRA = {
+    "md4": "MD4",
+    "ripemd160": "RIPEMD-160",
+    "whirlpool": "WHIRLPOOL",
+    "sha3-256": "SHA3-256",
+    "sha3-512": "SHA3-512",
+    "sha512_256": "SHA-512",
+    "sha512-256": "SHA-512",
+    "shake_128": "SHAKE128",
+    "shake_256": "SHAKE256",
+    "sm3": "SM3",
+}
+_MODULE_ATTR_DIGEST = {**HASHLIB_ALGOS, **_HASHLIB_NEW_EXTRA}
 
 
 def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -70,6 +331,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         self.findings: list[RawFinding] = []
         self._aliases: dict[str, str] = {}
         self._locals: dict[str, str] = {}
+        self._seen: set[tuple] = set()
         self._current_function: Optional[str] = None
         self._current_class: Optional[str] = None
 
@@ -104,7 +366,17 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        value = _string_literal(node.value)
+        value = self._fold_string(node.value)
+        # importlib.import_module("Crypto.Cipher.ARC4") / __import__("hashlib")
+        if isinstance(node.value, ast.Call):
+            callee = self._resolve(_call_name(node.value))
+            if callee in {"importlib.import_module", "__import__"} and node.value.args:
+                module = self._fold_string(node.value.args[0])
+                if module:
+                    for target in node.targets:
+                        name = _name_of(target)
+                        if name:
+                            self._aliases[name] = module
         if value:
             for target in node.targets:
                 name = _name_of(target)
@@ -127,8 +399,18 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
     def visit_Call(self, node: ast.Call) -> None:
         func = _call_name(node)
         if not func:
+            # getattr(hashlib, "md5")(data) / getattr(hashlib, algo)(data)
+            self._dynamic_call(node)
             self.generic_visit(node)
             return
+
+        resolved = self._resolve(func)
+        if self._api_table(node, func, resolved):
+            pass  # table hit; still fall through for mode/key-size enrichers below
+        if resolved != func:
+            # run the legacy suffix rules against the resolved name too so that
+            # `import hashlib as hl; hl.sha1()` is treated like hashlib.sha1()
+            func = resolved
 
         lowered = func.lower()
         if lowered.endswith("hashlib.md5") or func.endswith("hashlib.md5") or func == "md5":
@@ -145,9 +427,14 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                     break
 
         if "hashlib.new" in func:
-            algo = _string_arg(node, 0) or self._resolve_name(node, 0)
+            algo = None
+            if node.args:
+                algo = self._fold_string(node.args[0])
+            for kw in node.keywords:
+                if kw.arg == "name":
+                    algo = self._fold_string(kw.value)
             if algo:
-                mapped = HASHLIB_ALGOS.get(algo.lower(), algo.upper())
+                mapped = _MODULE_ATTR_DIGEST.get(algo.lower(), algo.upper())
                 self._hash(node, mapped)
 
         if self._is_hmac_call(func):
@@ -180,6 +467,14 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 algorithm="AES",
                 mode="CBC",
                 purpose="ENCRYPTION",
+                library="cryptography.fernet",
+                raw_transformation="Fernet",
+            )
+            self._add(
+                node,
+                api_type="MAC",
+                algorithm="HMAC-SHA-256",
+                purpose="MAC_GENERATION",
                 library="cryptography.fernet",
                 raw_transformation="Fernet",
             )
@@ -229,6 +524,10 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 purpose="PASSWORD_HASHING",
                 library="hashlib" if "pbkdf2_hmac" in func or func.endswith("scrypt") else "cryptography",
             )
+            if func.endswith("pbkdf2_hmac") and node.args:
+                digest = self._fold_string(node.args[0])
+                if digest and digest.lower() in _MODULE_ATTR_DIGEST:
+                    self._hash(node, _MODULE_ATTR_DIGEST[digest.lower()])
         if func.endswith("bcrypt.hashpw") or func.endswith("bcrypt.hash"):
             self._add(
                 node,
@@ -326,8 +625,16 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         for kw in node.keywords:
             if kw.arg in {"digestmod", "digest"}:
                 digest = _dotted(kw.value) or _string_literal(kw.value)
-        name = (digest or "sha256").split(".")[-1].lower()
-        return HASHLIB_ALGOS.get(name, name.upper().replace("_", "-"))
+        if digest is None:
+            for kw in node.keywords:
+                if kw.arg in {"digestmod", "digest"}:
+                    digest = self._fold_string(kw.value)
+            if digest is None and len(node.args) >= 3:
+                digest = self._fold_string(node.args[2])
+        if digest is None:
+            return "UNKNOWN"
+        name = digest.split(".")[-1].lower()
+        return _MODULE_ATTR_DIGEST.get(name, name.upper().replace("_", "-"))
 
     def _is_cipher_ctor(self, func: str) -> bool:
         if func.endswith("Cipher") or func == "Cipher":
@@ -390,6 +697,132 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         markers = ("key", "token", "secret", "password", "nonce", "iv", "salt", "seed")
         return any(marker in hay for marker in markers)
 
+    # ------------------------------------------------------------------ resolution helpers
+    def _resolve(self, dotted: str) -> str:
+        """Expand the import alias at the head of a dotted name.
+
+        ``hl.sha1`` with ``import hashlib as hl`` -> ``hashlib.sha1``;
+        ``_A.new`` with ``from Crypto.Cipher import AES as _A`` -> ``Crypto.Cipher.AES.new``.
+        """
+        if not dotted:
+            return dotted
+        head, _, rest = dotted.partition(".")
+        target = self._aliases.get(head)
+        if not target:
+            return dotted
+        return f"{target}.{rest}" if rest else target
+
+    def _fold_string(self, node: ast.AST) -> Optional[str]:
+        """Best-effort constant folding for string arguments.
+
+        Handles literals, ``"md" + "5"``, names bound to literals earlier in
+        scope, ``"sha256".upper()``/``.lower()`` and ``mapping.get(k, "sha512")``
+        (the default is the only statically known value).
+        """
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return node.value
+        if isinstance(node, ast.JoinedStr):
+            parts = []
+            for v in node.values:
+                folded = self._fold_string(v)
+                if folded is None:
+                    return None
+                parts.append(folded)
+            return "".join(parts)
+        if isinstance(node, ast.FormattedValue):
+            return self._fold_string(node.value)
+        if isinstance(node, ast.Name):
+            return self._locals.get(node.id)
+        if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+            left = self._fold_string(node.left)
+            right = self._fold_string(node.right)
+            if left is not None and right is not None:
+                return left + right
+            return None
+        if isinstance(node, ast.Call):
+            callee = node.func
+            if isinstance(callee, ast.Attribute):
+                if callee.attr in {"lower", "upper", "strip", "casefold"} and not node.args:
+                    inner = self._fold_string(callee.value)
+                    return getattr(inner, callee.attr)() if inner is not None else None
+                if callee.attr in {"get", "getenv", "getattr"} and len(node.args) >= 2:
+                    return self._fold_string(node.args[1])
+                if callee.attr == "get" and len(node.args) == 1:
+                    return None
+            if isinstance(callee, ast.Name) and callee.id == "str" and len(node.args) == 1:
+                return self._fold_string(node.args[0])
+        if isinstance(node, ast.Subscript):
+            # CONFIG["digest"] style lookups on a dict literal bound in scope are
+            # out of reach; give up rather than guess.
+            return None
+        return None
+
+    def _dynamic_call(self, node: ast.Call) -> None:
+        """``getattr(<module>, <name>)(...)`` where name folds to a constant."""
+        inner = node.func
+        if not (isinstance(inner, ast.Call) and _call_name(inner) == "getattr" and len(inner.args) >= 2):
+            return
+        module = self._resolve(_dotted(inner.args[0]))
+        attr = self._fold_string(inner.args[1])
+        if not attr:
+            return
+        if module.endswith("hashlib"):
+            algo = _MODULE_ATTR_DIGEST.get(attr.lower())
+            if algo:
+                self._hash(node, algo)
+            elif attr == "new" and node.args:
+                folded = self._fold_string(node.args[0])
+                if folded and folded.lower() in _MODULE_ATTR_DIGEST:
+                    self._hash(node, _MODULE_ATTR_DIGEST[folded.lower()])
+            return
+        synthetic = f"{module}.{attr}"
+        self._api_table(node, synthetic, synthetic)
+
+    def _api_table(self, node: ast.Call, func: str, resolved: str) -> bool:
+        """Match the resolved dotted call name against ``_API_TABLE``."""
+        candidates = (resolved, func) if resolved != func else (resolved,)
+        for cand in candidates:
+            for suffix in _API_SUFFIXES:
+                if cand == suffix or cand.endswith("." + suffix):
+                    algorithm, api_type, purpose, library, mode = _API_TABLE[suffix]
+                    if algorithm in _NON_CRYPTO_ALGOS:
+                        return True
+                    if mode is None and api_type == "CIPHER_INSTANCE":
+                        mode = _mode_from_node(node)
+                    key_size = _int_arg(node, 0) or _kwint(node, "key_size") or _kwint(node, "bits") or _kwint(node, "bit_length")
+                    if api_type not in {"KEY_PAIR_GENERATOR", "CIPHER_INSTANCE"}:
+                        key_size = None
+                    self._add(
+                        node,
+                        api_type=api_type,
+                        algorithm=algorithm,
+                        mode=mode,
+                        purpose=purpose,
+                        library=library,
+                        key_size=key_size,
+                        raw_transformation=cand[-80:],
+                        confidence="HIGH" if api_type != "KEY_GENERATOR" or algorithm != "CSPRNG" else "MEDIUM",
+                    )
+                    # cryptography HMAC/HKDF/PBKDF2HMAC carry the digest as an argument
+                    if algorithm in {"HMAC", "HKDF", "PBKDF2", "CMAC", "ECDSA", "RSA"} or api_type in {"MAC", "KEY_GENERATOR"}:
+                        self._emit_nested_hash(node)
+                    return True
+        return False
+
+    def _emit_nested_hash(self, node: ast.Call) -> None:
+        """Emit the digest named by an argument such as ``hashes.SHA256()``."""
+        for arg in list(node.args) + [kw.value for kw in node.keywords]:
+            inner = arg.func if isinstance(arg, ast.Call) else arg
+            name = self._resolve(_dotted(inner))
+            for attr, algo in CRYPTOGRAPHY_HASH.items():
+                if name.endswith(f"hashes.{attr}"):
+                    self._hash(node, algo, library="cryptography")
+                    break
+            else:
+                folded = self._fold_string(arg) if not isinstance(arg, ast.Call) else None
+                if folded and folded.lower() in _MODULE_ATTR_DIGEST:
+                    self._hash(node, _MODULE_ATTR_DIGEST[folded.lower()])
+
     def _resolve_name(self, node: ast.Call, index: int) -> Optional[str]:
         if len(node.args) <= index:
             return None
@@ -408,6 +841,10 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         )
 
     def _add(self, node: ast.AST, **kwargs) -> None:
+        key = (getattr(node, "lineno", 1), str(kwargs.get("algorithm")).upper(), kwargs.get("api_type"))
+        if key in self._seen:
+            return
+        self._seen.add(key)
         self.findings.append(
             make_finding(
                 file_path=self.file_path,

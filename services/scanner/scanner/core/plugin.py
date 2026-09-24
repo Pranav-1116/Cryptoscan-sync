@@ -219,6 +219,19 @@ class RustSourcePlugin(FilesystemLanguagePlugin):
 
 
 @register_plugin
+class CSourcePlugin(FilesystemLanguagePlugin):
+    plugin_id = "static-c-scanner"
+    language = "c"
+    extensions = (".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm")
+
+    @property
+    def parser(self):
+        from scanner.parsers.c_parser import parse_c_file
+
+        return parse_c_file
+
+
+@register_plugin
 class KotlinSourcePlugin(FilesystemLanguagePlugin):
     plugin_id = "static-kotlin-scanner"
     language = "kotlin"

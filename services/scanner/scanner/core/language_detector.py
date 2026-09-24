@@ -17,6 +17,9 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "PHP": (".php",),
     "RUBY": (".rb",),
     "RUST": (".rs",),
+    "C": (".c", ".h"),
+    "CPP": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"),
+    "OBJECTIVE_C": (".m", ".mm"),
 }
 
 MARKER_FILES: dict[str, tuple[str, ...]] = {
@@ -29,6 +32,7 @@ MARKER_FILES: dict[str, tuple[str, ...]] = {
     "PHP": ("composer.json", "composer.lock"),
     "RUBY": ("Gemfile", "Gemfile.lock"),
     "RUST": ("Cargo.toml", "Cargo.lock"),
+    "C": ("CMakeLists.txt", "configure.ac", "Makefile.am", "meson.build"),
 }
 
 

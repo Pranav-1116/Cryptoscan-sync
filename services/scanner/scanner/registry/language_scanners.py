@@ -6,6 +6,7 @@ from pathlib import Path
 
 from scanner.detectors.java.jar_string_scanner import scan_jar
 from scanner.models.raw_finding import RawFinding
+from scanner.parsers.c_parser import parse_c_file
 from scanner.parsers.config_crypto_parser import parse_config_file
 from scanner.parsers.csharp_parser import parse_csharp_file
 from scanner.parsers.go_parser import parse_go_file
@@ -28,6 +29,7 @@ GO_EXT = {".go"}
 PHP_EXT = {".php"}
 RUBY_EXT = {".rb"}
 RUST_EXT = {".rs"}
+C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
 JAR_EXT = {".jar"}
 CONFIG_EXT = {".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg"}
 
@@ -42,6 +44,7 @@ PARSERS = (
     (PHP_EXT, parse_php_file),
     (RUBY_EXT, parse_ruby_file),
     (RUST_EXT, parse_rust_file),
+    (C_EXT, parse_c_file),
     (JAR_EXT, scan_jar),
     (CONFIG_EXT, parse_config_file),
 )

@@ -58,6 +58,16 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".php",
     ".rb",
     ".rs",
+    ".c",
+    ".h",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".hpp",
+    ".hh",
+    ".hxx",
+    ".m",
+    ".mm",
 )
 
 
