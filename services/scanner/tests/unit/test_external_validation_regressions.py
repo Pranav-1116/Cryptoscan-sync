@@ -250,3 +250,34 @@ def test_wave9_sql_and_cobol(tmp_path):
     # fixed-format comment lines (col 7 '*') and floating '*>' comments are blanked; VSAM keys ignored
     negc = _write(tmp_path, "n.cbl", "      * CALL 'CSNBENC' FOR DES\n           RECORD KEY IS CUST-ID  *> CSNBOWH\n           COMPUTE X = FUNCTION RANDOM * 10.\n")
     assert not _algos(parse_cobol_file(negc, tmp_path))
+
+
+# ---- Round 13: repositories published by bank GitHub orgs -------------------
+
+
+def test_go_ethereum_keccak256_is_sha3_not_ecdsa(tmp_path):
+    # jpmorganchase/quorum: crypto.Keccak256Hash was double-reported as ECDSA
+    from scanner.registry.language_scanners import scan_file
+
+    p = _write(tmp_path, "topics.go", 'package x\nimport "github.com/ethereum/go-ethereum/crypto"\nfunc f() { _ = crypto.Keccak256Hash([]byte{1}) }\n')
+    algos = _algos(scan_file(p, tmp_path))
+    assert "SHA3-256" in algos and "ECDSA" not in algos
+
+
+def test_scala_interpolated_transformation_is_unknown_with_mode(tmp_path):
+    # ing-bank/baker: Cipher.getInstance(s"$algorithmName/ECB/PKCS5Padding") leaked "$algorithmName"
+    from scanner.registry.language_scanners import scan_file
+
+    p = _write(tmp_path, "Encryption.scala", 'object E {\n  val c = javax.crypto.Cipher.getInstance(s"$algorithmName/ECB/PKCS5Padding")\n}\n')
+    fs = scan_file(p, tmp_path)
+    assert fs and all(not (f.crypto.algorithm or "").startswith("$") for f in fs)
+    assert any(f.crypto.algorithm == "UNKNOWN" and f.crypto.mode == "ECB" for f in fs)
+
+
+def test_java_security_disabled_algorithms_are_not_reported_as_in_use(tmp_path):
+    from scanner.registry.language_scanners import scan_file
+
+    p = _write(tmp_path, "java.security", "jdk.tls.disabledAlgorithms=SSLv3, TLSv1, RC4, DES, MD5withRSA, 3DES_EDE_CBC\n")
+    algos = _algos(scan_file(p, tmp_path))
+    assert set(algos) & {"RC4", "DES", "MD5", "3DES"} == set()
+    assert any(a.startswith("TLS") for a in algos)
