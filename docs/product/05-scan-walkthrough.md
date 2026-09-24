@@ -124,3 +124,5 @@ monitor's **live scans** (network, cloud, container, telecom) use the live
 scan runner in the api process with the same event and evidence handling.
 
 Next: [6. Scope, maturity and readiness](06-scope-and-readiness.md)
+
+For the same job followed beyond the pipeline — gate, dedup, priority, CI verdict, alerting, SLA, Technology BOM, report and regulator verification — see [9. End to end](09-end-to-end.md).

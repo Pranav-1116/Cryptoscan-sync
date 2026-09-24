@@ -8,7 +8,7 @@ repository, not from a plan. Version 1.0.0, 2026-09-23._
 
 ![What the product does](img/01-product-overview.png)
 
-_Figure 1 — CryptoScan in one picture. Each block is explained in depth in the pages below and in the explanatory posters (images 10–21)._
+_Figure 1 — CryptoScan in one picture. Each block is explained in depth in the pages below and in the explanatory posters (images 10–31)._
 
 ## Read in this order
 
@@ -21,6 +21,8 @@ _Figure 1 — CryptoScan in one picture. Each block is explained in depth in the
 | 5 | [A scan, step by step](05-scan-walkthrough.md) | One job traced through all fourteen pipeline stages, with the rows it writes and how to verify it afterwards |
 | 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 71 surfaces are GA / beta / preview, how production-ready the whole thing is, and what is still open |
 | 7 | [Glossary](07-glossary.md) | CBOM, HBOM, VBOM, evidence chain, drift, baseline, gate, PQC, HNDL … |
+| 8 | [The engines behind the pages](08-platform-engines.md) | Scanner gate and orchestrator, privacy and data controls, normalisation/identity/dedup, PQC planning and agility, remediation/SLA/exceptions, KeyAssure, dependency graph and blast radius, tenancy/billing/marketplace/data lake/connectors/workload identity, sectors/anomaly/observability |
+| 9 | [End to end — one finding, every subsystem](09-end-to-end.md) | A hard-coded 3DES key followed through all fifteen steps from push to regulator, with the artefact each step leaves |
 
 ## The product in five sentences
 
@@ -56,9 +58,9 @@ is fabricated: it is empty until a real scan produces evidence.
 
 ## Image index
 
-Two sets of images. The first nine are structural diagrams; images 10–21 are
+Two sets of images. The first nine are structural diagrams; images 10–31 are
 explanatory posters that carry the detailed explanation of each part of the
-product on the image itself.
+product on the image itself; 22–31 cover the engines behind the pages.
 
 | # | Image | Explains | Used in |
 |---|---|---|---|
@@ -83,6 +85,16 @@ product on the image itself.
 | 19 | [testing](img/19-testing-explained.png) | the test gate, frontend, live tests, soak; what the first real-database run found | [06](06-scope-and-readiness.md) |
 | 20 | [user journeys](img/20-user-journeys.png) | analyst, developer, CISO, auditor, operator, machine | [01](01-what-it-is.md) |
 | 21 | [data model](img/21-data-model.png) | the tables that matter and how they relate | [04](04-dataflow.md) |
+| 22 | [scan gate and orchestrator](img/22-scan-gate-and-orchestrator.png) | the fail-closed chain a scan passes, four rate-limit layers, leases, scan modes | [08](08-platform-engines.md) |
+| 23 | [privacy and data controls](img/23-privacy-and-data-controls.png) | data classes, redaction before hashing, verification states, triggers | [08](08-platform-engines.md) |
+| 24 | [identity, dedup, confidence](img/24-identity-dedup-confidence.png) | normalisation, identity key, merge, merged confidence, correlation formulas | [08](08-platform-engines.md) |
+| 25 | [PQC planning](img/25-pqc-planning-explained.png) | buckets, HNDL, Mosca's inequality, sector weight, roadmap waves, what-if | [08](08-platform-engines.md) |
+| 26 | [remediation, SLA, exceptions](img/26-remediation-sla-exceptions.png) | templates, backlog, SLA clocks, exceptions, pentest findings, priority formula | [08](08-platform-engines.md) |
+| 27 | [KeyAssure](img/27-keyassure-explained.png) | TLS audit, CT monitoring, expiry rules, HSM residence, trust stores, PQC downgrade | [08](08-platform-engines.md) |
+| 28 | [graph and blast radius](img/28-graph-blast-radius-business.png) | dependency graph, reachability API, business context, impact | [08](08-platform-engines.md) |
+| 29 | [platform services](img/29-platform-services-explained.png) | tenancy and plans, billing, marketplace, data lake, connector SDK, workload identity, notifications, onboarding | [08](08-platform-engines.md) |
+| 30 | [sectors, anomaly, observability](img/30-sectors-anomaly-observability.png) | 11 sector profiles, statistical anomaly detection, SLOs and self-alerts, accuracy benchmark | [08](08-platform-engines.md) |
+| 31 | [end-to-end trace](img/31-end-to-end-trace.png) | one 3DES key through all fifteen steps and eleven tables | [09](09-end-to-end.md) |
 
 ## Where the rest of the documentation lives
 
@@ -92,4 +104,4 @@ existing ones: [user guide](../user-guide/), [admin guide](../admin-guide/),
 [runbooks](../runbooks/), [security](../security/), and the
 [soak evidence](../soak-evidence/README.md). The index is [docs/README.md](../README.md).
 
-Regenerate the images: `python scripts/gen_docs_diagrams.py` (01–09) and `python scripts/gen_docs_posters.py` (10–21) — matplotlib only, no browser or Graphviz.
+Regenerate the images: `python scripts/gen_docs_diagrams.py` (01–09) and `python scripts/gen_docs_posters.py` (10–21), `python scripts/gen_docs_posters2.py` (22–31) — matplotlib only, no browser or Graphviz.

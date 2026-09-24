@@ -39,5 +39,23 @@
 | **Verify** | Recompute every hash of a scan's chain and compare the manifest (`GET /scans/{id}/verify` → `chain_intact`, `PASS`/`FAIL`). Also `/sbom/{id}/verify` for artifacts and the audit-log verifier. |
 | **VEX** | Vulnerability Exploitability eXchange — per-advisory statements (`exploitable`, `not_affected` with justification) attached to an SBOM. |
 | **Workspace** | The per-job directory the worker clones and scans in; removed when the job ends. |
+| **Scanner gate** | The fail-closed chain (WHO → TENANT → AUTHORIZATION → SCOPE → PRIVACY POLICY → SCAN POLICY → RATE LIMIT → TARGET SAFETY → CREDENTIAL) every scan request passes before a job is queued; pure and deterministic (`privacy/gate.py`). |
+| **Vault lease** | A short-lived, scoped grant to use a credential by reference during a scan; the secret itself is never stored by the platform (`services/vaultlease`). |
+| **Scan mode** | discovery, standard, deep, passive, continuous, targeted, compliance or pqc — declares active probing, depth and whether the mode ever mutates a target. |
+| **Data class** | PUBLIC, SENSITIVE or RESTRICTED — decides whether a value may be retained, masked or only fingerprinted (`privacy/classify.py`). |
+| **Verification state** | VERIFIED, PROBABLE, UNVERIFIED, CONFLICTING, UNKNOWN or STALE — how well an asset's existence is corroborated across sources. |
+| **Identity key** | (asset type, canonical algorithm, canonical location, key size) hashed with SHA-256 — the formula that makes several sightings one asset (`services/deduplication`). |
+| **Merged confidence** | VERIFIED / HIGH / MEDIUM / LOW derived from how many independent scanner families agree. |
+| **Mosca's inequality** | x + y > z, with x = data shelf-life, y = migration time (an input), z = years to a cryptographically relevant quantum computer; true means you are already late (`quantum/plan.py`). |
+| **Migration wave** | 1, 2 or 3 — the order in which systems should migrate, from agility readiness and quantum score (`services/agility`). |
+| **SLA state** | OPEN, ON_TRACK, AT_RISK, BREACHED, RESOLVED against fixed deadlines by severity (CRITICAL 7 d … INFO 365 d). |
+| **KeyAssure** | The certificate, key and TLS assurance engine: TLS audit, CT monitoring, expiry rules, HSM residence, trust stores, hybrid-PQC downgrade detection. |
+| **Blast radius** | The set of systems reachable from an asset through the dependency graph, with summed business impact. |
+| **Sector profile** | One of eleven catalogues (banking, healthcare, energy, telecom, government, manufacturing, automotive, pharmaceutical, retail, cloud_saas, generic) that set frameworks, criticality tiers, allowed scan modes and quantum weight. |
+| **Plan** | FREE / PRO / ENTERPRISE tenant quotas for targets, scans per month and users; exceeding one returns 402 quota_exceeded. |
+| **SVID** | A short-lived SPIFFE-style workload certificate issued to scanners and workers for mTLS to the API. |
+| **Data-lake batch** | An append-only export unit with per-record hashes, a batch digest and a link to the previous batch's digest. |
 
 Back to [the product overview](README.md).
+
+Continue with [8. The engines behind the pages](08-platform-engines.md) and [9. End to end](09-end-to-end.md).

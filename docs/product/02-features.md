@@ -503,3 +503,5 @@ production.
 | Independent penetration test, multi-site DR, 24/7 on-call | external |
 
 Next: [3. Architecture](03-architecture.md)
+
+See also [8. The engines behind the pages](08-platform-engines.md) for the scanner gate, privacy controls, deduplication, PQC planning, remediation/SLA, KeyAssure, the dependency graph and the platform services that sit under these stages.
