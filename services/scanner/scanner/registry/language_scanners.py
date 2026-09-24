@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scanner.core.file_discovery import SHELL_NAMED_FILES as _SHELL_NAMED_FILES, is_named_config_file
 
+from scanner.detectors.dotnet.assembly_scanner import scan_assembly
 from scanner.detectors.java.jar_string_scanner import scan_class_file, scan_jar
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.c_parser import parse_c_file
@@ -42,6 +43,7 @@ RUST_EXT = {".rs"}
 SHELL_EXT = {".sh", ".bash", ".zsh", ".ksh"}
 SWIFT_EXT = {".swift"}
 SQL_EXT = {".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc"}
+ASSEMBLY_EXT = {".dll", ".exe", ".netmodule", ".winmd"}
 PLI_EXT = {".pli", ".pl1", ".plx", ".pls1"}
 RPG_EXT = {".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl"}
 COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".cblle", ".sqlcblle", ".cbl38", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
@@ -74,6 +76,7 @@ PARSERS = (
     (C_EXT, parse_c_file),
     (JAR_EXT, scan_jar),
     (CLASS_EXT, scan_class_file),
+    (ASSEMBLY_EXT, scan_assembly),
     (CONFIG_EXT, parse_config_file),
 )
 

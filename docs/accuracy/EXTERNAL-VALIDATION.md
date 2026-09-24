@@ -212,3 +212,18 @@ RPG IV (`.rpgle/.sqlrpgle/.rpg*`), CL (`.clle/.clp/.cl`) and ILE C were not scan
 
 Finding: real IBM i shops call `Qc3`/GSKit from **ILE C** as often as from RPG — the C parser now runs the IBM i rule table whenever a `.c/.h` mentions `Qc3`/`QC3xxxxx`/`gsk_`/`GSK_`. The blind PCI-PIN half of wave 11 (10 files written from PCI PIN Security / X9.24 / ISO 9564 / TR-31 text rather than any library API) scored 8/10 on the first pass; both misses were real and are fixed (DUKPT class/`ipek` naming, C# `CipherMode` receiver resolution).
 
+## Round 15 — .NET assemblies and native DLLs (new `detectors/dotnet/assembly_scanner.py`)
+
+Vendored `.dll/.exe` are the .NET analogue of fat JARs. The scanner reads the PE directly (no SDK): the CLI metadata `#Strings`/`#US` heaps for managed assemblies (type references gated on the owning namespace being present — a bank's own `RSA` class is not `System.Security.Cryptography.RSA`), and the import table for native binaries (CNG/CAPI/DPAPI/Schannel, OpenSSL, libsodium, mbedTLS, wolfSSL, PKCS#11 `C_*`).
+
+Real binaries (Windows wheels from PyPI — the only binary source reachable from this sandbox):
+
+| Binary | Findings | Review |
+|---|---|---|
+| pythonnet 3.1.0 runtime — 99 .NET facade assemblies | 9 assemblies with findings, 90 silent | `System.Security.Cryptography.Algorithms.dll` → AES, RSA, 3DES, RC2, MD5, SHA-1/256/384 (the types it forwards); `System.Net.Security.dll` → TLS + X509; `netstandard.dll` → the union. `Python.Runtime.dll` and the 89 non-crypto facades: 0. |
+| OpenSSL `libssl-3-x64.dll` (from psycopg2-binary) | 38 | imports from libcrypto: HMAC, RSA, MD5/SHA-1/256/384/512 (`EVP_sha*`), 26 UNKNOWN for algorithm-agnostic `EVP_*Init/Update/Final` (correct: the algorithm is a runtime parameter). |
+| `libpq.dll` | 23 | `SSL_CTX_new`/`SSL_connect`/`TLS_client_method` → TLS, `PKCS5_PBKDF2_HMAC`/`HMAC` (SCRAM), `RAND_bytes`, `EVP_sha256/512` |
+| `libcrypto-3-x64.dll` | 9 | Windows `CertOpenStore`/`CertFindCertificateInStore` → X509 (it can load the Windows root store), `BCryptGenRandom` UNKNOWN→CSPRNG path. |
+
+Limits stated plainly: names only — no data flow inside IL or machine code, so `EVP_EncryptInit` is UNKNOWN, and a managed assembly that builds algorithm names at runtime shows only the namespace. Findings carry `code_origin="archive"` and `file_path = x.dll!Type` / `x.dll!import:Symbol`.
+

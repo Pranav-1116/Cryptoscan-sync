@@ -31,7 +31,7 @@ DEFAULT_EXCLUDED_DIRS = frozenset({
 })
 
 _OUTPUT_DIR_NAMES = frozenset({"build", "out", "target", "dist", "bin"})
-ARCHIVE_EXTENSIONS = (".jar", ".war", ".ear", ".aar")
+ARCHIVE_EXTENSIONS = (".jar", ".war", ".ear", ".aar", ".dll", ".exe", ".netmodule", ".winmd")
 ARCHIVE_MAX_BYTES = 250 * 1024 * 1024
 
 # Directories likely to contain generated or test code (configurable exclusion)
@@ -63,7 +63,7 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm",
     ".pli", ".pl1", ".plx", ".pls1",
     ".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl", ".cblle", ".sqlcblle", ".cbl38",
-    ".jar", ".war", ".ear", ".aar", ".class",
+    ".jar", ".war", ".ear", ".aar", ".class", ".dll", ".exe", ".netmodule", ".winmd",
     ".bash",
     ".zsh",
     ".ksh",

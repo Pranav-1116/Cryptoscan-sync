@@ -21,7 +21,8 @@ The question behind "real-time testing on banks" is not the generic-language cor
 | Vendored JAR/WAR/EAR/`.class` (no source) | `jar_string_scanner.py` — constant-pool strings + class references, nested archives | synthetic class files in unit tests | ✅ deterministic, ⚠️ names only (no data-flow) |
 | Triage at 10–50M LOC | `metadata.code_origin` = source / test / generated / vendored / archive on every finding | quorum 797 source vs 944 test; OBP-API 121/57/4 | ✅ measured |
 | IBM i: RPG IV / CL / SQLRPGLE / ILE C — Qc3 APIs (ALGD codes), GSKit, QSSLPCL/QSSLCSL, master keys | `rpg_parser.py` (+ C hook) | wave 11 corpus (18 files) + ILEastic/OSSILE/noxDB/QshOni (673 real files) | ✅ measured (GSKit, Qc3 hash), ⚠️ Qc3 encrypt corpus-only |
-| Not covered yet | Natural/Adabas, CICS/IMS resource definitions, 4GLs, .NET binaries (IL), payShield console/`.hsm` scripts | — | ❌ |
+| Vendored .NET assemblies / native DLLs (no source) | `detectors/dotnet/assembly_scanner.py` — CLI metadata heaps + PE import table | 103 real binaries (pythonnet facades, OpenSSL/libpq) | ✅ deterministic, ⚠️ names only |
+| Not covered yet | Natural/Adabas, CICS/IMS resource definitions, 4GLs, payShield console/`.hsm` scripts | — | ❌ |
 
 ## Throughput (single core, sandbox CPU)
 
