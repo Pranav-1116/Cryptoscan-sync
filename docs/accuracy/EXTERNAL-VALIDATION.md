@@ -180,3 +180,22 @@ Still open for a bank engagement (not covered by any proxy on GitHub): PL/SQL `D
 | openmainframeproject/cobol-programming-course | 73 | 0 | Same — no cryptography, no noise. |
 
 Limitation stated plainly: no public COBOL repository exercises ICSF, so the positive side of the COBOL parser is validated only by the wave-9 corpus (written from the ICSF Application Programmer's Guide verb list and rule-array keywords). The first real-bank engagement should start by running `scan_third_party.py` over the ICSF-calling modules and triaging that output.
+
+## Round 13 — code published by banks themselves, plus middleware / bytecode / PL/I (wave 10 → 628/628)
+
+New in this round: IBM MQ (MQSC `SSLCIPH`, `mqclient.ini`, JMS XML, `MQEnvironment`/`WMQConstants`), WebSphere (`security.xml`, `ssl.client.props`, Liberty `server.xml`, `JSSEHelper`), WebLogic (`config.xml`, `-Dweblogic.security.SSL.*`), `java.security` provider order and `jdk.tls.*` policies, IBMJSSE2/IBMJCE, Mule TLS/crypto, Camel SSL/crypto/PGP, CXF/Rampart/WSO2, jasypt, QuickFIX/J session TLS, SWIFT LAU, Thales payShield host commands in a Java HSM client, a PL/I parser (ICSF verbs), and a constant-pool scanner for JAR/WAR/EAR/`.class` (no javap needed). Every finding now carries `metadata.code_origin` ∈ {source, test, generated, vendored, archive}.
+
+Real repositories published under bank GitHub organisations (shallow clones, `scripts/scan_third_party.py`, every sampled finding traced back to its source line):
+
+| Org / project | Files | Findings | Review |
+|---|---|---|---|
+| jpmorganchase/quorum (Go, Ethereum fork) | 1535 | 1742 in 297 files (797 source / 944 test / 1 generated) | secp256k1/ECDSA, Keccak, AES keystores, scrypt, TLS. **One mis-attribution fixed**: `crypto.Keccak256Hash(...)` from the go-ethereum `crypto` package was reported as ECDSA in addition to SHA3 — now SHA3 only. The `hash.Hash`/`crypto.Signer` interface markers stay LOW/UNKNOWN and are excluded from accuracy scoring. |
+| OpenBankProject/OBP-API (Scala, open-banking API) | 1594 | 182 in 47 files (121 source / 57 test / 4 generated) | Nimbus JOSE (HS256/RS256 JWTs), `SHA256withRSA` Berlin-Group request signing, jBCrypt, KeyStore/PEM handling, `scala.util.Random` flagged as PRNG (correct — it is used to build passwords in a test helper). No false positives in the 14-line random sample. |
+| ing-bank/baker (Scala) | 762 | 27 in 8 files | **One label bug fixed**: `Cipher.getInstance(s"$algorithmName/ECB/PKCS5Padding")` produced the algorithm `$algorithmName`. Interpolated/format-string transformations are now `UNKNOWN` with the mode kept — ECB is still the finding that matters. |
+| goldmansachs/legend-engine (Java, 6744 files) | 6744 | 53 in 19 files | AES/GCM utility, PBE key spec for Snowflake key-pair auth, PEM parsers, `DigestUtils.sha256Hex`, BouncyCastle provider registration. Zero noise across 6.7k files. |
+| capitalone/Hygieia (Java/Spring) | 386 | 0 | True-negative repo — `grep` confirms no JCA/JSSE usage in the top-level project. |
+
+Origin split matters at bank scale: in quorum more than half of the crypto call sites are in `_test.go`; a remediation queue built on `code_origin == source` is 797 items, not 1742. Nothing is dropped — inventory and CBOM keep every finding.
+
+Still not validated on public code (stated plainly): payShield host-command clients, ICSF-calling COBOL/PL/I, WebSphere/WebLogic production descriptors, MQSC with `SSLCIPH`. Those are corpus-validated only (wave 10 first pass 610/628; the 18 misses were 12 label-convention slips and 6 real rule gaps, all fixed).
+

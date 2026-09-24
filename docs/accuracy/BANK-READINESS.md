@@ -15,8 +15,12 @@ The question behind "real-time testing on banks" is not the generic-language cor
 | Mainframe COBOL/ICSF (CSNB*/CSND*/CSFP*, rule arrays, RACF, JCL) | `cobol_parser.py` (new) | wave 9 corpus (positives) + 257 real COBOL/JCL files with **zero** ICSF usage (negatives) | ⚠️ positives corpus-only — no public ICSF code exists |
 | Config / infra (TLS min versions, cipher lists, keystores, k8s/Terraform/web.config/XML) | `config_rules.py`, `xml_parser.py` | rounds 5–10 | ✅ measured |
 | Shell provisioning (openssl/keytool/gpg/certbot, `curl -k`) | `shell_parser.py` | round 9 | ✅ measured |
-| Binary JARs | `jar` scanner | — | ⚠️ manifest/class-name level only |
-| Not covered yet | PL/I, RPG (IBM i), Natural/Adabas, CICS/IMS resource definitions, 4GLs, .NET binaries (IL), proprietary HSM host-command scripts | — | ❌ |
+| Middleware: IBM MQ (MQSC/ini/JMS), WebSphere/Liberty, WebLogic, IBM JSSE2/JCE, `java.security`, Mule, Camel, CXF/Rampart/WSO2, jasypt, QuickFIX/J, SWIFT LAU | `config_rules.py`, `xml_parser.py`, `java_rules.py` middleware packs | wave 10 corpus (34 files) | ⚠️ corpus-only — production descriptors are never public |
+| Thales payShield host commands (A0/A6/CA/EI/KQ/…) in Java HSM clients | `java_rules.py` (file-context gated: only files that mention Thales/payShield/HSM) | wave 10 corpus + 2-letter-token negatives | ⚠️ corpus-only |
+| PL/I calling ICSF | `pli_parser.py` (shares the COBOL verb table) | wave 10 corpus ×4 | ⚠️ corpus-only |
+| Vendored JAR/WAR/EAR/`.class` (no source) | `jar_string_scanner.py` — constant-pool strings + class references, nested archives | synthetic class files in unit tests | ✅ deterministic, ⚠️ names only (no data-flow) |
+| Triage at 10–50M LOC | `metadata.code_origin` = source / test / generated / vendored / archive on every finding | quorum 797 source vs 944 test; OBP-API 121/57/4 | ✅ measured |
+| Not covered yet | RPG (IBM i), Natural/Adabas, CICS/IMS resource definitions, 4GLs, .NET binaries (IL), payShield console/`.hsm` scripts | — | ❌ |
 
 ## Throughput (single core, sandbox CPU)
 
