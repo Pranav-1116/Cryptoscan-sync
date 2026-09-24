@@ -42,3 +42,10 @@ A 10M-LOC bank monorepo is therefore ~9 CPU-minutes; the worker pool parallelise
 2. Triage output per package: every file with findings gets a 30-second read; every file *without* findings that imports `org.jpos.security`, `javax.crypto`, `iaik.pkcs`, or calls `CSN*` gets flagged as a candidate miss.
 3. Feed both lists back as a wave-10 corpus (bank-anonymised) before tuning anything — first-pass numbers are recorded, then fixed.
 4. Only then trust the inventory for CBOM / PQC-migration planning.
+
+## Scope defaults that affect the numbers
+
+* Test directories are **scanned** by the CLI and the worker; their findings carry `metadata.code_origin = "test"`. Set `CRYPTOSCAN_EXCLUDE_TESTS=1` (worker) or `--exclude-tests` (CLI) to drop them. Before round 16 the worker and any config-loaded CLI run silently skipped `test/` and `tests/` — a 25 % file-count gap on a Maven multi-module bank repo.
+* `SCANNER_EXCLUDE_DIRS` adds to the built-in exclusions (`.git`, `node_modules`, `vendor`, build outputs …); it never replaces them.
+* Archives (`.jar/.war/.ear/.dll/.exe`) are scanned once through discovery and tagged `code_origin = "archive"`.
+

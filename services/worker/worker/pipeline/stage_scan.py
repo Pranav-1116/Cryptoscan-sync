@@ -11,12 +11,20 @@ from worker.pipeline.pipeline_runner import PipelineContext
 logger = logging.getLogger(__name__)
 
 
+def _exclude_tests() -> bool:
+    """Test code is scanned by default and tagged ``code_origin=test`` (test keystores and
+    hard-coded fixture keys are inventory). Set CRYPTOSCAN_EXCLUDE_TESTS=1 to skip it."""
+    import os
+
+    return os.environ.get("CRYPTOSCAN_EXCLUDE_TESTS", "0").lower() in ("1", "true", "yes")
+
+
 def execute(ctx: PipelineContext) -> PipelineContext:
     from scanner.core.scanner import Scanner
     from worker.pipeline.stage_language_detect import execute as detect_languages
 
     detect_languages(ctx)
-    scanner = Scanner(exclude_test_dirs=True)
+    scanner = Scanner(exclude_test_dirs=_exclude_tests())
     scan_result = scanner.scan(
         root_path=ctx.repo_path,
         scan_id=ctx.scan_id,

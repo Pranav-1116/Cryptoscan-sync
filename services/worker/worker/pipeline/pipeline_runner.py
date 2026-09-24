@@ -16,6 +16,14 @@ from worker.workspace.workspace_manager import WorkspaceManager
 logger = logging.getLogger(__name__)
 
 
+def _exclude_tests() -> bool:
+    """Test code is scanned by default and tagged ``code_origin=test`` (test keystores and
+    hard-coded fixture keys are inventory). Set CRYPTOSCAN_EXCLUDE_TESTS=1 to skip it."""
+    import os
+
+    return os.environ.get("CRYPTOSCAN_EXCLUDE_TESTS", "0").lower() in ("1", "true", "yes")
+
+
 def ctx_name(scan_id: str) -> str:
     return f"scan:{scan_id}"
 settings = get_settings()
@@ -298,7 +306,7 @@ class PipelineRunner:
     def _scan(self, ctx: PipelineContext) -> None:
         from scanner.core.scanner import Scanner
 
-        scanner = Scanner(exclude_test_dirs=True)
+        scanner = Scanner(exclude_test_dirs=_exclude_tests())
         scan_result = scanner.scan(
             root_path=ctx.repo_path,
             scan_id=ctx.scan_id,
