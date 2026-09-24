@@ -136,3 +136,18 @@ def test_python2_file_falls_back_to_regex(tmp_path):
     from scanner.parsers.python_parser import parse_python_file
     algos = _algos(parse_python_file(p, tmp_path))
     assert "MD5" in algos and "TLS1.0" in algos
+
+
+def test_kotlin_char_literal_braces_do_not_drop_the_file(tmp_path):
+    from scanner.parsers.kotlin_parser import parse_kotlin_file
+    # okhttp CertificatePinner.kt / HttpUrl.kt: '{' char literals unbalance the shallow brace check
+    p = _write(tmp_path, "Pinner.kt", "package okhttp3\nimport java.security.MessageDigest\nclass Pinner {\n  fun f(c: Char) { if (c == '{') return }\n  fun sha256(b: ByteArray) = MessageDigest.getInstance(\"SHA-256\").digest(b)\n  fun pin(bs: okio.ByteString) = bs.sha1()\n}\n")
+    algos = _algos(parse_kotlin_file(p, tmp_path))
+    assert "SHA-256" in algos and "SHA-1" in algos
+
+
+def test_webcrypto_multiline_algorithm_object(tmp_path):
+    # panva/jose src/lib/content_encryption.ts
+    p = _write(tmp_path, "enc.ts", "const encKey = await crypto.subtle.importKey(\n  'raw',\n  cek,\n  'AES-CBC',\n  false,\n  ['encrypt'],\n)\nconst ct = await crypto.subtle.encrypt(\n  {\n    iv,\n    name: 'AES-GCM',\n  },\n  encKey,\n  plaintext,\n)\n")
+    algos = _algos(parse_javascript_file(p, tmp_path))
+    assert "AES" in algos and "UNKNOWN" not in algos

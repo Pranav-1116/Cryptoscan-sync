@@ -227,7 +227,7 @@ RULES: list[Rule] = [
     _r(r"\bjava\.util\.zip\.CRC32\b|\bnew\s+CRC32C?\s*\(|\bnew\s+Adler32\s*\(", {"api_type": "CHECKSUM", "purpose": "INTEGRITY"}, "java.util.zip", algorithm=None),
     _r(r"\bnew\s+SealedObject\s*\(|\bnew\s+SignedObject\s*\(", _C, "javax.crypto", algorithm="UNKNOWN", confidence="LOW"),
     _r(r"\bnew\s+(?:CipherInputStream|CipherOutputStream|DigestInputStream|DigestOutputStream)\s*\(", _C, "javax.crypto", algorithm="UNKNOWN", confidence="LOW"),
-    _r(r"\bKeyStore\.getDefaultType\s*\(|\bnew\s+KeyStore\.PasswordProtection\s*\(", _K, "java.security", algorithm="KeyStore", confidence="LOW"),
+    _r(r"\bKeyStore\.getDefaultType\s*\(|\bnew\s+KeyStore\.PasswordProtection\s*\(", _K, "java.security", algorithm="X509", confidence="LOW", confidence_reason="key/certificate store"),
     _r(r"\bnew\s+JcaPKCS10CertificationRequestBuilder\s*\(|\bnew\s+PKCS10CertificationRequest\s*\(|\bX509Certificate\s+\w+\s*=|\bCertPathValidator\.getInstance\s*\(|\bCertPathBuilder\.getInstance\s*\(|\bnew\s+PKIXParameters\s*\(|\bnew\s+X509EncodedKeySpec\s*\(|\bnew\s+PKCS8EncodedKeySpec\s*\(", {"api_type": "SIGNATURE", "purpose": "VERIFICATION"}, "java.security.cert", algorithm="X509", confidence="MEDIUM"),
     # ------------------------------------------------------------- TLS (OkHttp / Netty / Conscrypt / Apache HttpClient / JDK props)
     _r(r"\bTlsVersion\.SSL_3_0\b|\bConnectionSpec\.COMPATIBLE_TLS\b", _TLS, "okhttp", algorithm="SSLv3"),
@@ -318,6 +318,18 @@ RULES: list[Rule] = [
     _r(r"[\"'](?:de\.mkammerer:argon2-jvm(?:-nolibs)?|com\.password4j:password4j)[:\"']", _KDF, "gradle", algorithm="ARGON2", confidence="LOW", confidence_reason="build-dependency"),
     _r(r"[\"'](?:com\.auth0:java-jwt|io\.jsonwebtoken:jjwt(?:-api|-impl|-jackson|-gson)?|com\.nimbusds:nimbus-jose-jwt|org\.bitbucket\.b_c:jose4j|io\.fusionauth:fusionauth-jwt)[:\"']", _S, "gradle", algorithm="JWT", confidence="LOW", confidence_reason="build-dependency"),
     _r(r"[\"']org\.bouncycastle:bc(?:prov|pkix|pg|tls|util)-(?:jdk|lts)[0-9a-z]*[:\"']", _C, "gradle", algorithm="UNKNOWN", confidence="LOW", confidence_reason="build-dependency: BouncyCastle provider"),
+    # ------------------------------------------------------------- okio ByteString / OkHttp (Kotlin & Java)
+    _r(r"\.(sha1|sha256|sha512|md5)\s*\(\s*\)", _D, "okio", algo_from_group=1, algo_map={"sha1": "SHA-1", "sha256": "SHA-256", "sha512": "SHA-512", "md5": "MD5"}, confidence="MEDIUM", confidence_reason="okio ByteString digest"),
+    _r(r"\.hmacSha(1|256|512)\s*\(", _M, "okio", algorithm="HMAC", emit_digest_group=1, confidence="MEDIUM"),
+    _r(r"\bCertificatePinner\b|\bcertificatePinner\s*\(", _TLS, "okhttp", algorithm="X509", confidence="MEDIUM", confidence_reason="certificate pinning"),
+    _r(r"[\"']sha(256|1)/[A-Za-z0-9+/=]{4,}", _D, "okhttp", algo_from_group=1, algo_map={"256": "SHA-256", "1": "SHA-1"}, confidence="HIGH", confidence_reason="certificate pin digest"),
+    _r(r"\bConnectionSpec\.(?:MODERN_TLS|COMPATIBLE_TLS|RESTRICTED_TLS)\b|\bConnectionSpec\.Builder\s*\(", _TLS, "okhttp", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"\bConnectionSpec\.CLEARTEXT\b", _TLS, "okhttp", algorithm="TLS-CLEARTEXT", confidence="HIGH"),
+    _r(r"\bTlsVersion\.TLS_1_3\b", _TLS, "okhttp", algorithm="TLS1.3"),
+    _r(r"\bTlsVersion\.TLS_1_2\b", _TLS, "okhttp", algorithm="TLS1.2"),
+    _r(r"\bTlsVersion\.TLS_1_1\b", _TLS, "okhttp", algorithm="TLS1.1", confidence="HIGH", confidence_reason="deprecated protocol"),
+    _r(r"\bTlsVersion\.TLS_1_0\b", _TLS, "okhttp", algorithm="TLS1.0", confidence="HIGH", confidence_reason="deprecated protocol"),
+    _r(r"\bTlsVersion\.SSL_3_0\b", _TLS, "okhttp", algorithm="SSLv3", confidence="HIGH"),
     # ------------------------------------------------------------- Reflection (Class.forName + getMethod("getInstance").invoke(null, "ALG"))
     _r(r"Class\.forName\s*\(\s*\"javax\.crypto\.Cipher\"\s*\)[\s\S]{0,400}?getMethod\s*\(\s*\"getInstance\"[\s\S]{0,200}?invoke\s*\(\s*null\s*,\s*\"([A-Za-z0-9/_\-]+)\"", _C, "javax.crypto", transformation_group=1, confidence="HIGH", confidence_reason="reflection-resolved-transformation"),
     _r(r"Class\.forName\s*\(\s*\"java\.security\.MessageDigest\"\s*\)[\s\S]{0,400}?getMethod\s*\(\s*\"getInstance\"[\s\S]{0,200}?invoke\s*\(\s*null\s*,\s*\"([A-Za-z0-9\-]+)\"", _D, "java.security", algo_from_group=1, algo_map=DIGEST_TOKENS, confidence="HIGH", confidence_reason="reflection-resolved-transformation"),

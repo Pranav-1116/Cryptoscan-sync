@@ -277,10 +277,15 @@ class JavaParser:
                 log.error("cannot_read_file", error=str(e))
                 raise
 
-        validate_java_syntax(source)
-
         source_lines = source.splitlines()
         context = self._extract_file_context(file_path, source, source_lines)
+        try:
+            validate_java_syntax(source)
+        except JavaSyntaxError as exc:
+            # Kotlin char literals / string templates and generated code trip the shallow
+            # brace check. Never drop the file: the regex path still sees the API calls.
+            log.warning("java_syntax_regex_fallback", error=str(exc))
+            return self._parse_with_regex(file_path, source, source_lines, context, log)
         try:
             from scanner.parsers.java_ast import extract_crypto_events
 
@@ -321,8 +326,6 @@ class JavaParser:
     def _parse_with_regex(
         self, file_path: Path, source: str, source_lines: list[str], context: ParseContext, log
     ) -> list[RawFinding]:
-        if source.count("{") != source.count("}"):
-            raise ValueError(f"unbalanced braces in {file_path}")
         findings: list[RawFinding] = []
         findings.extend(self._detect_cipher(source, source_lines, context))
         findings.extend(self._detect_message_digest(source, source_lines, context))

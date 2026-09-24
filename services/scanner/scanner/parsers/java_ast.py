@@ -473,8 +473,10 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
         padding = parsed.padding if parsed else None
         if type_name == "SSLContext" and raw:
             algorithm = _tls_algo(raw)
-        if type_name == "KeyStore" and raw:
-            algorithm = raw.upper()
+        if type_name == "KeyStore":
+            # KeyStore.getInstance("PKCS12"/"JKS"/"BKS"): a certificate + private-key store.
+            # Inventory it under the X.509 family; the store format stays in raw_transformation.
+            algorithm = "X509"
         if type_name == "KeyAgreement" and raw:
             upper = raw.upper()
             algorithm = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)

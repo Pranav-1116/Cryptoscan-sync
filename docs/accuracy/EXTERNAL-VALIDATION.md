@@ -122,3 +122,10 @@ versionless TLS endpoint (LOW confidence) instead of being dropped; `ssl_ecdh_cu
 preceding blank line was fixed in both the config parser and the rule engine. gRPC
 `insecure.NewCredentials` is now labelled `TLS-DISABLED` (same as `sslmode=disable`) instead of
 the one-off `TLS-NONE`.
+
+## Round 8 — square/okhttp (Kotlin, 698 files) and panva/jose (TypeScript, 139 files)
+
+| Project | Findings | Review |
+|---|---|---|
+| okhttp | 1,033 → 1,250 | **4 files were dropped outright** (`CertificatePinner.kt`, `HttpUrl.kt`, `MultipartBody.kt`, `RequestTest.kt`): Kotlin char literals such as `'{'` unbalanced the shallow brace check and the Java/Kotlin parser raised instead of degrading. Both the AST path and the regex path now fall back gracefully — a file is never lost to a syntax heuristic. okio `ByteString.sha256()/sha1()/md5()/hmacSha256()`, `CertificatePinner` `"sha256/…"` pins, `ConnectionSpec`/`TlsVersion` constants added. `KeyStore.getInstance("PKCS12")` now inventoried under X.509 instead of leaking store-format strings as algorithm names. |
+| jose | 1,338 (120 UNKNOWN → 78) | JWS/JWE/JWK/JWKS algorithms, X25519/ECDH-ES, PBES2, A128CBC-HS256 ✔. WebCrypto calls with a *multi-line* algorithm object (`{ iv, name: 'AES-CBC' }`) or a bare algorithm string (`importKey('raw', k, 'AES-CBC')`) were UNKNOWN → the argument list is now inspected; JWE `alg: 'dir'` → JWT family. |

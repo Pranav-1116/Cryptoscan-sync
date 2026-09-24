@@ -53,6 +53,9 @@ WEBCRYPTO_DIGEST = re.compile(
     r"""(?:crypto\.subtle|window\.crypto\.subtle)\.digest\(\s*['\"]([^'\"]+)['\"]""",
     re.IGNORECASE,
 )
+_WEBCRYPTO_ARG_ALGO = re.compile(
+    r"""\bname\s*:\s*['"]([A-Za-z0-9._-]+)['"]|['"](AES-(?:GCM|CBC|CTR|KW)|HMAC|RSA-OAEP|RSA-PSS|RSASSA-PKCS1-v1_5|ECDSA|ECDH|X25519|Ed25519|HKDF|PBKDF2|SHA-(?:1|256|384|512))['"]"""
+)
 FORGE_MD = re.compile(r"""forge\.md\.(md5|sha1|sha256|sha384|sha512)\b""", re.IGNORECASE)
 FORGE_CIPHER = re.compile(
     r"""forge\.cipher\.createCipher\(\s*['\"]([^'\"]+)['\"]""",
@@ -326,6 +329,33 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         if match.start() in claimed_webcrypto:
             continue
         method = match.group(1)
+        # Multi-line algorithm objects ({ iv, name: 'AES-CBC' }) and bare algorithm strings
+        # (importKey('raw', key, 'AES-CBC', ...)): look inside the argument list.
+        window = source[match.end(): match.end() + 400]
+        depth, cut = 0, len(window)
+        for idx, ch in enumerate(window):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    cut = idx
+                    break
+                depth -= 1
+        args = window[:cut]
+        named = _WEBCRYPTO_ARG_ALGO.search(args)
+        if named:
+            raw_algo = named.group(1) or named.group(2)
+            algo, mode, purpose, api_type = _webcrypto_spec(method, raw_algo)
+            add(
+                match,
+                api_type=api_type,
+                algorithm=algo,
+                mode=mode,
+                purpose=purpose,
+                library="Web Crypto API",
+                raw_transformation=raw_algo,
+            )
+            continue
         purpose = {
             "encrypt": "ENCRYPTION",
             "decrypt": "DECRYPTION",
