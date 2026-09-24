@@ -14,7 +14,7 @@ import re
 from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
-from scanner.parsers.rule_engine import DIGEST_TOKENS, Rule, run_rules
+from scanner.parsers.rule_engine import filter_prng_context, DIGEST_TOKENS, Rule, run_rules
 
 _D = {"api_type": "MESSAGE_DIGEST", "purpose": "HASHING"}
 _C = {"api_type": "CIPHER_INSTANCE", "purpose": "ENCRYPTION"}
@@ -221,7 +221,7 @@ RULES: list[Rule] = [
     _r(r"\bnew\s+GCMParameterSpec\s*\(", _C, "javax.crypto.spec", algorithm="AES", mode="GCM", confidence="MEDIUM"),
     _r(r"\bnew\s+PBEParameterSpec\s*\(", _KDF, "javax.crypto.spec", algorithm="PBKDF2", confidence="MEDIUM"),
     _r(r"\bnew\s+SecureRandom\s*\(|\bSecureRandom\.getInstanceStrong\s*\(|\bnew\s+java\.security\.SecureRandom\s*\(", _RNG, "java.security", algorithm="CSPRNG", confidence="MEDIUM"),
-    _r(r"\b(?:key|iv|salt|nonce|token|secret|password|seed)\w*\s*=\s*[^;]*\bnew\s+(?:java\.util\.)?Random\s*\(|\bnew\s+(?:java\.util\.)?Random\s*\([^)]*\)\s*\.\s*nextBytes\s*\(", _RNG, "java.util", algorithm="PRNG", confidence="MEDIUM", confidence_reason="java.util.Random is not a CSPRNG"),
+    _r(r"\b(?:key|iv|salt|nonce|token|secret|password|seed)\w*\s*=\s*[^;\n]*\bnew\s+(?:java\.util\.)?Random\s*\(|\bnew\s+(?:java\.util\.)?Random\s*\([^)]*\)\s*\.\s*nextBytes\s*\(", _RNG, "java.util", algorithm="PRNG", confidence="MEDIUM", confidence_reason="java.util.Random is not a CSPRNG"),
     _r(r"\bMath\.random\s*\(\s*\)[^;]*(?:key|token|secret|password|salt|nonce)|(?:key|token|secret|password|salt|nonce)\w*\s*=[^;]*\bMath\.random\s*\(", _RNG, "java.lang", algorithm="PRNG", confidence="MEDIUM", confidence_reason="Math.random is not a CSPRNG"),
     _r(r"\bnew\s+ThreadLocalRandom\b|\bThreadLocalRandom\.current\s*\(\s*\)\s*\.\s*nextBytes\s*\(", _RNG, "java.util.concurrent", algorithm="PRNG", confidence="LOW"),
     _r(r"\bjava\.util\.zip\.CRC32\b|\bnew\s+CRC32C?\s*\(|\bnew\s+Adler32\s*\(", {"api_type": "CHECKSUM", "purpose": "INTEGRITY"}, "java.util.zip", algorithm=None),
@@ -326,7 +326,14 @@ RULES: list[Rule] = [
 ]
 
 
+_JAVA_METHOD_DECL = re.compile(r"^\s*(?:public|private|protected|static|final|synchronized|\s)*[\w<>\[\],\s]+\s+\w+\s*\([^;]*$")
+
+
 def run_java_rules(file_path: Path, repo_root: Path | None, source: str, language: str, scanner_id: str, seen: set[tuple[int, str]] | None = None) -> list[RawFinding]:
+    return filter_prng_context(_run_java_rules(file_path, repo_root, source, language, scanner_id, seen), source, _JAVA_METHOD_DECL)
+
+
+def _run_java_rules(file_path: Path, repo_root: Path | None, source: str, language: str, scanner_id: str, seen: set[tuple[int, str]] | None = None) -> list[RawFinding]:
     return run_rules(
         file_path=file_path,
         repo_root=repo_root,

@@ -275,3 +275,34 @@ def run_rules(
                 if digest:
                     emit(line, digest, spec, match, api_type="MESSAGE_DIGEST", purpose="HASHING")
     return findings
+
+
+_SECURITY_CONTEXT = re.compile(
+    r"key|token|secret|nonce|salt|passw|session|otp|csrf|\biv\b|seed|entropy|"
+    r"cred|auth|sign|cookie|challenge|verif|uuid|(?<![a-z])id\b",
+    re.IGNORECASE,
+)
+
+
+def filter_prng_context(findings: list[RawFinding], text: str, func_decl: "re.Pattern[str]") -> list[RawFinding]:
+    """math/rand is everywhere (shuffling test data, jitter, sampling). Only report
+    it as a weak *cryptographic* RNG when the call sits in a security-flavoured
+    context: the statement itself or the enclosing function name mentions keys,
+    tokens, secrets, sessions, ids... Everything else is not a crypto asset."""
+    if not any(f.crypto.algorithm == "PRNG" for f in findings):
+        return findings
+    lines = text.splitlines()
+    kept: list[RawFinding] = []
+    for f in findings:
+        if f.crypto.algorithm != "PRNG":
+            kept.append(f)
+            continue
+        ln = (f.source.line_number or 1) - 1
+        window = lines[ln] if ln < len(lines) else ""
+        for back in range(ln, max(-1, ln - 80), -1):
+            if back < len(lines) and func_decl.search(lines[back]):
+                window += "\n" + lines[back]
+                break
+        if _SECURITY_CONTEXT.search(window):
+            kept.append(f)
+    return kept

@@ -100,3 +100,16 @@ def test_constant_time_compare_is_not_an_inventory_item(tmp_path):
     assert parse_php_file(p, tmp_path) == []
     q = _write(tmp_path, "e.go", 'package x\nimport "crypto/subtle"\nfunc eq(a, b []byte) bool { return subtle.ConstantTimeCompare(a, b) == 1 }\n')
     assert parse_go_file(q, tmp_path) == []
+
+
+def test_java_util_random_for_test_data_is_ignored(tmp_path):
+    from scanner.parsers.java_parser import parse_java_file
+    # commons-codec BaseNStrictDecodingTest
+    p = _write(tmp_path, "T.java", "import java.util.Random;\nclass T {\n  void testCanonicalStreams() {\n    final byte[] input = new byte[67];\n    new Random(23456).nextBytes(input);\n  }\n}\n")
+    assert "PRNG" not in _algos(parse_java_file(p, tmp_path))
+
+
+def test_java_util_random_for_key_material_is_reported(tmp_path):
+    from scanner.parsers.java_parser import parse_java_file
+    p = _write(tmp_path, "K.java", "import java.util.Random;\nclass K {\n  byte[] newSessionKey() {\n    byte[] key = new byte[16];\n    new Random().nextBytes(key);\n    return key;\n  }\n}\n")
+    assert "PRNG" in _algos(parse_java_file(p, tmp_path))

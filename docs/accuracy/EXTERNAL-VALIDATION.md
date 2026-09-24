@@ -86,3 +86,10 @@ each with a regression test; hand-labelled corpus unchanged at 348/348.
 | `utils/crypto.py` `salted_hmac` | `hmac.new(key, msg, digestmod=hasher)` produced the non-vocabulary algorithm `HMAC-HASHER` → runtime-selected digest now yields plain `HMAC` |
 | MD5 cache keys / ETags, SHA-1 template-cache keys, sqlite3 hash functions, SMTP `PROTOCOL_TLS_CLIENT`, `secrets.*` | all reported ✔ |
 | Vocabulary clean-up | `CONSTANT-TIME` (Go `subtle.ConstantTimeCompare`, PHP `hash_equals`, `sodium_memcmp`) removed — a comparison routine is not a cryptographic asset and the label was outside the algorithm vocabulary |
+
+## Round 5 — apache/commons-codec (Java) and caddyserver/caddy (Go)
+
+| Project | Files | Findings | Review |
+|---|---|---|---|
+| commons-codec | 187 | 320 → 302 | `DigestUtils`/`HmacUtils`/`Md5Crypt`/`Sha2Crypt`/`MessageDigestAlgorithms` fully covered (MD2…SHA3-512, 85 HMAC sites). **noise:** `new Random()` / `ThreadLocalRandom.nextBytes` used to build Base64/Hex *test vectors* (18 findings in tests) → Java now uses the same security-context gate as Go for `java.util.Random`; the old `[^;]*` in the "key = … new Random()" rule could also span lines → fixed. Not reported by design: `Crypt`/`UnixCrypt`/`Blake3` pure-Java implementations and pass-through `MessageDigest` parameters. |
+| caddy | 362 | 724 | 351 TLS + 182 X.509 + ML-KEM/X25519 hybrids, `tls.VersionSSL30`/`VersionTLS10` constants in the version table, fastcgi-client MD5 test vectors, `weakrand.Uint32()` in `newMaskKey` (a true weak-RNG-for-key finding) ✔; 5.8 s |
