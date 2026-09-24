@@ -88,7 +88,7 @@ _RULES: list[Rule] = [
     # ------------------------------------------------------------ Security.framework
     _r(r"\bkSecAttrKeyType(RSA|ECSECPrimeRandom|EC|ECDSA|DSA|AES|3DES|DES|RC4|RC2|CAST)\b", _K, "Security.framework", algo_from_group=1, algo_map=_SEC_KEY_TYPE),
     _r(r"\bSecKeyCreateRandomKey\s*\((?![^\n]*kSecAttrKeyType)", _K, "Security.framework", algorithm="UNKNOWN", confidence="LOW"),
-    _r(r"\.(?:rsa(?:Signature|Encryption)[A-Za-z0-9]*?(SHA1|SHA224|SHA256|SHA384|SHA512)|rsaSignatureRaw|rsaEncryptionRaw|rsaEncryptionPKCS1)\b", _S, "Security.framework", algorithm="RSA", emit_digest_group=1),
+    _r(r"\.(?:rsa(?:Signature|Encryption)[A-Za-z0-9]*?(SHA1|SHA224|SHA256|SHA384|SHA512)(?![0-9])|rsaSignatureRaw\b|rsaEncryptionRaw\b|rsaEncryptionPKCS1\b)", _S, "Security.framework", algorithm="RSA", emit_digest_group=1),
     _r(r"\.ecdsaSignature(?:Message|Digest)(?:X962|RFC4754)(SHA1|SHA224|SHA256|SHA384|SHA512)\b", _S, "Security.framework", algorithm="ECDSA", emit_digest_group=1),
     _r(r"\.eciesEncryption[A-Za-z0-9]*?(SHA1|SHA224|SHA256|SHA384|SHA512)[A-Za-z0-9]*?AESGCM\b", _C, "Security.framework", algorithm="ECDH", emit_digest_group=1, confidence_reason="ECIES (ECDH + AES-GCM)"),
     _r(r"\.eciesEncryption[A-Za-z0-9]*?AESGCM\b", _C, "Security.framework", algorithm="AES", mode="GCM"),
@@ -125,7 +125,7 @@ _RULES: list[Rule] = [
     _r(r"\bBlowfish\s*\(\s*key\s*:", _C, "CryptoSwift", algorithm="Blowfish"),
     _r(r"\bChaCha20\s*\(\s*key\s*:", _C, "CryptoSwift", algorithm="ChaCha20"),
     _r(r"\bRabbit\s*\(\s*key\s*:", _C, "CryptoSwift", algorithm="Rabbit"),
-    _r(r"\bHMAC\s*\(\s*key\s*:[^\n]*?variant\s*:\s*\.(md5|sha1|sha256|sha384|sha512|sha224)\b", _M, "CryptoSwift", algorithm="HMAC", emit_digest_group=1),
+    _r(r"\bHMAC\s*\(\s*key\s*:[^\n]*?variant\s*:\s*\.(?:sha2\s*\(\s*\.)?(md5|sha1|sha256|sha384|sha512|sha224)\b", _M, "CryptoSwift", algorithm="HMAC", emit_digest_group=1),
     _r(r"\bHMAC\s*\(\s*key\s*:(?![^\n]*variant)", _M, "CryptoSwift", algorithm="HMAC", confidence="MEDIUM"),
     _r(r"\bPoly1305\s*\(\s*key\s*:", _M, "CryptoSwift", algorithm="Poly1305"),
     _r(r"\bCMAC\s*\(\s*key\s*:", _M, "CryptoSwift", algorithm="AES", confidence_reason="AES-CMAC"),
@@ -166,7 +166,7 @@ _RULES: list[Rule] = [
     _r(r"\bapp\.passwords\.use\s*\(\s*\.bcrypt\b|\bBcrypt\.(?:hash|verify)\s*\(|\bBCrypt\.(?:hash|verify)\s*\(", _KDF, "Vapor", algorithm="BCRYPT"),
     _r(r"\bapp\.passwords\.use\s*\(\s*\.plaintext\b", _KDF, "Vapor", algorithm="PLAINTEXT", confidence="HIGH", confidence_reason="plaintext password verifier"),
     # ------------------------------------------------------------ Keychain / misc
-    _r(r"\bkSecAttrAccessControl\b|\bSecAccessControlCreateWithFlags\s*\(", _K, "Security.framework", algorithm="UNKNOWN", confidence="LOW", confidence_reason="Keychain access-control (Secure Enclave / biometric)", purpose="KEY_MANAGEMENT"),
+    _r(r"\bSecKeyGeneratePair\s*\(", _K, "Security.framework", algorithm="UNKNOWN", confidence="LOW"),
     _r(r"\bkSecAttrKeySizeInBits\b[^\n]*?\b(1024|2048|3072|4096)\b", _K, "Security.framework", algorithm="RSA", key_from_group=1, confidence="MEDIUM"),
     _r(r"\bkSecAttrKeySizeInBits\b[^\n]*?\b(256|384|521)\b", _K, "Security.framework", algorithm="ECDSA", key_from_group=1, confidence="MEDIUM"),
     _r(r"\bkSecAttrKeySizeInBits\b[^\n]*?\b(128|192)\b", _K, "Security.framework", algorithm="AES", key_from_group=1, confidence="MEDIUM"),

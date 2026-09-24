@@ -95,9 +95,9 @@ _RULES: list[Rule] = [
     _r(r"\bUserKnownHostsFile[= ]/dev/null\b", _SSH, "openssh", algorithm="SSH-HOSTKEY-NONE", confidence="HIGH", confidence_reason="known_hosts discarded"),
     _r(r"\bssh-keyscan\b|\bssh-add\b|\bssh-agent\b", _SSH, "openssh", algorithm="SSH", confidence="LOW"),
     # ------------------------------------------------------------- gpg
-    _r(r"\bgpg2?\b[^\n|;&]*?--cipher-algo\s+(aes256|aes192|aes|twofish|camellia128|camellia192|camellia256|3des|cast5|blowfish|idea)\b", _C, "gnupg", algo_from_group=1, algo_map=_GPG_CIPHERS),
-    _r(r"\bgpg2?\b[^\n|;&]*?--digest-algo\s+(sha512|sha384|sha256|sha224|sha1|md5|ripemd160)\b", _D, "gnupg", algo_from_group=1, algo_map={**_OPENSSL_DIGESTS}),
-    _r(r"\bgpg2?\b[^\n|;&]*?--s2k-digest-algo\s+(sha512|sha256|sha1)\b", _KDF, "gnupg", algo_from_group=1, algo_map=_OPENSSL_DIGESTS),
+    _r(r"\bgpg2?\b[^\n|;&]*?--cipher-algo\s+((?i:aes256|aes192|aes|twofish|camellia128|camellia192|camellia256|3des|cast5|blowfish|idea))\b", _C, "gnupg", algo_from_group=1, algo_map=_GPG_CIPHERS),
+    _r(r"\bgpg2?\b[^\n|;&]*?--digest-algo\s+((?i:sha512|sha384|sha256|sha224|sha1|md5|ripemd160))\b", _D, "gnupg", algo_from_group=1, algo_map={**_OPENSSL_DIGESTS}),
+    _r(r"\bgpg2?\b[^\n|;&]*?--s2k-digest-algo\s+((?i:sha512|sha256|sha1))\b", _KDF, "gnupg", algo_from_group=1, algo_map=_OPENSSL_DIGESTS),
     _r(r"\bgpg2?\s+(?:--symmetric|-c)\b|\bgpg2?\b[^\n|;&]*?\s--symmetric\b", _C, "gnupg", algorithm="AES", confidence="MEDIUM", confidence_reason="gpg --symmetric defaults to AES-128 (AES-256 in GnuPG 2.3+)"),
     _r(r"\bgpg2?\b[^\n|;&]*?\s(?:--encrypt|-e|--recipient|-r)\b", _C, "gnupg", algorithm="UNKNOWN", confidence="LOW", confidence_reason="public-key encryption to recipient key"),
     _r(r"\bgpg2?\b[^\n|;&]*?\s(?:--sign|--clearsign|--detach-sign|-s|-b|--verify)\b", _S, "gnupg", algorithm="UNKNOWN", confidence="LOW", confidence_reason="OpenPGP signature"),
@@ -114,7 +114,7 @@ _RULES: list[Rule] = [
     # ------------------------------------------------------------- password hashing CLIs
     _r(r"\bhtpasswd\b[^\n|;&]*?\s-[bcinpDvC]*?([mBsd25])[bcinpDvC]*\b", _KDF, "apache-htpasswd", algo_from_group=1, algo_map={k.lstrip("-").lower(): v for k, v in _HTPASSWD.items()}),
     _r(r"\bhtpasswd\b(?![^\n|;&]*?\s-[bcinpDvC]*?[mBsd25])", _KDF, "apache-htpasswd", algorithm="MD5", confidence="MEDIUM", confidence_reason="htpasswd default is apr1 (MD5)"),
-    _r(r"\bmkpasswd\b[^\n|;&]*?(?:-m|--method)[= ]\s*(sha-?512crypt|sha-?512|sha-?256crypt|sha-?256|md5crypt|md5|bcrypt|yescrypt|des)\b", _KDF, "whois-mkpasswd", algo_from_group=1,
+    _r(r"\bmkpasswd\b[^\n|;&]*?(?:-m|--method)[= ]\s*((?i:sha-?512crypt|sha-?512|sha-?256crypt|sha-?256|md5crypt|md5|bcrypt|yescrypt|des))\b", _KDF, "whois-mkpasswd", algo_from_group=1,
        algo_map={"sha-512crypt": "SHA-512", "sha512crypt": "SHA-512", "sha-512": "SHA-512", "sha512": "SHA-512", "sha-256crypt": "SHA-256", "sha256crypt": "SHA-256", "sha-256": "SHA-256", "sha256": "SHA-256", "md5crypt": "MD5", "md5": "MD5", "bcrypt": "BCRYPT", "yescrypt": "YESCRYPT", "des": "DES"}),
     _r(r"\bchpasswd\b[^\n|;&]*?(?:-c|--crypt-method)\s+(SHA512|SHA256|MD5|DES)\b", _KDF, "shadow-utils", algo_from_group=1, algo_map={"sha512": "SHA-512", "sha256": "SHA-256", "md5": "MD5", "des": "DES"}),
     _r(r"\bargon2\s+\S+[^\n|;&]*?-(?:id|i|d)\b|\becho\b[^\n|;&]*\|\s*argon2\b", _KDF, "argon2-cli", algorithm="ARGON2"),
@@ -162,7 +162,7 @@ _RULES: list[Rule] = [
 # the binary is very often reached through a variable. Normalise to a bare ``openssl``
 # token before the rules run (same for gpg / keytool / ssh-keygen / curl).
 _TOOL_VAR = re.compile(
-    r"""(?:"?\$\{?[A-Za-z_][A-Za-z0-9_]*?(OPENSSL|GPG|KEYTOOL|SSH_KEYGEN|CURL)(?:_BIN|_CMD|_PATH|_EXE|BIN|CMD)?(?::-[^}]*)?\}?"?|\$\((?:which|command\s+-v)\s+(openssl|gpg2?|keytool|ssh-keygen|curl)\)|(?:/usr(?:/local)?)?/bin/(openssl|gpg2?|keytool|ssh-keygen|curl))(?=\s)""",
+    r"""(?:"?\$\{?[A-Za-z0-9_]*?(OPENSSL|GPG|KEYTOOL|SSH_KEYGEN|CURL)(?:_BIN|_CMD|_PATH|_EXE|BIN|CMD)?(?::-[^}]*)?\}?"?|\$\((?:which|command\s+-v)\s+(openssl|gpg2?|keytool|ssh-keygen|curl)\)|(?:/usr(?:/local)?)?/bin/(openssl|gpg2?|keytool|ssh-keygen|curl))(?=\s)""",
     re.IGNORECASE,
 )
 _TOOL_NAMES = {"openssl": "openssl", "gpg": "gpg", "gpg2": "gpg", "keytool": "keytool", "ssh_keygen": "ssh-keygen", "ssh-keygen": "ssh-keygen", "curl": "curl"}

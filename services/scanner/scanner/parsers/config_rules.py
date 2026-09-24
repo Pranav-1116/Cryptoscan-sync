@@ -164,6 +164,7 @@ _MYSQL_AUTH = re.compile(
     + r"\*?(caching_sha2_password|sha256_password|mysql_native_password|mysql_old_password|mysql_clear_password|ed25519)\b",
     re.I | re.M,
 )
+_MYSQL_TLS = re.compile(_LIST + r"require[_-]secure[_-]transport" + _SEP + r"(?:ON|1|true)\b", re.I | re.M)
 _MYSQL_AUTH_MAP = {"caching_sha2_password": "SHA-256", "sha256_password": "SHA-256", "mysql_native_password": "SHA-1", "mysql_old_password": "PLAINTEXT", "mysql_clear_password": "PLAINTEXT", "ed25519": "Ed25519"}
 _PW_MAP = {
     "scramsha256": "SHA-256",
@@ -348,6 +349,8 @@ def run_config_rules(
             emit(m.start(), "TLS-DISABLED", "TLS", "NETWORK_ENCRYPTION", "postgresql", kind, reason="pg_hba-hostnossl")
         elif kind == "hostssl":
             emit(m.start(), "TLS", "TLS", "NETWORK_ENCRYPTION", "postgresql", kind, reason="pg_hba-hostssl")
+    for m in _MYSQL_TLS.finditer(text):
+        emit(m.start(), "TLS", "TLS", "NETWORK_ENCRYPTION", "mysql", m.group(0).strip(), reason="mysql-require-secure-transport")
     for m in _MYSQL_AUTH.finditer(text):
         algo = _MYSQL_AUTH_MAP.get(m.group(1).lower())
         if algo:

@@ -1273,6 +1273,11 @@ try:
 except ImportError:  # pragma: no cover - script execution
     from corpus_wave4_wild import register as _register_wave4  # type: ignore[no-redef]
 _register_wave4(_c)
+try:
+    from .corpus_wave5 import register as _register_wave5
+except ImportError:  # pragma: no cover - script execution
+    from corpus_wave5 import register as _register_wave5  # type: ignore[no-redef]
+_register_wave5(_c)
 
 
 def summary() -> dict[str, int]:

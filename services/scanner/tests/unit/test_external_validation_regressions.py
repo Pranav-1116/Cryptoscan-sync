@@ -151,3 +151,32 @@ def test_webcrypto_multiline_algorithm_object(tmp_path):
     p = _write(tmp_path, "enc.ts", "const encKey = await crypto.subtle.importKey(\n  'raw',\n  cek,\n  'AES-CBC',\n  false,\n  ['encrypt'],\n)\nconst ct = await crypto.subtle.encrypt(\n  {\n    iv,\n    name: 'AES-GCM',\n  },\n  encKey,\n  plaintext,\n)\n")
     algos = _algos(parse_javascript_file(p, tmp_path))
     assert "AES" in algos and "UNKNOWN" not in algos
+
+
+def test_shell_openssl_behind_variable_and_checksum_negative(tmp_path):
+    from scanner.parsers.shell_parser import parse_shell_file
+    # acmesh-official/acme.sh reaches openssl through ${ACME_OPENSSL_BIN:-openssl}
+    p = _write(tmp_path, "acme.sh", '#!/bin/sh\n${ACME_OPENSSL_BIN:-openssl} genrsa 2048\n"$OPENSSL_BIN" dgst -sha256 -sign k.pem\nsha256sum f > f.sha256\napt-get install -y openssl\n')
+    algos = set(_algos(parse_shell_file(p, tmp_path)))
+    assert {"RSA", "SHA-256"} <= algos
+    assert not algos - {"RSA", "SHA-256", "UNKNOWN"}
+
+
+def test_shell_combined_htpasswd_flags(tmp_path):
+    from scanner.parsers.shell_parser import parse_shell_file
+    p = _write(tmp_path, "users.sh", 'htpasswd -cbB /etc/nginx/.htpasswd admin "$PW"\n')
+    assert "BCRYPT" in _algos(parse_shell_file(p, tmp_path))
+
+
+def test_swift_cryptoswift_sha2_variant_and_alamofire_disabled_trust(tmp_path):
+    from scanner.parsers.swift_parser import parse_swift_file
+    p = _write(tmp_path, "A.swift", 'import CryptoSwift\nlet t = try HMAC(key: k, variant: .sha2(.sha256)).authenticate(m)\nlet e = DisabledTrustEvaluator()\nlet r = SecKeyCreateEncryptedData(pub, .rsaEncryptionOAEPSHA256AESGCM, d as CFData, &err)\n')
+    algos = set(_algos(parse_swift_file(p, tmp_path)))
+    assert {"HMAC", "SHA-256", "TRUST-ALL", "RSA"} <= algos
+
+
+def test_swift_multipart_boundary_random_is_not_a_finding(tmp_path):
+    from scanner.parsers.swift_parser import parse_swift_file
+    # Alamofire MultipartFormData: UInt32.random(in:) for a boundary string
+    p = _write(tmp_path, "M.swift", 'let first = UInt32.random(in: UInt32.min...UInt32.max)\nlet boundary = String(format: "%08x", first)\n')
+    assert parse_swift_file(p, tmp_path) == []
