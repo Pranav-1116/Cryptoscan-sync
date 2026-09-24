@@ -319,6 +319,13 @@
           "default": 0.0,
           "title": "Duration Seconds",
           "type": "number"
+        },
+        "findings_by_origin": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Findings By Origin",
+          "type": "object"
         }
       },
       "title": "ScanStatistics",

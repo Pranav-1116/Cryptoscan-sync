@@ -36,7 +36,9 @@ def cli():
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./scan-output"))
 @click.option("--exclude-tests/--include-tests", default=False)
 @click.option("--scan-id", type=str, default=None)
-def scan(source, repo, branch, commit, output, exclude_tests, scan_id):
+@click.option("--origin", "origins", multiple=True, type=click.Choice(["source", "test", "generated", "vendored", "archive"]),
+              help="Keep only findings from these code origins in the written output (repeatable). Default: all.")
+def scan(source, repo, branch, commit, output, exclude_tests, scan_id, origins):
     """Scan Java source for cryptographic API usage."""
     if not source and not repo:
         click.echo("Error: Must provide either --source or --repo", err=True)
@@ -67,6 +69,10 @@ def scan(source, repo, branch, commit, output, exclude_tests, scan_id):
                 target_branch=git_meta.branch,
             )
 
+    if origins:
+        keep = set(origins)
+        result.findings = [f for f in result.findings if (getattr(f.metadata, "code_origin", None) or "source") in keep]
+        result.finalize()
     output_path = writer.write(result, output)
     stats = result.statistics
     click.echo(f"\nScan ID:        {result.scan_id}")
@@ -75,6 +81,8 @@ def scan(source, repo, branch, commit, output, exclude_tests, scan_id):
     click.echo(f"  HIGH:         {stats.high_confidence}")
     click.echo(f"  MEDIUM:       {stats.medium_confidence}")
     click.echo(f"  LOW:          {stats.low_confidence}")
+    if stats.findings_by_origin:
+        click.echo("  by origin:    " + ", ".join(f"{k}={v}" for k, v in sorted(stats.findings_by_origin.items())))
     click.echo(f"Output:         {output_path}\n")
 
 

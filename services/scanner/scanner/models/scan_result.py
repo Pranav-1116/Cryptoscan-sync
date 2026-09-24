@@ -28,6 +28,8 @@ class ScanStatistics(BaseModel):
     medium_confidence: int = 0
     low_confidence: int = 0
     duration_seconds: float = 0.0
+    # findings per code origin (source/test/generated/vendored/archive) — triage view, never a filter
+    findings_by_origin: dict[str, int] = Field(default_factory=dict)
 
 
 class ScanResult(BaseModel):
@@ -54,6 +56,11 @@ class ScanResult(BaseModel):
         except ValueError:
             self.statistics.duration_seconds = 0.0
         self.statistics.total_findings = len(self.findings)
+        by_origin: dict[str, int] = {}
+        for f in self.findings:
+            o = getattr(f.metadata, "code_origin", None) or "source"
+            by_origin[o] = by_origin.get(o, 0) + 1
+        self.statistics.findings_by_origin = by_origin
         self.statistics.high_confidence = sum(
             1 for f in self.findings if f.metadata.confidence == "HIGH"
         )
