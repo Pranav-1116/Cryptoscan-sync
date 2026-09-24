@@ -20,6 +20,10 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "C": (".c", ".h"),
     "CPP": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"),
     "OBJECTIVE_C": (".m", ".mm"),
+    "SWIFT": (".swift",),
+    "SHELL": (".sh", ".bash", ".zsh", ".ksh"),
+    "SQL": (".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql"),
+    "COBOL": (".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".jcl"),
 }
 
 MARKER_FILES: dict[str, tuple[str, ...]] = {
