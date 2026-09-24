@@ -22,6 +22,7 @@ from scanner.parsers.ruby_parser import parse_ruby_file
 from scanner.parsers.rust_parser import parse_rust_file
 from scanner.parsers.shell_parser import parse_shell_file
 from scanner.parsers.swift_parser import parse_swift_file
+from scanner.parsers.xml_parser import parse_xml_file
 from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
 
 JAVA_EXT = {".java"}
@@ -37,6 +38,7 @@ RUST_EXT = {".rs"}
 SHELL_EXT = {".sh", ".bash", ".zsh", ".ksh"}
 SWIFT_EXT = {".swift"}
 PLIST_EXT = {".plist", ".entitlements"}
+XML_EXT = {".xml", ".config", ".csproj", ".props", ".targets", ".wsdl", ".xaml"}
 C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
 JAR_EXT = {".jar"}
 CONFIG_EXT = {".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg", ".tmpl", ".tpl", ".j2", ".toml"}
@@ -55,6 +57,7 @@ PARSERS = (
     (SHELL_EXT, parse_shell_file),
     (SWIFT_EXT, parse_swift_file),
     (PLIST_EXT, parse_swift_file),
+    (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),
     (JAR_EXT, scan_jar),
     (CONFIG_EXT, parse_config_file),
