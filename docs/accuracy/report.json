@@ -1,16 +1,16 @@
 {
-  "generated_at": "2026-09-24T16:47:42+00:00",
+  "generated_at": "2026-09-24T17:44:43+00:00",
   "corpus": {
-    "python": 68,
-    "positive": 461,
-    "negative": 89,
+    "python": 70,
+    "positive": 484,
+    "negative": 94,
     "obfuscated": 18,
-    "java": 92,
+    "java": 99,
     "kotlin": 15,
     "javascript": 46,
     "typescript": 10,
     "go": 37,
-    "csharp": 36,
+    "csharp": 37,
     "rust": 32,
     "php": 33,
     "ruby": 30,
@@ -27,19 +27,21 @@
     "sql": 30,
     "cobol": 20,
     "pli": 4,
-    "total": 628
+    "rpg": 14,
+    "cl": 4,
+    "total": 656
   },
   "overall": {
-    "tp": 1043,
+    "tp": 1087,
     "fp": 0,
     "fn": 0,
-    "tn": 116,
+    "tn": 123,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 628,
-    "files_exact": 628,
+    "files": 656,
+    "files_exact": 656,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -54,6 +56,19 @@
       "accuracy": 1.0,
       "files": 35,
       "files_exact": 35,
+      "file_exact_rate": 1.0
+    },
+    "cl": {
+      "tp": 14,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 4,
+      "files_exact": 4,
       "file_exact_rate": 1.0
     },
     "cobol": {
@@ -96,7 +111,7 @@
       "file_exact_rate": 1.0
     },
     "csharp": {
-      "tp": 48,
+      "tp": 50,
       "fp": 0,
       "fn": 0,
       "tn": 6,
@@ -104,8 +119,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 36,
-      "files_exact": 36,
+      "files": 37,
+      "files_exact": 37,
       "file_exact_rate": 1.0
     },
     "go": {
@@ -122,16 +137,16 @@
       "file_exact_rate": 1.0
     },
     "java": {
-      "tp": 120,
+      "tp": 127,
       "fp": 0,
       "fn": 0,
-      "tn": 20,
+      "tn": 22,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 92,
-      "files_exact": 92,
+      "files": 99,
+      "files_exact": 99,
       "file_exact_rate": 1.0
     },
     "javascript": {
@@ -200,7 +215,7 @@
       "file_exact_rate": 1.0
     },
     "python": {
-      "tp": 103,
+      "tp": 105,
       "fp": 0,
       "fn": 0,
       "tn": 11,
@@ -208,8 +223,21 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 68,
-      "files_exact": 68,
+      "files": 70,
+      "files_exact": 70,
+      "file_exact_rate": 1.0
+    },
+    "rpg": {
+      "tp": 19,
+      "fp": 0,
+      "fn": 0,
+      "tn": 4,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 14,
+      "files_exact": 14,
       "file_exact_rate": 1.0
     },
     "ruby": {
@@ -322,13 +350,13 @@
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 89,
+      "tn": 94,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 89,
-      "files_exact": 89,
+      "files": 94,
+      "files_exact": 94,
       "file_exact_rate": 1.0
     },
     "obfuscated": {
@@ -345,16 +373,16 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 885,
+      "tp": 929,
       "fp": 0,
       "fn": 0,
-      "tn": 21,
+      "tn": 23,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 461,
-      "files_exact": 461,
+      "files": 484,
+      "files_exact": 484,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

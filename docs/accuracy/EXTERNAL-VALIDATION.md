@@ -199,3 +199,16 @@ Origin split matters at bank scale: in quorum more than half of the crypto call 
 
 Still not validated on public code (stated plainly): payShield host-command clients, ICSF-calling COBOL/PL/I, WebSphere/WebLogic production descriptors, MQSC with `SSLCIPH`. Those are corpus-validated only (wave 10 first pass 610/628; the 18 misses were 12 label-convention slips and 6 real rule gaps, all fixed).
 
+## Round 14 — IBM i (AS/400) — new `rpg_parser.py`, wave 11 → 656/656
+
+RPG IV (`.rpgle/.sqlrpgle/.rpg*`), CL (`.clle/.clp/.cl`) and ILE C were not scanned before. The IBM i crypto surface is small and very specific: `Qc3*` Cryptographic Services APIs whose algorithm lives in a numeric code inside the `ALGD02xx/04xx/05xx` structure (22 = AES, 21 = 3DES, 3 = SHA-256 …), GSKit TLS, and the `QSSLPCL`/`QSSLCSL` system values. The parser resolves the code from the field initialiser (free or fixed form), the `qc3cci.h` constants (`Qc3_SHA1`), or a unique keyword in the surrounding declarations — otherwise the call stays UNKNOWN rather than being guessed.
+
+| Project (public IBM i code) | Files | Findings | Review |
+|---|---|---|---|
+| sitemule/ILEastic (ILE C web server) | 167 | 45 in 3 files | GSKit environment/keyring/`GSK_PROTOCOL_TLSV12/13` in `ileastic.c` + `sockets.c`; WebSocket handshake `Qc3CalculateHash` in `websockets.c` correctly resolved to **SHA-1** from `algDesc[3] = Qc3_SHA1`. |
+| OSSILE/OSSILE (51 RPGLE + C utilities) | 155 | 3 in 2 files | `QC3CALHA` / `QC3CRTAX` in the `c_md5crc` utility (algorithm context token → UNKNOWN, correct: the algorithm is in a runtime token). 51 RPGLE business programs silent. |
+| worksofliam/noxDB (RPG/C JSON lib) | 253 | 0 | true negative |
+| richardschoen/QshOni | 98 | 1 | `curl -k` in a shell wrapper |
+
+Finding: real IBM i shops call `Qc3`/GSKit from **ILE C** as often as from RPG — the C parser now runs the IBM i rule table whenever a `.c/.h` mentions `Qc3`/`QC3xxxxx`/`gsk_`/`GSK_`. The blind PCI-PIN half of wave 11 (10 files written from PCI PIN Security / X9.24 / ISO 9564 / TR-31 text rather than any library API) scored 8/10 on the first pass; both misses were real and are fixed (DUKPT class/`ipek` naming, C# `CipherMode` receiver resolution).
+

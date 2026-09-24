@@ -36,7 +36,26 @@ PATTERNS = [
     (re.compile(r"\bnew\s+RNGCryptoServiceProvider\s*\("), "KEY_GENERATOR", "CSPRNG", "KEY_GENERATION", None, None),
 ]
 
-CIPHERMODE = re.compile(r"CipherMode\.(ECB|CBC|CFB|OFB|CTS)", re.IGNORECASE)
+CIPHERMODE = re.compile(r"(?:(\w+)\s*\.\s*Mode\s*=\s*)?CipherMode\.(ECB|CBC|CFB|OFB|CTS)", re.IGNORECASE)
+_RECEIVER_ALGO = [(re.compile(r"\b(?:TripleDES|TripleDESCryptoServiceProvider|TripleDESCng|Triple3?Des)\b"), "3DES"), (re.compile(r"\b(?:DES|DESCryptoServiceProvider)\b"), "DES"), (re.compile(r"\bRC2\w*\b"), "RC2"), (re.compile(r"\b(?:Aes\w*|Rijndael\w*)\b"), "AES")]
+
+
+def _receiver_algorithm(source: str, var: str | None) -> str:
+    """`des.Mode = CipherMode.CBC` — resolve from `var des = DES.Create()` / `using var tdes = TripleDES...`; default AES only when nothing says otherwise."""
+    if var:
+        decl = re.search(r"\b" + re.escape(var) + r"\s*=\s*(?:new\s+)?([A-Za-z0-9_]+)", source)
+        if decl:
+            for rx, algo in _RECEIVER_ALGO:
+                if rx.search(decl.group(1)):
+                    return algo
+        low = var.lower()
+        if low in ("tdes", "des3", "tripledes", "triple"):
+            return "3DES"
+        if low == "des":
+            return "DES"
+        if low.startswith("rc2"):
+            return "RC2"
+    return "AES"
 HARDCODED = re.compile(
     r"""(?:Key|IV)\s*=\s*new\s+byte\s*\[\s*\]\s*\{([^}]+)\}""",
     re.IGNORECASE,
@@ -321,9 +340,9 @@ def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
         add(
             match,
             api_type="CIPHER_INSTANCE",
-            algorithm="AES",
+            algorithm=_receiver_algorithm(source, match.group(1)),
             purpose="ENCRYPTION",
-            mode=match.group(1).upper(),
+            mode=match.group(2).upper(),
             confidence="MEDIUM",
             confidence_reason="CipherMode assignment",
         )

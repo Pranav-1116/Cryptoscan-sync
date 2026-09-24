@@ -361,7 +361,7 @@ RULES: list[Rule] = [
     _r(r"\bAlgorithm\.AES\b|\bLENGTH_AES_(?:128|192|256)\b|\bSMAdapter\.LENGTH_AES_(?:128|192|256)\b", _K, "payments/key-management", algorithm="AES", confidence="MEDIUM"),
     _r(r"\bSMAdapter\.TYPE_RSA_[SP]K\b|\bEMV(?:CA|Issuer|ICC)PublicKey\b|\bSecurePrivateKey\b|\bgenerateKeyPair(?:Impl)?\s*\(\s*(?:\w+\.)?(?:RSA|AlgorithmParameterSpec)|\brecoverIssuerPublicKey\b|\brecoverICCPublicKey\b|\bverifySDA\b|\bverifyDDA\b|\bverifyCDA\b|\bEMVCDAResult\b",
        _S, "payments/EMV", algorithm="RSA", confidence="MEDIUM", confidence_reason="EMV offline data authentication uses RSA certificate chains"),
-    _r(r"\bKeySerialNumber\b|\bnew\s+KeySerialNumber\s*\(|\bDUKPT\b|\bdukpt\b|\bderiveDUKPT\b|\bBDK\b(?=[^\n]*(?:key|Key|derive|KSN|ksn))|\bKSN\b(?=[^\n]*(?:key|Key|derive|DUKPT|dukpt))",
+    _r(r"\bKeySerialNumber\b|\bnew\s+KeySerialNumber\s*\(|\bDUKPT\b|\bdukpt\b|\bDukpt\w*\b(?=[^\n]*(?:class|ksn|KSN|ipek|IPEK|derive|BDK|bdk))|\b(?:ipek|IPEK)\b(?=[^\n]*(?:ksn|KSN))|\bderiveDUKPT\b|\bBDK\b(?=[^\n]*(?:key|Key|derive|KSN|ksn))|\bKSN\b(?=[^\n]*(?:key|Key|derive|DUKPT|dukpt))",
        _KDF, "payments/DUKPT", algorithm="3DES", confidence="MEDIUM", confidence_reason="DUKPT (ANSI X9.24-1) TDES key derivation; AES DUKPT (X9.24-3) if BDK is AES", purpose="KEY_GENERATION"),
     _r(r"\bSecureKeyBlock(?:Builder)?\b|\bTR-?31\b|\bTR31\b|\bKeyScheme\.R\b|\bkeyBlock(?:Version|Header)\b|\bKEY_BLOCK\b|\bKeyBlock\b(?=[^\n]*(?:import|export|translate|parse|build))",
        _K, "payments/key-management", algorithm="AES", confidence="LOW", confidence_reason="TR-31 / Thales key block (wrapped under a KBPK — TDES or AES)"),

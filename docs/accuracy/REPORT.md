@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-24T16:47:42+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 628 files). Scored per algorithm family per file._
+_Generated 2026-09-24T17:44:43+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 656 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,26 +10,28 @@ _Generated 2026-09-24T16:47:42+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 628 / 628 (100.0%) |
-| TP / FP / FN / TN | 1043 / 0 / 0 / 116 |
+| Files scored exactly right | 656 / 656 (100.0%) |
+| TP / FP / FN / TN | 1087 / 0 / 0 / 123 |
 
 ## By language
 
 | Language | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | c | 35 | 100.0% | 100.0% | 100.0% | 35/35 |
+| cl | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | cobol | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
 | config | 56 | 100.0% | 100.0% | 100.0% | 56/56 |
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| csharp | 36 | 100.0% | 100.0% | 100.0% | 36/36 |
+| csharp | 37 | 100.0% | 100.0% | 100.0% | 37/37 |
 | go | 37 | 100.0% | 100.0% | 100.0% | 37/37 |
-| java | 92 | 100.0% | 100.0% | 100.0% | 92/92 |
+| java | 99 | 100.0% | 100.0% | 100.0% | 99/99 |
 | javascript | 46 | 100.0% | 100.0% | 100.0% | 46/46 |
 | kotlin | 15 | 100.0% | 100.0% | 100.0% | 15/15 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | php | 33 | 100.0% | 100.0% | 100.0% | 33/33 |
 | pli | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| python | 68 | 100.0% | 100.0% | 100.0% | 68/68 |
+| python | 70 | 100.0% | 100.0% | 100.0% | 70/70 |
+| rpg | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
 | ruby | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
 | rust | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
 | shell | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
@@ -43,9 +45,9 @@ _Generated 2026-09-24T16:47:42+00:00 by `scripts/accuracy_benchmark.py` against 
 | Category | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | config | 22 | 100.0% | 100.0% | 100.0% | 22/22 |
-| negative | 89 | 100.0% | 100.0% | 100.0% | 89/89 |
+| negative | 94 | 100.0% | 100.0% | 100.0% | 94/94 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 461 | 100.0% | 100.0% | 100.0% | 461/461 |
+| positive | 484 | 100.0% | 100.0% | 100.0% | 484/484 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -72,6 +74,7 @@ misses were fixed and locked in as regression tests.
 | 8 — BLIND, bank/payments realism: jPOS SMAdapter (PIN translate/verify, CVV, ARQC/ARPC, DUKPT, TR-31 import, retail MAC, KCV), Thales payShield adapter + LMK, PKCS#11 providers (SunPKCS11, IAIK CKM_*, Luna, CloudHSM, IBMJCECCA), SWIFT LAU, 3-D Secure CAVV/JWS, FF1 FPE, plus 6 payment-domain negatives (Luhn, PAN masking, ISO 8583 field 52/64, key-value store, Base64, settlement). Labels frozen before the first run. First pass 25/31 exact: KeyScheme.R (TR-31 key block) not mapped, `(SecureDESKey) ks.getKey(...)` cast, `translatePin(` verb, `zpkUnderLMK` camel-case suffix, CKM_AES_CBC_PAD/CKM_DES3_ECB not in the algo_map (rewritten as per-family rules), FPEFF1Engine | 31 | 1.000 / 0.992 / 0.996 | F1 1.000 (544/544) |
 | 9 — database + mainframe: Oracle PL/SQL (DBMS_CRYPTO, OBFUSCATION_TOOLKIT, TDE, DBMS_RANDOM), T-SQL (HASHBYTES, symmetric/asymmetric keys, Always Encrypted, TDE, ENCRYPTBYPASSPHRASE), pgcrypto, MySQL, DB2, COBOL/ICSF (CSNB PIN/CVV/MAC/OWH/HMG/KGN, CSND RSA/ECC, CSFP PKCS#11, RACF KDFAES, JCL). Not blind (parsers written alongside; labels written before the first run). First pass 588/594: secret-context PRNG rules only looked *after* the call (gen_otp / reset_tokens context on an earlier line → new `line_group` engine key), COBOL `FUNCTION RANDOM` context too narrow, `'ECDSA   '` padded literal, RACF `ALGORITHM(KDFAES)` also fired the DES rule, and one label-convention slip (scram-sha-256 → SHA-256) | 50 | 0.997 / 0.995 / 0.996 | F1 1.000 (594/594) |
 | 10 — bank middleware + remaining HSM/mainframe gaps: IBM MQ (MQSC SSLCIPH, mqclient.ini, JMS XML/Java), WebSphere security.xml / ssl.client.props / Liberty, WebLogic config.xml & -D properties, java.security provider order + jdk.tls policies, IBM JSSE2/JCE, Mule TLS/crypto, Camel SSL/crypto/PGP, CXF/Rampart/WSO2, jasypt, QuickFIX/J session TLS, SWIFT LAU, Thales payShield host commands (A0/CA/EI/KQ) in an HSM client, PL/I calling ICSF, plus 8 negatives (two-letter country codes, MQ queues, Camel file routes). Not blind (rules written alongside). First pass 610/628: 12 files were label-convention slips (ECDHE→ECDH, TLS-CIPHERS/TLS-UNVERIFIED/TRUST-ALL→TLS, suite-string decomposition); real detector gaps: WAS `<setting sslProtocol>` element, WebLogic `key-store` hyphenation and `{3DES}` on node-manager credentials, Camel `<crypto:` prefix collision, `DESede/CBC/…` in Camel algorithm attr, MQ `<config-property-type>` between name/value, SSLKEYR not at line start, `jdk.tls.disabledAlgorithms` expanded as if in use, MQ suite raw text truncated before the digest, Thales EI command context on the left of the literal | 34 | 0.977 / 0.968 / 0.972 | F1 1.000 (628/628) |
+| 11 — IBM i (RPG IV free/fixed, CL, SQLRPGLE, ILE C) Cryptographic Services Qc3*/QC3xxxxx with ALGD0200/0400/0500 algorithm codes, GSKit TLS, QSSLPCL/QSSLCSL system values, master-key commands; plus a PCI-PIN / X9.24 / ISO 9564 / TR-31 re-check of the payments pack written from the requirements side (BLIND for the payments half: no payments rule touched while writing). First pass 649/656: payments half 8/10 — `DukptX924` class + `ipek/ksn` parameters missed by the DUKPT rule, and C# `des.Mode = CipherMode.CBC` reported AES regardless of the receiver (real bug: now resolved from the variable's declaration); IBM i half: fixed-form D-spec `10I 0 inz(3)` between name and initialiser, `signHash` field, CEERAN0 secret context on the next line, GSKit cipher-spec literal not exposed for suite decomposition | 28 | 0.999 / 0.992 / 0.995 | F1 1.000 (656/656) |
 
 ## How to read this
 

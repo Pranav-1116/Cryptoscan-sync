@@ -24,6 +24,8 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "SHELL": (".sh", ".bash", ".zsh", ".ksh"),
     "SQL": (".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql"),
     "PLI": (".pli", ".pl1", ".plx"),
+    "RPG": (".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg"),
+    "CL": (".clle", ".clp", ".cllp", ".clle38", ".cl"),
     "COBOL": (".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".jcl"),
 }
 

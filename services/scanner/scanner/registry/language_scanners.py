@@ -24,6 +24,7 @@ from scanner.parsers.shell_parser import parse_shell_file
 from scanner.parsers.sql_parser import parse_sql_file
 from scanner.parsers.cobol_parser import parse_cobol_file
 from scanner.parsers.pli_parser import parse_pli_file
+from scanner.parsers.rpg_parser import parse_rpg_file
 from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.xml_parser import parse_xml_file
 from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
@@ -42,7 +43,8 @@ SHELL_EXT = {".sh", ".bash", ".zsh", ".ksh"}
 SWIFT_EXT = {".swift"}
 SQL_EXT = {".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc"}
 PLI_EXT = {".pli", ".pl1", ".plx", ".pls1"}
-COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
+RPG_EXT = {".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl"}
+COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".cblle", ".sqlcblle", ".cbl38", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
 PLIST_EXT = {".plist", ".entitlements"}
 XML_EXT = {".xml", ".config", ".csproj", ".props", ".targets", ".wsdl", ".xaml"}
 C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
@@ -66,6 +68,7 @@ PARSERS = (
     (SQL_EXT, parse_sql_file),
     (COBOL_EXT, parse_cobol_file),
     (PLI_EXT, parse_pli_file),
+    (RPG_EXT, parse_rpg_file),
     (PLIST_EXT, parse_swift_file),
     (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),
@@ -94,6 +97,8 @@ def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
     for extensions, parser in PARSERS:
         if suffix in extensions:
             findings = parser(path, repo_root)
+            if extensions is C_EXT:
+                findings = findings + _ibm_i_c_pass(path, repo_root, findings)
             break
     else:
         if is_named_config_file(path.name):
@@ -116,6 +121,20 @@ def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
         findings = findings + _expand_cipher_suites(path, repo_root, findings)
         _tag_origin(path, repo_root, findings)
     return findings
+
+
+def _ibm_i_c_pass(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> list[RawFinding]:
+    """ILE C on IBM i: Qc3*/QC3xxxxx and GSKit calls share the RPG rule table."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    if "Qc3" not in text and "QC3" not in text and "gsk_" not in text and "GSK_" not in text:
+        return []
+    from scanner.parsers.rpg_parser import scan_ibm_i_in_c
+
+    seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in findings}
+    return scan_ibm_i_in_c(path, repo_root, text, seen=seen)
 
 
 def _tag_origin(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> None:
