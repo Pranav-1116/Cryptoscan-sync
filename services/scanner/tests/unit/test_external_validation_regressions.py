@@ -207,3 +207,26 @@ def test_wave7_blind_fixes(tmp_path):
     php = _write(tmp_path, "p.php", "<?php\n$h = password_hash($pw, PASSWORD_ARGON2ID);\n")
     algos = set(_algos(parse_php_file(php, tmp_path)))
     assert "ARGON2" in algos and "BCRYPT" not in algos
+
+
+def test_wave8_payments_hsm(tmp_path):
+    """Bank-proxy round 11 (jPOS, Fineract): payments/HSM vocabulary + SecretKeySpec vocabulary gate."""
+    from scanner.parsers.java_parser import parse_java_file
+    jpos = _write(tmp_path, "Pin.java", (
+        "import org.jpos.security.*;\n"
+        "class P { SecureDESKey k; EncryptedPIN t(SMAdapter sm, EncryptedPIN p, SecureDESKey a, SecureDESKey b) throws SMException {\n"
+        "  return sm.translatePIN(p, a, b, SMAdapter.FORMAT01); }\n"
+        "  SecureKey kb(SMAdapter sm, byte[] blob, SecureDESKey kbpk) throws SMException { return sm.importKey(0, SMAdapter.TYPE_ZMK, blob, kbpk, KeyScheme.R, true); } }\n"))
+    algos = set(_algos(parse_java_file(jpos, tmp_path)))
+    assert {"3DES", "AES"} <= algos
+    # SecretKeySpec with a non-algorithm string must not leak the string as an algorithm name
+    junk = _write(tmp_path, "T.java", 'import javax.crypto.spec.SecretKeySpec;\nclass T { void f(byte[] b){ new SecretKeySpec(b, "testJCEHandlerParam2"); new SecretKeySpec(b, "DESde"); } }\n')
+    algos = set(_algos(parse_java_file(junk, tmp_path)))
+    assert "testJCEHandlerParam2" not in algos and "DESde" not in algos
+    # PKCS#11 mechanisms resolve per family
+    p11 = _write(tmp_path, "P11.java", "class X { long a = PKCS11Constants.CKM_AES_CBC_PAD, b = PKCS11Constants.CKM_DES3_ECB, c = PKCS11Constants.CKM_SHA256_RSA_PKCS; }\n")
+    algos = set(_algos(parse_java_file(p11, tmp_path)))
+    assert {"AES", "3DES", "RSA"} <= algos
+    # throws SMException on its own is not an inventory item
+    neg = _write(tmp_path, "N.java", "class N { void f() throws SMException { String pan = mask(pan); } }\n")
+    assert not _algos(parse_java_file(neg, tmp_path))

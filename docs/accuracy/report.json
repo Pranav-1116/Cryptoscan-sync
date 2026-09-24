@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-24T09:44:14+00:00",
+  "generated_at": "2026-09-24T16:16:24+00:00",
   "corpus": {
     "python": 68,
-    "positive": 346,
+    "positive": 377,
     "negative": 89,
     "obfuscated": 18,
-    "java": 53,
+    "java": 84,
     "kotlin": 15,
     "javascript": 46,
     "typescript": 10,
@@ -24,19 +24,19 @@
     "shell": 31,
     "swift": 29,
     "xml": 20,
-    "total": 513
+    "total": 544
   },
   "overall": {
-    "tp": 824,
+    "tp": 854,
     "fp": 0,
     "fn": 0,
-    "tn": 96,
+    "tn": 105,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 513,
-    "files_exact": 513,
+    "files": 544,
+    "files_exact": 544,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -106,16 +106,16 @@
       "file_exact_rate": 1.0
     },
     "java": {
-      "tp": 70,
+      "tp": 100,
       "fp": 0,
       "fn": 0,
-      "tn": 10,
+      "tn": 19,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 53,
-      "files_exact": 53,
+      "files": 84,
+      "files_exact": 84,
       "file_exact_rate": 1.0
     },
     "javascript": {
@@ -303,16 +303,16 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 666,
+      "tp": 696,
       "fp": 0,
       "fn": 0,
-      "tn": 1,
+      "tn": 10,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 346,
-      "files_exact": 346,
+      "files": 377,
+      "files_exact": 377,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

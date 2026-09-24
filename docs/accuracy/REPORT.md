@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-24T09:44:14+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 513 files). Scored per algorithm family per file._
+_Generated 2026-09-24T16:16:24+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 544 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,8 +10,8 @@ _Generated 2026-09-24T09:44:14+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 513 / 513 (100.0%) |
-| TP / FP / FN / TN | 824 / 0 / 0 / 96 |
+| Files scored exactly right | 544 / 544 (100.0%) |
+| TP / FP / FN / TN | 854 / 0 / 0 / 105 |
 
 ## By language
 
@@ -22,7 +22,7 @@ _Generated 2026-09-24T09:44:14+00:00 by `scripts/accuracy_benchmark.py` against 
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | csharp | 36 | 100.0% | 100.0% | 100.0% | 36/36 |
 | go | 37 | 100.0% | 100.0% | 100.0% | 37/37 |
-| java | 53 | 100.0% | 100.0% | 100.0% | 53/53 |
+| java | 84 | 100.0% | 100.0% | 100.0% | 84/84 |
 | javascript | 46 | 100.0% | 100.0% | 100.0% | 46/46 |
 | kotlin | 15 | 100.0% | 100.0% | 100.0% | 15/15 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
@@ -42,7 +42,7 @@ _Generated 2026-09-24T09:44:14+00:00 by `scripts/accuracy_benchmark.py` against 
 | config | 22 | 100.0% | 100.0% | 100.0% | 22/22 |
 | negative | 89 | 100.0% | 100.0% | 100.0% | 89/89 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 346 | 100.0% | 100.0% | 100.0% | 346/346 |
+| positive | 377 | 100.0% | 100.0% | 100.0% | 377/377 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -66,6 +66,7 @@ misses were fixed and locked in as regression tests.
 | 5 — provisioning shell / Dockerfile / Makefile, Swift (CryptoKit, CommonCrypto, Security.framework, CryptoSwift, sodium, JWTKit, Alamofire), ATS plists, pg_hba/MySQL auth. Not blind: the shell and Swift parsers were written in the same session. 23 of 64 files were not exact on the first pass — 16 of those were corpus label-spelling slips (TLS1.0/TRUST-ALL/CSPRNG written instead of the TLS/RNG families) and 7 were real detector gaps: upper-case mkpasswd/gpg algorithm names, `"$OPENSSL_BIN"` with no prefix, `.rsaEncryptionOAEPSHA256AESGCM`, CryptoSwift `.sha2(.sha256)` variants, MySQL require_secure_transport | 64 | 0.979 / 0.958 / 0.968 | F1 1.000 (450/450) |
 | 6 — XML configuration: web.config/WCF/ADO.NET, Spring Security XML, Android network security, Tomcat/WildFly, JDBC URLs, pom/NuGet crypto deps, SAML/XML-DSig URIs. Not blind (parser written alongside). The single first-pass miss: Tomcat `ciphers=` list was not expanded per algorithm because the rule exposed the whole tag as raw text (new `raw_group` engine key) | 20 | 1.000 / 0.992 / 0.996 | F1 1.000 (470/470) |
 | 7 — BLIND: Android Keystore, javax.crypto specs, .NET ECDiffieHellman/IncrementalHash, PHP sodium_*, RbNaCl/ActiveSupport, Rust openssl::symm, sodium-native/tweetnacl, Go x/crypto/ssh+nacl, pyca AESGCMSIV/X25519/PSS, paramiko, plus 8 hostile negatives. Labels frozen in commit before the first run. First pass 41/45 exact: KeyAgreement "XDH" leaked as a raw name, ECCurve inside ECDiffieHellman.Create reported as ECDSA, IncrementalHash.CreateHMAC missed, password_hash(…, PASSWORD_ARGON2ID) also emitted the BCRYPT default | 45 | 0.996 / 0.999 / 0.998 | F1 1.000 (513/513) |
+| 8 — BLIND, bank/payments realism: jPOS SMAdapter (PIN translate/verify, CVV, ARQC/ARPC, DUKPT, TR-31 import, retail MAC, KCV), Thales payShield adapter + LMK, PKCS#11 providers (SunPKCS11, IAIK CKM_*, Luna, CloudHSM, IBMJCECCA), SWIFT LAU, 3-D Secure CAVV/JWS, FF1 FPE, plus 6 payment-domain negatives (Luhn, PAN masking, ISO 8583 field 52/64, key-value store, Base64, settlement). Labels frozen before the first run. First pass 25/31 exact: KeyScheme.R (TR-31 key block) not mapped, `(SecureDESKey) ks.getKey(...)` cast, `translatePin(` verb, `zpkUnderLMK` camel-case suffix, CKM_AES_CBC_PAD/CKM_DES3_ECB not in the algo_map (rewritten as per-family rules), FPEFF1Engine | 31 | 1.000 / 0.992 / 0.996 | F1 1.000 (544/544) |
 
 ## How to read this
 

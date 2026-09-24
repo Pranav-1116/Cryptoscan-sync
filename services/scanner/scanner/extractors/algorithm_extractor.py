@@ -261,4 +261,12 @@ def known_algorithm_or_unknown(name: str | None) -> str:
     upper = name.upper().replace("_", "").replace(" ", "")
     if upper in ALGORITHM_ALIASES or upper in {v.upper() for v in ALGORITHM_ALIASES.values()}:
         return name
-    return name if upper.startswith(_KNOWN_PREFIXES) else "UNKNOWN"
+    if not upper.startswith(_KNOWN_PREFIXES):
+        return "UNKNOWN"
+    # A known prefix must be followed by a plausible suffix (digits, mode/padding, "WITH", "EDE",
+    # separators) — "DESde" or "AESX" are not algorithms.
+    for pre in sorted((p for p in _KNOWN_PREFIXES if upper.startswith(p)), key=len, reverse=True):
+        rest = upper[len(pre):]
+        if rest == "" or re.match(r"^(?:EDE|WITH|-?\d|/|-|\.|WRAP|CBC|GCM|CTR|ECB|CCM|OFB|CFB|XTS|SIV|KW|POLY|MAC|SHA|MD|AND|RSA|EC|PSS|OAEP|EDWARDS|MONTGOMERY|PRNG|DRBG|CMAC|HMAC|X|SSA|ES|KEM|DSA|B|S|P|N)", rest):
+            return name
+    return "UNKNOWN"
