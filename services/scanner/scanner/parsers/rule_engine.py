@@ -325,7 +325,9 @@ def run_rules(
         if not _may_match(pattern, lower_text):
             continue
         for match in pattern.finditer(text):
-            line = text[: match.start()].count("\n") + 1
+            whole = match.group(0)
+            # ``(?m)^\s*x`` can start on the previous blank line; report where the text starts
+            line = text[: match.start() + len(whole) - len(whole.lstrip())].count("\n") + 1
             algorithm = spec.get("algorithm")
             mode = None
             key_size = None

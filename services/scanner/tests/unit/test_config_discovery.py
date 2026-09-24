@@ -32,3 +32,16 @@ def test_scanner_reports_config_crypto(tmp_path: Path):
     assert "TLS-CERT-NONE" in algos
     assert "JWT" in algos
     assert {"3DES", "AES", "HMAC", "MD5"} <= algos
+
+
+def test_templated_nginx_config_is_scanned_and_lines_are_exact(tmp_path):
+    from scanner.core.file_discovery import FileDiscovery
+    from scanner.registry.language_scanners import scan_file
+    # kubernetes/ingress-nginx rootfs/etc/nginx/template/nginx.tmpl
+    tmpl = tmp_path / "nginx.tmpl"
+    tmpl.write_text("http {\n\n    ssl_protocols {{ $cfg.SSLProtocols }};\n    ssl_ciphers '{{ $cfg.SSLCiphers }}';\n    ssl_ecdh_curve {{ $cfg.SSLECDHCurve }};\n}\n")
+    assert tmpl in set(FileDiscovery().discover(tmp_path))
+    found = {(f.source.line_number, f.crypto.algorithm) for f in scan_file(tmpl, tmp_path)}
+    assert (3, "TLS") in found
+    assert (4, "TLS-CIPHERS") in found
+    assert (5, "ECDH") in found

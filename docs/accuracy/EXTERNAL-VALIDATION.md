@@ -113,3 +113,12 @@ The Laravel scan exposed the cost of ~300 regex rules per file (71 s). The rule 
 pre-computes, per rule, the literal words that *must* appear in any match and skips the rule
 when the file lacks them. Verified on 4,447 findings across ten repos: byte-identical output,
 53 s → 20 s. Unit-tested in `tests/unit/test_rule_prefilter.py`.
+
+Follow-up on ingress-nginx: the controller's real nginx configuration lives in `nginx.tmpl` (a Go
+template) and was **not discovered at all** — `.tmpl`, `.tpl`, `.j2` and `.toml` are now scanned as
+configuration; templated values (`ssl_protocols {{ $cfg.SSLProtocols }}`) are recorded as a
+versionless TLS endpoint (LOW confidence) instead of being dropped; `ssl_ecdh_curve` → ECDH;
+`proxy_ssl_protocols` covered. A line-number off-by-one for `^\s*directive` rules that begin on a
+preceding blank line was fixed in both the config parser and the rule engine. gRPC
+`insecure.NewCredentials` is now labelled `TLS-DISABLED` (same as `sslmode=disable`) instead of
+the one-off `TLS-NONE`.

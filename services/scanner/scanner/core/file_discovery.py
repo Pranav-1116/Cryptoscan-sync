@@ -82,6 +82,12 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".tf",
     ".tfvars",
     ".cfg",
+    # templated configuration (Go templates, Jinja/Ansible, Helm) still carries
+    # literal ssl_protocols / ssl_ciphers / Ciphers directives
+    ".tmpl",
+    ".tpl",
+    ".j2",
+    ".toml",
 )
 
 _NAMED_CONFIG_EXACT = frozenset({

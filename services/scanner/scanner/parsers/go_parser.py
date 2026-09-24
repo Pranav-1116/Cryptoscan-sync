@@ -210,7 +210,7 @@ RULES: list[Rule] = [
     _r(r"\btls\.TLS_ECDHE_\w+\b", _KA, "crypto/tls", algorithm="ECDH", confidence="MEDIUM"),
     _r(r"\btls\.TLS_\w+_SHA\b(?!\d)", _D, "crypto/tls", algorithm="SHA-1", confidence="MEDIUM", confidence_reason="SHA-1 HMAC cipher suite"),
     _r(r"\bcredentials\.(?:NewTLS|NewClientTLSFromFile|NewServerTLSFromFile|NewClientTLSFromCert|NewServerTLSFromCert)\b|\bgrpc\.WithTransportCredentials\b|\bgrpc\.Creds\b|\bcredentials\.NewTLS\b", _TLS, "google.golang.org/grpc/credentials", algorithm="TLS", confidence="MEDIUM"),
-    _r(r"\bgrpc\.WithInsecure\s*\(|\binsecure\.NewCredentials\s*\(", _TLS, "google.golang.org/grpc", algorithm="TLS-NONE", confidence="HIGH", confidence_reason="gRPC transport without TLS"),
+    _r(r"\bgrpc\.WithInsecure\s*\(|\binsecure\.NewCredentials\s*\(", _TLS, "google.golang.org/grpc", algorithm="TLS-DISABLED", confidence="HIGH", confidence_reason="gRPC transport without TLS"),
     _r(r"\bhttp\.ListenAndServeTLS\b|\bServer\.ListenAndServeTLS\b|\bhttp\.Server\{[^}]*TLSConfig\s*:|\bTLSConfig\s*:\s*&tls\.Config\b|\bTLSClientConfig\s*:\s*&tls\.Config\b|\bautocert\.(?:NewListener|Manager)\b|\bacme\.\w+|\bcertmagic\.\w+|\blego\.\w+", _TLS, "net/http", algorithm="TLS", confidence="MEDIUM"),
     _r(r"\bquic\.(?:Dial|Listen|DialAddr|ListenAddr)\w*\b|\bhttp3\.\w+|\bwebtransport\.\w+", _TLS, "quic-go", algorithm="TLS1.3", confidence="MEDIUM"),
     _r(r"\bnoise\.(?:NewHandshakeState|NewCipherSuite|HandshakeXX|HandshakeIK|HandshakeNK|DH25519|CipherChaChaPoly|CipherAESGCM|HashSHA256|HashBLAKE2b|HashBLAKE2s)\b|\bwgtypes\.GenerateKey\b|\bwgtypes\.GeneratePrivateKey\b", _KA, "noise", algorithm="X25519", confidence="MEDIUM"),
