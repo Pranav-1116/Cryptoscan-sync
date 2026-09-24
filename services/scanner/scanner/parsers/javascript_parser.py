@@ -81,13 +81,97 @@ SECRET_ASSIGN = re.compile(
 )
 
 HASH_MAP = {
+    "md2": "MD2",
+    "md4": "MD4",
     "md5": "MD5",
+    "sha": "SHA-1",
     "sha1": "SHA-1",
+    "sha-1": "SHA-1",
+    "sha224": "SHA-224",
     "sha256": "SHA-256",
+    "sha-256": "SHA-256",
     "sha384": "SHA-384",
+    "sha-384": "SHA-384",
     "sha512": "SHA-512",
+    "sha-512": "SHA-512",
+    "sha512-256": "SHA-512",
+    "sha3-224": "SHA3-224",
     "sha3-256": "SHA3-256",
+    "sha3-384": "SHA3-384",
+    "sha3-512": "SHA3-512",
+    "shake128": "SHAKE128",
+    "shake256": "SHAKE256",
+    "ripemd160": "RIPEMD-160",
+    "rmd160": "RIPEMD-160",
+    "whirlpool": "WHIRLPOOL",
+    "blake2b512": "BLAKE2b",
+    "blake2s256": "BLAKE2s",
+    "sm3": "SM3",
 }
+
+
+_JOIN_LITERAL = re.compile(r"""\[\s*((?:['"][^'"]*['"]\s*,\s*)*['"][^'"]*['"])\s*\]\s*\.\s*join\s*\(\s*(?:['"]([^'"]*)['"])?\s*\)""")
+_CONCAT_LITERAL = re.compile(r"""(['"])([^'"\n]*)\1\s*\+\s*(['"])([^'"\n]*)\3""")
+_TEMPLATE_PLAIN = re.compile(r"`([^`$\\\n]*)`")
+_BRACKET_ACCESS = re.compile(r"""\[\s*(['"])(createHash|createHmac|createCipheriv|createCipher|createDecipheriv|createDecipher|createSign|createVerify|pbkdf2|pbkdf2Sync|scrypt|scryptSync|randomBytes|generateKeyPair|generateKeyPairSync|createECDH|createDiffieHellman|subtle|digest|encrypt|decrypt|sign|verify|generateKey|importKey|deriveKey|deriveBits|hash)\1\s*\]""")
+_DESTRUCTURE_ALIAS = re.compile(r"""\{([^}]*)\}\s*=\s*(?:await\s+)?(?:require\s*\(\s*['"](?:node:)?crypto['"]\s*\)|import\s*\(\s*['"](?:node:)?crypto['"]\s*\))""")
+_IMPORT_ALIAS = re.compile(r"""import\s*\{([^}]*)\}\s*from\s*['"](?:node:)?crypto['"]""")
+_STRING_CONST = re.compile(r"""\b(?:const|let|var)\s+(\w+)\s*(?::\s*string)?\s*=\s*(['"])([^'"\n]{1,80})\2\s*;?""")
+_TEMPLATE_SUBST = re.compile(r"\$\{\s*(\w+)\s*\}")
+
+
+def _desugar_js(source: str) -> str:
+    """Fold trivial string constructions so obfuscated algorithm names are seen
+    as literals.  Line-preserving.
+
+    * ``["a", "es-128-ecb"].join("")``       -> ``"aes-128-ecb"``
+    * ``"sha" + "512"``                       -> ``"sha512"``
+    * ``\`sha256\``` (template, no substitutions) -> ``"sha256"``
+    * ``\`${alg}-gcm\``` with ``const alg = "aes-256"`` -> ``"aes-256-gcm"``
+    * ``c["createHash"]("md5")``              -> ``c.createHash("md5")``
+    * ``const { createHash: mk } = require("crypto")`` / ``import { createHash as mk }``
+      -> later ``mk(`` calls are rewritten to ``createHash(``.
+    """
+    def _join(m: re.Match) -> str:
+        parts = re.findall(r"""['"]([^'"]*)['"]""", m.group(1))
+        return '"' + (m.group(2) or "").join(parts) + '"'
+
+    for _ in range(3):  # nested folds
+        new = _JOIN_LITERAL.sub(_join, source)
+        new = _CONCAT_LITERAL.sub(lambda m: '"' + m.group(2) + m.group(4) + '"', new)
+        new = _TEMPLATE_PLAIN.sub(lambda m: '"' + m.group(1) + '"', new)
+        if new == source:
+            break
+        source = new
+    source = _BRACKET_ACCESS.sub(lambda m: "." + m.group(2), source)
+
+    aliases: dict[str, str] = {}
+    for m in list(_DESTRUCTURE_ALIAS.finditer(source)) + list(_IMPORT_ALIAS.finditer(source)):
+        for item in m.group(1).split(","):
+            item = item.strip()
+            if ":" in item:
+                orig, alias = [x.strip() for x in item.split(":", 1)]
+            elif " as " in item:
+                orig, alias = [x.strip() for x in item.split(" as ", 1)]
+            else:
+                continue
+            if orig and alias and orig != alias and re.fullmatch(r"\w+", alias):
+                aliases[alias] = orig
+    for alias, orig in aliases.items():
+        source = re.sub(rf"(?<![\w.]){re.escape(alias)}\s*\(", orig + "(", source)
+
+    consts = {m.group(1): m.group(3) for m in _STRING_CONST.finditer(source)}
+    if consts:
+        def _tmpl(m: re.Match) -> str:
+            body = m.group(1)
+            def _sub(mm: re.Match) -> str:
+                return consts.get(mm.group(1), mm.group(0))
+            folded = _TEMPLATE_SUBST.sub(_sub, body)
+            if "${" in folded:
+                return m.group(0)
+            return '"' + folded + '"'
+        source = re.sub(r"`([^`\\\n]*)`", _tmpl, source)
+    return source
 
 
 def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -97,7 +181,7 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         return []
     from scanner.parsers.c_like import strip_c_like_comments
 
-    source = strip_c_like_comments(raw_source)
+    source = _desugar_js(strip_c_like_comments(raw_source))
     findings: list[RawFinding] = []
     language = "TYPESCRIPT" if file_path.suffix.lower() in {".ts", ".tsx"} else "JAVASCRIPT"
 
@@ -151,9 +235,10 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         add(
             match,
             api_type="MAC",
-            algorithm=HASH_MAP.get(raw.lower(), raw.upper()),
+            algorithm=f"HMAC-{HASH_MAP.get(raw.lower(), raw.upper())}",
             purpose="MAC_GENERATION",
             library="node-crypto",
+            raw_transformation=f"createHmac({raw})",
         )
     for match in NODE_SIGN.finditer(source):
         add(
@@ -165,6 +250,11 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         )
     for match in NODE_PBKDF.finditer(source):
         add(match, api_type="KEY_GENERATOR", algorithm="PBKDF2", purpose="PASSWORD_HASHING", library="node-crypto")
+        tail = source[match.end(): match.end() + 240]
+        digest = re.search(r"""^(?:[^;()]*?,){4}\s*['"]([A-Za-z0-9-]+)['"]""", tail)
+        if digest:
+            raw = digest.group(1)
+            add(match, api_type="MESSAGE_DIGEST", algorithm=HASH_MAP.get(raw.lower(), raw.upper()), purpose="HASHING", library="node-crypto")
     for match in NODE_SCRYPT.finditer(source):
         add(match, api_type="KEY_GENERATOR", algorithm="SCRYPT", purpose="PASSWORD_HASHING", library="node-crypto")
     for match in NODE_RANDOM.finditer(source):
@@ -361,6 +451,13 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
                 confidence_reason="high-entropy secret assignment",
             )
     findings.extend(_resolved_node_calls(file_path, repo_root, source, language, findings))
+    try:
+        from scanner.parsers.javascript_rules import run_javascript_rules
+
+        seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in findings}
+        findings.extend(run_javascript_rules(file_path, repo_root, source, language, SCANNER_ID, seen=seen))
+    except Exception:  # pragma: no cover - supplementary pass must never break the parser
+        pass
     return findings
 
 
