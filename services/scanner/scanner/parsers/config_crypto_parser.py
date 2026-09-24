@@ -261,6 +261,16 @@ def parse_config_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
             confidence_reason="cipher-suite-list",
             raw_transformation=suite[:80],
         )
+    try:
+        from scanner.parsers.config_rules import run_config_rules
+
+        seen = {
+            (f.source.line_number, f.crypto.algorithm or "", f.crypto.api_type or "")
+            for f in findings
+        }
+        findings.extend(run_config_rules(file_path, repo_root, text, SCANNER_ID, seen))
+    except Exception:  # rule pack must never break the base parser
+        pass
     return findings
 
 
