@@ -334,6 +334,16 @@ _PASSLIB_SCHEME = {
 }
 
 
+_CRYPTO_BASE_CLASSES = {
+    "HashAlgorithm", "ExtendableOutputFunction", "BlockCipherAlgorithm", "CipherAlgorithm", "EllipticCurve",
+    "KeyDerivationFunction", "AsymmetricPadding", "EllipticCurveSignatureAlgorithm", "AEADCipher", "AEADEncryptionContext",
+}
+_IMPL_CIPHERS = {
+    "aes": "AES", "aes128": "AES", "aes256": "AES", "camellia": "Camellia", "sm4": "SM4", "chacha20": "ChaCha20-Poly1305",
+    "arc4": "RC4", "rc4": "RC4", "tripledes": "3DES", "des": "DES", "blowfish": "Blowfish", "cast5": "CAST5", "idea": "IDEA", "seed": "SEED",
+}
+
+
 _M2_CIPHERS = [
     ("des_ede3", "3DES"), ("des_ede", "3DES"), ("des3", "3DES"), ("des", "DES"), ("aes", "AES"), ("bf", "Blowfish"),
     ("blowfish", "Blowfish"), ("rc4", "RC4"), ("rc2", "RC2"), ("cast5", "CAST5"), ("idea", "IDEA"), ("camellia", "Camellia"), ("seed", "SEED"), ("chacha20", "ChaCha20-Poly1305"),
@@ -424,6 +434,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         prev = self._current_class
         self._current_class = node.name
+        self._algorithm_implementation(node)
         self.generic_visit(node)
         self._current_class = prev
 
@@ -478,6 +489,14 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             self.generic_visit(node)
             return
 
+        if func == "getattr" and len(node.args) >= 2:
+            # getattr(hashlib, "md5", None) stored for later use (setuptools upload, table-driven digests)
+            module = self._resolve(_dotted(node.args[0]))
+            attr = self._fold_string(node.args[1])
+            if module.endswith("hashlib") and attr:
+                algo = _MODULE_ATTR_DIGEST.get(attr.lower())
+                if algo:
+                    self._hash(node, algo)
         resolved = self._resolve(func)
         if self._api_table(node, func, resolved):
             pass  # table hit; still fall through for mode/key-size enrichers below
@@ -510,6 +529,9 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             if algo:
                 mapped = _MODULE_ATTR_DIGEST.get(algo.lower(), algo.upper())
                 self._hash(node, mapped)
+            elif node.args or node.keywords:
+                self._add(node, api_type="MESSAGE_DIGEST", algorithm="UNKNOWN", purpose="HASHING", library="hashlib",
+                          confidence="LOW", confidence_reason="hashlib.new with a runtime-selected digest name")
 
         if self._is_hmac_call(func):
             digest = self._hmac_digest(node)
@@ -802,6 +824,26 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         imported = self._aliases.get(name, "")
         return imported.endswith(f"hashlib.{name}") or imported == f"hashlib.{name}"
 
+
+    def _algorithm_implementation(self, node: ast.ClassDef) -> None:
+        """``class AES(BlockCipherAlgorithm)`` / ``class SHA1(HashAlgorithm)``: a
+        crypto *implementation* (vendored library) rather than a call site. Only
+        fires when a base class is one of the well-known crypto ABCs."""
+        bases = {(_dotted(b) or "").split(".")[-1] for b in node.bases}
+        if not bases & _CRYPTO_BASE_CLASSES:
+            return
+        name = node.name
+        low = name.lower()
+        algo = _MODULE_ATTR_DIGEST.get(low) or _IMPL_CIPHERS.get(low)
+        if algo is None and re.fullmatch(r"(?:secp\d{3}[rk]1|brainpoolp\d{3}[rt]1|prime\d{3}v1)", low):
+            algo = "ECDSA"
+        if algo is None and low.startswith(("aes", "camellia", "sm4", "chacha20", "arc4", "rc4", "tripledes", "des", "blowfish", "cast5", "idea", "seed")):
+            algo = _IMPL_CIPHERS.get(re.sub(r"\d+$", "", low))
+        if algo is None:
+            return
+        api_type = "MESSAGE_DIGEST" if algo in set(_MODULE_ATTR_DIGEST.values()) else "KEY_PAIR_GENERATOR" if algo == "ECDSA" else "CIPHER_INSTANCE"
+        self._add(node, api_type=api_type, algorithm=algo, purpose="ALGORITHM_IMPLEMENTATION", library="vendored-implementation",
+                  confidence="MEDIUM", confidence_reason=f"class {name} implements a cryptographic primitive (base {', '.join(sorted(bases & _CRYPTO_BASE_CLASSES))})")
 
     def _settings_assignment(self, node: ast.Assign, value: Optional[str]) -> None:
         """Django/Flask/FastAPI settings modules: algorithms named by constants."""

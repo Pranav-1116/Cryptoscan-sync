@@ -30,6 +30,8 @@ DEFAULT_EXCLUDED_DIRS = frozenset({
     "vendor",
 })
 
+_OUTPUT_DIR_NAMES = frozenset({"build", "out", "target", "dist", "bin"})
+
 # Directories likely to contain generated or test code (configurable exclusion)
 DEFAULT_TEST_DIRS = frozenset({
     "test",
@@ -124,6 +126,18 @@ class FileDiscovery:
         self._max_file_size_bytes = int(max_file_size_mb * 1024 * 1024)
         self._extensions = tuple(extensions) if extensions else DEFAULT_SOURCE_EXTENSIONS
 
+    def _is_excluded_dir(self, path: Path) -> bool:
+        name = path.name
+        if name not in self._excluded_dirs:
+            return False
+        # ``build`` / ``out`` / ``target`` / ``dist`` / ``bin`` are build *outputs* by
+        # convention, but they are also ordinary source package names
+        # (pip/_internal/operations/build/). A directory that is a Python package
+        # is source, not output.
+        if name in _OUTPUT_DIR_NAMES and (path / "__init__.py").is_file():
+            return False
+        return True
+
     def discover(self, root_path: Path) -> Iterator[Path]:
         """
         Yield all Java source files under root_path.
@@ -149,7 +163,7 @@ class FileDiscovery:
             # Modify dirnames IN PLACE to prevent os.walk from descending into excluded dirs
             dirnames[:] = [
                 d for d in dirnames
-                if d not in self._excluded_dirs and not d.startswith(".")
+                if not d.startswith(".") and not self._is_excluded_dir(Path(dirpath) / d)
             ]
 
             current_dir = Path(dirpath)
