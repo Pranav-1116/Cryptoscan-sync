@@ -100,3 +100,16 @@ each with a regression test; hand-labelled corpus unchanged at 348/348.
 |---|---|---|
 | curl | 288 → 412, 25 → 40 files | All six TLS backends (OpenSSL, GnuTLS, mbedTLS, wolfSSL, Schannel, **rustls-ffi — previously invisible**), QUIC, NTLM DES/MD4/MD5, Ed25519 ✔. **miss:** curl's own digest/MAC abstraction (`Curl_MD5_init/update/final`, `Curl_HMAC_init`, `Curl_HMAC_MD5`, `Curl_DIGEST_MD5`) hid HTTP Digest, CRAM-MD5, APOP, AWS SigV4 and NTLMv2 → generic *project-wrapper* rules added (function name embeds a digest name plus an init/update/final verb; `<prefix>_HMAC_<digest>` descriptors). Also added Apple Secure Transport / Network.framework protocol constants. Not reported by design: pure implementations `md5.c`, `md4.c`, `sha256.c` beyond their OpenSSL/mbedTLS branches. 21 s (largest tree so far). |
 | YARP | 202 | `SslProtocols.Ssl2/Ssl3/Tls/Tls11` in the TLS-frame parser tests, `X509Certificate2`, AES data-protection ✔. **FP:** `new Random()` next to a `CancellationToken cancellationToken` parameter was read as "token context" → the C# rule now uses the shared security-context gate, which ignores `CancellationToken` and also looks at the enclosing class name. |
+
+## Round 7 — laravel/framework (PHP, 3,098 files) and kubernetes/ingress-nginx (Go + nginx templates + manifests)
+
+| Project | Findings | Review |
+|---|---|---|
+| laravel/framework | 1,256 → 1,050 | Encrypter AES-CBC/GCM + HMAC-SHA256, Hash bcrypt/argon2, `random_bytes`/`Str::random`, `hash_hmac('sha256')`, HKDF ✔. **FPs found and fixed:** (1) `hash("foo", …)` inside an SQL DDL string in a test produced algorithm `FOO` — PHP `hash()` now only reports names PHP actually supports and *drops* non-cryptographic hashes (xxh128/xxh3/crc32/fnv/murmur/adler — 66 findings gone); (2) `new Builder(` was claimed by both the lcobucci-JWT and paragonie-PASETO rules (134 phantom JWT/PASETO findings on Laravel's query builder) — both now require the vendor namespace; (3) `uniqid(…, true)` / `mt_srand` in cache and memoisation tests reported as weak RNG — PHP now uses the shared security-context gate. |
+| ingress-nginx | 195 | TLS/X.509 handling in the controller, `InsecureSkipVerify` in e2e tests, DH params, OCSP, bcrypt in auth tests, nginx `ssl_*` directives in the template ✔ |
+
+### Performance
+The Laravel scan exposed the cost of ~300 regex rules per file (71 s). The rule engine now
+pre-computes, per rule, the literal words that *must* appear in any match and skips the rule
+when the file lacks them. Verified on 4,447 findings across ten repos: byte-identical output,
+53 s → 20 s. Unit-tested in `tests/unit/test_rule_prefilter.py`.

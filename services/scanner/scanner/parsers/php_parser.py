@@ -74,17 +74,32 @@ def _split_openssl(name: str) -> tuple[str, str | None, int | None]:
     return upper, mode, key_size
 
 
-def _map_hash(raw: str) -> str:
+_NON_CRYPTO_HASHES = {"CRC32", "CRC32B", "CRC32C", "ADLER32", "JOAAT", "MURMUR3A", "MURMUR3C", "MURMUR3F", "XXH32", "XXH64", "XXH3", "XXH128"}
+_NON_CRYPTO_PREFIXES = ("FNV", "MURMUR", "XXH", "CRC")
+
+
+def _map_hash(raw: str) -> str | None:
+    """Map a PHP ``hash()`` algorithm name to the scanner vocabulary.
+
+    Returns ``None`` for checksums / non-cryptographic hashes (crc32, xxh128, fnv…)
+    and for strings that are not hash algorithms at all (``hash ("foo", "bar")`` in an
+    SQL index DDL) — those are not cryptographic assets and must not be reported."""
     key = raw.upper().replace("_", "-")
-    return {
-        "SHA1": "SHA-1",
-        "SHA256": "SHA-256",
-        "SHA384": "SHA-384",
-        "SHA512": "SHA-512",
-        "SHA3-256": "SHA3-256",
-        "WHIRLPOOL": "WHIRLPOOL",
-        "RIPEMD160": "RIPEMD-160",
-    }.get(key, key)
+    if key in _NON_CRYPTO_HASHES or key.startswith(_NON_CRYPTO_PREFIXES):
+        return None
+    known = {
+        "MD2": "MD2", "MD4": "MD4", "MD5": "MD5",
+        "SHA1": "SHA-1", "SHA224": "SHA-224", "SHA256": "SHA-256", "SHA384": "SHA-384", "SHA512": "SHA-512",
+        "SHA512/224": "SHA-512", "SHA512/256": "SHA-512",
+        "SHA3-224": "SHA3-224", "SHA3-256": "SHA3-256", "SHA3-384": "SHA3-384", "SHA3-512": "SHA3-512",
+        "WHIRLPOOL": "WHIRLPOOL", "RIPEMD128": "RIPEMD-128", "RIPEMD160": "RIPEMD-160", "RIPEMD256": "RIPEMD-256", "RIPEMD320": "RIPEMD-320",
+        "TIGER128-3": "TIGER", "TIGER160-3": "TIGER", "TIGER192-3": "TIGER", "TIGER128-4": "TIGER", "TIGER160-4": "TIGER", "TIGER192-4": "TIGER",
+        "SNEFRU": "SNEFRU", "SNEFRU256": "SNEFRU", "GOST": "GOST", "GOST-CRYPTO": "GOST",
+        "HAVAL128-3": "HAVAL", "HAVAL160-3": "HAVAL", "HAVAL192-3": "HAVAL", "HAVAL224-3": "HAVAL", "HAVAL256-3": "HAVAL",
+        "HAVAL128-4": "HAVAL", "HAVAL160-4": "HAVAL", "HAVAL192-4": "HAVAL", "HAVAL224-4": "HAVAL", "HAVAL256-4": "HAVAL",
+        "HAVAL128-5": "HAVAL", "HAVAL160-5": "HAVAL", "HAVAL192-5": "HAVAL", "HAVAL224-5": "HAVAL", "HAVAL256-5": "HAVAL",
+    }
+    return known.get(key)
 
 
 def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -130,10 +145,13 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
             raw_transformation=match.group(1),
         )
     for match in _HASH.finditer(text):
+        mapped = _map_hash(match.group(1))
+        if mapped is None:
+            continue
         add(
             text[: match.start()].count("\n") + 1,
             api_type="MESSAGE_DIGEST",
-            algorithm=_map_hash(match.group(1)),
+            algorithm=mapped,
             purpose="HASHING",
             library="php-hash",
             raw_transformation=match.group(1),
@@ -142,7 +160,7 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
         add(
             text[: match.start()].count("\n") + 1,
             api_type="MAC",
-            algorithm=f"HMAC-{_map_hash(match.group(1))}",
+            algorithm=f"HMAC-{_map_hash(match.group(1))}" if _map_hash(match.group(1)) else "HMAC",
             purpose="MAC_GENERATION",
             library="php-hash",
             raw_transformation=match.group(1),
@@ -160,7 +178,7 @@ def parse_php_file(file_path: Path, repo_root: Path | None = None) -> list[RawFi
         add(
             text[: match.start()].count("\n") + 1,
             api_type="MESSAGE_DIGEST",
-            algorithm=_map_hash(match.group(1)),
+            algorithm=_map_hash(match.group(1)) or "UNKNOWN",
             purpose="HASHING",
             library="openssl",
         )
@@ -308,7 +326,9 @@ def _resolved_php_calls(
             algo, mode, key_size = _split_openssl(raw)
         else:
             mapped = _map_hash(raw)
-            algo, mode, key_size = (f"HMAC-{mapped}" if api_type == "MAC" else mapped), None, None
+            if mapped is None and api_type != "MAC":
+                continue
+            algo, mode, key_size = ((f"HMAC-{mapped}" if mapped else "HMAC") if api_type == "MAC" else mapped), None, None
         line = source[: int(arg.get("offset") or call.offset)].count("\n") + 1
         key = (line, str(algo))
         if key in claimed:

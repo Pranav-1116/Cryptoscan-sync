@@ -175,6 +175,106 @@ def expand_macros(text: str) -> str:
     return "\n".join(out_lines)
 
 
+_LITERAL_CACHE: dict[int, tuple[frozenset[str], ...] | None] = {}
+_LITERAL_WORD = re.compile(r"[a-z0-9_]{4,}")
+
+
+def _split_top_level(pattern: str) -> list[str]:
+    """Split a regex on ``|`` at nesting depth 0 (outside groups and classes)."""
+    parts, depth, in_class, buf, i = [], 0, False, [], 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "\\":
+            buf.append(pattern[i : i + 2]); i += 2; continue
+        if in_class:
+            if ch == "]":
+                in_class = False
+        elif ch == "[":
+            in_class = True
+        elif ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        elif ch == "|" and depth == 0:
+            parts.append("".join(buf)); buf = []; i += 1; continue
+        buf.append(ch); i += 1
+    parts.append("".join(buf))
+    return parts
+
+
+def _required_literals(alternative: str) -> frozenset[str]:
+    """Lower-cased literal words that *must* appear in any match of ``alternative``.
+
+    Conservative: only depth-0 text is considered (anything inside a group may be
+    optional or one of several branches), and a literal immediately followed by a
+    quantifier that allows zero repetitions (``?``, ``*``, ``{0,``) is dropped.
+    Returns an empty set when nothing can be proven, which disables the prefilter."""
+    out, depth, in_class, i, cur = [], 0, False, 0, []
+    def flush(next_ch: str):
+        word = "".join(cur)
+        cur.clear()
+        if not word:
+            return
+        if next_ch and next_ch in "?*{":
+            word = word[:-1]  # last char is optional
+        out.append(word)
+    while i < len(alternative):
+        ch = alternative[i]
+        if ch == "\\":
+            flush(""); i += 2; continue  # a quantifier after an escape binds to the escape
+        if in_class:
+            if ch == "]":
+                in_class = False
+            i += 1; continue
+        if ch == "[":
+            flush(""); in_class = True; i += 1; continue
+        if ch == "(":
+            flush(""); depth += 1; i += 1; continue
+        if ch == ")":
+            depth -= 1; i += 1; continue
+        if depth > 0:
+            i += 1; continue
+        if ch.isalnum() or ch == "_":
+            cur.append(ch.lower())
+        else:
+            flush(ch if ch in "?*{" else "")
+        i += 1
+    flush("")
+    words = set()
+    for w in out:
+        for m in _LITERAL_WORD.finditer(w):
+            words.add(m.group(0))
+    return frozenset(words)
+
+
+def _prefilter(pattern: "re.Pattern[str]") -> tuple[frozenset[str], ...] | None:
+    key = id(pattern)
+    if key in _LITERAL_CACHE:
+        return _LITERAL_CACHE[key]
+    alts = []
+    for alt in _split_top_level(pattern.pattern):
+        lits = _required_literals(alt)
+        if not lits:
+            _LITERAL_CACHE[key] = None  # one alternative has no provable literal → never skip
+            return None
+        alts.append(lits)
+    result = tuple(alts)
+    _LITERAL_CACHE[key] = result
+    return result
+
+
+def _may_match(pattern: "re.Pattern[str]", lower_text: str) -> bool:
+    """Cheap literal prefilter: a rule can only match if, for at least one of its
+    top-level alternatives, every required literal word occurs in the text."""
+    alts = _prefilter(pattern)
+    if alts is None:
+        return True
+    for lits in alts:
+        if all(lit in lower_text for lit in lits):
+            return True
+    return False
+
+
 def run_rules(
     *,
     file_path: Path,
@@ -220,7 +320,10 @@ def run_rules(
             )
         )
 
+    lower_text = text.lower()
     for pattern, spec in rules:
+        if not _may_match(pattern, lower_text):
+            continue
         for match in pattern.finditer(text):
             line = text[: match.start()].count("\n") + 1
             algorithm = spec.get("algorithm")

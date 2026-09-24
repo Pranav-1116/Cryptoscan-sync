@@ -10,7 +10,7 @@ import re
 from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
-from scanner.parsers.rule_engine import DIGEST_TOKENS, Rule, run_rules
+from scanner.parsers.rule_engine import filter_prng_context, DIGEST_TOKENS, Rule, run_rules
 
 _D = {"api_type": "MESSAGE_DIGEST", "purpose": "HASHING"}
 _C = {"api_type": "CIPHER_INSTANCE", "purpose": "ENCRYPTION"}
@@ -189,7 +189,7 @@ RULES: list[Rule] = [
     _r(rf"\bJWT::encode\s*\([^;]*?,\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES256K|ES384|ES512|PS256|PS384|PS512|EdDSA|none){_Q}", _S, "firebase/php-jwt", algo_from_group=1, algo_map=_JWT_ALGS),
     _r(rf"\bnew\s+(?:Firebase\\\\JWT\\\\)?Key\s*\([^;]*?,\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES256K|ES384|ES512|PS256|PS384|PS512|EdDSA|none){_Q}", _S, "firebase/php-jwt", algo_from_group=1, algo_map=_JWT_ALGS),
     _r(r"\bJWT::\$leeway\b|\bJWT::\$supported_algs\b|\bJWT::\$timestamp\b", _S, "firebase/php-jwt", algorithm="JWT", confidence="MEDIUM"),
-    _r(r"\bLcobucci\\\\JWT\b|\bConfiguration::for(?:Symmetric|Asymmetric|Unsecured)Signer\s*\(|\bnew\s+(?:Lcobucci\\\\JWT\\\\Signer\\\\)?(?:Hmac|Rsa|Ecdsa|Eddsa|Blake2b|Sha256|Sha384|Sha512|None)\b|\bSigner\\\\(?:Hmac|Rsa|Ecdsa|Eddsa|Blake2b|Key\\\\InMemory|Key\\\\LocalFileReference)\b|\bInMemory::(?:plainText|base64Encoded|file|empty)\s*\(|\bJwtFacade\b|\bnew\s+Builder\s*\(|\bnew\s+Parser\s*\(|->getToken\s*\(|\bSignedWith\b|\bLooseValidAt\b|\bStrictValidAt\b|\bissuedBy\s*\(|\bpermittedFor\s*\(|\bidentifiedBy\s*\(|\brelatedTo\s*\(", _S, "lcobucci/jwt", algorithm="JWT", confidence="MEDIUM"),
+    _r(r"\bLcobucci\\\\JWT\b|\bConfiguration::for(?:Symmetric|Asymmetric|Unsecured)Signer\s*\(|\bnew\s+(?:Lcobucci\\\\JWT\\\\Signer\\\\)?(?:Hmac|Rsa|Ecdsa|Eddsa|Blake2b|Sha256|Sha384|Sha512|None)\b|\bSigner\\\\(?:Hmac|Rsa|Ecdsa|Eddsa|Blake2b|Key\\\\InMemory|Key\\\\LocalFileReference)\b|\bInMemory::(?:plainText|base64Encoded|file|empty)\s*\(|\bJwtFacade\b|\bnew\s+(?:Lcobucci\\\\JWT\\\\)?Token\\\\Builder\s*\(|\bnew\s+Parser\s*\(|->getToken\s*\(|\bSignedWith\b|\bLooseValidAt\b|\bStrictValidAt\b|\bissuedBy\s*\(|\bpermittedFor\s*\(|\bidentifiedBy\s*\(|\brelatedTo\s*\(", _S, "lcobucci/jwt", algorithm="JWT", confidence="MEDIUM"),
     _r(r"\bSigner\\\\Hmac\\\\(Sha256|Sha384|Sha512)\b|\bnew\s+(?:Lcobucci\\\\JWT\\\\Signer\\\\)?Hmac\\\\(Sha256|Sha384|Sha512)\b|\bHmac\\\\(Sha256|Sha384|Sha512)::create\s*\(", _M, "lcobucci/jwt", algorithm="HMAC", emit_digest_group=1),
     _r(r"\bSigner\\\\Rsa\\\\(Sha256|Sha384|Sha512)\b|\bRsa\\\\(Sha256|Sha384|Sha512)::create\s*\(|\bnew\s+Rsa\\\\(Sha256|Sha384|Sha512)\b", _S, "lcobucci/jwt", algorithm="RSA", emit_digest_group=1),
     _r(r"\bSigner\\\\Ecdsa\\\\(Sha256|Sha384|Sha512)\b|\bEcdsa\\\\(Sha256|Sha384|Sha512)::create\s*\(|\bnew\s+Ecdsa\\\\(Sha256|Sha384|Sha512)\b", _S, "lcobucci/jwt", algorithm="ECDSA", emit_digest_group=1),
@@ -216,7 +216,7 @@ RULES: list[Rule] = [
     _r(rf"\bnew\s+(?:Namshi\\\\JOSE\\\\)?(?:JWS|SimpleJWS)\s*\(\s*\[\s*{_Q}alg{_Q}\s*=>\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|none){_Q}", _S, "namshi/jose", algo_from_group=1, algo_map=_JWT_ALGS),
     _r(r"\bAdhocore\\\\Jwt\b|\bnew\s+(?:Ahc\\\\Jwt\\\\)?JWT\s*\(|\bJWT::(?:encode|decode)\s*\(", _S, "adhocore/jwt", algorithm="JWT", confidence="MEDIUM"),
     _r(rf"\bnew\s+(?:Ahc\\\\Jwt\\\\)?JWT\s*\([^;]*?,\s*{_Q}(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512){_Q}", _S, "adhocore/jwt", algo_from_group=1, algo_map=_JWT_ALGS),
-    _r(r"\bParagonIE\\\\Paseto\b|\bnew\s+(?:Paseto\\\\)?(?:Builder|Parser)\s*\(|\bProtocol\\\\Version[1-4]\b|\bnew\s+Version[1-4]\s*\(|\bSymmetricKey::generate\s*\(|\bAsymmetricSecretKey::generate\s*\(|\bAsymmetricPublicKey\b", _S, "paragonie/paseto", algorithm="PASETO", confidence="MEDIUM"),
+    _r(r"\bParagonIE\\\\Paseto\b|\bnew\s+Paseto\\\\(?:Builder|Parser)\s*\(|\bPaseto\\\\Protocol\\\\Version[1-4]\b|\bSymmetricKey::generate\s*\(|\bAsymmetricSecretKey::generate\s*\(", _S, "paragonie/paseto", algorithm="PASETO", confidence="MEDIUM"),
     _r(r"\bProtocol\\\\Version[24]\b|\bnew\s+Version[24]\s*\(", _C, "paragonie/paseto", algorithm="XChaCha20-Poly1305", confidence="MEDIUM"),
     _r(r"\bProtocol\\\\Version[13]\b|\bnew\s+Version[13]\s*\(", _C, "paragonie/paseto", algorithm="AES", mode="CTR", confidence="MEDIUM"),
     _r(r"\bProtocol\\\\Version[24]\b|\bAsymmetricSecretKey::generate\s*\(\s*new\s+Version[24]", _S, "paragonie/paseto", algorithm="Ed25519", confidence="MEDIUM"),
@@ -370,7 +370,14 @@ RULES: list[Rule] = [
 ]
 
 
+_PHP_FUNC_DECL = re.compile(r"^\s*(?:(?:public|private|protected|static|final|abstract)\s+)*function\s+\w+\s*\(")
+
+
 def run_php_rules(file_path: Path, repo_root: Path | None, source: str, scanner_id: str, seen: set[tuple[int, str]] | None = None) -> list[RawFinding]:
+    return filter_prng_context(_run_php_rules(file_path, repo_root, source, scanner_id, seen), source, _PHP_FUNC_DECL)
+
+
+def _run_php_rules(file_path: Path, repo_root: Path | None, source: str, scanner_id: str, seen: set[tuple[int, str]] | None = None) -> list[RawFinding]:
     return run_rules(
         file_path=file_path,
         repo_root=repo_root,
