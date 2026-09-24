@@ -1302,3 +1302,8 @@ try:
 except ImportError:  # pragma: no cover
     from corpus_wave8_payments import register as _register_wave8  # type: ignore[no-redef]
 _register_wave8(_c)
+try:
+    from .corpus_wave9_sql_cobol import register as _register_wave9
+except ImportError:  # pragma: no cover
+    from corpus_wave9_sql_cobol import register as _register_wave9  # type: ignore[no-redef]
+_register_wave9(_c)

@@ -166,3 +166,17 @@ New detector surface (all in `java_rules.py`, plus `known_algorithm_or_unknown()
 PIN blocks (ISO 9564 formats; `FORMAT04` → AES), CVV/CVC/dCVV, EMV ARQC/ARPC/SKD/MKD, ISO 9797 retail MAC, `SecureDESKey`/`TYPE_ZPK…`/`KeyScheme`, DUKPT/KSN/BDK, TR-31 / `SecureKeyBlock`, KCV, SM adapters (inventory-only UNKNOWN), Thales `ThalesAdapter`/payShield/LMK, PKCS#11 providers (SunPKCS11, IAIK, Luna, nCipher, Utimaco, CloudHSM, IBMJCECCA) with per-family `CKM_*`/`CKK_*` resolution, SWIFT LAU, 3-D Secure CAVV, FF1/FF3-1 format-preserving encryption. Corpus wave 8 (31 files, blind) first pass 25/31 → 544/544.
 
 Still open for a bank engagement (not covered by any proxy on GitHub): PL/SQL `DBMS_CRYPTO` / T-SQL `ENCRYPTBYKEY`/`HASHBYTES`, COBOL ICSF callable services (`CSNBENC`, `CSNBSYE`, `CSNBOWH`, `CSNBPVR`), CICS/IMS middleware config, and throughput on a 10M-LOC monorepo. These are the next parsers.
+
+## Round 12 — database and mainframe code (new `sql_parser.py`, `cobol_parser.py`)
+
+`.sql/.pks/.pkb/.pls/.prc/.tsql/.ddl…` and `.cbl/.cob/.cpy/.jcl/.pco/.sqb…` were not scanned before. Corpus wave 9 (50 files, 9 negatives) → 594/594.
+
+| Project | Files | Findings | Review |
+|---|---|---|---|
+| microsoft/sql-server-samples | 2359 (≈1400 .sql) | 90 in 30 files | Always Encrypted `ALGORITHM = 'AEAD_AES_256_CBC_HMAC_SHA_256'` → AES + HMAC-SHA256 (17 scripts), `COLUMN_ENCRYPTION_KEY`, `HASHBYTES('SHA2_256'/'SHA2_512')` in WideWorldImporters password procedures (5 of 6 files — the 6th has it only in a comment), `CREATE CERTIFICATE` templates. **One FP class found and removed**: the DB2 `HASH(expr, n)` rule matched SQL Server memory-optimized `INDEX … HASH (col) WITH (BUCKET_COUNT = 3…)` across lines — now requires a single identifier and a bare 0–3 second argument. |
+| utPLSQL/utPLSQL (PL/SQL framework) | 499 | 6 | `dbms_crypto.hash_sh256` ×5 (correct), `curl -Lk` in a dev script. Zero noise across 400+ PL/SQL bodies. |
+| oracle-samples/db-sample-schemas | 223 | 0 | Product descriptions containing the word "encryption" correctly ignored. |
+| aws-samples/aws-mainframe-modernization-carddemo (CICS/VSAM card app, 184 COBOL/JCL/copybooks) | 184 | 0 | No ICSF calls in the repo (`grep -i CSNB\|ICSF` empty) — a 184-file true-negative set for the COBOL parser: VSAM `RECORD KEY`, `PASSWORD` fields, `FUNCTION RANDOM`, JCL all silent. |
+| openmainframeproject/cobol-programming-course | 73 | 0 | Same — no cryptography, no noise. |
+
+Limitation stated plainly: no public COBOL repository exercises ICSF, so the positive side of the COBOL parser is validated only by the wave-9 corpus (written from the ICSF Application Programmer's Guide verb list and rule-array keywords). The first real-bank engagement should start by running `scan_third_party.py` over the ICSF-calling modules and triaging that output.

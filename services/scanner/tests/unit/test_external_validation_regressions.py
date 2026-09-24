@@ -230,3 +230,23 @@ def test_wave8_payments_hsm(tmp_path):
     # throws SMException on its own is not an inventory item
     neg = _write(tmp_path, "N.java", "class N { void f() throws SMException { String pan = mask(pan); } }\n")
     assert not _algos(parse_java_file(neg, tmp_path))
+
+
+def test_wave9_sql_and_cobol(tmp_path):
+    """Database + mainframe parsers (external round 12: sql-server-samples, utPLSQL, CardDemo)."""
+    from scanner.parsers.sql_parser import parse_sql_file
+    from scanner.parsers.cobol_parser import parse_cobol_file
+    tsql = _write(tmp_path, "a.sql", "UPDATE u SET h = HASHBYTES(N'SHA2_256', @p);\nCREATE SYMMETRIC KEY k WITH ALGORITHM = AES_256 ENCRYPTION BY CERTIFICATE c;\n")
+    assert {"SHA-256", "AES"} <= set(_algos(parse_sql_file(tsql, tmp_path)))
+    # hash indexes / hash partitioning / comments are not crypto
+    neg = _write(tmp_path, "b.sql", "CREATE TABLE t (id INT, INDEX ix HASH (id) WITH (BUCKET_COUNT = 3));\n-- HASHBYTES('MD5', x) was here\nSELECT ORA_HASH(id) FROM t PARTITION BY HASH (id);\n")
+    assert not _algos(parse_sql_file(neg, tmp_path))
+    ora = _write(tmp_path, "c.pkb", "FUNCTION gen_otp RETURN VARCHAR2 IS BEGIN\nl := DBMS_CRYPTO.ENCRYPT(r, DBMS_CRYPTO.ENCRYPT_AES256 + DBMS_CRYPTO.CHAIN_CBC, k);\nRETURN LPAD(DBMS_RANDOM.VALUE(0,999999), 6, '0'); -- otp\n")
+    algos = set(_algos(parse_sql_file(ora, tmp_path)))
+    assert "AES" in algos and "PRNG" in algos
+    cbl = _write(tmp_path, "p.cbl", "       01  RULE-ARRAY PIC X(8) VALUE 'SHA-256 '.\n           CALL 'CSNBOWH' USING RC RS.\n           CALL 'CSNBPVR' USING RC RS PIN-BLOCK.\n           CALL 'CSNDDSG' USING RC RS.\n")
+    algos = set(_algos(parse_cobol_file(cbl, tmp_path)))
+    assert {"SHA-256", "3DES", "RSA"} <= algos
+    # fixed-format comment lines (col 7 '*') and floating '*>' comments are blanked; VSAM keys ignored
+    negc = _write(tmp_path, "n.cbl", "      * CALL 'CSNBENC' FOR DES\n           RECORD KEY IS CUST-ID  *> CSNBOWH\n           COMPUTE X = FUNCTION RANDOM * 10.\n")
+    assert not _algos(parse_cobol_file(negc, tmp_path))

@@ -21,6 +21,8 @@ from scanner.parsers.python_parser import parse_python_file
 from scanner.parsers.ruby_parser import parse_ruby_file
 from scanner.parsers.rust_parser import parse_rust_file
 from scanner.parsers.shell_parser import parse_shell_file
+from scanner.parsers.sql_parser import parse_sql_file
+from scanner.parsers.cobol_parser import parse_cobol_file
 from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.xml_parser import parse_xml_file
 from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
@@ -37,6 +39,8 @@ RUBY_EXT = {".rb"}
 RUST_EXT = {".rs"}
 SHELL_EXT = {".sh", ".bash", ".zsh", ".ksh"}
 SWIFT_EXT = {".swift"}
+SQL_EXT = {".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc"}
+COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
 PLIST_EXT = {".plist", ".entitlements"}
 XML_EXT = {".xml", ".config", ".csproj", ".props", ".targets", ".wsdl", ".xaml"}
 C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
@@ -56,6 +60,8 @@ PARSERS = (
     (RUST_EXT, parse_rust_file),
     (SHELL_EXT, parse_shell_file),
     (SWIFT_EXT, parse_swift_file),
+    (SQL_EXT, parse_sql_file),
+    (COBOL_EXT, parse_cobol_file),
     (PLIST_EXT, parse_swift_file),
     (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),

@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-09-24T16:16:24+00:00",
+  "generated_at": "2026-09-24T16:27:02+00:00",
   "corpus": {
     "python": 68,
-    "positive": 377,
+    "positive": 427,
     "negative": 89,
     "obfuscated": 18,
     "java": 84,
@@ -24,19 +24,21 @@
     "shell": 31,
     "swift": 29,
     "xml": 20,
-    "total": 544
+    "sql": 30,
+    "cobol": 20,
+    "total": 594
   },
   "overall": {
-    "tp": 854,
+    "tp": 920,
     "fp": 0,
     "fn": 0,
-    "tn": 105,
+    "tn": 111,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 544,
-    "files_exact": 544,
+    "files": 594,
+    "files_exact": 594,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -51,6 +53,19 @@
       "accuracy": 1.0,
       "files": 35,
       "files_exact": 35,
+      "file_exact_rate": 1.0
+    },
+    "cobol": {
+      "tp": 19,
+      "fp": 0,
+      "fn": 0,
+      "tn": 3,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 20,
+      "files_exact": 20,
       "file_exact_rate": 1.0
     },
     "config": {
@@ -222,6 +237,19 @@
       "files_exact": 31,
       "file_exact_rate": 1.0
     },
+    "sql": {
+      "tp": 47,
+      "fp": 0,
+      "fn": 0,
+      "tn": 3,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 30,
+      "files_exact": 30,
+      "file_exact_rate": 1.0
+    },
     "swift": {
       "tp": 48,
       "fp": 0,
@@ -303,16 +331,16 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 696,
+      "tp": 762,
       "fp": 0,
       "fn": 0,
-      "tn": 10,
+      "tn": 16,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 377,
-      "files_exact": 377,
+      "files": 427,
+      "files_exact": 427,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-24T16:16:24+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 544 files). Scored per algorithm family per file._
+_Generated 2026-09-24T16:27:02+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 594 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,14 +10,15 @@ _Generated 2026-09-24T16:16:24+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 544 / 544 (100.0%) |
-| TP / FP / FN / TN | 854 / 0 / 0 / 105 |
+| Files scored exactly right | 594 / 594 (100.0%) |
+| TP / FP / FN / TN | 920 / 0 / 0 / 111 |
 
 ## By language
 
 | Language | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | c | 35 | 100.0% | 100.0% | 100.0% | 35/35 |
+| cobol | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
 | config | 34 | 100.0% | 100.0% | 100.0% | 34/34 |
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | csharp | 36 | 100.0% | 100.0% | 100.0% | 36/36 |
@@ -31,6 +32,7 @@ _Generated 2026-09-24T16:16:24+00:00 by `scripts/accuracy_benchmark.py` against 
 | ruby | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
 | rust | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
 | shell | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
+| sql | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
 | swift | 29 | 100.0% | 100.0% | 100.0% | 29/29 |
 | typescript | 10 | 100.0% | 100.0% | 100.0% | 10/10 |
 | xml | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
@@ -42,7 +44,7 @@ _Generated 2026-09-24T16:16:24+00:00 by `scripts/accuracy_benchmark.py` against 
 | config | 22 | 100.0% | 100.0% | 100.0% | 22/22 |
 | negative | 89 | 100.0% | 100.0% | 100.0% | 89/89 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 377 | 100.0% | 100.0% | 100.0% | 377/377 |
+| positive | 427 | 100.0% | 100.0% | 100.0% | 427/427 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -67,6 +69,7 @@ misses were fixed and locked in as regression tests.
 | 6 — XML configuration: web.config/WCF/ADO.NET, Spring Security XML, Android network security, Tomcat/WildFly, JDBC URLs, pom/NuGet crypto deps, SAML/XML-DSig URIs. Not blind (parser written alongside). The single first-pass miss: Tomcat `ciphers=` list was not expanded per algorithm because the rule exposed the whole tag as raw text (new `raw_group` engine key) | 20 | 1.000 / 0.992 / 0.996 | F1 1.000 (470/470) |
 | 7 — BLIND: Android Keystore, javax.crypto specs, .NET ECDiffieHellman/IncrementalHash, PHP sodium_*, RbNaCl/ActiveSupport, Rust openssl::symm, sodium-native/tweetnacl, Go x/crypto/ssh+nacl, pyca AESGCMSIV/X25519/PSS, paramiko, plus 8 hostile negatives. Labels frozen in commit before the first run. First pass 41/45 exact: KeyAgreement "XDH" leaked as a raw name, ECCurve inside ECDiffieHellman.Create reported as ECDSA, IncrementalHash.CreateHMAC missed, password_hash(…, PASSWORD_ARGON2ID) also emitted the BCRYPT default | 45 | 0.996 / 0.999 / 0.998 | F1 1.000 (513/513) |
 | 8 — BLIND, bank/payments realism: jPOS SMAdapter (PIN translate/verify, CVV, ARQC/ARPC, DUKPT, TR-31 import, retail MAC, KCV), Thales payShield adapter + LMK, PKCS#11 providers (SunPKCS11, IAIK CKM_*, Luna, CloudHSM, IBMJCECCA), SWIFT LAU, 3-D Secure CAVV/JWS, FF1 FPE, plus 6 payment-domain negatives (Luhn, PAN masking, ISO 8583 field 52/64, key-value store, Base64, settlement). Labels frozen before the first run. First pass 25/31 exact: KeyScheme.R (TR-31 key block) not mapped, `(SecureDESKey) ks.getKey(...)` cast, `translatePin(` verb, `zpkUnderLMK` camel-case suffix, CKM_AES_CBC_PAD/CKM_DES3_ECB not in the algo_map (rewritten as per-family rules), FPEFF1Engine | 31 | 1.000 / 0.992 / 0.996 | F1 1.000 (544/544) |
+| 9 — database + mainframe: Oracle PL/SQL (DBMS_CRYPTO, OBFUSCATION_TOOLKIT, TDE, DBMS_RANDOM), T-SQL (HASHBYTES, symmetric/asymmetric keys, Always Encrypted, TDE, ENCRYPTBYPASSPHRASE), pgcrypto, MySQL, DB2, COBOL/ICSF (CSNB PIN/CVV/MAC/OWH/HMG/KGN, CSND RSA/ECC, CSFP PKCS#11, RACF KDFAES, JCL). Not blind (parsers written alongside; labels written before the first run). First pass 588/594: secret-context PRNG rules only looked *after* the call (gen_otp / reset_tokens context on an earlier line → new `line_group` engine key), COBOL `FUNCTION RANDOM` context too narrow, `'ECDSA   '` padded literal, RACF `ALGORITHM(KDFAES)` also fired the DES rule, and one label-convention slip (scram-sha-256 → SHA-256) | 50 | 0.997 / 0.995 / 0.996 | F1 1.000 (594/594) |
 
 ## How to read this
 

@@ -57,6 +57,8 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".plist",
     ".entitlements",
     ".sh",
+    ".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc",
+    ".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm",
     ".bash",
     ".zsh",
     ".ksh",

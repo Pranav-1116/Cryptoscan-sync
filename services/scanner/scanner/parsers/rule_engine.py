@@ -10,6 +10,7 @@ A *rule* is ``(compiled_pattern, spec)`` where ``spec`` is a dict with at least
                                      token through a mapping table (case-
                                      insensitive) instead of a fixed name.
 * ``mode_from_group``              - regex group index holding the cipher mode.
+* ``line_group``                   - regex group whose start position gives the reported line
 * ``raw_group``                    - regex group whose text becomes raw_transformation
                                      (cipher lists are expanded per algorithm downstream).
 * ``emit_digest_group``            - additionally emit a MESSAGE_DIGEST finding
@@ -344,6 +345,14 @@ def run_rules(
             whole = match.group(0)
             # ``(?m)^\s*x`` can start on the previous blank line; report where the text starts
             line = text[: match.start() + len(whole) - len(whole.lstrip())].count("\n") + 1
+            if spec.get("line_group"):
+                # context rules that start on an earlier line (``token ... \n ... random()``) report the API line
+                try:
+                    gstart = match.start(spec["line_group"])
+                    if gstart >= 0:
+                        line = text[:gstart].count("\n") + 1
+                except IndexError:
+                    pass
             algorithm = spec.get("algorithm")
             mode = None
             key_size = None
