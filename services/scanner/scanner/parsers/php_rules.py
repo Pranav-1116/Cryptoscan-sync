@@ -111,7 +111,6 @@ RULES: list[Rule] = [
     _r(rf"\bhash_hmac\s*\(\s*{_Q}([A-Za-z0-9_-]+){_Q}", _D, "php-hash", algo_from_group=1, algo_map=DIGEST_TOKENS),
     _r(r"\bmd5_file\s*\(|\bmd5\s*\(", _D, "php-hash", algorithm="MD5"),
     _r(r"\bsha1_file\s*\(|\bsha1\s*\(", _D, "php-hash", algorithm="SHA-1"),
-    _r(r"\bhash_equals\s*\(", _M, "php-hash", algorithm="CONSTANT-TIME", confidence="LOW"),
     _r(r"\bmhash\s*\(\s*MHASH_(MD5|SHA1|SHA256|SHA512|SHA384|SHA224|RIPEMD160|WHIRLPOOL|TIGER|GOST|CRC32|ADLER32|MD4|MD2|HAVAL\d+|SNEFRU\d+)\b|\bmhash_keygen_s2k\s*\(", _D, "mhash", algo_from_group=1, algo_map=DIGEST_TOKENS, confidence="MEDIUM"),
     _r(r"\bMHASH_(MD5|SHA1|SHA256|SHA512|SHA384|SHA224|RIPEMD160|WHIRLPOOL|TIGER|MD4)\b", _D, "mhash", algo_from_group=1, algo_map=DIGEST_TOKENS),
     # ------------------------------------------------------------ password hashing / crypt
@@ -160,7 +159,6 @@ RULES: list[Rule] = [
     _r(r"\bsodium_crypto_hash\w*\s*\(|\bsodium_crypto_generichash\w*\s*\(", _D, "libsodium", algorithm="BLAKE2b", confidence="MEDIUM"),
     _r(r"\bsodium_crypto_secretbox\w*\s*\(|\bsodium_crypto_secretbox_keygen\s*\(", _C, "libsodium", algorithm="XSalsa20-Poly1305"),
     _r(r"\bsodium_crypto_aead_(?:x)?chacha20poly1305\w*_(?:encrypt|decrypt|keygen)\s*\(", _C, "libsodium", algorithm="ChaCha20-Poly1305"),
-    _r(r"\bsodium_(?:bin2hex|hex2bin|bin2base64|base642bin|memzero|memcmp|increment|add|compare|pad|unpad)\s*\(", _C, "libsodium", algorithm="CONSTANT-TIME", confidence="LOW"),
     _r(r"\brandom_bytes\s*\(|\brandom_int\s*\(|\bsodium_randombytes_buf\s*\(|\brandombytes_buf\s*\(|\bRandom\\\\Randomizer\b|\bnew\s+Randomizer\s*\(\s*new\s+(?:Secure|Random\\\\Engine\\\\Secure)\b", _RNG, "php-random", algorithm="CSPRNG", confidence="MEDIUM"),
     _r(r"\b(?:\$\w*(?:key|iv|salt|nonce|token|secret|password|otp|session|csrf)\w*\s*=\s*[^;]*\b)(?:mt_rand|rand|uniqid|lcg_value|mt_srand|srand|array_rand|shuffle|str_shuffle)\s*\(", _RNG, "php-random", algorithm="PRNG", confidence="HIGH", confidence_reason="non-cryptographic RNG used for a secret"),
     _r(r"\buniqid\s*\(\s*[^)]*,\s*true\s*\)", _RNG, "php-random", algorithm="PRNG", confidence="LOW", confidence_reason="uniqid(more_entropy) is not a CSPRNG"),

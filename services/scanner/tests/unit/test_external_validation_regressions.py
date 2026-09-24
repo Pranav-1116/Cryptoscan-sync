@@ -82,3 +82,21 @@ def test_java_dynamic_jca_name_never_yields_none_algorithm(tmp_path):
 def test_java_hmac_transformation_uses_hmac_prefix():
     from scanner.extractors.algorithm_extractor import parse_transformation
     assert parse_transformation("HmacSHA256").algorithm == "HMAC-SHA-256"
+
+
+def test_python_stored_hash_constructor_and_dynamic_hmac_digest(tmp_path):
+    from scanner.parsers.python_parser import parse_python_file
+    # django/utils/crypto.py + contrib/auth/hashers.py
+    p = _write(tmp_path, "c.py", "import hashlib, hmac\n\nclass PBKDF2SHA1PasswordHasher:\n    digest = hashlib.sha1\n\ndef salted_hmac(key, value, hasher):\n    return hmac.new(key, msg=value, digestmod=hasher)\n")
+    algos = _algos(parse_python_file(p, tmp_path))
+    assert "SHA-1" in algos
+    assert "HMAC" in algos
+    assert not any(a.startswith("HMAC-") for a in algos)
+
+
+def test_constant_time_compare_is_not_an_inventory_item(tmp_path):
+    from scanner.parsers.php_parser import parse_php_file
+    p = _write(tmp_path, "e.php", "<?php\nif (!hash_equals($expected, $given)) { die(); }\n")
+    assert parse_php_file(p, tmp_path) == []
+    q = _write(tmp_path, "e.go", 'package x\nimport "crypto/subtle"\nfunc eq(a, b []byte) bool { return subtle.ConstantTimeCompare(a, b) == 1 }\n')
+    assert parse_go_file(q, tmp_path) == []

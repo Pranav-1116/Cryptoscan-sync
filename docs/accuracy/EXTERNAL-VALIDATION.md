@@ -75,3 +75,14 @@ Labelled corpus after these changes: still 348/348 (`scripts/accuracy_benchmark.
 
 Cumulative external sample: **~2,900 files across 20 projects in 6 languages**; 9 scanner defects found and fixed,
 each with a regression test; hand-labelled corpus unchanged at 348/348.
+
+## Round 4 — a large application framework (Django, 928 files, 2.9 s)
+
+| Area | Result |
+|---|---|
+| False positives | 0 in 913 files without crypto (ORM, templates, admin, forms, migrations…) |
+| `conf/global_settings.py` `PASSWORD_HASHERS` | PBKDF2+SHA-256, PBKDF2+SHA-1, Argon2, bcrypt, scrypt ✔ |
+| `contrib/auth/hashers.py` | **miss:** `digest = hashlib.sha256` / `hashlib.sha1` class attributes (constructor stored, called later) → now reported |
+| `utils/crypto.py` `salted_hmac` | `hmac.new(key, msg, digestmod=hasher)` produced the non-vocabulary algorithm `HMAC-HASHER` → runtime-selected digest now yields plain `HMAC` |
+| MD5 cache keys / ETags, SHA-1 template-cache keys, sqlite3 hash functions, SMTP `PROTOCOL_TLS_CLIENT`, `secrets.*` | all reported ✔ |
+| Vocabulary clean-up | `CONSTANT-TIME` (Go `subtle.ConstantTimeCompare`, PHP `hash_equals`, `sodium_memcmp`) removed — a comparison routine is not a cryptographic asset and the label was outside the algorithm vocabulary |

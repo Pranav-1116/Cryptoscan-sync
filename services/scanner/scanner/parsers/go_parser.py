@@ -239,7 +239,6 @@ RULES: list[Rule] = [
     _r(r"\bmathrand\.(?:Intn|Int|Read|Seed|Int63|Uint32|Uint64|Float64|Perm|Shuffle|New|NewSource)\b|\bmrand\.(?:Intn|Int|Read|Seed|Int63|Uint32|Uint64|Float64|Perm|New|NewSource)\b|\binsecurerand\.\w+", _RNG, "math/rand", algorithm="PRNG", confidence="MEDIUM", confidence_reason="math/rand is not cryptographically secure"),
     _r(r"\brand\.(?:Seed|Intn|Int63|Int31|Uint32|Uint64|Float64|Perm|Shuffle|NewSource|New)\s*\(", _RNG, "math/rand", algorithm="PRNG", confidence="MEDIUM", confidence_reason="math/rand is not cryptographically secure"),
     _r(r"\buuid\.(?:New|NewRandom|NewV4|Must|NewString)\s*\(|\bulid\.(?:Make|MustNew|New)\s*\(|\bksuid\.New\b|\bxid\.New\b|\bshortid\.\w+|\bnanoid\.\w+\s*\(", _RNG, "uuid", algorithm="CSPRNG", confidence="LOW"),
-    _r(r"\bsubtle\.ConstantTimeCompare\b|\bsubtle\.ConstantTimeEq\b|\bsubtle\.ConstantTimeSelect\b|\bsubtle\.ConstantTimeByteEq\b", _M, "crypto/subtle", algorithm="CONSTANT-TIME", confidence="LOW"),
     _r(r"\bcrypto\.SHA\w*\.New\s*\(|\bcrypto\.(MD5|SHA1|SHA256|SHA384|SHA512|SHA3_256)\.New\s*\(", _D, "crypto", algo_from_group=1, algo_map=_CRYPTO_HASH),
     _r(r"\bcrypto\.Hash\b|\bhash\.Hash\b|\bcrypto\.Signer\b|\bcrypto\.Decrypter\b|\bcrypto\.SignerOpts\b|\bcrypto\.PrivateKey\b|\bcrypto\.PublicKey\b", _K, "crypto", algorithm="UNKNOWN", confidence="LOW"),
     # ------------------------------------------------------------ database / storage encryption

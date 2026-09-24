@@ -452,6 +452,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
     def visit_Assign(self, node: ast.Assign) -> None:
         value = self._fold_string(node.value)
         self._settings_assignment(node, value)
+        self._stored_hash_constructor(node)
         # importlib.import_module("Crypto.Cipher.ARC4") / __import__("hashlib")
         if isinstance(node.value, ast.Call):
             callee = self._resolve(_call_name(node.value))
@@ -538,7 +539,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             self._add(
                 node,
                 api_type="MAC",
-                algorithm=f"HMAC-{digest}",
+                algorithm=f"HMAC-{digest}" if digest else "HMAC",
                 purpose="MAC_GENERATION",
                 library="hmac",
                 raw_transformation=func,
@@ -768,6 +769,29 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 break
         self.generic_visit(node)
 
+    def _stored_hash_constructor(self, node: ast.Assign) -> None:
+        """``digest = hashlib.sha256`` (no call) — the constructor is stored and
+        invoked later (Django hashers, pbkdf2 wrappers). Report the digest here."""
+        if not isinstance(node.value, ast.Attribute):
+            return
+        dotted = self._resolve(_dotted(node.value))
+        if not dotted.startswith("hashlib."):
+            return
+        name = dotted.split(".")[-1].lower()
+        algo = _MODULE_ATTR_DIGEST.get(name)
+        if not algo:
+            return
+        self._add(
+            node,
+            api_type="MESSAGE_DIGEST",
+            algorithm=algo,
+            purpose="HASHING",
+            library="hashlib",
+            raw_transformation=dotted,
+            confidence="MEDIUM",
+            confidence_reason="hash constructor stored in a variable and called later",
+        )
+
     def _is_hmac_call(self, func: str) -> bool:
         if func.endswith("hmac.new") or func.endswith("hmac.digest") or func.endswith("hmac.compare_digest"):
             return func.endswith("hmac.new") or func.endswith("hmac.digest")
@@ -788,9 +812,14 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             if digest is None and len(node.args) >= 3:
                 digest = self._fold_string(node.args[2])
         if digest is None:
-            return "UNKNOWN"
+            return ""
         name = digest.split(".")[-1].lower()
-        return _MODULE_ATTR_DIGEST.get(name, name.upper().replace("_", "-"))
+        if name in _MODULE_ATTR_DIGEST:
+            return _MODULE_ATTR_DIGEST[name]
+        if "." not in digest and name not in HASHLIB_ALGOS:
+            # digestmod=hasher — a runtime-selected digest (django.utils.crypto.salted_hmac)
+            return ""
+        return name.upper().replace("_", "-")
 
     def _is_cipher_ctor(self, func: str) -> bool:
         if func.endswith("Cipher") or func == "Cipher":
