@@ -277,8 +277,9 @@ def run_rules(
     return findings
 
 
+_CLASS_DECL = re.compile(r"\b(?:class|struct|interface|type)\s+\w+")
 _SECURITY_CONTEXT = re.compile(
-    r"key|token|secret|nonce|salt|passw|session|otp|csrf|\biv\b|seed|entropy|"
+    r"key|(?<!cancellation)token|secret|nonce|salt|passw|session|otp|csrf|\biv\b|seed|entropy|"
     r"cred|auth|sign|cookie|challenge|verif|uuid|(?<![a-z])id\b",
     re.IGNORECASE,
 )
@@ -299,9 +300,17 @@ def filter_prng_context(findings: list[RawFinding], text: str, func_decl: "re.Pa
             continue
         ln = (f.source.line_number or 1) - 1
         window = lines[ln] if ln < len(lines) else ""
-        for back in range(ln, max(-1, ln - 80), -1):
-            if back < len(lines) and func_decl.search(lines[back]):
+        found_func = found_class = False
+        for back in range(ln, max(-1, ln - 120), -1):
+            if back >= len(lines):
+                continue
+            if not found_func and func_decl.search(lines[back]):
                 window += "\n" + lines[back]
+                found_func = True
+            elif not found_class and _CLASS_DECL.search(lines[back]):
+                window += "\n" + lines[back]
+                found_class = True
+            if found_func and found_class:
                 break
         if _SECURITY_CONTEXT.search(window):
             kept.append(f)

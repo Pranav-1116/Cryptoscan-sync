@@ -93,3 +93,10 @@ each with a regression test; hand-labelled corpus unchanged at 348/348.
 |---|---|---|---|
 | commons-codec | 187 | 320 → 302 | `DigestUtils`/`HmacUtils`/`Md5Crypt`/`Sha2Crypt`/`MessageDigestAlgorithms` fully covered (MD2…SHA3-512, 85 HMAC sites). **noise:** `new Random()` / `ThreadLocalRandom.nextBytes` used to build Base64/Hex *test vectors* (18 findings in tests) → Java now uses the same security-context gate as Go for `java.util.Random`; the old `[^;]*` in the "key = … new Random()" rule could also span lines → fixed. Not reported by design: `Crypt`/`UnixCrypt`/`Blake3` pure-Java implementations and pass-through `MessageDigest` parameters. |
 | caddy | 362 | 724 | 351 TLS + 182 X.509 + ML-KEM/X25519 hybrids, `tls.VersionSSL30`/`VersionTLS10` constants in the version table, fastcgi-client MD5 test vectors, `weakrand.Uint32()` in `newMaskKey` (a true weak-RNG-for-key finding) ✔; 5.8 s |
+
+## Round 6 — curl (C, 1,105 files) and microsoft/reverse-proxy (C#, 722 files)
+
+| Project | Findings | Review |
+|---|---|---|
+| curl | 288 → 412, 25 → 40 files | All six TLS backends (OpenSSL, GnuTLS, mbedTLS, wolfSSL, Schannel, **rustls-ffi — previously invisible**), QUIC, NTLM DES/MD4/MD5, Ed25519 ✔. **miss:** curl's own digest/MAC abstraction (`Curl_MD5_init/update/final`, `Curl_HMAC_init`, `Curl_HMAC_MD5`, `Curl_DIGEST_MD5`) hid HTTP Digest, CRAM-MD5, APOP, AWS SigV4 and NTLMv2 → generic *project-wrapper* rules added (function name embeds a digest name plus an init/update/final verb; `<prefix>_HMAC_<digest>` descriptors). Also added Apple Secure Transport / Network.framework protocol constants. Not reported by design: pure implementations `md5.c`, `md4.c`, `sha256.c` beyond their OpenSSL/mbedTLS branches. 21 s (largest tree so far). |
+| YARP | 202 | `SslProtocols.Ssl2/Ssl3/Tls/Tls11` in the TLS-frame parser tests, `X509Certificate2`, AES data-protection ✔. **FP:** `new Random()` next to a `CancellationToken cancellationToken` parameter was read as "token context" → the C# rule now uses the shared security-context gate, which ignores `CancellationToken` and also looks at the enclosing class name. |

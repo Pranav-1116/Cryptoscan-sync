@@ -113,3 +113,18 @@ def test_java_util_random_for_key_material_is_reported(tmp_path):
     from scanner.parsers.java_parser import parse_java_file
     p = _write(tmp_path, "K.java", "import java.util.Random;\nclass K {\n  byte[] newSessionKey() {\n    byte[] key = new byte[16];\n    new Random().nextBytes(key);\n    return key;\n  }\n}\n")
     assert "PRNG" in _algos(parse_java_file(p, tmp_path))
+
+
+def test_c_project_local_digest_wrappers(tmp_path):
+    from scanner.parsers.c_parser import parse_c_file
+    # curl lib/vauth/digest.c, lib/curl_ntlm_core.c
+    p = _write(tmp_path, "d.c", "static void f(void) {\n  ctxt = Curl_MD5_init(&Curl_DIGEST_MD5);\n  Curl_MD5_update(ctxt, userp, 3);\n  result = Curl_hmacit(&Curl_HMAC_MD5, hash, 16, id, len, out);\n  Curl_HMAC_init(&Curl_HMAC_SHA256, key, 32);\n}\n")
+    algos = _algos(parse_c_file(p, tmp_path))
+    assert {"MD5", "HMAC", "SHA-256"} <= set(algos)
+
+
+def test_csharp_cancellation_token_is_not_security_context(tmp_path):
+    from scanner.parsers.csharp_parser import parse_csharp_file
+    # YARP HttpForwarderCancellationTests.cs
+    p = _write(tmp_path, "C.cs", "class C {\n  async Task Run(CancellationToken cancellationToken)\n  {\n    var delay = new Random().Next(10, 50);\n  }\n}\n")
+    assert "PRNG" not in _algos(parse_csharp_file(p, tmp_path))

@@ -419,6 +419,23 @@ _RULES: list[Rule] = [
        algo_map={**CIPHER_TOKENS, "arc4": "RC4", "blowfish": "Blowfish", "cast": "CAST5", "chacha": "ChaCha20", "chachapoly": "ChaCha20-Poly1305", "salsa": "Salsa20"}, confidence="LOW", confidence_reason="header-include"),
     _r(r"^\s*#\s*include\s*[<\"]crypto(?:pp|\+\+)/rsa\.h[>\"]", _K, _CPP, algorithm="RSA", confidence="LOW", confidence_reason="header-include"),
     _r(r"^\s*#\s*include\s*[<\"]crypto(?:pp|\+\+)/(?:eccrypto|ecp)\.h[>\"]", _K, _CPP, algorithm="ECDSA", confidence="LOW", confidence_reason="header-include"),
+    # ------------------------------------------------------------- project-local digest/MAC wrappers
+    # curl: Curl_MD5_init / Curl_HMAC_init / Curl_sha256it; nginx: ngx_md5_init; git: git_SHA1_Update ...
+    # A function whose name embeds the digest AND an init/update/final verb is a hash API by construction.
+    _r(r"\b[A-Za-z]\w*?_(MD4|MD5|SHA1|SHA224|SHA256|SHA384|SHA512|SHA3)_?(?:[Ii]nit|[Uu]pdate|[Ff]inal(?:ize)?|[Dd]igest|it)\s*\(|\b(?:ngx|git|curl|Curl|php|py|apr|ap|ssh|mysql|pg)_(md4|md5|sha1|sha224|sha256|sha384|sha512)(?:_?(?:init|update|final|digest|it))?\s*\(", _D, "project-wrapper", algo_from_group=1, algo_map={**DIGEST_TOKENS, "sha3": "SHA3-256"}, confidence="MEDIUM", confidence_reason="project-local wrapper around a named digest"),
+    _r(r"\b[A-Za-z]\w*?_HMAC_?(?:[Ii]nit|[Uu]pdate|[Ff]inal(?:ize)?|[Dd]igest|it)\s*\(|\b(?:ngx|git|curl|Curl|apr|ap|ssh|mysql|pg)_hmac(?:_(?:init|update|final|digest|it|sha1|sha256|sha512|md5))?\s*\(", _M, "project-wrapper", algorithm="HMAC", confidence="MEDIUM", confidence_reason="project-local HMAC wrapper"),
+    _r(r"\b[A-Za-z]\w*_HMAC_(MD5|SHA1|SHA224|SHA256|SHA384|SHA512)\b", _M, "project-wrapper", algorithm="HMAC", emit_digest_group=1, confidence="MEDIUM", confidence_reason="project-local HMAC descriptor"),
+    _r(r"\b[A-Za-z]\w*_DIGEST_(MD4|MD5|SHA1|SHA224|SHA256|SHA384|SHA512)\b(?!_LEN|_LENGTH|_SIZE)", _D, "project-wrapper", algo_from_group=1, algo_map=DIGEST_TOKENS, confidence="MEDIUM", confidence_reason="project-local digest descriptor"),
+    # ------------------------------------------------------------- rustls-ffi / Apple Secure Transport / Network.framework
+    _r(r"\brustls_(?:client_config_builder|server_config_builder|client_config|server_config|connection|root_cert_store|crypto_provider|supported_ciphersuite)\w*\s*[\(;,)]|\brustls_(?:client|server)_connection_new\s*\(", _TLS, "rustls-ffi", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"\bSSLCreateContext\s*\(|\bSSLHandshake\s*\(|\bSSLSetProtocolVersion(?:Min|Max)\s*\(|\bSSLSetSessionOption\s*\(|\bsec_protocol_options_set_(?:min|max)_tls_protocol_version\s*\(|\bnw_tls_create_options\s*\(", _TLS, "SecureTransport", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"\bkSSLProtocol3\b|\bkSSLProtocol3Only\b", _TLS, "SecureTransport", algorithm="SSLv3", confidence="HIGH"),
+    _r(r"\bkSSLProtocol2\b", _TLS, "SecureTransport", algorithm="SSLv2", confidence="HIGH"),
+    _r(r"\bkTLSProtocol1\b|\btls_protocol_version_TLSv10\b", _TLS, "SecureTransport", algorithm="TLS1.0", confidence="HIGH"),
+    _r(r"\bkTLSProtocol11\b|\btls_protocol_version_TLSv11\b", _TLS, "SecureTransport", algorithm="TLS1.1", confidence="HIGH"),
+    _r(r"\bkTLSProtocol12\b|\btls_protocol_version_TLSv12\b", _TLS, "SecureTransport", algorithm="TLS1.2", confidence="HIGH"),
+    _r(r"\bkTLSProtocol13\b|\btls_protocol_version_TLSv13\b", _TLS, "SecureTransport", algorithm="TLS1.3", confidence="HIGH"),
+    _r(r"\bkSSLSessionOptionBreakOnServerAuth\b|\bSSLSetEnableCertVerify\s*\([^,]+,\s*false\s*\)", _TLS, "SecureTransport", algorithm="TLS-UNVERIFIED", confidence="MEDIUM"),
 ]
 
 _MULTILINE_RULES = [(re.compile(p.pattern, p.flags | re.M), s) for p, s in _RULES]

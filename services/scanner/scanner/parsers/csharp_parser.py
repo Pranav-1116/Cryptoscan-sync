@@ -7,7 +7,7 @@ from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding
-from scanner.parsers.rule_engine import CIPHER_TOKENS, DIGEST_TOKENS, Rule, run_rules
+from scanner.parsers.rule_engine import filter_prng_context, CIPHER_TOKENS, DIGEST_TOKENS, Rule, run_rules
 
 SCANNER_ID = "static-csharp-scanner-v1.0"
 
@@ -108,7 +108,7 @@ _RULES: list[Rule] = [
     # --- symmetric providers / classes
     _r(r"\bnew\s+(?:Aes(?:Managed|CryptoServiceProvider|Cng|Ccm|Gcm)|Rijndael(?:Managed)?)\s*\(|\bRijndael(?:Managed)?\.Create\s*\(", _C, algorithm="AES"),
     _r(r"\bnew\s+AesGcm\s*\(|\bnew\s+AesCcm\s*\(", _C, algorithm="AES", mode="GCM"),
-    _r(r"(?is)\b\w*(?:Token|Secret|Nonce|Salt|Otp|Password|Session)\w*\b[\s\S]{0,300}?\bnew\s+(?:System\.)?Random\s*\(|\bnew\s+(?:System\.)?Random\s*\([^;]*;[\s\S]{0,300}?\b\w*(?:Token|Secret|Nonce|Salt|Otp|Password|Session)\w*\b", _RNG, "System", algorithm="PRNG", confidence="MEDIUM", confidence_reason="System.Random used near token/secret material; not a CSPRNG"),
+    _r(r"\bnew\s+(?:System\.)?Random\s*\(", _RNG, "System", algorithm="PRNG", confidence="MEDIUM", confidence_reason="System.Random used for security material; not a CSPRNG"),
     _r(r"\bnew\s+(?:TripleDESCryptoServiceProvider|TripleDESCng|MACTripleDES)\s*\(", _C, algorithm="3DES"),
     _r(r"\bnew\s+DESCryptoServiceProvider\s*\(", _C, algorithm="DES"),
     _r(r"\bnew\s+RC2CryptoServiceProvider\s*\(", _C, algorithm="RC2"),
@@ -445,4 +445,7 @@ def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
         )
     )
     findings.extend(_factory_findings(source, file_path, repo_root))
-    return findings
+    return filter_prng_context(findings, source, _CS_METHOD_DECL)
+
+
+_CS_METHOD_DECL = re.compile(r"^\s*(?:public|private|protected|internal|static|async|override|virtual|\s)*[\w<>\[\],\.\s\?]+\s+\w+\s*\([^;]*$")
