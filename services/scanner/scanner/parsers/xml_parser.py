@@ -147,6 +147,101 @@ _RULES: list[Rule] = [
     _r(r"<(?:mapper|simple-digest-mapper|salted-simple-digest-mapper|scram-mapper)\b[^>]*\balgorithm\s*=\s*[\"'](?:simple-digest-|salted-simple-digest-|scram-)?(md5|sha-1|sha-256|sha-384|sha-512|bcrypt)[\"']", _KDF, "wildfly-elytron", algo_from_group=1, algo_map={**_DIGEST, "bcrypt": "BCRYPT"}),
     _r(r"<bcrypt-mapper\b", _KDF, "wildfly-elytron", algorithm="BCRYPT"),
     _r(r"<clear-password\b[^>]*\bpassword\s*=|<clear-text\b|<plain-text\b", _KDF, "wildfly", algorithm="PLAINTEXT", confidence="MEDIUM", confidence_reason="cleartext credential in config"),
+    # ------------------------------------------------------------ Bank middleware: WebSphere / Liberty / WebLogic / MQ / Mule / Camel
+    _r(r"<(?:repertoire|SSLConfig|ssl|setting|secureSocketLayer)\b[^>]*\bsslProtocol\s*=\s*[\"']([^\"']+)[\"']", _TLS, "websphere", algorithm="TLS", confidence="HIGH", split_tls_group=1),
+    _r(r"<(?:repertoire|SSLConfig|ssl|setting|secureSocketLayer)\b[^>]*\benabledCiphers\s*=\s*[\"']([^\"']+)[\"']", _TLS, "websphere", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
+    _r(r"<(?:repertoire|SSLConfig|setting)\b[^>]*\bsecurityLevel\s*=\s*[\"'](HIGH|MEDIUM|LOW|CUSTOM)[\"']", _TLS, "websphere", algorithm="TLS", confidence="MEDIUM", confidence_reason="WAS SSL repertoire security level"),
+    _r(r"<(?:keyStores|keyStore|trustStore)\b[^>]*\btype\s*=\s*[\"'](PKCS12|JKS|JCEKS|CMSKS|PKCS11|PKCS11IMPLKS|JCERACFKS|JCECCARACFKS|JCEHYBRIDRACFKS)[\"']", _TLS, "websphere", algo_from_group=1,
+       algo_map={"pkcs12": "X509", "jks": "X509", "jceks": "X509", "cmsks": "X509", "pkcs11": "UNKNOWN", "pkcs11implks": "UNKNOWN", "jceracfks": "X509", "jcecacfks": "X509", "jceccaracfks": "UNKNOWN", "jcehybridracfks": "UNKNOWN"}, confidence="MEDIUM", confidence_reason="WebSphere keystore (RACF / PKCS#11 types are hardware-backed)"),
+    _r(r"<keyStore\b[^>]*\blocation\s*=\s*[\"']safkeyring(?:hw|hybrid)?://", _TLS, "websphere-zos", algorithm="X509", confidence="MEDIUM", confidence_reason="z/OS RACF key ring"),
+    _r(r"<(?:ssl|sslDefault|httpEndpoint)\b[^>]*\bsslRef\s*=|<ssl\b[^>]*\bid\s*=|<sslDefault\b|<transportSecurity\b|<httpEndpoint\b[^>]*\bhttpsPort\s*=", _TLS, "websphere-liberty", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<ssl\b[^>]*\b(?:clientAuthentication|clientAuthenticationSupported)\s*=\s*[\"']true[\"']", _TLS, "websphere-liberty", algorithm="X509", confidence="MEDIUM", confidence_reason="mutual TLS"),
+    _r(r"<ssl\b[^>]*\btrustDefaultCerts\s*=\s*[\"']true[\"']|<ssl\b[^>]*\bverifyHostname\s*=\s*[\"']false[\"']", _TLS, "websphere-liberty", algorithm="TLS-UNVERIFIED", confidence="MEDIUM"),
+    _r(r"<ltpa\b|<ltpaKeys\b|com\.ibm\.websphere\.security\.ltpa", _C, "websphere-ltpa", algorithm="3DES", confidence="MEDIUM", confidence_reason="LTPA token keys (3DES-encrypted LTPA key file, RSA signed)"),
+    _r(r"<(?:hashAlgorithm|hashalgorithm)>\s*(PBKDF2WithHmacSHA1|PBKDF2WithHmacSHA256|PBKDF2WithHmacSHA512|SHA-1|SHA-256|SHA-512|MD5)\s*<|\bhashAlgorithm\s*=\s*[\"'](PBKDF2WithHmacSHA1|PBKDF2WithHmacSHA256|PBKDF2WithHmacSHA512|SHA-1|SHA-256|SHA-512|MD5)[\"']", _KDF, "websphere-liberty", algo_from_group=1,
+       algo_map={**_DIGEST, "pbkdf2withhmacsha1": "PBKDF2", "pbkdf2withhmacsha256": "PBKDF2", "pbkdf2withhmacsha512": "PBKDF2"}),
+    _r(r"<(?:security-custom-properties|property)\b[^>]*\bname\s*=\s*[\"']com\.ibm\.websphere\.tls\.disabledAlgorithms[\"']|\bcom\.ibm\.ws\.security\.[a-z.]*(?:crypto|ssl)\.\w+\s*=", _TLS, "websphere", algorithm="TLS-CIPHERS", confidence="LOW", raw_group=0),
+    _r(r"<encrypt(?:ionKey|ionAlgorithm|Key)\b[^>]*>|<properties\b[^>]*\bencryption\s*=\s*[\"'](?:AES|3DES|DESede)[\"']|<(?:cipher|cipherName)>\s*(AES|DESede|DES|3DES|RC4|Blowfish)\s*<", _C, "xml-config", algo_from_group=1, algo_map=_CIPHER, confidence="MEDIUM"),
+    # WebLogic config.xml
+    _r(r"<minimum-tls-protocol-version>\s*(TLSv1\.3|TLSv1\.2|TLSv1\.1|TLSv1|SSLv3)\s*<", _TLS, "weblogic", algo_from_group=1, algo_map=_PROTO),
+    _r(r"<ssl>\s*(?:<[^>]*>\s*)*?<enabled>\s*true\s*</enabled>|<listen-port-enabled>\s*false\s*</listen-port-enabled>|<ssl-listen-port>|<two-way-ssl-enabled>\s*true|<client-certificate-enforced>\s*true", _TLS, "weblogic", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<ciphersuite>\s*([A-Z0-9_]+)\s*</ciphersuite>", _TLS, "weblogic", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
+    _r(r"<hostname-verification-ignored>\s*true\s*<|<hostname-verifier-ignored>\s*true\s*<|<allow-unencrypted-null-cipher>\s*true\s*<|<use-server-certs>\s*false", _TLS, "weblogic", algorithm="TLS-UNVERIFIED", confidence="HIGH"),
+    _r(r"<(?:custom-identity-key-?store-type|custom-trust-key-?store-type|key-?store-type|trust-key-?store-type)>\s*(JKS|PKCS12|KSS|JCEKS|PKCS11|OracleWallet|CustomTrust|DemoTrust|JavaStandardTrust)\s*<|<key-?stores>\s*(?:CustomIdentityAndCustomTrust|CustomIdentityAndJavaStandardTrust|DemoIdentityAndDemoTrust)\s*<", _TLS, "weblogic", algorithm="X509", confidence="MEDIUM"),
+    _r(r"<keystores>\s*DemoIdentityAndDemoTrust\s*<|DemoIdentity\.jks|DemoTrust\.jks", _TLS, "weblogic", algorithm="TLS-UNVERIFIED", confidence="HIGH", confidence_reason="WebLogic demo identity/trust keystores in configuration"),
+    _r(r"<[a-z-]*(?:credential|password|pass-phrase)-encrypted>\s*\{AES\}|<credential>\s*\{AES\}", _C, "weblogic", algorithm="AES", confidence="HIGH", confidence_reason="WebLogic SerializedSystemIni-encrypted credential"),
+    _r(r"<[a-z-]*(?:credential|password|pass-phrase)-encrypted>\s*\{3DES\}", _C, "weblogic", algorithm="3DES", confidence="HIGH", confidence_reason="legacy WebLogic 3DES-encrypted credential"),
+    _r(r"<[a-z-]*(?:credential|password|pass-phrase)-encrypted>\s*\{AES256\}", _C, "weblogic", algorithm="AES", key_size=256, confidence="HIGH"),
+    # IBM MQ JMS / activation spec / resource adapter XML
+    _r(r"<(?:property|config-property|attribute)\b[^>]*\bname\s*=\s*[\"'](?:sslCipherSuite|SSLCipherSuite|sslCipherSpec|SSLCIPH|cipherSuite)[\"'][^>]*\bvalue\s*=\s*[\"']([A-Za-z0-9_]+)[\"']|<(?:sslCipherSuite|sslCipherSpec|SSLCipherSuite)>\s*([A-Za-z0-9_]+)\s*<|<config-property-name>\s*sslCipherSuite\s*</config-property-name>\s*(?:<config-property-type>[^<]*</config-property-type>\s*)?<config-property-value>\s*([A-Za-z0-9_]+)\s*<", _TLS, "ibm-mq-jms", algorithm="TLS", confidence="HIGH", split_suite_group=1),
+    _r(r"<(?:property|config-property|attribute)\b[^>]*\bname\s*=\s*[\"'](?:sslFipsRequired|sslPeerName|sslKeyResetCount|sslCertStores|sslResetCount)[\"']|<(?:sslFipsRequired|sslPeerName|sslCertStores)>", _TLS, "ibm-mq-jms", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<(?:mq(?:Queue)?ConnectionFactory|properties\.wmqJms|properties\.wmqJmsClient\.[A-Za-z]+|wmqJmsClient|jmsConnectionFactory|jmsQueueConnectionFactory)\b[^>]*\bsslCipherSuite\s*=\s*[\"']([A-Za-z0-9_]+)[\"']|<jmsConnectionFactory\b[^>]*>|<wmqJmsClient\b|<resourceAdapter\b[^>]*wmq", _TLS, "ibm-mq-jms", algorithm="TLS", confidence="LOW", split_suite_group=1),
+    # Mule
+    _r(r"<tls:context\b|<tls:key-store\b|<tls:trust-store\b|<https:listener-config\b|<https:request-config\b", _TLS, "mule", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<tls:context\b[^>]*\benabledProtocols\s*=\s*[\"']([^\"']+)[\"']", _TLS, "mule", algorithm="TLS", split_tls_group=1),
+    _r(r"<tls:context\b[^>]*\benabledCipherSuites\s*=\s*[\"']([^\"']+)[\"']", _TLS, "mule", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
+    _r(r"<tls:(?:key-store|trust-store)\b[^>]*\btype\s*=\s*[\"'](jks|pkcs12|jceks)[\"']|<tls:(?:key-store|trust-store)\b[^>]*\bpath\s*=", _TLS, "mule", algorithm="X509", confidence="MEDIUM"),
+    _r(r"<tls:trust-store\b[^>]*\binsecure\s*=\s*[\"']true[\"']", _TLS, "mule", algorithm="TRUST-ALL", confidence="HIGH", confidence_reason="Mule insecure trust store — certificate validation disabled"),
+    _r(r"<tls:key-store\b[^>]*\balgorithm\s*=\s*[\"'](RSA|EC|DSA)[\"']", _TLS, "mule", algo_from_group=1, algo_map={"rsa": "RSA", "ec": "ECDSA", "dsa": "DSA"}),
+    _r(r"<crypto:jce-(?:encrypt|decrypt|sign|validate)(?:-pbe)?\b[^>]*\balgorithm\s*=\s*[\"']([A-Za-z0-9_/-]+)[\"']|<crypto:jce-(?:sign|validate)\b[^>]*\balgorithm\s*=\s*[\"']([A-Za-z0-9]+)[\"']", _C, "mule-crypto", algo_from_group=1, algo_map={**_CIPHER, "hmacsha256": "HMAC-SHA256", "hmacsha1": "HMAC-SHA1", "hmacsha512": "HMAC-SHA512", "sha256withrsa": "RSA", "sha1withrsa": "RSA", "sha256withecdsa": "ECDSA", "pbewithhmacsha256andaes_128": "PBKDF2", "pbewithhmacsha256andaes_256": "PBKDF2", "pbewithmd5anddes": "DES", "aes_cbc": "AES", "aes_gcm": "AES", "aes_ecb": "AES", "des_cbc": "DES", "desede_cbc": "3DES", "rsa_ecb": "RSA", "rsa_ecb_oaep": "RSA", "blowfish_cbc": "Blowfish", "rc4": "RC4"}),
+    _r(r"<crypto:jce-(?:encrypt|decrypt)(?:-pbe)?\b(?![^>]*\balgorithm\s*=)", _C, "mule-crypto", algorithm="AES", confidence="MEDIUM", confidence_reason="Mule JCE default AES_CBC"),
+    _r(r"<crypto:jce-(?:sign|validate)\b(?![^>]*\balgorithm\s*=)", _M, "mule-crypto", algorithm="HMAC-SHA256", confidence="MEDIUM", confidence_reason="Mule JCE default HmacSHA256"),
+    _r(r"<crypto:pgp-(?:encrypt|decrypt|sign|validate|config)\b|<pgp:(?:encrypt|decrypt|config)\b", _C, "mule-crypto", algorithm="PGP", confidence="HIGH"),
+    _r(r"<crypto:xml-(?:encrypt|decrypt)\b[^>]*\balgorithm\s*=\s*[\"'](AES_128|AES_192|AES_256|TRIPLEDES|AES_128_GCM|AES_192_GCM|AES_256_GCM)[\"']", _C, "mule-crypto", algo_from_group=1, algo_map={"aes_128": "AES", "aes_192": "AES", "aes_256": "AES", "tripledes": "3DES", "aes_128_gcm": "AES", "aes_192_gcm": "AES", "aes_256_gcm": "AES"}),
+    _r(r"<crypto:jce-key-info\b[^>]*\bkeyId\s*=|<crypto:jce-config\b|<crypto:jce-keystore\b|<secure-property-placeholder:config\b[^>]*\bencryptionAlgorithm\s*=\s*[\"']([A-Za-z0-9]+)[\"']|<secure-properties:config\b[^>]*\balgorithm\s*=\s*[\"']([A-Za-z0-9]+)[\"']", _C, "mule-secure-properties", algo_from_group=1, algo_map={**_CIPHER, "blowfish": "Blowfish", "rc2": "RC2", "rsa": "RSA"}, confidence="MEDIUM"),
+    _r(r"<secure-properties:config\b(?![^>]*\balgorithm\s*=)|<secure-property-placeholder:config\b(?![^>]*\bencryptionAlgorithm\s*=)", _C, "mule-secure-properties", algorithm="AES", confidence="MEDIUM", confidence_reason="Mule secure properties default AES/CBC"),
+    _r(r"<jms:(?:active-mq-connection|connection)\b[^>]*\buseSsl\s*=\s*[\"']true|<ibm-mq:connection\b|<ibm-mq:config\b", _TLS, "mule", algorithm="TLS", confidence="LOW"),
+    _r(r"<ibm-mq:connection\b[^>]*\bcipherSuite\s*=\s*[\"']([A-Za-z0-9_]+)[\"']", _TLS, "mule-ibm-mq", algorithm="TLS", split_suite_group=1),
+    # Apache Camel XML DSL
+    _r(r"<(?:camel:)?sslContextParameters\b[^>]*\bsecureSocketProtocol\s*=\s*[\"']([^\"']+)[\"']|<(?:camel:)?secureSocketProtocol>\s*([A-Za-z0-9.]+)\s*<", _TLS, "camel", algorithm="TLS", split_tls_group=1),
+    _r(r"<(?:camel:)?sslContextParameters\b|<(?:camel:)?keyManagers\b|<(?:camel:)?trustManagers\b|<(?:camel:)?keyStore\b[^>]*\bresource\s*=", _TLS, "camel", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<(?:camel:)?secureSocketProtocols>\s*(?:<(?:camel:)?secureSocketProtocol>\s*([A-Za-z0-9.]+)\s*</(?:camel:)?secureSocketProtocol>\s*)+", _TLS, "camel", algorithm="TLS", split_tls_group=0),
+    _r(r"<(?:camel:)?cipherSuitesFilter\b|<(?:camel:)?cipherSuites>", _TLS, "camel", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"<(?:camel:)?keyStore\b[^>]*\btype\s*=\s*[\"'](JKS|PKCS12|JCEKS|BKS)[\"']|<(?:camel:)?keyManagers\b[^>]*\bkeyPassword\s*=", _TLS, "camel", algorithm="X509", confidence="MEDIUM"),
+    _r(r"<(?:camel:)?(?:crypto|secureXML)\b(?!:)[^>]*\balgorithm\s*=\s*[\"']([A-Za-z0-9_-]+)(?:/[A-Za-z0-9_/-]+)?[\"']", _C, "camel-crypto", algo_from_group=1, algo_map=_CIPHER),
+    _r(r"<(?:camel:)?crypto\b(?!:)(?![^>]*\balgorithm\s*=)[^>]*\b(?:keyRef|key)\s*=", _C, "camel-crypto", algorithm="DES", confidence="MEDIUM", confidence_reason="Camel crypto data format default DES/CBC/PKCS5Padding"),
+    _r(r"<(?:camel:)?secureXML\b[^>]*\bxmlCipherAlgorithm\s*=\s*[\"'][^\"']*#(aes128-cbc|aes192-cbc|aes256-cbc|aes128-gcm|aes256-gcm|tripledes-cbc)[\"']", _C, "camel-secureXML", algo_from_group=1, algo_map={"aes128-cbc": "AES", "aes192-cbc": "AES", "aes256-cbc": "AES", "aes128-gcm": "AES", "aes256-gcm": "AES", "tripledes-cbc": "3DES"}),
+    _r(r"<(?:camel:)?secureXML\b(?![^>]*\bxmlCipherAlgorithm\s*=)", _C, "camel-secureXML", algorithm="3DES", confidence="MEDIUM", confidence_reason="Camel XML security default TRIPLEDES"),
+    _r(r"<(?:camel:)?pgp\b[^>]*\bkeyFileName\s*=|<(?:camel:)?pgp\b[^>]*\bkeyUserid\s*=", _C, "camel-pgp", algorithm="PGP", confidence="HIGH"),
+    _r(r"<(?:camel:)?pgp\b[^>]*\balgorithm\s*=\s*[\"'](\d+)[\"']", _C, "camel-pgp", algo_from_group=1, algo_map={"1": "IDEA", "2": "3DES", "3": "CAST5", "4": "Blowfish", "7": "AES", "8": "AES", "9": "AES", "10": "Twofish", "11": "Camellia", "12": "Camellia", "13": "Camellia"}),
+    _r(r"<(?:camel:)?pgp\b[^>]*\bhashAlgorithm\s*=\s*[\"'](\d+)[\"']", _D, "camel-pgp", algo_from_group=1, algo_map={"1": "MD5", "2": "SHA-1", "3": "RIPEMD-160", "8": "SHA-256", "9": "SHA-384", "10": "SHA-512", "11": "SHA-224"}),
+    _r(r"<(?:camel:)?(?:xmlSecurity|xmlsecurity)\b|xmlsecurity(?:-sign|-verify)?:|<(?:camel:)?xmlSignature\b", _S, "camel-xmlsecurity", algorithm="X509", confidence="MEDIUM"),
+    _r(r"\bsignatureAlgorithm\s*=\s*[\"']" + _XMLDSIG_URI + r"[\"']|\bdigestAlgorithm\s*=\s*[\"']" + _XMLDSIG_URI + r"[\"']", _S, "camel-xmlsecurity", algo_from_group=1, algo_map={k: v[0] for k, v in _XMLDSIG.items()}, xmldsig_digest=True),
+    _r(r"\bhttps?://[^\"'<\s]*\?[^\"'<\s]*sslContextParameters(?:Ref)?=#|\b(?:netty|jetty|undertow|http4?|https4?|ftps|sftp|mina2?|cxf|smtps|imaps|kafka|amqp|mqtt|websocket|wss):[^\"'<\s]*[?&]sslContextParameters=", _TLS, "camel", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"\bsftp://|\bscp://", _TLS, "camel", algorithm="SSH", confidence="MEDIUM"),
+    _r(r"[?&](?:sslKeystore|sslKeyStore|keyStoreFile|sslTruststore|trustStoreFile)=", _TLS, "camel", algorithm="X509", confidence="MEDIUM"),
+    _r(r"[?&](?:sslProtocol|sslProtocols|securityProtocol)=([A-Za-z0-9.,]+)", _TLS, "camel", algorithm="TLS", split_tls_group=1),
+    _r(r"[?&](?:trustAllCertificates|trustAll|disableHostnameVerification|ignoreHostnameVerification|skipCertificateCheck)=true|[?&](?:hostnameVerification|verifyHostname|verifyHostName)=false", _TLS, "camel", algorithm="TRUST-ALL", confidence="HIGH"),
+    _r(r"<(?:camel:)?jasypt\b|<jasypt:encryptor\b|EncryptableProperties|<bean\b[^>]*\bclass\s*=\s*[\"']org\.jasypt\.[^\"']*(?:StandardPBEStringEncryptor|BasicTextEncryptor|StrongTextEncryptor|AES256TextEncryptor|StandardPBEByteEncryptor|PooledPBEStringEncryptor)[\"']", _C, "jasypt", algorithm="DES", confidence="MEDIUM", confidence_reason="jasypt default PBEWithMD5AndDES unless algorithm is set"),
+    _r(r"\bclass\s*=\s*[\"']org\.jasypt\.[^\"']*AES256TextEncryptor[\"']|<property\b[^>]*\bname\s*=\s*[\"']algorithm[\"'][^>]*\bvalue\s*=\s*[\"'](PBEWITHHMACSHA512ANDAES_256|PBEWITHHMACSHA256ANDAES_128|PBEWithHMACSHA512AndAES_256|PBEWithHmacSHA256AndAES_128|PBEWithMD5AndTripleDES|PBEWithSHA1AndDESede|PBEWithMD5AndDES|PBEWithSHA1AndRC2_40|PBEWithSHA1AndRC4_128)[\"']", _C, "jasypt", algo_from_group=1,
+       algo_map={"pbewithhmacsha512andaes_256": "AES", "pbewithhmacsha256andaes_128": "AES", "pbewithmd5andtripledes": "3DES", "pbewithsha1anddesede": "3DES", "pbewithmd5anddes": "DES", "pbewithsha1andrc2_40": "RC2", "pbewithsha1andrc4_128": "RC4"}),
+    _r(r"<property\b[^>]*\bname\s*=\s*[\"'](?:algorithm|encryptionAlgorithm|jasypt\.encryptor\.algorithm)[\"'][^>]*\bvalue\s*=\s*[\"']PBEWith(?:HMAC|Hmac)(SHA512|SHA256|SHA1|MD5)And", _D, "jasypt", algo_from_group=1, algo_map=_DIGEST),
+    _r(r"\bclass\s*=\s*[\"']org\.jasypt\.[^\"']*(?:StrongPasswordEncryptor|BasicPasswordEncryptor|ConfigurablePasswordEncryptor|StandardStringDigester)[\"']", _KDF, "jasypt", algorithm="SHA-256", confidence="MEDIUM", confidence_reason="jasypt digester default (MD5 basic / SHA-256 strong)"),
+    # WSO2 / Axis2 / Rampart / CXF WS-Security & JAX-WS
+    _r(r"<rampart:algorithmSuite>\s*(Basic128|Basic192|Basic256|TripleDes)(?:Rsa15|Sha256|Sha256Rsa15)?\s*<|<rampart:encryptionUser>|<rampart:signatureCrypto>|<rampart:encryptionCrypto>", _C, "rampart", algo_from_group=1, algo_map={"basic128": "AES", "basic192": "AES", "basic256": "AES", "tripledes": "3DES"}, confidence="MEDIUM"),
+    _r(r"<(?:jaxws|cxf):properties>\s*(?:<[^>]*>\s*)*?<entry\b[^>]*\bkey\s*=\s*[\"'](?:security|ws-security)\.(?:signature|encryption)\.(?:properties|username|crypto\.merlin)", _S, "cxf-wss4j", algorithm="X509", confidence="MEDIUM"),
+    _r(r"\bkey\s*=\s*[\"'](?:security|ws-security)\.(?:signature|encryption|asymmetric\.signature|symmetric\.signature|asymmetric\.encryption)\.algorithm[\"'][^>]*\bvalue\s*=\s*[\"']" + _XMLDSIG_URI + r"[\"']", _S, "cxf-wss4j", algo_from_group=1, algo_map={k: v[0] for k, v in _XMLDSIG.items()}, xmldsig_digest=True),
+    _r(r"\bkey\s*=\s*[\"'](?:security|ws-security)\.password\.type[\"'][^>]*\bvalue\s*=\s*[\"']PasswordDigest[\"']", _D, "cxf-wss4j", algorithm="SHA-1", confidence="HIGH", confidence_reason="WS-Security UsernameToken PasswordDigest is SHA-1"),
+    _r(r"\bkey\s*=\s*[\"'](?:security|ws-security)\.password\.type[\"'][^>]*\bvalue\s*=\s*[\"']PasswordText[\"']", _KDF, "cxf-wss4j", algorithm="PLAINTEXT", confidence="HIGH"),
+    _r(r"<(?:http|httpj):tlsClientParameters\b|<(?:http|httpj):tlsServerParameters\b|<sec:keyManagers\b|<sec:trustManagers\b", _TLS, "cxf", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<(?:http|httpj):tlsClientParameters\b[^>]*\bsecureSocketProtocol\s*=\s*[\"']([^\"']+)[\"']|<(?:http|httpj):tlsServerParameters\b[^>]*\bsecureSocketProtocol\s*=\s*[\"']([^\"']+)[\"']", _TLS, "cxf", algorithm="TLS", split_tls_group=1),
+    _r(r"<(?:http|httpj):tlsClientParameters\b[^>]*\bdisableCNCheck\s*=\s*[\"']true[\"']", _TLS, "cxf", algorithm="TLS-UNVERIFIED", confidence="HIGH"),
+    _r(r"<sec:keyStore\b[^>]*\btype\s*=\s*[\"'](JKS|PKCS12|JCEKS)[\"']|<sec:keyStore\b[^>]*\bfile\s*=", _TLS, "cxf", algorithm="X509", confidence="MEDIUM"),
+    _r(r"<sec:cipherSuitesFilter\b|<sec:cipherSuites\b", _TLS, "cxf", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"<transportSender\b[^>]*\bname\s*=\s*[\"']https[\"']|<transportReceiver\b[^>]*\bname\s*=\s*[\"']https[\"']", _TLS, "axis2", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"<parameter\b[^>]*\bname\s*=\s*[\"'](?:HttpsProtocols|SSLProtocol|Protocol)[\"'][^>]*>\s*([A-Za-z0-9.,]+)\s*<", _TLS, "axis2", algorithm="TLS", split_tls_group=1),
+    _r(r"<parameter\b[^>]*\bname\s*=\s*[\"'](?:PreferredCiphers|SSLCipherSuites|CipherSuites)[\"'][^>]*>\s*([A-Za-z0-9_,\s]+)\s*<", _TLS, "axis2", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
+    _r(r"<(?:KeyStore|TrustStore|PrivateKeyStore)>\s*(?:<[^>]*>\s*)*?<Type>\s*(JKS|PKCS12|JCEKS)\s*</Type>", _TLS, "wso2-carbon", algorithm="X509", confidence="MEDIUM"),
+    _r(r"<InternalKeyStore>|<KeyStore>\s*(?:<[^>]*>\s*)*?<Location>|<Security>\s*(?:<[^>]*>\s*)*?<KeyStore>", _TLS, "wso2-carbon", algorithm="X509", confidence="LOW"),
+    _r(r"<(?:PasswordDigest|Digest)>\s*(SHA-256|SHA-512|SHA-1|SHA|MD5|PLAIN_TEXT|PBKDF2)\s*<|<PasswordDigest>\s*(SHA-256|SHA-1|MD5)", _KDF, "wso2-carbon", algo_from_group=1, algo_map={**_DIGEST, "plain_text": "PLAINTEXT", "pbkdf2": "PBKDF2"}),
+    _r(r"<Property\b[^>]*\bname\s*=\s*[\"']PasswordDigest[\"'][^>]*>\s*(SHA-256|SHA-512|SHA-1|SHA|MD5|PLAIN_TEXT|PBKDF2)\s*<", _KDF, "wso2-carbon", algo_from_group=1, algo_map={**_DIGEST, "plain_text": "PLAINTEXT", "pbkdf2": "PBKDF2"}),
+    _r(r"<TokenEncryption>|<Encryption>\s*(?:<[^>]*>\s*)*?<Algorithm>\s*([A-Za-z0-9/_-]+)\s*<|<KeyStore\b[^>]*\bAlgorithm\s*=", _C, "wso2-carbon", algo_from_group=1, algo_map={**_CIPHER, "rsa": "RSA", "rsa/ecb/oaepwithsha1andmgf1padding": "RSA", "rsa/ecb/pkcs1padding": "RSA"}, confidence="MEDIUM"),
+    _r(r"<(?:SymmetricEncryption|InternalEncryption)>\s*(?:<[^>]*>\s*)*?<Algorithm>\s*(AES|DES|DESede|AES/GCM/NoPadding)\s*<", _C, "wso2-carbon", algo_from_group=1, algo_map=_CIPHER),
+    _r(r"<DefaultAlgorithm>\s*(AES|DES|DESede|AES/GCM/NoPadding|AES/CBC/PKCS5Padding|RSA)\s*<|<Algorithm>\s*(AES/GCM/NoPadding|RSA/ECB/OAEPwithSHA1andMGF1Padding|RSA/ECB/PKCS1Padding)\s*<", _C, "wso2-carbon", algo_from_group=1, algo_map={**_CIPHER, "rsa": "RSA", "rsa/ecb/oaepwithsha1andmgf1padding": "RSA", "rsa/ecb/pkcs1padding": "RSA"}),
+    _r(r"<(?:SignatureAlgorithm|DigestAlgorithm|ResponseSigningAlgorithm|AssertionEncryptionAlgorithm|KeyEncryptionAlgorithm)>\s*" + _XMLDSIG_URI + r"\s*<", _S, "wso2-identity", algo_from_group=1, algo_map={k: v[0] for k, v in _XMLDSIG.items()}, xmldsig_digest=True),
+    _r(r"<(?:OAuth|OpenIDConnect)>\s*(?:<[^>]*>\s*)*?<(?:IDTokenSignatureAlgorithm|SignatureAlgorithm|TokenSignatureAlgorithm|UserInfoJWTSignatureAlgorithm)>\s*(RS256|RS384|RS512|PS256|ES256|ES384|HS256|HS384|HS512|SHA256withRSA|SHA512withRSA|SHA256withEC|NONE)\s*<|<(?:IDTokenSignatureAlgorithm|TokenSignatureAlgorithm|SignatureAlgorithm)>\s*(SHA256withRSA|SHA512withRSA|SHA1withRSA|SHA256withEC|NONE)\s*<", _S, "wso2-identity", algo_from_group=1,
+       algo_map={**_JWT, "sha256withrsa": "RSA", "sha512withrsa": "RSA", "sha1withrsa": "RSA", "sha256withec": "ECDSA", "none": "JWT"}),
+    _r(r"<(?:HashingAlgorithm|hashAlgorithm|HashAlgorithm|hash_algorithm)>\s*(SHA-256|SHA-512|SHA-1|SHA1|SHA256|SHA512|MD5|BCRYPT|bcrypt|PBKDF2|argon2|scrypt)\s*<", _KDF, "xml-config", algo_from_group=1, algo_map={**_DIGEST, "bcrypt": "BCRYPT", "pbkdf2": "PBKDF2", "argon2": "ARGON2", "scrypt": "SCRYPT"}),
     # ------------------------------------------------------------ JDBC URLs
     _r(r"\bjdbc:(?:mysql|mariadb):[^\"'<\s]*[?&](?:useSSL=false|sslMode=DISABLED|useSsl=false)\b|\bjdbc:postgresql:[^\"'<\s]*[?&]ssl(?:mode)?=(?:false|disable|allow)\b|\bjdbc:sqlserver:[^\"'<\s]*;encrypt=false\b", _TLS, "jdbc", algorithm="TLS-DISABLED", confidence="HIGH", confidence_reason="JDBC connection without TLS"),
     _r(r"\bjdbc:(?:mysql|mariadb):[^\"'<\s]*[?&](?:useSSL=true|sslMode=(?:REQUIRED|VERIFY_CA|VERIFY_IDENTITY))\b|\bjdbc:postgresql:[^\"'<\s]*[?&]ssl(?:mode)?=(?:true|require|verify-ca|verify-full)\b|\bjdbc:sqlserver:[^\"'<\s]*;encrypt=(?:true|strict)\b", _TLS, "jdbc", algorithm="TLS", confidence="MEDIUM"),
@@ -192,7 +287,7 @@ def _emit_extra(findings: list[RawFinding], text: str, file_path: Path, repo_roo
                                   confidence_reason=reason, raw_transformation=raw[:80]))
 
     for pattern, spec in _RULES:
-        if not (spec.get("split_tls_group") or spec.get("xmldsig_digest")):
+        if not (spec.get("split_tls_group") or spec.get("xmldsig_digest") or spec.get("split_suite_group")):
             continue
         for m in pattern.finditer(text):
             line = text[: m.start()].count("\n") + 1
@@ -203,6 +298,23 @@ def _emit_extra(findings: list[RawFinding], text: str, file_path: Path, repo_roo
                     if algo:
                         put(line, algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", spec["library"], part,
                             "HIGH" if algo in {"TLS1.0", "TLS1.1", "SSLv3", "SSLv2"} else "MEDIUM", "enabled protocol list")
+            elif spec.get("split_suite_group"):
+                # MQ CipherSpec / JSSE suite name -> component algorithms
+                from scanner.extractors.cipher_suites import suite_components
+                from scanner.parsers.config_rules import _MQ_CIPHERSPEC
+                low = tok.lower()
+                if low in _MQ_CIPHERSPEC:
+                    algo, digest = _MQ_CIPHERSPEC[low]
+                    put(line, algo, "KEY_AGREEMENT" if algo.startswith("TLS") else "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", spec["library"], tok, "HIGH", "MQ CipherSpec")
+                    if digest:
+                        put(line, digest, "MESSAGE_DIGEST", "NETWORK_ENCRYPTION", spec["library"], tok, "HIGH", "MQ CipherSpec")
+                    if low.startswith("ecdhe_ecdsa"):
+                        put(line, "ECDSA", "SIGNATURE", "NETWORK_ENCRYPTION", spec["library"], tok, "HIGH", "MQ CipherSpec")
+                    elif low.startswith(("ecdhe_rsa", "tls_rsa")):
+                        put(line, "RSA", "SIGNATURE", "NETWORK_ENCRYPTION", spec["library"], tok, "HIGH", "MQ CipherSpec")
+                else:
+                    for a, api_type in suite_components(tok):
+                        put(line, a, api_type, "NETWORK_ENCRYPTION", spec["library"], tok, "HIGH", "cipher suite")
             else:
                 pair = _XMLDSIG.get(tok.lower())
                 if pair and pair[1]:

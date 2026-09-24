@@ -198,6 +198,49 @@ _CURVE_KEY = re.compile(
 _DHPARAM_KEY = re.compile(_LIST + r"(?:ssl[_.\-]?)?dh[_.\-]?param(?:s|_file|eters)?(?:\s*[=:]\s*|\s+)['\"]?(\S+)", re.I | re.M)
 
 
+
+# --- Bank middleware: IBM MQ, WebSphere, WebLogic, IBM JSSE2/JCE, QuickFIX/J, SWIFT SAG -------------------
+_MQ_CIPHERSPEC = {
+    "tls_rsa_with_aes_128_cbc_sha256": ("AES", "SHA-256"), "tls_rsa_with_aes_256_cbc_sha256": ("AES", "SHA-256"),
+    "tls_rsa_with_aes_128_gcm_sha256": ("AES", "SHA-256"), "tls_rsa_with_aes_256_gcm_sha384": ("AES", "SHA-384"),
+    "ecdhe_rsa_aes_128_cbc_sha256": ("AES", "SHA-256"), "ecdhe_rsa_aes_256_cbc_sha384": ("AES", "SHA-384"),
+    "ecdhe_rsa_aes_128_gcm_sha256": ("AES", "SHA-256"), "ecdhe_rsa_aes_256_gcm_sha384": ("AES", "SHA-384"),
+    "ecdhe_ecdsa_aes_128_gcm_sha256": ("AES", "SHA-256"), "ecdhe_ecdsa_aes_256_gcm_sha384": ("AES", "SHA-384"),
+    "ecdhe_ecdsa_aes_128_cbc_sha256": ("AES", "SHA-256"), "ecdhe_ecdsa_aes_256_cbc_sha384": ("AES", "SHA-384"),
+    "tls_rsa_with_3des_ede_cbc_sha": ("3DES", "SHA-1"), "triple_des_sha_us": ("3DES", "SHA-1"), "des_sha_export": ("DES", "SHA-1"),
+    "rc4_sha_us": ("RC4", "SHA-1"), "rc4_md5_us": ("RC4", "MD5"), "rc4_md5_export": ("RC4", "MD5"), "rc2_md5_export": ("RC2", "MD5"),
+    "tls_rsa_with_rc4_128_sha256": ("RC4", "SHA-256"), "tls_rsa_with_null_sha256": ("NULL", "SHA-256"), "null_sha": ("NULL", "SHA-1"), "null_md5": ("NULL", "MD5"),
+    "tls_rsa_with_des_cbc_sha": ("DES", "SHA-1"), "tls_rsa_with_aes_128_cbc_sha": ("AES", "SHA-1"), "tls_rsa_with_aes_256_cbc_sha": ("AES", "SHA-1"),
+    "ecdhe_rsa_3des_ede_cbc_sha": ("3DES", "SHA-1"), "ecdhe_ecdsa_3des_ede_cbc_sha": ("3DES", "SHA-1"), "ecdhe_rsa_rc4_128_sha256": ("RC4", "SHA-256"), "ecdhe_ecdsa_rc4_128_sha256": ("RC4", "SHA-256"),
+    "ecdhe_rsa_null_sha256": ("NULL", "SHA-256"), "ecdhe_ecdsa_null_sha256": ("NULL", "SHA-256"),
+    "tls_aes_128_gcm_sha256": ("AES", "SHA-256"), "tls_aes_256_gcm_sha384": ("AES", "SHA-384"), "tls_chacha20_poly1305_sha256": ("ChaCha20-Poly1305", "SHA-256"),
+    "tls_aes_128_ccm_sha256": ("AES", "SHA-256"), "tls_aes_128_ccm_8_sha256": ("AES", "SHA-256"),
+    "any_tls12": ("TLS1.2", None), "any_tls12_or_higher": ("TLS1.2", None), "any_tls13": ("TLS1.3", None), "any_tls13_or_higher": ("TLS1.3", None), "any": ("TLS", None),
+}
+_MQ_SSLCIPH = re.compile(r"\b(?:SSLCIPH|SSLCipherSpec|sslCipherSpec|SSLCipherSuite|sslCipherSuite|CipherSpec|MQSSLCIPH)\s*(?:\(|=|:)\s*['\"]?([A-Za-z0-9_]+)['\"]?\s*\)?", re.M)
+_MQ_MARKERS = re.compile(r"^\s*(?:DEFINE|ALTER)\s+CHANNEL\b[^\n]*\bSSLCIPH\b|\bSSLKEYR\s*(?:\(|=)|\bCERTLABL\s*\(|^\s*(?:SSLFIPS|SSLCAUTH|SSLPEER)\s*(?:\(|=)|^\s*\[SSL\]\s*$|^\s*(?:SSLKeyRepository|CertificateLabel|SSLKeyResetCount|OutboundSNI|SSLFipsRequired)\s*=", re.M | re.I)
+_MQ_SNIPPET = re.compile(r"^\s*(?:MQCHLLIB|MQSSLKEYR|MQCERTLABL|MQCHLTAB)\s*=", re.M)
+_WAS_SSL = re.compile(r"^\s*com\.ibm\.ssl\.(protocol|keyStoreType|trustStoreType|enabledCipherSuites|securityLevel|keyStore|trustStore|clientAuthentication|keyManager|trustManager)\s*=\s*([^\s#]+(?:\s*,\s*[^\s#,]+)*)", re.M)
+_IBM_JSSE = re.compile(r"^\s*(com\.ibm\.jsse2\.overrideDefaultTLS|com\.ibm\.jsse2\.overrideDefaultProtocol|com\.ibm\.jsse2\.disableSSLv3|com\.ibm\.jsse2\.sp800-131|com\.ibm\.jsse2\.usefipsprovider|com\.ibm\.crypto\.provider\.fips|com\.ibm\.security\.enableCRLDP|https\.protocols|jdk\.tls\.client\.protocols|jdk\.tls\.disabledAlgorithms|jdk\.certpath\.disabledAlgorithms|jdk\.tls\.server\.protocols|jdk\.tls\.namedGroups|jdk\.tls\.ephemeralDHKeySize|crypto\.policy)\s*=\s*([^\n#]+)", re.M)
+_JAVA_SECURITY_PROVIDER = re.compile(r"^\s*security\.provider\.\d+\s*=\s*([A-Za-z0-9_.$]+)(?:\s+([^\n#]+))?", re.M)
+_PROVIDER_CLASS = {
+    "com.ibm.crypto.provider.ibmjce": ("UNKNOWN", "IBMJCE"), "com.ibm.crypto.plus.provider.ibmjceplus": ("UNKNOWN", "IBMJCEPlus"), "com.ibm.crypto.fips.provider.ibmjcefips": ("UNKNOWN", "IBMJCEFIPS"),
+    "com.ibm.crypto.hdwrcca.provider.ibmjcecca": ("UNKNOWN", "IBMJCECCA"), "com.ibm.crypto.ibmjcehybrid.provider.ibmjcehybrid": ("UNKNOWN", "IBMJCEHYBRID"), "com.ibm.jsse2.ibmjsseprovider2": ("TLS", "IBMJSSE2"),
+    "com.ibm.crypto.pkcs11impl.provider.ibmpkcs11impl": ("UNKNOWN", "IBMPKCS11Impl"), "sun.security.pkcs11.sunpkcs11": ("UNKNOWN", "SunPKCS11"), "sunpkcs11": ("UNKNOWN", "SunPKCS11"),
+    "org.bouncycastle.jce.provider.bouncycastleprovider": ("UNKNOWN", "BouncyCastle"), "org.bouncycastle.jcajce.provider.bouncycastlefipsprovider": ("UNKNOWN", "BC-FIPS"),
+    "org.bouncycastle.jsse.provider.bouncycastlejsseprovider": ("TLS", "BCJSSE"), "com.safenetinc.luna.provider.lunaprovider": ("UNKNOWN", "HSM/Luna"), "com.ncipher.provider.km.ncipherkm": ("UNKNOWN", "HSM/nCipher"),
+    "com.amazonaws.cloudhsm.jce.provider.cloudhsmprovider": ("UNKNOWN", "HSM/CloudHSM"), "com.cavium.provider.caviumprovider": ("UNKNOWN", "HSM/CloudHSM"),
+    "sun.security.provider.sun": ("UNKNOWN", "SUN"), "com.sun.crypto.provider.sunjce": ("UNKNOWN", "SunJCE"), "sun.security.ssl.sunjsse": ("TLS", "SunJSSE"), "com.sun.net.ssl.internal.ssl.provider": ("TLS", "SunJSSE"),
+    "sun.security.ec.sunec": ("ECDSA", "SunEC"), "sun.security.rsa.sunrsasign": ("RSA", "SunRsaSign"),
+}
+_WEBLOGIC = re.compile(r"^\s*-?D?(weblogic\.security\.SSL\.(?:protocolVersion|minimumProtocolVersion|ciphersuites|nojce|allowUnencryptedNullCipher|ignoreHostnameVerification|enforceConstraints|hostnameVerifier|trustedCAKeyStore)|weblogic\.security\.(?:TrustKeyStore|CustomTrustKeyStoreType|allowCryptoJDefaultJCEVerification))\s*=\s*([^\n#]+)", re.M)
+_QUICKFIX = re.compile(r"^\s*(SocketUseSSL|SocketKeyStore|SocketKeyStoreType|SocketTrustStore|SocketTrustStoreType|EnabledProtocols|CipherSuites|NeedClientAuth|SSLProtocol|SSLCertificate|SSLPrivateKey|SSLValidateCertificates|SSLCertificateAuthorities|SSLCipherSuites|SSLEnabled)\s*=\s*([^\n#]+)", re.M)
+_SWIFT = re.compile(r"\b(?:LAU|lau)[_.\- ]?(?:key|Key|KEY|left|right|LeftKey|RightKey|signature|Signature)\b|\bLocalAuthentication\b|\bSAG\s*LAU\b|\bswift\.lau\b|\bMQHA\b[^\n]*\bLAU\b|\bAlliance\s+(?:Access|Gateway|Lite2)\b[^\n]*\b(?:LAU|HMAC|TLS|SSL)\b", re.M)
+_SWIFT_HSM = re.compile(r"\bSWIFT\b[^\n]*\b(?:HSM|3SKey|PKI|RMA|X\.?509)\b|\bswift\.hsm\b|\b3SKey\b", re.M | re.I)
+_CAMEL_MULE_PROPS = re.compile(r"^\s*(?:camel\.ssl\.config\.[A-Za-z.]*(?:secure-socket-protocol|cipher-suites|key-store\.type)|mule\.tls\.[A-Za-z.]*(?:enabledProtocols|enabledCipherSuites|keyStoreType|defaultProtocol)|tls\.(?:defaultProtocol|enabledProtocols|enabledCipherSuites))\s*=\s*([^\n#]+)", re.M | re.I)
+_TLS_PROTO_TOKEN = {"tlsv1.3": "TLS1.3", "tlsv1.2": "TLS1.2", "tlsv1.1": "TLS1.1", "tlsv1": "TLS1.0", "tlsv1.0": "TLS1.0", "tls": "TLS", "ssl_tlsv2": "TLS", "ssl_tls": "TLS1.0", "sslv3": "SSLv3", "ssl": "SSLv3", "sslv2hello": "SSLv2", "tls1.2": "TLS1.2", "tls1.3": "TLS1.3", "tls1.1": "TLS1.1", "tls1": "TLS1.0", "tls1.0": "TLS1.0"}
+
+
 def _line(text: str, pos: int) -> int:
     return text.count("\n", 0, pos) + 1
 
@@ -391,6 +434,152 @@ def run_config_rules(
         algo = "3DES" if "DES-EDE3" in dek else "DES" if dek.startswith("DES") else "AES" if dek.startswith("AES") else dek
         emit(m.start(), algo, "CIPHER_INSTANCE", "KEY_STORAGE", "pem", dek, reason="pem-dek-info")
 
+
+    # --- Bank middleware --------------------------------------------------------
+    for m in _MQ_SSLCIPH.finditer(text):
+        spec = m.group(1)
+        low = spec.lower()
+        algo, digest = _MQ_CIPHERSPEC.get(low, (None, None))
+        emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ibm-mq", m.group(0).strip(), confidence="HIGH", reason="mq-cipherspec")
+        if algo is None:
+            if re.match(r"(?i)(?:tls|ssl)_", spec) or "_WITH_" in spec.upper():
+                for a, api_type in suite_components(spec):
+                    emit(m.start(), a, api_type, "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+            continue
+        if algo.startswith("TLS"):
+            emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+        else:
+            emit(m.start(), algo, "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+        if digest:
+            emit(m.start(), digest, "MESSAGE_DIGEST", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+        if low.startswith("ecdhe_ecdsa"):
+            emit(m.start(), "ECDSA", "SIGNATURE", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+            emit(m.start(), "ECDHE", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+        elif low.startswith("ecdhe_rsa"):
+            emit(m.start(), "RSA", "SIGNATURE", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+            emit(m.start(), "ECDHE", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+        elif low.startswith("tls_rsa"):
+            emit(m.start(), "RSA", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ibm-mq", spec, reason="mq-cipherspec")
+    for m in _MQ_MARKERS.finditer(text):
+        raw = m.group(0).strip()
+        if re.search(r"(?i)SSLKEYR|SSLKeyRepository|CertificateLabel", raw):
+            emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "ibm-mq", raw, confidence="MEDIUM", reason="mq-key-repository")
+        else:
+            emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ibm-mq", raw, confidence="MEDIUM", reason="mq-channel-tls")
+    for m in _MQ_SNIPPET.finditer(text):
+        emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "ibm-mq", m.group(0).strip(), confidence="LOW", reason="mq-client-env")
+    for m in _WAS_SSL.finditer(text):
+        key, val = m.group(1), m.group(2).strip()
+        raw = m.group(0).strip()
+        if key == "protocol":
+            for tok in re.split(r"[,\s]+", val):
+                algo = _TLS_PROTO_TOKEN.get(tok.lower())
+                if algo:
+                    emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "websphere-ssl", raw, reason="was-ssl-props")
+        elif key in ("keyStoreType", "trustStoreType"):
+            emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "websphere-ssl", raw, confidence="MEDIUM", reason="was-ssl-props")
+            if val.upper() in ("PKCS11", "PKCS11IMPLKS"):
+                emit(m.start(), "UNKNOWN", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "websphere-ssl/PKCS#11", raw, confidence="MEDIUM", reason="was-ssl-props-hsm")
+        elif key == "enabledCipherSuites":
+            emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "websphere-ssl", val, confidence="MEDIUM", reason="was-ssl-props")
+            for a, api_type in suite_components(val):
+                emit(m.start(), a, api_type, "NETWORK_ENCRYPTION", "websphere-ssl", val, reason="was-ssl-props")
+        elif key == "securityLevel":
+            emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "websphere-ssl", raw, confidence="LOW", reason="was-security-level")
+        else:
+            emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "websphere-ssl", raw, confidence="MEDIUM", reason="was-ssl-props")
+    for m in _IBM_JSSE.finditer(text):
+        key, val = m.group(1), m.group(2).strip()
+        raw = m.group(0).strip()
+        lib = "ibm-jsse2" if key.startswith("com.ibm") else "java-security"
+        if key.endswith(("disabledAlgorithms",)):
+            emit(m.start(), "TLS-POLICY", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, raw, confidence="MEDIUM", reason="disabled-algorithms-policy (listed algorithms are blocked, not in use)")
+            continue
+        if key in ("com.ibm.jsse2.overrideDefaultTLS", "com.ibm.jsse2.disableSSLv3", "com.ibm.jsse2.sp800-131", "com.ibm.jsse2.usefipsprovider", "com.ibm.crypto.provider.fips", "crypto.policy", "com.ibm.security.enableCRLDP"):
+            emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, raw, confidence="MEDIUM", reason="ibm-jsse2-policy")
+            continue
+        if key == "jdk.tls.namedGroups":
+            for tok in re.split(r"[,\s]+", val):
+                low = tok.lower()
+                if low in {"x25519", "x448"}:
+                    emit(m.start(), "X25519", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, tok, reason="named-groups")
+                elif re.fullmatch(r"secp\d{3}[rk]1|brainpoolp\d{3}r1(?:tls13)?", low):
+                    emit(m.start(), "ECDH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, tok, reason="named-groups")
+                elif re.fullmatch(r"ffdhe\d{4}", low):
+                    emit(m.start(), "DH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, tok, reason="named-groups")
+                elif "mlkem" in low or "kyber" in low:
+                    emit(m.start(), "ML-KEM", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, tok, reason="named-groups")
+            continue
+        if key == "jdk.tls.ephemeralDHKeySize":
+            emit(m.start(), "DH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, raw, reason="dh-key-size")
+            continue
+        for tok in re.split(r"[,\s]+", val):
+            algo = _TLS_PROTO_TOKEN.get(tok.lower())
+            if algo:
+                emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, raw, reason="jsse-protocol-property")
+    for m in _JAVA_SECURITY_PROVIDER.finditer(text):
+        cls = m.group(1)
+        algo, lib = _PROVIDER_CLASS.get(cls.lower(), (None, None))
+        if algo is None:
+            continue
+        emit(m.start(), algo, "KEY_PAIR_GENERATOR" if algo != "TLS" else "KEY_AGREEMENT", "KEY_MANAGEMENT" if algo != "TLS" else "NETWORK_ENCRYPTION", lib, m.group(0).strip(), confidence="MEDIUM", reason="java.security-provider-order")
+    for m in _WEBLOGIC.finditer(text):
+        key, val = m.group(1), m.group(2).strip()
+        raw = m.group(0).strip()
+        if key.endswith("ciphersuites"):
+            emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "weblogic-ssl", val, confidence="MEDIUM", reason="weblogic-ssl")
+            for a, api_type in suite_components(val):
+                emit(m.start(), a, api_type, "NETWORK_ENCRYPTION", "weblogic-ssl", val, reason="weblogic-ssl")
+        elif key.endswith(("ignoreHostnameVerification", "allowUnencryptedNullCipher")) and val.lower().startswith("t"):
+            emit(m.start(), "TLS-UNVERIFIED" if "Hostname" in key else "NULL", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "weblogic-ssl", raw, reason="weblogic-ssl-weakening")
+        elif key.endswith(("protocolVersion", "minimumProtocolVersion")):
+            algo = _TLS_PROTO_TOKEN.get(val.lower(), "TLS")
+            emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "weblogic-ssl", raw, reason="weblogic-ssl")
+        elif key.endswith(("TrustKeyStore", "CustomTrustKeyStoreType", "trustedCAKeyStore")):
+            emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "weblogic-ssl", raw, confidence="MEDIUM", reason="weblogic-ssl")
+        else:
+            emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "weblogic-ssl", raw, confidence="MEDIUM", reason="weblogic-ssl")
+    if re.search(r"(?m)^\s*\[(?:DEFAULT|SESSION)\]\s*$", text) or "BeginString=FIX" in text or re.search(r"(?m)^\s*(?:SenderCompID|TargetCompID)\s*=", text):
+        for m in _QUICKFIX.finditer(text):
+            key, val = m.group(1), m.group(2).strip()
+            raw = m.group(0).strip()
+            if key in ("SocketUseSSL", "SSLEnabled"):
+                if val.upper() in ("Y", "YES", "TRUE", "1"):
+                    emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "quickfix", raw, reason="fix-session-tls")
+                else:
+                    emit(m.start(), "PLAINTEXT", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "quickfix", raw, confidence="MEDIUM", reason="fix-session-without-tls")
+            elif key in ("EnabledProtocols", "SSLProtocol"):
+                for tok in re.split(r"[,\s]+", val):
+                    algo = _TLS_PROTO_TOKEN.get(tok.lower())
+                    if algo:
+                        emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "quickfix", raw, reason="fix-session-tls")
+            elif key in ("CipherSuites", "SSLCipherSuites"):
+                emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "quickfix", val, confidence="MEDIUM", reason="fix-session-tls")
+                for a, api_type in suite_components(val):
+                    emit(m.start(), a, api_type, "NETWORK_ENCRYPTION", "quickfix", val, reason="fix-session-tls")
+            elif key == "SSLValidateCertificates" and val.upper() in ("N", "NO", "FALSE", "0"):
+                emit(m.start(), "TLS-UNVERIFIED", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "quickfix", raw, reason="fix-session-tls-unverified")
+            else:
+                emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "quickfix", raw, confidence="MEDIUM", reason="fix-session-keystore")
+    for m in _SWIFT.finditer(text):
+        emit(m.start(), "HMAC-SHA256", "MAC", "MAC_GENERATION", "swift-alliance-lau", m.group(0).strip(), confidence="MEDIUM", reason="swift-lau (HMAC-SHA-256 over the message with the left/right LAU keys)")
+    for m in _SWIFT_HSM.finditer(text):
+        emit(m.start(), "X509", "SIGNATURE", "SIGNING", "swift-pki", m.group(0).strip()[:80], confidence="LOW", reason="swift-pki/hsm reference")
+    for m in _CAMEL_MULE_PROPS.finditer(text):
+        val = m.group(1).strip()
+        raw = m.group(0).strip()
+        lib = "camel" if raw.lower().startswith("camel") else "mule"
+        if re.search(r"(?i)cipher", raw):
+            emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", lib, val, confidence="MEDIUM", reason="middleware-tls")
+            for a, api_type in suite_components(val):
+                emit(m.start(), a, api_type, "NETWORK_ENCRYPTION", lib, val, reason="middleware-tls")
+        elif re.search(r"(?i)store\.?type", raw):
+            emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", lib, raw, confidence="MEDIUM", reason="middleware-tls")
+        else:
+            for tok in re.split(r"[,\s]+", val):
+                algo = _TLS_PROTO_TOKEN.get(tok.lower())
+                if algo:
+                    emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, raw, reason="middleware-tls")
     # --- Curves / DH params ---------------------------------------------------
     for m in _CURVE_KEY.finditer(text):
         for tok in re.split(r"[\s,:]+", m.group(1)):

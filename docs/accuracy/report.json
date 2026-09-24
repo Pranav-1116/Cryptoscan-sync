@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-09-24T16:27:02+00:00",
+  "generated_at": "2026-09-24T16:47:42+00:00",
   "corpus": {
     "python": 68,
-    "positive": 427,
+    "positive": 461,
     "negative": 89,
     "obfuscated": 18,
-    "java": 84,
+    "java": 92,
     "kotlin": 15,
     "javascript": 46,
     "typescript": 10,
@@ -16,7 +16,7 @@
     "ruby": 30,
     "c": 35,
     "cpp": 3,
-    "config": 56,
+    "config": 78,
     "wild-positive": 32,
     "wild-negative": 5,
     "wild-negative-dynamic": 1,
@@ -26,19 +26,20 @@
     "xml": 20,
     "sql": 30,
     "cobol": 20,
-    "total": 594
+    "pli": 4,
+    "total": 628
   },
   "overall": {
-    "tp": 920,
+    "tp": 1043,
     "fp": 0,
     "fn": 0,
-    "tn": 111,
+    "tn": 116,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 594,
-    "files_exact": 594,
+    "files": 628,
+    "files_exact": 628,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -69,16 +70,16 @@
       "file_exact_rate": 1.0
     },
     "config": {
-      "tp": 87,
+      "tp": 186,
       "fp": 0,
       "fn": 0,
-      "tn": 9,
+      "tn": 12,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 34,
-      "files_exact": 34,
+      "files": 56,
+      "files_exact": 56,
       "file_exact_rate": 1.0
     },
     "cpp": {
@@ -121,16 +122,16 @@
       "file_exact_rate": 1.0
     },
     "java": {
-      "tp": 100,
+      "tp": 120,
       "fp": 0,
       "fn": 0,
-      "tn": 19,
+      "tn": 20,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 84,
-      "files_exact": 84,
+      "files": 92,
+      "files_exact": 92,
       "file_exact_rate": 1.0
     },
     "javascript": {
@@ -183,6 +184,19 @@
       "accuracy": 1.0,
       "files": 33,
       "files_exact": 33,
+      "file_exact_rate": 1.0
+    },
+    "pli": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 4,
+      "files_exact": 4,
       "file_exact_rate": 1.0
     },
     "python": {
@@ -331,16 +345,16 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 762,
+      "tp": 885,
       "fp": 0,
       "fn": 0,
-      "tn": 16,
+      "tn": 21,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 427,
-      "files_exact": 427,
+      "files": 461,
+      "files_exact": 461,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

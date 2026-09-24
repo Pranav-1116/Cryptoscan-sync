@@ -7,7 +7,7 @@ from pathlib import Path
 
 from scanner.core.file_discovery import SHELL_NAMED_FILES as _SHELL_NAMED_FILES, is_named_config_file
 
-from scanner.detectors.java.jar_string_scanner import scan_jar
+from scanner.detectors.java.jar_string_scanner import scan_class_file, scan_jar
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.c_parser import parse_c_file
 from scanner.parsers.config_crypto_parser import parse_config_file
@@ -23,6 +23,7 @@ from scanner.parsers.rust_parser import parse_rust_file
 from scanner.parsers.shell_parser import parse_shell_file
 from scanner.parsers.sql_parser import parse_sql_file
 from scanner.parsers.cobol_parser import parse_cobol_file
+from scanner.parsers.pli_parser import parse_pli_file
 from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.xml_parser import parse_xml_file
 from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
@@ -40,12 +41,14 @@ RUST_EXT = {".rs"}
 SHELL_EXT = {".sh", ".bash", ".zsh", ".ksh"}
 SWIFT_EXT = {".swift"}
 SQL_EXT = {".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc"}
+PLI_EXT = {".pli", ".pl1", ".plx", ".pls1"}
 COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
 PLIST_EXT = {".plist", ".entitlements"}
 XML_EXT = {".xml", ".config", ".csproj", ".props", ".targets", ".wsdl", ".xaml"}
 C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
-JAR_EXT = {".jar"}
-CONFIG_EXT = {".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg", ".tmpl", ".tpl", ".j2", ".toml"}
+JAR_EXT = {".jar", ".war", ".ear", ".aar"}
+CLASS_EXT = {".class"}
+CONFIG_EXT = {".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg", ".tmpl", ".tpl", ".j2", ".toml", ".mqsc", ".security", ".policy", ".settings"}
 
 PARSERS = (
     (JAVA_EXT, parse_java_file),
@@ -62,10 +65,12 @@ PARSERS = (
     (SWIFT_EXT, parse_swift_file),
     (SQL_EXT, parse_sql_file),
     (COBOL_EXT, parse_cobol_file),
+    (PLI_EXT, parse_pli_file),
     (PLIST_EXT, parse_swift_file),
     (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),
     (JAR_EXT, scan_jar),
+    (CLASS_EXT, scan_class_file),
     (CONFIG_EXT, parse_config_file),
 )
 
@@ -78,6 +83,14 @@ def _dedupe_against(base: list[RawFinding], extra: list[RawFinding]) -> list[Raw
 def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
     suffix = path.suffix.lower()
     findings: list[RawFinding] = []
+    if suffix == ".props":
+        # MSBuild .props is XML; WebSphere ssl.client.props / sas.client.props are Java properties
+        try:
+            head = path.read_text(encoding="utf-8", errors="replace")[:512].lstrip()
+        except OSError:
+            head = ""
+        if not head.startswith("<"):
+            return parse_config_file(path, repo_root)
     for extensions, parser in PARSERS:
         if suffix in extensions:
             findings = parser(path, repo_root)

@@ -23,6 +23,7 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "SWIFT": (".swift",),
     "SHELL": (".sh", ".bash", ".zsh", ".ksh"),
     "SQL": (".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql"),
+    "PLI": (".pli", ".pl1", ".plx"),
     "COBOL": (".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".jcl"),
 }
 

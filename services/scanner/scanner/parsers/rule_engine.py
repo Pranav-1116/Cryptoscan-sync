@@ -10,6 +10,7 @@ A *rule* is ``(compiled_pattern, spec)`` where ``spec`` is a dict with at least
                                      token through a mapping table (case-
                                      insensitive) instead of a fixed name.
 * ``mode_from_group``              - regex group index holding the cipher mode.
+* ``file_context``                 - regex the whole file must match before the rule is tried
 * ``line_group``                   - regex group whose start position gives the reported line
 * ``raw_group``                    - regex group whose text becomes raw_transformation
                                      (cipher lists are expanded per algorithm downstream).
@@ -282,7 +283,11 @@ def _may_match(pattern: "re.Pattern[str]", lower_text: str) -> bool:
 def _raw_of(match: re.Match, spec: dict) -> str:
     """``raw_group`` lets a rule expose the *value* (e.g. a cipher list) instead of the whole match."""
     g = spec.get("raw_group")
-    if g:
+    if g == "any":  # first populated capture (alternations with one value group each)
+        val = next((x for x in match.groups() if x), None)
+        if val:
+            return val[:200]
+    elif g:
         try:
             val = match.group(g)
         except IndexError:
@@ -341,6 +346,8 @@ def run_rules(
     for pattern, spec in rules:
         if not _may_match(pattern, lower_text):
             continue
+        if spec.get("file_context") and not re.search(spec["file_context"], text):
+            continue  # rule only applies to files that establish a context (e.g. a Thales HSM client class)
         for match in pattern.finditer(text):
             whole = match.group(0)
             # ``(?m)^\s*x`` can start on the previous blank line; report where the text starts

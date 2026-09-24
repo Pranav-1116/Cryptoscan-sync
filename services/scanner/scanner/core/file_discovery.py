@@ -31,6 +31,8 @@ DEFAULT_EXCLUDED_DIRS = frozenset({
 })
 
 _OUTPUT_DIR_NAMES = frozenset({"build", "out", "target", "dist", "bin"})
+ARCHIVE_EXTENSIONS = (".jar", ".war", ".ear", ".aar")
+ARCHIVE_MAX_BYTES = 250 * 1024 * 1024
 
 # Directories likely to contain generated or test code (configurable exclusion)
 DEFAULT_TEST_DIRS = frozenset({
@@ -59,6 +61,8 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".sh",
     ".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc",
     ".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm",
+    ".pli", ".pl1", ".plx", ".pls1",
+    ".jar", ".war", ".ear", ".aar", ".class",
     ".bash",
     ".zsh",
     ".ksh",
@@ -105,12 +109,19 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".tpl",
     ".j2",
     ".toml",
+    ".props",
+    ".mqsc",
+    ".security",
+    ".policy",
+    ".settings",
 )
 
 _NAMED_CONFIG_EXACT = frozenset({
     "dockerfile", "containerfile", ".env", "nginx.conf", "openssl.cnf", "ssh_config", "sshd_config",
     "postgresql.conf", "pg_hba.conf", "my.cnf", "redis.conf", "haproxy.cfg", "httpd.conf", "apache2.conf",
     "krb5.conf", "ipsec.conf", "strongswan.conf", "smb.conf", "ldap.conf", "slapd.conf",
+    "java.security", "ssl.client.props", "ssl.server.props", "sas.client.props", "soap.client.props", "mqclient.ini", "qm.ini", "mqs.ini", "server.env", "jvm.options", "bootstrap.properties",
+    "quickfix.cfg", "acceptor.cfg", "initiator.cfg", "weblogic.policy", "setdomainenv.sh", "startweblogic.sh",
 })
 
 
@@ -207,7 +218,10 @@ class FileDiscovery:
                 # Skip oversized files
                 try:
                     file_size = file_path.stat().st_size
-                    if file_size > self._max_file_size_bytes:
+                    limit = self._max_file_size_bytes
+                    if filename.lower().endswith(ARCHIVE_EXTENSIONS):
+                        limit = max(limit, ARCHIVE_MAX_BYTES)  # vendored fat JARs / EARs are routinely 50-200 MB
+                    if file_size > limit:
                         log.warning(
                             "skipping_oversized_file",
                             file=str(file_path),
