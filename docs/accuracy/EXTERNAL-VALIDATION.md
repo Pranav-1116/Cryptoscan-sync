@@ -142,3 +142,13 @@ Two whole file classes were previously **not scanned at all**: shell scripts (wh
 | vapor/jwt-kit | 107 | ~310 | `Insecure.RSA.*`, `ES256PrivateKey`, `EdDSA.*`, `.add(hmac:digestAlgorithm:)` now emit the real family (RSA/ECDSA/Ed25519/HMAC+digest) alongside JWT, not just "JWT". |
 | krzyzanowskim/CryptoSwift | 163 | 342 | AES block modes captured per call (`blockMode: GCM/CBC/CTR/CCM/CFB`), `PKCS5.PBKDF2`, `Scrypt`, `HKDF`, `ChaCha20`, `Rabbit`, `Blowfish`, `Poly1305`, `CMAC`, `Digest.*`, `SHA2(variant:)`, `SHA3`, `RSA(keySize:)` ✔. `.md5()`-style extensions are only reported when CryptoSwift is actually imported / used in the file. |
 | KeychainAccess | 29 | 2 | Keychain access-control (`SecAccessControlCreateWithFlags`) produced 40 UNKNOWNs → removed; it is key *storage*, not an algorithm. Only `SecRandomCopyBytes` remains. |
+
+## Round 10 — XML configuration
+
+`.xml`, `.config`, `.csproj`, `.props` were not scanned before. New `xml_parser.py` covers web.config/WCF/ADO.NET connection strings, Spring Security XML, Android network-security-config / manifest, Tomcat and WildFly server configs, JDBC URLs, Maven/NuGet crypto dependencies and SAML/XML-DSig algorithm URIs. XML comments are blanked first. Corpus wave 6 (20 files, 5 negatives) → 470/470.
+
+| Project | XML files | Findings | Review |
+|---|---|---|---|
+| spring-projects/spring-security | 485 | 91 | `<remember-me>` (MD5 default, LOW), `<jwt>`, `<x509>`, SAML metadata `KeyDescriptor`/`X509Certificate`, `requires-channel`, `NoOpPasswordEncoder` bean → PLAINTEXT. No hits in build/test-fixture XML. |
+| apache/tomcat | 220 | 13 | Only `conf/server.xml` fires: `SSLHostConfig`, keystore/certificate files, `Connector SSLEnabled`. Everything else (build files, MBean descriptors, web.xml) silent. |
+| dotnet/aspnetcore (391 .csproj/.props/.config) | 391 | 0 → 14 | `<Reference Include="…JwtBearer">` (not `PackageReference`) was missed → rule widened to `Reference`/`PackageVersion`. |

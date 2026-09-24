@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-24T09:27:44+00:00",
+  "generated_at": "2026-09-24T09:41:42+00:00",
   "corpus": {
     "python": 62,
-    "positive": 295,
-    "negative": 77,
+    "positive": 310,
+    "negative": 82,
     "obfuscated": 18,
     "java": 46,
     "kotlin": 15,
@@ -23,19 +23,20 @@
     "nginx": 1,
     "shell": 31,
     "swift": 29,
-    "total": 450
+    "xml": 20,
+    "total": 470
   },
   "overall": {
-    "tp": 711,
+    "tp": 758,
     "fp": 0,
     "fn": 0,
-    "tn": 84,
+    "tn": 89,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 450,
-    "files_exact": 450,
+    "files": 470,
+    "files_exact": 470,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -246,6 +247,19 @@
       "files": 8,
       "files_exact": 8,
       "file_exact_rate": 1.0
+    },
+    "xml": {
+      "tp": 47,
+      "fp": 0,
+      "fn": 0,
+      "tn": 5,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 20,
+      "files_exact": 20,
+      "file_exact_rate": 1.0
     }
   },
   "by_category": {
@@ -266,13 +280,13 @@
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 77,
+      "tn": 82,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 77,
-      "files_exact": 77,
+      "files": 82,
+      "files_exact": 82,
       "file_exact_rate": 1.0
     },
     "obfuscated": {
@@ -289,7 +303,7 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 553,
+      "tp": 600,
       "fp": 0,
       "fn": 0,
       "tn": 1,
@@ -297,8 +311,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 295,
-      "files_exact": 295,
+      "files": 310,
+      "files_exact": 310,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

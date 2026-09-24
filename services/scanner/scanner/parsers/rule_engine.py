@@ -10,6 +10,8 @@ A *rule* is ``(compiled_pattern, spec)`` where ``spec`` is a dict with at least
                                      token through a mapping table (case-
                                      insensitive) instead of a fixed name.
 * ``mode_from_group``              - regex group index holding the cipher mode.
+* ``raw_group``                    - regex group whose text becomes raw_transformation
+                                     (cipher lists are expanded per algorithm downstream).
 * ``emit_digest_group``            - additionally emit a MESSAGE_DIGEST finding
                                      for a captured digest name (e.g. the
                                      ``EVP_sha256()`` argument of ``HMAC``).
@@ -276,6 +278,19 @@ def _may_match(pattern: "re.Pattern[str]", lower_text: str) -> bool:
     return False
 
 
+def _raw_of(match: re.Match, spec: dict) -> str:
+    """``raw_group`` lets a rule expose the *value* (e.g. a cipher list) instead of the whole match."""
+    g = spec.get("raw_group")
+    if g:
+        try:
+            val = match.group(g)
+        except IndexError:
+            val = None
+        if val:
+            return val[:200]
+    return match.group(0)[:80]
+
+
 def run_rules(
     *,
     file_path: Path,
@@ -317,7 +332,7 @@ def run_rules(
                 key_size=key_size if key_size is not None else spec.get("key_size"),
                 confidence=spec.get("confidence", "HIGH"),
                 confidence_reason=spec.get("confidence_reason", confidence_reason),
-                raw_transformation=match.group(0)[:80],
+                raw_transformation=_raw_of(match, spec),
             )
         )
 

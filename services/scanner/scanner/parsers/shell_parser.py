@@ -85,7 +85,7 @@ _RULES: list[Rule] = [
     _r(r"\bopenssl\s+s_client\b[^\n|;&]*?-(?:ssl3)\b", _TLS, "openssl-cli", algorithm="SSLv3"),
     _r(r"\bopenssl\s+s_client\b[^\n|;&]*?-(?:ssl2)\b", _TLS, "openssl-cli", algorithm="SSLv2"),
     _r(r"\bopenssl\s+s_client\b(?![^\n|;&]*?-(?:tls1_3|tls1_2|tls1_1|tls1|ssl3|ssl2)\b)|\bopenssl\s+s_server\b", _TLS, "openssl-cli", algorithm="TLS", confidence="MEDIUM"),
-    _r(r"\bopenssl\s+s_client\b[^\n|;&]*?-cipher\s+['\"]?([A-Za-z0-9:!+@=_-]+)", _TLS, "openssl-cli", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"\bopenssl\s+s_client\b[^\n|;&]*?-cipher\s+['\"]?([A-Za-z0-9:!+@=_-]+)", _TLS, "openssl-cli", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
     _r(r"\bopenssl\s+ciphers\b", _TLS, "openssl-cli", algorithm="TLS-CIPHERS", confidence="LOW"),
     # ------------------------------------------------------------- ssh-keygen / ssh / scp
     _r(r"\bssh-keygen\b[^\n|;&]*?-t\s+(rsa1|rsa|dsa|ecdsa-sk|ecdsa|ed25519-sk|ed25519)\b", _K, "openssh", algo_from_group=1, algo_map=_SSH_KEY_TYPES),
@@ -141,7 +141,7 @@ _RULES: list[Rule] = [
     _r(r"\bcurl\b[^\n|]*?--tlsv1\.3\b", _TLS, "curl", algorithm="TLS1.3", confidence="HIGH"),
     _r(r"\bcurl\b[^\n|]*?--(?:sslv3|ssl3)\b|\bcurl\b[^\n|]*?\s-3\b", _TLS, "curl", algorithm="SSLv3", confidence="HIGH"),
     _r(r"\bcurl\b[^\n|]*?--(?:sslv2|ssl2)\b|\bcurl\b[^\n|]*?\s-2\b", _TLS, "curl", algorithm="SSLv2", confidence="HIGH"),
-    _r(r"\bcurl\b[^\n|]*?--ciphers\s+['\"]?([A-Za-z0-9:!+@=_-]+)", _TLS, "curl", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"\bcurl\b[^\n|]*?--ciphers\s+['\"]?([A-Za-z0-9:!+@=_-]+)", _TLS, "curl", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
     _r(r"\bcurl\b[^\n|]*?--(?:cacert|cert|key|pinnedpubkey|cert-status)\b", _TLS, "curl", algorithm="X509", confidence="MEDIUM"),
     _r(r"\b(?:export\s+)?(?:NODE_TLS_REJECT_UNAUTHORIZED|PYTHONHTTPSVERIFY|CURL_INSECURE)\s*=\s*['\"]?0\b|\b(?:export\s+)?GIT_SSL_NO_VERIFY\s*=\s*['\"]?(?:1|true)\b|\bgit\s+config\b[^\n|;&]*?http\.sslVerify\s+['\"]?false\b|\bnpm\s+config\s+set\s+strict-ssl\s+false\b|\bpip\b[^\n|;&]*?--trusted-host\b|\bhelm\b[^\n|;&]*?--insecure-skip-tls-verify\b|\bkubectl\b[^\n|;&]*?--insecure-skip-tls-verify\b|\bdocker\b[^\n|;&]*?--tlsverify=false\b|\b(?:export\s+)?REQUESTS_CA_BUNDLE\s*=\s*['\"]?\s*['\"]?\s*$|\bgit\s+-c\s+http\.sslVerify=false\b",
        _TLS, "shell-env", algorithm="TLS-UNVERIFIED", confidence="HIGH", confidence_reason="TLS certificate verification disabled via environment / tool flag"),

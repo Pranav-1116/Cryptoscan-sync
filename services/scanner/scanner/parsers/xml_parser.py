@@ -115,7 +115,7 @@ _RULES: list[Rule] = [
        algo_map={"bcryptpasswordencoder": "BCRYPT", "pbkdf2passwordencoder": "PBKDF2", "scryptpasswordencoder": "SCRYPT", "argon2passwordencoder": "ARGON2", "standardpasswordencoder": "SHA-256", "nooppasswordencoder": "PLAINTEXT",
                  "ldapshapasswordencoder": "SHA-1", "messagedigestpasswordencoder": "UNKNOWN", "md4passwordencoder": "MD4", "md5passwordencoder": "MD5", "shapasswordencoder": "SHA-1", "plaintextpasswordencoder": "PLAINTEXT", "delegatingpasswordencoder": "BCRYPT"}),
     _r(r"MessageDigestPasswordEncoder[\"'][^\n]*>\s*<constructor-arg\b[^>]*\bvalue\s*=\s*[\"'](MD5|SHA-1|SHA-256|SHA-512|SHA)[\"']", _KDF, "spring-security", algo_from_group=1, algo_map=_DIGEST),
-    _r(r"<(?:security:|sec:|s:)?remember-me\b", _M, "spring-security", algorithm="MD5", confidence="MEDIUM", confidence_reason="TokenBasedRememberMeServices default token signature is MD5 (SHA-256 when configured)"),
+    _r(r"<(?:security:|sec:|s:)?remember-me\b", _M, "spring-security", algorithm="MD5", confidence="LOW", confidence_reason="TokenBasedRememberMeServices matching algorithm defaults to MD5 unless token-algorithm is set (SHA-256 encoding from 5.8+)"),
     _r(r"\bclass\s*=\s*[\"']org\.springframework\.security\.oauth2\.provider\.token\.store\.JwtAccessTokenConverter[\"']|\bclass\s*=\s*[\"']org\.springframework\.security\.oauth2\.jwt\.[^\"']+[\"']|<(?:security:|sec:)?jwt\b", _S, "spring-security", algorithm="JWT", confidence="MEDIUM"),
     _r(r"<(?:security:|sec:|s:)?(?:http|intercept-url)\b[^>]*\brequires-channel\s*=\s*[\"']https[\"']", _TLS, "spring-security", algorithm="TLS", confidence="MEDIUM"),
     _r(r"<(?:security:|sec:|s:)?(?:http|intercept-url)\b[^>]*\brequires-channel\s*=\s*[\"']http[\"']", _TLS, "spring-security", algorithm="TLS-CLEARTEXT", confidence="MEDIUM"),
@@ -135,7 +135,7 @@ _RULES: list[Rule] = [
     # ------------------------------------------------------------ Tomcat / WildFly
     _r(r"<Connector\b[^>]*\b(?:sslEnabledProtocols|sslProtocols)\s*=\s*[\"']([^\"']+)[\"']|<SSLHostConfig\b[^>]*\bprotocols\s*=\s*[\"']([^\"']+)[\"']", _TLS, "tomcat", algorithm="TLS", confidence="MEDIUM", split_tls_group=1),
     _r(r"<Connector\b[^>]*\bsslProtocol\s*=\s*[\"'](TLSv1\.3|TLSv1\.2|TLSv1\.1|TLSv1|TLS|SSLv3|SSL)[\"']", _TLS, "tomcat", algo_from_group=1, algo_map={**_PROTO, "tls": "TLS", "ssl": "SSLv3"}),
-    _r(r"<(?:Connector|SSLHostConfig)\b[^>]*\bciphers\s*=\s*[\"']([^\"']+)[\"']", _TLS, "tomcat", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"<(?:Connector|SSLHostConfig)\b[^>]*\bciphers\s*=\s*[\"']([^\"']+)[\"']", _TLS, "tomcat", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
     _r(r"<Connector\b[^>]*\bSSLEnabled\s*=\s*[\"']true[\"']|<SSLHostConfig\b|<Certificate\b[^>]*\bcertificateKeystoreFile", _TLS, "tomcat", algorithm="TLS", confidence="MEDIUM"),
     _r(r"\b(?:keystoreType|truststoreType|certificateKeystoreType)\s*=\s*[\"'](?:JKS|PKCS12|BKS|JCEKS)[\"']|\b(?:keystoreFile|certificateKeystoreFile|truststoreFile|certificateFile)\s*=", _TLS, "tomcat", algorithm="X509", confidence="MEDIUM"),
     _r(r"<Realm\b[^>]*\bdigest\s*=\s*[\"'](MD5|SHA|SHA-1|SHA-256|SHA-512)[\"']|<CredentialHandler\b[^>]*\balgorithm\s*=\s*[\"'](MD5|SHA-1|SHA-256|SHA-512|PBKDF2WithHmacSHA1|PBKDF2WithHmacSHA512)[\"']", _KDF, "tomcat", algo_from_group=1,
@@ -143,7 +143,7 @@ _RULES: list[Rule] = [
     _r(r"<CredentialHandler\b[^>]*SecretKeyCredentialHandler", _KDF, "tomcat", algorithm="PBKDF2", confidence="MEDIUM", confidence_reason="Tomcat SecretKeyCredentialHandler default PBKDF2WithHmacSHA512"),
     _r(r"<https-listener\b|<ssl-context\b|<server-ssl-context\b|<key-store\b[^>]*\bpath\s*=|<key-manager\b|<trust-manager\b", _TLS, "wildfly", algorithm="TLS", confidence="MEDIUM"),
     _r(r"<(?:server-ssl-context|client-ssl-context|ssl-context)\b[^>]*\bprotocols\s*=\s*[\"']([^\"']+)[\"']", _TLS, "wildfly", algorithm="TLS", confidence="MEDIUM", split_tls_group=1),
-    _r(r"<(?:server-ssl-context|client-ssl-context|ssl-context)\b[^>]*\bcipher-suite-filter\s*=\s*[\"']([^\"']+)[\"']", _TLS, "wildfly", algorithm="TLS-CIPHERS", confidence="MEDIUM"),
+    _r(r"<(?:server-ssl-context|client-ssl-context|ssl-context)\b[^>]*\bcipher-suite-filter\s*=\s*[\"']([^\"']+)[\"']", _TLS, "wildfly", algorithm="TLS-CIPHERS", confidence="MEDIUM", raw_group=1),
     _r(r"<(?:mapper|simple-digest-mapper|salted-simple-digest-mapper|scram-mapper)\b[^>]*\balgorithm\s*=\s*[\"'](?:simple-digest-|salted-simple-digest-|scram-)?(md5|sha-1|sha-256|sha-384|sha-512|bcrypt)[\"']", _KDF, "wildfly-elytron", algo_from_group=1, algo_map={**_DIGEST, "bcrypt": "BCRYPT"}),
     _r(r"<bcrypt-mapper\b", _KDF, "wildfly-elytron", algorithm="BCRYPT"),
     _r(r"<clear-password\b[^>]*\bpassword\s*=|<clear-text\b|<plain-text\b", _KDF, "wildfly", algorithm="PLAINTEXT", confidence="MEDIUM", confidence_reason="cleartext credential in config"),
@@ -153,7 +153,7 @@ _RULES: list[Rule] = [
     _r(r"\bjdbc:[a-z]+:[^\"'<\s]*[?&;](?:trustServerCertificate=true|verifyServerCertificate=false|sslMode=PREFERRED|sslmode=prefer)\b", _TLS, "jdbc", algorithm="TLS-UNVERIFIED", confidence="HIGH"),
     # ------------------------------------------------------------ dependency manifests
     _r(r"<artifactId>\s*(" + "|".join(re.escape(k) for k in sorted(_MAVEN_DEPS, key=len, reverse=True)) + r")\s*</artifactId>", _DEP, "maven", algo_from_group=1, algo_map=_MAVEN_DEPS, confidence="LOW", confidence_reason="crypto library dependency"),
-    _r(r"<(?:package|PackageReference)\b[^>]*\b(?:id|Include)\s*=\s*[\"'](" + "|".join(re.escape(k) for k in sorted(_NUGET_DEPS, key=len, reverse=True)) + r")[\"']", _DEP, "nuget", algo_from_group=1, algo_map=_NUGET_DEPS, confidence="LOW", confidence_reason="crypto library dependency"),
+    _r(r"<(?:package|PackageReference|Reference|PackageVersion)\b[^>]*\b(?:id|Include)\s*=\s*[\"'](" + "|".join(re.escape(k) for k in sorted(_NUGET_DEPS, key=len, reverse=True)) + r")[\"']", _DEP, "nuget", algo_from_group=1, algo_map=_NUGET_DEPS, confidence="LOW", confidence_reason="crypto library dependency"),
     # ------------------------------------------------------------ XML-DSig / XML-Enc / WS-Security / SAML
     _r(r"\bAlgorithm\s*=\s*[\"']" + _XMLDSIG_URI + r"[\"']", _S, "xml-dsig", algo_from_group=1, algo_map={k: v[0] for k, v in _XMLDSIG.items()}, xmldsig_digest=True),
     _r(r"<(?:[a-z0-9]+:)?(?:SignatureAlgorithm|DigestAlgorithm|SigningAlgorithm|DigestMethod|SignatureMethod|EncryptionMethod)>\s*" + _XMLDSIG_URI + r"\s*<", _S, "xml-dsig", algo_from_group=1, algo_map={k: v[0] for k, v in _XMLDSIG.items()}, xmldsig_digest=True),

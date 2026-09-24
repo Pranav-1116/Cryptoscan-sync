@@ -180,3 +180,19 @@ def test_swift_multipart_boundary_random_is_not_a_finding(tmp_path):
     # Alamofire MultipartFormData: UInt32.random(in:) for a boundary string
     p = _write(tmp_path, "M.swift", 'let first = UInt32.random(in: UInt32.min...UInt32.max)\nlet boundary = String(format: "%08x", first)\n')
     assert parse_swift_file(p, tmp_path) == []
+
+
+def test_xml_csproj_reference_and_tomcat_cipher_expansion(tmp_path):
+    from scanner.registry.language_scanners import scan_file
+    # dotnet/aspnetcore BasicApi.csproj uses <Reference Include=...>, not <PackageReference>
+    p = _write(tmp_path, "BasicApi.csproj", '<Project><ItemGroup><Reference Include="Microsoft.AspNetCore.Authentication.JwtBearer" /></ItemGroup></Project>\n')
+    assert "JWT" in _algos(scan_file(p, tmp_path))
+    q = _write(tmp_path, "server.xml", '<Connector port="8443" SSLEnabled="true" ciphers="TLS_RSA_WITH_RC4_128_SHA" sslEnabledProtocols="TLSv1,TLSv1.2"/>\n')
+    algos = set(_algos(scan_file(q, tmp_path)))
+    assert {"RC4", "TLS1.0", "TLS1.2", "TLS-CIPHERS"} <= algos
+
+
+def test_xml_comments_and_prose_are_silent(tmp_path):
+    from scanner.parsers.xml_parser import parse_xml_file
+    p = _write(tmp_path, "web.config", '<configuration>\n<!-- <machineKey validation="MD5" decryption="DES"/> -->\n<appSettings><add key="Theme" value="dark"/></appSettings>\n</configuration>\n')
+    assert parse_xml_file(p, tmp_path) == []
