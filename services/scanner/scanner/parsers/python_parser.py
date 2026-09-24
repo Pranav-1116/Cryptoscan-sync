@@ -399,12 +399,80 @@ def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
         tree = ast.parse(source, filename=str(file_path))
-    except (OSError, SyntaxError) as exc:
-        logger.warning("python_parse_failed", extra={"file": str(file_path), "error": str(exc)})
+    except OSError as exc:
+        logger.warning("python_read_failed", extra={"file": str(file_path), "error": str(exc)})
         return []
+    except SyntaxError as exc:
+        # Python 2 code, Jinja-templated .py, or a fragment: the AST is unavailable but
+        # the crypto calls are still literal text. Fall back to a conservative regex pass.
+        logger.info("python_parse_failed_regex_fallback", extra={"file": str(file_path), "error": str(exc)})
+        return _regex_fallback(file_path, repo_root, source)
     visitor = _PythonCryptoVisitor(file_path, repo_root)
     visitor.visit(tree)
     return visitor.findings
+
+
+_FALLBACK_D = {"api_type": "MESSAGE_DIGEST", "purpose": "HASHING"}
+_FALLBACK_M = {"api_type": "MAC", "purpose": "MAC_GENERATION"}
+_FALLBACK_C = {"api_type": "CIPHER_INSTANCE", "purpose": "ENCRYPTION"}
+_FALLBACK_K = {"api_type": "KEY_PAIR_GENERATOR", "purpose": "KEY_GENERATION"}
+_FALLBACK_KDF = {"api_type": "KEY_GENERATOR", "purpose": "PASSWORD_HASHING"}
+_FALLBACK_RNG = {"api_type": "KEY_GENERATOR", "purpose": "KEY_GENERATION"}
+_FALLBACK_TLS = {"api_type": "KEY_AGREEMENT", "purpose": "NETWORK_ENCRYPTION"}
+_FALLBACK_RULES = None
+
+
+def _build_fallback_rules():
+    def _r(pattern, spec, library, **kw):
+        return (re.compile(pattern), {**spec, "library": library, **kw})
+
+    hashes = "|".join(HASHLIB_ALGOS)
+    return [
+        _r(rf"(?<![\w.])(?:hashlib\.)?({hashes})\s*\(", _FALLBACK_D, "hashlib", algo_from_group=1, algo_map=HASHLIB_ALGOS, confidence="MEDIUM"),
+        _r(rf"\bhashlib\.new\s*\(\s*['\"]({hashes})['\"]", _FALLBACK_D, "hashlib", algo_from_group=1, algo_map=HASHLIB_ALGOS),
+        _r(rf"\bhmac\.new\s*\([^)]*?(?:hashlib\.|['\"])({hashes})\b", _FALLBACK_M, "hmac", algorithm="HMAC", emit_digest_group=1),
+        _r(r"\bhmac\.new\s*\(", _FALLBACK_M, "hmac", algorithm="HMAC", confidence="MEDIUM"),
+        _r(r"\bhashlib\.pbkdf2_hmac\s*\(", _FALLBACK_KDF, "hashlib", algorithm="PBKDF2"),
+        _r(r"\bhashlib\.scrypt\s*\(", _FALLBACK_KDF, "hashlib", algorithm="SCRYPT"),
+        _r(r"\bbcrypt\.(?:hashpw|gensalt|checkpw)\s*\(", _FALLBACK_KDF, "bcrypt", algorithm="BCRYPT"),
+        _r(r"\bssl\.PROTOCOL_TLSv1_2\b", _FALLBACK_TLS, "ssl", algorithm="TLS1.2"),
+        _r(r"\bssl\.PROTOCOL_TLSv1_1\b", _FALLBACK_TLS, "ssl", algorithm="TLS1.1"),
+        _r(r"\bssl\.PROTOCOL_TLSv1\b", _FALLBACK_TLS, "ssl", algorithm="TLS1.0"),
+        _r(r"\bssl\.PROTOCOL_SSLv3\b", _FALLBACK_TLS, "ssl", algorithm="SSLv3"),
+        _r(r"\bssl\.PROTOCOL_SSLv23\b", _FALLBACK_TLS, "ssl", algorithm="SSLv23"),
+        _r(r"\bssl\.PROTOCOL_TLS(?:_CLIENT|_SERVER)?\b|\bssl\.create_default_context\s*\(|\bssl\.SSLContext\s*\(|\bssl\.wrap_socket\s*\(", _FALLBACK_TLS, "ssl", algorithm="TLS"),
+        _r(r"\bssl\.CERT_NONE\b", _FALLBACK_TLS, "ssl", algorithm="TLS-CERT-NONE"),
+        _r(r"\bos\.urandom\s*\(|\bsecrets\.(?:token_bytes|token_hex|token_urlsafe|choice|randbelow)\s*\(|\bSystemRandom\s*\(", _FALLBACK_RNG, "os", algorithm="CSPRNG", confidence="MEDIUM"),
+        _r(r"\bAES\.new\s*\(", _FALLBACK_C, "pycryptodome", algorithm="AES"),
+        _r(r"\bDES3\.new\s*\(", _FALLBACK_C, "pycryptodome", algorithm="3DES"),
+        _r(r"\bDES\.new\s*\(", _FALLBACK_C, "pycryptodome", algorithm="DES"),
+        _r(r"\bARC4\.new\s*\(", _FALLBACK_C, "pycryptodome", algorithm="RC4"),
+        _r(r"\bBlowfish\.new\s*\(", _FALLBACK_C, "pycryptodome", algorithm="Blowfish"),
+        _r(r"\bChaCha20_Poly1305\.new\s*\(", _FALLBACK_C, "pycryptodome", algorithm="ChaCha20-Poly1305"),
+        _r(r"\bRSA\.(?:generate|import_key|importKey)\s*\(|\brsa\.generate_private_key\s*\(", _FALLBACK_K, "pycryptodome/cryptography", algorithm="RSA"),
+        _r(r"\bECC\.generate\s*\(|\bec\.generate_private_key\s*\(", _FALLBACK_K, "pycryptodome/cryptography", algorithm="ECDSA"),
+        _r(r"\bFernet\s*\(|\bFernet\.generate_key\s*\(", _FALLBACK_C, "cryptography", algorithm="AES", mode="CBC"),
+        _r(r"\bjwt\.(?:encode|decode)\s*\(", {"api_type": "SIGNATURE", "purpose": "SIGNING"}, "pyjwt", algorithm="JWT", confidence="MEDIUM"),
+    ]
+
+
+def _regex_fallback(file_path: Path, repo_root: Path | None, source: str) -> list[RawFinding]:
+    global _FALLBACK_RULES
+    from scanner.parsers.rule_engine import run_rules
+    from scanner.parsers.c_like import strip_hash_line_comments
+
+    if _FALLBACK_RULES is None:
+        _FALLBACK_RULES = _build_fallback_rules()
+    return run_rules(
+        file_path=file_path,
+        repo_root=repo_root,
+        text=strip_hash_line_comments(source),
+        rules=_FALLBACK_RULES,
+        language="PYTHON",
+        scanner_id=SCANNER_ID,
+        confidence_reason="regex-fallback: file did not parse as Python 3",
+        strip_comments=False,
+    )
 
 
 class _PythonCryptoVisitor(ast.NodeVisitor):

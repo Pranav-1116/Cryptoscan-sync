@@ -66,6 +66,13 @@ _Q = r"""['"]"""
 RULES: list[Rule] = [
     _r(r"->algorithm\s*\(\s*['\"](sha512|sha256|sha1|md5|bcrypt|argon2i|argon2id|sodium|pbkdf2|plaintext)['\"]\s*\)|(?<!\w)'algorithm'\s*=>\s*'(sha512|sha256|sha1|md5|bcrypt|argon2i|argon2id|sodium|pbkdf2|plaintext)'", _KDF, "symfony-password-hasher", algo_from_group=1, algo_map={"sha512": "SHA-512", "sha256": "SHA-256", "sha1": "SHA-1", "md5": "MD5", "bcrypt": "BCRYPT", "argon2i": "ARGON2", "argon2id": "ARGON2", "sodium": "ARGON2", "pbkdf2": "PBKDF2", "plaintext": "PLAINTEXT"}),
     _r(r"\bwp_create_nonce\s*\(|\bwp_verify_nonce\s*\(|\bwp_hash\s*\(|\bwp_nonce_field\s*\(", _M, "wordpress", algorithm="HMAC-MD5", confidence="MEDIUM", confidence_reason="wp_hash/wp_create_nonce use hash_hmac md5"),
+    # OpenSSL cipher-name literals in config tables ('aes-256-gcm' => [...]) — Laravel Encrypter::$supportedCiphers
+    _r(rf"{_Q}(aes|aria|camellia|sm4)-(?:128|192|256)-(?:cbc|gcm|ctr|ecb|cfb|ofb|ccm|xts|ocb){_Q}", _C, "openssl-cipher-name", algo_from_group=1, algo_map={"aes": "AES", "aria": "ARIA", "camellia": "Camellia", "sm4": "SM4"}, confidence="MEDIUM", confidence_reason="OpenSSL cipher-name literal"),
+    _r(rf"{_Q}des-ede3(?:-cbc|-cfb|-ofb)?{_Q}|{_Q}des-ede-cbc{_Q}", _C, "openssl-cipher-name", algorithm="3DES", confidence="MEDIUM"),
+    _r(rf"{_Q}des-(?:cbc|ecb|cfb|ofb){_Q}", _C, "openssl-cipher-name", algorithm="DES", confidence="MEDIUM"),
+    _r(rf"{_Q}bf-(?:cbc|ecb|cfb|ofb){_Q}", _C, "openssl-cipher-name", algorithm="Blowfish", confidence="MEDIUM"),
+    _r(rf"{_Q}rc4(?:-40)?{_Q}", _C, "openssl-cipher-name", algorithm="RC4", confidence="MEDIUM"),
+    _r(rf"{_Q}chacha20-poly1305{_Q}", _C, "openssl-cipher-name", algorithm="ChaCha20-Poly1305", confidence="MEDIUM"),
     # ------------------------------------------------------------ mcrypt (removed PHP 7.2, still in legacy code)
     _r(r"\bMCRYPT_(RIJNDAEL_128|RIJNDAEL_192|RIJNDAEL_256|3DES|TRIPLEDES|DES|BLOWFISH|BLOWFISH_COMPAT|RC2|ARCFOUR|CAST_128|CAST_256|TWOFISH|SERPENT|GOST|LOKI97|SAFERPLUS|XTEA|WAKE|ENIGMA|IDEA|MARS|PANAMA|SKIPJACK|THREEWAY|SAFER64|SAFER128)\b", _C, "mcrypt", algo_from_group=1, algo_map=_MCRYPT),
     _r(rf"\bmcrypt_(?:module_open|encrypt|decrypt|get_iv_size|get_key_size|get_block_size|cbc|cfb|ecb|ofb)\s*\(\s*{_Q}(rijndael-128|rijndael-192|rijndael-256|tripledes|des|blowfish|blowfish-compat|rc2|arcfour|cast-128|cast-256|twofish|serpent|gost|loki97|saferplus|xtea|wake|enigma|idea|mars|panama|skipjack|threeway){_Q}", _C, "mcrypt", algo_from_group=1, algo_map=_MCRYPT),

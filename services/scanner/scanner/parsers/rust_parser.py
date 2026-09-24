@@ -78,7 +78,9 @@ _RULES: list[Rule] = [
     # ------------------------------------------------------------ RustCrypto asymmetric
     _r(r"\bRsaPrivateKey::new\([^,]+,\s*(\d+)", _K, "rsa", algorithm="RSA", key_from_group=1),
     _r(r"\bRsaPrivateKey\b|\bRsaPublicKey\b|\brsa::(?:Rsa|pkcs1v15|pss|Oaep|Pkcs1v15)|\bPkcs1v15(?:Encrypt|Sign)\b|\bOaep::new", _K, "rsa", algorithm="RSA"),
-    _r(r"\bp256::ecdsa|\bp384::ecdsa|\bp521::ecdsa|\bk256::ecdsa|\becdsa::(?:SigningKey|VerifyingKey|Signature|signature)", _S, "ecdsa", algorithm="ECDSA"),
+    _r(r"\bp256::ecdsa|\bp384::ecdsa|\bp521::ecdsa|\bk256::ecdsa|\becdsa::(?:SigningKey|VerifyingKey|Signature|signature)|\becdsa::Es(?:256|384|512)K?\w*|\becdsa::\w+(?:Signer|Verifier)\b", _S, "ecdsa", algorithm="ECDSA"),
+    _r(r"\brsa::Rs(?:a)?(?:256|384|512)\w*|\brsa::\w+(?:Signer|Verifier)\b|\brsa::Ps(?:256|384|512)\w*", _K, "rsa", algorithm="RSA"),
+    _r(r"\beddsa::\w+(?:Signer|Verifier)\b|\beddsa::Ed25519\w*", _S, "ed25519", algorithm="Ed25519"),
     _r(r"\bp256::(?:SecretKey|PublicKey|ecdh)|\bp384::(?:SecretKey|ecdh)|\bk256::(?:SecretKey|ecdh)", _K, "elliptic-curve", algorithm="ECDSA"),
     _r(r"\becdh::(?:EphemeralSecret|diffie_hellman)", _KA, "elliptic-curve", algorithm="ECDH"),
     _r(r"\bEd25519\b|\bed25519_dalek::|\bed25519::|\bEd25519KeyPair\b|\bSigningKey::generate\b", _S, "ed25519", algorithm="Ed25519"),

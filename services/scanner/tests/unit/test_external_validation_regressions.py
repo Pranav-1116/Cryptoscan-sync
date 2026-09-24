@@ -128,3 +128,11 @@ def test_csharp_cancellation_token_is_not_security_context(tmp_path):
     # YARP HttpForwarderCancellationTests.cs
     p = _write(tmp_path, "C.cs", "class C {\n  async Task Run(CancellationToken cancellationToken)\n  {\n    var delay = new Random().Next(10, 50);\n  }\n}\n")
     assert "PRNG" not in _algos(parse_csharp_file(p, tmp_path))
+
+
+def test_python2_file_falls_back_to_regex(tmp_path):
+    # Python 2 print statement → ast.parse fails; crypto must still be found
+    p = _write(tmp_path, "legacy.py", "import hashlib, ssl\nprint 'hashing'\nh = hashlib.md5(data).hexdigest()\nctx = ssl.SSLContext(ssl.PROTOCOL_TLSv1)\n")
+    from scanner.parsers.python_parser import parse_python_file
+    algos = _algos(parse_python_file(p, tmp_path))
+    assert "MD5" in algos and "TLS1.0" in algos
