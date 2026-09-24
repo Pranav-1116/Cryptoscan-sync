@@ -44,7 +44,7 @@ _COMPONENTS: list[tuple[re.Pattern[str], str, str]] = [
     (re.compile(r"SHA512"), "SHA-512", "MESSAGE_DIGEST"),
     (re.compile(r"(?:^|[_-])SHA1?(?:[_-]|$)"), "SHA-1", "MESSAGE_DIGEST"),
     (re.compile(r"ECDHE?(?:[_-]|$)|(?:^|[_-])ECDH(?:[_-]|$)"), "ECDH", "KEY_AGREEMENT"),
-    (re.compile(r"(?:^|[_-])(?:DHE|EDH|DH)(?:[_-]|$)|DHE-"), "DH", "KEY_AGREEMENT"),
+    (re.compile(r"(?:^|[_-])(?:DHE|EDH|DH|DHE-RSA|DHE-DSS)(?:[_-]|$)"), "DH", "KEY_AGREEMENT"),
     (re.compile(r"ECDSA"), "ECDSA", "SIGNATURE"),
     (re.compile(r"(?:^|[_-])(?:DSS|DSA)(?:[_-]|$)"), "DSA", "SIGNATURE"),
     (re.compile(r"(?:^|[_-])RSA(?:[_-]|$)|^RSA"), "RSA", "KEY_AGREEMENT"),

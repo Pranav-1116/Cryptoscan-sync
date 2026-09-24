@@ -240,6 +240,13 @@ def run_rules(
                     parsed = parse_transformation(token)
                     algorithm = parsed.algorithm or token
                     mode = parsed.mode
+                    # PBEWithHmacSHA512AndAES_256 / SHA256withRSA / PBKDF2WithHmacSHA1:
+                    # the PRF / digest is a second algorithm in use on this line.
+                    extra_digest = getattr(parsed, "hash_algorithm", None)
+                    if extra_digest and extra_digest.upper() != algorithm.upper():
+                        emit(line, extra_digest, spec, match, api_type="MESSAGE_DIGEST", purpose="HASHING")
+                    if re.search(r"(?i)with\s*hmac|hmac", token) and algorithm.upper() != "HMAC":
+                        emit(line, "HMAC", spec, match, api_type="MAC", purpose="MAC_GENERATION")
                 except Exception:  # pragma: no cover - defensive
                     algorithm = token
                 if not algorithm:

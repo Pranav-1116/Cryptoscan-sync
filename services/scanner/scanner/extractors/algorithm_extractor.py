@@ -103,6 +103,12 @@ SIGNATURE_PATTERN = re.compile(
 HMAC_PATTERN = re.compile(r"^Hmac(.+)$", re.IGNORECASE)
 
 
+_PBE_PATTERN = re.compile(
+    r"^(PBE|PBKDF2)With((?:Hmac|HMAC)?(?:SHA-?(?:1|224|256|384|512)|MD5|MD2))?(?:And((?:AES|DES(?:ede)?|TripleDES|RC2|RC4|Blowfish|IDEA|Twofish|Camellia)(?:_(?:128|192|256))?)(?:/([A-Za-z0-9]+))?)?",
+    re.IGNORECASE,
+)
+
+
 def parse_transformation(raw: str) -> ParsedAlgorithm:
     """
     Parse a Java crypto transformation string into its components.
@@ -144,6 +150,32 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
             hash_algorithm=hash_algo,
             signing_algorithm=signing_algo,
             is_signature_combo=True,
+        )
+
+    # PBE / PBKDF2 transformations: "PBEWithHMACSHA512AndAES_256", "PBEWithMD5AndDES",
+    # "PBKDF2WithHmacSHA256". The cipher after "And" is the algorithm in use; the
+    # PRF/digest is recorded as hash_algorithm so callers can emit it separately.
+    pbe_match = _PBE_PATTERN.match(stripped)
+    if pbe_match:
+        kind, prf, cipher = pbe_match.group(1), pbe_match.group(2), pbe_match.group(3)
+        digest = _normalize_algorithm(prf.replace("Hmac", "").replace("HMAC", "")) if prf else None
+        if cipher:
+            cipher_norm = _normalize_algorithm(cipher.split("_")[0])
+            return ParsedAlgorithm(
+                raw_input=raw,
+                algorithm=cipher_norm,
+                mode=_normalize_mode(pbe_match.group(4)) if pbe_match.group(4) else ("CBC" if cipher_norm in {"AES", "DES", "DESede", "3DES", "RC2", "RC4"} else None),
+                padding=None,
+                hash_algorithm=digest,
+                signing_algorithm=None,
+            )
+        return ParsedAlgorithm(
+            raw_input=raw,
+            algorithm="PBKDF2",
+            mode=None,
+            padding=None,
+            hash_algorithm=digest,
+            signing_algorithm=None,
         )
 
     # Check for HMAC (e.g., HmacSHA256)

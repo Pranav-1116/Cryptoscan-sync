@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import re
 import logging
 from pathlib import Path
 from typing import Optional
@@ -260,6 +261,18 @@ _API_TABLE: dict[str, tuple[str, str, str, str, Optional[str]]] = {
     # TLS stacks
     "ssl.create_default_context": ("TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "ssl", None),
     "OpenSSL.SSL.Context": ("TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "pyOpenSSL", None),
+    "M2Crypto.RSA.load_key": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "M2Crypto", None),
+    "M2Crypto.RSA.load_key_string": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "M2Crypto", None),
+    "M2Crypto.RSA.load_pub_key": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "M2Crypto", None),
+    "M2Crypto.RSA.gen_key": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "M2Crypto", None),
+    "M2Crypto.DSA.gen_params": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "M2Crypto", None),
+    "M2Crypto.EC.gen_params": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "M2Crypto", None),
+    "M2Crypto.EVP.HMAC": ("HMAC", "MAC", "MAC_GENERATION", "M2Crypto", None),
+    "M2Crypto.EVP.pbkdf2": ("PBKDF2", "KEY_GENERATOR", "PASSWORD_HASHING", "M2Crypto", None),
+    "M2Crypto.SSL.Context": ("TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "M2Crypto", None),
+    "asyncssh.connect": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "asyncssh", None),
+    "asyncssh.listen": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "asyncssh", None),
+    "asyncssh.generate_private_key": ("UNKNOWN", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "asyncssh", None),
     "OpenSSL.crypto.PKey": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "pyOpenSSL", None),
     "OpenSSL.crypto.X509": ("X509", "SIGNATURE", "SIGNING", "pyOpenSSL", None),
     "OpenSSL.crypto.load_certificate": ("X509", "SIGNATURE", "VERIFICATION", "pyOpenSSL", None),
@@ -321,6 +334,57 @@ _PASSLIB_SCHEME = {
 }
 
 
+_M2_CIPHERS = [
+    ("des_ede3", "3DES"), ("des_ede", "3DES"), ("des3", "3DES"), ("des", "DES"), ("aes", "AES"), ("bf", "Blowfish"),
+    ("blowfish", "Blowfish"), ("rc4", "RC4"), ("rc2", "RC2"), ("cast5", "CAST5"), ("idea", "IDEA"), ("camellia", "Camellia"), ("seed", "SEED"), ("chacha20", "ChaCha20-Poly1305"),
+]
+
+
+def _m2_cipher(alg: str) -> Optional[str]:
+    low = alg.lower().replace("-", "_")
+    for prefix, algo in _M2_CIPHERS:
+        if low == prefix or low.startswith(prefix + "_"):
+            return algo
+    return None
+
+
+_AWS_SPECS = [
+    ("RSA_", "RSA"), ("RSAES_", "RSA"), ("RSASSA_", "RSA"), ("ECC_", "ECDSA"), ("ECDSA_", "ECDSA"), ("AES_", "AES"), ("AES256", "AES"),
+    ("SYMMETRIC_DEFAULT", "AES"), ("aws:kms", "AES"), ("HMAC_", "HMAC"), ("SM2", "SM2"), ("ML_DSA", "ML-DSA"),
+]
+
+
+def _aws_spec(val: str) -> Optional[str]:
+    for prefix, algo in _AWS_SPECS:
+        if val.upper().startswith(prefix.upper()):
+            return algo
+    return None
+
+
+def _django_hasher_families(dotted: str) -> list[str]:
+    cls = dotted.rsplit(".", 1)[-1]
+    low = cls.lower()
+    out: list[str] = []
+    if "pbkdf2" in low:
+        out.append("PBKDF2")
+        out.append("SHA-1" if "sha1" in low else "SHA-256")
+    if "bcrypt" in low:
+        out.append("BCRYPT")
+        if "sha256" in low:
+            out.append("SHA-256")
+    if "argon2" in low:
+        out.append("ARGON2")
+    if "scrypt" in low:
+        out.append("SCRYPT")
+    if "md5" in low:
+        out.append("MD5")
+    if "sha1" in low and "pbkdf2" not in low:
+        out.append("SHA-1")
+    if low in {"cryptpasswordhasher"}:
+        out.append("DES")
+    return out
+
+
 def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
@@ -376,6 +440,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
 
     def visit_Assign(self, node: ast.Assign) -> None:
         value = self._fold_string(node.value)
+        self._settings_assignment(node, value)
         # importlib.import_module("Crypto.Cipher.ARC4") / __import__("hashlib")
         if isinstance(node.value, ast.Call):
             callee = self._resolve(_call_name(node.value))
@@ -597,6 +662,33 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                     confidence_reason="cipher-suite-list",
                     raw_transformation=raw[:80],
                 )
+        if func.endswith(("EVP.Cipher", "M2Crypto.EVP.Cipher")):
+            alg = _dict_kw(node, "alg") or _string_arg(node, 0)
+            algo = _m2_cipher(alg) if alg else None
+            if algo:
+                self._add(node, api_type="CIPHER_INSTANCE", algorithm=algo, purpose="ENCRYPTION", library="M2Crypto",
+                          mode=_mode_from_name(alg or ""), raw_transformation=alg)
+        if func.endswith(("EVP.MessageDigest", "M2Crypto.EVP.MessageDigest")):
+            alg = _string_arg(node, 0)
+            if alg and alg.lower() in _MODULE_ATTR_DIGEST:
+                self._hash(node, _MODULE_ATTR_DIGEST[alg.lower()], library="M2Crypto")
+        if func.endswith((".sign", ".verify", ".sign_rsassa_pss", ".verify_rsassa_pss")) and len(node.args) >= 2:
+            alg = _string_literal(node.args[1]) or _dict_kw(node, "algo")
+            if alg and alg.lower() in _MODULE_ATTR_DIGEST:
+                self._hash(node, _MODULE_ATTR_DIGEST[alg.lower()], library="M2Crypto")
+        if func.endswith("asyncssh.connect"):
+            for kw in node.keywords:
+                if kw.arg == "known_hosts" and isinstance(kw.value, ast.Constant) and kw.value.value is None:
+                    self._add(node, api_type="KEY_AGREEMENT", algorithm="SSH-HOSTKEY-NONE", purpose="NETWORK_ENCRYPTION",
+                              library="asyncssh", confidence="HIGH", confidence_reason="SSH host key verification disabled")
+        for kw in node.keywords:  # AWS SDK (boto3) key / SSE specs
+            if kw.arg in {"KeySpec", "CustomerMasterKeySpec", "ServerSideEncryption", "SSEAlgorithm", "SigningAlgorithm", "EncryptionAlgorithm", "KeyPairSpec"}:
+                val = _string_literal(kw.value)
+                algo = _aws_spec(val) if val else None
+                if algo:
+                    self._add(node, api_type="KEY_GENERATOR" if kw.arg != "SigningAlgorithm" else "SIGNATURE", algorithm=algo,
+                              purpose="ENCRYPTION" if kw.arg != "SigningAlgorithm" else "SIGNING", library="boto3",
+                              confidence="MEDIUM", confidence_reason="aws-key-spec", raw_transformation=val)
         if self._verify_disabled(node, func):
             self._add(
                 node,
@@ -710,6 +802,51 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         imported = self._aliases.get(name, "")
         return imported.endswith(f"hashlib.{name}") or imported == f"hashlib.{name}"
 
+
+    def _settings_assignment(self, node: ast.Assign, value: Optional[str]) -> None:
+        """Django/Flask/FastAPI settings modules: algorithms named by constants."""
+        names = [(_name_of(t) or "").upper() for t in node.targets]
+        names = [n.split(".")[-1] for n in names if n]
+        if not names:
+            return
+        strings: list[str] = []
+        if value:
+            strings.append(value)
+        elif isinstance(node.value, (ast.List, ast.Tuple, ast.Set)):
+            strings = [s for s in (_string_literal(e) for e in node.value.elts) if s]
+        elif isinstance(node.value, ast.Dict):
+            strings = [s for s in (_string_literal(v) for v in node.value.values) if s]
+        for name in names:
+            if name == "PASSWORD_HASHERS":
+                for s in strings:
+                    for algo in _django_hasher_families(s):
+                        self._add(node, api_type="KEY_GENERATOR", algorithm=algo, purpose="PASSWORD_HASHING", library="django",
+                                  confidence_reason="django-password-hasher", raw_transformation=s.rsplit(".", 1)[-1])
+            elif name in {"JWT_ALGORITHM", "JWT_ALGORITHMS", "JWT_ALGO", "ALGORITHM", "JWT_SIGNING_ALGORITHM", "OIDC_RP_SIGN_ALGO", "SIMPLE_JWT_ALGORITHM"}:
+                for s in strings:
+                    if re.fullmatch(r"(?:HS|RS|PS|ES)(?:256|384|512)|EdDSA|none", s):
+                        self._add(node, api_type="SIGNATURE", algorithm="JWT", purpose="SIGNING", library="jwt-settings",
+                                  confidence="MEDIUM", confidence_reason="jwt-algorithm-setting", raw_transformation=s)
+                        self._add(node, api_type="SIGNATURE", algorithm=s, purpose="SIGNING", library="jwt-settings",
+                                  confidence="MEDIUM", confidence_reason="jwt-algorithm-setting", raw_transformation=s)
+            elif name in {"SECURITY_PASSWORD_HASH", "PASSWORD_HASH", "PASSWORD_SCHEMES", "PASSWORD_HASH_SCHEME", "SECURITY_PASSWORD_SCHEMES"}:
+                for s in strings:
+                    algo = _PASSLIB_SCHEME.get(s.lower())
+                    if algo:
+                        self._add(node, api_type="KEY_GENERATOR", algorithm=algo, purpose="PASSWORD_HASHING", library="passlib",
+                                  confidence_reason="password-hash-setting", raw_transformation=s)
+            elif name in {"DEFAULT_HASHING_ALGORITHM", "HASH_ALGORITHM", "DIGEST_ALGORITHM", "CSRF_HASH_ALGORITHM"}:
+                for s in strings:
+                    if s.lower() in _MODULE_ATTR_DIGEST:
+                        self._hash(node, _MODULE_ATTR_DIGEST[s.lower()], library="settings")
+            elif name in {"SSL_MINIMUM_VERSION", "TLS_MIN_VERSION", "MIN_TLS_VERSION", "SSL_VERSION"}:
+                for s in strings:
+                    self._add(node, api_type="KEY_AGREEMENT", algorithm="TLS", purpose="NETWORK_ENCRYPTION", library="settings",
+                              confidence="MEDIUM", confidence_reason="tls-version-setting", raw_transformation=s)
+        for s in strings:
+            if re.search(r"\bsslmode=(?:disable|allow|prefer)\b|\bssl=false\b|\bssl-mode=DISABLED\b|\buseSSL=false\b", s):
+                self._add(node, api_type="KEY_AGREEMENT", algorithm="TLS-DISABLED", purpose="NETWORK_ENCRYPTION", library="database-url",
+                          confidence="MEDIUM", confidence_reason="database connection without TLS", raw_transformation=s[-80:])
 
     def _verify_disabled(self, node: ast.Call, func: str) -> bool:
         """requests/httpx/aiohttp/urllib3 style ``verify=False`` / ``ssl=False``."""

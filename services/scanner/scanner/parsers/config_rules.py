@@ -119,7 +119,7 @@ _TLSV = {
 
 _TLS_VERSION_KEY = re.compile(
     _LIST
-    + r"(?:[A-Za-z0-9_.\-]*?(?:tls|ssl)[_.\-]?(?:min|max|minimum|maximum)?[_.\-]?(?:version|protocols?|protocol[_.\-]version)|"
+    + r"(?:[A-Za-z0-9_./\-]*?(?:tls|ssl)[_.\-]?(?:min|max|minimum|maximum)?[_.\-]?(?:version|protocols?|protocol[_.\-]version)|"
     r"(?:min|max|minimum|maximum)[_.\-]?(?:tls|ssl)[_.\-]?version|enabled[_.\-]protocols|ssl[_.\-]?protocol)"
     + r"(?:" + _SEP + r"|\s+['\"]?(?=[TtSs][LlSs][SsLl]))"
     + r"([A-Za-z0-9._,\s+\-]+?)['\"]?\s*(?:#.*)?$",
@@ -134,8 +134,8 @@ _JWT_ALG_KEY = re.compile(
 )
 
 _CIPHER_SUITE_KEY = re.compile(
-    _LIST + r"[A-Za-z0-9_.\-]*?(?:cipher[_.\-]?suites?|ciphers|ssl[_.\-]?cipher(?:[_.\-]?list)?)" + _SEP
-    + r"([A-Za-z0-9_:+!@\-,\s]+?)['\"]?\s*(?:#.*)?$",
+    _LIST + r"[A-Za-z0-9_./\-]*?(?:cipher[_.\-]?suites?|ciphers|ssl[_.\-]?cipher(?:[_.\-]?list)?)" + _SEP
+    + r"\[?([A-Za-z0-9_:+!@\-,\s]+?)\]?['\"]?\s*(?:#.*)?$",
     re.I | re.M,
 )
 
@@ -165,6 +165,13 @@ _VERIFY_OFF = re.compile(
     r"(?:\s*[=:]\s*|\s+)['\"]?(0|false|no|off|none|disable|disabled|true|yes|1|on|skip|allow|prefer|require|verify-ca|verify-full|accept-new|ask)\b",
     re.I | re.M,
 )
+
+_PROTOCOL_KEY = re.compile(_LIST + r"(?:protocol|protocols|min[_.\-]?protocol|max[_.\-]?protocol)" + _SEP + r"((?:TLS|SSL)[A-Za-z0-9._,\s+\-]*?)['\"]?\s*(?:#.*)?$", re.M)
+_TLS_MODE_KEY = re.compile(_LIST + r"(?:mode|(?:tls|ssl)[_.\-]?mode)" + _SEP + r"(requireTLS|preferTLS|allowTLS|requireSSL|preferSSL|allowSSL|VERIFY_IDENTITY|VERIFY_CA|REQUIRED|verify-full|verify-ca|require)\b", re.M)
+_SSE_KEY = re.compile(_LIST + r"(?:SSEAlgorithm|sse[_.\-]?algorithm|ServerSideEncryption|server[_.\-]?side[_.\-]?encryption|encryption[_.\-]?type|EncryptionType)" + _SEP + r"(AES256|aws:kms|aws:kms:dsse|KMS|AES_256|AES)\b", re.I | re.M)
+_SSL_POLICY_KEY = re.compile(_LIST + r"(?:SslPolicy|ssl[_.\-]?policy|security[_.\-]?policy|tls[_.\-]?policy)" + _SEP + r"((?:ELBSecurityPolicy|TLS|SSL)[A-Za-z0-9._\-]*)", re.M)
+_KEY_TYPE_KEY = re.compile(_LIST + r"(?:key[_.\-]?type|key[_.\-]?algorithm|key[_.\-]?spec|customer[_.\-]?master[_.\-]?key[_.\-]?spec|KeySpec|algorithm)" + _SEP + r"(RSA(?:[_-](?:HSM|2048|3072|4096))?|EC(?:[_-]HSM)?|ECDSA|ECC[_-]NIST[_-]P(?:256|384|521)|ECC[_-]SECG[_-]P256K1|ED25519|Ed25519|SYMMETRIC_DEFAULT|HMAC[_-](?:224|256|384|512)|oct(?:[_-]HSM)?)\b", re.M)
+_ELB_TLS = [("TLS13", "TLS1.3"), ("TLS-1-2", "TLS1.2"), ("TLS-1-1", "TLS1.1"), ("TLS-1-0", "TLS1.0"), ("FS-1-2", "TLS1.2"), ("FS-1-1", "TLS1.1"), ("2016-08", "TLS1.0"), ("2015-05", "TLS1.0"), ("2015-03", "TLS1.0"), ("2015-02", "TLS1.0"), ("FS-2018-06", "TLS1.0")]
 
 _PEM_BLOCK = re.compile(r"^-----BEGIN ((?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY|CERTIFICATE|PUBLIC KEY|(?:RSA |EC |DSA )?PUBLIC KEY)-----", re.M)
 _PEM_DEK = re.compile(r"^DEK-Info:\s*([A-Z0-9-]+)", re.M)
@@ -250,6 +257,25 @@ def run_config_rules(
         for algo, tok in _tls_from_tokens(m.group(1)):
             emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", m.group(0).strip(),
                  reason="tls-version-setting")
+
+    for m in _PROTOCOL_KEY.finditer(text):
+        for algo, tok in _tls_from_tokens(m.group(1)):
+            emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", m.group(0).strip(), reason="tls-version-setting")
+    for m in _TLS_MODE_KEY.finditer(text):
+        emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", m.group(0).strip(), confidence="MEDIUM", reason="tls-mode-setting")
+    for m in _SSE_KEY.finditer(text):
+        emit(m.start(), "AES", "CIPHER_INSTANCE", "DATA_ENCRYPTION", "cloud-sse", m.group(1), confidence="MEDIUM", reason="server-side-encryption-setting", mode="GCM" if "kms" in m.group(1).lower() else None)
+    for m in _SSL_POLICY_KEY.finditer(text):
+        pol = m.group(1)
+        algo = next((a for k, a in _ELB_TLS if k in pol), None)
+        if algo is None:
+            algo = _TLSV.get(pol.lower()) or "TLS"
+        emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", pol, reason="tls-policy-setting")
+    for m in _KEY_TYPE_KEY.finditer(text):
+        v = m.group(1).upper()
+        algo = "RSA" if v.startswith("RSA") else "ECDSA" if v.startswith(("EC", "ECC", "ECDSA")) else "Ed25519" if v == "ED25519" else "AES" if v in {"SYMMETRIC_DEFAULT", "OCT", "OCT-HSM", "OCT_HSM"} else "HMAC" if v.startswith("HMAC") else None
+        if algo:
+            emit(m.start(), algo, "KEY_PAIR_GENERATOR" if algo in {"RSA", "ECDSA", "Ed25519"} else "KEY_GENERATOR", "KEY_GENERATION", "key-config", m.group(1), confidence="MEDIUM", reason="key-type-setting")
 
     # --- Cipher suites --------------------------------------------------
     for m in _CIPHER_SUITE_KEY.finditer(text):

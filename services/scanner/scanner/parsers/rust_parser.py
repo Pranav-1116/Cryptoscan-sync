@@ -40,6 +40,9 @@ _RING_DIGEST = {
 }
 
 _RULES: list[Rule] = [
+    _r(r"\bKey::(?:derive_from|generate|from)\s*\(|\bCookieJar::private\b|\bPrivateJar\b|\bSignedJar\b|\bjar\.private(?:_mut)?\s*\(|\bjar\.signed(?:_mut)?\s*\(", _M, "cookie", algorithm="HMAC-SHA256", confidence="MEDIUM", confidence_reason="cookie crate signed/private jars use HMAC-SHA256"),
+    _r(r"\bKey::(?:derive_from|generate|from)\s*\(|\bCookieJar::private\b|\bPrivateJar\b|\bjar\.private(?:_mut)?\s*\(|\bSessionMiddleware::new\s*\(", _C, "cookie", algorithm="AES", mode="GCM", confidence="MEDIUM", confidence_reason="cookie crate private jars use AES-256-GCM"),
+    _r(r"\bsslmode=(?:disable|allow|prefer)\b|\bssl-mode=(?:DISABLED|PREFERRED)\b|\bsslmode=disable\b|\bPgSslMode::(?:Disable|Allow|Prefer)\b|\bMySqlSslMode::(?:Disabled|Preferred)\b", _TLS, "sqlx", algorithm="TLS-DISABLED", confidence="MEDIUM", confidence_reason="database connection without TLS (ssl mode)"),
     # ------------------------------------------------------------ RustCrypto hashes
     _r(r"\bMd5::|\bmd5::(?:Md5|compute|Digest)|\buse md5\b", _D, "md-5", algorithm="MD5"),
     _r(r"\bMd4::|\bmd4::", _D, "md4", algorithm="MD4"),

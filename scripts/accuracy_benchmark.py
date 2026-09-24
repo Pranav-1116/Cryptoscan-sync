@@ -117,6 +117,14 @@ def run() -> dict:
     }
 
 
+# Blind first-pass scores recorded when each wave was added (never edited afterwards).
+FIRST_PASS_HISTORY = [
+    {"wave": "1 — baseline corpus (199 files) on the pre-existing parsers", "files": 199, "precision": None, "recall": None, "f1": 0.660, "after": "F1 1.000 (199/199 exact); first pass was 106/199 exact"},
+    {"wave": "2 — real-world idioms: frameworks, kill-switches, cipher strings, PRNG-for-tokens, config", "files": 91, "precision": 0.968, "recall": 0.899, "f1": 0.932, "after": "F1 1.000 (290/290)"},
+    {"wave": "3 — platform/mobile/infra: CommonCrypto & ObjC, Scala, Django/Flask settings, k8s/CloudFormation/Azure/DB configs, gradle.kts", "files": 58, "precision": 0.994, "recall": 0.912, "f1": 0.951, "after": "F1 1.000 (348/348)"},
+]
+
+
 def render_md(rep: dict) -> str:
     o = rep["overall"]
     lines = [
@@ -151,6 +159,20 @@ def render_md(rep: dict) -> str:
         lines += ["| File | Category | Expected | Predicted | Missed (FN) | Spurious (FP) |", "|---|---|---|---|---|---|"]
         for r in rep["misses"]:
             lines.append(f"| `{r['language']}/{r['file']}` | {r['category']} | {', '.join(r['expected']) or '—'} | {', '.join(r['predicted']) or '—'} | {', '.join(r['fn']) or '—'} | {', '.join(r['fp']) or '—'}{' · CRASH' if r['crash'] else ''} |")
+    lines += [
+        "",
+        "## Held-out first-pass history",
+        "",
+        "Each corpus wave is written blind (labels from the code, before any rule is touched) and scored once *before* fixes.",
+        "That first-pass number is the honest estimate of accuracy on unseen code; the table above is the score after the",
+        "misses were fixed and locked in as regression tests.",
+        "",
+        "| Wave | Files added | First-pass P / R / F1 | After fixes |",
+        "|---|---|---|---|",
+    ]
+    for w in FIRST_PASS_HISTORY:
+        fmt = lambda v: "—" if v is None else f"{v:.3f}"  # noqa: E731
+        lines.append(f"| {w['wave']} | {w['files']} | {fmt(w['precision'])} / {fmt(w['recall'])} / {fmt(w['f1'])} | {w['after']} |")
     lines += [
         "",
         "## How to read this",

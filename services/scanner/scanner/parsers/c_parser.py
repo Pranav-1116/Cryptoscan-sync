@@ -54,6 +54,9 @@ _CIPHER_TOKEN = r"(aes_\d{3}_\w+|aes_\d{3}|aria_\d{3}_\w+|camellia_\d{3}_\w+|des
 _DIGEST_TOKEN = r"(md2|md4|md5|sha1|sha224|sha256|sha384|sha512|sha512_256|sha3_256|sha3_384|sha3_512|blake2b512|blake2s256|ripemd160|whirlpool|sm3|mdc2)"
 
 _RULES: list[Rule] = [
+    _r(r"\bcredentialForTrust:\s*\w+(?:\.protectionSpace)?\.serverTrust\b|\bNSURLSessionAuthChallengeUseCredential\b[^;]{0,120}\bcredentialForTrust:|\ballowsAnyHTTPSCertificateForHost:|\bsetAllowsAnyHTTPSCertificate:\s*YES|\bkCFStreamSSLValidatesCertificateChain\b[^;]{0,40}kCFBooleanFalse|\bvalidatesSecureCertificate\s*=\s*NO\b|\bSecTrustSetExceptions\s*\(", _TLS, "foundation", algorithm="TLS-CERT-NONE", confidence="MEDIUM", confidence_reason="server trust accepted without evaluation"),
+    _r(r"\bkSecAttrKeyType(RSA|EC|ECSECPrimeRandom|Ed25519|X25519)\b", _K, "security.framework", algo_from_group=1, algo_map={"rsa": "RSA", "ec": "ECDSA", "ecsecprimerandom": "ECDSA", "ed25519": "Ed25519", "x25519": "X25519"}),
+    _r(r"\bkCCPRFHmacAlg(SHA1|SHA224|SHA256|SHA384|SHA512)\b", _M, "commoncrypto", algorithm="HMAC", emit_digest_group=1),
     # ---------------------------------------------------------------- OpenSSL EVP
     _r(rf"\bEVP_{_CIPHER_TOKEN}\s*\(", _C, _OSSL, algo_from_group=1, algo_map=CIPHER_TOKENS),
     _r(rf"\bEVP_{_DIGEST_TOKEN}\s*\(", _D, _OSSL, algo_from_group=1, algo_map=DIGEST_TOKENS),

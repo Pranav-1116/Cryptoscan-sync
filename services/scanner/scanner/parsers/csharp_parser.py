@@ -100,6 +100,11 @@ _FACTORY_NAMES = {
 }
 
 _RULES: list[Rule] = [
+    _r(r"\bEncryptionAlgorithm\.(AES_(?:128|192|256)_(?:CBC|GCM))\b", _C, "aspnet-dataprotection", algo_from_group=1, algo_map={"aes_128_cbc": "AES", "aes_192_cbc": "AES", "aes_256_cbc": "AES", "aes_128_gcm": "AES", "aes_192_gcm": "AES", "aes_256_gcm": "AES"}),
+    _r(r"\bValidationAlgorithm\.(HMACSHA256|HMACSHA512)\b", _M, "aspnet-dataprotection", algo_from_group=1, algo_map={"hmacsha256": "HMAC-SHA256", "hmacsha512": "HMAC-SHA512"}),
+    _r(r"\bPasswordHasherOptions\b|\bPasswordHasherCompatibilityMode\.Identity(?:V2|V3)\b|\bnew\s+PasswordHasher<|\bIPasswordHasher<", _KDF, "aspnet-identity", algorithm="PBKDF2", confidence="MEDIUM", confidence_reason="ASP.NET Identity PasswordHasher is PBKDF2-HMAC"),
+    _r(r"\bDangerousAcceptAnyServerCertificateValidator\b", _TLS, "System.Net.Http", algorithm="TLS-CERT-NONE", confidence="HIGH", confidence_reason="certificate validation disabled"),
+    _r(r"\bSslProtocols\.(Ssl2|Ssl3|Tls|Tls11|Tls12|Tls13|Default|None)\b", _TLS, "System.Security.Authentication", algo_from_group=1, algo_map={"ssl2": "SSLv2", "ssl3": "SSLv3", "tls": "TLS1.0", "tls11": "TLS1.1", "tls12": "TLS1.2", "tls13": "TLS1.3", "default": "TLS", "none": "TLS"}),
     # --- symmetric providers / classes
     _r(r"\bnew\s+(?:Aes(?:Managed|CryptoServiceProvider|Cng|Ccm|Gcm)|Rijndael(?:Managed)?)\s*\(|\bRijndael(?:Managed)?\.Create\s*\(", _C, algorithm="AES"),
     _r(r"\bnew\s+AesGcm\s*\(|\bnew\s+AesCcm\s*\(", _C, algorithm="AES", mode="GCM"),

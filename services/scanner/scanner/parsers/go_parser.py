@@ -47,6 +47,7 @@ _JWT_METHODS = {
 }
 
 RULES: list[Rule] = [
+    _r(r"\bsslmode=(?:disable|allow|prefer)\b|\bssl-mode=(?:DISABLED|PREFERRED)\b|\bsslmode=disable\b", _TLS, "database/sql", algorithm="TLS-DISABLED", confidence="MEDIUM", confidence_reason="database connection without TLS (sslmode)"),
     # ------------------------------------------------------------ stdlib digests
     _r(r"\bmd4\.(?:Sum|New)\b", _D, "golang.org/x/crypto/md4", algorithm="MD4"),
     _r(r"\bmd5\.(?:Sum|New|SumHex|Size|BlockSize)\b", _D, "crypto/md5", algorithm="MD5"),

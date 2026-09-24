@@ -85,7 +85,11 @@ RULES: list[Rule] = [
     _r(r"\bconstants\.RSA_PKCS1_PADDING\b", _C, _NODE, algorithm="RSA", padding="PKCS1", confidence_reason="rsa-pkcs1v15-padding"),
     _r(r"\bconstants\.RSA_PKCS1_OAEP_PADDING\b", _C, _NODE, algorithm="RSA", padding="OAEP"),
     _r(r"\bconstants\.RSA_NO_PADDING\b", _C, _NODE, algorithm="RSA", padding="NoPadding"),
-    _r(rf"\bcreateCipher\s*\(\s*{_Q}", _D, _NODE, algorithm="MD5", confidence="MEDIUM", confidence_reason="crypto.createCipher key derivation uses MD5"),
+    _r(rf"(?:\bcrypto\.|(?<![\w.]))createCipher\s*\(\s*{_Q}", _D, _NODE, algorithm="MD5", confidence="MEDIUM", confidence_reason="crypto.createCipher key derivation uses MD5"),
+    _r(r"(?<![\w.])keccak256\s*\(|(?<![\w.])keccak_256\s*\(|(?<![\w.])solidityPackedKeccak256\s*\(", _D, "ethers", algorithm="SHA3-256", confidence="MEDIUM", confidence_reason="keccak-256"),
+    _r(r"(?<![\w.])(?:Wallet|HDNodeWallet)\.(?:createRandom|fromPhrase|fromMnemonic|fromEncryptedJson(?:Sync)?)\s*\(|(?<![\w.])new\s+SigningKey\s*\(|\bprivateKeyToAccount\s*\(|\bgeneratePrivateKey\s*\(\s*\)", _S, "ethers", algorithm="ECDSA", confidence="MEDIUM", confidence_reason="secp256k1 wallet key"),
+    _r(r"\bsession\s*\(\s*\{[^}]*\bsecret\s*:|\bcookieParser\s*\(\s*(?:['\"`]|process\.env|\w+\s*\))|\bcookieSession\s*\(\s*\{[^}]*\b(?:secret|keys)\s*:|\brequire\s*\(\s*['\"]cookie-signature['\"]\s*\)|\bfrom\s+['\"]cookie-signature['\"]", _M, "express", algorithm="HMAC-SHA256", confidence="MEDIUM", confidence_reason="express session/cookie signing uses HMAC-SHA256"),
+    _r(rf"\bsignOptions\s*:\s*\{{[^}}]*\balgorithm\s*:\s*{_Q}((?:HS|RS|PS|ES)(?:256|384|512)|EdDSA|none){_Q}|\bJwtModule\.register(?:Async)?\s*\(", _S, "@nestjs/jwt", algorithm="JWT", confidence="MEDIUM"),
     _r(rf"\bsetAuthTag\s*\(|\bgetAuthTag\s*\(", _C, _NODE, algorithm="UNKNOWN", confidence="LOW"),
     _r(rf"\bX509Certificate\s*\(|\bnew\s+crypto\.X509Certificate\s*\(|\bcheckServerIdentity\s*[:=]", {"api_type": "SIGNATURE", "purpose": "VERIFICATION"}, _NODE, algorithm="X509", confidence="MEDIUM"),
     # ------------------------------------------------------------ WebCrypto option objects

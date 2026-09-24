@@ -45,7 +45,7 @@ _ALIASES = {
     "TLS": "TLS", "TLS10": "TLS", "TLS11": "TLS", "TLS12": "TLS", "TLS13": "TLS", "SSLV3": "TLS", "SSLV2": "TLS", "SSL": "TLS",
     "TLSUNVERIFIED": "TLS", "TLSCIPHERS": "TLS", "TRUSTALL": "TLS", "SSH": "SSH", "SSHHOSTKEYNONE": "SSH", "X509": "X509", "OCSP": "X509",
     "CSPRNG": "RNG", "PRNG": "RNG", "SHA1PRNG": "RNG", "SECURERANDOM": "RNG", "RNG": "RNG",
-    "JWT": "JWT", "HS256": "JWT", "HS512": "JWT", "RS256": "JWT", "ES256": "JWT",
+    "JWT": "JWT", "HS256": "JWT", "HS384": "JWT", "HS512": "JWT", "RS256": "JWT", "RS384": "JWT", "RS512": "JWT", "PS256": "JWT", "PS384": "JWT", "PS512": "JWT", "ES256": "JWT", "ES384": "JWT", "ES512": "JWT", "ES256K": "JWT", "JWTNONE": "JWT",
     "MLKEM": "MLKEM", "MLKEM768": "MLKEM", "KYBER": "MLKEM", "MLDSA": "MLDSA", "DILITHIUM": "MLDSA", "SLHDSA": "SLHDSA", "SPHINCS": "SLHDSA",
     "WEBCRYPTO": "WEBCRYPTO",
 }
@@ -1263,6 +1263,11 @@ try:  # wave 2: harder real-world idioms (same _c registrar)
 except ImportError:  # imported as a top-level module
     from corpus_wave2 import register as _register_wave2  # type: ignore[no-redef]
 _register_wave2(_c)
+try:
+    from .corpus_wave3 import register as _register_wave3
+except ImportError:
+    from corpus_wave3 import register as _register_wave3  # type: ignore[no-redef]
+_register_wave3(_c)
 
 
 def summary() -> dict[str, int]:
