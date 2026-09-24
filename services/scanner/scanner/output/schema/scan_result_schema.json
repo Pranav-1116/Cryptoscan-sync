@@ -2,6 +2,10 @@
   "$defs": {
     "CryptoInfo": {
       "properties": {
+        "api_type": {
+          "title": "Api Type",
+          "type": "string"
+        },
         "algorithm": {
           "anyOf": [
             {
@@ -13,22 +17,6 @@
           ],
           "default": null,
           "title": "Algorithm"
-        },
-        "api_type": {
-          "title": "Api Type",
-          "type": "string"
-        },
-        "key_size": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Key Size"
         },
         "mode": {
           "anyOf": [
@@ -53,6 +41,18 @@
           ],
           "default": null,
           "title": "Padding"
+        },
+        "key_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Key Size"
         },
         "purpose": {
           "anyOf": [
@@ -95,6 +95,23 @@
           "title": "Confidence Reason",
           "type": "string"
         },
+        "library": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Library"
+        },
+        "is_hardcoded_key": {
+          "default": false,
+          "title": "Is Hardcoded Key",
+          "type": "boolean"
+        },
         "hardcoded_key_length": {
           "anyOf": [
             {
@@ -107,12 +124,7 @@
           "default": null,
           "title": "Hardcoded Key Length"
         },
-        "is_hardcoded_key": {
-          "default": false,
-          "title": "Is Hardcoded Key",
-          "type": "boolean"
-        },
-        "library": {
+        "code_origin": {
           "anyOf": [
             {
               "type": "string"
@@ -122,7 +134,7 @@
             }
           ],
           "default": null,
-          "title": "Library"
+          "title": "Code Origin"
         }
       },
       "required": [
@@ -134,7 +146,7 @@
     },
     "GitContext": {
       "properties": {
-        "branch": {
+        "commit_hash": {
           "anyOf": [
             {
               "type": "string"
@@ -144,7 +156,7 @@
             }
           ],
           "default": null,
-          "title": "Branch"
+          "title": "Commit Hash"
         },
         "commit_author": {
           "anyOf": [
@@ -158,30 +170,6 @@
           "default": null,
           "title": "Commit Author"
         },
-        "commit_hash": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Commit Hash"
-        },
-        "commit_message": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Commit Message"
-        },
         "commit_timestamp": {
           "anyOf": [
             {
@@ -194,6 +182,18 @@
           "default": null,
           "title": "Commit Timestamp"
         },
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
+        },
         "repository_url": {
           "anyOf": [
             {
@@ -205,6 +205,18 @@
           ],
           "default": null,
           "title": "Repository Url"
+        },
+        "commit_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Commit Message"
         }
       },
       "title": "GitContext",
@@ -214,26 +226,9 @@
       "additionalProperties": true,
       "description": "Scanner output model - one per cryptographic API call detected.",
       "properties": {
-        "crypto": {
-          "$ref": "#/$defs/CryptoInfo"
-        },
         "finding_id": {
           "title": "Finding Id",
           "type": "string"
-        },
-        "git_context": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/GitContext"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null
-        },
-        "metadata": {
-          "$ref": "#/$defs/FindingMetadata"
         },
         "scan_timestamp": {
           "title": "Scan Timestamp",
@@ -251,6 +246,23 @@
         },
         "source": {
           "$ref": "#/$defs/SourceLocation"
+        },
+        "crypto": {
+          "$ref": "#/$defs/CryptoInfo"
+        },
+        "metadata": {
+          "$ref": "#/$defs/FindingMetadata"
+        },
+        "git_context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GitContext"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -263,19 +275,9 @@
     },
     "ScanStatistics": {
       "properties": {
-        "duration_seconds": {
-          "default": 0.0,
-          "title": "Duration Seconds",
-          "type": "number"
-        },
         "files_scanned": {
           "default": 0,
           "title": "Files Scanned",
-          "type": "integer"
-        },
-        "files_skipped": {
-          "default": 0,
-          "title": "Files Skipped",
           "type": "integer"
         },
         "files_with_crypto": {
@@ -283,9 +285,19 @@
           "title": "Files With Crypto",
           "type": "integer"
         },
+        "files_skipped": {
+          "default": 0,
+          "title": "Files Skipped",
+          "type": "integer"
+        },
         "files_with_errors": {
           "default": 0,
           "title": "Files With Errors",
+          "type": "integer"
+        },
+        "total_findings": {
+          "default": 0,
+          "title": "Total Findings",
           "type": "integer"
         },
         "high_confidence": {
@@ -293,20 +305,20 @@
           "title": "High Confidence",
           "type": "integer"
         },
-        "low_confidence": {
-          "default": 0,
-          "title": "Low Confidence",
-          "type": "integer"
-        },
         "medium_confidence": {
           "default": 0,
           "title": "Medium Confidence",
           "type": "integer"
         },
-        "total_findings": {
+        "low_confidence": {
           "default": 0,
-          "title": "Total Findings",
+          "title": "Low Confidence",
           "type": "integer"
+        },
+        "duration_seconds": {
+          "default": 0.0,
+          "title": "Duration Seconds",
+          "type": "number"
         }
       },
       "title": "ScanStatistics",
@@ -314,17 +326,15 @@
     },
     "ScanTarget": {
       "properties": {
-        "branch": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Branch"
+        "type": {
+          "default": "LOCAL_DIRECTORY",
+          "title": "Type",
+          "type": "string"
+        },
+        "location": {
+          "default": "",
+          "title": "Location",
+          "type": "string"
         },
         "commit": {
           "anyOf": [
@@ -338,15 +348,17 @@
           "default": null,
           "title": "Commit"
         },
-        "location": {
-          "default": "",
-          "title": "Location",
-          "type": "string"
-        },
-        "type": {
-          "default": "LOCAL_DIRECTORY",
-          "title": "Type",
-          "type": "string"
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Branch"
         }
       },
       "title": "ScanTarget",
@@ -354,6 +366,48 @@
     },
     "SourceLocation": {
       "properties": {
+        "type": {
+          "default": "SOURCE_CODE",
+          "title": "Type",
+          "type": "string"
+        },
+        "language": {
+          "default": "JAVA",
+          "title": "Language",
+          "type": "string"
+        },
+        "file_path": {
+          "title": "File Path",
+          "type": "string"
+        },
+        "line_number": {
+          "title": "Line Number",
+          "type": "integer"
+        },
+        "column_number": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column Number"
+        },
+        "method_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Method Name"
+        },
         "class_name": {
           "anyOf": [
             {
@@ -378,53 +432,6 @@
           "default": null,
           "title": "Code Snippet"
         },
-        "column_number": {
-          "anyOf": [
-            {
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Column Number"
-        },
-        "file_path": {
-          "title": "File Path",
-          "type": "string"
-        },
-        "is_in_try_catch": {
-          "default": false,
-          "title": "Is In Try Catch",
-          "type": "boolean"
-        },
-        "language": {
-          "default": "JAVA",
-          "title": "Language",
-          "type": "string"
-        },
-        "line_number": {
-          "title": "Line Number",
-          "type": "integer"
-        },
-        "method_name": {
-          "anyOf": [
-            {
-              "type": "string"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "title": "Method Name"
-        },
-        "type": {
-          "default": "SOURCE_CODE",
-          "title": "Type",
-          "type": "string"
-        },
         "variable_name": {
           "anyOf": [
             {
@@ -436,6 +443,11 @@
           ],
           "default": null,
           "title": "Variable Name"
+        },
+        "is_in_try_catch": {
+          "default": false,
+          "title": "Is In Try Catch",
+          "type": "boolean"
         }
       },
       "required": [
@@ -448,7 +460,15 @@
   },
   "additionalProperties": true,
   "properties": {
-    "error_message": {
+    "scan_id": {
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "scan_start": {
+      "title": "Scan Start",
+      "type": "string"
+    },
+    "scan_end": {
       "anyOf": [
         {
           "type": "string"
@@ -458,7 +478,23 @@
         }
       ],
       "default": null,
-      "title": "Error Message"
+      "title": "Scan End"
+    },
+    "scanner_version": {
+      "default": "0.1.0",
+      "title": "Scanner Version",
+      "type": "string"
+    },
+    "scanner_id": {
+      "default": "static-java-scanner-v0.1",
+      "title": "Scanner Id",
+      "type": "string"
+    },
+    "scan_target": {
+      "$ref": "#/$defs/ScanTarget"
+    },
+    "statistics": {
+      "$ref": "#/$defs/ScanStatistics"
     },
     "findings": {
       "items": {
@@ -475,7 +511,12 @@
       "title": "Parse Errors",
       "type": "array"
     },
-    "scan_end": {
+    "status": {
+      "default": "COMPLETED",
+      "title": "Status",
+      "type": "string"
+    },
+    "error_message": {
       "anyOf": [
         {
           "type": "string"
@@ -485,36 +526,7 @@
         }
       ],
       "default": null,
-      "title": "Scan End"
-    },
-    "scan_id": {
-      "title": "Scan Id",
-      "type": "string"
-    },
-    "scan_start": {
-      "title": "Scan Start",
-      "type": "string"
-    },
-    "scan_target": {
-      "$ref": "#/$defs/ScanTarget"
-    },
-    "scanner_id": {
-      "default": "static-java-scanner-v0.1",
-      "title": "Scanner Id",
-      "type": "string"
-    },
-    "scanner_version": {
-      "default": "0.1.0",
-      "title": "Scanner Version",
-      "type": "string"
-    },
-    "statistics": {
-      "$ref": "#/$defs/ScanStatistics"
-    },
-    "status": {
-      "default": "COMPLETED",
-      "title": "Status",
-      "type": "string"
+      "title": "Error Message"
     }
   },
   "title": "ScanResult",

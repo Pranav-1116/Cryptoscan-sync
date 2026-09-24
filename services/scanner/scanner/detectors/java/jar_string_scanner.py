@@ -323,7 +323,7 @@ def _finding(rel: str, member: str, algo: str, api: str, purpose: str, lib: str,
         scanner_id=SCANNER_ID,
         source=SourceLocation(type="BINARY", language="JAVA", file_path=f"{rel}!{member}", line_number=0, code_snippet=evidence[:120]),
         crypto=CryptoInfo(api_type=api, algorithm=algo, raw_transformation=evidence[:120]),
-        metadata=FindingMetadata(confidence=conf, confidence_reason=f"bytecode constant pool of {artifact}", library=lib),
+        metadata=FindingMetadata(confidence=conf, confidence_reason=f"bytecode constant pool of {artifact}", library=lib, code_origin="archive"),
     )
 
 

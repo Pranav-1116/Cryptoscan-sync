@@ -114,7 +114,24 @@ def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
             findings = findings + extra
     if findings:
         findings = findings + _expand_cipher_suites(path, repo_root, findings)
+        _tag_origin(path, repo_root, findings)
     return findings
+
+
+def _tag_origin(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> None:
+    """Stamp metadata.code_origin (source/test/generated/vendored/archive) on every finding."""
+    try:
+        from scanner.core.code_origin import classify_origin
+
+        origin = classify_origin(path, repo_root)
+    except Exception:  # pragma: no cover - classification must never break a scan
+        return
+    for f in findings:
+        try:
+            if not getattr(f.metadata, "code_origin", None):
+                f.metadata.code_origin = origin
+        except Exception:  # pragma: no cover
+            continue
 
 
 _IANA_SUITE = re.compile(r"\b(?:TLS|SSL)_[A-Z0-9_]+_WITH_[A-Z0-9_]+|\bTLS_(?:AES_|CHACHA20_)")
