@@ -197,6 +197,11 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
     if "/" in stripped:
         parts = stripped.split("/")
         algorithm = _normalize_algorithm(parts[0]) if len(parts) > 0 else None
+        # s"$algorithmName/ECB/PKCS5Padding", "%s/CBC/NoPadding", "" + algo + "/GCM/NoPadding": the
+        # algorithm is a runtime value — keep mode/padding (ECB is still a finding) but do not
+        # invent an algorithm name from interpolation syntax.
+        if algorithm and (algorithm.startswith(("$", "%", "{", "#", "+")) or "${" in parts[0] or parts[0].strip() == ""):
+            algorithm = "UNKNOWN"
         mode = _normalize_mode(parts[1]) if len(parts) > 1 else None
         padding = _normalize_padding(parts[2]) if len(parts) > 2 else None
         return ParsedAlgorithm(

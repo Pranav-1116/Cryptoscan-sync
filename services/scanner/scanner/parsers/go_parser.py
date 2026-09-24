@@ -152,7 +152,7 @@ RULES: list[Rule] = [
     _r(r"\becdsa\.GenerateKey\b|\becdsa\.(?:PrivateKey|PublicKey)\b", _K, "crypto/ecdsa", algorithm="ECDSA"),
     _r(r"\becdsa\.(?:Sign|SignASN1|Verify|VerifyASN1)\b", _S, "crypto/ecdsa", algorithm="ECDSA"),
     _r(r"\belliptic\.(?:P224|P256|P384|P521)\s*\(", _K, "crypto/elliptic", algorithm="ECDSA", confidence="MEDIUM"),
-    _r(r"\bsecp256k1\.(?:S256|Sign|VerifySignature|RecoverPubkey|GenerateKey|NewPrivateKey)\b|\bbtcec\.(?:S256|NewPrivateKey|ParsePubKey|SignCompact|RecoverCompact)\b|\bethcrypto\.(?:Sign|SigToPub|Ecrecover|GenerateKey|VerifySignature)\b|\bcrypto\.(?:Sign|SigToPub|Ecrecover|GenerateKey|VerifySignature|Keccak256|Keccak256Hash|ToECDSA|HexToECDSA|PubkeyToAddress)\s*\(", _S, "secp256k1", algorithm="ECDSA", confidence="MEDIUM"),
+    _r(r"\bsecp256k1\.(?:S256|Sign|VerifySignature|RecoverPubkey|GenerateKey|NewPrivateKey)\b|\bbtcec\.(?:S256|NewPrivateKey|ParsePubKey|SignCompact|RecoverCompact)\b|\bethcrypto\.(?:Sign|SigToPub|Ecrecover|GenerateKey|VerifySignature)\b|\bcrypto\.(?:Sign|SigToPub|Ecrecover|GenerateKey|VerifySignature|ToECDSA|HexToECDSA|PubkeyToAddress)\s*\(", _S, "secp256k1", algorithm="ECDSA", confidence="MEDIUM"),
     _r(r"\bcrypto\.Keccak256(?:Hash)?\s*\(|\bsha3\.NewLegacyKeccak256\b", _D, "go-ethereum", algorithm="SHA3-256"),
     _r(r"\bed25519\.GenerateKey\b|\bed25519\.NewKeyFromSeed\b|\bed25519\.(?:PrivateKey|PublicKey)\b", _K, "crypto/ed25519", algorithm="Ed25519"),
     _r(r"\bed25519\.(?:Sign|Verify|VerifyWithOptions)\b|\bedwards25519\.\w+", _S, "crypto/ed25519", algorithm="Ed25519"),
