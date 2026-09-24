@@ -45,6 +45,17 @@ DEFAULT_TEST_DIRS = frozenset({
 
 DEFAULT_SOURCE_EXTENSIONS = (
     ".java",
+    ".gradle",
+    ".groovy",
+    ".vue",
+    ".svelte",
+    ".swift",
+    ".plist",
+    ".entitlements",
+    ".sh",
+    ".bash",
+    ".zsh",
+    ".ksh",
     ".kt",
     ".kts",
     ".scala",
@@ -95,6 +106,9 @@ _NAMED_CONFIG_EXACT = frozenset({
     "postgresql.conf", "pg_hba.conf", "my.cnf", "redis.conf", "haproxy.cfg", "httpd.conf", "apache2.conf",
     "krb5.conf", "ipsec.conf", "strongswan.conf", "smb.conf", "ldap.conf", "slapd.conf",
 })
+
+
+SHELL_NAMED_FILES = frozenset({"makefile", "gnumakefile", "justfile", "entrypoint", "docker-entrypoint"})
 
 
 def is_named_config_file(name: str) -> bool:
@@ -175,7 +189,11 @@ class FileDiscovery:
             current_dir = Path(dirpath)
 
             for filename in filenames:
-                if not filename.lower().endswith(self._extensions) and not is_named_config_file(filename):
+                if (
+                    not filename.lower().endswith(self._extensions)
+                    and not is_named_config_file(filename)
+                    and filename.lower() not in SHELL_NAMED_FILES
+                ):
                     continue
 
                 file_path = current_dir / filename

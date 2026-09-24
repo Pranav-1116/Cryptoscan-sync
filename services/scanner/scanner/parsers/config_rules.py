@@ -149,10 +149,24 @@ _JCA_TRANSFORMATION_KEY = re.compile(
 
 _PASSWORD_HASH_KEY = re.compile(
     _LIST + r"[A-Za-z0-9_.\-]*?(?:password[_.\-]?(?:hash(?:er|ing)?|encoder|algorithm|scheme|encryption)|hash[_.\-]?(?:algorithm|scheme|method))" + _SEP
-    + r"(bcrypt|scrypt|argon2(?:id?|d)?|pbkdf2(?:[_-]?sha(?:1|256|512))?|md5(?:[_-]?crypt)?|sha[_-]?(?:1|256|512)(?:[_-]?crypt)?|plaintext|noop|clear(?:text)?|crypt)\b",
+    + r"(bcrypt|scrypt|argon2(?:id?|d)?|pbkdf2(?:[_-]?sha(?:1|256|512))?|md5(?:[_-]?crypt)?|scram[_-]sha[_-]256|sha[_-]?(?:1|256|512)(?:[_-]?crypt)?|plaintext|noop|clear(?:text)?|crypt)\b",
     re.I | re.M,
 )
+# PostgreSQL pg_hba.conf:  host  all  all  10.0.0.0/8  scram-sha-256
+_PG_HBA = re.compile(
+    r"^\s*(local|hostssl|hostnossl|hostgssenc|hostnogssenc|host)\s+\S+\s+\S+(?:\s+(?!md5\b|scram-sha-256\b|password\b|trust\b|cert\b|reject\b|peer\b|ident\b|gss\b|sspi\b|ldap\b|radius\b|pam\b|bsd\b)\S+){0,2}\s+(md5|scram-sha-256|password|trust|cert|reject|peer|ident|gss|sspi|ldap|radius|pam|bsd)\b",
+    re.M,
+)
+_PG_HBA_MAP = {"md5": "MD5", "scram-sha-256": "SHA-256", "password": "PLAINTEXT", "cert": "X509"}
+# MySQL / MariaDB authentication plugins
+_MYSQL_AUTH = re.compile(
+    _LIST + r"(?:default[_-]authentication[_-]plugin|authentication[_-]policy|auth[_-]plugin|default[_-]auth)" + _SEP
+    + r"\*?(caching_sha2_password|sha256_password|mysql_native_password|mysql_old_password|mysql_clear_password|ed25519)\b",
+    re.I | re.M,
+)
+_MYSQL_AUTH_MAP = {"caching_sha2_password": "SHA-256", "sha256_password": "SHA-256", "mysql_native_password": "SHA-1", "mysql_old_password": "PLAINTEXT", "mysql_clear_password": "PLAINTEXT", "ed25519": "Ed25519"}
 _PW_MAP = {
+    "scramsha256": "SHA-256",
     "bcrypt": "BCRYPT", "scrypt": "SCRYPT", "argon2": "ARGON2", "pbkdf2": "PBKDF2",
     "md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256", "sha512": "SHA-512",
     "plaintext": "PLAINTEXT", "noop": "PLAINTEXT", "clear": "PLAINTEXT", "cleartext": "PLAINTEXT", "crypt": "DES",
@@ -323,6 +337,21 @@ def run_config_rules(
         if algo:
             emit(m.start(), algo, "KDF" if algo in {"BCRYPT", "SCRYPT", "ARGON2", "PBKDF2"} else "HASH",
                  "PASSWORD_HASHING", "app-config", m.group(1), reason="password-hash-setting")
+
+    # --- PostgreSQL pg_hba.conf / MySQL auth plugins ------------------------
+    for m in _PG_HBA.finditer(text):
+        kind, method = m.group(1), m.group(2)
+        algo = _PG_HBA_MAP.get(method)
+        if algo:
+            emit(m.start(), algo, "HASH" if algo in {"MD5", "SHA-256"} else "TLS", "PASSWORD_HASHING", "postgresql", method, reason="pg_hba-auth-method")
+        if kind == "hostnossl":
+            emit(m.start(), "TLS-DISABLED", "TLS", "NETWORK_ENCRYPTION", "postgresql", kind, reason="pg_hba-hostnossl")
+        elif kind == "hostssl":
+            emit(m.start(), "TLS", "TLS", "NETWORK_ENCRYPTION", "postgresql", kind, reason="pg_hba-hostssl")
+    for m in _MYSQL_AUTH.finditer(text):
+        algo = _MYSQL_AUTH_MAP.get(m.group(1).lower())
+        if algo:
+            emit(m.start(), algo, "HASH", "PASSWORD_HASHING", "mysql", m.group(1), reason="mysql-auth-plugin")
 
     # --- Verification kill-switches -----------------------------------------
     for m in _VERIFY_OFF.finditer(text):

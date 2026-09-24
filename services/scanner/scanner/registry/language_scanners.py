@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from scanner.core.file_discovery import is_named_config_file
+from scanner.core.file_discovery import SHELL_NAMED_FILES as _SHELL_NAMED_FILES, is_named_config_file
 
 from scanner.detectors.java.jar_string_scanner import scan_jar
 from scanner.models.raw_finding import RawFinding
@@ -20,18 +20,23 @@ from scanner.parsers.php_parser import parse_php_file
 from scanner.parsers.python_parser import parse_python_file
 from scanner.parsers.ruby_parser import parse_ruby_file
 from scanner.parsers.rust_parser import parse_rust_file
+from scanner.parsers.shell_parser import parse_shell_file
+from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
 
 JAVA_EXT = {".java"}
-KOTLIN_EXT = {".kt", ".kts"}
+KOTLIN_EXT = {".kt", ".kts", ".gradle", ".groovy"}
 SCALA_EXT = {".scala"}
 PYTHON_EXT = {".py"}
-JS_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx"}
+JS_EXT = {".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".svelte"}
 CS_EXT = {".cs"}
 GO_EXT = {".go"}
 PHP_EXT = {".php"}
 RUBY_EXT = {".rb"}
 RUST_EXT = {".rs"}
+SHELL_EXT = {".sh", ".bash", ".zsh", ".ksh"}
+SWIFT_EXT = {".swift"}
+PLIST_EXT = {".plist", ".entitlements"}
 C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
 JAR_EXT = {".jar"}
 CONFIG_EXT = {".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg", ".tmpl", ".tpl", ".j2", ".toml"}
@@ -47,10 +52,18 @@ PARSERS = (
     (PHP_EXT, parse_php_file),
     (RUBY_EXT, parse_ruby_file),
     (RUST_EXT, parse_rust_file),
+    (SHELL_EXT, parse_shell_file),
+    (SWIFT_EXT, parse_swift_file),
+    (PLIST_EXT, parse_swift_file),
     (C_EXT, parse_c_file),
     (JAR_EXT, scan_jar),
     (CONFIG_EXT, parse_config_file),
 )
+
+
+def _dedupe_against(base: list[RawFinding], extra: list[RawFinding]) -> list[RawFinding]:
+    seen = {(f.source.line_number, f.crypto.algorithm.upper()) for f in base}
+    return [f for f in extra if (f.source.line_number, f.crypto.algorithm.upper()) not in seen]
 
 
 def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
@@ -63,6 +76,11 @@ def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
     else:
         if is_named_config_file(path.name):
             findings = parse_config_file(path, repo_root)
+            if path.name.lower().startswith(("dockerfile", "containerfile")) or path.name.lower().endswith(".dockerfile"):
+                # RUN lines are shell: openssl/keytool/curl -k live there too.
+                findings = findings + _dedupe_against(findings, parse_shell_file(path, repo_root))
+        elif path.name.lower() in _SHELL_NAMED_FILES:
+            findings = parse_shell_file(path, repo_root)
     # Deep-parser pass (tree-sitter CST walker) — opt-in via
     # CRYPTOSCAN_TREE_SITTER=1; adds findings, never replaces the
     # deterministic baseline parsers.

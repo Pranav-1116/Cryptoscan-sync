@@ -9,6 +9,7 @@ A *rule* is ``(compiled_pattern, spec)`` where ``spec`` is a dict with at least
 * ``algo_from_group`` + ``algo_map``- resolve the algorithm from a captured
                                      token through a mapping table (case-
                                      insensitive) instead of a fixed name.
+* ``mode_from_group``              - regex group index holding the cipher mode.
 * ``emit_digest_group``            - additionally emit a MESSAGE_DIGEST finding
                                      for a captured digest name (e.g. the
                                      ``EVP_sha256()`` argument of ``HMAC``).
@@ -367,6 +368,11 @@ def run_rules(
                     algorithm = resolve_token(token, spec["algo_map"])
                 if not algorithm:
                     continue
+            if spec.get("mode_from_group") and mode is None:
+                try:
+                    mode = (match.group(spec["mode_from_group"]) or "").upper() or None
+                except IndexError:
+                    mode = None
             if algorithm:
                 emit(line, algorithm, spec, match, mode=mode, key_size=key_size)
             if spec.get("emit_digest_group"):
