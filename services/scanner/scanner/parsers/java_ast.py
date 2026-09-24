@@ -479,7 +479,7 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
             algorithm = "X509"
         if type_name == "KeyAgreement" and raw:
             upper = raw.upper()
-            algorithm = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)
+            algorithm = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else ("X25519" if upper in {"XDH", "X25519"} else ("X448" if upper == "X448" else upper)))
         if type_name == "SecureRandom" and raw:
             algorithm = "SHA1PRNG" if raw.upper() == "SHA1PRNG" else "CSPRNG"
         if type_name == "SecretKeyFactory" and raw:

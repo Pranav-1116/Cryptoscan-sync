@@ -196,3 +196,14 @@ def test_xml_comments_and_prose_are_silent(tmp_path):
     from scanner.parsers.xml_parser import parse_xml_file
     p = _write(tmp_path, "web.config", '<configuration>\n<!-- <machineKey validation="MD5" decryption="DES"/> -->\n<appSettings><add key="Theme" value="dark"/></appSettings>\n</configuration>\n')
     assert parse_xml_file(p, tmp_path) == []
+
+
+def test_wave7_blind_fixes(tmp_path):
+    from scanner.parsers.csharp_parser import parse_csharp_file
+    from scanner.parsers.php_parser import parse_php_file
+    cs = _write(tmp_path, "K.cs", 'using System.Security.Cryptography;\nvar e = ECDiffieHellman.Create(ECCurve.NamedCurves.nistP256);\nusing var m = IncrementalHash.CreateHMAC(HashAlgorithmName.MD5, key);\n')
+    algos = set(_algos(parse_csharp_file(cs, tmp_path)))
+    assert {"ECDH", "HMAC", "MD5"} <= algos and "ECDSA" not in algos
+    php = _write(tmp_path, "p.php", "<?php\n$h = password_hash($pw, PASSWORD_ARGON2ID);\n")
+    algos = set(_algos(parse_php_file(php, tmp_path)))
+    assert "ARGON2" in algos and "BCRYPT" not in algos

@@ -28,7 +28,7 @@ _SIMPLE = [
     (re.compile(r"\bmd5\s*\("), "MD5", "MESSAGE_DIGEST", "HASHING", "php-hash"),
     (re.compile(r"\bsha1\s*\("), "SHA-1", "MESSAGE_DIGEST", "HASHING", "php-hash"),
     (re.compile(r"\bmcrypt_", re.IGNORECASE), "UNKNOWN", "CIPHER_INSTANCE", "ENCRYPTION", "mcrypt"),
-    (re.compile(r"\bpassword_hash\s*\("), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "password_hash"),
+    (re.compile(r"\bpassword_hash\s*\((?![^;]*\bPASSWORD_ARGON2)(?![^;]*['\"]argon2)"), "BCRYPT", "KEY_GENERATOR", "PASSWORD_HASHING", "password_hash"),
     (re.compile(r"\bopenssl_pkey_new\s*\("), "RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "openssl"),
     (re.compile(r"\bopenssl_sign\s*\("), "RSA", "SIGNATURE", "SIGNING", "openssl"),
     (re.compile(r"\bopenssl_verify\s*\("), "RSA", "SIGNATURE", "VERIFICATION", "openssl"),
