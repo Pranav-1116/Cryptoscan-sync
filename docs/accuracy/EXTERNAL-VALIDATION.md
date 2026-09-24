@@ -42,3 +42,22 @@ contrib backends, `os.urandom`, `ssl.create_default_context`, etc.).
    extensions, so nginx/sshd/Docker/Kubernetes/Terraform/`.env` files were skipped entirely.
 2. **Any source directory named `build`, `out`, `target`, `dist` or `bin` was skipped**, even when it
    was a Python package.
+
+## Round 2 — npm tarballs and GitHub checkouts (JavaScript, Java, Go)
+
+Fetched with `npm pack` / `git clone --depth 1`, scanned unmodified, every finding reviewed.
+
+| Project | Lang | Files | Findings | Review |
+|---|---|---|---|---|
+| lodash | JS | 1,048 | 0 | correct — 0 FP on the largest pure-utility package on npm |
+| express | JS | 7 | 1 | `require('cookie-signature')` → HMAC-SHA256 ✔; a `cookieParser("secret")` *inside an error string* was a false positive → fixed |
+| cookie-signature | JS | 1 | 3 | `crypto\n .createHmac('sha256')` chained across lines was reported as bare SHA-256, not HMAC → fixed |
+| express-session | JS | 5 | 2 | SHA-1 session-id hash, HMAC-SHA256 signing ✔ |
+| jsonwebtoken | JS | 12 | 4 → 11 | the `jws` dependency that does the actual signing was invisible → `jws.sign/verify/decode`, `require('jws')` now → JWT |
+| bcryptjs | JS | 6 | 7 → 11 | a *vendored bcrypt implementation* only surfaced as CSPRNG → `hashSync/compareSync` definitions now → BCRYPT (ALGORITHM_IMPLEMENTATION) |
+| spring-petclinic | Java | 69 | 0 | correct — no cryptography in the project (`grep`-verified) |
+| golang-jwt/jwt | Go | 47 | 406 | ECDSA/RSA/Ed25519/HMAC/SHA-2/X.509/JWT/`UnsafeAllowNoneSignatureType` all reported; no FPs found in a 100-finding sample |
+| gin-gonic/gin | Go | 102 | 19 → 17 | TLS/`InsecureSkipVerify`/`subtle.ConstantTimeCompare`/QUIC ✔; `math/rand` used to build *test data* was reported as weak RNG → math/rand is now only reported in a security context (statement or enclosing `func` mentions key/token/secret/session/…) |
+
+Regression tests for every fix: `tests/unit/test_external_validation_regressions.py`.
+Labelled corpus after these changes: still 348/348 (`scripts/accuracy_benchmark.py`).

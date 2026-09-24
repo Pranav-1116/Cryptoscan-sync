@@ -20,15 +20,15 @@ NODE_DECIPHER = re.compile(
     re.IGNORECASE,
 )
 NODE_HASH = re.compile(
-    r"""crypto\.createHash\(\s*['"]([^'"]+)['"]""",
+    r"""crypto\s*\.\s*createHash\s*\(\s*['"]([^'"]+)['"]""",
     re.IGNORECASE,
 )
 NODE_HMAC = re.compile(
-    r"""crypto\.createHmac\(\s*['"]([^'"]+)['"]""",
+    r"""crypto\s*\.\s*createHmac\s*\(\s*['"]([^'"]+)['"]""",
     re.IGNORECASE,
 )
 NODE_SIGN = re.compile(
-    r"""crypto\.createSign\(\s*['"]([^'"]+)['"]""",
+    r"""crypto\s*\.\s*createSign\s*\(\s*['"]([^'"]+)['"]""",
     re.IGNORECASE,
 )
 NODE_PBKDF = re.compile(r"""crypto\.pbkdf2(?:Sync)?\s*\(""", re.IGNORECASE)
@@ -295,7 +295,7 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             add(
                 match,
                 api_type="MAC",
-                algorithm=HASH_MAP.get(raw.lower(), raw.upper()),
+                algorithm="HMAC-" + HASH_MAP.get(raw.lower(), raw.upper()),
                 purpose="MAC_GENERATION",
                 library="node-crypto",
             )

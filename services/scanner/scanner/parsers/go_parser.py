@@ -324,7 +324,7 @@ def parse_go_file(file_path: Path, repo_root: Path | None = None) -> list[RawFin
     text = _resolve_import_aliases(strip_c_like_comments(raw))
     if "_test.go" in file_path.name:
         pass  # tests are still scanned; consumers can filter via path
-    return run_rules(
+    findings = run_rules(
         file_path=file_path,
         repo_root=repo_root,
         text=text,
@@ -334,3 +334,36 @@ def parse_go_file(file_path: Path, repo_root: Path | None = None) -> list[RawFin
         confidence_reason="go-stdlib-or-xcrypto",
         strip_comments=False,
     )
+    return _filter_prng_context(findings, text)
+
+
+_SECURITY_CONTEXT = re.compile(
+    r"key|token|secret|nonce|salt|passw|session|otp|csrf|iv\b|seed|random|entropy|"
+    r"cred|auth|sign|cookie|challenge|verif|id\b|uuid|ident",
+    re.IGNORECASE,
+)
+_FUNC_DECL = re.compile(r"^\s*func\b")
+
+
+def _filter_prng_context(findings: list[RawFinding], text: str) -> list[RawFinding]:
+    """math/rand is everywhere (shuffling test data, jitter, sampling). Only report
+    it as a weak *cryptographic* RNG when the call sits in a security-flavoured
+    context: the statement itself or the enclosing function name mentions keys,
+    tokens, secrets, sessions, ids... Everything else is not a crypto asset."""
+    if not any(f.crypto.algorithm == "PRNG" for f in findings):
+        return findings
+    lines = text.splitlines()
+    kept: list[RawFinding] = []
+    for f in findings:
+        if f.crypto.algorithm != "PRNG":
+            kept.append(f)
+            continue
+        ln = (f.source.line_number or 1) - 1
+        window = lines[ln] if ln < len(lines) else ""
+        for back in range(ln, max(-1, ln - 80), -1):
+            if back < len(lines) and _FUNC_DECL.match(lines[back]):
+                window += "\n" + lines[back]
+                break
+        if _SECURITY_CONTEXT.search(window):
+            kept.append(f)
+    return kept
