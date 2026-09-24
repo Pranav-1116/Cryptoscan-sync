@@ -13,17 +13,10 @@ try:
 
         java_home: Optional[str] = None
         temp_dir: Path = Path("/tmp/cryptoscan")
-        exclude_dirs: set[str] = {
-            "test",
-            "tests",
-            "build",
-            "dist",
-            "target",
-            ".git",
-            "node_modules",
-            "venv",
-            ".venv",
-        }
+        # Extra directory names to skip, merged with FileDiscovery.DEFAULT_EXCLUDED_DIRS.
+        # Test directories are NOT excluded by default: hard-coded keys, test keystores and
+        # weak-cipher fixtures in src/test are inventory too (use --exclude-tests to drop them).
+        exclude_dirs: set[str] = set()
         max_file_size_bytes: int = 10 * 1024 * 1024
         scan_timeout_seconds: int = 600
         supported_languages: set[str] = {"java"}
@@ -33,8 +26,5 @@ except Exception:  # pragma: no cover
 
     class ScannerConfig:  # type: ignore[no-redef]
         def __init__(self, **kwargs):
-            self.exclude_dirs = kwargs.get(
-                "exclude_dirs",
-                {"test", "tests", "build", "dist", "target", ".git", "node_modules"},
-            )
+            self.exclude_dirs = kwargs.get("exclude_dirs", set())
             self.temp_dir = Path(kwargs.get("temp_dir", "/tmp/cryptoscan"))

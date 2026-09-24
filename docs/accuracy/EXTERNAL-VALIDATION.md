@@ -227,3 +227,12 @@ Real binaries (Windows wheels from PyPI — the only binary source reachable fro
 
 Limits stated plainly: names only — no data flow inside IL or machine code, so `EVP_EncryptInit` is UNKNOWN, and a managed assembly that builds algorithm names at runtime shows only the namespace. Findings carry `code_origin="archive"` and `file_path = x.dll!Type` / `x.dll!import:Symbol`.
 
+## Round 16 — full-pipeline parity check (found two discovery bugs)
+
+Every previous round drove the parsers through `scan_third_party.py` (FileDiscovery + `scan_file`). Running the *production* pipeline (`Scanner().scan`, i.e. the CLI / worker path) over the same tree exposed two gaps that the corpus could never see:
+
+1. **Test directories were silently dropped.** `ScannerConfig.exclude_dirs` defaulted to `{test, tests, build, …}` and *replaced* `DEFAULT_EXCLUDED_DIRS`, so goldmansachs/legend-engine scanned 4 927 files instead of 6 744 and reported 48 findings instead of 53 — and `node_modules`/`vendor`/`.idea` were no longer excluded whenever the config object loaded. Config directories are now *merged* with the defaults and test dirs are only excluded with `--exclude-tests` (findings from tests are tagged `code_origin=test` instead).
+2. **Every JAR finding was emitted twice.** A legacy `rglob("*.jar")` pass ran in addition to the discovery path. Removed; a pipeline test asserts one finding per archive member.
+
+After the fix `Scanner().scan` and `scan_third_party.py` agree exactly (6 744 files / 53 findings / 48 source + 5 test). Lesson recorded for the runbook: validate through the same entry point the bank will run, not only through the parser harness.
+

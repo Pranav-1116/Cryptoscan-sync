@@ -34,11 +34,13 @@ class Scanner:
                 config = None
         self.config = config
         self.exclude_test_dirs = exclude_test_dirs or kwargs.get("exclude_test_dirs", False)
-        exclude_dirs = None
-        if config is not None:
-            exclude_dirs = frozenset(getattr(config, "exclude_dirs", None) or [])
+        # Config directories are *added* to the discovery defaults (never replace them —
+        # an env override of SCANNER_EXCLUDE_DIRS must not re-enable node_modules/.git).
+        from scanner.core.file_discovery import DEFAULT_EXCLUDED_DIRS
+
+        extra = frozenset(getattr(config, "exclude_dirs", None) or []) if config is not None else frozenset()
         self.file_discovery = FileDiscovery(
-            exclude_dirs=exclude_dirs or None,
+            exclude_dirs=DEFAULT_EXCLUDED_DIRS | extra,
             exclude_test_dirs=self.exclude_test_dirs,
         )
         self.git_client = GitClient()

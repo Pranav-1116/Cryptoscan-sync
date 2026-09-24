@@ -53,3 +53,21 @@ def test_summary_counts(tmp_path):
     assert {f.metadata.code_origin for f in scan_file(tst, tmp_path)} == {TEST}
     summary = origin_summary(findings)
     assert summary[SOURCE] >= 1 and summary[TEST] >= 1
+
+
+def test_pipeline_scans_test_dirs_by_default_and_can_exclude_them(tmp_path):
+    from scanner.core.scanner import Scanner
+
+    src = tmp_path / "src" / "main" / "java" / "A.java"
+    src.parent.mkdir(parents=True)
+    src.write_text('class A { void f() throws Exception { javax.crypto.Cipher.getInstance("AES/GCM/NoPadding"); } }\n')
+    tst = tmp_path / "src" / "test" / "java" / "ATest.java"
+    tst.parent.mkdir(parents=True)
+    tst.write_text('class ATest { void f() throws Exception { java.security.MessageDigest.getInstance("MD5"); } }\n')
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "x.js").write_text("require('crypto').createHash('md5')\n")
+
+    result = Scanner().scan(root_path=tmp_path, target_type="LOCAL_DIRECTORY", target_location=str(tmp_path))
+    assert result.statistics.findings_by_origin == {SOURCE: 1, TEST: 1}
+    result = Scanner(exclude_test_dirs=True).scan(root_path=tmp_path, target_type="LOCAL_DIRECTORY", target_location=str(tmp_path))
+    assert result.statistics.findings_by_origin == {SOURCE: 1}
