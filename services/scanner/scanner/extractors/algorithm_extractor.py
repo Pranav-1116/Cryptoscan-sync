@@ -242,3 +242,23 @@ def _normalize_padding(raw: str) -> Optional[str]:
         return None
     upper = raw.upper().replace(" ", "").replace("-", "")
     return PADDING_ALIASES.get(upper, raw.strip())
+
+_KNOWN_PREFIXES = ("HMAC", "PBKDF2", "PBEWITH", "SHA", "MD", "AES", "DES", "RSA", "EC", "TLS", "SSL", "ARGON2", "BLAKE", "CHACHA", "XCHACHA", "SALSA", "XSALSA",
+                   "ARIA", "CAMELLIA", "SM", "ML-KEM", "ML-DSA", "MLKEM", "MLDSA", "KYBER", "DILITHIUM", "X25519", "X448", "ED25519", "ED448", "RC", "IDEA", "SEED", "CAST",
+                   "BLOWFISH", "TWOFISH", "SERPENT", "GOST", "RIPEMD", "WHIRLPOOL", "TIGER", "HKDF", "SCRYPT", "BCRYPT", "DH", "DSA", "XDH", "ECDH", "ECDSA", "ECIES", "JWT",
+                   "HS", "RS", "ES", "PS", "SIPHASH", "POLY1305", "CMAC", "GMAC", "KMAC", "SHAKE", "CSPRNG", "PRNG", "PLAINTEXT", "NULL", "EXPORT", "TRUST", "X509", "OCSP",
+                   "SSH", "PSK", "DPAPI", "PASETO", "3DES", "TDES", "TDEA", "UNKNOWN", "OAEP", "PKCS", "PGP", "NONE", "NATIVEPRNG", "WINDOWS-PRNG", "DRBG", "SHA1PRNG")
+
+
+def known_algorithm_or_unknown(name: str | None) -> str:
+    """Gate free-form algorithm strings against the scanner vocabulary.
+
+    ``new SecretKeySpec(bytes, "testJCEHandlerParam2")`` (jPOS test suite) must not put
+    ``testJCEHandlerParam2`` into an inventory; anything that is not a recognised
+    algorithm spelling becomes UNKNOWN (kept as raw_transformation upstream)."""
+    if not name:
+        return "UNKNOWN"
+    upper = name.upper().replace("_", "").replace(" ", "")
+    if upper in ALGORITHM_ALIASES or upper in {v.upper() for v in ALGORITHM_ALIASES.values()}:
+        return name
+    return name if upper.startswith(_KNOWN_PREFIXES) else "UNKNOWN"

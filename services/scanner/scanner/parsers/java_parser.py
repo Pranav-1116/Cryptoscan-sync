@@ -20,7 +20,7 @@ from typing import Optional
 
 import structlog
 
-from scanner.extractors.algorithm_extractor import parse_transformation
+from scanner.extractors.algorithm_extractor import known_algorithm_or_unknown, parse_transformation
 from scanner.extractors.confidence_calculator import calculate_confidence
 from scanner.extractors.snippet_extractor import extract_snippet
 from scanner.models.enums import ApiType, Purpose
@@ -803,7 +803,7 @@ class JavaParser:
                 match_start=match.start(),
                 context=context,
                 api_type=ApiType.HARDCODED_KEY.value,
-                algorithm=parsed.algorithm if parsed else algorithm,
+                algorithm=known_algorithm_or_unknown(parsed.algorithm if parsed else algorithm),
                 purpose=Purpose.KEY_GENERATION.value,
                 library="javax.crypto",
                 is_string_literal=True,
@@ -830,7 +830,7 @@ class JavaParser:
                 match_start=match.start(),
                 context=context,
                 api_type=ApiType.HARDCODED_KEY.value,
-                algorithm=parsed.algorithm if parsed else algorithm,
+                algorithm=known_algorithm_or_unknown(parsed.algorithm if parsed else algorithm),
                 purpose=Purpose.KEY_GENERATION.value,
                 library="javax.crypto",
                 is_string_literal=True,

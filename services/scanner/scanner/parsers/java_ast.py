@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
-from scanner.extractors.algorithm_extractor import parse_transformation
+from scanner.extractors.algorithm_extractor import known_algorithm_or_unknown, parse_transformation
 from scanner.models.enums import ApiType, Purpose
 
 GETINSTANCE_APIS: dict[str, tuple[str, str, str]] = {
@@ -423,7 +423,7 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
                 CryptoEvent(
                     start=call.offset,
                     api_type=ApiType.HARDCODED_KEY.value if hardcoded else ApiType.SECRET_KEY_SPEC.value,
-                    algorithm=parsed.algorithm if parsed else (algo or "UNKNOWN"),
+                    algorithm=known_algorithm_or_unknown(parsed.algorithm if parsed else algo),
                     purpose=Purpose.KEY_GENERATION.value,
                     library="javax.crypto",
                     is_string_literal=literal,
