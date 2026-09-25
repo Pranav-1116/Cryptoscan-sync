@@ -1,20 +1,20 @@
 {
-  "generated_at": "2026-09-25T04:28:07+00:00",
+  "generated_at": "2026-09-25T06:30:10+00:00",
   "corpus": {
-    "python": 78,
-    "positive": 528,
-    "negative": 100,
+    "python": 82,
+    "positive": 540,
+    "negative": 104,
     "obfuscated": 18,
     "java": 106,
     "kotlin": 17,
-    "javascript": 51,
-    "typescript": 12,
-    "go": 40,
-    "csharp": 40,
+    "javascript": 53,
+    "typescript": 13,
+    "go": 43,
+    "csharp": 44,
     "rust": 32,
     "php": 35,
     "ruby": 31,
-    "c": 35,
+    "c": 37,
     "cpp": 3,
     "config": 78,
     "wild-positive": 32,
@@ -33,19 +33,19 @@
     "cics": 5,
     "attls": 2,
     "ims": 2,
-    "total": 706
+    "total": 722
   },
   "overall": {
-    "tp": 1164,
+    "tp": 1181,
     "fp": 0,
     "fn": 0,
-    "tn": 132,
+    "tn": 136,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 706,
-    "files_exact": 706,
+    "files": 722,
+    "files_exact": 722,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -63,7 +63,7 @@
       "file_exact_rate": 1.0
     },
     "c": {
-      "tp": 67,
+      "tp": 70,
       "fp": 0,
       "fn": 0,
       "tn": 4,
@@ -71,8 +71,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 35,
-      "files_exact": 35,
+      "files": 37,
+      "files_exact": 37,
       "file_exact_rate": 1.0
     },
     "cics": {
@@ -141,20 +141,7 @@
       "file_exact_rate": 1.0
     },
     "csharp": {
-      "tp": 59,
-      "fp": 0,
-      "fn": 0,
-      "tn": 6,
-      "precision": 1.0,
-      "recall": 1.0,
-      "f1": 1.0,
-      "accuracy": 1.0,
-      "files": 40,
-      "files_exact": 40,
-      "file_exact_rate": 1.0
-    },
-    "go": {
-      "tp": 58,
+      "tp": 62,
       "fp": 0,
       "fn": 0,
       "tn": 7,
@@ -162,8 +149,21 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 40,
-      "files_exact": 40,
+      "files": 44,
+      "files_exact": 44,
+      "file_exact_rate": 1.0
+    },
+    "go": {
+      "tp": 60,
+      "fp": 0,
+      "fn": 0,
+      "tn": 8,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 43,
+      "files_exact": 43,
       "file_exact_rate": 1.0
     },
     "ims": {
@@ -193,16 +193,16 @@
       "file_exact_rate": 1.0
     },
     "javascript": {
-      "tp": 73,
+      "tp": 74,
       "fp": 0,
       "fn": 0,
-      "tn": 10,
+      "tn": 11,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 51,
-      "files_exact": 51,
+      "files": 53,
+      "files_exact": 53,
       "file_exact_rate": 1.0
     },
     "kotlin": {
@@ -271,16 +271,16 @@
       "file_exact_rate": 1.0
     },
     "python": {
-      "tp": 114,
+      "tp": 121,
       "fp": 0,
       "fn": 0,
-      "tn": 13,
+      "tn": 14,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 78,
-      "files_exact": 78,
+      "files": 82,
+      "files_exact": 82,
       "file_exact_rate": 1.0
     },
     "rpg": {
@@ -362,7 +362,7 @@
       "file_exact_rate": 1.0
     },
     "typescript": {
-      "tp": 17,
+      "tp": 18,
       "fp": 0,
       "fn": 0,
       "tn": 2,
@@ -370,8 +370,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 12,
-      "files_exact": 12,
+      "files": 13,
+      "files_exact": 13,
       "file_exact_rate": 1.0
     },
     "xml": {
@@ -406,13 +406,13 @@
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 100,
+      "tn": 104,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 100,
-      "files_exact": 100,
+      "files": 104,
+      "files_exact": 104,
       "file_exact_rate": 1.0
     },
     "obfuscated": {
@@ -429,7 +429,7 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 1006,
+      "tp": 1023,
       "fp": 0,
       "fn": 0,
       "tn": 26,
@@ -437,8 +437,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 528,
-      "files_exact": 528,
+      "files": 540,
+      "files_exact": 540,
       "file_exact_rate": 1.0
     },
     "wild-negative": {
