@@ -70,7 +70,11 @@ def create_db_engine(
             # :memory: must share one connection.
             poolclass=StaticPool if in_memory else QueuePool,
             pool_size=10,
-            max_overflow=0,
+            # Bursts above pool_size (a dashboard with 20 open tabs, a load test) must
+            # not queue for the 30 s pool timeout; WAL readers are cheap, so allow
+            # overflow connections that are closed again when the burst passes.
+            max_overflow=20,
+            pool_timeout=10,
         )
 
         @event.listens_for(engine, "connect")

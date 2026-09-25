@@ -76,7 +76,15 @@ class ApiKey(BaseModel):
 
         if self.revoked_at is not None:
             return False
-        if self.expires_at is not None and self.expires_at <= utcnow():
+        # SQLite hands DateTime(timezone=True) back naive; comparing naive with the
+        # aware utcnow() raised TypeError, which the caller swallowed as "invalid
+        # key" — every key created *with* an expiry was rejected on first use.
+        expires = self.expires_at
+        if expires is not None and expires.tzinfo is None:
+            from datetime import timezone
+
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires is not None and expires <= utcnow():
             return False
         return True
 

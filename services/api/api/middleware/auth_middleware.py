@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 
+from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 
 from api.middleware.asgi_utils import send_json
@@ -94,7 +95,12 @@ class AuthMiddleware:
             await send_json(send, 401, {"detail": "Invalid token",
                                         "error_code": "INVALID_TOKEN"})
             return
-        if not _store_allows(token, username):
+        # The revocation check is a synchronous DB read. Awaiting it on a worker
+        # thread keeps the event loop free: done inline it blocked the loop while
+        # waiting for a pool connection, so >pool_size concurrent session-authenticated
+        # requests stalled for the 30 s pool timeout (measured: 20 VUs on one session,
+        # every request 30 081 ms).
+        if not await run_in_threadpool(_store_allows, token, username):
             await send_json(send, 401, {"detail": "Session revoked",
                                         "error_code": "SESSION_REVOKED"})
             return

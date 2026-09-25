@@ -244,7 +244,10 @@ def _session_store_allows(token: str, username: str) -> bool:
 
                 if row.revoked_at is not None:
                     return False
-                if row.expires_at and row.expires_at < datetime.now(timezone.utc):
+                expires = row.expires_at
+                if expires is not None and expires.tzinfo is None:
+                    expires = expires.replace(tzinfo=timezone.utc)  # SQLite returns naive
+                if expires and expires < datetime.now(timezone.utc):
                     return False
             elif strict:
                 # Token never issued through /auth/login — treat as revoked.

@@ -271,3 +271,18 @@ Blind first pass **733/748 (P 0.999 / R 0.977)**. Every miss but one was a whole
 One label corrected in the detector's favour: `PROC PWENCODE METHOD=SAS004` is AES-256 with a salt; only `SAS005` is the SHA-256 scheme.
 
 Real-repo check — `progress/ADE` (the OpenEdge ABL tooling source, 4766 files): first scan produced 99 findings of which 45 were `HMAC` from the *schema table name* `AUDIT-POLICY`; that token was removed and the bare `CLIENT-PRINCIPAL` word (an enum label) was narrowed to `CREATE CLIENT-PRINCIPAL`. Final: 19 files / 53 findings — `MESSAGE-DIGEST("SHA-256")` in `Memptr.cls`/`ByteBucket.cls`, `-ssl`/`-nohostverify` AppServer connect strings in `protools/*.w` and `dbauthgateway_update.p`, `ENCRYPT-AUDIT-MAC-KEY` in `_db-chgid.p` — all confirmed by reading the lines. Scanner tests 222 passed / 12 skipped; corpus 748/748.
+
+## Round 22 — cross-file constant hop on real repositories
+
+The `ConstantIndex` second hop (algorithm literal declared in another file) had only been exercised by unit tests and by repos where it happened not to fire. Run against four real Java code bases:
+
+| repo | files | constants indexed | UNKNOWN core-API findings before | resolved cross-file | verified |
+|---|---|---|---|---|---|
+| jjwt | 654 | 116 | 42 | 5 (`AesAlgorithm.KEY_ALG_NAME = "AES"` ×4, `EcdhKeyAlgorithm.JCA_NAME = "ECDH"`) | all 5 correct — `grep` of the declaring lines |
+| keycloak | 10 547 | 5 277 | 81 | 3 (`JavaAlgorithm.SHA512 = "SHA-512"`, `JavaAlgorithm.RS256 = "SHA256withRSA"`, `ECPublicJWK.EC = "EC"`) | all 3 correct |
+| nifi | 11 605 | 7 159 | 37 | 0 | — |
+| cas | 9 402 | 764 | 23 | 0 | — |
+
+Eight hops, eight true positives, zero wrong resolutions across 13 000 indexed constants. What stayed `UNKNOWN` is what should: `jcaName` / `alg` / `algorithm` locals (23 + 30 + 23 + 14 — runtime values), `JavaAlgorithm.getJavaAlgorithm(alg)` (a method, not a constant, 13 in Keycloak), `this.algorithm` fields. The index never guessed a simple name bound to different literals. Cost: the index build is the only serial part of a scan and stays under 2 s for 10 k files.
+
+Same session, first run of the bank triage workbook (`scripts/bank_triage.py`) on jPOS: 1 208 files → 1 581 findings, 23 candidate-miss rows for a reviewer; one was a real miss — `ProcessBuilder("keytool", …, "-keyalg", "RSA")` inside a Java test — now covered by a `keytool-argv` rule (748/748 unchanged). The other 22 are `javax.crypto.Cipher.getMaxAllowedKeyLength("AES")` policy probes, LMK file paths, "PIN block" field names in ISO-8583 packagers and man pages: not usages.
