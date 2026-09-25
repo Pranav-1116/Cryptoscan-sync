@@ -109,3 +109,27 @@ def test_cascade_can_be_disabled(tmp_path, monkeypatch):
     root = _estate(tmp_path)
     result = Scanner().scan(str(root))
     assert getattr(result, "cascade", None) is None
+
+
+def test_system_rollup_from_mapping(tmp_path):
+    root = _estate(tmp_path)
+    (root / "cryptoscan-systems.yml").write_text("""systems:
+  - system: CORE-CRYPTO-LIB
+    paths: [core/]
+    criticality: high
+    owner: platform-security
+  - system: PAYMENTS-SWITCH
+    paths: [payments/, mf/PAYPOST.cbl]
+    criticality: critical
+  - system: CARDS
+    paths: ["cards/**"]
+  - system: BATCH
+    paths: [batch/, mf/]
+""")
+    c = Scanner().scan(str(root)).cascade
+    systems = {s["system"]: s for s in c["systems"]}
+    assert systems["CORE-CRYPTO-LIB"]["providers"] >= 1 and "AES" in systems["CORE-CRYPTO-LIB"]["algorithms"]
+    assert set(systems["CORE-CRYPTO-LIB"]["dependent_systems"]) == {"PAYMENTS-SWITCH", "CARDS"}
+    assert systems["CARDS"]["depends_on_systems"] == ["CORE-CRYPTO-LIB"] and systems["CARDS"]["weak_parameters"] == 1
+    assert systems["PAYMENTS-SWITCH"]["depends_on_systems"] == ["BATCH", "CORE-CRYPTO-LIB"]  # PAYPOST calls CRYPTO01 in BATCH
+    assert systems["CORE-CRYPTO-LIB"]["criticality"] == "high" and c["summary"]["systems"] == 4

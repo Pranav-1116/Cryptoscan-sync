@@ -1,0 +1,38 @@
+Keystore type: PKCS12
+Keystore provider: SUN
+
+Your keystore contains 3 entries
+
+Alias name: ebank-tls
+Creation date: 12 Jan 2025
+Entry type: PrivateKeyEntry
+Certificate chain length: 2
+Certificate[1]:
+Owner: CN=ebank.bank.example, O=Bank, C=IN
+Issuer: CN=Bank Issuing CA 2, O=Bank, C=IN
+Serial number: 1a2b3c
+Valid from: Sun Jan 12 00:00:00 UTC 2025 until: Mon Jan 12 00:00:00 UTC 2026
+Signature algorithm name: SHA256withRSA
+Subject Public Key Algorithm: 2048-bit RSA key
+Version: 3
+
+*******************************************
+*******************************************
+
+Alias name: legacy-partner-ca
+Creation date: 3 Mar 2014
+Entry type: trustedCertEntry
+
+Owner: CN=Partner Root CA, O=Partner
+Issuer: CN=Partner Root CA, O=Partner
+Valid from: Mon Mar 03 00:00:00 UTC 2014 until: Thu Mar 03 00:00:00 UTC 2034
+Signature algorithm name: SHA1withRSA
+Subject Public Key Algorithm: 1024-bit RSA key
+
+*******************************************
+*******************************************
+
+Alias name: hmac-session
+Creation date: 1 Feb 2026
+Entry type: SecretKeyEntry
+Secret key entry algorithm: HmacSHA256

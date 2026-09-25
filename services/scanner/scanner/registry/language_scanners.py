@@ -29,6 +29,7 @@ from scanner.parsers.rpg_parser import parse_rpg_file
 from scanner.parsers.natural_parser import parse_natural_file
 from scanner.parsers.legacy_4gl_parser import parse_legacy_4gl_file
 from scanner.parsers.runtime_log_parser import RUNTIME_LOG_EXT, parse_runtime_log_file
+from scanner.parsers.key_inventory_parser import KEY_INVENTORY_EXT, SNIFF_EXT as KEY_INVENTORY_SNIFF_EXT, key_inventory_enabled, looks_like_key_inventory, parse_key_inventory_file
 from scanner.detectors.mobile.mobile_binary_scanner import MOBILE_PACKAGE_EXT, scan_mobile_package
 from scanner.parsers.mainframe_defs_parser import parse_mainframe_defs_file, looks_like_attls_policy
 from scanner.parsers.swift_parser import parse_swift_file
@@ -82,6 +83,7 @@ PARSERS = (
     (NATURAL_EXT, parse_natural_file),
     (MAINFRAME_DEF_EXT, parse_mainframe_defs_file),
     (LEGACY_4GL_EXT, parse_legacy_4gl_file),
+    (KEY_INVENTORY_EXT, parse_key_inventory_file),
     (RUNTIME_LOG_EXT, parse_runtime_log_file),
     (MOBILE_PACKAGE_EXT, scan_mobile_package),
     (PLIST_EXT, parse_swift_file),
@@ -102,6 +104,11 @@ def _dedupe_against(base: list[RawFinding], extra: list[RawFinding]) -> list[Raw
 def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
     suffix = path.suffix.lower()
     findings: list[RawFinding] = []
+    # HSM / KMS / keystore exports are opt-in and content-sniffed (they arrive as .txt/.lst/.json/.csv drops)
+    if suffix in KEY_INVENTORY_SNIFF_EXT and key_inventory_enabled() and looks_like_key_inventory(path):
+        inv = parse_key_inventory_file(path, repo_root)
+        if inv:
+            return inv
     if suffix == ".props":
         # MSBuild .props is XML; WebSphere ssl.client.props / sas.client.props are Java properties
         try:

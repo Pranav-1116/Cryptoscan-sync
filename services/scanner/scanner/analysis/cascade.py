@@ -510,9 +510,24 @@ class MigrationWave(BaseModel):
     dependents_affected: int
 
 
+class SystemNode(BaseModel):
+    system: str
+    criticality: str | None = None
+    owner: str | None = None
+    paths: list[str]
+    files: int = 0
+    providers: int = 0
+    algorithms: list[str] = Field(default_factory=list)
+    weak_parameters: int = 0
+    depends_on_systems: list[str] = Field(default_factory=list)   # this system imports crypto providers living in those systems
+    dependent_systems: list[str] = Field(default_factory=list)    # systems whose files import this system's providers
+    earliest_wave: int | None = None
+
+
 class CascadeReport(BaseModel):
     files_in_graph: int
     edges: int
+    systems: list[SystemNode] = Field(default_factory=list)
     providers: list[ProviderNode]
     libraries: list[LibraryNode]
     shared_keys: list[SharedKeyNode]
@@ -694,8 +709,13 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
             weak.append(WeakParameter(file=f.source.file_path, line=f.source.line_number, algorithm=f.crypto.algorithm, key_size=ks, minimum=floor))
     weak.sort(key=lambda w: (w.algorithm, w.file, w.line))
 
+    # business systems (optional mapping: .cryptoscan/systems.yml or cryptoscan-systems.yml at the repo root) --
+    systems = _systems_rollup(root, graph, providers, weak)
+
     edges = sum(len(v) for v in graph.imports.values())
     summary = {
+        "systems": len(systems),
+        "cross_system_edges": sum(len(s.dependent_systems) for s in systems),
         "providers": len(providers),
         "providers_with_dependents": sum(1 for p in providers if p.transitive_dependents),
         "largest_blast_radius": providers[0].model_dump(include={"file", "transitive_dependents", "algorithms"}) if providers else None,
@@ -706,12 +726,95 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
         "weak_parameters": len(weak),
         "migration_waves": len(waves),
     }
-    return CascadeReport(files_in_graph=len(graph.files), edges=edges, providers=providers, libraries=libraries,
+    return CascadeReport(files_in_graph=len(graph.files), edges=edges, systems=systems, providers=providers, libraries=libraries,
                          shared_keys=shared_keys, weak_parameters=weak, migration_waves=waves, summary=summary)
 
 
 # only libraries a manifest parser can recognise may be reported as "used but undeclared";
 # rule-pack names (payments/EMV, HSM/Thales, java.security …) and platform APIs never are
+SYSTEM_MAP_FILES = (".cryptoscan/systems.yml", ".cryptoscan/systems.yaml", "cryptoscan-systems.yml", "cryptoscan-systems.yaml", "cryptoscan-systems.json")
+
+
+def load_system_map(root: Path) -> list[dict[str, Any]]:
+    """[{system, paths:[glob…], criticality?, owner?}] — how the bank names the code (CMDB ids, app codes)."""
+    for rel in SYSTEM_MAP_FILES:
+        p = root / rel
+        if not p.is_file():
+            continue
+        text = _read(p)
+        data: Any = None
+        if p.suffix == ".json":
+            try:
+                data = json.loads(text)
+            except ValueError:
+                return []
+        else:
+            try:
+                import yaml  # type: ignore
+
+                data = yaml.safe_load(text)
+            except Exception:
+                return []
+        items = data.get("systems") if isinstance(data, dict) else data
+        out = []
+        for it in items or []:
+            if isinstance(it, dict) and it.get("system") and it.get("paths"):
+                out.append({"system": str(it["system"]), "paths": [str(x) for x in (it["paths"] if isinstance(it["paths"], list) else [it["paths"]])],
+                            "criticality": it.get("criticality"), "owner": it.get("owner")})
+        return out
+    return []
+
+
+def _system_of(rel: str, sysmap: list[dict[str, Any]]) -> str | None:
+    from fnmatch import fnmatch
+
+    best, best_len = None, -1
+    for it in sysmap:
+        for g in it["paths"]:
+            g2 = g.rstrip("/").removesuffix("/**").removesuffix("/*")
+            if rel == g2 or rel.startswith(g2 + "/") or fnmatch(rel, g):
+                if len(g2) > best_len:
+                    best, best_len = it["system"], len(g2)
+    return best
+
+
+def _systems_rollup(root: Path, graph: "DependencyGraph", providers: list[ProviderNode], weak: list[WeakParameter]) -> list[SystemNode]:
+    sysmap = load_system_map(root)
+    if not sysmap:
+        return []
+    nodes = {it["system"]: SystemNode(system=it["system"], criticality=it.get("criticality"), owner=it.get("owner"), paths=it["paths"]) for it in sysmap}
+    file_sys: dict[str, str | None] = {}
+    for f in graph.files:
+        file_sys[f] = _system_of(f, sysmap)
+        if file_sys[f]:
+            nodes[file_sys[f]].files += 1
+    algos: dict[str, set[str]] = defaultdict(set)
+    up: dict[str, set[str]] = defaultdict(set)
+    down: dict[str, set[str]] = defaultdict(set)
+    for p in providers:
+        s = file_sys.get(p.file) or _system_of(p.file, sysmap)
+        if not s:
+            continue
+        n = nodes[s]
+        n.providers += 1
+        algos[s].update(p.algorithms)
+        n.earliest_wave = p.wave if n.earliest_wave is None else min(n.earliest_wave, p.wave)
+        for d in graph.dependents.get(p.file, ()):
+            ds = file_sys.get(d)
+            if ds and ds != s:
+                down[s].add(ds)
+                up[ds].add(s)
+    for w in weak:
+        s = _system_of(w.file.split("!", 1)[0], sysmap)
+        if s:
+            nodes[s].weak_parameters += 1
+    for s, n in nodes.items():
+        n.algorithms = sorted(algos[s])
+        n.depends_on_systems = sorted(up[s])
+        n.dependent_systems = sorted(down[s])
+    return sorted(nodes.values(), key=lambda n: (-len(n.dependent_systems), -n.providers, n.system))
+
+
 _THIRD_PARTY_LIBS = {name for _, name in _LIB_COORDS} | {"BouncyCastle", "jjwt", "nimbus-jose-jwt", "java-jwt", "Tink", "jasypt", "commons-codec", "spring-security-crypto", "shiro"}
 _PLATFORM_LIBS = {
     "JCA", "JCE", "JSSE", "JDK", "hashlib", "hmac", "ssl", "secrets", "crypto", "node:crypto", "WebCrypto", "SubtleCrypto",

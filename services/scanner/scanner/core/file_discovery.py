@@ -170,6 +170,9 @@ class FileDiscovery:
         # log trees are large and repetitive, and a bank hands them over separately.
         if os.environ.get("CRYPTOSCAN_RUNTIME_LOGS", "").lower() in ("1", "true", "yes"):
             self._extensions = self._extensions + (".log", ".trc", ".audit", ".syslog")
+        # Key / certificate inventory exports (ICSF, HSM, cloud KMS, keytool, RACDCERT, cert CSV): opt-in, content-sniffed
+        if os.environ.get("CRYPTOSCAN_KEY_INVENTORY", "").lower() in ("1", "true", "yes"):
+            self._extensions = self._extensions + (".kinv", ".keyinv", ".ckds", ".lst", ".out", ".csv", ".rpt", ".prt", ".list", ".dump", ".txt", ".json")
 
     def _is_excluded_dir(self, path: Path) -> bool:
         name = path.name
