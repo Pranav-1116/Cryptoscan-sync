@@ -1,6 +1,6 @@
 # What to do next (as of 2026-09-25)
 
-State at the time of writing: branch `arena/01a0cd74-cryproscan`, HEAD `f99a218`.
+State at the time of writing: branch `arena/01a0cd74-cryproscan` (cascade analysis + network-controls doc added after `f99a218`).
 Discovery ~95 % (748/748 corpus, 15 blind waves), pipeline ~92 %, bank ops ~75 %, first-pilot ~87 %
 (details: `docs/accuracy/BANK-READINESS.md`, `docs/PRODUCTION-READINESS.md`).
 
@@ -37,6 +37,15 @@ Success criterion: first-pass precision ≥ 0.95 and recall ≥ 0.95 on the bank
 
 Rule of the house: no new rule without a corpus file, benchmark stays 100 %, blind wave before merge,
 CRC/FNV/djb2/xxHash/murmur/adler never reported, comments never count.
+
+## 2b. Cascade analysis — deepen (sandbox-buildable)
+
+- Call-level edges for Java/C#/Python where a file imports a provider: confirm the provider's crypto method
+  is actually invoked (cuts over-approximation of blast radius).
+- Follow JCL `EXEC PGM=`, CICS `LINK/XCTL PROGRAM(...)`, IMS PSB and Spring/CDI bean names as edges.
+- Join the estate cascade with the API's system graph (`api/graph_builder.py`, `/reachability/blast-radius`)
+  so a code-level provider maps to business systems and SLAs.
+- Certificate ↔ service cascade from runtime evidence (RACDCERT labels, keyrings, nginx `ssl_certificate`).
 
 ## 3. Pipeline — evidence still missing
 

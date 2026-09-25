@@ -17,6 +17,8 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | Doc | What it covers |
 |---|---|
 | **[The product, end to end](product/README.md)** | nine documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, a scan step by step, scope & readiness, glossary, the engines behind the pages, an end-to-end trace |
+| [Network controls](security/NETWORK-CONTROLS.md) | how the product behaves behind a bank's IDS, firewalls, proxies and rate limits — traffic matrix and pilot firewall rules |
+| [Cascade analysis](accuracy/CASCADE-ANALYSIS.md) | dependency & blast-radius layer: providers, migration waves, libraries, shared keys, weak key sizes |
 | [Production readiness](PRODUCTION-READINESS.md) | the number, what moved it, what holds it back — each line pointing at its evidence |
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
