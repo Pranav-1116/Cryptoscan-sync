@@ -358,6 +358,10 @@ def _first_string(arg: object, locals_map: dict[str, str]) -> tuple[Optional[str
             return locals_map[ident], True, ident
     for ident in idents:
         if ident not in {"String", "new", "byte", "getBytes"}:
+            # keep the qualified spelling (Algorithms.DIGEST) so the repo-level constant index can resolve it
+            qualified = [i for i in idents if i not in {"String", "new", "byte", "getBytes"}]
+            if 1 < len(qualified) <= 3 and all(re.fullmatch(r"\w+", q) for q in qualified) and not (arg.get("tokens") and any(k == "symbol" and v == "(" for k, v in arg["tokens"])):
+                return None, False, ".".join(qualified)
             return None, False, ident
     return None, False, None
 

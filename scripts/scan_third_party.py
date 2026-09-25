@@ -16,16 +16,20 @@ logging.basicConfig(level=logging.ERROR); structlog.configure(wrapper_class=stru
 from scanner.core.file_discovery import FileDiscovery
 from scanner.registry.language_scanners import scan_file
 root = Path(sys.argv[1])
+from scanner.core.constant_index import ConstantIndex
 per_file = collections.defaultdict(list)
-n=0
-for f in FileDiscovery().discover(root):
-    n+=1
+files = list(FileDiscovery().discover(root))
+n=len(files)
+all_findings=[]
+for f in files:
     try:
-        for x in scan_file(f, root):
-            per_file[str(f.relative_to(root))].append((x.source.line_number, x.crypto.algorithm, x.crypto.api_type, (x.crypto.raw_transformation or "")[:50]))
+        all_findings.extend(scan_file(f, root))
     except Exception as e:
         print("CRASH", f, e)
-print(f"files={n} files_with_findings={len(per_file)} findings={sum(len(v) for v in per_file.values())}")
+resolved = ConstantIndex.build(files).resolve(all_findings)  # same second hop as Scanner.scan
+for x in all_findings:
+    per_file[x.source.file_path].append((x.source.line_number, x.crypto.algorithm, x.crypto.api_type, (x.crypto.raw_transformation or "")[:50]))
+print(f"files={n} files_with_findings={len(per_file)} findings={sum(len(v) for v in per_file.values())} resolved_cross_file={resolved}")
 if len(sys.argv)>2:
     for k,v in sorted(per_file.items()):
         print("==", k)

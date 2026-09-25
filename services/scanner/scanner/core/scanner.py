@@ -15,6 +15,7 @@ from scanner.core.scan_context import ScanContext
 from scanner.git.git_client import GitClient
 from scanner.models.raw_finding import GitContext, RawFinding
 from scanner.models.scan_result import ScanResult, ScanTarget
+from scanner.core.constant_index import ConstantIndex
 from scanner.registry.language_scanners import scan_file
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,8 @@ class Scanner:
                 commit_message=git_meta.commit_message,
             )
 
+        constant_index = ConstantIndex.build(source_files)
+
         for source_file in source_files:
             try:
                 file_findings = scan_file(source_file, path)
@@ -107,6 +110,9 @@ class Scanner:
             except Exception as exc:
                 logger.warning("parse_error", extra={"file": str(source_file), "error": str(exc)})
                 parse_errors.append({"file": str(source_file), "error": str(exc)})
+
+        # Second hop: algorithm strings declared in another file (constants classes).
+        resolved_cross_file = constant_index.resolve(findings)
 
         try:
             from scanner.parsers.config_crypto_parser import scan_config_tree
@@ -153,6 +159,7 @@ class Scanner:
         )
         result.statistics.files_scanned = len(source_files)
         result.statistics.files_with_errors = len(parse_errors)
+        result.statistics.resolved_cross_file = resolved_cross_file
         result.finalize()
         logger.info(
             "scan_completed",

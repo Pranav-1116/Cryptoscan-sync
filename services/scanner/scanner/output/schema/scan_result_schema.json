@@ -326,6 +326,11 @@
           },
           "title": "Findings By Origin",
           "type": "object"
+        },
+        "resolved_cross_file": {
+          "default": 0,
+          "title": "Resolved Cross File",
+          "type": "integer"
         }
       },
       "title": "ScanStatistics",

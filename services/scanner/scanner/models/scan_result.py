@@ -30,6 +30,8 @@ class ScanStatistics(BaseModel):
     duration_seconds: float = 0.0
     # findings per code origin (source/test/generated/vendored/archive) — triage view, never a filter
     findings_by_origin: dict[str, int] = Field(default_factory=dict)
+    # UNKNOWN findings whose algorithm was filled from a constant declared in another file
+    resolved_cross_file: int = 0
 
 
 class ScanResult(BaseModel):
