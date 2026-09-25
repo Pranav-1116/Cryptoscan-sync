@@ -110,6 +110,8 @@ def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
                 findings = findings + _ibm_i_c_pass(path, repo_root, findings)
             if extensions is CONFIG_EXT:
                 findings = findings + _attls_pass(path, repo_root, findings)
+            if extensions in (CS_EXT, PYTHON_EXT, GO_EXT, C_EXT, JS_EXT, PHP_EXT, RUBY_EXT, RUST_EXT, SWIFT_EXT):
+                findings = findings + _payments_pass(path, repo_root, findings)
             break
     else:
         if is_named_config_file(path.name):
@@ -165,6 +167,27 @@ def _tag_origin(path: Path, repo_root: Path | None, findings: list[RawFinding]) 
 
 
 _IANA_SUITE = re.compile(r"\b(?:TLS|SSL)_[A-Z0-9_]+_WITH_[A-Z0-9_]+|\bTLS_(?:AES_|CHACHA20_)")
+
+
+_LANGUAGE_BY_EXT = {".cs": "CSHARP", ".py": "PYTHON", ".go": "GO", ".php": "PHP", ".rb": "RUBY", ".rs": "RUST", ".swift": "SWIFT", ".ts": "TYPESCRIPT", ".tsx": "TYPESCRIPT"}
+
+
+def _payments_pass(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> list[RawFinding]:
+    """Payments / HSM / PKCS#11 vocabulary (payShield commands, DUKPT, TR-31, KCV, CKM_*) is the same
+    in every language; the Java rule table already has it, so run that subset for the others."""
+    from scanner.parsers.java_rules import run_payments_rules
+
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    suffix = path.suffix.lower()
+    language = _LANGUAGE_BY_EXT.get(suffix) or ("JAVASCRIPT" if suffix in JS_EXT else "C" if suffix in C_EXT else suffix.lstrip(".").upper())
+    seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in findings}
+    extra = run_payments_rules(path, repo_root, text, language, f"static-{language.lower()}-scanner-v1.0", seen=seen)
+    # a primary finding on the same line with a *known* algorithm already covers an UNKNOWN hint
+    known_lines = {f.source.line_number for f in findings if f.crypto.algorithm not in (None, "UNKNOWN")}
+    return [f for f in extra if not (f.crypto.algorithm == "UNKNOWN" and f.source.line_number in known_lines)]
 
 
 def _attls_pass(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> list[RawFinding]:

@@ -104,7 +104,7 @@ _RULES: list[Rule] = [
     _r(r"(?is)\b\w*(?:nonce|token|secret|session|salt|key|iv|otp|password)\w*\s*\([^)]*\)\s*\{[^{}]{0,200}?(?<![\w.])(?:rand|random|rand_r|lrand48|drand48)\s*\(", _RNG, "libc", algorithm="PRNG", confidence="MEDIUM", confidence_reason="libc rand() used to build key/nonce/token material"),
     _r(r"\bEVP_PBE_scrypt\b", _KDF, _OSSL, algorithm="SCRYPT"),
     _r(r"\bDES_(?:set_key\w*|ecb_encrypt|ncbc_encrypt|cbc_encrypt|cfb_encrypt|ofb_encrypt|key_sched|string_to_key|random_key|is_weak_key)\b", _C, _OSSL, algorithm="DES"),
-    _r(r"\bDES_ede[23]_\w+\b", _C, _OSSL, algorithm="3DES"),
+    _r(r"\bDES_(?:ede|ecb|ncbc|cbc|cfb|ofb|cfb64|ofb64|pcbc)[23]_\w+\b", _C, _OSSL, algorithm="3DES"),
     _r(r"\bDES_(?:key_schedule|cblock)\b", _C, _OSSL, algorithm="DES", confidence="MEDIUM"),
     _r(r"\bRC4(?:_set_key)?\s*\(|\bRC4_KEY\b", _C, _OSSL, algorithm="RC4"),
     _r(r"\bRC2_(?:set_key|ecb_encrypt|cbc_encrypt|cfb64_encrypt|ofb64_encrypt)\b|\bRC2_KEY\b", _C, _OSSL, algorithm="RC2"),
@@ -449,7 +449,7 @@ def parse_c_file(file_path: Path, repo_root: Path | None = None) -> list[RawFind
     language = "CPP" if file_path.suffix.lower() in {".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".mm"} else "C"
     if file_path.suffix.lower() == ".m":
         language = "OBJECTIVE_C"
-    return run_rules(
+    findings = run_rules(
         file_path=file_path,
         repo_root=repo_root,
         text=raw,
@@ -460,3 +460,15 @@ def parse_c_file(file_path: Path, repo_root: Path | None = None) -> list[RawFind
         strip_comments=True,
         macros=True,
     )
+    # OpenSSL legacy DES API: the key schedules of a 2-/3-key TDES call (DES_ecb2_encrypt,
+    # DES_ede3_cbc_encrypt) are set with the single-DES DES_set_key*; report them as 3DES.
+    if _TDES_CALL.search(raw):
+        for f in findings:
+            if f.crypto.algorithm == "DES" and _DES_SCHEDULE.search(f.crypto.raw_transformation or ""):
+                f.crypto.algorithm = "3DES"
+                f.metadata.confidence_reason = "DES key schedule used by a TDES (ede2/ede3) call in this file"
+    return findings
+
+
+_TDES_CALL = re.compile(r"\bDES_(?:ede|ecb|ncbc|cbc|cfb|ofb|cfb64|ofb64|pcbc)[23]_\w+\s*\(")
+_DES_SCHEDULE = re.compile(r"\bDES_(?:set_key\w*|key_sched|key_schedule|cblock)\b|openssl/des\.h")

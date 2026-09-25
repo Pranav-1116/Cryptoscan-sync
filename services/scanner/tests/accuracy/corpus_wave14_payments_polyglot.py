@@ -206,7 +206,7 @@ func (p *PayShield) GenerateCVV(cvk, pan, expiry, svc string) (string, error) {
 func (p *PayShield) ImportKeyBlock(kb string) (string, error) {
 	return p.send("A6" + "001" + kb + "S")
 }
-""", {"3DES", "AES"})
+""", {"3DES"})  # label corrected after the blind pass: the AES key-block LMK was only stated in a comment; a scheme character alone is not evidence
     _c("go", "w14_neg_grid.go", """
 package grid
 

@@ -404,6 +404,16 @@ RULES: list[Rule] = [
     _r(r"\bCKM_GENERIC_SECRET_KEY_GEN\b", _K, "PKCS#11", algorithm="HMAC", confidence="LOW"),
     _r(r"\bCKK_(AES|DES3|DES2|DES|RSA|EC|EC_EDWARDS|EC_MONTGOMERY|GENERIC_SECRET|SHA256_HMAC|SHA_1_HMAC|SHA512_HMAC)\b", _K, "PKCS#11", algo_from_group=1,
        algo_map={"aes": "AES", "des3": "3DES", "des2": "3DES", "des": "DES", "rsa": "RSA", "ec": "ECDSA", "ecedwards": "Ed25519", "ecmontgomery": "X25519", "genericsecret": "HMAC", "sha256hmac": "HMAC-SHA256", "sha1hmac": "HMAC-SHA1", "sha512hmac": "HMAC-SHA512"}),
+    # Polyglot payments spellings (C#/Python/Go/C/TS clients share the vocabulary but not the Java casing)
+    _r(r"\b[Ii][Pp][Ee][Kk]\b(?=[^\n]*\b[Kk][Ss][Nn]\b)|\b[Bb][Dd][Kk]\b(?=[^\n]*\b[Kk][Ss][Nn]\b)|\b[Kk][Ss][Nn]\b(?=[^\n]*\b[Bb][Dd][Kk]\b)|\b[Dd]ukpt[A-Za-z0-9_]*\b",
+       _KDF, "payments/DUKPT", algorithm="3DES", confidence="MEDIUM", confidence_reason="DUKPT (ANSI X9.24-1) BDK/IPEK/KSN derivation — TDES unless AES DUKPT (X9.24-3)", purpose="KEY_GENERATION"),
+    _r(r"\bTr31\w*|\bTR31\w*|\btr31_\w*|\bTR-31\b", _K, "payments/key-management", algorithm="AES", confidence="LOW", confidence_reason="TR-31 key block (KBPK — TDES or AES)"),
+    # python-pkcs11 / pkcs11-tool spellings of the CKM_/CKK_ constants
+    _r(r"\bMechanism\.(SHA(?:1|224|256|384|512)_RSA_PKCS(?:_PSS)?|RSA_PKCS(?:_OAEP|_PSS)?|RSA_X_509|RSA_PKCS_KEY_PAIR_GEN)\b", _S, "PKCS#11", algorithm="RSA", confidence="HIGH", raw_group=1),
+    _r(r"\bMechanism\.SHA(1|224|256|384|512)_RSA_PKCS(?:_PSS)?\b", _D, "PKCS#11", algo_from_group=1, algo_map={"1": "SHA-1", "224": "SHA-224", "256": "SHA-256", "384": "SHA-384", "512": "SHA-512"}, confidence="HIGH"),
+    _r(r"\bMechanism\.ECDSA(?:_SHA(?:1|224|256|384|512))?\b|\bMechanism\.EC_KEY_PAIR_GEN\b", _S, "PKCS#11", algorithm="ECDSA", confidence="HIGH"),
+    _r(r"\bMechanism\.(AES|DES3|DES)_[A-Z0-9_]+\b|\bKeyType\.(AES|DES3|DES)\b", _C, "PKCS#11", algo_from_group=1, algo_map={"aes": "AES", "des3": "3DES", "des": "DES"}, confidence="HIGH"),
+    _r(r"\bKeyType\.(RSA|EC)\b", _K, "PKCS#11", algo_from_group=1, algo_map={"rsa": "RSA", "ec": "ECDSA"}, confidence="MEDIUM"),
     # SWIFT / ISO 20022 / FIX / 3-D Secure / tokenisation hints
     _r(r"\bSWIFT\s*LAU\b|\bLAU\s*key\b|\bLocal\s*Authentication\s*Key\b|\bcomputeLAU\b|\bLAU_KEY\b", _M, "SWIFT", algorithm="HMAC-SHA256", confidence="MEDIUM", confidence_reason="SWIFT Alliance LAU = HMAC-SHA256 over the message"),
     _r(r"\b3DS(?:Server|Method|Requestor)?\b(?=[^\n]*(?:sign|JWS|JWE|encrypt|key))|\bthreeDS(?:Server|Method|Requestor)\w*(?=[^\n]*(?:sign|JWS|JWE|encrypt|key))|\bsdkEphemPubKey\b|\bacsEphemPubKey\b|\bacsSignedContent\b|\bdsPublicKey\b|\bthreeDSSDKEphemeralKey\b",
@@ -429,6 +439,27 @@ RULES: list[Rule] = [
     _r(r"Class\.forName\s*\(\s*\"javax\.crypto\.Mac\"\s*\)[\s\S]{0,400}?getMethod\s*\(\s*\"getInstance\"[\s\S]{0,200}?invoke\s*\(\s*null\s*,\s*\"(Hmac[A-Za-z0-9\-]+)\"", _M, "javax.crypto", algorithm="HMAC", confidence="HIGH", confidence_reason="reflection-resolved-transformation"),
     _r(r"Class\.forName\s*\(\s*\"java\.security\.(?:Signature|KeyPairGenerator|KeyFactory)\"\s*\)[\s\S]{0,400}?getMethod\s*\(\s*\"getInstance\"[\s\S]{0,200}?invoke\s*\(\s*null\s*,\s*\"([A-Za-z0-9\-]+)\"", _S, "java.security", transformation_group=1, confidence="HIGH", confidence_reason="reflection-resolved-transformation"),
 ]
+
+
+# Payments / HSM / PKCS#11 vocabulary is language-neutral: C#, Python, Go, C and TS HSM clients
+# use the same command codes, key names and mechanism constants. language_scanners runs this
+# subset as a supplementary pass for those languages (deduped against the primary parser).
+_PAYMENT_LIBRARIES = ("payments/", "HSM/", "PKCS#11", "SWIFT", "EMV", "format-preserving")
+PAYMENTS_RULES: list[Rule] = [r for r in RULES if str(r[1].get("library", "")).startswith(_PAYMENT_LIBRARIES)]
+
+
+def run_payments_rules(file_path: Path, repo_root: Path | None, source: str, language: str, scanner_id: str, seen: set[tuple[int, str]] | None = None) -> list[RawFinding]:
+    return run_rules(
+        file_path=file_path,
+        repo_root=repo_root,
+        text=source,
+        rules=PAYMENTS_RULES,
+        language=language,
+        scanner_id=scanner_id,
+        confidence_reason="payments-hsm-vocabulary",
+        strip_comments=True,
+        seen=seen,
+    )
 
 
 _JAVA_METHOD_DECL = re.compile(r"^\s*(?:public|private|protected|static|final|synchronized|\s)*[\w<>\[\],\s]+\s+\w+\s*\([^;]*$")
