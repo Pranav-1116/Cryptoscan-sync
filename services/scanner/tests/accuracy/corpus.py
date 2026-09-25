@@ -1317,4 +1317,9 @@ try:
 except ImportError:  # pragma: no cover
     from corpus_wave11_ibmi import register as _register_wave11  # type: ignore[no-redef]
 _register_wave11(_c)
+try:
+    from .corpus_wave12_evasion import register as _register_wave12
+except ImportError:  # pragma: no cover
+    from corpus_wave12_evasion import register as _register_wave12  # type: ignore[no-redef]
+_register_wave12(_c)
 

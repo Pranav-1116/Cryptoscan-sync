@@ -304,6 +304,10 @@ def desugar_ruby(source: str) -> str:
     if not consts:
         return source
 
+    # ``ALG = "DES-EDE3-CBC"`` … ``OpenSSL::Cipher.new(ALG)`` → the literal (first call argument only)
+    names = "|".join(re.escape(k) for k in consts)
+    source = re.sub(rf"(\(\s*)({names})(\s*[,)])", lambda m: f'{m.group(1)}"{consts[m.group(2)]}"{m.group(3)}', source)
+
     def _interp(m: re.Match) -> str:
         body = m.group(0)
         if "#{" not in body:

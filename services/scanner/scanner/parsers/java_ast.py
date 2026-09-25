@@ -7,6 +7,8 @@ walks invocations and constructors, and resolves local string constants.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -349,9 +351,12 @@ def _first_string(arg: object, locals_map: dict[str, str]) -> tuple[Optional[str
             if kind == "ident":
                 callee = value
         return str(arg["strings"][0]), True, None
-    for ident in arg.get("idents") or []:
+    idents = arg.get("idents") or []
+    # Algorithms.CIPHER / Constants.DIGEST: the constant is bound in this file under its simple name
+    for ident in reversed(idents):
         if ident in locals_map:
             return locals_map[ident], True, ident
+    for ident in idents:
         if ident not in {"String", "new", "byte", "getBytes"}:
             return None, False, ident
     return None, False, None
@@ -389,14 +394,27 @@ def _tls_algo(raw: str) -> str:
     return TLS_MAP.get(key, "TLS" if "TLS" in key or "SSL" in key else raw)
 
 
+_STATIC_IMPORT = re.compile(r"^\s*import\s+static\s+(?:javax\.crypto|java\.security|javax\.net\.ssl)\.(\w+)\.(?:getInstance|\*)\s*;", re.M)
+_JCA_TRANSFORMATION = re.compile(r"^(?:AES|AES_\d{3}|DES|DESede|TripleDES|Blowfish|RC2|RC4|ARCFOUR|ChaCha20|ChaCha20-Poly1305|Camellia|SEED|ARIA|SM4|RSA|ECIES)(?:/[A-Za-z0-9_]+){1,2}$")
+
+
+def _static_import_owner(source: str) -> Optional[str]:
+    """``import static javax.crypto.Cipher.getInstance;`` → ``Cipher`` (first crypto owner wins)."""
+    m = _STATIC_IMPORT.search(source)
+    return m.group(1) if m else None
+
+
 def extract_crypto_events(source: str) -> list[CryptoEvent]:
     tokens = tokenize(source)
     calls, locals_map = extract_calls(tokens)
     events: list[CryptoEvent] = []
     pending_key_size: list[tuple[int, Optional[int]]] = []
+    static_owner = _static_import_owner(source)
 
     for call in calls:
         type_name = call.qualifier[-1] if call.qualifier else call.name
+        if not call.qualifier and call.name == "getInstance" and static_owner:
+            type_name = static_owner
         if call.is_constructor and call.name in {"SecretKeySpec", "PBEKeySpec"}:
             if call.name == "PBEKeySpec":
                 events.append(
@@ -508,6 +526,31 @@ def extract_crypto_events(source: str) -> list[CryptoEvent]:
                 variable_name=varname,
                 raw_transformation=raw,
                 is_from_local_variable=bool(varname) and not literal if varname and not raw else bool(varname),
+            )
+        )
+
+    # A constants class: `static final String CIPHER = "DESede/CBC/PKCS5Padding"` with the call in another
+    # file. An unambiguous Algorithm/Mode/Padding literal is inventory on its own (LOW-ish: no call here).
+    consumed = {e.raw_transformation for e in events if e.raw_transformation}
+    for name, value in locals_map.items():
+        if value in consumed or not _JCA_TRANSFORMATION.match(value):
+            continue
+        m = re.search(r"\b" + re.escape(name) + r"\s*=\s*\"" + re.escape(value) + r"\"", source)
+        if m is None:
+            continue
+        parsed = parse_transformation(value)
+        events.append(
+            CryptoEvent(
+                start=m.start(),
+                api_type=ApiType.CIPHER_INSTANCE.value,
+                algorithm=parsed.algorithm or "UNKNOWN",
+                purpose=Purpose.ENCRYPTION.value,
+                library="javax.crypto",
+                mode=parsed.mode,
+                padding=parsed.padding,
+                variable_name=name,
+                raw_transformation=value,
+                is_from_local_variable=True,
             )
         )
 

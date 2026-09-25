@@ -531,6 +531,11 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                         name = _name_of(target)
                         if name:
                             self._aliases[name] = module
+        if value is None and isinstance(node.value, ast.Constant) and isinstance(node.value.value, int) and not isinstance(node.value.value, bool):
+            for target in node.targets:
+                name = _name_of(target)
+                if name:
+                    self._locals[name] = str(node.value.value)
         if value:
             for target in node.targets:
                 name = _name_of(target)
@@ -840,25 +845,36 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
     def _stored_hash_constructor(self, node: ast.Assign) -> None:
         """``digest = hashlib.sha256`` (no call) — the constructor is stored and
         invoked later (Django hashers, pbkdf2 wrappers). Report the digest here."""
-        if not isinstance(node.value, ast.Attribute):
+        # also dispatch tables: HASHERS = {"legacy": hashlib.md5, "current": hashlib.sha256} / [hashlib.sha1]
+        candidates: list[ast.AST]
+        if isinstance(node.value, ast.Attribute):
+            candidates = [node.value]
+        elif isinstance(node.value, ast.Dict):
+            candidates = [v for v in node.value.values if isinstance(v, ast.Attribute)]
+        elif isinstance(node.value, (ast.List, ast.Tuple)):
+            candidates = [v for v in node.value.elts if isinstance(v, ast.Attribute)]
+        else:
             return
-        dotted = self._resolve(_dotted(node.value))
-        if not dotted.startswith("hashlib."):
-            return
-        name = dotted.split(".")[-1].lower()
-        algo = _MODULE_ATTR_DIGEST.get(name)
-        if not algo:
-            return
-        self._add(
-            node,
-            api_type="MESSAGE_DIGEST",
-            algorithm=algo,
-            purpose="HASHING",
-            library="hashlib",
-            raw_transformation=dotted,
-            confidence="MEDIUM",
-            confidence_reason="hash constructor stored in a variable and called later",
-        )
+        seen: set[str] = set()
+        for cand in candidates:
+            dotted = self._resolve(_dotted(cand))
+            if not dotted.startswith("hashlib.") or dotted in seen:
+                continue
+            seen.add(dotted)
+            name = dotted.split(".")[-1].lower()
+            algo = _MODULE_ATTR_DIGEST.get(name)
+            if not algo:
+                continue
+            self._add(
+                cand if hasattr(cand, "lineno") else node,
+                api_type="MESSAGE_DIGEST",
+                algorithm=algo,
+                purpose="HASHING",
+                library="hashlib",
+                raw_transformation=dotted,
+                confidence="MEDIUM",
+                confidence_reason="hash constructor stored in a variable and called later",
+            )
 
     def _is_hmac_call(self, func: str) -> bool:
         if func.endswith("hmac.new") or func.endswith("hmac.digest") or func.endswith("hmac.compare_digest"):
@@ -1051,6 +1067,8 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         """
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
             return node.value
+        if isinstance(node, ast.Constant) and isinstance(node.value, int) and not isinstance(node.value, bool):
+            return str(node.value)  # bits = 384 → f"sha{bits}"
         if isinstance(node, ast.JoinedStr):
             parts = []
             for v in node.values:

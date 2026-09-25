@@ -121,6 +121,10 @@ _DESTRUCTURE_ALIAS = re.compile(r"""\{([^}]*)\}\s*=\s*(?:await\s+)?(?:require\s*
 _IMPORT_ALIAS = re.compile(r"""import\s*\{([^}]*)\}\s*from\s*['"](?:node:)?crypto['"]""")
 _STRING_CONST = re.compile(r"""\b(?:const|let|var)\s+(\w+)\s*(?::\s*string)?\s*=\s*(['"])([^'"\n]{1,80})\2\s*;?""")
 _TEMPLATE_SUBST = re.compile(r"\$\{\s*(\w+)\s*\}")
+_NUM_CONST = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*(?::\s*number)?\s*=\s*(\d{1,4})\s*;?")
+# TS `const enum Algo { Legacy = "des-ede3-cbc" }` / `enum` / plain object `const Algo = { Legacy: "…" }`
+_ENUM_MEMBER = re.compile(r"""\b(\w+)\s*[:=]\s*(['"])([^'"\n]{1,80})\2\s*[,;}\n]""")
+_ENUM_BLOCK = re.compile(r"""\b(?:const\s+)?enum\s+(\w+)\s*\{([^}]*)\}|\bconst\s+(\w+)\s*(?::\s*\w+)?\s*=\s*(?:Object\.freeze\s*\()?\{([^}]*)\}\s*(?:as\s+const)?\)?""")
 
 
 def _desugar_js(source: str) -> str:
@@ -164,6 +168,13 @@ def _desugar_js(source: str) -> str:
         source = re.sub(rf"(?<![\w.]){re.escape(alias)}\s*\(", orig + "(", source)
 
     consts = {m.group(1): m.group(3) for m in _STRING_CONST.finditer(source)}
+    for m in _NUM_CONST.finditer(source):
+        consts.setdefault(m.group(1), m.group(2))
+    # enum / object members: Algo.Legacy → its literal (only when referenced)
+    for m in _ENUM_BLOCK.finditer(source):
+        owner, body = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        for mm in _ENUM_MEMBER.finditer(body + "\n"):
+            source = re.sub(rf"\b{re.escape(owner)}\.{re.escape(mm.group(1))}\b(?!\s*[:=])", '"' + mm.group(3) + '"', source)
     if consts:
         def _tmpl(m: re.Match) -> str:
             body = m.group(1)

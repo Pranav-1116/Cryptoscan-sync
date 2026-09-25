@@ -13,6 +13,7 @@ _APPEND = re.compile(r"append\s*\(\s*\"([^\"]*)\"\s*\)")
 _STRING_CONST = re.compile(r"\b(?:const\s+)?(?:val|var)\s+(\w+)\s*(?::\s*String)?\s*=\s*\"([^\"$]{1,80})\"")
 _CONCAT = re.compile(r"\b(?:const\s+)?(?:val|var)\s+(\w+)\s*(?::\s*String)?\s*=\s*((?:\"[^\"]*\"|\w+)(?:\s*\+\s*(?:\"[^\"]*\"|\w+))+)")
 _TEMPLATE = re.compile(r"\$\{?(\w+)\}?")
+_NUM_CONST = re.compile(r"\b(?:const\s+)?(?:val|var)\s+(\w+)\s*(?::\s*(?:Int|Long))?\s*=\s*(\d{1,4})\b")
 _LISTOF_JOIN = re.compile(r"\b(?:val|var)\s+(\w+)\s*(?::\s*String)?\s*=\s*listOf\s*\(((?:\s*\"[^\"]*\"\s*,?)+)\)\s*\.\s*joinToString\s*\(\s*\"([^\"]*)\"\s*\)")
 
 
@@ -48,6 +49,8 @@ def desugar_kotlin(source: str) -> str:
     source = _LISTOF_JOIN.sub(_join, source)
     for m in _STRING_CONST.finditer(source):
         consts.setdefault(m.group(1), m.group(2))
+    for m in _NUM_CONST.finditer(source):  # val bits = 512 → "SHA-$bits" → "SHA-512"
+        consts.setdefault(m.group(1), m.group(2))
 
     def _concat(m: re.Match) -> str:
         pieces = []
@@ -70,7 +73,7 @@ def desugar_kotlin(source: str) -> str:
 
     def _template(m: re.Match) -> str:
         name = m.group(1)
-        return consts.get(name, m.group(0))
+        return consts.get(name, "$" + name)
 
     # only substitute inside string literals
     def _in_string(m: re.Match) -> str:

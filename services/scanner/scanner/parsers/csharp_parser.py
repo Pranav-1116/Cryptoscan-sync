@@ -293,6 +293,18 @@ def _factory_findings(source: str, file_path: Path, repo_root: Path | None) -> l
     return out
 
 
+_USING_ALIAS = re.compile(r"^\s*using\s+(\w+)\s*=\s*(?:global::)?System\.Security\.Cryptography\.(\w+)\s*;", re.M)
+
+
+def _resolve_using_aliases(source: str) -> str:
+    """``using Sym = System.Security.Cryptography.Aes;`` → later ``Sym.Create()`` reads as ``Aes.Create()``.
+    Line-preserving; only aliases of the BCL crypto namespace are rewritten."""
+    aliases = {m.group(1): m.group(2) for m in _USING_ALIAS.finditer(source) if m.group(1) != m.group(2)}
+    for alias, target in aliases.items():
+        source = re.sub(rf"(?<![\w.]){re.escape(alias)}(?=\s*\.\s*\w)", target, source)
+    return source
+
+
 def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
         raw_source = file_path.read_text(encoding="utf-8", errors="replace")
@@ -300,7 +312,7 @@ def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
         return []
     from scanner.parsers.c_like import strip_c_like_comments
 
-    source = strip_c_like_comments(raw_source)
+    source = _resolve_using_aliases(strip_c_like_comments(raw_source))
     findings: list[RawFinding] = []
 
     def add(match: re.Match, **kwargs) -> None:

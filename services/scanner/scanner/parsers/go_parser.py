@@ -248,6 +248,7 @@ RULES: list[Rule] = [
 ]
 
 _IMPORT_ALIAS = re.compile(r"^\s*(\w+)\s+\"([A-Za-z0-9_./-]+)\"\s*$", re.M)
+_DOT_IMPORT = re.compile(r"^\s*(?:import\s+)?\.\s+\"([A-Za-z0-9_./-]+)\"", re.M)
 _IMPORT_LINE = re.compile(r"^\s*import\s+(\w+)\s+\"([A-Za-z0-9_./-]+)\"", re.M)
 
 _CANONICAL_SUFFIX = {
@@ -310,6 +311,11 @@ def _resolve_import_aliases(text: str) -> str:
         aliases.setdefault("rand", "mathrand")
     for alias, canon in aliases.items():
         text = re.sub(rf"(?<![\w.\"/]){re.escape(alias)}\.(?=[A-Za-z_])", canon + ".", text)
+    # dot import of a single crypto package: bare New()/Sum()/Sum256() belong to it
+    dot_pkgs = [m.group(1) for m in _DOT_IMPORT.finditer(text) if m.group(1).startswith(("crypto/", "golang.org/x/crypto/"))]
+    if len(dot_pkgs) == 1:
+        canon = _canon(dot_pkgs[0])
+        text = re.sub(r"(?<![\w.])((?:New|Sum)\w*|BlockSize|Size)\b(?=\s*[(\]])", canon + r".\1", text)
     return text
 
 

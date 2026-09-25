@@ -137,6 +137,19 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
 
     stripped = raw.strip()
 
+    # Interpolation / format placeholders that survived desugaring ("SHA-$bits", "%s/CBC/NoPadding",
+    # "${alg}", "{0}"): the algorithm is a runtime value. Keep mode/padding if present, never coin a name.
+    if re.search(r"\$\{?\w|%[sd]|\{\d*\}|#\{", stripped):
+        parts = stripped.split("/")
+        return ParsedAlgorithm(
+            raw_input=raw,
+            algorithm="UNKNOWN",
+            mode=_normalize_mode(parts[1]) if len(parts) > 1 else None,
+            padding=_normalize_padding(parts[2]) if len(parts) > 2 else None,
+            hash_algorithm=None,
+            signing_algorithm=None,
+        )
+
     # Check for signature algorithm (e.g., SHA256withRSA)
     sig_match = SIGNATURE_PATTERN.match(stripped)
     if sig_match:
