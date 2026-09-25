@@ -74,6 +74,73 @@ def _bounded_cascade(cascade: dict, *, max_providers: int = 500, max_list: int =
     return out
 
 
+def inventory_certificates(findings: list, *, now: "datetime | None" = None) -> list[dict]:
+    """Certificate rows from KEY_INVENTORY findings (keytool / RACDCERT / openssl text / cert CSV / cloud KMS).
+
+    Exports rarely include a SHA-256 fingerprint, so the row key is derived
+    deterministically from subject | issuer | not_after | serial and flagged
+    ``extra.fingerprint_derived`` so the UI can say so. Metadata only.
+    """
+    import hashlib
+    from datetime import datetime as _dt, timezone as _tz
+
+    now = now or _dt.now(_tz.utc)
+    out: dict[str, dict] = {}
+    for f in findings:
+        d = f if isinstance(f, dict) else f.model_dump()
+        if ((d.get("source") or {}).get("type")) != "KEY_INVENTORY":
+            continue
+        inv = d.get("inventory") or {}
+        subject = inv.get("subject")
+        if not subject or inv.get("role"):  # role rows are signature-digest side findings, not the certificate itself
+            continue
+        crypto = d.get("crypto") or {}
+        fp = inv.get("fingerprint_sha256") or inv.get("fingerprint")
+        derived = False
+        if not fp or len(str(fp).replace(":", "")) != 64:
+            basis = "|".join(str(inv.get(k) or "") for k in ("subject", "issuer", "not_after", "serial_number"))
+            fp = hashlib.sha256(f"key-inventory|{basis}".encode()).hexdigest()
+            derived = True
+        fp = str(fp).replace(":", "").lower()
+        not_after = inv.get("not_after")
+        days = None
+        if not_after:
+            try:
+                days = (_dt.fromisoformat(str(not_after)[:10]).replace(tzinfo=_tz.utc) - now).days
+            except ValueError:
+                days = None
+        status = None if days is None else ("EXPIRED" if days < 0 else "EXPIRING_SOON" if days <= 90 else "VALID")
+        location = (d.get("source") or {}).get("file_path")
+        payload = out.get(fp) or {
+            "fingerprint_sha256": fp,
+            "subject": subject,
+            "issuer": inv.get("issuer"),
+            "serial_number": inv.get("serial_number"),
+            "not_before": inv.get("not_before"),
+            "not_after": not_after,
+            "public_key_algorithm": crypto.get("algorithm") if crypto.get("algorithm") != "UNKNOWN" else None,
+            "public_key_size": crypto.get("key_size"),
+            "expiry_status": status,
+            "days_until_expiry": days,
+            "is_self_signed": bool(inv.get("self_signed")),
+            "usages": [],
+            "extra": {
+                "source": "KEY_INVENTORY",
+                "fingerprint_derived": derived,
+                "library": (d.get("metadata") or {}).get("library"),
+                "key_label": inv.get("key_label"),
+                "key_store": inv.get("key_store"),
+                "entry_type": inv.get("entry_type"),
+                "signature_algorithm": inv.get("signature_algorithm"),
+                "state": inv.get("state"),
+            },
+        }
+        if location and location not in payload["usages"]:
+            payload["usages"].append(location)
+        out[fp] = payload
+    return list(out.values())
+
+
 class PipelineRunner:
     def __init__(self):
         self.workspaces = WorkspaceManager(settings.workspace_dir)
@@ -489,6 +556,17 @@ class PipelineRunner:
                         )
             except Exception:
                 logger.debug("certificate_persist_skipped", exc_info=True)
+        inv_certs = inventory_certificates(ctx.findings or [])
+        if inv_certs:
+            try:
+                from db.repositories.certificate_repository import CertificateRepository
+
+                repo = CertificateRepository(session)
+                for cert in inv_certs:
+                    repo.upsert(cert)
+                logger.info("inventory_certificates_persisted", extra={"count": len(inv_certs)})
+            except Exception:
+                logger.debug("inventory_certificate_persist_skipped", exc_info=True)
         if ctx.ot_result and (ctx.ot_result.get("devices") or ctx.ot_result.get("findings")):
             try:
                 from db.repositories.maturity_repository import MaturityRepository

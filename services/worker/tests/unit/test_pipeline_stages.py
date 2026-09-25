@@ -75,3 +75,48 @@ def test_scan_stage_carries_cascade_and_inventory_fields(tmp_path):
     assert [l["library"] for l in cascade["libraries"] if l["manifests"]] == ["python-cryptography"]
     assert cascade["truncated"]["providers"] == 0
     assert all(isinstance(f, dict) and f["metadata"].get("code_origin") for f in ctx.findings)  # findings travel as JSON dicts
+
+
+def test_key_inventory_findings_become_certificate_rows(tmp_path, monkeypatch):
+    """KEY_INVENTORY certificate records (keytool / RACDCERT) land in the certificates table with derived fingerprints."""
+    import shutil
+    from pathlib import Path
+    from datetime import datetime, timezone
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    import db.models  # noqa: F401
+    from db.connection.session import Base
+    from db.repositories.certificate_repository import CertificateRepository
+    from worker.pipeline.pipeline_runner import inventory_certificates
+    from worker.pipeline.stage_scan import execute as scan
+
+    fixtures = Path(__file__).resolve().parents[4] / "services" / "scanner" / "tests" / "fixtures" / "key_inventory"
+    for name in ("keytool.txt", "racdcert.txt", "certs.csv"):
+        shutil.copy(fixtures / name, tmp_path / name)
+    monkeypatch.setenv("CRYPTOSCAN_KEY_INVENTORY", "1")
+    ctx = scan(_ctx(tmp_path))
+    inv = [f for f in ctx.findings if f["source"]["type"] == "KEY_INVENTORY"]
+    assert inv, "key-inventory findings expected"
+    certs = inventory_certificates(ctx.findings, now=datetime(2026, 9, 25, tzinfo=timezone.utc))
+    assert certs and all(len(c["fingerprint_sha256"]) == 64 and c["extra"]["fingerprint_derived"] for c in certs)
+    ebank = next(c for c in certs if "ebank" in (c["subject"] or ""))
+    assert ebank["expiry_status"] == "EXPIRED" and ebank["public_key_algorithm"] == "RSA" and ebank["public_key_size"] == 2048
+    assert ebank["extra"]["library"] == "keytool" and ebank["usages"] == [next(f["source"]["file_path"] for f in inv if "ebank" in (f.get("inventory") or {}).get("subject", ""))]
+    assert not any(c["subject"] is None for c in certs)
+
+    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    repo = CertificateRepository(session)
+    for c in certs:
+        repo.upsert(c)
+    for c in certs:  # second scan of the same export is idempotent
+        repo.upsert(c)
+    session.commit()
+    rows = repo.list_all()
+    assert len(rows) == len(certs) >= 6
+    assert {r.extra.get("library") for r in rows} >= {"keytool", "RACF", "certificate-inventory"}
+    assert {r.expiry_status for r in rows} >= {"EXPIRED", "VALID"}

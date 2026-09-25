@@ -57,3 +57,16 @@ one-file repo found 2 consumers, 36 orphans, 1 keystore outside the inventory.
 Built and unit-tested on realistic fixtures written from the vendors' documented output formats. **No bank
 export has been parsed yet** — field layouts (especially KGUP and vendor CSV columns) will need a first
 real drop; the parsers are tolerant (keyword-based, not column-based) for that reason.
+
+## Where it lands in the product
+
+* Findings carry `source.type = KEY_INVENTORY` and the `inventory` attribute map; the worker stores the full finding in
+  `evidence_records.finding_data`, so label / usage / state / dates / exportability are queryable and in the evidence pack.
+* **Certificates table.** Certificate records from keytool, RACDCERT, openssl text, certificate CSVs and cloud KMS
+  are upserted into `certificates` by the worker (`pipeline_runner.py::inventory_certificates`) so they appear in the
+  Certificates page, the renewal queue and certificate-exposure graph queries next to TLS-probed certificates. Exports
+  seldom include a SHA-256 fingerprint, so the row key is derived from subject | issuer | not_after | serial and flagged
+  `extra.fingerprint_derived = true`; `extra.source = "KEY_INVENTORY"`, `extra.key_label`, `extra.key_store`,
+  `extra.library` say where it came from. `usages` lists the export file path. Re-scanning the same export is idempotent.
+* Enable per worker profile with `CRYPTOSCAN_KEY_INVENTORY=1` — see
+  [admin-guide/scanner-configuration.md](../admin-guide/scanner-configuration.md).
