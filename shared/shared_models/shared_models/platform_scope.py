@@ -37,8 +37,10 @@ COVERED_AREAS: list[dict[str, Any]] = [
         "detail": "Ingest of operator-produced z/OS security extracts — RACF "
                   "RACDCERT LIST, ICSF key inventories, DB2 TLS configuration, "
                   "CICS TCPIPSERVICE definitions — into the unified crypto "
-                  "inventory. Crypto inventory only; we do not scan or parse "
-                  "COBOL application code.",
+                  "inventory, plus crypto-call detection in mainframe "
+                  "application source (COBOL, PL/I, Natural, HLASM, JCL, "
+                  "REXX, CLIST) — ICSF CSN* / CSF* verbs and PCI parameter "
+                  "blocks only; crypto inventory, not general SAST.",
     },
     {
         "id": "source-tree-crypto",
@@ -126,11 +128,11 @@ NON_GOALS: list[dict[str, Any]] = [
                   "hunting, or endpoint telemetry analysis.",
     },
     {
-        "id": "no-cobol-app-scanning",
-        "label": "COBOL / PL-I application-code scanning",
-        "detail": "z/OS coverage is crypto-configuration inventory via "
-                  "operator-produced extracts (RACF/ICSF/DB2/CICS); we do not "
-                  "parse COBOL/PL-I application source.",
+        "id": "no-mainframe-app-logic-analysis",
+        "label": "Mainframe business-logic analysis",
+        "detail": "Mainframe source (COBOL/PL-I/Natural/HLASM) is scanned only "
+                  "for cryptographic service calls and key parameters; we do "
+                  "not analyse business logic, data flow or modernisation.",
     },
     {
         "id": "no-endpoint-agents",
@@ -208,7 +210,6 @@ INVARIANTS: list[dict[str, Any]] = [
 BANNED_PATH_TOKENS: tuple[str, ...] = (
     "as400",
     "as_400",
-    "cobol",
     "malware",
     "endpoint_agent",
     "endpoint_agents",
@@ -221,7 +222,6 @@ BANNED_DOC_PHRASES: tuple[str, ...] = (
     "behavior analytics",
     "behavioral analytics",
     "endpoint agent",
-    "cobol",
     "source-code hacking",
 )
 
