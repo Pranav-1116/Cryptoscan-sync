@@ -214,7 +214,26 @@ export default function DependencyGraph() {
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Selected Asset</div>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--cyan)", margin: "3px 0" }}>{selectedNode.label || selectedNode.id}</div>
                 <div style={{ fontSize: "12px", color: "var(--text)" }}>ID: {selectedNode.id}</div>
+                {selectedNode.source === "cryptoscan-systems.yml" && (
+                  <div style={{ fontSize: "11px", color: "var(--dim)", marginTop: 4 }}>Declared in code (cryptoscan-systems.yml), not in the CMDB</div>
+                )}
               </div>
+
+              {selectedNode.code_cascade && (
+                <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+                  <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Code-level crypto (latest scan)</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, margin: "6px 0" }}>
+                    <div><div style={{ fontSize: 11, color: "var(--dim)" }}>Providers</div><div style={{ fontWeight: 700 }}>{selectedNode.code_cascade.providers}</div></div>
+                    <div><div style={{ fontSize: 11, color: "var(--dim)" }}>Weak sizes</div><div style={{ fontWeight: 700, color: selectedNode.code_cascade.weak_parameters ? "var(--red)" : undefined }}>{selectedNode.code_cascade.weak_parameters}</div></div>
+                    <div><div style={{ fontSize: 11, color: "var(--dim)" }}>Earliest wave</div><div style={{ fontWeight: 700 }}>{selectedNode.code_cascade.earliest_wave ?? "—"}</div></div>
+                  </div>
+                  <div style={{ fontSize: 12 }}>{(selectedNode.code_cascade.algorithms || []).slice(0, 8).join(", ") || "—"}</div>
+                  {selectedNode.code_cascade.depends_on_systems?.length > 0 && (
+                    <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>imports crypto from: {selectedNode.code_cascade.depends_on_systems.join(", ")}</div>
+                  )}
+                  <div style={{ fontSize: 11, color: "var(--dim)", marginTop: 4 }}>scan {selectedNode.code_cascade.scan_id}</div>
+                </div>
+              )}
 
               {calculatingBlast ? (
                 <div style={{ textAlign: "center", padding: "20px", color: "var(--dim)", fontSize: "13px" }}>

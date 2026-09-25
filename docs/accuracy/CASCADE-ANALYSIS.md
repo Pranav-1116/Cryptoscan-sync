@@ -34,6 +34,24 @@ systems depend on its crypto** (`dependent_systems`), which systems' crypto it d
 (`depends_on_systems`), and the earliest migration wave it participates in. That is the blast radius in
 the vocabulary the bank's change board uses.
 
+### Where it shows up in the product
+
+* **Worker → DB.** Every completed scan stores a bounded copy of the report in `Scan.statistics.cascade`
+  (`services/worker/worker/pipeline/pipeline_runner.py::_bounded_cascade`). No schema change.
+* **API.** `GET /api/v1/scans/{id}/cascade` (`?section=providers|libraries|shared_keys|weak_parameters|migration_waves|systems`,
+  `?system=<id>` to filter by a declared system's paths, `?limit=`). Scan list/detail carry `statistics.cascade_summary` only.
+* **System graph.** `api/graph_builder.py::merge_code_cascade` joins the newest per-target rollup into the CMDB graph:
+  a rollup `system` matching a CMDB system **id or name** annotates that node with `code_cascade`
+  (`providers`, `algorithms`, `weak_parameters`, `earliest_wave`, `depends_on_systems`, `scan_id`); an unknown one becomes a
+  `System` node with `source="cryptoscan-systems.yml"`, `environment="code"`; `depends_on_systems` become **`IMPORTS`** edges
+  (kept distinct from CMDB `CALLS`). `GET /graph`, `/graph/blast-radius`, `/graph/dependents`, `/graph/path`, hotspots and
+  cycles all see those nodes and edges. The Neo4j store carries the node and the edge but not the `code_cascade` map
+  (in-memory engine and `/graph` payload do).
+* **UI.** Dependency Graph page: "Code-level cascade" panel (scan picker, system drill-down, providers by blast radius,
+  waves, libraries, shared keys, weak sizes) and a "Code-level crypto" block in the node drawer.
+
+Tests: `services/api/tests/unit/test_scan_cascade_api.py`, `services/worker/tests/unit/test_pipeline_stages.py`.
+
 ## The import graph
 
 Edges are extracted per language without a build: Java/Kotlin/Scala `import` (wildcards narrowed to the

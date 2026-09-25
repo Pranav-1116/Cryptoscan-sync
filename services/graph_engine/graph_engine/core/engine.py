@@ -81,6 +81,8 @@ class GraphEngine:
                 owner=system.get("owner"),
                 criticality=system.get("criticality") or (system.get("extra") or {}).get("criticality"),
                 compliance_scopes=system.get("compliance_scopes") or [],
+                **({"source": system["source"]} if system.get("source") else {}),
+                **({"code_cascade": system["code_cascade"]} if system.get("code_cascade") else {}),
             )
             for scope in system.get("compliance_scopes") or []:
                 self.add_node(f"scope:{scope}", kind="ComplianceScope", name=scope, standard_name=scope)

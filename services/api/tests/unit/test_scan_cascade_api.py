@@ -68,3 +68,29 @@ async def test_scan_detail_carries_only_the_cascade_summary():
         r = await c.get("/api/v1/scans/scan-1")
         stats = r.json()["statistics"]
         assert "cascade" not in stats and stats["cascade_summary"]["providers"] == 2 and stats["total_findings"] == 2
+
+
+@pytest.mark.asyncio
+async def test_code_cascade_rollup_joins_the_system_graph(monkeypatch):
+    """CMDB system CORE gets code_cascade; code-only system CARDS is added; IMPORTS edge feeds blast radius."""
+    from db.models.system import System
+    from api import graph_builder
+    from graph_engine.core import facade
+
+    monkeypatch.setattr(graph_builder, "resolve_graph", lambda payload, **kw: facade.memory_graph(**payload))
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    session.add(System(id="sys-core", name="CORE", owner="platform@bank", environment="prod", compliance_scopes=["PCI-DSS"]))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/graph")
+        assert r.status_code == 200, r.text
+        nodes = {n["id"]: n for n in r.json()["nodes"]}
+        assert nodes["system:sys-core"]["code_cascade"]["providers"] == 1 and nodes["system:sys-core"]["code_cascade"]["scan_id"] == "scan-1"
+        assert nodes["system:CARDS"]["source"] == "cryptoscan-systems.yml" and nodes["system:CARDS"]["environment"] == "code"
+        imports = [(e["from"], e["to"]) for e in r.json()["edges"] if e["label"] == "IMPORTS"]
+        assert imports == [("system:CARDS", "system:sys-core")]
+        r = await c.get("/api/v1/graph/dependents", params={"system_id": "sys-core", "hops": 2})
+        assert r.status_code == 200 and any(s["id"] == "CARDS" for s in r.json()["systems"]), r.text
+        r = await c.get("/api/v1/graph/blast-radius", params={"system_id": "CARDS", "hops": 2})
+        assert [s["id"] for s in r.json()["systems"]] == ["sys-core"]
