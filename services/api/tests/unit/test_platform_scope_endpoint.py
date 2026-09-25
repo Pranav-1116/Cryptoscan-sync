@@ -53,10 +53,12 @@ async def test_scope_endpoint_returns_manifest(app_client):
 async def test_scope_names_honest_non_goals(app_client):
     body = (await app_client.get("/api/v1/platform/scope")).json()
     labels = " ".join(goal["label"] for goal in body["non_goals"]).lower()
-    # z/OS crypto discovery is a COVERED area (extract-based inventory); COBOL
-    # application scanning stays a declared non-goal.
-    assert "mainframe" not in labels
-    assert "cobol" in labels
+    # z/OS crypto discovery AND crypto-call scanning of mainframe source (COBOL/PL-I/
+    # Natural/HLASM) are COVERED; business-logic analysis of that code is the non-goal.
+    covered = " ".join(a["detail"] for a in body["covered_areas"]).lower()
+    assert "cobol" in covered
+    assert "business-logic" in labels
+    assert "cobol" not in labels
     assert "malware" in labels
     assert "endpoint" in labels
     assert "sast" in labels
