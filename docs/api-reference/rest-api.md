@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-22:
-**644 paths, 709 operations** across 85 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-25:
+**658 paths, 724 operations** across 86 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -415,12 +415,21 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/cbom` | Binary Cbom |
+| `GET` | `/api/v1/devsecops/binary/at-rest` | Binary At Rest |
+| `POST` | `/api/v1/devsecops/binary/batch` | Binary Batch |
+| `GET` | `/api/v1/devsecops/binary/batches/{batch_id}` | Binary Batch Status |
+| `POST` | `/api/v1/devsecops/binary/dynamic` | Binary Dynamic |
+| `POST` | `/api/v1/devsecops/binary/jobs` | Binary Scan Job |
 | `POST` | `/api/v1/devsecops/binary/scan` | Binary Scan |
 | `POST` | `/api/v1/devsecops/chat/action` | Chat Action |
 | `POST` | `/api/v1/devsecops/cloud-posture` | Cloud Posture |
 | `POST` | `/api/v1/devsecops/connectors/preview` | Connector Preview |
 | `POST` | `/api/v1/devsecops/container-scan` | Container Scan |
+| `POST` | `/api/v1/devsecops/fingerprints/match` | Fingerprint Match |
 | `POST` | `/api/v1/devsecops/k8s-manifest-scan` | K8S Scan |
+| `GET` | `/api/v1/devsecops/knowledge` | Knowledge List |
+| `POST` | `/api/v1/devsecops/knowledge/install` | Knowledge Install |
+| `POST` | `/api/v1/devsecops/knowledge/uninstall` | Knowledge Uninstall |
 | `GET` | `/api/v1/devsecops/sbom/advisories` | Sbom Advisories |
 | `GET` | `/api/v1/devsecops/sbom/artifacts` | Sbom Artifacts |
 | `DELETE` | `/api/v1/devsecops/sbom/artifacts` | Sbom Prune |
@@ -439,6 +448,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/verify` | Sbom Verify |
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/vex` | Sbom Vex For Artifact |
 | `POST` | `/api/v1/devsecops/tickets/sync-pull` | Ticket Sync Pull |
+| `POST` | `/api/v1/devsecops/yara/validate` | Yara Validate |
 
 ## drift
 
@@ -565,6 +575,14 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/graph/vendor-chains` | Vendor Chains |
 | `GET` | `/api/v1/graph/vendor-path` | Vendor Path |
 | `GET` | `/api/v1/priorities` | Priorities |
+
+## graphql
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/graphql` | Graphql Get |
+| `POST` | `/api/v1/graphql` | Graphql Post |
+| `GET` | `/api/v1/graphql/schema` | Graphql Schema Document |
 
 ## hardware
 
@@ -827,6 +845,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `POST` | `/api/v1/platform/blast` | Platform Blast |
 | `GET` | `/api/v1/platform/bom` | Platform Bom |
+| `GET` | `/api/v1/platform/capabilities` | Platform Capabilities |
 | `POST` | `/api/v1/platform/discover` | Platform Discover |
 | `POST` | `/api/v1/platform/drift` | Platform Drift |
 | `GET` | `/api/v1/platform/evidence` | Platform Evidence |
@@ -954,6 +973,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/scans` | List Scans |
 | `GET` | `/api/v1/scans/{scan_id}` | Get Scan |
+| `GET` | `/api/v1/scans/{scan_id}/cascade` | Get Scan Cascade |
 | `POST` | `/api/v1/scans/{scan_id}/retry` | Retry Scan |
 
 ## scim

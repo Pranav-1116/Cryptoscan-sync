@@ -1,6 +1,6 @@
 # Production readiness — where the platform stands and why
 
-_2026-09-23. Assessed against evidence in this repository (tests, staging
+_2026-09-23, updated 2026-09-25. Assessed against evidence in this repository (tests, staging
 runs, soak data), not against the roadmap. Numbers are a judgement; every
 line that moves them points at the file that justifies it._
 
@@ -39,6 +39,31 @@ with the migrations patched by hand it could not complete a scan. Dev and
 tests used SQLite with `create_all` from the models, so nothing caught it.
 That was a hidden zero under an otherwise plausible readiness story, and it
 is why the earlier ~70–75% estimate was, in hindsight, generous.
+
+## What changed on 2026-09-25 (discovery depth → production path)
+
+The discovery work of the last days (network-controls statement, runtime-log
+evidence, dependency & cascade analysis, HSM/KMS/certificate key-inventory
+ingestion, business-system rollup) was first delivered as scanner + CLI
+capability. This pass moves it onto the production path so it is not a
+CLI-only feature:
+
+| Item | Before | Now | Evidence |
+|---|---|---|---|
+| Cascade report in the pipeline | computed by the scanner, dropped by the worker | worker stores a size-bounded copy (`providers ≤ 500`, other sections ≤ 300, `truncated` counters) in `Scan.statistics.cascade` — no migration needed | `services/worker/worker/pipeline/pipeline_runner.py::_bounded_cascade`, `stage_scan.py`, `test_pipeline_stages.py::test_scan_stage_carries_cascade_and_inventory_fields` |
+| API | none | `GET /api/v1/scans/{id}/cascade` (`?section=`, `?system=` filter over `cryptoscan-systems.yml` paths, `?limit=`); scan list/detail carry `statistics.cascade_summary` only so payloads stay small | `services/api/api/routers/scans.py`, `tests/unit/test_scan_cascade_api.py` |
+| UI | none | "Code-level cascade" panel on the Dependency Graph page: scan picker, business-system drill-down, providers by blast radius, migration waves, libraries (declared-unused / used-undeclared), shared key material, key sizes below floor | `frontend/src/components/CodeCascadePanel.tsx` (typecheck, vitest 108, build green) |
+| Operator docs | scanner flags scattered over accuracy docs | one admin page for every scanner flag and the three-target layout (source repos / runtime-log drop / key-export drop) | [admin-guide/scanner-configuration.md](admin-guide/scanner-configuration.md) |
+| Scope manifest | claimed "we do not parse COBOL/PL-I" while shipping COBOL/PL-I/Natural/HLASM parsers; the scope guard tests were red | manifest and non-goal corrected (crypto calls only, no business-logic analysis); `shared_models` 185/185 | `shared_models/platform_scope.py` |
+| Suites re-run today | — | scanner 251 ✓ · worker 151 ✓ · database 78 ✓ (alembic chain to head on SQLite) · cloud_scanner 411 ✓ · agility 37 ✓ · shared_models 185 ✓ · frontend 108 ✓ · accuracy benchmark 748/748 | this sandbox |
+
+**This does not move the 80.** The blockers below are unchanged because
+every one of them needs a host this sandbox is not: a machine that stays up
+for a week, a real PostgreSQL/Redis/Neo4j, Docker, a bank IdP, ServiceNow/
+Splunk endpoints, and a second disconnected host. What did move is the
+*width* of what will be production-grade once those runs pass: the new
+discovery surfaces now sit on the same pipeline → DB → API → UI → tests →
+docs path as the rest of the core instead of beside it.
 
 ## What keeps it at 80
 
