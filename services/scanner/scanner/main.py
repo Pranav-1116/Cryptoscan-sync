@@ -83,6 +83,14 @@ def scan(source, repo, branch, commit, output, exclude_tests, scan_id, origins):
     click.echo(f"  LOW:          {stats.low_confidence}")
     if stats.findings_by_origin:
         click.echo("  by origin:    " + ", ".join(f"{k}={v}" for k, v in sorted(stats.findings_by_origin.items())))
+    cascade = getattr(result, "cascade", None)
+    if cascade:
+        sm = cascade["summary"]
+        click.echo(f"Cascade:        {sm['providers']} crypto providers, {sm['providers_with_dependents']} with dependents; "
+                   f"{sm['libraries']} libraries ({sm['libraries_declared_but_unused']} declared-unused, {sm['libraries_used_but_undeclared']} used-undeclared); "
+                   f"{sm['shared_key_identifiers']} shared key identifiers; {sm['weak_parameters']} weak parameters; {sm['migration_waves']} migration waves")
+        for p in cascade["providers"][:5]:
+            click.echo(f"  wave {p['wave']}  dependents {p['direct_dependents']:>4} direct / {p['transitive_dependents']:>5} transitive  {p['file']}  {', '.join(p['algorithms'][:4])}")
     click.echo(f"Output:         {output_path}\n")
 
 

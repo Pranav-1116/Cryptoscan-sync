@@ -331,6 +331,21 @@
           "default": 0,
           "title": "Resolved Cross File",
           "type": "integer"
+        },
+        "cascade_providers": {
+          "default": 0,
+          "title": "Cascade Providers",
+          "type": "integer"
+        },
+        "cascade_shared_keys": {
+          "default": 0,
+          "title": "Cascade Shared Keys",
+          "type": "integer"
+        },
+        "cascade_weak_parameters": {
+          "default": 0,
+          "title": "Cascade Weak Parameters",
+          "type": "integer"
         }
       },
       "title": "ScanStatistics",

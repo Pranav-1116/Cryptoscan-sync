@@ -1,0 +1,3 @@
+2026-09-21 08:40:01 INFO  PaymentService - processed 120 payments in 3.2s
+2026-09-21 08:40:02 WARN  Cache - primary key miss for account 12345
+2026-09-21 08:40:03 INFO  Scheduler - next run at 09:00

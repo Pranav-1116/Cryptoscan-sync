@@ -17,6 +17,8 @@ from scanner.git.git_client import GitClient
 from scanner.models.raw_finding import GitContext, RawFinding
 from scanner.models.scan_result import ScanResult, ScanTarget
 from scanner.core.constant_index import ConstantIndex
+
+_CASCADE_SKIP_DIRS = {"node_modules", ".git", "vendor", "target", "build", "dist", ".venv", "venv", "__pycache__"}
 from scanner.registry.language_scanners import scan_file
 
 logger = logging.getLogger(__name__)
@@ -179,6 +181,19 @@ class Scanner:
         # scan_file() dispatches to the bytecode scanners, so no separate rglob pass (it used to
         # produce every archive finding twice).
 
+        # Third hop: dependency & cascade analysis — who imports the crypto, which libraries carry it,
+        # which key material is shared, which parameters are below the registry floor, migration order.
+        cascade = None
+        if os.environ.get("CRYPTOSCAN_CASCADE", "1") != "0":
+            try:
+                from scanner.analysis.cascade import analyse_cascade, is_manifest
+
+                manifests = [p for p in path.rglob("*") if p.is_file() and is_manifest(p)
+                             and not any(part in _CASCADE_SKIP_DIRS for part in p.relative_to(path).parts)]
+                cascade = analyse_cascade(findings, source_files + manifests, path)
+            except Exception as exc:
+                logger.warning("cascade_analysis_failed", extra={"error": str(exc)})
+
         scanner_id = "static-multi-scanner-v1.0" if set(languages) - {"JAVA"} else "static-java-scanner-v0.1"
         scanner_version = "1.0.0" if scanner_id.endswith("v1.0") else "0.1.0"
         result = ScanResult(
@@ -199,6 +214,11 @@ class Scanner:
         result.statistics.files_scanned = len(source_files)
         result.statistics.files_with_errors = len(parse_errors)
         result.statistics.resolved_cross_file = resolved_cross_file
+        if cascade is not None:
+            result.cascade = cascade.model_dump()
+            result.statistics.cascade_providers = cascade.summary["providers"]
+            result.statistics.cascade_shared_keys = cascade.summary["shared_key_identifiers"]
+            result.statistics.cascade_weak_parameters = cascade.summary["weak_parameters"]
         result.finalize()
         logger.info(
             "scan_completed",

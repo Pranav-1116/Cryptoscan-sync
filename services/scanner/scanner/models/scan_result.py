@@ -32,6 +32,9 @@ class ScanStatistics(BaseModel):
     findings_by_origin: dict[str, int] = Field(default_factory=dict)
     # UNKNOWN findings whose algorithm was filled from a constant declared in another file
     resolved_cross_file: int = 0
+    cascade_providers: int = 0
+    cascade_shared_keys: int = 0
+    cascade_weak_parameters: int = 0
 
 
 class ScanResult(BaseModel):
