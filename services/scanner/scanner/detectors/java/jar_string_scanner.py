@@ -205,6 +205,12 @@ def analyse_class(data: bytes) -> list[tuple[str, str, str, str, str, str]]:
     classes, strings = _read_constant_pool(data)
     if not classes:
         return []
+    return analyse_pool(classes, strings)
+
+
+def analyse_pool(classes: list[str], strings: list[str]) -> list[tuple[str, str, str, str, str, str]]:
+    """Same analysis for any JVM-shaped symbol table: a class constant pool, or a DEX
+    file's type + string tables (Android) — ``classes`` in ``javax/crypto/Cipher`` form."""
     out: list[tuple[str, str, str, str, str, str]] = []
     seen: set[str] = set()
 
