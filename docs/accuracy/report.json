@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-25T06:30:10+00:00",
+  "generated_at": "2026-09-25T09:13:20+00:00",
   "corpus": {
     "python": 82,
-    "positive": 540,
-    "negative": 104,
+    "positive": 559,
+    "negative": 111,
     "obfuscated": 18,
     "java": 106,
     "kotlin": 17,
@@ -33,19 +33,26 @@
     "cics": 5,
     "attls": 2,
     "ims": 2,
-    "total": 722
+    "hlasm": 6,
+    "informix4gl": 3,
+    "powerbuilder": 3,
+    "progress": 4,
+    "tal": 4,
+    "sas": 3,
+    "payshield-console": 3,
+    "total": 748
   },
   "overall": {
-    "tp": 1181,
+    "tp": 1214,
     "fp": 0,
     "fn": 0,
-    "tn": 136,
+    "tn": 143,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 722,
-    "files_exact": 722,
+    "files": 748,
+    "files_exact": 748,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -166,6 +173,19 @@
       "files_exact": 43,
       "file_exact_rate": 1.0
     },
+    "hlasm": {
+      "tp": 6,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 6,
+      "files_exact": 6,
+      "file_exact_rate": 1.0
+    },
     "ims": {
       "tp": 1,
       "fp": 0,
@@ -177,6 +197,19 @@
       "accuracy": 1.0,
       "files": 2,
       "files_exact": 2,
+      "file_exact_rate": 1.0
+    },
+    "informix4gl": {
+      "tp": 3,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 3,
+      "files_exact": 3,
       "file_exact_rate": 1.0
     },
     "java": {
@@ -244,6 +277,19 @@
       "files_exact": 1,
       "file_exact_rate": 1.0
     },
+    "payshield-console": {
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 3,
+      "files_exact": 3,
+      "file_exact_rate": 1.0
+    },
     "php": {
       "tp": 60,
       "fp": 0,
@@ -258,6 +304,32 @@
       "file_exact_rate": 1.0
     },
     "pli": {
+      "tp": 4,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 4,
+      "files_exact": 4,
+      "file_exact_rate": 1.0
+    },
+    "powerbuilder": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 3,
+      "files_exact": 3,
+      "file_exact_rate": 1.0
+    },
+    "progress": {
       "tp": 4,
       "fp": 0,
       "fn": 0,
@@ -322,6 +394,19 @@
       "files_exact": 32,
       "file_exact_rate": 1.0
     },
+    "sas": {
+      "tp": 5,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 3,
+      "files_exact": 3,
+      "file_exact_rate": 1.0
+    },
     "shell": {
       "tp": 46,
       "fp": 0,
@@ -359,6 +444,19 @@
       "accuracy": 1.0,
       "files": 29,
       "files_exact": 29,
+      "file_exact_rate": 1.0
+    },
+    "tal": {
+      "tp": 8,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 4,
+      "files_exact": 4,
       "file_exact_rate": 1.0
     },
     "typescript": {
@@ -406,13 +504,13 @@
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 104,
+      "tn": 111,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 104,
-      "files_exact": 104,
+      "files": 111,
+      "files_exact": 111,
       "file_exact_rate": 1.0
     },
     "obfuscated": {
@@ -429,7 +527,7 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 1023,
+      "tp": 1056,
       "fp": 0,
       "fn": 0,
       "tn": 26,
@@ -437,8 +535,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 540,
-      "files_exact": 540,
+      "files": 559,
+      "files_exact": 559,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

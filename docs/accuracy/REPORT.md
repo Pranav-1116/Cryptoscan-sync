@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-25T06:30:10+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 722 files). Scored per algorithm family per file._
+_Generated 2026-09-25T09:13:20+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 748 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,8 +10,8 @@ _Generated 2026-09-25T06:30:10+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 722 / 722 (100.0%) |
-| TP / FP / FN / TN | 1181 / 0 / 0 / 136 |
+| Files scored exactly right | 748 / 748 (100.0%) |
+| TP / FP / FN / TN | 1214 / 0 / 0 / 143 |
 
 ## By language
 
@@ -26,21 +26,28 @@ _Generated 2026-09-25T06:30:10+00:00 by `scripts/accuracy_benchmark.py` against 
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | csharp | 44 | 100.0% | 100.0% | 100.0% | 44/44 |
 | go | 43 | 100.0% | 100.0% | 100.0% | 43/43 |
+| hlasm | 6 | 100.0% | 100.0% | 100.0% | 6/6 |
 | ims | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
+| informix4gl | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | java | 106 | 100.0% | 100.0% | 100.0% | 106/106 |
 | javascript | 53 | 100.0% | 100.0% | 100.0% | 53/53 |
 | kotlin | 17 | 100.0% | 100.0% | 100.0% | 17/17 |
 | natural | 7 | 100.0% | 100.0% | 100.0% | 7/7 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
+| payshield-console | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | php | 35 | 100.0% | 100.0% | 100.0% | 35/35 |
 | pli | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
+| powerbuilder | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
+| progress | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | python | 82 | 100.0% | 100.0% | 100.0% | 82/82 |
 | rpg | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
 | ruby | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
 | rust | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
+| sas | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | shell | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
 | sql | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
 | swift | 29 | 100.0% | 100.0% | 100.0% | 29/29 |
+| tal | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | typescript | 13 | 100.0% | 100.0% | 100.0% | 13/13 |
 | xml | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
 
@@ -49,9 +56,9 @@ _Generated 2026-09-25T06:30:10+00:00 by `scripts/accuracy_benchmark.py` against 
 | Category | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | config | 22 | 100.0% | 100.0% | 100.0% | 22/22 |
-| negative | 104 | 100.0% | 100.0% | 100.0% | 104/104 |
+| negative | 111 | 100.0% | 100.0% | 100.0% | 111/111 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 540 | 100.0% | 100.0% | 100.0% | 540/540 |
+| positive | 559 | 100.0% | 100.0% | 100.0% | 559/559 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -82,6 +89,7 @@ misses were fixed and locked in as regression tests.
 | 12 — BLIND, evasion / indirection shapes a bank code base uses without meaning to hide anything: Java static imports, constants classes (`Algorithms.CIPHER`), enums, multi-line concatenation, external config; Kotlin companion consts and `"SHA-$bits"` templates; Python `getattr(hashlib, …)`, module aliases, dict dispatch tables, f-strings; JS/TS bracket access, template literals, destructured aliases, `const enum`, dynamic `import()`; Go import aliases and dot imports, `crypto.Hash` constants; C# `CryptoConfig`, `HashAlgorithmName`, `using` aliases; PHP variable functions and class consts; Ruby constants. First pass 679/689: all 10 misses were false negatives (precision 0.999 — one coined name `SHABITS` from an unresolved Kotlin template, now UNKNOWN); fixed: Java static-import `getInstance`, class-qualified constants and declaration-only JCA transformation constants (the call lives in another file — Fineract's `DEFAULT_ENCRYPTION` is the real-world case, 3 new true positives, 0 false positives on jPOS/Fineract), numeric constants in Kotlin/JS/Python templates, hashlib dispatch tables, TS enum members, Go dot import, C# using-alias | 33 | 0.999 / 0.986 / 0.993 | F1 1.000 (689/689) |
 | 13 — BLIND, mainframe *definitions* rather than programs: Software AG Natural (Adabas) programs/subprograms/copycode calling ICSF (CSNBSYE/OWH/PVR, CSNDDSG) with rule-array INIT literals; CICS resource definitions (DFHCSDUP: TCPIPSERVICE/URIMAP/IPCONN with SSL()/SCHEME(HTTPS)/CIPHERS(hex)) and SIT overrides (ENCRYPTION=, MINTLSLEVEL=); z/OS AT-TLS Policy Agent files (TTLSRule, V3CipherSuites, TLSv1.x On/Off); IMS Connect HWSCFGxx SSLPORT; DB2 z/OS ENCRYPT_TDES from COBOL; 4 negatives. First pass 694/706 (P 1.000 / R 0.980): none of these file types were routed to any parser. Built natural_parser.py (COBOL/ICSF rule table + Natural comment syntax) and mainframe_defs_parser.py (CICS/SIT/IMS/AT-TLS rules, CIPHERS() hex decoding to symmetric families, AT-TLS sniffing inside .conf/.policy). One label corrected after the pass: CCA `KEY-TYPE 'DATA'` is a DES/TDES key type — the detector was right. 0 findings on 213 real Natural sources (SoftwareAG sample apps); zowe-cli / cics-java-liberty-restapp unchanged | 17 | 1.000 / 0.980 / 0.990 | F1 1.000 (706/706) |
 | 14 — BLIND, payments / HSM idioms outside Java: payShield host-command clients in C#, Python, Go, C and TypeScript (A0/CC/CW/CY/KQ/EI/BU command literals), X9.24 DUKPT (BDK/IPEK/KSN) in C# and Go, TR-31 key blocks in C#, ISO 9797 retail MAC and python-pkcs11 Mechanism.* in Python, OpenSSL legacy DES_ecb2 PIN-block code in C, Node KCV; 4 negatives with the same two-letter codes in UI/grid/seat-map tables. First pass 713/722 (P 0.999 / R 0.988): the payments vocabulary lived only in the Java rule table, and OpenSSL `DES_ecb2_encrypt` (2-key TDES) was reported as DES. Fixed by running the payments/HSM/PKCS#11 rule subset as a polyglot pass for every non-JVM language (deduped, file-context gated) and by re-typing DES key schedules used by an ede2/ede3 call as 3DES. All four negatives stayed silent. One label corrected in the detector's favour (an AES key-block LMK stated only in a comment). jPOS: +15 true positives (TR-31 usage table, DUKPT KSN lines), Fineract / zowe-cli byte-identical | 16 | 0.999 / 0.988 / 0.994 | F1 1.000 (722/722) |
+| 15 — BLIND, legacy bank languages with no parser at all: HLASM calling CSNBENC/CSNBSYE (with a commented-out CALL), Informix 4GL ENCRYPT_AES/ENCRYPT_TDES + Genero security.Digest, PowerBuilder CrypterObject (SymmetricEncrypt AES!/TripleDES!, Hash SHA256!, AsymmetricSign), Progress ABL SECURITY-POLICY:SYMMETRIC-ENCRYPTION-ALGORITHM / MESSAGE-DIGEST / GENERATE-PBE-KEY / -ssl sockets, NonStop TAL Atalla <32#> command frames and TACL SSLLIB PARAMs, SAS ENCRYPT=AES / NETENCRYPTALGORITHM / PROC PWENCODE / sha256(), payShield console (.hsm) LMK scripts; 7 negatives. First pass 733/748 (P 0.999 / R 0.977): 14 misses were whole files scoring zero because no parser owned .4gl/.sru/.p/.tal/.sas/.hsm, one FP was a commented `*        CALL CSNBENC` in HLASM (the COBOL comment stripper looks at column 7, HLASM comments are `*` in column 1). Fixed with parsers/legacy_4gl_parser.py (suffix-dispatched rule tables, ABL/PowerBuilder content sniff because .p/.i/.cls/.w collide with Pascal, C preprocessor output, VB6 and LaTeX) and a column-1/column-73 HLASM stripper. One label corrected in the detector's favour (PROC PWENCODE METHOD=SAS004 is AES-256, SAS005 is the SHA-256 one). Real-repo check: Progress ADE (4766 files) 19 files / 53 findings, all message-digest/-ssl/ENCRYPT-AUDIT-MAC-KEY — the schema-table token AUDIT-POLICY was removed from the rule after it fired 45 times as HMAC | 26 | 0.999 / 0.977 / 0.988 | F1 1.000 (748/748) |
 
 ## How to read this
 

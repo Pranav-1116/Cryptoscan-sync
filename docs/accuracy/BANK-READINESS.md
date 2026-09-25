@@ -26,7 +26,8 @@ The question behind "real-time testing on banks" is not the generic-language cor
 | Vendored .NET assemblies / native DLLs (no source) | `detectors/dotnet/assembly_scanner.py` — CLI metadata heaps + PE import table | 103 real binaries (pythonnet facades, OpenSSL/libpq) | ✅ deterministic, ⚠️ names only |
 | Payments / HSM vocabulary in C#, Python, Go, C, TS (payShield commands, DUKPT, TR-31, KCV, python-pkcs11) | `java_rules.PAYMENTS_RULES` via `_payments_pass` | wave 14 blind (0.994 → 722/722); jPOS +15 TP, Fineract/zowe-cli unchanged | ✅ measured |
 | Cross-file constants classes (`Algorithms.CIPHER` in another file) | `core/constant_index.py` | unit/pipeline tests; jPOS/Fineract/OBP-API 0 FP | ✅ deterministic, ⚠️ no real repo exercised the hop yet |
-| Not covered yet | Assembler (HLASM) calling ICSF macros, 4GLs (Informix 4GL, PowerBuilder, Progress ABL), payShield console/`.hsm` scripts, Tandem/NonStop TAL, SAS, mobile SDK binaries (iOS/Android without source), runtime/network observation (only static) | — | ❌ |
+| Informix 4GL / Genero, PowerBuilder, Progress OpenEdge ABL, NonStop TAL/TACL (Atalla + SSLLIB), SAS, payShield console `.hsm` scripts, HLASM comments | `parsers/legacy_4gl_parser.py`, `cobol_parser._strip_hlasm_comments` | wave 15 blind (0.988 → 748/748); Progress ADE 4766 files: 53 findings, all confirmed | ✅ deterministic; ⚠️ vocabularies built from vendor docs + one real ABL repo, no real PowerBuilder/4GL/TAL bank code seen yet |
+| Not covered yet | Mobile SDK binaries (iOS/Android without source), runtime/network observation (see `docs/runtime/` once landed), HLASM ICSF *macros* other than CALL/LINK verbs | — | ❌ |
 
 ## Throughput (single core, sandbox CPU)
 
