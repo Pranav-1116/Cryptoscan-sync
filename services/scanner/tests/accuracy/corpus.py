@@ -1332,4 +1332,9 @@ try:
 except ImportError:  # pragma: no cover
     from corpus_wave14_payments_polyglot import register as _register_wave14  # type: ignore[no-redef]
 _register_wave14(_c)
+try:
+    from .corpus_wave15_legacy_4gl import register as _register_wave15
+except ImportError:  # pragma: no cover
+    from corpus_wave15_legacy_4gl import register as _register_wave15  # type: ignore[no-redef]
+_register_wave15(_c)
 
