@@ -3514,3 +3514,24 @@ export const apiMfaDisable = (password: string, code?: string, recoveryCode?: st
 
 export const apiAuthMeDetails = (): Promise<ApiResult<{ username: string; roles: string[]; permissions: string[]; mfa_enabled: boolean; display_name: string; email: string | null; active_sessions: number }>> =>
   call("/api/v1/auth/me");
+
+// ---------------------------------------------------------------- code-level dependency & cascade (per scan)
+export type CascadeProvider = { file: string; algorithms: string[]; findings: number; direct_dependents: number; transitive_dependents: number; wave: number; rank: number; code_origin?: string | null };
+export type CascadeReport = {
+  scan_id: string;
+  summary: Record<string, any> | null;
+  files_in_graph?: number;
+  edges?: number;
+  providers: CascadeProvider[];
+  libraries: { library: string; versions: string[]; files_using: number; findings: number; declared_but_unused: boolean; used_but_undeclared: boolean; manifests: string[] }[];
+  shared_keys: { kind: string; identifier: string; files: string[]; algorithms: string[] }[];
+  weak_parameters: { file: string; line: number; algorithm: string; key_size: number; minimum: number }[];
+  migration_waves: { wave: number; why: string; providers: string[]; dependents_affected: number }[];
+  systems: { system: string; criticality?: string | null; providers: number; algorithms: string[]; weak_parameters: number; dependent_systems: string[]; depends_on_systems: string[]; earliest_wave?: number | null }[] | null;
+  truncated?: Record<string, number>;
+};
+export type ScanSummaryRow = { scan_id: string; status: string; target_location: string; scan_end?: string | null; statistics?: Record<string, any> | null };
+export const apiScansRecent = (pageSize = 20): Promise<ApiResult<{ scans: ScanSummaryRow[]; total_count: number }>> =>
+  call(`/api/v1/scans?page=1&page_size=${pageSize}`);
+export const apiScanCascade = (scanId: string, system?: string): Promise<ApiResult<CascadeReport>> =>
+  call(`/api/v1/scans/${encodeURIComponent(scanId)}/cascade${system ? `?system=${encodeURIComponent(system)}` : ""}`);

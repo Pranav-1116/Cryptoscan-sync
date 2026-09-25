@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiGraph, apiGraphStats, apiGraphBlastRadius } from "../lib/api";
+import CodeCascadePanel from "../components/CodeCascadePanel";
 
 export default function DependencyGraph() {
   const [loading, setLoading] = useState(true);
@@ -270,6 +271,7 @@ export default function DependencyGraph() {
           )}
         </div>
       </div>
+      <CodeCascadePanel />
     </div>
   );
 }
