@@ -107,6 +107,19 @@ _RULES: list[Rule] = [
 ]
 
 
+def _strip_hlasm_comments(text: str) -> str:
+    """HLASM: ``*`` or ``.*`` in column 1 is a comment line; columns 73-80 are the identification area."""
+    out = []
+    for line in text.split("\n"):
+        if line.startswith("*") or line.startswith(".*"):
+            out.append(" " * len(line))
+            continue
+        if len(line) > 72:
+            line = line[:72] + " " * (len(line) - 72)
+        out.append(line)
+    return "\n".join(out)
+
+
 def _strip_cobol_comments(text: str) -> str:
     """Blank fixed-format comment lines (``*`` or ``/`` in column 7), floating ``*>`` comments and
     the sequence-number area (columns 1-6 / 73-80) that can contain arbitrary text."""
@@ -130,10 +143,12 @@ def parse_cobol_file(file_path: Path, repo_root: Path | None = None) -> list[Raw
         text = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    if file_path.suffix.lower() == ".asm":
+        text = _strip_hlasm_comments(text)
     return run_rules(
         file_path=file_path,
         repo_root=repo_root,
-        text=_strip_cobol_comments(text),
+        text=_strip_cobol_comments(text) if file_path.suffix.lower() != ".asm" else text,
         rules=_RULES,
         language="COBOL",
         scanner_id=SCANNER_ID,

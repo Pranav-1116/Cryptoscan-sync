@@ -278,7 +278,7 @@ options netencryptalgorithm=aes netencrypt sslcalistloc="/etc/pki/tls/certs/ca-b
 %let db_pw = {SAS004}A34F...;
 proc pwencode in='Sup3rS3cret' method=sas004;
 run;
-""", {"AES", "TLS", "SHA-256"})
+""", {"AES", "TLS"})  # label corrected: PWENCODE method=sas004 is AES-256 (sas005 would be SHA-256)
     _c("sas", "report.sas", """
 proc means data=work.branch n mean sum;
   class region;

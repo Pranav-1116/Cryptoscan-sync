@@ -27,6 +27,7 @@ from scanner.parsers.cobol_parser import parse_cobol_file
 from scanner.parsers.pli_parser import parse_pli_file
 from scanner.parsers.rpg_parser import parse_rpg_file
 from scanner.parsers.natural_parser import parse_natural_file
+from scanner.parsers.legacy_4gl_parser import parse_legacy_4gl_file
 from scanner.parsers.mainframe_defs_parser import parse_mainframe_defs_file, looks_like_attls_policy
 from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.xml_parser import parse_xml_file
@@ -48,6 +49,7 @@ SQL_EXT = {".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".t
 ASSEMBLY_EXT = {".dll", ".exe", ".netmodule", ".winmd"}
 PLI_EXT = {".pli", ".pl1", ".plx", ".pls1"}
 NATURAL_EXT = {".nsp", ".nsn", ".nss", ".nsh", ".nsc", ".nsl", ".nsa", ".nsg", ".nsm", ".nat"}
+LEGACY_4GL_EXT = {".4gl", ".per", ".sru", ".srw", ".srf", ".sra", ".srd", ".srs", ".srm", ".srq", ".p", ".w", ".i", ".cls", ".tal", ".tacl", ".ptal", ".sas", ".hsm"}
 MAINFRAME_DEF_EXT = {".csd", ".rdo", ".sit", ".proclib", ".hwscfg", ".ttls", ".pagent"}
 RPG_EXT = {".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl"}
 COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".cblle", ".sqlcblle", ".cbl38", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
@@ -77,6 +79,7 @@ PARSERS = (
     (RPG_EXT, parse_rpg_file),
     (NATURAL_EXT, parse_natural_file),
     (MAINFRAME_DEF_EXT, parse_mainframe_defs_file),
+    (LEGACY_4GL_EXT, parse_legacy_4gl_file),
     (PLIST_EXT, parse_swift_file),
     (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),
