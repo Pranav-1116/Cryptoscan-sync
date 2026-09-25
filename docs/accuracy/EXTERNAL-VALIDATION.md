@@ -236,3 +236,10 @@ Every previous round drove the parsers through `scan_third_party.py` (FileDiscov
 
 After the fix `Scanner().scan` and `scan_third_party.py` agree exactly (6 744 files / 53 findings / 48 source + 5 test). Lesson recorded for the runbook: validate through the same entry point the bank will run, not only through the parser harness.
 
+## Round 17 — indirection / evasion shapes (wave 12, blind) → 689/689
+
+Before writing the wave, the resolver was probed on one constant-argument shape per language; only Ruby (`OpenSSL::Cipher.new(ALG)`) failed and was fixed first. The 33-file wave was then written blind and scored **679/689 (P 0.999 / R 0.986 / F1 0.993)** before any rule was touched. Every miss was a false negative; the single precision loss was a coined name (`SHABITS`) from an unresolved Kotlin `"SHA-$bits"` template — `parse_transformation` now maps any surviving `$var` / `%s` / `{0}` / `#{}` placeholder to `UNKNOWN` (which is never counted) instead of inventing an algorithm.
+
+Decision recorded: a **declaration-only JCA transformation constant** (`static final String CIPHER = "DESede/CBC/PKCS5Padding"` with the `getInstance` in another file) *is* inventory — the literal form `Algorithm/Mode/Padding` is unambiguous. Re-scanning Fineract after the change added exactly three findings, all `DEFAULT_ENCRYPTION = "AES/CBC/PKCS5Padding"` passed to an internal wrapper (`EncryptionUtil.encryptToBase64`) — true positives the old rule could not see. jPOS output is byte-identical. Bare Node cipher names in an unused enum member are *not* counted (declared-but-unused is not usage); this asymmetry is deliberate and documented in the corpus.
+
+Other resolver additions: Java `import static javax.crypto.Cipher.getInstance`, class-qualified constants (`Algorithms.CIPHER`), numeric constants folded into Kotlin/JS/Python templates, `hashlib` dispatch tables (`{"legacy": hashlib.md5}`), TS `const enum` members, Go dot imports (`import . "crypto/sha1"` → bare `Sum(`), C# `using Sym = System.Security.Cryptography.Aes;`.

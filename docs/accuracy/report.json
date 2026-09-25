@@ -1,19 +1,19 @@
 {
-  "generated_at": "2026-09-24T17:44:43+00:00",
+  "generated_at": "2026-09-25T04:03:00+00:00",
   "corpus": {
-    "python": 70,
-    "positive": 484,
-    "negative": 94,
+    "python": 78,
+    "positive": 515,
+    "negative": 96,
     "obfuscated": 18,
-    "java": 99,
-    "kotlin": 15,
-    "javascript": 46,
-    "typescript": 10,
-    "go": 37,
-    "csharp": 37,
+    "java": 106,
+    "kotlin": 17,
+    "javascript": 51,
+    "typescript": 12,
+    "go": 40,
+    "csharp": 40,
     "rust": 32,
-    "php": 33,
-    "ruby": 30,
+    "php": 35,
+    "ruby": 31,
     "c": 35,
     "cpp": 3,
     "config": 78,
@@ -29,19 +29,19 @@
     "pli": 4,
     "rpg": 14,
     "cl": 4,
-    "total": 656
+    "total": 689
   },
   "overall": {
-    "tp": 1087,
+    "tp": 1139,
     "fp": 0,
     "fn": 0,
-    "tn": 123,
+    "tn": 128,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 656,
-    "files_exact": 656,
+    "files": 689,
+    "files_exact": 689,
     "file_exact_rate": 1.0
   },
   "by_language": {
@@ -111,7 +111,7 @@
       "file_exact_rate": 1.0
     },
     "csharp": {
-      "tp": 50,
+      "tp": 59,
       "fp": 0,
       "fn": 0,
       "tn": 6,
@@ -119,12 +119,12 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 37,
-      "files_exact": 37,
+      "files": 40,
+      "files_exact": 40,
       "file_exact_rate": 1.0
     },
     "go": {
-      "tp": 54,
+      "tp": 58,
       "fp": 0,
       "fn": 0,
       "tn": 7,
@@ -132,38 +132,38 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 37,
-      "files_exact": 37,
+      "files": 40,
+      "files_exact": 40,
       "file_exact_rate": 1.0
     },
     "java": {
-      "tp": 127,
+      "tp": 136,
       "fp": 0,
       "fn": 0,
-      "tn": 22,
+      "tn": 24,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 99,
-      "files_exact": 99,
+      "files": 106,
+      "files_exact": 106,
       "file_exact_rate": 1.0
     },
     "javascript": {
-      "tp": 67,
+      "tp": 73,
       "fp": 0,
       "fn": 0,
-      "tn": 9,
+      "tn": 10,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 46,
-      "files_exact": 46,
+      "files": 51,
+      "files_exact": 51,
       "file_exact_rate": 1.0
     },
     "kotlin": {
-      "tp": 18,
+      "tp": 22,
       "fp": 0,
       "fn": 0,
       "tn": 3,
@@ -171,8 +171,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 15,
-      "files_exact": 15,
+      "files": 17,
+      "files_exact": 17,
       "file_exact_rate": 1.0
     },
     "nginx": {
@@ -189,7 +189,7 @@
       "file_exact_rate": 1.0
     },
     "php": {
-      "tp": 54,
+      "tp": 60,
       "fp": 0,
       "fn": 0,
       "tn": 6,
@@ -197,8 +197,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 33,
-      "files_exact": 33,
+      "files": 35,
+      "files_exact": 35,
       "file_exact_rate": 1.0
     },
     "pli": {
@@ -215,16 +215,16 @@
       "file_exact_rate": 1.0
     },
     "python": {
-      "tp": 105,
+      "tp": 114,
       "fp": 0,
       "fn": 0,
-      "tn": 11,
+      "tn": 13,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 70,
-      "files_exact": 70,
+      "files": 78,
+      "files_exact": 78,
       "file_exact_rate": 1.0
     },
     "rpg": {
@@ -241,7 +241,7 @@
       "file_exact_rate": 1.0
     },
     "ruby": {
-      "tp": 41,
+      "tp": 44,
       "fp": 0,
       "fn": 0,
       "tn": 5,
@@ -249,8 +249,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 30,
-      "files_exact": 30,
+      "files": 31,
+      "files_exact": 31,
       "file_exact_rate": 1.0
     },
     "rust": {
@@ -306,7 +306,7 @@
       "file_exact_rate": 1.0
     },
     "typescript": {
-      "tp": 15,
+      "tp": 17,
       "fp": 0,
       "fn": 0,
       "tn": 2,
@@ -314,8 +314,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 10,
-      "files_exact": 10,
+      "files": 12,
+      "files_exact": 12,
       "file_exact_rate": 1.0
     },
     "xml": {
@@ -350,13 +350,13 @@
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 94,
+      "tn": 96,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 94,
-      "files_exact": 94,
+      "files": 96,
+      "files_exact": 96,
       "file_exact_rate": 1.0
     },
     "obfuscated": {
@@ -373,16 +373,16 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 929,
+      "tp": 981,
       "fp": 0,
       "fn": 0,
-      "tn": 23,
+      "tn": 26,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 484,
-      "files_exact": 484,
+      "files": 515,
+      "files_exact": 515,
       "file_exact_rate": 1.0
     },
     "wild-negative": {
