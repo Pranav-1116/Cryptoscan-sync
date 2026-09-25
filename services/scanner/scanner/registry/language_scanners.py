@@ -26,6 +26,8 @@ from scanner.parsers.sql_parser import parse_sql_file
 from scanner.parsers.cobol_parser import parse_cobol_file
 from scanner.parsers.pli_parser import parse_pli_file
 from scanner.parsers.rpg_parser import parse_rpg_file
+from scanner.parsers.natural_parser import parse_natural_file
+from scanner.parsers.mainframe_defs_parser import parse_mainframe_defs_file, looks_like_attls_policy
 from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.xml_parser import parse_xml_file
 from scanner.parsers.tree_sitter_scanner import tree_sitter_enabled
@@ -45,6 +47,8 @@ SWIFT_EXT = {".swift"}
 SQL_EXT = {".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc"}
 ASSEMBLY_EXT = {".dll", ".exe", ".netmodule", ".winmd"}
 PLI_EXT = {".pli", ".pl1", ".plx", ".pls1"}
+NATURAL_EXT = {".nsp", ".nsn", ".nss", ".nsh", ".nsc", ".nsl", ".nsa", ".nsg", ".nsm", ".nat"}
+MAINFRAME_DEF_EXT = {".csd", ".rdo", ".sit", ".proclib", ".hwscfg", ".ttls", ".pagent"}
 RPG_EXT = {".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl"}
 COBOL_EXT = {".cbl", ".cob", ".cobol", ".cpy", ".cblle", ".sqlcblle", ".cbl38", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm"}
 PLIST_EXT = {".plist", ".entitlements"}
@@ -71,6 +75,8 @@ PARSERS = (
     (COBOL_EXT, parse_cobol_file),
     (PLI_EXT, parse_pli_file),
     (RPG_EXT, parse_rpg_file),
+    (NATURAL_EXT, parse_natural_file),
+    (MAINFRAME_DEF_EXT, parse_mainframe_defs_file),
     (PLIST_EXT, parse_swift_file),
     (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),
@@ -102,6 +108,8 @@ def scan_file(path: Path, repo_root: Path) -> list[RawFinding]:
             findings = parser(path, repo_root)
             if extensions is C_EXT:
                 findings = findings + _ibm_i_c_pass(path, repo_root, findings)
+            if extensions is CONFIG_EXT:
+                findings = findings + _attls_pass(path, repo_root, findings)
             break
     else:
         if is_named_config_file(path.name):
@@ -157,6 +165,18 @@ def _tag_origin(path: Path, repo_root: Path | None, findings: list[RawFinding]) 
 
 
 _IANA_SUITE = re.compile(r"\b(?:TLS|SSL)_[A-Z0-9_]+_WITH_[A-Z0-9_]+|\bTLS_(?:AES_|CHACHA20_)")
+
+
+def _attls_pass(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> list[RawFinding]:
+    """AT-TLS Policy Agent files are usually named ``*.conf`` / ``*.policy``; when the content is a
+    TTLS policy, run the mainframe-definition rules as well (deduped against the config pass)."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    if not looks_like_attls_policy(text):
+        return []
+    return _dedupe_against(findings, parse_mainframe_defs_file(path, repo_root, text=text))
 
 
 def _expand_cipher_suites(path: Path, repo_root: Path | None, findings: list[RawFinding]) -> list[RawFinding]:

@@ -21,6 +21,8 @@ The question behind "real-time testing on banks" is not the generic-language cor
 | Vendored JAR/WAR/EAR/`.class` (no source) | `jar_string_scanner.py` — constant-pool strings + class references, nested archives | synthetic class files in unit tests | ✅ deterministic, ⚠️ names only (no data-flow) |
 | Triage at 10–50M LOC | `metadata.code_origin` = source / test / generated / vendored / archive on every finding | quorum 797 source vs 944 test; OBP-API 121/57/4 | ✅ measured |
 | IBM i: RPG IV / CL / SQLRPGLE / ILE C — Qc3 APIs (ALGD codes), GSKit, QSSLPCL/QSSLCSL, master keys | `rpg_parser.py` (+ C hook) | wave 11 corpus (18 files) + ILEastic/OSSILE/noxDB/QshOni (673 real files) | ✅ measured (GSKit, Qc3 hash), ⚠️ Qc3 encrypt corpus-only |
+| Software AG Natural (Adabas) — ICSF calls + rule-array INIT literals | `natural_parser.py` | wave 13 (7 files) + 213 real Natural sources (0 FP) | ✅ measured |
+| CICS RDO/CSD (`SSL()`, `SCHEME(HTTPS)`, `CIPHERS(hex)`), SIT, IMS Connect HWSCFG, AT-TLS policy | `mainframe_defs_parser.py` | wave 13 (10 files) | ✅ measured (corpus); ⚠️ no public real CSD extracts available |
 | Vendored .NET assemblies / native DLLs (no source) | `detectors/dotnet/assembly_scanner.py` — CLI metadata heaps + PE import table | 103 real binaries (pythonnet facades, OpenSSL/libpq) | ✅ deterministic, ⚠️ names only |
 | Not covered yet | Natural/Adabas, CICS/IMS resource definitions, 4GLs, payShield console/`.hsm` scripts | — | ❌ |
 

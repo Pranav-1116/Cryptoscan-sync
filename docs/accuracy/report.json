@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-09-25T04:03:00+00:00",
+  "generated_at": "2026-09-25T04:28:07+00:00",
   "corpus": {
     "python": 78,
-    "positive": 515,
-    "negative": 96,
+    "positive": 528,
+    "negative": 100,
     "obfuscated": 18,
     "java": 106,
     "kotlin": 17,
@@ -25,26 +25,43 @@
     "swift": 29,
     "xml": 20,
     "sql": 30,
-    "cobol": 20,
+    "cobol": 21,
     "pli": 4,
     "rpg": 14,
     "cl": 4,
-    "total": 689
+    "natural": 7,
+    "cics": 5,
+    "attls": 2,
+    "ims": 2,
+    "total": 706
   },
   "overall": {
-    "tp": 1139,
+    "tp": 1164,
     "fp": 0,
     "fn": 0,
-    "tn": 128,
+    "tn": 132,
     "precision": 1.0,
     "recall": 1.0,
     "f1": 1.0,
     "accuracy": 1.0,
-    "files": 689,
-    "files_exact": 689,
+    "files": 706,
+    "files_exact": 706,
     "file_exact_rate": 1.0
   },
   "by_language": {
+    "attls": {
+      "tp": 7,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 2,
+      "files_exact": 2,
+      "file_exact_rate": 1.0
+    },
     "c": {
       "tp": 67,
       "fp": 0,
@@ -56,6 +73,19 @@
       "accuracy": 1.0,
       "files": 35,
       "files_exact": 35,
+      "file_exact_rate": 1.0
+    },
+    "cics": {
+      "tp": 7,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 5,
+      "files_exact": 5,
       "file_exact_rate": 1.0
     },
     "cl": {
@@ -72,7 +102,7 @@
       "file_exact_rate": 1.0
     },
     "cobol": {
-      "tp": 19,
+      "tp": 20,
       "fp": 0,
       "fn": 0,
       "tn": 3,
@@ -80,8 +110,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 20,
-      "files_exact": 20,
+      "files": 21,
+      "files_exact": 21,
       "file_exact_rate": 1.0
     },
     "config": {
@@ -136,6 +166,19 @@
       "files_exact": 40,
       "file_exact_rate": 1.0
     },
+    "ims": {
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 2,
+      "files_exact": 2,
+      "file_exact_rate": 1.0
+    },
     "java": {
       "tp": 136,
       "fp": 0,
@@ -173,6 +216,19 @@
       "accuracy": 1.0,
       "files": 17,
       "files_exact": 17,
+      "file_exact_rate": 1.0
+    },
+    "natural": {
+      "tp": 9,
+      "fp": 0,
+      "fn": 0,
+      "tn": 1,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "accuracy": 1.0,
+      "files": 7,
+      "files_exact": 7,
       "file_exact_rate": 1.0
     },
     "nginx": {
@@ -350,13 +406,13 @@
       "tp": 0,
       "fp": 0,
       "fn": 0,
-      "tn": 96,
+      "tn": 100,
       "precision": 1.0,
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 96,
-      "files_exact": 96,
+      "files": 100,
+      "files_exact": 100,
       "file_exact_rate": 1.0
     },
     "obfuscated": {
@@ -373,7 +429,7 @@
       "file_exact_rate": 1.0
     },
     "positive": {
-      "tp": 981,
+      "tp": 1006,
       "fp": 0,
       "fn": 0,
       "tn": 26,
@@ -381,8 +437,8 @@
       "recall": 1.0,
       "f1": 1.0,
       "accuracy": 1.0,
-      "files": 515,
-      "files_exact": 515,
+      "files": 528,
+      "files_exact": 528,
       "file_exact_rate": 1.0
     },
     "wild-negative": {

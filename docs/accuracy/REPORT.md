@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-25T04:03:00+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 689 files). Scored per algorithm family per file._
+_Generated 2026-09-25T04:28:07+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 706 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,23 +10,27 @@ _Generated 2026-09-25T04:03:00+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 689 / 689 (100.0%) |
-| TP / FP / FN / TN | 1139 / 0 / 0 / 128 |
+| Files scored exactly right | 706 / 706 (100.0%) |
+| TP / FP / FN / TN | 1164 / 0 / 0 / 132 |
 
 ## By language
 
 | Language | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
+| attls | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 | c | 35 | 100.0% | 100.0% | 100.0% | 35/35 |
+| cics | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | cl | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| cobol | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
+| cobol | 21 | 100.0% | 100.0% | 100.0% | 21/21 |
 | config | 56 | 100.0% | 100.0% | 100.0% | 56/56 |
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | csharp | 40 | 100.0% | 100.0% | 100.0% | 40/40 |
 | go | 40 | 100.0% | 100.0% | 100.0% | 40/40 |
+| ims | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 | java | 106 | 100.0% | 100.0% | 100.0% | 106/106 |
 | javascript | 51 | 100.0% | 100.0% | 100.0% | 51/51 |
 | kotlin | 17 | 100.0% | 100.0% | 100.0% | 17/17 |
+| natural | 7 | 100.0% | 100.0% | 100.0% | 7/7 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | php | 35 | 100.0% | 100.0% | 100.0% | 35/35 |
 | pli | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
@@ -45,9 +49,9 @@ _Generated 2026-09-25T04:03:00+00:00 by `scripts/accuracy_benchmark.py` against 
 | Category | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | config | 22 | 100.0% | 100.0% | 100.0% | 22/22 |
-| negative | 96 | 100.0% | 100.0% | 100.0% | 96/96 |
+| negative | 100 | 100.0% | 100.0% | 100.0% | 100/100 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 515 | 100.0% | 100.0% | 100.0% | 515/515 |
+| positive | 528 | 100.0% | 100.0% | 100.0% | 528/528 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -76,6 +80,7 @@ misses were fixed and locked in as regression tests.
 | 10 — bank middleware + remaining HSM/mainframe gaps: IBM MQ (MQSC SSLCIPH, mqclient.ini, JMS XML/Java), WebSphere security.xml / ssl.client.props / Liberty, WebLogic config.xml & -D properties, java.security provider order + jdk.tls policies, IBM JSSE2/JCE, Mule TLS/crypto, Camel SSL/crypto/PGP, CXF/Rampart/WSO2, jasypt, QuickFIX/J session TLS, SWIFT LAU, Thales payShield host commands (A0/CA/EI/KQ) in an HSM client, PL/I calling ICSF, plus 8 negatives (two-letter country codes, MQ queues, Camel file routes). Not blind (rules written alongside). First pass 610/628: 12 files were label-convention slips (ECDHE→ECDH, TLS-CIPHERS/TLS-UNVERIFIED/TRUST-ALL→TLS, suite-string decomposition); real detector gaps: WAS `<setting sslProtocol>` element, WebLogic `key-store` hyphenation and `{3DES}` on node-manager credentials, Camel `<crypto:` prefix collision, `DESede/CBC/…` in Camel algorithm attr, MQ `<config-property-type>` between name/value, SSLKEYR not at line start, `jdk.tls.disabledAlgorithms` expanded as if in use, MQ suite raw text truncated before the digest, Thales EI command context on the left of the literal | 34 | 0.977 / 0.968 / 0.972 | F1 1.000 (628/628) |
 | 11 — IBM i (RPG IV free/fixed, CL, SQLRPGLE, ILE C) Cryptographic Services Qc3*/QC3xxxxx with ALGD0200/0400/0500 algorithm codes, GSKit TLS, QSSLPCL/QSSLCSL system values, master-key commands; plus a PCI-PIN / X9.24 / ISO 9564 / TR-31 re-check of the payments pack written from the requirements side (BLIND for the payments half: no payments rule touched while writing). First pass 649/656: payments half 8/10 — `DukptX924` class + `ipek/ksn` parameters missed by the DUKPT rule, and C# `des.Mode = CipherMode.CBC` reported AES regardless of the receiver (real bug: now resolved from the variable's declaration); IBM i half: fixed-form D-spec `10I 0 inz(3)` between name and initialiser, `signHash` field, CEERAN0 secret context on the next line, GSKit cipher-spec literal not exposed for suite decomposition | 28 | 0.999 / 0.992 / 0.995 | F1 1.000 (656/656) |
 | 12 — BLIND, evasion / indirection shapes a bank code base uses without meaning to hide anything: Java static imports, constants classes (`Algorithms.CIPHER`), enums, multi-line concatenation, external config; Kotlin companion consts and `"SHA-$bits"` templates; Python `getattr(hashlib, …)`, module aliases, dict dispatch tables, f-strings; JS/TS bracket access, template literals, destructured aliases, `const enum`, dynamic `import()`; Go import aliases and dot imports, `crypto.Hash` constants; C# `CryptoConfig`, `HashAlgorithmName`, `using` aliases; PHP variable functions and class consts; Ruby constants. First pass 679/689: all 10 misses were false negatives (precision 0.999 — one coined name `SHABITS` from an unresolved Kotlin template, now UNKNOWN); fixed: Java static-import `getInstance`, class-qualified constants and declaration-only JCA transformation constants (the call lives in another file — Fineract's `DEFAULT_ENCRYPTION` is the real-world case, 3 new true positives, 0 false positives on jPOS/Fineract), numeric constants in Kotlin/JS/Python templates, hashlib dispatch tables, TS enum members, Go dot import, C# using-alias | 33 | 0.999 / 0.986 / 0.993 | F1 1.000 (689/689) |
+| 13 — BLIND, mainframe *definitions* rather than programs: Software AG Natural (Adabas) programs/subprograms/copycode calling ICSF (CSNBSYE/OWH/PVR, CSNDDSG) with rule-array INIT literals; CICS resource definitions (DFHCSDUP: TCPIPSERVICE/URIMAP/IPCONN with SSL()/SCHEME(HTTPS)/CIPHERS(hex)) and SIT overrides (ENCRYPTION=, MINTLSLEVEL=); z/OS AT-TLS Policy Agent files (TTLSRule, V3CipherSuites, TLSv1.x On/Off); IMS Connect HWSCFGxx SSLPORT; DB2 z/OS ENCRYPT_TDES from COBOL; 4 negatives. First pass 694/706 (P 1.000 / R 0.980): none of these file types were routed to any parser. Built natural_parser.py (COBOL/ICSF rule table + Natural comment syntax) and mainframe_defs_parser.py (CICS/SIT/IMS/AT-TLS rules, CIPHERS() hex decoding to symmetric families, AT-TLS sniffing inside .conf/.policy). One label corrected after the pass: CCA `KEY-TYPE 'DATA'` is a DES/TDES key type — the detector was right. 0 findings on 213 real Natural sources (SoftwareAG sample apps); zowe-cli / cics-java-liberty-restapp unchanged | 17 | 1.000 / 0.980 / 0.990 | F1 1.000 (706/706) |
 
 ## How to read this
 

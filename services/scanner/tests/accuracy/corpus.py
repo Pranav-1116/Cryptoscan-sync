@@ -1322,4 +1322,9 @@ try:
 except ImportError:  # pragma: no cover
     from corpus_wave12_evasion import register as _register_wave12  # type: ignore[no-redef]
 _register_wave12(_c)
+try:
+    from .corpus_wave13_mainframe_defs import register as _register_wave13
+except ImportError:  # pragma: no cover
+    from corpus_wave13_mainframe_defs import register as _register_wave13  # type: ignore[no-redef]
+_register_wave13(_c)
 

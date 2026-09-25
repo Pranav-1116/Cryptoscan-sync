@@ -62,6 +62,8 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc",
     ".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm",
     ".pli", ".pl1", ".plx", ".pls1",
+    ".nsp", ".nsn", ".nss", ".nsh", ".nsc", ".nsl", ".nsa", ".nsg", ".nsm", ".nat",  # Software AG Natural
+    ".csd", ".rdo", ".sit", ".proclib", ".hwscfg", ".ttls", ".pagent",  # CICS / IMS / AT-TLS definitions
     ".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl", ".cblle", ".sqlcblle", ".cbl38",
     ".jar", ".war", ".ear", ".aar", ".class", ".dll", ".exe", ".netmodule", ".winmd",
     ".bash",
