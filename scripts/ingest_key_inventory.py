@@ -123,36 +123,22 @@ def main(argv: list[str] | None = None) -> int:
         src = Path(args.source)
         source_files = list(FileDiscovery().discover(src))
         graph = DependencyGraph.build(source_files, src)
-        refs = {}  # normalised identifier → files
-        for (kind, ident), fl in graph.key_refs.items():
-            refs.setdefault(ident.lower(), set()).update(fl)
-            refs.setdefault(ident.lower().rsplit(".", 1)[0], set()).update(fl)  # keystore.jks → keystore
-        consumers, orphans = [], []
-        for f in keys:
-            label = (f.inventory.get("key_label") or "")
-            cands = {label.lower(), label.lower().rsplit("/", 1)[-1], label.lower().replace(".", "_"), label.lower().replace("_", ".")}
-            hits = set()
-            for c in cands:
-                if c and c in refs:
-                    hits |= refs[c]
-            if hits:
-                consumers.append((f.metadata.library, label, sorted(hits)))
-            elif label:
-                orphans.append((f.metadata.library, label))
-        inv_labels = {(f.inventory.get("key_label") or "").lower() for f in keys} | {(f.inventory.get("key_label") or "").lower().rsplit("/", 1)[-1] for f in keys}
-        not_in_inventory = sorted((kind, ident, len(fl)) for (kind, ident), fl in graph.key_refs.items() if kind in ("key_alias", "key_file") and ident.lower() not in inv_labels and ident.lower().rsplit(".", 1)[0] not in inv_labels)
+        from evidence.intelligence.key_reconciliation import reconcile_key_inventory  # same logic as the API / worker
+
+        key_refs = [("local", {"kind": kind, "identifier": ident, "files": len(fl), "sample_files": sorted(fl)[:3]}) for (kind, ident), fl in graph.key_refs.items()]
+        rec = reconcile_key_inventory([f.model_dump() for f in keys], key_refs)
         print(f"\nreconciliation against {src} ({len(source_files)} files):")
-        print(f"  keys with consumers in source: {len(consumers)}")
-        for sysname, label, fl in consumers[:20]:
-            print(f"    {sysname:<18}{label:<40}<- {', '.join(fl[:3])}{' …' if len(fl) > 3 else ''}")
-        print(f"  keys with NO consumer in any scanned repo (orphan, or system not yet scanned): {len(orphans)}")
-        for sysname, label in orphans[:20]:
-            print(f"    {sysname:<18}{label}")
-        print(f"  key identifiers in source that are in NO inventory: {len(not_in_inventory)}")
-        for kind, ident, n in not_in_inventory[:20]:
-            print(f"    {kind:<10}{ident:<40}{n} file(s)")
-        report["reconciliation"] = {"consumers": [{"system": s, "label": l, "files": fl} for s, l, fl in consumers], "orphans": [{"system": s, "label": l} for s, l in orphans],
-                                    "not_in_inventory": [{"kind": k, "identifier": i, "files": n} for k, i, n in not_in_inventory]}
+        print(f"  keys with consumers in source: {rec['summary']['consumers']}")
+        for c in rec["consumers"][:20]:
+            fl = sorted({x for r in c["references"] for x in r["sample_files"]})
+            print(f"    {c['system']:<18}{c['label']:<40}<- {', '.join(fl[:3])}{' …' if len(fl) > 3 else ''}")
+        print(f"  keys with NO consumer in any scanned repo (orphan, or system not yet scanned): {rec['summary']['orphans']}")
+        for o in rec["orphans"][:20]:
+            print(f"    {o['system']:<18}{o['label']}")
+        print(f"  key identifiers in source that are in NO inventory: {rec['summary']['not_in_inventory']}")
+        for n in rec["not_in_inventory"][:20]:
+            print(f"    {n['kind']:<10}{n['identifier']:<40}{n['files']} file(s)")
+        report["reconciliation"] = {k: rec[k] for k in ("summary", "consumers", "orphans", "not_in_inventory")}
 
     if args.output:
         Path(args.output).write_text(json.dumps({"report": report, "findings": [f.model_dump() for f in inv]}, indent=1, default=str))
