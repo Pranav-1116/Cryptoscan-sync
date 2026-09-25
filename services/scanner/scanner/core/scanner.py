@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from scanner.config.scanner_config import ScannerConfig
 from scanner.core.file_discovery import FileDiscovery
@@ -19,6 +20,45 @@ from scanner.core.constant_index import ConstantIndex
 from scanner.registry.language_scanners import scan_file
 
 logger = logging.getLogger(__name__)
+
+
+def _scan_one(args: tuple[Path, Path]) -> tuple[Path, list[RawFinding], Optional[str]]:
+    source_file, root = args
+    try:
+        return source_file, scan_file(source_file, root), None
+    except Exception as exc:  # noqa: BLE001 — one bad file must not sink the scan
+        return source_file, [], str(exc)
+
+
+def scan_processes() -> int:
+    """Per-file parallelism. ``CRYPTOSCAN_SCAN_PROCESSES`` = N | auto (cpu count); default 1.
+
+    The parsers are regex/CPU bound, so threads do not help (GIL); processes do. One
+    scan job then uses N cores; the worker pool's ``max_workers`` stays the number of
+    concurrent *jobs*. Set both from the same core budget.
+    """
+    raw = (os.environ.get("CRYPTOSCAN_SCAN_PROCESSES") or "1").strip().lower()
+    if raw == "auto":
+        return max(1, os.cpu_count() or 1)
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 1
+
+
+def _scan_files(source_files: list[Path], root: Path) -> Iterator[tuple[Path, list[RawFinding], Optional[str]]]:
+    n = scan_processes()
+    if n <= 1 or len(source_files) < 64:
+        for f in source_files:
+            yield _scan_one((f, root))
+        return
+    import multiprocessing as mp
+
+    ctx = mp.get_context("fork" if hasattr(os, "fork") else "spawn")
+    chunk = max(8, len(source_files) // (n * 16))
+    with ctx.Pool(processes=n) as pool:
+        for item in pool.imap_unordered(_scan_one, [(f, root) for f in source_files], chunksize=chunk):
+            yield item
 
 
 class Scanner:
@@ -100,16 +140,15 @@ class Scanner:
 
         constant_index = ConstantIndex.build(source_files)
 
-        for source_file in source_files:
-            try:
-                file_findings = scan_file(source_file, path)
-                if git_ctx:
-                    for finding in file_findings:
-                        finding.git_context = git_ctx
-                findings.extend(file_findings)
-            except Exception as exc:
-                logger.warning("parse_error", extra={"file": str(source_file), "error": str(exc)})
-                parse_errors.append({"file": str(source_file), "error": str(exc)})
+        for source_file, file_findings, error in _scan_files(source_files, path):
+            if error is not None:
+                logger.warning("parse_error", extra={"file": str(source_file), "error": error})
+                parse_errors.append({"file": str(source_file), "error": error})
+                continue
+            if git_ctx:
+                for finding in file_findings:
+                    finding.git_context = git_ctx
+            findings.extend(file_findings)
 
         # Second hop: algorithm strings declared in another file (constants classes).
         resolved_cross_file = constant_index.resolve(findings)

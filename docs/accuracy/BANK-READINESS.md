@@ -29,7 +29,9 @@ The question behind "real-time testing on banks" is not the generic-language cor
 | Informix 4GL / Genero, PowerBuilder, Progress OpenEdge ABL, NonStop TAL/TACL (Atalla + SSLLIB), SAS, payShield console `.hsm` scripts, HLASM comments | `parsers/legacy_4gl_parser.py`, `cobol_parser._strip_hlasm_comments` | wave 15 blind (0.988 → 748/748); Progress ADE 4766 files: 53 findings, all confirmed | ✅ deterministic; ⚠️ vocabularies built from vendor docs + one real ABL repo, no real PowerBuilder/4GL/TAL bank code seen yet |
 | Not covered yet | Mobile SDK binaries (iOS/Android without source), runtime/network observation (see `docs/runtime/` once landed), HLASM ICSF *macros* other than CALL/LINK verbs | — | ❌ |
 
-## Throughput (single core, sandbox CPU)
+## Throughput
+
+### Real repositories, single core (sandbox CPU)
 
 Measured with `/tmp/throughput.py`-style loop over Fineract + jPOS + sql-server-samples + CardDemo:
 
@@ -39,7 +41,30 @@ files/s=112.8   kLOC/s=18.5   => 1M LOC ≈ 0.9 min single-core
 .java 16.5 kLOC/s · .js 12.0 · .cs 26.1 · .sql 35.2 · .xml 153 · .cbl 85
 ```
 
-A 10M-LOC bank monorepo is therefore ~9 CPU-minutes; the worker pool parallelises per file, so wall-clock is bounded by the number of workers, not the parser.
+### Multi-million-LOC monorepo, multi-process (`scripts/scale_evidence.py`)
+
+Synthetic polyglot monorepo (Java 40 % / JS 14 % / C# 12 % / Python 12 % / COBOL 8 % / Go / SQL / YAML,
+~2.5 % of files carry crypto), scanned end-to-end through `Scanner.scan` (discovery → parsers →
+cross-file constant index → config/material scanners) with `CRYPTOSCAN_SCAN_PROCESSES` = 1 and 2 on
+the 2-core sandbox:
+
+```
+synthetic monorepo: 36877 files, 3,000,032 LOC
+procs=1: 76.2s  39.4 kLOC/s  484 files/s  findings=1836  peak RSS 96 MB  -> 10M LOC ≈ 4.2 min
+procs=2: 41.8s  71.7 kLOC/s  882 files/s  findings=1836  peak RSS 96 MB  -> 10M LOC ≈ 2.3 min
+```
+
+Finding counts are identical across process counts (the script exits non-zero otherwise), the
+speed-up is 1.82× on 2 cores (the remainder is the serial constant-index build and result
+assembly), and memory is flat because findings stream back per chunk. Synthetic code is
+lighter than real code per line, so plan with the real-repo 18.5 kLOC/s/core figure: a 10M-LOC
+bank estate is ~9 CPU-minutes of parsing — **under 5 minutes wall-clock on a 4-core worker**,
+and the per-repo git clone will dominate. The 7-day / 10M-LOC *soak* on a real estate is still
+to be run at the pilot; what is established here is that the pipeline is CPU-bound and
+parallelises linearly per file with no memory growth.
+
+Sizing rule: `CRYPTOSCAN_SCAN_PROCESSES × worker max_workers ≤ cores` (one job × N processes,
+or N jobs × 1 process — the second is better when many small repos queue up).
 
 ## What a first bank engagement should do (in order)
 
