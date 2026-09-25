@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import signal
 import sys
+from datetime import timedelta
 
 from worker.config.settings import Settings
 from worker.core.job_consumer import JobConsumer, ScanJob
@@ -33,23 +34,54 @@ class Worker:
         init_db()
         signal.signal(signal.SIGINT, self.signal_handler)
         signal.signal(signal.SIGTERM, self.signal_handler)
+        from db.connection.session import SessionLocal
+
+        from worker.core.job_reaper import fail_job, reap_stale_jobs
+
+        def _dead_letter(payload: dict, reason: str) -> None:
+            with SessionLocal() as session:
+                fail_job(session, str(payload.get("job_id")), reason)
+
+        def _maintenance() -> None:
+            # DB-side sweep: RUNNING rows without progress → FAILED; QUEUED rows missing from Redis → republish
+            with SessionLocal() as session:
+                stats = reap_stale_jobs(
+                    session,
+                    queued_ids=self.consumer.queued_job_ids() if self.consumer and self.consumer.redis_client else None,
+                    publish=self.consumer.enqueue if self.consumer else None,
+                    running_timeout=timedelta(minutes=int(getattr(self.settings, "JOB_RUNNING_TIMEOUT_MINUTES", 90))),
+                    queued_timeout=timedelta(minutes=int(getattr(self.settings, "JOB_QUEUED_TIMEOUT_MINUTES", 10))),
+                )
+            if any(stats.values()):
+                logger.warning("job_reaper_sweep", extra=stats)
+
         self.consumer = JobConsumer(
             redis_url=self.settings.REDIS_URL,
             queue_name=self.settings.queue_key,
             # Production must not silently degrade to an in-process queue:
             # jobs published by the API would be lost across processes.
             allow_memory_fallback=not self.settings.is_production,
+            lease_ttl_seconds=int(getattr(self.settings, "JOB_LEASE_TTL_SECONDS", 60)),
+            max_redeliveries=int(getattr(self.settings, "JOB_MAX_REDELIVERIES", 3)),
+            on_dead_letter=_dead_letter,
+            on_maintenance=_maintenance,
         )
         executor = JobExecutor()
         concurrency = max(1, int(getattr(self.settings, "MAX_CONCURRENT_JOBS", 1)))
         self.pool = WorkerPool(handler=executor.execute, max_workers=concurrency)
         logger.info(
             "cryptoscan_worker_pool",
-            extra={"max_concurrent_jobs": concurrency},
+            extra={"max_concurrent_jobs": concurrency, "worker_id": self.consumer.worker_id},
         )
+        # startup: adopt work left behind by crashed workers before taking new work
+        recovered = self.consumer.recover_orphans()
+        if any(recovered.values()):
+            logger.warning("orphaned_jobs_recovered", extra=recovered)
 
         def handle(job: ScanJob):
-            self.pool.submit(job)
+            future = self.pool.submit(job)
+            # at-least-once: the payload leaves Redis only when the scan finished (either way)
+            future.add_done_callback(lambda _f, _job=job: self.consumer.ack(_job))
 
         try:
             self.consumer.consume(handler=handle)

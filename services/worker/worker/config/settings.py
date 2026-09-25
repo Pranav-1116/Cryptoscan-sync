@@ -25,6 +25,11 @@ class WorkerSettings(BaseSettings):
     CLONE_TIMEOUT_SECONDS: int = 300
     SCAN_TIMEOUT_SECONDS: int = 600
     MAX_CONCURRENT_JOBS: int = 2
+    # job-path hardening (see worker/core/job_consumer.py, job_reaper.py)
+    JOB_LEASE_TTL_SECONDS: int = 60
+    JOB_MAX_REDELIVERIES: int = 3
+    JOB_RUNNING_TIMEOUT_MINUTES: int = 90
+    JOB_QUEUED_TIMEOUT_MINUTES: int = 10
     CLEANUP_WORKSPACE: bool = True
     ALLOW_SQLITE: bool = False
     POLICY_RULES_DIR: str = ""
