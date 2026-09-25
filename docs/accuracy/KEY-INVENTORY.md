@@ -77,3 +77,13 @@ real drop; the parsers are tolerant (keyword-based, not column-based) for that r
   files and scans), `orphans` (inventory keys no scanned repo uses — retire candidates or an unscanned system),
   `not_in_inventory` (aliases / keystore files in code that no export lists; env vars are excluded because they are not
   inventory items). Same logic as `scripts/ingest_key_inventory.py --source`, but DB-side and per scan.
+* **Policy.** `services/policy/rule_definitions/key_inventory/` (KEYINV-001…009: exportable / extractable, TR-31 version A,
+  expired, expiring ≤ 90 d, stale > 365 d, non-active state, weak key-block binding) via the `KEY_INVENTORY_ATTRIBUTE`
+  condition — FAIL/WARN on export records, `NOT_APPLICABLE` on code, so the source-scan gate is unchanged
+  ([admin-guide/policy-rules.md](../admin-guide/policy-rules.md)).
+* **Drift & alerts.** Every inventory scan is reconciled in the worker (`worker/pipeline/inventory_drift.py`) against the
+  newest source scans and against the *previous* export of the same drop — no approved baseline needed. New findings raise
+  drift events that flow to the alert stage and the Drift page: `KEY_UNACCOUNTED` (HIGH — code uses an alias / keystore no
+  inventory lists), `KEY_ORPHAN` (MEDIUM — inventory key no scanned repo references), `KEY_INVENTORY_REMOVED` (LOW — key
+  gone from the export). Unchanged conditions do not re-alert; the first scan reports everything once (≤ 200 events, the
+  rest is counted). The reconciliation is stored in `Scan.statistics.key_reconciliation`.

@@ -18,9 +18,19 @@ def execute(ctx: PipelineContext, session) -> PipelineContext:
     from db.repositories.baseline_repository import BaselineRepository
     from drift.core.detector import DriftDetector
 
+    inventory_events: list[dict] = []
+    try:
+        from worker.pipeline.inventory_drift import detect_inventory_drift
+
+        inventory_events = detect_inventory_drift(session, ctx.scan_id or "")
+    except Exception:
+        logger.debug("inventory_drift_skipped", exc_info=True)
+
     baseline = BaselineRepository(session).get_active(ctx.target_repo)
     if baseline is None:
         logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
+        ctx.drift_events = inventory_events
+        _publish_drift_events(inventory_events, ctx)
         return ctx
 
     def as_findings(scan_id: str) -> list[dict]:
@@ -72,6 +82,7 @@ def execute(ctx: PipelineContext, session) -> PipelineContext:
                 "algorithm": change.affected_algorithm,
             }
         )
+    events = inventory_events + events
     ctx.drift_events = events
     session.flush()
     _publish_drift_events(events, ctx)

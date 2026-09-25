@@ -927,10 +927,20 @@ class PipelineRunner:
         from db.repositories.baseline_repository import BaselineRepository
         from drift.core.detector import DriftDetector
 
+        # Key-inventory drift needs no approved baseline (previous export of the same drop is the reference).
+        inventory_events: list[dict] = []
+        try:
+            from worker.pipeline.inventory_drift import detect_inventory_drift
+
+            inventory_events = detect_inventory_drift(session, ctx.scan_id or "")
+        except Exception:
+            logger.debug("inventory_drift_skipped", exc_info=True)
+
         baseline_repo = BaselineRepository(session)
         baseline = baseline_repo.get_active(ctx.target_repo)
         if baseline is None:
             logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
+            ctx.drift_events = inventory_events
             return
 
         def as_findings(scan_id: str) -> list[dict]:
@@ -1043,9 +1053,9 @@ class PipelineRunner:
         except Exception:
             logger.debug("config_drift_skipped", exc_info=True)
 
-        ctx.drift_events = events
+        ctx.drift_events = inventory_events + events
         session.flush()
-        logger.info("stage_drift_done", extra={"events": len(events)})
+        logger.info("stage_drift_done", extra={"events": len(ctx.drift_events)})
 
     def _gate(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select
