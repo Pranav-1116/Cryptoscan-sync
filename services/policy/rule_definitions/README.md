@@ -17,6 +17,7 @@ reported as `PASS`.
 | `baseline/` | BASELINE-001…004 | Applies to all evidence (estate-wide floor) |
 | `cnsa/` | CNSA-001…004 | `CNSA` scope tag |
 | `fips/` | FIPS-001…003 | `FIPS` scope tag |
+| `key_inventory/` | KEYINV-001…009 | `KEY_INVENTORY` findings only (HSM/KMS/keystore/cert exports); NOT_APPLICABLE to code |
 | `hipaa/` | HIPAA-001…002 | `HIPAA` / `PHI` scope tags |
 | `nist/` | NIST-001…006 | `NIST` scope tag |
 | `pci_dss/` | PCIDSS-001…006 | `PCI-DSS` / `PAN` scope tags |

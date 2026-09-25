@@ -1,0 +1,22 @@
+rule_id: "KEYINV-003"
+rule_name: "Expired key or certificate still present in inventory"
+version: "1.0"
+effective_date: "2026-01-01"
+severity: "HIGH"
+standard_reference: "NIST SP 800-57 Part 1 §5.3 (cryptoperiods), PCI DSS 4.0 3.7.4, ISO 27001 A.8.24"
+description: >
+  A key or certificate whose not_after date has passed is still listed in an HSM, keystore, RACF ring or
+  KMS export. Expired material must be revoked/archived, not left where applications can select it.
+condition:
+  type: "KEY_INVENTORY_ATTRIBUTE"
+  parameters:
+    attribute: "not_after"
+    operator: "date_before_today"
+    result: "FAIL"
+evaluation:
+  result_template: "FAIL"
+  message_template: "{key_label} expired on {not_after}"
+remediation: >
+  Renew or retire: delete the keystore entry / RACDCERT DELETE / KMS schedule-key-deletion after confirming no
+  consumer (see the key-reconciliation report), and record the disposal in the key-management log.
+enabled: true
