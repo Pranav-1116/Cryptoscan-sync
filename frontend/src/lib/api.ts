@@ -3535,3 +3535,13 @@ export const apiScansRecent = (pageSize = 20): Promise<ApiResult<{ scans: ScanSu
   call(`/api/v1/scans?page=1&page_size=${pageSize}`);
 export const apiScanCascade = (scanId: string, system?: string): Promise<ApiResult<CascadeReport>> =>
   call(`/api/v1/scans/${encodeURIComponent(scanId)}/cascade${system ? `?system=${encodeURIComponent(system)}` : ""}`);
+export type KeyReconciliation = {
+  scan_id: string;
+  source_scans: { scan_id: string; target_location: string }[];
+  summary: { inventory_keys: number; consumers: number; orphans: number; not_in_inventory: number; source_key_references: number };
+  consumers: { system: string; label: string; algorithm?: string; key_size?: number; key_store?: string; state?: string; not_after?: string; references: { kind: string; identifier: string; files: number; sample_files: string[]; scan_id: string }[] }[];
+  orphans: { system: string; label: string; algorithm?: string; key_size?: number; key_store?: string; state?: string; not_after?: string }[];
+  not_in_inventory: { kind: string; identifier: string; files: number; sample_files: string[]; scan_id: string }[];
+};
+export const apiKeyReconciliation = (scanId: string): Promise<ApiResult<KeyReconciliation>> =>
+  call(`/api/v1/scans/${encodeURIComponent(scanId)}/key-reconciliation`);

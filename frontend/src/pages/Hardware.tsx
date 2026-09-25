@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Tabs, Drawer } from "../components/ui.jsx";
+import KeyReconciliationPanel from "../components/KeyReconciliationPanel";
 import { usePollingApi, useApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
@@ -134,6 +135,8 @@ export default function Hardware() {
           </div>
         )}
       </Panel>
+
+      <KeyReconciliationPanel />
 
       <Panel title="Hardware timeline" sub="every change is evidence-linked" className="mt">
         {firmware.length ? (

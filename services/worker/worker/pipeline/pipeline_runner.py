@@ -74,6 +74,16 @@ def _bounded_cascade(cascade: dict, *, max_providers: int = 500, max_list: int =
     return out
 
 
+def _evidence_sources(findings: list) -> dict[str, int]:
+    """Findings per evidence source type (SOURCE_CODE / RUNTIME_LOG / KEY_INVENTORY / …) — lets the API and UI
+    tell a code scan from a log-drop or key-export scan without opening every finding."""
+    out: dict[str, int] = {}
+    for f in findings:
+        t = ((f.get("source") or {}).get("type") if isinstance(f, dict) else None) or "UNKNOWN"
+        out[t] = out.get(t, 0) + 1
+    return out
+
+
 def inventory_certificates(findings: list, *, now: "datetime | None" = None) -> list[dict]:
     """Certificate rows from KEY_INVENTORY findings (keytool / RACDCERT / openssl text / cert CSV / cloud KMS).
 
@@ -411,6 +421,7 @@ class PipelineRunner:
         cascade = getattr(scan_result, "cascade", None)
         if cascade:
             stats["cascade"] = _bounded_cascade(cascade)
+        stats["evidence_sources"] = _evidence_sources(findings)
         languages = list((ctx.scan_meta or {}).get("languages") or [])
         ctx.scan_meta = {
             "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),

@@ -48,6 +48,7 @@ def execute(ctx: PipelineContext) -> PipelineContext:
     cascade = getattr(scan_result, "cascade", None)
     if cascade:
         stats["cascade"] = _bounded_cascade(cascade)
+    stats["evidence_sources"] = _evidence_sources(findings)
     ctx.scan_meta = {
         **dict(ctx.scan_meta or {}),
         "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),
@@ -82,6 +83,16 @@ def execute(ctx: PipelineContext) -> PipelineContext:
 class StageScan:
     def execute(self, ctx: PipelineContext) -> PipelineContext:
         return execute(ctx)
+
+
+def _evidence_sources(findings: list) -> dict[str, int]:
+    """Findings per evidence source type (SOURCE_CODE / RUNTIME_LOG / KEY_INVENTORY / …) — lets the API and UI
+    tell a code scan from a log-drop or key-export scan without opening every finding."""
+    out: dict[str, int] = {}
+    for f in findings:
+        t = ((f.get("source") or {}).get("type") if isinstance(f, dict) else None) or "UNKNOWN"
+        out[t] = out.get(t, 0) + 1
+    return out
 
 
 def _bounded_cascade(cascade: dict, *, max_providers: int = 500, max_list: int = 300) -> dict:

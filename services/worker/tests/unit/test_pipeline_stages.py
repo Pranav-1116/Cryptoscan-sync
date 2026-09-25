@@ -74,6 +74,7 @@ def test_scan_stage_carries_cascade_and_inventory_fields(tmp_path):
     assert stats["cascade_providers"] == 1 and cascade["providers"][0]["file"] == "util/crypto.py" and cascade["providers"][0]["direct_dependents"] == 1
     assert [l["library"] for l in cascade["libraries"] if l["manifests"]] == ["python-cryptography"]
     assert cascade["truncated"]["providers"] == 0
+    assert stats["evidence_sources"] == {"SOURCE_CODE": len(ctx.findings)}
     assert all(isinstance(f, dict) and f["metadata"].get("code_origin") for f in ctx.findings)  # findings travel as JSON dicts
 
 
@@ -100,6 +101,7 @@ def test_key_inventory_findings_become_certificate_rows(tmp_path, monkeypatch):
     ctx = scan(_ctx(tmp_path))
     inv = [f for f in ctx.findings if f["source"]["type"] == "KEY_INVENTORY"]
     assert inv, "key-inventory findings expected"
+    assert ctx.scan_meta["statistics"]["evidence_sources"]["KEY_INVENTORY"] == len(inv)
     certs = inventory_certificates(ctx.findings, now=datetime(2026, 9, 25, tzinfo=timezone.utc))
     assert certs and all(len(c["fingerprint_sha256"]) == 64 and c["extra"]["fingerprint_derived"] for c in certs)
     ebank = next(c for c in certs if "ebank" in (c["subject"] or ""))
