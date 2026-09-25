@@ -38,13 +38,22 @@ Success criterion: first-pass precision ≥ 0.95 and recall ≥ 0.95 on the bank
 Rule of the house: no new rule without a corpus file, benchmark stays 100 %, blind wave before merge,
 CRC/FNV/djb2/xxHash/murmur/adler never reported, comments never count.
 
+## 2a. Key inventory — first real drops
+
+- Parse the first real KGUP / CSFKDSL listing, payShield key export, Luna `cmu` output and cloud KMS
+  dump from a bank; adjust field layouts (parsers are keyword-based on purpose).
+- Add: Futurex / Atalla / Marvell listings, Venafi API JSON, Windows CNG `certutil -store`, macOS keychain,
+  Kubernetes TLS secrets metadata, OpenSSH `authorized_keys`/host keys (algorithm + bits).
+- Database encryption state: `SELECT` scripts for Oracle TDE, SQL Server TDE / Always Encrypted,
+  PostgreSQL pgcrypto usage, MongoDB CSFLE — ingested the same way (bank runs the query, drops the CSV).
+
 ## 2b. Cascade analysis — deepen (sandbox-buildable)
 
 - Call-level edges for Java/C#/Python where a file imports a provider: confirm the provider's crypto method
   is actually invoked (cuts over-approximation of blast radius).
 - Follow JCL `EXEC PGM=`, CICS `LINK/XCTL PROGRAM(...)`, IMS PSB and Spring/CDI bean names as edges.
-- Join the estate cascade with the API's system graph (`api/graph_builder.py`, `/reachability/blast-radius`)
-  so a code-level provider maps to business systems and SLAs.
+- Push the `systems` roll-up (now produced from `cryptoscan-systems.yml`) into the API's system graph
+  (`api/graph_builder.py`, `/reachability/blast-radius`) so it appears in the UI with SLAs and owners.
 - Certificate ↔ service cascade from runtime evidence (RACDCERT labels, keyrings, nginx `ssl_certificate`).
 
 ## 3. Pipeline — evidence still missing

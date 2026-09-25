@@ -15,6 +15,25 @@ Output: `cascade` object in the scan result JSON and three statistics (`cascade_
 | **shared_keys** | *Which keystores, certificate files, key aliases and secret environment variables are used from more than one place?* | identifiers (never values) extracted from every source file and finding snippet: `*.jks/.p12/.pem/.kdb…`, `getenv("…KEY…")`-style env reads, `KeyStore.getKey("alias")`, `-alias`, `LABEL(…)`; kept only when ≥ 2 files reference the same identifier |
 | **weak_parameters** | *Where is the key size below the floor for its family?* | `crypto.key_size` vs `shared_models.algorithm_registry` (`RSA/DSA/DH < 2048`, `EC < 256`, `AES < 128`, …) |
 
+## Business systems (`systems` section)
+
+Drop a `cryptoscan-systems.yml` (or `.cryptoscan/systems.yml`, or `.json`) at the repo root:
+
+```yaml
+systems:
+  - system: PAY-SWITCH-01        # CMDB id / application code
+    paths: [payments/, mf/PAYPOST.cbl]
+    criticality: critical
+    owner: payments-platform
+  - system: CORE-CRYPTO-LIB
+    paths: [core/]
+```
+
+The cascade then reports, per system: files, crypto providers, algorithms, weak parameters, **which other
+systems depend on its crypto** (`dependent_systems`), which systems' crypto it depends on
+(`depends_on_systems`), and the earliest migration wave it participates in. That is the blast radius in
+the vocabulary the bank's change board uses.
+
 ## The import graph
 
 Edges are extracted per language without a build: Java/Kotlin/Scala `import` (wildcards narrowed to the
