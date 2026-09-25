@@ -34,4 +34,4 @@ Replay a dead-lettered job (after fixing the cause): `redis-cli RPOPLPUSH crypto
 
 ## Drill (once per environment)
 
-Trigger a scan of a large repository, `kill -9` the worker while `stage=scan`, start a worker again: expect `orphaned_jobs_recovered {"requeued": 1}` in its first log lines and the job to complete with `progress.attempts` visible in the payload. Total added latency ≤ lease TTL + maintenance interval (~2 min).
+Scripted: `REDIS_URL=redis://… python scripts/queue_kill9_drill.py` (≈ 10 s, uses its own queue, exit 0 = PASS). Manual: trigger a scan of a large repository, `kill -9` the worker while `stage=scan`, start a worker again: expect `orphaned_jobs_recovered {"requeued": 1}` in its first log lines and the job to complete with `progress.attempts` visible in the payload. Total added latency ≤ lease TTL + maintenance interval (~2 min).
