@@ -70,6 +70,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 [Production](admin-guide/production.md) ·
 [Air-gap install](admin-guide/air-gap-install.md) ·
 [Hardening](admin-guide/hardening.md) ·
+[Scanner configuration](admin-guide/scanner-configuration.md) ·
 [Backup/restore](admin-guide/backup-restore.md) ·
 [Performance](admin-guide/performance.md) ·
 [System configuration](admin-guide/system-configuration.md) ·

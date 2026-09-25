@@ -59,3 +59,19 @@ def test_cloud_and_tls_stages(tmp_path):
 def test_graph_sync_stage_fail_open(tmp_path):
     ctx = graph_sync(_ctx(tmp_path), session=None)
     assert ctx.job_id == "j1"
+
+
+def test_scan_stage_carries_cascade_and_inventory_fields(tmp_path):
+    from worker.pipeline.stage_scan import execute as scan
+
+    (tmp_path / "util").mkdir()
+    (tmp_path / "util" / "crypto.py").write_text("import hashlib\ndef h(b):\n    return hashlib.sha256(b).hexdigest()\n")
+    (tmp_path / "app.py").write_text("from util.crypto import h\n")
+    (tmp_path / "requirements.txt").write_text("cryptography==42.0.5\n")
+    ctx = scan(_ctx(tmp_path))
+    stats = ctx.scan_meta["statistics"]
+    cascade = stats["cascade"]
+    assert stats["cascade_providers"] == 1 and cascade["providers"][0]["file"] == "util/crypto.py" and cascade["providers"][0]["direct_dependents"] == 1
+    assert [l["library"] for l in cascade["libraries"] if l["manifests"]] == ["python-cryptography"]
+    assert cascade["truncated"]["providers"] == 0
+    assert all(isinstance(f, dict) and f["metadata"].get("code_origin") for f in ctx.findings)  # findings travel as JSON dicts

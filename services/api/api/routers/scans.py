@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -22,6 +23,16 @@ from db.repositories.scan_repository import ScanRepository
 router = APIRouter(prefix="/scans", tags=["scans"])
 
 
+def _slim_statistics(stats: Optional[dict]) -> Optional[dict]:
+    """List/detail responses carry the cascade *summary* only; the full report is GET /scans/{id}/cascade."""
+    if not stats or "cascade" not in stats:
+        return stats
+    slim = dict(stats)
+    cascade = slim.pop("cascade") or {}
+    slim["cascade_summary"] = cascade.get("summary")
+    return slim
+
+
 def _to_response(scan) -> ScanResponse:
     return ScanResponse(
         scan_id=scan.id,
@@ -36,7 +47,7 @@ def _to_response(scan) -> ScanResponse:
         scan_start=scan.scan_start.isoformat() if scan.scan_start else None,
         scan_end=scan.scan_end.isoformat() if scan.scan_end else None,
         duration_seconds=scan.duration_seconds,
-        statistics=scan.statistics,
+        statistics=_slim_statistics(scan.statistics),
         manifest_hash=scan.manifest_hash,
         error_message=scan.error_message,
     )
@@ -69,6 +80,50 @@ def get_scan(
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     return _to_response(scan)
+
+
+@router.get("/{scan_id}/cascade")
+def get_scan_cascade(
+    scan_id: str,
+    section: Optional[str] = Query(None, description="providers | libraries | shared_keys | weak_parameters | migration_waves | systems | summary"),
+    system: Optional[str] = Query(None, description="restrict providers/weak_parameters to one business system (needs cryptoscan-systems.yml)"),
+    limit: int = Query(200, ge=1, le=1000),
+    user: str = Depends(get_current_user),
+    repo: ScanRepository = Depends(get_scan_repository),
+):
+    """Dependency & cascade report of a scan: crypto providers with blast radius, migration waves,
+    third-party crypto libraries, shared key material, key sizes below the floor, business-system roll-up."""
+    scan = repo.get_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    cascade = (scan.statistics or {}).get("cascade")
+    if not cascade:
+        raise HTTPException(status_code=404, detail="No cascade report for this scan (scanner < 1.1 or CRYPTOSCAN_CASCADE=0)")
+    if system:
+        systems = {s["system"]: s for s in cascade.get("systems") or []}
+        if system not in systems:
+            raise HTTPException(status_code=404, detail=f"System {system!r} not in this scan's system map")
+        from fnmatch import fnmatch
+
+        def _in(path: str) -> bool:
+            path = path.split("!", 1)[0]
+            return any(path == g.rstrip("/") or path.startswith(g.rstrip("/").removesuffix("/**").removesuffix("/*") + "/") or fnmatch(path, g) for g in systems[system]["paths"])
+
+        cascade = dict(cascade)
+        cascade["providers"] = [p for p in cascade.get("providers") or [] if _in(p["file"])]
+        cascade["weak_parameters"] = [w for w in cascade.get("weak_parameters") or [] if _in(w["file"])]
+        cascade["systems"] = [systems[system]]
+    if section:
+        if section not in cascade:
+            raise HTTPException(status_code=400, detail=f"unknown section {section!r}")
+        value = cascade[section]
+        return {"scan_id": scan_id, "section": section, "total": len(value) if isinstance(value, list) else None,
+                section: value[:limit] if isinstance(value, list) else value}
+    out = {"scan_id": scan_id, "summary": cascade.get("summary"), "files_in_graph": cascade.get("files_in_graph"), "edges": cascade.get("edges"),
+           "migration_waves": cascade.get("migration_waves"), "systems": cascade.get("systems"), "truncated": cascade.get("truncated")}
+    for k in ("providers", "libraries", "shared_keys", "weak_parameters"):
+        out[k] = (cascade.get(k) or [])[:limit]
+    return out
 
 
 @router.post("/{scan_id}/retry", response_model=TriggerScanResponse)
