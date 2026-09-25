@@ -28,6 +28,7 @@ from scanner.parsers.pli_parser import parse_pli_file
 from scanner.parsers.rpg_parser import parse_rpg_file
 from scanner.parsers.natural_parser import parse_natural_file
 from scanner.parsers.legacy_4gl_parser import parse_legacy_4gl_file
+from scanner.parsers.runtime_log_parser import RUNTIME_LOG_EXT, parse_runtime_log_file
 from scanner.parsers.mainframe_defs_parser import parse_mainframe_defs_file, looks_like_attls_policy
 from scanner.parsers.swift_parser import parse_swift_file
 from scanner.parsers.xml_parser import parse_xml_file
@@ -80,6 +81,7 @@ PARSERS = (
     (NATURAL_EXT, parse_natural_file),
     (MAINFRAME_DEF_EXT, parse_mainframe_defs_file),
     (LEGACY_4GL_EXT, parse_legacy_4gl_file),
+    (RUNTIME_LOG_EXT, parse_runtime_log_file),
     (PLIST_EXT, parse_swift_file),
     (XML_EXT, parse_xml_file),
     (C_EXT, parse_c_file),
@@ -231,8 +233,7 @@ def _expand_cipher_suites(path: Path, repo_root: Path | None, findings: list[Raw
             if key in have:
                 continue
             have.add(key)
-            extra.append(
-                make_finding(
+            child = make_finding(
                     file_path=path,
                     repo_root=repo_root,
                     line_number=f.source.line_number,
@@ -245,6 +246,8 @@ def _expand_cipher_suites(path: Path, repo_root: Path | None, findings: list[Raw
                     confidence="MEDIUM",
                     confidence_reason="cipher-suite-component",
                     raw_transformation=raw[:80],
-                )
             )
+            child.source.type = f.source.type  # runtime-log parents stay runtime evidence
+            child.source.code_snippet = f.source.code_snippet
+            extra.append(child)
     return extra

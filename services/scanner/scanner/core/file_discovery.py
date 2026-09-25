@@ -166,6 +166,10 @@ class FileDiscovery:
             self._excluded_dirs = self._excluded_dirs | DEFAULT_TEST_DIRS
         self._max_file_size_bytes = int(max_file_size_mb * 1024 * 1024)
         self._extensions = tuple(extensions) if extensions else DEFAULT_SOURCE_EXTENSIONS
+        # Runtime evidence (ICSF/RACF/payShield/JSSE/openssl/web-server/sshd logs) is opt-in:
+        # log trees are large and repetitive, and a bank hands them over separately.
+        if os.environ.get("CRYPTOSCAN_RUNTIME_LOGS", "").lower() in ("1", "true", "yes"):
+            self._extensions = self._extensions + (".log", ".trc", ".audit", ".syslog")
 
     def _is_excluded_dir(self, path: Path) -> bool:
         name = path.name
