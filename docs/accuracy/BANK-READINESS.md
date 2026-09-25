@@ -24,7 +24,9 @@ The question behind "real-time testing on banks" is not the generic-language cor
 | Software AG Natural (Adabas) — ICSF calls + rule-array INIT literals | `natural_parser.py` | wave 13 (7 files) + 213 real Natural sources (0 FP) | ✅ measured |
 | CICS RDO/CSD (`SSL()`, `SCHEME(HTTPS)`, `CIPHERS(hex)`), SIT, IMS Connect HWSCFG, AT-TLS policy | `mainframe_defs_parser.py` | wave 13 (10 files) | ✅ measured (corpus); ⚠️ no public real CSD extracts available |
 | Vendored .NET assemblies / native DLLs (no source) | `detectors/dotnet/assembly_scanner.py` — CLI metadata heaps + PE import table | 103 real binaries (pythonnet facades, OpenSSL/libpq) | ✅ deterministic, ⚠️ names only |
-| Not covered yet | Natural/Adabas, CICS/IMS resource definitions, 4GLs, payShield console/`.hsm` scripts | — | ❌ |
+| Payments / HSM vocabulary in C#, Python, Go, C, TS (payShield commands, DUKPT, TR-31, KCV, python-pkcs11) | `java_rules.PAYMENTS_RULES` via `_payments_pass` | wave 14 blind (0.994 → 722/722); jPOS +15 TP, Fineract/zowe-cli unchanged | ✅ measured |
+| Cross-file constants classes (`Algorithms.CIPHER` in another file) | `core/constant_index.py` | unit/pipeline tests; jPOS/Fineract/OBP-API 0 FP | ✅ deterministic, ⚠️ no real repo exercised the hop yet |
+| Not covered yet | Assembler (HLASM) calling ICSF macros, 4GLs (Informix 4GL, PowerBuilder, Progress ABL), payShield console/`.hsm` scripts, Tandem/NonStop TAL, SAS, mobile SDK binaries (iOS/Android without source), runtime/network observation (only static) | — | ❌ |
 
 ## Throughput (single core, sandbox CPU)
 
@@ -51,3 +53,13 @@ A 10M-LOC bank monorepo is therefore ~9 CPU-minutes; the worker pool parallelise
 * `SCANNER_EXCLUDE_DIRS` adds to the built-in exclusions (`.git`, `node_modules`, `vendor`, build outputs …); it never replaces them.
 * Archives (`.jar/.war/.ear/.dll/.exe`) are scanned once through discovery and tagged `code_origin = "archive"`.
 
+
+
+## Bank readiness — the number (2026-09-25)
+
+| Layer | Readiness | Basis |
+|---|---|---|
+| **Discovery accuracy on bank code classes** | **~93 %** | 14 blind waves (722 files, every first pass since wave 9 ≥ 0.990, corpus 100 % after fixes); real repos: jPOS, Fineract, OBP-API, quorum, baker, legend-engine, 257 COBOL/JCL, 673 IBM i, 213 Natural, 103 .NET binaries. Deductions: ICSF/CICS/PL/I/Natural positives are corpus-only (no public bank mainframe code exists); static only — no runtime/network evidence; no bank has yet fed its own first-pass numbers back. |
+| **Scan pipeline (clone → scan → evidence → CBOM → policy → alert)** | ~90 % | PostgreSQL + Redis end-to-end, at-least-once queue + reaper (2026-09-25), soak evidence; not yet run for 7 days or on a 10M-LOC monorepo with several workers. |
+| **Bank operating requirements** (air-gap install, RBAC/SSO, audit chain, backup/PITR, HA, SBOM of the product itself) | ~75 % | air-gap + backup + PITR drills documented and run once; HA compose exists but not drilled; SSO/SAML beta; the product's own SOC 2 / pen-test are company actions. |
+| **Overall for a first bank pilot** | **~85 %** | Ready for a *pilot on the payments switch and the ICSF COBOL modules with a human triage loop* — not yet for an unattended, audit-grade inventory across the whole estate. |
