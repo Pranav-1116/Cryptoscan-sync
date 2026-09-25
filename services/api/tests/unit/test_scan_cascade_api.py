@@ -94,3 +94,47 @@ async def test_code_cascade_rollup_joins_the_system_graph(monkeypatch):
         assert r.status_code == 200 and any(s["id"] == "CARDS" for s in r.json()["systems"]), r.text
         r = await c.get("/api/v1/graph/blast-radius", params={"system_id": "CARDS", "hops": 2})
         assert [s["id"] for s in r.json()["systems"]] == ["sys-core"]
+
+
+def _inv_finding(label, library, algorithm="AES", key_size=256, **inv):
+    return {"source": {"type": "KEY_INVENTORY", "file_path": "exports/ckds.lst", "line_number": 1},
+            "crypto": {"algorithm": algorithm, "key_size": key_size}, "metadata": {"library": library},
+            "inventory": {"key_label": label, **inv}}
+
+
+@pytest.mark.asyncio
+async def test_key_reconciliation_endpoint():
+    from db.models.evidence_record import EvidenceRecord
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    session.add(Scan(id="inv-1", scan_start=datetime(2026, 9, 25, tzinfo=timezone.utc), target_location="file:///drops/keys", target_type="LOCAL_DIRECTORY", status="COMPLETED", statistics={"total_findings": 3}))
+    for i, fd in enumerate([
+        _inv_finding("payments", "keytool", "RSA", 2048, key_store="payments.jks"),
+        _inv_finding("PAY.ZPK.ACQ001", "ICSF", "3DES", 112, key_store="CKDS"),
+        _inv_finding("legacy-partner-ca", "keytool", "RSA", 1024),
+    ]):
+        session.add(EvidenceRecord(id=f"ev-{i}", scan_id="inv-1", content_hash=f"h{i}", chain_hash=f"c{i}", chain_position=i, algorithm=fd["crypto"]["algorithm"],
+                                   confidence="HIGH", file_path="exports/ckds.lst", line_number=1, finding_data=fd))
+    # a source repo scan whose cascade lists key identifiers (newest per target wins; the older one must be ignored)
+    src_stats = lambda refs: {"cascade": {"summary": {}, "key_references": refs}}  # noqa: E731
+    session.add(Scan(id="src-old", scan_start=datetime(2026, 9, 1, tzinfo=timezone.utc), target_location="https://git/core.git", target_type="GIT_REPOSITORY", status="COMPLETED",
+                     statistics=src_stats([{"kind": "key_alias", "identifier": "gone-alias", "files": 1, "sample_files": ["x.java"]}])))
+    session.add(Scan(id="src-new", scan_start=datetime(2026, 9, 24, tzinfo=timezone.utc), target_location="https://git/core.git", target_type="GIT_REPOSITORY", status="COMPLETED",
+                     statistics=src_stats([{"kind": "key_file", "identifier": "payments.jks", "files": 2, "sample_files": ["a.java", "b.java"]},
+                                           {"kind": "key_alias", "identifier": "ebank-tls", "files": 1, "sample_files": ["tls.py"]},
+                                           {"kind": "env_var", "identifier": "PAYMENT_KEY", "files": 1, "sample_files": ["cfg.py"]}])))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/inv-1/key-reconciliation")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert [s["scan_id"] for s in body["source_scans"]] == ["src-new"]
+        assert body["summary"] == {"inventory_keys": 3, "consumers": 1, "orphans": 2, "not_in_inventory": 1, "source_key_references": 3}
+        assert body["consumers"][0]["label"] == "payments" and body["consumers"][0]["references"][0]["identifier"] == "payments.jks"
+        assert {o["label"] for o in body["orphans"]} == {"PAY.ZPK.ACQ001", "legacy-partner-ca"}
+        assert body["not_in_inventory"] == [{"kind": "key_alias", "identifier": "ebank-tls", "files": 1, "sample_files": ["tls.py"], "scan_id": "src-new"}]  # env vars are not inventory items
+        r = await c.get("/api/v1/scans/inv-1/key-reconciliation", params={"source_scan": ["src-old"]})
+        assert r.json()["summary"]["consumers"] == 0 and r.json()["not_in_inventory"][0]["identifier"] == "gone-alias"
+        assert (await c.get("/api/v1/scans/scan-1/key-reconciliation")).status_code == 404  # no inventory findings
+        assert (await c.get("/api/v1/scans/inv-1/key-reconciliation", params={"source_scan": ["nope"]})).status_code == 404

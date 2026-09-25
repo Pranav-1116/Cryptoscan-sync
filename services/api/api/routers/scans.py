@@ -121,9 +121,108 @@ def get_scan_cascade(
                 section: value[:limit] if isinstance(value, list) else value}
     out = {"scan_id": scan_id, "summary": cascade.get("summary"), "files_in_graph": cascade.get("files_in_graph"), "edges": cascade.get("edges"),
            "migration_waves": cascade.get("migration_waves"), "systems": cascade.get("systems"), "truncated": cascade.get("truncated")}
-    for k in ("providers", "libraries", "shared_keys", "weak_parameters"):
+    for k in ("providers", "libraries", "shared_keys", "key_references", "weak_parameters"):
         out[k] = (cascade.get(k) or [])[:limit]
     return out
+
+
+def _label_candidates(label: str) -> set[str]:
+    low = label.lower()
+    return {c for c in (low, low.rsplit("/", 1)[-1], low.replace(".", "_"), low.replace("_", "."), low.rsplit(".", 1)[0]) if c}
+
+
+def reconcile_key_inventory(inventory_findings: list[dict], key_references: list[tuple[str, dict]]) -> dict:
+    """Join key-inventory records (HSM/KMS/keystore/cert exports) with key identifiers referenced from source.
+
+    * ``consumers`` — inventory keys whose label/alias/file name is referenced by scanned source;
+    * ``orphans`` — inventory keys referenced by no scanned repo (retire candidates, or a system not yet scanned);
+    * ``not_in_inventory`` — aliases / keystore files the code uses that no inventory export lists.
+    Pure function so the same logic serves the API and ``scripts/ingest_key_inventory.py``.
+    """
+    refs: dict[str, list[dict]] = {}
+    for scan_id, ref in key_references:
+        item = {**ref, "scan_id": scan_id}
+        ident = str(ref.get("identifier") or "").lower()
+        for c in {ident, ident.rsplit(".", 1)[0]}:
+            if c:
+                refs.setdefault(c, []).append(item)
+    consumers, orphans, seen = [], [], set()
+    inv_labels: set[str] = set()
+    for f in inventory_findings:
+        inv = f.get("inventory") or {}
+        label = str(inv.get("key_label") or "")
+        if not label:
+            continue
+        crypto = f.get("crypto") or {}
+        key = (label.lower(), (f.get("metadata") or {}).get("library"))
+        if key in seen:
+            continue
+        seen.add(key)
+        inv_labels |= _label_candidates(label)
+        hits: dict[tuple, dict] = {}
+        for c in _label_candidates(label):
+            for r in refs.get(c, []):
+                hits[(r["scan_id"], r["kind"], r["identifier"])] = r
+        row = {"system": key[1], "label": label, "algorithm": crypto.get("algorithm"), "key_size": crypto.get("key_size"),
+               "key_store": inv.get("key_store"), "state": inv.get("state"), "not_after": inv.get("not_after"),
+               "file": (f.get("source") or {}).get("file_path")}
+        if hits:
+            consumers.append({**row, "references": sorted(hits.values(), key=lambda r: (r["scan_id"], r["kind"], r["identifier"]))})
+        else:
+            orphans.append(row)
+    not_in_inventory = sorted(
+        ({**ref, "scan_id": scan_id} for scan_id, ref in key_references
+         if ref.get("kind") in ("key_alias", "key_file")
+         and str(ref.get("identifier") or "").lower() not in inv_labels
+         and str(ref.get("identifier") or "").lower().rsplit(".", 1)[0] not in inv_labels),
+        key=lambda r: (-int(r.get("files") or 0), r["kind"], r["identifier"]),
+    )
+    return {
+        "summary": {"inventory_keys": len(seen), "consumers": len(consumers), "orphans": len(orphans), "not_in_inventory": len(not_in_inventory),
+                    "source_key_references": len(key_references)},
+        "consumers": consumers, "orphans": orphans, "not_in_inventory": not_in_inventory,
+    }
+
+
+@router.get("/{scan_id}/key-reconciliation")
+def get_key_reconciliation(
+    scan_id: str,
+    source_scan: Optional[list[str]] = Query(None, description="scan ids of source repositories to reconcile against; default = newest completed scan per target"),
+    limit: int = Query(500, ge=1, le=5000),
+    user: str = Depends(get_current_user),
+    repo: ScanRepository = Depends(get_scan_repository),
+    db: Session = Depends(get_db_session),
+):
+    """Reconcile a key-inventory scan (HSM / KMS / keystore / certificate exports, `CRYPTOSCAN_KEY_INVENTORY=1`)
+    with the key identifiers referenced by scanned source: consumers, orphans, and code keys missing from every inventory."""
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.scan import Scan
+
+    scan = repo.get_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    inventory = [
+        row.finding_data for row in db.query(EvidenceRecord).filter(EvidenceRecord.scan_id == scan_id).all()
+        if ((row.finding_data or {}).get("source") or {}).get("type") == "KEY_INVENTORY"
+    ]
+    if not inventory:
+        raise HTTPException(status_code=404, detail="Scan has no KEY_INVENTORY findings (enable CRYPTOSCAN_KEY_INVENTORY=1 on the key-export target)")
+    if source_scan:
+        sources = [s for s in (repo.get_by_id(sid) for sid in source_scan) if s is not None]
+        if len(sources) != len(source_scan):
+            raise HTTPException(status_code=404, detail="source_scan not found")
+    else:
+        sources, seen_targets = [], set()
+        for s in db.query(Scan).filter(Scan.status == "COMPLETED", Scan.id != scan_id).order_by(Scan.scan_start.desc()).limit(200).all():
+            if s.target_location in seen_targets or not ((s.statistics or {}).get("cascade") or {}).get("key_references"):
+                continue
+            seen_targets.add(s.target_location)
+            sources.append(s)
+    refs = [(s.id, r) for s in sources for r in (((s.statistics or {}).get("cascade") or {}).get("key_references") or [])]
+    out = reconcile_key_inventory(inventory, refs)
+    for k in ("consumers", "orphans", "not_in_inventory"):
+        out[k] = out[k][:limit]
+    return {"scan_id": scan_id, "source_scans": [{"scan_id": s.id, "target_location": s.target_location} for s in sources], **out}
 
 
 @router.post("/{scan_id}/retry", response_model=TriggerScanResponse)

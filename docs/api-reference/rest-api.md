@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-25:
-**658 paths, 724 operations** across 86 tagged groups.
+**659 paths, 725 operations** across 86 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -974,6 +974,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/scans` | List Scans |
 | `GET` | `/api/v1/scans/{scan_id}` | Get Scan |
 | `GET` | `/api/v1/scans/{scan_id}/cascade` | Get Scan Cascade |
+| `GET` | `/api/v1/scans/{scan_id}/key-reconciliation` | Get Key Reconciliation |
 | `POST` | `/api/v1/scans/{scan_id}/retry` | Retry Scan |
 
 ## scim

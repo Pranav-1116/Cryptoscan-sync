@@ -524,6 +524,19 @@ class SystemNode(BaseModel):
     earliest_wave: int | None = None
 
 
+class KeyReferenceNode(BaseModel):
+    """Every key identifier the source refers to (keystore file, alias, env var, KMS id) — one file is enough.
+
+    Feeds inventory reconciliation: an identifier here with no matching key-inventory record is
+    "in source but in no inventory"; an inventory key matched by none is an orphan.
+    """
+
+    kind: str
+    identifier: str
+    files: int
+    sample_files: list[str] = Field(default_factory=list)
+
+
 class CascadeReport(BaseModel):
     files_in_graph: int
     edges: int
@@ -531,6 +544,7 @@ class CascadeReport(BaseModel):
     providers: list[ProviderNode]
     libraries: list[LibraryNode]
     shared_keys: list[SharedKeyNode]
+    key_references: list[KeyReferenceNode] = Field(default_factory=list)
     weak_parameters: list[WeakParameter]
     migration_waves: list[MigrationWave]
     summary: dict[str, Any]
@@ -697,6 +711,10 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
         (SharedKeyNode(kind=k, identifier=i, files=sorted(fl), algorithms=sorted(a)) for (k, i), (fl, a) in refs.items() if len(fl) > 1),
         key=lambda s: (-len(s.files), s.kind, s.identifier),
     )
+    key_ref_nodes = sorted(
+        (KeyReferenceNode(kind=k, identifier=i, files=len(fl), sample_files=sorted(fl)[:3]) for (k, i), (fl, _a) in refs.items()),
+        key=lambda r: (-r.files, r.kind, r.identifier),
+    )
 
     # weak parameters ---------------------------------------------------------------------------
     weak: list[WeakParameter] = []
@@ -723,11 +741,12 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
         "libraries_declared_but_unused": sum(1 for n in libraries if n.declared_but_unused),
         "libraries_used_but_undeclared": sum(1 for n in libraries if n.used_but_undeclared),
         "shared_key_identifiers": len(shared_keys),
+        "key_references": len(key_ref_nodes),
         "weak_parameters": len(weak),
         "migration_waves": len(waves),
     }
     return CascadeReport(files_in_graph=len(graph.files), edges=edges, systems=systems, providers=providers, libraries=libraries,
-                         shared_keys=shared_keys, weak_parameters=weak, migration_waves=waves, summary=summary)
+                         shared_keys=shared_keys, key_references=key_ref_nodes, weak_parameters=weak, migration_waves=waves, summary=summary)
 
 
 # only libraries a manifest parser can recognise may be reported as "used but undeclared";

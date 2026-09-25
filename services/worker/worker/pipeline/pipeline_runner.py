@@ -65,11 +65,11 @@ def _bounded_cascade(cascade: dict, *, max_providers: int = 500, max_list: int =
     """The dependency & cascade report travels in ``Scan.statistics`` (JSON); keep it bounded for monoliths."""
     out = dict(cascade)
     out["providers"] = list(cascade.get("providers") or [])[:max_providers]
-    for k in ("libraries", "shared_keys", "weak_parameters", "systems"):
+    for k in ("libraries", "shared_keys", "key_references", "weak_parameters", "systems"):
         out[k] = list(cascade.get(k) or [])[:max_list]
     out["truncated"] = {
         "providers": max(0, len(cascade.get("providers") or []) - max_providers),
-        **{k: max(0, len(cascade.get(k) or []) - max_list) for k in ("libraries", "shared_keys", "weak_parameters", "systems")},
+        **{k: max(0, len(cascade.get(k) or []) - max_list) for k in ("libraries", "shared_keys", "key_references", "weak_parameters", "systems")},
     }
     return out
 

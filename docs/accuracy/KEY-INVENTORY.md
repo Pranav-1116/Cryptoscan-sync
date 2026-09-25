@@ -70,3 +70,10 @@ real drop; the parsers are tolerant (keyword-based, not column-based) for that r
   `extra.library` say where it came from. `usages` lists the export file path. Re-scanning the same export is idempotent.
 * Enable per worker profile with `CRYPTOSCAN_KEY_INVENTORY=1` — see
   [admin-guide/scanner-configuration.md](../admin-guide/scanner-configuration.md).
+* **Reconciliation API.** `GET /api/v1/scans/{inventory_scan_id}/key-reconciliation[?source_scan=<id>&source_scan=…]`
+  joins the inventory scan's `KEY_INVENTORY` findings with the `key_references` section that every source scan's
+  cascade report now carries (all keystore files / aliases / env vars / KMS ids the code refers to, one file is enough).
+  Default source set = newest completed scan per target. Response: `summary`, `consumers` (inventory key → referencing
+  files and scans), `orphans` (inventory keys no scanned repo uses — retire candidates or an unscanned system),
+  `not_in_inventory` (aliases / keystore files in code that no export lists; env vars are excluded because they are not
+  inventory items). Same logic as `scripts/ingest_key_inventory.py --source`, but DB-side and per scan.

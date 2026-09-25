@@ -96,6 +96,10 @@ def test_scan_emits_cascade_report(tmp_path):
     # shared key material: one keystore, two consumers
     shared = {(s["kind"], s["identifier"]): s for s in c["shared_keys"]}
     assert set(shared[("key_file", "payments.jks")]["files"]) == {util["file"], signer["file"]}
+    # every key identifier (single-file ones too) is listed for inventory reconciliation
+    refs = {(r["kind"], r["identifier"]): r for r in c["key_references"]}
+    assert refs[("key_file", "payments.jks")]["files"] == 2 and len(refs) >= len(shared) == c["summary"]["shared_key_identifiers"]
+    assert c["summary"]["key_references"] == len(refs)
     # weak parameter: RSA 1024 < 2048
     assert any(w["algorithm"] == "RSA" and w["key_size"] == 1024 and w["minimum"] == 2048 for w in c["weak_parameters"])
     # waves: util first, signer second
