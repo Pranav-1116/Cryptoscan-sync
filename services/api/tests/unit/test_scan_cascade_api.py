@@ -24,7 +24,7 @@ CASCADE = {
     "libraries": [{"library": "BouncyCastle", "versions": ["1.78"], "files_using": 0, "declared_but_unused": True}],
     "shared_keys": [], "weak_parameters": [{"file": "cards/CardSigner.java", "line": 5, "algorithm": "RSA", "key_size": 1024, "minimum": 2048}],
     "migration_waves": [{"wave": 1, "why": "shared", "providers": ["core/CryptoUtil.java"], "dependents_affected": 3}],
-    "systems": [{"system": "CORE", "paths": ["core/"], "providers": 1, "dependent_systems": ["CARDS"]}, {"system": "CARDS", "paths": ["cards/**"], "providers": 1, "depends_on_systems": ["CORE"]}],
+    "systems": [{"system": "CORE", "paths": ["core/"], "providers": 1, "dependent_systems": ["CARDS"], "earliest_wave": 1}, {"system": "CARDS", "paths": ["cards/**"], "providers": 1, "depends_on_systems": ["CORE"], "earliest_wave": 2}],
 }
 
 
@@ -94,6 +94,14 @@ async def test_code_cascade_rollup_joins_the_system_graph(monkeypatch):
         assert r.status_code == 200 and any(s["id"] == "CARDS" for s in r.json()["systems"]), r.text
         r = await c.get("/api/v1/graph/blast-radius", params={"system_id": "CARDS", "hops": 2})
         assert [s["id"] for s in r.json()["systems"]] == ["sys-core"]
+        # migration waves: CORE is unscored (wave 3); CARDS is code-only (cascade wave 2) but imports CORE's crypto → not before wave 3
+        r = await c.get("/api/v1/graph/migration-waves")
+        assert r.status_code == 200, r.text
+        plan = r.json()
+        rows = {row["system_id"]: row for w in plan["waves"].values() for row in w}
+        assert plan["code_only_systems"] == 1 and plan["import_edges"] == 1 and plan["systems_delayed_by_imports"] == ["CARDS"]
+        assert rows["CARDS"]["wave"] == 3 and rows["CARDS"]["constrained_by"] == ["sys-core"] and "imports crypto from sys-core" in rows["CARDS"]["rationale"]
+        assert rows["sys-core"]["code_cascade"]["providers"] == 1 and "cascade wave 1" in rows["sys-core"]["rationale"]
 
 
 def _inv_finding(label, library, algorithm="AES", key_size=256, **inv):

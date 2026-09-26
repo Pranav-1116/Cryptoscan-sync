@@ -25,7 +25,7 @@ from db.repositories.migration_task_repository import MigrationTaskRepository
 from db.repositories.system_repository import SystemRepository
 from graph_engine.core.drift import graph_drift
 from graph_engine.core.facade import graph_health
-from graph_engine.core.migration import merge_cycle_constraints
+from graph_engine.core.migration import apply_import_constraints, merge_cycle_constraints
 
 
 def _edge_evidence(graph, edge: dict[str, Any], asset_rows: dict[str, CryptoAsset]) -> dict[str, Any]:
@@ -265,8 +265,37 @@ def graph_migration_waves(user: str = Depends(get_current_user), db: Session = D
                 "rationale": rationale,
             }
         )
+    # Code-level evidence from the scanner's business-system rollup (cryptoscan-systems.yml):
+    # systems the CMDB does not know about join the plan; every system with a code cascade gets
+    # its code wave in the rationale; IMPORTS edges (A's code calls crypto living in B) order A after B.
+    known = {row["system_id"] for row in entries}
+    by_name = {str(row["name"]).lower(): row for row in entries if row.get("name")}
+    code_only = 0
+    for node_id, node in getattr(graph, "nodes", {}).items():
+        if node.get("kind") != "System":
+            continue
+        sid = node_id.split(":", 1)[-1]
+        cc = node.get("code_cascade") or {}
+        row = None
+        if sid in known:
+            row = next(r for r in entries if r["system_id"] == sid)
+        elif node.get("source") == "cryptoscan-systems.yml":
+            code_only += 1
+            code_wave = int(cc.get("earliest_wave") or 3)
+            row = {"system_id": sid, "name": node.get("name") or sid, "wave": min(max(code_wave, 1), 3), "readiness_category": None,
+                   "readiness_score": None, "agility_score": None, "unscored": False, "source": "cryptoscan-systems.yml",
+                   "rationale": f"declared in code, not in the CMDB; code cascade wave {code_wave}"}
+            entries.append(row)
+        if row is not None and cc:
+            row["code_cascade"] = {k: cc.get(k) for k in ("providers", "weak_parameters", "earliest_wave", "algorithms", "scan_id")}
+            if sid in known and cc.get("earliest_wave") is not None:
+                row["rationale"] = (row.get("rationale") or "") + f"; code: {cc.get('providers') or 0} crypto providers, cascade wave {cc.get('earliest_wave')}"
+    imports = [(src, dst) for src, items in getattr(graph, "out", {}).items() for dst, rel in items if rel == "IMPORTS"]
+    import_info = apply_import_constraints(entries, imports)
     result = merge_cycle_constraints(entries, cycles)
     result["unscored_systems"] = unscored
+    result["code_only_systems"] = code_only
+    result.update(import_info)
     return result
 
 

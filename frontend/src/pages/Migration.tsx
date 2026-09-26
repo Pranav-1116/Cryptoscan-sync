@@ -8,6 +8,15 @@ import { useLive, LiveStatus } from "../lib/useLive.js";
    columns are empty until a scan produces vulnerable sites. */
 
 interface Wave { focus?: string; sites?: any[]; site_count?: number }
+interface SystemWaveRow {
+  system_id: string; name?: string; wave: number; position?: number; rationale?: string | null; unscored?: boolean;
+  readiness_score?: number | null; source?: string; constrained_by?: string[]; cycle_group?: string;
+  code_cascade?: { providers?: number; weak_parameters?: number; earliest_wave?: number | null; algorithms?: string[] } | null;
+}
+interface SystemWaves {
+  waves?: Record<string, SystemWaveRow[]>; wave_order?: number[]; total_systems?: number; cycle_groups?: number;
+  systems_bumped?: string[]; unscored_systems?: number; code_only_systems?: number; import_edges?: number; systems_delayed_by_imports?: string[];
+}
 interface Plan {
   inventory?: { total_sites?: number; vulnerable_sites?: number; pqc_ready_sites?: number; by_family?: Record<string, number> };
   workstreams?: any[];
@@ -24,6 +33,8 @@ const WAVE_META: Record<string, { label: string; tone: string }> = {
 
 export default function Migration() {
   const { data, loading, error } = useLive<Plan>("/api/v1/quantum/plan", {});
+  const sysWaves = useLive<SystemWaves>("/api/v1/graph/migration-waves", {});
+  const sysRows: SystemWaveRow[] = Object.values(sysWaves.data.waves ?? {}).flat();
   const inv = data.inventory ?? {};
   const waves = data.waves ?? {};
   const workstreams = data.workstreams ?? [];
@@ -102,6 +113,30 @@ export default function Migration() {
           <p className="dim" style={{ fontSize: 12.5 }}>Run a <a href="#/whatif">what-if analysis</a> on a target algorithm; waves populate as vulnerable sites are discovered.</p>
         </Panel>
       </div>
+
+      <Panel title="System migration order" sub="GET /api/v1/graph/migration-waves — readiness waves held together by dependency cycles and by code-level imports (a system whose code calls crypto living in another system cannot go first)" className="mt">
+        {sysRows.length === 0 ? (
+          <p className="dim" style={{ fontSize: 13 }}>{sysWaves.loading ? "Loading…" : "No systems in the graph yet — register systems (CMDB) or add cryptoscan-systems.yml to scanned repositories."}</p>
+        ) : (
+          <>
+            <div className="dim" style={{ fontSize: 12, marginBottom: 8 }}>
+              {sysWaves.data.total_systems} systems · {sysWaves.data.code_only_systems ?? 0} declared only in code · {sysWaves.data.import_edges ?? 0} code import edges ·{" "}
+              {(sysWaves.data.systems_delayed_by_imports ?? []).length} delayed by imports · {sysWaves.data.cycle_groups ?? 0} dependency cycles · {sysWaves.data.unscored_systems ?? 0} unscored
+            </div>
+            <Table
+              head={["Wave", "#", "System", "Code crypto", "Constraint", "Why"]}
+              rows={sysRows.map((r) => [
+                <Badge key={r.system_id} tone={r.wave === 1 ? "red" : r.wave === 2 ? "amber" : "violet"}>wave {r.wave}</Badge>,
+                r.position ?? "",
+                <span key={r.system_id + "n"}>{r.name || r.system_id}{r.source === "cryptoscan-systems.yml" && <span className="dim" style={{ fontSize: 10, marginLeft: 6 }}>code-declared</span>}</span>,
+                r.code_cascade ? `${r.code_cascade.providers ?? 0} providers${r.code_cascade.weak_parameters ? ` · ${r.code_cascade.weak_parameters} weak` : ""}${r.code_cascade.earliest_wave ? ` · code wave ${r.code_cascade.earliest_wave}` : ""}` : "—",
+                r.constrained_by?.length ? `after ${r.constrained_by.join(", ")}` : r.cycle_group ? r.cycle_group : "—",
+                <span key={r.system_id + "w"} style={{ fontSize: 12 }}>{r.rationale || ""}</span>,
+              ])}
+            />
+          </>
+        )}
+      </Panel>
     </>
   );
 }

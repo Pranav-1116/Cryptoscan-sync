@@ -47,6 +47,11 @@ the vocabulary the bank's change board uses.
   (kept distinct from CMDB `CALLS`). `GET /graph`, `/graph/blast-radius`, `/graph/dependents`, `/graph/path`, hotspots and
   cycles all see those nodes and edges. The Neo4j store carries the node and the edge but not the `code_cascade` map
   (in-memory engine and `/graph` payload do).
+* **Migration order.** `GET /api/v1/graph/migration-waves` now also (1) admits code-declared systems that the CMDB lacks
+  (wave = their code cascade wave, capped at 3), (2) shows each system's code cascade in the rationale, and (3) applies
+  `IMPORTS` edges as ordering constraints: a system whose code calls crypto that lives in another system is held to at
+  least that system's wave (`constrained_by`, `systems_delayed_by_imports`), before cycle constraints are applied.
+  Shown in the "System migration order" panel on the Migration page.
 * **UI.** Dependency Graph page: "Code-level cascade" panel (scan picker, system drill-down, providers by blast radius,
   waves, libraries, shared keys, weak sizes) and a "Code-level crypto" block in the node drawer.
 
