@@ -38,3 +38,14 @@ def test_spelling_insensitive_does_not_over_match():
     evidence = {"algorithm": "TLS 1.2", "normalized_crypto": {"algorithm": "TLS 1.2", "standard_name": "TLS1.2"}}
     assert AlgorithmInListCondition().evaluate(evidence, {"algorithm_list": ["TLS1.0", "TLS1.1"]}).result == "PASS"
     assert AlgorithmInListCondition().evaluate({"algorithm": "SHA-256"}, {"algorithm_list": ["SHA-1", "SHA1"]}).result == "PASS"
+
+
+def test_complex_forbidden_algorithms_match_display_name():
+    from policy.conditions.complex_condition import ComplexCondition
+
+    evidence = {"algorithm": "TLS 1.0", "normalized_crypto": {"algorithm": "TLS 1.0", "standard_name": "TLS1.0"}, "compliance_scopes": ["CBUAE"]}
+    outcome = ComplexCondition().evaluate(evidence, {"required_scopes": ["CBUAE"], "forbidden_algorithms": ["SSLv3", "TLS1.0", "TLS1.1"]})
+    assert outcome.result == "FAIL"
+    ok = ComplexCondition().evaluate({**evidence, "algorithm": "TLS 1.2", "normalized_crypto": {"algorithm": "TLS 1.2", "standard_name": "TLS1.2"}},
+                                     {"required_scopes": ["CBUAE"], "forbidden_algorithms": ["SSLv3", "TLS1.0", "TLS1.1"]})
+    assert ok.result == "PASS"

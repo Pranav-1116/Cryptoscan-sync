@@ -59,6 +59,13 @@ through `PipelineRunner` against a real (SQLite) database. Asserted:
 | policy rule lists compared to the normaliser's *display* name | `normalized_crypto.algorithm = "TLS 1.0"` vs rule list `"TLS1.0"` → **BASELINE-005 / CBUAE-003 / PCIDSS-005 PASSed every TLS 1.0 / 1.1 / SSLv3 endpoint** | `policy/conditions/base_condition.py` — spelling-insensitive match across display name, standard name, evidence column and scanner name (`TLS 1.0` = `TLS1.0` = `TLSv1`, `Triple DES` = `DESede` = `3DES`); regression tests in `test_algorithm_in_list.py` |
 | mainframe / HSM key labels not extracted as key references | COBOL `KEY-LABEL PIC X(64) VALUE 'MADA.ZPK.ACQ.001'`, KGUP `LABEL(…)` and payShield `A6 01 000 U MADA.ZMK…` never reached reconciliation, so every ICSF/payShield key looked like an orphan | `analysis/cascade.key_references` |
 
+Follow-up (same day): a **cross-service contract test**, `services/worker/tests/unit/test_policy_normalizer_contract.py`,
+now takes every algorithm named in every policy rule (leaf and COMPLEX conditions, 44 rules), pushes it through the
+real normaliser exactly as `stage_normalize` does, and asserts the rule still fires. First run: **15 more
+rule/algorithm pairs failed** — the COMPLEX condition used by CBUAE-001/003, PCIDSS-001/005, NIST131A, DIFC/PDPL
+compared `evidence["algorithm"].upper()` directly, so those controls had the same blind spot. Fixed in
+`complex_condition.py`; the contract test (90 cases) is the guard.
+
 The second one is the reason to run the estate through the whole product and not just the scanner: the finding was
 correct, the normalisation was correct, the rule was correct, and the verdict was still wrong.
 

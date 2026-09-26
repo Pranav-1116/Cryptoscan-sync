@@ -82,7 +82,10 @@ end-to-end run found three defects the scanner benchmark could not see, all fixe
 
 - **policy verdicts compared rule lists to the normaliser's display name** — `TLS 1.0` never matched `TLS1.0`, so
   every TLS 1.0 / 1.1 / SSLv3 endpoint PASSed BASELINE-005 / CBUAE-003 / PCIDSS-005. Matching is now
-  spelling-insensitive across every name the evidence carries (`policy/conditions/base_condition.py`);
+  spelling-insensitive across every name the evidence carries (`policy/conditions/base_condition.py`), and a
+  cross-service contract test (`worker/tests/unit/test_policy_normalizer_contract.py`) now pushes every algorithm named
+  in every rule through the real normaliser and asserts the rule still fires — its first run caught 15 more pairs in
+  the COMPLEX controls (CBUAE / PCI DSS / NIST / DIFC / PDPL), also fixed;
 - `.inf` / `.reg` security templates were scanned by the CLI but not by the pipeline's file discovery;
 - mainframe / HSM key labels (COBOL `KEY-LABEL … VALUE`, KGUP `LABEL()`, payShield console) were not extracted as key
   references, so ICSF / payShield keys always reconciled as orphans.

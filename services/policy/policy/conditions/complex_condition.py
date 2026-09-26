@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from policy.conditions.base_condition import BaseCondition, EvaluationOutcome
+from policy.conditions.base_condition import BaseCondition, EvaluationOutcome, algorithm_matches
 from policy.core.scope_resolver import as_scope_list, missing_scopes_message, scopes_apply
 
 
@@ -53,8 +53,10 @@ class ComplexCondition(BaseCondition):
                 result="NOT_APPLICABLE",
                 message=f"Purpose {purpose or 'UNKNOWN'} is outside {sorted(if_purpose)}",
             )
+        # algorithm names are matched spelling-insensitively across every name the evidence carries
+        # (normalised display name "TLS 1.0", standard name "TLS1.0", scanner name "TLSv1") — see base_condition
         if_algorithms = {item.upper() for item in _as_list(params.get("if_algorithms"))}
-        if if_algorithms and algorithm not in if_algorithms:
+        if if_algorithms and algorithm_matches(evidence_data, if_algorithms) is None:
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
                 message=f"Algorithm {algorithm or 'UNKNOWN'} is outside {sorted(if_algorithms)}",
@@ -72,7 +74,7 @@ class ComplexCondition(BaseCondition):
             )
 
         forbidden = {item.upper() for item in _as_list(params.get("forbidden_algorithms"))}
-        if algorithm and algorithm in forbidden:
+        if algorithm and forbidden and algorithm_matches(evidence_data, forbidden) is not None:
             return EvaluationOutcome(
                 result="FAIL",
                 message=f"Algorithm {algorithm} is forbidden by this control",
@@ -86,7 +88,7 @@ class ComplexCondition(BaseCondition):
             )
 
         required_algos = {item.upper() for item in _as_list(params.get("require_algorithms"))}
-        if required_algos and algorithm and algorithm not in required_algos:
+        if required_algos and algorithm and algorithm_matches(evidence_data, required_algos) is None:
             return EvaluationOutcome(
                 result="FAIL",
                 message=f"Algorithm {algorithm} is not in the approved set {sorted(required_algos)}",
