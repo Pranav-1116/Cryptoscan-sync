@@ -56,7 +56,11 @@ the vocabulary the bank's change board uses.
   crypto-provider files (→ the crypto assets found in them, → provider files they import crypto from), `application`
   components for business systems (→ their provider files, → systems whose crypto they import), root → systems. Every
   ref resolves to a component. Key-inventory records carry their export metadata as `cryptoscan:key:*` properties and
-  `assetType related-crypto-material` / `certificate`.
+  `assetType related-crypto-material` / `certificate`. The estate CBOM (`GET /api/v1/cbom/portfolio`, JSON/XML, optionally
+  signed) does the same across systems: root `root:cryptoscan-portfolio` → `system:<name>` components (+ `system:unassigned`
+  for assets not attached to any system), system → its crypto assets + the systems it depends on (`system_dependencies`
+  edges from the systems import). System components carry `cryptoscan:system:{id,criticality,business_unit,coverage_status,
+  environment}` and are ignored by crypto-record consumers (`records_from_bom`).
 * **UI.** Dependency Graph page: "Code-level cascade" panel (scan picker, system drill-down, providers by blast radius,
   waves, libraries, shared keys, weak sizes) and a "Code-level crypto" block in the node drawer.
 

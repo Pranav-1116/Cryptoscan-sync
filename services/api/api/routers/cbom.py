@@ -281,16 +281,69 @@ def cbom_portfolio(
     db: Session = Depends(get_db_session),
 ):
     records = _located_assets(db)
+    system_components, dependencies = _portfolio_dependencies(db, records)
     bom = CbomGenerator().from_records(
         records,
         name="cryptoscan-portfolio",
         version="aggregate",
+        dependencies=dependencies or None,
         metadata_properties=[
             {"name": "cryptoscan:scope", "value": "estate"},
             {"name": "cryptoscan:systems", "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
         ],
     )
+    if system_components:
+        bom["metadata"]["component"]["bom-ref"] = PORTFOLIO_ROOT_REF
+        bom["components"] = list(bom["components"]) + system_components
     return _render(bom, fmt, signed)
+
+
+PORTFOLIO_ROOT_REF = "root:cryptoscan-portfolio"
+
+
+def _portfolio_dependencies(db: Session, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Real CycloneDX dependency graph for the estate CBOM.
+
+    root → every business system (plus an `unassigned` bucket when assets are not attached to a system);
+    system → its crypto assets + the systems it depends on (``system_dependencies`` table, i.e. the
+    edges imported from cryptoscan-systems.yml / the systems import). Every ref points at a component
+    in this BOM, so downstream CycloneDX tooling can walk blast radius across systems.
+    """
+    systems, _ = SystemRepository(db).list_systems(page=1, page_size=1000)
+    if not systems:
+        return [], []
+    repo = SystemRepository(db)
+    sys_ref = {s.id: f"system:{s.name}" for s in systems}
+    assets_by_system: dict[str | None, list[str]] = {}
+    for row in records:
+        ref = row.get("id") or row.get("evidence_id") or row.get("finding_id")
+        if ref:
+            assets_by_system.setdefault(row.get("system_id"), []).append(str(ref))
+    components: list[dict[str, Any]] = []
+    deps: list[dict[str, Any]] = []
+    for s in systems:
+        props = [
+            {"name": "cryptoscan:system:id", "value": s.id},
+            {"name": "cryptoscan:system:criticality", "value": str(s.criticality or "")},
+            {"name": "cryptoscan:system:business_unit", "value": str(s.business_unit or "")},
+            {"name": "cryptoscan:system:coverage_status", "value": str(s.coverage_status or "")},
+            {"name": "cryptoscan:system:environment", "value": str(getattr(s, "environment", "") or "")},
+        ]
+        components.append({"type": "application", "name": s.name, "bom-ref": sys_ref[s.id],
+                           "properties": [p for p in props if p["value"]]})
+        depends = list(assets_by_system.get(s.id, []))
+        depends += [sys_ref[e.child_id] for e in repo.dependencies_for(s.id) if e.child_id in sys_ref and e.child_id != s.id]
+        if depends:
+            deps.append({"ref": sys_ref[s.id], "dependsOn": depends})
+    top = list(sys_ref.values())
+    unassigned = assets_by_system.get(None, [])
+    if unassigned:
+        components.append({"type": "application", "name": "unassigned", "bom-ref": "system:unassigned",
+                           "properties": [{"name": "cryptoscan:system:coverage_status", "value": "unassigned"}]})
+        deps.append({"ref": "system:unassigned", "dependsOn": unassigned})
+        top.append("system:unassigned")
+    deps.insert(0, {"ref": PORTFOLIO_ROOT_REF, "dependsOn": top})
+    return components, deps
 
 
 @router.get("/search")

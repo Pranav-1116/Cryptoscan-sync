@@ -333,3 +333,73 @@ def test_xml_export_carries_full_cbom_fidelity():
     # Dependencies (root ref -> components) present.
     deps = root.findall(".//c:dependency", ns)
     assert deps
+
+
+@pytest.mark.asyncio
+async def test_portfolio_cbom_carries_system_dependency_graph(monkeypatch):
+    """Estate CBOM: root → systems (+unassigned), system → its assets + systems it depends on."""
+    from db.models import crypto_asset as ca, system as sysmod, system_asset as sa
+    from db.models.base import Base
+    from db.models.system_dependency import SystemDependency
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "test-webhook-secret-abc123")
+    monkeypatch.setenv("SECRET_KEY", SECRET)
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    get_settings.cache_clear()
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+    with TestSession() as db:
+        payments = sysmod.System(name="payments-api", environment="prod", criticality="critical")
+        hsm = sysmod.System(name="hsm-gateway", environment="prod")
+        a1 = ca.CryptoAsset(algorithm="RSA", purpose="SIGNING", file_path="p.java", line_number=1)
+        a2 = ca.CryptoAsset(algorithm="3DES", purpose="ENCRYPTION", file_path="h.c", line_number=2)
+        orphan = ca.CryptoAsset(algorithm="MD5", purpose="HASHING", file_path="o.py", line_number=3)
+        db.add_all([payments, hsm, a1, a2, orphan])
+        db.flush()
+        db.add_all([sa.SystemAsset(system_id=payments.id, asset_id=a1.id), sa.SystemAsset(system_id=hsm.id, asset_id=a2.id)])
+        db.add(SystemDependency(parent_id=payments.id, child_id=hsm.id, relation="calls"))
+        db.commit()
+        ids = {"a1": a1.id, "a2": a2.id, "orphan": orphan.id}
+
+    application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: "testuser"
+
+    def _session():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    application.dependency_overrides[get_db_session] = _session
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/cbom/portfolio")
+        xml = await client.get("/api/v1/cbom/portfolio?fmt=xml")
+    assert response.status_code == 200 and xml.status_code == 200
+    bom = response.json()
+    refs = {c["bom-ref"] for c in bom["components"]}
+    assert {"system:payments-api", "system:hsm-gateway", "system:unassigned"} <= refs
+    deps = {d["ref"]: set(d["dependsOn"]) for d in bom["dependencies"]}
+    assert bom["metadata"]["component"]["bom-ref"] == "root:cryptoscan-portfolio"
+    assert deps["root:cryptoscan-portfolio"] == {"system:payments-api", "system:hsm-gateway", "system:unassigned"}
+    assert deps["system:payments-api"] == {ids["a1"], "system:hsm-gateway"}, "system → own assets + system it depends on"
+    assert deps["system:hsm-gateway"] == {ids["a2"]}
+    assert deps["system:unassigned"] == {ids["orphan"]}
+    # every dependency ref resolves to a component in this BOM
+    all_refs = refs | {bom["metadata"]["component"]["bom-ref"]}
+    for ref, targets in deps.items():
+        assert ref in all_refs and targets <= all_refs
+    crit = {p["name"]: p["value"] for c in bom["components"] if c["bom-ref"] == "system:payments-api" for p in c["properties"]}
+    assert crit["cryptoscan:system:criticality"] == "critical"
+    # system components are not mistaken for crypto assets by downstream consumers
+    from cbom.inventory import records_from_bom
+    assert len(records_from_bom(bom)) == 3
+    assert "system:payments-api" in xml.text
