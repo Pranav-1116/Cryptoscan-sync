@@ -17,6 +17,13 @@ class JobExecutor:
     def execute(self, job: ScanJob) -> bool:
         from cloud_scanner.estate import is_org_target, should_run_cloud_job
 
+        from worker.pipeline.binary_job import is_binary_target, run_binary_job
+
+        if is_binary_target(job.target_repo):
+            # a binary scan has no repository to clone; it walks a path under the
+            # configured source roots and produces the same artifact the
+            # synchronous endpoint does
+            return run_binary_job(job)
         if is_org_target(job.target_repo):
             from worker.pipeline.org_job import run_org_job
 

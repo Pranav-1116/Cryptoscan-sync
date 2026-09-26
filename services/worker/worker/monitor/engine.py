@@ -49,6 +49,7 @@ DEFAULT_INTERVALS: dict[str, int] = {
     "PAYMENT": 3_600,     # hourly — HSM audit trails move fast
     "OT": 900,        # 15 min — passive capture re-scan (watch mode rescans on new captures)
     "VENDOR": 604_800,  # weekly — vendor posture changes slowly
+    "TELECOM": 900,    # 15 min — 5GC/roaming NF posture changes fast
 }
 MAX_BACKOFF_SECONDS = 86_400
 
@@ -262,6 +263,42 @@ class MonitorEngine:
 
     # ------------------------------------------------------------- run one
 
+    def _meter_scan(self, target: MonitorTarget) -> None:
+        """SaaS metering: one scan_run unit per executed pass, tenant-owned
+        targets only. Best-effort — metering must never break the loop."""
+        if not getattr(target, "tenant_id", None):
+            return
+        try:
+            from db.repositories.tenant_repository import TenantRepository
+
+            TenantRepository(self.session).record_usage(
+                target.tenant_id, "scan_run", 1, detail=target.name)
+        except Exception:
+            logger.debug("tenant_usage_record_failed", extra={"target": target.name}, exc_info=True)
+
+    def _publish_pass(self, target: MonitorTarget, status: str) -> None:
+        """Every finished pass becomes a signed raw event on the stream
+        (24/7 collection). Best-effort — publishing must never break the
+        monitor loop."""
+        try:
+            from eventstream.bus import get_bus
+
+            get_bus().publish_raw(
+                {
+                    "kind": "monitor_pass",
+                    "target_name": target.name,
+                    "target_type": target.target_type,
+                    "status": status,
+                    "summary": target.last_summary or {},
+                    "tenant_id": getattr(target, "tenant_id", None),
+                    "observed_at": target.last_scan_at.isoformat() if target.last_scan_at else None,
+                },
+                key=target.name,
+                source="monitor-daemon",
+            )
+        except Exception:
+            logger.debug("monitor_pass_publish_failed", extra={"target": target.name}, exc_info=True)
+
     def run_target(self, target: MonitorTarget) -> dict[str, Any]:
         now = self._now()
         interval = int(target.interval_seconds or default_interval(target.target_type))
@@ -276,6 +313,7 @@ class MonitorEngine:
 
         try:
             result = runner(dict(target.config or {}), self.session)
+            self._meter_scan(target)
         except Exception as exc:  # 24/7 rule: the target fails, the loop does not
             logger.warning("monitor_target_failed", extra={"target": target.name})
             failures = int(target.consecutive_failures or 0) + 1
@@ -370,6 +408,7 @@ class MonitorEngine:
         return [issue for issue in issues if issue not in previous]
 
     def _finish(self, target, *, now, interval, status, error, event_type) -> None:
+        self._publish_pass(target, status)
         target.status = status
         target.last_error = error
         target.last_scan_at = now
@@ -395,6 +434,7 @@ def _default_runners() -> dict[str, Runner]:
         ot_runner,
         payment_runner,
         repo_runner,
+        telecom_runner,
         vendor_runner,
     )
 
@@ -406,4 +446,5 @@ def _default_runners() -> dict[str, Runner]:
         "PAYMENT": payment_runner,
         "OT": ot_runner,
         "VENDOR": vendor_runner,
+        "TELECOM": telecom_runner,
     }

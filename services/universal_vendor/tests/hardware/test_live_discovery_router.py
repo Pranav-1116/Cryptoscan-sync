@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from universal_vendor.hardware.correlation import HardwareCorrelationEngine
 from universal_vendor.hardware.live import (

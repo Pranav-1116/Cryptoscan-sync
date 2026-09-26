@@ -48,6 +48,29 @@ class APISettings(BaseSettings):
     OIDC_JWKS_FILE: str = ""
     OIDC_AUTO_PROVISION: bool = False
     OIDC_CLOCK_LEEWAY: int = 60
+    # Authorization-code flow (server-side redirect). Redirect URI defaults to
+    # /api/v1/auth/oidc/callback on the request base when unset. Endpoint URLs
+    # default to discovery; overrides exist for air-gapped deployments.
+    OIDC_CLIENT_SECRET: str = ""
+    OIDC_REDIRECT_URI: str = ""
+    OIDC_SCOPES: str = "openid profile email"
+    OIDC_AUTHORIZATION_URL: str = ""
+    OIDC_TOKEN_URL: str = ""
+    OIDC_POST_LOGIN_REDIRECT: str = "/"
+
+    # Outbound automation connectors (ITSM/SIEM delivery of automation runs).
+    # Values never leave the process — status endpoints report names only.
+    SERVICENOW_INSTANCE_URL: str = ""
+    SERVICENOW_USER: str = ""
+    SERVICENOW_PASSWORD: str = ""
+    SPLUNK_HEC_URL: str = ""
+    SPLUNK_HEC_TOKEN: str = ""
+    JIRA_BASE_URL: str = ""
+    JIRA_USER_EMAIL: str = ""
+    JIRA_API_TOKEN: str = ""
+    JIRA_PROJECT_KEY: str = ""
+    SENTINEL_WORKSPACE_ID: str = ""
+    SENTINEL_SHARED_KEY: str = ""
 
     # SAML 2.0 SSO (SP side, bring-your-own-IdP): off until SAML_IDP_ENTITY_ID
     # and the IdP signing certificate are set. Certificate is PEM, either inline

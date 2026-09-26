@@ -15,6 +15,31 @@ def _bare(member: str) -> str:
     return member.split(":", 1)[1] if ":" in member else member
 
 
+def apply_import_constraints(entries: list[dict[str, Any]], imports: list[tuple[str, str]]) -> dict[str, Any]:
+    """Code-level ordering: ``A IMPORTS B`` (A's code calls crypto that lives in B) means A cannot be
+    migrated before B — A's wave is raised to at least B's. Iterates to a fixpoint (bounded), records
+    ``constrained_by`` on every row it moved. Cycles are left to ``merge_cycle_constraints``.
+    """
+    index = {str(row.get("system_id")): row for row in entries}
+    edges = [(_bare(a), _bare(b)) for a, b in imports]
+    edges = [(a, b) for a, b in edges if a in index and b in index and a != b]
+    moved: list[str] = []
+    for _ in range(len(index) + 1):
+        changed = False
+        for a, b in edges:
+            wa, wb = int(index[a].get("wave") or 1), int(index[b].get("wave") or 1)
+            if wa < wb:
+                index[a]["wave"] = wb
+                index[a].setdefault("constrained_by", [])
+                if b not in index[a]["constrained_by"]:
+                    index[a]["constrained_by"].append(b)
+                moved.append(a)
+                changed = True
+        if not changed:
+            break
+    return {"import_edges": len(edges), "systems_delayed_by_imports": sorted(set(moved))}
+
+
 def merge_cycle_constraints(entries: list[dict[str, Any]], cycles: list[dict[str, Any]]) -> dict[str, Any]:
     """Apply cycle constraints to wave assignments and position systems."""
     rows = [dict(entry) for entry in entries]
@@ -61,6 +86,10 @@ def merge_cycle_constraints(entries: list[dict[str, Any]], cycles: list[dict[str
             if row.get("cycle_group"):
                 rationale = (rationale + "; " if rationale else "") + (
                     f"held in wave {wave} with its dependency cycle {row['cycle_group']}"
+                )
+            if row.get("constrained_by"):
+                rationale = (rationale + "; " if rationale else "") + (
+                    f"not before wave {wave}: its code imports crypto from {', '.join(row['constrained_by'])}"
                 )
             if row.get("unscored"):
                 rationale = (rationale + "; " if rationale else "") + "no agility score yet — conservatively last"

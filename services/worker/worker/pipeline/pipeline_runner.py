@@ -16,6 +16,14 @@ from worker.workspace.workspace_manager import WorkspaceManager
 logger = logging.getLogger(__name__)
 
 
+def _exclude_tests() -> bool:
+    """Test code is scanned by default and tagged ``code_origin=test`` (test keystores and
+    hard-coded fixture keys are inventory). Set CRYPTOSCAN_EXCLUDE_TESTS=1 to skip it."""
+    import os
+
+    return os.environ.get("CRYPTOSCAN_EXCLUDE_TESTS", "0").lower() in ("1", "true", "yes")
+
+
 def ctx_name(scan_id: str) -> str:
     return f"scan:{scan_id}"
 settings = get_settings()
@@ -50,6 +58,97 @@ class PipelineContext:
         for key, value in kwargs.items():
             setattr(self, key, value)
         return self
+
+
+
+def _bounded_cascade(cascade: dict, *, max_providers: int = 500, max_list: int = 300) -> dict:
+    """The dependency & cascade report travels in ``Scan.statistics`` (JSON); keep it bounded for monoliths."""
+    out = dict(cascade)
+    out["providers"] = list(cascade.get("providers") or [])[:max_providers]
+    for k in ("libraries", "shared_keys", "key_references", "weak_parameters", "systems"):
+        out[k] = list(cascade.get(k) or [])[:max_list]
+    out["truncated"] = {
+        "providers": max(0, len(cascade.get("providers") or []) - max_providers),
+        **{k: max(0, len(cascade.get(k) or []) - max_list) for k in ("libraries", "shared_keys", "key_references", "weak_parameters", "systems")},
+    }
+    return out
+
+
+def _evidence_sources(findings: list) -> dict[str, int]:
+    """Findings per evidence source type (SOURCE_CODE / RUNTIME_LOG / KEY_INVENTORY / …) — lets the API and UI
+    tell a code scan from a log-drop or key-export scan without opening every finding."""
+    out: dict[str, int] = {}
+    for f in findings:
+        t = ((f.get("source") or {}).get("type") if isinstance(f, dict) else None) or "UNKNOWN"
+        out[t] = out.get(t, 0) + 1
+    return out
+
+
+def inventory_certificates(findings: list, *, now: "datetime | None" = None) -> list[dict]:
+    """Certificate rows from KEY_INVENTORY findings (keytool / RACDCERT / openssl text / cert CSV / cloud KMS).
+
+    Exports rarely include a SHA-256 fingerprint, so the row key is derived
+    deterministically from subject | issuer | not_after | serial and flagged
+    ``extra.fingerprint_derived`` so the UI can say so. Metadata only.
+    """
+    import hashlib
+    from datetime import datetime as _dt, timezone as _tz
+
+    now = now or _dt.now(_tz.utc)
+    out: dict[str, dict] = {}
+    for f in findings:
+        d = f if isinstance(f, dict) else f.model_dump()
+        if ((d.get("source") or {}).get("type")) != "KEY_INVENTORY":
+            continue
+        inv = d.get("inventory") or {}
+        subject = inv.get("subject")
+        if not subject or inv.get("role"):  # role rows are signature-digest side findings, not the certificate itself
+            continue
+        crypto = d.get("crypto") or {}
+        fp = inv.get("fingerprint_sha256") or inv.get("fingerprint")
+        derived = False
+        if not fp or len(str(fp).replace(":", "")) != 64:
+            basis = "|".join(str(inv.get(k) or "") for k in ("subject", "issuer", "not_after", "serial_number"))
+            fp = hashlib.sha256(f"key-inventory|{basis}".encode()).hexdigest()
+            derived = True
+        fp = str(fp).replace(":", "").lower()
+        not_after = inv.get("not_after")
+        days = None
+        if not_after:
+            try:
+                days = (_dt.fromisoformat(str(not_after)[:10]).replace(tzinfo=_tz.utc) - now).days
+            except ValueError:
+                days = None
+        status = None if days is None else ("EXPIRED" if days < 0 else "EXPIRING_SOON" if days <= 90 else "VALID")
+        location = (d.get("source") or {}).get("file_path")
+        payload = out.get(fp) or {
+            "fingerprint_sha256": fp,
+            "subject": subject,
+            "issuer": inv.get("issuer"),
+            "serial_number": inv.get("serial_number"),
+            "not_before": inv.get("not_before"),
+            "not_after": not_after,
+            "public_key_algorithm": crypto.get("algorithm") if crypto.get("algorithm") != "UNKNOWN" else None,
+            "public_key_size": crypto.get("key_size"),
+            "expiry_status": status,
+            "days_until_expiry": days,
+            "is_self_signed": bool(inv.get("self_signed")),
+            "usages": [],
+            "extra": {
+                "source": "KEY_INVENTORY",
+                "fingerprint_derived": derived,
+                "library": (d.get("metadata") or {}).get("library"),
+                "key_label": inv.get("key_label"),
+                "key_store": inv.get("key_store"),
+                "entry_type": inv.get("entry_type"),
+                "signature_algorithm": inv.get("signature_algorithm"),
+                "state": inv.get("state"),
+            },
+        }
+        if location and location not in payload["usages"]:
+            payload["usages"].append(location)
+        out[fp] = payload
+    return list(out.values())
 
 
 class PipelineRunner:
@@ -298,7 +397,7 @@ class PipelineRunner:
     def _scan(self, ctx: PipelineContext) -> None:
         from scanner.core.scanner import Scanner
 
-        scanner = Scanner(exclude_test_dirs=True)
+        scanner = Scanner(exclude_test_dirs=_exclude_tests())
         scan_result = scanner.scan(
             root_path=ctx.repo_path,
             scan_id=ctx.scan_id,
@@ -319,6 +418,10 @@ class PipelineRunner:
                 findings.append({"raw": str(finding)})
         ctx.findings = findings
         stats = scan_result.statistics.model_dump(mode="json") if hasattr(scan_result, "statistics") else {}
+        cascade = getattr(scan_result, "cascade", None)
+        if cascade:
+            stats["cascade"] = _bounded_cascade(cascade)
+        stats["evidence_sources"] = _evidence_sources(findings)
         languages = list((ctx.scan_meta or {}).get("languages") or [])
         ctx.scan_meta = {
             "scan_id": getattr(scan_result, "scan_id", ctx.scan_id),
@@ -464,6 +567,17 @@ class PipelineRunner:
                         )
             except Exception:
                 logger.debug("certificate_persist_skipped", exc_info=True)
+        inv_certs = inventory_certificates(ctx.findings or [])
+        if inv_certs:
+            try:
+                from db.repositories.certificate_repository import CertificateRepository
+
+                repo = CertificateRepository(session)
+                for cert in inv_certs:
+                    repo.upsert(cert)
+                logger.info("inventory_certificates_persisted", extra={"count": len(inv_certs)})
+            except Exception:
+                logger.debug("inventory_certificate_persist_skipped", exc_info=True)
         if ctx.ot_result and (ctx.ot_result.get("devices") or ctx.ot_result.get("findings")):
             try:
                 from db.repositories.maturity_repository import MaturityRepository
@@ -524,10 +638,16 @@ class PipelineRunner:
         engine = PolicyEngine(rules_dir)
         rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == ctx.scan_id)).scalars())
         self._resolve_system(ctx, session)
+        declared_scopes = self._declared_scope_index(ctx)
         for row in rows:
             finding_data = dict(row.finding_data or {})
-            if ctx.compliance_scopes and not finding_data.get("compliance_scopes"):
-                finding_data["compliance_scopes"] = list(ctx.compliance_scopes)
+            # scopes = repo-level System scopes ∪ scopes of the declared business system that owns this file
+            scopes = list(ctx.compliance_scopes or [])
+            for scope in self._scopes_for_path(row.file_path, declared_scopes):
+                if scope not in scopes:
+                    scopes.append(scope)
+            if scopes and sorted(scopes) != sorted(finding_data.get("compliance_scopes") or []):
+                finding_data["compliance_scopes"] = list(scopes)
                 row.finding_data = finding_data
             payload = {
                 "id": row.id,
@@ -539,7 +659,7 @@ class PipelineRunner:
                 "is_hardcoded_key": row.is_hardcoded_key,
                 "normalized_crypto": row.normalized_crypto or {},
                 "finding_data": finding_data,
-                "compliance_scopes": ctx.compliance_scopes or finding_data.get("compliance_scopes") or [],
+                "compliance_scopes": scopes or finding_data.get("compliance_scopes") or [],
             }
             evaluation = engine.evaluate(payload)
             row.policy_evaluation = evaluation.model_dump(mode="json")
@@ -577,6 +697,7 @@ class PipelineRunner:
         ctx.scan_meta["dedup"] = merged["stats"]
         stored = AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
         self._link_system_assets(ctx, session, stored)
+        self._sync_declared_systems(ctx, session, stored)
         self._quantum_assets(ctx, session, stored)
         try:
             from sqlalchemy.orm.attributes import flag_modified
@@ -736,6 +857,32 @@ class PipelineRunner:
         except Exception:
             logger.debug("coverage_fail_stamp_skipped", exc_info=True)
 
+    @staticmethod
+    def _declared_scope_index(ctx: PipelineContext) -> list[tuple[list[str], list[str]]]:
+        """[(paths, scopes)] for every system in cryptoscan-systems.yml that declares compliance_scopes."""
+        cascade = ((ctx.scan_meta or {}).get("statistics") or {}).get("cascade") or {}
+        out = []
+        for row in cascade.get("systems") or []:
+            if isinstance(row, dict) and row.get("compliance_scopes") and row.get("paths"):
+                out.append(([str(p) for p in row["paths"]], [str(s).upper() for s in row["compliance_scopes"]]))
+        return out
+
+    @staticmethod
+    def _scopes_for_path(file_path: str | None, index: list[tuple[list[str], list[str]]]) -> list[str]:
+        if not file_path or not index:
+            return []
+        from fnmatch import fnmatch
+
+        path = str(file_path).split("!", 1)[0].lstrip("./")
+        scopes: list[str] = []
+        for globs, declared in index:
+            for g in globs:
+                base = str(g).rstrip("/").removesuffix("/**").removesuffix("/*").lstrip("./")
+                if path == base or path.startswith(base + "/") or fnmatch(path, str(g)):
+                    scopes.extend(s for s in declared if s not in scopes)
+                    break
+        return scopes
+
     def _link_system_assets(self, ctx: PipelineContext, session, assets) -> None:
         if not ctx.system_id:
             self._resolve_system(ctx, session)
@@ -748,6 +895,113 @@ class PipelineRunner:
         repo = SystemRepository(session)
         for asset in assets:
             repo.attach_asset(ctx.system_id, asset.id)
+
+    def _sync_declared_systems(self, ctx: PipelineContext, session, assets) -> None:
+        """Persist the business systems declared in ``cryptoscan-systems.yml`` (cascade ``systems`` rollup).
+
+        Each declared system becomes a DB ``System`` (criticality/owner filled when the row is new or blank), owns the
+        stored assets whose file path falls under its declared paths, and gets ``system_dependencies`` edges:
+        repo-system → declared system (``contains``) and declared → declared for ``depends_on_systems``
+        (``imports-crypto``). This is what makes the estate CBOM / graph / migration order system-aware without a
+        manual CMDB import. Idempotent; never removes edges or systems.
+        """
+        cascade = ((ctx.scan_meta or {}).get("statistics") or {}).get("cascade") or {}
+        declared = [row for row in (cascade.get("systems") or []) if isinstance(row, dict) and row.get("system")]
+        if not declared:
+            return
+        try:
+            from fnmatch import fnmatch
+
+            from db.repositories.system_repository import SystemRepository
+        except Exception:
+            return
+        repo = SystemRepository(session)
+
+        def _under(path: str, globs: list[str]) -> bool:
+            path = str(path).split("!", 1)[0].lstrip("./")
+            for g in globs:
+                base = str(g).rstrip("/").removesuffix("/**").removesuffix("/*").lstrip("./")
+                if path == base or path.startswith(base + "/") or fnmatch(path, str(g)):
+                    return True
+            return False
+
+        by_name: dict[str, str] = {}
+        from collections import Counter
+
+        entity_counts = Counter(str(row.get("legal_entity")).strip().lower() for row in declared if row.get("legal_entity"))
+        repo_entity = None
+        if entity_counts:
+            top, n = entity_counts.most_common(1)[0]
+            # the repository-level system belongs to the entity that owns (a strict majority of) its declared systems —
+            # e.g. a bank repo with one DIFC-branch system still rolls up under the bank; a 50/50 split stays unassigned
+            if n * 2 > sum(entity_counts.values()):
+                repo_entity = top
+        if repo_entity and ctx.system_id:
+            try:
+                repo_system = repo.get_by_id(ctx.system_id)
+                if repo_system is not None and (repo_system.extra or {}).get("legal_entity") != repo_entity:
+                    repo_system.extra = {**(repo_system.extra or {}), "legal_entity": repo_entity}
+            except Exception:
+                logger.debug("repo_system_entity_failed", exc_info=True)
+        for row in declared:
+            name = str(row["system"]).strip()
+            db_name = name
+            entity = str(row.get("legal_entity") or "").strip().lower() or None
+            try:
+                existing = repo.get_by_name(name)
+                owner_entity = (existing.extra or {}).get("legal_entity") if existing is not None else None
+                if existing is not None and entity and owner_entity and owner_entity != entity:
+                    # ``System.name`` is unique across the whole estate; two banks in one group both declaring "CORE"
+                    # must not be merged into one row (that would put bank A's evidence under bank B in the
+                    # supervisor view). Qualify the later one with its entity code and say so.
+                    db_name = f"{entity}/{name}"
+                    logger.warning("system_name_collision_across_entities",
+                                   extra={"system": name, "owned_by": owner_entity, "declared_by": entity, "stored_as": db_name})
+                system = repo.get_or_create(
+                    db_name,
+                    owner=row.get("owner"),
+                    environment="prod",
+                    description=f"declared in cryptoscan-systems.yml ({ctx.target_repo})",
+                    criticality=row.get("criticality"),
+                )
+                if row.get("criticality") and not system.criticality:
+                    system.criticality = str(row["criticality"])
+                if row.get("owner") and not system.owner:
+                    system.owner = str(row["owner"])
+                if row.get("compliance_scopes") and not system.compliance_scopes:
+                    system.compliance_scopes = [str(x) for x in row["compliance_scopes"]]
+                if row.get("business_unit") and not system.business_unit:
+                    system.business_unit = str(row["business_unit"])
+                if entity:
+                    extra = dict(system.extra or {})
+                    if extra.get("legal_entity") != entity:
+                        extra["legal_entity"] = entity
+                        system.extra = extra
+                if db_name != name:
+                    extra = dict(system.extra or {})
+                    if extra.get("declared_name") != name:
+                        system.extra = {**extra, "declared_name": name}
+                by_name[name] = system.id
+                paths = [str(p) for p in (row.get("paths") or [])]
+                if paths:
+                    for asset in assets:
+                        if _under(asset.file_path, paths):
+                            repo.attach_asset(system.id, asset.id)
+                if ctx.system_id and ctx.system_id != system.id:
+                    repo.add_dependency(ctx.system_id, system.id, "contains")
+            except Exception:
+                logger.debug("declared_system_sync_failed", extra={"system": name}, exc_info=True)
+        for row in declared:
+            src = by_name.get(str(row["system"]).strip())
+            for dep in row.get("depends_on_systems") or []:
+                dst = by_name.get(str(dep).strip())
+                if src and dst and src != dst:
+                    try:
+                        repo.add_dependency(src, dst, "imports-crypto")
+                    except Exception:
+                        logger.debug("declared_system_edge_failed", exc_info=True)
+        session.flush()
+        logger.info("stage_declared_systems_synced", extra={"systems": len(by_name)})
 
     def _quantum(self, ctx: PipelineContext, session) -> None:
         try:
@@ -813,10 +1067,20 @@ class PipelineRunner:
         from db.repositories.baseline_repository import BaselineRepository
         from drift.core.detector import DriftDetector
 
+        # Key-inventory drift needs no approved baseline (previous export of the same drop is the reference).
+        inventory_events: list[dict] = []
+        try:
+            from worker.pipeline.inventory_drift import detect_inventory_drift
+
+            inventory_events = detect_inventory_drift(session, ctx.scan_id or "")
+        except Exception:
+            logger.debug("inventory_drift_skipped", exc_info=True)
+
         baseline_repo = BaselineRepository(session)
         baseline = baseline_repo.get_active(ctx.target_repo)
         if baseline is None:
             logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
+            ctx.drift_events = inventory_events
             return
 
         def as_findings(scan_id: str) -> list[dict]:
@@ -929,9 +1193,9 @@ class PipelineRunner:
         except Exception:
             logger.debug("config_drift_skipped", exc_info=True)
 
-        ctx.drift_events = events
+        ctx.drift_events = inventory_events + events
         session.flush()
-        logger.info("stage_drift_done", extra={"events": len(events)})
+        logger.info("stage_drift_done", extra={"events": len(ctx.drift_events)})
 
     def _gate(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select

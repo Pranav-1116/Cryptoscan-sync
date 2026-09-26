@@ -125,7 +125,10 @@ def onboarding_state(user: str = Depends(get_current_user), db: Session = Depend
     scope = repo.scope_summary(org.id)
     connectors = [c.to_dict() for c in repo.list_connectors(org.id)]
     connected = [c for c in connectors if c.get("status") == "connected"]
-    discovery_runs = [r.to_dict() for r in repo.list_discovery_runs(org.id)]
+    # Discovery runs carry JSON plan/summary payloads and the list grows
+    # unbounded — the wizard only needs recent history, so bound it here
+    # instead of serializing the whole archive on every visit.
+    discovery_runs = [r.to_dict() for r in repo.list_discovery_runs(org.id)[:20]]
     latest_run = discovery_runs[0] if discovery_runs else None
     sector_context = None
     try:

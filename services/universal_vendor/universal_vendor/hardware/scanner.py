@@ -21,7 +21,6 @@ from universal_vendor.hardware.fingerprint import fingerprint_hardware
 from universal_vendor.hardware.hbom import HbomGenerator
 from universal_vendor.hardware.identity import HardwareIdentityResolver
 from universal_vendor.hardware.lifecycle import HardwareLifecycleDatabase
-from universal_vendor.hardware.models import HardwareObservation
 from universal_vendor.hardware.plugin import HardwarePluginRegistry
 from universal_vendor.hardware.risk import HardwareRiskEngine
 from universal_vendor.pqc_readiness import PqcReadinessDatabase

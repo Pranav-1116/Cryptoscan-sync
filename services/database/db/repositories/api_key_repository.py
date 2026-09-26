@@ -37,6 +37,7 @@ class ApiKeyRepository:
         rate_per_minute: int = 0,
         allowed_ips: list[str] | str | None = None,
         rotate_after_days: int | None = None,
+        tenant_id: str | None = None,
     ) -> tuple[ApiKey, str]:
         """Create a key; returns (row, raw_key). The raw key is shown once."""
         from identity.api_key_guard import normalize_allowlist
@@ -61,6 +62,7 @@ class ApiKeyRepository:
             rate_per_minute=max(0, int(rate_per_minute or 0)),
             allowed_ips=",".join(ip_rules) if ip_rules else None,
             rotate_after_days=(int(rotate_after_days) if rotate_after_days else None),
+            tenant_id=tenant_id,
         )
         self.session.add(row)
         self.session.flush()
@@ -80,8 +82,13 @@ class ApiKeyRepository:
     def get(self, key_id: str) -> Optional[ApiKey]:
         return self.session.get(ApiKey, key_id)
 
-    def list_keys(self, include_revoked: bool = True) -> list[ApiKey]:
+    def list_keys(self, include_revoked: bool = True, *, tenant_id: str | None = None,
+                  platform: bool = False) -> list[ApiKey]:
         stmt = select(ApiKey).order_by(ApiKey.created_at.desc())
+        if platform:
+            stmt = stmt.where(ApiKey.tenant_id.is_(None))
+        elif tenant_id is not None:
+            stmt = stmt.where(ApiKey.tenant_id == tenant_id)
         rows = list(self.session.execute(stmt).scalars().all())
         if include_revoked:
             return rows

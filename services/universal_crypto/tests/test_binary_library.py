@@ -7,7 +7,6 @@ from universal_crypto.binary_engine import (
     BinaryCryptoDetector,
     BinaryParser,
     CRYPTO_CONSTANTS,
-    SYMBOL_ALGORITHMS,
 )
 from universal_crypto.library_fingerprints import LibraryFingerprinter
 
@@ -47,7 +46,6 @@ def test_tls_record_bytes_are_fingerprint_evidence():
 
 
 def test_elf_parser_extracts_symbols_and_strings():
-    import os
     import sys
     # parse a real ELF (the interpreter itself) — deterministic artifact
     with open(sys.executable, "rb") as handle:

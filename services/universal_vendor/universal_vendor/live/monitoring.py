@@ -14,7 +14,7 @@ operates 24/7 without unnecessary load on customer infrastructure:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import field
 from enum import Enum
 from typing import Any, Optional
 

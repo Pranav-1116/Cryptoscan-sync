@@ -35,6 +35,22 @@ curl -X POST $API/api/v1/monitor/targets -H "Authorization: Bearer $T" \\
     "interval_seconds": 900}'
 ```
 
+**Telecom estates** (`target_type: "TELECOM"`, default 15 min): the daemon
+re-probes the registered 3GPP NF estate through the same engine as
+`POST /telecom/scan` — verdicts, events and the snapshot refresh continuously
+instead of only on manual scans. Optional config: `{"carrier": "de-telekom"}`
+(one operator's NFs), `{"nf_ids": ["amf-01", "sepp-01"]}`, `{"timeout": 3.0}`.
+With no registered estate the target shows BLOCKED with the fix — never a
+fabricated pass.
+
+**Docker:** the `api` and `monitor` services share a `telecom_data` volume
+(`CRYPTOSCAN_SNAPSHOT_DIR=/var/lib/cryptoscan/telecom`), so daemon-written
+passes appear in the API (and on SSE via the snapshot tailer) without a
+restart. Provision the estate by placing `config/telecom_registry.json`
+next to `docker-compose.yml` (override the host path with
+`TELECOM_REGISTRY_HOST_PATH`); an absent file means TELECOM targets show
+BLOCKED with the fix — never a fabricated pass.
+
 `PATCH …/{id}` pauses/resumes or changes the interval, `DELETE` removes,
 `POST …/{id}/scan-now` runs one target immediately (synchronous live probe),
 `GET /monitor/status` is the live picture (counts by status/type, what needs

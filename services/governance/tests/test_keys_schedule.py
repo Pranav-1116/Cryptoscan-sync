@@ -1,7 +1,6 @@
 """Tests for deterministic key derivation/provisioning and the scheduled backup
 sweep (worker-tick). Deterministic; no network, no real DB server."""
 import datetime as dt
-import os
 
 import pytest
 

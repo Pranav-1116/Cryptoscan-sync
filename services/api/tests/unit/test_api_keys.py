@@ -97,6 +97,21 @@ def test_repository_revocation_and_expiry(session):
     assert repo.get_by_raw(raw2) is None
 
 
+def test_future_expiry_key_is_usable_after_db_round_trip(session):
+    """Regression: SQLite returns naive datetimes; comparing with aware utcnow()
+    raised TypeError and every key created *with* an expiry was rejected (401)
+    on first use — found by the load test minting 1-hour keys per virtual user."""
+    repo = ApiKeyRepository(session)
+    row, raw = repo.create(
+        name="future", created_by="admin",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+    )
+    session.commit()
+    session.expire_all()  # force a reload so the column comes back as the DB stores it
+    fetched = repo.get_by_raw(raw)
+    assert fetched is not None and fetched.is_active_key is True
+
+
 def test_repository_rejects_bad_input(session):
     repo = ApiKeyRepository(session)
     with pytest.raises(ValueError):

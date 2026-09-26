@@ -17,7 +17,6 @@ This complements network_scanner.certificates.expiry_calendar by producing
 from __future__ import annotations
 
 import datetime as dt
-from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 # Fixed, deterministic milestones (days-until-expiry threshold → rule).

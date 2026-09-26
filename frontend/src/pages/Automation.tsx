@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiAutomationRules, apiAutomationCapabilities,
   apiAutomationSaveRule, apiAutomationDeleteRule,
-} from "../lib/api.js";
+  apiConnectorsStatus, apiAutomationConnectorPreview, apiAutomationConnectorDispatch,
+  apiAutomationInstallTelecomGuardrails,} from "../lib/api.js";
 
 /* Automation rule builder — deterministic event→action rules. A rule is
    WHEN <event> · IF <conditions> · THEN <actions>. The action catalog carries
@@ -33,6 +35,7 @@ function slug(s: string) {
 export default function Automation() {
   const capsRes = usePollingApi(apiAutomationCapabilities, 60000);
   const rulesRes = usePollingApi(apiAutomationRules, 15000);
+  useRealtimeRefresh(capsRes.run, rulesRes.run);
   const caps = (capsRes.data ?? {}) as any;
   const rules = (rulesRes.data ?? []) as any[];
 
@@ -86,6 +89,16 @@ export default function Automation() {
     }
   };
 
+  const installGuardrails = async () => {
+    const r = await apiAutomationInstallTelecomGuardrails();
+    if (r.ok) {
+      setMsg({ ok: true, text: `Telecom guardrails installed: ${(r.data as any)?.created ?? 0} created, ${(r.data as any)?.updated ?? 0} updated.` });
+      void rulesRes.run();
+    } else {
+      setMsg({ ok: false, text: r.error || "Could not install telecom guardrails." });
+    }
+  };
+
   const remove = async (id: string) => {
     const r = await apiAutomationDeleteRule(id);
     if (r.ok) void rulesRes.run();
@@ -96,6 +109,44 @@ export default function Automation() {
   const safetyTiers: string[] = caps.safety_model?.tiers ?? ["OBSERVE", "ANALYZE", "RECOMMEND", "APPROVE", "EXECUTE", "VERIFY"];
 
   const canSave = pickedActions.length > 0 && when && !saving;
+
+  /* ── ITSM / SIEM delivery (ServiceNow incident, Splunk HEC event) ────── */
+  const connRes = usePollingApi(apiConnectorsStatus, 60000);
+  const [connector, setConnector] = useState("servicenow");
+  const [runId, setRunId] = useState("");
+  const [delivering, setDelivering] = useState(false);
+  const [connectorMsg, setConnectorMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [connectorPayload, setConnectorPayload] = useState<Record<string, unknown> | null>(null);
+
+  const doPreview = async () => {
+    setDelivering(true);
+    setConnectorMsg(null);
+    const r = await apiAutomationConnectorPreview(connector, runId.trim());
+    setDelivering(false);
+    if (r.source === "live" && r.data) {
+      setConnectorPayload(r.data.payload);
+      setConnectorMsg({ ok: true, text: r.data.note });
+    } else {
+      setConnectorMsg({ ok: false, text: r.error || "preview failed" });
+    }
+  };
+
+  const doDispatch = async () => {
+    setDelivering(true);
+    setConnectorMsg(null);
+    const r = await apiAutomationConnectorDispatch(connector, runId.trim());
+    setDelivering(false);
+    if (r.source === "live" && r.data) {
+      setConnectorMsg({
+        ok: r.data.delivered,
+        text: r.data.delivered
+          ? `Delivered to ${connector} (HTTP ${r.data.status_code}).`
+          : `Not delivered: ${r.data.detail}`,
+      });
+    } else {
+      setConnectorMsg({ ok: false, text: r.error || "dispatch failed" });
+    }
+  };
 
   return (
     <>
@@ -191,6 +242,12 @@ export default function Automation() {
 
         {/* active rules */}
         <Panel title="Active rules" sub="rules loaded into the deterministic engine">
+          <div style={{ marginBottom: 10 }}>
+            <button className="btn sm" onClick={() => void installGuardrails()}>install telecom guardrails</button>
+            <span className="dim" style={{ fontSize: 12, marginInlineStart: 8 }}>
+              roaming PQC drop · mission NF down · SEPP cert expiry — idempotent
+            </span>
+          </div>
           {rules.length === 0 ? (
             <div className="dim" style={{ fontSize: 13 }}>
               No custom rules yet — built-in playbooks run by default. Create one on the left.
@@ -225,6 +282,49 @@ export default function Automation() {
           )}
         </Panel>
       </div>
+
+      {/* ITSM / SIEM delivery */}
+      <Panel title="ITSM / SIEM delivery" sub="push an automation run to ServiceNow (incident) or Splunk HEC (event) — preview builds the exact payload, nothing is sent until you dispatch" className="mt">
+        <div className="row" style={{ gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <select className="inp" value={connector} onChange={(e) => setConnector(e.target.value)} style={{ width: 170 }}>
+            {(Object.keys(connRes.data?.catalog ?? {}).length
+              ? Object.keys(connRes.data?.catalog ?? {})
+              : ["servicenow", "splunk", "jira", "sentinel"]
+            ).map((name) => <option key={name} value={name}>{name}</option>)}
+          </select>
+          <input
+            className="inp"
+            placeholder="automation run id (from a processed event)"
+            value={runId}
+            onChange={(e) => setRunId(e.target.value)}
+            style={{ flex: "1 1 220px" }}
+          />
+          <button className="btn sm" disabled={!runId.trim() || delivering} onClick={() => void doPreview()}>
+            preview payload
+          </button>
+          <button className="btn sm primary" disabled={!runId.trim() || delivering} onClick={() => void doDispatch()}>
+            {delivering ? "Working…" : "dispatch"}
+          </button>
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          {Object.entries(connRes.data?.connectors ?? {}).map(([name, st]) => (
+            <Badge key={name} tone={st.configured ? "green" : "amber"}>
+              {name}: {st.configured ? "configured" : `not configured (missing ${st.missing.join(", ")})`}
+            </Badge>
+          ))}
+          {connRes.source !== "live" && <span className="dim" style={{ fontSize: 12 }}>Backend offline — connector status unavailable.</span>}
+        </div>
+        {connectorMsg && (
+          <div style={{ fontSize: 12.5, marginTop: 8, color: connectorMsg.ok ? "var(--green)" : "var(--red)" }}>
+            {connectorMsg.ok ? "✓" : "✕"} {connectorMsg.text}
+          </div>
+        )}
+        {connectorPayload && (
+          <pre className="mono" style={{ background: "var(--panel-2)", padding: 10, borderRadius: 6, fontSize: 11.5, overflow: "auto", marginTop: 8, maxHeight: 280 }}>
+            {JSON.stringify(connectorPayload, null, 2)}
+          </pre>
+        )}
+      </Panel>
 
       {/* built-in playbooks */}
       <Panel title="Built-in playbooks" sub="deterministic response packs available out of the box" className="mt">

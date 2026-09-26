@@ -67,3 +67,11 @@ scan-results/
 
 # local SQLite DBs
 data/
+
+# frontend test artefacts
+frontend/coverage/
+
+# runtime-log parser fixtures are real inputs, not build noise
+!services/scanner/tests/fixtures/runtime_logs/*.log
+_tmp/
+build/

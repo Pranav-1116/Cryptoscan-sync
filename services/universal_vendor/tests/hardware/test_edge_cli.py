@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-import pytest
 
 from universal_vendor.hardware.live.edge_cli import main
 from universal_vendor.hardware.live.events import HardwareEventType

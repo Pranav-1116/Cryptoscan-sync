@@ -31,11 +31,50 @@ def network_runner(config: dict, session: Any) -> dict:
     if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
         return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
 
+    # defense in depth (config may predate the API-side SSRF gate): never
+    # probe loopback, cloud metadata or URL-scheme targets from the daemon
+    import ipaddress as _ip
+
+    _ssrf_hosts = {"localhost", "169.254.169.254", "metadata.google.internal",
+                   "fd00:ec2::254"}
+
+    def _ssrf_blocked(raw: str) -> str | None:
+        t = str(raw).strip()
+        if "://" in t:
+            return f"SSRF_BLOCKED:{t} (URL schemes are not probe targets)"
+        host = t[1:].split("]", 1)[0] if t.startswith("[") else (
+            t.rsplit(":", 1)[0] if t.count(":") == 1 else t)
+        host = host.strip().lower().removeprefix("user@").split("@")[-1]
+        if host in _ssrf_hosts:
+            return f"SSRF_BLOCKED:{t} (loopback/cloud metadata)"
+        try:
+            ip = _ip.ip_address(host)
+        except ValueError:
+            return None
+        if (ip.is_loopback or ip.is_link_local or ip.is_reserved
+                or ip.is_multicast or ip.is_unspecified):
+            return f"SSRF_BLOCKED:{t} (loopback/link-local/metadata range)"
+        return None
+
+    ssrf_issues: list[str] = []
+    kept: list[str] = []
+    for raw in endpoints:
+        reason = _ssrf_blocked(raw)
+        (ssrf_issues.append(reason) if reason else kept.append(raw))
+    endpoints = kept
+    if not endpoints and not (config.get("ipsec") or config.get("dnssec") or config.get("scope")):
+        if ssrf_issues:
+            return {"summary": {"endpoints": 0, "probed_ok": 0, "unreachable": 0,
+                                "ipsec_targets": 0, "dnssec_zones": 0,
+                                "issues": ssrf_issues},
+                    "degraded": True, "issues": ssrf_issues}
+        return {"blocked_reason": "no endpoints configured (set config.endpoints = ['host:port', …])"}
+
     from network_scanner.core.scanner import NetworkTlsScanner
 
     timeout = float(config.get("timeout", 5.0))
     scanner = NetworkTlsScanner(live=True, timeout=timeout)
-    issues: list[str] = []
+    issues: list[str] = list(ssrf_issues)
     ok = unreachable = 0
     scope_summary: dict | None = None
 
@@ -553,3 +592,117 @@ def _discovery_issues(discovery: dict) -> list[str]:
     if blockers:
         issues.append(f"PQC_MIGRATION_BLOCKERS:{len(blockers)}")
     return sorted(set(issues))
+
+# ------------------------------------------------------------------ telecom
+
+def telecom_runner(config: dict, session: Any) -> dict:
+    """Continuous 3GPP NF posture — the same engine as POST /telecom/scan.
+
+    Probes the registered estate (5GC/EPC/IMS TLS-bearing NFs) through
+    ``telecom_scanner`` and classifies per the 3GPP/NIST rule packs. Config
+    (all optional): ``carrier`` limits the pass to one carrier's NFs,
+    ``nf_ids`` to an explicit list, ``timeout`` per probe (default 3s).
+
+    Needs a registered estate (POST /telecom/targets or the registry file);
+    without one the target is BLOCKED with the exact fix — never fabricated.
+    The pass is mirrored into the same snapshot file the API serves, so
+    /telecom/posture, the roaming view and the exit report reflect monitor
+    passes too (the API loader re-reads when the file's mtime changes).
+    """
+    try:
+        from telecom_scanner.main import probe_registry
+        from telecom_scanner.realtime import evaluate_changes, summarize_events
+        from telecom_scanner.registry import load_registry
+        from telecom_scanner.rollup import posture_rollup
+    except ImportError as exc:
+        return {"blocked_reason": f"telecom_scanner service not available in this deployment: {exc}"}
+
+    reg = load_registry()
+    targets = reg.get("targets") or {}
+    if not targets:
+        return {"blocked_reason": "no telecom estate registered (POST /telecom/targets or config/telecom_registry.json)"}
+
+    carrier = str(config.get("carrier") or "").strip().lower()
+    if carrier:
+        targets = {k: v for k, v in targets.items()
+                   if str(v.get("carrier_code") or "").lower() == carrier}
+    nf_ids = [str(n).strip().lower() for n in (config.get("nf_ids") or []) if str(n).strip()]
+    if nf_ids:
+        targets = {k: v for k, v in targets.items() if k in nf_ids}
+    if not targets:
+        return {"blocked_reason": (
+            f"no NF targets match carrier={carrier or 'any'} nf_ids={nf_ids or 'any'}"
+            f" — registered: {', '.join(sorted((reg.get('targets') or {}).keys()))}")}
+
+    rows = probe_registry(reg, only=sorted(targets), timeout=float(config.get("timeout", 3.0)))
+
+    def _sev(row: dict) -> str:
+        return str(row.get("severity") or "ok").lower()
+
+    critical = sorted(r["nf_id"] for r in rows if _sev(r) == "critical")
+    high = sorted(r["nf_id"] for r in rows if _sev(r) == "high")
+    issues = [f"CRITICAL:{nf}" for nf in critical] + [f"HIGH:{nf}" for nf in high]
+    summary = {
+        "carrier": carrier or "all",
+        "nf_targets": len(rows),
+        "clean": sum(1 for r in rows if _sev(r) == "ok"),
+        "critical": len(critical),
+        "high": len(high),
+        "medium": sum(1 for r in rows if _sev(r) == "medium"),
+    }
+
+    # mirror the pass into the API's telecom snapshot (same shape as
+    # POST /telecom/scan writes); best-effort — never kills the tick
+    try:
+        import json
+        import os
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        snapshot_dir = os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR") \
+            or (Path(__file__).resolve().parents[4] / "data")
+        snapshot_file = Path(snapshot_dir) / "telecom_snapshot.json"
+        previous_state: dict = {}
+        if snapshot_file.is_file():
+            try:
+                previous_state = (json.loads(snapshot_file.read_text()) or {}).get("state") or {}
+            except (OSError, json.JSONDecodeError):
+                previous_state = {}
+        events = evaluate_changes(previous_state, rows)
+        snapshot = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "scanner": "telecom-monitor",
+            "targets_registered": len(reg.get("targets") or {}),
+            "rows": rows,
+            "events": events,
+            "events_summary": summarize_events(events),
+            "state": {row["nf_id"]: {k: row[k] for k in
+                                  ("status", "severity", "fingerprint", "cert_not_after", "pqc_ready")}
+                      for row in rows},
+            "rollup": posture_rollup(rows, reg.get("carriers") or {}),
+        }
+        snapshot_file.parent.mkdir(parents=True, exist_ok=True)
+        tmp = snapshot_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps(snapshot))
+        os.replace(tmp, snapshot_file)
+
+        # fold the pass into the PQC adoption journey (same file contract
+        # as the API: load -> update -> atomic replace)
+        from telecom_scanner.journey import update_journey
+
+        journey_file = snapshot_file.parent / "telecom_journey.json"
+        history: dict = {}
+        if journey_file.is_file():
+            try:
+                history = json.loads(journey_file.read_text()) or {}
+            except (OSError, json.JSONDecodeError):
+                history = {}
+        journey = update_journey(history, snapshot["generated_at"], rows)
+        jtmp = journey_file.with_suffix(".tmp")
+        jtmp.write_text(json.dumps(journey))
+        os.replace(jtmp, journey_file)
+    except Exception:  # noqa: BLE001 — snapshot mirroring must never fail the scan
+        logger.exception("telecom_monitor_snapshot_mirror_failed")
+
+    return {"summary": summary, "degraded": bool(issues), "issues": issues}
+

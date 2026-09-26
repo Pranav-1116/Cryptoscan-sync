@@ -1,0 +1,6 @@
+{"Keys":[
+ {"KeyId":"1234abcd-12ab-34cd-56ef-1234567890ab","Arn":"arn:aws:kms:eu-west-1:111122223333:key/1234abcd-12ab-34cd-56ef-1234567890ab","KeyState":"Enabled","KeySpec":"SYMMETRIC_DEFAULT","KeyUsage":"ENCRYPT_DECRYPT","Description":"core-db-cmk","CreationDate":"2022-03-01T10:00:00+00:00","Origin":"AWS_KMS","KeyManager":"CUSTOMER","KeyRotationEnabled":true,"MultiRegion":false},
+ {"KeyId":"abcd1234-56ef-78ab-90cd-ef1234567890","Arn":"arn:aws:kms:eu-west-1:111122223333:key/abcd1234-56ef-78ab-90cd-ef1234567890","KeyState":"PendingDeletion","KeySpec":"RSA_2048","KeyUsage":"SIGN_VERIFY","Description":"statement-signer","CreationDate":"2019-01-01T00:00:00+00:00","Origin":"AWS_CLOUDHSM","DeletionDate":"2026-10-30T00:00:00+00:00"},
+ {"KeyId":"eeee1234-56ef-78ab-90cd-ef1234567890","KeyState":"Enabled","KeySpec":"ECC_NIST_P384","KeyUsage":"SIGN_VERIFY","Description":"api-jwt-signer"},
+ {"KeyId":"ffff1234-56ef-78ab-90cd-ef1234567890","KeyState":"Enabled","KeySpec":"ML_DSA_65","KeyUsage":"SIGN_VERIFY","Description":"pqc-pilot"}
+]}

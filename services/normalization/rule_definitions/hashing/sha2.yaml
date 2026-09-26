@@ -89,3 +89,28 @@ normalized_output:
   iana_id: "sha-384"
   cbom_component_type: "cryptographic-asset"
   cbom_algorithm_ref: "urn:ietf:crypto:sha2:384"
+---
+rule_id: "NORM-SHA2-FAMILY"
+version: "1.0"
+description: "SHA-2 family name without a digest size (also what this service emits as `algorithm` for SHA-256/384/512, so re-normalising its own output is idempotent)"
+raw_patterns:
+  - "SHA2"
+  - "SHA-2"
+normalized_output:
+  algorithm: "SHA2"
+  algorithm_family: "hash"
+  standard_name: "SHA-2"
+  mode: null
+  padding: null
+  key_size: null
+  iv_size: null
+  tag_size: null
+  output_bits: null
+  purpose: "hashing"
+  nist_designation: "APPROVED"
+  nist_reference: "FIPS 180-4"
+  fips_status: "FIPS-180-4"
+  quantum_vulnerable: false
+  iana_id: null
+  cbom_component_type: "cryptographic-asset"
+  cbom_algorithm_ref: "urn:ietf:crypto:sha2"

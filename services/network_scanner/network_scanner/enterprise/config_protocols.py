@@ -13,7 +13,7 @@ scan records.
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import Any, Callable
+from typing import Any
 
 from network_scanner.enterprise.credentials import CredentialRef, scrub_secrets
 

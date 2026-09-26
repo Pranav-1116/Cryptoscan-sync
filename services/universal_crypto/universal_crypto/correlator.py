@@ -16,7 +16,7 @@ Suppression rules (deterministic):
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_crypto.models import Evidence, EvidenceType
 

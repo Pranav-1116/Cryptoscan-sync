@@ -281,7 +281,9 @@ function AttestationPanel() {
           <Badge ok={verified}>{verified ? t("dash.verified") : t("dash.tampered")}</Badge>
           <table className="table" style={{ width: "100%", marginTop: 12, fontSize: 12 }}>
             <tbody>
-              <tr><td>entries checked</td><td>{res.attestation?.entries_checked}</td></tr>
+              <tr><td>entries checked (this pass)</td><td>{res.attestation?.entries_checked}</td></tr>
+              <tr><td>total chain entries</td><td>{res.attestation?.entry_count ?? "—"}</td></tr>
+              <tr><td>verification</td><td>{res.attestation?.mode ?? "full"}{res.attestation?.full_verified_at ? ` · full at ${res.attestation.full_verified_at}` : ""}</td></tr>
               <tr><td>tamper detected</td><td>{String(res.attestation?.tamper_detected)}</td></tr>
               <tr><td>mismatches</td><td>{res.attestation?.mismatch_count}</td></tr>
               <tr><td>sequence gaps</td><td>{res.attestation?.sequence_gap_count}</td></tr>

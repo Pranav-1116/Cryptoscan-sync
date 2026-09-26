@@ -9,7 +9,7 @@ crypto key is evidence; ``random`` imported alone is not.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 #: strong sources (CSPRNG / OS entropy)
 STRONG_RNG: dict[str, str] = {

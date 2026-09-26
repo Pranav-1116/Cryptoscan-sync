@@ -1,0 +1,103 @@
+legal_entity: snb
+business_unit: Saudi National Bank
+systems:
+  - system: core-accounts
+    paths: [src/core-accounts/**]
+    criticality: tier-0
+    owner: core-accounts@snb.example
+    compliance_scopes: ['CUSTOMER-FACING', 'PAYMENT']
+  - system: core-cif
+    paths: [src/core-cif/**]
+    criticality: tier-0
+    owner: core-cif@snb.example
+    compliance_scopes: ['CUSTOMER-FACING', 'PERSONAL_DATA']
+  - system: core-deposits
+    paths: [src/core-deposits/**]
+    criticality: tier-0
+    owner: core-deposits@snb.example
+    compliance_scopes: ['CUSTOMER-FACING', 'PAYMENT']
+  - system: core-loans
+    paths: [src/core-loans/**]
+    criticality: tier-0
+    owner: core-loans@snb.example
+    compliance_scopes: ['CUSTOMER-FACING']
+  - system: core-limits
+    paths: [src/core-limits/**]
+    criticality: tier-0
+    owner: core-limits@snb.example
+    compliance_scopes: ['PAYMENT', 'CARD']
+  - system: core-iban
+    paths: [src/core-iban/**]
+    criticality: tier-0
+    owner: core-iban@snb.example
+    compliance_scopes: ['PAYMENT', 'CUSTOMER-FACING']
+  - system: core-nostro
+    paths: [src/core-nostro/**]
+    criticality: tier-0
+    owner: core-nostro@snb.example
+    compliance_scopes: ['SWIFT', 'PAYMENT']
+  - system: sarie-rtgs-gateway
+    paths: [src/sarie-rtgs-gateway/**]
+    criticality: tier-0
+    owner: sarie-rtgs-gateway@snb.example
+    compliance_scopes: ['PAYMENT', 'SWIFT']
+  - system: sarie-hsm
+    paths: [src/sarie-hsm/**]
+    criticality: tier-0
+    owner: sarie-hsm@snb.example
+    compliance_scopes: ['PAYMENT']
+  - system: sadad-biller-gateway
+    paths: [src/sadad-biller-gateway/**]
+    criticality: tier-0
+    owner: sadad-biller-gateway@snb.example
+    compliance_scopes: ['PAYMENT']
+  - system: wps-gateway
+    paths: [src/wps-gateway/**]
+    criticality: tier-0
+    owner: wps-gateway@snb.example
+    compliance_scopes: ['PAYMENT']
+  - system: ach-direct-debit
+    paths: [src/ach-direct-debit/**]
+    criticality: tier-0
+    owner: ach-direct-debit@snb.example
+    compliance_scopes: ['PAYMENT']
+  - system: swift-alliance-gateway
+    paths: [src/swift-alliance-gateway/**]
+    criticality: tier-0
+    owner: swift-alliance-gateway@snb.example
+    compliance_scopes: ['SWIFT', 'PAYMENT']
+  - system: cross-border-fx
+    paths: [src/cross-border-fx/**]
+    criticality: tier-0
+    owner: cross-border-fx@snb.example
+    compliance_scopes: ['PAYMENT', 'SWIFT']
+  - system: instant-payment-sarie
+    paths: [src/instant-payment-sarie/**]
+    criticality: tier-0
+    owner: instant-payment-sarie@snb.example
+    compliance_scopes: ['PAYMENT']
+  - system: merchant-acquiring
+    paths: [src/merchant-acquiring/**]
+    criticality: tier-0
+    owner: merchant-acquiring@snb.example
+    compliance_scopes: ['PAYMENT', 'CARD']
+  - system: tap-to-pay-token-svc
+    paths: [src/tap-to-pay-token-svc/**]
+    criticality: tier-0
+    owner: tap-to-pay-token-svc@snb.example
+    compliance_scopes: ['PAYMENT', 'CARD', 'CUSTOMER-FACING']
+  - system: mada-card-switch
+    paths: [src/mada-card-switch/**]
+    criticality: tier-0
+    owner: mada-card-switch@snb.example
+    compliance_scopes: ['CARD', 'PAYMENT']
+  - system: debit-card-mgmt
+    paths: [src/debit-card-mgmt/**]
+    criticality: tier-0
+    owner: debit-card-mgmt@snb.example
+    compliance_scopes: ['CARD', 'CUSTOMER-FACING']
+  - system: credit-card-mgmt
+    paths: [src/credit-card-mgmt/**]
+    criticality: tier-0
+    owner: credit-card-mgmt@snb.example
+    compliance_scopes: ['CARD', 'CUSTOMER-FACING']

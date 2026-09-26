@@ -1,0 +1,3 @@
+Release notes for the payments batch.
+- Fixed the primary key on the settlement table
+- The type of the label column is now VARCHAR(64)

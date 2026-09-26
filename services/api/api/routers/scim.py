@@ -16,7 +16,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, require_roles
+from api.dependencies import get_db_session, require_roles
 from db.repositories.user_repository import UserRepository
 from identity import scim as scim_logic
 

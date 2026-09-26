@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -75,7 +75,7 @@ class SecurityControls:
                 "as scan evidence")
 
         if request.get("maintenance_window") and self.maintenance_windows:
-            now = datetime.now(timezone.utc).isoformat()
+            datetime.now(timezone.utc).isoformat()
             window = request["maintenance_window"]
             if not any(window == str(w.get("name")) or
                        window == str(w.get("id"))

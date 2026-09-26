@@ -3,8 +3,6 @@ smart-card discovery, firmware intelligence (§1–§10)."""
 
 from __future__ import annotations
 
-import hashlib
-import json
 
 import pytest
 
@@ -15,7 +13,6 @@ from universal_vendor.hardware.models import (
     DiscoveryMethod,
     FirmwareComponent,
     HardwareConfidence,
-    HardwareDriftType,
     HardwareIdentity,
     HardwareObservation,
     HardwareType,

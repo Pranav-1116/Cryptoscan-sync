@@ -63,6 +63,52 @@ const Ctx = createContext<RealtimeState>(EMPTY);
 
 export const useRealtime = (): RealtimeState => useContext(Ctx);
 
+/** Compact per-page indicator: is this page being fed by the live SSE stream,
+ *  or falling back to polling? Mirrors the global livehead but on the page. */
+export function RealtimeChip({ compact = false }: { compact?: boolean }) {
+  const rt = useRealtime();
+  const tone = rt.connected ? "green" : rt.backend === false ? "red" : "amber";
+  const label = rt.connected
+    ? compact ? "LIVE"
+      : `SSE live · ${rt.subscribers} sub${rt.eps ? ` · ${rt.eps} ev/s` : ""}`
+    : rt.backend === false ? "OFFLINE"
+    : "POLLING FALLBACK";
+  return (
+    <span className="badge" style={{ borderColor: `var(--${tone})`, color: `var(--${tone})`, display: "inline-flex", alignItems: "center", gap: 5 }}>
+      <span className="dot" style={{ background: `var(--${tone})` }} /> {label}
+    </span>
+  );
+}
+
+/**
+ * Live refresh: reload the given resources whenever a real (non-system) event
+ * lands on the SSE stream, throttled so a burst never hammers the backend.
+ *
+ * Pages with fixed polling can pass their data hooks' `.run` functions here so
+ * they update the moment the platform changes, instead of waiting out their
+ * poll interval. When the SSE stream is down this is a no-op and the page keeps
+ * its own polling fallback (honest offline state).
+ */
+export function useRealtimeRefresh(...runs: Array<() => unknown>) {
+  const rt = useRealtime();
+  const lastRef = useRef(0);
+  useEffect(() => {
+    const last = rt.events[0];
+    if (!last || !rt.connected) return;
+    if (isSystemEvent(last.type)) return;
+    const now = Date.now();
+    if (now - lastRef.current < 4000) return; // throttle
+    lastRef.current = now;
+    const t = setTimeout(() => {
+      for (const run of runs) {
+        try { void run(); } catch { /* a failed refresh is non-fatal */ }
+      }
+    }, 150);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rt.events, rt.connected]);
+}
+
 const EVENT_CAP = 200;
 const BASE_BACKOFF_MS = 3000;    // matches the server `retry:` hint
 const MAX_BACKOFF_MS = 15000;

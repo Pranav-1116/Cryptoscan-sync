@@ -1,0 +1,13 @@
+RACDCERT ID(PAYSRV) LIST(LABEL('PAY.SERVER.CERT'))
+  Digital certificate information for user PAYSRV:
+   Label: PAY.SERVER.CERT
+   Status: TRUST
+   Key Type: RSA
+   Key Size: 2048
+   Private Key Type: ICSF RSA
+   Signing Algorithm: sha256RSA
+  Label: OLD.BATCH.CERT
+   Status: TRUST
+   Key Type: RSA
+   Key Size: 1024
+   Signing Algorithm: sha1RSA

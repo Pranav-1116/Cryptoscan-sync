@@ -97,7 +97,7 @@ def test_require_roles_allows_only_permitted(session, monkeypatch):
         cookies = {}
 
     with pytest.raises(Exception) as excinfo:
-        dep(FakeRequest())
+        dep(FakeRequest(), user="olga", db=session)
     assert excinfo.value.status_code == 403
 
     # An auditor token passes the same gate.
@@ -108,4 +108,4 @@ def test_require_roles_allows_only_permitted(session, monkeypatch):
         headers = {"Authorization": f"Bearer {token2}"}
         cookies = {}
 
-    assert dep(FakeRequest2()) == "olga"
+    assert dep(FakeRequest2(), user="olga", db=session) == "olga"

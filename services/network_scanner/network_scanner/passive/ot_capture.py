@@ -13,7 +13,7 @@ suitable for persisting to the findings/alerts store.
 from __future__ import annotations
 
 import struct
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, asdict
 from typing import Any, Iterator
 
 from . import ot_protocols as ot

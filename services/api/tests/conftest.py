@@ -146,6 +146,15 @@ def app(
     application.dependency_overrides[dependencies.get_repo_config_repository] = (
         lambda: mock_repo_config_repo
     )
+    # This harness mocks the repositories entirely (no real DB), so tenancy
+    # resolves to the PLATFORM context: tenant-scoped routes behave like the
+    # pre-SaaS estate here. Real-DB tenancy behavior is covered by
+    # integration/test_saas_tenancy.py.
+    from api.dependencies import TenantContext
+
+    application.dependency_overrides[dependencies.get_tenant_context] = lambda: TenantContext(
+        username="testuser", tenant_id=None, tenant_role=None, is_platform_admin=True
+    )
 
     return application
 
@@ -210,3 +219,70 @@ async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
         base_url="http://test",
     ) as ac:
         yield ac
+
+
+# ---------------------------------------------------------------------------
+# Environment hygiene net
+#
+# Several integration fixtures configure the app through raw
+# ``os.environ[...] = ...`` writes (module-scoped, deliberately persistent
+# for their module). Without a net those values leak into every suite
+# collected later IN THE SAME PROCESS — a leaked DATABASE_URL once
+# silently redirected an alembic migration run to the wrong database.
+#
+# Two layers make the whole api suite env-neutral, regardless of fixture
+# scope, without touching the 19 files that write environ:
+#
+# 1. Fixture layer — every fixture (any scope) snapshots the managed keys
+#    at setup and restores them at its finalizer. Module-scoped values
+#    still persist for the module's tests, but die with the module.
+# 2. Test layer — an autouse guard snapshots/restores around each test
+#    call, catching writes made inside test bodies (e.g. _make_app()
+#    helpers that set OIDC_/REPORT_SIGNING_ keys at call time).
+# ---------------------------------------------------------------------------
+
+import os as _os
+
+import pytest as _pytest
+
+_ENV_MANAGED_KEYS = (
+    "SECRET_KEY", "ENVIRONMENT", "ADMIN_USERNAME", "ADMIN_PASSWORD",
+    "ADMIN_PASSWORD_HASH", "DATABASE_URL", "REDIS_URL",
+    "OIDC_ISSUER", "OIDC_CLIENT_ID", "OIDC_AUTO_PROVISION", "OIDC_JWKS_FILE",
+    "SMTP_HOST", "REPORT_SIGNING_KEY", "REPORT_SIGNING_KEY_ID",
+)
+
+
+def _env_snapshot() -> dict:
+    return {key: _os.environ.get(key) for key in _ENV_MANAGED_KEYS}
+
+
+def _env_restore(snapshot: dict) -> None:
+    for key, value in snapshot.items():
+        if value is None:
+            _os.environ.pop(key, None)
+        else:
+            _os.environ[key] = value
+
+
+@_pytest.hookimpl(wrapper=True)
+def pytest_fixture_setup(fixturedef, request):
+    """Remember each fixture's pre-setup env; restored at its finalizer."""
+    before = _env_snapshot()
+    result = yield
+    fixturedef._cryptoscan_env_before = before
+    return result
+
+
+def pytest_fixture_post_finalizer(fixturedef) -> None:
+    before = getattr(fixturedef, "_cryptoscan_env_before", None)
+    if before is not None:
+        _env_restore(before)
+        fixturedef._cryptoscan_env_before = None
+
+
+@_pytest.fixture(autouse=True)
+def _restore_env_after_test():
+    before = _env_snapshot()
+    yield
+    _env_restore(before)

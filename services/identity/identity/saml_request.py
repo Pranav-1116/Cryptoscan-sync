@@ -12,7 +12,6 @@ import base64
 import secrets
 import urllib.parse
 from datetime import datetime, timedelta, timezone
-from xml.etree import ElementTree as ET
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding

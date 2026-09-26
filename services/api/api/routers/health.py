@@ -111,10 +111,10 @@ def readyz():
 @router.get("/healthz/schema")
 def healthz_schema():
     """Schema drift report: models vs the live database."""
-    from db.connection.engine import engine
+    from db.connection.engine import get_engine
     from db.connection.schema_ensure import schema_drift_report
 
-    return schema_drift_report(engine)
+    return schema_drift_report(get_engine())
 
 
 @router.get("/meta")

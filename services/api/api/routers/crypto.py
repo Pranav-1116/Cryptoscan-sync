@@ -18,7 +18,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_db_session
 from api.security.rbac import require_permission
 from sqlalchemy.orm import Session
 

@@ -16,8 +16,8 @@ unsigned/expired assertions.
 from __future__ import annotations
 
 import json
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.responses import RedirectResponse
+from collections import OrderedDict
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -65,8 +65,17 @@ def _saml_config():
 
 
 # Outstanding AuthnRequest ids (SP-side CSRF / replay correlation). Kept in an
-# in-memory set; the ACS requires InResponseTo to match one of these.
-_OUTSTANDING_REQUESTS: set[str] = set()
+# in-memory ORDERED map; the ACS requires InResponseTo to match one of these.
+# Bounded: abandoned logins that never reach the ACS would otherwise leak
+# entries forever in a long-running process.
+_MAX_OUTSTANDING = 256
+_OUTSTANDING_REQUESTS: "OrderedDict[str, None]" = OrderedDict()
+
+
+def _remember_outstanding(request_id: str) -> None:
+    _OUTSTANDING_REQUESTS[request_id] = None
+    while len(_OUTSTANDING_REQUESTS) > _MAX_OUTSTANDING:
+        _OUTSTANDING_REQUESTS.popitem(last=False)
 
 
 class SamlLoginStarted(BaseModel):
@@ -74,6 +83,23 @@ class SamlLoginStarted(BaseModel):
     request_id: str
     saml_request_b64: str
     redirect_to: str
+
+
+@router.get("/auth/sso/status")
+def sso_status() -> dict:
+    """Unified SSO capability flags for the login screen (public, booleans + paths).
+
+    OIDC is usable when issuer AND client id are set (token relay and/or the
+    authorization-code flow); SAML/LDAP mirror the existing dedicated checks.
+    """
+    settings = get_settings()
+    oidc_on = bool((settings.OIDC_ISSUER or "").strip() and (settings.OIDC_CLIENT_ID or "").strip())
+    return {
+        "oidc": {"enabled": oidc_on,
+                 "authorize_url": "/api/v1/auth/oidc/authorize" if oidc_on else None},
+        "saml_enabled": bool(settings.SAML_ENABLED and settings.SAML_IDP_ENTITY_ID),
+        "ldap_enabled": bool(settings.LDAP_ENABLED and settings.LDAP_SERVER_URI),
+    }
 
 
 @router.get("/auth/saml/status")
@@ -104,7 +130,7 @@ def saml_login() -> SamlLoginStarted:
     cfg = _saml_config()
     settings = get_settings()
     req = make_authn_request(sp_entity_id=cfg.sp_entity_id, acs_url=cfg.acs_url)
-    _OUTSTANDING_REQUESTS.add(req["id"])
+    _remember_outstanding(req["id"])
     sso_url = settings.SAML_IDP_SSO_URL or ""
     return SamlLoginStarted(
         idp_sso_url=sso_url,

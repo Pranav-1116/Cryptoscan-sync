@@ -78,3 +78,133 @@ def estate_risk(assets: list[dict[str, Any]]) -> dict[str, Any]:
         "by_level": {lv: sum(1 for s in scored if s["level"] == lv)
                      for lv in ("CRITICAL", "HIGH", "MEDIUM", "LOW")},
     }
+
+
+# ---------------------------------------------------------------------------
+# §29b Unified risk normalization — the enterprise risk contract.
+#
+#    Technical + Crypto + PQC + Exposure + Business Criticality +
+#    Dependency Impact + Evidence Confidence + Threat  ->  ONE score.
+#
+# Deterministic weighted sum (no model output). Every factor is a 0–4 level
+# (0 = none/unknown, 4 = severe) supplied by a risk source or derived honestly
+# from persisted observations. Unknown factors are counted as 0 and reported.
+# ---------------------------------------------------------------------------
+
+#: blueprint factor → (max level, weight). Weights sum to 1.00.
+UNIFIED_FACTORS = {
+    "technical": (4, 0.18),           # vulnerability / failing finding severity
+    "crypto": (4, 0.16),              # weak / deprecated / disallowed crypto
+    "pqc": (4, 0.16),                 # quantum-vulnerable crypto (harvest-now)
+    "exposure": (4, 0.12),            # reachable / internet-facing / multi-region
+    "business_criticality": (4, 0.14),# how business-critical the asset is
+    "dependency_impact": (4, 0.10),   # blast radius / dependents in the graph
+    "evidence_confidence": (4, 0.06), # certainty of the observations (0=unknown)
+    "threat": (4, 0.08),              # active threat / CVE / exploitation context
+}
+
+UNIFIED_LEVELS = [
+    ("CRITICAL", 80), ("HIGH", 60), ("MEDIUM", 40), ("LOW", 0),
+]
+
+
+def unified_level(score: float) -> str:
+    for name, floor in UNIFIED_LEVELS:
+        if score >= floor:
+            return name
+    return "LOW"
+
+
+def unified_risk(levels: Optional[dict[str, Any]] = None, **factors: Any) -> dict[str, Any]:
+    """Normalize a 0–4 level per blueprint factor into one 0–100 score.
+
+    ``levels`` (or ``factors``) may carry any subset of ``UNIFIED_FACTORS``;
+    missing factors contribute 0 and are listed as ``missing``.
+    """
+    merged: dict[str, int] = {}
+    for key in UNIFIED_FACTORS:
+        merged[key] = int((levels or {}).get(key, 0) or 0)
+    for key, value in factors.items():
+        if key in UNIFIED_FACTORS:
+            merged[key] = int(value or 0)
+    total = 0.0
+    detail: dict[str, Any] = {}
+    for key, (max_level, weight) in UNIFIED_FACTORS.items():
+        level = min(max(int(merged.get(key, 0)), 0), max_level)
+        points = (level / max_level) * 100 * weight
+        total += points
+        detail[key] = {"level": level, "points": round(points, 2), "weight": weight}
+    score = round(total, 1)
+    return {
+        "score": score,
+        "level": unified_level(score),
+        "factors": detail,
+        "missing": [k for k in UNIFIED_FACTORS if (levels or {}).get(k) is None],
+    }
+
+
+def _level_of(criticality: Optional[str]) -> int:
+    """Map a persisted criticality/tier string to a 0–4 level (honest)."""
+    c = str(criticality or "").upper()
+    if c in {"TIER-1", "CRITICAL", "P0", "SEV1"}:
+        return 4
+    if c in {"HIGH", "TIER-2", "P1", "SEV2"}:
+        return 3
+    if c in {"MEDIUM", "TIER-3", "P2", "SEV3"}:
+        return 2
+    if c in {"LOW", "P3", "SEV4"}:
+        return 1
+    return 0
+
+
+def _exposure_level(asset: dict[str, Any]) -> int:
+    env = str(asset.get("environment") or asset.get("env") or "").lower()
+    if env in {"prod", "production", "internet", "public", "dmz"}:
+        return 4
+    if env in {"staging", "stage", "preprod", "external"}:
+        return 2
+    return 0
+
+
+def _confidence_level(asset: dict[str, Any]) -> int:
+    conf = str(asset.get("confidence") or "").upper()
+    if conf in {"HIGH", "CONFIRMED"}:
+        return 4
+    if conf in {"MEDIUM", "LIKELY"}:
+        return 3
+    if conf in {"LOW", "TENTATIVE"}:
+        return 1
+    return 0
+
+
+def _crypto_level(asset: dict[str, Any]) -> int:
+    alg = str(asset.get("algorithm") or "").upper()
+    if any(x in alg for x in ("MD5", "SHA-1", "SHA1", "DES", "RC4", "3DES", "WEAK")):
+        return 4
+    if "RSA" in alg or "ECDSA" in alg or "DH" in alg:
+        return 2
+    return 0
+
+
+def from_asset(asset: dict[str, Any]) -> dict[str, Any]:
+    """Derive the 8 blueprint factor levels from a unified-inventory asset row.
+
+    Every level is a pure, deterministic function of persisted fields (or 0
+    when unknown). Nothing is invented: e.g. ``threat`` stays 0 unless a
+    threat source supplied ``threat_level``.
+    """
+    pqc = str(asset.get("pqc") or "").lower()
+    relations = asset.get("relationships") or {}
+    dep_hits = sum(len(v) for v in relations.values() if isinstance(v, list))
+    levels = {
+        "technical": min(_level_of(asset.get("risk")), 4) if _level_of(asset.get("risk")) else int(asset.get("technical_level") or 0),
+        "crypto": max(_crypto_level(asset), int(asset.get("crypto_level") or 0)),
+        "pqc": 4 if pqc == "vulnerable" else (0 if pqc == "ready" else int(asset.get("pqc_level") or 0)),
+        "exposure": max(_exposure_level(asset), int(asset.get("exposure_level") or 0)),
+        "business_criticality": _level_of(asset.get("criticality")),
+        "dependency_impact": min(dep_hits, 4),
+        "evidence_confidence": _confidence_level(asset),
+        "threat": int(asset.get("threat_level") or 0),
+    }
+    return unified_risk(levels)
+

@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer, Code } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import {
   apiLiveInventory,
   apiExpiryCalendar,
@@ -61,6 +62,7 @@ const SLA_TIERS: { key: string; label: string; tone: "red" | "amber" | "cyan" | 
 
 function ExpiryCalendarPanel() {
   const cal = usePollingApi(apiExpiryCalendar, 30000);
+  useRealtimeRefresh(cal.run);
   const data = (cal.data ?? null) as ExpiryCalendar | null;
   if (!data) {
     return (
@@ -110,6 +112,7 @@ type Issued = { fingerprint: string; cn: string; not_after?: string; serial?: st
 
 function CertLifecyclePanel() {
   const queue = usePollingApi(apiCertRenewalQueue, 20000);
+  useRealtimeRefresh(queue.run);
   const [cn, setCn] = useState("");
   const [san, setSan] = useState("");
   const [days, setDays] = useState(365);
@@ -221,6 +224,7 @@ function CertLifecyclePanel() {
 export default function Certificates() {
   const [sel, setSel] = useState<number | null>(null);
   const inv = usePollingApi(apiLiveInventory, 8000);
+  useRealtimeRefresh(inv.run);
   const live = inv.source === "live";
   const data = (inv.data ?? null) as LiveInventory | null;
   const certs: CertRow[] = (data?.certificates ?? []).map((c) => ({ ...c, sanCount: c.san === "—" ? 0 : c.san.split(",").length }));

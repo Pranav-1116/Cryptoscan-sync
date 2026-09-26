@@ -1,3 +1,0 @@
-"""Normalization service test suite.
-
-"""

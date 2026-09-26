@@ -110,7 +110,7 @@ def _cmd_bom(platform: UniversalPlatform, args: argparse.Namespace) -> int:
 
 
 def _cmd_drift(platform: UniversalPlatform, args: argparse.Namespace) -> int:
-    baseline = _load(args.baseline)
+    _load(args.baseline)
     live = _load(args.live)
     result = platform.drift_check(live if isinstance(live, dict) and
                                   set(live) & {"network", "cloud", "vendor",

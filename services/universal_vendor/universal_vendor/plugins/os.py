@@ -8,7 +8,6 @@ certificates, trusted CA stores, deprecated cryptography.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from universal_vendor.models import (

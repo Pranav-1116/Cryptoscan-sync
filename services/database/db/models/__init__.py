@@ -27,6 +27,8 @@ from db.models.system_business_process import SystemBusinessProcess
 from db.models.system_business_process_map import SystemBusinessProcessMap
 from db.models.system_dependency import SystemDependency
 from db.models.certificate_usage import CertificateUsage
+from db.models.access_review import AccessReviewRecord
+from db.models.pentest_finding import PentestFinding
 from db.models.ot_device import OtCryptoFinding, OtDevice
 from db.models.policy_exception import ExceptionReview, PolicyException
 from db.models.system_agility_score import SystemAgilityScore
@@ -37,6 +39,8 @@ from db.models.verification_log import VerificationLog
 from db.models.vulnerability import Vulnerability
 
 __all__ = [
+    "AccessReviewRecord",
+    "PentestFinding",
     "AssetEvidenceLink",
     "AuditLog",
     "AssetSystemLink",
@@ -91,6 +95,11 @@ __all__ = [
     "VerificationLog",
     "Vulnerability",
 ]
+from db.models.technology_bom_snapshot import TechnologyBomSnapshot  # noqa: E402,F401
+from db.models.technology_bom_export import (  # noqa: E402,F401
+    TechnologyBomExportRun,
+    TechnologyBomExportSchedule,
+)
 from db.models.runtime_finding import RuntimeFinding  # noqa: E402,F401
 from db.models.monitor import MonitorLease  # noqa: E402,F401
 from db.models.payment_crypto import (  # noqa: E402,F401
@@ -148,5 +157,16 @@ from db.models.p2 import (  # noqa: E402,F401
     PluginPackage,
 )
 from db.models.ot_maintenance import OtMaintenanceWindow  # noqa: E402,F401
+# SaaS tenancy (db.models.tenant): the Tenant class is intentionally NOT
+# re-exported — control_plane.Tenant (data residency) already owns that name
+# in this namespace; importing the module registers all four tables.
+from db.models import tenant as _saas_tenant  # noqa: E402,F401
+from db.models.tenant import (  # noqa: E402,F401
+    TenantInvite,
+    TenantMembership,
+    TenantProvisionEvent,
+    TenantUsageEvent,
+)
 from db.models.credential_lease import CredentialLease  # noqa: E402,F401
 from db.models.automation import AutomationRuleRow, AutomationRun, CbomVersionRow  # noqa: E402,F401
+from db.models.graph_snapshot import GraphSnapshot  # noqa: E402,F401

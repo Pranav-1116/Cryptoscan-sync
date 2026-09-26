@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
-import { getToken, apiReportTemplates, apiReportScheduleCreate } from "../lib/api.js";
+import { getToken, apiReportTemplates, apiReportScheduleCreate, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
 
 export default function Reports() {
   const snaps = useLive<{ snapshots: any[]; total?: number }>("/api/v1/report-snapshots", { snapshots: [] });
@@ -18,6 +18,45 @@ export default function Reports() {
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // PoC exit report state
+  const [exitClient, setExitClient] = useState("");
+  const [exitWindow, setExitWindow] = useState("");
+  const [exitOwner, setExitOwner] = useState("");
+  const [exitAccepted, setExitAccepted] = useState("");
+  const [exitBusy, setExitBusy] = useState(false);
+  const [exitHash, setExitHash] = useState<string | null>(null);
+  const [exitMsg, setExitMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const runArchive = async () => {
+    setExitBusy(true);
+    setExitMsg(null);
+    const r = await downloadEngagementArchive({
+      client: exitClient, window: exitWindow, owner: exitOwner, accepted_by: exitAccepted,
+    });
+    setExitBusy(false);
+    if (r.ok) {
+      setExitMsg({ ok: true, text: `archive downloaded — ${r.files} files, manifest included` });
+    } else {
+      setExitMsg({ ok: false, text: r.error || "archive failed" });
+    }
+  };
+
+  const runExit = async (format: "json" | "md") => {
+    setExitBusy(true);
+    setExitMsg(null);
+    setExitHash(null);
+    const r = await generateExitReport(format, {
+      client: exitClient, window: exitWindow, owner: exitOwner, accepted_by: exitAccepted,
+    });
+    setExitBusy(false);
+    if (r.ok) {
+      setExitHash(r.hash ?? null);
+      setExitMsg({ ok: true, text: format === "md" ? "markdown report downloaded — hash verified on screen" : "report generated; hash shown below" });
+    } else {
+      setExitMsg({ ok: false, text: r.error || "generation failed" });
+    }
+  };
 
   const reqCount = (t: any) => Array.isArray(t.requirements) ? t.requirements.length : (typeof t.requirements === "number" ? t.requirements : 0);
 
@@ -99,6 +138,38 @@ export default function Reports() {
           />
         </Panel>
       )}
+
+      {/* PoC exit report */}
+      <Panel title="PoC exit report" sub="the engagement deliverable — deterministic scoring of the collected estate against the fab-poc success criteria, sealed with a SHA-256 report hash" className="mt">
+        <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          <input className="inp" placeholder="client" value={exitClient} onChange={(e) => setExitClient(e.target.value)} style={{ flex: "1 1 150px" }} />
+          <input className="inp" placeholder="engagement window" value={exitWindow} onChange={(e) => setExitWindow(e.target.value)} style={{ flex: "1 1 150px" }} />
+          <input className="inp" placeholder="crypto owner" value={exitOwner} onChange={(e) => setExitOwner(e.target.value)} style={{ flex: "1 1 150px" }} />
+          <input className="inp" placeholder="accepted by (sign-off)" value={exitAccepted} onChange={(e) => setExitAccepted(e.target.value)} style={{ flex: "1 1 170px" }} />
+        </div>
+        <div className="row" style={{ gap: 8, marginTop: 10 }}>
+          <button className="btn sm" disabled={exitBusy} onClick={() => void runExit("json")}>
+            {exitBusy ? "Generating…" : "Generate (hash only)"}
+          </button>
+          <button className="btn sm primary" disabled={exitBusy} onClick={() => void runExit("md")}>
+            {exitBusy ? "Generating…" : "Download markdown report"}
+          </button>
+          <button className="btn sm" disabled={exitBusy} onClick={() => void runArchive()}>
+            {exitBusy ? "Bundling…" : "Download engagement archive (ZIP)"}
+          </button>
+          {exitHash && <Badge tone="green">SHA-256 {exitHash.slice(0, 16)}…</Badge>}
+        </div>
+        {exitMsg && (
+          <div style={{ marginTop: 8, fontSize: 12.5, color: exitMsg.ok ? "var(--green)" : "var(--red)" }}>
+            {exitMsg.ok ? "✓" : "✕"} {exitMsg.text}
+          </div>
+        )}
+        <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>
+          SC-4 (client acceptance) stays unmet until a name is entered — acceptance is a human
+          sign-off, the report never infers it. Verify any report independently by recomputing the
+          canonical-JSON SHA-256.
+        </div>
+      </Panel>
 
       <Panel title="Generated reports" sub="signed snapshots — each run produces a deterministic, HMAC-sealed PDF" className="mt">
         {snapshots.length === 0 ? (

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -326,6 +328,21 @@ def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db:
             db.rollback()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
 
+    return _oidc_identity_to_session(db, request, response, claims,
+                                     settings=settings, client=client)
+
+
+def _oidc_identity_to_session(db: Session, request: Request, response: Response,
+                              claims: dict, *, settings, client: str,
+                              audit_action: str = "auth.oidc_login") -> LoginResponse:
+    """Map verified IdP claims to a local account and mint a normal session.
+
+    Shared by POST /auth/oidc (token relay) and GET /auth/oidc/callback
+    (authorization code). Roles stay local and admin-managed — no IdP role
+    mapping is claimed; unknown subjects are auto-provisioned as viewers only
+    when explicitly enabled. Works for both JSON and redirect responses (the
+    session cookie is set on whichever response object is passed in).
+    """
     email = str(claims.get("email") or "").strip().lower() or None
     username = str(claims.get("preferred_username") or claims.get("sub") or "").strip().lower()
     if not username and email:
@@ -336,8 +353,6 @@ def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db:
     repo = _user_repo(db)
     user = repo.get_by_username(username)
     if user is None and settings.OIDC_AUTO_PROVISION:
-        import secrets
-
         user = repo.create_user(
             username,
             password_hash=secrets.token_urlsafe(48),  # unguessable: password login impossible
@@ -347,7 +362,7 @@ def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db:
         )
     if user is None:
         try:
-            repo.audit(username, "auth.oidc_login", outcome="FAILURE", ip=client, detail="no local user and auto-provision disabled")
+            repo.audit(username, audit_action, outcome="FAILURE", ip=client, detail="no local user and auto-provision disabled")
             db.commit()
         except Exception:
             db.rollback()
@@ -362,7 +377,7 @@ def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db:
     expires = datetime.now(timezone.utc) + timedelta(seconds=max_age)
     try:
         repo.create_session(token, user.username, expires, ip=client)
-        repo.audit(user.username, "auth.oidc_login", ip=client, detail={"issuer": settings.OIDC_ISSUER})
+        repo.audit(user.username, audit_action, ip=client, detail={"issuer": settings.OIDC_ISSUER})
         db.commit()
     except Exception:
         db.rollback()
@@ -378,6 +393,150 @@ def oidc_login(body: OidcLoginRequest, request: Request, response: Response, db:
         token=token,
         session_expires_at=expires,
     )
+
+
+@router.get("/oidc/authorize")
+def oidc_authorize(request: Request) -> RedirectResponse:
+    """Begin the OIDC authorization-code flow: 302 the browser to the IdP.
+
+    The state parameter is HMAC-signed with the platform secret and carries
+    the nonce, so the callback can validate it without server-side session
+    state. The authorization endpoint comes from OIDC_AUTHORIZATION_URL or
+    standard discovery — with the same SSRF discipline as JWKS discovery.
+    """
+    settings = get_settings()
+    issuer = (settings.OIDC_ISSUER or "").strip()
+    if not issuer:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC SSO not configured")
+    client_id = (settings.OIDC_CLIENT_ID or "").strip()
+    if not client_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC_CLIENT_ID not configured")
+    from api.security import oidc as oidc_mod
+    from api.security.oidc import OidcError, _validate_jwks_uri, make_authorize_url, make_state
+
+    endpoint = (settings.OIDC_AUTHORIZATION_URL or "").strip()
+    if endpoint:
+        _validate_jwks_uri(endpoint, issuer.rstrip("/"))
+    else:
+        try:
+            endpoints = oidc_mod.discover_oidc_endpoints(issuer)
+        except OidcError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        endpoint = endpoints.get("authorization_endpoint", "")
+        if not endpoint:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                                detail="IdP discovery document has no authorization_endpoint")
+    nonce = secrets.token_urlsafe(16)
+    state = make_state(settings.SECRET_KEY, nonce)
+    redirect_uri = (settings.OIDC_REDIRECT_URI or "").strip() or \
+        str(request.base_url).rstrip("/") + "/api/v1/auth/oidc/callback"
+    # RFC 7636: with no client secret we are a PUBLIC client — PKCE S256 is
+    # mandatory. The verifier rides a short-lived HttpOnly cookie scoped to
+    # the callback path; it must never travel the front channel (the state
+    # is visible to the IdP and the browser, so it can't carry it).
+    pkce_verifier, code_challenge = ("", "")
+    if not (settings.OIDC_CLIENT_SECRET or "").strip():
+        pkce_verifier, code_challenge = oidc_mod.make_pkce()
+    url = make_authorize_url(endpoint, client_id=client_id, redirect_uri=redirect_uri,
+                             scope=(settings.OIDC_SCOPES or "openid").strip(),
+                             state=state, nonce=nonce, code_challenge=code_challenge)
+    response = RedirectResponse(url, status_code=302)
+    if pkce_verifier:
+        response.set_cookie(
+            key="cryptoscan_pkce", value=pkce_verifier, httponly=True, samesite="lax",
+            secure=settings.cookie_secure, max_age=600, path="/api/v1/auth/oidc/callback",
+        )
+    return response
+
+
+@router.get("/oidc/callback")
+def oidc_callback(request: Request, db: Session = Depends(get_db_session),
+                  code: str = "", state: str = "", error: str = "") -> RedirectResponse:
+    """Finish the authorization-code flow: verify the signed state, exchange
+    the code confidentially, verify the id_token (same rules as the token
+    relay, plus the nonce bound at authorization time), map to the local
+    account, set the session cookie and redirect onward."""
+    settings = get_settings()
+    if not (settings.OIDC_ISSUER or "").strip():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="OIDC SSO not configured")
+    client = request.client.host if request.client else ""
+    from api.security import oidc as oidc_mod
+    from api.security.oidc import OidcError, verify_id_token
+
+    def _audit_failure(detail: str) -> None:
+        try:
+            _user_repo(db).audit("unknown", "auth.oidc_callback", outcome="FAILURE",
+                                 ip=client, detail=detail[:200])
+            db.commit()
+        except Exception:
+            db.rollback()
+
+    if error:
+        detail = f"IdP returned authorization error: {error}"
+        _audit_failure(detail)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+    nonce = oidc_mod.read_state(settings.SECRET_KEY, state or "")
+    if not nonce:
+        detail = "login state invalid or expired — restart the SSO login"
+        _audit_failure(detail)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+    if not code:
+        _audit_failure("authorization code missing")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="authorization code missing")
+
+    # PKCE (public clients): the verifier comes from the HttpOnly cookie set
+    # at authorize time. Fail closed — no cookie means the flow was started
+    # elsewhere or the cookie expired; either way we do not exchange blind.
+    code_verifier = ""
+    if (settings.OIDC_CLIENT_SECRET or "").strip():
+        code_verifier = ""  # confidential client — secret auth, no PKCE
+    else:
+        code_verifier = request.cookies.get("cryptoscan_pkce") or ""
+        if not code_verifier:
+            detail = "PKCE verifier missing — restart the SSO login"
+            _audit_failure(detail)
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+    issuer = settings.OIDC_ISSUER.strip()
+    token_endpoint = (settings.OIDC_TOKEN_URL or "").strip()
+    if not token_endpoint:
+        try:
+            token_endpoint = oidc_mod.discover_oidc_endpoints(issuer)["token_endpoint"]
+        except OidcError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    redirect_uri = (settings.OIDC_REDIRECT_URI or "").strip() or \
+        str(request.base_url).rstrip("/") + "/api/v1/auth/oidc/callback"
+    try:
+        tokens = oidc_mod.exchange_code(
+            token_endpoint, code=code, client_id=(settings.OIDC_CLIENT_ID or "").strip(),
+            redirect_uri=redirect_uri, client_secret=(settings.OIDC_CLIENT_SECRET or "").strip(),
+            code_verifier=code_verifier)
+        id_token = str(tokens.get("id_token") or "")
+        if not id_token:
+            raise OidcError("token endpoint returned no id_token")
+        claims = verify_id_token(
+            id_token,
+            issuer=issuer,
+            audience=(settings.OIDC_CLIENT_ID or "").strip() or None,
+            jwks_url=(settings.OIDC_JWKS_URL or "").strip() or None,
+            jwks_file=(settings.OIDC_JWKS_FILE or "").strip() or None,
+            clock_leeway=settings.OIDC_CLOCK_LEEWAY,
+        )
+    except OidcError as exc:
+        _audit_failure(str(exc))
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
+
+    if str(claims.get("nonce") or "") != nonce:
+        detail = "nonce mismatch — response does not correspond to this login"
+        _audit_failure(detail)
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+    redirect = RedirectResponse((settings.OIDC_POST_LOGIN_REDIRECT or "/"), status_code=303)
+    redirect.delete_cookie(key="cryptoscan_pkce", path="/api/v1/auth/oidc/callback")
+    _oidc_identity_to_session(db, request, redirect, claims, settings=settings,
+                              client=client, audit_action="auth.oidc_callback")
+    return redirect
 
 
 @router.post("/logout")
@@ -1108,11 +1267,15 @@ def list_audit(
 def verify_audit(
     admin: str = Depends(require_admin),
     db: Session = Depends(get_db_session),
+    full: bool = Query(False, description="Force a full-chain re-verification"),
 ):
-    """Walk the audit hash chain and report the first break (W57-58)."""
-    from db.repositories.user_repository import verify_audit_chain
+    """Verify the audit hash chain and report the first break (W57-58).
 
-    return verify_audit_chain(db)
+    Incremental by default (re-anchors at the last verified chain head; see
+    verify_audit_chain_incremental) — pass ?full=true for a complete walk."""
+    from db.repositories.user_repository import verify_audit_chain_incremental
+
+    return verify_audit_chain_incremental(db, force_full=full)
 
 
 @router.get("/audit/export")

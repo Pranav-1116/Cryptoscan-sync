@@ -30,6 +30,10 @@ DEFAULT_EXCLUDED_DIRS = frozenset({
     "vendor",
 })
 
+_OUTPUT_DIR_NAMES = frozenset({"build", "out", "target", "dist", "bin"})
+ARCHIVE_EXTENSIONS = (".jar", ".war", ".ear", ".aar", ".dll", ".exe", ".netmodule", ".winmd", ".apk", ".aab", ".ipa", ".dex", ".xapk", ".apks")
+ARCHIVE_MAX_BYTES = 250 * 1024 * 1024
+
 # Directories likely to contain generated or test code (configurable exclusion)
 DEFAULT_TEST_DIRS = frozenset({
     "test",
@@ -43,6 +47,29 @@ DEFAULT_TEST_DIRS = frozenset({
 
 DEFAULT_SOURCE_EXTENSIONS = (
     ".java",
+    ".gradle",
+    ".groovy",
+    ".vue",
+    ".svelte",
+    ".swift",
+    ".xml",
+    ".config",
+    ".csproj",
+    ".props",
+    ".plist",
+    ".entitlements",
+    ".sh",
+    ".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql", ".spb", ".sps", ".tps", ".tpb", ".bdy", ".spc",
+    ".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".ccp", ".jcl", ".proc", ".rexx", ".rex", ".asm",
+    ".pli", ".pl1", ".plx", ".pls1",
+    ".nsp", ".nsn", ".nss", ".nsh", ".nsc", ".nsl", ".nsa", ".nsg", ".nsm", ".nat",  # Software AG Natural
+    ".4gl", ".per", ".sru", ".srw", ".srf", ".sra", ".srd", ".srs", ".srm", ".srq", ".p", ".w", ".i", ".cls", ".tal", ".tacl", ".ptal", ".sas", ".hsm",  # Informix 4GL, PowerBuilder, OpenEdge ABL, NonStop TAL/TACL, SAS, payShield console
+    ".csd", ".rdo", ".sit", ".proclib", ".hwscfg", ".ttls", ".pagent",  # CICS / IMS / AT-TLS definitions
+    ".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg", ".clle", ".clp", ".cllp", ".clle38", ".cl", ".cblle", ".sqlcblle", ".cbl38",
+    ".jar", ".war", ".ear", ".aar", ".class", ".dll", ".exe", ".netmodule", ".winmd", ".apk", ".aab", ".ipa", ".dex", ".xapk", ".apks",
+    ".bash",
+    ".zsh",
+    ".ksh",
     ".kt",
     ".kts",
     ".scala",
@@ -58,7 +85,66 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".php",
     ".rb",
     ".rs",
+    ".c",
+    ".h",
+    ".cpp",
+    ".cc",
+    ".cxx",
+    ".hpp",
+    ".hh",
+    ".hxx",
+    ".m",
+    ".mm",
+    # deployment / framework configuration carries TLS, SSH, JWT and cipher
+    # settings that never appear in source: scanned by config_crypto_parser
+    ".conf",
+    ".cnf",
+    ".inf",  # Windows security templates (secedit / GPO): SCHANNEL ciphers, Kerberos etypes, NTLM levels
+    ".reg",  # registry exports of the same policy
+    ".tmsh",  # F5 BIG-IP tmsh profile exports (client-ssl / server-ssl ciphers, options)
+    ".set",  # Palo Alto PAN-OS "set" format configuration exports
+    ".yml",
+    ".yaml",
+    ".properties",
+    ".env",
+    ".ini",
+    ".tf",
+    ".tfvars",
+    ".cfg",
+    # templated configuration (Go templates, Jinja/Ansible, Helm) still carries
+    # literal ssl_protocols / ssl_ciphers / Ciphers directives
+    ".tmpl",
+    ".tpl",
+    ".j2",
+    ".toml",
+    ".props",
+    ".mqsc",
+    ".security",
+    ".policy",
+    ".settings",
 )
+
+_NAMED_CONFIG_EXACT = frozenset({
+    "dockerfile", "containerfile", ".env", "nginx.conf", "openssl.cnf", "ssh_config", "sshd_config",
+    "postgresql.conf", "pg_hba.conf", "my.cnf", "redis.conf", "haproxy.cfg", "httpd.conf", "apache2.conf",
+    "krb5.conf", "ipsec.conf", "strongswan.conf", "smb.conf", "ldap.conf", "slapd.conf",
+    "java.security", "ssl.client.props", "ssl.server.props", "sas.client.props", "soap.client.props", "mqclient.ini", "qm.ini", "mqs.ini", "server.env", "jvm.options", "bootstrap.properties",
+    "quickfix.cfg", "acceptor.cfg", "initiator.cfg", "weblogic.policy", "setdomainenv.sh", "startweblogic.sh",
+})
+
+
+SHELL_NAMED_FILES = frozenset({"makefile", "gnumakefile", "justfile", "entrypoint", "docker-entrypoint"})
+
+
+def is_named_config_file(name: str) -> bool:
+    """Suffix-less / well-known config files the config parser should read
+    (``Dockerfile``, ``api.Dockerfile``, ``.env.production``, ``sshd_config`` ...)."""
+    low = name.lower()
+    if low in _NAMED_CONFIG_EXACT:
+        return True
+    if low.startswith(("dockerfile", "containerfile", ".env.", "sshd_config", "ssh_config")):
+        return True
+    return low.endswith((".dockerfile", "_config"))
 
 
 class FileDiscovery:
@@ -84,6 +170,25 @@ class FileDiscovery:
             self._excluded_dirs = self._excluded_dirs | DEFAULT_TEST_DIRS
         self._max_file_size_bytes = int(max_file_size_mb * 1024 * 1024)
         self._extensions = tuple(extensions) if extensions else DEFAULT_SOURCE_EXTENSIONS
+        # Runtime evidence (ICSF/RACF/payShield/JSSE/openssl/web-server/sshd logs) is opt-in:
+        # log trees are large and repetitive, and a bank hands them over separately.
+        if os.environ.get("CRYPTOSCAN_RUNTIME_LOGS", "").lower() in ("1", "true", "yes"):
+            self._extensions = self._extensions + (".log", ".trc", ".audit", ".syslog")
+        # Key / certificate inventory exports (ICSF, HSM, cloud KMS, keytool, RACDCERT, cert CSV): opt-in, content-sniffed
+        if os.environ.get("CRYPTOSCAN_KEY_INVENTORY", "").lower() in ("1", "true", "yes"):
+            self._extensions = self._extensions + (".kinv", ".keyinv", ".ckds", ".lst", ".out", ".csv", ".rpt", ".prt", ".list", ".dump", ".txt", ".json")
+
+    def _is_excluded_dir(self, path: Path) -> bool:
+        name = path.name
+        if name not in self._excluded_dirs:
+            return False
+        # ``build`` / ``out`` / ``target`` / ``dist`` / ``bin`` are build *outputs* by
+        # convention, but they are also ordinary source package names
+        # (pip/_internal/operations/build/). A directory that is a Python package
+        # is source, not output.
+        if name in _OUTPUT_DIR_NAMES and (path / "__init__.py").is_file():
+            return False
+        return True
 
     def discover(self, root_path: Path) -> Iterator[Path]:
         """
@@ -110,13 +215,17 @@ class FileDiscovery:
             # Modify dirnames IN PLACE to prevent os.walk from descending into excluded dirs
             dirnames[:] = [
                 d for d in dirnames
-                if d not in self._excluded_dirs and not d.startswith(".")
+                if not d.startswith(".") and not self._is_excluded_dir(Path(dirpath) / d)
             ]
 
             current_dir = Path(dirpath)
 
             for filename in filenames:
-                if not filename.lower().endswith(self._extensions):
+                if (
+                    not filename.lower().endswith(self._extensions)
+                    and not is_named_config_file(filename)
+                    and filename.lower() not in SHELL_NAMED_FILES
+                ):
                     continue
 
                 file_path = current_dir / filename
@@ -124,7 +233,10 @@ class FileDiscovery:
                 # Skip oversized files
                 try:
                     file_size = file_path.stat().st_size
-                    if file_size > self._max_file_size_bytes:
+                    limit = self._max_file_size_bytes
+                    if filename.lower().endswith(ARCHIVE_EXTENSIONS):
+                        limit = max(limit, ARCHIVE_MAX_BYTES)  # vendored fat JARs / EARs are routinely 50-200 MB
+                    if file_size > limit:
                         log.warning(
                             "skipping_oversized_file",
                             file=str(file_path),

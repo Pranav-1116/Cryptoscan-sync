@@ -32,6 +32,8 @@ def _to_response(row, include_raw: bool = False) -> FindingResponse:
         normalized_crypto=row.normalized_crypto,
         policy_evaluation=row.policy_evaluation,
         finding_data=row.finding_data if include_raw else None,
+        created_at=getattr(row, "created_at", None),
+        updated_at=getattr(row, "updated_at", None),
     )
 
 

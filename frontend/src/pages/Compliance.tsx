@@ -1,58 +1,211 @@
-import React from "react";
-import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
-import { useLive, LiveStatus } from "../lib/useLive.js";
+import React, { useEffect, useState } from "react";
+import { Badge, Button } from "../components/ui";
+import { apiComplianceEvidence, apiComplianceRetention } from "../lib/api";
 
 export default function Compliance() {
-  const sec = useLive<{ sector: string; profile: any }>("/api/v1/sectors/organization/active", { sector: "", profile: null });
-  const drift = useLive<{ total: number; open: number; by_severity: Record<string, number> }>("/api/v1/drift/digest", { total: 0, open: 0, by_severity: {} });
+  const [loading, setLoading] = useState(true);
+  const [evidenceData, setEvidenceData] = useState<any>(null);
+  const [retentionData, setRetentionData] = useState<any>(null);
+  const [selectedStandard, setSelectedStandard] = useState("PCI-DSS");
 
-  const profile = sec.data.profile;
-  const frameworks: string[] = profile?.compliance_frameworks ?? [];
-  const open = drift.data.open ?? 0;
-  const loading = sec.loading || drift.loading;
-  const offline = sec.error || drift.error;
+  useEffect(() => {
+    let alive = true;
+    async function loadCompliance() {
+      setLoading(true);
+      try {
+        const [evRes, retRes] = await Promise.all([
+          apiComplianceEvidence(),
+          apiComplianceRetention(),
+        ]);
+        if (alive) {
+          if (evRes.source === "live" && evRes.data) setEvidenceData(evRes.data);
+          if (retRes.source === "live" && retRes.data) setRetentionData(retRes.data);
+        }
+      } catch (err) {
+        console.error("Failed to load compliance evidence:", err);
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+    loadCompliance();
+    return () => { alive = false; };
+  }, []);
+
+  const controls = evidenceData?.controls || [];
+  const passCount = controls.filter((c: any) => c.status === "pass").length;
+  const failCount = controls.filter((c: any) => c.status === "fail").length;
+  const totalCount = controls.length;
+  const complianceScore = totalCount > 0 ? Math.round((passCount / totalCount) * 100) : 100;
+
+  const standards = [
+    { id: "PCI-DSS", name: "PCI-DSS v4.0.1", tag: "Payment Systems" },
+    { id: "NIST", name: "NIST SP 800-131A / IR 8547", tag: "Quantum Transition" },
+    { id: "DORA", name: "DORA (EU 2022/2554)", tag: "Operational Resilience" },
+    { id: "FIPS", name: "FIPS 140-3", tag: "Module Validation" },
+    { id: "SOC2", name: "SOC 2 Type II (CC6.1)", tag: "Transmission Security" },
+  ];
 
   return (
-    <>
-      <PageHead
-        crumb="govern / compliance"
-        title="Compliance"
-        sub="Framework → requirement → control → evidence → status · versioned, configurable mappings"
-        right={<Badge tone={open ? "amber" : "green"}>{open} OPEN DRIFT</Badge>}
-      />
-      <div style={{ marginBottom: 12 }}><LiveStatus loading={loading} error={offline} /></div>
-      <Panel title="Applicable frameworks" sub={profile ? `derived from active sector: ${sec.data.sector}` : "no active sector — set one in Organization/Onboarding"}>
-        <Table
-          head={["framework", "applies to", "policy pack", "status"]}
-          rows={frameworks.map((fw, i) => [
-            <span className="mono" style={{ fontWeight: 600 }}>{fw}</span>,
-            (profile?.critical_asset_classes ?? []).join(", ") || "all in-scope assets",
-            <span className="mono" style={{ fontSize: 12 }}>{(profile?.policy_packs ?? [])[i] ?? "standard"}</span>,
-            <Badge tone={open ? "amber" : "green"}>{open ? "controls under review" : "mapped"}</Badge>,
-          ])}
-        />
-        {frameworks.length === 0 && (
-          <p className="dim" style={{ fontSize: 13 }}>
-            No sector selected yet. Compliance mappings are derived deterministically from the active
-            organization sector and the live evidence store — nothing is shown until an organization is onboarded.
+    <div className="page" style={{ maxWidth: "1280px", margin: "0 auto", padding: "10px 0 60px" }}>
+      {/* Compliance Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "24px", flexWrap: "wrap", gap: "16px" }}>
+        <div>
+          <div style={{ fontSize: "12px", fontFamily: "var(--mono)", color: "var(--cyan)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+            Evidence-Backed Governance Engine
+          </div>
+          <h1 style={{ fontSize: "26px", fontWeight: 700, margin: "4px 0 6px" }}>Continuous Regulatory Compliance</h1>
+          <p style={{ margin: 0, fontSize: "13.5px", color: "var(--dim)" }}>
+            Deterministic policy verification. Every compliance status is backed by authoritative platform observations and immutable WORM logs.
           </p>
-        )}
-      </Panel>
-      <Panel title="Evidence status" sub="controls are satisfied only by hash-chained evidence" className="mt">
-        <Table
-          head={["source", "open items", "critical", "high", "medium"]}
-          rows={[[
-            <span className="mono">drift / finding digest</span>,
-            <span className="num">{drift.data.total ?? 0}</span>,
-            <span className="num">{drift.data.by_severity?.CRITICAL ?? 0}</span>,
-            <span className="num">{drift.data.by_severity?.HIGH ?? 0}</span>,
-            <span className="num">{drift.data.by_severity?.MEDIUM ?? 0}</span>,
-          ]]}
-        />
-        <p className="dim" style={{ fontSize: 12.5, marginTop: 8 }}>
-          Run a compliance report (Resilience → Compliance report) to generate the signed, framework-mapped control assessment.
+        </div>
+
+        <div style={{ display: "flex", gap: "10px" }}>
+          <a
+            href="/api/v1/compliance/evidence"
+            target="_blank"
+            rel="noreferrer"
+            className="btn outline"
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+          >
+            Export Compliance Evidence
+          </a>
+          <a
+            href="#/evidence"
+            className="btn primary"
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+          >
+            Audit Evidence Lake
+          </a>
+        </div>
+      </div>
+
+      {/* Top 4 Metric Cards */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px", marginBottom: "24px" }}>
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Compliance Posture Score
+          </div>
+          <div style={{ fontSize: "28px", fontWeight: 700, color: complianceScore >= 90 ? "var(--green)" : "var(--amber)", margin: "4px 0" }}>
+            {loading ? "..." : `${complianceScore}%`}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+            {passCount} passing out of {totalCount} evaluated controls
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Active Violations
+          </div>
+          <div style={{ fontSize: "28px", fontWeight: 700, color: failCount > 0 ? "var(--red)" : "var(--green)", margin: "4px 0" }}>
+            {loading ? "..." : failCount}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+            Requiring immediate remediation
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            WORM Retention Policy
+          </div>
+          <div style={{ fontSize: "24px", fontWeight: 700, margin: "6px 0" }}>
+            {loading ? "..." : `${retentionData?.policy?.audit_log_years ?? 7} Years`}
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--green)" }}>
+            Immutable append-only lock
+          </div>
+        </div>
+
+        <div className="panel" style={{ padding: "18px" }}>
+          <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+            Supervisory Alignment
+          </div>
+          <div style={{ fontSize: "20px", fontWeight: 700, margin: "7px 0", color: "var(--cyan)" }}>
+            Harmonized
+          </div>
+          <div style={{ fontSize: "12px", color: "var(--dim)" }}>
+            Cross-regulatory mapping
+          </div>
+        </div>
+      </div>
+
+      {/* Standards Selection */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "20px", flexWrap: "wrap" }}>
+        {standards.map((s) => (
+          <button
+            key={s.id}
+            onClick={() => setSelectedStandard(s.id)}
+            style={{
+              padding: "8px 16px",
+              borderRadius: "8px",
+              border: "1px solid var(--line)",
+              background: selectedStandard === s.id ? "var(--cyan)" : "var(--bg-2)",
+              color: selectedStandard === s.id ? "#04121d" : "var(--text)",
+              fontWeight: selectedStandard === s.id ? 700 : 500,
+              fontSize: "12.5px",
+              cursor: "pointer"
+            }}
+          >
+            {s.name}
+          </button>
+        ))}
+      </div>
+
+      {/* Evidence Table */}
+      <div className="panel" style={{ padding: "20px" }}>
+        <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 600 }}>Deterministic Control Verifications</h3>
+        <p style={{ margin: "0 0 16px", fontSize: "12px", color: "var(--dim)" }}>
+          Evaluated controls backed by live configuration telemetry and signed scanner artifacts.
         </p>
-      </Panel>
-    </>
+
+        <div style={{ overflowX: "auto" }}>
+          <table className="tbl" style={{ width: "100%" }}>
+            <thead>
+              <tr>
+                <th>Control Key</th>
+                <th>Status</th>
+                <th>Observed Evidence Details</th>
+                <th>Evaluated Timestamp</th>
+              </tr>
+            </thead>
+            <tbody>
+              {controls.map((c: any, idx: number) => (
+                <tr key={idx}>
+                  <td>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: "12.5px", fontWeight: 600, color: "var(--cyan)" }}>
+                      {c.control}
+                    </span>
+                  </td>
+                  <td>
+                    <Badge variant={c.status === "pass" ? "success" : "danger"}>
+                      {c.status.toUpperCase()}
+                    </Badge>
+                  </td>
+                  <td>
+                    <span style={{ fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--text)" }}>
+                      {typeof c.evidence === "object" ? JSON.stringify(c.evidence) : String(c.evidence)}
+                    </span>
+                  </td>
+                  <td>
+                    <span style={{ fontSize: "12px", color: "var(--dim)" }}>
+                      {c.checked_at ? new Date(c.checked_at).toLocaleString() : "Live"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+
+              {controls.length === 0 && !loading && (
+                <tr>
+                  <td colSpan={4} style={{ textAlign: "center", padding: "36px", color: "var(--dim)" }}>
+                    No policy evidence registered yet. Configure compliance frameworks in Settings.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   );
 }

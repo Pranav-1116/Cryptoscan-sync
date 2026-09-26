@@ -11,6 +11,7 @@ from typing import Optional
 
 from normalization.enrichers.cbom_enricher import CbomEnricher
 from normalization.enrichers.family_enricher import FamilyEnricher
+from normalization.enrichers.quantum_enricher import QuantumEnricher
 from normalization.enrichers.iana_enricher import IanaEnricher
 from normalization.enrichers.nist_enricher import NistEnricher
 from normalization.matchers.exact_matcher import ExactMatcher
@@ -45,6 +46,7 @@ class NormalizationProcessor:
         self._iana_enricher = IanaEnricher()
         self._cbom_enricher = CbomEnricher()
         self._family_enricher = FamilyEnricher()
+        self._quantum_enricher = QuantumEnricher()
 
     def process(
         self,
@@ -167,6 +169,7 @@ class NormalizationProcessor:
         normalized = self._iana_enricher.enrich(normalized)
         normalized = self._cbom_enricher.enrich(normalized)
         normalized = self._family_enricher.enrich(normalized)
+        normalized = self._quantum_enricher.enrich(normalized)
 
         logger.debug(
             "Normalization complete",

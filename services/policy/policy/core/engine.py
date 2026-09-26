@@ -47,7 +47,7 @@ class PolicyEngine:
             )
         
         logger.info(
-            f"Initializing PolicyEngine",
+            "Initializing PolicyEngine",
             extra={
                 "rules_directory": str(self.rules_directory),
                 "version": version
@@ -124,7 +124,7 @@ class PolicyEngine:
                 results.append(result)
             except Exception as e:
                 logger.error(
-                    f"Failed to evaluate evidence item",
+                    "Failed to evaluate evidence item",
                     extra={"error": str(e)},
                     exc_info=True
                 )

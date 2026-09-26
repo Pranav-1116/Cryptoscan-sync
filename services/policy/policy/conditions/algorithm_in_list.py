@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from policy.conditions.base_condition import BaseCondition, EvaluationOutcome
+from policy.conditions.base_condition import BaseCondition, EvaluationOutcome, algorithm_matches
 from policy.models.policy_rule import AlgorithmInListParameters
 
 
@@ -13,14 +13,14 @@ class AlgorithmInListCondition(BaseCondition):
 
     def evaluate(self, evidence_data: dict[str, Any], params: dict[str, Any]) -> EvaluationOutcome:
         typed = AlgorithmInListParameters.model_validate(params)
-        forbidden = {a.upper() for a in typed.algorithm_list}
         algorithm = self._resolve_algorithm(evidence_data)
         if algorithm is None:
             return EvaluationOutcome("NOT_APPLICABLE", "Algorithm could not be determined")
-        if algorithm.upper() in forbidden:
+        hit = algorithm_matches(evidence_data, typed.algorithm_list)
+        if hit is not None:
             return EvaluationOutcome(
                 "FAIL",
-                f"Algorithm '{algorithm}' is forbidden. List: {sorted(typed.algorithm_list)}",
+                f"Algorithm '{hit}' is forbidden. List: {sorted(typed.algorithm_list)}",
             )
         return EvaluationOutcome("PASS", f"Algorithm '{algorithm}' is not forbidden")
 

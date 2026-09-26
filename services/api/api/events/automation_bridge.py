@@ -48,6 +48,34 @@ def _handle(event: dict) -> None:
     etype = str(event.get("type") or "")
     if etype.startswith(_EMITTED_PREFIXES):
         return
+    if etype == "telecom.event":
+        # telecom posture events map onto the SAME rules engine via the
+        # pure mapper (kind + condition data); noise returns None and the
+        # automation engine is never woken for recoveries/info events.
+        from telecom_scanner.automation import automation_data, automation_event_kind
+
+        payload = event.get("payload") or {}
+        kind = automation_event_kind(payload)
+        if kind is None:
+            return
+        try:
+            from db.connection.session import SessionLocal
+
+            from api.routers.automation import run_automation
+
+            with SessionLocal() as db:
+                run_automation(
+                    db,
+                    event_kind=kind,
+                    data=automation_data(payload),
+                    asset=None,
+                    triggered_by=f"event-bus:{event.get('source') or 'telecom-scanner'}",
+                    persist=True,
+                )
+                db.commit()
+        except Exception:
+            logger.debug("telecom automation handling failed", exc_info=True)
+        return
     kind = EVENT_MAP.get(etype)
     if kind is None:
         return

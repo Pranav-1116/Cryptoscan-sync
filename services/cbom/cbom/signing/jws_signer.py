@@ -29,7 +29,7 @@ from typing import Any, Callable
 try:
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+    from cryptography.hazmat.primitives.asymmetric import ec, padding
     from cryptography.hazmat.primitives.asymmetric.utils import (
         decode_dss_signature,
         encode_dss_signature,
@@ -163,7 +163,7 @@ def verify_compact(jws: str, key, alg: str | None = None) -> tuple[bool, str]:
         alg = alg or _header_alg(header_b64)
         if alg not in SUPPORTED_ALGS:
             return False, f"unsupported alg {alg!r}"
-        header = json.loads(b64url_decode(header_b64))
+        json.loads(b64url_decode(header_b64))
         _, verifier = _SIGNERS[alg]
         signing_input = f"{header_b64}.{payload_b64}".encode("ascii")
         signature = b64url_decode(sig_b64)
@@ -227,7 +227,7 @@ def verify_cbom_jws(bom: dict[str, Any], key, alg: str | None = None) -> tuple[b
     # The signed payload must be the canonical BOM body (tamper check).
     header_b64 = jws.split(".")[0]
     try:
-        header = json.loads(b64url_decode(header_b64))
+        json.loads(b64url_decode(header_b64))
     except Exception:
         return False, "malformed JWS header"
     payload_b64 = jws.split(".")[1]

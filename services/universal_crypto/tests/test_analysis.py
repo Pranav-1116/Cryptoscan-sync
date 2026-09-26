@@ -21,7 +21,6 @@ from universal_crypto.models import (
     Evidence,
     EvidenceType,
     ImplementationClass,
-    MigrationPriority,
     Operation,
     QuantumStatus,
 )

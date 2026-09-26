@@ -213,3 +213,57 @@ def test_credential_expired_and_rotation():
     assert unverified.healthy is False and unverified.status == "pending"
     revoked = assess_credential({"status": "revoked"}, now=NOW)
     assert revoked.healthy is False
+
+
+# ------------------------------------------------- security posture scoring
+def test_security_score_is_zero_when_unprovisioned():
+    from control_plane.security_posture import security_score
+
+    # All signals absent (unprovisioned store) -> honest low, never a green.
+    assert security_score({}) == 0
+
+
+def test_security_score_full_is_100():
+    from control_plane.security_posture import security_score
+
+    perfect = {"audit": 1, "cert": 1, "auth": 1, "threat": 1, "fleet": 1, "plugin": 1}
+    assert security_score(perfect) == 100
+
+
+def test_security_score_weights_sum_to_one():
+    from control_plane.security_posture import WEIGHTS
+
+    assert abs(sum(WEIGHTS.values()) - 1.0) < 1e-9
+
+
+def test_security_score_clamps_out_of_range():
+    from control_plane.security_posture import security_score
+
+    # Values above 1 / below 0 are clamped to [0,1]; audit dominates at 0.25.
+    assert security_score({"audit": 2.0}) == 25
+    assert security_score({"audit": -1.0}) == 0
+
+
+def test_security_score_partial_is_weighted():
+    from control_plane.security_posture import security_score
+
+    # audit OK (1.0 × 0.25) + plugin OK (1.0 × 0.10) = 0.35 -> 35.
+    assert security_score({"audit": 1, "plugin": 1}) == 35
+
+
+def test_posture_delta_detects_drop():
+    from control_plane.security_posture import posture_delta
+
+    d = posture_delta(30, 60)
+    assert d["delta"] == -30 and d["previous_score"] == 60 and d["dropped"] is True
+    # a small delta within the threshold is not flagged as a drop
+    assert posture_delta(48, 50)["dropped"] is False
+    # no previous snapshot -> no drift
+    assert posture_delta(40, None)["delta"] is None
+
+
+def test_posture_delta_improvement_not_drop():
+    from control_plane.security_posture import posture_delta
+
+    d = posture_delta(55, 25)
+    assert d["delta"] == 30 and d["dropped"] is False

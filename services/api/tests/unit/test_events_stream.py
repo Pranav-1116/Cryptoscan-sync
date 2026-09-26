@@ -182,3 +182,71 @@ async def test_stats_endpoint(plain_client, bus):
     body = (await plain_client.get("/api/v1/events/stats")).json()
     assert {"events_buffered", "subscribers", "latest_id", "tailer_running"} <= set(body)
     await plain_client.aclose()
+
+
+# ------------------------------------------------------- telecom tailer
+
+def test_telecom_tailer_drain_seeds_then_publishes():
+    """First observation after boot seeds history without publishing; a NEW
+    event publishes with the exact key contract the API's direct publisher
+    registers (one event, one delivery across processes)."""
+    from api.routers.events import _drain_telecom_events
+    from api.routers.telecom import _event_key
+
+    ev = {"kind": "TELECOM_REACHABILITY_LOST", "severity": "critical",
+          "target": "sepp-01", "nf_type": "sepp", "carrier_code": "dt",
+          "message": "gone", "at": "2026-09-12T12:00:00+00:00",
+          "fingerprint": "UNREACHABLE|connect.refused|-"}
+    seen: set[str] = set()
+    published: list[dict] = []
+
+    # seed pass (tailer's first read after boot): history learned, nothing published
+    assert _drain_telecom_events(seen, lambda e: published.append(e),
+                                 {"events": [ev]}, seed_only=True) == 0
+    assert published == []
+    assert _event_key(ev) in seen  # same key both sides compute
+
+    # the same event arriving again (e.g. via the direct-publisher filter
+    # failing) is NOT re-published
+    assert _drain_telecom_events(seen, lambda e: published.append(e), {"events": [ev]}) == 0
+
+    # a genuinely new event publishes
+    new_ev = {**ev, "kind": "TELECOM_RECOVERED", "severity": "info",
+              "at": "2026-09-12T12:05:00+00:00",
+              "fingerprint": "TLS_OK|-"}
+    assert _drain_telecom_events(seen, lambda e: published.append(e),
+                                 {"events": [ev, new_ev]}) == 1
+    assert [e["kind"] for e in published] == ["TELECOM_RECOVERED"]
+
+
+def test_telecom_tailer_drain_empty_and_none_snapshots():
+    from api.routers.events import _drain_telecom_events
+
+    published: list[dict] = []
+    seen: set[str] = set()
+    assert _drain_telecom_events(seen, lambda e: published.append(e), None) == 0
+    assert _drain_telecom_events(seen, lambda e: published.append(e), {}) == 0
+    assert _drain_telecom_events(seen, lambda e: published.append(e), {"events": []}) == 0
+    assert published == [] and seen == set()
+
+
+def test_telecom_tailer_payload_carries_full_identity():
+    """The tailer's bus payload keeps plane/endpoint so automation rules can
+    target e.g. plane == roaming — not just nf/kind/severity."""
+    from api.routers.events import _telecom_event_payload
+
+    payload = _telecom_event_payload({
+        "kind": "TELECOM_PQC_DROPPED", "severity": "high",
+        "target": "gw-za-01", "nf_type": "sepp", "carrier_code": "de-telekom",
+        "plane": "roaming", "endpoint": "za.lab:500",
+        "message": "PQC regression", "at": "2026-09-13T05:00:00+00:00",
+        "fingerprint": "TLS_OK|pqc.lost|-",
+    })
+    assert payload["nf_id"] == "gw-za-01"
+    assert payload["plane"] == "roaming"
+    assert payload["endpoint"] == "za.lab:500"
+    assert payload["origin"] == "snapshot-tailer"
+    assert payload["kind"] == "TELECOM_PQC_DROPPED"
+    # automation maps it using the SAME payload the bus carries
+    from telecom_scanner.automation import automation_event_kind
+    assert automation_event_kind(payload) == "quantum_vulnerable_detected"

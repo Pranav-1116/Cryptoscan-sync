@@ -1,0 +1,5 @@
+[
+ {"kid":"https://bank-kv.vault.azure.net/keys/payments-wrap/abc123","attributes":{"enabled":true,"created":1700000000,"exp":null},"name":"payments-wrap","kty":"RSA-HSM","key_size":3072,"key_ops":["wrapKey","unwrapKey"],"rotationPolicy":{"lifetimeActions":[]}},
+ {"kid":"https://bank-kv.vault.azure.net/keys/token-sign/def456","attributes":{"enabled":false},"kty":"EC","crv":"P-256"},
+ {"key":{"kid":"https://bank-kv.vault.azure.net/keys/data-key/ghi789","kty":"oct-HSM","key_ops":["encrypt","decrypt"]},"attributes":{"enabled":true},"key_size":256}
+]

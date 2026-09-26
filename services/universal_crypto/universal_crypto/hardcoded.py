@@ -8,7 +8,7 @@ algorithm swap requires a code change, not a config change).
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 #: source patterns that indicate hard-coding (deterministic catalog)
 _PATTERNS: list[tuple[str, str]] = [

@@ -54,9 +54,12 @@ def hardware_catalog(
     if status:
         entries = [e for e in entries if e["status"].upper() == status.upper()]
     counts: dict[str, int] = {}
+    quantum_ready = 0
     for e in entries:
         counts[e["status"]] = counts.get(e["status"], 0) + 1
-    return {"count": len(entries), "status_counts": counts, "devices": entries}
+        quantum_ready += int(bool(e.get("quantum_resistant")))
+    return {"count": len(entries), "status_counts": counts,
+            "quantum_resistant_count": quantum_ready, "devices": entries}
 
 
 class ClassifyHardwareRequest(BaseModel):

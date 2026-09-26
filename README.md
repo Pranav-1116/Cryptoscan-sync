@@ -1,12 +1,19 @@
 # CryptoScan
 
-Production cryptographic inventory and compliance platform.
+Production cryptographic inventory and compliance platform — **Full End-to-End Product**.
+
+**Current Stats (2026-09-19, verified):** 51 services (~276k lines of Python, 2,239 files), 325 API router modules (85 registered in `api.main`), 57 alembic migrations with schema-parity tests, 71 frontend pages with lazy-loaded routes, 498 test files. Deterministic policy — no AI in the decision path.
+
+**Real-Time System:** WebSocket hub per topic /ws/{topic} plus global /ws/global; SSE /events/{topic} and /events/global; in-process event bus (publish/subscribe/recent) with a DB tailer that federates cross-process monitor events; live dashboard at /live/dashboard with history replay and auto-reconnect. Deterministic and auditable.
+
+**Cryptographic Digital Twin (CDT):** Live virtual replica entire cryptographic estate every asset key certificate protocol dependency business process vendor attack surface mirrors production near-real-time simulate changes attacks failures migrations without touching production flight simulator for crypto estate deterministic no AI — 7 layers, 10 scenario types, time-travel, isolation guardrails — genuine first-mover advantage nobody in market has this
+
 
 Deterministic scanners, hashed evidence, YAML policy, drift, and a dashboard.
 Policy is never decided by AI.
 
-**Local:** `bash scripts/run_stack.sh` (seeds SQLite on first boot).  
-**Development login:** `admin` / `cryptoscan` (refused in production). **Docs:** [RUN.md](RUN.md).  
+**Local:** `bash scripts/run_stack.sh` (boots empty — no demo data; inventory appears when real scans run).  
+**Development login:** `admin` / `cryptoscan` (refused in production). **Docs:** [docs/README.md](docs/README.md) (all guides) · [RUN.md](RUN.md) · [REST API reference](docs/api-reference/rest-api.md).  
 **Docker (dev):** `docker compose up --build`.  
 **Docker (prod):** set secrets, then `docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build`.
 
@@ -30,6 +37,11 @@ not a universal "scan everything" tool.
 - 🔒 **Always:** read-only collection, evidence-chained observations, and
   **key *metadata* only — never key material or secret values** (enforced by
   tests; evidence packs use strict field whitelists).
+
+Not every surface is equally proven: **33 GA · 30 beta · 8 preview** console
+surfaces, labelled on every page and listed in
+[docs/CAPABILITY-MATURITY.md](docs/CAPABILITY-MATURITY.md)
+(`GET /api/v1/platform/capabilities`, source `shared_models/capability_maturity.py`).
 
 The boundaries are a single source of truth
 (`shared_models/platform_scope.py`), served at `GET /api/v1/platform/scope`,

@@ -17,6 +17,7 @@ from automation.safety import classify_action
 
 
 class PlaybookTrigger(str, Enum):
+    AGENT_OFFLINE = "agent_offline"
     NEW_CRYPTO_ASSET = "new_crypto_asset"
     QUANTUM_VULNERABLE = "quantum_vulnerable"
     CERTIFICATE_EXPIRING = "certificate_expiring"
@@ -117,6 +118,19 @@ def _build() -> dict[str, Playbook]:
          ("create_alert", "vulnerable crypto library in use"),
          ("create_ticket", "remediation ticket with blast radius")])
 
+    add("pb_telecom_nf_down", PlaybookTrigger.AGENT_OFFLINE.value,
+        "Telecom NF unreachable playbook",
+        "A monitored 3GPP network function (5G SBA / EPC / IMS / signaling / "
+        "NDS/IP) stopped answering: re-probe from the second vantage, alert "
+        "the NOC with carrier + PLMN context, open a ticket with the crypto "
+        "exposure note (an NF down is a monitoring blind spot, TS 33.210), "
+        "and gate any failover action on human approval.",
+        [("targeted_rescan", "re-probe the NF endpoint (confirm reachability)"),
+         ("create_alert", "NOC alert with carrier_code + plane context"),
+         ("create_ticket", "carrier ownership ticket; note the crypto blind spot"),
+         ("notify_crypto_team", "if the NF was carrying weak/legacy verdicts"),
+         ("request_approval", "gated: carrier failover changes the network")])
+
     add("pb_drift", PlaybookTrigger.DRIFT.value,
         "Drift playbook",
         "Diff current state vs sealed baseline and alert/ticket on regressions.",
@@ -149,6 +163,7 @@ def playbook_for_event(event_kind: str) -> Playbook | None:
         "new_asset": "pb_new_asset",
         "vulnerable_library_detected": "pb_vulnerable_library",
         "drift_detected": "pb_drift",
+        "agent_offline": "pb_telecom_nf_down",
     }
     pid = mapping.get(event_kind)
     return _PLAYBOOKS.get(pid) if pid else None

@@ -22,13 +22,15 @@ Target service levels for the `deploy/ha` stack:
 # nightly evidence backup + manifest (works on sqlite AND postgres backends)
 python scripts/backup_evidence.py                  # -> backups/cryptoscan-<ts> + .manifest.json
 
-# postgres logical backup
-docker compose -f deploy/ha/docker-compose.yml exec postgres \
-  pg_dump -U cryptoscan cryptoscan | gzip > backups/pg-$(date +%F).sql.gz
+# full database backup: postgres custom-format dump + sha256 manifest + retention
+bash scripts/db_backup.sh                          # add --with-neo4j for a consistent graph dump
+# -> backups/db/pg-<ts>.dump + pg-<ts>.sha256      (verify + restore: scripts/db_restore.sh)
 
 # verify a backup restores and the evidence chain is intact
 python scripts/backup_evidence.py --verify backups/cryptoscan-<ts>.db
+bash scripts/db_restore.sh backups/db/pg-<ts>.dump   # asks for confirmation, checksum-first
 ```
+
 
 Backups must leave the host (object storage / vault copy) — a backup that
 lives on the same disk is not a backup.
@@ -41,7 +43,7 @@ docker volume rm ha_pgdata
 docker compose up -d postgres
 gunzip -c backups/pg-<date>.sql.gz | \
   docker compose exec -T postgres psql -U cryptoscan cryptoscan
-python -m alembic -c services/database/migrations/alembic.ini current   # confirm revision
+python -m alembic -c services/database/migrations/alembic.ini current   # confirm revision (0060 at this release)
 docker compose up -d                                                   # migrate runs, api/worker/monitor follow
 python scripts/backup_evidence.py --verify ...   # chain integrity after restore
 ```

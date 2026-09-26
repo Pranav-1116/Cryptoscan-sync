@@ -95,8 +95,8 @@ class CloudDependencyGraph:
                 workload.workload_id, app, "RUNS_ON",
                 provider=workload.cloud_provider, account=workload.account,
             )
-        key_by_id = {key.key_id: key for key in keys}
-        cert_by_id = {cert.certificate_id: cert for cert in certificates}
+        {key.key_id: key for key in keys}
+        {cert.certificate_id: cert for cert in certificates}
         for workload in workloads:
             for key_ref in workload.key_dependencies:
                 self.add_edge(

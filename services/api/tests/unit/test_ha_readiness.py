@@ -39,7 +39,7 @@ def test_shared_backend_one_budget_across_instances():
     clock = [1_000.0]
     middleware = RateLimitMiddleware(app=None, rules={"api": (3, 60)}, clock=lambda: clock[0],
                                      redis_client=FakeRedis())
-    replica_a = middleware._take(("user:soc", "api"), 3, 60)
+    _replica_a = middleware._take(("user:soc", "api"), 3, 60)
     replica_b = RateLimitMiddleware(app=None, rules={"api": (3, 60)}, clock=lambda: clock[0],
                                     redis_client=middleware.redis)
     # three hits spread across two "replicas" sharing the same Redis

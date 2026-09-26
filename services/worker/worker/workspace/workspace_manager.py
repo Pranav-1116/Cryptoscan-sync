@@ -23,8 +23,12 @@ class WorkspaceManager:
         path = Path(workspace_path)
         if not path.exists():
             return
+        # Resolve both sides: the default base is relative ("./data/workspaces")
+        # and create() hands back a relative path, so comparing an unresolved
+        # path against a resolved base rejected *every* cleanup. Found by the
+        # Postgres soak: one leaked workspace per job, forever.
         try:
-            path.relative_to(self.base_temp_dir.resolve())
+            path.resolve().relative_to(self.base_temp_dir.resolve())
         except ValueError:
             logger.error("refusing_to_delete_workspace_outside_base", extra={"path": str(path)})
             return

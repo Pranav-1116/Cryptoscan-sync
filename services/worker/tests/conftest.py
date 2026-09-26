@@ -37,13 +37,29 @@ def temp_workspace():
 
 @pytest.fixture
 def test_db():
-    """In-memory test database"""
-    engine = create_engine("sqlite:///:memory:")
+    """In-memory test database (SQLite). Set CRYPTOSCAN_TEST_DB_BACKEND=postgresql to run the whole suite on PostgreSQL."""
+    import os
+
+    backend = os.environ.get("CRYPTOSCAN_TEST_DB_BACKEND", "sqlite")
+    if backend == "sqlite":
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        session = sessionmaker(bind=engine)()
+        yield session
+        session.close()
+        return
+    from db.testing import drop_engine, estate_engine
+
+    engine = estate_engine(backend)
+    if engine is None:
+        pytest.skip("no PostgreSQL available")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
-    yield session
-    session.close()
+    session = sessionmaker(bind=engine)()
+    try:
+        yield session
+    finally:
+        session.close()
+        drop_engine(engine)
 
 
 @pytest.fixture
@@ -82,3 +98,21 @@ def mock_findings():
             confidence="HIGH"
         )
     ]
+
+@pytest.fixture(params=["sqlite", "postgresql"])
+def estate_db(request):
+    """The end-to-end estate tests run twice: SQLite in memory and a real PostgreSQL (env URL or embedded pgserver).
+
+    PostgreSQL is *skipped*, never faked, when no server is available."""
+    from db.testing import drop_engine, estate_engine
+
+    engine = estate_engine(request.param)
+    if engine is None:
+        pytest.skip("no PostgreSQL: set CRYPTOSCAN_TEST_DATABASE_URL or pip install pgserver")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine, expire_on_commit=False)()
+    try:
+        yield session
+    finally:
+        session.close()
+        drop_engine(engine)

@@ -69,6 +69,7 @@ class GraphEngine:
         vendors: Iterable[dict[str, Any]] = (),
         certificates: Iterable[dict[str, Any]] = (),
         cloud_resources: Iterable[dict[str, Any]] = (),
+        network_resources: Iterable[dict[str, Any]] = (),
     ) -> "GraphEngine":
         for system in systems:
             sid = str(system.get("id") or system.get("system_id") or system.get("name"))
@@ -80,6 +81,8 @@ class GraphEngine:
                 owner=system.get("owner"),
                 criticality=system.get("criticality") or (system.get("extra") or {}).get("criticality"),
                 compliance_scopes=system.get("compliance_scopes") or [],
+                **({"source": system["source"]} if system.get("source") else {}),
+                **({"code_cascade": system["code_cascade"]} if system.get("code_cascade") else {}),
             )
             for scope in system.get("compliance_scopes") or []:
                 self.add_node(f"scope:{scope}", kind="ComplianceScope", name=scope, standard_name=scope)
@@ -128,6 +131,7 @@ class GraphEngine:
             self.add_node(
                 f"cert:{cid}",
                 kind="Certificate",
+                name=cert.get("subject"),
                 subject=cert.get("subject"),
                 expiry_status=cert.get("expiry_status"),
             )
@@ -145,6 +149,19 @@ class GraphEngine:
             )
             for system_id in resource.get("system_ids") or []:
                 self.add_edge(f"system:{system_id}", f"cloud:{rid}", "DEPLOYED_ON")
+        for resource in network_resources:
+            rid = str(resource.get("id") or resource.get("endpoint") or resource.get("resource_id") or "")
+            if not rid:
+                continue
+            self.add_node(
+                f"network:{rid}",
+                kind="NetworkResource",
+                name=resource.get("name") or resource.get("endpoint"),
+                endpoint=resource.get("endpoint"),
+                resource_type=resource.get("resource_type") or "TLS_ENDPOINT",
+            )
+            for system_id in resource.get("system_ids") or []:
+                self.add_edge(f"system:{system_id}", f"network:{rid}", "CONNECTS_TO")
         return self
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
@@ -262,6 +279,81 @@ class GraphEngine:
             "vendor_id": found_vendor.split(":", 1)[-1],
             "backend": self.backend,
         }
+
+    def vendor_chain(self, start_id: str) -> dict[str, Any]:
+        """Vendor → product → assets → crypto chain (downstream).
+
+        Starts at a Vendor node and walks the *real* edges the backend built:
+        systems that DEPEND_ON_VENDOR the vendor, the crypto assets those
+        systems USES, and (optionally) the business processes those systems
+        SUPPORT. Returns nothing but real graph edges — no invented links.
+        """
+        if (self.nodes.get(start_id) or {}).get("kind") != "Vendor":
+            # Allow the caller to pass a bare vendor id or name.
+            start_id = self._resolve(start_id) or start_id
+            if (self.nodes.get(start_id) or {}).get("kind") != "Vendor":
+                return {"start": start_id, "vendor": None, "systems": [], "count": 0, "backend": self.backend}
+        vendor_node = self.nodes.get(start_id) or {}
+        dependent_systems = [
+            src for src, rel in self.incoming.get(start_id, []) if rel == "DEPENDS_ON_VENDOR"
+        ]
+        systems = []
+        seen_systems: set[str] = set()
+        for sys_id in dependent_systems:
+            if sys_id in seen_systems:
+                continue
+            seen_systems.add(sys_id)
+            node = self.nodes.get(sys_id) or {}
+            assets = []
+            seen_assets: set[str] = set()
+            for nxt, rel in self.out.get(sys_id, []):
+                if rel != "USES" or nxt in seen_assets:
+                    continue
+                seen_assets.add(nxt)
+                a = self.nodes.get(nxt) or {}
+                assets.append({
+                    "id": nxt.split(":", 1)[-1],
+                    "algorithm": a.get("algorithm"),
+                    "purpose": a.get("purpose"),
+                    "confidence": a.get("confidence"),
+                    "key_size": a.get("key_size"),
+                    "file_path": a.get("file_path"),
+                    "risk": "vulnerable" if _is_shor_vulnerable(str(a.get("algorithm"))) else "ready",
+                })
+            processes = [
+                {"id": (self.nodes.get(p) or {}).get("name") or p.split(":", 1)[-1]}
+                for p, rel in self.out.get(sys_id, []) if rel == "SUPPORTS"
+            ]
+            systems.append({
+                "id": sys_id.split(":", 1)[-1],
+                "name": node.get("name"),
+                "criticality": node.get("criticality"),
+                "assets": assets,
+                "asset_count": len(assets),
+                "processes": processes,
+            })
+        systems.sort(key=lambda row: (-row["asset_count"], row.get("name") or ""))
+        return {
+            "start": start_id.split(":", 1)[-1],
+            "vendor": {"id": start_id.split(":", 1)[-1], "name": vendor_node.get("name")},
+            "product": vendor_node.get("name") or start_id.split(":", 1)[-1],
+            "systems": systems,
+            "count": len(systems),
+            "total_assets": sum(s["asset_count"] for s in systems),
+            "backend": self.backend,
+        }
+
+    def vendor_chains(self, *, limit: int = 100) -> dict[str, Any]:
+        """All vendors with their downstream chains (for the chain view)."""
+        chains = []
+        for node_id, node in self.nodes.items():
+            if node.get("kind") != "Vendor":
+                continue
+            chains.append(self.vendor_chain(node_id))
+            if len(chains) >= limit:
+                break
+        chains.sort(key=lambda c: (-c["total_assets"], c["vendor"]["name"] or ""))
+        return {"chains": chains, "count": len(chains), "backend": self.backend}
 
     def dependents(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
         """Reverse blast radius: everything upstream that depends on this node."""

@@ -1,3 +1,0 @@
-"""Worker test suite (unit).
-
-"""

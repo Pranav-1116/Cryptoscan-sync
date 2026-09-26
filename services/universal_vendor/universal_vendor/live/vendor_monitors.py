@@ -11,7 +11,6 @@ keys, PINs or secret material (spec §8).
 
 from __future__ import annotations
 
-import re
 from typing import Any, Iterable
 
 from universal_vendor.live.events import (

@@ -6,7 +6,6 @@ from __future__ import annotations
 from universal_platform.drift import DriftEngine, evaluate_drift
 from universal_platform.events import (
     EVENT_DOMAIN,
-    PlatformEvent,
     PlatformEventBus,
     PlatformEventType,
 )

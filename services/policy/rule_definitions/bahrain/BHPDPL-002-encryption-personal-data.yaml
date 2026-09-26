@@ -1,0 +1,28 @@
+rule_id: "BHPDPL-002"
+rule_name: "Bahrain PDPL — approved encryption for personal data"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "HIGH"
+standard_reference: "Bahrain Law No. 30 of 2018, Art. 8 — security of processing"
+description: >
+  Encryption applied to personal data in a Bahrain-PDPL-scoped system must
+  use an approved modern algorithm (AES or ChaCha20 family).
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "BH-PDPL"
+      - "BH-PDPL-30-2018"
+    if_purpose:
+      - "ENCRYPTION"
+      - "DECRYPTION"
+    require_algorithms:
+      - "AES"
+      - "CHACHA20"
+      - "CHACHA20-POLY1305"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Personal-data encryption with {algorithm} does not meet Bahrain PDPL Art. 8"
+remediation: >
+  Re-key with AES-256-GCM or ChaCha20-Poly1305 and record the measure.
+enabled: true

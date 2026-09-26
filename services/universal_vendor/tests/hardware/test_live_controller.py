@@ -132,7 +132,7 @@ def test_controller_crypto_capability_change_triggers_pqc_and_risk_recalc():
     ctl = LiveHardwareController(pqc=HardwarePqcImpactEngine(correlation=correlation))
     ctl.ingest(_event(HardwareEventType.HARDWARE_DISCOVERED,
                       manufacturer="Thales", model="Luna"))
-    before = ctl.risk_score("srv-1")
+    ctl.risk_score("srv-1")
     result = ctl.ingest(_event(HardwareEventType.CRYPTO_CAPABILITY_CHANGED,
                                crypto_capabilities={"pqc_hybrid": False}))
     assert result["pqc_assessment"]["migration_impact"] == "HIGH"  # §18 example

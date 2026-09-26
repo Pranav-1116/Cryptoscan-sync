@@ -17,6 +17,16 @@ LANGUAGE_EXTENSIONS: dict[str, tuple[str, ...]] = {
     "PHP": (".php",),
     "RUBY": (".rb",),
     "RUST": (".rs",),
+    "C": (".c", ".h"),
+    "CPP": (".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx"),
+    "OBJECTIVE_C": (".m", ".mm"),
+    "SWIFT": (".swift",),
+    "SHELL": (".sh", ".bash", ".zsh", ".ksh"),
+    "SQL": (".sql", ".pls", ".plsql", ".pks", ".pkb", ".prc", ".fnc", ".trg", ".tsql", ".ddl", ".psql", ".pgsql"),
+    "PLI": (".pli", ".pl1", ".plx"),
+    "RPG": (".rpgle", ".sqlrpgle", ".rpg", ".rpg38", ".rpg36", ".rpgleinc", ".rpginc", ".sqlrpg"),
+    "CL": (".clle", ".clp", ".cllp", ".clle38", ".cl"),
+    "COBOL": (".cbl", ".cob", ".cobol", ".cpy", ".pco", ".sqb", ".jcl"),
 }
 
 MARKER_FILES: dict[str, tuple[str, ...]] = {
@@ -29,6 +39,7 @@ MARKER_FILES: dict[str, tuple[str, ...]] = {
     "PHP": ("composer.json", "composer.lock"),
     "RUBY": ("Gemfile", "Gemfile.lock"),
     "RUST": ("Cargo.toml", "Cargo.lock"),
+    "C": ("CMakeLists.txt", "configure.ac", "Makefile.am", "meson.build"),
 }
 
 

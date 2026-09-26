@@ -1,0 +1,21 @@
+rule_id: "KEYINV-007"
+rule_name: "Payment key with weak key-block binding"
+version: "1.0"
+effective_date: "2026-01-01"
+severity: "HIGH"
+standard_reference: "PCI PIN 18-3, ANSI X9.24-1"
+description: >
+  The payment-HSM export flags the key as having weak usage binding (variant / legacy LMK) rather than a
+  cryptographically bound key block.
+condition:
+  type: "KEY_INVENTORY_ATTRIBUTE"
+  parameters:
+    attribute: "weak_binding"
+    operator: "is_true"
+    result: "FAIL"
+evaluation:
+  result_template: "FAIL"
+  message_template: "{key_label} has weak key-block binding"
+remediation: >
+  Migrate the LMK to key-block mode and re-wrap the key; retire the variant-LMK copy.
+enabled: true

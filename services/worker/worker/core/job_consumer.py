@@ -1,11 +1,28 @@
-"""Job queue: Redis when available, in-process fallback."""
+"""Job queue: Redis when available, in-process fallback.
+
+Reliability model (Redis backend)
+---------------------------------
+* ``BLMOVE queue -> queue:processing:<worker_id>``: a job is never removed from
+  Redis until the worker acknowledges it (``ack``).  A worker that dies mid-scan
+  leaves the payload in its processing list.
+* Every worker refreshes ``queue:worker:<worker_id>`` (TTL ``lease_ttl_seconds``)
+  while it polls.  ``recover_orphans`` moves the processing lists of workers whose
+  lease expired back to the head of the queue, incrementing ``_attempts``; after
+  ``max_redeliveries`` the payload goes to ``queue:dead`` and the DB row is failed
+  through ``on_dead_letter`` so nothing stays QUEUED/RUNNING forever.
+* Redis < 6.2 (no BLMOVE) falls back to BRPOPLPUSH-free BLPOP with a one-time
+  warning: at-most-once, as before.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import os
+import socket
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from queue import Empty, Queue
@@ -25,6 +42,19 @@ class ScanJob:
     created_at: datetime | str | None = None
     job_type: str = "MANUAL"
     system_id: str | None = None
+    #: the job row's progress JSON as queued — carries ``scan_options`` for the
+    #: non-git targets (a binary scan needs its rules, format and artifact id)
+    progress: dict | None = None
+    #: exact payload string as stored in Redis — needed to ack (LREM) it
+    raw: str | None = None
+    #: redelivery counter maintained by recover_orphans
+    attempts: int = 0
+
+    @property
+    def scan_options(self) -> dict:
+        """Scan options carried on the payload, defaulting to none."""
+        options = (self.progress or {}).get("scan_options")
+        return dict(options) if isinstance(options, dict) else {}
 
 
 _MEMORY_QUEUE: Queue = Queue()
@@ -37,15 +67,139 @@ class JobConsumer:
         queue_name: str = "cryptoscan:jobs:queue",
         poll_interval_seconds: int = 2,
         allow_memory_fallback: bool = True,
+        worker_id: str | None = None,
+        lease_ttl_seconds: int = 60,
+        max_redeliveries: int = 3,
+        on_dead_letter: Callable[[dict, str], None] | None = None,
+        maintenance_interval_seconds: int = 60,
         **kwargs,
     ):
         self.redis_url = redis_url
         self.queue_name = queue_name
         self.poll_interval_seconds = poll_interval_seconds
         self.allow_memory_fallback = allow_memory_fallback
+        self.worker_id = worker_id or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+        self.lease_ttl_seconds = max(int(lease_ttl_seconds), 2 * max(int(poll_interval_seconds), 1) + 1)
+        self.max_redeliveries = int(max_redeliveries)
+        self.on_dead_letter = on_dead_letter
+        self.maintenance_interval_seconds = int(maintenance_interval_seconds)
+        self._last_maintenance = 0.0
+        self.on_maintenance: Callable[[], None] | None = kwargs.get("on_maintenance")
+        self._blmove_supported: bool | None = None
         self._stop = threading.Event()
         self.redis_client = None
         self._connect_redis()
+
+    # ----------------------------------------------------------------- keys
+    @property
+    def processing_key(self) -> str:
+        return f"{self.queue_name}:processing:{self.worker_id}"
+
+    @property
+    def lease_key(self) -> str:
+        return f"{self.queue_name}:worker:{self.worker_id}"
+
+    @property
+    def dead_letter_key(self) -> str:
+        return f"{self.queue_name}:dead"
+
+    def _processing_prefix(self) -> str:
+        return f"{self.queue_name}:processing:"
+
+    def _lease_key_for(self, worker_id: str) -> str:
+        return f"{self.queue_name}:worker:{worker_id}"
+
+    def heartbeat(self) -> None:
+        """Refresh this worker's lease; a missing lease marks our processing list as orphaned."""
+        if self.redis_client is None:
+            return
+        try:
+            self.redis_client.set(self.lease_key, str(int(time.time())), ex=self.lease_ttl_seconds)
+        except Exception as exc:
+            logger.warning("lease_refresh_failed", extra={"error": str(exc)})
+
+    def ack(self, job: ScanJob) -> None:
+        """Remove a finished job (success or failure) from this worker's processing list."""
+        if self.redis_client is None or not job.raw:
+            return
+        try:
+            self.redis_client.lrem(self.processing_key, 1, job.raw)
+        except Exception as exc:
+            logger.warning("job_ack_failed", extra={"job_id": job.job_id, "error": str(exc)})
+
+    def recover_orphans(self) -> dict:
+        """Requeue jobs left in the processing lists of workers whose lease expired.
+
+        Returns ``{"requeued": n, "dead_lettered": n, "workers": n}``. Safe to call from any worker;
+        idempotent (a payload is moved at most once per call)."""
+        stats = {"requeued": 0, "dead_lettered": 0, "workers": 0}
+        if self.redis_client is None:
+            return stats
+        try:
+            keys = list(self.redis_client.scan_iter(match=self._processing_prefix() + "*", count=100))
+        except Exception as exc:
+            logger.warning("recover_scan_failed", extra={"error": str(exc)})
+            return stats
+        for key in keys:
+            worker_id = str(key)[len(self._processing_prefix()):]
+            if worker_id == self.worker_id:
+                continue
+            try:
+                if self.redis_client.exists(self._lease_key_for(worker_id)):
+                    continue  # alive
+                stats["workers"] += 1
+                while True:
+                    raw = self.redis_client.rpop(key)
+                    if raw is None:
+                        break
+                    try:
+                        payload = json.loads(raw)
+                    except Exception:
+                        continue
+                    attempts = int(payload.get("_attempts") or 0) + 1
+                    payload["_attempts"] = attempts
+                    if attempts > self.max_redeliveries:
+                        reason = f"job redelivered {attempts - 1} times after worker loss; giving up"
+                        self.redis_client.rpush(self.dead_letter_key, json.dumps(payload, default=str))
+                        stats["dead_lettered"] += 1
+                        logger.error("job_dead_lettered", extra={"job_id": payload.get("job_id"), "worker": worker_id})
+                        if self.on_dead_letter:
+                            try:
+                                self.on_dead_letter(payload, reason)
+                            except Exception:
+                                logger.exception("dead_letter_callback_failed")
+                        continue
+                    # head of the queue: the oldest work goes first
+                    self.redis_client.lpush(self.queue_name, json.dumps(payload, default=str))
+                    stats["requeued"] += 1
+                    logger.warning("job_requeued_after_worker_loss", extra={"job_id": payload.get("job_id"), "lost_worker": worker_id, "attempt": attempts})
+            except Exception as exc:
+                logger.warning("recover_worker_failed", extra={"worker": worker_id, "error": str(exc)})
+        return stats
+
+    def queued_job_ids(self) -> set[str]:
+        """job_ids currently in the queue or in any processing list (for the DB reaper)."""
+        ids: set[str] = set()
+        if self.redis_client is None:
+            return ids
+        try:
+            keys = [self.queue_name] + list(self.redis_client.scan_iter(match=self._processing_prefix() + "*", count=100))
+            for key in keys:
+                for raw in self.redis_client.lrange(key, 0, -1):
+                    try:
+                        ids.add(str(json.loads(raw).get("job_id")))
+                    except Exception:
+                        continue
+        except Exception as exc:
+            logger.warning("queued_ids_failed", extra={"error": str(exc)})
+        return ids
+
+    def maintenance_due(self) -> bool:
+        now = time.monotonic()
+        if now - self._last_maintenance >= self.maintenance_interval_seconds:
+            self._last_maintenance = now
+            return True
+        return False
 
     def _connect_redis(self) -> None:
         if not self.redis_url:
@@ -118,7 +272,15 @@ class JobConsumer:
         if callback is None:
             raise ValueError("handler is required")
         logger.info("job_consumer_started", extra={"backend": "redis" if self.redis_client else "memory"})
+        self.heartbeat()
         while not self._stop.is_set():
+            if self.maintenance_due():
+                self.recover_orphans()
+                if self.on_maintenance:
+                    try:
+                        self.on_maintenance()
+                    except Exception:
+                        logger.exception("maintenance_hook_failed")
             job = self._pop()
             if job is None:
                 time.sleep(0.05)
@@ -127,6 +289,7 @@ class JobConsumer:
                 callback(job)
             except Exception:
                 logger.exception("job_handler_failed", extra={"job_id": job.job_id})
+                self.ack(job)  # handler refused it synchronously: do not redeliver forever
 
     consume_jobs = consume
 
@@ -135,10 +298,22 @@ class JobConsumer:
         if self.redis_url and self.redis_client is None:
             self._connect_redis()
         if self.redis_client is not None:
+            self.heartbeat()
             try:
-                item = self.redis_client.blpop(self.queue_name, timeout=self.poll_interval_seconds)
-                if item:
-                    raw = item[1]
+                if self._blmove_supported is not False:
+                    try:
+                        raw = self.redis_client.blmove(self.queue_name, self.processing_key, self.poll_interval_seconds, "LEFT", "RIGHT")
+                        self._blmove_supported = True
+                    except Exception as exc:  # Redis < 6.2 or a client without blmove
+                        if "unknown command" in str(exc).lower() or isinstance(exc, (AttributeError, NotImplementedError)):
+                            self._blmove_supported = False
+                            logger.warning("blmove_unsupported_at_most_once_delivery", extra={"error": str(exc)})
+                        else:
+                            raise
+                if self._blmove_supported is False:
+                    item = self.redis_client.blpop(self.queue_name, timeout=self.poll_interval_seconds)
+                    if item:
+                        raw = item[1]
             except Exception as exc:
                 self._handle_redis_unavailable(str(exc), phase="pop")
                 return None
@@ -163,6 +338,9 @@ class JobConsumer:
             created_at=datetime.fromisoformat(created) if created else datetime.utcnow(),
             job_type=data.get("job_type") or "MANUAL",
             system_id=data.get("system_id"),
+            progress=data.get("progress"),
+            raw=raw if self.redis_client is not None else None,
+            attempts=int(data.get("_attempts") or 0),
         )
 
 

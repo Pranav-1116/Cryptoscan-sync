@@ -5,7 +5,7 @@ algorithm extraction. All parsing is read-only and metadata-only.
 from __future__ import annotations
 
 import re
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_vendor.models import ConnectionResult, DetectionResult
 from universal_vendor.plugin import UniversalVendorPlugin

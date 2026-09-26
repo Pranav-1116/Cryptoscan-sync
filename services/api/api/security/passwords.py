@@ -10,6 +10,26 @@ import os
 SCHEME = "pbkdf2_sha256"
 DEFAULT_ITERATIONS = 210_000
 
+
+def _iterations() -> int:
+    """PBKDF2 work factor for *new* hashes.
+
+    Verification always reads the count from the stored hash, so this only
+    changes how expensive hashing is going forward. Under pytest the suite
+    hashes and verifies passwords thousands of times per run; a low count there
+    keeps it fast without weakening anything a real install writes — production
+    ignores the override unless it is set explicitly (and never below the floor).
+    """
+    import os
+    import sys
+
+    raw = os.environ.get("CRYPTOSCAN_PBKDF2_ITERATIONS", "")
+    if raw.isdigit():
+        return max(int(raw), 1 if "pytest" in sys.modules else 100_000)
+    if "pytest" in sys.modules:
+        return 1_000
+    return DEFAULT_ITERATIONS
+
 MIN_PASSWORD_LENGTH = 12
 MAX_PASSWORD_LENGTH = 200
 
@@ -95,7 +115,8 @@ def validate_password_policy(password: str) -> None:
         raise PasswordPolicyError("; ".join(errors))
 
 
-def hash_password(password: str, *, iterations: int = DEFAULT_ITERATIONS) -> str:
+def hash_password(password: str, *, iterations: int | None = None) -> str:
+    iterations = iterations or _iterations()
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
     return (

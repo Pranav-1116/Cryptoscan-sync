@@ -20,7 +20,6 @@ Fail-closed: anything unparseable or outside policy raises TargetValidationError
 
 from __future__ import annotations
 
-import fnmatch
 import ipaddress
 import os
 import re

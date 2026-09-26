@@ -17,6 +17,13 @@ a canonical, classified record:
 Every lookup returns :class:`HardwareInfo`. Unknown devices degrade to
 ``status="UNKNOWN"`` — never silently treated as present/secure. Classification
 is metadata-only and passive; it never causes a probe or touches secrets.
+
+
+Vendor PQC data refreshed 2026-09 against SHIPPING support: Thales Luna fw 7.9
+(ML-KEM/ML-DSA core), Entrust nShield fw 13.8.0 (CAVP-validated ML-KEM/ML-DSA/
+SLH-DSA), Utimaco Se Gen2 fw 5.5 (validated ML-DSA-65 module), AWS/IBM/Google
+cloud HSMs via managed firmware. quantum_resistant is set only for shipping
+support; pilots/previews stay False and say so in notes.
 """
 
 from __future__ import annotations
@@ -102,28 +109,36 @@ _add("Trusted Platform Module", ROOT_OF_TRUST, UNKNOWN, manufacturer="TCG",
 # -- HSMs (Hardware Security Modules) -------------------------------------- #
 _add("Thales Luna HSM", HARDWARE_KEYSTORE, ALLOWED, manufacturer="Thales",
      aliases=("luna", "luna sa", "lunasa", "thales luna", "safenet luna", "gemalto luna"),
-     attestation=True, notes="Thales/Gemalto/SafeNet Luna network/PCIe HSM"),
+     attestation=True, quantum_resistant=True,
+     notes="fw 7.9+ ships ML-KEM/ML-DSA in core firmware (Jul 2025); T-Series holds "
+           "full CNSA 2.0 set (ML-DSA, ML-KEM, LMS) inside FIPS 140-3 L3 cert 5450"),
 _add("Thales payShield", HARDWARE_KEYSTORE, ALLOWED, manufacturer="Thales",
      aliases=("payshield", "pay shield", "thales payshield"),
-     notes="payment HSM (PIN/key management)"),
+     notes="payment HSM (PIN/key management); vendor PQC roadmap announced — not yet "
+           "in shipping firmware as of 2026-09, flag stays False until it ships"),
 _add("Entrust nShield HSM", HARDWARE_KEYSTORE, ALLOWED, manufacturer="Entrust",
      aliases=("nshield", "nshield connect", "entrust nshield", "nfast"),
-     attestation=True, notes="Entrust nShield HSM"),
+     attestation=True, quantum_resistant=True,
+     notes="fw 13.8.0+ carries CAVP-validated ML-KEM, ML-DSA and SLH-DSA (Aug 2025); "
+           "check module-level FIPS 140-3 cert before high-assurance procurement"),
 _add("Utimaco SecurityServer", HARDWARE_KEYSTORE, ALLOWED, manufacturer="Utimaco",
      aliases=("utimaco", "securityserver", "utimaco hsm", "crypto server"),
-     attestation=True, notes="Utimaco HSM"),
+     attestation=True, quantum_resistant=True,
+     notes="Se Gen2 fw 5.5 module validated covering ML-DSA-65; ML-KEM/ML-DSA via PKCS#11"),
 _add("AWS CloudHSM", HARDWARE_KEYSTORE, ALLOWED, manufacturer="AWS",
      aliases=("cloudhsm", "aws cloudhsm", "aws hsm"),
-     attestation=True, notes="AWS dedicated HSM (FIPS 140-3)"),
+     attestation=True, quantum_resistant=True,
+     notes="managed firmware ML-KEM/ML-DSA; AWS KMS internal HSM holds CMVP "
+           "validation covering ML-DSA-65"),
 _add("IBM Cloud HSM", HARDWARE_KEYSTORE, ALLOWED, manufacturer="IBM",
-     aliases=("ibm hsm", "ibm cloud hsm"),
-     notes="IBM Cloud HSM service (Crypto Express based)"),
+     aliases=("ibm hsm", "ibm cloud hsm"), quantum_resistant=True,
+     notes="Crypto Express base (PQC-capable per IBM Z family); managed firmware rollout"),
 _add("Google Cloud HSM", HARDWARE_KEYSTORE, ALLOWED, manufacturer="Google",
-     aliases=("gcp hsm", "google hsm", "cloud hsm google"),
-     notes="Google Cloud KMS HSM tier"),
+     aliases=("gcp hsm", "google hsm", "cloud hsm google"), quantum_resistant=True,
+     notes="managed firmware PQC per vendor docs; verify module cert per region"),
 _add("Azure Dedicated HSM", HARDWARE_KEYSTORE, ALLOWED, manufacturer="Microsoft",
-     aliases=("azure hsm", "azure dedicated hsm"),
-     notes="Microsoft Azure dedicated HSM (Thales Luna 7)"),
+     aliases=("azure hsm", "azure dedicated hsm"), quantum_resistant=True,
+     notes="user-managed Thales Luna 7 — PQC requires YOUR firmware upgrade to 7.9+"),
 _add("SoftHSM", HARDWARE_KEYSTORE, RESTRICTED, manufacturer="OpenDNSSEC",
      aliases=("softhsm", "softhsm2", "software hsm"),
      notes="software PKCS#11 token — NOT hardware; no hardware root of trust"),

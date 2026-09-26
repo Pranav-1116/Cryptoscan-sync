@@ -7,7 +7,7 @@ status, agility delta and risk impact — before touching production.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from universal_crypto.agility import CryptoAgilityEngine
 from universal_crypto.pqc_readiness import (

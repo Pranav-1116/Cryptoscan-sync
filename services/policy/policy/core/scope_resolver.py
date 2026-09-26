@@ -32,14 +32,41 @@ def evidence_scopes(evidence: dict[str, Any] | None) -> set[str]:
     return {item.upper() for item in as_scope_list(raw)}
 
 
-def scopes_apply(evidence: dict[str, Any] | None, required_scopes: Any) -> bool:
-    """True when the rule has no required scopes or they intersect the finding."""
+def scope_groups(value: Any) -> list[set[str]]:
+    """``required_scope_groups``: a list of any-of groups; every group must be satisfied (CNF)."""
+    if not value:
+        return []
+    if isinstance(value, (str, bytes)) or not isinstance(value, Iterable):
+        return [{item.upper() for item in as_scope_list(value)}]
+    out: list[set[str]] = []
+    for group in value:
+        items = {item.upper() for item in as_scope_list(group)}
+        if items:
+            out.append(items)
+    return out
+
+
+def scopes_apply(evidence: dict[str, Any] | None, required_scopes: Any, required_scope_groups: Any = None) -> bool:
+    """True when the rule applies to the finding's scopes.
+
+    ``required_scopes`` is any-of (the regulator / jurisdiction tags). ``required_scope_groups`` adds
+    all-of-any-of groups for jurisdiction-neutral data classes — e.g. CBUAE-002 = ``[CBUAE]`` **and**
+    one of ``[PAYMENT, CARD, SWIFT]`` — so a generic ``PAYMENT`` or ``PERSONAL_DATA`` tag never selects a
+    jurisdiction on its own. A rule with neither applies everywhere.
+    """
     required = {item.upper() for item in as_scope_list(required_scopes)}
-    if not required:
+    groups = scope_groups(required_scope_groups)
+    if not required and not groups:
         return True
-    return bool(required & evidence_scopes(evidence))
+    have = evidence_scopes(evidence)
+    if required and not (required & have):
+        return False
+    return all(group & have for group in groups)
 
 
-def missing_scopes_message(required_scopes: Any) -> str:
+def missing_scopes_message(required_scopes: Any, required_scope_groups: Any = None) -> str:
     required = sorted({item.upper() for item in as_scope_list(required_scopes)})
+    groups = [sorted(g) for g in scope_groups(required_scope_groups)]
+    if groups:
+        return f"Finding is outside required scopes {required} with {groups}"
     return f"Finding is outside required scopes {required}"

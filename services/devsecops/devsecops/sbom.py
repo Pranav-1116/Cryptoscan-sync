@@ -16,7 +16,6 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 
-from devsecops.container_scan import version_compare
 
 
 @dataclass

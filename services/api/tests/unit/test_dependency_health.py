@@ -70,3 +70,62 @@ def test_dependency_endpoint_reachable_without_auth(client):
     assert by_name["redis"] == "skipped"
     assert by_name["neo4j"] == "skipped"
     assert body["status"] == "ok"
+
+
+# --- root-level probe aliases (LB / smoke-test surface) ----------------------
+
+def test_root_probe_aliases_are_registered():
+    from api.main import create_app
+
+    app = create_app()
+    paths = {getattr(route, "path", "") for route in app.routes}
+    assert "/healthz" in paths
+    assert "/readyz" in paths
+
+
+def test_root_probe_aliases_behaviour(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from api.main import create_app
+    from api.routers import health
+
+    monkeypatch.setattr(
+        health, "check_db_health", lambda *a, **k: {"status": "healthy", "dialect": "sqlite"}
+    )
+
+    class _Conn:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, *args, **kwargs):
+            return None
+
+    class _OkEngine:
+        def connect(self):
+            return _Conn()
+
+    monkeypatch.setattr("db.connection.engine.get_engine", lambda: _OkEngine())
+
+    with TestClient(create_app()) as client:
+        liveness = client.get("/healthz")
+        assert liveness.status_code == 200
+        assert liveness.json()["status"] == "ok"
+        readiness = client.get("/readyz")
+        assert readiness.status_code == 200
+        assert readiness.json() == {"status": "ready", "database": "ok"}
+
+    class _BadEngine:
+        def connect(self):
+            raise RuntimeError("db gone")
+
+    monkeypatch.setattr("db.connection.engine.get_engine", lambda: _BadEngine())
+
+    with TestClient(create_app()) as client:
+        drained = client.get("/readyz")
+        assert drained.status_code == 503
+        assert drained.json()["status"] == "not_ready"
+        # liveness stays 200 through a database outage
+        assert client.get("/healthz").status_code == 200

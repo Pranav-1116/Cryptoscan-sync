@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 import { apiLiveInventory, LiveNetworkAsset } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
@@ -113,6 +114,7 @@ const NODE_TONE_COLOR: Record<string, string> = {
 export default function Network() {
   const [sel, setSel] = useState<string | null>(null);
   const inv = usePollingApi(apiLiveInventory, 8000);
+  useRealtimeRefresh(inv.run);
   const live = inv.source === "live";
   const assets: LiveNetworkAsset[] = (inv.data as { network?: LiveNetworkAsset[] } | null)?.network ?? [];
   const detail = assets.find((n) => n.id === sel);

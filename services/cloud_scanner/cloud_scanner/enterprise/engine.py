@@ -38,7 +38,6 @@ from cloud_scanner.enterprise.encryption_discovery import (
     EncryptionInventory,
 )
 from cloud_scanner.enterprise.event_monitor import (
-    CloudCbom,
     CloudEventMonitor,
     CloudEventNormalizer,
     EventMonitorResult,
@@ -54,7 +53,6 @@ from cloud_scanner.enterprise.migration_simulation import (
     CloudMigrationSimulator,
     CloudSimulationResult,
 )
-from cloud_scanner.enterprise.models import EvidenceSource
 from cloud_scanner.enterprise.multi_cloud import MultiCloudDiscovery, MultiCloudInventory
 from cloud_scanner.enterprise.network_crypto import NetworkCryptoDiscovery, NetworkCryptoInventory
 from cloud_scanner.enterprise.org_hierarchy import OrgHierarchy, OrgHierarchyBuilder
@@ -67,7 +65,6 @@ from cloud_scanner.enterprise.scan_modes import (
     is_read_only,
     mode_names,
     requires_deep,
-    requires_events,
     validate_modes,
 )
 from cloud_scanner.enterprise.secret_refs import SecretInventory, SecretReferenceDiscovery
@@ -440,8 +437,6 @@ class ZelixCloudDiscoveryEngine:
         return snap
 
     def _simulate(self, report: DiscoveryReport) -> CloudSimulationResult:
-        from cloud_scanner.enterprise.migration_simulation import CloudMigrationSimulator
-
         simulator = CloudMigrationSimulator(report.graph)
         # attach the network path simulator when a path graph can be built
         simulator._network_simulator = self._network_simulator(report)

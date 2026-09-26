@@ -24,6 +24,7 @@ from db.models.control_plane import (
     QueuedEvent,
     SafeScanPolicy,
     ScopeGrant,
+    SecurityPosture,
     Tenant,
 )
 
@@ -412,4 +413,21 @@ class ControlPlaneRepository:
         stmt = select(BenchmarkRun).order_by(BenchmarkRun.created_at.desc())
         if dataset_id:
             stmt = stmt.where(BenchmarkRun.dataset_id == dataset_id)
+        return list(self.session.execute(stmt).scalars().all())
+
+    # -- security posture ---------------------------------------------------- #
+    def create_security_posture(self, **fields) -> SecurityPosture:
+        """Persist a computed security-posture snapshot (metadata only)."""
+        row = SecurityPosture(**fields)
+        self.session.add(row)
+        self.session.flush()
+        return row
+
+    def latest_security_posture(self) -> SecurityPosture | None:
+        return self.session.execute(
+            select(SecurityPosture).order_by(SecurityPosture.created_at.desc()).limit(1)
+        ).scalars().first()
+
+    def list_security_postures(self, *, limit: int = 60) -> list[SecurityPosture]:
+        stmt = select(SecurityPosture).order_by(SecurityPosture.created_at.desc()).limit(limit)
         return list(self.session.execute(stmt).scalars().all())

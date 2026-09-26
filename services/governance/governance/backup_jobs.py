@@ -27,10 +27,9 @@ import os
 import re
 import shutil
 import subprocess
-import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable, Protocol
+from typing import Any, Callable, Protocol
 
 from . import backup as bk
 
@@ -49,8 +48,12 @@ CommandRunner = Callable[..., CommandResult]
 _SAFE_DB_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
 
 
-class ToolNotFound(BackupError if False else RuntimeError):
-    """Raised when a required backup tool (pg_dump/neo4j-admin) is absent."""
+class ToolNotFound(RuntimeError):
+    """Raised when a required backup tool (pg_dump/neo4j-admin) is absent.
+
+    Deliberately a ``RuntimeError`` (not ``bk.BackupError`` which is a
+    ``ValueError``) so callers can distinguish a missing tool (HTTP 503) from a
+    backup/restore failure (HTTP 502)."""
 
 
 def _tool_path(tool: str) -> str | None:
@@ -164,7 +167,6 @@ class Neo4jBackend:
         # neo4j-admin writes a backup into a directory; we point it at a temp
         # dir, run it, then tar the produced artifact so the rest of the
         # pipeline (encrypt/sign/store) treats it as an opaque byte stream.
-        tmp = None
         if self.backup_dir is not None:
             target = Path(self.backup_dir); target.mkdir(parents=True, exist_ok=True)
             argv = [self._bin("neo4j-admin"), "database", "backup",

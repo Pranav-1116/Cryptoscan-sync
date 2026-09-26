@@ -1,0 +1,4 @@
+Common Name,Issuer,Key Algorithm,Key Size,Signature Algorithm,Valid To,Status
+api.bank.example,Bank Issuing CA 2,RSA,2048,SHA256withRSA,2027-03-01,Active
+legacy.bank.example,Bank Issuing CA 1,RSA,1024,SHA1withRSA,2019-06-30,Expired
+mobile.bank.example,Bank Issuing CA 2,ECDSA P-256,256,ecdsa-with-SHA256,2026-12-31,Active

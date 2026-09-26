@@ -1,0 +1,11 @@
+nfkminfo -l
+Keys with module protection:
+ key_simple_tlsproxy   `TLS proxy key'
+ AppName simple  Ident tlsproxy
+  type RSAPrivate  2048 bits
+ AppName pkcs11  Ident uc12ab34cd-hmacsign
+  type HMACSHA256  256 bits
+ AppName simple  Ident swiftlau
+  type Rijndael  128 bits
+ AppName simple  Ident oldsig
+  type DSAPrivate  1024 bits

@@ -27,6 +27,10 @@ class ApiKey(BaseModel):
     key_prefix: Mapped[str] = mapped_column(String(16), nullable=False)  # display: csk_ab12…
     created_by: Mapped[str] = mapped_column(String(100), nullable=False, default="admin")
     roles: Mapped[str] = mapped_column(String(200), nullable=False, default="viewer")
+    # Multi-tenant SaaS: a key minted inside a tenant context is bound to that
+    # tenant — every request it makes is scoped to the tenant, regardless of
+    # headers. NULL = platform key (single-tenant/on-prem estate).
+    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -72,7 +76,15 @@ class ApiKey(BaseModel):
 
         if self.revoked_at is not None:
             return False
-        if self.expires_at is not None and self.expires_at <= utcnow():
+        # SQLite hands DateTime(timezone=True) back naive; comparing naive with the
+        # aware utcnow() raised TypeError, which the caller swallowed as "invalid
+        # key" — every key created *with* an expiry was rejected on first use.
+        expires = self.expires_at
+        if expires is not None and expires.tzinfo is None:
+            from datetime import timezone
+
+            expires = expires.replace(tzinfo=timezone.utc)
+        if expires is not None and expires <= utcnow():
             return False
         return True
 

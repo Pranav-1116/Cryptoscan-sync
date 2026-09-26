@@ -1,6 +1,7 @@
 import React from "react";
 import { Panel, Badge, Bar, Ring, PageHead } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
 import {
   apiStatsSummary, apiLiveBom, apiLiveDrift, apiLiveAlerts,
   LiveBomResponse, LiveAlertsResponse,
@@ -22,6 +23,8 @@ export default function Executive() {
   const bomRes = usePollingApi(apiLiveBom, 12000);
   const driftRes = usePollingApi(apiLiveDrift, 10000);
   const alertsRes = usePollingApi(apiLiveAlerts, 8000);
+  // Refresh immediately when the platform changes (SSE) instead of on the poll.
+  useRealtimeRefresh(statsRes.run, bomRes.run, driftRes.run, alertsRes.run);
   const live = statsRes.source === "live";
 
   const s = (statsRes.data ?? {}) as Record<string, any>;
@@ -69,7 +72,7 @@ export default function Executive() {
         crumb="overview / executive"
         title="Executive view"
         sub="Board-level cryptographic risk posture — deterministic, derived from live scans; no targets or illustrative figures"
-        right={<Badge tone={live ? "green" : "slate"}><span className="dot" /> {live ? "live data" : "backend offline"}</Badge>}
+        right={<div style={{ display: "flex", gap: 8, alignItems: "center" }}><RealtimeChip /><Badge tone={live ? "green" : "slate"}><span className="dot" /> {live ? "live data" : "backend offline"}</Badge></div>}
       />
 
       {/* headline posture */}

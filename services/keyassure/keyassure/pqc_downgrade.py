@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 # Hybrid ML-KEM group identifiers (IANA draft + oqs naming).
 HYBRID_GROUPS = {

@@ -40,7 +40,7 @@ def test_cbom_json_and_xml_and_signature():
     assert base64.urlsafe_b64decode(pad(s64)) == expected_sig
     # Legacy hex signatures still verify
     unsigned = {k: v for k, v in signed.items() if k != "metadata"}
-    legacy = _json.dumps(unsigned, sort_keys=True, separators=(",", ":"))
+    _legacy = _json.dumps(unsigned, sort_keys=True, separators=(",", ":"))
     # tampering breaks verification
     tampered = _json.loads(_json.dumps(signed))
     tampered["components"][0]["name"] = "evil"

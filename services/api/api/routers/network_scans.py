@@ -6,7 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import (
+    TenantContext,
+    get_current_user,
+    get_db_session,
+    get_tenant_context,
+)
+from api.security.target_validation import (
+    TargetValidationError,
+    validate_probe_targets,
+)
 from db.repositories.certificate_repository import CertificateRepository
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
@@ -33,11 +42,37 @@ class HostScanRequest(BaseModel):
 @router.post("/")
 def trigger_network_scan(
     body: HostScanRequest,
-    user: str = Depends(get_current_user),
+    ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(get_db_session),
 ):
+    """Live TLS scan of operator-supplied hosts.
+
+    The host list passes the platform's SSRF choke point (loopback, cloud
+    metadata, URL schemes refused — found by round-28 review, same class as
+    the round-26 monitor finding). Tenant contexts also spend one
+    scan_run unit against the plan's monthly quota (402 when exhausted);
+    metering happens here so manual scans count exactly like daemon passes.
+    """
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
+    try:
+        validate_probe_targets(body.hosts, label="network_scan.hosts")
+    except TargetValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if ctx.tenant_id:
+        from db.repositories.tenant_repository import TenantRepository
+
+        t_repo = TenantRepository(db)
+        tenant = t_repo.get(ctx.tenant_id)
+        from api.security.tenancy import quota_check
+
+        allowed, reason = quota_check(
+            tenant.plan if tenant else "FREE", "scan_run",
+            t_repo.month_usage(ctx.tenant_id, "scan_run"))
+        if not allowed:
+            raise HTTPException(status_code=402, detail=f"quota_exceeded: {reason}")
+        t_repo.record_usage(ctx.tenant_id, "scan_run", len(body.hosts),
+                            detail="manual network scan")
     result = NetworkTlsScanner(live=True, timeout=body.timeout, workers=body.workers).scan_hosts(
         body.hosts,
         sni=body.sni,

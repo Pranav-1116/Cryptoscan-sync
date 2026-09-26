@@ -214,23 +214,23 @@ class EmailAlerter:
         """Render plain text email without Jinja2 template."""
         summary = context["drift_summary"]
         lines = [
-            f"CryptoScan Drift Alert",
-            f"======================",
-            f"",
+            "CryptoScan Drift Alert",
+            "======================",
+            "",
             f"System: {context['system_identifier']}",
             f"Severity: {context['severity']}",
             f"Scan ID: {context['scan_id']}",
-            f"",
-            f"Drift Summary:",
+            "",
+            "Drift Summary:",
             f"  CRITICAL: {summary.critical}",
             f"  HIGH: {summary.high}",
             f"  MEDIUM: {summary.medium}",
             f"  INFO: {summary.info}",
             f"  Total: {summary.total_drift_events}",
-            f"",
+            "",
             f"View full report: {context['dashboard_url']}",
-            f"",
-            f"This is an automated alert from CryptoScan Platform.",
+            "",
+            "This is an automated alert from CryptoScan Platform.",
         ]
 
         if context.get("critical_events"):

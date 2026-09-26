@@ -71,7 +71,6 @@ _PQC_KX = frozenset({"XYBER", "MLKEM", "HYBRID"})
 def parse_openssl_cipher(name: str) -> dict[str, Any]:
     """Decompose an OpenSSL cipher name into components + verdict."""
     raw = (name or "").strip()
-    parts = [p for p in raw.split("-") if p]
     kx: str | None = None
     for token in _KX_TOKENS + tuple(sorted(_PQC_KX)):
         if raw.upper().replace("_", "-").startswith(token.upper().replace("_", "-")):

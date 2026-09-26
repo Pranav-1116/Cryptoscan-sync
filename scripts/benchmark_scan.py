@@ -90,7 +90,7 @@ def build_corpus(directory: Path, total_files: int, seed: int = 1337) -> None:
         language = rng.random()
         if language < 0.5:
             template = rng.choice(JAVA_TEMPLATES)
-            name = directory / f"src" / f"pkg{i % 50}" / f"Handler{i}.java"
+            name = directory / "src" / f"pkg{i % 50}" / f"Handler{i}.java"
             content = template.format(
                 i=i,
                 transform=rng.choice(TRANSFORMS),

@@ -157,6 +157,62 @@ def delete_rule(rule_id: str,
     return {"rule_id": rule_id, "deleted": True}
 
 
+@router.post("/telecom-guardrails")
+def install_telecom_guardrails(user: str = Depends(require_roles(*_ADMINS)),
+                               db: Session = Depends(get_db_session)):
+    """Install the curated telecom guardrail rules (idempotent upsert).
+
+    Encodes the 3GPP/NIST defaults for a monitored carrier estate: roaming
+    PQC drop -> PQC queue + ticket + alert (CRITICAL), mission-plane NF down
+    -> ticket + alert (HIGH), SEPP cert expiry -> ticket (MEDIUM). Same rules
+    engine, same actions, same governance gates as operator-authored rules;
+    re-running updates in place, never duplicates."""
+    try:
+        from telecom_scanner.automation import telecom_guardrail_rules
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail=(
+            f"telecom_scanner service not available in this deployment: {exc}")) from exc
+
+    from automation.rules_engine import AutomationRule, RulesError
+    from db.models.automation import AutomationRuleRow as Row
+
+    presets = telecom_guardrail_rules()
+    # fail-closed: validate EVERY preset before touching the store — a bad
+    # preset never half-installs
+    for preset in presets:
+        try:
+            AutomationRule.from_dict({
+                "id": preset["rule_id"], "name": preset["name"], "when": preset["when"],
+                "if": preset["if"], "then": preset["then"],
+                "severity": preset["severity"], "enabled": True,
+            })
+        except RulesError as exc:
+            raise HTTPException(status_code=422, detail=(
+                f"preset {preset['rule_id']} failed validation: {exc}")) from exc
+
+    results = []
+    for preset in presets:
+        row = db.execute(select(Row).where(Row.rule_id == preset["rule_id"])).scalars().first()
+        created = row is None
+        if row is None:
+            row = Row(rule_id=preset["rule_id"], created_by=user)
+            db.add(row)
+        row.name = preset["name"]
+        row.when = preset["when"]
+        row.conditions = preset["if"]
+        row.actions = preset["then"]
+        row.severity = preset["severity"]
+        row.enabled = True
+        results.append({"rule_id": preset["rule_id"], "created": created})
+    db.commit()
+    _publish("automation.guardrails_installed",
+             {"rules": [r["rule_id"] for r in results], "by": user})
+    return {"installed": len(results),
+            "created": sum(1 for r in results if r["created"]),
+            "updated": sum(1 for r in results if not r["created"]),
+            "rules": results}
+
+
 # ------------------------------------------------------------------ process
 class EventBody(BaseModel):
     event_kind: str = Field(..., min_length=2, max_length=60)
@@ -296,3 +352,83 @@ def schedule_preview(body: AssetsBody, user: str = Depends(get_current_user)):
     due = due_assets(body.assets)
     return {"due": [s.as_dict() for s in due], "due_count": len(due),
             "total_assets": len(body.assets)}
+
+
+# ------------------------------------------------------------------ connectors
+# ITSM/SIEM delivery of automation runs. Payload mappers are pure (automation
+# .connectors); the sender is injectable and never raises into the engine.
+# Status responses carry configuration NAMES only — values never leave the API.
+
+_CONNECTOR_SETTINGS = (
+    "SERVICENOW_INSTANCE_URL", "SERVICENOW_USER", "SERVICENOW_PASSWORD",
+    "SPLUNK_HEC_URL", "SPLUNK_HEC_TOKEN",
+    "JIRA_BASE_URL", "JIRA_USER_EMAIL", "JIRA_API_TOKEN", "JIRA_PROJECT_KEY",
+    "SENTINEL_WORKSPACE_ID", "SENTINEL_SHARED_KEY",
+)
+
+
+class ConnectorBody(BaseModel):
+    connector: str = Field(..., pattern="^(servicenow|splunk|jira|sentinel)$")
+    run_id: str = Field(..., min_length=1)
+
+
+@router.get("/connectors")
+def list_connectors(user: str = Depends(require_roles(*_ADMINS))):
+    from api.config.settings import get_settings
+    from automation.connectors import CONNECTORS, connector_status
+
+    settings = get_settings()
+    config = {key: str(getattr(settings, key, "") or "") for key in _CONNECTOR_SETTINGS}
+    return {"connectors": connector_status(config), "catalog": CONNECTORS}
+
+
+def _connector_run(db: Session, run_id: str) -> dict:
+    from db.models.automation import AutomationRun
+
+    row = db.execute(select(AutomationRun).where(AutomationRun.id == run_id)).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"automation run '{run_id}' not found")
+    return row.to_dict()
+
+
+def _connector_payload(connector: str, run: dict) -> dict:
+    from automation.connectors import (
+        jira_issue_payload, servicenow_incident_payload, sentinel_event_payload,
+        splunk_hec_payload,
+    )
+
+    if connector == "servicenow":
+        return servicenow_incident_payload(run)
+    if connector == "jira":
+        return jira_issue_payload(run)
+    if connector == "sentinel":
+        return sentinel_event_payload(run)
+    return splunk_hec_payload(run)
+
+
+@router.post("/connectors/preview")
+def connector_preview(body: ConnectorBody,
+                      user: str = Depends(require_roles(*_ADMINS)),
+                      db: Session = Depends(get_db_session)):
+    """Build the exact payload that WOULD be delivered — nothing is sent."""
+    run = _connector_run(db, body.run_id)
+    payload = _connector_payload(body.connector, run)
+    return {"connector": body.connector, "run_id": body.run_id,
+            "payload": payload, "delivered": False,
+            "note": "preview only — nothing was sent"}
+
+
+@router.post("/connectors/dispatch")
+def connector_dispatch(body: ConnectorBody,
+                       user: str = Depends(require_roles(*_ADMINS)),
+                       db: Session = Depends(get_db_session)):
+    """Deliver an automation run to the configured connector, honestly."""
+    from api.config.settings import get_settings
+    from automation.connectors import send
+
+    run = _connector_run(db, body.run_id)
+    payload = _connector_payload(body.connector, run)
+    settings = get_settings()
+    config = {key: str(getattr(settings, key, "") or "") for key in _CONNECTOR_SETTINGS}
+    result = send(body.connector, payload, config=config)
+    return {"connector": body.connector, "run_id": body.run_id, **result}

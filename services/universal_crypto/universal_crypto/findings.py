@@ -18,7 +18,6 @@ import uuid
 from typing import Any, Iterable, Optional
 
 from universal_crypto.models import (
-    Classification,
     CryptoFinding,
     CryptoObservation,
     Evidence,

@@ -13,8 +13,8 @@ Hardware removal requires explicit discovery/management evidence.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Optional
 

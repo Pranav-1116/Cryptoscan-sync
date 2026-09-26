@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
 
 from reporting.pdf_export import _finding_rows, _safe, render_report_pdf
 

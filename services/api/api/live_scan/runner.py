@@ -29,6 +29,7 @@ API environment:
 from __future__ import annotations
 
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -38,6 +39,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+
+logger = logging.getLogger(__name__)
 
 
 def _repo_root() -> Path:
@@ -97,6 +100,51 @@ def _db_load_snapshot() -> dict[str, Any] | None:
         return snap if isinstance(snap, dict) else None
     except Exception:  # noqa: BLE001
         return None
+
+
+#: privacy enforcement: the fail-safe default (no PII / secrets / private keys,
+#: redaction on, data minimization on) applies whenever no org policy is stored.
+def _privacy_policy_obj() -> Any | None:
+    """Best-effort: load the org scan/privacy policy from app_settings.
+
+    Returns a ``PrivacyPolicy`` (or ``None`` to signal the caller to use the
+    fail-safe default). Never raises — a broken/unconfigured settings row must
+    not block scanning; it just falls back to the strict default.
+    """
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.settings_repository import SettingsRepository
+
+        with SessionLocal() as session:
+            repo = SettingsRepository(session)
+            for key_candidate in ("scan_policy", "org:default:scan_policy"):
+                raw = repo.get(key_candidate)
+                if isinstance(raw, dict) and raw:
+                    from privacy.policy import build_policy
+
+                    return build_policy(raw.get("scan"), raw.get("privacy")).privacy
+        from privacy.policy import PrivacyPolicy
+
+        return PrivacyPolicy()  # fail-safe default
+    except Exception:  # noqa: BLE001 — fail-safe on any error
+        try:
+            from privacy.policy import PrivacyPolicy
+
+            return PrivacyPolicy()
+        except Exception:  # noqa: BLE001
+            return None
+
+
+def _privacy_scrub(snapshot: dict[str, Any], privacy_policy: Any | None) -> dict[str, Any]:
+    """Apply the privacy engine to a live-scan snapshot. Fail-soft on engine
+    issues (the scan already ran); returns the sanitized snapshot."""
+    try:
+        from privacy.engine import sanitize_snapshot
+
+        sanitized, _report = sanitize_snapshot(snapshot, privacy_policy)
+        return sanitized if isinstance(sanitized, dict) else snapshot
+    except Exception:  # noqa: BLE001
+        return snapshot
 
 
 class ScannerSpec:
@@ -186,6 +234,17 @@ class LiveScanRunner:
                 cwd=str(root / "services/network_scanner"),
                 periodic=bool(env.get("CRYPTOSCAN_LIVE_NETWORK_TARGET")),
                 needs_target=True, timeout=120,
+            ))
+        # telecom: registry-driven estate scan — no per-target env var; the
+        # scanner probes every registered NF (5G SBA / EPC / IMS / signaling)
+        if targets.get("telecom") or env.get("CRYPTOSCAN_LIVE_TELECOM"):
+            specs.append(ScannerSpec(
+                "telecom",
+                [py, "-m", "telecom_scanner.main", "--json",
+                 "--state", str(root / "data" / "telecom_state.json")],
+                cwd=str(root),
+                periodic=True,
+                needs_target=False, timeout=300,
             ))
         ctr_target = targets.get("container") or env.get("CRYPTOSCAN_LIVE_CONTAINER_TARGET")
         if ctr_target:
@@ -403,6 +462,53 @@ class LiveScanRunner:
             except Exception:  # noqa: BLE001 — best-effort durability
                 pass
 
+    def _auto_sync_graph(self, *, trigger: str, requested: list[str]) -> None:
+        """After a scan cycle, reconcile the persisted graph and publish a
+        precise graph.updated event. Best-effort and never raises."""
+        try:
+            from db.connection.session import SessionLocal
+
+            from api.graph_builder import sync_graph
+
+            with SessionLocal() as db:
+                result = sync_graph(db)
+            detail = (
+                f"Graph auto-synced after {trigger} scan"
+                f" ({result.get('nodes')} nodes / {result.get('edges')} edges)"
+            )
+        except Exception as exc:  # noqa: BLE001 — graph sync must not break a scan
+            logger.warning("graph_auto_sync_failed: %s", exc)
+            try:
+                from api.events.platform_events import emit_platform_event
+
+                emit_platform_event(
+                    "graph.updated",
+                    f"Scan cycle ({trigger}) completed — inventory may have changed",
+                    {"trigger": trigger, "scanners": requested, "changed": True},
+                    target_name="graph",
+                )
+            except Exception:  # noqa: BLE001
+                pass
+            return
+        try:
+            from api.events.platform_events import emit_platform_event
+
+            emit_platform_event(
+                "graph.updated",
+                detail,
+                {
+                    "trigger": trigger,
+                    "scanners": requested,
+                    "nodes": result.get("nodes"),
+                    "edges": result.get("edges"),
+                    "synced": result.get("synced", True),
+                    "changed": True,
+                },
+                target_name="graph",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("graph_update_event_failed: %s", exc)
+
     def run_cycle(
         self,
         *,
@@ -451,6 +557,10 @@ class LiveScanRunner:
                 merged = dict(self.last_snapshot.get("results") or {})
                 merged.update(results)
                 snapshot["results"] = merged
+            # privacy: scrub the snapshot so the engine actually enforces the
+            # policy (no PII/secrets/private keys, data minimization). Fail-soft:
+            # a sanitizer error never blocks an already-completed scan.
+            snapshot = _privacy_scrub(snapshot, _privacy_policy_obj())
             self.last_snapshot = snapshot
             self.last_run_at = snapshot["ts"]
             # persist a trimmed snapshot (summaries, not full scanner payloads)
@@ -485,6 +595,12 @@ class LiveScanRunner:
                            "ok": snapshot["ok_count"], "failed": snapshot["failed_count"],
                            "scanners": list(snapshot["results"].keys()),
                            "persisted": self._persisted})
+            # Realtime pipeline: a completed scan may have changed the inventory
+            # (crypto assets, certs, cloud/hardware res). Auto-sync the persisted
+            # graph (Neo4j when configured) and publish a precise graph.updated
+            # platform event so SSE consumers refresh without polling. Best-effort
+            # — a graph/event failure must never fail the scan cycle.
+            self._auto_sync_graph(trigger=trigger, requested=requested)
             return {"status": "completed", **snapshot}
         finally:
             self.running = False

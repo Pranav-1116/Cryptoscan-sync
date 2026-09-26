@@ -113,7 +113,7 @@ def test_chain_verifies():
 def test_chain_detects_tampered_observation():
     chain = EvidenceChain()
     chain.append({"kind": "key", "resource": "k1"})
-    record = chain.append({"kind": "cert", "resource": "c1"})
+    chain.append({"kind": "cert", "resource": "c1"})
     chain.append({"kind": "tls", "resource": "e1"})
     # tamper with the stored observation
     chain._records[1].observation["resource"] = "c1-tampered"

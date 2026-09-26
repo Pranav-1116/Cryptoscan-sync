@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from universal_crypto.models import FindingStatus
 

@@ -27,7 +27,6 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
 
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding

@@ -97,7 +97,7 @@ def _claims(**overrides) -> dict:
 
 @pytest.mark.asyncio
 async def test_oidc_login_verifies_mints_session_and_provisions(idp):
-    os_env = {}
+    _os_env = {}
     app, session, engine = _make_app(jwks_file=idp["jwks_file"])
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

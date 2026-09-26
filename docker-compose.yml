@@ -97,6 +97,12 @@ services:
       SCAN_JOB_QUEUE_KEY: cryptoscan:jobs:queue
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       DOCS_ENABLED: ${DOCS_ENABLED:-true}
+      # Event stream (r29): persistent HMAC-signed event logs + live CBOM.
+      # The stream/CBOM dirs ride the telecom snapshot volume; set a real
+      # CBOM_SIGNING_SECRET in production (dev default is NOT safe).
+      STREAM_LOG_DIR: /var/lib/cryptoscan/telecom/eventstream
+      CBOM_STORE_DIR: /var/lib/cryptoscan/telecom/live_cbom
+      CBOM_SIGNING_SECRET: ${CBOM_SIGNING_SECRET:-dev-cbom-signing-secret-change-me-32ch}
       CRYPTOSCAN_ROOT: /app
       # Scan-target sandbox: sources are cloned/extracted here; the target
       # validation guard allows paths under this root (SSRF/traversal confine).
@@ -107,6 +113,28 @@ services:
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:-cryptoscan}
       NEO4J_DATABASE: neo4j
       DB_WAIT_SECONDS: ${DB_WAIT_SECONDS:-90}
+      # Telecom realtime: the monitor daemon writes snapshot passes to the
+      # SAME shared volume this API reads — cross-process freshness without
+      # a restart. Drop your estate at ./config/telecom_registry.json to
+      # enable TELECOM monitor targets (absent file = honest BLOCKED).
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
+      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
+      # Registry webhooks (signed push events): set a strong secret in every
+      # real deployment — with a secret configured a bad signature is 401 in
+      # ALL environments (fail-closed), and unsigned events are 401 in prod.
+      REGISTRY_WEBHOOK_SECRET: ${REGISTRY_WEBHOOK_SECRET:-}
+      # Auditor API: dedicated read-only credential for /compliance/audit/*.
+      # Absent in non-prod = admin-session fallback; in prod it is REQUIRED
+      # for auditor access (fail-closed 401 without it).
+      AUDITOR_API_KEY: ${AUDITOR_API_KEY:-}
+      # Platform self-observability: W3C trace-context + Prometheus on every
+      # request. Set OTEL_EXPORTER_OTLP_ENDPOINT to also stream OTLP/JSON.
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      STREAM_SECRET: ${STREAM_SECRET:-}
+    volumes:
+      - telecom_data:/var/lib/cryptoscan/telecom
+      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
+      - traces_data:/var/lib/cryptoscan/telecom/traces
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,12 +224,19 @@ services:
       MONITOR_WATCH_PROBE_TIMEOUT_SECONDS: ${MONITOR_WATCH_PROBE_TIMEOUT_SECONDS:-10}
       MONITOR_CONCURRENCY: ${MONITOR_CONCURRENCY:-2}
       MONITOR_RUN_REPORTS: ${MONITOR_RUN_REPORTS:-true}
+      # Telecom realtime: same shared snapshot dir + registry as the API —
+      # TELECOM targets probe the same estate and the API serves the passes.
+      CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
+      CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
       ALERT_CEF_HOST: ${ALERT_CEF_HOST:-}
       ALERT_CEF_PORT: ${ALERT_CEF_PORT:-514}
       ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
       ALERT_WEBHOOK_SECRET: ${ALERT_WEBHOOK_SECRET:-}
       SMTP_HOST: ${SMTP_HOST:-}
       ALERT_EMAIL_TO: ${ALERT_EMAIL_TO:-}
+    volumes:
+      - telecom_data:/var/lib/cryptoscan/telecom
+      - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -261,6 +296,8 @@ services:
     restart: unless-stopped
 
 volumes:
+  telecom_data:
+  traces_data:
   postgres_data:
   redis_data:
   neo4j_data:

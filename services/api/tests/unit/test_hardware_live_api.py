@@ -221,3 +221,24 @@ def test_rbac_gates_hardware_api(viewer_client, admin_client):
     bad = admin_client.post("/api/v1/hardware/events", json={
         "event_type": "NOT_A_REAL_EVENT", "asset_id": "x"})
     assert bad.status_code == 422
+
+
+def test_catalog_carries_vendor_pqc_refresh(admin_client):
+    """The 2026-09 vendor refresh: quantum_resistant_count reflects SHIPPING
+    PQC support only (7 keystore HSMs + 2 IBM Z entries + ARM CCA = 10), and
+    the flags flow through the catalog entries the Vendor page renders."""
+    response = admin_client.get("/api/v1/hardware/catalog")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["count"] >= 60
+    assert body["quantum_resistant_count"] == 10
+    devices = {d["device"]: d for d in body["devices"]}
+    assert devices["Thales Luna HSM"]["quantum_resistant"] is True
+    assert "7.9" in devices["Thales Luna HSM"]["notes"]
+    assert devices["Thales payShield"]["quantum_resistant"] is False  # roadmap ≠ shipped
+
+    # category filter keeps the count additive-consistent:
+    # 7 keystore HSMs + 2 IBM Z entries + ARM CCA = 10 total
+    keystore = admin_client.get("/api/v1/hardware/catalog", params={"category": "hardware-keystore"})
+    keystore_devices = keystore.json()["devices"]
+    assert sum(1 for d in keystore_devices if d["quantum_resistant"]) == 7

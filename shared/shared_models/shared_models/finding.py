@@ -50,6 +50,9 @@ class FindingMetadata(BaseModel):
     library: Optional[str] = None
     is_hardcoded_key: bool = False
     hardcoded_key_length: Optional[int] = None
+    # Where the file sits in the estate: source | test | generated | vendored | archive.
+    # Inventory keeps everything; triage/SLA views filter on it.
+    code_origin: Optional[str] = None
 
 
 class RawFinding(BaseModel):

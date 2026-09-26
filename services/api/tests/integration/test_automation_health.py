@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -97,7 +97,7 @@ class TestHealthSweep:
         assert r.status_code == 200
         conns = r.json()["connectors"]
         assert conns["total"] == 2
-        alerts = {a["target_id"]: a for a in conns["alerts"]}
+        _alerts = {a["target_id"]: a for a in conns["alerts"]}
         # the HSM connector with auth failure must be a CRITICAL alert
         bad = [t for t in conns["targets"] if t["state"] == "UNHEALTHY"]
         assert any("authentication" in t["reasons"][0] for t in bad)

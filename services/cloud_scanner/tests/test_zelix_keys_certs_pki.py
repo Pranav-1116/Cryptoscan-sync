@@ -6,7 +6,7 @@ from cloud_scanner.enterprise.certificate_discovery import CertificateDiscovery
 from cloud_scanner.enterprise.key_discovery import KeyDiscovery, algorithm_for_spec, normalize_key
 from cloud_scanner.enterprise.pki_intelligence import PkiIntelligenceEngine
 
-from zelix_fixtures import AWS_ROWS, AZURE_ROWS, GCP_ROWS, all_providers
+from zelix_fixtures import all_providers
 
 
 # ------------------------------------------------------------------ §3 keys

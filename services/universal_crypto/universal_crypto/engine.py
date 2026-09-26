@@ -18,7 +18,7 @@ No AI: every stage is a pure function of evidence and explicit catalogs.
 
 from __future__ import annotations
 
-from typing import Any, Iterable, Optional
+from typing import Any
 
 from universal_crypto.agility import CryptoAgilityEngine
 from universal_crypto.ast_engine import CryptoAstEngine
@@ -313,17 +313,14 @@ class UniversalCryptoEngine:
         # §6/§8 library fingerprinting
         library_results: list[dict[str, Any]] = []
         for lib in inputs.get("libraries") or []:
-            library_results.extend(self.fingerprinter.fingerprint(
+            res = self.fingerprinter.fingerprint(
                 imports=lib.get("imports"), symbols=lib.get("symbols"),
                 strings=lib.get("strings"),
                 constants=[bytes.fromhex(c) if isinstance(c, str) else c
                            for c in (lib.get("constants") or [])],
-                apis=lib.get("apis"), dependencies=lib.get("dependencies")))
-        for lib in inputs.get("libraries") or []:
-            for result in self.fingerprinter.fingerprint(
-                    imports=lib.get("imports"), symbols=lib.get("symbols"),
-                    strings=lib.get("strings"), apis=lib.get("apis"),
-                    dependencies=lib.get("dependencies")):
+                apis=lib.get("apis"), dependencies=lib.get("dependencies"))
+            library_results.extend(res)
+            for result in res:
                 drafts.append({
                     "algorithm": result["library"], "protocol": None,
                     "asset_id": lib.get("asset_id", "default"),

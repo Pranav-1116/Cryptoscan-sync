@@ -101,6 +101,23 @@ def _publish_job(payload: dict) -> None:
 
 def _run_inline(payload: dict) -> None:
     try:
+        from worker.core.job_consumer import ScanJob
+        from worker.pipeline.binary_job import is_binary_target, run_binary_job
+
+        if is_binary_target(payload.get("target_repo")):
+            run_binary_job(
+                ScanJob(
+                    job_id=payload["job_id"],
+                    target_repo=payload["target_repo"],
+                    target_branch=payload.get("target_branch") or "main",
+                    triggered_by=payload.get("triggered_by") or "system",
+                    target_commit=payload.get("target_commit"),
+                    job_type=payload.get("job_type") or "BINARY",
+                    system_id=payload.get("system_id"),
+                    progress=payload.get("progress"),
+                )
+            )
+            return
         from cloud_scanner.estate import should_run_cloud_job
 
         if should_run_cloud_job(payload):
@@ -145,12 +162,16 @@ def enqueue_scan_job(
     system_id: str | None = None,
     sector: str | None = None,
     scan_mode: str | None = None,
+    scan_options: dict | None = None,
 ) -> TriggerScanResponse:
     from cloud_scanner.estate import is_cloud_target
 
     if is_cloud_target(repo_url) and str(job_type).upper() != "CLOUD":
         job_type = "CLOUD"
     effective_sector = _resolve_sector(sector, job_repo)
+    # non-git targets (a binary scan) need their options to survive a restart and a
+    # retry, so they are stored on the job row, not held in this process
+    progress = {"scan_options": scan_options} if scan_options else None
     created = job_repo.create(
         job_type=job_type,
         target_repo=repo_url,
@@ -158,6 +179,7 @@ def enqueue_scan_job(
         target_commit=commit,
         triggered_by=triggered_by,
         system_id=system_id,
+        progress=progress,
     )
     _annotate_sector(created, effective_sector, scan_mode)
     try:
@@ -177,6 +199,7 @@ def enqueue_scan_job(
         "system_id": system_id,
         "sector": effective_sector,
         "scan_mode": scan_mode,
+        "progress": progress,
     }
     settings = get_settings()
     if settings.REDIS_URL:

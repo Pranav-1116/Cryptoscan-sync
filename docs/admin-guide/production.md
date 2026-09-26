@@ -19,7 +19,8 @@ The API and worker refuse to start if demo secrets, SQLite, or `CORS_ORIGINS=*` 
 ## 2. Start
 
 ```bash
-bash scripts/deploy_prod.sh -d
+bash scripts/deploy_prod.sh -d           # plain HTTP edge on :80
+bash scripts/deploy_prod.sh --tls -d     # with the TLS overlay (certs in deploy/nginx/certs/)
 ```
 
 Equivalent:
@@ -34,7 +35,21 @@ resolves on the Compose network from the base file. If the API logs
 
 Nginx listens on `${NGINX_PORT:-80}`. Postgres, Redis, and Neo4j are **not** published on the host.
 
-## 3. Health
+## 3. TLS (recommended)
+
+Terminate HTTPS at the nginx edge with `docker-compose.tls.yml`. Put
+`fullchain.pem` + `privkey.pem` in `deploy/nginx/certs/` (see the README there),
+then:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.tls.yml up --build -d
+```
+
+`:80` becomes a 301 redirect; `:443` serves TLS 1.2/1.3 with HSTS. The header
+rules (rate limits, security headers, SSE-safe proxying) are identical to the
+plain-HTTP edge.
+
+## 4. Health
 
 - `GET /health` — process up
 - `GET /ready` — database reachable
@@ -42,7 +57,30 @@ Nginx listens on `${NGINX_PORT:-80}`. Postgres, Redis, and Neo4j are **not** pub
 
 OpenAPI (`/api/docs`) is off unless you set `DOCS_ENABLED=true`.
 
-## 4. What this overlay changes
+## 5. Backups
+
+```bash
+bash scripts/db_backup.sh                 # postgres dump + sha256 manifest + retention
+bash scripts/db_backup.sh --with-neo4j    # also dump the graph (brief neo4j stop)
+bash scripts/db_restore.sh backups/db/pg-<ts>.dump   # verify checksum + restore
+```
+
+Schedule the first form nightly from cron/systemd and copy `backups/db/` off
+the host — details and the restore drill live in
+[`docs/runbooks/dr-recovery.md`](../runbooks/dr-recovery.md).
+
+## 6. CI
+
+GitHub Actions run on every PR and push to `main`:
+
+| Workflow | What proves |
+|---|---|
+| `ci.yml` | ruff, backend unit tests (15 core services), frontend typecheck + build, and that the production config guard **rejects** demo secrets and **accepts** a real configuration |
+| `scanner-tests.yml` | the five scanner suites, hard-offline (`CRYPTOSCAN_*_LIVE=0`), nightly too |
+| `db-migration.yml` | `alembic upgrade head` from empty on real PostgreSQL 15 + idempotency (also runnable locally: `deploy/staging/staging-up.sh up` then `make test-live`) |
+| `docker-build.yml` | all six runtime images build |
+
+## 7. What this overlay changes
 
 | Item | Development compose | Production overlay |
 |---|---|---|

@@ -14,6 +14,7 @@ import {
   LiveBadge,
 } from "../lib/api.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
+import { useRealtimeRefresh } from "../lib/realtime.js";
 
 /* P2 enterprise platform — deterministic (no AI/ML):
    - Plugin marketplace: hash-pinned, Ed25519-signed plugins (quarantine on failure)
@@ -47,6 +48,14 @@ export default function PlatformP2() {
   const agents = usePollingApi(apiControlAgents, 20000);
   const exceptions = usePollingApi(apiExceptions, 20000);
   const realBenchmark = useApi(apiRunRealBenchmark);
+  // Live: refresh these operational panels the moment the platform changes
+  // (SSE) rather than only on their poll interval. benchmarkRuns/realBenchmark
+  // are excluded — they reflect an on-demand action, not live estate state.
+  useRealtimeRefresh(
+    plugins.run, flags.run, reqs.run, lake.run, keys.run, windows.run, sla.run,
+    leases.run, autoRuns.run, autoRules.run, cbomVersions.run, health.run,
+    agents.run, exceptions.run,
+  );
   const latestBenchmark = realBenchmark.data
     ?? ((benchmarkRuns.data ?? []).find((r) => r.scanner_id === "universal-crypto-real") as any) ?? null;
   const runBenchmark = async () => {

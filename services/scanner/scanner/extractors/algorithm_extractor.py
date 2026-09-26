@@ -103,6 +103,12 @@ SIGNATURE_PATTERN = re.compile(
 HMAC_PATTERN = re.compile(r"^Hmac(.+)$", re.IGNORECASE)
 
 
+_PBE_PATTERN = re.compile(
+    r"^(PBE|PBKDF2)With((?:Hmac|HMAC)?(?:SHA-?(?:1|224|256|384|512)|MD5|MD2))?(?:And((?:AES|DES(?:ede)?|TripleDES|RC2|RC4|Blowfish|IDEA|Twofish|Camellia)(?:_(?:128|192|256))?)(?:/([A-Za-z0-9]+))?)?",
+    re.IGNORECASE,
+)
+
+
 def parse_transformation(raw: str) -> ParsedAlgorithm:
     """
     Parse a Java crypto transformation string into its components.
@@ -131,6 +137,19 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
 
     stripped = raw.strip()
 
+    # Interpolation / format placeholders that survived desugaring ("SHA-$bits", "%s/CBC/NoPadding",
+    # "${alg}", "{0}"): the algorithm is a runtime value. Keep mode/padding if present, never coin a name.
+    if re.search(r"\$\{?\w|%[sd]|\{\d*\}|#\{", stripped):
+        parts = stripped.split("/")
+        return ParsedAlgorithm(
+            raw_input=raw,
+            algorithm="UNKNOWN",
+            mode=_normalize_mode(parts[1]) if len(parts) > 1 else None,
+            padding=_normalize_padding(parts[2]) if len(parts) > 2 else None,
+            hash_algorithm=None,
+            signing_algorithm=None,
+        )
+
     # Check for signature algorithm (e.g., SHA256withRSA)
     sig_match = SIGNATURE_PATTERN.match(stripped)
     if sig_match:
@@ -146,6 +165,32 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
             is_signature_combo=True,
         )
 
+    # PBE / PBKDF2 transformations: "PBEWithHMACSHA512AndAES_256", "PBEWithMD5AndDES",
+    # "PBKDF2WithHmacSHA256". The cipher after "And" is the algorithm in use; the
+    # PRF/digest is recorded as hash_algorithm so callers can emit it separately.
+    pbe_match = _PBE_PATTERN.match(stripped)
+    if pbe_match:
+        kind, prf, cipher = pbe_match.group(1), pbe_match.group(2), pbe_match.group(3)
+        digest = _normalize_algorithm(prf.replace("Hmac", "").replace("HMAC", "")) if prf else None
+        if cipher:
+            cipher_norm = _normalize_algorithm(cipher.split("_")[0])
+            return ParsedAlgorithm(
+                raw_input=raw,
+                algorithm=cipher_norm,
+                mode=_normalize_mode(pbe_match.group(4)) if pbe_match.group(4) else ("CBC" if cipher_norm in {"AES", "DES", "DESede", "3DES", "RC2", "RC4"} else None),
+                padding=None,
+                hash_algorithm=digest,
+                signing_algorithm=None,
+            )
+        return ParsedAlgorithm(
+            raw_input=raw,
+            algorithm="PBKDF2",
+            mode=None,
+            padding=None,
+            hash_algorithm=digest,
+            signing_algorithm=None,
+        )
+
     # Check for HMAC (e.g., HmacSHA256)
     hmac_match = HMAC_PATTERN.match(stripped)
     if hmac_match:
@@ -153,7 +198,7 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
         normalized_hash = _normalize_algorithm(hash_part)
         return ParsedAlgorithm(
             raw_input=raw,
-            algorithm=f"Hmac{normalized_hash}",
+            algorithm=f"HMAC-{normalized_hash}",
             mode=None,
             padding=None,
             hash_algorithm=normalized_hash,
@@ -165,6 +210,11 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
     if "/" in stripped:
         parts = stripped.split("/")
         algorithm = _normalize_algorithm(parts[0]) if len(parts) > 0 else None
+        # s"$algorithmName/ECB/PKCS5Padding", "%s/CBC/NoPadding", "" + algo + "/GCM/NoPadding": the
+        # algorithm is a runtime value — keep mode/padding (ECB is still a finding) but do not
+        # invent an algorithm name from interpolation syntax.
+        if algorithm and (algorithm.startswith(("$", "%", "{", "#", "+")) or "${" in parts[0] or parts[0].strip() == ""):
+            algorithm = "UNKNOWN"
         mode = _normalize_mode(parts[1]) if len(parts) > 1 else None
         padding = _normalize_padding(parts[2]) if len(parts) > 2 else None
         return ParsedAlgorithm(
@@ -210,3 +260,31 @@ def _normalize_padding(raw: str) -> Optional[str]:
         return None
     upper = raw.upper().replace(" ", "").replace("-", "")
     return PADDING_ALIASES.get(upper, raw.strip())
+
+_KNOWN_PREFIXES = ("HMAC", "PBKDF2", "PBEWITH", "SHA", "MD", "AES", "DES", "RSA", "EC", "TLS", "SSL", "ARGON2", "BLAKE", "CHACHA", "XCHACHA", "SALSA", "XSALSA",
+                   "ARIA", "CAMELLIA", "SM", "ML-KEM", "ML-DSA", "MLKEM", "MLDSA", "KYBER", "DILITHIUM", "X25519", "X448", "ED25519", "ED448", "RC", "IDEA", "SEED", "CAST",
+                   "BLOWFISH", "TWOFISH", "SERPENT", "GOST", "RIPEMD", "WHIRLPOOL", "TIGER", "HKDF", "SCRYPT", "BCRYPT", "DH", "DSA", "XDH", "ECDH", "ECDSA", "ECIES", "JWT",
+                   "HS", "RS", "ES", "PS", "SIPHASH", "POLY1305", "CMAC", "GMAC", "KMAC", "SHAKE", "CSPRNG", "PRNG", "PLAINTEXT", "NULL", "EXPORT", "TRUST", "X509", "OCSP",
+                   "SSH", "PSK", "DPAPI", "PASETO", "3DES", "TDES", "TDEA", "UNKNOWN", "OAEP", "PKCS", "PGP", "NONE", "NATIVEPRNG", "WINDOWS-PRNG", "DRBG", "SHA1PRNG")
+
+
+def known_algorithm_or_unknown(name: str | None) -> str:
+    """Gate free-form algorithm strings against the scanner vocabulary.
+
+    ``new SecretKeySpec(bytes, "testJCEHandlerParam2")`` (jPOS test suite) must not put
+    ``testJCEHandlerParam2`` into an inventory; anything that is not a recognised
+    algorithm spelling becomes UNKNOWN (kept as raw_transformation upstream)."""
+    if not name:
+        return "UNKNOWN"
+    upper = name.upper().replace("_", "").replace(" ", "")
+    if upper in ALGORITHM_ALIASES or upper in {v.upper() for v in ALGORITHM_ALIASES.values()}:
+        return name
+    if not upper.startswith(_KNOWN_PREFIXES):
+        return "UNKNOWN"
+    # A known prefix must be followed by a plausible suffix (digits, mode/padding, "WITH", "EDE",
+    # separators) — "DESde" or "AESX" are not algorithms.
+    for pre in sorted((p for p in _KNOWN_PREFIXES if upper.startswith(p)), key=len, reverse=True):
+        rest = upper[len(pre):]
+        if rest == "" or re.match(r"^(?:EDE|WITH|-?\d|/|-|\.|WRAP|CBC|GCM|CTR|ECB|CCM|OFB|CFB|XTS|SIV|KW|POLY|MAC|SHA|MD|AND|RSA|EC|PSS|OAEP|EDWARDS|MONTGOMERY|PRNG|DRBG|CMAC|HMAC|X|SSA|ES|KEM|DSA|B|S|P|N)", rest):
+            return name
+    return "UNKNOWN"

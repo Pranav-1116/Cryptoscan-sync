@@ -118,6 +118,15 @@ def nist_designation(raw: str, key_size: Optional[int] = None) -> Optional[str]:
     return None
 
 
+def quantum_impact(raw: str) -> Optional[str]:
+    """Registry quantum impact: "shor" (broken by CRQC), "grover" (security halved), or None if unrecognized."""
+    info = _info(raw)
+    if info is None:
+        return None
+    impact = getattr(info, "quantum_impact", None)
+    return str(impact) if impact else ("none" if getattr(info, "recognized", False) else None)
+
+
 def registry_family(raw: str) -> Optional[str]:
     """Raw registry family string (exposed for diagnostics), or None."""
     info = _info(raw)

@@ -80,6 +80,37 @@ class JobRepository(BaseRepository[ScanJob]):
             values["progress"] = progress
         return self.update(job_id, values)
 
+    def list_by_scan_option(self, key: str, value: str, limit: int = 500) -> list[ScanJob]:
+        """Recent jobs whose stored ``scan_options[key]`` equals ``value``.
+
+        A queued scan records its options (including an intake batch id) in
+        ``progress.scan_options``. A JSON-path lookup keeps a fleet-pass status
+        from loading and filtering the whole job table in Python; if the database
+        cannot do JSON, that filter is the fallback, so the status degrades
+        instead of failing.
+        """
+        window = max(1, min(int(limit or 500), 5000))
+        try:
+            stmt = (
+                select(ScanJob)
+                .where(ScanJob.progress["scan_options"][key].as_string() == str(value))
+                .order_by(desc(ScanJob.created_at))
+                .limit(window)
+            )
+            return list(self.session.execute(stmt).scalars().all())
+        except Exception:  # noqa: BLE001 — no JSON path support: filter the window instead
+            try:
+                self.session.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            rows = self.session.execute(
+                select(ScanJob).order_by(desc(ScanJob.created_at)).limit(window)
+            ).scalars().all()
+            return [
+                row for row in rows
+                if str(((row.progress or {}).get("scan_options") or {}).get(key) or "") == str(value)
+            ]
+
     def list_recent(self, limit: int = 20) -> list[ScanJob]:
         stmt = select(ScanJob).order_by(desc(ScanJob.created_at)).limit(max(1, min(int(limit or 20), 200)))
         return list(self.session.execute(stmt).scalars().all())

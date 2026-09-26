@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
-import pytest
 
 from network_scanner.enterprise.cert_intel import (
     ca_hierarchy,
@@ -33,9 +32,6 @@ from network_scanner.enterprise.passive_engine import (
 from network_scanner.enterprise.tls_intel import (
     build_profiles,
     build_tls_intelligence,
-    certificate_profile,
-    cipher_profile,
-    cryptographic_strength_profile,
     profile_all,
     tls_configuration_profile,
 )

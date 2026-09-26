@@ -3,7 +3,6 @@ SCIM mapping, and SPIFFE workload identity. No network, no live IdP/LDAP."""
 
 from __future__ import annotations
 
-import datetime as dt
 from datetime import datetime, timedelta, timezone
 
 import pytest

@@ -1,0 +1,27 @@
+rule_id: "CBUAE-004"
+rule_name: "CBUAE — RSA key-size floor (2048 bits)"
+version: "1.0"
+effective_date: "2026-09-20"
+severity: "HIGH"
+standard_reference: "CBUAE Information Security Standards (ISO/IEC 27001-aligned cryptographic baselines); NIST SP 800-131A transition"
+description: >
+  RSA (and DSA) keys in a CBUAE-supervised estate must be at least 2048
+  bits; smaller keys are below the international baseline the CBUAE
+  information-security standards align to.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "CBUAE"
+    if_algorithms:
+      - "RSA"
+      - "DSA"
+    min_key_size: 2048
+evaluation:
+  result_template: "FAIL"
+  message_template: "{algorithm} key {key_size} bits is below the 2048-bit floor"
+remediation: >
+  Generate a new 3072/4096-bit RSA key pair (2048 is the floor, not the
+  target), re-issue certificates, and retire the short key. Track the change
+  in the key lifecycle register (NIST SP 800-57 states).
+enabled: true

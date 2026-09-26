@@ -20,15 +20,15 @@ NODE_DECIPHER = re.compile(
     re.IGNORECASE,
 )
 NODE_HASH = re.compile(
-    r"""crypto\.createHash\(\s*['"]([^'"]+)['"]""",
+    r"""crypto\s*\.\s*createHash\s*\(\s*['"]([^'"]+)['"]""",
     re.IGNORECASE,
 )
 NODE_HMAC = re.compile(
-    r"""crypto\.createHmac\(\s*['"]([^'"]+)['"]""",
+    r"""crypto\s*\.\s*createHmac\s*\(\s*['"]([^'"]+)['"]""",
     re.IGNORECASE,
 )
 NODE_SIGN = re.compile(
-    r"""crypto\.createSign\(\s*['"]([^'"]+)['"]""",
+    r"""crypto\s*\.\s*createSign\s*\(\s*['"]([^'"]+)['"]""",
     re.IGNORECASE,
 )
 NODE_PBKDF = re.compile(r"""crypto\.pbkdf2(?:Sync)?\s*\(""", re.IGNORECASE)
@@ -52,6 +52,9 @@ WEBCRYPTO_NAMED = re.compile(
 WEBCRYPTO_DIGEST = re.compile(
     r"""(?:crypto\.subtle|window\.crypto\.subtle)\.digest\(\s*['\"]([^'\"]+)['\"]""",
     re.IGNORECASE,
+)
+_WEBCRYPTO_ARG_ALGO = re.compile(
+    r"""\bname\s*:\s*['"]([A-Za-z0-9._-]+)['"]|['"](AES-(?:GCM|CBC|CTR|KW)|HMAC|RSA-OAEP|RSA-PSS|RSASSA-PKCS1-v1_5|ECDSA|ECDH|X25519|Ed25519|HKDF|PBKDF2|SHA-(?:1|256|384|512))['"]"""
 )
 FORGE_MD = re.compile(r"""forge\.md\.(md5|sha1|sha256|sha384|sha512)\b""", re.IGNORECASE)
 FORGE_CIPHER = re.compile(
@@ -81,13 +84,108 @@ SECRET_ASSIGN = re.compile(
 )
 
 HASH_MAP = {
+    "md2": "MD2",
+    "md4": "MD4",
     "md5": "MD5",
+    "sha": "SHA-1",
     "sha1": "SHA-1",
+    "sha-1": "SHA-1",
+    "sha224": "SHA-224",
     "sha256": "SHA-256",
+    "sha-256": "SHA-256",
     "sha384": "SHA-384",
+    "sha-384": "SHA-384",
     "sha512": "SHA-512",
+    "sha-512": "SHA-512",
+    "sha512-256": "SHA-512",
+    "sha3-224": "SHA3-224",
     "sha3-256": "SHA3-256",
+    "sha3-384": "SHA3-384",
+    "sha3-512": "SHA3-512",
+    "shake128": "SHAKE128",
+    "shake256": "SHAKE256",
+    "ripemd160": "RIPEMD-160",
+    "rmd160": "RIPEMD-160",
+    "whirlpool": "WHIRLPOOL",
+    "blake2b512": "BLAKE2b",
+    "blake2s256": "BLAKE2s",
+    "sm3": "SM3",
 }
+
+
+_JOIN_LITERAL = re.compile(r"""\[\s*((?:['"][^'"]*['"]\s*,\s*)*['"][^'"]*['"])\s*\]\s*\.\s*join\s*\(\s*(?:['"]([^'"]*)['"])?\s*\)""")
+_CONCAT_LITERAL = re.compile(r"""(['"])([^'"\n]*)\1\s*\+\s*(['"])([^'"\n]*)\3""")
+_TEMPLATE_PLAIN = re.compile(r"`([^`$\\\n]*)`")
+_BRACKET_ACCESS = re.compile(r"""\[\s*(['"])(createHash|createHmac|createCipheriv|createCipher|createDecipheriv|createDecipher|createSign|createVerify|pbkdf2|pbkdf2Sync|scrypt|scryptSync|randomBytes|generateKeyPair|generateKeyPairSync|createECDH|createDiffieHellman|subtle|digest|encrypt|decrypt|sign|verify|generateKey|importKey|deriveKey|deriveBits|hash)\1\s*\]""")
+_DESTRUCTURE_ALIAS = re.compile(r"""\{([^}]*)\}\s*=\s*(?:await\s+)?(?:require\s*\(\s*['"](?:node:)?crypto['"]\s*\)|import\s*\(\s*['"](?:node:)?crypto['"]\s*\))""")
+_IMPORT_ALIAS = re.compile(r"""import\s*\{([^}]*)\}\s*from\s*['"](?:node:)?crypto['"]""")
+_STRING_CONST = re.compile(r"""\b(?:const|let|var)\s+(\w+)\s*(?::\s*string)?\s*=\s*(['"])([^'"\n]{1,80})\2\s*;?""")
+_TEMPLATE_SUBST = re.compile(r"\$\{\s*(\w+)\s*\}")
+_NUM_CONST = re.compile(r"\b(?:const|let|var)\s+(\w+)\s*(?::\s*number)?\s*=\s*(\d{1,4})\s*;?")
+# TS `const enum Algo { Legacy = "des-ede3-cbc" }` / `enum` / plain object `const Algo = { Legacy: "…" }`
+_ENUM_MEMBER = re.compile(r"""\b(\w+)\s*[:=]\s*(['"])([^'"\n]{1,80})\2\s*[,;}\n]""")
+_ENUM_BLOCK = re.compile(r"""\b(?:const\s+)?enum\s+(\w+)\s*\{([^}]*)\}|\bconst\s+(\w+)\s*(?::\s*\w+)?\s*=\s*(?:Object\.freeze\s*\()?\{([^}]*)\}\s*(?:as\s+const)?\)?""")
+
+
+def _desugar_js(source: str) -> str:
+    """Fold trivial string constructions so obfuscated algorithm names are seen
+    as literals.  Line-preserving.
+
+    * ``["a", "es-128-ecb"].join("")``       -> ``"aes-128-ecb"``
+    * ``"sha" + "512"``                       -> ``"sha512"``
+    * ``\`sha256\``` (template, no substitutions) -> ``"sha256"``
+    * ``\`${alg}-gcm\``` with ``const alg = "aes-256"`` -> ``"aes-256-gcm"``
+    * ``c["createHash"]("md5")``              -> ``c.createHash("md5")``
+    * ``const { createHash: mk } = require("crypto")`` / ``import { createHash as mk }``
+      -> later ``mk(`` calls are rewritten to ``createHash(``.
+    """
+    def _join(m: re.Match) -> str:
+        parts = re.findall(r"""['"]([^'"]*)['"]""", m.group(1))
+        return '"' + (m.group(2) or "").join(parts) + '"'
+
+    for _ in range(3):  # nested folds
+        new = _JOIN_LITERAL.sub(_join, source)
+        new = _CONCAT_LITERAL.sub(lambda m: '"' + m.group(2) + m.group(4) + '"', new)
+        new = _TEMPLATE_PLAIN.sub(lambda m: '"' + m.group(1) + '"', new)
+        if new == source:
+            break
+        source = new
+    source = _BRACKET_ACCESS.sub(lambda m: "." + m.group(2), source)
+
+    aliases: dict[str, str] = {}
+    for m in list(_DESTRUCTURE_ALIAS.finditer(source)) + list(_IMPORT_ALIAS.finditer(source)):
+        for item in m.group(1).split(","):
+            item = item.strip()
+            if ":" in item:
+                orig, alias = [x.strip() for x in item.split(":", 1)]
+            elif " as " in item:
+                orig, alias = [x.strip() for x in item.split(" as ", 1)]
+            else:
+                continue
+            if orig and alias and orig != alias and re.fullmatch(r"\w+", alias):
+                aliases[alias] = orig
+    for alias, orig in aliases.items():
+        source = re.sub(rf"(?<![\w.]){re.escape(alias)}\s*\(", orig + "(", source)
+
+    consts = {m.group(1): m.group(3) for m in _STRING_CONST.finditer(source)}
+    for m in _NUM_CONST.finditer(source):
+        consts.setdefault(m.group(1), m.group(2))
+    # enum / object members: Algo.Legacy → its literal (only when referenced)
+    for m in _ENUM_BLOCK.finditer(source):
+        owner, body = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
+        for mm in _ENUM_MEMBER.finditer(body + "\n"):
+            source = re.sub(rf"\b{re.escape(owner)}\.{re.escape(mm.group(1))}\b(?!\s*[:=])", '"' + mm.group(3) + '"', source)
+    if consts:
+        def _tmpl(m: re.Match) -> str:
+            body = m.group(1)
+            def _sub(mm: re.Match) -> str:
+                return consts.get(mm.group(1), mm.group(0))
+            folded = _TEMPLATE_SUBST.sub(_sub, body)
+            if "${" in folded:
+                return m.group(0)
+            return '"' + folded + '"'
+        source = re.sub(r"`([^`\\\n]*)`", _tmpl, source)
+    return source
 
 
 def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
@@ -97,7 +195,7 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         return []
     from scanner.parsers.c_like import strip_c_like_comments
 
-    source = strip_c_like_comments(raw_source)
+    source = _desugar_js(strip_c_like_comments(raw_source))
     findings: list[RawFinding] = []
     language = "TYPESCRIPT" if file_path.suffix.lower() in {".ts", ".tsx"} else "JAVASCRIPT"
 
@@ -113,6 +211,15 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             )
         )
 
+    # named imports from node:crypto make bare calls unambiguous: import { randomInt, randomFillSync } from "crypto"
+    imp = re.search(r"""import\s*\{([^}]*)\}\s*from\s*['"](?:node:)?crypto['"]|(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*['"](?:node:)?crypto['"]\s*\)""", source)
+    if imp:
+        names = {n.strip().split(" as ")[-1].strip() for n in (imp.group(1) or imp.group(2) or "").split(",") if n.strip()}
+        rng = names & {"randomInt", "randomFill", "randomFillSync", "randomBytes", "randomUUID", "getRandomValues", "generateKey", "generateKeySync"}
+        if rng:
+            for match in re.finditer(r"(?<![\w.])(" + "|".join(sorted(rng)) + r")\s*\(", source):
+                add(match, api_type="KEY_GENERATOR", algorithm="CSPRNG", purpose="KEY_GENERATION", library="node-crypto",
+                    raw_transformation=match.group(1), confidence="HIGH", confidence_reason="named import from node:crypto")
     for match in NODE_CIPHER.finditer(source):
         algo, mode, key_size = _parse_node_cipher(match.group(1))
         add(
@@ -151,9 +258,10 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         add(
             match,
             api_type="MAC",
-            algorithm=HASH_MAP.get(raw.lower(), raw.upper()),
+            algorithm=f"HMAC-{HASH_MAP.get(raw.lower(), raw.upper())}",
             purpose="MAC_GENERATION",
             library="node-crypto",
+            raw_transformation=f"createHmac({raw})",
         )
     for match in NODE_SIGN.finditer(source):
         add(
@@ -165,6 +273,11 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         )
     for match in NODE_PBKDF.finditer(source):
         add(match, api_type="KEY_GENERATOR", algorithm="PBKDF2", purpose="PASSWORD_HASHING", library="node-crypto")
+        tail = source[match.end(): match.end() + 240]
+        digest = re.search(r"""^(?:[^;()]*?,){4}\s*['"]([A-Za-z0-9-]+)['"]""", tail)
+        if digest:
+            raw = digest.group(1)
+            add(match, api_type="MESSAGE_DIGEST", algorithm=HASH_MAP.get(raw.lower(), raw.upper()), purpose="HASHING", library="node-crypto")
     for match in NODE_SCRYPT.finditer(source):
         add(match, api_type="KEY_GENERATOR", algorithm="SCRYPT", purpose="PASSWORD_HASHING", library="node-crypto")
     for match in NODE_RANDOM.finditer(source):
@@ -205,7 +318,7 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             add(
                 match,
                 api_type="MAC",
-                algorithm=HASH_MAP.get(raw.lower(), raw.upper()),
+                algorithm="HMAC-" + HASH_MAP.get(raw.lower(), raw.upper()),
                 purpose="MAC_GENERATION",
                 library="node-crypto",
             )
@@ -236,6 +349,33 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         if match.start() in claimed_webcrypto:
             continue
         method = match.group(1)
+        # Multi-line algorithm objects ({ iv, name: 'AES-CBC' }) and bare algorithm strings
+        # (importKey('raw', key, 'AES-CBC', ...)): look inside the argument list.
+        window = source[match.end(): match.end() + 400]
+        depth, cut = 0, len(window)
+        for idx, ch in enumerate(window):
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                if depth == 0:
+                    cut = idx
+                    break
+                depth -= 1
+        args = window[:cut]
+        named = _WEBCRYPTO_ARG_ALGO.search(args)
+        if named:
+            raw_algo = named.group(1) or named.group(2)
+            algo, mode, purpose, api_type = _webcrypto_spec(method, raw_algo)
+            add(
+                match,
+                api_type=api_type,
+                algorithm=algo,
+                mode=mode,
+                purpose=purpose,
+                library="Web Crypto API",
+                raw_transformation=raw_algo,
+            )
+            continue
         purpose = {
             "encrypt": "ENCRYPTION",
             "decrypt": "DECRYPTION",
@@ -248,11 +388,12 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
         add(
             match,
             api_type="CIPHER_INSTANCE" if method in {"encrypt", "decrypt"} else "KEY_GENERATOR",
-            algorithm="WebCrypto",
+            algorithm="UNKNOWN",
             purpose=purpose,
             library="Web Crypto API",
-            confidence="MEDIUM",
+            confidence="LOW",
             confidence_reason="WebCrypto call without algorithm object inspection",
+            raw_transformation="subtle." + method,
         )
     for match in FORGE_MD.finditer(source):
         add(
@@ -361,6 +502,13 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
                 confidence_reason="high-entropy secret assignment",
             )
     findings.extend(_resolved_node_calls(file_path, repo_root, source, language, findings))
+    try:
+        from scanner.parsers.javascript_rules import run_javascript_rules
+
+        seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in findings}
+        findings.extend(run_javascript_rules(file_path, repo_root, source, language, SCANNER_ID, seen=seen))
+    except Exception:  # pragma: no cover - supplementary pass must never break the parser
+        pass
     return findings
 
 

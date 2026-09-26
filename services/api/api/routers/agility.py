@@ -39,7 +39,7 @@ def _evidence_for(db: Session, system_id: str) -> list[dict]:
 
 def _score_system(db: Session, system: System) -> dict:
     deps = SystemRepository(db).dependencies_for(system.id)
-    extra = system.extra or {}
+    _extra = system.extra or {}
     payload = system.to_dict()
     score = calculate_agility_score(_evidence_for(db, system.id), payload)
     ready = readiness_from_system(
@@ -192,7 +192,7 @@ def agility_pqc(user: str = Depends(get_current_user), db: Session = Depends(get
     vulnerable_algorithms: set[str] = set()
     hybrid_systems = 0
     for system in systems:
-        repo = SystemRepository(db)
+        _repo = SystemRepository(db)
         evidence = _evidence_for(db, system.id)
         if not evidence:
             continue
