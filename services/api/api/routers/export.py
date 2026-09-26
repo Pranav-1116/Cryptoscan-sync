@@ -161,7 +161,15 @@ def export_cbom(
                 },
             }
         )
-    return {
+    # key-inventory records: export metadata as CycloneDX properties (labels, store, state, dates — never values)
+    for row, comp in zip(rows, components):
+        inv = (row.finding_data or {}).get("inventory") if isinstance(row.finding_data, dict) else None
+        if inv:
+            comp["properties"] = [{"name": f"cryptoscan:key:{k}", "value": str(v)} for k, v in sorted(inv.items()) if v not in (None, "", [])][:24]
+            comp["cryptoProperties"]["assetType"] = "related-crypto-material" if inv.get("key_label") and not inv.get("subject") else ("certificate" if inv.get("subject") else "algorithm")
+    root_ref = f"root:{scan.id}"
+    extra_components, dependencies = _cascade_dependencies(root_ref, (scan.statistics or {}).get("cascade") or {}, rows)
+    bom = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
         "version": 1,
@@ -171,11 +179,62 @@ def export_cbom(
                 "type": "application",
                 "name": scan.target_location,
                 "version": scan.target_commit or scan.target_branch or "unknown",
+                "bom-ref": root_ref,
             },
             "tools": [{"name": "CryptoScan", "version": scan.scanner_version}],
         },
-        "components": components,
+        "components": components + extra_components,
     }
+    if dependencies:
+        bom["dependencies"] = dependencies
+    return bom
+
+
+def _cascade_dependencies(root_ref: str, cascade: dict, rows) -> tuple[list[dict], list[dict]]:
+    """Real CycloneDX `dependencies[]` from the scan's dependency & cascade analysis.
+
+    file components for crypto-provider files (file → the crypto assets found in it, file → provider files it
+    imports crypto from) and application components for business systems declared in cryptoscan-systems.yml
+    (system → its provider files, system → systems whose crypto it imports). Root depends on systems (or on
+    provider files when no system map exists). Every ref points at a component in this BOM.
+    """
+    providers = cascade.get("providers") or []
+    systems = cascade.get("systems") or []
+    if not providers:
+        return [], []
+    from fnmatch import fnmatch
+
+    def _in(path: str, globs: list[str]) -> bool:
+        path = path.split("!", 1)[0]
+        return any(path == g.rstrip("/") or path.startswith(g.rstrip("/").removesuffix("/**").removesuffix("/*") + "/") or fnmatch(path, g) for g in globs)
+
+    assets_by_file: dict[str, list[str]] = {}
+    for row in rows:
+        assets_by_file.setdefault(str(row.file_path).split("!", 1)[0], []).append(row.id)
+    file_refs = {p["file"]: f"file:{p['file']}" for p in providers}
+    components: list[dict] = []
+    deps: list[dict] = []
+    for p in providers:
+        components.append({"type": "file", "name": p["file"], "bom-ref": file_refs[p["file"]],
+                           "properties": [{"name": "cryptoscan:cascade:wave", "value": str(p.get("wave"))},
+                                          {"name": "cryptoscan:cascade:direct_dependents", "value": str(p.get("direct_dependents", 0))},
+                                          {"name": "cryptoscan:cascade:transitive_dependents", "value": str(p.get("transitive_dependents", 0))},
+                                          {"name": "cryptoscan:cascade:algorithms", "value": ",".join(p.get("algorithms") or [])}]})
+        depends = list(assets_by_file.get(p["file"], [])) + [file_refs[q] for q in (p.get("depends_on_providers") or []) if q in file_refs]
+        if depends:
+            deps.append({"ref": file_refs[p["file"]], "dependsOn": depends})
+    sys_refs = {s["system"]: f"system:{s['system']}" for s in systems}
+    for s in systems:
+        components.append({"type": "application", "name": s["system"], "bom-ref": sys_refs[s["system"]],
+                           "properties": [{"name": "cryptoscan:system:criticality", "value": str(s.get("criticality") or "")},
+                                          {"name": "cryptoscan:system:earliest_wave", "value": str(s.get("earliest_wave") or "")}]})
+        depends = [file_refs[p["file"]] for p in providers if _in(p["file"], s.get("paths") or [])]
+        depends += [sys_refs[d] for d in (s.get("depends_on_systems") or []) if d in sys_refs]
+        if depends:
+            deps.append({"ref": sys_refs[s["system"]], "dependsOn": depends})
+    top = list(sys_refs.values()) or list(file_refs.values())
+    deps.insert(0, {"ref": root_ref, "dependsOn": top})
+    return components, deps
 
 
 @router.get("/scans/{scan_id}/verify")

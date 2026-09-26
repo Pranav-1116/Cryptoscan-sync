@@ -19,7 +19,7 @@ CASCADE = {
     "summary": {"providers": 2, "systems": 2, "weak_parameters": 1},
     "providers": [
         {"file": "core/CryptoUtil.java", "algorithms": ["AES"], "findings": 1, "direct_dependents": 2, "transitive_dependents": 3, "wave": 1, "rank": 1},
-        {"file": "cards/CardSigner.java", "algorithms": ["RSA"], "findings": 1, "direct_dependents": 0, "transitive_dependents": 0, "wave": 2, "rank": 2},
+        {"file": "cards/CardSigner.java", "algorithms": ["RSA"], "findings": 1, "direct_dependents": 0, "transitive_dependents": 0, "wave": 2, "rank": 2, "depends_on_providers": ["core/CryptoUtil.java"]},
     ],
     "libraries": [{"library": "BouncyCastle", "versions": ["1.78"], "files_using": 0, "declared_but_unused": True}],
     "shared_keys": [], "weak_parameters": [{"file": "cards/CardSigner.java", "line": 5, "algorithm": "RSA", "key_size": 1024, "minimum": 2048}],
@@ -197,3 +197,34 @@ async def test_evidence_pack_carries_signed_analysis():
         # a scan without analysis has no extra block at all
         r = await c.get("/api/v1/scans/scan-old/evidence-pack")
         assert r.status_code == 200 and "extra" not in r.json()
+
+
+@pytest.mark.asyncio
+async def test_cbom_carries_real_dependencies_from_the_cascade():
+    from db.models.evidence_record import EvidenceRecord
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    for i, (path, alg, inv) in enumerate([("core/CryptoUtil.java", "AES", None), ("cards/CardSigner.java", "RSA", None),
+                                          ("exports/ckds.lst", "3DES", {"key_label": "PAY.ZPK.ACQ001", "key_store": "CKDS", "state": "ACTIVE"})]):
+        fd = {"source": {"type": "KEY_INVENTORY" if inv else "SOURCE_CODE", "file_path": path, "line_number": 1}, "crypto": {"algorithm": alg}, "metadata": {}}
+        if inv:
+            fd["inventory"] = inv
+        session.add(EvidenceRecord(id=f"ev{i}", scan_id="scan-1", content_hash=f"h{i}", chain_hash=f"c{i}", chain_position=i, algorithm=alg,
+                                   confidence="HIGH", file_path=path, line_number=1, finding_data=fd))
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/scan-1/cbom")
+        assert r.status_code == 200, r.text
+        bom = r.json()
+        refs = {c["bom-ref"] for c in bom["components"]} | {bom["metadata"]["component"]["bom-ref"]}
+        deps = {d["ref"]: d["dependsOn"] for d in bom["dependencies"]}
+        assert all(ref in refs and all(x in refs for x in on) for ref, on in deps.items())  # every ref resolves
+        assert deps["root:scan-1"] == ["system:CORE", "system:CARDS"]
+        assert deps["system:CARDS"] == ["file:cards/CardSigner.java", "system:CORE"]
+        assert deps["file:cards/CardSigner.java"] == ["ev1", "file:core/CryptoUtil.java"] and deps["file:core/CryptoUtil.java"] == ["ev0"]
+        key = next(c for c in bom["components"] if c["bom-ref"] == "ev2")
+        assert key["cryptoProperties"]["assetType"] == "related-crypto-material"
+        assert {"name": "cryptoscan:key:key_label", "value": "PAY.ZPK.ACQ001"} in key["properties"]
+        # scan without cascade: plain BOM, no dependencies block
+        assert "dependencies" not in (await c.get("/api/v1/scans/scan-old/cbom")).json()

@@ -52,6 +52,11 @@ the vocabulary the bank's change board uses.
   `IMPORTS` edges as ordering constraints: a system whose code calls crypto that lives in another system is held to at
   least that system's wave (`constrained_by`, `systems_delayed_by_imports`), before cycle constraints are applied.
   Shown in the "System migration order" panel on the Migration page.
+* **CBOM.** `GET /api/v1/scans/{id}/cbom` emits real CycloneDX `dependencies[]` from the cascade: `file` components for
+  crypto-provider files (→ the crypto assets found in them, → provider files they import crypto from), `application`
+  components for business systems (→ their provider files, → systems whose crypto they import), root → systems. Every
+  ref resolves to a component. Key-inventory records carry their export metadata as `cryptoscan:key:*` properties and
+  `assetType related-crypto-material` / `certificate`.
 * **UI.** Dependency Graph page: "Code-level cascade" panel (scan picker, system drill-down, providers by blast radius,
   waves, libraries, shared keys, weak sizes) and a "Code-level crypto" block in the node drawer.
 
