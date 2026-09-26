@@ -1,0 +1,14 @@
+# IBM MQ Advanced Message Security policy for the mada ↔ core queues (setmqspl equivalents)
+policies:
+  - queue: MADA.AUTH.REQ
+    qmgr: QMCORE1
+    signing: SHA256
+    encryption: AES256
+    recipients:
+      - "CN=core-auth-svc,OU=Payments,O=Bank,C=SA"
+    signers:
+      - "CN=mada-switch,OU=Payments,O=Bank,C=SA"
+  - queue: SADAD.NOTIF
+    qmgr: QMCORE1
+    signing: SHA1
+    encryption: NONE

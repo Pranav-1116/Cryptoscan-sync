@@ -1,0 +1,5 @@
+             PGM        PARM(&PART)
+             DCL        VAR(&PART) TYPE(*CHAR) LEN(32)
+             ADDMSTPART MSTKEY(1) PASSPHRASE(&PART)
+             SETMSTKEY  MSTKEY(1)
+             ENDPGM
