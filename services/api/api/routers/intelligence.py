@@ -85,14 +85,38 @@ def _drift_events(scan_id: str, drift: DriftRepository) -> list[dict]:
     return [drift_to_dict(event) for event in events]
 
 
+def _pack_analysis(scan) -> dict | None:
+    """Scan-level analysis that auditors need next to the records — bounded and covered by the pack signature."""
+    stats = getattr(scan, "statistics", None) or {}
+    out: dict = {}
+    if stats.get("evidence_sources"):
+        out["evidence_sources"] = stats["evidence_sources"]
+    cascade = stats.get("cascade") or {}
+    if cascade:
+        out["cascade"] = {
+            "summary": cascade.get("summary"),
+            "systems": (cascade.get("systems") or [])[:200],
+            "migration_waves": cascade.get("migration_waves") or [],
+            "weak_parameters": (cascade.get("weak_parameters") or [])[:300],
+            "libraries": (cascade.get("libraries") or [])[:200],
+            "truncated": cascade.get("truncated"),
+        }
+    rec = stats.get("key_reconciliation") or {}
+    if rec:
+        out["key_reconciliation"] = {k: rec.get(k) for k in ("summary", "source_scans", "previous_inventory_scan", "new_orphans", "new_unaccounted", "removed", "orphans", "not_in_inventory")}
+    return out or None
+
+
 def _build_pack(scan, findings: list[dict]) -> dict:
     settings = get_settings()
     engine = _policy_engine()
+    analysis = _pack_analysis(scan)
     return build_evidence_pack(
         scan=scan_to_dict(scan),
         records=findings,
         policy=engine.pack_descriptor(),
         secret=settings.SECRET_KEY,
+        extra={"analysis": analysis} if analysis else None,
     )
 
 

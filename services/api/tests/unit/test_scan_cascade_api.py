@@ -169,3 +169,31 @@ async def test_inventory_certificates_reach_the_renewal_queue():
         assert r.status_code == 200, r.text
         due = r.json()["due"]
         assert len(due) == 1 and due[0]["source"] == "KEY_INVENTORY" and due[0]["key_label"] == "ebank-tls" and due[0]["usages"] == ["exports/keytool.txt"]
+
+
+@pytest.mark.asyncio
+async def test_evidence_pack_carries_signed_analysis():
+    """Cascade / systems / reconciliation ride in the evidence pack under `extra.analysis` and are covered by the signature."""
+    from evidence.pack.evidence_pack import verify_evidence_pack
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    scan = session.get(Scan, "scan-1")
+    scan.statistics = {**scan.statistics, "evidence_sources": {"SOURCE_CODE": 2}, "key_reconciliation": {"summary": {"orphans": 1}, "orphans": [{"label": "X"}]}}
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/scans/scan-1/evidence-pack")
+        assert r.status_code == 200, r.text
+        pack = r.json()
+        analysis = pack["extra"]["analysis"]
+        assert analysis["cascade"]["summary"]["providers"] == 2 and [s["system"] for s in analysis["cascade"]["systems"]] == ["CORE", "CARDS"]
+        assert analysis["key_reconciliation"]["summary"] == {"orphans": 1} and analysis["evidence_sources"] == {"SOURCE_CODE": 2}
+        assert "providers" not in analysis["cascade"]  # per-file provider list stays in /cascade, not in the pack
+        from api.config.settings import get_settings
+        ok = verify_evidence_pack(pack, secret=get_settings().SECRET_KEY)
+        assert ok["result"] == "PASS" and ok["signature_ok"] is True, ok
+        pack["extra"]["analysis"]["cascade"]["summary"]["providers"] = 99  # tamper → signature breaks
+        assert verify_evidence_pack(pack, secret=get_settings().SECRET_KEY)["result"] == "FAIL"
+        # a scan without analysis has no extra block at all
+        r = await c.get("/api/v1/scans/scan-old/evidence-pack")
+        assert r.status_code == 200 and "extra" not in r.json()
