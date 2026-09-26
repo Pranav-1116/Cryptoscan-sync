@@ -87,6 +87,15 @@ or N jobs × 1 process — the second is better when many small repos queue up).
 
 
 
+## Whole-product check on a Saudi bank-shaped estate (2026-09-26)
+
+[SNB-VALIDATION.md](SNB-VALIDATION.md): a representative SNB-profile fixture (36 files across mada switch, SARIE,
+SADAD, ZATCA, Nafath, core ledger Oracle + z/OS, mobile, SAMA-CSF infra — synthetic, not the bank's systems) scanned
+blind at **0.981 F1** (764/785 exact), 1.000 after fixes, then run through the full pipeline with a
+`cryptoscan-systems.yml`, policy, evidence chain and an HSM/KMS key-export drop. The pipeline run exposed and fixed
+three defects the scanner benchmark could not see — a policy name-matching bug that PASSed TLS 1.0, `.inf` templates
+skipped by pipeline discovery, and mainframe/HSM key labels missing from reconciliation.
+
 ## Bank readiness — the number (2026-09-25)
 
 | Layer | Readiness | Basis |

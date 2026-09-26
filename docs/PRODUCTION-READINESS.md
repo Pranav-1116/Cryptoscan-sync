@@ -72,6 +72,24 @@ Splunk endpoints, and a second disconnected host. What did move is the
 discovery surfaces now sit on the same pipeline → DB → API → UI → tests →
 docs path as the rest of the core instead of beside it.
 
+## What changed on 2026-09-26 (whole-product run on a Saudi bank-shaped estate)
+
+A representative SNB-profile estate (mada / SARIE / SADAD / ZATCA / Nafath / core ledger on Oracle + z/OS / mobile /
+SAMA-CSF hardening — a synthetic fixture, **not** SNB's systems) was pushed through the entire pipeline, not just the
+scanner: `services/worker/tests/unit/test_pipeline_snb_estate.py`, written up in
+[accuracy/SNB-VALIDATION.md](accuracy/SNB-VALIDATION.md). Discovery was 0.981 F1 blind and 1.000 after fixes, but the
+end-to-end run found three defects the scanner benchmark could not see, all fixed with regression tests:
+
+- **policy verdicts compared rule lists to the normaliser's display name** — `TLS 1.0` never matched `TLS1.0`, so
+  every TLS 1.0 / 1.1 / SSLv3 endpoint PASSed BASELINE-005 / CBUAE-003 / PCIDSS-005. Matching is now
+  spelling-insensitive across every name the evidence carries (`policy/conditions/base_condition.py`);
+- `.inf` / `.reg` security templates were scanned by the CLI but not by the pipeline's file discovery;
+- mainframe / HSM key labels (COBOL `KEY-LABEL … VALUE`, KGUP `LABEL()`, payShield console) were not extracted as key
+  references, so ICSF / payShield keys always reconciled as orphans.
+
+This does not move the overall number (the blockers below are host-bound) but it does change what "policy is
+tested" means: the policy service now has a test that a bank-realistic weak-TLS configuration fails end to end.
+
 ## What keeps it at 80
 
 | Gap | Weight | Detail | Closes when |
@@ -96,6 +114,7 @@ python scripts/burn_in.py --target all --api http://127.0.0.1:8010 ...
 
 ## Related
 
+- [accuracy/SNB-VALIDATION.md](accuracy/SNB-VALIDATION.md) — whole-pipeline run on a Saudi bank-shaped estate
 - [PLATFORM-STATUS.md](PLATFORM-STATUS.md) — capability-by-capability history of the plan vs. what ships
 - [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — GA / beta / preview per surface (generated)
 - [enterprise-readiness.md](enterprise-readiness.md) — what a bank will ask for
