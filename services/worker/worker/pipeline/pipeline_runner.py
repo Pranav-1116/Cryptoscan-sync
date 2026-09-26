@@ -926,11 +926,39 @@ class PipelineRunner:
             return False
 
         by_name: dict[str, str] = {}
+        from collections import Counter
+
+        entity_counts = Counter(str(row.get("legal_entity")).strip().lower() for row in declared if row.get("legal_entity"))
+        repo_entity = None
+        if entity_counts:
+            top, n = entity_counts.most_common(1)[0]
+            # the repository-level system belongs to the entity that owns (a strict majority of) its declared systems —
+            # e.g. a bank repo with one DIFC-branch system still rolls up under the bank; a 50/50 split stays unassigned
+            if n * 2 > sum(entity_counts.values()):
+                repo_entity = top
+        if repo_entity and ctx.system_id:
+            try:
+                repo_system = repo.get_by_id(ctx.system_id)
+                if repo_system is not None and (repo_system.extra or {}).get("legal_entity") != repo_entity:
+                    repo_system.extra = {**(repo_system.extra or {}), "legal_entity": repo_entity}
+            except Exception:
+                logger.debug("repo_system_entity_failed", exc_info=True)
         for row in declared:
             name = str(row["system"]).strip()
+            db_name = name
+            entity = str(row.get("legal_entity") or "").strip().lower() or None
             try:
+                existing = repo.get_by_name(name)
+                owner_entity = (existing.extra or {}).get("legal_entity") if existing is not None else None
+                if existing is not None and entity and owner_entity and owner_entity != entity:
+                    # ``System.name`` is unique across the whole estate; two banks in one group both declaring "CORE"
+                    # must not be merged into one row (that would put bank A's evidence under bank B in the
+                    # supervisor view). Qualify the later one with its entity code and say so.
+                    db_name = f"{entity}/{name}"
+                    logger.warning("system_name_collision_across_entities",
+                                   extra={"system": name, "owned_by": owner_entity, "declared_by": entity, "stored_as": db_name})
                 system = repo.get_or_create(
-                    name,
+                    db_name,
                     owner=row.get("owner"),
                     environment="prod",
                     description=f"declared in cryptoscan-systems.yml ({ctx.target_repo})",
@@ -942,6 +970,17 @@ class PipelineRunner:
                     system.owner = str(row["owner"])
                 if row.get("compliance_scopes") and not system.compliance_scopes:
                     system.compliance_scopes = [str(x) for x in row["compliance_scopes"]]
+                if row.get("business_unit") and not system.business_unit:
+                    system.business_unit = str(row["business_unit"])
+                if entity:
+                    extra = dict(system.extra or {})
+                    if extra.get("legal_entity") != entity:
+                        extra["legal_entity"] = entity
+                        system.extra = extra
+                if db_name != name:
+                    extra = dict(system.extra or {})
+                    if extra.get("declared_name") != name:
+                        system.extra = {**extra, "declared_name": name}
                 by_name[name] = system.id
                 paths = [str(p) for p in (row.get("paths") or [])]
                 if paths:

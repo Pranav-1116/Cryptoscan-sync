@@ -843,11 +843,30 @@ def _group_rollups_from_db(db: Session):
         .join(CryptoAsset, CryptoAsset.id == SystemAsset.asset_id)
     ).all()
     assets_by_system: dict[str, list[dict[str, Any]]] = {}
+    ids_by_system: dict[str, set[str]] = {}
     for system_id, asset in pairs:
         assets_by_system.setdefault(system_id, []).append({
-            "algorithm": asset.algorithm, "key_size": asset.key_size,
+            "id": asset.id, "algorithm": asset.algorithm, "key_size": asset.key_size,
             "purpose": asset.purpose,
         })
+        ids_by_system.setdefault(system_id, set()).add(asset.id)
+    # A repository-level system "contains" the business systems declared in cryptoscan-systems.yml and owns every
+    # asset of the repo; the declared systems own the same assets under their paths. Count each asset once, under
+    # the most specific owner: the container keeps only assets none of its children claim.
+    try:
+        from db.models.system_dependency import SystemDependency
+
+        children: dict[str, set[str]] = {}
+        for parent_id, child_id in db.execute(
+            select(SystemDependency.parent_id, SystemDependency.child_id).where(SystemDependency.relation == "contains")
+        ).all():
+            children.setdefault(parent_id, set()).add(child_id)
+        for parent_id, kids in children.items():
+            claimed = set().union(*(ids_by_system.get(k, set()) for k in kids)) if kids else set()
+            if claimed and parent_id in assets_by_system:
+                assets_by_system[parent_id] = [a for a in assets_by_system[parent_id] if a["id"] not in claimed]
+    except Exception:  # pragma: no cover — dependency table absent in a minimal schema
+        pass
 
     rollups: list[dict[str, Any]] = []
     for entity in registry.values():

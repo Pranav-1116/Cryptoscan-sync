@@ -105,6 +105,11 @@ A third estate (Qatar + Bahrain, two regulators in one repository; `test_pipelin
 `PERSONAL_DATA`) selected the UAE pack for non-UAE systems; policy rules now separate regulator tags from data-class
 groups (`required_scope_groups`), and Qatar / Bahrain packs ship alongside the UAE one.
 
+A fourth run put **six Dubai-bank estates into one database** and read them back as the CBUAE supervisor
+(`scripts/dubai_banks_e2e.py`, [accuracy/DUBAI-BANKS-E2E.md](accuracy/DUBAI-BANKS-E2E.md)); it exposed that same-named
+systems from different banks were merged into one row and that the repository container double-counted its
+children's assets — both fixed (entity-qualified names on collision; count each asset once under its most specific owner).
+
 **PostgreSQL parity in the test suites.** The staging script already ran the product on an embedded PostgreSQL 16;
 the unit/integration suites, however, still built their schema on SQLite. Now `db.testing` gives every test a real
 PostgreSQL (env `CRYPTOSCAN_TEST_DATABASE_URL`, else the embedded server, else *skip* — never a silent SQLite
@@ -142,6 +147,7 @@ python scripts/burn_in.py --target all --api http://127.0.0.1:8010 ...
 - [accuracy/SNB-VALIDATION.md](accuracy/SNB-VALIDATION.md) — whole-pipeline run on a Saudi bank-shaped estate
 - [accuracy/UAE-VALIDATION.md](accuracy/UAE-VALIDATION.md) — whole-pipeline run on a UAE bank-shaped estate with per-system compliance scopes
 - [accuracy/GCC-VALIDATION.md](accuracy/GCC-VALIDATION.md) — Qatar + Bahrain estate; regulator vs data-class scope groups; PostgreSQL parity
+- [accuracy/DUBAI-BANKS-E2E.md](accuracy/DUBAI-BANKS-E2E.md) — six Dubai banks in one database, per-bank accuracy and the CBUAE supervisor roll-up
 - [PLATFORM-STATUS.md](PLATFORM-STATUS.md) — capability-by-capability history of the plan vs. what ships
 - [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — GA / beta / preview per surface (generated)
 - [enterprise-readiness.md](enterprise-readiness.md) — what a bank will ask for

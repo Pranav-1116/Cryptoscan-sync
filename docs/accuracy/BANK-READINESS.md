@@ -113,6 +113,13 @@ silent on the card switch, CBUAE-003 failing the SSL-VPN's TLS 1.0).
 found that generic data-class tags selected the UAE rule pack for Qatari and Bahraini systems — fixed with regulator +
 data-class scope groups, new Qatar and Bahrain packs, and end-to-end assertions.
 
+## Whole-product check across six Dubai banks with the supervisor view (2026-09-26)
+
+[DUBAI-BANKS-E2E.md](DUBAI-BANKS-E2E.md): six bank-shaped estates (one with a DFSA-regulated DIFC branch) scanned into
+one database and read back per bank and as the CBUAE supervisor — **1.000 F1 on 100 files**, every bank isolated in
+the roll-up. It found and fixed silent cross-bank merging of same-named systems and ~2× inflated entity totals from
+the repository container system — both would have misled a supervisor.
+
 ## Field-measured accuracy (what a bank's own review says)
 
 | source | precision | recall | F1 | status |

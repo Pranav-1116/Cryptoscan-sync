@@ -527,6 +527,8 @@ class SystemNode(BaseModel):
     owner: str | None = None
     paths: list[str]
     compliance_scopes: list[str] = Field(default_factory=list)  # regulatory scopes declared for this system (CBUAE, PAYMENT, PDPL, PERSONAL_DATA…)
+    legal_entity: str | None = None  # group-registry entity code (the supervisory roll-up key: which bank / licensed entity owns this system)
+    business_unit: str | None = None
     files: int = 0
     providers: int = 0
     algorithms: list[str] = Field(default_factory=list)
@@ -795,6 +797,9 @@ def load_system_map(root: Path) -> list[dict[str, Any]]:
             except Exception:
                 return []
         items = data.get("systems") if isinstance(data, dict) else data
+        # top-level defaults: a bank normally declares ONE legal_entity / business_unit for the whole repository
+        default_entity = str(data.get("legal_entity") or data.get("entity") or "").strip().lower() if isinstance(data, dict) else ""
+        default_bu = str(data.get("business_unit") or "").strip() if isinstance(data, dict) else ""
         out = []
         for it in items or []:
             if isinstance(it, dict) and it.get("system") and it.get("paths"):
@@ -803,7 +808,10 @@ def load_system_map(root: Path) -> list[dict[str, Any]]:
                             # declared business dependencies (CMDB knowledge the code cannot show: runtime calls, queues, batch feeds)
                             "depends_on": [str(x) for x in (it.get("depends_on") or it.get("depends_on_systems") or []) if x],
                             # regulatory scopes that gate policy rules (CBUAE / PAYMENT / CARD / PDPL / PERSONAL_DATA / DIFC …)
-                            "compliance_scopes": sorted({str(x).strip().upper() for x in _as_list(it.get("compliance_scopes") or it.get("scopes")) if str(x).strip()})})
+                            "compliance_scopes": sorted({str(x).strip().upper() for x in _as_list(it.get("compliance_scopes") or it.get("scopes")) if str(x).strip()}),
+                            # legal entity (group registry code) and business unit this system belongs to — the supervisory roll-up key
+                            "legal_entity": str(it.get("legal_entity") or it.get("entity") or "").strip().lower() or default_entity or None,
+                            "business_unit": str(it.get("business_unit") or "").strip() or default_bu or None})
         return out
     return []
 
@@ -826,7 +834,7 @@ def _systems_rollup(root: Path, graph: "DependencyGraph", providers: list[Provid
     if not sysmap:
         return []
     nodes = {it["system"]: SystemNode(system=it["system"], criticality=it.get("criticality"), owner=it.get("owner"), paths=it["paths"],
-                                      compliance_scopes=list(it.get("compliance_scopes") or [])) for it in sysmap}
+                                      compliance_scopes=list(it.get("compliance_scopes") or []), legal_entity=it.get("legal_entity"), business_unit=it.get("business_unit")) for it in sysmap}
     file_sys: dict[str, str | None] = {}
     for f in graph.files:
         file_sys[f] = _system_of(f, sysmap)
