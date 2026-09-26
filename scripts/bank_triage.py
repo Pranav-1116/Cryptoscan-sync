@@ -200,8 +200,39 @@ def _markdown(wb: dict) -> str:
     return "\n".join(L) + "\n"
 
 
+def _score_shared(wb: dict, args: argparse.Namespace):
+    """Score with the shared field-accuracy model (same code the API runs) and optionally write the TriageResult."""
+    sys.path.insert(0, str(ROOT / "shared" / "shared_models"))
+    from shared_models.field_accuracy import score_workbook
+
+    result = score_workbook(wb, reviewer=getattr(args, "reviewer", None), notes=getattr(args, "notes", None))
+    if getattr(args, "json_out", None):
+        Path(args.json_out).write_text(result.model_dump_json(indent=2))
+        print(f"wrote scored TriageResult -> {args.json_out}  (publish: bank_triage.py publish {args.json_out} --scan-id <id> --api <url>)")
+    if result.by_language:
+        print("per language: " + ", ".join(f"{l.language} P={l.precision:.2f} R={l.recall:.2f} (n={l.tp + l.fp + l.fn})" for l in result.by_language))
+    return result
+
+
+def cmd_publish(args: argparse.Namespace) -> int:
+    """POST a scored TriageResult (or a reviewed workbook) to the API: it lands on the scan and in GET /accuracy/field."""
+    import urllib.request
+
+    body = json.loads(Path(args.result).read_text())
+    if "findings" in body and "tp" not in body:  # raw workbook → let the server score it
+        body = {"workbook": body, "reviewer": args.reviewer, "notes": args.notes}
+    req = urllib.request.Request(f"{args.api.rstrip('/')}/api/v1/scans/{args.scan_id}/triage", data=json.dumps(body).encode(), method="POST",
+                                 headers={"Content-Type": "application/json", **({"X-API-Key": args.api_key} if args.api_key else {}),
+                                          **({"Authorization": f"Bearer {args.token}"} if args.token else {})})
+    with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310 — operator-supplied URL
+        out = json.loads(resp.read())
+    print(f"published: precision={out['precision']:.3f} recall={out['recall']:.3f} f1={out['f1']:.3f} on scan {args.scan_id}")
+    return 0
+
+
 def cmd_score(args: argparse.Namespace) -> int:
     wb = json.loads(Path(args.workbook).read_text())
+    _score_shared(wb, args)
     per_file_tp = collections.defaultdict(set)
     per_file_fp = collections.defaultdict(set)
     unreviewed = 0
@@ -262,6 +293,18 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("score", help="score a reviewed workbook")
     s.add_argument("workbook")
     s.add_argument("--corpus-out")
+    s.add_argument("--json-out", help="write the scored TriageResult (for `publish`)")
+    s.add_argument("--reviewer", help="team / role that signed off the review")
+    s.add_argument("--notes")
+    pb = sub.add_parser("publish", help="POST a scored result (or reviewed workbook) to the API → GET /api/v1/accuracy/field")
+    pb.add_argument("result")
+    pb.add_argument("--scan-id", required=True, help="the pipeline scan of the same repository")
+    pb.add_argument("--api", required=True, help="e.g. https://cryptoscan.bank.internal")
+    pb.add_argument("--api-key")
+    pb.add_argument("--token")
+    pb.add_argument("--reviewer")
+    pb.add_argument("--notes")
+    pb.set_defaults(fn=cmd_publish)
     s.set_defaults(fn=cmd_score)
     args = ap.parse_args(argv)
     return args.fn(args)

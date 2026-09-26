@@ -15,7 +15,6 @@ condition:
   parameters:
     required_scopes:
       - "DIFC"
-      - "PERSONAL_DATA"
       - "DIFC-DPL-5-2020"
     if_purpose:
       - "ENCRYPTION"

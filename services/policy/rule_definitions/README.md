@@ -21,7 +21,15 @@ reported as `PASS`.
 | `hipaa/` | HIPAA-001…002 | `HIPAA` / `PHI` scope tags |
 | `nist/` | NIST-001…006 | `NIST` scope tag |
 | `pci_dss/` | PCIDSS-001…006 | `PCI-DSS` / `PAN` scope tags |
-| `uae/` | CBUAE-001…005, DIFC-001…002, PDPL-001…002, ADGM-001 | `CBUAE`, `PAYMENT`/`CARD`/`SWIFT`, `DIFC`/`PERSONAL_DATA`, `PDPL`, `ADGM` scope tags |
+| `uae/` | CBUAE-001…005, DIFC-001…002, PDPL-001…002, ADGM-001 | `CBUAE`, `PAYMENT`/`CARD`/`SWIFT`, `DIFC`, `PDPL`, `ADGM` scope tags |
+| `qatar/` | QCB-001…003, PDPPL-001…002 | `QCB`, `CUSTOMER-FACING`/`REMOTE-ACCESS`, `PDPPL` scope tags |
+| `bahrain/` | CBB-001…003, BHPDPL-001…002 | `CBB`, `CUSTOMER-FACING`/`REMOTE-ACCESS`/`OPEN-BANKING`, `BH-PDPL` scope tags |
+
+**Scope semantics.** `required_scopes` is OR-activated: any listed tag on the finding brings the rule into scope. Data-class
+tags (`PERSONAL_DATA`, `PAYMENT`, `CARD`, `CUSTOMER-FACING`, `REMOTE-ACCESS`, `OPEN-BANKING`) are jurisdiction-neutral and
+appear only in rules that *also* list the regulator's tag on the same finding path — a Qatari KYC system tagged
+`[PDPPL, PERSONAL_DATA]` is evaluated under PDPPL-00x, never under UAE PDPL/DIFC/ADGM (found and fixed by the GCC estate
+run, `docs/accuracy/GCC-VALIDATION.md`). Declare the regulator tag; `PERSONAL_DATA` alone selects no law.
 
 ## UAE pack — grounding
 

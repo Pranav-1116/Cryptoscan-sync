@@ -15,7 +15,6 @@ condition:
   parameters:
     required_scopes:
       - "ADGM"
-      - "PERSONAL_DATA"
       - "ADGM-DPR-2021"
     if_purpose:
       - "ENCRYPTION"

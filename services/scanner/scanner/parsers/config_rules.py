@@ -230,6 +230,18 @@ _APPLIANCE_PROTO = re.compile(r"(?im)^[ \t]*set[ \t]+(?:ssl|dtls|tls)[-_](?:min|
 _APPLIANCE_PROTO_NAME = {"tls1-0": "TLS1.0", "tls1_0": "TLS1.0", "tls1.0": "TLS1.0", "tls10": "TLS1.0", "tls1-1": "TLS1.1", "tls1_1": "TLS1.1", "tls1.1": "TLS1.1", "tls11": "TLS1.1",
                          "tls1-2": "TLS1.2", "tls1_2": "TLS1.2", "tls1.2": "TLS1.2", "tls12": "TLS1.2", "tls1-3": "TLS1.3", "tls1_3": "TLS1.3", "tls1.3": "TLS1.3", "tls13": "TLS1.3",
                          "dtls1-0": "TLS1.1", "dtls1_0": "TLS1.1", "dtls1.0": "TLS1.1", "dtls1-2": "TLS1.2", "dtls1_2": "TLS1.2", "dtls1.2": "TLS1.2", "ssl3-0": "SSLv3", "sslv3": "SSLv3"}
+# Network appliances: F5 tmsh client-ssl / server-ssl profiles, Cisco ASA `ssl …` lines, Palo Alto `set …` CLI
+_APPL_CIPHERS = re.compile(r"(?im)^[ \t]*(?:ciphers|cipher-group|ssl[ \t]+cipher[ \t]+(?:tlsv1(?:\.[0-3])?|dtlsv1(?:\.[0-2])?)[ \t]+custom)[ \t]+[\"']?([A-Za-z0-9_:+!@.\- ]+?)[\"']?[ \t]*$")
+_APPL_TLS_VER = re.compile(r"(?im)^[ \t]*(?:ssl[ \t]+(?:server|client)-version|set[ \t]+[^\n]*?(?:min|max)-version)[ \t]+([A-Za-z0-9.\-]+)")
+_APPL_OPTIONS = re.compile(r"(?im)^[ \t]*options[ \t]*\{([^}]*)\}")
+_APPL_NO_PROTO = re.compile(r"(?i)\bno-(tlsv1(?:\.[0-3])?|sslv[23])\b")
+_APPL_DH_GROUP = re.compile(r"(?im)^[ \t]*ssl[ \t]+(dh|ecdh)-group[ \t]+group(\d+)")
+_APPL_TRUST = re.compile(r"(?im)^[ \t]*(?:ssl[ \t]+trust-point[ \t]+\S+|cert-key-chain[ \t]*\{|cert[ \t]+/Common/\S+|key[ \t]+/Common/\S+|set[ \t]+[^\n]*?ssl-tls-service-profile[ \t]+\S+[ \t]+certificate[ \t]+\S+)")
+_APPL_PAN_ALGO = re.compile(r"(?im)^[ \t]*set[ \t]+[^\n]*?\b(?:enc|auth)-algo-([a-z0-9\-]+)[ \t]+(yes|no)\b")
+_APPL_PAN_NAME = {"rc4": "RC4", "3des": "3DES", "aes-128-cbc": "AES", "aes-256-cbc": "AES", "aes-128-gcm": "AES", "aes-256-gcm": "AES", "chacha20-poly1305": "ChaCha20-Poly1305",
+                  "md5": "MD5", "sha1": "SHA-1", "sha256": "SHA-256", "sha384": "SHA-384"}
+_APPL_TLS_NAME = {"tlsv1": "TLS1.0", "tlsv1.0": "TLS1.0", "tls1-0": "TLS1.0", "tlsv1.1": "TLS1.1", "tls1-1": "TLS1.1", "tlsv1.2": "TLS1.2", "tls1-2": "TLS1.2",
+                  "tlsv1.3": "TLS1.3", "tls1-3": "TLS1.3", "sslv3": "SSLv3", "sslv2": "SSLv2", "dtlsv1": "TLS1.1", "dtlsv1.2": "TLS1.2"}
 _WIN_KRB_ETYPES = re.compile(r"(?:Kdc|Kerberos)\\Parameters\\SupportedEncryptionTypes\s*[=:]\s*(?:(dword|4)\s*[:,]\s*)?(?:0x)?([0-9a-fA-F]+)", re.I)
 # generic policy keys (IBM MQ AMS policies, gateway YAML): signing: SHA256 / encryption: AES256 / digest_algorithm: SHA1
 _POLICY_ALGO_KEY = re.compile(
@@ -679,6 +691,32 @@ def run_config_rules(
             continue
         api = "KEY_AGREEMENT" if kind.lower() in {"protocols", "keyexchangealgorithms"} else "MESSAGE_DIGEST" if kind.lower() == "hashes" else "CIPHER_INSTANCE"
         emit(m.start(), algo, api, "NETWORK_ENCRYPTION", "windows-schannel", m.group(0).split("\n", 1)[0][:80], confidence="HIGH", reason="schannel-registry-export")
+    for m in _APPL_CIPHERS.finditer(text):
+        value = m.group(1).strip()
+        if not re.search(r"(?i)(?:TLS_|ECDHE|DHE|RSA|AES|3DES|RC4|CHACHA|NULL|EXP|HIGH|MEDIUM|DEFAULT)", value):
+            continue
+        emit(m.start(), "TLS-CIPHERS", "CIPHER_INSTANCE", "NETWORK_ENCRYPTION", "appliance-cli", value, confidence="MEDIUM", reason="appliance-cipher-string")
+        for algo, api_type in suite_components(value.replace("+", "-")):
+            emit(m.start(), algo, api_type, "NETWORK_ENCRYPTION", "appliance-cli", value, reason="appliance-cipher-string")
+    for m in _APPL_TLS_VER.finditer(text):
+        algo = _APPL_TLS_NAME.get(m.group(1).lower())
+        if algo:
+            emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "appliance-cli", m.group(0).strip()[:80], reason="appliance-tls-version")
+    for m in _APPL_OPTIONS.finditer(text):
+        if _APPL_NO_PROTO.search(m.group(1)):  # F5 `options { no-tlsv1 no-tlsv1.1 no-sslv3 }` — a floor, the remaining versions are in use
+            emit(m.start(), "TLS", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "appliance-cli", m.group(0).strip()[:80], confidence="MEDIUM", reason="appliance-disabled-protocols-floor")
+    for m in _APPL_DH_GROUP.finditer(text):
+        grp = int(m.group(2))
+        algo = "ECDH" if m.group(1).lower() == "ecdh" or grp in {19, 20, 21, 31} else "DH"
+        bits = {1: 768, 2: 1024, 5: 1536, 14: 2048, 15: 3072, 16: 4096, 19: 256, 20: 384, 21: 521, 24: 2048}.get(grp)
+        emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "appliance-cli", m.group(0).strip(), reason="appliance-dh-group", key_size=bits)
+    for m in _APPL_TRUST.finditer(text):
+        emit(m.start(), "X509", "KEY_PAIR_GENERATOR", "KEY_MANAGEMENT", "appliance-cli", m.group(0).strip()[:80], confidence="MEDIUM", reason="appliance-certificate-binding")
+    for m in _APPL_PAN_ALGO.finditer(text):
+        algo = _APPL_PAN_NAME.get(m.group(1).lower())
+        if algo and m.group(2).lower() == "yes":
+            api = "MESSAGE_DIGEST" if algo.startswith(("SHA", "MD")) else "CIPHER_INSTANCE"
+            emit(m.start(), algo, api, "NETWORK_ENCRYPTION", "appliance-cli", m.group(0).strip()[:80], reason="appliance-algorithm-toggle")
     for m in _APPLIANCE_PROTO.finditer(text):
         algo = _APPLIANCE_PROTO_NAME.get(m.group(1).lower())
         if algo:

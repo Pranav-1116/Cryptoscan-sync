@@ -87,9 +87,15 @@ def test_cbuae_002_payment_data_strong_encryption_pass():
 def test_cbuae_002_payment_data_rejects_short_key_and_cbc():
     result = engine().evaluate({
         "algorithm": "AES", "mode": "CBC", "key_size": 128,
-        "purpose": "ENCRYPTION", "compliance_scopes": ["PAYMENT"],
+        "purpose": "ENCRYPTION", "compliance_scopes": ["CBUAE", "CARD"],
     })
     assert _outcome(result, "CBUAE-002") == "FAIL"
+    # a generic PAYMENT tag without the regulator tag selects no jurisdiction (a Qatari switch is not CBUAE's)
+    generic = engine().evaluate({
+        "algorithm": "AES", "mode": "CBC", "key_size": 128,
+        "purpose": "ENCRYPTION", "compliance_scopes": ["PAYMENT"],
+    })
+    assert _outcome(generic, "CBUAE-002") == "NOT_APPLICABLE"
 
 
 def test_cbuae_003_tls_floor_rejects_tls11():
@@ -100,9 +106,12 @@ def test_cbuae_003_tls_floor_rejects_tls11():
     assert _outcome(result, "CBUAE-003") == "FAIL"
     result13 = engine().evaluate({
         "algorithm": "TLS1.3", "purpose": "TRANSPORT",
-        "compliance_scopes": ["CBUAE"],
+        "compliance_scopes": ["CBUAE", "REMOTE-ACCESS"],
     })
     assert _outcome(result13, "CBUAE-003") == "PASS"
+    # the floor is a customer-channel / remote-access control: an internal CBUAE system without those tags is out of scope
+    internal = engine().evaluate({"algorithm": "TLS1.1", "purpose": "TRANSPORT", "compliance_scopes": ["CBUAE"]})
+    assert _outcome(internal, "CBUAE-003") == "NOT_APPLICABLE"
 
 
 def test_cbuae_004_rsa_floor():

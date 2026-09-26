@@ -26,10 +26,10 @@ class TimelineCondition(BaseCondition):
     CONDITION_TYPE = "TIMELINE"
 
     def evaluate(self, evidence_data: dict[str, Any], params: dict[str, Any]) -> EvaluationOutcome:
-        if not scopes_apply(evidence_data, params.get("required_scopes")):
+        if not scopes_apply(evidence_data, params.get("required_scopes"), params.get("required_scope_groups")):
             return EvaluationOutcome(
                 result="NOT_APPLICABLE",
-                message=missing_scopes_message(params.get("required_scopes")),
+                message=missing_scopes_message(params.get("required_scopes"), params.get("required_scope_groups")),
             )
 
         algorithm = str(evidence_data.get("algorithm") or "").upper()

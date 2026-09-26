@@ -83,7 +83,7 @@ def test_rule_algorithm_still_matches_after_normalisation(normalizer, rule_id, c
     condition = ConditionFactory().create(ctype)
     if ctype in ("ALGORITHM_IN_LIST", "COMPLEX"):
         evidence = _evidence(normalizer, name)
-        evidence["compliance_scopes"] = list(params.get("required_scopes") or [])
+        evidence["compliance_scopes"] = list(params.get("required_scopes") or []) + [g[0] for g in (params.get("required_scope_groups") or []) if g]
         evidence["purpose"] = (params.get("if_purpose") or [None])[0] if isinstance(params.get("if_purpose"), list) else params.get("if_purpose")
         outcome = condition.evaluate(evidence, params)
         assert outcome.result == "FAIL", (rule_id, name, outcome)

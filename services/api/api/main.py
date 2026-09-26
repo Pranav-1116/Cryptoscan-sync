@@ -22,6 +22,7 @@ from api.middleware.logging_middleware import LoggingMiddleware
 from api.middleware.request_id_middleware import RequestIDMiddleware
 from api.middleware.security_headers import SecurityHeadersMiddleware
 from api.routers import (
+    accuracy,
     agility,
     analytics,
     graphql,
@@ -355,6 +356,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     # path /scans/runtime-findings (FastAPI matches routes in include order).
     app.include_router(runtime.router, prefix=prefix)
     app.include_router(scans.router, prefix=prefix)
+    app.include_router(accuracy.router, prefix=prefix)
     app.include_router(findings.router, prefix=prefix)
     app.include_router(pentest.router, prefix=prefix)
     app.include_router(drift.router, prefix=prefix)

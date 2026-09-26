@@ -106,11 +106,29 @@ per-system `compliance_scopes`. That run found that declared per-system scopes n
 jurisdiction rules could only be applied to a whole repository — now fixed and asserted end to end (PDPL/DIFC rules
 silent on the card switch, CBUAE-003 failing the SSL-VPN's TLS 1.0).
 
+## Whole-product check on a Qatar + Bahrain estate (2026-09-26)
+
+[GCC-VALIDATION.md](GCC-VALIDATION.md): a two-regulator fixture (QCB + CBB, two personal-data laws) scanned blind at
+**0.993 F1** (zero false positives), 1.000 after fixes, then run through the pipeline on SQLite **and PostgreSQL**. It
+found that generic data-class tags selected the UAE rule pack for Qatari and Bahraini systems — fixed with regulator +
+data-class scope groups, new Qatar and Bahrain packs, and end-to-end assertions.
+
+## Field-measured accuracy (what a bank's own review says)
+
+| source | precision | recall | F1 | status |
+|---|---|---|---|---|
+| corpus benchmark (our labels, 842 files) | 1.000 | 1.000 | 1.000 | regression guard; blind first passes 0.981–0.999 |
+| **field — banks' reviewed triage workbooks** (`GET /api/v1/accuracy/field`) | — | — | — | **NO_FIELD_DATA** — no pilot bank has published a review yet |
+
+The loop exists end to end (`scripts/bank_triage.py workbook → review → score → publish`, scored in the same unit as
+the corpus, pooled per language against the corpus F1). Until a bank publishes, the discovery number below rests on
+blind corpus waves and real open-source repositories only — it is stated as such, not padded.
+
 ## Bank readiness — the number (2026-09-25)
 
 | Layer | Readiness | Basis |
 |---|---|---|
-| **Discovery accuracy on bank code classes** | **~95 %** | 18 blind waves (820 files, every first pass since wave 9 ≥ 0.981, corpus 100 % after fixes); real repos: jPOS, Fineract, OBP-API, quorum, baker, legend-engine, keycloak, jjwt, nifi, cas, Progress ADE, 257 COBOL/JCL, 673 IBM i, 213 Natural, 103 .NET binaries, 25 APKs. Now also: legacy 4GL/TAL/SAS/payShield-console parsers, mobile packages, runtime-log evidence, cross-file hop verified on real repos (8/8 correct), a triage loop that turns a bank's review into a number, and **dependency & cascade analysis** (who depends on each piece of crypto, migration waves, library versions, shared keys, weak key sizes) so the inventory is an estate view, not a list of hits. Deductions: ICSF/CICS/PL/I/Natural/4GL/TAL positives are corpus-only (no public bank code exists for them); runtime evidence is log-based, not a network sensor; no bank has yet fed its own first-pass numbers back. |
-| **Scan pipeline (clone → scan → evidence → CBOM → policy → alert)** | ~92 % | PostgreSQL + Redis end-to-end, at-least-once queue + reaper, soak evidence; per-file process pool measured on a 3M-LOC synthetic monorepo (71.7 kLOC/s on 2 cores, deterministic, flat RSS → 10M LOC ≈ 2.3 min); API capacity measured honestly (~180 authenticated rps per worker) and three defects fixed in the process. Still not run for 7 days on a real estate; the `kill -9` of a worker against a *real* Redis and the HA compose fail-over need a host with Redis/Docker (neither exists in this sandbox — runbooks: `docs/runbooks/job-queue.md`). |
+| **Discovery accuracy on bank code classes** | **~95 %** | 19 blind waves (842 files, every first pass since wave 9 ≥ 0.981, corpus 100 % after fixes); real repos: jPOS, Fineract, OBP-API, quorum, baker, legend-engine, keycloak, jjwt, nifi, cas, Progress ADE, 257 COBOL/JCL, 673 IBM i, 213 Natural, 103 .NET binaries, 25 APKs. Now also: legacy 4GL/TAL/SAS/payShield-console parsers, mobile packages, runtime-log evidence, cross-file hop verified on real repos (8/8 correct), a triage loop that turns a bank's review into a number, and **dependency & cascade analysis** (who depends on each piece of crypto, migration waves, library versions, shared keys, weak key sizes) so the inventory is an estate view, not a list of hits. Deductions: ICSF/CICS/PL/I/Natural/4GL/TAL positives are corpus-only (no public bank code exists for them); runtime evidence is log-based, not a network sensor; no bank has yet fed its own first-pass numbers back. |
+| **Scan pipeline (clone → scan → evidence → CBOM → policy → alert)** | ~92 % | PostgreSQL + Redis end-to-end, at-least-once queue + reaper, soak evidence; per-file process pool measured on a 3M-LOC synthetic monorepo (71.7 kLOC/s on 2 cores, deterministic, flat RSS → 10M LOC ≈ 2.3 min); API capacity measured honestly (~180 authenticated rps per worker) and three defects fixed in the process. The test suites now run on PostgreSQL too (whole worker suite, Alembic chain, three estate runs, API read-back — `scripts/postgres_parity.sh`), not only SQLite. Still not run for 7 days on a real estate; the `kill -9` of a worker against a *real* Redis and the HA compose fail-over need a host with Redis/Docker (runbooks: `docs/runbooks/job-queue.md`). |
 | **Bank operating requirements** (air-gap install, RBAC/SSO, audit chain, backup/PITR, HA, SBOM of the product itself) | ~75 % | unchanged: air-gap + backup + PITR drills documented and run once; HA compose exists but not drilled; SSO/SAML beta; ITSM/SIEM connectors and the product's own SOC 2 / pen-test are company actions, not sandbox work. |
 | **Overall for a first bank pilot** | **~87 %** | Ready for a *pilot on the payments switch, the mobile channel packages and the ICSF COBOL modules with the triage loop* — not yet for an unattended, audit-grade inventory across the whole estate. |

@@ -100,6 +100,21 @@ reached policy evaluation** — jurisdiction rules could only be applied to a wh
 scopes ∪ owning system's scopes) are now computed in the policy stage, written to `finding_data.compliance_scopes`,
 and asserted end to end: PDPL/DIFC rules silent on the card switch, CBUAE-003 failing the SSL-VPN's TLS 1.0.
 
+A third estate (Qatar + Bahrain, two regulators in one repository; `test_pipeline_gcc_estate.py`,
+[accuracy/GCC-VALIDATION.md](accuracy/GCC-VALIDATION.md)) found that jurisdiction-neutral scope tags (`PAYMENT`,
+`PERSONAL_DATA`) selected the UAE pack for non-UAE systems; policy rules now separate regulator tags from data-class
+groups (`required_scope_groups`), and Qatar / Bahrain packs ship alongside the UAE one.
+
+**PostgreSQL parity in the test suites.** The staging script already ran the product on an embedded PostgreSQL 16;
+the unit/integration suites, however, still built their schema on SQLite. Now `db.testing` gives every test a real
+PostgreSQL (env `CRYPTOSCAN_TEST_DATABASE_URL`, else the embedded server, else *skip* — never a silent SQLite
+fallback): the whole worker suite passes on PostgreSQL (`CRYPTOSCAN_TEST_DB_BACKEND=postgresql`), the three estate
+pipelines and the API read-back are parametrised over both backends, and the Alembic chain test finds the embedded
+server by itself. `scripts/postgres_parity.sh` runs the lot.
+
+**Field accuracy has a home.** `POST /api/v1/scans/{id}/triage` + `GET /api/v1/accuracy/field` pool banks' reviewed
+workbooks into a precision / recall / F1 next to the corpus number; it reports `NO_FIELD_DATA` until a pilot publishes.
+
 ## What keeps it at 80
 
 | Gap | Weight | Detail | Closes when |
@@ -126,6 +141,7 @@ python scripts/burn_in.py --target all --api http://127.0.0.1:8010 ...
 
 - [accuracy/SNB-VALIDATION.md](accuracy/SNB-VALIDATION.md) — whole-pipeline run on a Saudi bank-shaped estate
 - [accuracy/UAE-VALIDATION.md](accuracy/UAE-VALIDATION.md) — whole-pipeline run on a UAE bank-shaped estate with per-system compliance scopes
+- [accuracy/GCC-VALIDATION.md](accuracy/GCC-VALIDATION.md) — Qatar + Bahrain estate; regulator vs data-class scope groups; PostgreSQL parity
 - [PLATFORM-STATUS.md](PLATFORM-STATUS.md) — capability-by-capability history of the plan vs. what ships
 - [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — GA / beta / preview per surface (generated)
 - [enterprise-readiness.md](enterprise-readiness.md) — what a bank will ask for

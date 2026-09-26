@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-26T09:01:48+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 820 files). Scored per algorithm family per file._
+_Generated 2026-09-26T09:39:23+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 842 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,8 +10,8 @@ _Generated 2026-09-26T09:01:48+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 820 / 820 (100.0%) |
-| TP / FP / FN / TN | 1415 / 0 / 0 / 154 |
+| Files scored exactly right | 842 / 842 (100.0%) |
+| TP / FP / FN / TN | 1469 / 0 / 0 / 158 |
 
 ## By language
 
@@ -21,21 +21,21 @@ _Generated 2026-09-26T09:01:48+00:00 by `scripts/accuracy_benchmark.py` against 
 | c | 38 | 100.0% | 100.0% | 100.0% | 38/38 |
 | cics | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | cl | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| cobol | 25 | 100.0% | 100.0% | 100.0% | 25/25 |
-| config | 66 | 100.0% | 100.0% | 100.0% | 66/66 |
+| cobol | 26 | 100.0% | 100.0% | 100.0% | 26/26 |
+| config | 70 | 100.0% | 100.0% | 100.0% | 70/70 |
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| csharp | 54 | 100.0% | 100.0% | 100.0% | 54/54 |
-| go | 45 | 100.0% | 100.0% | 100.0% | 45/45 |
+| csharp | 56 | 100.0% | 100.0% | 100.0% | 56/56 |
+| go | 47 | 100.0% | 100.0% | 100.0% | 47/47 |
 | hlasm | 6 | 100.0% | 100.0% | 100.0% | 6/6 |
 | hsm | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | ims | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 | informix4gl | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| java | 117 | 100.0% | 100.0% | 100.0% | 117/117 |
+| java | 119 | 100.0% | 100.0% | 100.0% | 119/119 |
 | javascript | 55 | 100.0% | 100.0% | 100.0% | 55/55 |
 | jcl | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
-| json | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
-| kotlin | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
-| markdown | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
+| json | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
+| kotlin | 21 | 100.0% | 100.0% | 100.0% | 21/21 |
+| markdown | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | natural | 7 | 100.0% | 100.0% | 100.0% | 7/7 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | payshield-console | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
@@ -44,27 +44,27 @@ _Generated 2026-09-26T09:01:48+00:00 by `scripts/accuracy_benchmark.py` against 
 | powerbuilder | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | progress | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | properties | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
-| python | 90 | 100.0% | 100.0% | 100.0% | 90/90 |
+| python | 93 | 100.0% | 100.0% | 100.0% | 93/93 |
 | rpg | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
 | ruby | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
 | rust | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
 | sas | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | shell | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
-| sql | 36 | 100.0% | 100.0% | 100.0% | 36/36 |
-| swift | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
+| sql | 38 | 100.0% | 100.0% | 100.0% | 38/38 |
+| swift | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
 | tal | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| typescript | 16 | 100.0% | 100.0% | 100.0% | 16/16 |
+| typescript | 17 | 100.0% | 100.0% | 100.0% | 17/17 |
 | xml | 21 | 100.0% | 100.0% | 100.0% | 21/21 |
-| yaml | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
+| yaml | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 
 ## By category
 
 | Category | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | config | 28 | 100.0% | 100.0% | 100.0% | 28/28 |
-| negative | 122 | 100.0% | 100.0% | 100.0% | 122/122 |
+| negative | 126 | 100.0% | 100.0% | 100.0% | 126/126 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 614 | 100.0% | 100.0% | 100.0% | 614/614 |
+| positive | 632 | 100.0% | 100.0% | 100.0% | 632/632 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -99,6 +99,7 @@ misses were fixed and locked in as regression tests.
 | 16 — BLIND, Saudi bank estate (SNB profile, representative not real): mada PIN/CVV translation, TR-34/TR-31, SARIE LAU, SADAD JWS, ZATCA XAdES/secp256k1, Nafath/Yakeen, Oracle DBMS_CRYPTO/TDE, ICSF COBOL + KGUP, Android/iOS keystores, SAMA-CSF TLS, Kerberos, SCHANNEL GPO; 5 Arabic negatives. Then the same files through the whole pipeline (docs/accuracy/SNB-VALIDATION.md) | 36 | 0.995 / 0.967 / 0.981 | F1 1.000 (784/784) |
 | 17 — BLIND, post-quantum adoption: JDK 24 ML-KEM/ML-DSA, BouncyCastle PQC, Go crypto/mlkem + circl + liboqs-go, liboqs-python, OpenSSL 3.5 EVP_PKEY_Q_keygen / hybrid groups, .NET 10 MLKem/MLDsa/SlhDsa, @noble/post-quantum, Node 24, WebCrypto, OpenSSH mlkem768x25519, nginx; 3 negatives (Team Kyber, Falcon 9) | 13 | 0.996 / 0.987 / 0.992 | F1 1.000 (797/797) |
 | 18 — BLIND, UAE bank estate (CBUAE / PDPL / DIFC profile, representative not real): UAESWITCH/Jaywan PIN + tokenisation, Aani pacs.008 signing behind a PKIX KeyManagerFactory, Open Finance FAPI (RsaSsaPssSha256, mTLS client cert), UAE PASS SAML (SignedXml + xmldsig URIs) and Emirates ID VG, T24 OFS session cipher, WPS SIF / FTA Peppol AS4 (xmlenc11#aes128-gcm), Oracle KYC PII, ICSF Emirates-ID encryption, iOS UAE PASS, FortiOS SSL-VPN min-proto, RD Gateway .reg SCHANNEL export, CBUAE TLS baseline, MQ AEP channel; 4 Arabic negatives. Misses were all *shape* gaps: KeyManagerFactory/TrustManagerFactory as X.509 use, Microsoft.IdentityModel RsaSecurityKey/TokenValidationParameters/ClientCertificates.Add, XML-DSig/XML-Enc URI literals in code (now one shared table, parsers/xmlsec_uris.py, used by C# and Python), FortiOS `set ssl-min-proto-ver`, and .reg-style `[HKEY…SCHANNEL\Protocols\TLS 1.1\Server]` + `"Enabled"=dword:` on the next line (only the .inf same-line form was known). One label corrected: `SecurityAlgorithms.RsaSsaPssSha256` is the JWT alg PS256, not a separate SHA-256 use | 24 | 1.000 / 0.992 / 0.996 | F1 1.000 (820/820) |
+| 19 — BLIND, Qatar + Bahrain (GCC) bank estate (QCB / PDPPL / CBB / Bahrain PDPL profile, representative not real): Himyan TDES PIN translation + ICSF CSNBPTR, Fawran ISO 20022 signing with Apache Santuario constants, QMP wallet AesGcm/HMAC, NAS OIDC JWKS, QCB FX report PSS-SHA384 + P-384, BENEFIT eKYC (ES256 + requests cert=), Fawri+ HMAC-SHA512, BenefitPay Ed25519 QR, Android biometric ECDSA, Secure Enclave + ChaChaPoly, DBMS_CRYPTO QID vault, SQL Server HASHBYTES SHA1 over CPR, Bahrain OBF jose PS256 + JWK thumbprint, Palo Alto `set` SSL profiles, F5 tmsh client-ssl, Cisco ASA `ssl` lines, BENEFIT sshd_config; 4 Arabic negatives. Zero FPs; misses were Santuario `ALGO_ID_*` constants + `addKeyInfo(cert)`, `requests(cert=…)` mTLS, jose `calculateJwkThumbprint(…, 'sha256')`, and three appliance CLI dialects (`.set` / `.tmsh` not even routed): `min-version tls1-1`, `enc-algo-*/auth-algo-* yes|no`, `ciphers ECDHE+AES-GCM` (`+` groups), `options { no-tlsv1 }`, `ssl server-version`, `ssl cipher … custom`, `ssl dh-group/ecdh-group`, `ssl trust-point`, `cert-key-chain`. One label corrected: a PAN-OS service profile binds a certificate (X509) | 22 | 1.000 / 0.986 / 0.993 | F1 1.000 (842/842) |
 
 ## How to read this
 

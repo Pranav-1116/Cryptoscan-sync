@@ -101,6 +101,8 @@ DEFAULT_SOURCE_EXTENSIONS = (
     ".cnf",
     ".inf",  # Windows security templates (secedit / GPO): SCHANNEL ciphers, Kerberos etypes, NTLM levels
     ".reg",  # registry exports of the same policy
+    ".tmsh",  # F5 BIG-IP tmsh profile exports (client-ssl / server-ssl ciphers, options)
+    ".set",  # Palo Alto PAN-OS "set" format configuration exports
     ".yml",
     ".yaml",
     ".properties",

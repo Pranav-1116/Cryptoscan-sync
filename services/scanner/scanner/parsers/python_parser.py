@@ -867,6 +867,9 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                     self._add(node, api_type="KEY_GENERATOR" if kw.arg != "SigningAlgorithm" else "SIGNATURE", algorithm=algo,
                               purpose="ENCRYPTION" if kw.arg != "SigningAlgorithm" else "SIGNING", library="boto3",
                               confidence="MEDIUM", confidence_reason="aws-key-spec", raw_transformation=val)
+        if self._client_cert(node, func):
+            self._add(node, api_type="KEY_PAIR_GENERATOR", algorithm="X509", purpose="AUTHENTICATION", library="requests",
+                      confidence="MEDIUM", confidence_reason="mutual-TLS client certificate (cert=)", raw_transformation=func + "(cert=...)")
         if self._verify_disabled(node, func):
             self._add(
                 node,
@@ -1084,6 +1087,18 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             if re.search(r"\bsslmode=(?:disable|allow|prefer)\b|\bssl=false\b|\bssl-mode=DISABLED\b|\buseSSL=false\b", s):
                 self._add(node, api_type="KEY_AGREEMENT", algorithm="TLS-DISABLED", purpose="NETWORK_ENCRYPTION", library="database-url",
                           confidence="MEDIUM", confidence_reason="database connection without TLS", raw_transformation=s[-80:])
+
+    def _client_cert(self, node: ast.Call, func: str) -> bool:
+        """requests/httpx ``cert=(crt, key)`` / ``cert="client.pem"`` — an X.509 client certificate is presented."""
+        head = func.split(".")[0]
+        root = self._aliases.get(head, head)
+        http_like = any(t in (func + " " + root).lower() for t in ("requests", "httpx", "session", "client"))
+        if not http_like or func.split(".")[-1] not in {"get", "post", "put", "patch", "delete", "request", "Session", "Client", "AsyncClient", "mount"}:
+            return False
+        for kw in node.keywords:
+            if kw.arg == "cert" and not (isinstance(kw.value, ast.Constant) and kw.value.value in (None, False)):
+                return True
+        return False
 
     def _verify_disabled(self, node: ast.Call, func: str) -> bool:
         """requests/httpx/aiohttp/urllib3 style ``verify=False`` / ``ssl=False``."""

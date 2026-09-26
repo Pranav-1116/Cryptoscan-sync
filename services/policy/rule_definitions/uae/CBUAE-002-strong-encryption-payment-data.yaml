@@ -14,9 +14,8 @@ condition:
   parameters:
     required_scopes:
       - "CBUAE"
-      - "PAYMENT"
-      - "CARD"
-      - "SWIFT"
+    required_scope_groups:
+      - ["PAYMENT", "CARD", "SWIFT"]
     if_purpose:
       - "ENCRYPTION"
       - "DECRYPTION"

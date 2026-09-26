@@ -13,8 +13,8 @@ condition:
   parameters:
     required_scopes:
       - "CBUAE"
-      - "CUSTOMER-FACING"
-      - "REMOTE-ACCESS"
+    required_scope_groups:
+      - ["CUSTOMER-FACING", "REMOTE-ACCESS"]
     forbidden_algorithms:
       - "SSLv3"
       - "TLS1.0"
