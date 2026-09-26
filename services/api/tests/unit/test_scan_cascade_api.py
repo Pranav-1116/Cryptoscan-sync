@@ -146,3 +146,26 @@ async def test_key_reconciliation_endpoint():
         assert r.json()["summary"]["consumers"] == 0 and r.json()["not_in_inventory"][0]["identifier"] == "gone-alias"
         assert (await c.get("/api/v1/scans/scan-1/key-reconciliation")).status_code == 404  # no inventory findings
         assert (await c.get("/api/v1/scans/inv-1/key-reconciliation", params={"source_scan": ["nope"]})).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_inventory_certificates_reach_the_renewal_queue():
+    """A certificate found in a keytool/RACDCERT export (worker upsert) shows in the renewal queue with its provenance."""
+    from datetime import timedelta
+
+    from db.repositories.certificate_repository import CertificateRepository
+
+    app = _app()
+    session = next(app.dependency_overrides[get_db_session]())
+    soon = (datetime.now(timezone.utc) + timedelta(days=10)).date().isoformat()
+    CertificateRepository(session).upsert({
+        "fingerprint_sha256": "ab" * 32, "subject": "CN=ebank.bank.example, O=Bank", "issuer": "CN=Bank Issuing CA 2", "not_after": soon,
+        "public_key_algorithm": "RSA", "public_key_size": 2048, "expiry_status": "EXPIRING_SOON", "days_until_expiry": 10,
+        "usages": ["exports/keytool.txt"], "extra": {"source": "KEY_INVENTORY", "fingerprint_derived": True, "key_label": "ebank-tls", "key_store": "JKS", "library": "keytool"},
+    })
+    session.commit()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as c:
+        r = await c.get("/api/v1/certificates/lifecycle/renewal-queue", params={"lead_days": 30})
+        assert r.status_code == 200, r.text
+        due = r.json()["due"]
+        assert len(due) == 1 and due[0]["source"] == "KEY_INVENTORY" and due[0]["key_label"] == "ebank-tls" and due[0]["usages"] == ["exports/keytool.txt"]

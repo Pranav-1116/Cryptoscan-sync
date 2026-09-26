@@ -305,6 +305,11 @@ def renewal_queue(
                     "not_after": row.not_after.isoformat() if row.not_after else None,
                     "renewal_status": row.renewal_status,
                     "is_self_signed": row.is_self_signed,
+                    # where the record came from: TLS probe (default) or a key/certificate export scan
+                    "source": (row.extra or {}).get("source") or "TLS_SCAN",
+                    "key_label": (row.extra or {}).get("key_label"),
+                    "key_store": (row.extra or {}).get("key_store"),
+                    "usages": list(row.usages or [])[:5],
                 }
             )
     return {"lead_days": lead_days, "due": sorted(due, key=lambda d: d["not_after"] or "")}

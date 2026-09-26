@@ -6,6 +6,15 @@ export default function Drift() {
   const [loading, setLoading] = useState(true);
   const [events, setEvents] = useState<any[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [family, setFamily] = useState<"all" | "code" | "config" | "keys">("all");
+  const familyOf = (e: any): "code" | "config" | "keys" => {
+    const t = String(e.drift_type || e.event_type || "");
+    if (t.startsWith("KEY_")) return "keys";
+    if (t.startsWith("CONFIG_")) return "config";
+    return "code";
+  };
+  const visible = events.filter((e) => family === "all" || familyOf(e) === family);
+  const keyEvents = events.filter((e) => familyOf(e) === "keys");
 
   useEffect(() => {
     let alive = true;
@@ -109,8 +118,13 @@ export default function Drift() {
             Deviations flagged by continuous network, container, and cloud scanners.
           </p>
 
+          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
+            {([["all", `All (${events.length})`], ["code", `Code`], ["config", `Configuration`], ["keys", `Key inventory (${keyEvents.length})`]] as const).map(([id, label]) => (
+              <button key={id} className={`btn sm ${family === id ? "primary" : "outline"}`} onClick={() => setFamily(id)} style={{ fontSize: 11 }}>{label}</button>
+            ))}
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "560px", overflowY: "auto" }}>
-            {events.map((e, idx) => {
+            {visible.map((e, idx) => {
               const isSelected = selectedEvent?.id === e.id;
               return (
                 <div
@@ -129,14 +143,15 @@ export default function Drift() {
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--text)" }}>
-                      {e.title || e.event_type || `Drift Event #${e.id || idx + 1}`}
+                      {e.title || e.drift_type || e.event_type || `Drift Event #${e.id || idx + 1}`}
                     </span>
                     <Badge variant={e.severity === "CRITICAL" ? "danger" : e.severity === "HIGH" ? "warning" : "info"}>
                       {(e.severity || e.status || "DETECTED").toUpperCase()}
                     </Badge>
                   </div>
+                  {e.drift_details?.reason && <div style={{ fontSize: "12px", color: "var(--text)" }}>{e.drift_details.reason}</div>}
                   <div style={{ fontSize: "12px", color: "var(--dim)" }}>
-                    Target: <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{e.target || e.asset_id || "Estate Asset"}</span>
+                    Target: <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{e.target || e.asset_id || e.drift_details?.label || e.drift_details?.identifier || e.current_scan_id || "Estate Asset"}</span>
                   </div>
                   <div style={{ fontSize: "11px", color: "var(--faint)" }}>
                     Source: {e.source || "Automated Auditor"} · {e.created_at ? new Date(e.created_at).toLocaleString() : "Recently"}
@@ -145,7 +160,7 @@ export default function Drift() {
               );
             })}
 
-            {events.length === 0 && !loading && (
+            {visible.length === 0 && !loading && (
               <div style={{ textAlign: "center", padding: "40px", color: "var(--dim)" }}>
                 <div style={{ fontSize: "14px", fontWeight: 600, color: "var(--text)", marginBottom: "4px" }}>
                   Zero cryptographic drift detected
