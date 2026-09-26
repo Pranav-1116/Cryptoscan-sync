@@ -526,6 +526,7 @@ class SystemNode(BaseModel):
     criticality: str | None = None
     owner: str | None = None
     paths: list[str]
+    compliance_scopes: list[str] = Field(default_factory=list)  # regulatory scopes declared for this system (CBUAE, PAYMENT, PDPL, PERSONAL_DATA…)
     files: int = 0
     providers: int = 0
     algorithms: list[str] = Field(default_factory=list)
@@ -765,6 +766,14 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
 SYSTEM_MAP_FILES = (".cryptoscan/systems.yml", ".cryptoscan/systems.yaml", "cryptoscan-systems.yml", "cryptoscan-systems.yaml", "cryptoscan-systems.json")
 
 
+def _as_list(value: Any) -> list:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [v for v in re.split(r"[,\s]+", value) if v]
+    return list(value)
+
+
 def load_system_map(root: Path) -> list[dict[str, Any]]:
     """[{system, paths:[glob…], criticality?, owner?}] — how the bank names the code (CMDB ids, app codes)."""
     for rel in SYSTEM_MAP_FILES:
@@ -792,7 +801,9 @@ def load_system_map(root: Path) -> list[dict[str, Any]]:
                 out.append({"system": str(it["system"]), "paths": [str(x) for x in (it["paths"] if isinstance(it["paths"], list) else [it["paths"]])],
                             "criticality": it.get("criticality"), "owner": it.get("owner"),
                             # declared business dependencies (CMDB knowledge the code cannot show: runtime calls, queues, batch feeds)
-                            "depends_on": [str(x) for x in (it.get("depends_on") or it.get("depends_on_systems") or []) if x]})
+                            "depends_on": [str(x) for x in (it.get("depends_on") or it.get("depends_on_systems") or []) if x],
+                            # regulatory scopes that gate policy rules (CBUAE / PAYMENT / CARD / PDPL / PERSONAL_DATA / DIFC …)
+                            "compliance_scopes": sorted({str(x).strip().upper() for x in _as_list(it.get("compliance_scopes") or it.get("scopes")) if str(x).strip()})})
         return out
     return []
 
@@ -814,7 +825,8 @@ def _systems_rollup(root: Path, graph: "DependencyGraph", providers: list[Provid
     sysmap = load_system_map(root)
     if not sysmap:
         return []
-    nodes = {it["system"]: SystemNode(system=it["system"], criticality=it.get("criticality"), owner=it.get("owner"), paths=it["paths"]) for it in sysmap}
+    nodes = {it["system"]: SystemNode(system=it["system"], criticality=it.get("criticality"), owner=it.get("owner"), paths=it["paths"],
+                                      compliance_scopes=list(it.get("compliance_scopes") or [])) for it in sysmap}
     file_sys: dict[str, str | None] = {}
     for f in graph.files:
         file_sys[f] = _system_of(f, sysmap)

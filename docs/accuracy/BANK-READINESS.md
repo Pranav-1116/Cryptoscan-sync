@@ -97,11 +97,20 @@ blind at **0.981 F1** (764/785 exact), 1.000 after fixes, then run through the f
 three defects the scanner benchmark could not see — a policy name-matching bug that PASSed TLS 1.0, `.inf` templates
 skipped by pipeline discovery, and mainframe/HSM key labels missing from reconciliation.
 
+## Whole-product check on a UAE bank-shaped estate (2026-09-26)
+
+[UAE-VALIDATION.md](UAE-VALIDATION.md): a representative CBUAE / PDPL / DIFC-profile fixture (24 files across the card
+switch, Aani, Open Finance, UAE PASS, T24 + KYC, regulatory filing, branch infra — synthetic, not a bank's systems)
+scanned blind at **0.996 F1** (zero false positives), 1.000 after fixes, then run through the full pipeline with
+per-system `compliance_scopes`. That run found that declared per-system scopes never reached policy evaluation —
+jurisdiction rules could only be applied to a whole repository — now fixed and asserted end to end (PDPL/DIFC rules
+silent on the card switch, CBUAE-003 failing the SSL-VPN's TLS 1.0).
+
 ## Bank readiness — the number (2026-09-25)
 
 | Layer | Readiness | Basis |
 |---|---|---|
-| **Discovery accuracy on bank code classes** | **~95 %** | 15 blind waves (748 files, every first pass since wave 9 ≥ 0.988, corpus 100 % after fixes); real repos: jPOS, Fineract, OBP-API, quorum, baker, legend-engine, keycloak, jjwt, nifi, cas, Progress ADE, 257 COBOL/JCL, 673 IBM i, 213 Natural, 103 .NET binaries, 25 APKs. Now also: legacy 4GL/TAL/SAS/payShield-console parsers, mobile packages, runtime-log evidence, cross-file hop verified on real repos (8/8 correct), a triage loop that turns a bank's review into a number, and **dependency & cascade analysis** (who depends on each piece of crypto, migration waves, library versions, shared keys, weak key sizes) so the inventory is an estate view, not a list of hits. Deductions: ICSF/CICS/PL/I/Natural/4GL/TAL positives are corpus-only (no public bank code exists for them); runtime evidence is log-based, not a network sensor; no bank has yet fed its own first-pass numbers back. |
+| **Discovery accuracy on bank code classes** | **~95 %** | 18 blind waves (820 files, every first pass since wave 9 ≥ 0.981, corpus 100 % after fixes); real repos: jPOS, Fineract, OBP-API, quorum, baker, legend-engine, keycloak, jjwt, nifi, cas, Progress ADE, 257 COBOL/JCL, 673 IBM i, 213 Natural, 103 .NET binaries, 25 APKs. Now also: legacy 4GL/TAL/SAS/payShield-console parsers, mobile packages, runtime-log evidence, cross-file hop verified on real repos (8/8 correct), a triage loop that turns a bank's review into a number, and **dependency & cascade analysis** (who depends on each piece of crypto, migration waves, library versions, shared keys, weak key sizes) so the inventory is an estate view, not a list of hits. Deductions: ICSF/CICS/PL/I/Natural/4GL/TAL positives are corpus-only (no public bank code exists for them); runtime evidence is log-based, not a network sensor; no bank has yet fed its own first-pass numbers back. |
 | **Scan pipeline (clone → scan → evidence → CBOM → policy → alert)** | ~92 % | PostgreSQL + Redis end-to-end, at-least-once queue + reaper, soak evidence; per-file process pool measured on a 3M-LOC synthetic monorepo (71.7 kLOC/s on 2 cores, deterministic, flat RSS → 10M LOC ≈ 2.3 min); API capacity measured honestly (~180 authenticated rps per worker) and three defects fixed in the process. Still not run for 7 days on a real estate; the `kill -9` of a worker against a *real* Redis and the HA compose fail-over need a host with Redis/Docker (neither exists in this sandbox — runbooks: `docs/runbooks/job-queue.md`). |
 | **Bank operating requirements** (air-gap install, RBAC/SSO, audit chain, backup/PITR, HA, SBOM of the product itself) | ~75 % | unchanged: air-gap + backup + PITR drills documented and run once; HA compose exists but not drilled; SSO/SAML beta; ITSM/SIEM connectors and the product's own SOC 2 / pen-test are company actions, not sandbox work. |
 | **Overall for a first bank pilot** | **~87 %** | Ready for a *pilot on the payments switch, the mobile channel packages and the ICSF COBOL modules with the triage loop* — not yet for an unattended, audit-grade inventory across the whole estate. |

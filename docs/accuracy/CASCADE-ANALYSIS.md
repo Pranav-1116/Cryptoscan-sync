@@ -30,7 +30,12 @@ systems:
   - system: SADAD-GATEWAY
     paths: [sadad/]
     depends_on: [CORE-CRYPTO-LIB]   # CMDB / runtime dependency the code cannot show (queue, batch feed, REST call)
+    compliance_scopes: [CBUAE, PAYMENT]   # scope-gated policy rules (PDPL/DIFC/CBUAE-00x, PCI…) apply to this system's files only
 ```
+
+`compliance_scopes` are upper-cased, stored on the persisted `System`, and merged with the repository-level scopes for
+every evidence row under the system's paths (`finding_data.compliance_scopes`) before policy evaluation — so one
+repository can hold a PDPL-scoped KYC schema next to a CBUAE-scoped card switch.
 
 `depends_on` (or `depends_on_systems`) merges declared business dependencies into `depends_on_systems` /
 `dependent_systems` next to the import-derived ones — unknown names are ignored.

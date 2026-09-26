@@ -8,6 +8,7 @@ from pathlib import Path
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding
 from scanner.parsers.pqc_names import PQC_NAMES as _PQC_NAMES
+from scanner.parsers.xmlsec_uris import xmlsec_uri_findings
 from scanner.parsers.rule_engine import filter_prng_context, CIPHER_TOKENS, DIGEST_TOKENS, Rule, run_rules
 
 SCANNER_ID = "static-csharp-scanner-v1.0"
@@ -190,6 +191,14 @@ _RULES: list[Rule] = [
        algo_map={"hmacsha256": "HS256", "hmacsha384": "HS384", "hmacsha512": "HS512", "rsasha256": "RS256", "rsasha384": "RS384", "rsasha512": "RS512", "ecdsasha256": "ES256", "ecdsasha384": "ES384", "ecdsasha512": "ES512", "rsassapsssha256": "PS256", "aes128cbchmacsha256": "AES", "aes256cbchmacsha512": "AES", "aes128kw": "AES", "aes256kw": "AES", "rsaoaep": "RSA", "rsapkcs1": "RSA", "aes128gcm": "AES", "aes256gcm": "AES"}),
     _r(r"\bnew\s+JwtSecurityTokenHandler\s*\(|\bnew\s+JsonWebTokenHandler\s*\(|\bJwtBuilder\.Create\s*\(|\bnew\s+SigningCredentials\s*\(|\bJwt\.(?:Encode|Decode)\b|\bJwtBearer\b", _S, "Microsoft.IdentityModel", algorithm="JWT", confidence="MEDIUM"),
     _r(r"\bnew\s+SymmetricSecurityKey\s*\(", _M, "Microsoft.IdentityModel", algorithm="HMAC", confidence="MEDIUM"),
+    _r(r"\bnew\s+RsaSecurityKey\s*\(", _S, "Microsoft.IdentityModel", algorithm="RSA", confidence="MEDIUM"),
+    _r(r"\bnew\s+ECDsaSecurityKey\s*\(", _S, "Microsoft.IdentityModel", algorithm="ECDSA", confidence="MEDIUM"),
+    _r(r"\bnew\s+X509SecurityKey\s*\(", _S, "Microsoft.IdentityModel", algorithm="X509", confidence="MEDIUM"),
+    # TokenValidationParameters { ValidAlgorithms = new[] { "RS256" } } / JsonWebKeySet — the JWT verifier side
+    _r(r"\bnew\s+TokenValidationParameters\b|\bValidAlgorithms\s*=|\bnew\s+JsonWebKeySet\s*\(|\bJsonWebKeySet\.Create\s*\(", _S, "Microsoft.IdentityModel", algorithm="JWT", confidence="MEDIUM"),
+    # System.Security.Cryptography.Xml — SAML / WS-Security / XAdES: the URI constants name the primitive (see xmlsec_uris)
+    _r(r"\bnew\s+SignedXml\s*\([^)]*\)\s*;?[\s\S]{0,400}?\.CheckSignature\s*\(\s*\w+\s*,", _S, "System.Security.Cryptography.Xml", algorithm="X509", confidence="MEDIUM", confidence_reason="SignedXml.CheckSignature(X509Certificate2, verifySignatureOnly)"),
+    _r(r"\bClientCertificates\.Add\s*\(", _TLS, "System.Net.Http", algorithm="X509", confidence="MEDIUM", confidence_reason="mutual-TLS client certificate"),
     _r(r"\bMachineKey\.(?:Protect|Unprotect)\s*\(|\bIDataProtector\b|\bCreateProtector\s*\(|\bDataProtectionProvider\.Create\s*\(", _C, "DataProtection", algorithm="AES", mode="CBC", confidence="MEDIUM"),
     _r(r"\bProtectedData\.(?:Protect|Unprotect)\s*\(|\bDataProtectionScope\.\w+", _C, "DPAPI", algorithm="DPAPI", confidence="MEDIUM"),
     # --- TLS / certificates
@@ -336,7 +345,7 @@ def parse_csharp_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
     from scanner.parsers.c_like import strip_c_like_comments
 
     source = _resolve_using_aliases(strip_c_like_comments(raw_source))
-    findings: list[RawFinding] = []
+    findings: list[RawFinding] = xmlsec_uri_findings(source, file_path=file_path, repo_root=repo_root, language="CSHARP", scanner_id=SCANNER_ID, library="System.Security.Cryptography.Xml")
 
     def add(match: re.Match, **kwargs) -> None:
         findings.append(

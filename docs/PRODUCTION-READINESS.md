@@ -93,6 +93,13 @@ end-to-end run found three defects the scanner benchmark could not see, all fixe
 This does not move the overall number (the blockers below are host-bound) but it does change what "policy is
 tested" means: the policy service now has a test that a bank-realistic weak-TLS configuration fails end to end.
 
+A second estate, UAE-shaped (CBUAE / PDPL / DIFC profile; `test_pipeline_uae_estate.py`,
+[accuracy/UAE-VALIDATION.md](accuracy/UAE-VALIDATION.md)) was run the same way: 0.996 F1 blind, 1.000 after fixes.
+Its end-to-end run found that **`compliance_scopes` declared per business system in `cryptoscan-systems.yml` never
+reached policy evaluation** — jurisdiction rules could only be applied to a whole repository. Per-row scopes (repo
+scopes ∪ owning system's scopes) are now computed in the policy stage, written to `finding_data.compliance_scopes`,
+and asserted end to end: PDPL/DIFC rules silent on the card switch, CBUAE-003 failing the SSL-VPN's TLS 1.0.
+
 ## What keeps it at 80
 
 | Gap | Weight | Detail | Closes when |
@@ -118,6 +125,7 @@ python scripts/burn_in.py --target all --api http://127.0.0.1:8010 ...
 ## Related
 
 - [accuracy/SNB-VALIDATION.md](accuracy/SNB-VALIDATION.md) — whole-pipeline run on a Saudi bank-shaped estate
+- [accuracy/UAE-VALIDATION.md](accuracy/UAE-VALIDATION.md) — whole-pipeline run on a UAE bank-shaped estate with per-system compliance scopes
 - [PLATFORM-STATUS.md](PLATFORM-STATUS.md) — capability-by-capability history of the plan vs. what ships
 - [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — GA / beta / preview per surface (generated)
 - [enterprise-readiness.md](enterprise-readiness.md) — what a bank will ask for

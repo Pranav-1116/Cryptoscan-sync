@@ -218,6 +218,18 @@ _WIN_SCHANNEL_NAME = {
     "des 56/56": "DES", "triple des 168": "3DES", "triple des 168/168": "3DES", "aes 128/128": "AES", "aes 256/256": "AES", "null": "NULL",
     "md5": "MD5", "sha": "SHA-1", "sha256": "SHA-256", "sha384": "SHA-384", "sha512": "SHA-512", "diffie-hellman": "DH", "pkcs": "RSA", "ecdh": "ECDH",
 }
+# .reg export form: the key path is a [HKEY_…] header and "Enabled"=dword:… follows on its own line
+_WIN_SCHANNEL_REG = re.compile(
+    r"\[HKEY[^\]\n]*SCHANNEL\\(Protocols|Ciphers|Hashes|KeyExchangeAlgorithms)\\([^\\\]\n]+?)(?:\\(Server|Client))?\]\s*\n"
+    r"((?:[ \t]*\"[^\"\n]+\"\s*=[^\n]*\n?)*)",
+    re.I,
+)
+_WIN_REG_SETTING = re.compile(r"\"(Enabled|DisabledByDefault)\"\s*=\s*dword:([0-9a-fA-F]+)", re.I)
+# FortiOS / appliance CLI: set ssl-min-proto-ver tls1-1 / set dtls-min-proto-ver dtls1-0 / set ssl-max-proto-ver tls1-3
+_APPLIANCE_PROTO = re.compile(r"(?im)^[ \t]*set[ \t]+(?:ssl|dtls|tls)[-_](?:min|max)[-_]proto[-_]ver(?:sion)?[ \t]+((?:d?tls|ssl)v?[0-9][-_.]?[0-9])\b")
+_APPLIANCE_PROTO_NAME = {"tls1-0": "TLS1.0", "tls1_0": "TLS1.0", "tls1.0": "TLS1.0", "tls10": "TLS1.0", "tls1-1": "TLS1.1", "tls1_1": "TLS1.1", "tls1.1": "TLS1.1", "tls11": "TLS1.1",
+                         "tls1-2": "TLS1.2", "tls1_2": "TLS1.2", "tls1.2": "TLS1.2", "tls12": "TLS1.2", "tls1-3": "TLS1.3", "tls1_3": "TLS1.3", "tls1.3": "TLS1.3", "tls13": "TLS1.3",
+                         "dtls1-0": "TLS1.1", "dtls1_0": "TLS1.1", "dtls1.0": "TLS1.1", "dtls1-2": "TLS1.2", "dtls1_2": "TLS1.2", "dtls1.2": "TLS1.2", "ssl3-0": "SSLv3", "sslv3": "SSLv3"}
 _WIN_KRB_ETYPES = re.compile(r"(?:Kdc|Kerberos)\\Parameters\\SupportedEncryptionTypes\s*[=:]\s*(?:(dword|4)\s*[:,]\s*)?(?:0x)?([0-9a-fA-F]+)", re.I)
 # generic policy keys (IBM MQ AMS policies, gateway YAML): signing: SHA256 / encryption: AES256 / digest_algorithm: SHA1
 _POLICY_ALGO_KEY = re.compile(
@@ -652,6 +664,25 @@ def run_config_rules(
         api = "KEY_AGREEMENT" if kind.lower() in {"protocols", "keyexchangealgorithms"} else "MESSAGE_DIGEST" if kind.lower() == "hashes" else "CIPHER_INSTANCE"
         emit(m.start(), algo, api, "NETWORK_ENCRYPTION", "windows-schannel", m.group(0)[:80],
              confidence="HIGH", reason="schannel-registry-policy")
+    for m in _WIN_SCHANNEL_REG.finditer(text):
+        kind, name, _side, body = m.groups()
+        algo = _WIN_SCHANNEL_NAME.get(name.strip().lower())
+        if not algo:
+            continue
+        enabled = None
+        for sm in _WIN_REG_SETTING.finditer(body or ""):
+            val = int(sm.group(2), 16) != 0
+            enabled = (not val) if sm.group(1).lower() == "disabledbydefault" else val
+            if sm.group(1).lower() == "enabled":
+                break
+        if not enabled:
+            continue
+        api = "KEY_AGREEMENT" if kind.lower() in {"protocols", "keyexchangealgorithms"} else "MESSAGE_DIGEST" if kind.lower() == "hashes" else "CIPHER_INSTANCE"
+        emit(m.start(), algo, api, "NETWORK_ENCRYPTION", "windows-schannel", m.group(0).split("\n", 1)[0][:80], confidence="HIGH", reason="schannel-registry-export")
+    for m in _APPLIANCE_PROTO.finditer(text):
+        algo = _APPLIANCE_PROTO_NAME.get(m.group(1).lower())
+        if algo:
+            emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "appliance-cli", m.group(0).strip()[:80], confidence="HIGH", reason="appliance-min-proto-version")
     for m in _WIN_KRB_ETYPES.finditer(text):
         mask = int(m.group(2), 10 if m.group(1) == "4" else 16)
         for bit, algo in ((0x1, "DES"), (0x2, "DES"), (0x4, "RC4"), (0x8, "AES"), (0x10, "AES")):

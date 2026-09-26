@@ -240,6 +240,7 @@ RULES: list[Rule] = [
     _r(r"\bTlsVersion\.TLS_1_3\b|\bConnectionSpec\.RESTRICTED_TLS\b", _TLS, "okhttp", algorithm="TLS1.3"),
     _r(r"\bConnectionSpec\.CLEARTEXT\b", _TLS, "okhttp", algorithm="TLS-CLEARTEXT", confidence_reason="cleartext HTTP allowed"),
     _r(r"\bnew\s+ConnectionSpec\.Builder\s*\(|\bCipherSuite\.(TLS_\w+)\b|\bsslSocketFactory\s*\(|\bhostnameVerifier\s*\(\s*(?:\([^)]*\)|\w+)\s*->\s*true", _TLS, "okhttp", algorithm="TLS", confidence="MEDIUM"),
+    _r(r"\b(?:KeyManagerFactory|TrustManagerFactory)\.getInstance\s*\(\s*\"(?:PKIX|SunX509|IbmX509|NewSunX509|X509|X\.509)\"", _TLS, "JSSE", algorithm="X509", confidence="MEDIUM", confidence_reason="X.509 key/trust manager over a KeyStore"),
     _r(r"\bhostnameVerifier\s*\(\s*(?:\([^)]*\)|\w+)\s*->\s*true|\bALLOW_ALL_HOSTNAME_VERIFIER\b|\bNoopHostnameVerifier\b|\bTrustAllStrategy\b|\bTrustSelfSignedStrategy\b|\bInsecureTrustManagerFactory\.INSTANCE\b|\bnew\s+TrustAllX509TrustManager\b", _TLS, "javax.net.ssl", algorithm="TRUST-ALL", confidence_reason="certificate/hostname validation disabled"),
     _r(r"\bSslContextBuilder\.(?:forClient|forServer)\s*\(|\bSslContext\s+\w+\s*=|\bSslProvider\.(?:OPENSSL|JDK|OPENSSL_REFCNT)\b|\bnew\s+SslHandler\s*\(|\bOpenSsl\.isAvailable\s*\(", _TLS, "netty", algorithm="TLS", confidence="MEDIUM"),
     _r(r"\bConscrypt\.newProvider\s*\(|\borg\.conscrypt\b", _TLS, "conscrypt", algorithm="TLS", confidence="LOW"),

@@ -12,6 +12,7 @@ from scanner.extractors.entropy_calculator import looks_like_secret
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding
 from scanner.parsers.pqc_names import pqc_name
+from scanner.parsers.xmlsec_uris import xmlsec_uri_findings
 
 logger = logging.getLogger(__name__)
 
@@ -402,6 +403,33 @@ def _django_hasher_families(dotted: str) -> list[str]:
     return out
 
 
+def _blank_python_comments(source: str) -> str:
+    """Replace comment tokens with spaces (keeps offsets/lines) so '#' inside string literals such as xmlenc11#aes128-gcm survives."""
+    import io
+    import tokenize
+
+    spans: list[tuple[int, int]] = []
+    try:
+        lines = source.splitlines(keepends=True)
+        offsets = [0]
+        for ln in lines:
+            offsets.append(offsets[-1] + len(ln))
+        for tok in tokenize.generate_tokens(io.StringIO(source).readline):
+            if tok.type == tokenize.COMMENT:
+                (r1, c1), (r2, c2) = tok.start, tok.end
+                spans.append((offsets[r1 - 1] + c1, offsets[r2 - 1] + c2))
+    except (tokenize.TokenError, SyntaxError, IndexError):
+        return source
+    if not spans:
+        return source
+    buf = list(source)
+    for a, b in spans:
+        for i in range(a, min(b, len(buf))):
+            if buf[i] != "\n":
+                buf[i] = " "
+    return "".join(buf)
+
+
 def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
     try:
         source = file_path.read_text(encoding="utf-8", errors="replace")
@@ -416,7 +444,11 @@ def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
         return _regex_fallback(file_path, repo_root, source)
     visitor = _PythonCryptoVisitor(file_path, repo_root)
     visitor.visit(tree)
-    return visitor.findings
+    findings = visitor.findings
+    # XML-DSig / XML-Enc algorithm URIs as string constants (python-xmlsec, signxml, AS4 / SAML profiles); never inside comments
+    uri_source = _blank_python_comments(source)
+    findings.extend(xmlsec_uri_findings(uri_source, file_path=file_path, repo_root=repo_root, language="PYTHON", scanner_id=SCANNER_ID, library="xmlsec"))
+    return findings
 
 
 _GPG_CIPHERS = {"aes": "AES", "aes128": "AES", "aes192": "AES", "aes256": "AES", "twofish": "Twofish", "camellia128": "Camellia", "camellia192": "Camellia",

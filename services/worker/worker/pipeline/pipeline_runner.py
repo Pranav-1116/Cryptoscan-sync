@@ -638,10 +638,16 @@ class PipelineRunner:
         engine = PolicyEngine(rules_dir)
         rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == ctx.scan_id)).scalars())
         self._resolve_system(ctx, session)
+        declared_scopes = self._declared_scope_index(ctx)
         for row in rows:
             finding_data = dict(row.finding_data or {})
-            if ctx.compliance_scopes and not finding_data.get("compliance_scopes"):
-                finding_data["compliance_scopes"] = list(ctx.compliance_scopes)
+            # scopes = repo-level System scopes ∪ scopes of the declared business system that owns this file
+            scopes = list(ctx.compliance_scopes or [])
+            for scope in self._scopes_for_path(row.file_path, declared_scopes):
+                if scope not in scopes:
+                    scopes.append(scope)
+            if scopes and sorted(scopes) != sorted(finding_data.get("compliance_scopes") or []):
+                finding_data["compliance_scopes"] = list(scopes)
                 row.finding_data = finding_data
             payload = {
                 "id": row.id,
@@ -653,7 +659,7 @@ class PipelineRunner:
                 "is_hardcoded_key": row.is_hardcoded_key,
                 "normalized_crypto": row.normalized_crypto or {},
                 "finding_data": finding_data,
-                "compliance_scopes": ctx.compliance_scopes or finding_data.get("compliance_scopes") or [],
+                "compliance_scopes": scopes or finding_data.get("compliance_scopes") or [],
             }
             evaluation = engine.evaluate(payload)
             row.policy_evaluation = evaluation.model_dump(mode="json")
@@ -851,6 +857,32 @@ class PipelineRunner:
         except Exception:
             logger.debug("coverage_fail_stamp_skipped", exc_info=True)
 
+    @staticmethod
+    def _declared_scope_index(ctx: PipelineContext) -> list[tuple[list[str], list[str]]]:
+        """[(paths, scopes)] for every system in cryptoscan-systems.yml that declares compliance_scopes."""
+        cascade = ((ctx.scan_meta or {}).get("statistics") or {}).get("cascade") or {}
+        out = []
+        for row in cascade.get("systems") or []:
+            if isinstance(row, dict) and row.get("compliance_scopes") and row.get("paths"):
+                out.append(([str(p) for p in row["paths"]], [str(s).upper() for s in row["compliance_scopes"]]))
+        return out
+
+    @staticmethod
+    def _scopes_for_path(file_path: str | None, index: list[tuple[list[str], list[str]]]) -> list[str]:
+        if not file_path or not index:
+            return []
+        from fnmatch import fnmatch
+
+        path = str(file_path).split("!", 1)[0].lstrip("./")
+        scopes: list[str] = []
+        for globs, declared in index:
+            for g in globs:
+                base = str(g).rstrip("/").removesuffix("/**").removesuffix("/*").lstrip("./")
+                if path == base or path.startswith(base + "/") or fnmatch(path, str(g)):
+                    scopes.extend(s for s in declared if s not in scopes)
+                    break
+        return scopes
+
     def _link_system_assets(self, ctx: PipelineContext, session, assets) -> None:
         if not ctx.system_id:
             self._resolve_system(ctx, session)
@@ -908,6 +940,8 @@ class PipelineRunner:
                     system.criticality = str(row["criticality"])
                 if row.get("owner") and not system.owner:
                     system.owner = str(row["owner"])
+                if row.get("compliance_scopes") and not system.compliance_scopes:
+                    system.compliance_scopes = [str(x) for x in row["compliance_scopes"]]
                 by_name[name] = system.id
                 paths = [str(p) for p in (row.get("paths") or [])]
                 if paths:
