@@ -72,3 +72,22 @@ correct, the normalisation was correct, the rule was correct, and the verdict wa
 ## Suites after this round
 
 scanner 251 passed / 12 skipped · worker 159 · policy 88 · evidence 43 · API (reconciliation / cascade / portfolio / compliance) 25 · benchmark 784/784, P/R/F1 1.000.
+
+## Through the API (`services/api/tests/integration/test_snb_estate_api.py`)
+
+The same estate is pushed into one SQLite database by `PipelineRunner`, then read back through `create_app()` with a
+**real signed read-only session** (the only override is the DB session). Checked against the rows in the database:
+
+* unauthenticated `GET /api/v1/scans/{id}` is refused; the analyst session sees `status = COMPLETED` and the cascade summary;
+* `GET /scans/{id}/findings` (paged) returns exactly as many findings as evidence rows, each with the same `file_path`
+  and `algorithm`; every labelled positive file is visible, the Arabic negatives are absent; RC4 in the GPO template
+  and MD5 in the password hash read as failures through the API;
+* `GET /scans/{id}/cascade?section=systems` returns the eight declared systems with TDES on `MADA-SWITCH`, the
+  declared `MADA-SWITCH → CORE-LEDGER` dependency, and `?system=SNB-MOBILE` filters;
+* `GET /scans/{inventory}/key-reconciliation` returns the same summary the worker stored, `MADA.ZPK.ACQ.001` among the
+  consumers, ≥ 1 orphan and ≥ 1 code-only key;
+* `GET /systems` lists the declared systems; `GET /cbom/portfolio` produces a non-empty CycloneDX CBOM after the scan;
+* every field the console panels read (`CodeCascadePanel`, `KeyReconciliationPanel`) is present with the expected shape.
+
+This hop found **no new defect** — the API/console layer already served what the pipeline had written. The browser
+layer itself is exercised by the frontend unit suite (109 tests) against these same response shapes.
