@@ -1,0 +1,28 @@
+rule_id: "SAMA-004"
+rule_name: "SAMA — card payment cryptography must use HSM-backed keys (review for legacy software-only keys)"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "MEDIUM"
+standard_reference: "SAMA Payment System Rules; mada technical security requirements; PCI DSS Req. 3.5; SAMA Circular on Payment Card Security"
+description: >
+  Card PIN blocks, CVKs and ZMK/ZPKs must be protected inside a certified
+  HSM. Presence of legacy 3DES key-length PIN block encryption without an
+  HSM client library in evidence is flagged for manual review (WARN);
+  HSM/PKCS#11 client usage in the same system passes the control.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "SAMA"
+    required_scope_groups:
+      - ["CARD", "PAYMENT"]
+    if_algorithms:
+      - "3DES"
+    result_if_not_applicable: "NOT_APPLICABLE"
+evaluation:
+  result_template: "WARN"
+  message_template: "Legacy 3DES PIN block / CVK usage detected in a card/payment system — confirm keys live in a certified HSM (payShield, Luna, nShield, Atalla)"
+remediation: >
+  Route card-key operations through a certified HSM client (PKCS#11 / payShield / Luna / nShield / Atalla);
+  track migration to AES key blocks (TR-31) under MADA-001.
+enabled: true

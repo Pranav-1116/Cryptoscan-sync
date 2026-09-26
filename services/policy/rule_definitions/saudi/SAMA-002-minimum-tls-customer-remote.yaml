@@ -1,0 +1,29 @@
+rule_id: "SAMA-002"
+rule_name: "SAMA — minimum TLS 1.2 for customer-facing channels and remote access"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "HIGH"
+standard_reference: "SAMA Cyber Security Framework v3.1 — Domain 4.3; SAMA Internet Banking Security Guidelines; SAMA E-banking Rules"
+description: >
+  Internet banking, mobile banking, open banking APIs, payment endpoints,
+  VPN / remote-access, and SWIFT / SARIE connectivity must use TLS 1.2 or
+  1.3. SSLv3, TLS 1.0 and TLS 1.1 are deprecated and are failing controls.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "SAMA"
+    required_scope_groups:
+      - ["CUSTOMER-FACING", "REMOTE-ACCESS", "SWIFT", "PAYMENT", "CARD"]
+    forbidden_algorithms:
+      - "SSLv3"
+      - "TLS1.0"
+      - "TLS1.1"
+evaluation:
+  result_template: "FAIL"
+  message_template: "Transport {algorithm} is below TLS 1.2 floor required by SAMA for customer/remote/payment channels"
+remediation: >
+  Disable SSLv3/TLS 1.0/TLS 1.1 on the endpoint, enable TLS 1.2 with AEAD
+  cipher suites (AES-GCM/ChaCha20-Poly1305) and (preferably) TLS 1.3, update
+  load-balancer / WAF / API-gateway SSL profiles, and re-scan.
+enabled: true

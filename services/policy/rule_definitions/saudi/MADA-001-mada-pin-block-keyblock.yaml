@@ -1,0 +1,28 @@
+rule_id: "MADA-001"
+rule_name: "mada — PIN block encryption must use AES key blocks (TR-31 / PCI PIN v3.1), not legacy 3DES"
+version: "1.0"
+effective_date: "2026-09-26"
+severity: "HIGH"
+standard_reference: "mada (Saudi Payments) technical requirements; PCI PIN Security Requirement 18-3 (AES key blocks); SAMA payment circular 440xx"
+description: >
+  mada acquirers and issuers must encrypt PIN blocks with AES-based key
+  blocks (TR-31 Key Block / AES-DUKPT) by the PCI PIN v3.1 deadline. Legacy
+  3DES PIN encryption / double-length ZPKs / legacy DUKPT (TDES) are flagged
+  for migration.
+condition:
+  type: "COMPLEX"
+  parameters:
+    required_scopes:
+      - "MADA"
+      - "CARD"
+    forbidden_algorithms:
+      - "3DES"
+      - "DES"
+evaluation:
+  result_template: "FAIL"
+  message_template: "{algorithm} used for PIN block / card key near mada scope — migrate to AES key blocks (TR-31) and AES-DUKPT"
+remediation: >
+  Migrate PIN encryption to AES key blocks on the HSM, deploy AES-DUKPT on
+  POS terminals and ATMs, coordinate with the Saudi Payments (mada) scheme
+  management, and record the cutover window.
+enabled: true
