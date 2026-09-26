@@ -29,3 +29,5 @@ azure-keyvault-keys>=4.9
 google-cloud-kms>=2.20
 pytest-xdist>=3.5
 pytest-socket>=0.7
+# test-only: embedded PostgreSQL 16 for scripts/postgres_parity.sh (no server needed)
+pgserver>=0.1.4; python_version >= "3.9"

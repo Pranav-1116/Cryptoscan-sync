@@ -108,7 +108,8 @@ def _families(row: EvidenceRecord) -> set[str]:
 
 
 @pytest.mark.timeout(300)
-def test_snb_profile_estate_end_to_end(tmp_path, test_db, monkeypatch):
+def test_snb_profile_estate_end_to_end(tmp_path, estate_db, monkeypatch):
+    test_db = estate_db
     monkeypatch.setenv("CRYPTOSCAN_KEY_INVENTORY", "1")
     runner = PipelineRunner()
     repo, labels = _estate(tmp_path)

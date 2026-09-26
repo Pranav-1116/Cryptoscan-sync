@@ -104,7 +104,8 @@ def _rules(row: EvidenceRecord, status: set[str] = APPLIED) -> set[str]:
 
 
 @pytest.mark.timeout(300)
-def test_uae_profile_estate_end_to_end(tmp_path, test_db):
+def test_uae_profile_estate_end_to_end(tmp_path, estate_db):
+    test_db = estate_db
     runner = PipelineRunner()
     repo, labels = _estate(tmp_path)
     ws = tmp_path / "ws"

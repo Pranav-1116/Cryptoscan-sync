@@ -22,18 +22,39 @@ import sqlalchemy as sa
 DB_DIR = Path(__file__).resolve().parents[2]  # services/database
 ROOT = DB_DIR.parents[1]
 
-PG_URL = os.environ.get("CRYPTOSCAN_TEST_PG_URL") or \
-    "postgresql://cryptoscan:staging-only-pw@127.0.0.1:55432/cryptoscan_migration_test"
+
+
+def _resolve_pg_url() -> str:
+    """Explicit CRYPTOSCAN_TEST_PG_URL → embedded/CI server from db.testing → the staging compose default."""
+    explicit = os.environ.get("CRYPTOSCAN_TEST_PG_URL")
+    if explicit:
+        return explicit
+    try:
+        from db.testing import postgres_url
+
+        base = postgres_url()
+    except Exception:
+        base = None
+    if base:
+        from sqlalchemy.engine import make_url
+
+        return make_url(base).set(database="cryptoscan_migration_test").render_as_string(hide_password=False)
+    return "postgresql://cryptoscan:staging-only-pw@127.0.0.1:55432/cryptoscan_migration_test"
+
+
+PG_URL = _resolve_pg_url()
 
 pytestmark = pytest.mark.live  # needs a real server; excluded from the hermetic gate
 
 
 def _pg_available() -> bool:
     try:
-        admin = PG_URL.rsplit("/", 1)[0] + "/postgres"
-        eng = sa.create_engine(admin, isolation_level="AUTOCOMMIT")
+        from sqlalchemy.engine import make_url
+
+        url = make_url(PG_URL)
+        name = url.database
+        eng = sa.create_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
         with eng.connect() as conn:
-            name = PG_URL.rsplit("/", 1)[1]
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}"'))
             conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
         return True

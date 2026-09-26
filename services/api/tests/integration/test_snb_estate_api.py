@@ -16,9 +16,8 @@ from pathlib import Path
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 import db.models  # noqa: F401 — register all tables
 from api.dependencies import get_db_session
@@ -39,18 +38,21 @@ from worker.pipeline.pipeline_runner import PipelineRunner  # noqa: E402
 FAIL = {"NON_COMPLIANT", "FAIL", "VIOLATION"}
 
 
-def _make_app():
+def _make_app(backend: str):
     os.environ.setdefault("ENVIRONMENT", "test")
     os.environ.setdefault("SECRET_KEY", "test-secret-key-for-sessions-min-32-chars")
     from api.config.settings import get_settings
+    from db.testing import estate_engine
 
     get_settings.cache_clear()
-    engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    engine = estate_engine(backend)
+    if engine is None:
+        pytest.skip("no PostgreSQL: set CRYPTOSCAN_TEST_DATABASE_URL or pip install pgserver")
     Base.metadata.create_all(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     app = create_app()
     app.dependency_overrides[get_db_session] = lambda: (yield session)
-    return app, session
+    return app, session, engine
 
 
 def _act_as(client, session, username: str, roles: str = "readonly"):
@@ -77,9 +79,20 @@ async def _get(client, url: str, **params):
 
 @pytest.mark.timeout(300)
 @pytest.mark.asyncio
-async def test_snb_estate_readable_through_the_api(tmp_path, monkeypatch):
+@pytest.mark.parametrize("backend", ["sqlite", "postgresql"])
+async def test_snb_estate_readable_through_the_api(tmp_path, monkeypatch, backend):
     monkeypatch.setenv("CRYPTOSCAN_KEY_INVENTORY", "1")
-    app, session = _make_app()
+    app, session, engine = _make_app(backend)
+    try:
+        await _scenario(tmp_path, app, session)
+    finally:
+        from db.testing import drop_engine
+
+        session.close()
+        drop_engine(engine)
+
+
+async def _scenario(tmp_path, app, session):
     repo, labels = _estate(tmp_path)
     runner = PipelineRunner()
     scan_id = _run(runner, session, tmp_path, repo, "job-snb-api-code")
