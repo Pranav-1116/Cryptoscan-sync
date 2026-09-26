@@ -47,6 +47,12 @@ the vocabulary the bank's change board uses.
   (kept distinct from CMDB `CALLS`). `GET /graph`, `/graph/blast-radius`, `/graph/dependents`, `/graph/path`, hotspots and
   cycles all see those nodes and edges. The Neo4j store carries the node and the edge but not the `code_cascade` map
   (in-memory engine and `/graph` payload do).
+* **Persisted systems.** The worker pipeline (`PipelineRunner._sync_declared_systems`, right after assets are stored)
+  upserts every declared system as a DB `System` (criticality/owner filled when blank), attaches the scan's assets whose
+  path falls under the declared `paths` to it, and records `system_dependencies` edges: repo-system → declared system
+  (`contains`) and declared → declared for `depends_on_systems` (`imports-crypto`). Idempotent across rescans, never
+  deletes. This is what feeds the estate CBOM dependency graph, the agility stage's dependency count and the systems
+  catalog without a manual CMDB import.
 * **Migration order.** `GET /api/v1/graph/migration-waves` now also (1) admits code-declared systems that the CMDB lacks
   (wave = their code cascade wave, capped at 3), (2) shows each system's code cascade in the rationale, and (3) applies
   `IMPORTS` edges as ordering constraints: a system whose code calls crypto that lives in another system is held to at

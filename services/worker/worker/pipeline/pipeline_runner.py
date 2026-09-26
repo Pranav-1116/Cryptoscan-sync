@@ -691,6 +691,7 @@ class PipelineRunner:
         ctx.scan_meta["dedup"] = merged["stats"]
         stored = AssetRepository(session).replace_for_scan(ctx.scan_id or "", assets)
         self._link_system_assets(ctx, session, stored)
+        self._sync_declared_systems(ctx, session, stored)
         self._quantum_assets(ctx, session, stored)
         try:
             from sqlalchemy.orm.attributes import flag_modified
@@ -862,6 +863,72 @@ class PipelineRunner:
         repo = SystemRepository(session)
         for asset in assets:
             repo.attach_asset(ctx.system_id, asset.id)
+
+    def _sync_declared_systems(self, ctx: PipelineContext, session, assets) -> None:
+        """Persist the business systems declared in ``cryptoscan-systems.yml`` (cascade ``systems`` rollup).
+
+        Each declared system becomes a DB ``System`` (criticality/owner filled when the row is new or blank), owns the
+        stored assets whose file path falls under its declared paths, and gets ``system_dependencies`` edges:
+        repo-system → declared system (``contains``) and declared → declared for ``depends_on_systems``
+        (``imports-crypto``). This is what makes the estate CBOM / graph / migration order system-aware without a
+        manual CMDB import. Idempotent; never removes edges or systems.
+        """
+        cascade = ((ctx.scan_meta or {}).get("statistics") or {}).get("cascade") or {}
+        declared = [row for row in (cascade.get("systems") or []) if isinstance(row, dict) and row.get("system")]
+        if not declared:
+            return
+        try:
+            from fnmatch import fnmatch
+
+            from db.repositories.system_repository import SystemRepository
+        except Exception:
+            return
+        repo = SystemRepository(session)
+
+        def _under(path: str, globs: list[str]) -> bool:
+            path = str(path).split("!", 1)[0].lstrip("./")
+            for g in globs:
+                base = str(g).rstrip("/").removesuffix("/**").removesuffix("/*").lstrip("./")
+                if path == base or path.startswith(base + "/") or fnmatch(path, str(g)):
+                    return True
+            return False
+
+        by_name: dict[str, str] = {}
+        for row in declared:
+            name = str(row["system"]).strip()
+            try:
+                system = repo.get_or_create(
+                    name,
+                    owner=row.get("owner"),
+                    environment="prod",
+                    description=f"declared in cryptoscan-systems.yml ({ctx.target_repo})",
+                    criticality=row.get("criticality"),
+                )
+                if row.get("criticality") and not system.criticality:
+                    system.criticality = str(row["criticality"])
+                if row.get("owner") and not system.owner:
+                    system.owner = str(row["owner"])
+                by_name[name] = system.id
+                paths = [str(p) for p in (row.get("paths") or [])]
+                if paths:
+                    for asset in assets:
+                        if _under(asset.file_path, paths):
+                            repo.attach_asset(system.id, asset.id)
+                if ctx.system_id and ctx.system_id != system.id:
+                    repo.add_dependency(ctx.system_id, system.id, "contains")
+            except Exception:
+                logger.debug("declared_system_sync_failed", extra={"system": name}, exc_info=True)
+        for row in declared:
+            src = by_name.get(str(row["system"]).strip())
+            for dep in row.get("depends_on_systems") or []:
+                dst = by_name.get(str(dep).strip())
+                if src and dst and src != dst:
+                    try:
+                        repo.add_dependency(src, dst, "imports-crypto")
+                    except Exception:
+                        logger.debug("declared_system_edge_failed", exc_info=True)
+        session.flush()
+        logger.info("stage_declared_systems_synced", extra={"systems": len(by_name)})
 
     def _quantum(self, ctx: PipelineContext, session) -> None:
         try:

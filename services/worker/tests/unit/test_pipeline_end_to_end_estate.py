@@ -60,7 +60,8 @@ def test_estate_pipeline_source_then_key_inventory(tmp_path, test_db, monkeypatc
     runner = PipelineRunner()
 
     # ---- 1. source repository ---------------------------------------------------------------
-    src_scan_id = _run(runner, test_db, tmp_path, _source_repo(tmp_path), "job-src")
+    src_repo = _source_repo(tmp_path)
+    src_scan_id = _run(runner, test_db, tmp_path, src_repo, "job-src")
     src = test_db.get(Scan, src_scan_id)
     assert src.status == "COMPLETED", src.error_message
     stats = src.statistics
@@ -73,6 +74,24 @@ def test_estate_pipeline_source_then_key_inventory(tmp_path, test_db, monkeypatc
     assert ("key_file", "payments.jks") in refs and ("key_alias", "PAY.ZPK.ACQ001") in refs
     assert any(w["algorithm"] == "RSA" and w["key_size"] == 1024 for w in cascade["weak_parameters"])
     assert cascade["truncated"]["providers"] == 0
+    # declared systems are persisted: DB System rows, asset ownership and dependency edges (portfolio CBOM / graph)
+    from db.models.system import System
+    from db.models.system_dependency import SystemDependency
+    from db.repositories.system_repository import SystemRepository
+    srepo = SystemRepository(test_db)
+    core, cards = srepo.get_by_name("CORE-CRYPTO-LIB"), srepo.get_by_name("CARDS")
+    assert core is not None and cards is not None
+    assert core.criticality == "high" and core.owner == "platform@bank"
+    assert {a.file_path.split("/")[0] for a in srepo.assets_for(core.id)} == {"core"}
+    assert len(srepo.assets_for(cards.id)) >= 1
+    edges = {(e.parent_id, e.child_id, e.relation) for e in test_db.execute(select(SystemDependency)).scalars().all()}
+    assert (cards.id, core.id, "imports-crypto") in edges
+    repo_sys = [s for s in test_db.execute(select(System)).scalars().all() if s.id not in (core.id, cards.id)]
+    assert repo_sys and (repo_sys[0].id, core.id, "contains") in edges
+    # idempotent: a second scan of the same repo adds no duplicate systems/edges
+    src_scan_id_2 = _run(runner, test_db, tmp_path, src_repo, "job-src-2")
+    assert len(test_db.execute(select(System)).scalars().all()) == 3
+    assert len(test_db.execute(select(SystemDependency)).scalars().all()) == len(edges)
     # no key-inventory drift on a code scan
     assert test_db.execute(select(DriftEvent).where(DriftEvent.current_scan_id == src_scan_id)).scalars().all() == []
 
@@ -103,7 +122,7 @@ def test_estate_pipeline_source_then_key_inventory(tmp_path, test_db, monkeypatc
 
     # reconciliation against the source scan + drift events without any approved baseline
     rec = inv.statistics["key_reconciliation"]
-    assert rec["source_scans"] == [src_scan_id] and rec["summary"]["consumers"] >= 1  # PAY.ZPK.ACQ001 used by CardSigner
+    assert rec["source_scans"] == [src_scan_id_2] and rec["summary"]["consumers"] >= 1  # latest scan of the repo wins  # PAY.ZPK.ACQ001 used by CardSigner
     assert any(o["label"] == "PAY.ZMK.VISA" for o in rec["orphans"])
     assert any(n["identifier"] == "payments.jks" for n in rec["not_in_inventory"])
     drift = test_db.execute(select(DriftEvent).where(DriftEvent.current_scan_id == inv_scan_id)).scalars().all()
