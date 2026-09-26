@@ -99,6 +99,8 @@ DEFAULT_SOURCE_EXTENSIONS = (
     # settings that never appear in source: scanned by config_crypto_parser
     ".conf",
     ".cnf",
+    ".inf",  # Windows security templates (secedit / GPO): SCHANNEL ciphers, Kerberos etypes, NTLM levels
+    ".reg",  # registry exports of the same policy
     ".yml",
     ".yaml",
     ".properties",

@@ -47,6 +47,8 @@ EXTENSION_LANGUAGE: dict[str, str] = {
     ".scala": "SCALA",
     ".conf": "CONFIG",
     ".cnf": "CONFIG",
+    ".inf": "CONFIG",
+    ".reg": "CONFIG",
     ".yml": "CONFIG",
     ".yaml": "CONFIG",
     ".properties": "CONFIG",

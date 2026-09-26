@@ -4,6 +4,7 @@ Abstract base class for all policy condition evaluators.
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -33,6 +34,50 @@ class EvaluationOutcome:
             )
         if not self.message.strip():
             raise ValueError("EvaluationOutcome.message must not be blank")
+
+
+def _canon(name: str) -> str:
+    """Spelling-insensitive key: 'TLS 1.0' == 'TLS1.0' == 'TLSv1.0', 'SHA-1' == 'SHA1', '3DES' == 'TripleDES'."""
+    key = re.sub(r"[\s\-_]", "", str(name).upper())
+    key = re.sub(r"^(TLS|SSL|DTLS)V(?=\d)", r"\1", key)
+    return {"TRIPLEDES": "3DES", "DESEDE": "3DES", "TDES": "3DES", "TDEA": "3DES", "ARCFOUR": "RC4", "ARC4": "RC4", "TLS1": "TLS1.0", "TLSV1": "TLS1.0"}.get(key, key)
+
+
+def algorithm_names(evidence_data: dict[str, Any]) -> list[str]:
+    """Every spelling the evidence carries for its algorithm, most specific first.
+
+    The normaliser stores a display name (``TLS 1.0``) *and* a standard name (``TLS1.0``); the scanner's own
+    name lives in ``finding_data.crypto.algorithm``. A rule list written as ``TLS1.0`` must hit all of them —
+    a policy that PASSes TLS 1.0 because of a space is not a policy.
+    """
+    names: list[str] = []
+    normalized = evidence_data.get("normalized_crypto") or {}
+    if isinstance(normalized, dict):
+        for k in ("standard_name", "algorithm"):
+            v = normalized.get(k)
+            if v and v != "UNKNOWN":
+                names.append(str(v))
+    v = evidence_data.get("algorithm")
+    if v and v != "UNKNOWN":
+        names.append(str(v))
+    fd = evidence_data.get("finding_data") or {}
+    crypto = fd.get("crypto") if isinstance(fd, dict) else None
+    if isinstance(crypto, dict) and crypto.get("algorithm") and crypto["algorithm"] != "UNKNOWN":
+        names.append(str(crypto["algorithm"]))
+    out: list[str] = []
+    for n in names:
+        if n not in out:
+            out.append(n)
+    return out
+
+
+def algorithm_matches(evidence_data: dict[str, Any], candidates: set[str] | list[str] | str) -> str | None:
+    """The evidence spelling that matches one of ``candidates`` (spelling-insensitive), else None."""
+    wanted = {_canon(c) for c in ([candidates] if isinstance(candidates, str) else candidates)}
+    for n in algorithm_names(evidence_data):
+        if _canon(n) in wanted:
+            return n
+    return None
 
 
 class BaseCondition(ABC):

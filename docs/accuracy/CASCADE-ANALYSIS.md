@@ -12,7 +12,7 @@ Output: `cascade` object in the scan result JSON and three statistics (`cascade_
 | **providers** | *Which files actually do crypto, and what breaks if I change each one?* | every file with a non-UNKNOWN finding; `direct_dependents` / `transitive_dependents` from the estate import graph; `depends_on_providers` for ordering; `rank` by blast radius |
 | **migration_waves** | *In what order do we migrate?* | Kahn's algorithm over the provider-to-provider dependency graph, on strongly-connected components so monolith import cycles do not stall it: wave 1 = shared crypto utilities nobody upstream depends on (change first, keep the interface compatible), wave *n* = depends on wave *n-1* |
 | **libraries** | *Which third-party crypto packages, which versions, declared but unused, used but undeclared?* | manifests (`pom.xml`, Gradle incl. `libs.versions.toml` catalogs, `package.json`, `requirements*.txt`/`pyproject`, `go.mod`, `Cargo.toml`, `Gemfile`, `composer.json`, NuGet `*.csproj`/`packages.config`, SwiftPM, CocoaPods, conan/vcpkg/CMake) matched against a crypto-library coordinate table, joined with `metadata.library` from findings |
-| **shared_keys** | *Which keystores, certificate files, key aliases and secret environment variables are used from more than one place?* | identifiers (never values) extracted from every source file and finding snippet: `*.jks/.p12/.pem/.kdb…`, `getenv("…KEY…")`-style env reads, `KeyStore.getKey("alias")`, `-alias`, `LABEL(…)`; kept only when ≥ 2 files reference the same identifier |
+| **shared_keys** | *Which keystores, certificate files, key aliases and secret environment variables are used from more than one place?* | identifiers (never values) extracted from every source file and finding snippet: `*.jks/.p12/.pem/.kdb…`, `getenv("…KEY…")`-style env reads, `KeyStore.getKey("alias")`, `-alias`, KGUP `LABEL(…)`, COBOL `KEY-LABEL PIC X(64) VALUE '…'`, dotted ICSF/payShield labels (`MADA.ZPK.ACQ.001`) on key-typed lines; kept only when ≥ 2 files reference the same identifier |
 | **weak_parameters** | *Where is the key size below the floor for its family?* | `crypto.key_size` vs `shared_models.algorithm_registry` (`RSA/DSA/DH < 2048`, `EC < 256`, `AES < 128`, …) |
 
 ## Business systems (`systems` section)
@@ -27,7 +27,13 @@ systems:
     owner: payments-platform
   - system: CORE-CRYPTO-LIB
     paths: [core/]
+  - system: SADAD-GATEWAY
+    paths: [sadad/]
+    depends_on: [CORE-CRYPTO-LIB]   # CMDB / runtime dependency the code cannot show (queue, batch feed, REST call)
 ```
+
+`depends_on` (or `depends_on_systems`) merges declared business dependencies into `depends_on_systems` /
+`dependent_systems` next to the import-derived ones — unknown names are ignored.
 
 The cascade then reports, per system: files, crypto providers, algorithms, weak parameters, **which other
 systems depend on its crypto** (`dependent_systems`), which systems' crypto it depends on

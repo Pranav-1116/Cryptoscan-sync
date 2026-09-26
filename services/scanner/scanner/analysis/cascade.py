@@ -448,9 +448,20 @@ _ENV_CTX = re.compile(r"""(?:getenv|GetEnvironmentVariable|getProperty|environ(?
 _ENV_NOISE = {"KEY", "SECRET", "CERT", "PRIMARY_KEY", "FOREIGN_KEY", "PUBLIC_KEY", "CACHE_KEY", "ROW_KEY", "PARTITION_KEY", "SORT_KEY", "HASH_KEY", "RANGE_KEY", "MAP_KEY", "DICT_KEY", "SESSION_KEY", "IDEMPOTENCY_KEY", "SHARD_KEY", "ROUTING_KEY", "CERTIFICATE"}
 
 
+# mainframe / HSM spellings: COBOL "KEY-LABEL PIC X(64) VALUE 'A.B.C'", KGUP "LABEL(A.B.C)", payShield console "A6 01 000 U A.B.C"
+_COBOL_LABEL = re.compile(r"""\b[\w-]*(?:LABEL|KEY-?NAME|KEY-?ID|ALIAS|ZPK|ZMK|TMK|TPK|TAK|PVK|CVK|KEK|BDK|IMK)[\w-]*\s+PIC\s+X\(\d+\)\s+VALUE\s+['"]([\w./@#:\-]{2,120})['"]""", re.I)
+_KGUP_LABEL = re.compile(r"\bLABEL\(\s*([A-Za-z0-9][\w./@#:\-]{1,120})\s*\)")
+_DOTTED_LABEL = re.compile(r"(?m)^[^\n]*\b(?:ZPK|ZMK|TMK|TPK|TAK|PVK|CVK|KEK|LMK|BDK|IMK|KEY|LABEL|AES|DES|RSA)\b[^\n]*?\b([A-Z][A-Z0-9]*(?:\.[A-Z0-9]+){2,})\b")
+
+
 def key_references(snippet: str) -> list[tuple[str, str]]:
     """→ [(kind, identifier)] — keystore/cert files, secret env vars, key aliases seen in one code snippet."""
     refs: list[tuple[str, str]] = []
+    for rx in (_COBOL_LABEL, _KGUP_LABEL, _DOTTED_LABEL):
+        for m in rx.finditer(snippet):
+            ident = m.group(1)
+            if ident.upper() not in {"UNKNOWN", "NONE"} and not ident.replace(".", "").isdigit():
+                refs.append(("key_alias", ident))
     for m in _KEY_FILE.finditer(snippet):
         refs.append(("key_file", m.group(1).rsplit("/", 1)[-1].rsplit("\\", 1)[-1]))
     for m in _ENV_CTX.finditer(snippet):
@@ -779,7 +790,9 @@ def load_system_map(root: Path) -> list[dict[str, Any]]:
         for it in items or []:
             if isinstance(it, dict) and it.get("system") and it.get("paths"):
                 out.append({"system": str(it["system"]), "paths": [str(x) for x in (it["paths"] if isinstance(it["paths"], list) else [it["paths"]])],
-                            "criticality": it.get("criticality"), "owner": it.get("owner")})
+                            "criticality": it.get("criticality"), "owner": it.get("owner"),
+                            # declared business dependencies (CMDB knowledge the code cannot show: runtime calls, queues, batch feeds)
+                            "depends_on": [str(x) for x in (it.get("depends_on") or it.get("depends_on_systems") or []) if x]})
         return out
     return []
 
@@ -827,6 +840,11 @@ def _systems_rollup(root: Path, graph: "DependencyGraph", providers: list[Provid
         s = _system_of(w.file.split("!", 1)[0], sysmap)
         if s:
             nodes[s].weak_parameters += 1
+    declared = {str(it["system"]): [d for d in (it.get("depends_on") or []) if d in nodes and d != it["system"]] for it in sysmap}
+    for s, deps in declared.items():
+        for d in deps:
+            up[s].add(d)
+            down[d].add(s)
     for s, n in nodes.items():
         n.algorithms = sorted(algos[s])
         n.depends_on_systems = sorted(up[s])
