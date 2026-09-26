@@ -258,7 +258,7 @@ def extract_calls(tokens: list[Token]) -> tuple[list[Call], dict[str, str]]:
             if j < len(tokens) and tokens[j].kind == "symbol" and tokens[j].value == "(":
                 args, nxt = _parse_args(tokens, j)
                 calls.append(Call(qualifier=qual[:-1], name=qual[-1] if qual else "new", args=args, offset=tok.offset, is_constructor=True))
-                i = nxt
+                i = j + 1  # keep walking *inside* the argument list: nested calls (c.wrap(new SecretKeySpec(k, "DESede"))) count too
                 continue
         if tok.kind == "ident":
             j = i
@@ -270,7 +270,7 @@ def extract_calls(tokens: list[Token]) -> tuple[list[Call], dict[str, str]]:
             if j < len(tokens) and tokens[j].kind == "symbol" and tokens[j].value == "(":
                 args, nxt = _parse_args(tokens, j)
                 calls.append(Call(qualifier=qual[:-1], name=qual[-1], args=args, offset=tok.offset, is_constructor=False))
-                i = nxt
+                i = j + 1  # descend into the arguments (nested getInstance/SecretKeySpec calls)
                 continue
             # String name = "AES";
             if (
