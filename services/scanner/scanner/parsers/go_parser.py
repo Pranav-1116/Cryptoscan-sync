@@ -13,6 +13,7 @@ import re
 from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
+from scanner.parsers.pqc_names import PQC_NAMES as _PQC_NAMES
 from scanner.parsers.rule_engine import filter_prng_context, DIGEST_TOKENS, Rule, run_rules
 
 SCANNER_ID = "static-go-scanner-v1.1"
@@ -202,6 +203,9 @@ RULES: list[Rule] = [
     _r(r"\bVerifyPeerCertificate\s*:\s*func\s*\([^)]*\)\s*error\s*\{\s*return\s+nil\s*\}", _TLS, "crypto/tls", algorithm="TRUST-ALL", confidence_reason="custom verifier accepts every certificate"),
     _r(r"\btls\.(?:Listen|Dial|DialWithDialer|Server|Client|Config|NewListener|X509KeyPair|LoadX509KeyPair|Certificate|NewLRUClientSessionCache|Dialer|CipherSuites|InsecureCipherSuites|ConnectionState|RequireAndVerifyClientCert|RequireAnyClientCert|VerifyClientCertIfGiven|CurveP256|CurveP384|CurveP521|X25519|X25519MLKEM768|X25519Kyber768Draft00)\b", _TLS, "crypto/tls", algorithm="TLS", confidence="MEDIUM"),
     _r(r"\btls\.(?:X25519MLKEM768|X25519Kyber768Draft00)\b", _KA, "crypto/tls", algorithm="ML-KEM"),
+    _r(r"\btls\.(?:X25519MLKEM768|X25519Kyber768Draft00)\b", _KA, "crypto/tls", algorithm="X25519"),
+    # liboqs-go with a concrete algorithm: kem.Init("ML-KEM-1024", nil) / sig.Init("SPHINCS+-SHA2-128s-simple", nil)
+    _r(r"\.Init\s*\(\s*\"(ML-KEM-\d+|Kyber\d+|ML-DSA-\d+|Dilithium\d+|SPHINCS\+[\w-]*|SLH-DSA[\w-]*|Falcon-?\d+)\"", _KA, "liboqs-go", algo_from_group=1, algo_map=_PQC_NAMES),
     _r(r"\btls\.(TLS_RSA_WITH_RC4_128_SHA|TLS_ECDHE_RSA_WITH_RC4_128_SHA|TLS_ECDHE_ECDSA_WITH_RC4_128_SHA)\b", _C, "crypto/tls", algorithm="RC4", confidence_reason="RC4 cipher suite"),
     _r(r"\btls\.(TLS_RSA_WITH_3DES_EDE_CBC_SHA|TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA)\b", _C, "crypto/tls", algorithm="3DES", confidence_reason="3DES cipher suite"),
     _r(r"\btls\.TLS_(?:RSA|ECDHE_RSA|ECDHE_ECDSA|AES_\d+|CHACHA20)_?\w*WITH_AES_(?:128|256)_(?:GCM|CBC)_SHA\w*\b|\btls\.TLS_AES_(?:128|256)_GCM_SHA\d+\b", _C, "crypto/tls", algorithm="AES", confidence="MEDIUM"),

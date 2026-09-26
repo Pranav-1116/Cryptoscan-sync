@@ -214,8 +214,9 @@ KEYSTORE_GETINSTANCE = re.compile(
     r"""KeyStore\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
     re.MULTILINE,
 )
+# JEP 496: javax.crypto.KEM.getInstance("ML-KEM") is the FIPS 203 key-encapsulation entry point (also "DHKEM")
 KEYAGREEMENT_GETINSTANCE = re.compile(
-    r"""KeyAgreement\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
+    r"""(?:KeyAgreement|KEM)\.getInstance\s*\(\s*[\"']([^\"']+)[\"']\s*[,)]""",
     re.MULTILINE,
 )
 SECURERANDOM_GETINSTANCE = re.compile(
@@ -902,6 +903,10 @@ class JavaParser:
             raw = match.group(1)
             upper = raw.upper()
             algo = "ECDH" if "ECDH" in upper else ("DH" if upper in {"DH", "DIFFIEHELLMAN"} else upper)
+            if upper.startswith(("ML-KEM", "MLKEM", "KYBER")):
+                algo = "ML-KEM"
+            elif upper == "DHKEM":
+                algo = "X25519"
             findings.append(
                 self._build_finding(
                     file_path=context.file_path,

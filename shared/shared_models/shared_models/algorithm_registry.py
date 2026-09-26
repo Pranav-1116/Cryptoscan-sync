@@ -191,6 +191,7 @@ _FAMILIES: dict[str, _Family] = {
     "TLS 1.2": _Family("TLS 1.2", "protocol", DEPRECATED, notes="allowed today; prefer TLS 1.3"),
     "TLS 1.3": _Family("TLS 1.3", "protocol", ALLOWED, notes="preferred protocol version"),
     "SSL 3.0": _Family("SSL 3.0", "protocol", DISALLOWED, notes="broken (POODLE)"),
+    "SSL 2.0": _Family("SSL 2.0", "protocol", DISALLOWED, notes="broken (DROWN); prohibited by RFC 6176"),
     "DTLS 1.0": _Family("DTLS 1.0", "protocol", DISALLOWED, notes="disallowed protocol version"),
     "DTLS 1.2": _Family("DTLS 1.2", "protocol", DEPRECATED, notes="allowed today; prefer DTLS 1.3"),
     "DILITHIUM": _Family("Dilithium", "signature-pqc", RESTRICTED, notes="pre-standardization name — prefer ML-DSA"),
@@ -257,7 +258,11 @@ _FAMILIES: dict[str, _Family] = {
     # -- additional post-quantum (NIST FIPS 203/204/205 + candidates) ----- #
     "FN-DSA": _Family("FN-DSA (Falcon)", "signature-pqc", ALLOWED, notes="FIPS 206 / Falcon lattice signature (draft)"),
     "FALCON": _Family("Falcon", "signature-pqc", RESTRICTED, notes="pre-standardization name — prefer FN-DSA"),
-    "SLH-DSA": _Family("SLH-DSA (SPHINCS+)", "signature-pqc", ALLOWED, notes="FIPS 205 stateless hash-based signature family"),
+    "SLH-DSA": _Family("SLH-DSA", "signature-pqc", ALLOWED, notes="FIPS 205 (SPHINCS+) stateless hash-based signature family"),
+    # parameter-set-less family names are what scanners emit for most call sites (KEM.getInstance("ML-KEM"), MLKem.GenerateKey(...))
+    "ML-KEM": _Family("ML-KEM", "kem-pqc", ALLOWED, notes="FIPS 203 (Kyber) key-encapsulation family"),
+    "ML-DSA": _Family("ML-DSA", "signature-pqc", ALLOWED, notes="FIPS 204 (Dilithium) signature family"),
+    "FALCON": _Family("FN-DSA (Falcon)", "signature-pqc", RESTRICTED, notes="FIPS 206 draft (FN-DSA); not yet final"),
     "MCELIECE": _Family("Classic McEliece", "kem-pqc", ALLOWED, notes="NIST PQC round-4 KEM (code-based)"),
     "HQC-128": _Family("HQC-128", "kem-pqc", RESTRICTED, key_size=3626, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 1"),
     "HQC-192": _Family("HQC-192", "kem-pqc", RESTRICTED, key_size=7242, parameter_kind=KEY_BITS, notes="NIST-selected code-based KEM (2025), level 3"),
@@ -376,12 +381,16 @@ _ALIASES: dict[str, str] = {
     "TLSV1.2": "TLS 1.2", "TLSV12": "TLS 1.2",
     "TLSV1.3": "TLS 1.3", "TLSV13": "TLS 1.3",
     "SSLV3": "SSL 3.0", "SSL3": "SSL 3.0", "SSL30": "SSL 3.0",
+    "SSLV2": "SSL 2.0", "SSL2": "SSL 2.0", "SSL20": "SSL 2.0",
+    # scanner spellings seen across the accuracy corpus (normaliser→CBOM contract test)
+    "ECDHE": "ECDH", "AESCMAC": "CMAC", "XSALSA20POLY1305": "XSALSA20",
     "DTLS1.0": "DTLS 1.0", "DTLS10": "DTLS 1.0",
     "DTLS1.2": "DTLS 1.2", "DTLS12": "DTLS 1.2",
     "KYBER512": "KYBER", "KYBER768": "KYBER", "KYBER1024": "KYBER",
     "MLDSA44": "ML-DSA-44", "MLDSA65": "ML-DSA-65", "MLDSA87": "ML-DSA-87",
     "DILITHIUM2": "DILITHIUM", "DILITHIUM3": "DILITHIUM", "DILITHIUM5": "DILITHIUM",
-    "SPHINCS": "SLH-DSA-128S", "SPHINCSPLUS": "SLH-DSA-128S", "SLHDSA128S": "SLH-DSA-128S",
+    "SPHINCS": "SLH-DSA", "SPHINCSPLUS": "SLH-DSA", "SLHDSA128S": "SLH-DSA-128S", "SLHDSASPHINCS": "SLH-DSA",
+    "FNDSA": "FALCON", "FNDSAFALCON": "FALCON",
     # Chinese GM/T
     "SM2WITHSM3": "SM2", "SM2SIGN": "SM2", "SM2-256": "SM2",
     "SM3-256": "SM3", "SM4-128": "SM4", "SMS4": "SM4",

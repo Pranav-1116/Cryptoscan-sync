@@ -11,6 +11,7 @@ from typing import Optional
 from scanner.extractors.entropy_calculator import looks_like_secret
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding
+from scanner.parsers.pqc_names import pqc_name
 
 logger = logging.getLogger(__name__)
 
@@ -506,7 +507,32 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
         for alias in node.names:
             local = alias.asname or alias.name
             self._aliases[local] = f"{module}.{alias.name}" if module else alias.name
+        # pqcrypto / pqcrypto-py: the parameter set is the module name (from pqcrypto.kem.ml_kem_768 import encrypt)
+        if module.startswith(("pqcrypto.", "pqc.", "quantcrypt.")):
+            tail = module.rsplit(".", 1)[-1]
+            algo = pqc_name(tail)
+            if algo:
+                is_sig = ".sign." in module + "." or "dsa" in tail or "sphincs" in tail or "dilithium" in tail or "falcon" in tail
+                self._add(node, api_type="SIGNATURE" if is_sig else "KEY_AGREEMENT", algorithm=algo,
+                          purpose="SIGNING" if is_sig else "KEY_EXCHANGE", library=module.split(".", 1)[0], raw_transformation=module)
         self.generic_visit(node)
+
+    def _pqc_call(self, node: ast.Call, resolved: str) -> None:
+        """liboqs-python: oqs.KeyEncapsulation("Kyber768") / oqs.Signature("Dilithium3"); also oqs.StatefulSignature."""
+        if not resolved.startswith("oqs.") and not resolved.endswith(("KeyEncapsulation", "Signature")):
+            return
+        tail = resolved.rsplit(".", 1)[-1]
+        if tail not in {"KeyEncapsulation", "Signature", "StatefulSignature"} or not resolved.startswith("oqs."):
+            return
+        name = self._fold_string(node.args[0]) if node.args else None
+        for kw in node.keywords:
+            if kw.arg in ("alg_name", "algorithm"):
+                name = self._fold_string(kw.value)
+        algo = pqc_name(name)
+        is_sig = tail != "KeyEncapsulation"
+        self._add(node, api_type="SIGNATURE" if is_sig else "KEY_AGREEMENT", algorithm=algo or "PQC",
+                  purpose="SIGNING" if is_sig else "KEY_EXCHANGE", library="liboqs", raw_transformation=name or resolved,
+                  confidence="HIGH" if algo else "MEDIUM")
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
         prev = self._current_class
@@ -581,6 +607,7 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
                 if algo:
                     self._hash(node, algo)
         resolved = self._resolve(func)
+        self._pqc_call(node, resolved)
         if self._api_table(node, func, resolved):
             pass  # table hit; still fall through for mode/key-size enrichers below
         if resolved != func:

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.finding_factory import make_finding
+from scanner.parsers.pqc_names import PQC_NAMES as _PQC_NAMES
 from scanner.parsers.rule_engine import filter_prng_context, CIPHER_TOKENS, DIGEST_TOKENS, Rule, run_rules
 
 SCANNER_ID = "static-csharp-scanner-v1.0"
@@ -119,6 +120,11 @@ _FACTORY_NAMES = {
 }
 
 _RULES: list[Rule] = [
+    # --- post-quantum (.NET 10 System.Security.Cryptography, BouncyCastle PQC) -----------------------
+    _r(r"\bMLKem(?:Algorithm)?\.(?:GenerateKey|ImportEncapsulationKey|ImportDecapsulationKey|ImportPrivateSeed|ImportPkcs8PrivateKey|ImportSubjectPublicKeyInfo|MLKem512|MLKem768|MLKem1024)\b", _KA, algorithm="ML-KEM"),
+    _r(r"\bMLDsa(?:Algorithm)?\.(?:GenerateKey|ImportMLDsaPrivateSeed|ImportMLDsaPublicKey|ImportMLDsaSecretKey|ImportPkcs8PrivateKey|ImportSubjectPublicKeyInfo|MLDsa44|MLDsa65|MLDsa87)\b", _S, algorithm="ML-DSA"),
+    _r(r"\bSlhDsa(?:Algorithm)?\.(?:GenerateKey|ImportSlhDsaPublicKey|ImportSlhDsaSecretKey|ImportPkcs8PrivateKey|ImportSubjectPublicKeyInfo|SlhDsa\w+)\b", _S, algorithm="SLH-DSA"),
+    _r(r"\bnew\s+(?:Org\.BouncyCastle\.Pqc\.Crypto\.[\w.]+\.)?(KyberKemGenerator|KyberKemExtractor|MLKemGenerator|MLKemExtractor|DilithiumSigner|MLDsaSigner|SphincsPlusSigner|SlhDsaSigner|FalconSigner)\s*\(", _S, algo_from_group=1, algo_map=_PQC_NAMES),
     _r(r"\bEncryptionAlgorithm\.(AES_(?:128|192|256)_(?:CBC|GCM))\b", _C, "aspnet-dataprotection", algo_from_group=1, algo_map={"aes_128_cbc": "AES", "aes_192_cbc": "AES", "aes_256_cbc": "AES", "aes_128_gcm": "AES", "aes_192_gcm": "AES", "aes_256_gcm": "AES"}),
     _r(r"\bValidationAlgorithm\.(HMACSHA256|HMACSHA512)\b", _M, "aspnet-dataprotection", algo_from_group=1, algo_map={"hmacsha256": "HMAC-SHA256", "hmacsha512": "HMAC-SHA512"}),
     _r(r"\bPasswordHasherOptions\b|\bPasswordHasherCompatibilityMode\.Identity(?:V2|V3)\b|\bnew\s+PasswordHasher<|\bIPasswordHasher<", _KDF, "aspnet-identity", algorithm="PBKDF2", confidence="MEDIUM", confidence_reason="ASP.NET Identity PasswordHasher is PBKDF2-HMAC"),

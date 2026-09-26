@@ -56,7 +56,7 @@ def canonical_family(name: str | None) -> str | None:
     if not name:
         return None
     key = re.sub(r"[^A-Z0-9]", "", str(name).upper())
-    if not key or key in {"UNKNOWN", "NULL", "NONE"}:  # "no algorithm" markers (NULL cipher, encryption: NONE) are posture, not a family
+    if not key or key in {"UNKNOWN", "NULL", "NONE", "PQC"}:  # "PQC" = a PQ library call without a concrete algorithm  # "no algorithm" markers (NULL cipher, encryption: NONE) are posture, not a family
         return None
     if key == "SHA":  # Java MessageDigest.getInstance("SHA") is SHA-1
         return "SHA-1"
@@ -65,7 +65,7 @@ def canonical_family(name: str | None) -> str | None:
     # prefix matches only for size/mode-suffixed spellings the scanner emits as
     # a single field (AES-256-GCM, RSA-2048, TLS1.2 ...). Short ambiguous
     # prefixes (DES, SHA, EC) are deliberately NOT here.
-    for prefix in ("HMAC", "PBKDF2", "XCHACHA20", "CHACHA20", "XSALSA20", "AES", "RSA", "ECDSA", "ECDH", "SHA3", "SHA512", "SHA384", "SHA256", "SHA224", "SHA1", "MD5", "TLS", "ARGON2", "BLAKE2", "ED25519", "X25519", "3DES", "RC4", "BCRYPT", "SCRYPT", "HKDF"):
+    for prefix in ("HMAC", "PBKDF2", "XCHACHA20", "CHACHA20", "XSALSA20", "AES", "RSA", "ECDSA", "ECDH", "SHA3", "SHA512", "SHA384", "SHA256", "SHA224", "SHA1", "MD5", "TLS", "ARGON2", "BLAKE2", "ED25519", "X25519", "3DES", "RC4", "BCRYPT", "SCRYPT", "HKDF", "MLKEM", "MLDSA", "SLHDSA"):
         if key.startswith(prefix):
             return _ALIASES.get(prefix, prefix)
     return key
@@ -91,6 +91,8 @@ def canonical_families(name: str | None) -> set[str]:
     # glue size suffixes back on before splitting: SHA-256 -> SHA256, TLS1.2 -> TLS12
     upper = re.sub(r"(?<=[A-Z])[-_./](?=\d)", "", str(name).upper())
     upper = re.sub(r"(?<=\d)[-_./](?=\d)", "", upper)
+    # FIPS 203/204/205 names are hyphenated but atomic: ML-DSA is not "ML" + "DSA"
+    upper = re.sub(r"\b(ML|SLH)[-_]?(KEM|DSA)\b", r"\1\2", upper)
     for tok in _SPLIT.split(upper):
         tok = re.sub(r"[^A-Z0-9]", "", tok)
         if not tok:
@@ -1343,3 +1345,8 @@ try:
 except ImportError:  # pragma: no cover
     from corpus_wave16_saudi_bank import register as _register_wave16  # type: ignore[no-redef]
 _register_wave16(_c)
+try:
+    from .corpus_wave17_pqc import register as _register_wave17
+except ImportError:  # pragma: no cover
+    from corpus_wave17_pqc import register as _register_wave17  # type: ignore[no-redef]
+_register_wave17(_c)

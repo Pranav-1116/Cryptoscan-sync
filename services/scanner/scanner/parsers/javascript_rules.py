@@ -14,6 +14,7 @@ import re
 from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
+from scanner.parsers.pqc_names import PQC_NAMES as _PQC_NAMES
 from scanner.parsers.rule_engine import CIPHER_TOKENS, DIGEST_TOKENS, Rule, run_rules
 
 _D = {"api_type": "MESSAGE_DIGEST", "purpose": "HASHING"}
@@ -60,6 +61,7 @@ _FORGE_CIPHERS = {**CIPHER_TOKENS, "3des": "3DES", "des": "DES", "rc2": "RC2"}
 RULES: list[Rule] = [
     # ------------------------------------------------------------ Node crypto beyond create*
     _r(rf"\bgenerateKeyPair(?:Sync)?\s*\(\s*{_Q}(rsa|rsa-pss|dsa|ec|ed25519|ed448|x25519|x448|dh){_Q}", _K, _NODE, algo_from_group=1, algo_map=_KEYPAIR_TYPES),
+    _r(rf"\bgenerateKeyPair(?:Sync)?\s*\(\s*{_Q}(ml-kem-\d+|ml-dsa-\d+|slh-dsa-[\w-]+){_Q}", _K, _NODE, algo_from_group=1, algo_map=_PQC_NAMES),
     _r(rf"\bgenerateKeyPair(?:Sync)?\s*\(\s*{_Q}(?:rsa|rsa-pss){_Q}\s*,\s*\{{[^}}]*?modulusLength\s*:\s*(\d+)", _K, _NODE, algorithm="RSA", key_from_group=1),
     _r(rf"\bgenerateKey(?:Sync)?\s*\(\s*{_Q}(hmac|aes){_Q}", _K, _NODE, algo_from_group=1, algo_map={"hmac": "HMAC", "aes": "AES"}),
     _r(rf"\bgenerateKey(?:Sync)?\s*\(\s*{_Q}aes{_Q}\s*,\s*\{{[^}}]*?length\s*:\s*(\d+)", _C, _NODE, algorithm="AES", key_from_group=1),
@@ -98,7 +100,8 @@ RULES: list[Rule] = [
     _r(rf"\bname\s*:\s*{_Q}(AES-GCM|AES-CBC|AES-CTR|AES-KW|RSA-OAEP|RSASSA-PKCS1-v1_5|RSA-PSS|ECDSA|ECDH|HMAC|PBKDF2|HKDF|X25519|Ed25519|X448|Ed448|ML-KEM-768|ML-DSA-65){_Q}", _C, "webcrypto", algo_from_group=1, algo_map=_WEBCRYPTO_NAMES),
     _r(rf"\bhash\s*:\s*(?:\{{\s*name\s*:\s*)?{_Q}(SHA-1|SHA-256|SHA-384|SHA-512){_Q}", _D, "webcrypto", algo_from_group=1, algo_map=DIGEST_TOKENS),
     _r(rf"\bmodulusLength\s*:\s*(\d+)", _K, "webcrypto", algorithm="RSA", key_from_group=1, confidence="MEDIUM"),
-    _r(rf"\bnamedCurve\s*:\s*{_Q}(P-256|P-384|P-521|secp256k1|prime256v1|secp384r1|secp521r1){_Q}", _K, "webcrypto", algorithm="ECDSA", confidence="MEDIUM"),
+    # a namedCurve next to name: "ECDH" is key agreement, not a signature key
+    _r(rf"^(?![^\n]*{_Q}ECDH{_Q})[^\n]*?\bnamedCurve\s*:\s*{_Q}(P-256|P-384|P-521|secp256k1|prime256v1|secp384r1|secp521r1){_Q}", _K, "webcrypto", algorithm="ECDSA", confidence="MEDIUM"),
     _r(rf"\bsubtle\.(?:encrypt|decrypt|sign|verify|digest|generateKey|importKey|exportKey|deriveKey|deriveBits|wrapKey|unwrapKey)\s*\(\s*{_Q}(SHA-1|SHA-256|SHA-384|SHA-512|AES-GCM|AES-CBC|AES-CTR|AES-KW|RSA-OAEP|RSASSA-PKCS1-v1_5|RSA-PSS|ECDSA|ECDH|HMAC|PBKDF2|HKDF|X25519|Ed25519){_Q}", _C, "webcrypto", algo_from_group=1, algo_map=_WEBCRYPTO_NAMES),
     _r(rf"\bsubtle\.(?:wrapKey|unwrapKey)\s*\(", _C, "webcrypto", algorithm="UNKNOWN", confidence="LOW"),
     # ------------------------------------------------------------ tweetnacl / libsodium-wrappers / noble

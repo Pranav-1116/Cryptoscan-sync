@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-26T08:09:29+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 784 files). Scored per algorithm family per file._
+_Generated 2026-09-26T08:51:59+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 797 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,30 +10,31 @@ _Generated 2026-09-26T08:09:29+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 784 / 784 (100.0%) |
-| TP / FP / FN / TN | 1300 / 0 / 0 / 148 |
+| Files scored exactly right | 797 / 797 (100.0%) |
+| TP / FP / FN / TN | 1353 / 0 / 0 / 150 |
 
 ## By language
 
 | Language | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | attls | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
-| c | 37 | 100.0% | 100.0% | 100.0% | 37/37 |
+| c | 38 | 100.0% | 100.0% | 100.0% | 38/38 |
 | cics | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | cl | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | cobol | 24 | 100.0% | 100.0% | 100.0% | 24/24 |
-| config | 59 | 100.0% | 100.0% | 100.0% | 59/59 |
+| config | 62 | 100.0% | 100.0% | 100.0% | 62/62 |
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| csharp | 50 | 100.0% | 100.0% | 100.0% | 50/50 |
-| go | 44 | 100.0% | 100.0% | 100.0% | 44/44 |
+| csharp | 51 | 100.0% | 100.0% | 100.0% | 51/51 |
+| go | 45 | 100.0% | 100.0% | 100.0% | 45/45 |
 | hlasm | 6 | 100.0% | 100.0% | 100.0% | 6/6 |
 | hsm | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | ims | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 | informix4gl | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| java | 112 | 100.0% | 100.0% | 100.0% | 112/112 |
-| javascript | 54 | 100.0% | 100.0% | 100.0% | 54/54 |
+| java | 114 | 100.0% | 100.0% | 100.0% | 114/114 |
+| javascript | 55 | 100.0% | 100.0% | 100.0% | 55/55 |
 | jcl | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | kotlin | 19 | 100.0% | 100.0% | 100.0% | 19/19 |
+| markdown | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | natural | 7 | 100.0% | 100.0% | 100.0% | 7/7 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | payshield-console | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
@@ -42,7 +43,7 @@ _Generated 2026-09-26T08:09:29+00:00 by `scripts/accuracy_benchmark.py` against 
 | powerbuilder | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | progress | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | properties | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
-| python | 85 | 100.0% | 100.0% | 100.0% | 85/85 |
+| python | 87 | 100.0% | 100.0% | 100.0% | 87/87 |
 | rpg | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
 | ruby | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
 | rust | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
@@ -51,7 +52,7 @@ _Generated 2026-09-26T08:09:29+00:00 by `scripts/accuracy_benchmark.py` against 
 | sql | 33 | 100.0% | 100.0% | 100.0% | 33/33 |
 | swift | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
 | tal | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| typescript | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
+| typescript | 15 | 100.0% | 100.0% | 100.0% | 15/15 |
 | xml | 21 | 100.0% | 100.0% | 100.0% | 21/21 |
 | yaml | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 
@@ -60,9 +61,9 @@ _Generated 2026-09-26T08:09:29+00:00 by `scripts/accuracy_benchmark.py` against 
 | Category | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
 | config | 28 | 100.0% | 100.0% | 100.0% | 28/28 |
-| negative | 116 | 100.0% | 100.0% | 100.0% | 116/116 |
+| negative | 118 | 100.0% | 100.0% | 100.0% | 118/118 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 584 | 100.0% | 100.0% | 100.0% | 584/584 |
+| positive | 595 | 100.0% | 100.0% | 100.0% | 595/595 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |

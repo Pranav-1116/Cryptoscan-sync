@@ -49,7 +49,7 @@ _SSH_MAC_DIGEST = [
 _SSH_KEX = [
     (re.compile(r"^diffie-hellman-"), "DH"),
     (re.compile(r"^ecdh-sha2-"), "ECDH"),
-    (re.compile(r"^curve25519-|^sntrup761x25519"), "X25519"),
+    (re.compile(r"^curve25519-|^sntrup761x25519|^mlkem768x25519"), "X25519"),
 ]
 _SSH_HOSTKEY = [
     (re.compile(r"ssh-rsa|rsa-sha2|_rsa_key|ssh_host_rsa"), "RSA"),
@@ -84,6 +84,8 @@ def _ssh_items(directive: str, value: str) -> Iterable[tuple[str, str, str]]:
                     yield algo, "HASH", tok
                     break
         elif d == "kexalgorithms":
+            if "mlkem" in low or "kyber" in low:  # OpenSSH 9.9+ mlkem768x25519-sha256 hybrid
+                yield "ML-KEM", "KEY_AGREEMENT", tok
             for rx, algo in _SSH_KEX:
                 if rx.search(low):
                     yield algo, "KEY_AGREEMENT", tok
@@ -232,6 +234,21 @@ _CURVE_KEY = re.compile(
     + r"([A-Za-z0-9:,_\s\-]+?)['\"]?\s*(?:#.*)?$",
     re.I | re.M,
 )
+# OpenSSL 3.x `SignatureAlgorithms = mldsa65:ecdsa_secp256r1_sha256:rsa_pss_rsae_sha256` / nginx `ssl_conf_command SignatureAlgorithms`
+_SIGALGS_KEY = re.compile(_LIST + r"(?:ssl_conf_command\s+)?(?:Client)?SignatureAlgorithms" + _SEP + r"([A-Za-z0-9:,_+\s\-]+?)['\"]?\s*(?:#.*)?$", re.I | re.M)
+_SIGALG_TOKEN = [
+    (re.compile(r"^(?:ml-?dsa|dilithium)"), "ML-DSA", "SIGNATURE"),
+    (re.compile(r"^(?:slh-?dsa|sphincs)"), "SLH-DSA", "SIGNATURE"),
+    (re.compile(r"^(?:falcon)"), "FALCON", "SIGNATURE"),
+    (re.compile(r"^ecdsa"), "ECDSA", "SIGNATURE"),
+    (re.compile(r"^rsa"), "RSA", "SIGNATURE"),
+    (re.compile(r"^ed25519"), "Ed25519", "SIGNATURE"),
+    (re.compile(r"^ed448"), "Ed448", "SIGNATURE"),
+    (re.compile(r"sha256"), "SHA-256", "MESSAGE_DIGEST"),
+    (re.compile(r"sha384"), "SHA-384", "MESSAGE_DIGEST"),
+    (re.compile(r"sha512"), "SHA-512", "MESSAGE_DIGEST"),
+    (re.compile(r"sha1$"), "SHA-1", "MESSAGE_DIGEST"),
+]
 _DHPARAM_KEY = re.compile(_LIST + r"(?:ssl[_.\-]?)?dh[_.\-]?param(?:s|_file|eters)?(?:\s*[=:]\s*|\s+)['\"]?(\S+)", re.I | re.M)
 
 
@@ -658,6 +675,14 @@ def run_config_rules(
                 emit(m.start(), "DH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", tok, reason="curve-setting")
             elif low.startswith(("x25519kyber", "x25519mlkem", "secp256r1mlkem")):
                 emit(m.start(), "ML-KEM", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", tok, reason="curve-setting")
+    for m in _SIGALGS_KEY.finditer(text):
+        for tok in re.split(r"[\s,:]+", m.group(1)):
+            low = tok.lower()
+            if not low:
+                continue
+            for rx, algo, api in _SIGALG_TOKEN:
+                if rx.search(low):
+                    emit(m.start(), algo, api, "SIGNING" if api == "SIGNATURE" else "HASHING", "tls-config", tok, reason="signature-algorithms")
     for m in _DHPARAM_KEY.finditer(text):
         emit(m.start(), "DH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "tls-config", m.group(0).strip(),
              confidence="MEDIUM", reason="dhparam-setting")
