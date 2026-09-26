@@ -56,7 +56,7 @@ def canonical_family(name: str | None) -> str | None:
     if not name:
         return None
     key = re.sub(r"[^A-Z0-9]", "", str(name).upper())
-    if not key or key == "UNKNOWN":
+    if not key or key in {"UNKNOWN", "NULL", "NONE"}:  # "no algorithm" markers (NULL cipher, encryption: NONE) are posture, not a family
         return None
     if key == "SHA":  # Java MessageDigest.getInstance("SHA") is SHA-1
         return "SHA-1"

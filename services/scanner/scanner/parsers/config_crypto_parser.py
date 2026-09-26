@@ -126,6 +126,14 @@ def parse_config_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
     for match in SSL_ECDH_CURVE.finditer(text):
         add(match, api_type="KEY_AGREEMENT", algorithm="ECDH", purpose="KEY_EXCHANGE", library="nginx",
             raw_transformation=match.group(1).strip()[:60], confidence="MEDIUM")
+        for tok in re.split(r"[\s:,]+", match.group(1).strip()):
+            low = tok.lower()
+            if low in {"x25519", "curve25519"}:
+                add(match, api_type="KEY_AGREEMENT", algorithm="X25519", purpose="KEY_EXCHANGE", library="nginx", raw_transformation=tok, confidence="HIGH")
+            elif low in {"x448"}:
+                add(match, api_type="KEY_AGREEMENT", algorithm="X448", purpose="KEY_EXCHANGE", library="nginx", raw_transformation=tok, confidence="HIGH")
+            elif low.startswith(("x25519kyber", "x25519mlkem", "secp256r1mlkem")):
+                add(match, api_type="KEY_AGREEMENT", algorithm="ML-KEM", purpose="KEY_EXCHANGE", library="nginx", raw_transformation=tok, confidence="HIGH")
     for match in SSL_PROTOCOLS.finditer(text):
         value = match.group(1).strip()
         if _TEMPLATED.search(value):

@@ -263,6 +263,10 @@ _RULES: list[Rule] = [
     _r(r"<(?:[a-z0-9]+:)?(?:sslProtocol|protocol|tlsVersion|minTlsVersion|sslMinimumVersion|min-tls-version|tls-version)>\s*(TLSv1\.3|TLSv1\.2|TLSv1\.1|TLSv1\.0|TLSv1|TLS1\.2|TLS1\.3|SSLv3|SSLv2)\s*<", _TLS, "xml-config", algo_from_group=1, algo_map=_PROTO),
     _r(r"<(?:[a-z0-9]+:)?(?:jwt|token|signing|signature)[A-Za-z-]*[Aa]lgorithm>\s*(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA|none)\s*<|\b(?:jwt|token|signing)[A-Za-z._-]*[Aa]lgorithm\s*=\s*[\"'](HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA|none)[\"']", _S, "xml-config", algo_from_group=1, algo_map=_JWT),
     _r(r"<add\b[^>]*\bkey\s*=\s*[\"'][^\"']*(?:Jwt|Token)[^\"']*Algorithm[^\"']*[\"'][^>]*\bvalue\s*=\s*[\"'](HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA|none)[\"']", _S, "asp.net", algo_from_group=1, algo_map=_JWT),
+    # ------------------------------------------------------------- generic elements (vendor-neutral: SWIFT Alliance, gateways, appliances)
+    _r(r"<(?:[A-Za-z]+:)?(?:Enabled)?Cipher(?:Suite|Spec)s?(?:List)?\b[^>]*>\s*((?:TLS_|SSL_|ECDHE|DHE|AES|RSA)[A-Za-z0-9_:,+\-\s]*?)\s*<", _TLS, "xml-config", algorithm="TLS", confidence="MEDIUM", split_suite_group=1),
+    _r(r"<(?:[A-Za-z]+:)?(?:Enabled|Ssl|TLS|Tls|Secure)?Protocols?(?:Version)?\b[^>]*>\s*((?:TLS|SSL)[A-Za-z0-9.,_\s]*?)\s*<", _TLS, "xml-config", algorithm="TLS", confidence="MEDIUM", split_tls_group=1),
+    _r(r"<(?:[A-Za-z]+:)?(?:Client|Server)?(?:Certificate|KeyStore|TrustStore|Keystore|Truststore)\b[^>]*\b(?:type|keystoreType|format)\s*=\s*[\"'](?:PKCS12|JKS|JCEKS|BKS|PEM|DER|CMS)[\"']", _TLS, "xml-config", algorithm="X509", confidence="MEDIUM", confidence_reason="certificate / keystore element"),
 ]
 
 _TLS_TOKENS = {"tlsv1.3": "TLS1.3", "tlsv1.2": "TLS1.2", "tlsv1.1": "TLS1.1", "tlsv1": "TLS1.0", "tlsv1.0": "TLS1.0", "tls13": "TLS1.3", "tls12": "TLS1.2", "tls11": "TLS1.1", "tls": "TLS1.0",

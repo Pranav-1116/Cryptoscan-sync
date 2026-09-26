@@ -135,14 +135,38 @@ _CONSOLE_MARK = re.compile(r"^\s*(?:A|GK|LK|LO|GC|EC|FK|CK|CS)\s*$", re.M)
 _CONSOLE_AES_LMK = re.compile(r"^\s*(?:AES|key ?block|K)\s*$", re.I | re.M)
 
 
+_CONSOLE_COMMENT = re.compile(r"^[ \t]*(?:;|#|//|REM\b|\*).*$", re.I | re.M)
+# console commands *with* arguments (scripts): "A6 01 000 U ..." / "LK 00" / "GK 3 2" — the 2-letter opcode leads the line
+_CONSOLE_CMD_ARGS = re.compile(r"^\s*(GK|LK|LO|LN|LA|LC|GC|EC|FK|KG|IK|CK|CS|CV|DM|GS|KE|KN|KM|KR|KS|KT|LM|LR|ND|VT|RC|GX|EX|FX|IX|BW|A0|A6|A8|BU|BY|DA|EI|EK|FA|GY|HC|IA|KA|KQ|KW|M0|M6|M8|OA|PA|PE|RA|TD)[ \t]+(?=[0-9A-Z*])[0-9A-Z. *\-]{1,80}$", re.M)
+_CONSOLE_KEYTYPE_AES = re.compile(r"\b(?:key ?block|AES(?:-?256)?\s+LMK|LMK\s+(?:id\s+)?01|S[0-9A-F]{4}A)\b", re.I)
+
+
 def _payshield_console(text: str, file_path: Path, repo_root: Path | None) -> list[RawFinding]:
-    lines = [ln.strip() for ln in text.split("\n")]
-    if sum(1 for ln in lines if re.fullmatch(r"[A-Z]{1,2}", ln)) < 3 or not _CONSOLE_MARK.search(text):
+    code = _CONSOLE_COMMENT.sub("", text)
+    lines = [ln.strip() for ln in code.split("\n")]
+    scripted = len(_CONSOLE_CMD_ARGS.findall(code)) >= 2 and bool(_CONSOLE_MARK.search(code) or re.search(r"^\s*(?:LK|GK|A6|A8|BW)\b", code, re.M))
+    if (sum(1 for ln in lines if re.fullmatch(r"[A-Z]{1,2}", ln)) < 3 or not _CONSOLE_MARK.search(code)) and not scripted:
         return []
-    aes_lmk = bool(_CONSOLE_AES_LMK.search(text))
+    aes_lmk = bool(_CONSOLE_AES_LMK.search(code))
     findings: list[RawFinding] = []
     seen: set[int] = set()
-    for m in _CONSOLE_LMK.finditer(text):
+    if scripted:
+        for m in _CONSOLE_CMD_ARGS.finditer(code):
+            line = code[: m.start()].count("\n") + 1
+            if line in seen:
+                continue
+            seen.add(line)
+            cmd = m.group(1)
+            raw = m.group(0).strip()
+            # key-block scheme / AES LMK id in the arguments → AES; variant LMK (ZMK/ZPK/TMK under LMK pairs) → TDES
+            algo = "AES" if _CONSOLE_KEYTYPE_AES.search(raw) or re.search(r"\bS[0-9A-F]{4}[AB]\b", raw) else "3DES"
+            findings.append(make_finding(
+                file_path=file_path, repo_root=repo_root, line_number=line, language="PAYSHIELD-CONSOLE", scanner_id=SCANNER_ID,
+                api_type="KEY_PAIR_GENERATOR", algorithm=algo, purpose="KEY_MANAGEMENT",
+                library="HSM/Thales-payShield-console", raw_transformation=raw[:80], confidence="MEDIUM",
+                confidence_reason=f"payShield console command {cmd} with arguments (script / transcript)",
+            ))
+    for m in _CONSOLE_LMK.finditer(code):
         line = text[: m.start()].count("\n") + 1
         if line in seen:
             continue

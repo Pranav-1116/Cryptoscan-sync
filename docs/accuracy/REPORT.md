@@ -1,6 +1,6 @@
 # Detection accuracy — production source scanner
 
-_Generated 2026-09-25T09:13:20+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 748 files). Scored per algorithm family per file._
+_Generated 2026-09-26T08:09:29+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 784 files). Scored per algorithm family per file._
 
 ## Overall
 
@@ -10,8 +10,8 @@ _Generated 2026-09-25T09:13:20+00:00 by `scripts/accuracy_benchmark.py` against 
 | Recall | **100.0%** |
 | F1 | **100.0%** |
 | Accuracy (TP+TN over all decisions) | **100.0%** |
-| Files scored exactly right | 748 / 748 (100.0%) |
-| TP / FP / FN / TN | 1214 / 0 / 0 / 143 |
+| Files scored exactly right | 784 / 784 (100.0%) |
+| TP / FP / FN / TN | 1300 / 0 / 0 / 148 |
 
 ## By language
 
@@ -21,17 +21,19 @@ _Generated 2026-09-25T09:13:20+00:00 by `scripts/accuracy_benchmark.py` against 
 | c | 37 | 100.0% | 100.0% | 100.0% | 37/37 |
 | cics | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | cl | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| cobol | 21 | 100.0% | 100.0% | 100.0% | 21/21 |
-| config | 56 | 100.0% | 100.0% | 100.0% | 56/56 |
+| cobol | 24 | 100.0% | 100.0% | 100.0% | 24/24 |
+| config | 59 | 100.0% | 100.0% | 100.0% | 59/59 |
 | cpp | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| csharp | 44 | 100.0% | 100.0% | 100.0% | 44/44 |
-| go | 43 | 100.0% | 100.0% | 100.0% | 43/43 |
+| csharp | 50 | 100.0% | 100.0% | 100.0% | 50/50 |
+| go | 44 | 100.0% | 100.0% | 100.0% | 44/44 |
 | hlasm | 6 | 100.0% | 100.0% | 100.0% | 6/6 |
+| hsm | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | ims | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 | informix4gl | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
-| java | 106 | 100.0% | 100.0% | 100.0% | 106/106 |
-| javascript | 53 | 100.0% | 100.0% | 100.0% | 53/53 |
-| kotlin | 17 | 100.0% | 100.0% | 100.0% | 17/17 |
+| java | 112 | 100.0% | 100.0% | 100.0% | 112/112 |
+| javascript | 54 | 100.0% | 100.0% | 100.0% | 54/54 |
+| jcl | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
+| kotlin | 19 | 100.0% | 100.0% | 100.0% | 19/19 |
 | natural | 7 | 100.0% | 100.0% | 100.0% | 7/7 |
 | nginx | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | payshield-console | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
@@ -39,26 +41,28 @@ _Generated 2026-09-25T09:13:20+00:00 by `scripts/accuracy_benchmark.py` against 
 | pli | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
 | powerbuilder | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | progress | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| python | 82 | 100.0% | 100.0% | 100.0% | 82/82 |
+| properties | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
+| python | 85 | 100.0% | 100.0% | 100.0% | 85/85 |
 | rpg | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
 | ruby | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
 | rust | 32 | 100.0% | 100.0% | 100.0% | 32/32 |
 | sas | 3 | 100.0% | 100.0% | 100.0% | 3/3 |
 | shell | 31 | 100.0% | 100.0% | 100.0% | 31/31 |
-| sql | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
-| swift | 29 | 100.0% | 100.0% | 100.0% | 29/29 |
+| sql | 33 | 100.0% | 100.0% | 100.0% | 33/33 |
+| swift | 30 | 100.0% | 100.0% | 100.0% | 30/30 |
 | tal | 4 | 100.0% | 100.0% | 100.0% | 4/4 |
-| typescript | 13 | 100.0% | 100.0% | 100.0% | 13/13 |
-| xml | 20 | 100.0% | 100.0% | 100.0% | 20/20 |
+| typescript | 14 | 100.0% | 100.0% | 100.0% | 14/14 |
+| xml | 21 | 100.0% | 100.0% | 100.0% | 21/21 |
+| yaml | 2 | 100.0% | 100.0% | 100.0% | 2/2 |
 
 ## By category
 
 | Category | Files | Precision | Recall | F1 | Exact files |
 |---|---|---|---|---|---|
-| config | 22 | 100.0% | 100.0% | 100.0% | 22/22 |
-| negative | 111 | 100.0% | 100.0% | 100.0% | 111/111 |
+| config | 28 | 100.0% | 100.0% | 100.0% | 28/28 |
+| negative | 116 | 100.0% | 100.0% | 100.0% | 116/116 |
 | obfuscated | 18 | 100.0% | 100.0% | 100.0% | 18/18 |
-| positive | 559 | 100.0% | 100.0% | 100.0% | 559/559 |
+| positive | 584 | 100.0% | 100.0% | 100.0% | 584/584 |
 | wild-negative | 5 | 100.0% | 100.0% | 100.0% | 5/5 |
 | wild-negative-dynamic | 1 | 100.0% | 100.0% | 100.0% | 1/1 |
 | wild-positive | 32 | 100.0% | 100.0% | 100.0% | 32/32 |

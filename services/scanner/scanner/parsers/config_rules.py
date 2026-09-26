@@ -190,6 +190,43 @@ _ELB_TLS = [("TLS13", "TLS1.3"), ("TLS-1-2", "TLS1.2"), ("TLS-1-1", "TLS1.1"), (
 
 _PEM_BLOCK = re.compile(r"^-----BEGIN ((?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY|CERTIFICATE|PUBLIC KEY|(?:RSA |EC |DSA )?PUBLIC KEY)-----", re.M)
 _PEM_DEK = re.compile(r"^DEK-Info:\s*([A-Z0-9-]+)", re.M)
+# Kerberos enctypes (krb5.conf, kdc.conf, sssd, AD msDS-SupportedEncryptionTypes lists)
+_KRB_ENCTYPE = re.compile(
+    r"\b(aes256-cts-hmac-sha1-96|aes128-cts-hmac-sha1-96|aes256-cts-hmac-sha384-192|aes128-cts-hmac-sha256-128|aes256-cts|aes128-cts|"
+    r"rc4-hmac(?:-exp)?|arcfour-hmac(?:-md5|-exp)?|des3-cbc-sha1(?:-kd)?|des3-hmac-sha1|des-cbc-crc|des-cbc-md5|des-cbc-md4|des-hmac-sha1|camellia(?:128|256)-cts-cmac)\b",
+    re.I,
+)
+_KRB_ENCTYPE_MAP = {
+    "aes256-cts-hmac-sha1-96": ("AES", "HMAC", "SHA-1"), "aes128-cts-hmac-sha1-96": ("AES", "HMAC", "SHA-1"),
+    "aes256-cts-hmac-sha384-192": ("AES", "HMAC", "SHA-384"), "aes128-cts-hmac-sha256-128": ("AES", "HMAC", "SHA-256"),
+    "aes256-cts": ("AES",), "aes128-cts": ("AES",),
+    "rc4-hmac": ("RC4", "HMAC", "MD5"), "rc4-hmac-exp": ("RC4", "HMAC", "MD5"), "arcfour-hmac": ("RC4", "HMAC", "MD5"), "arcfour-hmac-md5": ("RC4", "HMAC", "MD5"), "arcfour-hmac-exp": ("RC4", "HMAC", "MD5"),
+    "des3-cbc-sha1": ("3DES", "SHA-1"), "des3-cbc-sha1-kd": ("3DES", "SHA-1"), "des3-hmac-sha1": ("3DES", "HMAC", "SHA-1"),
+    "des-cbc-crc": ("DES",), "des-cbc-md5": ("DES", "MD5"), "des-cbc-md4": ("DES", "MD4"), "des-hmac-sha1": ("DES", "HMAC", "SHA-1"),
+    "camellia128-cts-cmac": ("Camellia", "CMAC"), "camellia256-cts-cmac": ("Camellia", "CMAC"),
+}
+# Windows: security templates (.inf), .reg exports, GPO registry.pol dumps — SCHANNEL ciphers/protocols and Kerberos etype bitmasks
+_WIN_SCHANNEL = re.compile(
+    r"SCHANNEL\\(Protocols|Ciphers|Hashes|KeyExchangeAlgorithms)\\([^\\\n=]+?)(?:\\(Server|Client))?\\(Enabled|DisabledByDefault)\s*[=:]\s*(?:(dword|hex|4)\s*[:,]\s*)?(?:0x)?([0-9a-fA-F]+)",
+    re.I,
+)
+_WIN_SCHANNEL_NAME = {
+    "ssl 2.0": "SSLv2", "ssl 3.0": "SSLv3", "tls 1.0": "TLS1.0", "tls 1.1": "TLS1.1", "tls 1.2": "TLS1.2", "tls 1.3": "TLS1.3", "pct 1.0": "SSLv2", "dtls 1.0": "TLS1.1", "dtls 1.2": "TLS1.2",
+    "rc4 128/128": "RC4", "rc4 64/128": "RC4", "rc4 56/128": "RC4", "rc4 40/128": "RC4", "rc2 128/128": "RC2", "rc2 56/128": "RC2", "rc2 40/128": "RC2",
+    "des 56/56": "DES", "triple des 168": "3DES", "triple des 168/168": "3DES", "aes 128/128": "AES", "aes 256/256": "AES", "null": "NULL",
+    "md5": "MD5", "sha": "SHA-1", "sha256": "SHA-256", "sha384": "SHA-384", "sha512": "SHA-512", "diffie-hellman": "DH", "pkcs": "RSA", "ecdh": "ECDH",
+}
+_WIN_KRB_ETYPES = re.compile(r"(?:Kdc|Kerberos)\\Parameters\\SupportedEncryptionTypes\s*[=:]\s*(?:(dword|4)\s*[:,]\s*)?(?:0x)?([0-9a-fA-F]+)", re.I)
+# generic policy keys (IBM MQ AMS policies, gateway YAML): signing: SHA256 / encryption: AES256 / digest_algorithm: SHA1
+_POLICY_ALGO_KEY = re.compile(
+    _LIST + r"[A-Za-z0-9_.\-]*?(?:signing|signature|digest|hash|encryption|cipher|encrypt)(?:[_.\-]?(?:algorithm|alg|method))?" + _SEP
+    + r"(SHA-?1|SHA-?224|SHA-?256|SHA-?384|SHA-?512|MD5|AES-?128|AES-?192|AES-?256|AES|3DES|TDES|DES|RC2|RC4|NONE)\b['\"]?\s*(?:#.*)?$",
+    re.I | re.M,
+)
+_POLICY_ALGO_MAP = {"sha1": "SHA-1", "sha-1": "SHA-1", "sha224": "SHA-224", "sha-224": "SHA-224", "sha256": "SHA-256", "sha-256": "SHA-256", "sha384": "SHA-384", "sha-384": "SHA-384",
+                    "sha512": "SHA-512", "sha-512": "SHA-512", "md5": "MD5", "aes128": "AES", "aes-128": "AES", "aes192": "AES", "aes-192": "AES", "aes256": "AES", "aes-256": "AES", "aes": "AES",
+                    "3des": "3DES", "tdes": "3DES", "des": "DES", "rc2": "RC2", "rc4": "RC4", "none": "NULL"}
+
 _CURVE_KEY = re.compile(
     _LIST + r"(?![A-Za-z0-9_.\-]*ecdsa)[A-Za-z0-9_.\-]*?(?:curves?|ecdh[_.\-]?curve|named[_.\-]?groups?|groups)" + _SEP
     + r"([A-Za-z0-9:,_\s\-]+?)['\"]?\s*(?:#.*)?$",
@@ -580,6 +617,35 @@ def run_config_rules(
                 algo = _TLS_PROTO_TOKEN.get(tok.lower())
                 if algo:
                     emit(m.start(), algo, "KEY_AGREEMENT", "NETWORK_ENCRYPTION", lib, raw, reason="middleware-tls")
+    # --- Kerberos enctypes / Windows SCHANNEL & Kdc registry policy --------------
+    for m in _KRB_ENCTYPE.finditer(text):
+        for algo in _KRB_ENCTYPE_MAP.get(m.group(1).lower(), ()):
+            api = "MAC" if algo == "HMAC" else "MESSAGE_DIGEST" if algo.startswith(("SHA", "MD")) else "CIPHER_INSTANCE"
+            emit(m.start(), algo, api, "AUTHENTICATION", "kerberos", m.group(1), confidence="HIGH" if algo in {"RC4", "DES", "3DES", "MD5", "MD4"} else "MEDIUM", reason="kerberos-enctype")
+    for m in _WIN_SCHANNEL.finditer(text):
+        kind, name, _side, setting, vtype, val = m.groups()
+        algo = _WIN_SCHANNEL_NAME.get(name.strip().lower())
+        if not algo:
+            continue
+        enabled = int(val, 10 if vtype == "4" else 16) != 0  # .inf "4,<decimal>" vs .reg "dword:<hex>"
+        if setting.lower() == "disabledbydefault":
+            enabled = not enabled
+        if not enabled:
+            continue  # explicitly disabled protocol/cipher is hardening, not an in-use algorithm
+        api = "KEY_AGREEMENT" if kind.lower() in {"protocols", "keyexchangealgorithms"} else "MESSAGE_DIGEST" if kind.lower() == "hashes" else "CIPHER_INSTANCE"
+        emit(m.start(), algo, api, "NETWORK_ENCRYPTION", "windows-schannel", m.group(0)[:80],
+             confidence="HIGH", reason="schannel-registry-policy")
+    for m in _WIN_KRB_ETYPES.finditer(text):
+        mask = int(m.group(2), 10 if m.group(1) == "4" else 16)
+        for bit, algo in ((0x1, "DES"), (0x2, "DES"), (0x4, "RC4"), (0x8, "AES"), (0x10, "AES")):
+            if mask & bit:
+                emit(m.start(), algo, "CIPHER_INSTANCE", "AUTHENTICATION", "kerberos", m.group(0)[:80], confidence="HIGH", reason="kerberos-supported-etype-bitmask")
+    for m in _POLICY_ALGO_KEY.finditer(text):
+        algo = _POLICY_ALGO_MAP.get(m.group(1).lower())
+        if not algo:
+            continue
+        api = "MESSAGE_DIGEST" if algo.startswith(("SHA", "MD")) else "CIPHER_INSTANCE"
+        emit(m.start(), algo, api, "DATA_ENCRYPTION", "policy-config", m.group(0).strip()[:80], confidence="MEDIUM", reason="policy-algorithm-key")
     # --- Curves / DH params ---------------------------------------------------
     for m in _CURVE_KEY.finditer(text):
         for tok in re.split(r"[\s,:]+", m.group(1)):

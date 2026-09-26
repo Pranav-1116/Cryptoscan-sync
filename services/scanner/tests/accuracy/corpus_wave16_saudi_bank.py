@@ -395,7 +395,7 @@ MACHINE\\System\\CurrentControlSet\\Services\\Kdc\\Parameters\\SupportedEncrypti
 MACHINE\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Kerberos\\Parameters\\SupportedEncryptionTypes=4,4
 MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.0\\Server\\Enabled=4,1
 MACHINE\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Ciphers\\RC4 128/128\\Enabled=4,1
-""", {"RC4", "TLS"}, "config")
+""", {"RC4", "TLS", "AES"}, "config")  # 4,28 = RC4 + AES128 + AES256 etypes
     _c("yaml", "mq-ams-policy.yaml", """
 # IBM MQ Advanced Message Security policy for the mada ↔ core queues (setmqspl equivalents)
 policies:

@@ -61,7 +61,7 @@ XML_EXT = {".xml", ".config", ".csproj", ".props", ".targets", ".wsdl", ".xaml"}
 C_EXT = {".c", ".h", ".cpp", ".cc", ".cxx", ".hpp", ".hh", ".hxx", ".m", ".mm"}
 JAR_EXT = {".jar", ".war", ".ear", ".aar"}
 CLASS_EXT = {".class"}
-CONFIG_EXT = {".conf", ".cnf", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg", ".tmpl", ".tpl", ".j2", ".toml", ".mqsc", ".security", ".policy", ".settings"}
+CONFIG_EXT = {".conf", ".cnf", ".inf", ".reg", ".pol", ".yml", ".yaml", ".properties", ".env", ".ini", ".tf", ".tfvars", ".cfg", ".tmpl", ".tpl", ".j2", ".toml", ".mqsc", ".security", ".policy", ".settings"}
 
 PARSERS = (
     (JAVA_EXT, parse_java_file),

@@ -86,6 +86,9 @@ _RULES: list[Rule] = [
                  "iso-0": "3DES", "iso-1": "3DES", "iso-2": "3DES", "iso-3": "3DES", "iso-4": "AES", "iso4": "AES", "visa-3": "3DES", "visa-4": "3DES", "ansix9.8": "3DES", "eci-2": "3DES", "eci-3": "3DES",
                  "ibm-pin": "3DES", "ibm-pino": "3DES", "visa-pvv": "3DES", "visapvv4": "3DES", "gbp-pin": "3DES", "gbp-pino": "3DES", "cvv-1": "3DES", "cvv-2": "3DES", "cvv-3": "3DES", "icvv": "3DES", "cvc3": "3DES", "arqc": "3DES", "arpc": "3DES",
                  "cmac": "AES", "hmac": "HMAC"}),
+    # ------------------------------------------------------------- KGUP control statements (CSFIN: ADD/UPDATE LABEL(...) TYPE(...) ALGORITHM(...))
+    _r(r"\b(?:ADD|UPDATE|RENAME)\b[^\n]*\bLABEL\([^)]+\)[^\n]*\bALGORITHM\((AES|DES)\)", _K, "IBM-ICSF-KGUP", algo_from_group=1, algo_map={"aes": "AES", "des": "3DES"}, confidence="HIGH", confidence_reason="KGUP key generation statement (DES algorithm = TDES CKDS key)"),
+    _r(r"\b(?:ADD|UPDATE)\b[^\n]*\bLABEL\([^)]+\)(?![^\n]*\bALGORITHM\()[^\n]*\bTYPE\((?:EXPORTER|IMPORTER|IKEYXLAT|OKEYXLAT|PINGEN|PINVER|IPINENC|OPINENC|MAC|MACVER|DATAXLAT|CVARENC|CVARPINE|CVARXCVL|CVARXCVR|DATAM|DATAMV|DKYGENKY|KEYGENKY|CIPHER|DECIPHER|ENCIPHER|DATA)\)", _K, "IBM-ICSF-KGUP", algorithm="3DES", confidence="HIGH", confidence_reason="KGUP CKDS key type without ALGORITHM(AES) is a DES/TDES key"),
     # ------------------------------------------------------------- randomness
     _r(_V + r"(RNG|RNGL|RNG2)\b", _RNG, _ICSF, algorithm="CSPRNG", confidence="HIGH", confidence_reason="ICSF Random Number Generate (hardware DRBG)"),
     _r(r"\bFUNCTION\s+RANDOM\b(?=[^\n]*(?:PASS|PWD|SECRET|TOKEN|SALT|OTP|PIN|NONCE|SESSION))|\b[\w-]*?-?(?:PASS\w*|PWD|SECRET|TOKEN|SALT|OTP|PIN|NONCE|SESSION-?ID)\b[^\n]*\bFUNCTION\s+RANDOM\b", _RNG, "cobol-intrinsic", algorithm="PRNG", confidence="HIGH", confidence_reason="FUNCTION RANDOM is not cryptographically secure"),
@@ -145,13 +148,23 @@ def parse_cobol_file(file_path: Path, repo_root: Path | None = None) -> list[Raw
         return []
     if file_path.suffix.lower() == ".asm":
         text = _strip_hlasm_comments(text)
-    return run_rules(
+    body = _strip_cobol_comments(text) if file_path.suffix.lower() != ".asm" else text
+    findings = run_rules(
         file_path=file_path,
         repo_root=repo_root,
-        text=_strip_cobol_comments(text) if file_path.suffix.lower() != ".asm" else text,
+        text=body,
         rules=_RULES,
         language="COBOL",
         scanner_id=SCANNER_ID,
         confidence_reason="icsf-callable-service",
         strip_comments=False,
     )
+    # A bare 3-letter 'DES' / 'AES' literal (PIC X(3) VALUE 'DES' — a DESK / description code) only names an algorithm
+    # when the program actually talks to ICSF / an HSM: rule arrays, callable services, key labels or key data sets.
+    if not _ICSF_SHAPE.search(body):
+        findings = [f for f in findings if not (f.crypto.algorithm in {"DES", "AES"} and f.metadata is not None and f.metadata.library == "ICSF rule array"
+                                                 and re.fullmatch(r"['\"](?:DES|AES)['\"]", (f.crypto.raw_transformation or "").strip()))]
+    return findings
+
+
+_ICSF_SHAPE = re.compile(r"\bCSN[BDEF][A-Z0-9]{2,4}\b|\bCSFP[A-Z0-9]{2,4}\b|\bICSF\b|\bRULE-?ARRAY\b|\bRULE-?COUNT\b|\bKEY-?LABEL\b|\bKEY-?IDENT\b|\bCKDS\b|\bPKDS\b|\bKEY-?TOKEN\b|\bCRYPTO\b|\bENCRYPT|\bDECRYPT|\bHSM\b|\bZPK\b|\bZMK\b|\bPIN-?BLOCK\b", re.I)

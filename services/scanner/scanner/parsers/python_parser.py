@@ -214,6 +214,12 @@ _API_TABLE: dict[str, tuple[str, str, str, str, Optional[str]]] = {
     "paramiko.ECDSAKey.generate": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
     "paramiko.ECDSAKey": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
     "paramiko.Ed25519Key": ("Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.Ed25519Key.from_private_key_file": ("Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.Ed25519Key.from_private_key": ("Ed25519", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.ECDSAKey.from_private_key_file": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.ECDSAKey.from_private_key": ("ECDSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.DSSKey.from_private_key_file": ("DSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
+    "paramiko.RSAKey.from_private_key": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
     "paramiko.SSHClient": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "paramiko", None),
     "paramiko.Transport": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "paramiko", None),
     "asyncssh.connect": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "asyncssh", None),
@@ -412,6 +418,9 @@ def parse_python_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
     return visitor.findings
 
 
+_GPG_CIPHERS = {"aes": "AES", "aes128": "AES", "aes192": "AES", "aes256": "AES", "twofish": "Twofish", "camellia128": "Camellia", "camellia192": "Camellia",
+                "camellia256": "Camellia", "3des": "3DES", "cast5": "CAST5", "blowfish": "Blowfish", "idea": "IDEA"}
+_GPG_DIGESTS = {"sha1": "SHA-1", "sha224": "SHA-224", "sha256": "SHA-256", "sha384": "SHA-384", "sha512": "SHA-512", "md5": "MD5", "ripemd160": "RIPEMD-160"}
 _FALLBACK_D = {"api_type": "MESSAGE_DIGEST", "purpose": "HASHING"}
 _FALLBACK_M = {"api_type": "MAC", "purpose": "MAC_GENERATION"}
 _FALLBACK_C = {"api_type": "CIPHER_INSTANCE", "purpose": "ENCRYPTION"}
@@ -606,6 +615,20 @@ class _PythonCryptoVisitor(ast.NodeVisitor):
             elif node.args or node.keywords:
                 self._add(node, api_type="MESSAGE_DIGEST", algorithm="UNKNOWN", purpose="HASHING", library="hashlib",
                           confidence="LOW", confidence_reason="hashlib.new with a runtime-selected digest name")
+
+        if "gpg" in func.lower() or "gnupg" in func.lower():
+            # python-gnupg: extra_args=["--cipher-algo", "AES256", "--digest-algo", "SHA256"] / passphrase-encrypted files
+            lits = [self._fold_string(e) for kw in node.keywords if kw.arg == "extra_args" and isinstance(kw.value, (ast.List, ast.Tuple)) for e in kw.value.elts]
+            for flag, val in zip(lits, lits[1:]):
+                if not flag or not val:
+                    continue
+                low = val.lower()
+                if flag == "--cipher-algo" and low in _GPG_CIPHERS:
+                    self._add(node, api_type="CIPHER_INSTANCE", algorithm=_GPG_CIPHERS[low], purpose="ENCRYPTION", library="python-gnupg", raw_transformation=f"--cipher-algo {val}")
+                elif flag == "--digest-algo" and low in _GPG_DIGESTS:
+                    self._add(node, api_type="MESSAGE_DIGEST", algorithm=_GPG_DIGESTS[low], purpose="HASHING", library="python-gnupg", raw_transformation=f"--digest-algo {val}")
+                elif flag == "--s2k-digest-algo" and low in _GPG_DIGESTS:
+                    self._add(node, api_type="KEY_GENERATOR", algorithm=_GPG_DIGESTS[low], purpose="PASSWORD_HASHING", library="python-gnupg", raw_transformation=f"--s2k-digest-algo {val}")
 
         if self._is_hmac_call(func):
             digest = self._hmac_digest(node)

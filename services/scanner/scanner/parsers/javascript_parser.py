@@ -211,6 +211,15 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
             )
         )
 
+    # named imports from node:crypto make bare calls unambiguous: import { randomInt, randomFillSync } from "crypto"
+    imp = re.search(r"""import\s*\{([^}]*)\}\s*from\s*['"](?:node:)?crypto['"]|(?:const|let|var)\s*\{([^}]*)\}\s*=\s*require\(\s*['"](?:node:)?crypto['"]\s*\)""", source)
+    if imp:
+        names = {n.strip().split(" as ")[-1].strip() for n in (imp.group(1) or imp.group(2) or "").split(",") if n.strip()}
+        rng = names & {"randomInt", "randomFill", "randomFillSync", "randomBytes", "randomUUID", "getRandomValues", "generateKey", "generateKeySync"}
+        if rng:
+            for match in re.finditer(r"(?<![\w.])(" + "|".join(sorted(rng)) + r")\s*\(", source):
+                add(match, api_type="KEY_GENERATOR", algorithm="CSPRNG", purpose="KEY_GENERATION", library="node-crypto",
+                    raw_transformation=match.group(1), confidence="HIGH", confidence_reason="named import from node:crypto")
     for match in NODE_CIPHER.finditer(source):
         algo, mode, key_size = _parse_node_cipher(match.group(1))
         add(
