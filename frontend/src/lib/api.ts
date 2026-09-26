@@ -3545,3 +3545,11 @@ export type KeyReconciliation = {
 };
 export const apiKeyReconciliation = (scanId: string): Promise<ApiResult<KeyReconciliation>> =>
   call(`/api/v1/scans/${encodeURIComponent(scanId)}/key-reconciliation`);
+
+/** Estate CBOM (CycloneDX 1.5) — root → systems → assets + system-to-system edges. */
+export type PortfolioCbom = {
+  metadata: { component: { name: string; "bom-ref"?: string }; properties?: { name: string; value: string }[] };
+  components: { type: string; name: string; "bom-ref": string; properties?: { name: string; value: string }[]; cryptoProperties?: any }[];
+  dependencies?: { ref: string; dependsOn: string[] }[];
+};
+export const apiCbomPortfolio = (): Promise<ApiResult<PortfolioCbom>> => call("/api/v1/cbom/portfolio");

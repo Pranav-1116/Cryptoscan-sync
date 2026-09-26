@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiCbomCatalog, apiCbomCoverage } from "../lib/api";
+import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
 
 interface CbomItem {
   id: string;
@@ -326,6 +327,8 @@ export default function Cbom() {
           </table>
         </div>
       </div>
+
+      <PortfolioDependencyPanel />
     </div>
   );
 }
