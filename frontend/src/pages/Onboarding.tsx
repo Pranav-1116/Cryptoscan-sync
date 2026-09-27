@@ -6,7 +6,7 @@ import {
   type OnboardingState, type DiscoveryPlan, type SectorProfile,
 } from "../lib/api.js";
 import { Corners, Kicker } from "../components/ui.jsx";
-import { RequireRole, useAuth } from "../lib/auth.js";
+import { RequireRole } from "../lib/auth.js";
 
 /* Enterprise onboarding wizard — the customer journey:
    1 Create organization · 2 Select sector · 3 Create environment
@@ -97,8 +97,6 @@ export default function Onboarding() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [plan, setPlan] = useState<DiscoveryPlan | null>(null);
-  const { roles } = useAuth();
-
   const refresh = useCallback(async () => {
     const r = await apiOnboardingState();
     if (r.data) {
@@ -113,7 +111,6 @@ export default function Onboarding() {
     void apiListSectors().then((r) => { if (r.data?.sectors) setSectors(r.data.sectors); });
   }, [refresh]);
 
-  const canWrite = roles.some((r) => ONBOARDING_WRITE_ROLES.includes(r));
   const sectorIds = useMemo(() => (sectors.length ? sectors.map((s) => s.id) : SECTORS_FALLBACK), [sectors]);
 
   const done = (key: string) => !!state?.checklist.find((c) => c.step === key)?.done;
@@ -157,17 +154,20 @@ export default function Onboarding() {
             {msg.ok ? "✓ " : "✕ "}{msg.text}
           </div>
         )}
-        {!canWrite && state && (
-          <div style={{ ...warnChip, marginTop: 12, display: "inline-block" }}>view-only role — changes require admin / ciso / security_analyst</div>
+        {state && (
+          <RequireRole
+            anyOf={ONBOARDING_WRITE_ROLES}
+            fallback={<div style={{ ...warnChip, marginTop: 12, display: "inline-block" }}>view-only role — changes require admin / ciso / security_analyst</div>}
+          />
         )}
       </div>
 
-      {step === 0 && <OrgStep state={state} sectors={sectorIds} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} onNext={() => setStep(1)} />}
+      {step === 0 && <OrgStep state={state} sectors={sectorIds} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} onNext={() => setStep(1)} />}
       {step === 1 && <SectorStep state={state} sectors={sectors} />}
-      {step === 2 && <EnvStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
-      {step === 3 && <ScopeStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
-      {step === 4 && <ConnectStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
-      {step === 5 && <TestStep state={state} canWrite={canWrite} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} onNext={() => setStep(6)} />}
+      {step === 2 && <EnvStep state={state} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
+      {step === 3 && <ScopeStep state={state} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
+      {step === 4 && <ConnectStep state={state} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} />}
+      {step === 5 && <TestStep state={state} busy={busy} setBusy={setBusy} refresh={refresh} flash={flash} onNext={() => setStep(6)} />}
       {step === 6 && <DiscoveryStep state={state} plan={plan} setPlan={setPlan} busy={busy} setBusy={setBusy} flash={flash} refresh={refresh} />}
     </div>
   );
@@ -191,8 +191,8 @@ function Section({ title, hint, children, actions }: { title: string; hint?: str
 }
 
 /* ---- step 1: organization ---- */
-function OrgStep({ state, sectors, canWrite, busy, setBusy, refresh, flash, onNext }: {
-  state: OnboardingState | null; sectors: string[]; canWrite: boolean; busy: string | null;
+function OrgStep({ state, sectors, busy, setBusy, refresh, flash, onNext }: {
+  state: OnboardingState | null; sectors: string[]; busy: string | null;
   setBusy: (b: string | null) => void; refresh: () => Promise<unknown>; flash: (ok: boolean, t: string) => void; onNext: () => void;
 }) {
   const [name, setName] = useState("");
@@ -284,8 +284,8 @@ function SectorStep({ state, sectors }: { state: OnboardingState | null; sectors
 /* ---- step 3: environment ---- */
 const MW_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 
-function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
-  state: OnboardingState | null; canWrite: boolean; busy: string | null; setBusy: (b: string | null) => void;
+function EnvStep({ state, busy, setBusy, refresh, flash }: {
+  state: OnboardingState | null; busy: string | null; setBusy: (b: string | null) => void;
   refresh: () => Promise<unknown>; flash: (ok: boolean, t: string) => void;
 }) {
   const [name, setName] = useState("");
@@ -377,8 +377,8 @@ function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
 }
 
 /* ---- step 4: authorized scope ---- */
-function ScopeStep({ state, canWrite, busy, setBusy, refresh, flash }: {
-  state: OnboardingState | null; canWrite: boolean; busy: string | null; setBusy: (b: string | null) => void;
+function ScopeStep({ state, busy, setBusy, refresh, flash }: {
+  state: OnboardingState | null; busy: string | null; setBusy: (b: string | null) => void;
   refresh: () => Promise<unknown>; flash: (ok: boolean, t: string) => void;
 }) {
   const [kind, setKind] = useState("network");
@@ -427,7 +427,9 @@ function ScopeStep({ state, canWrite, busy, setBusy, refresh, flash }: {
         {entries.map((e) => (
           <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", background: "rgba(0,0,0,.2)" }}>
             <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}><span className="dim">[{e.kind}]</span> {e.target}</span>
-            {canWrite && <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11 }} disabled={busy === e.id} onClick={() => remove(e.id)}>{busy === e.id ? "…" : "remove"}</button>}
+            <RequireRole anyOf={ONBOARDING_WRITE_ROLES}>
+              <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11 }} disabled={busy === e.id} onClick={() => remove(e.id)}>{busy === e.id ? "…" : "remove"}</button>
+            </RequireRole>
           </div>
         ))}
       </div>
@@ -436,8 +438,8 @@ function ScopeStep({ state, canWrite, busy, setBusy, refresh, flash }: {
 }
 
 /* ---- step 5: connections center ---- */
-function ConnectStep({ state, canWrite, busy, setBusy, refresh, flash }: {
-  state: OnboardingState | null; canWrite: boolean; busy: string | null; setBusy: (b: string | null) => void;
+function ConnectStep({ state, busy, setBusy, refresh, flash }: {
+  state: OnboardingState | null; busy: string | null; setBusy: (b: string | null) => void;
   refresh: () => Promise<unknown>; flash: (ok: boolean, t: string) => void;
 }) {
   const [kind, setKind] = useState("aws");
@@ -489,11 +491,13 @@ function ConnectStep({ state, canWrite, busy, setBusy, refresh, flash }: {
                 {c.agent_link && <span style={c.agent_link === "encrypted" ? okChip : chip}>link: {c.agent_link}</span>}
               </div>
             )}
-            {canWrite && <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11, marginTop: 10 }}
-              disabled={busy === c.id} onClick={async () => {
-                setBusy(c.id); const r = await apiDeleteConnection(c.id); setBusy(null);
-                if (r.ok) { await refresh(); flash(true, "Connection removed"); } else flash(false, r.error || "could not remove");
-              }}>{busy === c.id ? "…" : "remove"}</button>}
+            <RequireRole anyOf={ONBOARDING_WRITE_ROLES}>
+              <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11, marginTop: 10 }}
+                disabled={busy === c.id} onClick={async () => {
+                  setBusy(c.id); const r = await apiDeleteConnection(c.id); setBusy(null);
+                  if (r.ok) { await refresh(); flash(true, "Connection removed"); } else flash(false, r.error || "could not remove");
+                }}>{busy === c.id ? "…" : "remove"}</button>
+            </RequireRole>
           </div>
         ))}
       </div>
@@ -502,8 +506,8 @@ function ConnectStep({ state, canWrite, busy, setBusy, refresh, flash }: {
 }
 
 /* ---- step 6: test access ---- */
-function TestStep({ state, canWrite, busy, setBusy, refresh, flash, onNext }: {
-  state: OnboardingState | null; canWrite: boolean; busy: string | null; setBusy: (b: string | null) => void;
+function TestStep({ state, busy, setBusy, refresh, flash, onNext }: {
+  state: OnboardingState | null; busy: string | null; setBusy: (b: string | null) => void;
   refresh: () => Promise<unknown>; flash: (ok: boolean, t: string) => void; onNext: () => void;
 }) {
   const test = async (id: string) => {

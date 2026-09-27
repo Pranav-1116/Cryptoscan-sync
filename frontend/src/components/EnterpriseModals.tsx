@@ -11,8 +11,9 @@
 import React, { useEffect, useState } from "react";
 import {
   ApiResult, activeTenantId, apiSaasAdminTenants, apiTenantIsolation,
-  getRoles, getUserName, setActiveTenantId,
+  setActiveTenantId,
 } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 import { useEnterprise, EnvProfile } from "./EnterpriseContext";
 
 /* ── shared shell ─────────────────────────────────────────────────── */
@@ -65,7 +66,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const { roles } = useEnterprise();
+  const { roles } = useAuth();
   const current = activeTenantId();
 
   useEffect(() => {
@@ -193,8 +194,7 @@ const ROLE_CATALOG: Array<{ role: string; desc: string }> = [
 ];
 
 export function RoleModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { user, roles } = useEnterprise();
-  const mine = getRoles();
+  const { user, roles: mine } = useAuth();
   if (!isOpen) return null;
   return (
     <ModalShell title="Role Profile (RBAC)" onClose={onClose} wide>

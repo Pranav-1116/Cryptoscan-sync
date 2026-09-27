@@ -399,8 +399,10 @@ SBOM → CBOM → NBOM → HBOM → VBOM → business process. That is the diffe
 between "we use RSA-1024 somewhere" and "api.bank.ae:443 presents it".
 
 **Repository pipeline now implemented; live proof pending.** The worker leader
-tick selects due API-created targets, calls the live TLS scanner, persists a
-`target_kind="scheduled"` run, and advances the schedule only after success.
-Focused tests cover this contract and the manual `/network/run-due` path uses
-the same durable run ledger. A controlled live worker run against a real estate
-is still required before calling NBOM operationally proven.
+tick selects due API-created targets, groups them by tenant, calls the live TLS
+scanner, persists tenant-attributed `target_kind="scheduled"` runs, and
+advances schedules only after success. Focused tests cover this contract and
+the manual `/network/run-due` path uses the same durable run ledger. Scan
+submission now follows the central `scan.trigger` permission matrix rather
+than an auditor-only shortcut. A controlled live worker run against a real
+estate is still required before calling NBOM operationally proven.

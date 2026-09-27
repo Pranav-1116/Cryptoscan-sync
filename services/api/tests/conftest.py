@@ -192,6 +192,7 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
 async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
     """Authenticated async test client (mocked auth)."""
     from api import dependencies
+    from api.routers.trigger import require_scan_trigger
 
     # Override auth to always return test user
     app.dependency_overrides[dependencies.get_current_user] = (
@@ -200,12 +201,29 @@ async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
     # Role-gated dependencies default to the same test user (admin powers).
     app.dependency_overrides[dependencies.require_admin] = lambda: "testuser"
     app.dependency_overrides[dependencies.require_auditor] = lambda: "testuser"
+    app.dependency_overrides[require_scan_trigger] = lambda: "testuser"
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as ac:
         yield ac
+
+@_async_fixture
+async def role_client(app) -> AsyncGenerator[AsyncClient, None]:
+    """Client that exercises the real scan-trigger permission dependency."""
+    from api.routers.trigger import require_scan_trigger
+
+    # The regular authenticated fixture deliberately bypasses role resolution
+    # for broad endpoint tests. This fixture removes only that bypass so tests
+    # can inject server-side roles through the RBAC resolver.
+    app.dependency_overrides.pop(require_scan_trigger, None)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
 
 @_async_fixture
 async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
@@ -218,6 +236,7 @@ async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
     from fastapi import HTTPException
 
     from api import dependencies
+    from api.routers.trigger import require_scan_trigger
 
     app.dependency_overrides[dependencies.get_current_user] = lambda: "lowpriv"
 
@@ -226,6 +245,7 @@ async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[dependencies.require_admin] = _deny
     app.dependency_overrides[dependencies.require_auditor] = _deny
+    app.dependency_overrides[require_scan_trigger] = _deny
 
     async with AsyncClient(
         transport=ASGITransport(app=app),

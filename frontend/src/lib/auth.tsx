@@ -135,7 +135,7 @@ export function RequireRole({
   fallback = null,
 }: {
   anyOf: string[];
-  children: React.ReactNode;
+  children?: React.ReactNode;
   fallback?: React.ReactNode;
 }) {
   const { roles } = useAuth();

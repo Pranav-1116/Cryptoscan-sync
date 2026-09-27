@@ -177,10 +177,12 @@ Only after Phase 1 is moving. Ordered by what a bank will notice.
 The monitor leader tick now selects enabled API-created `NetworkScanTarget`
 rows by their persisted schedule, calls the live `NetworkTlsScanner`, stores
 one `NetworkScanRun` with `target_kind="scheduled"`, materializes certificates
-and usages, and advances the target only after a successful scan. The manual
-`/network/run-due` path writes to the same run ledger. `test_network_sweep.py`
-proves due selection, persistence, rescheduling, failure semantics and monitor
-tick wiring. NBOM continues to derive from stored runs; no demo seed is needed.
+and usages, and advances the target only after a successful scan. Due rows are
+grouped by tenant so persisted runs and materialized inventory retain tenant
+ownership. The manual `/network/run-due` path writes to the same run ledger.
+`test_network_sweep.py` proves due selection, persistence, tenant attribution,
+rescheduling, failure semantics and monitor tick wiring. NBOM continues to
+derive from stored runs; no demo seed is needed.
 
 Remaining proof: run a live multi-target worker against a controlled estate and
 record the resulting NBOM/scan-run evidence.

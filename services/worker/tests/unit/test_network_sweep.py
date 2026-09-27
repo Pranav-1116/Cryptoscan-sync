@@ -13,6 +13,7 @@ from db.connection.session import Base
 from db.models.network_scan_run import NetworkScanRun
 from db.repositories.network_scan_target_repository import NetworkScanTargetRepository
 from db.repositories.scan_run_repository import ScanRunRepository
+from db.tenancy import install_tenant_guard
 from worker.monitor.engine import MonitorEngine
 from worker.monitor.network_sweep import run_due_network_targets
 
@@ -75,6 +76,56 @@ def test_due_network_targets_are_scanned_persisted_and_rescheduled():
     assert row.last_scan_time == T0
     assert row.next_scan_time == T0 + timedelta(hours=1)
     assert future.last_scan_time is None
+
+
+def test_scheduled_run_preserves_target_tenant_scope():
+    install_tenant_guard()
+    session = _session()
+    row = NetworkScanTargetRepository(session).upsert(
+        "tenant-a.example:443",
+        tenant_id="tenant-a",
+        scan_frequency="hourly",
+        enabled=True,
+        next_scan_time=T0 - timedelta(seconds=1),
+    )
+    session.commit()
+    FakeScanner.calls = []
+
+    summary = run_due_network_targets(session, now=T0, scanner_factory=FakeScanner)
+
+    assert summary["status"] == "OK"
+    run = session.execute(select(NetworkScanRun)).scalar_one()
+    assert run.tenant_id == "tenant-a"
+    assert row.tenant_id == "tenant-a"
+
+
+def test_due_targets_are_scanned_in_separate_tenant_groups():
+    install_tenant_guard()
+    session = _session()
+    repo = NetworkScanTargetRepository(session)
+    repo.upsert(
+        "tenant-a.example:443",
+        tenant_id="tenant-a",
+        scan_frequency="hourly",
+        next_scan_time=T0 - timedelta(seconds=1),
+    )
+    repo.upsert(
+        "tenant-b.example:443",
+        tenant_id="tenant-b",
+        scan_frequency="hourly",
+        next_scan_time=T0 - timedelta(seconds=1),
+    )
+    session.commit()
+    FakeScanner.calls = []
+
+    summary = run_due_network_targets(session, now=T0, scanner_factory=FakeScanner)
+
+    runs = session.execute(select(NetworkScanRun)).scalars().all()
+    assert summary["status"] == "OK"
+    assert summary["scanned"] == 2
+    assert FakeScanner.calls == [["tenant-a.example:443"], ["tenant-b.example:443"]]
+    assert {run.tenant_id for run in runs} == {"tenant-a", "tenant-b"}
+    assert len(summary["run_ids"]) == 2
 
 
 def test_disabled_and_not_due_network_targets_are_not_run():
