@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class ScanJob(BaseModel):
+class ScanJob(BaseModel, TenantScoped):
     __tablename__ = "scan_jobs"
 
     job_type: Mapped[str] = mapped_column(String(50), nullable=False, default="MANUAL")

@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class System(BaseModel):
+class System(BaseModel, TenantScoped):
     __tablename__ = "systems"
     __table_args__ = (
         Index("ix_systems_agility_score", "current_agility_score"),

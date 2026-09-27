@@ -40,6 +40,7 @@ const PRIMARY_SECTIONS = [
     items: [
       { to: "/cbom", label: "CBOM", icon: "⬡" },
       { to: "/hbom", label: "HBOM", icon: "⬢" },
+      { to: "/nbom", label: "NBOM", icon: "⬣" },
       { to: "/graph", label: "Dependency Graph", icon: "⬟" },
       { to: "/crypto-assets", label: "Crypto Inventory", icon: "⚿" },
       { to: "/pqc", label: "PQC Readiness", icon: "◬" },

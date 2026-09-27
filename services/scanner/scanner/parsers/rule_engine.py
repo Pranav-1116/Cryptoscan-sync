@@ -172,10 +172,14 @@ def expand_macros(text: str) -> str:
         for name, (params, body) in macros.items():
             if name not in line:
                 continue
+            # Both arms take the macro `body` literally. A function replacement
+            # is template-free by construction, so a backslash in the body
+            # cannot be misread as a group reference -- the parameterised arm
+            # below already hand-escaped for this, the bare arm did not.
             if params is None:
-                line = re.sub(rf"\b{re.escape(name)}\b", body, line)
+                line = re.sub(rf"\b{re.escape(name)}\b", lambda _m, _b=body: _b, line)
             else:
-                line = re.sub(rf"\b{re.escape(name)}\s*\([^)]*\)", body.replace("\\", "\\\\"), line)
+                line = re.sub(rf"\b{re.escape(name)}\s*\([^)]*\)", lambda _m, _b=body: _b, line)
         out_lines.append(line)
     return "\n".join(out_lines)
 
@@ -280,6 +284,23 @@ def _may_match(pattern: "re.Pattern[str]", lower_text: str) -> bool:
     return False
 
 
+_STRING_LITERAL = re.compile(
+    r"""'(?:\\.|[^'\\\n])*'|"(?:\\.|[^"\\\n])*\"""",
+    re.S,
+)
+
+
+def _string_literal_spans(text: str) -> list[tuple[int, int]]:
+    """Ordered, non-overlapping (start, end) spans of quoted string literals.
+
+    Single- and double-quoted, backslash escapes honoured, unterminated quotes
+    ignored (the regex requires a closing quote on the same line). Backticks
+    are deliberately excluded: JS templates routinely wrap real interpolated
+    code, and the desugaring pass already folds the static ones.
+    """
+    return [m.span() for m in _STRING_LITERAL.finditer(text)]
+
+
 def _raw_of(match: re.Match, spec: dict) -> str:
     """``raw_group`` lets a rule expose the *value* (e.g. a cipher list) instead of the whole match."""
     g = spec.get("raw_group")
@@ -343,6 +364,31 @@ def run_rules(
         )
 
     lower_text = text.lower()
+    _string_spans_cache: list[tuple[int, int]] | None = None
+
+    def _in_string_literal(pos: int) -> bool:
+        """True when ``pos`` falls inside a quoted string literal.
+
+        Only consulted for *invocation* matches (see below). Algorithm names
+        are legitimately string literals ("AES/GCM/NoPadding"), so this must
+        never be applied to them.
+        """
+        nonlocal _string_spans_cache
+        if _string_spans_cache is None:
+            _string_spans_cache = _string_literal_spans(text)
+        spans = _string_spans_cache
+        lo, hi = 0, len(spans)
+        while lo < hi:  # binary search: spans are ordered and non-overlapping
+            mid = (lo + hi) // 2
+            start, end = spans[mid]
+            if pos < start:
+                hi = mid
+            elif pos >= end:
+                lo = mid + 1
+            else:
+                return True
+        return False
+
     for pattern, spec in rules:
         if not _may_match(pattern, lower_text):
             continue
@@ -350,6 +396,12 @@ def run_rules(
             continue  # rule only applies to files that establish a context (e.g. a Thales HSM client class)
         for match in pattern.finditer(text):
             whole = match.group(0)
+            # An invocation (the match ends at a "(") that begins inside a
+            # string literal is text about code, not code. Data files carry
+            # these: caniuse-lite lists the feature name "crypto.getRandomValues()"
+            # as a plain string, which was reported as a live CSPRNG call site.
+            if whole.rstrip().endswith("(") and _in_string_literal(match.start()):
+                continue
             # ``(?m)^\s*x`` can start on the previous blank line; report where the text starts
             line = text[: match.start() + len(whole) - len(whole.lstrip())].count("\n") + 1
             if spec.get("line_group"):

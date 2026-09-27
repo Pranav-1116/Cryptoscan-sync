@@ -15,11 +15,12 @@ from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 VALID_FREQUENCIES = ("daily", "weekly", "monthly", "after_scan", "after_major_change")
 
 
-class TechnologyBomExportSchedule(BaseModel):
+class TechnologyBomExportSchedule(BaseModel, TenantScoped):
     __tablename__ = "technology_bom_export_schedules"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
@@ -54,7 +55,7 @@ class TechnologyBomExportSchedule(BaseModel):
         }
 
 
-class TechnologyBomExportRun(BaseModel):
+class TechnologyBomExportRun(BaseModel, TenantScoped):
     __tablename__ = "technology_bom_export_runs"
 
     schedule_id: Mapped[str | None] = mapped_column(

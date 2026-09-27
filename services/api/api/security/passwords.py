@@ -1,14 +1,30 @@
-"""Password hashing (PBKDF2-SHA256) with a plaintext fallback for local development."""
+"""Password hashing (PBKDF2-SHA256) with a plaintext fallback for local development.
+
+The plaintext fallback is refused outright when ENVIRONMENT=production.
+"""
 
 from __future__ import annotations
 
 import binascii
 import hashlib
 import hmac
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 SCHEME = "pbkdf2_sha256"
 DEFAULT_ITERATIONS = 210_000
+
+
+def _plaintext_fallback_forbidden() -> bool:
+    """True in production, where a non-hashed stored credential must not verify."""
+    try:
+        from api.config.settings import get_settings
+
+        return bool(get_settings().is_production)
+    except Exception:  # settings unavailable -> assume production, fail closed
+        return os.environ.get("ENVIRONMENT", "production").strip().lower() == "production"
 
 
 def _iterations() -> int:
@@ -139,6 +155,16 @@ def verify_password(password: str, stored: str) -> bool:
             return False
         actual = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
         return hmac.compare_digest(actual, expected)
+    # Legacy/dev fallback: the stored value is not a PBKDF2 hash, so the only
+    # thing we can do is compare it literally. That is never acceptable in
+    # production -- accepting it there would let a plaintext ADMIN_PASSWORD (or
+    # an un-migrated row) authenticate against an unhashed secret.
+    if _plaintext_fallback_forbidden():
+        logger.error(
+            "rejected login against a non-PBKDF2 stored credential; "
+            "re-hash it with hash_password() (scripts/hash_admin_password.py)"
+        )
+        return False
     left = password.encode("utf-8")
     right = stored.encode("utf-8")
     if len(left) != len(right):

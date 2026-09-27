@@ -9,9 +9,10 @@ from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel, utcnow
+from db.tenancy import TenantScoped
 
 
-class RuntimeFinding(BaseModel):
+class RuntimeFinding(BaseModel, TenantScoped):
     __tablename__ = "runtime_findings"
 
     scanner_id: Mapped[str] = mapped_column(String(120), nullable=False, index=True)

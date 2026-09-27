@@ -13,6 +13,34 @@ import pytest
 from httpx import AsyncClient
 
 WEBHOOK_SECRET = "test-webhook-secret-abc123"
+
+
+@pytest.fixture(autouse=True)
+def _no_real_pipeline(monkeypatch):
+    """Keep the webhook route's background work out of the network.
+
+    With no REDIS_URL the route does not enqueue -- it schedules
+    PipelineRunner.run as a FastAPI BackgroundTask, which the test transport
+    executes in-process. That runner shells out to ``git clone`` against the
+    payload's clone_url (https://github.com/org/payment-api.git, a repo that
+    does not exist), so these tests made a real network call and then failed on
+    the clone. A subprocess also slips straight past pytest-socket, so nothing
+    else in the suite would have caught it.
+
+    These tests cover the webhook contract -- signature, parsing, queueing --
+    so record the dispatch instead of performing it. Pipeline behaviour itself
+    is covered by the worker suite.
+    """
+    calls: list[dict] = []
+
+    def _record(self, **kwargs):
+        calls.append(kwargs)
+        return {"job_id": kwargs.get("job_id"), "status": "COMPLETED"}
+
+    monkeypatch.setattr(
+        "worker.pipeline.pipeline_runner.PipelineRunner.run", _record, raising=True
+    )
+    return calls
 GITHUB_PUSH_PAYLOAD = {
     "ref": "refs/heads/main",
     "deleted": False,

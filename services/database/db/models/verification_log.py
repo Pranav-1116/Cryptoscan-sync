@@ -8,9 +8,10 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class VerificationLog(BaseModel):
+class VerificationLog(BaseModel, TenantScoped):
     __tablename__ = "verification_log"
 
     scan_id: Mapped[str] = mapped_column(

@@ -128,7 +128,7 @@ _ENUM_BLOCK = re.compile(r"""\b(?:const\s+)?enum\s+(\w+)\s*\{([^}]*)\}|\bconst\s
 
 
 def _desugar_js(source: str) -> str:
-    """Fold trivial string constructions so obfuscated algorithm names are seen
+    r"""Fold trivial string constructions so obfuscated algorithm names are seen
     as literals.  Line-preserving.
 
     * ``["a", "es-128-ecb"].join("")``       -> ``"aes-128-ecb"``
@@ -165,7 +165,11 @@ def _desugar_js(source: str) -> str:
             if orig and alias and orig != alias and re.fullmatch(r"\w+", alias):
                 aliases[alias] = orig
     for alias, orig in aliases.items():
-        source = re.sub(rf"(?<![\w.]){re.escape(alias)}\s*\(", orig + "(", source)
+        # Replacement passed as a function, never as a template string: these
+        # values come from the scanned file, and re.sub() would otherwise read
+        # a backslash sequence in them as a group/escape reference (a literal
+        # \u in minified JS raised "bad escape \u" and killed the whole scan).
+        source = re.sub(rf"(?<![\w.]){re.escape(alias)}\s*\(", lambda _m, _o=orig: _o + "(", source)
 
     consts = {m.group(1): m.group(3) for m in _STRING_CONST.finditer(source)}
     for m in _NUM_CONST.finditer(source):
@@ -174,7 +178,11 @@ def _desugar_js(source: str) -> str:
     for m in _ENUM_BLOCK.finditer(source):
         owner, body = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
         for mm in _ENUM_MEMBER.finditer(body + "\n"):
-            source = re.sub(rf"\b{re.escape(owner)}\.{re.escape(mm.group(1))}\b(?!\s*[:=])", '"' + mm.group(3) + '"', source)
+            source = re.sub(
+                rf"\b{re.escape(owner)}\.{re.escape(mm.group(1))}\b(?!\s*[:=])",
+                lambda _m, _v=mm.group(3): '"' + _v + '"',
+                source,
+            )
     if consts:
         def _tmpl(m: re.Match) -> str:
             body = m.group(1)
@@ -189,6 +197,15 @@ def _desugar_js(source: str) -> str:
 
 
 def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> list[RawFinding]:
+    # ``.d.ts`` is an ambient declaration file: type signatures only, no
+    # runtime code, so nothing in it can be a crypto call site. Scanning them
+    # reported every declared function as an invocation (nanoid's three
+    # ``export function nanoid(size?: number)`` signatures each became a live
+    # CSPRNG finding). The implementation those declarations describe is in the
+    # sibling .js, which is scanned normally.
+    name = file_path.name.lower()
+    if name.endswith(".d.ts") or name.endswith(".d.mts") or name.endswith(".d.cts"):
+        return []
     try:
         raw_source = file_path.read_text(encoding="utf-8", errors="replace")
     except OSError:

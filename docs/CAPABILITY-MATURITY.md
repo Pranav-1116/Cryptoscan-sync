@@ -12,9 +12,9 @@ proven, and the console says so on every page header. Unknown routes default to
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 33 |
 | **Beta** | Real code and real data; thinner test coverage or short deployment history. | 30 |
-| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 8 |
+| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 9 |
 
-Total: 71 surfaces.
+Total: 72 surfaces.
 
 ## GA (33)
 
@@ -89,13 +89,14 @@ Total: 71 surfaces.
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/role-dashboard` | Overview | Per-role landing view. |
 
-## Preview (8)
+## Preview (9)
 
 | Route | Area | Why this tier |
 |---|---|---|
 | `/platform-p2` | Administration | Phase-2 platform features behind one page (marketplace, datalake, anomaly) — each < 700 LOC. |
 | `/supervision` | Governance | Supervisory-review view for regulators; a read model over evidence, early. |
 | `/trust` | Governance | Trust-score surface; scoring inputs still being defined. |
+| `/nbom` | Intelligence | Network BOM: listeners, certificates, cipher suites and tunnels with a dependency graph. The generator and its cascade are tested, but no network scan feeds it yet, so the page ships ahead of its data source. |
 | `/pqc-map` | Intelligence | Geographic/estate PQC map; needs location context the scanners do not collect yet. |
 | `/security-intelligence` | Intelligence | Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md. |
 | `/what-if` | Intelligence | Scenario simulation over the inventory; scenarios are fixed templates today. |

@@ -14,9 +14,10 @@ from sqlalchemy import DateTime, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class HardwareAsset(BaseModel):
+class HardwareAsset(BaseModel, TenantScoped):
     __tablename__ = "hardware_assets"
 
     asset_id: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
@@ -51,7 +52,7 @@ class HardwareAsset(BaseModel):
         return data
 
 
-class HardwareEventRow(BaseModel):
+class HardwareEventRow(BaseModel, TenantScoped):
     """Immutable hardware event journal entry (§2, §16)."""
 
     __tablename__ = "hardware_events"
@@ -73,7 +74,7 @@ class HardwareEventRow(BaseModel):
         return data
 
 
-class HardwareAgentRow(BaseModel):
+class HardwareAgentRow(BaseModel, TenantScoped):
     """Edge-agent heartbeat health (§4)."""
 
     __tablename__ = "hardware_agents"

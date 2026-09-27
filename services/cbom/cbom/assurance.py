@@ -329,6 +329,12 @@ def correlate_xbom(
     apps = (layers.get("sbom") or {}).get("components", [])
     hw = (layers.get("hbom") or {}).get("components", [])
     vends = (layers.get("vendor") or {}).get("components", [])
+    # NBOM: what the same crypto asset is exposed as on the wire. A CBOM entry
+    # says an algorithm exists in the estate; the NBOM entry says which
+    # listener serves it, which is the difference between "we use RSA-1024
+    # somewhere" and "api.bank.ae:443 presents it to the internet". Optional —
+    # an estate with no network scan correlates exactly as before.
+    net = (layers.get("nbom") or {}).get("components", [])
 
     # normalise system_assets: {system_id -> [asset_id, ...]}
     sa: dict[str, list[str]] = {}
@@ -365,6 +371,24 @@ def correlate_xbom(
                 if a.get("name") == asset or _bom_ref_short(a.get("bom-ref") or "") == asset:
                     used.append(a)
         return used
+
+    def _network_for(asset: str) -> list[Mapping[str, Any]]:
+        """NBOM components exposing this asset on the wire.
+
+        Matched on the host, which is the field both layers share: an NBOM
+        endpoint is named ``host:port`` and carries a ``cryptoscan:host``
+        property, while a CBOM asset carries the host it was found on.
+        """
+        if not asset:
+            return []
+        out: list[Mapping[str, Any]] = []
+        for n in net:
+            props = {p.get("name"): p.get("value") for p in (n.get("properties") or [])}
+            host = props.get("cryptoscan:host") or ""
+            name = str(n.get("name") or "")
+            if host == asset or name == asset or name.split(":")[0] == asset:
+                out.append(n)
+        return out
 
     traces: list[dict[str, Any]] = []
     for c in crypto:
@@ -412,11 +436,19 @@ def correlate_xbom(
             "business_processes": [{"name": bp.get("name"), "process_type": bp.get("process_type"),
                                     "revenue_daily": bp.get("revenue_daily"),
                                     "sla_uptime": bp.get("sla_uptime")} for bp in bps],
+            "network": [
+                {"bom-ref": n.get("bom-ref"), "name": n.get("name"),
+                 "kind": next((p.get("value") for p in (n.get("properties") or [])
+                               if p.get("name") == "cryptoscan:kind"), None),
+                 "findings": len(n.get("cryptoscan:findings") or [])}
+                for n in _network_for(asset)
+            ],
             "impact_count": {
                 "applications": len(used_apps),
                 "hardware": 1 if hw_for else 0,
                 "vendors": 1 if vendor_for else 0,
                 "business_processes": len(bps),
+                "network_exposure": len(_network_for(asset)),
             },
         }
         if bom_ref is None or c.get("bom-ref") == bom_ref:

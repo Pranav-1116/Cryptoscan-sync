@@ -27,9 +27,22 @@ def override_settings(monkeypatch):
     """Override settings for test environment."""
     monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "test-webhook-secret-abc123")
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://test:test@localhost/test_db")
-    monkeypatch.setenv("REDIS_URL", "redis://localhost:6379/1")
+    # REDIS_URL must stay empty: it is read by api.main._shared_rate_limit_backend(),
+    # and pointing it at a real server made the rate limiter cluster-shared. Its
+    # fixed-window counters (e.g. rl:register:ip:testclient:<epoch>, TTL = window+1,
+    # i.e. an hour for the 10/hour register class) then survived BOTH the per-test
+    # app fixture and the pytest process itself, so on any machine that happened to
+    # have Redis listening on 6379 the auth suites failed with 429s for an hour
+    # after their first full run. Empty => in-process windows, fresh per app
+    # instance, which is what "the suite is hermetic" is supposed to mean.
+    # A test that wants Redis behaviour injects its own settings object.
+    monkeypatch.setenv("REDIS_URL", "")
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-for-sessions-min-32-chars")
     monkeypatch.setenv("ENVIRONMENT", "test")
+    # Self-serve tenant signup ships disabled (see api.routers.saas: a new
+    # tenant can currently read the whole scan surface). The suite exercises
+    # the feature, so it opts in explicitly rather than relying on the default.
+    monkeypatch.setenv("CRYPTOSCAN_SAAS_SIGNUP", "true")
     get_settings.cache_clear()
 
 

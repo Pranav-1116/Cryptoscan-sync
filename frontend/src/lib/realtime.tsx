@@ -65,17 +65,66 @@ export const useRealtime = (): RealtimeState => useContext(Ctx);
 
 /** Compact per-page indicator: is this page being fed by the live SSE stream,
  *  or falling back to polling? Mirrors the global livehead but on the page. */
+/** Seconds since the last real event, or null when nothing has arrived yet. */
+function useSecondsSince(at: number | null): number | null {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    // One timer, not one per consumer: this only drives an age readout.
+    const id = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return at === null ? null : Math.max(0, Math.round((Date.now() - at) / 1000));
+}
+
+/**
+ * Connection state for the header.
+ *
+ * Reports the stream's own four states rather than collapsing them to
+ * connected/not. The one that matters is **stalled**: the socket is open, so
+ * a two-state indicator shows green, while no events have arrived for a
+ * while and every number on screen is quietly going out of date. An operator
+ * acting on a frozen screen is the failure this is here to prevent, so the
+ * age of the last event is shown as soon as it is old enough to matter.
+ */
 export function RealtimeChip({ compact = false }: { compact?: boolean }) {
   const rt = useRealtime();
-  const tone = rt.connected ? "green" : rt.backend === false ? "red" : "amber";
-  const label = rt.connected
-    ? compact ? "LIVE"
-      : `SSE live · ${rt.subscribers} sub${rt.eps ? ` · ${rt.eps} ev/s` : ""}`
+  const age = useSecondsSince(rt.lastEventAt);
+
+  const tone =
+    rt.conn === "live" ? "green"
+    : rt.conn === "stalled" ? "amber"
+    : rt.conn === "connecting" ? "slate"
+    : "red";
+
+  const state =
+    rt.conn === "live" ? "LIVE"
+    : rt.conn === "stalled" ? "STALLED"
+    : rt.conn === "connecting" ? "CONNECTING"
     : rt.backend === false ? "OFFLINE"
-    : "POLLING FALLBACK";
+    : "POLLING";
+
+  // Only surface the age once it is old enough to mean something; a counter
+  // ticking 0s…1s…2s beside a healthy stream is noise.
+  const stale = age !== null && age >= 10 ? `${age < 90 ? `${age}s` : `${Math.round(age / 60)}m`} ago` : null;
+
+  const detail = compact
+    ? stale
+    : [
+        rt.conn === "live" && rt.subscribers ? `${rt.subscribers} sub` : null,
+        rt.conn === "live" && rt.eps ? `${rt.eps} ev/s` : null,
+        stale,
+      ].filter(Boolean).join(" · ");
+
   return (
-    <span className="badge" style={{ borderColor: `var(--${tone})`, color: `var(--${tone})`, display: "inline-flex", alignItems: "center", gap: 5 }}>
-      <span className="dot" style={{ background: `var(--${tone})` }} /> {label}
+    <span
+      className="badge"
+      title={rt.conn === "stalled"
+        ? "The stream is connected but no events have arrived recently — figures on screen may be out of date."
+        : `Event stream: ${rt.conn}`}
+      style={{ borderColor: `var(--${tone})`, color: `var(--${tone})`, display: "inline-flex", alignItems: "center", gap: 5 }}
+    >
+      <span className="dot" style={{ background: `var(--${tone})` }} />
+      {state}{detail ? ` · ${detail}` : ""}
     </span>
   );
 }

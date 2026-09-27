@@ -6,7 +6,7 @@
 | **Baseline** | The approved state of a system's cryptography. Drift is measured against it. Approval is a recorded human action. |
 | **Blast radius** | The set of systems affected if a given component or algorithm is compromised or must change; computed over the dependency graph (BFS; Neo4j or in-database). |
 | **Burn-in** | One-shot proof that an integration works against real infrastructure (`scripts/burn_in.py`: GitHub webhook round-trip, live TLS, SMTP, Neo4j, cloud, container). |
-| **CBOM** | Cryptographic Bill of Materials — CycloneDX 1.5 document listing crypto components (algorithms, keys, certificates, protocols) with evidence. One of the four Technology BOM views. |
+| **CBOM** | Cryptographic Bill of Materials — CycloneDX 1.5 document listing crypto components (algorithms, keys, certificates, protocols) with evidence. Covers cryptography found in the estate's **source**; see NBOM for what is exposed on the wire. One of the five Technology BOM views. |
 | **Chain hash** | `SHA-256(content_hash ‖ previous chain_hash)` per evidence record; the first record chains to the scan session. Editing or removing any record breaks all later hashes. |
 | **CNSA 2.0** | NSA Commercial National Security Algorithm Suite 2.0 — a quantum-resistant algorithm profile; shipped as a policy pack. |
 | **Content hash** | `SHA-256` of the canonically serialised finding. |
@@ -18,7 +18,8 @@
 | **Fingerprint** | SHA-256 over a canonical Technology BOM state; equal fingerprint → no new snapshot. Also: library fingerprints that identify crypto libraries and versions in binaries. |
 | **GA / beta / preview** | Maturity tiers per console surface; see [6. Scope](06-scope-and-readiness.md). |
 | **Gate** | A pass / warn / block decision from policy verdicts and drift, used in CI. Also the SBOM gate (advisories, licences, unpinned, signature) with exit codes 0/1/2/3. |
-| **HBOM** | Hardware Bill of Materials — HSMs, TPMs, firmware, devices; a Technology BOM view. |
+| **HBOM** | Hardware Bill of Materials — HSMs, TPMs, firmware, devices; a Technology BOM view. Depends on hardware-scan coverage. |
+| **NBOM** | Network Bill of Materials — CycloneDX 1.5 inventory of what is exposed **on the wire**: listeners, the certificates and cipher suites they serve, and site-to-site tunnels, with a dependency graph. Derived from stored network scans (`network_scan_runs.result`), not declared. Answers a question the CBOM cannot: no repository mentions a load balancer terminating TLS 1.0 for a legacy partner. Conversely the CBOM sees algorithms chosen at runtime that no probe observes — the two are complementary, and the parts that overlap corroborate each other. A Technology BOM view. |
 | **HNDL** | Harvest-now-decrypt-later: data protected today by quantum-vulnerable algorithms that an adversary can store and decrypt later. Surfaces in PQC readiness. |
 | **Manifest hash** | SHA-256 over all chain hashes of a scan; stored on the scan and included in signed exports. |
 | **Materialise** | Build the Technology BOM state from the inventory (`materialize_technology_bom()`). |
@@ -29,6 +30,7 @@
 | **PQC** | Post-quantum cryptography. PQC readiness classifies each asset into a NIST IR 8547-aligned migration bucket. |
 | **Production guard** | Boot-time refusal to run in `ENVIRONMENT=production` with unsafe configuration (SQLite, demo secrets, `CORS=*`, plaintext admin password). |
 | **SBOM** | Software Bill of Materials (CycloneDX 1.5 / SPDX 2.3) per artifact, with resolved and transitive components; a Technology BOM view and the DevSecOps scanner's output. |
+| **Blast radius** | For one BOM component, everything that must change if it is replaced. Computed by walking the NBOM dependency graph **backwards** — from a weak certificate to every endpoint serving it and every device terminating those. It is what makes a migration orderable: a flat inventory can say a key is RSA-1024, only the graph can say how much of the estate that key holds up. |
 | **Scan** | One execution of a collector over one input, producing findings, evidence and inventory rows. `scans` row; created by a `scan_jobs` job. |
 | **Snapshot** | An immutable, fingerprint-addressed version of the Technology BOM (`TECHBOM-YYYYMMDD-HHMMSS`), with a per-layer diff to its parent. |
 | **Soak** | A long run of the real pipeline on the real stack, sampling resources every cycle, to find what only shows over time (`scripts/soak.py`). |

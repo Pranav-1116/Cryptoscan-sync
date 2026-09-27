@@ -120,7 +120,51 @@ _FACTORY_NAMES = {
     "mactripledes": "3DES", "randomnumbergenerator": "CSPRNG",
 }
 
+# Class-name stem -> algorithm, for *implementations* of a primitive rather
+# than call sites (``class AesEngine : IBlockCipher``). Keyed on the stem left
+# after stripping the Engine/Digest/Signer/Mac suffix, lower-cased.
+_IMPL_ALGOS: dict[str, str] = {
+    "aes": "AES", "aeslight": "AES", "aesfast": "AES", "rijndael": "AES",
+    "des": "DES", "desede": "3DES", "tripledes": "3DES",
+    "blowfish": "Blowfish", "twofish": "Twofish", "serpent": "Serpent",
+    "camellia": "Camellia", "camellialight": "Camellia", "cast5": "CAST5", "cast6": "CAST6",
+    "idea": "IDEA", "seed": "SEED", "aria": "ARIA", "sm4": "SM4", "noekeon": "Noekeon",
+    "rc2": "RC2", "rc4": "RC4", "rc532": "RC5", "rc564": "RC5", "rc6": "RC6",
+    "salsa20": "Salsa20", "xsalsa20": "XSalsa20", "chacha": "ChaCha20", "chacha7539": "ChaCha20",
+    "skipjack": "Skipjack", "tea": "TEA", "xtea": "XTEA", "threefish": "Threefish",
+    "gost28147": "GOST 28147", "hc128": "HC-128", "hc256": "HC-256", "vmpc": "VMPC",
+    "rsa": "RSA", "rsablinded": "RSA", "elgamal": "ElGamal", "naccache": "Naccache-Stern",
+    "md2": "MD2", "md4": "MD4", "md5": "MD5",
+    "sha1": "SHA-1", "sha224": "SHA-224", "sha256": "SHA-256", "sha384": "SHA-384",
+    "sha512": "SHA-512", "sha3": "SHA3-256", "shake": "SHAKE128",
+    "ripemd128": "RIPEMD-128", "ripemd160": "RIPEMD-160", "ripemd256": "RIPEMD-256",
+    "whirlpool": "Whirlpool", "tiger": "Tiger", "gost3411": "GOST R 34.11",
+    "blake2b": "BLAKE2b", "blake2s": "BLAKE2s", "blake3": "BLAKE3", "sm3": "SM3",
+    "dsa": "DSA", "ecdsa": "ECDSA", "ed25519": "Ed25519", "ed448": "Ed448",
+    "ecgost3410": "GOST R 34.10", "gost3410": "GOST R 34.10",
+}
+
+# Base types that make a class declaration a cryptographic primitive. Besides
+# the interfaces, a primitive may extend another primitive
+# (``class DesEdeEngine : DesEngine``), so a base whose own name ends in
+# Engine/Digest/Cipher/Mac/Signer counts too. That stays precise because the
+# *derived* name must still resolve through _IMPL_ALGOS to be reported.
+_CS_CRYPTO_BASES = (r"IBlockCipher|IStreamCipher|IAsymmetricBlockCipher|IDigest|IMac|ISigner"
+                    r"|IAeadCipher|IAeadBlockCipher|IDerivationFunction|IXof|GeneralDigest"
+                    r"|IBlockCipherPadding|ISignatureFactory"
+                    r"|[A-Za-z0-9_.]*(?:Engine|Digest|Cipher|Mac|Signer)")
+
 _RULES: list[Rule] = [
+    # --- vendored/implemented primitives ---------------------------------------------------------
+    # ``public sealed class AesEngine : IBlockCipher`` is an AES *implementation*.
+    # Without this a .NET estate that vendors or forks BouncyCastle shows no AES
+    # at all -- bc-csharp's own AesEngine.cs reported nothing, while the Java
+    # equivalent did. Mirrors the ALGORITHM_IMPLEMENTATION handling the Python
+    # parser already applies to ``class AES(BlockCipherAlgorithm)``.
+    _r(r"\bclass\s+(\w+?)(?:Engine|Digest|Signer|Mac|BlockCipher)\s*(?:<[^>]*>)?\s*:\s*[^{;]*?\b(?:" + _CS_CRYPTO_BASES + r")\b",
+       {"api_type": "CIPHER_INSTANCE", "purpose": "ALGORITHM_IMPLEMENTATION"},
+       "vendored-implementation", algo_from_group=1, algo_map=_IMPL_ALGOS,
+       confidence="MEDIUM", confidence_reason="class implements a cryptographic primitive"),
     # --- post-quantum (.NET 10 System.Security.Cryptography, BouncyCastle PQC) -----------------------
     _r(r"\bMLKem(?:Algorithm)?\.(?:GenerateKey|ImportEncapsulationKey|ImportDecapsulationKey|ImportPrivateSeed|ImportPkcs8PrivateKey|ImportSubjectPublicKeyInfo|MLKem512|MLKem768|MLKem1024)\b", _KA, algorithm="ML-KEM"),
     _r(r"\bMLDsa(?:Algorithm)?\.(?:GenerateKey|ImportMLDsaPrivateSeed|ImportMLDsaPublicKey|ImportMLDsaSecretKey|ImportPkcs8PrivateKey|ImportSubjectPublicKeyInfo|MLDsa44|MLDsa65|MLDsa87)\b", _S, algorithm="ML-DSA"),
@@ -333,7 +377,10 @@ def _resolve_using_aliases(source: str) -> str:
     Line-preserving; only aliases of the BCL crypto namespace are rewritten."""
     aliases = {m.group(1): m.group(2) for m in _USING_ALIAS.finditer(source) if m.group(1) != m.group(2)}
     for alias, target in aliases.items():
-        source = re.sub(rf"(?<![\w.]){re.escape(alias)}(?=\s*\.\s*\w)", target, source)
+        # Function replacement: `target` comes from the scanned file, and re.sub()
+        # would read a backslash sequence in it as an escape reference.
+        source = re.sub(rf"(?<![\w.]){re.escape(alias)}(?=\s*\.\s*\w)",
+                        lambda _m, _t=target: _t, source)
     return source
 
 

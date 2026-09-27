@@ -2,7 +2,7 @@ from pathlib import Path
 
 from scanner.core.plugin import JavaSourcePlugin
 from scanner.parsers.java_ast import extract_crypto_events
-from scanner.parsers.java_parser import JavaParser
+from scanner.parsers.java_parser import JavaParser, parse_java_file
 
 
 def test_ast_ignores_commented_cipher(tmp_path: Path):
@@ -59,3 +59,45 @@ def test_ast_parse_error_does_not_abort_sibling(tmp_path: Path):
 def test_extract_events_skips_block_comments():
     source = 'class C { /* Cipher.getInstance("MD5"); */ void t() {} }'
     assert extract_crypto_events(source) == []
+
+
+# --- vendored / forked crypto implementations ---------------------------- #
+# A bank that ships a forked BouncyCastle implements the primitive rather than
+# calling it; bc-java's AESEngine.java previously matched only incidentally.
+# See docs/accuracy/EXTERNAL-VALIDATION.md round 2.
+
+def _algos(tmp_path: Path, name: str, body: str) -> set[str]:
+    path = tmp_path / name
+    path.write_text(body)
+    return {f.crypto.algorithm for f in parse_java_file(path, tmp_path)}
+
+
+def test_java_engine_class_implementing_blockcipher_is_an_aes_implementation(tmp_path: Path):
+    assert "AES" in _algos(
+        tmp_path, "AESEngine.java",
+        "public class AESEngine implements BlockCipher {\n"
+        "    public String getAlgorithmName() { return \"AES\"; }\n}\n",
+    )
+
+
+def test_java_engine_extending_another_engine_is_detected(tmp_path: Path):
+    assert "3DES" in _algos(
+        tmp_path, "DESedeEngine.java",
+        "public class DESedeEngine extends DESEngine {\n}\n",
+    )
+
+
+def test_java_digest_class_is_detected(tmp_path: Path):
+    assert "SHA-256" in _algos(
+        tmp_path, "SHA256Digest.java",
+        "public class SHA256Digest extends GeneralDigest implements ExtendedDigest {\n}\n",
+    )
+
+
+def test_java_non_crypto_class_named_like_an_engine_is_not_reported(tmp_path: Path):
+    """Precision guard: the stem must resolve to a known algorithm."""
+    path = tmp_path / "TemplateEngine.java"
+    path.write_text("public class TemplateEngine implements RenderEngine {\n}\n")
+    impls = [f for f in parse_java_file(path, tmp_path)
+             if f.crypto.purpose == "ALGORITHM_IMPLEMENTATION"]
+    assert not impls

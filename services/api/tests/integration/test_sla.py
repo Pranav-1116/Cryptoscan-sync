@@ -10,7 +10,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 API = "/api/v1"
-NOW = datetime(2026, 9, 3, tzinfo=timezone.utc)
 
 
 def _token():
@@ -43,7 +42,15 @@ def client():
 
 
 def _iso(days_ago):
-    return (NOW - timedelta(days=days_ago)).isoformat()
+    """A timestamp ``days_ago`` days before *now*.
+
+    /api/v1/sla/evaluate has no injectable clock -- it classifies against the
+    real current time -- so these offsets must be relative to the same clock.
+    A hardcoded "now" silently changed meaning as the wall clock moved past it
+    (a 2-day-old HIGH finding drifted ON_TRACK -> AT_RISK once the constant was
+    a few weeks stale) and the suite began failing on a date, not on a change.
+    """
+    return (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
 
 
 class TestSla:

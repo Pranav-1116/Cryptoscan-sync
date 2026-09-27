@@ -15,9 +15,10 @@ from sqlalchemy import JSON, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class GraphSnapshot(BaseModel):
+class GraphSnapshot(BaseModel, TenantScoped):
     __tablename__ = "graph_snapshots"
 
     #: monotonic version number (1..n), unique per snapshot.

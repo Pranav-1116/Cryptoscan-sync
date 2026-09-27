@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class SystemAgilityScore(BaseModel):
+class SystemAgilityScore(BaseModel, TenantScoped):
     __tablename__ = "system_agility_scores"
 
     system_id: Mapped[str] = mapped_column(

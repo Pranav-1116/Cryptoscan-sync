@@ -8,9 +8,10 @@ from sqlalchemy import Boolean, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class CryptoAsset(BaseModel):
+class CryptoAsset(BaseModel, TenantScoped):
     __tablename__ = "crypto_assets"
     __table_args__ = (
         Index("ix_assets_algorithm_file", "algorithm", "file_path"),

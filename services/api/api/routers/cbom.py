@@ -661,3 +661,124 @@ def cbom_custom(
             vulns = None
     bom = CbomGenerator().from_records(records, name=body.name, vulnerabilities=vulns)
     return _render(bom, fmt, signed)
+
+
+# ------------------------------- NBOM ---------------------------------- #
+# A CBOM inventories the cryptography in the estate's *code*. An NBOM
+# inventories what is exposed *on the wire* — listeners, the certificates and
+# suites they serve, and the tunnels between sites — with the dependency graph
+# that says what breaks when one of them is replaced. Neither sees what the
+# other sees: code scanning cannot find a load balancer terminating TLS 1.0
+# for a legacy partner, and network scanning cannot find an algorithm chosen
+# at runtime from configuration.
+
+class NbomRequest(BaseModel):
+    """Estate to inventory.
+
+    endpoints: [{host, port, protocol?, tls_version?, cipher_suite?,
+                 certificate?: {...}, device?, observed?}]
+    An endpoint that was never successfully probed must set observed=false; it
+    is inventoried but excluded from every verdict.
+    """
+    endpoints: list[dict] = []
+    tunnels: list[dict] = []
+    devices: list[dict] = []
+    estate: str | None = None
+
+
+@router.post("/nbom")
+def nbom_build(body: NbomRequest, user: str = Depends(get_current_user)):
+    """Build a CycloneDX 1.5 Network BOM with its dependency graph."""
+    from cbom.nbom import build_nbom, summarise
+
+    if not (body.endpoints or body.tunnels):
+        raise HTTPException(status_code=400, detail="endpoints or tunnels required")
+    bom = build_nbom(body.endpoints, tunnels=body.tunnels,
+                     devices=body.devices, estate=body.estate)
+    return {"nbom": bom, "summary": summarise(bom)}
+
+
+@router.post("/nbom/cascade")
+def nbom_cascade(body: NbomRequest, ref: str = Query(..., description="bom-ref to trace"),
+                 user: str = Depends(get_current_user)):
+    """Everything affected by replacing one component — the migration blast radius."""
+    from cbom.nbom import build_nbom, cascade
+
+    bom = build_nbom(body.endpoints, tunnels=body.tunnels,
+                     devices=body.devices, estate=body.estate)
+    return cascade(bom, ref)
+
+
+# Statuses that mean the probe never completed a handshake. Same set the
+# telecom classifier uses: an endpoint we could not reach is unknown, and must
+# not be inventoried as though we had observed it to be healthy.
+_NBOM_UNREACHABLE = {"DNS_FAILED", "TIMEOUT", "PORT_CLOSED", "CONNECT_ERROR", ""}
+
+
+def _gather_network_inventory(db: Session, *, limit: int = 2000) -> dict[str, list[dict]]:
+    """Build NBOM inputs from real rows: network scan probes + certificates.
+
+    The network scanner already stores each run's probe results in
+    ``network_scan_runs.result``; every probe carries the endpoint, the
+    negotiated TLS version and cipher suite, and the certificate chain it was
+    served. That is exactly an NBOM, so the BOM is derived from the scan rather
+    than re-declared by hand.
+
+    Newest run wins per endpoint, so a re-scan supersedes rather than
+    duplicates.
+    """
+    from sqlalchemy import desc, select as _select
+
+    from db.models.network_scan_run import NetworkScanRun
+
+    runs = db.execute(
+        _select(NetworkScanRun).order_by(desc(NetworkScanRun.created_at)).limit(limit)
+    ).scalars().all()
+
+    endpoints: dict[str, dict] = {}
+    for run in runs:
+        for probe in ((run.result or {}).get("probes") or []):
+            raw = str(probe.get("endpoint") or "").strip()
+            if not raw or raw in endpoints:
+                continue  # first sighting is the newest run
+            host, _, port = raw.rpartition(":")
+            if not host:
+                host, port = raw, ""
+            chain = probe.get("certificates") or []
+            leaf = chain[0] if chain else {}
+            status = str(probe.get("status") or "").upper()
+            endpoints[raw] = {
+                "host": host,
+                "port": int(port) if str(port).isdigit() else port,
+                "protocol": probe.get("starttls") or "tls",
+                "tls_version": probe.get("tls_version"),
+                "cipher_suite": probe.get("cipher_suite"),
+                "observed": status not in _NBOM_UNREACHABLE,
+                "service": probe.get("alpn"),
+                "certificate": {
+                    "subject": leaf.get("subject"),
+                    "issuer": leaf.get("issuer"),
+                    "serial_number": leaf.get("serial_number"),
+                    "public_key_algorithm": leaf.get("public_key_algorithm"),
+                    "public_key_size": leaf.get("public_key_size"),
+                    "not_after": str(leaf.get("not_after") or "") or None,
+                    "is_self_signed": leaf.get("is_self_signed"),
+                    "expiry_status": leaf.get("expiry_status"),
+                } if leaf else None,
+            }
+    return {"endpoints": list(endpoints.values())}
+
+
+@router.get("/nbom")
+def nbom_live(db: Session = Depends(get_db_session), user: str = Depends(get_current_user)):
+    """The Network BOM for this estate, derived from stored network scans.
+
+    Empty until a network scan has run — an estate with no scan renders zeroes
+    rather than a fabricated inventory.
+    """
+    from cbom.nbom import build_nbom, summarise
+
+    gathered = _gather_network_inventory(db)
+    bom = build_nbom(gathered["endpoints"], estate="network-estate")
+    return {"nbom": bom, "summary": summarise(bom),
+            "source": "live" if gathered["endpoints"] else "empty"}

@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class CertificateUsage(BaseModel):
+class CertificateUsage(BaseModel, TenantScoped):
     __tablename__ = "certificate_usages"
     __table_args__ = (
         UniqueConstraint("fingerprint_sha256", "location", name="uq_cert_usage_location"),

@@ -4,11 +4,12 @@
  * a chunk per page). Only pages that exist in src/pages/ are referenced.
  * Unknown routes redirect to the Command Center.
  */
-import React, { Suspense, lazy, useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import React, { Suspense, lazy } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RealtimeProvider } from "./lib/realtime.js";
 import Layout from "./components/Layout.jsx";
-import { syncSession } from "./lib/api.js";
+import ErrorBoundary from "./components/ErrorBoundary.js";
+import { AuthProvider, RequireAuth } from "./lib/auth.js";
 
 // Generated from src/pages/ — one entry per page file.
 const Accuracy = lazy(() => import("./pages/Accuracy"));
@@ -48,6 +49,7 @@ const LiveEnvironment = lazy(() => import("./pages/LiveEnvironment"));
 const LiveScanners = lazy(() => import("./pages/LiveScanners"));
 const LiveStream = lazy(() => import("./pages/LiveStream"));
 const Login = lazy(() => import("./pages/Login"));
+const Nbom = lazy(() => import("./pages/Nbom"));
 const Migration = lazy(() => import("./pages/Migration"));
 const Network = lazy(() => import("./pages/Network"));
 const Notifications = lazy(() => import("./pages/Notifications"));
@@ -84,17 +86,44 @@ const Vendor = lazy(() => import("./pages/Vendor"));
 const WhatIf = lazy(() => import("./pages/WhatIf"));
 
 function App() {
-  const [ready, setReady] = useState(false);
-  useEffect(() => {
-    syncSession().finally(() => setReady(true));
-  }, []);
-  if (!ready) return <div style={{ padding: 20 }}>Loading CryptoScan…</div>;
   return (
-    <RealtimeProvider>
+    <AuthProvider>
       <BrowserRouter>
-        <Suspense fallback={<div style={{ padding: 20 }}>Loading page…</div>}>
-          <Layout>
-            <Routes>
+        <Routes>
+          {/* The only page reachable without a verified session. It sits
+              outside Layout and RealtimeProvider: an anonymous visitor should
+              not get the console shell, the navigation, or an SSE connection. */}
+          <Route path="/login" element={
+            <ErrorBoundary resetKey="login">
+              <Suspense fallback={<div style={{ padding: 20 }}>Loading…</div>}>
+                <Login />
+              </Suspense>
+            </ErrorBoundary>
+          } />
+          <Route path="*" element={
+            <RequireAuth>
+              <RealtimeProvider>
+                <Layout>
+                  <RoutedPages />
+                </Layout>
+              </RealtimeProvider>
+            </RequireAuth>
+          } />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}
+
+/* Inside BrowserRouter so it can read the current path: the boundary is keyed
+ * on the route, so navigating away from a page that threw clears the error
+ * instead of stranding the operator on it. */
+function RoutedPages() {
+  const { pathname } = useLocation();
+  return (
+    <ErrorBoundary resetKey={pathname}>
+      <Suspense fallback={<div style={{ padding: 20 }}>Loading page…</div>}>
+        <Routes>
       <Route path="/" element={<Navigate to="/command-center" replace />} />
       <Route path="/banking-regulatory" element={<BankingRegulatory />} />
       <Route path="/accuracy" element={<Accuracy />} />
@@ -132,7 +161,6 @@ function App() {
       <Route path="/live-environment" element={<LiveEnvironment />} />
       <Route path="/live-scanners" element={<LiveScanners />} />
       <Route path="/live-stream" element={<LiveStream />} />
-      <Route path="/login" element={<Login />} />
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/migration" element={<Migration />} />
       <Route path="/network" element={<Network />} />
@@ -166,12 +194,11 @@ function App() {
       <Route path="/timeline" element={<Timeline />} />
       <Route path="/trust" element={<Trust />} />
       <Route path="/vendor" element={<Vendor />} />
+      <Route path="/nbom" element={<Nbom />} />
       <Route path="/what-if" element={<WhatIf />} />
-      <Route path="*" element={<Navigate to="/command-center" replace />} />            </Routes>
-          </Layout>
-        </Suspense>
-      </BrowserRouter>
-    </RealtimeProvider>
+      <Route path="*" element={<Navigate to="/command-center" replace />} />        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 

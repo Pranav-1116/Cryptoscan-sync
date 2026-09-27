@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class DriftEvent(BaseModel):
+class DriftEvent(BaseModel, TenantScoped):
     __tablename__ = "drift_events"
 
     baseline_id: Mapped[Optional[str]] = mapped_column(

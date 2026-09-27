@@ -1,17 +1,36 @@
 """Multi-tenant SaaS control plane: signup, tenancy context, members, usage.
 
-Isolation model (enforced, not cosmetic):
-- every tenant-scoped row carries tenant_id; repositories filter by it and
-  routers resolve the active tenant from TenantContext — cross-tenant reads
-  are 404 (no existence oracle);
+Isolation model — READ THIS BEFORE ENABLING SELF-SERVE SIGNUP
+-------------------------------------------------------------
+What *is* enforced:
+- tenancy-plane rows (tenants, memberships, api keys, usage, monitors) carry
+  tenant_id; their repositories filter by it and routers resolve the active
+  tenant from TenantContext — cross-tenant reads there are 404, not 403, so
+  there is no existence oracle;
 - suspension is 423 and takes effect on the very next request;
 - plans enforce quotas with 402 quota_exceeded (targets, monthly scans,
   seats) — unlimited for ENTERPRISE;
-- platform operators (superadmin) keep the global estate and can administer
-  every tenant explicitly.
+- platform operators (superadmin) keep the global estate.
+
+What is **not** yet enforced, and why signup is off by default:
+- the *scan surface* is not tenant-scoped. ``scans``, ``evidence_records``,
+  ``crypto_assets``, ``findings``, ``systems``, ``drift_events`` and the rest
+  of the estate tables carry no tenant_id, and their repositories apply no
+  tenant filter (``ScanRepository.list_scans`` takes none). Any authenticated
+  member of any tenant therefore reads every tenant's scan results.
+- Until those columns and filters exist, a single deployment must serve a
+  single customer. ``/saas/signup`` is consequently gated behind
+  ``CRYPTOSCAN_SAAS_SIGNUP`` and refuses by default: an internet-reachable
+  API would otherwise let anyone provision a tenant and read the estate.
+
+Deploy one instance per bank. Turning the flag on without finishing the
+scan-surface columns is a cross-customer data leak, not a configuration
+preference.
 """
 
 from __future__ import annotations
+
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -75,6 +94,16 @@ class MemberCreate(BaseModel):
     email: str | None = Field(None, max_length=320)
 
 
+def self_serve_signup_enabled() -> bool:
+    """Self-serve tenant creation, off unless explicitly turned on.
+
+    This endpoint is unauthenticated by necessity, and a new tenant currently
+    gains read access to the whole scan surface (see the module docstring), so
+    the safe default is closed.
+    """
+    return os.environ.get("CRYPTOSCAN_SAAS_SIGNUP", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 @router.post("/signup", status_code=201)
 def signup(body: SignupRequest, request: Request, db: Session = Depends(get_db_session)):
     """Self-serve tenant provisioning: creates the organization and its owner.
@@ -82,7 +111,13 @@ def signup(body: SignupRequest, request: Request, db: Session = Depends(get_db_s
     If the username already exists the password must match (the founder is
     authenticated before the account gains a second organization) — this
     prevents polluting an existing identity with attacker-chosen memberships.
+
+    Disabled unless ``CRYPTOSCAN_SAAS_SIGNUP`` is set; answers 404 rather than
+    403 so a closed deployment does not advertise the capability.
     """
+    if not self_serve_signup_enabled():
+        raise HTTPException(status_code=404, detail="Not Found")
+
     from api.security.passwords import PasswordPolicyError, validate_password_policy
 
     try:

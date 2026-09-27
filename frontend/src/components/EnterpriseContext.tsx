@@ -21,6 +21,7 @@ import React, {
 import {
   activeTenantId, apiTenantIsolation, getRoles, getUserName,
 } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 
 export type InfoLevel =
   | "Level 1 — Executive"
@@ -93,6 +94,12 @@ function deriveCanPerform(roles: string[], user: string | null) {
 }
 
 export function EnterpriseProvider({ children }: { children: React.ReactNode }) {
+  // Identity and roles come from AuthProvider, which holds what
+  // GET /auth/me returned. They used to be read straight out of localStorage,
+  // which the person at the browser can edit -- so every canPerformAction()
+  // decision was taken from attacker-controlled input. The cached values are
+  // still used for the very first paint, before the server has answered.
+  const auth = useAuth();
   const [user, setUser] = useState<string | null>(() => getUserName());
   const [roles, setRoles] = useState<string[]>(() => getRoles());
   const [org, setOrg] = useState<{ name: string; sector: string }>({ name: "Platform", sector: "—" });
@@ -100,16 +107,14 @@ export function EnterpriseProvider({ children }: { children: React.ReactNode }) 
   const [infoLevel, setInfoLevelState] = useState<InfoLevel>(() => readStored("zelnx_info_level", "Level 1 — Executive") as InfoLevel);
   const [timezone, setTimezoneState] = useState<"UTC" | "Local" | "GST">(() => readStored("zelnx_timezone", "UTC") as "UTC");
 
-  // Re-sync the session whenever auth changes (login/logout fire "zelinx:auth").
+  // Adopt the server's answer as soon as it arrives, and never fall back to
+  // localStorage afterwards: once verified, an edited cache must not be able
+  // to re-grant a role the server did not return.
   useEffect(() => {
-    const sync = () => { setUser(getUserName()); setRoles(getRoles()); };
-    window.addEventListener("zelinx:auth", sync);
-    window.addEventListener("storage", sync);
-    return () => {
-      window.removeEventListener("zelinx:auth", sync);
-      window.removeEventListener("storage", sync);
-    };
-  }, []);
+    if (!auth.verified) return;
+    setUser(auth.user);
+    setRoles(auth.roles);
+  }, [auth.verified, auth.user, auth.roles]);
 
   // Organization: the active tenant's name from the live backend (honest
   // fallback when offline).

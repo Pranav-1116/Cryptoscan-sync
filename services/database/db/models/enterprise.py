@@ -11,6 +11,7 @@ from sqlalchemy import JSON, Boolean, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 # --------------------------------------------------------------------------- #
 # Policy-as-code (versioned, auditable)
@@ -36,7 +37,7 @@ class PolicyDocument(BaseModel):
     created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
 
 
-class PolicyEvaluation(BaseModel):
+class PolicyEvaluation(BaseModel, TenantScoped):
     """An immutable evaluation record (target -> verdict) for audit."""
 
     __tablename__ = "ent_policy_evaluations"
@@ -55,7 +56,7 @@ class PolicyEvaluation(BaseModel):
 COMPLIANCE_STATES = ("COMPLIANT", "GAP", "NOT_EVIDENCED", "NOT_APPLICABLE")
 
 
-class ComplianceControl(BaseModel):
+class ComplianceControl(BaseModel, TenantScoped):
     """A requirement/control mapped to a framework and in-scope assets."""
 
     __tablename__ = "ent_compliance_controls"
@@ -67,7 +68,7 @@ class ComplianceControl(BaseModel):
     assets: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
 
 
-class ComplianceStatus(BaseModel):
+class ComplianceStatus(BaseModel, TenantScoped):
     """A point-in-time control evaluation snapshot for audit/history."""
 
     __tablename__ = "ent_compliance_status"
@@ -89,7 +90,7 @@ TICKET_STATES = ("open", "triaged", "assigned", "in_progress", "in_migration",
                  "validation", "resolved", "closed", "reopened")
 
 
-class Ticket(BaseModel):
+class Ticket(BaseModel, TenantScoped):
     """A finding converted into a tracked ITSM work item."""
 
     __tablename__ = "ent_tickets"
@@ -112,7 +113,7 @@ class Ticket(BaseModel):
 INTEGRATION_KINDS = ("cmdb", "itsm", "siem", "soar")
 
 
-class Integration(BaseModel):
+class Integration(BaseModel, TenantScoped):
     """A registered external integration. Config is non-secret (endpoint URL,
     provider, project); credentials live in the vault and are referenced."""
 
@@ -134,7 +135,7 @@ class Integration(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
-class Region(BaseModel):
+class Region(BaseModel, TenantScoped):
     """A deployment/processing region with residency and DR posture."""
 
     __tablename__ = "ent_regions"
@@ -153,7 +154,7 @@ class Region(BaseModel):
 # --------------------------------------------------------------------------- #
 
 
-class CryptoKnowledgeEntry(BaseModel):
+class CryptoKnowledgeEntry(BaseModel, TenantScoped):
     """An organization override/addition to the built-in crypto KB."""
 
     __tablename__ = "ent_crypto_kb"

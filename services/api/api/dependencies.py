@@ -382,6 +382,30 @@ def get_tenant_context(
     request: Request,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+):
+    """Resolve the active tenant and scope the request's database reads to it.
+
+    A generator dependency wrapping :func:`_resolve_tenant_context`, so that
+    every one of that function's return paths enters the scope and the scope
+    is always torn down. The resolution is membership-validated, which is what
+    makes it safe to filter on: an ``X-Tenant-ID`` header that the caller is
+    not a member of is already a 404 before we get here, so a forged header
+    cannot be used to scope into — and therefore read — another tenant.
+
+    Platform admins operating without a header resolve to ``tenant_id=None``,
+    which leaves the filter inert and shows them the platform estate.
+    """
+    from db.tenancy import tenant_scope
+
+    ctx = _resolve_tenant_context(request, user, db)
+    with tenant_scope(ctx.tenant_id):
+        yield ctx
+
+
+def _resolve_tenant_context(
+    request: Request,
+    user: str,
+    db: Session,
 ) -> TenantContext:
     """Resolve the active tenant for this request.
 
@@ -522,3 +546,44 @@ def require_tenant_roles(*allowed: str):
         return ctx
 
     return _dep
+
+
+def resolve_tenant_for_request(request: Request) -> str | None:
+    """The membership-validated tenant id for this request, or None.
+
+    Used by TenantScopeMiddleware to scope a whole request's database reads
+    without every router having to remember the dependency. It reuses the same
+    resolution the routes use, so an ``X-Tenant-ID`` the caller is not a member
+    of resolves to nothing rather than granting access.
+
+    Returns None — meaning "do not scope" — for a platform operator with no
+    active tenant, and for anything that cannot be resolved. It never raises:
+    the route's own ``get_tenant_context`` dependency is what turns a bad
+    tenant into the proper 403/404/423 response, and duplicating that here
+    would answer with the wrong status from the wrong layer.
+    """
+    from db.connection.session import SessionLocal
+
+    raw_key = request.headers.get("x-api-key")
+    if not _token_from_request(request) and not raw_key:
+        return None
+
+    session = SessionLocal()
+    try:
+        if raw_key:
+            # Read the key's tenant binding directly. Deliberately NOT through
+            # get_current_user(): that path runs _authorize_key_policy(), which
+            # *consumes* the key's per-minute quota and stamps last-use. Calling
+            # it here would bill every request twice — a key with
+            # rate_per_minute=2 would 429 on its first real call.
+            from db.repositories.api_key_repository import ApiKeyRepository
+
+            row = ApiKeyRepository(session).get_by_raw(raw_key.strip())
+            return row.tenant_id if row is not None else None
+        user = get_current_user(request)
+        ctx = _resolve_tenant_context(request, user, session)
+        return ctx.tenant_id
+    except Exception:
+        return None
+    finally:
+        session.close()

@@ -560,3 +560,84 @@ def telecom_carrier_pack(
                         headers={"Content-Disposition":
                                  f'attachment; filename="telecom-pack-{code}-{stamp}.csv"'})
     return pack
+
+# ------------------- 5G crypto configuration analysis ------------------- #
+# The TLS probing above judges what a network function presents on the wire.
+# These read the configuration behind it — the parts of TS 33.501 that no
+# external probe can see, and where the defaults are permissive:
+#   * SUPI concealment  — the null-scheme attaches normally and looks healthy
+#   * NEA/NIA           — NEA0 connects with full bars
+#   * N32               — a TLS-declared link through a modifying IPX reads
+#                         end-to-end on paper
+# All three take declarations, never key material or live traffic.
+
+class SuciProfilesRequest(BaseModel):
+    """Each: {plmn, protection_scheme, home_network_public_key_id?, emergency_only?}"""
+    profiles: list[dict] = Field(..., min_length=1)
+
+
+class AirInterfaceRequest(BaseModel):
+    """Each: {node, ciphering: [2,0], integrity: [2], emergency_only?} — priority-ordered."""
+    nodes: list[dict] = Field(..., min_length=1)
+
+
+class N32LinksRequest(BaseModel):
+    """Each: {partner_plmn, protection_mode, ipx_providers?, ipx_may_modify?,
+    modification_policy?, jose_algorithms?, tls_version?, legacy_fallback?}"""
+    links: list[dict] = Field(..., min_length=1)
+
+
+@router.post("/suci/analyse")
+def telecom_suci_analyse(body: SuciProfilesRequest,
+                         user: str = Depends(require_permission("telecom.ingest"))):
+    """SUPI concealment across the estate — which PLMNs expose the permanent identity."""
+    from telecom_scanner.suci import summarise_estate
+
+    return summarise_estate(body.profiles)
+
+
+@router.post("/air-interface/analyse")
+def telecom_air_interface_analyse(body: AirInterfaceRequest,
+                                  user: str = Depends(require_permission("telecom.ingest"))):
+    """NEA/NIA algorithm profiles — null ciphering and integrity, and their priority."""
+    from telecom_scanner.air_interface import summarise_estate
+
+    return summarise_estate(body.nodes)
+
+
+@router.post("/n32/analyse")
+def telecom_n32_analyse(body: N32LinksRequest,
+                        user: str = Depends(require_permission("telecom.ingest"))):
+    """Inter-PLMN roaming protection per partner — TLS vs PRINS against the topology."""
+    from telecom_scanner.n32 import summarise_partners
+
+    return summarise_partners(body.links)
+
+
+class AuthProfilesRequest(BaseModel):
+    """Each: {profile, algorithm, key_bits?, op_provisioned?, opc_per_subscriber?, method?}"""
+    profiles: list[dict] = Field(..., min_length=1)
+
+
+class KeyHierarchyRequest(BaseModel):
+    """Each: {plmn, long_term_key_bits, kdf?, serving_network_binding?,
+    horizontal_key_derivation?}"""
+    networks: list[dict] = Field(..., min_length=1)
+
+
+@router.post("/authentication/analyse")
+def telecom_authentication_analyse(body: AuthProfilesRequest,
+                                   user: str = Depends(require_permission("telecom.ingest"))):
+    """MILENAGE / TUAK algorithm sets — test algorithms, 2G leftovers, OP-vs-OPc."""
+    from telecom_scanner.authentication import summarise_estate
+
+    return summarise_estate(body.profiles)
+
+
+@router.post("/key-hierarchy/analyse")
+def telecom_key_hierarchy_analyse(body: KeyHierarchyRequest,
+                                  user: str = Depends(require_permission("telecom.ingest"))):
+    """K → K_AUSF → K_SEAF → K_AMF → K_gNB chain: strength bounds and SN binding."""
+    from telecom_scanner.key_hierarchy import summarise_estate
+
+    return summarise_estate(body.networks)

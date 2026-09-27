@@ -56,8 +56,10 @@ inventing a finding.
 | **Containers / IaC** | image and filesystem package inventory, crypto binaries, Dockerfile/IaC rules | `services/container_scanner`, `container_scans` group |
 | **OT / ICS** | **passive — zero packets sent**; PLC/RTU/SCADA crypto posture | `services/ot_scanner`, `services/ot_safety` |
 | **Telecom** | 5GC / EPC / IMS / roaming verdicts, SEPP PQC readiness, per-carrier packs, closed-network ingest | `services/telecom_scanner` |
+| **Telecom — 5G crypto configuration** | the parts of TS 33.501 no external probe can reach, where the permissive setting looks healthy in service: SUPI concealment (null-scheme = IMSI-catcher exposure), NEA/NIA air-interface algorithms (NEA0 ahead of NEA2 defeats configured AES), N32 roaming (TLS vs PRINS against the IPX topology), MILENAGE/TUAK sets (XOR test algorithm, OP-vs-OPc), and the K → K_AUSF → K_SEAF → K_AMF → K_gNB hierarchy | `suci.py`, `air_interface.py`, `n32.py`, `authentication.py`, `key_hierarchy.py` |
 | **Hardware** | HSMs, TPMs, firmware, vendors — the hardware root of trust software scanning cannot see | `services/universal_crypto`, `hardware` group |
 | **Payment** | HSM key inventory, TR-39-style ceremony provenance, dual custody, PCI-relevant attributes | `services/payment_crypto` |
+| **Payment — card standards** | TR-31/X9.143 key-block headers; **ISO 9564** PIN-block formats (format 2 online, formats 1/2 not PAN-bound, the TDES→AES-format-4 backlog); **ISO 8583** field-level crypto from the declared data elements (52 PIN, 55 EMV, 64/128 MAC — a PIN-bearing link with no MAC field); **EMV/ARQC** cryptogram lifecycle keyed on the CVN (CVN 10 derives session keys without the ATC, so every transaction on a card uses the same key). Declarations only — the analysers refuse input that looks like a PIN block or an IMK | `keyblocks.py`, `pinblocks.py`, `iso8583.py`, `emv.py` |
 | **Runtime hosts** | live hosts and runtime findings | `services/runtime`, `Runtime` page |
 
 Registry push events (ACR/GCR/ECR/Harbor/Docker Hub style) arrive through one
@@ -83,6 +85,7 @@ Raw findings from eleven collectors become one canonical Technology BOM model
 | **Crypto assets / libraries / protocols** | what cryptography is where, by primitive | `/crypto-assets`, `/libraries`, `/protocols` |
 | **CBOM** | CycloneDX-style cryptographic bill of materials, versioned + fingerprinted | `/cbom`, `services/cbom` |
 | **HBOM / VBOM** | hardware and vendor bills of materials | `/hbom`, `/vendor` |
+| **NBOM** | network bill of materials — listeners, certificates, cipher suites, tunnels, with the dependency graph that gives each component a blast radius. Derived from stored network scans; renders zeroes until one has run. **Preview:** the generator, cascade and DB derivation are tested, but no scheduled network scan populates it yet | `/nbom`, `services/cbom/cbom/nbom.py` |
 | **SBOM** | software bill of materials for any artifact, with licence + VEX + gate (see §6) | `/devsecops` → SBOM |
 | **Dependency graph** | component/system relationships, blast radius (Neo4j when configured, in-process otherwise) | `/graph`, `services/graph_engine` |
 | **Live asset intelligence** | build-time vs live view of the same estate | `/live-asset-intelligence` |
@@ -210,6 +213,7 @@ tenant model with provisioning/invites, Prometheus metrics, `/healthz` +
 |---|---|
 | Code, SBOM, containers, network, certificates, cloud, hardware, payment, telecom, OT, runtime | shipped |
 | CBOM / HBOM / VBOM / SBOM + dependency graph | shipped |
+| NBOM + per-component blast radius | shipped (preview — needs a scheduled network scan to populate) |
 | Policy, risk, drift, PQC, agility, assurance | shipped |
 | CI/CD + SBOM gates, automation, remediation, SLA | shipped |
 | Evidence, audit chain, WORM, JWS signing, DR drills | shipped |

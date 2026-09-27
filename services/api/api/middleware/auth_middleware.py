@@ -21,6 +21,10 @@ from api.security.session_manager import SessionManager
 logger = logging.getLogger(__name__)
 
 
+# Matched as an exact path or as a path segment prefix (p + "/"), never as a
+# bare string prefix: a bare prefix would silently exempt any future sibling
+# route that merely starts with the same characters (e.g. "/api/v1/metadata"
+# inheriting the "/api/v1/meta" exemption).
 UNPROTECTED_PREFIXES = (
     "/health",
     "/ready",
@@ -41,19 +45,49 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/readyz",  # LB readiness probes must work without credentials
     "/api/v1/discovery",
     "/api/v1/webhooks",
+)
+
+# Static assets are served under hashed filenames, so these DO match as bare
+# string prefixes ("/favicon.ico", "/assets/index-a1b2c3.js"). They are inert
+# files, never API surface.
+UNPROTECTED_LITERAL_PREFIXES = (
     "/assets",
     "/favicon",
 )
 
 
+def _is_unprotected(path: str) -> bool:
+    for p in UNPROTECTED_PREFIXES:
+        base = p.rstrip("/")
+        if path == base or path.startswith(base + "/"):
+            return True
+    return any(path.startswith(p) for p in UNPROTECTED_LITERAL_PREFIXES)
+
+
 def _store_allows(token: str, username: str) -> bool:
-    """True unless the token is revoked/expired or the user is disabled."""
+    """True unless the token is revoked/expired or the user is disabled.
+
+    Fails CLOSED in production: if the session store cannot be reached we
+    cannot prove the token is still valid, and treating "unknown" as "allowed"
+    would keep honouring revoked sessions for the whole duration of an outage.
+    Dev/test (where the store is often absent by design) still degrade open.
+    """
     try:
         from api.dependencies import _session_store_allows
 
         return _session_store_allows(token, username)
-    except Exception:  # pragma: no cover
-        return True
+    except Exception:  # pragma: no cover - defensive
+        try:
+            from api.config.settings import get_settings
+
+            production = get_settings().is_production
+        except Exception:
+            production = True  # cannot tell -> assume production, fail closed
+        logger.exception(
+            "session revocation check failed; %s",
+            "denying request (production)" if production else "allowing request (non-production)",
+        )
+        return not production
 
 
 class AuthMiddleware:
@@ -70,7 +104,7 @@ class AuthMiddleware:
         if path == "/" or path.startswith("/login") or path.startswith("/static"):
             await self.app(scope, receive, send)
             return
-        if any(path == p or path.startswith(p.rstrip("/") + "/") or path.startswith(p) for p in UNPROTECTED_PREFIXES):
+        if _is_unprotected(path):
             await self.app(scope, receive, send)
             return
         if not path.startswith("/api/"):

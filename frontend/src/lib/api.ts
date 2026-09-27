@@ -3553,3 +3553,66 @@ export type PortfolioCbom = {
   dependencies?: { ref: string; dependsOn: string[] }[];
 };
 export const apiCbomPortfolio = (): Promise<ApiResult<PortfolioCbom>> => call("/api/v1/cbom/portfolio");
+
+/* ── NBOM — Network Bill of Materials ────────────────────────────────── */
+/* What is exposed on the wire (listeners, the certificates and suites they
+   serve, site-to-site tunnels) plus the dependency graph that answers what
+   breaks when one component is replaced. Distinct from the CBOM, which
+   inventories cryptography in the estate's source. */
+
+export interface NbomComponent {
+  type: string;
+  "bom-ref": string;
+  name: string;
+  properties: Array<{ name: string; value: string }>;
+  "cryptoscan:findings": Array<{ code: string; severity: string; message: string; ref?: string }>;
+}
+
+export interface NbomCascadeEntry {
+  ref: string;
+  found: boolean;
+  name?: string;
+  affected: Array<{ ref: string; name: string; kind: string | null }>;
+  affected_count: number;
+  by_kind?: Record<string, number>;
+  worst_severity?: string | null;
+}
+
+export interface NbomSummary {
+  components: number;
+  by_kind: Record<string, number>;
+  unobserved: number;
+  findings: number;
+  by_severity: Record<string, number>;
+  migration_priority: NbomCascadeEntry[];
+}
+
+export interface NbomResponse {
+  nbom: {
+    bomFormat: string;
+    specVersion: string;
+    serialNumber: string;
+    metadata: Record<string, unknown>;
+    components: NbomComponent[];
+    dependencies: Array<{ ref: string; dependsOn: string[] }>;
+  };
+  summary: NbomSummary;
+}
+
+/* The estate's NBOM, derived from stored network scans. This is the one the
+   page uses: a bank does not declare its listeners, the scanner finds them. */
+export const apiNbomLive = (): Promise<ApiResult<NbomResponse & { source: string }>> =>
+  call(`/api/v1/cbom/nbom`);
+
+/* Ad-hoc / what-if: build a BOM from a hand-supplied estate without storing it. */
+export const apiNbomBuild = (body: {
+  endpoints?: unknown[]; tunnels?: unknown[]; devices?: unknown[]; estate?: string;
+}): Promise<ApiResult<NbomResponse>> =>
+  call(`/api/v1/cbom/nbom`, { method: "POST", body: JSON.stringify(body) });
+
+export const apiNbomCascade = (
+  ref: string,
+  body: { endpoints?: unknown[]; tunnels?: unknown[]; devices?: unknown[]; estate?: string },
+): Promise<ApiResult<NbomCascadeEntry>> =>
+  call(`/api/v1/cbom/nbom/cascade?ref=${encodeURIComponent(ref)}`,
+       { method: "POST", body: JSON.stringify(body) });

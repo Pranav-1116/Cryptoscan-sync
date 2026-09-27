@@ -13,9 +13,10 @@ from sqlalchemy import JSON, Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel, utcnow
+from db.tenancy import TenantScoped
 
 
-class AutomationRuleRow(BaseModel):
+class AutomationRuleRow(BaseModel, TenantScoped):
     __tablename__ = "automation_rules"
 
     rule_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
@@ -43,7 +44,7 @@ class AutomationRuleRow(BaseModel):
         }
 
 
-class AutomationRun(BaseModel):
+class AutomationRun(BaseModel, TenantScoped):
     __tablename__ = "automation_runs"
 
     event_kind: Mapped[str] = mapped_column(String(60), nullable=False, index=True)
@@ -78,7 +79,7 @@ class AutomationRun(BaseModel):
         }
 
 
-class CbomVersionRow(BaseModel):
+class CbomVersionRow(BaseModel, TenantScoped):
     """Immutable, content-addressed live CBOM version (deterministic)."""
 
     __tablename__ = "cbom_versions"

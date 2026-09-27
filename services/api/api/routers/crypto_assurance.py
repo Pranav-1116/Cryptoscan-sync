@@ -10,8 +10,9 @@ platform is applied before any outbound connection.
 from __future__ import annotations
 
 import base64
+import os
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -109,11 +110,51 @@ class HsmKeySpec(BaseModel):
 
 
 class HsmRequest(BaseModel):
-    """Described attributes are submitted by a trusted collector that ran in
-    the cloud/HSM environment (keys never leave the boundary). The API
-    verifies residence deterministically from those attributes."""
+    """Two modes, and the distinction matters for what the result proves.
+
+    *Submitted* (default): a trusted collector that ran inside the cloud/HSM
+    environment posts the provider's ``describe`` output and the API verifies
+    residence deterministically from it. The verdict is only ever as good as
+    the attributes the caller supplied -- it attests to what was reported, not
+    to what the HSM actually holds.
+
+    *Live* (``live: true``): the API talks to the provider itself through a
+    real adapter (``keyassure.hsm_backends``), reads the key's attributes and
+    performs the non-exportable sign challenge. This is the mode that actually
+    verifies key residence. It needs outbound credentials, so it is gated on
+    ``CRYPTOSCAN_HSM_LIVE`` the way live cloud scanning is gated on
+    ``CRYPTOSCAN_CLOUD_LIVE``.
+    """
     keys: list[dict] = Field(..., min_length=1,
-                             description="Each: {key_ref, provider, describe:{...}}")
+                             description="Each: {key_ref, provider, describe:{...}} "
+                                         "or, with live=true, {key_ref, provider, options:{...}}")
+    live: bool = Field(False, description="Query the provider directly instead of "
+                                          "trusting a submitted describe payload.")
+
+
+def hsm_live_enabled() -> bool:
+    """Live HSM/KMS queries are opt-in: they need real outbound credentials."""
+    return os.environ.get("CRYPTOSCAN_HSM_LIVE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _live_backend(provider: str, options: dict):
+    """Build a real provider adapter, or fail with an actionable message."""
+    from keyassure.hsm_backends import BACKENDS, BackendUnavailable
+
+    factory = BACKENDS.get((provider or "").lower())
+    if factory is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"no live adapter for provider {provider!r}; "
+                   f"supported: {sorted(BACKENDS)}",
+        )
+    try:
+        return factory(**(options or {}))
+    except BackendUnavailable as exc:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(exc)) from exc
+    except TypeError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"bad options for {provider}: {exc}") from exc
 
 
 class _DictBackend:
@@ -138,19 +179,36 @@ def hsm_check(body: HsmRequest,
               user: str = Depends(require_roles("admin", "auditor", "superadmin"))):
     from keyassure.hsm_connectivity import HsmCheckError, check_key
 
+    if body.live and not hsm_live_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="live HSM verification is disabled; set CRYPTOSCAN_HSM_LIVE=true "
+                   "on an API instance that holds provider credentials",
+        )
+
     results = []
     for spec in body.keys:
         key_ref = spec.get("key_ref")
         provider = spec.get("provider", "")
-        describe = spec.get("describe") or {}
-        sign_ok = bool(spec.get("sign_challenge_ok", True))
-        backend = _DictBackend(describe, sign_ok=sign_ok)
+        if body.live:
+            backend = _live_backend(provider, spec.get("options") or {})
+        else:
+            describe = spec.get("describe") or {}
+            sign_ok = bool(spec.get("sign_challenge_ok", True))
+            backend = _DictBackend(describe, sign_ok=sign_ok)
         try:
-            results.append(check_key(key_ref, provider=provider, backend=backend))
+            result = check_key(key_ref, provider=provider, backend=backend)
         except HsmCheckError as exc:
             results.append({"key_ref": key_ref, "provider": provider, "error": str(exc)})
+            continue
+        # Record how the verdict was obtained: a submitted-attribute result
+        # attests to what a collector reported, a live one to what the
+        # provider itself answered. Downstream evidence must not conflate them.
+        result["verification_mode"] = "LIVE" if body.live else "SUBMITTED"
+        results.append(result)
     summary = {
         "total": len(results),
+        "verification_mode": "LIVE" if body.live else "SUBMITTED",
         "hardware_backed": sum(1 for r in results if r.get("hardware_backed")),
         "software_keys": sum(1 for r in results if r.get("key_residence") == "SOFTWARE"),
         "connectivity_failures": sum(1 for r in results if r.get("connectivity") == "FAIL"),

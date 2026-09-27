@@ -24,7 +24,18 @@ class BaseRepository(Generic[ModelType]):
         return obj
 
     def get_by_id(self, id_value: Any) -> ModelType | None:
-        return self.session.get(self.model, id_value)
+        """Fetch by primary key, honouring tenant isolation.
+
+        Deliberately a filtered SELECT rather than ``Session.get()``:
+        ``Session.get()`` is a primary-key lookup that answers from the
+        identity map and does not carry the ORM-level tenant criteria
+        (db.tenancy), so it returned another tenant's row when handed a known
+        id — an id that a tenant can often guess or has seen elsewhere. The
+        extra round trip is the price of the read being filtered like every
+        other one.
+        """
+        stmt = select(self.model).where(self.model.id == id_value).limit(1)
+        return self.session.execute(stmt).scalars().first()
 
     def get_all(self, limit: int = 100, offset: int = 0) -> list[ModelType]:
         stmt = select(self.model).limit(limit).offset(offset)

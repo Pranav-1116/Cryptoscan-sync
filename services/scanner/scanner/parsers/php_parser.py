@@ -274,7 +274,10 @@ def _desugar_php(source: str) -> str:
         return source
     func_like = {k: v for k, v in consts.items() if re.fullmatch(r"[A-Za-z_]\w*", v)}
     for var, fn in func_like.items():
-        source = re.sub(rf"(?<![\w$])\${re.escape(var)}\s*\(", fn + "(", source)
+        # Function replacement: `fn` comes from the scanned file, and re.sub()
+        # would read a backslash sequence in it as an escape reference.
+        source = re.sub(rf"(?<![\w$])\${re.escape(var)}\s*\(",
+                        lambda _m, _f=fn: _f + "(", source)
 
     def _interp(m: re.Match) -> str:
         body = m.group(0)

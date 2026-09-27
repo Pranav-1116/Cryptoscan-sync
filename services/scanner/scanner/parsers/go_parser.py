@@ -218,7 +218,13 @@ RULES: list[Rule] = [
     _r(r"\bhttp\.ListenAndServeTLS\b|\bServer\.ListenAndServeTLS\b|\bhttp\.Server\{[^}]*TLSConfig\s*:|\bTLSConfig\s*:\s*&tls\.Config\b|\bTLSClientConfig\s*:\s*&tls\.Config\b|\bautocert\.(?:NewListener|Manager)\b|\bacme\.\w+|\bcertmagic\.\w+|\blego\.\w+", _TLS, "net/http", algorithm="TLS", confidence="MEDIUM"),
     _r(r"\bquic\.(?:Dial|Listen|DialAddr|ListenAddr)\w*\b|\bhttp3\.\w+|\bwebtransport\.\w+", _TLS, "quic-go", algorithm="TLS1.3", confidence="MEDIUM"),
     _r(r"\bnoise\.(?:NewHandshakeState|NewCipherSuite|HandshakeXX|HandshakeIK|HandshakeNK|DH25519|CipherChaChaPoly|CipherAESGCM|HashSHA256|HashBLAKE2b|HashBLAKE2s)\b|\bwgtypes\.GenerateKey\b|\bwgtypes\.GeneratePrivateKey\b", _KA, "noise", algorithm="X25519", confidence="MEDIUM"),
-    _r(r"\bwgtypes\.(?:GenerateKey|GeneratePrivateKey|GeneratePresharedKey)\b|\bwgctrl\.New\b|\bdevice\.NewDevice\b|\bwireguard\b", _C, "wireguard", algorithm="ChaCha20-Poly1305", confidence="MEDIUM"),
+    # The bare word "wireguard" is too loose to stand on its own: it appears as
+    # plain data in generated tables (x/sys/unix/zerrors_linux.go has
+    # WG_GENL_NAME = "wireguard", a netlink family name), which was reported as
+    # a live ChaCha20-Poly1305 cipher. Require the module path instead — real
+    # WireGuard code imports golang.zx2c4.com/wireguard/... — or a package-
+    # qualified API call.
+    _r(r"\bwgtypes\.(?:GenerateKey|GeneratePrivateKey|GeneratePresharedKey)\b|\bwgctrl\.New\b|\bdevice\.NewDevice\b|golang\.zx2c4\.com/wireguard\b|\bwireguard/(?:device|conn|tun|ipc)\b", _C, "wireguard", algorithm="ChaCha20-Poly1305", confidence="MEDIUM"),
     _r(r"\butls\.\w+|\btls\.HelloChrome_\w+|\btls\.HelloFirefox_\w+|\btls\.HelloRandomized\b", _TLS, "utls", algorithm="TLS", confidence="LOW"),
     # ------------------------------------------------------------ JWT / JOSE / PASETO
     _r(r"\bjwt\.SigningMethod(HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|ES512|PS256|PS384|PS512|EdDSA|None)\b", _S, "github.com/golang-jwt/jwt", algo_from_group=1, algo_map=_JWT_METHODS),
@@ -314,7 +320,10 @@ def _resolve_import_aliases(text: str) -> str:
     if imports_math_rand and not imports_crypto_rand and "rand" not in aliases.values():
         aliases.setdefault("rand", "mathrand")
     for alias, canon in aliases.items():
-        text = re.sub(rf"(?<![\w.\"/]){re.escape(alias)}\.(?=[A-Za-z_])", canon + ".", text)
+        # Function replacement: `canon` comes from the scanned file, and re.sub()
+        # would read a backslash sequence in it as an escape reference.
+        text = re.sub(rf"(?<![\w.\"/]){re.escape(alias)}\.(?=[A-Za-z_])",
+                      lambda _m, _c=canon: _c + ".", text)
     # dot import of a single crypto package: bare New()/Sum()/Sum256() belong to it
     dot_pkgs = [m.group(1) for m in _DOT_IMPORT.finditer(text) if m.group(1).startswith(("crypto/", "golang.org/x/crypto/"))]
     if len(dot_pkgs) == 1:

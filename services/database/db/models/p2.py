@@ -24,6 +24,7 @@ from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
 class PluginPackage(BaseModel):
@@ -47,7 +48,7 @@ class PluginPackage(BaseModel):
     enabled_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
-class LakeExportBatch(BaseModel):
+class LakeExportBatch(BaseModel, TenantScoped):
     __tablename__ = "lake_export_batches"
 
     lake_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
@@ -65,7 +66,7 @@ class LakeExportBatch(BaseModel):
     records: Mapped[list | None] = mapped_column(JSON, nullable=True)  # payload (small batches)
 
 
-class AnomalyFlag(BaseModel):
+class AnomalyFlag(BaseModel, TenantScoped):
     __tablename__ = "anomaly_flags"
 
     rule: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
@@ -80,7 +81,7 @@ class AnomalyFlag(BaseModel):
     acknowledged_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
-class MigrationValidation(BaseModel):
+class MigrationValidation(BaseModel, TenantScoped):
     __tablename__ = "migration_validations"
 
     migration_project_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
@@ -95,7 +96,7 @@ class MigrationValidation(BaseModel):
     validated_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
 
-class GovernanceApproval(BaseModel):
+class GovernanceApproval(BaseModel, TenantScoped):
     __tablename__ = "governance_approvals"
 
     request_type: Mapped[str] = mapped_column(String(60), nullable=False, index=True)

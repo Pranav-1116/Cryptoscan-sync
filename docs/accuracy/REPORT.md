@@ -2,6 +2,26 @@
 
 _Generated 2026-09-26T09:39:23+00:00 by `scripts/accuracy_benchmark.py` against the hard ground-truth corpus (`services/scanner/tests/accuracy/corpus.py`, 842 files). Scored per algorithm family per file._
 
+> **Read this before quoting the number.** These figures are scored against a
+> corpus this project wrote and then tuned the scanner against, wave by wave —
+> the per-wave notes below record "first pass N/M … after: F1 1.000". That is
+> legitimate development, but it means 100% measures *"the scanner handles the
+> cases we thought of"*, not *"the scanner is right about code in general"*.
+> No held-out set survives, and no bank has reviewed the output
+> (`BANK-READINESS.md` reports `NO_FIELD_DATA`).
+>
+> Scoring is also **per algorithm family per file**: a file expecting `{MD5}`
+> scores the same whether the scanner found one MD5 call or ten, and the line
+> number is not part of the score. Localisation was verified separately —
+> all 2,248 findings point at the correct line — but that is not what this
+> table measures.
+>
+> The defensible number is in [EXTERNAL-VALIDATION.md](EXTERNAL-VALIDATION.md):
+> ~25,000 third-party files across Python, JS/TS, Go, Java and C#, reviewed by
+> hand. That exercise found five real defects — including a parser crash on
+> real npm packages and AES implementations being invisible in C# — none of
+> which this corpus caught.
+
 ## Overall
 
 | Metric | Value |

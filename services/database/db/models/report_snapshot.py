@@ -16,9 +16,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class ReportSchedule(BaseModel):
+class ReportSchedule(BaseModel, TenantScoped):
     __tablename__ = "report_schedules"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
@@ -33,7 +34,7 @@ class ReportSchedule(BaseModel):
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
 
-class ReportSnapshot(BaseModel):
+class ReportSnapshot(BaseModel, TenantScoped):
     __tablename__ = "report_snapshots"
 
     schedule_id: Mapped[Optional[str]] = mapped_column(

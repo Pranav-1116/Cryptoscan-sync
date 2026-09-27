@@ -440,3 +440,61 @@ def summary(user: str = Depends(get_current_user), db: Session = Depends(get_db_
         "blocking_findings": sum(1 for row in open_findings if row.blocking),
         "findings_severity_4_plus": sum(1 for row in open_findings if row.severity >= 4),
     }
+
+
+# ----------------- ISO 9564 / ISO 8583 / EMV standards analysis ----------------- #
+# These read *declarations* — the PIN-block format a system says it uses, the
+# data elements a link carries, the CVN an issuer application runs — and report
+# what each implies for PCI PIN and for the TDES→AES migration. None of them
+# accepts PIN blocks, PANs or key material; the analysers refuse input that
+# looks like one (see payment_crypto.pinblocks / .emv).
+
+class PinBlockEstateRequest(BaseModel):
+    """Each: {system, format, online?, key_algorithm?}"""
+    declarations: list[dict]
+
+
+class Iso8583LinksRequest(BaseModel):
+    """Each: {link, fields: [2, 52, 64], mac_algorithm?, pin_block_format?}"""
+    links: list[dict]
+
+
+class EmvPortfolioRequest(BaseModel):
+    """Each: {application, cvn, key_algorithm?, key_bits?}"""
+    applications: list[dict]
+
+
+@router.post("/pin-blocks/analyse")
+def analyse_pin_blocks(body: PinBlockEstateRequest,
+                       user: str = Depends(require_auditor),
+                       db: Session = Depends(get_db_session)):
+    """ISO 9564 PIN-block formats across the estate, with the TDES backlog."""
+    from payment_crypto.pinblocks import summarise_estate
+
+    if not body.declarations:
+        raise HTTPException(status_code=400, detail="declarations must not be empty")
+    return summarise_estate(body.declarations)
+
+
+@router.post("/iso8583/analyse")
+def analyse_iso8583(body: Iso8583LinksRequest,
+                    user: str = Depends(require_auditor),
+                    db: Session = Depends(get_db_session)):
+    """Crypto carried by each ISO 8583 link, from its declared data elements."""
+    from payment_crypto.iso8583 import summarise_links
+
+    if not body.links:
+        raise HTTPException(status_code=400, detail="links must not be empty")
+    return summarise_links(body.links)
+
+
+@router.post("/emv/analyse")
+def analyse_emv(body: EmvPortfolioRequest,
+                user: str = Depends(require_auditor),
+                db: Session = Depends(get_db_session)):
+    """EMV cryptogram configuration per issuer application (CVN-driven)."""
+    from payment_crypto.emv import summarise_portfolio
+
+    if not body.applications:
+        raise HTTPException(status_code=400, detail="applications must not be empty")
+    return summarise_portfolio(body.applications)

@@ -8,9 +8,10 @@ from sqlalchemy import Boolean, ForeignKey, Integer, JSON, String, Text, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class EvidenceRecord(BaseModel):
+class EvidenceRecord(BaseModel, TenantScoped):
     __tablename__ = "evidence_records"
     __table_args__ = (
         Index("ix_evidence_scan_chain", "scan_id", "chain_position"),

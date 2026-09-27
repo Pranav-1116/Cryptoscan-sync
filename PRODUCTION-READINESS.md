@@ -19,7 +19,26 @@
 | **Part 3** (logic-3, months 7–9): network/TLS, cloud, dependency graph, business context | **~60%** | **~40%** — code exists but live paths are gated/unverified; needs Neo4j + real creds burn-in |
 | **Months 1–9 combined** | **~80%** | **~60–65%** |
 
-**One-line verdict:** Part 1 is genuinely production-grade for a single-team pilot; Part 2 is one E2E verification away; Part 3 is "lab-ready, not prod-ready." What holds the *whole platform* back from production is not missing features but **operational hardening** (CI is empty, single-user auth, sync worker, no HA), detailed in §5.
+**One-line verdict:** Part 1 is genuinely production-grade for a single-team pilot; Part 2 is one E2E verification away; Part 3 is "lab-ready, not prod-ready." What holds the *whole platform* back from production is not missing features but **operational hardening** (single-user auth, sync worker, no HA), detailed in §5.
+
+> **Update 2026-09-27.** Two items in that list have moved, and one item that
+> was not in it turned out to matter more than any of them.
+>
+> - **CI was empty and is not any more.** All four `.github/workflows/*.yml`
+>   were literally 0 bytes; a complete workflow had been written into
+>   `deploy/ci-workflows/ci.yml` and never installed. It is installed, plus a
+>   new `postgres-parity` job.
+> - **The PostgreSQL path is now exercised.** The whole suite runs on SQLite
+>   while production mandates Postgres, and `scripts/postgres_parity.sh` — the
+>   only gate between them — had never run: it set a *relative* interpreter
+>   path and then `cd`'d into service directories. Fixed; all three stages now
+>   pass on PostgreSQL 16 (61-migration chain, 486 worker tests, estate
+>   read-back), with a Docker fallback so it needs no credentials.
+> - **A cross-tenant data leak on the entire scan surface**, which no section
+>   of this document anticipated. See `BACKEND-DATABASE-GAPS.md` §1.1.
+>
+> That file is the current, evidence-based gap list and supersedes this one
+> where they disagree.
 
 ---
 

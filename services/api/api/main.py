@@ -17,6 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from api.config.settings import APISettings, get_settings, validate_runtime_settings
 from fastapi.middleware.gzip import GZipMiddleware
 from api.middleware.auth_middleware import AuthMiddleware
+from api.middleware.tenant_scope import TenantScopeMiddleware
 from api.middleware.rate_limit import RateLimitMiddleware
 from api.middleware.logging_middleware import LoggingMiddleware
 from api.middleware.request_id_middleware import RequestIDMiddleware
@@ -273,6 +274,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.add_middleware(GZipMiddleware, minimum_size=1024)  # W59-60: compress bulky JSON payloads
     app.add_middleware(RequestIDMiddleware)
     if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
+        # Added before AuthMiddleware, so it runs *after* it: Starlette applies
+        # middleware outermost-last, and the tenant can only be resolved once
+        # the request is known to be authenticated.
+        app.add_middleware(TenantScopeMiddleware)
         app.add_middleware(AuthMiddleware, settings=settings)
         app.add_middleware(RateLimitMiddleware, redis_client=_shared_rate_limit_backend())
     # Platform self-observability: W3C trace-context + Prometheus metrics on

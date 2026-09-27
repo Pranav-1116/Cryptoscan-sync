@@ -16,6 +16,7 @@ from sqlalchemy import BigInteger, Boolean, Date, DateTime, Integer, JSON, Strin
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 # X9.24/TR-39 + operational states
 KEY_STATES = ("PRE_ACTIVATION", "ACTIVE", "SUSPENDED", "COMPROMISED", "DESTROYED", "EXPIRED")
@@ -28,7 +29,7 @@ KEY_USAGES = (
 )
 
 
-class PaymentKey(BaseModel):
+class PaymentKey(BaseModel, TenantScoped):
     __tablename__ = "payment_keys"
 
     key_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)  # operator/HSM key reference
@@ -48,7 +49,7 @@ class PaymentKey(BaseModel):
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-class KeyCeremony(BaseModel):
+class KeyCeremony(BaseModel, TenantScoped):
     __tablename__ = "key_ceremonies"
 
     ceremony_id: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
@@ -64,7 +65,7 @@ class KeyCeremony(BaseModel):
     status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="HELD")
 
 
-class HsmEvent(BaseModel):
+class HsmEvent(BaseModel, TenantScoped):
     __tablename__ = "hsm_events"
 
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
@@ -77,7 +78,7 @@ class HsmEvent(BaseModel):
     raw: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
-class PaymentTransactionVolume(BaseModel):
+class PaymentTransactionVolume(BaseModel, TenantScoped):
     """Daily transaction count from core banking — the denominator of the
     crypto-per-transaction ratio (PAY-014). One row per day, upserted."""
 
@@ -88,7 +89,7 @@ class PaymentTransactionVolume(BaseModel):
     source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
 
 
-class PaymentPolicyFinding(BaseModel):
+class PaymentPolicyFinding(BaseModel, TenantScoped):
     __tablename__ = "payment_policy_findings"
 
     rule_id: Mapped[str] = mapped_column(String(20), nullable=False, index=True)

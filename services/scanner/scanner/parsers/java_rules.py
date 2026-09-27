@@ -102,7 +102,28 @@ _TINK = {
     "hkdf_sha256": "HKDF", "aes256_siv_raw": "AES", "ml_dsa_65": "ML-DSA", "slh_dsa_sha2_128s": "SLH-DSA", "ml_kem_768": "ML-KEM",
 }
 
+# Class-name stem -> algorithm for *implementations* of a primitive rather than
+# call sites. Shared with the C# parser's equivalent rule; see _IMPL_ALGOS there.
+from scanner.parsers.csharp_parser import _IMPL_ALGOS as _IMPL_ALGOS  # noqa: E402
+
+# A class declaration is a primitive when it implements a crypto interface or
+# extends another primitive (``class AESEngine implements BlockCipher``,
+# ``class MD5Digest extends GeneralDigest``). Precision comes from the derived
+# name having to resolve through _IMPL_ALGOS, not from the base list.
+_JAVA_CRYPTO_BASES = (r"BlockCipher|StreamCipher|AsymmetricBlockCipher|Digest|ExtendedDigest|Mac|Signer"
+                      r"|AEADCipher|AEADBlockCipher|DerivationFunction|Xof|GeneralDigest"
+                      r"|BlockCipherPadding|MessageDigestSpi|CipherSpi|SignatureSpi|MacSpi"
+                      r"|[A-Za-z0-9_.]*(?:Engine|Digest|Cipher|Mac|Signer)")
+
 RULES: list[Rule] = [
+    # A vendored or forked crypto library implements its primitives here rather
+    # than calling them; without this an estate that ships its own BouncyCastle
+    # fork reports no AES at all. Mirrors the ALGORITHM_IMPLEMENTATION handling
+    # the Python parser applies to ``class AES(BlockCipherAlgorithm)``.
+    _r(r"\bclass\s+(\w+?)(?:Engine|Digest|Signer|Mac)\s*(?:<[^>]*>)?\s*(?:extends|implements)\s+[^{]*?\b(?:" + _JAVA_CRYPTO_BASES + r")\b",
+       {"api_type": "CIPHER_INSTANCE", "purpose": "ALGORITHM_IMPLEMENTATION"},
+       "vendored-implementation", algo_from_group=1, algo_map=_IMPL_ALGOS,
+       confidence="MEDIUM", confidence_reason="class implements a cryptographic primitive"),
     # keytool / openssl invoked from code (ProcessBuilder argv): "-keyalg", "RSA"
     _r(r"\"-(?:keyalg|sigalg)\"\s*,\s*\"(RSA|EC|DSA|AES|DESede|DES|SHA256withRSA|SHA1withRSA|SHA384withRSA|SHA512withRSA|SHA256withECDSA|SHA384withECDSA|MD5withRSA)\"", _K, "keytool-argv", algo_from_group=1,
        algo_map={"rsa": "RSA", "ec": "ECDSA", "dsa": "DSA", "aes": "AES", "desede": "3DES", "des": "DES", "sha256withrsa": "SHA256withRSA", "sha1withrsa": "SHA1withRSA", "sha384withrsa": "SHA384withRSA", "sha512withrsa": "SHA512withRSA", "sha256withecdsa": "SHA256withECDSA", "sha384withecdsa": "SHA384withECDSA", "md5withrsa": "MD5withRSA"}),

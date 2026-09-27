@@ -23,6 +23,18 @@ def test_plaintext_dev_password_compare():
     assert not verify_password("cryptoscan", "other")
 
 
+def test_plaintext_password_never_verifies_in_production(monkeypatch):
+    """The dev-only literal comparison must not authenticate in production."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    get_settings.cache_clear()
+    try:
+        assert not verify_password("cryptoscan", "cryptoscan")
+        # a real PBKDF2 hash still verifies normally
+        assert verify_password("cryptoscan", hash_password("cryptoscan"))
+    finally:
+        get_settings.cache_clear()
+
+
 def test_production_rejects_demo_defaults():
     settings = APISettings.model_construct(
         ENVIRONMENT="production",
@@ -41,12 +53,36 @@ def test_production_rejects_demo_defaults():
         validate_runtime_settings(settings)
 
 
-def test_production_accepts_strong_config():
+def test_production_rejects_plaintext_admin_password_even_when_strong():
+    """A strong *plaintext* ADMIN_PASSWORD is still refused in production.
+
+    verify_password() will not fall back to a literal comparison there, so a
+    deployment configured this way would boot and then be unable to log in.
+    Fail at boot with an actionable message instead.
+    """
     settings = APISettings.model_construct(
         ENVIRONMENT="production",
         SECRET_KEY="n8f3k2p9q1w4e6r8t0y2u4i6o8a1s3d5",
         ADMIN_PASSWORD="correct-horse-battery",
         ADMIN_PASSWORD_HASH="",
+        GITHUB_WEBHOOK_SECRET="webhook-secret-not-a-placeholder-value",
+        DATABASE_URL="postgresql://cryptoscan:secret@postgres:5432/cryptoscan",
+        CORS_ORIGINS="https://cryptoscan.example",
+        ALLOW_SQLITE=False,
+        ALLOW_INSECURE_CORS=False,
+        DOCS_ENABLED=False,
+        COOKIE_SECURE=None,
+    )
+    with pytest.raises(RuntimeError, match="ADMIN_PASSWORD_HASH"):
+        validate_runtime_settings(settings)
+
+
+def test_production_accepts_strong_config():
+    settings = APISettings.model_construct(
+        ENVIRONMENT="production",
+        SECRET_KEY="n8f3k2p9q1w4e6r8t0y2u4i6o8a1s3d5",
+        ADMIN_PASSWORD="",
+        ADMIN_PASSWORD_HASH=hash_password("correct-horse-battery"),
         GITHUB_WEBHOOK_SECRET="webhook-secret-not-a-placeholder-value",
         DATABASE_URL="postgresql://cryptoscan:secret@postgres:5432/cryptoscan",
         CORS_ORIGINS="https://cryptoscan.example",

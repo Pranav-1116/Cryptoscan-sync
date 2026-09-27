@@ -14,9 +14,10 @@ from sqlalchemy import JSON, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class TechnologyBomSnapshot(BaseModel):
+class TechnologyBomSnapshot(BaseModel, TenantScoped):
     __tablename__ = "technology_bom_snapshots"
 
     #: monotonic version number (1..n), unique per snapshot.

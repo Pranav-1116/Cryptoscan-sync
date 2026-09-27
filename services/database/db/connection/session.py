@@ -26,6 +26,12 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, expire_on_commit=
 
 def configure_session(engine=None) -> None:
     SessionLocal.configure(bind=engine or get_engine())
+    # Tenant isolation is an ORM-level filter rather than a per-repository
+    # argument, so that a query added later cannot forget it. Inert until a
+    # request enters db.tenancy.tenant_scope().
+    from db.tenancy import install_tenant_guard
+
+    install_tenant_guard()
 
 
 def init_db(engine=None) -> None:

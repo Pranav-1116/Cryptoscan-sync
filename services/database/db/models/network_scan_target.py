@@ -9,9 +9,10 @@ from sqlalchemy import Boolean, DateTime, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class NetworkScanTarget(BaseModel):
+class NetworkScanTarget(BaseModel, TenantScoped):
     __tablename__ = "network_scan_targets"
 
     endpoint: Mapped[str] = mapped_column(String(300), nullable=False, unique=True, index=True)

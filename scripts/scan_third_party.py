@@ -7,7 +7,11 @@ Used for external validation: code nobody on this project wrote or labelled.
 """
 import sys, os, collections
 from pathlib import Path
-ROOT = Path("/home/user/CryproScan")
+# Resolve the repo from this file's own location. This used to be a hardcoded
+# absolute path to one developer's checkout (and a misspelled one), so the
+# external-validation tool imported nothing and could not run anywhere else --
+# which is why external validation had only ever covered Python.
+ROOT = Path(__file__).resolve().parents[1]
 for p in ("services/scanner", "shared/shared_models", "shared/shared_config", "shared/shared_logging"):
     sys.path.insert(0, str(ROOT / p))
 os.environ.setdefault("CRYPTOSCAN_LOG_LEVEL", "warning")

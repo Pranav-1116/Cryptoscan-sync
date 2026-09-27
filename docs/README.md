@@ -1,7 +1,23 @@
 # CryptoScan documentation
 
+> **What to do next:** [ROADMAP-TO-ENTERPRISE.md](../ROADMAP-TO-ENTERPRISE.md)
+> — the sequenced plan to enterprise grade, and what deliberately not to
+> build. Its first phase is evidence, not features: this product has never
+> scanned a real bank, and that is the binding constraint.
+>
+> **Read [BACKEND-DATABASE-GAPS.md](../BACKEND-DATABASE-GAPS.md) before quoting
+> any readiness figure in this tree.** A 2026-09-27 audit ran the code rather
+> than reading the docs and found several controls described here as enforced
+> that were not — most seriously, tenant isolation on the scan surface. Where
+> that file and anything here disagree, that file is what the code does. It
+> also records what is now fixed (CI, PostgreSQL parity, tenant isolation,
+> frontend route guards) and what is still open.
+>
+> **Supported topology: one deployment per customer.** Self-serve tenant
+> signup ships disabled for the reason given in that document.
+
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
-> **How production-ready is it?** [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) — ~80% overall, core path ~92%, with the evidence and the gaps.
+> **How production-ready is it?** [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) — ~80% overall, core path ~92%, with the evidence and the gaps. Read it alongside the gap audit above.
 > **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview (33 / 30 / 8), labelled in the UI and served at `GET /api/v1/platform/capabilities`.
 
 Production cryptographic inventory and compliance platform: deterministic
@@ -17,6 +33,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | Doc | What it covers |
 |---|---|
 | **[The product, end to end](product/README.md)** | nine documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, a scan step by step, scope & readiness, glossary, the engines behind the pages, an end-to-end trace |
+| [Telecom — 5G crypto configuration](telecom-5g-crypto.md) | SUPI concealment, NEA/NIA, N32 roaming, MILENAGE/TUAK and the 5G key hierarchy — the TS 33.501 controls no external probe can see, where the permissive setting looks healthy in service |
 | [Network controls](security/NETWORK-CONTROLS.md) | how the product behaves behind a bank's IDS, firewalls, proxies and rate limits — traffic matrix and pilot firewall rules |
 | [Key inventory](accuracy/KEY-INVENTORY.md) | HSM / KMS / keystore / certificate exports ingested and reconciled with code (consumers, orphans, keys outside the estate) |
 | [Cascade analysis](accuracy/CASCADE-ANALYSIS.md) | dependency & blast-radius layer: providers, migration waves, libraries, shared keys, weak key sizes |

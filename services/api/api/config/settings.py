@@ -179,9 +179,14 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
     if len(secret) < 32 or secret in WEAK_SECRET_KEYS:
         errors.append("SECRET_KEY must be a unique value of at least 32 characters")
     if not settings.ADMIN_PASSWORD_HASH:
-        password = settings.ADMIN_PASSWORD or ""
-        if password.lower() in WEAK_PASSWORDS or len(password) < 12:
-            errors.append("ADMIN_PASSWORD must be strong, or set ADMIN_PASSWORD_HASH")
+        # A plaintext ADMIN_PASSWORD cannot authenticate in production at all
+        # (verify_password refuses the non-PBKDF2 fallback there), so reject it
+        # at boot instead of letting the deployment come up unable to log in.
+        errors.append(
+            "ADMIN_PASSWORD_HASH must be set in production "
+            "(generate one with scripts/hash_admin_password.py); "
+            "a plaintext ADMIN_PASSWORD is not accepted"
+        )
     webhook = (settings.GITHUB_WEBHOOK_SECRET or "").strip()
     if webhook in WEAK_WEBHOOK_SECRETS or len(webhook) < 24:
         errors.append("GITHUB_WEBHOOK_SECRET must be a unique value of at least 24 characters")

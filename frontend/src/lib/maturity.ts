@@ -55,6 +55,7 @@ export const CAPABILITIES_JSON = {
   "live-stream": "ga",
   "login": "ga",
   "migration": "beta",
+  "nbom": "preview",
   "network": "ga",
   "notifications": "beta",
   "onboarding": "beta",

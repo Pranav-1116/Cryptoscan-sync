@@ -11,9 +11,10 @@ from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class AppSetting(BaseModel):
+class AppSetting(BaseModel, TenantScoped):
     __tablename__ = "app_settings"
 
     key: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)

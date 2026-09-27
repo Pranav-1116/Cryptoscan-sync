@@ -20,6 +20,7 @@ from sqlalchemy import JSON, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 #: connector/config keys that may never be persisted (secret material).
 SECRET_KEY_HINTS = ("secret", "password", "token", "private_key", "access_key",
@@ -52,7 +53,7 @@ ONBOARDING_STAGES = (
 )
 
 
-class Organization(BaseModel):
+class Organization(BaseModel, TenantScoped):
     __tablename__ = "organizations"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
@@ -65,7 +66,7 @@ class Organization(BaseModel):
     onboarding_complete: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
-class Environment(BaseModel):
+class Environment(BaseModel, TenantScoped):
     __tablename__ = "environments"
 
     org_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
@@ -86,7 +87,7 @@ class Environment(BaseModel):
     maintenance_windows: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
-class ScopeEntry(BaseModel):
+class ScopeEntry(BaseModel, TenantScoped):
     """One authorized target. The scanner only ever operates within these."""
 
     __tablename__ = "scope_entries"
@@ -99,7 +100,7 @@ class ScopeEntry(BaseModel):
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
-class Connector(BaseModel):
+class Connector(BaseModel, TenantScoped):
     """A registered infrastructure connection (Connections Center)."""
 
     __tablename__ = "connectors"
@@ -123,7 +124,7 @@ class Connector(BaseModel):
     agent_link: Mapped[str | None] = mapped_column(String(20), nullable=True, default="disconnected")  # disconnected/connecting/encrypted
 
 
-class DiscoveryRun(BaseModel):
+class DiscoveryRun(BaseModel, TenantScoped):
     """A record of an initial/continuous discovery orchestration."""
 
     __tablename__ = "discovery_runs"

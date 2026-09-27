@@ -89,6 +89,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     # ── beta: real, tested, thinner ──
     "hardware": {"tier": "beta", "area": "Discovery", "why": "HSM/TPM/firmware plugins exist (ADR-014); live hardware collection needs vendor access and has a short field history."},
     "hbom": {"tier": "beta", "area": "Intelligence", "why": "Hardware BOM view over the Technology BOM; depends on hardware scan coverage."},
+    "nbom": {"tier": "preview", "area": "Intelligence", "why": "Network BOM: listeners, certificates, cipher suites and tunnels with a dependency graph. The generator and its cascade are tested, but no network scan feeds it yet, so the page ships ahead of its data source."},
     "graph": {"tier": "beta", "area": "Intelligence", "why": "Neo4j dependency graph is optional at runtime; 3.2k LOC, 9 test files."},
     "dependency-graph": {"tier": "beta", "area": "Intelligence", "why": "Same graph engine as /graph."},
     "agility": {"tier": "beta", "area": "Intelligence", "why": "Crypto-agility scoring; 900 LOC, 37 tests; scoring model still being calibrated."},

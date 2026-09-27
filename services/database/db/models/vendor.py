@@ -9,9 +9,10 @@ from sqlalchemy import DateTime, ForeignKey, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class Vendor(BaseModel):
+class Vendor(BaseModel, TenantScoped):
     __tablename__ = "vendors"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
@@ -27,7 +28,7 @@ class Vendor(BaseModel):
     extra_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
 
-class SystemVendor(BaseModel):
+class SystemVendor(BaseModel, TenantScoped):
     __tablename__ = "system_vendors"
     __table_args__ = (UniqueConstraint("system_id", "vendor_id", name="uq_system_vendor"),)
 

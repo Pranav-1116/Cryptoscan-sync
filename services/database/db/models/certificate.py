@@ -9,9 +9,10 @@ from sqlalchemy import Boolean, DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class Certificate(BaseModel):
+class Certificate(BaseModel, TenantScoped):
     __tablename__ = "certificates"
 
     fingerprint_sha256: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)

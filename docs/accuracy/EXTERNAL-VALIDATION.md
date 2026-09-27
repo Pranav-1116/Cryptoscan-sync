@@ -4,6 +4,63 @@ The corpus in `REPORT.md` is hand-labelled by us. To check the scanner against c
 wrote, we point it at the Python packages installed in the project's own virtualenv and review
 every finding by hand (`python scripts/scan_third_party.py <pkg> v`).
 
+## Round 2 (2026-09-27) — JS/TS, Go, Java, C#
+
+Round 1 covered Python only, because `scan_third_party.py` had a hardcoded absolute path to one
+developer's checkout and therefore imported nothing anywhere else. With that fixed, the same
+review was run against ~25,000 more third-party files. Reproduce the downloads with
+`scripts/fetch_validation_corpora.sh`; Python and Go need none (the venv and the Go module cache
+are already third-party trees).
+
+| Language | Corpus | Files | Findings | Crashes |
+|---|---|---|---|---|
+| JS/TS | `frontend/node_modules` | 3 651 | 50 | 0 |
+| Go | `go/pkg/mod/golang.org` + `github.com` | 7 850 | 7 126 | 0 |
+| Java | bc-java + commons-codec | 8 486 | 28 493 | 0 |
+| C# | bc-csharp | 2 873 | 4 093 | 0 |
+
+**Five defects this exercise exposed, all fixed and regression-tested.**
+
+1. **The scanner crashed on real npm packages.** `re.sub()` was given a replacement string taken
+   from the file being scanned, so a literal `\u` in minified JS raised `bad escape \u` and the
+   whole file was abandoned. A crash is the worst kind of miss — the file is skipped silently, so
+   no corpus test can see it. The same latent bug was in the **go, csharp, php and rule_engine**
+   parsers (`rule_engine.py:178` had been hand-escaped for exactly this; the line above it had
+   not). All now pass a function replacement, which is template-free by construction.
+2. **Crypto API names inside string literals were reported as call sites.** caniuse-lite ships
+   `C:"crypto.getRandomValues()"` as a browser-feature *name* in a data table. `run_rules` now
+   rejects an invocation match (one ending in `(`) that begins inside a quoted string. Algorithm
+   names in strings are untouched — `"AES/GCM/NoPadding"` must still be read.
+3. **`.d.ts` declaration files were scanned as code.** Ambient type declarations contain no
+   runtime code, so nanoid's three `export function nanoid(size?: number)` signatures each became
+   a live CSPRNG finding.
+4. **A bare `wireguard` keyword inferred ChaCha20-Poly1305.** `x/sys/unix/zerrors_linux.go`
+   defines `WG_GENL_NAME = "wireguard"`, a netlink family name. Now requires the real module path
+   (`golang.zx2c4.com/wireguard`) or a package-qualified call.
+5. **Vendored crypto *implementations* were invisible in Java and C#** — the recall gap that
+   matters most for banks. `class AesEngine : IBlockCipher` in bc-csharp reported **no AES at
+   all**; bc-java's `AESEngine.java` only matched incidentally, via a comment region. Round 1 had
+   already established that implementations should be reported (`ALGORITHM_IMPLEMENTATION`, added
+   for the Python `cryptography` package) — it was simply never extended to the bank languages.
+   Both parsers now detect a class that implements a crypto interface or extends another
+   primitive, gated on the class-name stem resolving to a known algorithm. Recall on the two
+   corpora: C# 701 → 742 files with findings, Java 2 223 → 2 266.
+
+Precision spot-checks held up. commons-codec put every one of its 306 findings inside the
+`digest/` package and none in the ~190 Base64/Soundex/binary files; `go.uber.org/multierr` and
+`gopkg.in/yaml` (49 files) produced nothing. In `golang.org/x`, findings concentrate in `x/crypto`
+(164 files) and `x/net` (34, TLS) with single files in `x/text`/`x/sync`/`x/sys` — each reviewed
+and correct (real `md5.Sum`, `crypto/rand`, `math/rand` use).
+
+One deliberate non-finding: `MessageDigestAlgorithms.java` is a table of `String MD5 = "MD5"`
+constants and is not reported. A constant declaration is not a crypto operation, and flagging it
+would fire on every string named after an algorithm. Recorded here as a judgement call, not an
+oversight.
+
+Separately, localisation was measured for the first time: across all 2 248 findings on the
+labelled corpus, every reported line number is in range and every code snippet matches the line
+it claims. The benchmark scores per algorithm family per file, so this was previously unverified.
+
 Date: 2026-09-24 · scanner at the commit that adds this file.
 
 ## Packages with no cryptography (precision check)

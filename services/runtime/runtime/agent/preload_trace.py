@@ -50,12 +50,27 @@ _TLS_FUNCTIONS = {
 }
 
 
+# Why the last ensure_shim() returned None. A compile failure used to be
+# indistinguishable from "this host has no compiler", which hid a real build
+# break (the shim stopped compiling under GCC 14) behind a benign-looking
+# message for as long as nobody ran the compiler by hand.
+LAST_SHIM_ERROR: str | None = None
+
+
 def ensure_shim() -> Path | None:
-    """Compile the C shim if a compiler is available; return its path."""
+    """Compile the C shim if a compiler is available; return its path.
+
+    On failure returns None and records the reason in ``LAST_SHIM_ERROR``.
+    """
+    global LAST_SHIM_ERROR
     if SHIM_SO.exists():
         return SHIM_SO
     cc = shutil.which("gcc") or shutil.which("cc")
-    if cc is None or not SHIM_C.exists():
+    if cc is None:
+        LAST_SHIM_ERROR = "no C compiler on PATH (looked for gcc, cc)"
+        return None
+    if not SHIM_C.exists():
+        LAST_SHIM_ERROR = f"shim source missing at {SHIM_C}"
         return None
     result = subprocess.run(
         [cc, "-O2", "-fPIC", "-shared", "-o", str(SHIM_SO), str(SHIM_C), "-ldl"],
@@ -63,7 +78,12 @@ def ensure_shim() -> Path | None:
         text=True,
     )
     if result.returncode != 0:
+        LAST_SHIM_ERROR = (
+            f"{cc} exited {result.returncode} compiling {SHIM_C.name}: "
+            f"{(result.stderr or result.stdout or '').strip()[:800]}"
+        )
         return None
+    LAST_SHIM_ERROR = None
     return SHIM_SO
 
 
@@ -140,9 +160,7 @@ def trace_command(
     """
     shim = ensure_shim()
     if shim is None:
-        raise RuntimeError(
-            "cryptoscan_trace shim unavailable: no C compiler or missing cshim source"
-        )
+        raise RuntimeError(f"cryptoscan_trace shim unavailable: {LAST_SHIM_ERROR}")
     import signal
     import tempfile
     import time

@@ -18,9 +18,10 @@ from sqlalchemy import DateTime, Integer, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 
-class CryptoLiveState(BaseModel):
+class CryptoLiveState(BaseModel, TenantScoped):
     __tablename__ = "crypto_live_states"
 
     asset_id: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
@@ -48,7 +49,7 @@ class CryptoLiveState(BaseModel):
         return data
 
 
-class CryptoLiveEventRow(BaseModel):
+class CryptoLiveEventRow(BaseModel, TenantScoped):
     """Immutable live-crypto event journal entry (§34 timeline)."""
 
     __tablename__ = "crypto_live_events"

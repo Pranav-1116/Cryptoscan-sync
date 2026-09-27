@@ -27,7 +27,14 @@ class RuntimeFinding(BaseModel):
 
 
 class RuntimeFindingsBody(BaseModel):
-    scanner_id: str = "ebpf-runtime-agent-v1.0"
+    # This endpoint ingests runtime observations from whatever agent posts
+    # them; the caller names itself. The default used to be
+    # "ebpf-runtime-agent-v1.0", which made every unattributed batch look as
+    # though it came from an eBPF agent this project ships. It does not — there
+    # is no kernel code in the repository. What does exist is the LD_PRELOAD
+    # tracer in services/runtime (cshim/cryptoscan_trace.c), and it names
+    # itself. Keep this neutral so the inventory never over-claims its source.
+    scanner_id: str = "runtime-agent-unspecified"
     # Batch cap — agents stream continuously, so a single request must never be
     # allowed to ingest an unbounded array (resource-exhaustion / DoS, OWASP A04).
     findings: list[RuntimeFinding] = Field(default_factory=list, max_length=5000)

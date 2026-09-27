@@ -18,6 +18,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, JSON, Stri
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 # What a target's last cycle produced. PENDING = never ran.
 TARGET_STATUSES = ("PENDING", "OK", "DEGRADED", "FAILING", "BLOCKED", "PAUSED")
@@ -62,7 +63,7 @@ class MonitorLease(BaseModel):
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class MonitorEvent(BaseModel):
+class MonitorEvent(BaseModel, TenantScoped):
     __tablename__ = "monitor_events"
     __table_args__ = (Index("ix_monitor_events_created_at", "created_at"),)  # realtime replay
 
