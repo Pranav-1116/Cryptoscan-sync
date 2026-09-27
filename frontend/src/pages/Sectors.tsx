@@ -4,6 +4,7 @@ import {
   apiListSectors, apiActiveSector, apiSetActiveSector,
   type ApiResult, type SectorProfile,
 } from "../lib/api.js";
+import { RequireRole, useAuth } from "../lib/auth.js";
 
 /* Sector Layer — one universal scanning engine; the sector profile changes
    context only (criticality, policy packs, compliance frameworks, evidence,
@@ -17,10 +18,9 @@ export default function Sectors() {
   const [source, setSource] = useState<"live" | "offline">("offline");
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [roles, setRoles] = useState<string[]>([]);
+  const { roles } = useAuth();
 
   useEffect(() => {
-    try { setRoles(JSON.parse(localStorage.getItem("zelinx_roles") || "[]")); } catch { /* ignore */ }
     void apiListSectors().then((r: ApiResult<{ sectors: SectorProfile[] }>) => {
       setSource(r.source);
       if (r.data?.sectors) setSectors(r.data.sectors);
@@ -158,14 +158,28 @@ export default function Sectors() {
                     </div>
                   )}
 
-                  <button
-                    className={`btn sm ${isActive ? "" : "primary"}`}
-                    disabled={isActive || !canSet || busy === s.id}
-                    onClick={() => void select(s.id)}
-                    style={{ width: "100%", marginTop: 4 }}
+                  <RequireRole
+                    anyOf={["superadmin", "admin", "ciso"]}
+                    fallback={
+                      <button
+                        className={`btn sm ${isActive ? "" : "primary"}`}
+                        disabled
+                        title="Only superadmin, admin, or ciso can change the active sector"
+                        style={{ width: "100%", marginTop: 4 }}
+                      >
+                        {isActive ? "active profile" : "read-only role"}
+                      </button>
+                    }
                   >
-                    {busy === s.id ? "applying…" : isActive ? "active profile" : "set as active sector"}
-                  </button>
+                    <button
+                      className={`btn sm ${isActive ? "" : "primary"}`}
+                      disabled={isActive || busy === s.id}
+                      onClick={() => void select(s.id)}
+                      style={{ width: "100%", marginTop: 4 }}
+                    >
+                      {busy === s.id ? "applying…" : isActive ? "active profile" : "set as active sector"}
+                    </button>
+                  </RequireRole>
                 </div>
               );
             })}

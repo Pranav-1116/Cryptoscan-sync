@@ -50,6 +50,7 @@ services:
       LOG_LEVEL: INFO
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to an explicit origin list}
+      METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN for Prometheus /metrics scraping}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}

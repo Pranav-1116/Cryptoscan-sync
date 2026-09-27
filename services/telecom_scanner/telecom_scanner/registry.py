@@ -136,9 +136,15 @@ def normalize_target(record: Mapping[str, Any]) -> dict[str, Any]:
     environment = str(record.get("environment") or "production").strip().lower()
     if environment not in _ENVS:
         raise ValueError(f"environment must be one of {', '.join(_ENVS)}: {environment!r}")
+    interface = str(
+        record.get("interface") or record.get("reference_point") or record.get("n_interface") or ""
+    ).strip().upper()
+    if interface and interface not in {"N3", "N9"}:
+        raise ValueError("interface must be N3 or N9 when supplied")
     return {
         "nf_id": nf_id, "nf_type": nf_type, "endpoint": f"{host}:{int(port_text)}",
         "carrier_code": carrier_code, "environment": environment,
+        "interface": interface,
     }
 
 

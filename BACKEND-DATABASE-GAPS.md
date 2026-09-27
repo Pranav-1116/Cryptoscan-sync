@@ -235,6 +235,32 @@ findings point at the correct line.
 
 ---
 
+## 3A. Enterprise-hardening update — 2026-09-27
+
+The following roadmap items are now implemented in the repository and covered
+by focused regression tests or release configuration checks:
+
+- `/metrics` requires a dedicated `METRICS_TOKEN` bearer token in production;
+  development/test remains convenient. Prometheus is configured to read the
+  same token from its mounted secret file.
+- `db_backup.sh` refuses plaintext backups by default, encrypts PostgreSQL and
+  optional Neo4j artifacts with `age`, and records checksums over the encrypted
+  bytes. `db_restore.sh` verifies the manifest before decrypting and restoring.
+- Kubernetes API and worker images are pinned to `v1.0.0` instead of `latest`.
+- `TraceStore` now exports OTLP/HTTP JSON from a bounded background queue when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is configured; collector failure cannot block
+  API requests.
+
+These changes close the implementation side of roadmap items 2.1 (`/metrics`,
+backup encryption, image tags, OTLP). Phase 3 repository slices are also now
+wired and tested: the monitor executes due `NetworkScanTarget` rows and stores
+scheduled runs for NBOM, high-value frontend mutations use server-verified
+`RequireRole`, SoftHSM2/OpenSC PKCS#11 coverage is runnable in CI, and
+operator-side GTP-U/IPsec N3/N9 evidence is classified without active
+user-plane packets. They do **not** constitute the external proof items: a
+third-party penetration test, two-node DR drill, real HSM/CloudHSM exercise,
+controlled live worker/NBOM run, bank pilot, or SOC 2/ISO audit remain open.
+
 ## 4. Honest position for a Dubai bank
 
 **What is real:** 733 endpoints, real `boto3` across 22 AWS services, real TLS
@@ -340,7 +366,10 @@ MILENAGE/TUAK sets, and the K → K_gNB key hierarchy. Full reasoning in
 *configured* for NEA0; they do not tell you what a UE negotiated, which needs
 a UE-side capture this product does not perform. Not "we verified the air
 interface" — configuration assurance, which is a different and still useful
-control. GTP-U / IPsec on N3 and N9 remain uncovered.
+control. The repository now classifies operator-side GTP-U/IPsec evidence for
+N3/N9 (GTP-U/UDP-2152, IPsec/IKEv2, AEAD, integrity and DH floors); missing
+evidence remains `USER_PLANE_UNKNOWN`. Carrier-side captures and ingest are
+still required for an operational claim.
 
 ### 6.3 NBOM, and what the BOM audit actually found
 
@@ -369,8 +398,9 @@ NBOM also joined `correlate_xbom` as a fifth layer, so the chain is
 SBOM → CBOM → NBOM → HBOM → VBOM → business process. That is the difference
 between "we use RSA-1024 somewhere" and "api.bank.ae:443 presents it".
 
-**Still preview.** The generator, the cascade and the DB derivation are
-tested, but no *scheduled* network scan populates it — the demonstration row
-was seeded by hand. Until a scan runs on a cadence against a real estate the
-page is correct and empty. That is pipeline work, not BOM work, and it is the
-next concrete piece.
+**Repository pipeline now implemented; live proof pending.** The worker leader
+tick selects due API-created targets, calls the live TLS scanner, persists a
+`target_kind="scheduled"` run, and advances the schedule only after success.
+Focused tests cover this contract and the manual `/network/run-due` path uses
+the same durable run ledger. A controlled live worker run against a real estate
+is still required before calling NBOM operationally proven.

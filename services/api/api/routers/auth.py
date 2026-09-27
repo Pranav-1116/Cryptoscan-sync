@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import secrets
 from datetime import datetime, timedelta, timezone
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -164,11 +167,14 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
         try:
             _user_repo(db).audit(user.username, "auth.mfa_challenge_issued", ip=client)
             db.commit()
-        except Exception:
+        except Exception as exc:
             try:
                 db.rollback()
             except Exception:
-                pass
+                logger.exception("auth_mfa_challenge_rollback_failed", extra={"user": user.username})
+            fallback = _auth_db_error(exc)
+            if fallback is not None:
+                raise fallback from exc
         return LoginResponse(
             message="MFA code required",
             username=user.username,
@@ -551,8 +557,17 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db_se
             if _user_repo(db).revoke_session(token):
                 _user_repo(db).audit(actor, "auth.logout", ip=request.client.host if request.client else None)
                 db.commit()
-        except Exception:
-            pass  # revocation is best-effort; the token still expires naturally
+        except Exception as exc:
+            try:
+                db.rollback()
+            except Exception:
+                logger.exception("auth_logout_rollback_failed", extra={"actor": actor})
+            if settings.is_production:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Authentication store unavailable; logout was not confirmed",
+                ) from exc
+            logger.warning("auth_logout_revocation_failed", extra={"actor": actor}, exc_info=True)
         if actor != "unknown":
             publish_auth("logout", {"user": actor, "ip": request.client.host if request.client else None})
     response.delete_cookie("cryptoscan_session", path="/", secure=settings.cookie_secure, httponly=True, samesite="lax")
@@ -574,8 +589,13 @@ def me(request: Request, db: Session = Depends(get_db_session)) -> dict:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
     except HTTPException:
         raise
-    except Exception:  # pragma: no cover - store unavailable
-        pass
+    except Exception as exc:  # pragma: no cover - store unavailable
+        if get_settings().is_production:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication store unavailable",
+            ) from exc
+        logger.warning("auth_session_store_check_failed", exc_info=True)
     roles = session.roles
     user = None
     active_sessions = None
@@ -587,9 +607,15 @@ def me(request: Request, db: Session = Depends(get_db_session)) -> dict:
             try:
                 active_sessions = repo.count_active_sessions(user.username)
             except Exception:  # pragma: no cover - older stores lack the helper/table
+                logger.warning("auth_active_session_count_failed", exc_info=True)
                 active_sessions = None
-    except Exception:  # pragma: no cover
-        pass
+    except Exception as exc:  # pragma: no cover
+        if get_settings().is_production:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication store unavailable",
+            ) from exc
+        logger.warning("auth_user_lookup_failed", exc_info=True)
     roles = normalize_roles(roles)
     return {
         "username": session.username,
@@ -814,11 +840,17 @@ def _issue_session(response: Response, username: str, roles: list[str], client: 
     try:
         _user_repo(db).create_session(token, username, expires, ip=client)
         db.commit()
-    except Exception:
+    except Exception as exc:
         try:
             db.rollback()
         except Exception:
-            pass
+            logger.exception("auth_session_rollback_failed", extra={"user": username})
+        fallback = _auth_db_error(exc)
+        if fallback is not None:
+            # Never mint a production session that the revocation store did
+            # not record. In development _auth_db_error logs the degraded
+            # mode explicitly for the local in-memory fallback.
+            raise fallback from exc
     response.set_cookie(
         key="cryptoscan_session",
         value=token,

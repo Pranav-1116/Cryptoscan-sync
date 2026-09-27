@@ -104,6 +104,7 @@ _VALID_PROD_ENV = {
     "SECRET_KEY": "ci-only-production-guard-secret-key-0123456789abcdef",
     "ADMIN_PASSWORD_HASH": "ci-only-placeholder-hash",
     "GITHUB_WEBHOOK_SECRET": "ci-only-webhook-secret-0123456789abcdef",
+    "METRICS_TOKEN": "ci-only-metrics-token-0123456789abcdef",
     "DATABASE_URL": "postgresql://ci:ci@localhost:5432/ci",
     "CORS_ORIGINS": "https://cryptoscan.example.com",
 }

@@ -182,6 +182,7 @@ class TelecomTarget(BaseModel):
     endpoint: str = Field(min_length=6, max_length=253)
     carrier_code: str = Field(default="", max_length=24)
     environment: str = Field(default="production", max_length=16)
+    interface: str = Field(default="", max_length=8, description="optional N3 or N9 user-plane reference point")
 
 
 class ScanRequest(BaseModel):

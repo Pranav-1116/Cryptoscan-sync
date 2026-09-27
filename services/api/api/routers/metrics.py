@@ -6,11 +6,46 @@ infra/monitoring/grafana consumes these metric names.
 
 from __future__ import annotations
 
+import hmac
 import time
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 router = APIRouter(tags=["metrics"])
+
+
+def _require_metrics_token(request: Request) -> None:
+    """Protect the Prometheus surface without routing it through user auth.
+
+    Prometheus is an infrastructure principal, not a human session. In
+    development and test the endpoint remains convenient and unauthenticated;
+    production startup requires ``METRICS_TOKEN`` and this route accepts it as
+    either ``Authorization: Bearer`` or ``X-Metrics-Token``. Constant-time
+    comparison prevents turning this low-volume endpoint into a token oracle.
+    """
+    from api.config.settings import get_settings
+
+    settings = get_settings()
+    if not settings.is_production:
+        return
+    expected = (settings.METRICS_TOKEN or "").strip()
+    if len(expected) < 32:
+        # Normally caught by validate_runtime_settings during lifespan. Keep a
+        # request-time guard for ASGI probes that do not run lifespan hooks.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="metrics authentication is not configured",
+        )
+    authorization = request.headers.get("authorization", "")
+    presented = request.headers.get("x-metrics-token", "")
+    if authorization.lower().startswith("bearer "):
+        presented = authorization[7:].strip()
+    if not presented or not hmac.compare_digest(presented, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="metrics authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 _STARTED_AT = time.time()
 
@@ -75,7 +110,8 @@ def _telecom_lines() -> list[str]:
 
 
 @router.get("/metrics")
-def metrics() -> Response:
+def metrics(request: Request) -> Response:
+    _require_metrics_token(request)
     lines: list[str] = []
 
     # Process health

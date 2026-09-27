@@ -6,6 +6,7 @@ import {
   type OnboardingState, type DiscoveryPlan, type SectorProfile,
 } from "../lib/api.js";
 import { Corners, Kicker } from "../components/ui.jsx";
+import { RequireRole, useAuth } from "../lib/auth.js";
 
 /* Enterprise onboarding wizard — the customer journey:
    1 Create organization · 2 Select sector · 3 Create environment
@@ -58,12 +59,34 @@ const CONNECTORS = [
   { kind: "siem", label: "SIEM", method: "syslog", refs: [["endpoint", "Endpoint URL"], ["host", "Host"]] },
 ];
 
-function Btn({ children, onClick, disabled, ghost, busy }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; ghost?: boolean; busy?: boolean }) {
+type ButtonProps = {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  ghost?: boolean;
+  busy?: boolean;
+};
+
+function Btn({ children, onClick, disabled, ghost, busy }: ButtonProps) {
   return (
     <button style={{ ...(ghost ? btnGhost : btn), opacity: disabled || busy ? 0.5 : 1, cursor: disabled || busy ? "wait" : "pointer" }}
       disabled={disabled} onClick={onClick}>
       {busy ? "…" : children}
     </button>
+  );
+}
+
+const ONBOARDING_WRITE_ROLES = ["superadmin", "admin", "ciso", "security_analyst"];
+
+/** A visual guard for onboarding mutations. The API remains authoritative. */
+function RoleBtn(props: ButtonProps) {
+  return (
+    <RequireRole
+      anyOf={ONBOARDING_WRITE_ROLES}
+      fallback={<Btn {...props} disabled />}
+    >
+      <Btn {...props} />
+    </RequireRole>
   );
 }
 
@@ -74,7 +97,7 @@ export default function Onboarding() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [plan, setPlan] = useState<DiscoveryPlan | null>(null);
-  const [roles, setRoles] = useState<string[]>([]);
+  const { roles } = useAuth();
 
   const refresh = useCallback(async () => {
     const r = await apiOnboardingState();
@@ -86,12 +109,11 @@ export default function Onboarding() {
   }, []);
 
   useEffect(() => {
-    try { setRoles(JSON.parse(localStorage.getItem("zelinx_roles") || "[]")); } catch { /* ignore */ }
     void refresh();
     void apiListSectors().then((r) => { if (r.data?.sectors) setSectors(r.data.sectors); });
   }, [refresh]);
 
-  const canWrite = roles.some((r) => ["superadmin", "admin", "ciso", "security_analyst"].includes(r));
+  const canWrite = roles.some((r) => ONBOARDING_WRITE_ROLES.includes(r));
   const sectorIds = useMemo(() => (sectors.length ? sectors.map((s) => s.id) : SECTORS_FALLBACK), [sectors]);
 
   const done = (key: string) => !!state?.checklist.find((c) => c.step === key)?.done;
@@ -207,7 +229,7 @@ function OrgStep({ state, sectors, canWrite, busy, setBusy, refresh, flash, onNe
               {sectors.map((s) => <option key={s} value={s}>{s}</option>)}
             </select></div>
           <div style={{ display: "flex", alignItems: "flex-end" }}>
-            <Btn busy={busy === "org"} disabled={!canWrite} onClick={submit}>Create organization</Btn>
+            <RoleBtn busy={busy === "org"} disabled={busy === "org"} onClick={submit}>Create organization</RoleBtn>
           </div>
         </div>
       )}
@@ -317,7 +339,7 @@ function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
           <select style={field} value={isOt ? "passive" : scanMode} disabled={isOt} onChange={(e) => setScanMode(e.target.value)}>
             {SCAN_MODES.map((m) => <option key={m} value={m}>{m}</option>)}
           </select></div>
-        <Btn busy={busy === "env"} disabled={!canWrite} onClick={submit}>Add environment</Btn>
+        <RoleBtn busy={busy === "env"} disabled={busy === "env"} onClick={submit}>Add environment</RoleBtn>
       </div>
       <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
         {(state?.environments ?? []).map((e) => (
@@ -343,7 +365,7 @@ function EnvStep({ state, canWrite, busy, setBusy, refresh, flash }: {
                   </select></div>
                 <div><label style={label}>Start</label><input style={field} type="time" value={mwStart} onChange={(ev) => setMwStart(ev.target.value)} /></div>
                 <div><label style={label}>Minutes</label><input style={field} type="number" min={15} max={1440} value={mwDur} onChange={(ev) => setMwDur(Number(ev.target.value))} /></div>
-                <Btn busy={busy === "mw"} disabled={!canWrite} onClick={() => saveWindow(e.id)}>Save</Btn>
+                <RoleBtn busy={busy === "mw"} disabled={busy === "mw"} onClick={() => saveWindow(e.id)}>Save</RoleBtn>
               </div>
             )}
           </div>
@@ -394,7 +416,7 @@ function ScopeStep({ state, canWrite, busy, setBusy, refresh, flash }: {
         <div><label style={label}>Target</label>
           <input style={field} value={target} placeholder={hints[kind]} onChange={(e) => setTarget(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()} /></div>
-        <Btn busy={busy === "scope"} disabled={!canWrite} onClick={submit}>Add to scope</Btn>
+        <RoleBtn busy={busy === "scope"} disabled={busy === "scope"} onClick={submit}>Add to scope</RoleBtn>
       </div>
       <p className="dim" style={{ fontSize: 11.5, margin: "10px 0 0" }}>{hints[kind]}</p>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 16 }}>
@@ -451,7 +473,7 @@ function ConnectStep({ state, canWrite, busy, setBusy, refresh, flash }: {
               onChange={(e) => setCfg({ ...cfg, [key]: e.target.value })} /></div>
         ))}
       </div>
-      <div style={{ marginTop: 14 }}><Btn busy={busy === "conn"} disabled={!canWrite} onClick={submit}>Register connection</Btn></div>
+      <div style={{ marginTop: 14 }}><RoleBtn busy={busy === "conn"} disabled={busy === "conn"} onClick={submit}>Register connection</RoleBtn></div>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12, marginTop: 20 }}>
         {(state?.connections ?? []).map((c) => (
@@ -499,7 +521,7 @@ function TestStep({ state, canWrite, busy, setBusy, refresh, flash, onNext }: {
   const conns = state?.connections ?? [];
   return (
     <Section title="Step 6 · Test access" hint="Pre-scan gate — each connection must pass connectivity, credential model, scope and agent-health checks before discovery is allowed. Checks are safe and non-intrusive."
-      actions={<Btn busy={busy === "all"} disabled={!canWrite || !conns.length} onClick={testAll}>Test all</Btn>}>
+      actions={<RoleBtn busy={busy === "all"} disabled={!conns.length || busy === "all"} onClick={testAll}>Test all</RoleBtn>}>
       {!conns.length && <p className="dim" style={{ fontSize: 12.5 }}>Register a connection in the previous step first.</p>}
       <div style={{ display: "grid", gap: 12 }}>
         {conns.map((c) => {
@@ -508,12 +530,12 @@ function TestStep({ state, canWrite, busy, setBusy, refresh, flash, onNext }: {
             <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, background: "rgba(0,0,0,.2)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: checks.length ? 10 : 0 }}>
                 <b style={{ fontSize: 13 }}>{c.name} <span className="dim" style={{ fontFamily: "var(--mono)", fontSize: 11 }}>· {c.kind}</span></b>
-                <Btn ghost busy={busy === c.id} disabled={!canWrite} onClick={() => test(c.id)}>
+                <RoleBtn ghost busy={busy === c.id} disabled={busy === c.id} onClick={() => test(c.id)}>
                   {c.status === "connected" ? "Re-test" : "Run checks"}
-                </Btn>
-              </div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {checks.map((chk) => (
+                  </RoleBtn>
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {checks.map((chk) => (
                   <span key={chk.check} style={chk.ok ? okChip : badChip} title={chk.detail}>
                     {chk.ok ? "✓" : "✕"} {chk.check}
                   </span>
@@ -556,9 +578,9 @@ function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash, refresh }: 
         <span style={(state?.connected_count ?? 0) > 0 ? okChip : badChip}>{(state?.connected_count ?? 0) > 0 ? "✓" : "✕"} {state?.connected_count ?? 0} connected connector(s)</span>
       </div>
       {!plan ? (
-        <Btn busy={busy === "disc"} disabled={!state?.ready} onClick={start}>
+        <RoleBtn busy={busy === "disc"} disabled={!state?.ready || busy === "disc"} onClick={start}>
           {state?.ready ? "Start initial discovery" : "Complete the previous steps to enable discovery"}
-        </Btn>
+        </RoleBtn>
       ) : (
         <div>
           <div style={{ ...okChip, display: "inline-block", marginBottom: 14 }}>

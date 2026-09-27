@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from db.connection.session import get_session
 from db.repositories.baseline_repository import BaselineRepository
 from db.repositories.drift_repository import DriftRepository
@@ -14,6 +16,8 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from api.security.session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
 
 
 def get_db_session():
@@ -525,6 +529,10 @@ def _principal_roles(request: Request, user: str, db: Session | None = None) -> 
         finally:
             session.close()
     except Exception:
+        # This helper feeds authorization decisions. An unreadable user row
+        # must fail closed, but it must also be visible to operators rather
+        # than looking like an ordinary user with no roles.
+        logger.exception("principal_roles_lookup_failed", extra={"user": user})
         return []
 
 
@@ -584,6 +592,9 @@ def resolve_tenant_for_request(request: Request) -> str | None:
         ctx = _resolve_tenant_context(request, user, session)
         return ctx.tenant_id
     except Exception:
+        # Middleware cannot turn this into a route-specific 403/404, so keep
+        # the documented no-scope behavior but leave an incident breadcrumb.
+        logger.exception("tenant_scope_resolution_failed")
         return None
     finally:
         session.close()
