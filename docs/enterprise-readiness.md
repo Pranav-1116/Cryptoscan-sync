@@ -3,7 +3,7 @@
 Status as of 2026-09-23 (measured, not aspirational): **583 OpenAPI paths /
 642 operations** (counted from the live schema), 60 ordered migrations,
 4,808 backend test functions (hermetic, parallel) plus a frontend smoke suite.
-Overall readiness and its evidence: [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md). Every row below states the current capability honestly —
+Overall readiness and its evidence: [root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) and the generated `readiness-evidence/bank-readiness.json`. Every row below states the current capability honestly —
 ✅ shipped and test-verified · ⚠️ partially shipped (gap stated) · ❌ not
 built (needs real infrastructure or a decision, never stubbed).
 
@@ -70,7 +70,7 @@ built (needs real infrastructure or a decision, never stubbed).
 |---|---|---|
 | Compose/K8s manifests | ✅ | docker + nginx + dashboard builds in-repo |
 | Air-gap mode | ✅ | JWKS-from-file, feed import, no-phone-home settings |
-| SQLite dev / Postgres prod | ✅ | Alembic 0001–0060, **applied and tested on a real PostgreSQL 16** (`test_migration_chain_postgres.py`); before 2026-09-23 the chain did not apply on Postgres — see [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) |
+| SQLite dev / Postgres prod | ✅ | Alembic 0001–0060, **applied and tested on a real PostgreSQL 16** (`test_migration_chain_postgres.py`); before 2026-09-23 the chain did not apply on Postgres — see [root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) |
 | Staging stack without Docker | ✅ | `deploy/staging/staging-up.sh`: embedded PostgreSQL + Redis + api/worker/monitor, production guards on |
 | Soak / burn-in evidence | ⚠️ | harness shipped (`scripts/soak.py`); first run clean but ~20 min long — the 7-day run is an ops action ([soak-evidence/](soak-evidence/README.md)) |
 | ⚠️ HA story | ⚠️ | readiness drains + read-only mirrors designed; multi-active control plane is untested without real infra |

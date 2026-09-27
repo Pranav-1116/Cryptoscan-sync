@@ -1,0 +1,76 @@
+{
+  "schema": "cryptoscan.bank-readiness/1",
+  "captured_at": "2026-09-27T17:41:07.986397+00:00",
+  "repository": {
+    "commit": "353a75998068ab6503a866c34a61c58b4ac3f9d5",
+    "branch": "arena/01a0e27a-cryproscan",
+    "dirty": true
+  },
+  "command": "/usr/bin/python scripts/bank_readiness.py --out docs/readiness-evidence/bank-readiness.json",
+  "environment": {
+    "environment": "unset",
+    "ci": false
+  },
+  "required_categories": [
+    "engineering",
+    "postgresql_dr",
+    "hsm",
+    "integrations",
+    "compliance",
+    "load_soak",
+    "documentation",
+    "external_attestations"
+  ],
+  "categories": [
+    {
+      "category": "engineering",
+      "status": "FAIL",
+      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=b44d70dbb89a1060a2ea10e2d7f0626490532cfddbd4c370f4fa5b689a318385",
+      "artifact": "docs/readiness-evidence/engineering-gate.json",
+      "artifact_sha256": "b44d70dbb89a1060a2ea10e2d7f0626490532cfddbd4c370f4fa5b689a318385",
+      "observed_statuses": [
+        "FAIL",
+        "PASS",
+        "SKIP"
+      ]
+    },
+    {
+      "category": "postgresql_dr",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "hsm",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "integrations",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "compliance",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "load_soak",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "documentation",
+      "status": "PASS",
+      "detail": "checked 225 Markdown files and required readiness documents"
+    },
+    {
+      "category": "external_attestations",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    }
+  ],
+  "external_evidence_boundary": "PASS means only that the supplied artifact contained no FAIL/SKIP statuses. Missing customer/provider evidence is never inferred from source code, mocks, documentation or local SoftHSM.",
+  "verdict": "FAIL",
+  "deployment_recommendation": "do not approve production; remediation and/or evidence collection required"
+}

@@ -66,7 +66,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const { roles } = useAuth();
+  const { hasRole } = useAuth();
   const current = activeTenantId();
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     setLoading(true);
     setError(undefined);
     (async () => {
-      const isAdmin = roles.includes("superadmin") || roles.includes("admin");
+      const isAdmin = hasRole("superadmin") || hasRole("admin");
       let list: TenantRow[] = [];
       let ok = false;
       if (isAdmin) {
@@ -95,7 +95,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [isOpen, roles]);
+  }, [isOpen, hasRole]);
 
   if (!isOpen) return null;
 

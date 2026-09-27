@@ -1,7 +1,31 @@
 # Backend & database — what was wrong, what is fixed, what is left
 
-**Audited:** 2026-09-27 · ~330k LOC across 50 services · every claim below was
-verified by running the code, not by reading a document.
+**Audited:** 2026-09-27 · implementation review; this is not a production
+qualification report. The current decision is owned by
+[`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md) and
+`scripts/bank_readiness.py`.
+
+> **Status reconciliation.** Sections marked **Closed** are historical defects
+> that have an implementation and regression evidence. They are not open gaps.
+> Sections marked **Open** are the remaining controls or external evidence
+> boundaries. A passing unit/parity test does not close a host-bound DR/HSM,
+> customer integration, certification or attestation requirement.
+
+| Area | Current status | What closes it |
+|---|---|---|
+| Tenant isolation and request scoping | **Closed in code; adversarial review open** | Independent security test before shared multi-tenant deployment |
+| Session/RBAC and frontend route guard | **Closed in code; server authorization remains authoritative** | `engineering_gate.py` plus API integration tests |
+| API-key network/policy failure behavior | **Hardened fail-closed in production; coverage gate required** | AST coverage report and live `X-API-Key` route matrix |
+| Exceptions | **Open inventory** | Review/replace or explicitly justify each swallowed handler |
+| Image provenance | **Open until release digests exist** | Build/publish and record immutable OCI digests; current local tags are not proof |
+| PostgreSQL DR and clean restore | **Open external qualification** | `scripts/postgres_drill.py` on two real instances with retained evidence |
+| HSM/provider qualification | **Open external qualification** | Customer-controlled PKCS#11/CloudHSM/Managed HSM/GCP run |
+| Live integrations, compliance and procurement | **Open external evidence** | `burn_in.py`, `compliance_burn.py` and signed customer/provider records |
+
+**Verified implementation controls are not claims of certification.** In
+particular, repository code cannot assert SOC 2/ISO/FIPS certification,
+customer residency, SLA acceptance, branch protection enforcement, or a bank
+attestation.
 
 This exists because the repository's own documentation was, in several places,
 describing controls that were not implemented. Where a doc and the code
@@ -224,14 +248,22 @@ findings point at the correct line.
 9. **Accuracy figures are corpus-scored.** `BANK-READINESS.md` concedes
    `NO_FIELD_DATA` — no pilot bank has reviewed output. Do not quote 100%.
 
-### Operational
-10. **132 silently swallowed exceptions** (`except: pass`) across services.
-11. **Backups are unencrypted at rest** (`db_backup.sh`).
-12. **`:latest` image tags** in k8s deployments — no reproducible rollback.
-13. **OTLP endpoint is dead code** — stored, never used; traces only reach a
-    local JSONL.
-14. **Live cloud/TLS/HSM scanning has never been run against real
-    infrastructure.** All gated off by default and never exercised live.
+### Operational — reconciled 2026-09-27
+10. **Exception handling is still an open inventory.** `scripts/engineering_gate.py`
+    enumerates bare/broad handlers that discard failures; an allowlist entry
+    must carry a location and review rationale. This is not closed merely
+    because a handler has a comment.
+11. **Backup encryption/restore implementation is hardened in the repository**
+    and must still be exercised on the target deployment with retention and
+    destruction evidence.
+12. **Kubernetes application images remain an open release-control item until
+    an actual published OCI digest is recorded.** A version tag such as
+    `v1.0.0` is not immutable evidence; do not describe it as pinned.
+13. **OTLP export is implemented as a bounded best-effort queue** when
+    configured; collector delivery remains an environment qualification.
+14. **Live cloud/TLS/HSM/integration scanning has not been run against a
+    customer environment in this repository.** The harnesses are deliberately
+    gated and report SKIP rather than fabricate a pass.
 
 ---
 
