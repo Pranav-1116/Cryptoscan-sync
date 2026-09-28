@@ -114,6 +114,52 @@ read the estate.
 that the *count* is filtered (an unfiltered total leaks the other tenant's
 volume) and that a known-id fetch is absence rather than a 403 oracle.
 
+#### 1.1a Follow-up — the middleware that enters the scope failed open
+
+Found on a second pass, after the above was written. It is the same defect
+class one layer up, and it is exactly what the warning at the top of this
+document was about.
+
+The ORM guard only filters **while a tenant scope is active**; outside one it
+is inert and a query returns every tenant's rows. `TenantScopeMiddleware` is
+what enters that scope for the ~85 routers that do not depend on
+`get_tenant_context` — and it caught every exception from
+`resolve_tenant_for_request`, which itself caught every exception and returned
+`None`. `None` means *do not scope*. So a failed resolution did not deny the
+request; it ran it against the whole estate.
+
+Two reachable paths, neither requiring anything exotic:
+
+- a member sends another tenant's `X-Tenant-ID` → `_resolve_tenant_context`
+  raises 404 → swallowed → full estate read;
+- a member of **two** tenants sends no header → 400 ("send X-Tenant-ID") →
+  swallowed → full estate read. No forged header at all.
+
+Both docstrings claimed the opposite: *"a forged header cannot be used to
+scope into — and so read — another tenant's data; it 404s before it reaches
+the filter."* True only for the five routers with the dependency.
+
+**Fixed:** refusals raise `TenantResolutionRefused`, carrying the status the
+route's own dependency would have returned; the middleware answers with it
+instead of proceeding unscoped. `None` is now reserved for principals who
+legitimately have no tenant (unauthenticated, platform operator, legacy
+single-tenant identity). An unexpected error is a 503, not a silent
+full-estate read.
+
+**Why the suite missed it:** the middleware is not installed when
+`ENVIRONMENT=test` (`api.main`), so it had **no coverage at all** — the same
+shape of blind spot as §1.1's `test_cross_tenant_access_is_absent_not_forbidden`
+asserting isolation on the one table that had it. Added
+`services/api/tests/unit/test_tenant_scope_middleware.py`: 8 tests that drive
+the ASGI middleware directly and assert the downstream app is **not reached**
+for each refusal status.
+
+This strengthens, rather than weakens, the "one instance per bank" conclusion
+above. Two cross-tenant leaks have now been found in the isolation machinery
+itself, the second in code written to fix the first. Both were negative-space
+bugs — a control that silently returns *more* data when it fails. Hand a
+penetration tester §1.1 **and** §1.1a before two banks share a deployment.
+
 ### 1.2 Authentication defects
 
 | Defect | Where | Fix |

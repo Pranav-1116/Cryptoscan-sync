@@ -269,7 +269,6 @@ def graph_migration_waves(user: str = Depends(get_current_user), db: Session = D
     # systems the CMDB does not know about join the plan; every system with a code cascade gets
     # its code wave in the rationale; IMPORTS edges (A's code calls crypto living in B) order A after B.
     known = {row["system_id"] for row in entries}
-    by_name = {str(row["name"]).lower(): row for row in entries if row.get("name")}
     code_only = 0
     for node_id, node in getattr(graph, "nodes", {}).items():
         if node.get("kind") != "System":

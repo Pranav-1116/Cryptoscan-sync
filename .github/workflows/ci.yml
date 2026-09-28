@@ -39,7 +39,11 @@ jobs:
           python-version: "3.11"
       - run: pip install "ruff>=0.1.14"
       - name: Ruff (repo-wide defect gate, baseline in ruff.toml)
-        run: ruff check services scripts
+        # shared/ was outside the gate, which is why a duplicate "FALCON" key in
+        # the algorithm registry (one entry silently discarding the other) sat
+        # there undetected. It holds the cross-service models every scanner and
+        # policy path imports, so it is the last place that should be unlinted.
+        run: ruff check services scripts shared
 
   backend:
     name: tests / ${{ matrix.service }}

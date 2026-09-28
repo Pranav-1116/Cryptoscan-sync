@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 import re
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Iterable
 
 from scanner.extractors.cipher_suites import suite_components
 from scanner.models.raw_finding import RawFinding

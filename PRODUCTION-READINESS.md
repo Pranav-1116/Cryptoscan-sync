@@ -74,6 +74,12 @@ report for the complete machine-readable record.
 - No repository document may convert source inspection, mocks, SoftHSM,
   Docker-only tests or corpus measurements into a customer certification.
 
+> **Tenant-scope correction.** Tenant resolution now fails closed for unknown,
+> ambiguous, suspended, or unavailable tenant context. A failed middleware
+> resolution must never continue as an unscoped request, because an unscoped
+> ORM query can expose another tenant's scan data. See
+> `docs/architecture/multi-tenancy.md` and the tenant-scope regression tests.
+
 ## Current decision
 
 Until the unified gate reports PASS for every required category, the only

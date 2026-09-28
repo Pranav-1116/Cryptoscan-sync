@@ -110,7 +110,6 @@ def test_configure_logging_is_idempotent():
     configure_logging(level="INFO", json_output=True)
     after = list(logging.getLogger().handlers)
     # No handler stacking: the factory-installed handler is reused.
-    installed = [h for h in after if h not in set(before) | set(after[:-1])]
     assert len([h for h in after if type(h).__name__ == "StreamHandler"]) <= len(
         [h for h in before if type(h).__name__ == "StreamHandler"]
     ) + 1

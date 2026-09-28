@@ -401,7 +401,6 @@ def analyse_dotnet(strings: list[str], user: list[str]) -> list[tuple[str, str, 
     """→ (member, algorithm, api_type, purpose, library, evidence, confidence)."""
     sset = set(strings)
     namespaces = {ns for ns in _NAMESPACES if ns in sset}
-    ns_prefixes = tuple(namespaces)
     out: list[tuple[str, str, str, str, str, str, str]] = []
     seen: set[tuple[str, str]] = set()
 
