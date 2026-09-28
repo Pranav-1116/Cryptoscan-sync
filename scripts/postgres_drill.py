@@ -72,6 +72,20 @@ class Db:
     def commit(self) -> None:
         self.conn.commit()
 
+    def rollback(self) -> None:
+        """Clear a failed transaction so the connection is usable again.
+
+        Both poll loops below probe for something that does not exist yet. In
+        PostgreSQL the first such error aborts the transaction, and every
+        later statement on that connection raises InFailedSqlTransaction until
+        someone rolls back -- so without this a poll can never recover, no
+        matter how quickly the thing it is waiting for appears.
+        """
+        try:
+            self.conn.rollback()
+        except Exception:  # noqa: BLE001 - connection already gone; the caller retries
+            pass
+
     def close(self) -> None:
         self.conn.close()
 
@@ -165,6 +179,10 @@ def wait_for_marker(db: Db, token: str, timeout: float) -> bool:
                 return True
         except Exception as exc:
             last_error_type = type(exc).__name__
+            # The table has not replicated yet. That aborts the transaction,
+            # so clear it or every remaining poll fails as
+            # InFailedSqlTransaction and the marker can never be observed.
+            db.rollback()
         time.sleep(1.0)
     if last_error_type:
         print(f"standby marker poll ended after transient {last_error_type}", file=sys.stderr)
@@ -180,6 +198,10 @@ def wait_until_writable(db: Db, timeout: float) -> bool:
                 return True
         except Exception as exc:
             last_error_type = type(exc).__name__
+            # Same reason as wait_for_marker: a refused connection or an
+            # aborted transaction during promotion must not poison the rest
+            # of the poll.
+            db.rollback()
         time.sleep(1.0)
     if last_error_type:
         print(f"standby writable poll ended after transient {last_error_type}", file=sys.stderr)
