@@ -1,0 +1,14 @@
+{
+  "schema": "cryptoscan.control-register-gate/1",
+  "captured_at": "2026-09-28T10:17:11.250713+00:00",
+  "verdict": "PASS",
+  "tier_counts": {
+    "none": 6,
+    "repository_control": 8,
+    "operational_record": 1,
+    "customer_attestation": 2,
+    "external_certification": 0
+  },
+  "findings": [],
+  "meaning": "Tiers are ordered none < repository_control < operational_record < customer_attestation < external_certification. A claim may not outrank its evidence, and the top two tiers cannot be self-issued from this repository."
+}
