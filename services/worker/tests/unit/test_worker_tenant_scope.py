@@ -67,19 +67,43 @@ def _write_scan(session, target: str) -> Scan:
 # the gap
 # --------------------------------------------------------------------------- #
 
-def test_queue_job_descriptor_does_not_carry_a_tenant():
-    """The tenant is lost at the queue boundary, before the worker ever runs.
+def test_queue_job_descriptor_carries_the_tenant():
+    """The tenant must survive the queue boundary.
 
-    db.models.scan_job.ScanJob (the row) is TenantScoped and has tenant_id.
-    worker.core.job_consumer.ScanJob (the descriptor that actually travels
-    through Redis) does not, so there is nothing for the executor to scope to
-    even if it wanted to.
+    db.models.scan_job.ScanJob (the row) is TenantScoped. This is the
+    descriptor that travels through Redis; if it drops tenant_id there is
+    nothing for the executor to scope to, because a worker has no session to
+    resolve a tenant from.
     """
     fields = {f.name for f in dataclasses.fields(ScanJob)}
-    assert "tenant_id" not in fields, (
-        "ScanJob now carries tenant_id -- the queue boundary has been fixed. "
-        "Update this test and make JobExecutor enter tenant_scope(job.tenant_id)."
-    )
+    assert "tenant_id" in fields
+
+
+def test_a_job_round_trips_its_tenant_through_the_queue_payload():
+    """Serialise and deserialise, and the owner is still there."""
+    from worker.core.job_consumer import JobConsumer
+
+    consumer = JobConsumer(redis_url="", queue_name="cryptoscan:test:tenant")
+    consumer.publish_job(ScanJob(job_id="j1", target_repo="https://git/a.git",
+                                 tenant_id=BANK_A))
+    job = consumer._pop()
+    assert job is not None
+    assert job.tenant_id == BANK_A
+
+
+def test_a_payload_without_a_tenant_still_deserializes():
+    """Jobs queued before the field existed must not break the worker.
+
+    They keep the old unscoped behaviour rather than failing to parse, which
+    is what lets this ship without draining the queue first.
+    """
+    from worker.core.job_consumer import JobConsumer
+
+    consumer = JobConsumer(redis_url="", queue_name="cryptoscan:test:legacy")
+    consumer.enqueue({"job_id": "legacy-1", "target_repo": "https://git/a.git"})
+    job = consumer._pop()
+    assert job is not None
+    assert job.tenant_id is None
 
 
 def test_a_scan_written_outside_a_scope_lands_in_the_platform_estate(session):
@@ -101,18 +125,48 @@ def test_a_scan_written_outside_a_scope_lands_in_the_platform_estate(session):
     )
 
 
-def test_job_executor_enters_no_tenant_scope(session):
-    """Pin the executor's behaviour at the point the scope should be entered."""
+def test_job_executor_runs_the_job_inside_its_tenants_scope(monkeypatch):
+    """The scope must be active by the time the pipeline writes anything."""
+    from worker.core.job_executor import JobExecutor
+
+    seen: list[str | None] = []
+    executor = JobExecutor()
+    monkeypatch.setattr(executor, "_execute_in_scope",
+                        lambda job: seen.append(current_tenant()) or True)
+
+    executor.execute(ScanJob(job_id="j1", target_repo="https://git/a.git",
+                             tenant_id=BANK_A))
+    assert seen == [BANK_A]
+
+
+def test_the_scope_wraps_every_branch_not_just_the_git_pipeline(monkeypatch):
+    """Binary, org and cloud jobs write the same tenant-owned rows.
+
+    Scoping only the PipelineRunner call would leave three branches
+    unattributed, so the scope is entered before the dispatch.
+    """
     import inspect
 
     from worker.core import job_executor
 
-    source = inspect.getsource(job_executor)
-    assert "tenant_scope" not in source, (
-        "JobExecutor now references tenant_scope -- the worker gap is being "
-        "closed. Update these characterisation tests to assert the new "
-        "behaviour instead."
+    source = inspect.getsource(job_executor.JobExecutor.execute)
+    assert "tenant_scope" in source
+    assert "_execute_in_scope" in source, (
+        "the dispatch must happen inside the scope, not alongside it"
     )
+
+
+def test_a_platform_job_still_runs_unscoped(monkeypatch):
+    """tenant_id None is the platform-owned case and must stay a no-op."""
+    from worker.core.job_executor import JobExecutor
+
+    seen: list[str | None] = []
+    executor = JobExecutor()
+    monkeypatch.setattr(executor, "_execute_in_scope",
+                        lambda job: seen.append(current_tenant()) or True)
+
+    executor.execute(ScanJob(job_id="j2", target_repo="https://git/a.git"))
+    assert seen == [None]
 
 
 # --------------------------------------------------------------------------- #
