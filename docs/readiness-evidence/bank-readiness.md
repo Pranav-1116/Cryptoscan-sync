@@ -1,13 +1,13 @@
 # Bank readiness evidence report
 
-Captured: `2026-09-28T04:04:16.133642+00:00`
-Commit: `0c1faa09723a5bb2ea80e199eb9c38c2529d2f6b`
+Captured: `2026-09-28T04:05:59.517000+00:00`
+Commit: `792caa4900e69e5581fb15bde812b9624e4fe6df`
 Verdict: **FAIL**
 Recommendation: **do not approve production; remediation and/or evidence collection required**
 
 | Category | Status | Detail |
 |---|---|---|
-| engineering | FAIL | artifact=docs/readiness-evidence/engineering-gate.json; sha256=c5692d3020c522d193bffa0a1429bb0bd7171b44f8cbd47946715587e0a992fe |
+| engineering | FAIL | artifact=docs/readiness-evidence/engineering-gate.json; sha256=fdc40658630d11b8867b56c650ed2f6e005779cd5b958035e077e3fbfe105c2b |
 | postgresql_dr | SKIP | no external artifact supplied; this is not evidence |
 | hsm | SKIP | no external artifact supplied; this is not evidence |
 | integrations | SKIP | no external artifact supplied; this is not evidence |
