@@ -17,6 +17,11 @@ Design constraints (honest scope):
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import asyncio
 import itertools
 import threading
@@ -100,7 +105,11 @@ class EventBus:
         if self._remote_publisher is not None:
             try:
                 self._remote_publisher(event)
-            except Exception:  # noqa: BLE001 — never let Redis break publishing
+            except Exception as _handler_exc:  # noqa: BLE001 — never let Redis break publishing
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         return event
 

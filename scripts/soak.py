@@ -27,6 +27,11 @@ worst latencies, not just the averages.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import json
 import os
@@ -105,7 +110,11 @@ class Api:
 def _read_pid(stage: Path, name: str) -> int | None:
     try:
         return int((stage / "run" / f"{name}.pid").read_text().strip())
-    except Exception:
+    except Exception as _handler_exc:
+        logger.debug(
+            "expected_exception_boundary",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -269,7 +278,11 @@ def _job_wall(job: dict) -> float | None:
         s = datetime.fromisoformat(job["started_at"].replace("Z", "+00:00"))
         e = datetime.fromisoformat(job["completed_at"].replace("Z", "+00:00"))
         return round((e - s).total_seconds(), 3)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.debug(
+            "expected_exception_boundary",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -286,7 +299,11 @@ def _sse_probe(api: Api, seconds: float) -> dict:
             while time.perf_counter() - started < seconds:
                 try:
                     line = resp.readline()
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.debug(
+                        "expected_exception_boundary",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     continue
                 if not line:
                     break

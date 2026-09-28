@@ -14,6 +14,11 @@ low, never high.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -51,7 +56,11 @@ def build_security_posture(
         agents = ControlPlaneRepository(session).list_agents()
         agents_total = len(agents)
         agents_healthy = sum(1 for a in agents if bool(getattr(a, "healthy", False)))
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     components["fleet"] = _sub(agents_total, agents_healthy) if agents_total else _sub(0, 0, note="no agents")
 
@@ -67,7 +76,11 @@ def build_security_posture(
             if bool(getattr(p, "signature", None))
             and str(getattr(p, "state", "UPLOADED") or "UPLOADED").upper() not in {"QUARANTINED", "REJECTED", "UNTRUSTED"}
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     components["plugin"] = _sub(plugins_total, plugins_verified) if plugins_total else _sub(0, 0, note="no plugins")
 
@@ -82,7 +95,11 @@ def build_security_posture(
             1 for f in flags
             if str(getattr(f, "severity", "") or "").upper() in {"CRITICAL", "HIGH"}
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     if threats_open == 0:
         components["threat"] = _sub(0, 0, note="no open threats", overrides=1.0)
@@ -118,7 +135,11 @@ def build_security_posture(
                 func.lower(AuditLog.action).like("%login%"),
             )
         ).scalar_one() or 0)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     components["audit"] = {
         "value": 1.0 if audit_ok else 0.0,
@@ -151,7 +172,11 @@ def build_security_posture(
         )
         if cert_total > 0:
             cert_valid_pct = max(0, round(((cert_total - expired - expiring) / cert_total) * 100))
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     if cert_total:
         components["cert"] = {
@@ -175,7 +200,11 @@ def build_security_posture(
             if str(getattr(c, "status", "") or "").lower() == "active"
             and bool(getattr(c, "health_ok", False))
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     components["credentials"] = _sub(credentials_total, credentials_active) if credentials_total else _sub(0, 0, note="no credentials")
 

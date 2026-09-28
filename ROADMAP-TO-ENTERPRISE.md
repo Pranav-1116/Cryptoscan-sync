@@ -144,7 +144,7 @@ Verified still open as of this writing:
 | ~~Backups unencrypted at rest~~ | **Fixed 2026-09-27:** `db_backup.sh` encrypts PostgreSQL/Neo4j artifacts with `age`; plaintext is refused by default | `db_restore.sh` verifies encrypted bytes before decrypt/restore; a real restore drill remains required |
 | ~~`:latest` image tags~~ | **Tag removed 2026-09-27:** Kubernetes API/worker use `v1.0.0` | **Still open:** replace the release tag with the registry-approved immutable digest; the engineering gate currently reports three mutable references |
 | ~~OTLP endpoint is dead code~~ | **Fixed 2026-09-27:** bounded background OTLP/HTTP JSON exporter in `TraceStore` | Collector outage is logged and spans are dropped only after the bounded queue fills |
-| Exception inventory is open | Current engineering gate reports 221 production and 25 test/harness swallowed handlers | Triage, narrow, log, or explicitly justify each; the gate does not claim these are harmless |
+| ~~Exception inventory~~ | **Triaged 2026-09-28:** current engineering gate reports 0 unresolved production or test/harness handlers; intentional best-effort boundaries now emit typed logs | Keep the gate in CI so newly added silent handlers cannot return |
 
 The last one should be triaged, not bulk-fixed: many are legitimate
 best-effort paths. The first auth slice now logs principal/tenant lookup

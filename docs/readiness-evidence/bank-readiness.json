@@ -1,17 +1,17 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-09-27T17:45:00.815360+00:00",
+  "captured_at": "2026-09-28T04:00:50.702437+00:00",
   "repository": {
-    "commit": "236cdab311b6dcc7e0044ffb4733c4875d10ab48",
+    "commit": "2e8e352d633fe7fde478899ad246a91a5c3a0b33",
     "branch": "arena/01a0e27a-cryproscan",
     "dirty": false
   },
   "artifact_generation_state": {
-    "commit": "236cdab311b6dcc7e0044ffb4733c4875d10ab48",
+    "commit": "2e8e352d633fe7fde478899ad246a91a5c3a0b33",
     "branch": "arena/01a0e27a-cryproscan",
     "dirty": true
   },
-  "command": "/usr/bin/python scripts/bank_readiness.py --out docs/readiness-evidence/bank-readiness.json",
+  "command": "/usr/bin/python scripts/bank_readiness.py --run-engineering --out docs/readiness-evidence/bank-readiness.json",
   "environment": {
     "environment": "unset",
     "ci": false
@@ -30,9 +30,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=e695d8c48cffdb8c293f446f0e126dd680ac6afa405b835692fc38f77633a680",
+      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=4b9ed98452221eb311f1dbf837653d4cab7da847b0e30ce7cb4241458dfe52db",
       "artifact": "docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "e695d8c48cffdb8c293f446f0e126dd680ac6afa405b835692fc38f77633a680",
+      "artifact_sha256": "4b9ed98452221eb311f1dbf837653d4cab7da847b0e30ce7cb4241458dfe52db",
       "observed_statuses": [
         "FAIL",
         "PASS",

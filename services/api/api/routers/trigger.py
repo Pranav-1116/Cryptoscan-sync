@@ -44,7 +44,11 @@ def _resolve_sector(explicit: str | None, job_repo: JobRepository) -> str:
                 return str(stored["sector"])
         finally:
             session.close()
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return "generic"
 
@@ -229,7 +233,11 @@ def enqueue_scan_job(
              "triggered_by": triggered_by},
             source="api",
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return TriggerScanResponse(
         job_id=str(job_id),

@@ -88,10 +88,10 @@ def exception_inventory(checks: list[dict]) -> None:
     add(
         checks,
         "exception inventory",
-        "PASS" if not production else "FAIL",
+        "PASS" if not unresolved else "FAIL",
         f"{len(production)} unresolved production handlers; {len(nonproduction)} unresolved test/harness handlers; inventory={len(findings)}",
-        findings=production[:200],
-        nonproduction_findings=nonproduction[:200],
+        findings=production,
+        nonproduction_findings=nonproduction,
         unresolved=len(unresolved),
         production_unresolved=len(production),
         test_harness_unresolved=len(nonproduction),

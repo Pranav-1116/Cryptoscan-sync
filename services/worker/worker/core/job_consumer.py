@@ -330,7 +330,11 @@ class JobConsumer:
                 raw = _MEMORY_QUEUE.get(timeout=self.poll_interval_seconds)
             except Empty:
                 return None
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 return None
         if not raw:
             return None

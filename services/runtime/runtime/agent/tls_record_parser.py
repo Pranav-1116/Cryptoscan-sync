@@ -14,6 +14,11 @@ terminates TLS, so no key material is ever touched.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import struct
 from typing import Any
@@ -265,7 +270,11 @@ def _parse_extensions(ext_bytes: bytes) -> dict[str, Any]:
                         out["sni"] = host.decode("idna")
                     except UnicodeError:
                         out["sni"] = host.decode("utf-8", errors="replace")
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         elif name == "alpn" and data:
             try:
@@ -278,7 +287,11 @@ def _parse_extensions(ext_bytes: bytes) -> dict[str, Any]:
                     protocols.append(proto[i + 1 : i + 1 + plen].decode("ascii", errors="replace"))
                     i += 1 + plen
                 out["alpn"] = protocols
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         elif name == "supported_versions":
             if ext_type == EXT_SUPPORTED_VERSIONS:
@@ -293,14 +306,22 @@ def _parse_extensions(ext_bytes: bytes) -> dict[str, Any]:
                 sig_bytes, _ = _vector16(data, 0)
                 algos = [_u16(sig_bytes, i) for i in range(0, len(sig_bytes) - 1, 2)]
                 out["signature_algorithms"] = [_SIG_ALGO_NAMES.get(a, f"0x{a:04X}") for a in algos]
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         elif name == "supported_groups":
             try:
                 group_bytes, _ = _vector16(data, 0)
                 groups = [_u16(group_bytes, i) for i in range(0, len(group_bytes) - 1, 2)]
                 out["supported_groups"] = [_GROUP_NAMES.get(g, f"0x{g:04X}") for g in groups]
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
     return out
 

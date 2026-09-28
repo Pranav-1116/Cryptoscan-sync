@@ -8,6 +8,11 @@ crypto/cloud resources the parser actually sees — no sample/fabricated rows.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from pathlib import Path
 from typing import Iterable
 
@@ -37,7 +42,11 @@ class TerraformIaCConnector(BaseConnector):
                 continue
             try:
                 findings = parse_terraform(path)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             for f in findings:
                 observations.append(Observation(

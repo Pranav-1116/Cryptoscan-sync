@@ -4,6 +4,11 @@ self-alerts and capacity forecasting (everything measured on THIS process).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from fastapi import APIRouter, Depends, Query, Request
 
 from api.dependencies import get_current_user, get_db_session
@@ -62,7 +67,11 @@ def self_alerts(request: Request, user: str = Depends(get_current_user),
             current = svc.current(system)
             if current and current.get("freshness", {}).get("stale"):
                 cbom_stale.append(system)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass  # bus/CBOM optional for the alert sweep
     alerts = evaluate_self_alerts(registry, slo=slo, bus_lag=bus_lag,
                                   cbom_stale=cbom_stale)
