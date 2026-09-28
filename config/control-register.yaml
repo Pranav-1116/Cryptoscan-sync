@@ -135,10 +135,12 @@ controls:
     claimed: repository_control
     evidence:
       - scripts/backup_evidence.py
+      - scripts/db_backup.sh
       - docs/admin-guide/backup-restore.md
     detail: >-
-      Backup tooling produces SHA-256 manifests and the runbook documents the
-      procedure.
+      Backup tooling produces SHA-256 manifests, and db_backup.sh refuses to
+      write a plaintext artifact when encryption is required but unavailable
+      -- verified on three paths, none of which left a file behind.
     gap: >-
       Retention is an operational policy with a stated period and an artifact
       showing it was honoured. Neither exists. See fix.md item 11.
@@ -158,16 +160,23 @@ controls:
     topic: Restore provenance
     claimed: operational_record
     evidence:
+      - docs/readiness-evidence/backup-restore-drill-2026-09-28.md
       - scripts/postgres_drill.py
       - scripts/postgres_dr_sandbox.sh
     detail: >-
-      A real pg_dump/pg_restore into a clean empty database has been executed
-      and verified: the drill marker survives and audit-chain and
-      evidence-record invariants hold on the restored copy.
+      Two restores executed and verified on 2026-09-28. SQLite: hot online
+      backup restored into a clean data dir, a second instance booted from
+      the backup alone, and the estate verified through the real API --
+      login, seeded system, CBOM asset set, event-bus replay, and the CBOM
+      hash chain verifying from genesis (12/12 checks). PostgreSQL: a real
+      pg_dump/pg_restore into an empty database where the drill marker
+      survives and the audit-chain and evidence-record invariants hold.
     gap: >-
-      Executed against a local two-container sandbox, not the customer
-      topology, and the promotion step (RTO) has not been run. Re-run against
-      the real pair before relying on the numbers.
+      Both ran on one host against local sandboxes, not the customer
+      topology. No off-host copy, no encrypted round trip (age is absent on
+      the drill host, though the fail-closed paths are verified), no
+      restore-authorisation audit, and the PostgreSQL promotion step (RTO)
+      has not been run. One drill is not a schedule.
 
   - id: INC-01
     topic: Incident notification

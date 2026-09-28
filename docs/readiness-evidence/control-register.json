@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.control-register-gate/1",
-  "captured_at": "2026-09-28T10:17:11.250713+00:00",
+  "captured_at": "2026-09-28T17:27:10.513569+00:00",
   "verdict": "PASS",
   "tier_counts": {
     "none": 6,
