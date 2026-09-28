@@ -137,13 +137,28 @@ class WebhookReceiver:
         self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
         self.server.timeout = 0.05
-        threading.Thread(target=self._serve, daemon=True).start()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
 
     def _serve(self):
-        while True:
+        # The loop must watch _stop. It used to be `while True`, which made
+        # close() unable to end it: server_close() drops the listening socket,
+        # and the next handle_request() registers that now-closed fd with a
+        # selector, which raises ValueError (negative file descriptor) — not
+        # OSError. The `except OSError: return` arm therefore never fired, the
+        # generic arm caught ValueError and `continue`d, and with
+        # server.timeout = 0.05 the thread span at full tilt forever.
+        #
+        # Every test in this file builds a receiver, so the spinners
+        # accumulated: by the end of the module several threads were burning a
+        # core each, and the first later test with real timing (the DNSSEC CLI
+        # test) looked like it hung. It was starvation, not a deadlock — which
+        # is why that test always passed when run on its own.
+        while not self._stop.is_set():
             try:
                 self.server.handle_request()
-            except OSError:
+            except (OSError, ValueError):
                 return
             except Exception as _handler_exc:  # noqa: BLE001 — client disconnects must not noise tests
                 logger.debug(
@@ -153,7 +168,15 @@ class WebhookReceiver:
                 continue
 
     def close(self):
+        self._stop.set()
+        # Outlast one handle_request() timeout so the loop observes the flag
+        # and leaves on its own, rather than by tripping over a closed socket.
+        self._thread.join(timeout=5)
         self.server.server_close()
+        assert not self._thread.is_alive(), (
+            "WebhookReceiver server thread outlived close(); a spinning "
+            "receiver starves every test that runs after it"
+        )
 
     @property
     def url(self):
