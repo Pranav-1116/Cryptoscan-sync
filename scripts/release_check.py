@@ -13,6 +13,7 @@ coherent release:
     (``scripts/check_prod_guard.py --expect-reject``)
   * when run with ENVIRONMENT=production: the real config PASSES the guard
   * the self-SBOM artifact exists and is newer than the VERSION file
+  * Kubernetes runtime images use immutable OCI digests, not release tags
   * fresh production evidence: scripts/production_evidence.py runs the full
     gate (prod guard both ways, smoke, load with production rate limiting,
     DR drill where the host can run it) and appends a signed, tamper-evident
@@ -104,6 +105,7 @@ _VALID_PROD_ENV = {
     "SECRET_KEY": "ci-only-production-guard-secret-key-0123456789abcdef",
     "ADMIN_PASSWORD_HASH": "ci-only-placeholder-hash",
     "GITHUB_WEBHOOK_SECRET": "ci-only-webhook-secret-0123456789abcdef",
+    "METRICS_TOKEN": "ci-only-metrics-token-0123456789abcdef",
     "DATABASE_URL": "postgresql://ci:ci@localhost:5432/ci",
     "CORS_ORIGINS": "https://cryptoscan.example.com",
 }
@@ -120,6 +122,19 @@ def _run_guard(overrides: dict[str, str], *args: str) -> subprocess.CompletedPro
         env=env,
         check=False,
     )
+
+
+def _image_digest_findings() -> list[Finding]:
+    """Reject mutable Kubernetes images before a release is tagged."""
+    findings: list[Finding] = []
+    manifests = ROOT / "k8s"
+    for path in manifests.rglob("*.yaml") if manifests.exists() else []:
+        for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
+            if "image:" not in line or "@sha256:" in line:
+                continue
+            image = line.split("image:", 1)[1].strip()
+            findings.append(Finding("immutable-image-digests", ERROR, f"{path.relative_to(ROOT)}:{line_no} uses mutable image reference {image}; publish and record an OCI digest"))
+    return findings
 
 
 def _prod_guard_findings() -> list[Finding]:
@@ -237,6 +252,7 @@ def collect(allow_untagged: bool, run_evidence: bool = True) -> tuple[list[Findi
         findings.append(sbom)
 
     findings.extend(_prod_guard_findings())
+    findings.extend(_image_digest_findings())
 
     if run_evidence:
         ev_findings, evidence_info = _production_evidence(version_text)

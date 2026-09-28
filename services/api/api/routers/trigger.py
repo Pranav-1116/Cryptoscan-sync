@@ -10,11 +10,15 @@ from db.repositories.job_repository import JobRepository
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from api.config.settings import get_settings
-from api.dependencies import get_job_repository, require_auditor
+from api.dependencies import get_job_repository
 from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
+from api.security.rbac import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["trigger"])
+# Exposed as a named dependency so applications and tests can override the
+# scan-trigger capability without bypassing the central permission matrix.
+require_scan_trigger = require_permission("scan.trigger")
 
 
 def _resolve_sector(explicit: str | None, job_repo: JobRepository) -> str:
@@ -184,8 +188,18 @@ def enqueue_scan_job(
     _annotate_sector(created, effective_sector, scan_mode)
     try:
         job_repo.session.commit()
-    except Exception:
-        logger.debug("job_commit_skipped", exc_info=True)
+    except Exception as exc:
+        # A job that was not committed must never be reported as accepted:
+        # otherwise the caller receives an id that a worker can never claim.
+        try:
+            job_repo.session.rollback()
+        except Exception:
+            logger.exception("job_commit_rollback_failed")
+        logger.exception("job_commit_failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scan queue is temporarily unavailable; no job was accepted",
+        ) from exc
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     created_at = getattr(created, "created_at", None)
     payload = {
@@ -229,7 +243,7 @@ def enqueue_scan_job(
 async def trigger_manual_scan(
     request_body: TriggerScanRequest,
     background_tasks: BackgroundTasks,
-    current_user: str = Depends(require_auditor),
+    current_user: str = Depends(require_scan_trigger),
     job_repo: JobRepository = Depends(get_job_repository),
 ):
     from cloud_scanner.estate import is_cloud_target
@@ -246,13 +260,21 @@ async def trigger_manual_scan(
         target_commit=request_body.commit,
         triggered_by=current_user,
     )
-    _annotate_sector(created, effective_sector, getattr(request_body, "scan_mode", None))
     if inspect.isawaitable(created):
         created = await created
+    _annotate_sector(created, effective_sector, getattr(request_body, "scan_mode", None))
     try:
         job_repo.session.commit()
-    except Exception:
-        logger.debug("job_commit_skipped", exc_info=True)
+    except Exception as exc:
+        try:
+            job_repo.session.rollback()
+        except Exception:
+            logger.exception("job_commit_rollback_failed")
+        logger.exception("job_commit_failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scan queue is temporarily unavailable; no job was accepted",
+        ) from exc
 
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     created_at = getattr(created, "created_at", None)

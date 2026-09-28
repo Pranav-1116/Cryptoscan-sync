@@ -444,8 +444,11 @@ def graph_explain(
             "detail": f"{len(impact.get('systems') or [])} systems · revenue at risk {impact.get('total_revenue_at_risk', 0)}",
             "confidence": None, "evidence": "", "file": None,
         })
-    except Exception:
-        pass
+    except Exception as impact_exc:
+        logger.warning(
+            "graph_business_impact_unavailable",
+            extra={"error_type": type(impact_exc).__name__, "node_id": node_id},
+        )
 
     return {
         "node_id": node_id,
@@ -755,8 +758,11 @@ def _quantum_vulnerable_algorithm(name: str) -> bool:
             return True
         if entry.quantum_status == QuantumStatus.QUANTUM_SAFE:
             return False
-    except Exception:
-        pass
+    except (KeyError, TypeError, ValueError) as registry_exc:
+        logger.debug(
+            "crypto_registry_entry_unavailable",
+            extra={"error_type": type(registry_exc).__name__, "algorithm": name},
+        )
     upper = name.upper()
     return any(k in upper for k in ("RSA", "ECDSA", "DSA", "DH", "ED25519", "ED448", "X25519", "X448", "P-256", "P-384", "P-521"))
 

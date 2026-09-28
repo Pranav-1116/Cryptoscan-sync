@@ -15,12 +15,15 @@ path + headers + identity, never the body.
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from collections import defaultdict, deque
 
 from starlette.requests import Request
 
 from api.middleware.asgi_utils import make_send_with_headers, send_json
+
+logger = logging.getLogger(__name__)
 
 # endpoint class -> (limit, window_seconds)
 DEFAULT_RULES: dict[str, tuple[int, int]] = {
@@ -56,22 +59,28 @@ def _identity(request) -> str:
             username = SessionManager().validate_api_token(token)
             if username:
                 return f"user:{username}"
-        except Exception:
-            pass  # unauthenticated token falls through to IP bucket
+        except Exception as exc:
+            logger.warning("rate_limit_session_identity_unavailable", extra={"error_type": type(exc).__name__})
+            # An invalid/unavailable session identity falls through to IP bucket.
     ip = request.client.host if request.client else "unknown"
     return f"ip:{ip}"
 
 
 class RateLimitMiddleware:
     def __init__(self, app, rules: dict[str, tuple[int, int]] | None = None, clock=time.monotonic,
-                 redis_client=None):
+                 redis_client=None, fail_closed: bool = False):
         self.app = app
         self.rules = rules or DEFAULT_RULES
         self.clock = clock
-        self.redis = redis_client  # None -> in-process windows
+        self.redis = redis_client  # None -> in-process windows in development
+        self.fail_closed = fail_closed
         self._hits: dict[tuple[str, str], deque[float]] = defaultdict(deque)
 
     def _take(self, key: tuple[str, str], limit: int, window: float) -> tuple[bool, int, float]:
+        if self.redis is None and self.fail_closed:
+            # A production deployment configured for a shared limiter must not
+            # silently downgrade to per-process quotas during Redis outage.
+            return False, 0, 1.0
         if self.redis is not None:
             shared = self._take_shared(key, limit, window)
             if shared is not None:
@@ -97,8 +106,11 @@ class RateLimitMiddleware:
                 self.redis.expire(bucket_key, int(window) + 1)
             retry_after = window - (self.clock() % window)
             return count <= limit, max(0, limit - count), retry_after
-        except Exception:
-            return None  # degrade to in-process limits, never error the request
+        except Exception as exc:
+            logger.exception("rate_limit_redis_unavailable", extra={"error_type": type(exc).__name__})
+            if self.fail_closed:
+                return False, 0, 1.0
+            return None  # development-only degrade to in-process limits
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":

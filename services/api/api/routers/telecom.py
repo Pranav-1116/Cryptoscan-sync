@@ -15,6 +15,7 @@ probes behind NAT) is telecom.ingest; triggering scans is scan.trigger.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field
 from api.security.rbac import require_permission
 
 router = APIRouter(prefix="/telecom", tags=["telecom"])
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------ snapshot store
 # Last scan/ingest result, kept in memory for the running process and
@@ -140,8 +142,11 @@ def _fold_journey(rows: list[dict[str, Any]], generated_at: str) -> None:
         from telecom_scanner.journey import update_journey
 
         _store_journey(update_journey(_load_journey(), generated_at, rows))
-    except Exception:  # noqa: BLE001 — journey must never break a scan
-        pass
+    except Exception as journey_exc:  # noqa: BLE001 — journey must never break a scan
+        logger.warning(
+            "telecom_journey_update_failed",
+            extra={"error_type": type(journey_exc).__name__},
+        )
 
 
 def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
@@ -182,6 +187,7 @@ class TelecomTarget(BaseModel):
     endpoint: str = Field(min_length=6, max_length=253)
     carrier_code: str = Field(default="", max_length=24)
     environment: str = Field(default="production", max_length=16)
+    interface: str = Field(default="", max_length=8, description="optional N3 or N9 user-plane reference point")
 
 
 class ScanRequest(BaseModel):
