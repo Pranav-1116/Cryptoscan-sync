@@ -39,7 +39,7 @@ customer attestations in the controlled evidence store.
 ### Latest recorded gate
 
 The checked-in report was generated on **2026-09-28 UTC** against commit
-`792caa4` by the command above. The engineering subchecks for exception
+`fff5637` by the command above. The engineering subchecks for exception
 triage, `X-API-Key` coverage and frontend authorization are **PASS**; immutable
 Kubernetes image policy is **FAIL** with three mutable template references;
 branch protection and COBOL/PL/I/RPG customer-sample checks are **SKIP**
