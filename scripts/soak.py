@@ -36,7 +36,6 @@ import argparse
 import json
 import os
 import signal
-import statistics
 import sys
 import time
 import urllib.error
