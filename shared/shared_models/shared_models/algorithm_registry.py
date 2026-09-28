@@ -257,7 +257,6 @@ _FAMILIES: dict[str, _Family] = {
     "FRP256V1": _Family("FRP256v1", "ec-curve", RESTRICTED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="French ANSSI curve"),
     # -- additional post-quantum (NIST FIPS 203/204/205 + candidates) ----- #
     "FN-DSA": _Family("FN-DSA (Falcon)", "signature-pqc", ALLOWED, notes="FIPS 206 / Falcon lattice signature (draft)"),
-    "FALCON": _Family("Falcon", "signature-pqc", RESTRICTED, notes="pre-standardization name — prefer FN-DSA"),
     "SLH-DSA": _Family("SLH-DSA", "signature-pqc", ALLOWED, notes="FIPS 205 (SPHINCS+) stateless hash-based signature family"),
     # parameter-set-less family names are what scanners emit for most call sites (KEM.getInstance("ML-KEM"), MLKem.GenerateKey(...))
     "ML-KEM": _Family("ML-KEM", "kem-pqc", ALLOWED, notes="FIPS 203 (Kyber) key-encapsulation family"),
