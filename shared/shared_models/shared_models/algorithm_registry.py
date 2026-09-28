@@ -171,6 +171,13 @@ _FAMILIES: dict[str, _Family] = {
     "ECDSA": _Family("ECDSA", "signature", ALLOWED, min_key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     "EC": _Family("ECDSA", "signature", ALLOWED, min_key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     "ECDH": _Family("ECDH", "key-agree", ALLOWED, min_key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
+    "ECDH-ES": _Family("ECDH-ES", "key-agree", ALLOWED, min_key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor", notes="JOSE ephemeral-static ECDH (RFC 7518)"),
+    # JOSE "alg" values that name no algorithm. They must still resolve: the
+    # parsers already emit them (see java_rules jjwt/jose4j tables), and an
+    # unrecognized token reaches policy as UNKNOWN -- which for "none" means
+    # the single most serious JWT finding there is would arrive unclassified.
+    "NONE": _Family("none", "jose-unsecured", DISALLOWED, notes="RFC 7518 unsecured JWS: signature not verified, token forgeable by anyone"),
+    "DIR": _Family("dir", "key-management", ALLOWED, notes="JOSE direct use of a shared symmetric key (RFC 7518); no key wrapping"),
     "DH": _Family("DH", "key-agree", RESTRICTED, min_key_size=2048, quantum_impact="shor", notes="finite-field DH >=2048 bits; legacy groups weaker"),
     "ED25519": _Family("Ed25519", "signature", ALLOWED, key_size=256, parameter_kind=CURVE_BITS, quantum_impact="shor"),
     "ED448": _Family("Ed448", "signature", ALLOWED, key_size=456, parameter_kind=CURVE_BITS, quantum_impact="shor"),
@@ -222,6 +229,13 @@ _FAMILIES: dict[str, _Family] = {
     "HIGHT": _Family("HIGHT", "block-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, notes="Korean lightweight 64-bit block cipher"),
     # -- lightweight / embedded / NIST LWC --------------------------------- #
     "ASCON": _Family("Ascon", "aead", ALLOWED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="NIST lightweight crypto (LWC) winner; AEAD + hash"),
+    # The four functions NIST SP 800-232 actually standardises, as spelled in
+    # the IANA TLS registry (TLS_ASCONAEAD128_*). The bare "ASCON" above stays
+    # as the family catch-all for code that just names the primitive.
+    "ASCON-AEAD128": _Family("Ascon-AEAD128", "aead", ALLOWED, key_size=128, parameter_kind=KEY_BITS, quantum_impact="grover", notes="NIST SP 800-232 AEAD"),
+    "ASCON-HASH256": _Family("Ascon-Hash256", "hash", ALLOWED, key_size=256, parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="NIST SP 800-232 hash"),
+    "ASCON-XOF128": _Family("Ascon-XOF128", "xof", ALLOWED, key_size=128, parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="NIST SP 800-232 extendable-output function"),
+    "ASCON-CXOF128": _Family("Ascon-CXOF128", "xof", ALLOWED, key_size=128, parameter_kind=DIGEST_BITS, quantum_impact="grover", notes="NIST SP 800-232 customised XOF"),
     "PRESENT": _Family("PRESENT", "block-cipher", RESTRICTED, allowed_key_sizes=(80, 128), notes="ultra-lightweight block cipher"),
     "CLEFIA": _Family("CLEFIA", "block-cipher", RESTRICTED, allowed_key_sizes=(128, 192, 256), notes="Sony lightweight block cipher"),
     "GRAIN": _Family("Grain", "stream-cipher", RESTRICTED, key_size=128, parameter_kind=KEY_BITS, notes="lightweight stream cipher (Grain-128)"),
@@ -372,6 +386,13 @@ _ALIASES: dict[str, str] = {
     "A128CBC": "AES", "A192CBC": "AES", "A256CBC": "AES",
     "A128CBCHS256": "AES", "A192CBCHS384": "AES", "A256CBCHS512": "AES",
     "A128KW": "AES", "A192KW": "AES", "A256KW": "AES",
+    "A128CTR": "AES", "A192CTR": "AES", "A256CTR": "AES",
+    # SHA-1 JOSE variants (RFC 8812). Deprecated, and they must resolve so the
+    # policy layer sees SHA-1 rather than an unrecognized token.
+    "RS1": "RSA", "HS1": "HMAC-SHA-1",
+    # ECDH-ES key agreement, with and without the AES key-wrap suffix.
+    "ECDHES": "ECDH-ES",
+    "ECDHESA128KW": "ECDH-ES", "ECDHESA192KW": "ECDH-ES", "ECDHESA256KW": "ECDH-ES",
     "RSAOAEP": "RSA-OAEP", "RSAOAEP256": "RSA-OAEP",
     # PQC aliases
     "MLKEM512": "ML-KEM-512", "MLKEM768": "ML-KEM-768", "MLKEM1024": "ML-KEM-1024",
@@ -417,6 +438,10 @@ _ALIASES: dict[str, str] = {
     "AESCCM8": "AES-CCM", "AES-128-CCM": "AES-CCM", "AES-256-CCM": "AES-CCM",
     "GCM-SIV": "AES-SIV", "AESGCMSIV": "AES-SIV",
     "AEGIS128": "AEGIS", "AEGIS128L": "AEGIS", "AEGIS256": "AEGIS",
+    # SP 800-232 / IANA spellings, which run the words together.
+    "ASCONAEAD128": "ASCON-AEAD128", "ASCONHASH256": "ASCON-HASH256",
+    "ASCONXOF128": "ASCON-XOF128", "ASCONCXOF128": "ASCON-CXOF128",
+    "ASCONAEAD": "ASCON-AEAD128", "ASCONHASH": "ASCON-HASH256",
     "ACORN128": "ACORN", "XOOYAKAEAD": "XOODYAK", "XOOYAK": "XOODYAK", "XOODYAK": "XOODYAK",
     "A53": "KASUMI", "A5/3": "KASUMI", "A54": "KASUMI", "A5/4": "KASUMI", "F8": "KASUMI", "F9": "KASUMI",
     # additional ciphers
@@ -527,17 +552,64 @@ def _mode_of(stripped: str) -> str | None:
     return None
 
 
+#: Every TLS suite IANA registers without a ``_WITH_`` segment, i.e. the
+#: TLS 1.3 naming shape (tls-parameters-4, snapshot in
+#: shared_models/data/iana_tls_parameters.csv; the completeness test asserts
+#: this table covers all of them).
+#:
+#: ``(bulk_cipher, key_bits, mac, status, note)``. Status is carried per-suite
+#: rather than assumed ALLOWED: two of these encrypt nothing at all.
 _TLS13_SUITES = {
-    "TLSAES128GCMSHA256": ("AES-128-GCM", 128, "SHA-256"),
-    "TLSAES256GCMSHA384": ("AES-256-GCM", 256, "SHA-384"),
-    "TLSCHACHA20POLY1305SHA256": ("ChaCha20-Poly1305", 256, "SHA-256"),
-    "TLSAES128CCMSHA256": ("AES-128-CCM", 128, "SHA-256"),
-    "TLSAES128CCM8SHA256": ("AES-128-CCM8", 128, "SHA-256"),
+    "TLSAES128GCMSHA256": ("AES-128-GCM", 128, "SHA-256", ALLOWED, ""),
+    "TLSAES256GCMSHA384": ("AES-256-GCM", 256, "SHA-384", ALLOWED, ""),
+    "TLSCHACHA20POLY1305SHA256": ("ChaCha20-Poly1305", 256, "SHA-256", ALLOWED, ""),
+    "TLSAES128CCMSHA256": ("AES-128-CCM", 128, "SHA-256", ALLOWED, ""),
+    "TLSAES128CCM8SHA256": ("AES-128-CCM8", 128, "SHA-256", RESTRICTED,
+                            "8-octet tag: not Recommended by IANA"),
+    # RFC 8998 — ShangMi suites for TLS 1.3 (Chinese national algorithms).
+    "TLSSM4GCMSM3": ("SM4-GCM", 128, "SM3", RESTRICTED,
+                     "RFC 8998 ShangMi; not IANA-Recommended outside GB/T deployments"),
+    "TLSSM4CCMSM3": ("SM4-CCM", 128, "SM3", RESTRICTED,
+                     "RFC 8998 ShangMi; not IANA-Recommended outside GB/T deployments"),
+    # draft-irtf-cfrg-aegis-aead
+    "TLSAEGIS256SHA512": ("AEGIS-256", 256, "SHA-512", RESTRICTED, "AEGIS draft suite"),
+    "TLSAEGIS128LSHA256": ("AEGIS-128L", 128, "SHA-256", RESTRICTED, "AEGIS draft suite"),
+    # NIST SP 800-232 / RFC 9846 — Ascon lightweight suites.
+    "TLSASCONAEAD128ASCONHASH256": ("Ascon-AEAD128", 128, "Ascon-Hash256", RESTRICTED,
+                                    "NIST SP 800-232 lightweight suite"),
+    "TLSASCONAEAD128SHA256": ("Ascon-AEAD128", 128, "SHA-256", RESTRICTED,
+                              "NIST SP 800-232 lightweight suite"),
+    "TLSAES128GCMASCONHASH256": ("AES-128-GCM", 128, "Ascon-Hash256", RESTRICTED,
+                                 "NIST SP 800-232 lightweight suite"),
+    "TLSAES128CCMASCONHASH256": ("AES-128-CCM", 128, "Ascon-Hash256", RESTRICTED,
+                                 "NIST SP 800-232 lightweight suite"),
+    # RFC 9150 — integrity-only. These negotiate NO ENCRYPTION: the record
+    # protocol authenticates and sends plaintext. Parsing them as their hash
+    # (which is what the bare name looks like) hides exactly that, so they are
+    # DISALLOWED here and say so in the note.
+    "TLSSHA256SHA256": (None, None, "SHA-256", DISALLOWED,
+                        "RFC 9150 integrity-only: NO ENCRYPTION, plaintext on the wire"),
+    "TLSSHA384SHA384": (None, None, "SHA-384", DISALLOWED,
+                        "RFC 9150 integrity-only: NO ENCRYPTION, plaintext on the wire"),
+}
+
+#: Signalling Cipher Suite Values: negotiation signals that occupy cipher-suite
+#: code points but name no algorithm. Recognised so a scan reports them as what
+#: they are instead of leaving them as unparsed noise.
+_TLS_SCSV = {
+    "TLSEMPTYRENEGOTIATIONINFOSCSV": (
+        "TLS_EMPTY_RENEGOTIATION_INFO_SCSV",
+        "RFC 5746 secure-renegotiation signal (not a cipher suite)",
+    ),
+    "TLSFALLBACKSCSV": (
+        "TLS_FALLBACK_SCSV",
+        "RFC 7507 downgrade-protection signal (not a cipher suite)",
+    ),
 }
 
 
 def _looks_like_tls_suite(stripped: str) -> bool:
-    if stripped in _TLS13_SUITES:
+    if stripped in _TLS13_SUITES or stripped in _TLS_SCSV:
         return True
     return stripped.startswith("TLS") and "WITH" in stripped
 
@@ -551,20 +623,33 @@ def _parse_tls_suite(raw: str, stripped: str) -> AlgorithmInfo:
         entry["role"] = role
         components.append(entry)
 
+    if stripped in _TLS_SCSV:
+        canonical, note = _TLS_SCSV[stripped]
+        return AlgorithmInfo(
+            raw=raw,
+            canonical=canonical,
+            family="tls-signalling",
+            status=ALLOWED,
+            notes=note,
+        )
+
     if stripped in _TLS13_SUITES:
-        cipher, bits, mac = _TLS13_SUITES[stripped]
-        add(cipher, "bulk_cipher")
+        cipher, bits, mac, status, note = _TLS13_SUITES[stripped]
+        if cipher is not None:
+            add(cipher, "bulk_cipher")
         add(mac, "mac")
+        detail = f"TLS 1.3 suite ({cipher})" if cipher else "TLS 1.3 suite (no bulk cipher)"
         return AlgorithmInfo(
             raw=raw,
             canonical=raw.strip(),
             family="tls-suite",
-            status=ALLOWED,
+            status=status,
             key_size=bits,
-            parameter_kind=KEY_BITS,
-            mode="GCM" if "GCM" in cipher else ("CCM" if "CCM" in cipher else None),
+            parameter_kind=KEY_BITS if bits else None,
+            mode=("GCM" if cipher and "GCM" in cipher
+                  else "CCM" if cipher and "CCM" in cipher else None),
             quantum_impact="grover",
-            notes=f"TLS 1.3 suite ({cipher})",
+            notes=f"{detail} — {note}" if note else detail,
             components=tuple(components),
         )
 
