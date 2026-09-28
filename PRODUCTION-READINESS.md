@@ -74,6 +74,24 @@ report for the complete machine-readable record.
 - No repository document may convert source inspection, mocks, SoftHSM,
   Docker-only tests or corpus measurements into a customer certification.
 
+> **Update 2026-09-27 (second pass).** A *second*, distinct cross-tenant leak —
+> not the repository-level one above, which `db/tenancy.py` closed. The ORM
+> guard only filters while a tenant scope is active, and
+> `TenantScopeMiddleware` swallowed every failed resolution into an **unscoped**
+> request. A member sending another tenant's `X-Tenant-ID` (404), or simply a
+> member of two tenants sending no header at all (400), read the entire estate
+> on any of the ~85 routers that do not depend on `get_tenant_context`. Now
+> fails closed via `TenantResolutionRefused`; see
+> `docs/architecture/multi-tenancy.md` and the CHANGELOG.
+>
+> The lesson generalises beyond this bug: **both** leaks were in the layer meant
+> to make isolation automatic, and both were invisible to the suite because the
+> middleware is not installed when `ENVIRONMENT=test`. Defense-in-depth counted
+> five layers here while two of them were inert. Any layer whose failure mode is
+> "silently returns more data" needs a test that asserts the *negative*.
+
+---
+
 ## Current decision
 
 Until the unified gate reports PASS for every required category, the only

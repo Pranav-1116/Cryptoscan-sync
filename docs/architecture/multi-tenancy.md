@@ -35,11 +35,40 @@ Every tenant-scoped request resolves a `TenantContext`
 
 | Layer | What it does |
 |---|---|
+| ORM guard | `db.tenancy.install_tenant_guard` adds `with_loader_criteria` to **every** ORM select while a tenant scope is active, so the filter reaches lazy and relationship loads too — not just the top-level statement |
+| Middleware | `TenantScopeMiddleware` enters that scope once per request, covering the ~85 routers that do not depend on `get_tenant_context`. **Fails closed** (see below) |
 | Repository | every query filters by `tenant_id` (or `platform=True` for the NULL estate); `get_by_name_scoped` keeps name uniqueness per estate |
 | Router | tenant-scoped routes depend on `TenantContext` / `require_tenant_roles`; cross-tenant get/patch/delete is 404 |
 | Daemon | `MonitorRepository.due()` skips SUSPENDED tenants; results inherit the target's tenant; every executed pass writes one `scan_run` usage unit |
 | Quotas | plan limits enforced at create time: targets, monthly scans, seats → **402 quota_exceeded** with the reason; ENTERPRISE is unlimited |
 | Metering | append-only `tenant_usage_events` (SUM per calendar month — deletes never shrink counters) |
+
+### Why the middleware must fail closed
+
+Outside a tenant scope the ORM guard is **inert** — an unscoped query returns
+every tenant's rows. So "could not resolve a tenant" and "this principal has
+no tenant" must not collapse into the same outcome.
+
+`resolve_tenant_for_request` returns `None` — meaning *do not scope* — only
+for a principal that legitimately has none: an unauthenticated request (the
+auth gate has already refused it), a platform operator without `X-Tenant-ID`,
+or a legacy single-tenant identity. Every other outcome raises
+`TenantResolutionRefused`, and the middleware answers with the status the
+route's own dependency would have produced (403 / 404 / 423 / 400, or 503 if
+the tenancy tables are unreachable).
+
+This previously swallowed refusals into an unscoped request. Two reachable
+paths leaked the whole estate on any router without `get_tenant_context`:
+
+- a member sending **another tenant's** `X-Tenant-ID` → 404 → swallowed;
+- a member of **two** tenants sending **no header** → 400 → swallowed. No
+  forged header required.
+
+Pinned by `services/api/tests/unit/test_tenant_scope_middleware.py`, which
+drives the ASGI middleware directly and asserts the downstream app is never
+reached for a refusal. The middleware is not installed when
+`ENVIRONMENT=test` (see `api.main`), which is why these tests construct it
+rather than going through the app fixture.
 
 ## Plans
 
