@@ -24,11 +24,33 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from queue import Empty, Queue
 from typing import Callable
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_created_at(created: str | None) -> datetime:
+    """Always timezone-aware, however the payload spelled it.
+
+    This used to be ``fromisoformat(created) if created else utcnow()``, which
+    produced an aware datetime for a payload carrying an offset (what
+    monitor/runners.py writes) and a naive one for the fallback. Mixing the two
+    raises "can't subtract offset-naive and offset-aware datetimes" the moment
+    anything ages a job — and job_reaper already carries an ``_aware()`` helper
+    because it hit exactly that. Normalising at the producer means consumers
+    don't each need their own guard.
+
+    Naive input is read as UTC, which is what every writer here intends.
+    """
+    if not created:
+        return datetime.now(timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(created)
+    except (TypeError, ValueError):
+        return datetime.now(timezone.utc)
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 @dataclass
@@ -347,7 +369,7 @@ class JobConsumer:
             target_commit=data.get("target_commit"),
             target_branch=data.get("target_branch") or "main",
             triggered_by=data.get("triggered_by") or "system",
-            created_at=datetime.fromisoformat(created) if created else datetime.utcnow(),
+            created_at=_parse_created_at(created),
             job_type=data.get("job_type") or "MANUAL",
             system_id=data.get("system_id"),
             progress=data.get("progress"),
