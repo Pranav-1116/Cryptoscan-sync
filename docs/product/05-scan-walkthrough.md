@@ -112,7 +112,7 @@ verified `PASS` — and the evidence directory records it per cycle.
 | Repository unreachable | fails at `clone` with the reason | fix credentials / URL, retry |
 | Parser error in one file | recorded as a `parse_error` finding with the file; the scan continues (0 parse errors on the 10k-file benchmark) | — |
 | Redis unavailable at trigger time | trigger returns 503; no `scan_jobs` row is left dangling | retry the trigger |
-| **Worker process dies mid-run** | the Redis message is already consumed; the `scan_jobs` row stays `QUEUED`/`RUNNING` forever; nothing requeues it | **known gap** — no visibility timeout or dead-letter yet. Observed once during staging bring-up; tracked in [PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) |
+| **Worker process dies mid-run** | Redis processing-list/lease recovery requeues or dead-letters the job; the DB reaper handles stale rows | **implemented, target-host qualification still required** — run `scripts/queue_kill9_drill.py` against real Redis and attach the artifact to the root readiness gate |
 | Workspace cleanup | one directory per job under `WORKSPACE_BASE_PATH`, removed after the job | a path-resolution bug leaked every workspace until 2026-09-23; fixed with regression tests |
 
 ## Other job kinds

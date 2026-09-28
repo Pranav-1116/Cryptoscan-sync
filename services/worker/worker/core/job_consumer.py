@@ -154,7 +154,11 @@ class JobConsumer:
                         break
                     try:
                         payload = json.loads(raw)
-                    except Exception:
+                    except (TypeError, ValueError) as payload_exc:
+                        logger.warning(
+                            "orphaned_job_payload_invalid",
+                            extra={"error_type": type(payload_exc).__name__, "worker": worker_id},
+                        )
                         continue
                     attempts = int(payload.get("_attempts") or 0) + 1
                     payload["_attempts"] = attempts
@@ -188,7 +192,11 @@ class JobConsumer:
                 for raw in self.redis_client.lrange(key, 0, -1):
                     try:
                         ids.add(str(json.loads(raw).get("job_id")))
-                    except Exception:
+                    except (TypeError, ValueError) as payload_exc:
+                        logger.warning(
+                            "queued_job_payload_invalid",
+                            extra={"error_type": type(payload_exc).__name__},
+                        )
                         continue
         except Exception as exc:
             logger.warning("queued_ids_failed", extra={"error": str(exc)})
@@ -322,7 +330,11 @@ class JobConsumer:
                 raw = _MEMORY_QUEUE.get(timeout=self.poll_interval_seconds)
             except Empty:
                 return None
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 return None
         if not raw:
             return None

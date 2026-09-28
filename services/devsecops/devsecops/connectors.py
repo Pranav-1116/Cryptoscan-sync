@@ -11,6 +11,11 @@ duplicate tickets/events.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import json
 import time
@@ -86,7 +91,11 @@ def servicenow_ticket(finding: dict, *, instance: str, auth: str, table: str = "
     sys_id = None
     try:
         sys_id = (json.loads(res.body).get("result") or {}).get("sys_id")
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return {"provider": "servicenow", "dedup_key": key, "ok": res.ok,
             "status": res.status, "ticket_id": sys_id, "error": res.error if not res.ok else None}
@@ -122,7 +131,11 @@ def jira_issue(finding: dict, *, base_url: str, auth: str, project: str,
     issue_key = None
     try:
         issue_key = json.loads(res.body).get("key")
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return {"provider": "jira", "dedup_key": key, "ok": res.ok, "status": res.status,
             "ticket_id": issue_key, "error": res.error if not res.ok else None}

@@ -1,0 +1,61 @@
+{
+  "schema": "cryptoscan.engineering-gate/1",
+  "captured_at": "2026-09-28T08:37:01.053724+00:00",
+  "checks": [
+    {
+      "check": "exception inventory",
+      "status": "PASS",
+      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=0",
+      "findings": [],
+      "nonproduction_findings": [],
+      "unresolved": 0,
+      "production_unresolved": 0,
+      "test_harness_unresolved": 0,
+      "allowlisted": 0,
+      "allowlist": "/home/user/CryproScan/config/exception-allowlist.json"
+    },
+    {
+      "check": "X-API-Key route coverage",
+      "status": "PASS",
+      "detail": "decorated routes=719; auth-covered-or-exempt=719; uncovered=0",
+      "findings": []
+    },
+    {
+      "check": "frontend direct-role authorization",
+      "status": "PASS",
+      "detail": "0 direct role/localStorage references",
+      "findings": []
+    },
+    {
+      "check": "production image immutable digests",
+      "status": "FAIL",
+      "detail": "3 image references are not pinned by digest",
+      "references": [
+        "k8s/app/20-api-deployment.yaml:23:image: cryptoscan-api:v1.0.0",
+        "k8s/app/30-worker-deployment.yaml:23:image: cryptoscan-worker:v1.0.0",
+        "k8s/neo4j/statefulset.yaml:20:image: neo4j:5.26-community"
+      ]
+    },
+    {
+      "check": "branch protection API verification",
+      "status": "SKIP",
+      "detail": "provider repository identifier and credentials are required; enforcement is not asserted"
+    },
+    {
+      "check": "cobol customer sample",
+      "status": "SKIP",
+      "detail": "sample path not supplied; corpus evidence is not customer validation"
+    },
+    {
+      "check": "pli customer sample",
+      "status": "SKIP",
+      "detail": "sample path not supplied; corpus evidence is not customer validation"
+    },
+    {
+      "check": "rpg customer sample",
+      "status": "SKIP",
+      "detail": "sample path not supplied; corpus evidence is not customer validation"
+    }
+  ],
+  "verdict": "FAIL"
+}

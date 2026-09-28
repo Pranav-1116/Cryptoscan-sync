@@ -54,7 +54,7 @@ is fabricated: it is empty until a real scan produces evidence.
 | Database | PostgreSQL 15/16 in production (SQLite for development), 60 Alembic migrations, 102 tables |
 | Identity | local + TOTP MFA, OIDC (relay / auth-code / PKCE), SAML 2.0, LDAP/AD, SCIM 2.0, API keys; 9 RBAC roles |
 | Tests | 4,808 backend test functions, hermetic and parallel (~8 min); frontend vitest suite; live PostgreSQL migration test |
-| Readiness | ~80 % overall, core path ~92 % — [PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) |
+| Readiness | Explicit PASS/FAIL/SKIP gate — [root PRODUCTION-READINESS.md](../../PRODUCTION-READINESS.md) |
 
 ## Image index
 

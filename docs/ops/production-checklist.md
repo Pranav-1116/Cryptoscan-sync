@@ -1,5 +1,10 @@
 # Production go-live checklist
 
+> This checklist is subordinate to the root readiness gate. Do not approve a
+> release because these boxes are documented: run
+> `python scripts/bank_readiness.py --strict` with retained external artifacts.
+> Repository controls are not external certifications or customer attestations.
+
 Work top to bottom; every box links the exact command or file. Dedicated host,
 docker compose v2.24+ (`!override`/`!reset`), Postgres/Redis/Neo4j not exposed
 on the host network.
@@ -55,6 +60,10 @@ on the host network.
 - [ ] `scripts/burn_in.py --target all` with Neo4j, cloud credentials and Docker present — no SKIPs left that the target deployment relies on
 
 ## 10. Recovery & change control
+- [ ] Two real PostgreSQL nodes qualified with `scripts/postgres_drill.py`:
+  streaming state, marker replay, controlled promotion, measured RPO/RTO,
+  clean restore, audit/evidence-chain checks, API and worker recovery; archive
+  JSON/Markdown plus DB/provider logs.
 - [ ] DR runbook read + drill scheduled: `docs/runbooks/dr-recovery.md`
 - [ ] Evidence chain verify scheduled: `scripts/backup_evidence.py --verify`
 - [ ] CHANGELOG.md updated per release; VERSION tagged

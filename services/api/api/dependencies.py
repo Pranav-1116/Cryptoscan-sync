@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from db.connection.session import get_session
 from db.repositories.baseline_repository import BaselineRepository
 from db.repositories.drift_repository import DriftRepository
@@ -14,6 +16,8 @@ from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from api.security.session_manager import SessionManager
+
+logger = logging.getLogger(__name__)
 
 
 def get_db_session():
@@ -85,7 +89,15 @@ def should_stamp_last_use(key_id: str, *, now: float | None = None) -> bool:
 
 
 def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | object:
-    """Returns (principal, roles, key_id), None (no header), or _API_KEY_INVALID."""
+    """Returns (principal, roles, key_id), None (no header), or _API_KEY_INVALID.
+
+    AuthMiddleware resolves a machine key before routing. Reuse that verified
+    tuple in route dependencies so policy/quota accounting is not evaluated
+    twice for one request.
+    """
+    cached = getattr(request.state, "api_key_auth", None)
+    if isinstance(cached, tuple) and len(cached) == 3:
+        return cached
     raw = request.headers.get("x-api-key")
     if not raw:
         return None
@@ -111,7 +123,9 @@ def _resolve_api_key(request: Request) -> tuple[str, list[str], str] | None | ob
 
                 _Repo(session).mark_used(key_id)
                 session.commit()
-            return principal, roles, key_id
+            resolved = (principal, roles, key_id)
+            request.state.api_key_auth = resolved
+            return resolved
         finally:
             session.close()
     except HTTPException:
@@ -147,12 +161,30 @@ def _authorize_key_policy(request, row, session) -> None:
             )
     except HTTPException:
         raise
-    except Exception:  # pragma: no cover - guard must not crash the request
-        pass
+    except Exception as exc:  # pragma: no cover - guard must not crash the request
+        # A broken allowlist implementation must not turn a machine credential
+        # into an unrestricted credential in production. Development can still
+        # surface the underlying integration problem without blocking local work.
+        settings = _get_settings()
+        if settings.is_production:
+            logger.exception("api_key_ip_policy_unavailable")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="API key network policy is temporarily unavailable",
+            ) from exc
+        logger.warning("api_key_ip_policy_unavailable_nonproduction", exc_info=True)
 
     try:
         from apikeys.policy import DenyReason, KeyPolicy, authorize
-    except Exception:  # pragma: no cover - policy package always present
+    except Exception as exc:  # pragma: no cover - policy package always present
+        settings = _get_settings()
+        if settings.is_production:
+            logger.exception("api_key_policy_unavailable")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="API key policy is temporarily unavailable",
+            ) from exc
+        logger.warning("api_key_policy_unavailable_nonproduction", exc_info=True)
         return
     policy = KeyPolicy.from_row(row)
     result = authorize(
@@ -285,8 +317,11 @@ def _user_roles(username: str, token: str | None, db: Session | None = None) -> 
                     return user.role_list
             finally:
                 session.close()
-    except Exception:  # pragma: no cover - DB unavailable
-        pass
+    except Exception as exc:  # pragma: no cover - DB unavailable
+        # The session-token role snapshot is a degraded fallback, but the
+        # database failure remains visible to operators and never becomes an
+        # implicit admin grant.
+        logger.exception("principal_roles_database_lookup_failed", extra={"error_type": type(exc).__name__})
     if token:
         session = SessionManager().get_session(token)
         if session:
@@ -525,6 +560,10 @@ def _principal_roles(request: Request, user: str, db: Session | None = None) -> 
         finally:
             session.close()
     except Exception:
+        # This helper feeds authorization decisions. An unreadable user row
+        # must fail closed, but it must also be visible to operators rather
+        # than looking like an ordinary user with no roles.
+        logger.exception("principal_roles_lookup_failed", extra={"user": user})
         return []
 
 
@@ -584,6 +623,9 @@ def resolve_tenant_for_request(request: Request) -> str | None:
         ctx = _resolve_tenant_context(request, user, session)
         return ctx.tenant_id
     except Exception:
+        # Middleware cannot turn this into a route-specific 403/404, so keep
+        # the documented no-scope behavior but leave an incident breadcrumb.
+        logger.exception("tenant_scope_resolution_failed")
         return None
     finally:
         session.close()

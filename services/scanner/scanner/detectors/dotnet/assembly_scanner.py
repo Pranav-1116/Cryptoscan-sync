@@ -24,6 +24,11 @@ exactly what was matched.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 import struct
 from pathlib import Path
@@ -172,7 +177,11 @@ def _read_us_heap(blob: bytes) -> list[str]:
         i += ln
         try:
             s = chunk.decode("utf-16-le", errors="replace")
-        except Exception:  # pragma: no cover
+        except Exception as _handler_exc:  # pragma: no cover
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         if s and len(s) <= 400:
             out.append(s)

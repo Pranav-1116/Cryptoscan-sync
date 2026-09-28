@@ -178,7 +178,11 @@ class ScanOrchestrator:
             return
         try:
             self._status_store.set(self.status())
-        except Exception:  # noqa: BLE001 — mirror must never break a scan
+        except Exception as _handler_exc:  # noqa: BLE001 — mirror must never break a scan
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     # -------------------------------------------------------------- planning
@@ -256,7 +260,11 @@ class ScanOrchestrator:
                 db.add(row)
                 db.commit()
                 return SCAN_ID_FORMAT.format(year=date, seq=next_seq)
-            except Exception:  # noqa: BLE001 — scan persistence is best-effort
+            except Exception as _handler_exc:  # noqa: BLE001 — scan persistence is best-effort
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         with self._lock:
             self._seq += 1
@@ -446,7 +454,11 @@ class ScanOrchestrator:
                         shared = self._status_store.get()
                         if shared and shared.get("scan"):
                             return {**shared, "source": "scan_orchestrator:shared"}
-                    except Exception:  # noqa: BLE001
+                    except Exception as _handler_exc:  # noqa: BLE001
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         pass
                 return {"scan": None, "source": "scan_orchestrator", "runner": {"running": self._runner.running}}
             return {"scan": self._current.to_dict(), "source": "scan_orchestrator",

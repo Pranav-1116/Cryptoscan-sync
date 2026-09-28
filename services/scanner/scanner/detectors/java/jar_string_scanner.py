@@ -20,6 +20,11 @@ Nested archives (``WEB-INF/lib/*.jar`` inside a WAR/EAR) are scanned recursively
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import io
 import re
 import struct
@@ -311,7 +316,11 @@ def _artifact_name(archive: zipfile.ZipFile, fallback: str) -> str:
                 g, a, v = props.get("groupId", "").strip(), props.get("artifactId", "").strip(), props.get("version", "").strip()
                 if a:
                     return f"{g}:{a}:{v}".strip(":")
-            except Exception:  # pragma: no cover
+            except Exception as _handler_exc:  # pragma: no cover
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
     try:
         mf = archive.read("META-INF/MANIFEST.MF").decode("utf-8", "replace")
@@ -349,14 +358,22 @@ def _scan_archive_bytes(blob: bytes, rel: str, depth: int = 0) -> list[RawFindin
             if low.endswith(".class"):
                 try:
                     data = archive.read(name)
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     continue
                 for algo, api, purpose, lib, ev, conf in analyse_class(data):
                     findings.append(_finding(rel, name, algo, api, purpose, lib, ev, conf, artifact))
             elif low.endswith(ARCHIVE_SUFFIXES) and depth < 3:
                 try:
                     inner = archive.read(name)
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     continue
                 findings.extend(_scan_archive_bytes(inner, f"{rel}!{name}", depth + 1))
     return findings

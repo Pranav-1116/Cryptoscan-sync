@@ -1,0 +1,5 @@
+{
+  "schema": "cryptoscan.exception-allowlist/1",
+  "policy": "An entry is permitted only for an intentionally defensive boundary where the exception is logged or the caller receives an explicit degraded/unknown result. Do not use this file to make a readiness gate green without owner review.",
+  "entries": []
+}

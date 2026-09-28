@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import http.server
 import socket
 import ssl
@@ -131,7 +136,11 @@ class FileServer:
                 self.server.handle_request()
             except OSError:
                 return
-            except Exception:  # noqa: BLE001 — client disconnects must not noise tests
+            except Exception as _handler_exc:  # noqa: BLE001 — client disconnects must not noise tests
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
 
     def close(self):
@@ -432,7 +441,11 @@ def test_probe_endpoint_live_revocation_flags_revoked(pki, monkeypatch, tmp_path
             with ctx.wrap_socket(conn, server_side=True) as tls:
                 tls.settimeout(4)
                 tls.recv(1024)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     threading.Thread(target=serve_tls, daemon=True).start()
