@@ -36,6 +36,18 @@ digest, environment, status and limitations. A digest proves integrity of a
 file; it does not prove who ran it. Sign or retain the provider, database and
 customer attestations in the controlled evidence store.
 
+### Latest recorded gate
+
+The checked-in report was generated on **2026-09-28 UTC** against commit
+`0c1faa0` by the command above. The engineering subchecks for exception
+triage, `X-API-Key` coverage and frontend authorization are **PASS**; immutable
+Kubernetes image policy is **FAIL** with three mutable template references;
+branch protection and COBOL/PL/I/RPG customer-sample checks are **SKIP**
+without provider context or customer paths. PostgreSQL DR, HSM, live
+integrations, compliance, load/soak and external-attestation categories remain
+**SKIP** until their controlled external artifacts are supplied. See the JSON
+report for the complete machine-readable record.
+
 ## Required qualification categories
 
 | Category | What qualifies as evidence | Repository status without external evidence |

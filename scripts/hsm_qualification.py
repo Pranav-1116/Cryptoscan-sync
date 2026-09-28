@@ -39,7 +39,11 @@ KEYASSURE = ROOT / "services" / "keyassure"
 if str(KEYASSURE) not in sys.path:
     sys.path.insert(0, str(KEYASSURE))
 PROVIDERS = {"aws", "azure", "gcp", "pkcs11", "luna"}
-SECRET_WORDS = re.compile(r"(private.?key|secret|password|passwd|token|access.?key|client.?secret|pin)", re.I)
+SECRET_WORDS = re.compile(r"(private.?key|key.?material|raw.?key|secret|password|passwd|token|access.?key|client.?secret|pin)", re.I)
+FORBIDDEN_EVIDENCE_KEYS = re.compile(
+    r"(?:private|raw|plain.?text|key.?material|pem|der|secret.?material|private.?exponent)",
+    re.I,
+)
 
 
 def safe_text(value: Any) -> str:
@@ -47,7 +51,9 @@ def safe_text(value: Any) -> str:
     if value is None or isinstance(value, (bool, int, float)):
         return str(value)
     if isinstance(value, str):
-        return "[redacted]" if SECRET_WORDS.search(value) else value[:300]
+        if SECRET_WORDS.search(value) or "BEGIN " in value.upper() or len(value) > 512:
+            return "[redacted]"
+        return value[:300]
     if isinstance(value, dict):
         return json.dumps({str(k): "[redacted]" if SECRET_WORDS.search(str(k)) else safe_text(v) for k, v in list(value.items())[:20]}, sort_keys=True)
     if isinstance(value, (list, tuple)):
@@ -102,6 +108,23 @@ def network_outage_probe(host: str | None, port: int | None, timeout: float) -> 
         return "PASS", f"endpoint unavailable ({type(exc).__name__}); elapsed={time.monotonic() - started:.3f}s"
 
 
+def _forbidden_evidence_field(value: Any, path: str = "root") -> str | None:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            field = f"{path}.{key}"
+            if FORBIDDEN_EVIDENCE_KEYS.search(str(key)):
+                return field
+            found = _forbidden_evidence_field(child, field)
+            if found:
+                return found
+    elif isinstance(value, (list, tuple)):
+        for index, child in enumerate(value):
+            found = _forbidden_evidence_field(child, f"{path}[{index}]")
+            if found:
+                return found
+    return None
+
+
 def evidence_checks(path: Path, results: list[dict]) -> None:
     if not path.exists():
         result("provider evidence bundle", "SKIP", f"not supplied: {path}", results)
@@ -119,9 +142,13 @@ def evidence_checks(path: Path, results: list[dict]) -> None:
     if missing:
         result("provider evidence schema", "FAIL", "missing fields: " + ", ".join(missing), results)
         return
+    forbidden = _forbidden_evidence_field(data)
+    if forbidden:
+        result("provider evidence secret scan", "FAIL", f"prohibited key-material field: {forbidden}", results)
+        return
     serialized = json.dumps(data, sort_keys=True)
-    if SECRET_WORDS.search(serialized) and any(k.lower() in serialized.lower() for k in ("private_key", "private-key", "pem")):
-        result("provider evidence secret scan", "FAIL", "bundle appears to contain private-key material or prohibited fields", results)
+    if "BEGIN PRIVATE KEY" in serialized.upper() or "BEGIN RSA PRIVATE KEY" in serialized.upper():
+        result("provider evidence secret scan", "FAIL", "bundle contains PEM/private-key material", results)
         return
     for key in ("rotation", "revocation", "audit_log"):
         value = data[key]
@@ -180,7 +207,13 @@ def main(argv: list[str] | None = None) -> int:
                 result("adapter loaded", "PASS", type(backend).__name__, checks)
                 try:
                     from keyassure.hsm_connectivity import check_key
-                    provider_name = "aws_kms" if args.provider == "aws" else args.provider
+                    provider_name = {
+                        "aws": "aws_kms",
+                        "azure": "azure_managed_hsm",
+                        "gcp": "gcp_kms",
+                        "pkcs11": "pkcs11",
+                        "luna": "luna",
+                    }[args.provider]
                     shared = check_key(args.key_id, provider=provider_name, backend=backend)
                     residence_ok = shared.get("key_residence") == "HSM" and not shared.get("raw_key_material_present", False)
                     result("key residence and non-exportability", "PASS" if residence_ok else "FAIL", f"residence={shared.get('key_residence')}; sign={shared.get('sign_challenge')}; raw_material={shared.get('raw_key_material_present', False)}", checks)
