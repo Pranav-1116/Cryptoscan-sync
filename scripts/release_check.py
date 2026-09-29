@@ -33,7 +33,12 @@ Usage:
 For an approval release, also supply the controlled P0/P1 evidence envelope:
 
     python scripts/release_check.py --require-readiness-closure \
-        --readiness-closure-manifest /secure/evidence/closure-manifest.json
+        --readiness-closure-manifest /secure/evidence/closure-manifest.json \
+        --require-operational-policy
+
+`--require-operational-policy` is intentionally separate: the checked-in
+baseline is a draft and strict approval must be supplied for the deployment
+and jurisdiction.
 
 Exit codes: 0 = release-consistent, 1 = blocking findings (see output).
 """
@@ -211,6 +216,26 @@ def _release_attestation_findings(
     return []
 
 
+def _operational_policy_findings(path: Path | None, required: bool) -> list[Finding]:
+    """Require an explicitly approved operational policy for approval releases."""
+    if not required:
+        return []
+    if not path:
+        return [Finding("operational-policy", ERROR, "--operational-policy is required when operational policy enforcement is enabled")]
+    verifier = ROOT / "scripts" / "operational_policy_gate.py"
+    proc = subprocess.run(
+        [sys.executable, str(verifier), "--policy", str(path), "--strict"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,
+    )
+    if proc.returncode:
+        lines = (proc.stdout or proc.stderr).strip().splitlines()
+        return [Finding("operational-policy", ERROR, lines[-1] if lines else "strict operational policy gate failed")]
+    return []
+
+
 def _readiness_closure_findings(manifest: Path | None, required: bool) -> list[Finding]:
     """Require the complete P0/P1 evidence envelope for approval releases."""
     if not required:
@@ -333,6 +358,8 @@ def collect(
     require_release_attestation: bool = False,
     readiness_closure_manifest: Path | None = None,
     require_readiness_closure: bool = False,
+    operational_policy: Path | None = None,
+    require_operational_policy: bool = False,
 ) -> tuple[list[Finding], dict | None]:
     version_text = (ROOT / "VERSION").read_text()
     changelog_text = (ROOT / "CHANGELOG.md").read_text()
@@ -374,6 +401,10 @@ def collect(
     findings.extend(_readiness_closure_findings(
         readiness_closure_manifest,
         require_readiness_closure,
+    ))
+    findings.extend(_operational_policy_findings(
+        operational_policy,
+        require_operational_policy,
     ))
 
     if run_evidence:
@@ -420,6 +451,18 @@ def main() -> int:
         default=os.getenv("REQUIRE_READINESS_CLOSURE", "").lower() in {"1", "true", "yes"},
         help="require every documented P0/P1 readiness gap to have current reviewed evidence",
     )
+    parser.add_argument(
+        "--operational-policy",
+        type=Path,
+        default=Path(os.environ["OPERATIONAL_POLICY"]) if os.getenv("OPERATIONAL_POLICY") else ROOT / "config" / "operational-policy.yaml",
+        help="operational policy to validate when strict policy enforcement is enabled",
+    )
+    parser.add_argument(
+        "--require-operational-policy",
+        action="store_true",
+        default=os.getenv("REQUIRE_OPERATIONAL_POLICY", "").lower() in {"1", "true", "yes"},
+        help="require the supplied operational policy to pass --strict",
+    )
     args = parser.parse_args()
 
     findings, evidence_info = collect(
@@ -431,6 +474,8 @@ def main() -> int:
         require_release_attestation=args.require_release_attestation,
         readiness_closure_manifest=args.readiness_closure_manifest,
         require_readiness_closure=args.require_readiness_closure,
+        operational_policy=args.operational_policy,
+        require_operational_policy=args.require_operational_policy,
     )
     errors = [f for f in findings if f.blocking]
     warns = [f for f in findings if not f.blocking]

@@ -84,3 +84,13 @@ def test_readiness_closure_is_opt_in_for_pre_release_checks():
     release_check = _release_check()
 
     assert release_check._readiness_closure_findings(None, required=False) == []
+
+
+def test_approval_release_requires_strict_operational_policy_path():
+    release_check = _release_check()
+
+    findings = release_check._operational_policy_findings(None, required=True)
+
+    assert len(findings) == 1
+    assert findings[0].check == "operational-policy"
+    assert "policy is required" in findings[0].message
