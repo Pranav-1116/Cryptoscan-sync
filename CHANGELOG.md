@@ -6,6 +6,89 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — the worker ran every scan unscoped (cross-tenant disclosure)
+
+- **The tenant now survives the queue.** `worker.core.job_consumer.ScanJob`
+  had no `tenant_id` field, so the owner was dropped at the queue boundary,
+  and `JobExecutor` entered no scope — every worker-executed scan wrote with
+  `tenant_id = NULL`. That is not an absent label: `db.tenancy` defines NULL
+  as the platform estate, readable by every tenant, so each customer's scan
+  findings landed where their neighbours could see them. The work succeeded
+  silently, because outside a scope the ORM guard is inert and
+  `stamp_tenant` is a no-op.
+
+  `tenant_id` is now carried on the descriptor, serialised and deserialised,
+  captured into the payload by `trigger.py` while the request scope is still
+  open (the publish is a background task that runs after it is gone), and
+  re-entered by `JobExecutor.execute` around the *whole* dispatch — binary,
+  org and cloud jobs write the same tenant-owned rows. The inline no-queue
+  path is scoped identically. Payloads without the field still deserialize
+  to `None`, so in-flight jobs keep their old behaviour instead of failing
+  to parse.
+
+  Found by writing the cross-tenant battery below; `monitor/network_sweep.py`
+  had been scoping correctly all along, which is what made the omission
+  visible. Third leak in three layers of the same control.
+
+### Added — cross-tenant test battery and the control register
+
+- **30 tests** across the seven categories `fix.md` item 9 lists that were
+  uncovered: cross-tenant writes, resolution rules (ambiguous header,
+  suspended tenant, API-key binding, known-ID non-oracle) and worker scope.
+  Two record real gaps rather than asserting absent protections: Core bulk
+  `update()`/`delete()` is not filtered by `with_loader_criteria`, and a
+  companion test proves no repository uses that pattern today.
+- **Control register** (`config/control-register.yaml` +
+  `scripts/control_register.py`): every procurement control classified by the
+  tier of evidence it can actually produce — repository control, operational
+  record, customer attestation, external certification — with a gate that
+  refuses a claim outranking its evidence and forbids the top two tiers from
+  resting on repository paths. Currently zero controls at external
+  certification.
+
+### Fixed — tenant scope failed open (cross-tenant disclosure)
+
+- **`TenantScopeMiddleware` now fails closed.** `resolve_tenant_for_request`
+  caught every exception and returned `None`, and the middleware caught again.
+  `None` means "no scope", and outside a scope the `db.tenancy` ORM guard is
+  inert — so the request read **every tenant's rows**. Two reachable paths on
+  the ~85 routers that do not depend on `get_tenant_context` (the routers this
+  middleware exists to cover):
+  - a member sending another tenant's `X-Tenant-ID` → 404 → swallowed → full
+    estate read;
+  - a member of two tenants sending **no** header → 400 → swallowed → full
+    estate read. No forged header needed.
+
+  Refusals now raise `TenantResolutionRefused`, carrying the status the route's
+  own dependency would have returned; the middleware answers with it instead of
+  running unscoped. `None` is reserved for principals who legitimately have no
+  tenant (unauthenticated, platform operator, legacy single-tenant). Both
+  docstrings asserted the opposite behaviour and have been corrected, and
+  `docs/architecture/multi-tenancy.md` now documents the ORM-guard and
+  middleware layers it previously omitted.
+- **First tests for that middleware.** It is not installed under
+  `ENVIRONMENT=test` (`api.main`), so it had no coverage at all. Added
+  `services/api/tests/unit/test_tenant_scope_middleware.py` — 8 tests driving
+  the ASGI middleware directly, asserting the downstream app is not reached for
+  each refusal status, plus the happy path and the skip paths.
+
+### Fixed — test collection and repository hygiene
+
+- **`pytest` from the repo root collects cleanly again** (5,770 tests, 0
+  errors). `python_files` is now `test_*.py`: the default pattern also matches
+  `*_test.py`, which collected `scripts/load_test.py` — a CLI capacity probe
+  with no test functions — whose `from _bootstrap import bootstrap` then failed
+  because `scripts/` is not on `sys.path`. No test module uses the `*_test.py`
+  spelling, so nothing is deselected. CI names its test directories explicitly
+  and never saw this.
+- Registered the `integration` marker used by
+  `services/worker/tests/integration/`.
+- **Untracked 5,189 junk files.** `_tmp/snbchk/` held 247 levels of recursive
+  `ws/repo/ws/repo/…` nesting (21 byte-identical files per level) from a single
+  sandbox commit. `_tmp/` was already in `.gitignore`, which does not untrack;
+  `git rm -r --cached _tmp` drops tracked files 8,113 → 2,924 with the working
+  copy untouched.
+
 ### Production burn: live deployment smoke, Stripe billing, DR drill, security campaign
 - **Deployment burn** (`scripts/deploy_burn.py` + `docs/deploy-burn.md`):
   boots the real API and walks the live OpenAPI surface — 360 safe

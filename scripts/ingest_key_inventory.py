@@ -20,6 +20,10 @@ Values of keys are never read.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import argparse
 import collections
 import json
@@ -43,7 +47,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-o", "--output")
     args = ap.parse_args(argv)
 
-    import logging
 
     import structlog
 
@@ -68,7 +71,11 @@ def main(argv: list[str] | None = None) -> int:
     def floor(alg):
         try:
             return parse_algorithm(alg).min_key_size
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
     rows = collections.Counter()

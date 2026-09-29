@@ -18,6 +18,11 @@ For each trust anchor we report subject/issuer/validity/key and flag:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import datetime as dt
 import subprocess
 from dataclasses import dataclass, field
@@ -107,7 +112,11 @@ def parse_pem_bundle(data: bytes, source: str = "pem", now: dt.datetime | None =
                 pem = pem[: idx + len(b"-----END CERTIFICATE-----")]
         try:
             cert = x509.load_pem_x509_certificate(pem)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         anchors.append(_cert_to_anchor(cert, source, reference))
     return anchors

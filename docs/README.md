@@ -6,7 +6,7 @@
 > scanned a real bank, and that is the binding constraint.
 >
 > **Read [BACKEND-DATABASE-GAPS.md](../BACKEND-DATABASE-GAPS.md) before quoting
-> any readiness figure in this tree.** A 2026-09-27 audit ran the code rather
+> any readiness figure in this tree.** A 2026-09-28 audit ran the code rather
 > than reading the docs and found several controls described here as enforced
 > that were not — most seriously, tenant isolation on the scan surface. Where
 > that file and anything here disagree, that file is what the code does. It
@@ -17,7 +17,10 @@
 > signup ships disabled for the reason given in that document.
 
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
-> **How production-ready is it?** [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) — ~80% overall, core path ~92%, with the evidence and the gaps. Read it alongside the gap audit above.
+> **How production-ready is it?** Read the current gate at
+> [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
+> explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
+> estates into a production approval.
 > **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview (33 / 30 / 8), labelled in the UI and served at `GET /api/v1/platform/capabilities`.
 
 Production cryptographic inventory and compliance platform: deterministic
@@ -37,7 +40,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Network controls](security/NETWORK-CONTROLS.md) | how the product behaves behind a bank's IDS, firewalls, proxies and rate limits — traffic matrix and pilot firewall rules |
 | [Key inventory](accuracy/KEY-INVENTORY.md) | HSM / KMS / keystore / certificate exports ingested and reconciled with code (consumers, orphans, keys outside the estate) |
 | [Cascade analysis](accuracy/CASCADE-ANALYSIS.md) | dependency & blast-radius layer: providers, migration waves, libraries, shared keys, weak key sizes |
-| [Production readiness](PRODUCTION-READINESS.md) | the number, what moved it, what holds it back — each line pointing at its evidence |
+| [Production readiness](../PRODUCTION-READINESS.md) | unified timestamped evidence gate with explicit PASS/FAIL/SKIP; no synthetic-estate or corpus-only production claim |
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |

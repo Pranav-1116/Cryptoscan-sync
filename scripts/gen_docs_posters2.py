@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_docs_posters import C, EDGE, MUTED, TXT, arrow, box, canvas, panel, save  # noqa: E402
+from gen_docs_posters import C, MUTED, TXT, arrow, box, canvas, panel, save  # noqa: E402
 
 
 def flow(ax, y, items, x0=0.4, gap=0.18, h=0.9, fs=8.2, tfs=None, width=15.2):

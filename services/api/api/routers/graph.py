@@ -269,7 +269,6 @@ def graph_migration_waves(user: str = Depends(get_current_user), db: Session = D
     # systems the CMDB does not know about join the plan; every system with a code cascade gets
     # its code wave in the rationale; IMPORTS edges (A's code calls crypto living in B) order A after B.
     known = {row["system_id"] for row in entries}
-    by_name = {str(row["name"]).lower(): row for row in entries if row.get("name")}
     code_only = 0
     for node_id, node in getattr(graph, "nodes", {}).items():
         if node.get("kind") != "System":
@@ -444,8 +443,11 @@ def graph_explain(
             "detail": f"{len(impact.get('systems') or [])} systems · revenue at risk {impact.get('total_revenue_at_risk', 0)}",
             "confidence": None, "evidence": "", "file": None,
         })
-    except Exception:
-        pass
+    except Exception as impact_exc:
+        logger.warning(
+            "graph_business_impact_unavailable",
+            extra={"error_type": type(impact_exc).__name__, "node_id": node_id},
+        )
 
     return {
         "node_id": node_id,
@@ -755,8 +757,11 @@ def _quantum_vulnerable_algorithm(name: str) -> bool:
             return True
         if entry.quantum_status == QuantumStatus.QUANTUM_SAFE:
             return False
-    except Exception:
-        pass
+    except (KeyError, TypeError, ValueError) as registry_exc:
+        logger.debug(
+            "crypto_registry_entry_unavailable",
+            extra={"error_type": type(registry_exc).__name__, "algorithm": name},
+        )
     upper = name.upper()
     return any(k in upper for k in ("RSA", "ECDSA", "DSA", "DH", "ED25519", "ED448", "X25519", "X448", "P-256", "P-384", "P-521"))
 

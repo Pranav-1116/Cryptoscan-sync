@@ -35,6 +35,11 @@ install does not hide its history.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import sqlalchemy as sa
 from alembic import op
 
@@ -90,6 +95,10 @@ def downgrade() -> None:
             continue
         try:
             op.drop_index(f"ix_{table}_tenant_id", table_name=table)
-        except Exception:  # index named differently on an older install
+        except Exception as _handler_exc:  # index named differently on an older install
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         op.drop_column(table, "tenant_id")

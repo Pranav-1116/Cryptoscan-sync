@@ -96,7 +96,11 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
             scan.statistics = stats
             try:
                 flag_modified(scan, "statistics")
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             session.flush()
         verdict = (summary.get("mosca") or {}).get("verdict")

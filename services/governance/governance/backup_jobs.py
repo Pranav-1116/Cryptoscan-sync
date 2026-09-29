@@ -21,6 +21,11 @@ artifact + manifest to S3/disk; tests use an in-memory store.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import datetime as dt
 import json
 import os
@@ -301,7 +306,11 @@ class DiskBackupStorage:
         for mp in sorted(self.root.glob("*.manifest.json")):
             try:
                 m = json.loads(mp.read_text())
-            except Exception:  # noqa: BLE001 - skip corrupt manifest, keep serving others
+            except Exception as _handler_exc:  # noqa: BLE001 - skip corrupt manifest, keep serving others
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             key = mp.name[: -len(".manifest.json")].replace("__", "/")
             out.append(dict(m, storage_key=key))

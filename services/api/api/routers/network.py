@@ -190,6 +190,10 @@ def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_
         return {"scanned": 0, "findings": []}
     hosts = [item["endpoint"] for item in due if item.get("endpoint")]
     result = NetworkTlsScanner(live=True).scan_hosts(hosts)
+    # Keep the operator-triggered due path on the same durable run ledger as
+    # the worker scheduler. NBOM and drift must not depend on which trigger
+    # happened to execute the scan.
+    run = ScanRunRepository(db).create_run(result, target_kind="scheduled")
     repo = CertificateRepository(db)
     usages = MaturityRepository(db)
     now = datetime.now(timezone.utc)
@@ -206,6 +210,7 @@ def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_
             next_scan_time=next_scan_time(now, item.get("scan_frequency")),
         )
     result["scanned"] = len(hosts)
+    result["run_id"] = run.id
     return result
 
 

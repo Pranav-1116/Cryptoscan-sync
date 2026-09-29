@@ -24,7 +24,6 @@ with the first line number and an ``occurrences`` count. Every finding carries
 
 from __future__ import annotations
 
-import collections
 import os
 import re
 from pathlib import Path

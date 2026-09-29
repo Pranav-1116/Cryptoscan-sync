@@ -10,6 +10,7 @@ import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from ".
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useI18n, LanguageSwitcher } from "../i18n/I18n.jsx";
 import { tierOf, TIER_LABEL, TIER_DETAIL, type Tier } from "../lib/maturity.js";
+import { RequireRole } from "../lib/auth.js";
 
 // Core categories per UX Prompt:
 // Overview, Discovery, Intelligence, Governance, Output, Administration
@@ -132,7 +133,7 @@ export function MaturityBanner({ tier, route }: { tier: Tier; route: string }) {
 function LayoutInner({ route: propRoute, children }: { route?: string; children: React.ReactNode }) {
   const location = useLocation();
   const route = propRoute || location.pathname;
-  const { role, env, org, infoLevel, setInfoLevel, timezone, setTimezone, canPerformAction } = useEnterprise();
+  const { role, env, org, infoLevel, setInfoLevel, timezone, setTimezone } = useEnterprise();
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [showEnvModal, setShowEnvModal] = useState(false);
   const [showRoleModal, setShowRoleModal] = useState(false);
@@ -278,16 +279,18 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
         )}
 
         {/* Action button inside sidebar: Start Scan */}
-        {!isCollapsed && canPerformAction("scan") && (
-          <div style={{ padding: "0 8px 12px" }}>
-            <Link
-              to="/scanners"
-              className="btn primary"
-              style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "8px 12px", textDecoration: "none", borderRadius: "7px", fontSize: "12.5px" }}
-            >
-              <span>+</span> Start Scan
-            </Link>
-          </div>
+        {!isCollapsed && (
+          <RequireRole anyOf={["superadmin", "ciso", "security_analyst", "developer", "scanner"]}>
+            <div style={{ padding: "0 8px 12px" }}>
+              <Link
+                to="/scanners"
+                className="btn primary"
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "8px 12px", textDecoration: "none", borderRadius: "7px", fontSize: "12.5px" }}
+              >
+                <span>+</span> Start Scan
+              </Link>
+            </div>
+          </RequireRole>
         )}
 
         {PRIMARY_SECTIONS.map((group) => (

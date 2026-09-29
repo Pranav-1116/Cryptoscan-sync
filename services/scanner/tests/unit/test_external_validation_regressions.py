@@ -1,7 +1,6 @@
 """Regressions found by scanning real third-party packages (docs/accuracy/EXTERNAL-VALIDATION.md)."""
 from pathlib import Path
 
-import pytest
 
 from scanner.parsers.go_parser import parse_go_file
 from scanner.parsers.javascript_parser import parse_javascript_file
