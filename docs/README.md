@@ -44,6 +44,9 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |
+| **[Standard bank pilot](pilot-standard.md)** | standardized pilot scope, objectives, roles, evidence, acceptance criteria, and decision language |
+| [Pilot duration and phases](pilot-duration-and-phases.md) | proposed two-, six-, eight-, and twelve-week pilot models with phase exit criteria |
+| [Business model](business-model.md) | customer profile, offers, pricing basis, responsibilities, revenue model, and commercial guardrails |
 | [Platform boundaries](architecture/platform-boundaries.md) | what CryptoScan is and is not (single source of truth: `shared_models/platform_scope.py`) |
 | [Real-world comparison](architecture/real-world-comparison.md) | honest benchmark vs. Venafi, SandboxAQ, Prowler, Trivy, testssl.sh, Nozomi, SAST |
 | [SBOM scanner architecture vs. what ships](architecture/sbom-scanner-architecture.md) | the 11-source / Kafka-Flink target architecture mapped against this repo, gap by gap |
