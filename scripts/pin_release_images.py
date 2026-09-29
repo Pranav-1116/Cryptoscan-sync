@@ -27,6 +27,28 @@ def validate(name: str, value: str) -> str:
     return value.lower()
 
 
+def validate_registry(value: str) -> str:
+    """Validate an image repository prefix, not a tag or digest.
+
+    A registry may include a host port (``localhost:5000/team``), so only a
+    colon in the final path component is treated as a tag. Schemes, digests,
+    whitespace and a trailing slash are rejected because they produce an
+    invalid or ambiguous rendered image reference.
+    """
+    value = value.strip()
+    final_component = value.rsplit("/", 1)[-1]
+    if (
+        not value
+        or value.startswith(("http://", "https://"))
+        or "@" in value
+        or any(character.isspace() for character in value)
+        or value.endswith("/")
+        or ":" in final_component
+    ):
+        raise ValueError("--registry must be an OCI repository prefix, not a URL, tag, digest or trailing slash")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--api-digest", required=True)
@@ -42,20 +64,23 @@ def main(argv: list[str] | None = None) -> int:
             "worker": validate("--worker-digest", args.worker_digest),
             "neo4j": validate("--neo4j-digest", args.neo4j_digest),
         }
+        registry = validate_registry(args.registry)
     except ValueError as exc:
         ap.error(str(exc))
-    if not args.registry or "@" in args.registry or " " in args.registry:
-        ap.error("--registry must be an image registry/repository prefix, not a tag or digest")
-    if not args.source.exists():
-        ap.error(f"source directory does not exist: {args.source}")
+    source = args.source.resolve()
+    output = args.out.resolve()
+    if not source.is_dir():
+        ap.error(f"source directory does not exist or is not a directory: {args.source}")
+    if output == source or source in output.parents:
+        ap.error("--out must not be the source directory or a directory inside it; refusing destructive self-render")
     if args.out.exists():
         shutil.rmtree(args.out)
-    shutil.copytree(args.source, args.out)
+    shutil.copytree(source, args.out)
 
     replacements = {
-        "cryptoscan-api": f"{args.registry}/cryptoscan-api@sha256:{digests['api']}",
-        "cryptoscan-worker": f"{args.registry}/cryptoscan-worker@sha256:{digests['worker']}",
-        "neo4j": f"{args.registry}/neo4j@sha256:{digests['neo4j']}",
+        "cryptoscan-api": f"{registry}/cryptoscan-api@sha256:{digests['api']}",
+        "cryptoscan-worker": f"{registry}/cryptoscan-worker@sha256:{digests['worker']}",
+        "neo4j": f"{registry}/neo4j@sha256:{digests['neo4j']}",
     }
     mutable = []
     for path in args.out.rglob("*.yaml"):
@@ -71,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest = {
         "schema": "cryptoscan.immutable-image-release/1",
         "rendered_at": datetime.now(timezone.utc).isoformat(),
-        "registry": args.registry,
+        "registry": registry,
         "digests": digests,
         "source_sha256": hashlib.sha256("".join(sorted(str(p) + sha256(p) for p in args.source.rglob("*.yaml"))).encode()).hexdigest(),
     }
