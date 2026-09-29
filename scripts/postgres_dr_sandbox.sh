@@ -33,9 +33,19 @@ DB="${DR_DB:-cryptoscan}"
 log() { printf '%s %s\n' "[dr-sandbox]" "$*" >&2; }
 
 wait_ready() {
-  local name=$1 tries=${2:-60}
+  # A real query, not pg_isready. The postgres image runs a temporary server
+  # during initdb and then shuts it down before starting the real one, so
+  # pg_isready answers "ready" on a socket that is about to disappear and the
+  # next command dies with "the database system is shutting down".
+  # Requiring N consecutive successful SELECTs rides out that window.
+  local name=$1 tries=${2:-90} streak=0 need=3
   for _ in $(seq "$tries"); do
-    if docker exec "$name" pg_isready -U postgres -q 2>/dev/null; then return 0; fi
+    if docker exec -u postgres "$name" psql -tAq -c 'SELECT 1' >/dev/null 2>&1; then
+      streak=$(( streak + 1 ))
+      [ "$streak" -ge "$need" ] && return 0
+    else
+      streak=0
+    fi
     sleep 1
   done
   log "FATAL: $name did not become ready"
@@ -115,8 +125,37 @@ status() {
     "SELECT client_addr, state, sync_state, sent_lsn, replay_lsn FROM pg_stat_replication;" 2>/dev/null || true
 }
 
+RESTORE="${DR_RESTORE_NAME:-cryptoscan-dr-restore}"
+RESTORE_PORT="${DR_RESTORE_PORT:-55434}"
+RESTORE_DB="${DR_RESTORE_DB:-restored}"
+
+# An empty third node for the drill's --clean-restore-dsn. Separate from the
+# pair because the point of a clean restore is that the target has never seen
+# the data: restoring into the standby would prove nothing.
+restore_target() {
+  docker rm -f "$RESTORE" >/dev/null 2>&1 || true
+  docker run -d --name "$RESTORE" --network "$NET" \
+    -e POSTGRES_PASSWORD="$SUPERPASS" -e POSTGRES_DB="$RESTORE_DB" \
+    -p "127.0.0.1:${RESTORE_PORT}:5432" "$IMAGE" >/dev/null
+  wait_ready "$RESTORE"
+  log "clean restore target ready on 127.0.0.1:${RESTORE_PORT}"
+  echo "postgresql://postgres:${SUPERPASS}@127.0.0.1:${RESTORE_PORT}/${RESTORE_DB}"
+}
+
+# The drill's --restore-command. Lives here rather than in a scratch file so a
+# qualification run is reproducible from the repository alone; an ad-hoc
+# script in /tmp silently disappears and the drill then reports a restore
+# failure that is really a missing file.
+restore_now() {
+  local dump="${DR_DUMP_PATH:-/tmp/cryptoscan-dr-dump.pgc}"
+  docker exec -u postgres "$PRIMARY" pg_dump -U postgres -Fc "$DB" > "$dump"
+  docker exec -u postgres -i "$RESTORE" \
+    pg_restore -U postgres -d "$RESTORE_DB" --clean --if-exists < "$dump"
+  log "restored $(wc -c <"$dump") bytes into ${RESTORE}/${RESTORE_DB}"
+}
+
 down() {
-  docker rm -f "$PRIMARY" "$STANDBY" >/dev/null 2>&1 || true
+  docker rm -f "$PRIMARY" "$STANDBY" "$RESTORE" >/dev/null 2>&1 || true
   docker network rm "$NET" >/dev/null 2>&1 || true
   log "torn down"
 }
@@ -124,6 +163,8 @@ down() {
 case "${1:-up}" in
   up) up ;;
   status) status ;;
+  restore-target) restore_target ;;
+  restore-now) restore_now ;;
   down) down ;;
-  *) echo "usage: $0 {up|status|down}" >&2; exit 2 ;;
+  *) echo "usage: $0 {up|status|restore-target|restore-now|down}" >&2; exit 2 ;;
 esac

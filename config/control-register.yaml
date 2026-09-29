@@ -161,22 +161,27 @@ controls:
     claimed: operational_record
     evidence:
       - docs/readiness-evidence/backup-restore-drill-2026-09-28.md
+      - docs/readiness-evidence/postgres-dr-drill-2026-09-29.md
       - scripts/postgres_drill.py
       - scripts/postgres_dr_sandbox.sh
     detail: >-
-      Two restores executed and verified on 2026-09-28. SQLite: hot online
-      backup restored into a clean data dir, a second instance booted from
-      the backup alone, and the estate verified through the real API --
-      login, seeded system, CBOM asset set, event-bus replay, and the CBOM
-      hash chain verifying from genesis (12/12 checks). PostgreSQL: a real
-      pg_dump/pg_restore into an empty database where the drill marker
-      survives and the audit-chain and evidence-record invariants hold.
+      Two qualifications executed. SQLite (2026-09-28): hot online backup
+      restored into a clean data dir, a second instance booted from the
+      backup alone, estate verified through the real API including the CBOM
+      hash chain verifying from genesis (12/12). PostgreSQL (2026-09-29):
+      full DR drill PASS 35/35 against a real primary/standby pair including
+      a controlled one-way promotion -- measured RPO 0.0 s and RTO 0.15 s,
+      marker and all table counts surviving promotion, a live API answering
+      healthy against the promoted node, and a pg_dump/pg_restore into an
+      empty third database where the audit-chain and evidence invariants
+      hold.
     gap: >-
       Both ran on one host against local sandboxes, not the customer
-      topology. No off-host copy, no encrypted round trip (age is absent on
-      the drill host, though the fail-closed paths are verified), no
-      restore-authorisation audit, and the PostgreSQL promotion step (RTO)
-      has not been run. One drill is not a schedule.
+      topology, so the RPO/RTO figures are instrument readings rather than
+      service targets: replication was async, the tables were empty, and
+      there was no load. No failback, no off-host copy, no encrypted round
+      trip (age absent, though the fail-closed paths are verified), no
+      restore-authorisation audit. One drill is not a schedule.
 
   - id: INC-01
     topic: Incident notification
