@@ -26,7 +26,7 @@
 # control only" is worth more than an optimistic "compliant".
 
 schema: cryptoscan.control-register/1
-updated: "2026-09-28"
+updated: "2026-09-29"
 
 controls:
   - id: SDLC-01
@@ -72,14 +72,17 @@ controls:
 
   - id: VULN-02
     topic: Patch timelines
-    claimed: none
-    evidence: []
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/operational_policy_gate.py
     detail: >-
-      No severity-to-deadline commitment is defined anywhere in the repository.
+      The draft operational baseline defines severity-specific remediation and
+      compensating-control windows, and the policy gate validates their shape.
+      The values are proposed internal objectives, not contractual promises.
     gap: >-
-      Define the SLA (for example critical 7 days, high 30) and then evidence
-      adherence from real remediation records. Until then the product must not
-      answer a questionnaire item about patch timelines.
+      Obtain approval for the customer/jurisdiction policy and retain dated
+      remediation records showing adherence over time.
 
   - id: REL-01
     topic: Release approval
@@ -147,14 +150,17 @@ controls:
 
   - id: BKP-02
     topic: Backup destruction
-    claimed: none
-    evidence: []
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/backup_evidence.py
     detail: >-
-      No destruction procedure or certificate exists.
+      The draft operational baseline requires a two-person destruction
+      authorization and destruction evidence; backup evidence tooling provides
+      the machine-readable artifact boundary.
     gap: >-
-      Define destruction (method, timing, who authorises) and evidence it.
-      Creating backups without a destruction record is itself a finding in
-      most bank reviews.
+      Approve the customer-specific retention/destruction policy and retain
+      dated destruction certificates and authorization records.
 
   - id: BKP-03
     topic: Restore provenance
@@ -185,13 +191,18 @@ controls:
 
   - id: INC-01
     topic: Incident notification
-    claimed: none
-    evidence: []
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/operational_policy_gate.py
     detail: >-
-      No notification commitment (timeframe, channel, recipient) is defined.
+      The draft operational baseline defines internal acknowledgement,
+      customer notification, update, evidence-preservation and regulator-
+      notification fields, with channel names validated by the policy gate.
     gap: >-
-      Contractual. Define the window and the contact path, then evidence a
-      test notification.
+      Approve the contractual/jurisdiction-specific windows and retain a
+      dated notification/tabletop record; the draft is not an SLA or legal
+      determination.
 
   - id: SLA-01
     topic: SLA commitments
@@ -206,11 +217,17 @@ controls:
 
   - id: SUP-01
     topic: Support escalation
-    claimed: none
-    evidence: []
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/operational_policy_gate.py
     detail: >-
-      No escalation ladder, contact or response target is defined.
-    gap: Contractual; define and publish before a customer signs.
+      The draft operational baseline defines severity levels, availability,
+      acknowledgement and update windows, and the policy gate validates every
+      level.
+    gap: >-
+      Convert the draft into an approved customer-specific support schedule,
+      assign real contacts, and retain dated escalation exercise records.
 
   - id: QRE-01
     topic: Customer security questionnaire

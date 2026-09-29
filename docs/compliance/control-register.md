@@ -48,12 +48,12 @@ register says so plainly.
 
 ## Current position
 
-As of 2026-09-28, across 17 controls:
+As of 2026-09-29, across 17 controls:
 
 | Tier | Count |
 |---|---|
-| `none` | 6 |
-| `repository_control` | 8 |
+| `none` | 2 |
+| `repository_control` | 12 |
 | `operational_record` | 1 |
 | `customer_attestation` | 2 |
 | `external_certification` | **0** |
@@ -64,11 +64,12 @@ cryptographic code calls FIPS-validatable primitives; that is not a validation
 and must never be presented as one. A dedicated test fails if any row starts
 claiming otherwise.
 
-The six controls at `none` — patch timelines, backup destruction, incident
-notification, support escalation, external certifications, independent
-penetration test — are not oversights. They are commitments that have to be
-made contractually or earned externally, and stating them as absent is worth
-more to a reviewer than an optimistic answer that unravels under questioning.
+The two controls at `none` — external certifications and independent
+penetration testing — remain external blockers. Patch timelines, backup
+destruction, incident notification and support escalation now have explicit
+**draft repository controls** in `config/operational-policy.yaml`, but they
+still need approval, contractual/customer context, and dated operating records.
+A draft policy is not a promise or evidence that the process operated.
 
 ## Using it to answer a questionnaire
 
