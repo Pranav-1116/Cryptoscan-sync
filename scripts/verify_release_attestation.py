@@ -91,6 +91,8 @@ def verify_attestation(
         raise ValueError("release attestation algorithm must be Ed25519")
     if attestation.get("signed_file") != "release-image-lock.json":
         raise ValueError("release attestation must sign release-image-lock.json")
+    if not isinstance(attestation.get("key_id"), str) or not attestation["key_id"].strip():
+        raise ValueError("release attestation must identify the signing key with key_id")
     if attestation.get("lock_sha256") != _sha256(lock_bytes):
         raise ValueError("release attestation lock_sha256 does not match the lock bytes")
 
