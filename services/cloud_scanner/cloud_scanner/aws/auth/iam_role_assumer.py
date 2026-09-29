@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any
 
 
@@ -21,7 +26,11 @@ def assume_role(
             import boto3  # type: ignore
 
             client = boto3.client("sts")
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
     kwargs: dict[str, Any] = {
         "RoleArn": role_arn,
@@ -32,7 +41,11 @@ def assume_role(
         kwargs["ExternalId"] = external_id
     try:
         response = client.assume_role(**kwargs)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     creds = (response or {}).get("Credentials") or {}
     if not creds:

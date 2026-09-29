@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timezone
 
 from sqlalchemy import desc, select
@@ -101,7 +106,11 @@ class JobRepository(BaseRepository[ScanJob]):
         except Exception:  # noqa: BLE001 — no JSON path support: filter the window instead
             try:
                 self.session.rollback()
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             rows = self.session.execute(
                 select(ScanJob).order_by(desc(ScanJob.created_at)).limit(window)

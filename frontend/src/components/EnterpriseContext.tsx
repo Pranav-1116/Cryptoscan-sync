@@ -16,7 +16,7 @@
  *  - `timezone` — UTC / Local / GST display timezone.
  */
 import React, {
-  createContext, useCallback, useContext, useEffect, useMemo, useState,
+  createContext, useCallback, useContext, useEffect, useState,
 } from "react";
 import {
   activeTenantId, apiTenantIsolation, getRoles, getUserName,
@@ -45,8 +45,6 @@ export interface EnterpriseState {
   setInfoLevel: (l: InfoLevel) => void;
   timezone: "UTC" | "Local" | "GST";
   setTimezone: (t: "UTC" | "Local" | "GST") => void;
-  /** Deterministic RBAC check derived from the session's real roles. */
-  canPerformAction: (action: "scan" | "approve" | "admin" | "view") => boolean;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -78,27 +76,11 @@ function writeStored(key: string, value: string) {
   try { localStorage.setItem(key, value); } catch { /* private mode */ }
 }
 
-function deriveCanPerform(roles: string[], user: string | null) {
-  const r = new Set(roles);
-  const write = r.has("superadmin") || r.has("admin") || r.has("ciso")
-    || r.has("security_analyst") || r.has("auditor") || r.has("developer");
-  return (action: "scan" | "approve" | "admin" | "view"): boolean => {
-    if (!user) return false; // anonymous session: nothing
-    switch (action) {
-      case "scan": return write;
-      case "approve": return r.has("superadmin") || r.has("admin") || r.has("ciso") || r.has("auditor");
-      case "admin": return r.has("superadmin") || r.has("admin");
-      case "view": return true;
-    }
-  };
-}
-
 export function EnterpriseProvider({ children }: { children: React.ReactNode }) {
   // Identity and roles come from AuthProvider, which holds what
-  // GET /auth/me returned. They used to be read straight out of localStorage,
-  // which the person at the browser can edit -- so every canPerformAction()
-  // decision was taken from attacker-controlled input. The cached values are
-  // still used for the very first paint, before the server has answered.
+  // GET /auth/me returned. Cached values are used only for the first paint;
+  // privileged controls use RequireRole, which reads the verified AuthProvider
+  // state rather than this display context.
   const auth = useAuth();
   const [user, setUser] = useState<string | null>(() => getUserName());
   const [roles, setRoles] = useState<string[]>(() => getRoles());
@@ -152,8 +134,6 @@ export function EnterpriseProvider({ children }: { children: React.ReactNode }) 
     writeStored("zelnx_timezone", t);
   }, []);
 
-  const canPerformAction = useMemo(() => deriveCanPerform(roles, user), [roles, user]);
-
   const primaryRole = roles[0]
     ? (ROLE_LABELS[roles[0]] || roles[0])
     : (user ? "Member" : "offline");
@@ -161,7 +141,6 @@ export function EnterpriseProvider({ children }: { children: React.ReactNode }) 
   const value: EnterpriseState = {
     user, roles, role: primaryRole, org,
     env, setEnv, infoLevel, setInfoLevel, timezone, setTimezone,
-    canPerformAction,
   };
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -175,7 +154,6 @@ export function useEnterprise(): EnterpriseState {
       user: null, roles: [], role: "offline", org: { name: "Platform", sector: "—" },
       env: "Production", setEnv: () => {}, infoLevel: "Level 1 — Executive",
       setInfoLevel: () => {}, timezone: "UTC", setTimezone: () => {},
-      canPerformAction: () => false,
     };
   }
   return ctx;

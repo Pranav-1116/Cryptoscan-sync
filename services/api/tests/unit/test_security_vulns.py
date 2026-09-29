@@ -288,6 +288,10 @@ def header_client(monkeypatch, tmp_path):
     monkeypatch.setenv("ALLOW_SQLITE", "true")
     monkeypatch.setenv("ALLOW_INSECURE_CORS", "true")
     monkeypatch.setenv("DOCS_ENABLED", "false")
+    # Production validation requires a distinct metrics token (settings.py).
+    # Without it validate_runtime_settings rejects the config and the fixture
+    # dies before the test can assert anything about headers.
+    monkeypatch.setenv("METRICS_TOKEN", "metrics-token-32-characters-minimum-x")
     from api.config.settings import get_settings
     get_settings.cache_clear()
     from db.connection import engine as engine_mod

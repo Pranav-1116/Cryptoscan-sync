@@ -1,5 +1,11 @@
 # Dubai banks — every estate through the whole product, plus the supervisory view
 
+> **Evidence boundary (2026-09-27 UTC):** this is a synthetic, bank-shaped
+> regression run. It is not customer/provider evidence and does not change the
+> decision in [`../../PRODUCTION-READINESS.md`](../../PRODUCTION-READINESS.md).
+> The unified gate must receive externally retained DR, HSM, integration,
+> compliance and load/soak artifacts before any production approval.
+
 _Generated 2026-09-26T10:03:19.780877+00:00 by `scripts/dubai_banks_e2e.py` on **sqlite**._
 
 **What this is.** Six representative Dubai-headquartered bank estates (conventional, Islamic, digital-forward, a DIFC branch under

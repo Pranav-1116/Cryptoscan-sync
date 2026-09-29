@@ -56,6 +56,7 @@ def probe_registry(
     """
     from telecom_scanner.classify import classify_target
     from telecom_scanner.registry import NF_CATALOG
+    from telecom_scanner.user_plane import is_user_plane_target
 
     targets = registry.get("targets") or {}
     if only:
@@ -63,7 +64,9 @@ def probe_registry(
         targets = {k: v for k, v in targets.items() if k in wanted}
 
     def _run(target: dict[str, Any]) -> dict[str, Any]:
-        if NF_CATALOG.get(target.get("nf_type"), {}).get("transport") == "ipsec":
+        if is_user_plane_target(target) or NF_CATALOG.get(target.get("nf_type"), {}).get("transport") == "ipsec":
+            # GTP-U/IPsec evidence is operator-side; never send user-plane
+            # packets or mistake a TLS failure for an N3/N9 verdict.
             return classify_target(target, None)
         try:
             probe = probe_one(str(target.get("endpoint")), timeout=timeout)

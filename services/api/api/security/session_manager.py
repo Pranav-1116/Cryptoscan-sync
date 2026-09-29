@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import hmac
 import json
@@ -89,7 +94,11 @@ class SessionManager:
             if time.time() > data.get("expires_at", 0):
                 return None
             return data
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
 

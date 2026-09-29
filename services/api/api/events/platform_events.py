@@ -143,5 +143,9 @@ def prune_published_ids() -> None:
         ids = published_event_ids()
         if len(ids) > _PUBLISHED_IDS_CAP:
             ids.clear()
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass

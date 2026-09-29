@@ -14,6 +14,11 @@ the durable DB tailer).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import os
 import socket
@@ -35,7 +40,11 @@ def start_redis_federation(redis_client, bus, *, node_id: str | None = None):
         bus.set_remote_publisher(sync.publish)
         sync.start()
         return sync
-    except Exception:  # noqa: BLE001 — no Redis => keep the local bus
+    except Exception as _handler_exc:  # noqa: BLE001 — no Redis => keep the local bus
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -61,7 +70,11 @@ class RedisEventSync:
                 "ts": event.get("ts"),
             }
             self._redis.publish(CHANNEL, json.dumps(frame, default=str))
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     # ---------------------------------------------------------- subscribing
@@ -79,7 +92,11 @@ class RedisEventSync:
         try:
             if self._pubsub is not None:
                 self._pubsub.close()
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     def _run(self) -> None:
@@ -95,5 +112,9 @@ class RedisEventSync:
                 if frame.get("node") == self._node_id:
                     continue
                 self._bus.inject_remote(frame)
-        except Exception:  # noqa: BLE001 — stop the thread quietly on Redis loss
+        except Exception as _handler_exc:  # noqa: BLE001 — stop the thread quietly on Redis loss
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass

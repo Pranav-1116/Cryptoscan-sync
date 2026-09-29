@@ -21,6 +21,11 @@ records evidence; the evidence chain is verifiable end-to-end.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable
 
@@ -484,7 +489,11 @@ class ZelixCloudDiscoveryEngine:
                     self._NETWORK_RELATION_MAP.get(edge.relation, "CONNECTED_TO"))
             simulator = MigrationSimulator(graph)
             return _NetworkSimulatorAdapter(simulator)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
     def _estimate_costs(self, report: DiscoveryReport) -> CostEstimate:

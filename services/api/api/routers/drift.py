@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
@@ -10,6 +12,7 @@ from api.schemas.drift_schemas import DriftEventResponse, DriftListResponse
 from db.repositories.drift_repository import DriftRepository
 
 router = APIRouter(prefix="/drift", tags=["drift"])
+logger = logging.getLogger(__name__)
 
 
 class AckBody(BaseModel):
@@ -79,8 +82,13 @@ def _audit(db, actor: str, action: str, drift_id: str, body) -> None:
             detail={"notes": body.notes if body else None},
         )
         db.commit()
-    except Exception:
-        pass
+    except Exception as audit_exc:
+        db.rollback()
+        logger.exception(
+            "drift_audit_failed",
+            extra={"error_type": type(audit_exc).__name__, "drift_id": drift_id},
+        )
+        raise HTTPException(status_code=503, detail="Drift audit is unavailable") from audit_exc
 
 
 @router.post("/{drift_id}/acknowledge", response_model=DriftEventResponse)

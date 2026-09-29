@@ -98,7 +98,11 @@ def _db_load_snapshot() -> dict[str, Any] | None:
         with SessionLocal() as session:
             snap = SettingsRepository(session).get(SNAPSHOT_SETTING_KEY)
         return snap if isinstance(snap, dict) else None
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -131,7 +135,11 @@ def _privacy_policy_obj() -> Any | None:
             from privacy.policy import PrivacyPolicy
 
             return PrivacyPolicy()
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
 
@@ -451,7 +459,11 @@ class LiveScanRunner:
             from api.events.bus import get_event_bus
 
             get_event_bus().publish(event_type, payload, source="live-scanner")
-        except Exception:  # noqa: BLE001 — event failure must never kill a scan
+        except Exception as _handler_exc:  # noqa: BLE001 — event failure must never kill a scan
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         if event_type in self._DURABLE_EVENTS:
             try:
@@ -459,7 +471,11 @@ class LiveScanRunner:
 
                 detail = payload.get("error") or payload.get("trigger") or event_type
                 persist_platform_event(event_type, str(detail), payload, target_name="live-scan")
-            except Exception:  # noqa: BLE001 — best-effort durability
+            except Exception as _handler_exc:  # noqa: BLE001 — best-effort durability
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
 
     def _auto_sync_graph(self, *, trigger: str, requested: list[str]) -> None:
@@ -487,7 +503,11 @@ class LiveScanRunner:
                     {"trigger": trigger, "scanners": requested, "changed": True},
                     target_name="graph",
                 )
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             return
         try:
