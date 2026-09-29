@@ -68,3 +68,19 @@ def test_release_gate_requires_a_rendered_directory():
 
     assert len(findings) == 1
     assert "no rendered release manifests" in findings[0].message
+
+
+def test_approval_release_requires_readiness_closure_manifest():
+    release_check = _release_check()
+
+    findings = release_check._readiness_closure_findings(None, required=True)
+
+    assert len(findings) == 1
+    assert findings[0].check == "readiness-closure"
+    assert "manifest is required" in findings[0].message
+
+
+def test_readiness_closure_is_opt_in_for_pre_release_checks():
+    release_check = _release_check()
+
+    assert release_check._readiness_closure_findings(None, required=False) == []

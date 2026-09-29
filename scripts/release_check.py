@@ -30,6 +30,11 @@ Usage:
     --require-release-attestation --release-attestation /secure/releases/v1/k8s/release-attestation.json \
     --release-public-key /secure/trust/release-authority.pub.pem
 
+For an approval release, also supply the controlled P0/P1 evidence envelope:
+
+    python scripts/release_check.py --require-readiness-closure \
+        --readiness-closure-manifest /secure/evidence/closure-manifest.json
+
 Exit codes: 0 = release-consistent, 1 = blocking findings (see output).
 """
 from __future__ import annotations
@@ -206,6 +211,35 @@ def _release_attestation_findings(
     return []
 
 
+def _readiness_closure_findings(manifest: Path | None, required: bool) -> list[Finding]:
+    """Require the complete P0/P1 evidence envelope for approval releases."""
+    if not required:
+        return []
+    if not manifest:
+        return [Finding(
+            "readiness-closure",
+            ERROR,
+            "--readiness-closure-manifest is required when readiness closure is enabled",
+        )]
+    gate = ROOT / "scripts" / "readiness_closure_gate.py"
+    proc = subprocess.run(
+        [sys.executable, str(gate), "--manifest", str(manifest),
+         "--expected-commit", _git(["rev-parse", "HEAD"]), "--strict"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,
+    )
+    if proc.returncode:
+        lines = (proc.stdout or proc.stderr).strip().splitlines()
+        return [Finding(
+            "readiness-closure",
+            ERROR,
+            lines[-1] if lines else "P0/P1 readiness closure gate failed",
+        )]
+    return []
+
+
 def _prod_guard_findings() -> list[Finding]:
     findings: list[Finding] = []
     if _run_guard(_DEMO_PROD_ENV, "--expect-reject").returncode != 0:
@@ -297,6 +331,8 @@ def collect(
     release_attestation: Path | None = None,
     release_public_key: Path | None = None,
     require_release_attestation: bool = False,
+    readiness_closure_manifest: Path | None = None,
+    require_readiness_closure: bool = False,
 ) -> tuple[list[Finding], dict | None]:
     version_text = (ROOT / "VERSION").read_text()
     changelog_text = (ROOT / "CHANGELOG.md").read_text()
@@ -335,6 +371,10 @@ def collect(
         release_public_key,
         require_release_attestation,
     ))
+    findings.extend(_readiness_closure_findings(
+        readiness_closure_manifest,
+        require_readiness_closure,
+    ))
 
     if run_evidence:
         ev_findings, evidence_info = _production_evidence(version_text)
@@ -357,16 +397,28 @@ def main() -> int:
     parser.add_argument(
         "--release-manifests",
         type=Path,
-        default=os.getenv("RELEASE_MANIFESTS"),
+        default=Path(os.environ["RELEASE_MANIFESTS"]) if os.getenv("RELEASE_MANIFESTS") else None,
         help="digest-rendered directory from pin_release_images.py",
     )
-    parser.add_argument("--release-attestation", type=Path, default=os.getenv("RELEASE_ATTESTATION"))
-    parser.add_argument("--release-public-key", type=Path, default=os.getenv("RELEASE_PUBLIC_KEY"))
+    parser.add_argument("--release-attestation", type=Path, default=Path(os.environ["RELEASE_ATTESTATION"]) if os.getenv("RELEASE_ATTESTATION") else None)
+    parser.add_argument("--release-public-key", type=Path, default=Path(os.environ["RELEASE_PUBLIC_KEY"]) if os.getenv("RELEASE_PUBLIC_KEY") else None)
     parser.add_argument(
         "--require-release-attestation",
         action="store_true",
         default=os.getenv("REQUIRE_RELEASE_ATTESTATION", "").lower() in {"1", "true", "yes"},
         help="require and verify the detached Ed25519 release lock attestation",
+    )
+    parser.add_argument(
+        "--readiness-closure-manifest",
+        type=Path,
+        default=Path(os.environ["READINESS_CLOSURE_MANIFEST"]) if os.getenv("READINESS_CLOSURE_MANIFEST") else None,
+        help="P0/P1 closure manifest to verify for an approval release",
+    )
+    parser.add_argument(
+        "--require-readiness-closure",
+        action="store_true",
+        default=os.getenv("REQUIRE_READINESS_CLOSURE", "").lower() in {"1", "true", "yes"},
+        help="require every documented P0/P1 readiness gap to have current reviewed evidence",
     )
     args = parser.parse_args()
 
@@ -377,6 +429,8 @@ def main() -> int:
         release_attestation=args.release_attestation,
         release_public_key=args.release_public_key,
         require_release_attestation=args.require_release_attestation,
+        readiness_closure_manifest=args.readiness_closure_manifest,
+        require_readiness_closure=args.require_readiness_closure,
     )
     errors = [f for f in findings if f.blocking]
     warns = [f for f in findings if not f.blocking]

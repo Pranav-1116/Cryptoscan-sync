@@ -103,6 +103,17 @@ bank receives a status pack. In the current evidence model:
 No status should be promoted from `SKIP` to `PASS` merely because a harness
 exists or a local command completed without credentials.
 
+The P0/P1 closure contract is now machine-readable in
+[`config/readiness-closure-policy.json`](../config/readiness-closure-policy.json)
+and enforced by [`scripts/readiness_closure_gate.py`](../scripts/readiness_closure_gate.py).
+It requires current evidence for every required kind, release-commit binding,
+UTC capture time, scope, limitations, independent review, digest verification,
+and explicit separation between operator and reviewer. The checked-in example
+manifest is intentionally incomplete and cannot pass. This closes the
+repository's ability to accidentally report an undocumented or stale gap as
+closed; it cannot manufacture the customer, provider, auditor, legal,
+regulatory, or production evidence listed below.
+
 ## 3. P0 blockers before international-bank production approval
 
 The following are the minimum blockers. A bank may add stricter requirements.

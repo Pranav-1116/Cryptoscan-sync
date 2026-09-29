@@ -8,9 +8,10 @@ compliance or load evidence cannot become PASS by virtue of this repository.
 
 The static engineering gate runs by default. Other checks consume artifact
 paths produced by the real harnesses, or can be invoked with ``--run-...``;
-those flags never manufacture provider/customer evidence. Use ``--strict`` in
-CI or release approval: every required category must be PASS and no SKIP is
-allowed.
+those flags never manufacture provider/customer evidence. The report also
+validates the operational-policy shape and can consume the aggregate P0/P1
+closure manifest. Use ``--strict`` in CI or release approval: every required
+category must be PASS and no SKIP is allowed.
 """
 from __future__ import annotations
 
@@ -35,8 +36,11 @@ REQUIRED_CATEGORIES = (
     "compliance",
     "load_soak",
     "documentation",
+    "operational_policy",
+    "readiness_closure",
     "external_attestations",
 )
+OPERATIONAL_POLICY = ROOT / "config" / "operational-policy.yaml"
 
 
 def status_row(category: str, status: str, detail: str, **extra: Any) -> dict:
@@ -197,6 +201,79 @@ def docs_check() -> dict:
     )
 
 
+def operational_policy_check(path: Path = OPERATIONAL_POLICY) -> dict:
+    """Validate the policy shape without treating a draft as approved.
+
+    The operational-policy gate owns the approval boundary. This readiness
+    report only records whether the checked-in/customer-supplied policy is
+    structurally complete; strict approval remains a separate release action.
+    """
+    if not path.exists():
+        return status_row("operational_policy", "FAIL", f"policy not found: {path}")
+    try:
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("operational_policy_gate", ROOT / "scripts" / "operational_policy_gate.py")
+        if spec is None or spec.loader is None:
+            raise RuntimeError("cannot load operational policy validator")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        policy = module._load(path)
+        findings = module.validate(policy)
+    except SystemExit as exc:
+        return status_row("operational_policy", "FAIL", str(exc))
+    except Exception as exc:  # validator/import faults must not become a false PASS
+        return status_row("operational_policy", "FAIL", f"validator error: {type(exc).__name__}")
+    return status_row(
+        "operational_policy",
+        "PASS" if not findings else "FAIL",
+        f"structural findings={len(findings)}; status={policy.get('status')}",
+        policy=str(path),
+        policy_status=policy.get("status"),
+        findings=findings,
+        approval_required="run operational_policy_gate.py --strict for release approval",
+    )
+
+
+def readiness_closure_check(path: Path | None = None) -> dict:
+    """Collect the aggregate P0/P1 closure result without inferring evidence."""
+    if path is None:
+        return status_row(
+            "readiness_closure",
+            "SKIP",
+            "no P0/P1 closure manifest supplied; external evidence is not inferred",
+        )
+    if not path.exists():
+        return status_row("readiness_closure", "FAIL", f"closure manifest not found: {path}")
+    try:
+        import importlib.util
+
+        script = ROOT / "scripts" / "readiness_closure_gate.py"
+        spec = importlib.util.spec_from_file_location("readiness_closure_gate", script)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("cannot load readiness closure validator")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        policy = module.load_json(module.POLICY)
+        manifest = module.load_json(path)
+        expected = git_metadata()["commit"]
+        findings = module.validate_policy(policy) + module.validate_manifest(policy, manifest, expected)
+        report = module.render_report(policy, manifest, expected, findings, datetime.now(timezone.utc))
+    except (ValueError, OSError) as exc:
+        return status_row("readiness_closure", "FAIL", f"closure validation error: {type(exc).__name__}")
+    except Exception as exc:  # validator faults must not become a false PASS
+        return status_row("readiness_closure", "FAIL", f"closure validator error: {type(exc).__name__}")
+    return status_row(
+        "readiness_closure",
+        report["verdict"],
+        f"closed={report['closed_gaps']}/{report['total_gaps']}; findings={len(findings)}",
+        manifest=str(path),
+        findings=findings,
+        closed_gaps=report["closed_gaps"],
+        total_gaps=report["total_gaps"],
+    )
+
+
 def run_engineering(out: Path) -> tuple[int, Path]:
     target = out.parent / "engineering-gate.json"
     proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "engineering_gate.py"), "--out", str(target)], cwd=ROOT, check=False)
@@ -212,6 +289,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--integrations", type=Path, default=None)
     ap.add_argument("--compliance", type=Path, default=None)
     ap.add_argument("--load-soak", type=Path, default=None)
+    ap.add_argument("--operational-policy", type=Path, default=OPERATIONAL_POLICY)
+    ap.add_argument("--readiness-closure", type=Path, default=None, help="P0/P1 closure manifest from a controlled evidence owner")
     ap.add_argument("--external-attestations", type=Path, default=None)
     ap.add_argument("--production-evidence", type=Path, default=None, help="optional signed/digest-only scripts/production_evidence.py report; retained as an additional orchestrator source")
     ap.add_argument("--run-engineering", action="store_true", help="run static engineering checks before collecting the report")
@@ -232,6 +311,8 @@ def main(argv: list[str] | None = None) -> int:
         artifact(args.compliance, "compliance"),
         artifact(args.load_soak, "load_soak"),
         docs_check(),
+        operational_policy_check(args.operational_policy),
+        readiness_closure_check(args.readiness_closure),
         artifact(args.external_attestations, "external_attestations"),
     ]
     if args.production_evidence:
