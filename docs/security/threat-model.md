@@ -18,6 +18,7 @@ exists today and what is explicitly **not** claimed.
 | 9 | Denial of service | Monitor daemon crash | Loop never raises; per-target try/except; container `restart: unless-stopped` | Single scheduler instance by design (one DB, idempotent ticks) |
 | 10 | Elevation of privilege | Viewer crafts auditor call | `require_auditor` dependency on every write route, tested 403s | Keep OIDC role mapping reviewed |
 | 11 | Supply chain | Malicious dependency | `requirements.lock.txt` pins; `pip-audit` report in this folder | No SLSA provenance / signed images yet |
+| 12 | Information disclosure | Tenant A reads tenant B's monitor targets / payment inventory by sending a foreign `X-Tenant-ID`, or by holding two memberships and sending none | `TenantScopeMiddleware` fails **closed**: a refused resolution returns 403/404/423/400 rather than running the request unscoped (outside a scope the `db.tenancy` ORM guard is inert and returns every tenant's rows). Pinned by `test_tenant_scope_middleware.py` | Both historical leaks were in the layer meant to make isolation automatic, and were invisible because the middleware is not installed under `ENVIRONMENT=test`. Any control whose failure mode is "silently returns more data" needs a negative test |
 | 12 | Supply chain | Malicious plugin (vendor/protocol) | Discovery plugins registered explicitly; plugin SDK documented | Runtime sandboxing not claimed |
 
 ## What this model does NOT claim
