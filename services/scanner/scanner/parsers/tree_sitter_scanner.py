@@ -23,6 +23,11 @@ Design rules:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import os
 import re
 from dataclasses import dataclass
@@ -69,7 +74,11 @@ def _make_parser(grammar_name: str):
         if language is None:
             return None
         return tree_sitter.Parser(tree_sitter.Language(language()))
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

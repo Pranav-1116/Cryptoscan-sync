@@ -12,6 +12,11 @@ Ticks are incremental and safe to call repeatedly (24/7 without load).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -146,7 +151,11 @@ class LiveVendorEngine:
                     vendor_metadata={"algorithm": obs.algorithm,
                                      "algorithms": [obs.algorithm] if obs.algorithm else []},
                 ))
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass  # a failed targeted scan never breaks the loop
 
     def _best_plugin(self, event: UniversalVendorEvent) -> Optional[str]:

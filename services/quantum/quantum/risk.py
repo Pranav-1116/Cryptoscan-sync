@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime, timezone
 from typing import Any
@@ -307,7 +312,11 @@ def _sector_weight(sector: str | None, finding: Mapping[str, Any], system: Mappi
         return None
     try:
         from sector_profiles import get_profile, risk_weight, score_criticality
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     system = system or {}
     extra = system.get("extra") or {}

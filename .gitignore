@@ -67,6 +67,9 @@ scan-results/
 
 # local SQLite DBs
 data/
+# The TLS registry snapshot is a checked-in test input, not local runtime data.
+!shared/shared_models/shared_models/data/
+!shared/shared_models/shared_models/data/iana_tls_parameters.csv
 
 # frontend test artefacts
 frontend/coverage/
@@ -75,3 +78,6 @@ frontend/coverage/
 !services/scanner/tests/fixtures/runtime_logs/*.log
 _tmp/
 build/
+
+# local dev stack runtime (scripts/run_local_stack.sh)
+.local-stack/

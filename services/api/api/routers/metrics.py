@@ -6,11 +6,48 @@ infra/monitoring/grafana consumes these metric names.
 
 from __future__ import annotations
 
+import hmac
+import logging
 import time
 
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, HTTPException, Request, Response, status
 
 router = APIRouter(tags=["metrics"])
+logger = logging.getLogger(__name__)
+
+
+def _require_metrics_token(request: Request) -> None:
+    """Protect the Prometheus surface without routing it through user auth.
+
+    Prometheus is an infrastructure principal, not a human session. In
+    development and test the endpoint remains convenient and unauthenticated;
+    production startup requires ``METRICS_TOKEN`` and this route accepts it as
+    either ``Authorization: Bearer`` or ``X-Metrics-Token``. Constant-time
+    comparison prevents turning this low-volume endpoint into a token oracle.
+    """
+    from api.config.settings import get_settings
+
+    settings = get_settings()
+    if not settings.is_production:
+        return
+    expected = (settings.METRICS_TOKEN or "").strip()
+    if len(expected) < 32:
+        # Normally caught by validate_runtime_settings during lifespan. Keep a
+        # request-time guard for ASGI probes that do not run lifespan hooks.
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="metrics authentication is not configured",
+        )
+    authorization = request.headers.get("authorization", "")
+    presented = request.headers.get("x-metrics-token", "")
+    if authorization.lower().startswith("bearer "):
+        presented = authorization[7:].strip()
+    if not presented or not hmac.compare_digest(presented, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="metrics authentication required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 _STARTED_AT = time.time()
 
@@ -69,13 +106,17 @@ def _telecom_lines() -> list[str]:
             "cryptoscan_telecom_scan_age_seconds", age,
             "Seconds since the last telecom pass (-1 = never)",
         ))
-    except Exception:
-        pass  # telecom module unavailable — metrics still serve
+    except Exception as telecom_exc:
+        logger.warning(
+            "telecom_metrics_unavailable",
+            extra={"error_type": type(telecom_exc).__name__},
+        )
     return lines
 
 
 @router.get("/metrics")
-def metrics() -> Response:
+def metrics(request: Request) -> Response:
+    _require_metrics_token(request)
     lines: list[str] = []
 
     # Process health
@@ -164,8 +205,11 @@ def metrics() -> Response:
                 ).scalar_one()
             )
             lines.append(_counter("cryptoscan_monitor_changes_detected", changes, "Realtime changes detected"))
-    except Exception:
-        pass  # monitor tables may not exist on very old schemas
+    except Exception as monitor_exc:
+        logger.warning(
+            "monitor_metrics_unavailable",
+            extra={"error_type": type(monitor_exc).__name__},
+        )
 
     lines.extend(_telecom_lines())
     lines.append(_gauge("cryptoscan_api_db_reachable", 1, "Database reachable for metrics"))

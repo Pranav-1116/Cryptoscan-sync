@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -18,6 +19,7 @@ from api.github.payload_parser import parse_push_event
 from api.security.hmac_verifier import HMACVerifier
 
 router = APIRouter(prefix="/webhooks", tags=["webhooks"])
+logger = logging.getLogger(__name__)
 
 
 async def _maybe(value):
@@ -210,8 +212,12 @@ async def github_webhook(
         session = getattr(job_repo, "session", None)
         if session is not None:
             session.commit()
-    except Exception:
-        pass
+    except Exception as commit_exc:
+        logger.exception(
+            "github_webhook_job_commit_failed",
+            extra={"error_type": type(commit_exc).__name__, "job_id": job_id},
+        )
+        raise HTTPException(status_code=503, detail="Webhook job could not be persisted") from commit_exc
     job_payload = {
         "job_id": job_id,
         "job_type": "GITHUB_WEBHOOK",
@@ -263,7 +269,8 @@ async def container_registry_webhook(
     _authorize_registry_webhook(request, body)
     try:
         payload = json.loads(body.decode() or "{}")
-    except Exception:
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError) as parse_exc:
+        logger.warning("registry_webhook_payload_invalid", extra={"error_type": type(parse_exc).__name__})
         payload = {}
     path = payload.get("path") or payload.get("image_root")
     image = payload.get("image") or payload.get("repository") or payload.get("detail", {}).get("repository-name")

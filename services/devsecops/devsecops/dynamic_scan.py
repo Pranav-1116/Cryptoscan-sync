@@ -20,6 +20,11 @@ record; this module is that decision applied to a sample the scanner was handed.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import os
 import sys
@@ -405,7 +410,11 @@ def _host_arch() -> str | None:
         import platform
 
         return platform.machine().lower() or None
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
