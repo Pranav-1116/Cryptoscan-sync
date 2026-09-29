@@ -1,13 +1,13 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-09-29T09:16:33.581252+00:00",
+  "captured_at": "2026-09-29T09:17:42.090755+00:00",
   "repository": {
-    "commit": "df33bb7f4ec893e4f38be1612d6ec55cfcc1be18",
+    "commit": "7cd93ad25cfd31a3932069019d346b229aaa39a4",
     "branch": "arena/01a0e27a-cryproscan",
     "dirty": false
   },
   "artifact_generation_state": {
-    "commit": "df33bb7f4ec893e4f38be1612d6ec55cfcc1be18",
+    "commit": "7cd93ad25cfd31a3932069019d346b229aaa39a4",
     "branch": "arena/01a0e27a-cryproscan",
     "dirty": true
   },
@@ -32,9 +32,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=a29905a83d5475378e5e974b842a36ba783a314be33a363f0b54f1431a8ea5a8",
+      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=8a449ce46da1e76072efada5296efba4029338e9b5a8f197fc16d044b5aec29a",
       "artifact": "docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "a29905a83d5475378e5e974b842a36ba783a314be33a363f0b54f1431a8ea5a8",
+      "artifact_sha256": "8a449ce46da1e76072efada5296efba4029338e9b5a8f197fc16d044b5aec29a",
       "observed_statuses": [
         "FAIL",
         "PASS",
@@ -65,9 +65,9 @@
     {
       "category": "compliance",
       "status": "PASS",
-      "detail": "artifact=docs/readiness-evidence/control-register.json; sha256=48cfa85b062fe2ebd252a8e662b49e39cf6e81676fd2b5b67d366dbe5feab717",
+      "detail": "artifact=docs/readiness-evidence/control-register.json; sha256=5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
       "artifact": "docs/readiness-evidence/control-register.json",
-      "artifact_sha256": "48cfa85b062fe2ebd252a8e662b49e39cf6e81676fd2b5b67d366dbe5feab717",
+      "artifact_sha256": "5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
       "observed_statuses": [
         "PASS"
       ]
