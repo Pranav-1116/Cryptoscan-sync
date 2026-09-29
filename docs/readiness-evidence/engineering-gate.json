@@ -1,19 +1,17 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-09-29T08:44:14.262103+00:00",
+  "captured_at": "2026-09-29T09:16:33.005757+00:00",
   "checks": [
     {
       "check": "exception inventory",
-      "status": "FAIL",
-      "detail": "0 unresolved production handlers; 1 unresolved test/harness handlers; inventory=1",
+      "status": "PASS",
+      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=1",
       "findings": [],
-      "nonproduction_findings": [
-        "scripts/postgres_drill.py:86: swallowed Exception"
-      ],
-      "unresolved": 1,
+      "nonproduction_findings": [],
+      "unresolved": 0,
       "production_unresolved": 0,
-      "test_harness_unresolved": 1,
-      "allowlisted": 0,
+      "test_harness_unresolved": 0,
+      "allowlisted": 1,
       "allowlist": "/home/user/CryproScan/config/exception-allowlist.json"
     },
     {
@@ -30,12 +28,17 @@
     },
     {
       "check": "production image immutable digests",
-      "status": "FAIL",
-      "detail": "3 image references are not pinned by digest",
+      "status": "SKIP",
+      "detail": "3 mutable template references; render a release and supply --release-manifests before approval",
       "references": [
         "k8s/app/20-api-deployment.yaml:23:image: cryptoscan-api:v1.0.0",
         "k8s/app/30-worker-deployment.yaml:23:image: cryptoscan-worker:v1.0.0",
         "k8s/neo4j/statefulset.yaml:20:image: neo4j:5.26-community"
+      ],
+      "image_references": [
+        "cryptoscan-api:v1.0.0",
+        "cryptoscan-worker:v1.0.0",
+        "neo4j:5.26-community"
       ]
     },
     {
