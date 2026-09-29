@@ -160,7 +160,43 @@ responsible owner confirms the value:
 Do not replace a placeholder with a plausible-looking value just to make a
 questionnaire appear complete.
 
-## 7. Related repository sources
+## 7. Additional customer-readiness templates
+
+- [Missing-document closure plan](missing-documents-and-closure-plan.md) —
+  identifies what writing does not solve and the execution evidence still
+  required.
+- [Order Form](order-form-template.md) — customer-specific scope, pricing,
+  regions, support, acceptance, and exit.
+- [Statement of Work](statement-of-work-template.md) — implementation,
+  pilot, integration, advisory, and acceptance work.
+- [Customer responsibility matrix](customer-responsibility-matrix.md) —
+  customer, Vendor, cloud, provider, and shared control ownership.
+- [Support handbook and escalation](support-handbook-and-escalation.md) —
+  actual channels, staffing, ticketing, severity, and escalation.
+- [DPIA and transfer assessment](dpia-and-transfer-assessment.md) —
+  processing risk, necessity, proportionality, and cross-border assessment.
+- [Records of processing](records-of-processing.md) — privacy inventory per
+  processing activity.
+- [Cookie and website notice](cookie-and-website-privacy-notice.md) — actual
+  website technology and consent inventory.
+- [Privacy rights/DSAR procedure](privacy-rights-and-dsar-procedure.md) —
+  request intake, verification, response, and deletion workflow.
+- [Risk acceptance and exception form](risk-acceptance-and-exception.md) —
+  owner, residual risk, compensating control, expiry, and approval.
+- [Evidence data-room procedure](evidence-data-room-procedure.md) — controlled
+  release and archival of sensitive assurance documents.
+- [AI and data-use statement](ai-and-data-use-statement.md) — model use,
+  customer-data training, human review, and provider disclosure.
+- [Open-source and supply-chain policy](open-source-and-supply-chain.md) —
+  SBOM, licences, advisories, provenance, signing, and release evidence.
+- [Corporate and insurance due diligence](corporate-and-insurance-due-diligence.md)
+  — legal entity, financial, insurance, ethics, and supplier records.
+- [Accessibility and responsible business](accessibility-and-responsible-business.md)
+  — accessibility evidence and responsible-supplier commitments.
+- [Personnel and physical security](personnel-and-physical-security.md) —
+  workforce, privileged staff, hosting, office, and provider evidence.
+
+## 8. Related repository sources
 
 - [Enterprise readiness gaps](../enterprise-bank-readiness-gaps.md)
 - [Production readiness](../../PRODUCTION-READINESS.md)

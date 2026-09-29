@@ -25,10 +25,34 @@ The answer bank should support:
 - customer-specific risk and procurement questionnaires.
 
 The CSV starter file contains canonical question families and initial answer
-positions. Import it into a database before using it as the authoritative
-source for a high-volume submission.
+positions. It is a flat transport file, not by itself the authoritative
+high-volume submission database. Import it into a controlled database and
+record the actual review and approval event before reusing an answer externally.
 
-## 2. Required answer fields
+## 2. CSV transport and normalized schema
+
+`questionnaire-answer-bank.csv` must have exactly 17 columns on every data row.
+CSV quoting is mandatory when a question or answer contains a comma. Its flat
+columns map to the normalized JSON schema as follows:
+
+| CSV column | Normalized value |
+|---|---|
+| `frameworks` | split on `\|` into a non-empty array |
+| `source_documents` | split on `;` into repository paths or controlled artifact IDs |
+| `customer_variables` | split on `;` into required customer-supplied values |
+| `prohibited_claims` | split on `;` into claims the answer must not make |
+| `attachments` | split on `;` into release-approved artifact references |
+| `review_cycle_days` | positive integer retained as the review cadence |
+| `reviewed_at` | actual review date from the approval record; not present in the starter CSV |
+| `expires_at` | actual expiry date from the approval record; null until assigned |
+
+The starter CSV intentionally does not invent `reviewed_at` or `expires_at`.
+An importer must set those normalized fields to `null` until a real reviewer
+records them; it must never derive them from the file timestamp, commit date,
+or the existence of a template. The JSON schema defines the normalized record,
+including this explicit review-metadata boundary.
+
+## 3. Required answer fields
 
 | Field | Purpose |
 |---|---|
@@ -42,7 +66,8 @@ source for a high-volume submission.
 | `source_documents` | Exact repository or controlled evidence source |
 | `owner` | Person/team accountable for correctness |
 | `reviewer` | Independent technical, privacy, legal, or assurance reviewer |
-| `reviewed_at` | Review timestamp |
+| `reviewed_at` | Actual review date from the approval record |
+| `review_cycle_days` | Positive interval after which reuse requires another review |
 | `expires_at` | Date after which the answer cannot be reused without review |
 | `jurisdiction` | Global, country, customer-specific, or not applicable |
 | `deployment_scope` | Customer-managed, vendor-managed, SaaS, pilot, production |
@@ -51,7 +76,7 @@ source for a high-volume submission.
 | `attachments` | Evidence artifacts approved for release |
 | `notes` | Internal handling and follow-up instructions |
 
-## 3. Answer status rules
+## 4. Answer status rules
 
 ### APPROVED
 
@@ -84,7 +109,7 @@ to avoid a difficult question.
 The answer requires an independent report, certificate, customer attestation,
 provider record, or regulator decision that the repository cannot create.
 
-## 4. Answer-writing standard
+## 5. Answer-writing standard
 
 Every answer should follow this form:
 
@@ -105,7 +130,7 @@ Example:
 > Evidence: Security Addendum, access-control policy, and the applicable
 > readiness evidence report. Owner: Security. Review before submission.
 
-## 5. Framework mapping
+## 6. Framework mapping
 
 The bank should retain the prospect's original question ID and map it to a
 canonical answer:
@@ -123,7 +148,7 @@ canonical answer:
 Never overwrite the canonical answer with customer-specific wording. Store the
 submitted response as a versioned questionnaire instance.
 
-## 6. Database tables
+## 7. Database tables
 
 A production answer-bank service should use at least:
 
@@ -169,7 +194,7 @@ A production answer-bank service should use at least:
 
 `actor`, `timestamp`, `object`, `old_value_hash`, `new_value_hash`, `reason`.
 
-## 7. Workflow for a 400-question assessment
+## 8. Workflow for a 400-question assessment
 
 ### Intake
 
@@ -228,7 +253,7 @@ Export the response with:
 Archive the exact submitted response. Do not edit the answer bank to match a
 submitted answer after the fact; create a new version with reason and approval.
 
-## 8. Red flags requiring escalation
+## 9. Red flags requiring escalation
 
 Escalate instead of guessing when a question asks whether:
 
@@ -246,7 +271,7 @@ Escalate instead of guessing when a question asks whether:
 - deletion is immediate from all backups; or
 - the answer requires a customer-side fact.
 
-## 9. Review cadence
+## 10. Review cadence
 
 - before every external questionnaire submission;
 - monthly for high-volume answer changes;
@@ -255,7 +280,7 @@ Escalate instead of guessing when a question asks whether:
 - at least annually for all retained answers; and
 - immediately when an answer becomes false, expired, or out of scope.
 
-## 10. Quality metrics
+## 11. Quality metrics
 
 Track:
 
