@@ -49,7 +49,8 @@ def _db_backlog(limit: int = 25) -> list[dict]:
         from api.events.platform_events import published_event_ids
 
         rows = _fetch_recent_monitor_events(limit=limit)
-    except Exception:
+    except Exception as backlog_exc:
+        logger.warning("event_backlog_unavailable", extra={"error_type": type(backlog_exc).__name__})
         return []
     already = published_event_ids()
     out: list[dict] = []
@@ -211,11 +212,13 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
         while True:
             try:
                 rows = _fetch_recent_monitor_events(limit=100)
-            except Exception:  # DB not ready / mid-migration — retry quietly
+            except Exception as rows_exc:  # DB not ready / mid-migration — retry
+                logger.warning("event_tail_rows_unavailable", extra={"error_type": type(rows_exc).__name__})
                 rows = []
             try:
                 directly_published = platform_events.published_event_ids()
-            except Exception:
+            except Exception as published_exc:
+                logger.warning("event_tail_published_ids_unavailable", extra={"error_type": type(published_exc).__name__})
                 directly_published = set()
             fresh = [r for r in rows if r["id"] not in seen and r["id"] not in directly_published]
             if fresh:
@@ -235,8 +238,8 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
                     seen = set(list(seen)[-1_000:])
             try:
                 platform_events.prune_published_ids()
-            except Exception:
-                pass
+            except Exception as prune_exc:
+                logger.warning("event_tail_prune_failed", extra={"error_type": type(prune_exc).__name__})
             await asyncio.sleep(interval)
     finally:
         with contextlib.suppress(Exception):
@@ -308,8 +311,8 @@ async def tail_telecom_snapshot(interval: float = 2.0) -> None:
                              if (f"telecom:{ev.get('kind')}:{ev.get('target')}:"
                                  f"{ev.get('at')}:{ev.get('fingerprint')}") not in directly]
                     _drain_telecom_events(seen, publish, {"events": fresh})
-        except Exception:  # snapshot unreadable / mid-write — retry quietly
-            pass
+        except Exception as snapshot_exc:  # snapshot unreadable / mid-write — retry
+            logger.warning("telecom_event_snapshot_unavailable", extra={"error_type": type(snapshot_exc).__name__})
         await asyncio.sleep(interval)
 
 

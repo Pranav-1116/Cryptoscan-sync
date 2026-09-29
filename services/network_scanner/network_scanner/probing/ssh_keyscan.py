@@ -21,6 +21,11 @@ Honesty rules, as everywhere in the deep probes:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 import shutil
 import subprocess
@@ -105,7 +110,11 @@ def classify_host_key(key_type: str, bits: int | None) -> dict[str, Any]:
                 status = "DISALLOWED"
                 if "SSH_WEAK_HOST_KEY" not in issues:
                     issues.append("SSH_WEAK_HOST_KEY")
-        except Exception:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+        except Exception as _handler_exc:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     return {
         "status": status,

@@ -1,5 +1,4 @@
 """Runtime evidence ingestion: ICSF / RACF / payShield / JSSE / openssl / nginx / sshd / AT-TLS logs."""
-import os
 from pathlib import Path
 
 import pytest

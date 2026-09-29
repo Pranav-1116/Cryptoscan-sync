@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any, Callable
 
 from cloud_scanner.common.finding import cloud_finding
@@ -38,7 +43,11 @@ def _key_bits(key_obj: Any, key_type: str | None) -> int | None:
     if size is not None and hasattr(size, "bit_length"):
         try:
             return int(size.bit_length())
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
     inner = attr(key_obj, "key")
     if inner is not None and inner is not key_obj:

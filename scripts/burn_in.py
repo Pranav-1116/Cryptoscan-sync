@@ -23,6 +23,11 @@ Exit code 0 when every selected target PASSES or cleanly SKIPs (with reason);
 1 on any FAIL. Full JSON report written to burn_in_report.json.
 """
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 from _bootstrap import bootstrap  # noqa: E402
 
 bootstrap()
@@ -124,7 +129,11 @@ def burn_github(api: str, username: str, password: str, secret: str, timeout: in
                 if status in {"COMPLETED", "FAILED", "ERROR"}:
                     final = job
                     break
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass  # job may not be visible yet
             time.sleep(1)
         if final is None:
@@ -185,7 +194,11 @@ class _SmtpSink(threading.Thread):
                 return
             try:
                 self._handle(conn)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             finally:
                 conn.close()
@@ -223,7 +236,11 @@ class _SmtpSink(threading.Thread):
         self.stop.set()
         try:
             self._srv.close()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
 

@@ -1,3 +1,4 @@
+import logging
 import time
 
 from db.connection.engine import check_db_health
@@ -7,6 +8,7 @@ from fastapi.responses import JSONResponse
 from api.config.settings import get_settings
 
 router = APIRouter(tags=["health"])
+logger = logging.getLogger(__name__)
 
 
 def _probe(name: str, configured: bool, fn) -> dict:
@@ -49,8 +51,9 @@ def dependency_report() -> dict:
         finally:
             try:
                 client.close()
-            except Exception:
-                pass
+            except Exception as close_exc:
+                # Closing a failed probe must not mask its original status.
+                logger.warning("redis_health_client_close_failed", extra={"error_type": type(close_exc).__name__})
 
     def _neo4j():
         from graph_engine.connection.neo4j_driver import get_driver

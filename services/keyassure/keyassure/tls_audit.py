@@ -14,6 +14,11 @@ silently treated as "secure". No AI.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import datetime as dt
 import socket
 import ssl
@@ -106,7 +111,11 @@ def _probe_protocols(host: str, port: int, sni: str | None, timeout: float) -> l
                 severity=pol["severity"], reason=pol["reason"]))
             try:
                 _tls.close()
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         except (ssl.SSLError, OSError) as exc:
             text = str(exc).lower()
@@ -132,12 +141,20 @@ def _analyze_chain(chain, der_leaf, hostname: str, now: dt.datetime) -> CertResu
         for c in chain:
             try:
                 certs.append(x509.load_der_x509_certificate(c.public_bytes()))
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
     if not certs and der_leaf:
         try:
             certs.append(x509.load_der_x509_certificate(der_leaf))
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     if not certs:
         return res
@@ -150,7 +167,11 @@ def _analyze_chain(chain, der_leaf, hostname: str, now: dt.datetime) -> CertResu
         except Exception:
             try:
                 return name.rfc4514_string()
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 return None
 
     res.subject = _dn(leaf.subject)
@@ -283,7 +304,11 @@ def audit_tls_endpoint(host: str, port: int = 443, *, sni: str | None = None,
         cert_result = _analyze_chain(chain, der, sni or host, reference)
         try:
             _tls.close()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     except (ssl.SSLError, OSError) as exc:
         best_error = str(exc)[:200]

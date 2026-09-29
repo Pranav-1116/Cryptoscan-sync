@@ -15,6 +15,11 @@ evidence-backed PqcReadinessDatabase's job).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -41,7 +46,11 @@ class HardwarePqcImpactEngine:
         if self._pqc_db is not None:
             try:
                 return self._pqc_db.verdict(manufacturer, model, version)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         return {"pqc_capability": "UNKNOWN", "hybrid_capability": False,
                 "reason": "no pqc database supplied"}

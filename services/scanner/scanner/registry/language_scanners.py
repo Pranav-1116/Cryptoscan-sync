@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 from pathlib import Path
 
@@ -170,13 +175,21 @@ def _tag_origin(path: Path, repo_root: Path | None, findings: list[RawFinding]) 
         from scanner.core.code_origin import classify_origin
 
         origin = classify_origin(path, repo_root)
-    except Exception:  # pragma: no cover - classification must never break a scan
+    except Exception as _handler_exc:  # pragma: no cover - classification must never break a scan
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     for f in findings:
         try:
             if not getattr(f.metadata, "code_origin", None):
                 f.metadata.code_origin = origin
-        except Exception:  # pragma: no cover
+        except Exception as _handler_exc:  # pragma: no cover
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
 
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends
@@ -11,6 +12,7 @@ from sqlalchemy.orm import Session
 from api.dependencies import get_current_user, get_db_session
 
 router = APIRouter(tags=["runtime"])
+logger = logging.getLogger(__name__)
 
 
 class RuntimeFinding(BaseModel):
@@ -159,8 +161,11 @@ def ingest_runtime_findings(
                 },
                 source="runtime",
             )
-        except Exception:  # noqa: BLE001 — the bus must never block ingestion
-            pass
+        except Exception as publish_exc:  # noqa: BLE001 — the bus must never block ingestion
+            logger.warning(
+                "runtime_finding_event_publish_failed",
+                extra={"error_type": type(publish_exc).__name__},
+            )
     return {
         "accepted": len(rows),
         "persisted": stored,
