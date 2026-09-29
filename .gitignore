@@ -67,6 +67,9 @@ scan-results/
 
 # local SQLite DBs
 data/
+# The TLS registry snapshot is a checked-in test input, not local runtime data.
+!shared/shared_models/shared_models/data/
+!shared/shared_models/shared_models/data/iana_tls_parameters.csv
 
 # frontend test artefacts
 frontend/coverage/
