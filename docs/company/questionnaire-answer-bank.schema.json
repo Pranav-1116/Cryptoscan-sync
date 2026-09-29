@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/cryptoscan/questionnaire-answer-bank/1",
+  "title": "CryptoScan Questionnaire Answer Bank Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "answer_id",
+    "question_family",
+    "frameworks",
+    "canonical_question",
+    "answer_status",
+    "evidence_tier",
+    "answer_text",
+    "source_documents",
+    "owner",
+    "reviewer",
+    "reviewed_at",
+    "expires_at",
+    "jurisdiction",
+    "deployment_scope",
+    "customer_variables",
+    "prohibited_claims",
+    "attachments",
+    "notes"
+  ],
+  "properties": {
+    "answer_id": {"type": "string", "pattern": "^[A-Z]{2,8}-[0-9]{3,}$"},
+    "question_family": {"type": "string", "minLength": 1},
+    "frameworks": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "canonical_question": {"type": "string", "minLength": 1},
+    "answer_status": {
+      "type": "string",
+      "enum": ["APPROVED", "PARTIAL", "NOT_AVAILABLE", "CUSTOMER_SPECIFIC", "NOT_APPLICABLE", "EXTERNAL_REQUIRED"]
+    },
+    "evidence_tier": {
+      "type": "string",
+      "enum": ["none", "repository_control", "operational_record", "customer_attestation", "external_certification"]
+    },
+    "answer_text": {"type": "string", "minLength": 1},
+    "source_documents": {"type": "array", "items": {"type": "string"}},
+    "owner": {"type": "string", "minLength": 1},
+    "reviewer": {"type": "string", "minLength": 1},
+    "reviewed_at": {"type": "string", "format": "date"},
+    "expires_at": {"type": ["string", "null"], "format": "date"},
+    "jurisdiction": {"type": "string", "minLength": 1},
+    "deployment_scope": {"type": "string", "minLength": 1},
+    "customer_variables": {"type": "array", "items": {"type": "string"}},
+    "prohibited_claims": {"type": "array", "items": {"type": "string"}},
+    "attachments": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"},
+    "answer_text_override": {"type": "string"},
+    "customer_question_id": {"type": "string"},
+    "customer": {"type": "string"},
+    "questionnaire_instance": {"type": "string"}
+  }
+}

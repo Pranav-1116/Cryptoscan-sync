@@ -48,6 +48,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Pilot duration and phases](pilot-duration-and-phases.md) | proposed two-, six-, eight-, and twelve-week pilot models with phase exit criteria |
 | [Business model](business-model.md) | customer profile, offers, pricing basis, responsibilities, revenue model, and commercial guardrails |
 | **[Detailed price model](price-model.md)** | proposed evaluation, subscription, estate-band, implementation, support, discount, margin, and quote structures |
+| **[Company legal, privacy, assurance, and questionnaire pack](company/README.md)** | MSA, NDA, DPA, SLA, security, privacy, subprocessors, assurance, and reusable vendor-questionnaire answer bank |
 | [Platform boundaries](architecture/platform-boundaries.md) | what CryptoScan is and is not (single source of truth: `shared_models/platform_scope.py`) |
 | [Real-world comparison](architecture/real-world-comparison.md) | honest benchmark vs. Venafi, SandboxAQ, Prowler, Trivy, testssl.sh, Nozomi, SAST |
 | [SBOM scanner architecture vs. what ships](architecture/sbom-scanner-architecture.md) | the 11-source / Kafka-Flink target architecture mapped against this repo, gap by gap |
