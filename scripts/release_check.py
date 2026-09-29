@@ -25,13 +25,16 @@ Usage:
   python3 scripts/release_check.py                  # full gate + evidence
   python3 scripts/release_check.py --allow-untagged # pre-tag dry run
   python3 scripts/release_check.py --no-evidence    # no fresh evidence entry
+  python3 scripts/release_check.py --release-manifests /secure/releases/v1/k8s
 
 Exit codes: 0 = release-consistent, 1 = blocking findings (see output).
 """
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -124,16 +127,51 @@ def _run_guard(overrides: dict[str, str], *args: str) -> subprocess.CompletedPro
     )
 
 
-def _image_digest_findings() -> list[Finding]:
-    """Reject mutable Kubernetes images before a release is tagged."""
+def _image_digest_findings(release_manifests: Path | None = None) -> list[Finding]:
+    """Require the exact digest-rendered release directory.
+
+    Source manifests under ``k8s/`` are templates. They must never be applied
+    directly, but checking them here cannot prove what will actually be
+    deployed. The release boundary therefore consumes the output directory and
+    its ``release-image-lock.json`` produced by ``pin_release_images.py``.
+    """
+    if release_manifests is None:
+        return [Finding(
+            "immutable-image-digests",
+            ERROR,
+            "no rendered release manifests supplied; run pin_release_images.py "
+            "and pass --release-manifests <directory>",
+        )]
+
+    root = release_manifests.resolve()
+    if not root.is_dir():
+        return [Finding("immutable-image-digests", ERROR, f"rendered release directory not found: {release_manifests}")]
+
+    lock_path = root / "release-image-lock.json"
+    if not lock_path.is_file():
+        return [Finding("immutable-image-digests", ERROR, f"release lock missing: {lock_path}")]
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        digests = lock["digests"]
+        expected = {name: str(digests[name]).lower() for name in ("api", "worker", "neo4j")}
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        return [Finding("immutable-image-digests", ERROR, f"invalid release-image-lock.json: {type(exc).__name__}")]
+
     findings: list[Finding] = []
-    manifests = ROOT / "k8s"
-    for path in manifests.rglob("*.yaml") if manifests.exists() else []:
+    references: list[str] = []
+    for path in root.rglob("*.yaml"):
         for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
-            if "image:" not in line or "@sha256:" in line:
+            if not re.search(r"^\s*image:\s*[^\s]+", line):
                 continue
             image = line.split("image:", 1)[1].strip()
-            findings.append(Finding("immutable-image-digests", ERROR, f"{path.relative_to(ROOT)}:{line_no} uses mutable image reference {image}; publish and record an OCI digest"))
+            references.append(image)
+            if not re.fullmatch(r".+@sha256:[0-9a-f]{64}", image):
+                findings.append(Finding("immutable-image-digests", ERROR, f"{path.relative_to(root)}:{line_no} uses mutable or malformed image reference {image}"))
+    if not references:
+        findings.append(Finding("immutable-image-digests", ERROR, f"no image references found under rendered release {root}"))
+    for name, digest in expected.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", digest) or not any(f"@sha256:{digest}" in reference for reference in references):
+            findings.append(Finding("immutable-image-digests", ERROR, f"release lock digest for {name} is missing or does not match a rendered image"))
     return findings
 
 
@@ -221,7 +259,11 @@ def _production_evidence(version_text: str) -> tuple[list[Finding], dict | None]
                      f"production evidence gate failed for v{version_text.strip()}: {detail}")], info)
 
 
-def collect(allow_untagged: bool, run_evidence: bool = True) -> tuple[list[Finding], dict | None]:
+def collect(
+    allow_untagged: bool,
+    run_evidence: bool = True,
+    release_manifests: Path | None = None,
+) -> tuple[list[Finding], dict | None]:
     version_text = (ROOT / "VERSION").read_text()
     changelog_text = (ROOT / "CHANGELOG.md").read_text()
     tags = _git(["tag", "--list"]).split()
@@ -252,7 +294,7 @@ def collect(allow_untagged: bool, run_evidence: bool = True) -> tuple[list[Findi
         findings.append(sbom)
 
     findings.extend(_prod_guard_findings())
-    findings.extend(_image_digest_findings())
+    findings.extend(_image_digest_findings(release_manifests))
 
     if run_evidence:
         ev_findings, evidence_info = _production_evidence(version_text)
@@ -272,10 +314,19 @@ def main() -> int:
         action="store_true",
         help="skip the fresh production-evidence gate (output says plainly)",
     )
+    parser.add_argument(
+        "--release-manifests",
+        type=Path,
+        default=os.getenv("RELEASE_MANIFESTS"),
+        help="digest-rendered directory from pin_release_images.py",
+    )
     args = parser.parse_args()
 
-    findings, evidence_info = collect(args.allow_untagged,
-                                      run_evidence=not args.no_evidence)
+    findings, evidence_info = collect(
+        args.allow_untagged,
+        run_evidence=not args.no_evidence,
+        release_manifests=args.release_manifests,
+    )
     errors = [f for f in findings if f.blocking]
     warns = [f for f in findings if not f.blocking]
 
