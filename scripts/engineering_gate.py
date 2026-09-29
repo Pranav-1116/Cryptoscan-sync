@@ -189,14 +189,43 @@ def frontend_roles(checks: list[dict]) -> None:
     add(checks, "frontend direct-role authorization", "PASS" if not findings else "FAIL", f"{len(findings)} direct role/localStorage references", findings=findings[:100])
 
 
-def image_policy(checks: list[dict]) -> None:
-    manifests = list((ROOT / "k8s").rglob("*.yaml")) if (ROOT / "k8s").exists() else []
+def image_policy(checks: list[dict], release_manifests: Path | None = None) -> None:
+    """Check a rendered release, while keeping source templates honest.
+
+    Checked-in Kubernetes files are intentionally templates because the
+    registry digest does not exist until a release is built. Treating those
+    templates as a production deployment would be unsafe; treating them as a
+    failed release would make the static repository gate misleading. A real
+    release must pass ``--release-manifests`` with the output of
+    ``pin_release_images.py``.
+    """
+    root = (release_manifests or ROOT / "k8s").resolve()
+    manifests = list(root.rglob("*.yaml")) if root.is_dir() else []
     mutable = []
+    images = []
     for path in manifests:
         for line_no, line in enumerate(path.read_text(encoding="utf-8", errors="ignore").splitlines(), 1):
-            if re.search(r"^\s*image:\s*[^\s]+", line) and "@sha256:" not in line:
-                mutable.append(f"{path.relative_to(ROOT)}:{line_no}:{line.strip()}")
-    add(checks, "production image immutable digests", "PASS" if not mutable else "FAIL", f"{len(mutable)} image references are not pinned by digest", references=mutable[:100])
+            if not re.search(r"^\s*image:\s*[^\s]+", line):
+                continue
+            reference = line.split("image:", 1)[1].strip()
+            images.append(reference)
+            if "@sha256:" not in line:
+                try:
+                    location = str(path.relative_to(ROOT))
+                except ValueError:
+                    location = str(path)
+                mutable.append(f"{location}:{line_no}:{line.strip()}")
+    if release_manifests is None:
+        status = "SKIP" if mutable else "PASS"
+        detail = (
+            f"{len(mutable)} mutable template references; render a release and "
+            "supply --release-manifests before approval"
+            if mutable else f"checked {len(images)} template image references"
+        )
+    else:
+        status = "PASS" if images and not mutable else "FAIL"
+        detail = f"checked {len(images)} rendered image references; mutable={len(mutable)}"
+    add(checks, "production image immutable digests", status, detail, references=mutable[:100], image_references=images)
 
 
 def branch_protection(checks: list[dict]) -> None:
@@ -272,6 +301,7 @@ def sample_hooks(checks: list[dict], args: argparse.Namespace) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--out", type=Path, default=None)
+    ap.add_argument("--release-manifests", type=Path, default=os.getenv("RELEASE_MANIFESTS"), help="rendered release directory from pin_release_images.py; source k8s templates remain SKIP")
     ap.add_argument("--cobol-sample", default=os.getenv("COBOL_CUSTOMER_SAMPLE"))
     ap.add_argument("--pli-sample", default=os.getenv("PLI_CUSTOMER_SAMPLE"))
     ap.add_argument("--rpg-sample", default=os.getenv("RPG_CUSTOMER_SAMPLE"))
@@ -280,7 +310,7 @@ def main(argv: list[str] | None = None) -> int:
     exception_inventory(checks)
     api_key_coverage(checks)
     frontend_roles(checks)
-    image_policy(checks)
+    image_policy(checks, args.release_manifests)
     branch_protection(checks)
     sample_hooks(checks, args)
     report = {"schema": "cryptoscan.engineering-gate/1", "captured_at": datetime.now(timezone.utc).isoformat(), "checks": checks, "verdict": "PASS" if all(x["status"] == "PASS" for x in checks) else "FAIL"}
