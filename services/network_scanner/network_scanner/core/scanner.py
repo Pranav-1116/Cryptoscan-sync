@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -600,7 +605,11 @@ def certificate_verdict(cert: dict[str, Any]) -> dict[str, Any]:
         if sig.startswith("sha1") or sig.startswith("md5"):
             issues.append("WEAK_SIGNATURE_ALGORITHM")
             status = "DISALLOWED" if status != "DISALLOWED" else status
-    except Exception:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+    except Exception as _handler_exc:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return {
         "status": status,

@@ -170,7 +170,8 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
     # PRF/digest is recorded as hash_algorithm so callers can emit it separately.
     pbe_match = _PBE_PATTERN.match(stripped)
     if pbe_match:
-        kind, prf, cipher = pbe_match.group(1), pbe_match.group(2), pbe_match.group(3)
+        # group(1) is PBE-vs-PBKDF2; the cipher and PRF are what callers need.
+        _kind, prf, cipher = pbe_match.group(1), pbe_match.group(2), pbe_match.group(3)
         digest = _normalize_algorithm(prf.replace("Hmac", "").replace("HMAC", "")) if prf else None
         if cipher:
             cipher_norm = _normalize_algorithm(cipher.split("_")[0])

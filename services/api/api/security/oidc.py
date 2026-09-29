@@ -27,6 +27,11 @@ roles stay assigned locally in CryptoScan.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import base64
 import json
 import time
@@ -433,5 +438,9 @@ def read_state(secret: str, state: str, *, now: float | None = None, max_age: in
         if not nonce or issued > current + 60 or current - issued > max_age:
             return None
         return nonce
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None

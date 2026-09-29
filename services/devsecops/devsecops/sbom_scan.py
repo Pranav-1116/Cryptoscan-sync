@@ -17,6 +17,11 @@ only the ``vendor/`` directory.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import os
 import re
@@ -466,7 +471,11 @@ def decode_integrity(value: str | None) -> list[dict[str, str]]:
             else:
                 try:
                     digest = base64.b64decode(payload + "=" * (-len(payload) % 4), validate=True).hex()
-                except Exception:  # noqa: BLE001 — malformed integrity is skipped, not guessed
+                except Exception as _handler_exc:  # noqa: BLE001 — malformed integrity is skipped, not guessed
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     continue
                 candidate = {"alg": _ALG_NAMES.get(alg, alg.upper()), "content": digest}
         else:

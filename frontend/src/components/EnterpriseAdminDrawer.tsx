@@ -13,6 +13,7 @@ import React, { useEffect, useState } from "react";
 import {
   ApiResult, apiAuthMeDetails, apiSecurityPosture, SecurityPosture,
 } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 import { useEnterprise } from "./EnterpriseContext";
 
 export type AdminDrawerTab = "security_center" | "user_profile" | "about";
@@ -97,7 +98,8 @@ interface MeDetails {
 }
 
 function UserProfileTab() {
-  const { user, roles, org, env, infoLevel, timezone } = useEnterprise();
+  const { user, roles } = useAuth();
+  const { org, env, infoLevel, timezone } = useEnterprise();
   const [me, setMe] = useState<MeDetails | null>(null);
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(true);

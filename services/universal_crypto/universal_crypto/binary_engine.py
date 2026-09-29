@@ -17,6 +17,11 @@ The §28 fusion engine turns combinations of these into confidence.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 import struct
 from typing import Any, Iterable, Optional
@@ -209,7 +214,11 @@ class BinaryParser:
                 offset = struct.unpack_from(fmt, data, sh + 0x18)[0]
                 size = struct.unpack_from(fmt, data, sh + 0x20)[0]
                 name = _cstr(shstr, name_off)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             if name in (".symtab", ".dynsym"):  # SHT_SYMTAB=2, SHT_DYNSYM=11
                 entsize = 24 if is64 else 16
@@ -221,7 +230,11 @@ class BinaryParser:
                     str_off = struct.unpack_from(fmt, data, lsh + 0x18)[0]
                     str_size = struct.unpack_from(fmt, data, lsh + 0x20)[0]
                     strbuf = data[str_off:str_off + str_size]
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     pass
                 for j in range(0, min(size, len(data) - offset) - entsize + 1, entsize):
                     try:
@@ -229,7 +242,11 @@ class BinaryParser:
                         sym = _cstr(strbuf, st_name)
                         if sym:
                             symbols.append(sym)
-                    except Exception:
+                    except Exception as _handler_exc:
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         pass
             elif name == ".rodata":
                 strings.extend(_extract_strings(data[offset:offset + size]))

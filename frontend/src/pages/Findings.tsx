@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Kpi, Code, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { RequireRole } from "../lib/auth.js";
 import {
   apiFindings,
   apiFindingDetail,
@@ -180,9 +181,14 @@ export default function Findings() {
               style={{ width: "100%", padding: "9px 11px" }}
             />
           </label>
-          <button className="btn primary" onClick={() => void runScan()} disabled={scanBusy || !repoUrl.trim()}>
-            {scanBusy ? "Queuing…" : "▶ Run scan"}
-          </button>
+          <RequireRole
+            anyOf={["superadmin", "ciso", "security_analyst", "developer", "scanner"]}
+            fallback={<span className="dim" style={{ fontSize: 12 }}>Your role is read-only for scan submission.</span>}
+          >
+            <button className="btn primary" onClick={() => void runScan()} disabled={scanBusy || !repoUrl.trim()}>
+              {scanBusy ? "Queuing…" : "▶ Run scan"}
+            </button>
+          </RequireRole>
         </div>
         {scanMsg && (
           <div className={`auth-alert ${scanMsg.ok ? "ok" : "err"}`} style={{ marginTop: 10 }}>
@@ -190,7 +196,7 @@ export default function Findings() {
           </div>
         )}
         <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>
-          Requires an auditor/admin role. Findings land as the worker pipeline persists evidence — the list refreshes automatically.
+          Scan submission follows the server-side scan.trigger permission matrix. Findings land as the worker pipeline persists evidence — the list refreshes automatically.
         </div>
       </Panel>
 

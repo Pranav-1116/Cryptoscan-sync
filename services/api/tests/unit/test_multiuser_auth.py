@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
+from fastapi import HTTPException
+
 from api.config.settings import get_settings
 from api.security.auth import AuthenticationError, AuthService
 from api.security.passwords import hash_password, verify_password
@@ -95,8 +99,13 @@ def test_require_roles_allows_only_permitted(session, monkeypatch):
     class FakeRequest:
         headers = {"Authorization": f"Bearer {token}"}
         cookies = {}
+        # _resolve_api_key caches its verdict on request.state. A real Starlette
+        # request always has one; this stub did not, so the dependency raised
+        # AttributeError before it ever reached the role check and the test
+        # asserted 403 against the wrong exception.
+        state = SimpleNamespace()
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(HTTPException) as excinfo:
         dep(FakeRequest(), user="olga", db=session)
     assert excinfo.value.status_code == 403
 
@@ -107,5 +116,6 @@ def test_require_roles_allows_only_permitted(session, monkeypatch):
     class FakeRequest2:
         headers = {"Authorization": f"Bearer {token2}"}
         cookies = {}
+        state = SimpleNamespace()
 
     assert dep(FakeRequest2(), user="olga", db=session) == "olga"

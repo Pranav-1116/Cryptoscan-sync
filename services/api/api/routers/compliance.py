@@ -4,6 +4,11 @@ and the read-only auditor surface (scope-limited, separate credential class).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import os
 import time
 
@@ -88,7 +93,11 @@ def retention_policy(db=Depends(get_db_session)):
         envs = list(get_bus().replay("audit-log"))
         if envs:
             oldest = min(float(e.get("ts_epoch", time.time())) for e in envs)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     allowed, reason = can_delete("audit_log", oldest, policy)
     return {"policy": policy, "oldest_audit_record_epoch": oldest,

@@ -8,6 +8,11 @@ Field extraction prefers, in order:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import re
 import ssl
@@ -94,7 +99,11 @@ def pem_to_der(pem: str | None) -> bytes | None:
         return None
     try:
         return base64.b64decode("".join(match.group(1).split()))
-    except Exception:  # noqa: BLE001 — malformed PEM: caller treats as absent
+    except Exception as _handler_exc:  # noqa: BLE001 — malformed PEM: caller treats as absent
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -111,11 +120,19 @@ def _parse_ssl_date(value: str | None) -> datetime | None:
         return None
     try:
         return parsedate_to_datetime(value).astimezone(timezone.utc)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     try:
         return datetime.strptime(value.strip(), _OPENSSL_DATE).replace(tzinfo=timezone.utc)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -279,7 +296,11 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
         try:
             info["subject"] = parsed.subject.rfc4514_string()
             info["issuer"] = parsed.issuer.rfc4514_string()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         if isinstance(public, rsa.RSAPublicKey):
             info["public_key_algorithm"] = "RSA"
@@ -305,7 +326,11 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
             san = parsed.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
             info["san"] = [f"DNS:{name}" if not str(name).startswith(("DNS:", "IP:")) else str(name) for name in san.get_values_for_type(x509.DNSName)]
             info["san"] += [f"IP:{ip}" for ip in san.get_values_for_type(x509.IPAddress)]
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         try:
             usage = parsed.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
@@ -322,17 +347,29 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
                 if getattr(usage, attr, False):
                     flags.append(name)
             info["key_usage"] = flags
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         try:
             eku = parsed.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE).value
             info["extended_key_usage"] = [item._name for item in eku]  # noqa: SLF001
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         try:
             basic = parsed.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS).value
             info["is_ca"] = bool(basic.ca)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         return info
     except Exception:
@@ -355,7 +392,11 @@ def parse_pem(text: str) -> list[dict[str, Any]]:
         pem = f"-----BEGIN CERTIFICATE-----{match.group(1)}-----END CERTIFICATE-----"
         try:
             der = ssl.PEM_cert_to_DER_cert(pem)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         info = from_ssl_dict({}, der=der)
         info["pem"] = pem
@@ -377,7 +418,11 @@ def parse_der(der: bytes | None) -> dict[str, Any] | None:
         return None
     try:
         pem = ssl.DER_cert_to_PEM_cert(der)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     parsed = parse_pem(pem)
     return parsed[0] if parsed else None

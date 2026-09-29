@@ -1,7 +1,6 @@
 """Key & certificate inventory ingestion: ICSF, TR-31, Luna, nShield, PKCS#11, cloud KMS, Vault, keytool, RACDCERT, cert CSV."""
 from pathlib import Path
 
-import pytest
 
 from scanner.core.file_discovery import FileDiscovery
 from scanner.parsers.key_inventory_parser import parse_key_inventory_file

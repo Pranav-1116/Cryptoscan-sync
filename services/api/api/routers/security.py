@@ -21,6 +21,11 @@ SSE stream. Nothing here is simulated.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import asyncio
 import json
 from datetime import datetime, timedelta, timezone
@@ -286,7 +291,11 @@ def security_alerts(
                 "source": "anomaly", "status": str(getattr(f, "status", "OPEN") or "OPEN").upper(),
                 "ack_href": f"/api/v1/anomaly/flags/{f.id}/ack",
             })
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     # 2) live-scan alerts from the running engine (real scanner alerts)
@@ -303,7 +312,11 @@ def security_alerts(
                 "asset": str(a.get("asset", "") or ""), "ts": str(a.get("ts", "") or ""),
                 "source": "live-scan", "status": "OPEN", "ack_href": None,
             })
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     # 3) critical/high runtime crypto findings
@@ -320,7 +333,11 @@ def security_alerts(
                 "asset": str(getattr(r, "hostname", "") or ""), "ts": _iso(getattr(r, "last_seen_at", None)),
                 "source": "runtime", "status": "OPEN", "ack_href": None,
             })
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     # 4) recent failed logins
@@ -338,7 +355,11 @@ def security_alerts(
                 "ts": _iso(getattr(e, "created_at", None)),
                 "source": "audit", "status": "OPEN", "ack_href": None,
             })
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     out.sort(key=lambda a: (_ALERT_SEVERITY_ORDER.get(a["severity"], 99), a["ts"] or ""))
@@ -362,7 +383,11 @@ def _active_sector(db: Session) -> str | None:
         saved = SettingsRepository(db).get(SECTOR_SETTING_KEY)
         if isinstance(saved, dict) and saved.get("sector"):
             return str(saved["sector"])
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception as _handler_exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     try:
         from db.repositories.onboarding_repository import OnboardingRepository
@@ -370,7 +395,11 @@ def _active_sector(db: Session) -> str | None:
         org = OnboardingRepository(db).get_default_org()
         if org is not None and getattr(org, "sector", None):
             return str(org.sector)
-    except Exception:  # noqa: BLE001 — best-effort
+    except Exception as _handler_exc:  # noqa: BLE001 — best-effort
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return None
 
@@ -401,7 +430,11 @@ def get_scan_policy(
             # ensure both halves always present (deterministic contract)
             existing = {"scan": stored.get("scan") or existing["scan"],
                         "privacy": stored.get("privacy") or existing["privacy"]}
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     # validate+normalize the policy so the UI always sees real bounds, and
     # reflect the sector profile so a chosen sector actually enforces (§26)
@@ -412,7 +445,11 @@ def get_scan_policy(
         if sector:
             bundle = apply_sector_overrides(bundle, sector)
         existing = bundle.to_dict()
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return {"source": "security_policy", "policy": existing, "sector": sector}
 
@@ -679,7 +716,11 @@ async def _emit_drop_event(score: int, drift: dict) -> None:
              "delta": drift["delta"]},
             target_name="security",
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
 
@@ -700,6 +741,10 @@ def _severity_from_runtime(row) -> str:
             return "CRITICAL" if "critical" in impact else "HIGH"
         if "medium" in impact:
             return "MEDIUM"
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return "MEDIUM"

@@ -83,7 +83,11 @@ def ensure_schema_extensions(engine) -> None:
                 continue  # create_all already handled missing tables
             try:
                 existing_cols = {c["name"] for c in inspect(engine).get_columns(table_name)}
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             for column in table.columns:
                 if column.name in existing_cols:
@@ -123,7 +127,11 @@ def ensure_schema_extensions(engine) -> None:
                 continue
             try:
                 existing_cols = {c["name"] for c in inspect(engine).get_columns(table_name)}
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             for name, ddl in cols:
                 if name in existing_cols:
