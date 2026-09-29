@@ -1,19 +1,19 @@
 # Bank readiness evidence report
 
-Captured: `2026-09-28T08:38:33.710123+00:00`
-Commit: `869229502d8893d63c2a0bb2ad8409b0685029c8`
+Captured: `2026-09-29T08:43:17.979516+00:00`
+Commit: `9ae4c65574aaf82bfb70ed93823d0d453eee1a38`
 Verdict: **FAIL**
 Recommendation: **do not approve production; remediation and/or evidence collection required**
 
 | Category | Status | Detail |
 |---|---|---|
-| engineering | FAIL | artifact=docs/readiness-evidence/engineering-gate.json; sha256=cb12c4f06f53fb0cc045c77c61b1ee9a1df92b90e72a9403b681ac607ee4515f |
-| postgresql_dr | SKIP | no external artifact supplied; this is not evidence |
+| engineering | FAIL | artifact=docs/readiness-evidence/engineering-gate.json; sha256=d4ab830f330cf00d04932ba66f30b1a500434dcc53a0279f031a184c254d91cd |
+| postgresql_dr | SKIP | artifact=docs/readiness-evidence/postgres-dr-drill-2026-09-29.json; sha256=f58955b1aa1b7c0ab303d917b68b575df9bf1bfd0e8ba19e6f4996df9cc44317 |
 | hsm | SKIP | no external artifact supplied; this is not evidence |
 | integrations | SKIP | no external artifact supplied; this is not evidence |
-| compliance | SKIP | no external artifact supplied; this is not evidence |
+| compliance | PASS | artifact=docs/readiness-evidence/control-register.json; sha256=48cfa85b062fe2ebd252a8e662b49e39cf6e81676fd2b5b67d366dbe5feab717 |
 | load_soak | SKIP | no external artifact supplied; this is not evidence |
-| documentation | PASS | checked 225 Markdown files and required readiness documents |
+| documentation | FAIL | missing=0 broken_links=89 |
 | external_attestations | SKIP | no external artifact supplied; this is not evidence |
 
 ## Boundary

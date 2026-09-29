@@ -1,16 +1,18 @@
 {
   "schema": "cryptoscan.engineering-gate/1",
-  "captured_at": "2026-09-28T08:38:33.422397+00:00",
+  "captured_at": "2026-09-29T08:43:17.497616+00:00",
   "checks": [
     {
       "check": "exception inventory",
-      "status": "PASS",
-      "detail": "0 unresolved production handlers; 0 unresolved test/harness handlers; inventory=0",
+      "status": "FAIL",
+      "detail": "0 unresolved production handlers; 1 unresolved test/harness handlers; inventory=1",
       "findings": [],
-      "nonproduction_findings": [],
-      "unresolved": 0,
+      "nonproduction_findings": [
+        "scripts/postgres_drill.py:86: swallowed Exception"
+      ],
+      "unresolved": 1,
       "production_unresolved": 0,
-      "test_harness_unresolved": 0,
+      "test_harness_unresolved": 1,
       "allowlisted": 0,
       "allowlist": "/home/user/CryproScan/config/exception-allowlist.json"
     },
