@@ -64,6 +64,13 @@ class ScanJob:
     created_at: datetime | str | None = None
     job_type: str = "MANUAL"
     system_id: str | None = None
+    #: Owning tenant, carried across the queue so the worker can re-enter the
+    #: scope the caller was in. A worker has no session to resolve a tenant
+    #: from, so if this does not travel with the job the work runs unscoped —
+    #: and unscoped writes get tenant_id NULL, which db.tenancy treats as the
+    #: platform estate that every tenant can read. ``None`` means genuinely
+    #: platform-owned (or a job queued before this field existed).
+    tenant_id: str | None = None
     #: the job row's progress JSON as queued — carries ``scan_options`` for the
     #: non-git targets (a binary scan needs its rules, format and artifact id)
     progress: dict | None = None
@@ -291,6 +298,7 @@ class JobConsumer:
                 "created_at": job.created_at.isoformat() if isinstance(job.created_at, datetime) else job.created_at,
                 "job_type": job.job_type,
                 "system_id": job.system_id,
+                "tenant_id": job.tenant_id,
             }
         else:
             payload = dict(job)
@@ -372,6 +380,9 @@ class JobConsumer:
             created_at=_parse_created_at(created),
             job_type=data.get("job_type") or "MANUAL",
             system_id=data.get("system_id"),
+            # Absent on jobs queued before this field existed; those keep the
+            # old unscoped behaviour rather than failing to deserialize.
+            tenant_id=data.get("tenant_id"),
             progress=data.get("progress"),
             raw=raw if self.redis_client is not None else None,
             attempts=int(data.get("_attempts") or 0),

@@ -111,10 +111,31 @@ def mock_repo_config_repo() -> MagicMock:
 
 @pytest.fixture
 def mock_db_session() -> MagicMock:
+    """An empty *synchronous* session, matching the one the app actually uses.
+
+    commit/rollback/execute used to be AsyncMock, which modelled a session this
+    codebase does not have: the repositories are sync SQLAlchemy, so
+    ``session.execute(...)`` returned a coroutine and the first ``.scalars()``
+    on it raised AttributeError. That stayed invisible while the audit helper
+    swallowed exceptions; once it began answering 503 instead, the drift
+    acknowledge/resolve tests started failing on it. Two other test modules had
+    already worked around the default by overriding these with MagicMock.
+
+    execute() returns an empty result rather than a bare MagicMock on purpose:
+    UserRepository._audit_chain_head does ``.scalars().first()`` and treats a
+    non-None row as an existing hash-chain head, so an auto-created mock would
+    feed MagicMocks into the chain instead of starting cleanly at GENESIS.
+    """
     session = MagicMock()
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-    session.execute = AsyncMock()
+    session.commit = MagicMock()
+    session.rollback = MagicMock()
+
+    empty = MagicMock()
+    empty.scalars.return_value.first.return_value = None
+    empty.scalars.return_value.all.return_value = []
+    empty.scalar_one_or_none.return_value = None
+    empty.scalar.return_value = 0
+    session.execute = MagicMock(return_value=empty)
     return session
 
 

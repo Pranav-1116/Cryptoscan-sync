@@ -108,6 +108,20 @@ def _publish_job(payload: dict) -> None:
 
 
 def _run_inline(payload: dict) -> None:
+    """Run the pipeline in-process when no queue is configured.
+
+    Scoped for the same reason the worker is: this runs as a background task,
+    after the request has returned and its tenant scope has been torn down, so
+    without re-entering it the results would be written unscoped and land in
+    the platform estate where every tenant can read them.
+    """
+    from db.tenancy import tenant_scope
+
+    with tenant_scope(payload.get("tenant_id")):
+        _run_inline_in_scope(payload)
+
+
+def _run_inline_in_scope(payload: dict) -> None:
     try:
         from worker.core.job_consumer import ScanJob
         from worker.pipeline.binary_job import is_binary_target, run_binary_job
@@ -122,6 +136,7 @@ def _run_inline(payload: dict) -> None:
                     target_commit=payload.get("target_commit"),
                     job_type=payload.get("job_type") or "BINARY",
                     system_id=payload.get("system_id"),
+                    tenant_id=payload.get("tenant_id"),
                     progress=payload.get("progress"),
                 )
             )
@@ -141,6 +156,7 @@ def _run_inline(payload: dict) -> None:
                     target_commit=payload.get("target_commit"),
                     job_type=payload.get("job_type") or "CLOUD",
                     system_id=payload.get("system_id"),
+                    tenant_id=payload.get("tenant_id"),
                 )
             )
             return
@@ -215,6 +231,11 @@ def enqueue_scan_job(
         "triggered_by": triggered_by,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
         "system_id": system_id,
+        # Captured here, from the row the ORM guard just stamped, because the
+        # publish runs as a background task after the request has finished and
+        # the tenant ContextVar is gone by then. Without this the worker has
+        # no way to know whose scan it is running.
+        "tenant_id": getattr(created, "tenant_id", None),
         "sector": effective_sector,
         "scan_mode": scan_mode,
         "progress": progress,
@@ -294,6 +315,9 @@ async def trigger_manual_scan(
         "target_commit": request_body.commit,
         "triggered_by": current_user,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        # See the note on the other payload: the background publish runs after
+        # the request scope is gone, so the tenant is captured now.
+        "tenant_id": getattr(created, "tenant_id", None),
         "sector": effective_sector,
         "scan_mode": getattr(request_body, "scan_mode", None),
     }

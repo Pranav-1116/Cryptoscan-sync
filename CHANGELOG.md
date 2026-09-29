@@ -6,6 +6,46 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — the worker ran every scan unscoped (cross-tenant disclosure)
+
+- **The tenant now survives the queue.** `worker.core.job_consumer.ScanJob`
+  had no `tenant_id` field, so the owner was dropped at the queue boundary,
+  and `JobExecutor` entered no scope — every worker-executed scan wrote with
+  `tenant_id = NULL`. That is not an absent label: `db.tenancy` defines NULL
+  as the platform estate, readable by every tenant, so each customer's scan
+  findings landed where their neighbours could see them. The work succeeded
+  silently, because outside a scope the ORM guard is inert and
+  `stamp_tenant` is a no-op.
+
+  `tenant_id` is now carried on the descriptor, serialised and deserialised,
+  captured into the payload by `trigger.py` while the request scope is still
+  open (the publish is a background task that runs after it is gone), and
+  re-entered by `JobExecutor.execute` around the *whole* dispatch — binary,
+  org and cloud jobs write the same tenant-owned rows. The inline no-queue
+  path is scoped identically. Payloads without the field still deserialize
+  to `None`, so in-flight jobs keep their old behaviour instead of failing
+  to parse.
+
+  Found by writing the cross-tenant battery below; `monitor/network_sweep.py`
+  had been scoping correctly all along, which is what made the omission
+  visible. Third leak in three layers of the same control.
+
+### Added — cross-tenant test battery and the control register
+
+- **30 tests** across the seven categories `fix.md` item 9 lists that were
+  uncovered: cross-tenant writes, resolution rules (ambiguous header,
+  suspended tenant, API-key binding, known-ID non-oracle) and worker scope.
+  Two record real gaps rather than asserting absent protections: Core bulk
+  `update()`/`delete()` is not filtered by `with_loader_criteria`, and a
+  companion test proves no repository uses that pattern today.
+- **Control register** (`config/control-register.yaml` +
+  `scripts/control_register.py`): every procurement control classified by the
+  tier of evidence it can actually produce — repository control, operational
+  record, customer attestation, external certification — with a gate that
+  refuses a claim outranking its evidence and forbids the top two tiers from
+  resting on repository paths. Currently zero controls at external
+  certification.
+
 ### Fixed — tenant scope failed open (cross-tenant disclosure)
 
 - **`TenantScopeMiddleware` now fails closed.** `resolve_tenant_for_request`

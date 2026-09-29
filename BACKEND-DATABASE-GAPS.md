@@ -160,6 +160,46 @@ itself, the second in code written to fix the first. Both were negative-space
 bugs — a control that silently returns *more* data when it fails. Hand a
 penetration tester §1.1 **and** §1.1a before two banks share a deployment.
 
+#### 1.1b The worker ran every scan unscoped
+
+A third, found by writing the cross-tenant battery fix.md item 9 asks for.
+Same defect class, third layer.
+
+The API resolves a tenant from the caller's session. A worker has no caller,
+so it can only use what the queue carried — and the queue descriptor
+`worker.core.job_consumer.ScanJob` had no `tenant_id` field at all. The
+tenant was dropped at the queue boundary, and `JobExecutor` entered no scope,
+so **every worker-executed scan wrote with `tenant_id = NULL`**.
+
+That is not a missing label. `db.tenancy` defines NULL as the platform
+estate, visible to every tenant, so each customer's scan findings were
+written where all of their neighbours could read them. The work succeeded and
+nothing logged, which is why it survived: outside a scope the guard is inert
+and `stamp_tenant` is simply a no-op.
+
+`monitor/network_sweep.py` had been doing it correctly all along, which is
+what made the omission legible once the battery went looking.
+
+**Fixed:** `tenant_id` is now a field on the queue descriptor, serialised in
+`publish_job`, read back in `_deserialize`, captured into the payload by
+`trigger.py` while the request scope is still open (the publish is a
+background task and runs after it is gone), and re-entered by
+`JobExecutor.execute` around the *whole* dispatch — binary, org and cloud
+jobs write the same tenant-owned rows, so scoping only the git pipeline would
+have left three branches unattributed. The inline no-queue path is scoped the
+same way for the same reason. A payload without the field still
+deserializes to `None`, so jobs queued before this keep their old behaviour
+rather than failing to parse.
+
+9 tests in `services/worker/tests/unit/test_worker_tenant_scope.py`,
+including a real enqueue → serialize → deserialize → execute round trip
+asserting the scope is active during execution and torn down after.
+
+Three leaks now, in three different layers of the same control. The pattern
+is consistent enough to be the finding in itself: **isolation here fails
+open and fails silently**, so absence of errors has never been evidence that
+it works. That is the case for §9's independent review, not against it.
+
 ### 1.2 Authentication defects
 
 | Defect | Where | Fix |

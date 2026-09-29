@@ -40,6 +40,7 @@ Every tenant-scoped request resolves a `TenantContext`
 | Repository | every query filters by `tenant_id` (or `platform=True` for the NULL estate); `get_by_name_scoped` keeps name uniqueness per estate |
 | Router | tenant-scoped routes depend on `TenantContext` / `require_tenant_roles`; cross-tenant get/patch/delete is 404 |
 | Daemon | `MonitorRepository.due()` skips SUSPENDED tenants; results inherit the target's tenant; every executed pass writes one `scan_run` usage unit |
+| Worker | the owning tenant travels on the queue payload and `JobExecutor` re-enters that scope before dispatching (see below) |
 | Quotas | plan limits enforced at create time: targets, monthly scans, seats → **402 quota_exceeded** with the reason; ENTERPRISE is unlimited |
 | Metering | append-only `tenant_usage_events` (SUM per calendar month — deletes never shrink counters) |
 
@@ -69,6 +70,28 @@ drives the ASGI middleware directly and asserts the downstream app is never
 reached for a refusal. The middleware is not installed when
 `ENVIRONMENT=test` (see `api.main`), which is why these tests construct it
 rather than going through the app fixture.
+
+### Why the worker has to carry the tenant itself
+
+A request resolves its tenant from the caller's session. A worker has no
+caller — it has only what the queue handed it. So the tenant travels as a
+field on the job payload, and `JobExecutor.execute` re-enters that scope
+before dispatching to any branch.
+
+It has to be the whole dispatch, not just the git pipeline: binary, org and
+cloud jobs write the same tenant-owned rows. And the API has to capture
+`tenant_id` into the payload *while the request is still open*, because the
+publish runs as a background task after the scope has been torn down.
+
+Getting this wrong is quiet rather than loud. Outside a scope the ORM guard
+is inert and `stamp_tenant` is a no-op, so the work still succeeds — it just
+writes rows with `tenant_id = NULL`. NULL is not "unowned": it is the
+platform estate, which every tenant can read. A missed scope here does not
+fail a scan, it publishes one customer's findings to all of them.
+
+`tenant_id = None` remains legitimate for genuinely platform-owned work, and
+`tenant_scope(None)` is a no-op, so a job queued before the field existed
+keeps its old behaviour instead of failing to deserialize.
 
 ## Plans
 
