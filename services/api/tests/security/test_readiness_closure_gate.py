@@ -35,6 +35,7 @@ def _complete_manifest(gate, tmp_path: Path, commit: str = "a" * 40):
                 "kind": kind,
                 "status": "PASS",
                 "evidence_tier": gap["minimum_tier"],
+                "artifact_source": "external_controlled",
                 "artifact_path": str(artifact),
                 "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
                 "captured_at": captured,
@@ -104,3 +105,14 @@ def test_independent_review_is_required(tmp_path):
     del manifest["artifacts"][0]["independent_review"]
     findings = gate.validate_manifest(policy, manifest, "a" * 40, now=datetime(2026, 9, 29, tzinfo=timezone.utc))
     assert "artifact_metadata" in {finding["code"] for finding in findings}
+
+
+def test_repository_file_cannot_close_a_customer_attestation(tmp_path):
+    gate = _gate()
+    policy, manifest = _complete_manifest(gate, tmp_path)
+    item = next(item for item in manifest["artifacts"] if item["gap_id"] == "P0-2")
+    repo_file = ROOT / "README.md"
+    item["artifact_path"] = str(repo_file)
+    item["artifact_sha256"] = hashlib.sha256(repo_file.read_bytes()).hexdigest()
+    findings = gate.validate_manifest(policy, manifest, "a" * 40, now=datetime(2026, 9, 29, tzinfo=timezone.utc))
+    assert "self_issued_artifact" in {finding["code"] for finding in findings}

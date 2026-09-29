@@ -10,6 +10,7 @@
       "kind": "independent_security_assessment",
       "status": "PASS",
       "evidence_tier": "operational_record",
+      "artifact_source": "external_controlled",
       "artifact_path": "/controlled/evidence/penetration-test-report.json",
       "artifact_sha256": "<64-lowercase-hex-digest>",
       "captured_at": "2026-09-29T00:00:00Z",

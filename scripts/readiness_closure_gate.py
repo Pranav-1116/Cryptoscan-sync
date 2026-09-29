@@ -133,7 +133,7 @@ def _artifact_statuses(value: Any, path: str = "root") -> list[tuple[str, str]]:
 def _check_artifact_file(item: dict[str, Any], gap: dict[str, Any], expected_commit: str, now: datetime, findings: list[dict[str, Any]]) -> None:
     gap_id = str(gap["id"])
     required = {
-        "evidence_id", "kind", "status", "evidence_tier", "artifact_path", "artifact_sha256",
+        "evidence_id", "kind", "status", "evidence_tier", "artifact_source", "artifact_path", "artifact_sha256",
         "captured_at", "release_commit", "environment", "scope", "limitations", "owner",
         "issuer", "reviewed_by", "reviewed_at", "operator", "independent_review",
     }
@@ -145,6 +145,8 @@ def _check_artifact_file(item: dict[str, Any], gap: dict[str, Any], expected_com
         findings.append(_finding("artifact_not_pass", f"{gap_id}/{item.get('kind')}: status must be PASS", gap_id=gap_id, kind=item.get("kind")))
     if item.get("kind") not in set(gap.get("required_kinds", [])):
         findings.append(_finding("artifact_kind", f"{gap_id}: kind is not required by policy: {item.get('kind')}", gap_id=gap_id))
+    if item.get("artifact_source") != "external_controlled":
+        findings.append(_finding("artifact_source", f"{gap_id}/{item.get('kind')}: artifact_source must be external_controlled", gap_id=gap_id, kind=item.get("kind")))
     tier = item.get("evidence_tier")
     if tier not in TIER_RANK or TIER_RANK.get(str(tier), -1) < TIER_RANK[str(gap["minimum_tier"])]:
         findings.append(_finding("artifact_tier", f"{gap_id}/{item.get('kind')}: evidence tier {tier!r} is below {gap['minimum_tier']}", gap_id=gap_id, kind=item.get("kind")))
@@ -184,6 +186,12 @@ def _check_artifact_file(item: dict[str, Any], gap: dict[str, Any], expected_com
         except OSError:
             findings.append(_finding("artifact_missing", f"{gap_id}/{item.get('kind')}: artifact_path does not exist", gap_id=gap_id, kind=item.get("kind")))
         else:
+            try:
+                inside_repository = resolved.is_relative_to(ROOT.resolve())
+            except AttributeError:  # pragma: no cover - Python 3.9 compatibility
+                inside_repository = str(resolved).startswith(str(ROOT.resolve()) + "/")
+            if inside_repository:
+                findings.append(_finding("self_issued_artifact", f"{gap_id}/{item.get('kind')}: closure artifacts must be outside the repository", gap_id=gap_id, kind=item.get("kind")))
             if not resolved.is_file():
                 findings.append(_finding("artifact_file", f"{gap_id}/{item.get('kind')}: artifact_path is not a regular file", gap_id=gap_id, kind=item.get("kind")))
             elif _sha256(resolved) != digest:

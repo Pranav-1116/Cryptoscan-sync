@@ -20,8 +20,9 @@ customer/provider information; pass their controlled paths to the gate.
 
 The documented enterprise-bank gaps have an explicit closure contract in
 `config/readiness-closure-policy.json`. The gate requires one current,
-release-bound, reviewed artifact for every required kind across P0-1 through
-P1-5; it rejects missing files, hash mismatches, stale evidence, nested
+release-bound, externally controlled and independently reviewed artifact for
+every required kind across P0-1 through P1-5; it rejects repository-local
+self-attestation, missing files, hash mismatches, stale evidence, nested
 `FAIL`/`SKIP` results, missing limitations, and same-person operation/review.
 It does not turn a repository file into customer, provider, auditor, legal, or
 regulatory evidence.
