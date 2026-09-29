@@ -70,7 +70,22 @@ def exception_inventory(checks: list[dict]) -> None:
     allowed = set()
     if allow.exists():
         try:
-            allowed = {str(x["location"]) for x in json.loads(allow.read_text()).get("entries", [])}
+            payload = json.loads(allow.read_text(encoding="utf-8"))
+            entries = payload.get("entries", [])
+            if not isinstance(entries, list):
+                raise ValueError("entries must be a list")
+            seen_locations: set[str] = set()
+            required_fields = {"location", "owner", "reviewed_by", "reviewed_at", "reason"}
+            for index, entry in enumerate(entries):
+                if not isinstance(entry, dict) or not required_fields.issubset(entry):
+                    findings.append(f"{allow}:{index + 1}: allowlist entry needs location, owner, reviewed_by, reviewed_at and reason")
+                    continue
+                location = str(entry["location"])
+                if location in seen_locations:
+                    findings.append(f"{allow}:{index + 1}: duplicate allowlist location: {location}")
+                    continue
+                seen_locations.add(location)
+                allowed.add(location)
         except Exception as exc:
             findings.append(f"{allow}:0: invalid allowlist: {type(exc).__name__}")
     unresolved = [f for f in findings if f.split(": bare")[0].split(": swallowed")[0] not in allowed]
