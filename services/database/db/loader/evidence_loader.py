@@ -19,6 +19,72 @@ from db.repositories.verification_repository import VerificationRepository
 
 logger = logging.getLogger(__name__)
 
+#: Nothing anyone deploys has a key this large. The biggest key material in
+#: real use is a few tens of thousands of bits (RSA-16384 at the paranoid end,
+#: Classic McEliece public keys measured in the low millions of *bytes* but
+#: never expressed as a key_size here). A megabit is far past any of that.
+MAX_PLAUSIBLE_KEY_BITS = 1 << 20
+
+#: PostgreSQL `integer` bound. key_size is the one column whose value is
+#: parsed out of arbitrary source text, so it is the one that can exceed it.
+_INT32_MAX = 2_147_483_647
+
+
+def _strip_nuls(value: Any) -> Any:
+    """Remove U+0000 from anything headed for a text or jsonb column.
+
+    PostgreSQL cannot store a NUL byte in text or jsonb -- psycopg raises
+    `UntranslatableCharacter: unsupported Unicode escape sequence`. Scanning
+    pyca/cryptography hit this: a crypto library is full of binary test
+    vectors, and a code snippet lifted from one carries the NUL straight into
+    finding_data. As with an oversized key_size, one byte in one file aborted
+    the load for all 20,000 files.
+
+    SQLite accepts NULs, so this only ever surfaced on the database
+    production actually mandates.
+
+    Recurses because finding_data is nested JSON; the snippet is usually
+    several levels down.
+    """
+    if isinstance(value, str):
+        return value.replace("\x00", "") if "\x00" in value else value
+    if isinstance(value, dict):
+        return {k: _strip_nuls(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nuls(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_strip_nuls(v) for v in value)
+    return value
+
+
+def _plausible_key_size(value: Any) -> int | None:
+    """A key size we are willing to store, or None.
+
+    Scanning pyca/cryptography killed an entire 20,000-file scan with
+    `psycopg2.errors.NumericValueOutOfRange: integer out of range`. key_size
+    is captured by regex from source text -- a crypto library's test vectors
+    are full of enormous numeric literals (moduli, DH primes) -- and it went
+    into an int4 column with nothing in between. One misparse in one file
+    aborted the whole load.
+
+    A value beyond MAX_PLAUSIBLE_KEY_BITS is not a key size, it is a bad
+    parse. Recording it as None keeps the other findings in that scan, which
+    matters far more than preserving a number that was already wrong. The
+    drop is logged so a systematic misparse is still visible rather than
+    silently swallowed.
+    """
+    if value is None:
+        return None
+    try:
+        size = int(value)
+    except (TypeError, ValueError):
+        logger.debug("key_size_not_numeric", extra={"value": repr(value)[:80]})
+        return None
+    if size < 0 or size > MAX_PLAUSIBLE_KEY_BITS or size > _INT32_MAX:
+        logger.warning("key_size_implausible_dropped", extra={"key_size": size})
+        return None
+    return size
+
 
 @dataclass
 class LoadResult:
@@ -159,7 +225,10 @@ class EvidenceLoader:
 
         rows: list[EvidenceRecord] = []
         for rec in evidence_records:
-            finding = rec.get("finding") or rec.get("finding_data") or {}
+            # Sanitise once, at the top: every text and jsonb column below is
+            # derived from this structure, so stripping here covers the
+            # snippet, the file path and the nested finding_data together.
+            finding = _strip_nuls(rec.get("finding") or rec.get("finding_data") or {})
             crypto = finding.get("crypto") or {}
             source = finding.get("source") or {}
             metadata = finding.get("metadata") or {}
@@ -172,7 +241,7 @@ class EvidenceLoader:
                     chain_position=int(rec.get("chain_position") or 0),
                     previous_hash=rec.get("previous_hash"),
                     algorithm=crypto.get("algorithm") or rec.get("algorithm") or "UNKNOWN",
-                    key_size=crypto.get("key_size") or rec.get("key_size"),
+                    key_size=_plausible_key_size(crypto.get("key_size") or rec.get("key_size")),
                     mode=crypto.get("mode") or rec.get("mode"),
                     padding=crypto.get("padding") or rec.get("padding"),
                     purpose=crypto.get("purpose") or rec.get("purpose"),
