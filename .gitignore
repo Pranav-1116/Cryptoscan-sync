@@ -75,3 +75,6 @@ frontend/coverage/
 !services/scanner/tests/fixtures/runtime_logs/*.log
 _tmp/
 build/
+
+# local dev stack runtime (scripts/run_local_stack.sh)
+.local-stack/
