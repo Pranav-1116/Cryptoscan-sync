@@ -11,6 +11,11 @@ exercise the payload builders with an injected transport.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import os
 import re
@@ -1898,7 +1903,11 @@ def sbom_components(request: Request, q: str | None = None, crypto: bool | None 
         scanned += 1
         try:
             doc = json.loads(_sbom_storage().get(str(man.get("storage_key"))).decode("utf-8"))
-        except Exception:  # noqa: BLE001 — a corrupt artifact must not break the index
+        except Exception as _handler_exc:  # noqa: BLE001 — a corrupt artifact must not break the index
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         for comp in _bom_components(doc):
             is_crypto = bool(comp.get("crypto")) or _is_crypto_component(comp, doc)
@@ -1945,7 +1954,11 @@ def sbom_advisories(request: Request, severity: str | None = None, cve: str | No
         checked += 1
         try:
             doc = json.loads(_sbom_storage().get(str(man.get("storage_key"))).decode("utf-8"))
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         for vuln in doc.get("vulnerabilities") or []:
             if not isinstance(vuln, dict):

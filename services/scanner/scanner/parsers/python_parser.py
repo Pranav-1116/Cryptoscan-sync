@@ -224,8 +224,10 @@ _API_TABLE: dict[str, tuple[str, str, str, str, Optional[str]]] = {
     "paramiko.RSAKey.from_private_key": ("RSA", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "paramiko", None),
     "paramiko.SSHClient": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "paramiko", None),
     "paramiko.Transport": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "paramiko", None),
-    "asyncssh.connect": ("SSH", "KEY_AGREEMENT", "NETWORK_ENCRYPTION", "asyncssh", None),
-    "asyncssh.generate_private_key": ("SSH", "KEY_PAIR_GENERATOR", "KEY_GENERATION", "asyncssh", None),
+    # asyncssh entries live with the other network-library rules below; the
+    # copies that used to sit here were shadowed by them at import time and
+    # disagreed on generate_private_key ("SSH" here vs "UNKNOWN" there). The
+    # later block is what the wave-3 accuracy benchmark measured, so it wins.
     # password hashing libraries
     "argon2.PasswordHasher": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),
     "argon2.hash_password": ("ARGON2", "KEY_GENERATOR", "PASSWORD_HASHING", "argon2-cffi", None),

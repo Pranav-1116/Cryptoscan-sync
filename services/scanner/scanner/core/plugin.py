@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from pathlib import Path
 from typing import Any, Callable, Protocol, runtime_checkable
 
@@ -100,7 +105,11 @@ class FilesystemLanguagePlugin:
                 continue
             try:
                 findings.extend(parser(path, root))
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
         return findings
 

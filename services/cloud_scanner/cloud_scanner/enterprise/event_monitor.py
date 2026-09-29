@@ -13,6 +13,11 @@ environment.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -263,7 +268,11 @@ class CloudEventMonitor:
                 for sink in self._sinks:
                     try:
                         sink(change)
-                    except Exception:  # noqa: BLE001 — sinks never break the pipeline
+                    except Exception as _handler_exc:  # noqa: BLE001 — sinks never break the pipeline
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         pass
             entry = self.cbom.upsert(event)
             if entry is not None:

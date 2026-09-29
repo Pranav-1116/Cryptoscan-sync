@@ -237,12 +237,15 @@ def test_rate_limit_identity_uses_key_bucket():
     assert _identity(_FakeRequest({})).startswith("ip:")
 
 
-def test_auth_middleware_passes_api_keys_through_to_dependencies():
-    """The session gate must not swallow X-API-Key requests before the
-    route-level key validation runs (live regression: 401 MISSING_AUTH_HEADER)."""
+def test_auth_middleware_validates_api_keys_before_routing(monkeypatch):
+    """A machine key is validated by the global gate, including on a route
+    that has no route-local dependency. This prevents future routes from
+    becoming X-API-Key bypasses by omission."""
     from fastapi import FastAPI
     from api.middleware.auth_middleware import AuthMiddleware
+    import api.dependencies
 
+    monkeypatch.setattr(api.dependencies, "_resolve_api_key", lambda request: ("apikey:test", ["viewer"], "key-id"))
     app = FastAPI()
     app.add_middleware(AuthMiddleware)
 
@@ -253,7 +256,7 @@ def test_auth_middleware_passes_api_keys_through_to_dependencies():
     client = TestClient(app)
     assert client.get("/api/v1/probe").status_code == 401  # nothing presented
     resp = client.get("/api/v1/probe", headers={"X-API-Key": "csk_something"})
-    assert resp.status_code == 200  # reaches the route; key checked downstream
+    assert resp.status_code == 200  # global gate authorized it
     assert client.get(
         "/api/v1/probe", headers={"Authorization": "Bearer garbage"}
     ).status_code == 401

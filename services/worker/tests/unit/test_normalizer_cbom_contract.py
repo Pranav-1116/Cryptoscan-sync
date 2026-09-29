@@ -11,6 +11,10 @@ as **not quantum vulnerable** (only the ten hand-written YAML rules set the flag
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import sys
 import tempfile
 from collections import Counter
@@ -38,7 +42,6 @@ MARKERS = {"TLS", "SSH", "X509", "JWT", "PGP", "DPAPI", "CSPRNG", "PRNG", "SHA1P
 
 def _scanner_names() -> dict[str, int]:
     """Every distinct crypto.algorithm the scanners emit over the accuracy corpus (784 files)."""
-    import logging
 
     logging.disable(logging.CRITICAL)
     from scanner.registry.language_scanners import scan_file
@@ -54,7 +57,11 @@ def _scanner_names() -> dict[str, int]:
                 for f in scan_file(path, root):
                     if f.crypto.algorithm:
                         names[f.crypto.algorithm] += 1
-            except Exception:  # a crash is the benchmark's business, not this test's
+            except Exception as _handler_exc:  # a crash is the benchmark's business, not this test's
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
     logging.disable(logging.NOTSET)
     return dict(names)

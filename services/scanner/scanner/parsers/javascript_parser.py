@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 from pathlib import Path
 
@@ -524,7 +529,11 @@ def parse_javascript_file(file_path: Path, repo_root: Path | None = None) -> lis
 
         seen = {(f.source.line_number, (f.crypto.algorithm or "").upper()) for f in findings}
         findings.extend(run_javascript_rules(file_path, repo_root, source, language, SCANNER_ID, seen=seen))
-    except Exception:  # pragma: no cover - supplementary pass must never break the parser
+    except Exception as _handler_exc:  # pragma: no cover - supplementary pass must never break the parser
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return findings
 

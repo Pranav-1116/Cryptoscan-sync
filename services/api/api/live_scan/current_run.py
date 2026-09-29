@@ -10,6 +10,11 @@ is still recovered from the persisted DB snapshot / platform events.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 from typing import Any
 
@@ -53,13 +58,21 @@ class RedisCurrentRun(CurrentRunStore):
                 return None
             data = json.loads(raw)
             return data if isinstance(data, dict) else None
-        except Exception:  # noqa: BLE001 — Redis outage => fall through to local
+        except Exception as _handler_exc:  # noqa: BLE001 — Redis outage => fall through to local
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
     def set(self, status: dict[str, Any]) -> None:
         try:
             self._client.set(KEY, json.dumps(status, default=str), ex=TTL_SECONDS)
-        except Exception:  # noqa: BLE001 — never break the local path
+        except Exception as _handler_exc:  # noqa: BLE001 — never break the local path
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
 
@@ -73,6 +86,10 @@ def get_current_run_store(url: str | None) -> CurrentRunStore:
                 url, socket_timeout=2, socket_connect_timeout=2, decode_responses=True
             )
             return RedisCurrentRun(client)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     return MemoryCurrentRun()

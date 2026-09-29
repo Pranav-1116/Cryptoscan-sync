@@ -14,6 +14,11 @@ single product, not four scanners.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -44,7 +49,11 @@ def _org_policy(repo: OnboardingRepository, org_id: str) -> dict | None:
             return None
         import json
         return json.loads(row.value or "{}")
-    except Exception:  # noqa: BLE001 — policy read is best-effort
+    except Exception as _handler_exc:  # noqa: BLE001 — policy read is best-effort
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

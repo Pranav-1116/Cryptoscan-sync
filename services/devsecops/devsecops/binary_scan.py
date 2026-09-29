@@ -43,6 +43,11 @@ truncation, so a hostile file cannot hang a scan or exhaust memory.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import math
 import re
@@ -483,7 +488,11 @@ def parse_elf(data: bytes) -> dict[str, Any]:
                 "size": reader.unpack(end + word, base + 0x20)[0],
                 "link": reader.unpack(end + "I", base + 0x28)[0],
             })
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
     by_name = {s["name"]: s for s in sections if s["name"]}
     # the section names are the cheapest view of what a binary still carries:
@@ -509,7 +518,11 @@ def parse_elf(data: bytes) -> dict[str, Any]:
             compilers = [part.strip() for part in text.split("\x00") if part.strip()]
             if compilers:
                 out["compiler"] = compilers[:8]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     build_id = by_name.get(".note.gnu.build-id")
@@ -519,7 +532,11 @@ def parse_elf(data: bytes) -> dict[str, Any]:
             name_size, desc_size = struct.unpack_from(end + "II", note, 0)
             descriptor = note[12 + ((name_size + 3) // 4) * 4:][:desc_size]
             out["build_id"] = descriptor.hex()
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     _elf_dynamic(reader, sections, by_name, end, word, out)
@@ -556,7 +573,11 @@ def _elf_program_headers(reader: _Reader, data: bytes, is64: bool, end: str,
         base = phoff + index * phentsize
         try:
             p_type = reader.unpack(end + "I", base)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if p_type == 1:                                   # PT_LOAD
             segments.append("load")
@@ -569,7 +590,11 @@ def _elf_program_headers(reader: _Reader, data: bytes, is64: bool, end: str,
             try:
                 text = reader.take(offset, min(size, 256)).split(b"\x00")[0]
                 out["interpreter"] = text.decode("utf-8", "replace")
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         elif p_type == 0x6474E551:                        # PT_GNU_STACK
             segments.append("gnu_stack")
@@ -595,7 +620,11 @@ def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
         return
     try:
         strtab = reader.take(dynstr["offset"], dynstr["size"])
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     requirements: dict[str, list[str]] = {}
     offset = section["offset"]
@@ -605,7 +634,11 @@ def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
         try:
             _version, count, file_offset, aux_offset, next_offset = reader.unpack(
                 end + "HHIII", offset)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         seen_files.add(offset)
         library = _cstr(strtab, file_offset)
@@ -615,7 +648,11 @@ def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
             try:
                 _hash, _flags, _other, name_offset, aux_next = reader.unpack(
                     end + "IHHII", aux)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             version = _cstr(strtab, name_offset)
             if version:
@@ -643,7 +680,11 @@ def _elf_properties(data: bytes, by_name: dict[str, Any], out: dict[str, Any]) -
         return
     try:
         note = data[section["offset"]:section["offset"] + min(section["size"], 4096)]
-    except Exception:  # noqa: BLE001 — a malformed note is skipped
+    except Exception as _handler_exc:  # noqa: BLE001 — a malformed note is skipped
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     position = 0
     features: list[str] = []
@@ -692,7 +733,11 @@ def _elf_hardening(reader: _Reader, data: bytes, by_name: dict[str, Any],
         for index in range(min(dynamic["size"] // 16, 4096)):
             try:
                 tag, value = reader.unpack(end + "QQ", dynamic["offset"] + index * 16)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             if tag == 0:
                 break
@@ -769,7 +814,11 @@ def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
         try:
             windows.append((name, data[section["offset"]:section["offset"] + size]))
             budget -= size
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         if budget <= 0:
             break
@@ -847,13 +896,21 @@ def _elf_dynamic(reader: _Reader, sections: list[dict[str, Any]], by_name: dict[
         return
     try:
         strtab = reader.take(dynstr["offset"], dynstr["size"])
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     entry = 16 if word == "Q" else 8
     for index in range(min(dynamic["size"] // entry, 4096)):
         try:
             tag, value = reader.unpack(end + word + word, dynamic["offset"] + index * entry)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if tag == 0:
             break
@@ -892,7 +949,11 @@ def _elf_symbols(reader: _Reader, sections: list[dict[str, Any]], by_name: dict[
             st_name = reader.unpack(end + "I", base)[0]
             st_info = reader.data[base + 4]
             st_shndx = reader.unpack(end + "H", base + 6)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         name = _cstr(strtab, st_name)
         if not name:
@@ -947,7 +1008,11 @@ def parse_go_buildinfo(data: bytes, by_name: dict[str, Any], reader: _Reader) ->
         return None
     try:
         header = reader.take(offset, 64)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     if header[:4] not in (b"\xff\xff\xff\xf1", b"\xff\xff\xff\xf0"):
         return None
@@ -1058,7 +1123,11 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         out["coff_timestamp"] = timestamp
         try:
             out["built"] = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-        except Exception:  # noqa: BLE001 — an absurd timestamp is just not shown
+        except Exception as _handler_exc:  # noqa: BLE001 — an absurd timestamp is just not shown
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     try:
         subsystem = reader.unpack("<H", optional + 68)[0]
@@ -1066,7 +1135,11 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         if subsystem in (10, 11, 12, 13):
             out["uefi"] = True
             out["type"] = "efi-image"
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     try:
         dll_characteristics = reader.unpack("<H", optional + 70)[0]
@@ -1088,7 +1161,11 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         try:
             name = data[base:base + 8].rstrip(b"\x00").decode("ascii", "replace")
             virtual_size, virtual_address, raw_size, raw_offset = reader.unpack("<IIII", base + 8)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         sections.append((virtual_address, virtual_size, raw_offset, raw_size, name))
         if name:
@@ -1219,7 +1296,11 @@ def _pe_delay_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> li
     for index in range(64):
         try:
             _attrs, name_rva = reader.unpack("<II", offset + index * 32)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if not name_rva:
             break
@@ -1252,7 +1333,11 @@ def _pe_resources(reader: _Reader, rva: int, size: int, rva_to_offset) -> dict[s
         for index in range(min(named + ids, 256)):
             try:
                 name, child = reader.unpack("<II", directory_offset + 16 + index * 8)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             found.append((name & 0x7FFFFFFF, child))
         return found
@@ -1300,7 +1385,11 @@ def _vi_block(blob: bytes, position: int) -> tuple[int, int, int, int, str] | No
         return None
     try:
         length, value_length, _block_type = struct.unpack_from("<HHH", blob, position)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     if length <= 0 or position + length > len(blob):
         return None
@@ -1422,7 +1511,11 @@ def _pe_debug_directory(reader: _Reader, rva: int, size: int, rva_to_offset) -> 
         try:
             _chars, _ts, _major, _minor, entry_type, entry_size, entry_rva, entry_offset = (
                 reader.unpack("<IIHHIIII", offset + index * 28))
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if entry_type != 2:                       # IMAGE_DEBUG_TYPE_CODEVIEW
             continue
@@ -1431,7 +1524,11 @@ def _pe_debug_directory(reader: _Reader, rva: int, size: int, rva_to_offset) -> 
             continue
         try:
             blob = reader.data[start:start + min(entry_size, 4096)]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         if blob[:4] == b"RSDS":
             raw = blob[24:].split(b"\x00")[0]
@@ -1461,7 +1558,11 @@ def _pe_certificate(reader: _Reader, offset: int, size: int) -> dict[str, Any]:
     while position + 8 <= end and entries < 32:
         try:
             entry_length = reader.unpack("<I", position)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if entry_length <= 0:
             break
@@ -1496,7 +1597,11 @@ def _pe_dotnet_metadata(reader: _Reader, clr_offset: int, rva_to_offset) -> dict
         version_length = reader.unpack("<I", offset + 12)[0]
         raw = reader.take(offset + 16, min(version_length, 128)).split(b"\x00")[0]
         out["framework_version"] = raw.decode("utf-8", "replace")
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return out
 
@@ -1540,7 +1645,11 @@ def _pe_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str
     for index in range(128):
         try:
             name_rva = reader.unpack("<I", offset + index * 20 + 12)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if not name_rva:
             break
@@ -1568,7 +1677,11 @@ def parse_macho(data: bytes) -> dict[str, Any]:
         for index in range(min(count, 20)):
             try:
                 cpu, sub, offset, size = struct.unpack_from(">IIII", data, 8 + index * 20)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             architectures.append({"cpu": MACHO_CPUS.get(cpu, hex(cpu)),
                                   "subtype": sub, "size": size, "offset": offset})
@@ -1588,7 +1701,11 @@ def parse_macho(data: bytes) -> dict[str, Any]:
                 out["architectures"] = architectures
                 out["slices"] = [row["cpu"] for row in architectures]
                 out["parsed_slice"] = preferred["cpu"]
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         return out
     return _parse_macho_thin(data)
@@ -1627,7 +1744,11 @@ def _macho_symbols(data: bytes, end: str, is64: bool, symoff: int, nsyms: int, s
             break
         try:
             strx, n_type = struct.unpack_from(end + "IB", data, base)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if not strx or stroff + strx >= len(data):
             continue
@@ -1674,13 +1795,21 @@ def _macho_code_signature(data: bytes, end: str, offset: int, size: int) -> dict
     for index in range(min(count, 32)):
         try:
             blob_type, blob_offset = struct.unpack_from(">II", blob, 12 + index * 8)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         next_offset = size
         if index + 1 < count:
             try:
                 next_offset = struct.unpack_from(">I", blob, 12 + (index + 1) * 8 + 4)[0]
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         entries[blob_type] = (blob_offset, max(next_offset - blob_offset, 0))
     out["blobs"] = sorted({MACHO_CS_TYPES.get(key, hex(key)) for key in entries})
@@ -1754,7 +1883,11 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
     for _ in range(min(ncmds, 8192)):
         try:
             cmd, cmdsize = struct.unpack_from(end + "II", data, position)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if cmdsize <= 0 or position + cmdsize > len(data):
             break
@@ -1824,7 +1957,11 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
                         if size and offset and offset < len(data):
                             file_sections.append((0, size, offset, size,
                                                   f"{segname},{sectname}"))
-                    except Exception:  # noqa: BLE001 — a truncated section table
+                    except Exception as _handler_exc:  # noqa: BLE001 — a truncated section table
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         continue
             elif cmd == 0x02:                                         # LC_SYMTAB
                 symtab = struct.unpack_from(end + "IIII", data, position + 8)
@@ -1841,7 +1978,11 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
                     out["encryption_id"] = cryptid
             elif cmd == 0x80000028:                                   # LC_MAIN
                 out["entry_offset"] = struct.unpack_from(end + "Q", data, position + 8)[0]
-        except Exception:  # noqa: BLE001 — a malformed command must not lose the file
+        except Exception as _handler_exc:  # noqa: BLE001 — a malformed command must not lose the file
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         position += cmdsize
 
@@ -1926,7 +2067,11 @@ def _zip_local_entries(data: bytes, limit: int = 2000):
                 "<HHHHHIIIHH", data, position + 4)
             name = data[position + 30:position + 30 + name_length].decode("utf-8", "replace")
             start = position + 30 + name_length + extra_length
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         yield {"name": name, "method": method, "flags": _flags,
                "payload": data[start:start + min(max(compressed, 0), 1 << 20)]}
@@ -1998,7 +2143,11 @@ def _zip_member(data: bytes, suffix: str) -> bytes | None:
                 return entry["payload"]
             if entry["method"] == 8:
                 return zlib.decompress(entry["payload"], -15)
-        except Exception:  # noqa: BLE001 — a corrupt member is skipped, not guessed
+        except Exception as _handler_exc:  # noqa: BLE001 — a corrupt member is skipped, not guessed
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
         return None
     return None
@@ -2181,7 +2330,11 @@ def parse_wasm(data: bytes) -> dict[str, Any]:
                 shift += 7
                 if not byte & 0x80:
                     break
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         end = position + size
         if section_id == 2:
@@ -2245,7 +2398,11 @@ def parse_rpm(data: bytes) -> dict[str, Any]:
         for index in range(min(index_count, MAX_RPM_ENTRIES)):
             try:
                 tag, dtype, offset, count = reader.unpack(">IIII", table + index * 16)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             entries[tag] = {"type": dtype, "offset": offset, "count": count}
         payload = data[store:store + store_size]
@@ -2489,7 +2646,11 @@ def _parse_dtb(data: bytes, offset: int) -> dict[str, Any] | None:
         if compatible:
             out["compatible"] = sorted(set(compatible))[:12]
         return out
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -2532,7 +2693,11 @@ def decompress_payload(data: bytes, fmt: str, *, limit: int = MAX_EXTRACT_BYTES)
             return _bounded_lzma(data, limit)
         if fmt == "bzip2":
             return _bounded_bz2(data, limit)
-    except Exception:  # noqa: BLE001 — a corrupt stream is reported by the caller
+    except Exception as _handler_exc:  # noqa: BLE001 — a corrupt stream is reported by the caller
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     return None
 
@@ -2581,7 +2746,11 @@ def _tar_members(data: bytes, *, limit: int = MAX_EXTRACT_FILES) -> list[dict[st
                     break
                 members.append({"name": info.name.lstrip("./"), "size": int(info.size),
                                 "is_dir": bool(info.isdir()), "is_symlink": bool(info.issym() or info.islnk())})
-    except Exception:  # noqa: BLE001 — a truncated archive yields what was read
+    except Exception as _handler_exc:  # noqa: BLE001 — a truncated archive yields what was read
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return members
 
@@ -2603,7 +2772,11 @@ def _tar_member_bytes(data: bytes, wanted: tuple[str, ...], *,
                 if handle is None:
                     continue
                 found.append((info.name.lstrip("./"), handle.read(limit)))
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return found
 

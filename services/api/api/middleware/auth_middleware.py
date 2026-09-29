@@ -1,11 +1,14 @@
 """Session gate middleware.
 
 Login, health, webhooks, and static assets stay open. Every other /api route
-requires a valid HMAC token that has NOT been revoked in the session store
-(production-strict; dev/test degrade gracefully when the store is missing).
+requires either a valid HMAC session token that has NOT been revoked in the
+session store or a valid, policy-authorized X-API-Key. Session validation is
+production-strict; machine-key lookup/policy is fail-closed in production.
 
 Pure ASGI implementation (see asgi_utils.py for why): the gate needs only
-path + cookies + headers, never the body.
+path + cookies + headers, never the body. The machine-key branch validates
+before routing so API-key coverage cannot depend on a future route remembering
+a dependency.
 """
 
 from __future__ import annotations
@@ -116,8 +119,28 @@ class AuthMiddleware:
         if header and header.lower().startswith("bearer "):
             token = header[7:].strip()
         if request.headers.get("x-api-key"):
-            # Machine keys are validated (SHA-256 lookup + RBAC + revocation)
-            # at the route dependencies — pass through to that enforcement.
+            # Validate machine credentials before routing. Previously this was
+            # a pass-through and depended on every router remembering a
+            # dependency; one new route could therefore become an API-key
+            # bypass. The resolver is cached on request.state so route-level
+            # dependencies do not charge quota or policy twice.
+            try:
+                from api.dependencies import _API_KEY_INVALID, _resolve_api_key
+
+                api_key = await run_in_threadpool(_resolve_api_key, request)
+            except Exception as exc:
+                status_code = getattr(exc, "status_code", 503)
+                detail = getattr(exc, "detail", "API key authorization unavailable")
+                logger.exception("api_key_middleware_authorization_failed")
+                await send_json(send, status_code, {"detail": detail}, {"WWW-Authenticate": "ApiKey"})
+                return
+            if api_key is _API_KEY_INVALID or not isinstance(api_key, tuple):
+                await send_json(send, 401, {"detail": "Invalid or revoked API key",
+                                            "error_code": "INVALID_API_KEY"},
+                                {"WWW-Authenticate": "ApiKey"})
+                return
+            scope.setdefault("state", {})["user_id"] = api_key[0]
+            scope.setdefault("state", {})["api_key_auth"] = api_key
             await self.app(scope, receive, send)
             return
         if not token:

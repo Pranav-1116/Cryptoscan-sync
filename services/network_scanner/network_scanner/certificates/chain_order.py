@@ -16,6 +16,11 @@ function over parsed certs so it stays unit-testable without openssl:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 import shutil
 import subprocess
@@ -138,7 +143,11 @@ def _weak_intermediate_issues(cert: dict[str, Any]) -> str | None:
         sig = str(cert.get("signature_algorithm") or "").lower()
         if sig.startswith(("sha1", "md5")):
             return "CHAIN_WEAK_INTERMEDIATE"
-    except Exception:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+    except Exception as _handler_exc:  # noqa: BLE001 — registry unavailable: degrade, don't crash
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     return None
 

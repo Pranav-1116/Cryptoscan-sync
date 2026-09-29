@@ -1,6 +1,5 @@
 """Natural (Adabas) + CICS/IMS/AT-TLS definition parsers — routing, comment handling, CIPHERS() decoding."""
 
-from pathlib import Path
 
 from scanner.core.file_discovery import FileDiscovery
 from scanner.parsers.mainframe_defs_parser import decode_cics_ciphers
