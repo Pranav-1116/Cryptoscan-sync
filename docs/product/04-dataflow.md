@@ -83,16 +83,8 @@ never recompute — so what a user compares is what was signed.
 
 **Binary sidecars:** `POST /devsecops/binary/scan`, queued binary jobs, and
 `POST /devsecops/sbom/scan` with `kind: binary` all use the bounded binary
-materializer. PE named imports/exports are retained as function-level static
-capabilities (ordinal-only entries remain explicit), and Android packages may
-carry bounded APK Signing Block scheme IDs; neither proves execution or
-signature validity. The resulting sidecars are stored under the artifact's tenant
-scope. The backend also upserts migration-`0063` database read-model rows for
-scan history and bounded observations; index failure is visible and does not
-rewrite the signed artifact. History is read through `GET /devsecops/binary/scans`
-and `GET /devsecops/binary/scans/{scan_id}`. Large views use the child APIs
-`/observations`, `/findings` and `/coverage`, while `/binary/scans/compare`
-compares two tenant-owned read-model scans. Signed sidecars are read through
+materializer. The resulting sidecars are stored under the artifact's tenant
+scope and are read through
 `GET /devsecops/binary/artifacts/{artifact_id}/bom/{bom_type}`. The aliases are
 `hbom`, `nbom`, `vbom`, `vulnerability-bom` and `technology-bom`; `sbom` and
 `cbom` retain their existing artifact documents. `POST /devsecops/sbom/diff`

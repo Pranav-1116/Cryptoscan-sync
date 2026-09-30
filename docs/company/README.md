@@ -185,9 +185,6 @@ questionnaire appear complete.
   owner, residual risk, compensating control, expiry, and approval.
 - [Evidence data-room procedure](evidence-data-room-procedure.md) — controlled
   release and archival of sensitive assurance documents.
-- [Binary analysis evidence boundary](binary-analysis-evidence-boundary.md) —
-  static parser scope, tenant-scoped read-model flow, bounded evidence and
-  pilot/pre-production limitations.
 - [AI and data-use statement](ai-and-data-use-statement.md) — model use,
   customer-data training, human review, and provider disclosure.
 - [Open-source and supply-chain policy](open-source-and-supply-chain.md) —

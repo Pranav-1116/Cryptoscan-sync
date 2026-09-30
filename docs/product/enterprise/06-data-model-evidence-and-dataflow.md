@@ -118,16 +118,6 @@ correlated views:
   stable component references, evidence states, provenance, fingerprints and
   per-layer bundle diffs.
 
-Binary evidence can preserve PE `import_symbols`/`exports` and Android
-`apk_signing_block` observations as provenance-bearing metadata. These are
-static observations: a named API does not prove a call occurred, and a signing
-block ID does not prove a valid signer, certificate chain, or untampered
-package. Migration `0063` stores the same scan's bounded summary and selected
-parser observations in tenant-scoped `binary_scan_records` and
-`binary_scan_observations` rows so the frontend can query history without
-loading full artifact documents. The signed artifact/BOM remains authoritative;
-these rows are a query index and can be unavailable during a migration.
-
 These are not independent truths. A CBOM component should link back to bounded
 source or binary evidence and the owning system; a vendor relationship should
 not be treated as proof that every vendor product is deployed; and imported

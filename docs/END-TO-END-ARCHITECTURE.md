@@ -273,16 +273,6 @@ Vulnerability BOM and the unified Technology-BOM snapshot. Binary NBOM records
 carry `observed: false` until an authorized network scan corroborates them;
 VBOM remains vendor/product/supply-chain evidence and is not vulnerability data.
 
-The lifecycle is shared by the synchronous API and worker: parser output enters
-`store_binary_artifact()`, which writes the signed artifact first and then
-upserts migration-`0063`'s tenant-scoped database read model inside a savepoint.
-The read model is bounded and redacted (no raw bytes or private-key material),
-so a migration/index failure does not discard the authoritative artifact and is
-returned as `database_indexed: false`. The DevSecOps console queries the read
-model for history and drill-down, while download, verify and BOM endpoints read
-the signed artifact; this separation prevents an index row from being mistaken
-for a new source of truth.
-
 Key properties:
 
 - `fingerprint = SHA-256` over the canonical materialised component set (same

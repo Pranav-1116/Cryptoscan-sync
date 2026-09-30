@@ -80,11 +80,9 @@ bundle containing:
 Binary-derived NBOM records are marked `observed: false`; imports of socket or
 TLS APIs are not live network observations. An authorized network scan must
 supply corroborating evidence before a candidate is described as an exposed
-listener or endpoint. Parsers are bounded and static-only: PE function-level
-imports/exports and Android APK Signing Block scheme IDs are evidence records,
-not execution or trust results. They do not execute or compile modules, mount
-firmware filesystems, decrypt private material, or prove signatures, malware
-absence, provenance, or complete reverse engineering.
+listener or endpoint. Parsers are bounded and static-only: they do not execute
+or compile modules, mount firmware filesystems, decrypt private material, or
+prove signatures, malware absence, provenance, or complete reverse engineering.
 
 ## 5. Who uses it
 

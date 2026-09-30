@@ -122,8 +122,8 @@ fall back to `/command-center`.
 
 ### Binary application workflow
 
-The **DevSecOps → Binaries** panel is the console entry point for the binary
-inventory pipeline. One bounded binary or firmware scan can materialize:
+The **Applications** page is the console entry point for the binary inventory
+pipeline. One bounded binary or firmware scan can materialize:
 
 - **SBOM:** binaries, packages, libraries, versions, hashes, dependency edges,
   nested provenance and package/signing metadata;
@@ -145,16 +145,6 @@ Binary evidence is bounded and metadata-only. Imported socket/TLS names do not
 prove a live endpoint, package signatures are not trusted merely because a
 signature artifact is present, and a clean or empty view does not prove that no
 unobserved estate exists.
-
-After the synchronous scan or queued worker completes, both paths call the same
-artifact-store persistence hook. The signed manifest and BOM sidecars are the
-authoritative export; migration `0063` additionally writes a tenant-scoped
-`binary_scan_records` summary and bounded `binary_scan_observations` projection.
-The API exposes these rows at `/api/v1/devsecops/binary/scans` and
-`/api/v1/devsecops/binary/scans/{scan_id}`. The panel sends the active tenant
-header, shows history/detail only for that tenant, labels indexed/unavailable
-states, and renders observed, partial, unsupported and unknown parser evidence
-without turning an unavailable index into a clean result.
 
 ## Related implementation documentation
 

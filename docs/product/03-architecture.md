@@ -256,13 +256,8 @@ page seeds or fabricates data.
 The **Applications** route (`/dev-sec-ops`) is the console entry point for the
 binary pipeline. Its one-scan bundle is persisted as tenant-scoped sidecars:
 SBOM, CBOM, HBOM, static-only NBOM, VBOM, a separate vulnerability BOM and a
-correlated technology snapshot. The parser retains bounded PE function-level
-imports/exports and Android APK Signing Block scheme IDs as static evidence;
-these do not prove runtime calls or signature validity. Migration `0063` also
-builds a tenant-scoped binary scan read model (`binary_scan_records` and bounded
-`binary_scan_observations`) for history and drill-down; the signed artifact
-remains authoritative. `POST /sbom/diff` adds
-a binary-layer diff when both stored artifacts are binary scans.
+correlated technology snapshot. `POST /sbom/diff` adds a binary-layer diff when
+both stored artifacts are binary scans.
 
 ## 3.6 Design decisions that shape everything
 

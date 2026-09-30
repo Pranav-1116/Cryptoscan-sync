@@ -31,13 +31,7 @@ search, identity, integrations, security center, settings, system health,
 scope, admin, login and password reset. The correlated binary BOM bundle
 (static NBOM, vulnerability BOM and technology snapshot) is available for
 supervised pilot / pre-production evaluation and remains subject to its
-bounded-evidence limits. The parser now also retains bounded PE function-level
-import/export observations and APK Signing Block scheme IDs, but those remain
-static metadata: they do not establish execution, signer validity, or live
-network exposure. Migration `0063` persists tenant-scoped scan summaries and
-bounded parser observations for the DevSecOps history panel; this query index is
-not an additional evidence source and does not change the supervised pilot /
-pre-production boundary.
+bounded-evidence limits.
 
 **Beta** — hardware, telecom, runtime, live environment, CMDB, catalog,
 graph / dependency graph, HBOM, agility, risk, migration, priorities,

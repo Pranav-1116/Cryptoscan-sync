@@ -31,13 +31,10 @@ operator-supplied evidence where the question is operational behavior.
 Supported bounded binary and archive paths may extract metadata, hardening
 controls, embedded crypto indicators, package signatures, firmware headers,
 checksums, and nested components. Current parsers include ELF, PE, Mach-O,
-archives/packages, WASM, Android binary XML and APK Signing Block structure
-(v2/v3/v4 pair IDs only), and selected iOS `Info.plist`/ATS metadata, plus
-firmware container and device-tree identity. PE analysis includes bounded
-function-level import-thunk and named-export evidence in addition to DLL names;
-ordinal-only imports remain explicit. Mobile metadata is not a proof of runtime
-behavior, APK signing is not cryptographically verified, and WASM modules are
-inspected but never compiled or executed.
+archives/packages, WASM, Android binary XML and selected iOS `Info.plist`/ATS
+metadata, plus firmware container and device-tree identity. Mobile metadata is
+not a proof of runtime behavior, and WASM modules are inspected but never
+compiled or executed.
 
 The binary bundle projects evidence into SBOM, CBOM, HBOM, static-only NBOM,
 VBOM, a separate vulnerability BOM, and a deterministic technology snapshot.
@@ -49,10 +46,8 @@ layer.
 
 Every parser is bounded. It records confidence, unknown, partial, skipped,
 refused, malformed, and truncated states instead of converting missing data to
-zero or a clean result. Migration `0063` persists a tenant-scoped scan index and
-bounded observations for the frontend/API; these rows contain hashes and
-redacted metadata, never executable bytes or key material. Sidecars are
-tenant-scoped, retain artifact and scan provenance, and can be compared as bundle diffs. A parser result does not
+zero or a clean result. Sidecars are tenant-scoped, retain artifact and scan
+provenance, and can be compared as bundle diffs. A parser result does not
 certify a binary's provenance, signature trust, malware status, or completeness
 of reverse engineering. A package signature, registry record, source commit,
 build attestation, and deployment record answer different questions and should

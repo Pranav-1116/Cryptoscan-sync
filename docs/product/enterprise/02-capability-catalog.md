@@ -11,7 +11,7 @@ chapter](../02-features.md).
 | Family | What it provides | Primary output | Main implementation areas |
 |---|---|---|---|
 | Source discovery | Finds cryptographic use in repositories, files, dependencies, and configuration | Evidence records and crypto assets | `services/scanner`, `services/worker` |
-| Binary and firmware discovery | Reads bounded binary, archive, package, and firmware structures; PE thunk/export names and APK Signing Block scheme IDs add function/package-signing evidence without verification | Parsed observations, warnings, findings, provenance and explicit partial/refused states | `services/devsecops/devsecops/binary_scan.py`, binary API |
+| Binary and firmware discovery | Reads supported binary, archive, package, and firmware structures and reports hardening or crypto facts | Parsed observations, warnings, and findings | `services/scanner`, binary scanners |
 | Network and TLS discovery | Inspects configured endpoints and certificate/TLS behavior | Endpoint, certificate, chain, and protocol observations | `services/network_scanner`, `services/keyassure` |
 | Cloud inventory | Reads configured AWS, Azure, and GCP accounts and key/certificate metadata | Cloud asset records and reconciliation data | `services/cloud_scanner`, cloud setup guides |
 | Container and SBOM discovery | Reads images, manifests, lockfiles, licenses, vulnerabilities, and component relationships | SBOM/CBOM evidence and release changes | `services/container_scanner`, `services/devsecops`, `services/cbom` |
