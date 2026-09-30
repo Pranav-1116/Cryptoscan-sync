@@ -1830,17 +1830,17 @@ def sbom_rescan(artifact_id: str, request: Request, body: SbomRescanRequest | No
             "this artifact predates recorded scan options — scan the target again "
             "to enable re-scan"))
     overrides = body or SbomRescanRequest()
-    request = {"kind": opts.get("kind") or "source", "target": opts["target"],
-               "format": opts.get("format") or "cyclonedx",
-               "as_image": bool(opts.get("as_image")),
-               "include_vendored": (overrides.include_vendored if overrides.include_vendored is not None
-                                    else bool(opts.get("include_vendored"))),
-               "use_lockfiles": (overrides.use_lockfiles if overrides.use_lockfiles is not None
-                                 else bool(opts.get("use_lockfiles"))),
-               "recursive": bool(opts.get("recursive", True)),
-               "include_raw": bool(opts.get("include_raw", False))}
+    scan_request = {"kind": opts.get("kind") or "source", "target": opts["target"],
+                    "format": opts.get("format") or "cyclonedx",
+                    "as_image": bool(opts.get("as_image")),
+                    "include_vendored": (overrides.include_vendored if overrides.include_vendored is not None
+                                         else bool(opts.get("include_vendored"))),
+                    "use_lockfiles": (overrides.use_lockfiles if overrides.use_lockfiles is not None
+                                      else bool(opts.get("use_lockfiles"))),
+                    "recursive": bool(opts.get("recursive", True)),
+                    "include_raw": bool(opts.get("include_raw", False))}
     try:
-        fresh = sbom_scan(SbomScanRequest(**request), db=db, user=user)
+        fresh = sbom_scan(SbomScanRequest(**scan_request), request=request, db=db, user=user)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code,
                             detail=f"re-scan of {opts['target']} failed: {exc.detail}")
