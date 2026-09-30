@@ -13,7 +13,8 @@ What is parsed, and how deep:
   imports and exports, stripped detection, and **Go build info** (toolchain
   version plus the embedded module graph with exact versions).
 * **PE** (incl. PE32+) — machine, subsystem, DLL imports resolved through the
-  section table, .NET/CLR detection, sections.
+  section table, bounded import-thunk names and export names, .NET/CLR detection,
+  sections.
 * **Mach-O** (thin and fat) — CPU type, `LC_UUID`, platform, linked dylibs.
 * **Archives and packages** — `ar` (.a / .deb), zip containers (.jar/.war/.whl/
   .nupkg/.apk) with Maven coordinates from `pom.properties` and Python metadata
@@ -23,9 +24,16 @@ What is parsed, and how deep:
   device-tree `model`/`compatible` identity. Magic and offsets only: the
   platform does **not** unpack squashfs/JFFS2 (that needs binwalk), and claiming
   a filesystem listing it never produced would be a lie.
-* **WASM**, **Java class** files, **Python bytecode**, **RPM** and **raw** blobs
-  — identified and string-scanned; a format we cannot parse is reported as
-  identified-but-not-parsed rather than silently passed.
+* **WASM**, **Java class** files, **Android DEX/APK/AAB**, **Python bytecode**,
+  **RPM** and **raw** blobs — bounded type/string/index metadata is extracted;
+  DEX method bodies and Python bytecode are not disassembled or executed. A
+  format we cannot parse is reported as identified-but-not-parsed rather than
+  silently passed.
+* **Mobile package structure** — APK/AAB/APKS/XAPK DEX/native-library and
+  package-signature artifacts, plus bounded APK Signing Block pair IDs and IPA
+  Info.plist/native/signature paths, are inventoried without asserting signature
+  validity or decoding sensitive app configuration.
+
 * **Embedded key material** — PEM/OpenSSH/PuTTY/OpenPGP armour, ASN.1 structures
   read by hand (PKCS#1, SEC1, PKCS#8 clear and encrypted, SubjectPublicKeyInfo,
   X.509, PKCS#7, PKCS#12), base64/hex-encoded copies of the same structures, Java
@@ -43,12 +51,18 @@ truncation, so a hostile file cannot hang a scan or exhaust memory.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import math
 import re
 import struct
+import time
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 from devsecops.embedded_keys import detect_embedded_keys
 
@@ -67,6 +81,42 @@ MAX_EXTRACT_DEPTH = 2                    # containers followed inside containers
 MAX_EXTRACT_FILES = 60                   # members listed/parsed per archive
 MAX_MEMBER_BYTES = 16 * 1024 * 1024      # member size we are willing to parse
 MAX_RPM_ENTRIES = 400                    # header index entries read
+MAX_BYTECODE_STRINGS = 400               # decoded strings retained per bytecode file
+MAX_BYTECODE_OBJECTS = 1000              # nested code objects walked per file
+MAX_DEX_IDS = 20000                      # DEX id rows read from untrusted headers
+MAX_WASM_SECTIONS = 512                  # sections read from an untrusted WASM module
+MAX_WASM_IMPORTS = 5000                  # imports/exports retained per module
+MAX_ANDROID_XML_STRINGS = 10000          # Android binary XML string-pool bound
+MAX_ANDROID_XML_ELEMENTS = 1000          # Android binary XML element bound
+# Walk-wide budgets are independent of per-file/container caps.  They are
+# intentionally conservative defaults and are echoed in every result so an
+# operator can tell a complete walk from a budgeted one.
+MAX_TOTAL_INPUT_BYTES = 2 * 1024 * 1024 * 1024
+MAX_SCAN_SECONDS = 15 * 60
+
+# Python's four-byte magic is versioned.  These are the released CPython 3.x
+# magics we can identify without trusting a .pyc filename.  The parser still
+# validates the header and reports an unknown version rather than inferring one.
+PYTHON_BYTECODE_MAGICS: dict[bytes, str] = {
+    bytes.fromhex("ee0c0d0a"): "3.4",
+    bytes.fromhex("170d0d0a"): "3.5",
+    bytes.fromhex("330d0d0a"): "3.6",
+    bytes.fromhex("420d0d0a"): "3.7",
+    bytes.fromhex("550d0d0a"): "3.8",
+    bytes.fromhex("610d0d0a"): "3.9",
+    bytes.fromhex("6f0d0d0a"): "3.10",
+    bytes.fromhex("a70d0d0a"): "3.11",
+    bytes.fromhex("cb0d0d0a"): "3.12",
+    bytes.fromhex("f30d0d0a"): "3.13",
+}
+try:  # keep the parser usable when a newer CPython changes its magic
+    import importlib.util as _importlib_util
+    PYTHON_BYTECODE_MAGICS.setdefault(_importlib_util.MAGIC_NUMBER, "current")
+except Exception as _handler_exc:  # pragma: no cover - importlib is part of CPython
+    logger.debug(
+        "python_bytecode_magic_registration_failed",
+        extra={"error_type": type(_handler_exc).__name__},
+    )
 
 # ------------------------------------------------------------- detection ---- #
 MAGICS: tuple[tuple[str, bytes], ...] = (
@@ -81,6 +131,7 @@ MAGICS: tuple[tuple[str, bytes], ...] = (
     ("ar", b"!<arch>\n"),
     ("zip", b"PK\x03\x04"),
     ("wasm", b"\x00asm"),
+    ("dex", b"dex\n"),
     ("rpm", b"\xed\xab\xee\xdb"),
     ("squashfs", b"hsqs"),
     ("squashfs-be", b"sqsh"),
@@ -392,6 +443,8 @@ def identify(data: bytes, name: str = "") -> dict[str, str]:
         if 1 <= count <= 20:
             return {"format": "macho-fat", "arch": "universal"}
         return {"format": "java-class", "arch": "bytecode"}
+    if data[:4] in PYTHON_BYTECODE_MAGICS:
+        return {"format": "python-bytecode", "arch": "bytecode"}
     for fmt, magic in MAGICS:
         if not head.startswith(magic):
             continue
@@ -468,8 +521,10 @@ def parse_elf(data: bytes) -> dict[str, Any]:
     if 0 < e_shnum < 20000 and e_shoff and e_shstrndx < e_shnum:
         try:
             base = e_shoff + e_shstrndx * e_shentsize
-            shstr = reader.take(reader.unpack(end + word, base + 0x18)[0],
-                                reader.unpack(end + word, base + 0x20)[0])
+            section_offset = 0x18 if is64 else 0x10
+            section_size = 0x20 if is64 else 0x14
+            shstr = reader.take(reader.unpack(end + word, base + section_offset)[0],
+                                reader.unpack(end + word, base + section_size)[0])
         except Exception:  # noqa: BLE001 — a broken section header table is reported, not fatal
             shstr = b""
     for index in range(min(e_shnum, 20000)):
@@ -479,11 +534,16 @@ def parse_elf(data: bytes) -> dict[str, Any]:
             sections.append({
                 "name": _cstr(shstr, name_off),
                 "type": reader.unpack(end + "I", base + 4)[0],
-                "offset": reader.unpack(end + word, base + 0x18)[0],
-                "size": reader.unpack(end + word, base + 0x20)[0],
-                "link": reader.unpack(end + "I", base + 0x28)[0],
+                "offset": reader.unpack(end + word, base + (0x18 if is64 else 0x10))[0],
+                "size": reader.unpack(end + word, base + (0x20 if is64 else 0x14))[0],
+                "link": reader.unpack(end + "I", base + (0x28 if is64 else 0x18))[0],
+                "entsize": reader.unpack(end + word, base + (0x38 if is64 else 0x24))[0],
             })
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
     by_name = {s["name"]: s for s in sections if s["name"]}
     # the section names are the cheapest view of what a binary still carries:
@@ -509,7 +569,11 @@ def parse_elf(data: bytes) -> dict[str, Any]:
             compilers = [part.strip() for part in text.split("\x00") if part.strip()]
             if compilers:
                 out["compiler"] = compilers[:8]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     build_id = by_name.get(".note.gnu.build-id")
@@ -519,11 +583,16 @@ def parse_elf(data: bytes) -> dict[str, Any]:
             name_size, desc_size = struct.unpack_from(end + "II", note, 0)
             descriptor = note[12 + ((name_size + 3) // 4) * 4:][:desc_size]
             out["build_id"] = descriptor.hex()
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     _elf_dynamic(reader, sections, by_name, end, word, out)
     _elf_symbols(reader, sections, by_name, end, word, out)
+    _elf_relocations(reader, sections, by_name, end, word, out)
     _elf_program_headers(reader, data, is64, end, out)
     _elf_version_requirements(reader, sections, by_name, end, out)
     _elf_properties(data, by_name, out)
@@ -556,7 +625,11 @@ def _elf_program_headers(reader: _Reader, data: bytes, is64: bool, end: str,
         base = phoff + index * phentsize
         try:
             p_type = reader.unpack(end + "I", base)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if p_type == 1:                                   # PT_LOAD
             segments.append("load")
@@ -569,7 +642,11 @@ def _elf_program_headers(reader: _Reader, data: bytes, is64: bool, end: str,
             try:
                 text = reader.take(offset, min(size, 256)).split(b"\x00")[0]
                 out["interpreter"] = text.decode("utf-8", "replace")
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         elif p_type == 0x6474E551:                        # PT_GNU_STACK
             segments.append("gnu_stack")
@@ -595,7 +672,11 @@ def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
         return
     try:
         strtab = reader.take(dynstr["offset"], dynstr["size"])
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     requirements: dict[str, list[str]] = {}
     offset = section["offset"]
@@ -605,7 +686,11 @@ def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
         try:
             _version, count, file_offset, aux_offset, next_offset = reader.unpack(
                 end + "HHIII", offset)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         seen_files.add(offset)
         library = _cstr(strtab, file_offset)
@@ -615,7 +700,11 @@ def _elf_version_requirements(reader: _Reader, sections: list[dict[str, Any]],
             try:
                 _hash, _flags, _other, name_offset, aux_next = reader.unpack(
                     end + "IHHII", aux)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             version = _cstr(strtab, name_offset)
             if version:
@@ -643,7 +732,11 @@ def _elf_properties(data: bytes, by_name: dict[str, Any], out: dict[str, Any]) -
         return
     try:
         note = data[section["offset"]:section["offset"] + min(section["size"], 4096)]
-    except Exception:  # noqa: BLE001 — a malformed note is skipped
+    except Exception as _handler_exc:  # noqa: BLE001 — a malformed note is skipped
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     position = 0
     features: list[str] = []
@@ -692,7 +785,11 @@ def _elf_hardening(reader: _Reader, data: bytes, by_name: dict[str, Any],
         for index in range(min(dynamic["size"] // 16, 4096)):
             try:
                 tag, value = reader.unpack(end + "QQ", dynamic["offset"] + index * 16)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             if tag == 0:
                 break
@@ -769,7 +866,11 @@ def _crypto_constants(data: bytes, sections: list[dict[str, Any]],
         try:
             windows.append((name, data[section["offset"]:section["offset"] + size]))
             budget -= size
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         if budget <= 0:
             break
@@ -847,13 +948,21 @@ def _elf_dynamic(reader: _Reader, sections: list[dict[str, Any]], by_name: dict[
         return
     try:
         strtab = reader.take(dynstr["offset"], dynstr["size"])
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     entry = 16 if word == "Q" else 8
     for index in range(min(dynamic["size"] // entry, 4096)):
         try:
             tag, value = reader.unpack(end + word + word, dynamic["offset"] + index * entry)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if tag == 0:
             break
@@ -892,7 +1001,11 @@ def _elf_symbols(reader: _Reader, sections: list[dict[str, Any]], by_name: dict[
             st_name = reader.unpack(end + "I", base)[0]
             st_info = reader.data[base + 4]
             st_shndx = reader.unpack(end + "H", base + 6)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         name = _cstr(strtab, st_name)
         if not name:
@@ -905,6 +1018,65 @@ def _elf_symbols(reader: _Reader, sections: list[dict[str, Any]], by_name: dict[
     out["exports"] = exports[:3000]
     out["import_count"] = len(imports)
     out["export_count"] = len(exports)
+
+
+def _elf_relocations(reader: _Reader, sections: list[dict[str, Any]],
+                     by_name: dict[str, Any], end: str, word: str,
+                     out: dict[str, Any]) -> None:
+    """Inventory bounded REL/RELA tables, including PLT/GOT linkage.
+
+    This is relocation metadata only.  It does not resolve addresses or
+    disassemble a PLT stub, and it never treats a relocation as proof that the
+    target call executes.
+    """
+    rows: list[dict[str, Any]] = []
+    plt_count = 0
+    got_sections: list[str] = []
+    for section in sections:
+        name = str(section.get("name") or "")
+        if ".got" in name and name not in got_sections:
+            got_sections.append(name)
+        if section.get("type") not in (4, 9):  # SHT_RELA / SHT_REL
+            continue
+        entry_size = int(section.get("entsize") or 0)
+        if not entry_size:
+            entry_size = 24 if word == "Q" and section.get("type") == 4 else 16 if word == "Q" else 12 if section.get("type") == 4 else 8
+        if entry_size <= 0 or section.get("size", 0) <= 0:
+            continue
+        count = min(20000, int(section["size"]) // entry_size)
+        for index in range(count):
+            offset = int(section["offset"]) + index * entry_size
+            try:
+                if section.get("type") == 4:
+                    if word == "Q":
+                        relocation_offset, info, addend = reader.unpack(end + "QQq", offset)
+                        symbol_index, relocation_type = info >> 32, info & 0xffffffff
+                    else:
+                        relocation_offset, info, addend = reader.unpack(end + "IIi", offset)
+                        symbol_index, relocation_type = info >> 8, info & 0xff
+                else:
+                    if word == "Q":
+                        relocation_offset, info = reader.unpack(end + "QQ", offset)
+                        symbol_index, relocation_type = info >> 32, info & 0xffffffff
+                    else:
+                        relocation_offset, info = reader.unpack(end + "II", offset)
+                        symbol_index, relocation_type = info >> 8, info & 0xff
+            except (IndexError, struct.error, ValueError):
+                break
+            row = {"section": name, "offset": int(relocation_offset),
+                   "type": int(relocation_type), "symbol_index": int(symbol_index)}
+            if section.get("type") == 4:
+                row["addend"] = int(addend)
+            rows.append(row)
+        if "plt" in name:
+            plt_count += count
+    if rows:
+        out["relocations"] = rows[:20000]
+        out["relocation_count"] = len(rows)
+    if plt_count:
+        out["plt_relocations"] = plt_count
+    if got_sections:
+        out["got_sections"] = got_sections[:32]
 
 
 #: Go's module blob is a block of tab-separated key/value lines that begins with
@@ -947,7 +1119,11 @@ def parse_go_buildinfo(data: bytes, by_name: dict[str, Any], reader: _Reader) ->
         return None
     try:
         header = reader.take(offset, 64)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     if header[:4] not in (b"\xff\xff\xff\xf1", b"\xff\xff\xff\xf0"):
         return None
@@ -1058,7 +1234,11 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         out["coff_timestamp"] = timestamp
         try:
             out["built"] = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-        except Exception:  # noqa: BLE001 — an absurd timestamp is just not shown
+        except Exception as _handler_exc:  # noqa: BLE001 — an absurd timestamp is just not shown
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     try:
         subsystem = reader.unpack("<H", optional + 68)[0]
@@ -1066,7 +1246,11 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         if subsystem in (10, 11, 12, 13):
             out["uefi"] = True
             out["type"] = "efi-image"
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     try:
         dll_characteristics = reader.unpack("<H", optional + 70)[0]
@@ -1088,7 +1272,11 @@ def parse_pe(data: bytes) -> dict[str, Any]:
         try:
             name = data[base:base + 8].rstrip(b"\x00").decode("ascii", "replace")
             virtual_size, virtual_address, raw_size, raw_offset = reader.unpack("<IIII", base + 8)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         sections.append((virtual_address, virtual_size, raw_offset, raw_size, name))
         if name:
@@ -1112,9 +1300,16 @@ def parse_pe(data: bytes) -> dict[str, Any]:
             directories.append(reader.unpack("<II", directory_base + index * 8))
         except Exception:  # noqa: BLE001
             directories.append((0, 0))
+    if len(directories) > 0:
+        export_rva, export_size = directories[0]
+        out["exports"] = _pe_exports(reader, export_rva, export_size, rva_to_offset)
     if len(directories) > 1:
         import_rva, import_size = directories[1]
         out["libraries"] = _pe_imports(reader, import_rva, import_size, rva_to_offset)
+        import_symbols = _pe_import_symbols(reader, import_rva, import_size, rva_to_offset,
+                                             is64=is64)
+        if import_symbols:
+            out["import_symbols"] = import_symbols
     if len(directories) > 13:
         delay_rva, delay_size = directories[13]
         delayed = _pe_delay_imports(reader, delay_rva, delay_size, rva_to_offset)
@@ -1123,6 +1318,12 @@ def parse_pe(data: bytes) -> dict[str, Any]:
             for dll in delayed:
                 if dll not in out["libraries"]:
                     out["libraries"].append(dll)
+        delay_symbols = _pe_delay_import_symbols(reader, delay_rva, delay_size, rva_to_offset,
+                                                 is64=is64)
+        if delay_symbols:
+            out["delay_import_symbols"] = delay_symbols
+            out.setdefault("import_symbols", []).extend(
+                symbol for symbol in delay_symbols if symbol not in out.get("import_symbols", []))
     if len(directories) > 2:
         resource_rva, resource_size = directories[2]
         resources = _pe_resources(reader, resource_rva, resource_size, rva_to_offset)
@@ -1172,7 +1373,13 @@ def parse_pe(data: bytes) -> dict[str, Any]:
     rich = _pe_rich_header(data)
     if rich:
         out["linker"] = rich
+    # Keep the historical DLL markers while also exposing function-level names.
+    # The latter are what lets the shared crypto engine distinguish e.g.
+    # BCryptGenRandom from a PE that merely links user32.dll.
     out["imports"] = [f"{dll}!" for dll in out["libraries"]]
+    for symbol in out.get("import_symbols") or []:
+        if symbol not in out["imports"]:
+            out["imports"].append(symbol)
     return out
 
 
@@ -1219,7 +1426,11 @@ def _pe_delay_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> li
     for index in range(64):
         try:
             _attrs, name_rva = reader.unpack("<II", offset + index * 32)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if not name_rva:
             break
@@ -1252,7 +1463,11 @@ def _pe_resources(reader: _Reader, rva: int, size: int, rva_to_offset) -> dict[s
         for index in range(min(named + ids, 256)):
             try:
                 name, child = reader.unpack("<II", directory_offset + 16 + index * 8)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             found.append((name & 0x7FFFFFFF, child))
         return found
@@ -1300,7 +1515,11 @@ def _vi_block(blob: bytes, position: int) -> tuple[int, int, int, int, str] | No
         return None
     try:
         length, value_length, _block_type = struct.unpack_from("<HHH", blob, position)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     if length <= 0 or position + length > len(blob):
         return None
@@ -1422,7 +1641,11 @@ def _pe_debug_directory(reader: _Reader, rva: int, size: int, rva_to_offset) -> 
         try:
             _chars, _ts, _major, _minor, entry_type, entry_size, entry_rva, entry_offset = (
                 reader.unpack("<IIHHIIII", offset + index * 28))
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if entry_type != 2:                       # IMAGE_DEBUG_TYPE_CODEVIEW
             continue
@@ -1431,7 +1654,11 @@ def _pe_debug_directory(reader: _Reader, rva: int, size: int, rva_to_offset) -> 
             continue
         try:
             blob = reader.data[start:start + min(entry_size, 4096)]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         if blob[:4] == b"RSDS":
             raw = blob[24:].split(b"\x00")[0]
@@ -1461,7 +1688,11 @@ def _pe_certificate(reader: _Reader, offset: int, size: int) -> dict[str, Any]:
     while position + 8 <= end and entries < 32:
         try:
             entry_length = reader.unpack("<I", position)[0]
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if entry_length <= 0:
             break
@@ -1496,7 +1727,11 @@ def _pe_dotnet_metadata(reader: _Reader, clr_offset: int, rva_to_offset) -> dict
         version_length = reader.unpack("<I", offset + 12)[0]
         raw = reader.take(offset + 16, min(version_length, 128)).split(b"\x00")[0]
         out["framework_version"] = raw.decode("utf-8", "replace")
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return out
 
@@ -1530,20 +1765,38 @@ def _pe_rich_header(data: bytes) -> dict[str, Any] | None:
             "note": "linker product id/build pairs (Rich header) — attribution evidence only"}
 
 
-def _pe_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str]:
+def _pe_import_descriptors(reader: _Reader, rva: int, size: int, rva_to_offset):
+    """Yield bounded IMAGE_IMPORT_DESCRIPTOR fields.
+
+    A malformed import directory must not turn a four-byte RVA into an
+    unbounded walk.  The directory size is advisory (some linkers leave it
+    zero), so both it and a hard descriptor cap participate in the bound.
+    """
     if not rva:
-        return []
+        return
     offset = rva_to_offset(rva)
     if offset is None:
-        return []
-    libraries: list[str] = []
-    for index in range(128):
+        return
+    count = min(128, max(1, (size + 19) // 20) if size else 128)
+    for index in range(count):
         try:
-            name_rva = reader.unpack("<I", offset + index * 20 + 12)[0]
-        except Exception:  # noqa: BLE001
-            break
-        if not name_rva:
-            break
+            original_first_thunk, _timestamp, _forwarder, name_rva, first_thunk = reader.unpack(
+                "<IIIII", offset + index * 20)
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
+            return
+        if not (original_first_thunk or name_rva or first_thunk):
+            return
+        yield original_first_thunk, name_rva, first_thunk
+
+
+def _pe_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str]:
+    """Return DLL names from the import directory."""
+    libraries: list[str] = []
+    for _original, name_rva, _first in _pe_import_descriptors(reader, rva, size, rva_to_offset) or ():
         name_offset = rva_to_offset(name_rva)
         if name_offset is None:
             continue
@@ -1554,6 +1807,146 @@ def _pe_imports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str
         if name and name not in libraries:
             libraries.append(name)
     return libraries
+
+
+def _pe_thunk_names(reader: _Reader, thunk_rva: int, rva_to_offset, *, is64: bool) -> list[str]:
+    """Read import-by-name and ordinal entries from one PE thunk table."""
+    if not thunk_rva:
+        return []
+    offset = rva_to_offset(thunk_rva)
+    if offset is None:
+        return []
+    width = 8 if is64 else 4
+    ordinal_mask = 1 << (63 if is64 else 31)
+    value_mask = ordinal_mask - 1
+    names: list[str] = []
+    # 4096 entries is deliberately much smaller than the file-size cap: thunk
+    # tables are metadata, not a reason to inspect an arbitrary byte range.
+    for index in range(min(4096, max(0, (len(reader.data) - offset) // width))):
+        try:
+            value = reader.unpack("<Q" if is64 else "<I", offset + index * width)[0]
+        except Exception as _handler_exc:
+            logger.debug(
+                "pe_import_thunk_read_failed",
+                extra={"index": index, "error_type": type(_handler_exc).__name__},
+            )
+            break
+        if not value:
+            break
+        if value & ordinal_mask:
+            name = f"ordinal:{value & 0xffff}"
+        else:
+            name_offset = rva_to_offset(value & value_mask)
+            if name_offset is None:
+                continue
+            try:
+                # IMAGE_IMPORT_BY_NAME starts with a two-byte hint.
+                end = reader.data.find(b"\x00", name_offset + 2, name_offset + 258)
+                if end < 0 or end == name_offset + 2:
+                    continue
+                name = reader.data[name_offset + 2:end].decode("ascii", "replace")
+            except Exception as _handler_exc:
+                logger.debug(
+                    "pe_import_name_decode_failed",
+                    extra={"index": index, "error_type": type(_handler_exc).__name__},
+                )
+                continue
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def _pe_import_symbols(reader: _Reader, rva: int, size: int, rva_to_offset,
+                       *, is64: bool) -> list[str]:
+    """Return function names as capability evidence, separate from DLL names."""
+    symbols: list[str] = []
+    for original_first_thunk, _name_rva, first_thunk in (
+            _pe_import_descriptors(reader, rva, size, rva_to_offset) or ()):
+        # The Import Name Table is authoritative; old/stripped images can leave
+        # it absent, in which case the IAT is the only useful static evidence.
+        for name in _pe_thunk_names(reader, original_first_thunk or first_thunk,
+                                    rva_to_offset, is64=is64):
+            if name not in symbols:
+                symbols.append(name)
+    return symbols
+
+
+def _pe_delay_import_symbols(reader: _Reader, rva: int, size: int, rva_to_offset,
+                             *, is64: bool) -> list[str]:
+    """Read names from IMAGE_DELAYLOAD_DESCRIPTOR thunk tables when RVAs are used."""
+    if not rva:
+        return []
+    offset = rva_to_offset(rva)
+    if offset is None:
+        return []
+    symbols: list[str] = []
+    count = min(64, max(1, (size + 31) // 32) if size else 64)
+    for index in range(count):
+        try:
+            attributes, _name_rva, _module, iat_rva, int_rva = reader.unpack(
+                "<IIIII", offset + index * 32)
+        except Exception as _handler_exc:
+            logger.debug(
+                "pe_delay_import_descriptor_read_failed",
+                extra={"index": index, "error_type": type(_handler_exc).__name__},
+            )
+            break
+        if not (_name_rva or iat_rva or int_rva):
+            break
+        # Attribute bit zero means the descriptor fields are RVAs.  VA-based
+        # delay imports need an image base, which this parser intentionally does
+        # not guess; the DLL itself is still reported by _pe_delay_imports.
+        if not (attributes & 1):
+            continue
+        for name in _pe_thunk_names(reader, int_rva or iat_rva, rva_to_offset, is64=is64):
+            if name not in symbols:
+                symbols.append(name)
+    return symbols
+
+
+def _pe_exports(reader: _Reader, rva: int, size: int, rva_to_offset) -> list[str]:
+    """Read named exports from IMAGE_EXPORT_DIRECTORY, with strict table caps."""
+    if not rva:
+        return []
+    offset = rva_to_offset(rva)
+    if offset is None:
+        return []
+    try:
+        (_characteristics, _timestamp, _major, _minor, _name, _base,
+         function_count, name_count, _functions, names_rva, ordinals_rva) = reader.unpack(
+            "<IIHHIIIIIII", offset)
+    except Exception:
+        return []
+    if not names_rva or not ordinals_rva:
+        return []
+    names_offset = rva_to_offset(names_rva)
+    ordinals_offset = rva_to_offset(ordinals_rva)
+    if names_offset is None or ordinals_offset is None:
+        return []
+    names: list[str] = []
+    for index in range(min(4096, name_count, function_count or name_count)):
+        try:
+            name_rva = reader.unpack("<I", names_offset + index * 4)[0]
+            ordinal = reader.unpack("<H", ordinals_offset + index * 2)[0]
+        except Exception as _handler_exc:
+            logger.debug(
+                "pe_export_table_read_failed",
+                extra={"index": index, "error_type": type(_handler_exc).__name__},
+            )
+            break
+        # An ordinal outside the function table is malformed, not a name.
+        if ordinal >= function_count:
+            continue
+        name_offset = rva_to_offset(name_rva)
+        if name_offset is None:
+            continue
+        end = reader.data.find(b"\x00", name_offset, name_offset + 256)
+        if end < 0:
+            continue
+        name = reader.data[name_offset:end].decode("ascii", "replace")
+        if name and name not in names:
+            names.append(name)
+    return names
 
 
 # --------------------------------------------------------------- Mach-O ----- #
@@ -1568,7 +1961,11 @@ def parse_macho(data: bytes) -> dict[str, Any]:
         for index in range(min(count, 20)):
             try:
                 cpu, sub, offset, size = struct.unpack_from(">IIII", data, 8 + index * 20)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             architectures.append({"cpu": MACHO_CPUS.get(cpu, hex(cpu)),
                                   "subtype": sub, "size": size, "offset": offset})
@@ -1588,7 +1985,11 @@ def parse_macho(data: bytes) -> dict[str, Any]:
                 out["architectures"] = architectures
                 out["slices"] = [row["cpu"] for row in architectures]
                 out["parsed_slice"] = preferred["cpu"]
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         return out
     return _parse_macho_thin(data)
@@ -1627,7 +2028,11 @@ def _macho_symbols(data: bytes, end: str, is64: bool, symoff: int, nsyms: int, s
             break
         try:
             strx, n_type = struct.unpack_from(end + "IB", data, base)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if not strx or stroff + strx >= len(data):
             continue
@@ -1674,13 +2079,21 @@ def _macho_code_signature(data: bytes, end: str, offset: int, size: int) -> dict
     for index in range(min(count, 32)):
         try:
             blob_type, blob_offset = struct.unpack_from(">II", blob, 12 + index * 8)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         next_offset = size
         if index + 1 < count:
             try:
                 next_offset = struct.unpack_from(">I", blob, 12 + (index + 1) * 8 + 4)[0]
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         entries[blob_type] = (blob_offset, max(next_offset - blob_offset, 0))
     out["blobs"] = sorted({MACHO_CS_TYPES.get(key, hex(key)) for key in entries})
@@ -1754,7 +2167,11 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
     for _ in range(min(ncmds, 8192)):
         try:
             cmd, cmdsize = struct.unpack_from(end + "II", data, position)
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             break
         if cmdsize <= 0 or position + cmdsize > len(data):
             break
@@ -1824,7 +2241,11 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
                         if size and offset and offset < len(data):
                             file_sections.append((0, size, offset, size,
                                                   f"{segname},{sectname}"))
-                    except Exception:  # noqa: BLE001 — a truncated section table
+                    except Exception as _handler_exc:  # noqa: BLE001 — a truncated section table
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         continue
             elif cmd == 0x02:                                         # LC_SYMTAB
                 symtab = struct.unpack_from(end + "IIII", data, position + 8)
@@ -1841,7 +2262,11 @@ def _parse_macho_thin(data: bytes) -> dict[str, Any]:
                     out["encryption_id"] = cryptid
             elif cmd == 0x80000028:                                   # LC_MAIN
                 out["entry_offset"] = struct.unpack_from(end + "Q", data, position + 8)[0]
-        except Exception:  # noqa: BLE001 — a malformed command must not lose the file
+        except Exception as _handler_exc:  # noqa: BLE001 — a malformed command must not lose the file
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         position += cmdsize
 
@@ -1926,10 +2351,14 @@ def _zip_local_entries(data: bytes, limit: int = 2000):
                 "<HHHHHIIIHH", data, position + 4)
             name = data[position + 30:position + 30 + name_length].decode("utf-8", "replace")
             start = position + 30 + name_length + extra_length
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         yield {"name": name, "method": method, "flags": _flags,
-               "payload": data[start:start + min(max(compressed, 0), 1 << 20)]}
+               "offset": position, "payload": data[start:start + min(max(compressed, 0), 1 << 20)]}
         position = start + max(compressed, 0)
 
 
@@ -1998,19 +2427,422 @@ def _zip_member(data: bytes, suffix: str) -> bytes | None:
                 return entry["payload"]
             if entry["method"] == 8:
                 return zlib.decompress(entry["payload"], -15)
-        except Exception:  # noqa: BLE001 — a corrupt member is skipped, not guessed
+        except Exception as _handler_exc:  # noqa: BLE001 — a corrupt member is skipped, not guessed
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
         return None
     return None
 
 
+APK_SIGNING_SCHEMES = {
+    0x7109871A: "v2",
+    0xF05368C0: "v3",
+    0x2B09189E: "v4",
+    0x9A6FDE3E: "source-stamp",
+}
+APK_SIGNING_BLOCK_MAGIC = b"APK Sig Block 42"
+
+
+def _apk_signing_block(data: bytes) -> dict[str, Any]:
+    """Locate the APK Signing Block without verifying its cryptographic proof.
+
+    The block sits between the local entries and the central directory.  We only
+    inventory bounded pair IDs and lengths; validating digests, certificates,
+    signer lineage, or the APK contents requires Android's verifier and is not a
+    static parser claim.
+    """
+    result: dict[str, Any] = {
+        "present": False,
+        "verification": "not_performed",
+    }
+    # EOCD plus its maximum comment is the bounded search window for ordinary
+    # ZIP/APK files.  ZIP64 and signing overlays remain explicitly unknown.
+    start_search = max(0, len(data) - (22 + 0xFFFF + 4))
+    eocd = data.rfind(b"PK\x05\x06", start_search)
+    if eocd < 0 or eocd + 22 > len(data):
+        result["reason"] = "ZIP end-of-central-directory record not found"
+        return result
+    try:
+        comment_length = struct.unpack_from("<H", data, eocd + 20)[0]
+        central_offset = struct.unpack_from("<I", data, eocd + 16)[0]
+    except struct.error:
+        result["reason"] = "truncated ZIP end-of-central-directory record"
+        return result
+    if eocd + 22 + comment_length > len(data):
+        result["reason"] = "truncated ZIP comment"
+        return result
+    if central_offset < 24 or central_offset > len(data):
+        result["reason"] = "central-directory offset is outside the file"
+        return result
+    footer = central_offset - 24
+    if footer < 0 or footer + 24 > len(data):
+        result["reason"] = "no room for APK Signing Block footer"
+        return result
+    try:
+        block_size = struct.unpack_from("<Q", data, footer)[0]
+        magic = data[footer + 8:footer + 24]
+    except struct.error:
+        result["reason"] = "truncated APK Signing Block footer"
+        return result
+    if magic != APK_SIGNING_BLOCK_MAGIC:
+        result["reason"] = "APK Signing Block magic not present"
+        return result
+    total = block_size + 8
+    block_start = central_offset - total
+    if block_size < 24 or block_start < 8 or block_start + total > len(data):
+        result.update({"state": "partial", "reason": "APK Signing Block size is invalid"})
+        return result
+    try:
+        first_size = struct.unpack_from("<Q", data, block_start)[0]
+    except struct.error:
+        result.update({"state": "partial", "reason": "APK Signing Block size field is truncated"})
+        return result
+    if first_size != block_size:
+        result.update({"state": "partial", "reason": "APK Signing Block size fields disagree"})
+        return result
+
+    pairs_end = footer
+    position = block_start + 8
+    pair_ids: list[str] = []
+    pair_sizes: list[int] = []
+    while position < pairs_end and len(pair_ids) < 128:
+        if position + 8 > pairs_end:
+            result.update({"state": "partial", "reason": "truncated APK Signing Block pair length"})
+            return result
+        pair_size = struct.unpack_from("<Q", data, position)[0]
+        pair_end = position + 8 + pair_size
+        if pair_size < 4 or pair_end > pairs_end:
+            result.update({"state": "partial", "reason": "invalid APK Signing Block pair length"})
+            return result
+        pair_id = struct.unpack_from("<I", data, position + 8)[0]
+        pair_ids.append(APK_SIGNING_SCHEMES.get(pair_id, f"0x{pair_id:08x}"))
+        pair_sizes.append(int(pair_size))
+        position = pair_end
+    if position != pairs_end:
+        result.update({"state": "partial", "reason": "APK Signing Block pair walk was capped"})
+        return result
+    result.update({
+        "present": True,
+        "state": "complete",
+        "size": int(total),
+        "pair_count": len(pair_ids),
+        "pair_ids": pair_ids,
+        "pair_sizes": pair_sizes,
+        "schemes": [name for name in pair_ids if name in {"v2", "v3", "v4"}],
+        "note": "signing-block structure detected; cryptographic verification was not performed",
+    })
+    return result
+
+
+def _wasm_uleb(data: bytes, position: int, *, limit: int = 5) -> tuple[int, int]:
+    """Read a bounded unsigned LEB128 value from a WASM section."""
+    value = 0
+    shift = 0
+    for _ in range(limit):
+        if position >= len(data):
+            raise ValueError("truncated WASM LEB128")
+        byte = data[position]
+        position += 1
+        value |= (byte & 0x7F) << shift
+        if not byte & 0x80:
+            return value, position
+        shift += 7
+    raise ValueError("oversized WASM LEB128")
+
+
+def _wasm_name(data: bytes, position: int) -> tuple[str, int]:
+    """Read one bounded WASM UTF-8 name."""
+    length, position = _wasm_uleb(data, position)
+    if length > MAX_MEMBER_BYTES or position + length > len(data):
+        raise ValueError("WASM name is outside the section")
+    raw = data[position:position + length]
+    return raw.decode("utf-8", "replace"), position + length
+
+
+def _wasm_limits(data: bytes, position: int) -> tuple[dict[str, Any], int]:
+    flags, position = _wasm_uleb(data, position)
+    minimum, position = _wasm_uleb(data, position)
+    maximum = None
+    if flags & 1:
+        maximum, position = _wasm_uleb(data, position)
+    return {"minimum": minimum, "maximum": maximum, "shared": bool(flags & 2)}, position
+
+
+def _parse_wasm_imports(payload: bytes) -> tuple[list[str], int, int, int]:
+    """Read import names and capability counts, not function bodies."""
+    position = 0
+    count, position = _wasm_uleb(payload, position)
+    if count > MAX_WASM_IMPORTS:
+        raise ValueError("WASM import count exceeds the bound")
+    names: list[str] = []
+    memories = tables = globals_count = 0
+    for _ in range(count):
+        module, position = _wasm_name(payload, position)
+        field, position = _wasm_name(payload, position)
+        if position >= len(payload):
+            raise ValueError("truncated WASM import descriptor")
+        kind = payload[position]
+        position += 1
+        if kind == 0:  # function type index
+            _type_index, position = _wasm_uleb(payload, position)
+        elif kind == 1:  # table type: element type + limits
+            if position >= len(payload):
+                raise ValueError("truncated WASM table import")
+            position += 1
+            _limits, position = _wasm_limits(payload, position)
+            tables += 1
+        elif kind == 2:  # memory type
+            _limits, position = _wasm_limits(payload, position)
+            memories += 1
+        elif kind == 3:  # global type
+            if position + 2 > len(payload):
+                raise ValueError("truncated WASM global import")
+            position += 2
+            globals_count += 1
+        else:
+            raise ValueError(f"unsupported WASM import kind: {kind}")
+        names.append(f"{module}.{field}" if module else field)
+    return names, memories, tables, globals_count
+
+
+def _parse_wasm_exports(payload: bytes) -> list[str]:
+    position = 0
+    count, position = _wasm_uleb(payload, position)
+    if count > MAX_WASM_IMPORTS:
+        raise ValueError("WASM export count exceeds the bound")
+    names: list[str] = []
+    for _ in range(count):
+        name, position = _wasm_name(payload, position)
+        if position >= len(payload):
+            raise ValueError("truncated WASM export descriptor")
+        position += 1  # export kind
+        _index, position = _wasm_uleb(payload, position)
+        names.append(name)
+    return names
+
+
+def _parse_wasm_custom(payload: bytes) -> tuple[str, dict[str, Any]]:
+    name, position = _wasm_name(payload, 0)
+    detail: dict[str, Any] = {"name": name}
+    remainder = payload[position:]
+    if name == "producers":
+        # The producers section is a vector of fields and values. Decode only
+        # printable names, retaining the original section as bounded metadata.
+        try:
+            field_count, position = _wasm_uleb(payload, position)
+            producers: list[str] = []
+            for _ in range(min(field_count, 64)):
+                field, position = _wasm_name(payload, position)
+                value_count, position = _wasm_uleb(payload, position)
+                producers.append(field)
+                for _ in range(min(value_count, 64)):
+                    value, position = _wasm_name(payload, position)
+                    producers.append(f"{field}={value}")
+            detail["producers"] = producers[:128]
+        except ValueError:
+            detail["truncated"] = True
+    elif remainder:
+        detail["payload_bytes"] = min(len(remainder), 4096)
+    return name, detail
+
+
+def _parse_android_binary_xml(data: bytes) -> dict[str, Any]:
+    """Read bounded Android AXML manifest facts without decoding app content."""
+    if len(data) < 8 or struct.unpack_from("<I", data, 0)[0] != 0x00080003:
+        raise ValueError("not Android binary XML")
+    strings: list[str] = []
+    position = 8
+    chunk_count = 0
+    manifest: dict[str, Any] = {"permissions": [], "components": []}
+    string_flags = 0
+    while position + 8 <= len(data) and chunk_count < MAX_ANDROID_XML_ELEMENTS:
+        chunk_start = position
+        chunk_type, header_size, chunk_size = struct.unpack_from("<HHI", data, position)
+        if header_size < 8 or chunk_size < header_size or chunk_start + chunk_size > len(data):
+            raise ValueError("Android binary XML chunk is outside the file")
+        if chunk_type == 0x0001:  # string pool
+            if header_size < 28 or chunk_size < header_size:
+                raise ValueError("invalid Android string pool")
+            string_count, style_count, string_flags, strings_start, styles_start = struct.unpack_from(
+                "<IIIII", data, position + 8)
+            if string_count > MAX_ANDROID_XML_STRINGS:
+                raise ValueError("Android string pool exceeds the bound")
+            offsets_start = position + header_size
+            if offsets_start + string_count * 4 > chunk_start + chunk_size:
+                raise ValueError("Android string offsets are outside the chunk")
+            pool_start = position + strings_start
+            for index in range(string_count):
+                offset = struct.unpack_from("<I", data, offsets_start + index * 4)[0]
+                start = pool_start + offset
+                if start >= chunk_start + chunk_size:
+                    strings.append("")
+                    continue
+                try:
+                    if string_flags & 0x100:  # UTF-8 pool
+                        utf8_len, cursor = _wasm_uleb(data, start)
+                        byte_len, cursor = _wasm_uleb(data, cursor)
+                        raw = data[cursor:cursor + byte_len]
+                        strings.append(raw.decode("utf-8", "replace"))
+                    else:  # UTF-16 pool
+                        utf16_len = struct.unpack_from("<H", data, start)[0]
+                        raw = data[start + 2:start + 2 + utf16_len * 2]
+                        strings.append(raw.decode("utf-16le", "replace"))
+                except (IndexError, struct.error, UnicodeError, ValueError):
+                    strings.append("")
+        elif chunk_type == 0x0102:  # start element
+            if header_size < 16 or position + 36 > chunk_start + chunk_size:
+                raise ValueError("truncated Android start element")
+            name_index = struct.unpack_from("<I", data, position + 20)[0]
+            attr_start, attr_size, attr_count = struct.unpack_from("<HHH", data, position + 24)
+            attrs_position = position + 16 + attr_start
+            if attr_size < 20 or attrs_position + attr_count * attr_size > chunk_start + chunk_size:
+                raise ValueError("Android attribute table is outside the chunk")
+            element = strings[name_index] if name_index < len(strings) else ""
+            attrs: dict[str, Any] = {}
+            for index in range(min(attr_count, 128)):
+                cursor = attrs_position + index * attr_size
+                attr_name_index = struct.unpack_from("<I", data, cursor + 4)[0]
+                raw_index = struct.unpack_from("<I", data, cursor + 8)[0]
+                typed_value = struct.unpack_from("<I", data, cursor + 16)[0]
+                attr_name = strings[attr_name_index] if attr_name_index < len(strings) else f"attr-{attr_name_index}"
+                value = strings[raw_index] if raw_index < len(strings) else None
+                if value is None:
+                    value = f"@0x{typed_value:08x}" if typed_value else None
+                attrs[attr_name] = value
+            if element == "manifest":
+                for key in ("package", "versionName", "versionCode"):
+                    if key in attrs:
+                        manifest[key] = attrs[key]
+            elif element == "uses-permission":
+                permission = attrs.get("name") or attrs.get("android:name")
+                if permission:
+                    manifest["permissions"].append(permission)
+            elif element in {"activity", "activity-alias", "service", "receiver", "provider"}:
+                manifest["components"].append({"type": element, **attrs})
+            elif element == "uses-sdk":
+                for key in ("minSdkVersion", "targetSdkVersion", "maxSdkVersion"):
+                    if key in attrs:
+                        manifest[key] = attrs[key]
+            elif element == "application":
+                for key in ("debuggable", "usesCleartextTraffic", "networkSecurityConfig", "backupAgent"):
+                    if key in attrs:
+                        manifest[key] = attrs[key]
+        position = chunk_start + chunk_size
+        chunk_count += 1
+    manifest["string_count"] = len(strings)
+    manifest["chunks_read"] = chunk_count
+    manifest["truncated"] = chunk_count >= MAX_ANDROID_XML_ELEMENTS
+    manifest["permissions"] = sorted(set(manifest["permissions"]))[:200]
+    manifest["components"] = manifest["components"][:500]
+    return manifest
+
+
+def _plist_metadata(data: bytes) -> dict[str, Any]:
+    """Read non-sensitive iOS Info.plist identity and transport settings."""
+    import plistlib
+
+    value = plistlib.loads(data[:MAX_MEMBER_BYTES])
+    if not isinstance(value, dict):
+        raise ValueError("Info.plist root is not a dictionary")
+    keep = ("CFBundleIdentifier", "CFBundleName", "CFBundleDisplayName", "CFBundleShortVersionString",
+            "CFBundleVersion", "MinimumOSVersion", "DTPlatformVersion", "UIRequiredDeviceCapabilities",
+            "CFBundleURLTypes", "NSAppTransportSecurity")
+    out = {key: value[key] for key in keep if key in value}
+    ats = out.get("NSAppTransportSecurity")
+    if isinstance(ats, dict):
+        out["NSAppTransportSecurity"] = {key: ats[key] for key in
+                                          ("NSAllowsArbitraryLoads", "NSAllowsLocalNetworking")
+                                          if key in ats}
+    out["plist_metadata_only"] = True
+    return out
+
+
+def _mobile_zip_metadata(entries: list[str], *, android: bool, data: bytes | None = None) -> dict[str, Any]:
+    """Inventory mobile package structure without claiming signature verification."""
+    lower = [entry.lower() for entry in entries]
+    if android:
+        dex = [entry for entry in entries if entry.lower().rsplit("/", 1)[-1].startswith("classes")
+               and entry.lower().endswith(".dex")]
+        native = [entry for entry in entries if entry.lower().startswith("lib/")
+                  and entry.lower().endswith(".so")]
+        signing = [entry for entry in entries
+                   if entry.lower().startswith("meta-inf/")
+                   and entry.lower().rsplit("/", 1)[-1].endswith((".rsa", ".dsa", ".ec"))]
+        metadata: dict[str, Any] = {
+            "package_kind": "android",
+            "manifest_present": "androidmanifest.xml" in lower,
+            "dex_files": dex[:100], "dex_count": len(dex),
+            "native_libraries": native[:200], "native_library_count": len(native),
+            "signature_artifacts": signing[:20],
+            "package_signature_present": bool(signing),
+            "signature_verification": "not_performed",
+        }
+        if data:
+            signing_block = _apk_signing_block(data)
+            metadata["apk_signing_block"] = signing_block
+            if signing_block.get("present"):
+                metadata["package_signature_present"] = True
+                metadata["signature_sources"] = ["APK Signing Block"]
+                if signing:
+                    metadata["signature_sources"].append("META-INF")
+                metadata["signing_schemes"] = signing_block.get("schemes", [])
+        if data and metadata["manifest_present"]:
+            try:
+                manifest = _zip_member(data, "AndroidManifest.xml")
+                if manifest:
+                    metadata["manifest"] = _parse_android_binary_xml(manifest)
+            except Exception as exc:  # noqa: BLE001 — manifest metadata is optional
+                metadata["manifest_parse_error"] = f"{type(exc).__name__}: {exc}"
+        return metadata
+    plist = [entry for entry in entries if entry.lower().endswith("/info.plist")]
+    native = [entry for entry in entries
+              if entry.lower().startswith("payload/")
+              and entry.lower().endswith(('.dylib', '.framework'))]
+    code_signatures = [entry for entry in entries
+                       if entry.lower().startswith("payload/")
+                       and "/_codesignature/" in entry.lower()]
+    metadata = {
+        "package_kind": "ios",
+        "info_plists": plist[:20],
+        "info_plist_count": len(plist),
+        "native_libraries": native[:200],
+        "native_library_count": len(native),
+        "code_signature_files": code_signatures[:20],
+        "package_signature_present": bool(code_signatures),
+        "signature_verification": "not_performed",
+    }
+    if data and plist:
+        try:
+            info = _zip_member(data, "Info.plist")
+            if info:
+                metadata["info_plist"] = _plist_metadata(info)
+        except Exception as exc:  # noqa: BLE001 — plist metadata is optional
+            metadata["info_plist_parse_error"] = f"{type(exc).__name__}: {exc}"
+    return metadata
+
+
 def parse_zip(data: bytes, name: str = "") -> dict[str, Any]:
-    """Zip containers: jars, wheels, nupkgs, APKs — with their metadata."""
+    """Zip containers: jars, wheels, nupkgs, APK/AAB/IPA packages, with metadata."""
     entries = [entry["name"] for entry in _zip_local_entries(data)]
     lower = name.lower()
+    lower_entries = {entry.lower() for entry in entries}
     out: dict[str, Any] = {"format": "zip", "entry_count": len(entries),
                            "entries": entries[:300], "libraries": [], "imports": []}
-    if lower.endswith((".jar", ".war", ".ear")) or "META-INF/MANIFEST.MF" in entries:
+    android = (lower.endswith((".apk", ".aab", ".xapk", ".apks"))
+               or "androidmanifest.xml" in lower_entries
+               or any(entry.startswith("lib/") and entry.endswith(".so") for entry in lower_entries))
+    ios = (lower.endswith(".ipa") or any(entry.startswith("payload/") and entry.endswith("/info.plist")
+                                         for entry in lower_entries))
+    if android:
+        out["type"] = "android-package"
+        out["android"] = _mobile_zip_metadata(entries, android=True, data=data)
+    elif ios:
+        out["type"] = "ios-package"
+        out["ios"] = _mobile_zip_metadata(entries, android=False, data=data)
+    elif lower.endswith((".jar", ".war", ".ear")) or "meta-inf/manifest.mf" in lower_entries:
         out["type"] = "java-archive"
         out["java"] = _java_metadata(data, entries)
         if any(entry.startswith("org/bouncycastle") for entry in entries):
@@ -2068,6 +2900,230 @@ def _python_metadata(data: bytes, entries: list[str]) -> dict[str, Any]:
             elif lower.startswith("requires-dist:"):
                 out.setdefault("requires", []).append(line.split(":", 1)[1].strip())
     out["native_extensions"] = [entry for entry in entries if entry.endswith((".so", ".pyd", ".dylib"))][:50]
+    return out
+
+
+def _dex_uleb(data: bytes, offset: int) -> tuple[int, int]:
+    """Read one bounded DEX ULEB128 value.
+
+    DEX string_data items are length-prefixed with ULEB128.  A malformed value
+    must stop this one item, not make the scanner walk past the file or allocate
+    from an attacker-controlled length.
+    """
+    value = 0
+    shift = 0
+    for _ in range(5):
+        if offset >= len(data):
+            raise ValueError("truncated DEX ULEB128")
+        byte = data[offset]
+        offset += 1
+        value |= (byte & 0x7f) << shift
+        if not byte & 0x80:
+            return value, offset
+        shift += 7
+    raise ValueError("oversized DEX ULEB128")
+
+
+def _dex_strings(data: bytes, size: int, offset: int) -> tuple[list[str], bool]:
+    """Decode bounded DEX string IDs, returning strings and a truncation flag."""
+    if size > MAX_DEX_IDS or offset < 0 or offset + size * 4 > len(data):
+        raise ValueError("DEX string table is outside the file or exceeds the bound")
+    values: list[str] = []
+    truncated = False
+    for index in range(size):
+        (string_offset,) = struct.unpack_from("<I", data, offset + index * 4)
+        if string_offset >= len(data):
+            truncated = True
+            values.append("")
+            continue
+        try:
+            utf16_length, position = _dex_uleb(data, string_offset)
+            end = data.find(b"\x00", position,
+                            min(len(data), position + utf16_length * 4 + 1))
+            if end < 0:
+                truncated = True
+                values.append("")
+                continue
+            values.append(data[position:end].decode("utf-8", "replace"))
+        except (ValueError, UnicodeError):
+            truncated = True
+            values.append("")
+    return values, truncated
+
+
+def parse_dex(data: bytes) -> dict[str, Any]:
+    """Parse the bounded, crypto-relevant index tables of an Android DEX file.
+
+    This is deliberately not a Dalvik disassembler.  The DEX header, type/string
+    pools, class definitions and method names are stable evidence for package and
+    crypto-library inventory, while method bodies are left uninterpreted.  A DEX
+    can be a member of an APK/AAB/embedded ZIP and is parsed through the same
+    container path as an ELF member.
+    """
+    if len(data) < 0x70 or not data.startswith(b"dex\n"):
+        raise ValueError("not a DEX file")
+    version = data[4:7].decode("ascii", "replace")
+    if data[7] != 0:
+        raise ValueError("invalid DEX magic terminator")
+    file_size, header_size, endian_tag = struct.unpack_from("<III", data, 0x20)
+    if header_size != 0x70:
+        raise ValueError(f"unsupported DEX header size: {header_size}")
+    if file_size and file_size > len(data):
+        # A truncated file is still useful if all tables we read are present; the
+        # discrepancy is retained as an explicit integrity warning below.
+        size_mismatch = True
+    else:
+        size_mismatch = bool(file_size and file_size != len(data))
+    if endian_tag not in (0x12345678, 0x78563412):
+        raise ValueError(f"invalid DEX endian tag: 0x{endian_tag:08x}")
+    if endian_tag == 0x78563412:
+        raise ValueError("reverse-endian DEX is not supported")
+
+    string_count, string_offset = struct.unpack_from("<II", data, 0x38)
+    type_count, type_offset = struct.unpack_from("<II", data, 0x40)
+    method_count, method_offset = struct.unpack_from("<II", data, 0x58)
+    class_count, class_offset = struct.unpack_from("<II", data, 0x60)
+    strings, strings_truncated = _dex_strings(data, string_count, string_offset)
+
+    if type_count > MAX_DEX_IDS or type_offset + type_count * 4 > len(data):
+        raise ValueError("DEX type table is outside the file or exceeds the bound")
+    types: list[str] = []
+    for index in range(type_count):
+        (string_index,) = struct.unpack_from("<I", data, type_offset + index * 4)
+        types.append(strings[string_index] if string_index < len(strings) else "")
+
+    # class_defs.class_idx identifies locally defined types.  The remaining type
+    # descriptors are dependencies/imports, which is more useful than treating
+    # every DEX type as an exported class.
+    if class_count > MAX_DEX_IDS or class_offset + class_count * 32 > len(data):
+        raise ValueError("DEX class definition table is outside the file or exceeds the bound")
+    defined: set[str] = set()
+    for index in range(class_count):
+        (class_index,) = struct.unpack_from("<I", data, class_offset + index * 32)
+        if class_index < len(types) and types[class_index]:
+            defined.add(types[class_index])
+
+    methods: list[str] = []
+    methods_truncated = False
+    if method_count <= MAX_DEX_IDS and method_offset + method_count * 8 <= len(data):
+        for index in range(method_count):
+            _class_index, _proto_index, name_index = struct.unpack_from(
+                "<HHI", data, method_offset + index * 8)
+            if name_index < len(strings) and strings[name_index]:
+                methods.append(strings[name_index])
+    else:
+        methods_truncated = True
+
+    imports = [name for name in types if name and name not in defined]
+    out: dict[str, Any] = {
+        "format": "dex", "arch": "dalvik", "libraries": [],
+        "imports": imports[:600], "exports": sorted(defined)[:600],
+        "symbols": sorted(set(methods))[:600],
+        "dex": {
+            "version": version,
+            "file_size": file_size,
+            "header_size": header_size,
+            "endian": "little",
+            "string_count": string_count,
+            "type_count": type_count,
+            "method_count": method_count,
+            "class_count": class_count,
+            "classes": sorted(defined)[:300],
+            "method_names": sorted(set(methods))[:300],
+            "strings": [text for text in strings if len(text) >= 3][:MAX_BYTECODE_STRINGS],
+            "truncated": bool(strings_truncated or size_mismatch or methods_truncated),
+        },
+    }
+    out["java"] = {"runtime": "Android DEX", "version": version,
+                    "classes": sorted(defined)[:300],
+                    "strings": out["dex"]["strings"]}
+    if any("bouncycastle" in name.lower() or "bcprov" in name.lower()
+           for name in (*imports, *defined)):
+        out["libraries"].append("BouncyCastle")
+    return out
+
+
+def _python_code_metadata(code: Any, *, strings: list[str], names: list[str],
+                          filenames: list[str], depth: int = 0,
+                          objects: list[Any] | None = None) -> None:
+    """Collect Python code-object metadata without executing it."""
+    if objects is None:
+        objects = []
+    if depth > 64 or len(objects) >= MAX_BYTECODE_OBJECTS or code in objects:
+        return
+    objects.append(code)
+    for value in getattr(code, "co_names", ()):
+        if isinstance(value, str):
+            names.append(value)
+    filename = getattr(code, "co_filename", "")
+    if isinstance(filename, str) and filename:
+        filenames.append(filename)
+    for value in getattr(code, "co_consts", ()):
+        if isinstance(value, str):
+            strings.append(value)
+        elif isinstance(value, bytes):
+            strings.extend(extract_strings(value, min_len=3, limit=32))
+        elif hasattr(value, "co_consts"):
+            _python_code_metadata(value, strings=strings, names=names,
+                                  filenames=filenames, depth=depth + 1,
+                                  objects=objects)
+
+
+def parse_python_bytecode(data: bytes) -> dict[str, Any]:
+    """Read CPython pyc metadata and constants, never execute the code object."""
+    if len(data) < 16 or data[:4] not in PYTHON_BYTECODE_MAGICS:
+        raise ValueError("not a supported CPython bytecode file")
+    magic = data[:4]
+    flags = struct.unpack_from("<I", data, 4)[0]
+    version = PYTHON_BYTECODE_MAGICS[magic]
+    header_size = 16
+    header: dict[str, Any] = {"magic": magic.hex(), "version": version,
+                               "flags": flags, "hash_based": bool(flags & 1)}
+    if flags & 1:
+        header["source_hash"] = data[8:16].hex()
+    else:
+        timestamp, source_size = struct.unpack_from("<II", data, 8)
+        header["timestamp"] = timestamp
+        header["source_size"] = source_size
+
+    strings: list[str] = []
+    names: list[str] = []
+    filenames: list[str] = []
+    objects: list[Any] = []
+    marshal_error: str | None = None
+    try:
+        import marshal
+        code = marshal.loads(data[header_size:header_size + MAX_MEMBER_BYTES])
+        if hasattr(code, "co_consts"):
+            _python_code_metadata(code, strings=strings, names=names,
+                                  filenames=filenames, objects=objects)
+        else:
+            marshal_error = "marshal payload is not a code object"
+    except Exception as exc:  # noqa: BLE001 — malformed bytecode is a partial parse
+        marshal_error = f"{type(exc).__name__}: {exc}"
+
+    strings = list(dict.fromkeys(text for text in strings if text))[:MAX_BYTECODE_STRINGS]
+    names = list(dict.fromkeys(name for name in names if name))[:MAX_BYTECODE_STRINGS]
+    out: dict[str, Any] = {
+        "format": "python-bytecode", "arch": "bytecode", "libraries": [],
+        # Prefix code-object names so the shared fingerprint layer can distinguish
+        # a Python import from an unrelated native symbol with the same spelling.
+        "imports": [f"python:{name}" for name in names[:600]], "exports": [],
+        "python": {**header, "code_objects": len(objects), "names": names[:300],
+                    "filenames": filenames[:100], "strings": strings,
+                    "truncated": len(objects) >= MAX_BYTECODE_OBJECTS},
+    }
+    if marshal_error:
+        out["python"]["marshal_error"] = marshal_error
+    library_names = "\\n".join((*names, *strings)).lower()
+    for marker, library in (("cryptography", "Python cryptography"),
+                            ("hashlib", "Python hashlib"),
+                            ("pycryptodome", "PyCryptodome"),
+                            ("Crypto.Cipher", "PyCryptodome"),
+                            ("openssl", "OpenSSL"), ("ssl", "Python ssl"),
+                            ("nacl", "PyNaCl")):
+        if marker.lower() in library_names:
+            out["libraries"].append(library)
     return out
 
 
@@ -2165,32 +3221,87 @@ def _utf8_at(strings: list[str], index: int) -> str:
 
 
 def parse_wasm(data: bytes) -> dict[str, Any]:
-    """WASM import/export names — crypto markers live in the import section."""
-    out: dict[str, Any] = {"format": "wasm", "libraries": [], "imports": [], "exports": []}
+    """Parse bounded WASM metadata, imports, exports and capability sections.
+
+    This remains metadata-only: no WebAssembly code is compiled or executed.
+    Import modules, memory/table declarations, custom producer sections and
+    exported names are enough to enrich SBOM/CBOM/NBOM evidence without treating
+    a capability as a live network operation.
+    """
+    if len(data) < 8 or data[:4] != b"\x00asm":
+        raise ValueError("not a WebAssembly module")
+    version = struct.unpack_from("<I", data, 4)[0]
+    out: dict[str, Any] = {
+        "format": "wasm", "libraries": [], "imports": [], "exports": [],
+        "wasm": {"version": version, "sections": [], "custom_sections": [],
+                 "producers": [], "memory": [], "tables": 0, "globals": 0,
+                 "features": [], "truncated": False},
+    }
     position = 8
-    while position < len(data):
+    section_count = 0
+    while position < len(data) and section_count < MAX_WASM_SECTIONS:
+        section_start = position
         try:
             section_id = data[position]
             position += 1
-            size = 0
-            shift = 0
-            while position < len(data):
-                byte = data[position]
-                position += 1
-                size |= (byte & 0x7F) << shift
-                shift += 7
-                if not byte & 0x80:
-                    break
-        except Exception:  # noqa: BLE001
+            size, position = _wasm_uleb(data, position)
+            end = position + size
+            if end > len(data):
+                raise ValueError("WASM section exceeds the file")
+            payload = data[position:end]
+            summary: dict[str, Any] = {"id": section_id, "offset": section_start,
+                                       "size": size}
+            if section_id == 0:
+                custom_name, custom = _parse_wasm_custom(payload)
+                summary["name"] = custom_name
+                out["wasm"]["custom_sections"].append(custom)
+                out["wasm"]["producers"].extend(custom.get("producers") or [])
+                if custom_name in {"target_features", "producers"}:
+                    out["wasm"]["features"].extend(custom.get("producers") or [])
+            elif section_id == 2:
+                imports, memories, tables, globals_count = _parse_wasm_imports(payload)
+                out["imports"] = imports[:MAX_WASM_IMPORTS]
+                out["wasm"]["import_count"] = len(imports)
+                out["wasm"]["memory"] = [{"imported": True}] * memories
+                out["wasm"]["tables"] = tables
+                out["wasm"]["globals"] = globals_count
+            elif section_id == 5:  # memory section
+                count, cursor = _wasm_uleb(payload, 0)
+                if count > MAX_WASM_IMPORTS:
+                    raise ValueError("WASM memory count exceeds the bound")
+                memories: list[dict[str, Any]] = []
+                for _ in range(count):
+                    limits, cursor = _wasm_limits(payload, cursor)
+                    memories.append(limits)
+                out["wasm"]["memory"] = memories
+            elif section_id == 6:  # global section, count is enough for capability inventory
+                count, _cursor = _wasm_uleb(payload, 0)
+                if count > MAX_WASM_IMPORTS:
+                    raise ValueError("WASM global count exceeds the bound")
+                out["wasm"]["globals"] = count
+            elif section_id == 7:
+                exports = _parse_wasm_exports(payload)
+                out["exports"] = exports[:MAX_WASM_IMPORTS]
+                out["wasm"]["export_count"] = len(exports)
+            elif section_id == 9:  # element section implies a table/call surface
+                count, _cursor = _wasm_uleb(payload, 0)
+                if count > MAX_WASM_IMPORTS:
+                    raise ValueError("WASM element count exceeds the bound")
+                out["wasm"]["tables"] = max(int(out["wasm"].get("tables") or 0), count)
+            out["wasm"]["sections"].append(summary)
+            position = end
+            section_count += 1
+        except (IndexError, ValueError, struct.error) as exc:
+            out["wasm"]["truncated"] = True
+            out["wasm"]["parse_error"] = f"{type(exc).__name__}: {exc}"
             break
-        end = position + size
-        if section_id == 2:
-            out["imports"] = extract_strings(data[position:end], min_len=3, limit=400)
-        elif section_id == 7:
-            out["exports"] = extract_strings(data[position:end], min_len=3, limit=400)
-        if end <= position:
-            break
-        position = end
+    if section_count >= MAX_WASM_SECTIONS and position < len(data):
+        out["wasm"]["truncated"] = True
+        out["wasm"]["section_limit"] = MAX_WASM_SECTIONS
+    out["wasm"]["section_count"] = section_count
+    out["wasm"]["custom_sections"] = out["wasm"]["custom_sections"][:128]
+    out["wasm"]["producers"] = sorted(set(out["wasm"]["producers"]))[:128]
+    out["wasm"]["features"] = sorted(set(out["wasm"]["features"]))[:128]
     return out
 
 
@@ -2245,7 +3356,11 @@ def parse_rpm(data: bytes) -> dict[str, Any]:
         for index in range(min(index_count, MAX_RPM_ENTRIES)):
             try:
                 tag, dtype, offset, count = reader.unpack(">IIII", table + index * 16)
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 break
             entries[tag] = {"type": dtype, "offset": offset, "count": count}
         payload = data[store:store + store_size]
@@ -2489,7 +3604,11 @@ def _parse_dtb(data: bytes, offset: int) -> dict[str, Any] | None:
         if compatible:
             out["compatible"] = sorted(set(compatible))[:12]
         return out
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -2532,7 +3651,11 @@ def decompress_payload(data: bytes, fmt: str, *, limit: int = MAX_EXTRACT_BYTES)
             return _bounded_lzma(data, limit)
         if fmt == "bzip2":
             return _bounded_bz2(data, limit)
-    except Exception:  # noqa: BLE001 — a corrupt stream is reported by the caller
+    except Exception as _handler_exc:  # noqa: BLE001 — a corrupt stream is reported by the caller
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     return None
 
@@ -2581,7 +3704,11 @@ def _tar_members(data: bytes, *, limit: int = MAX_EXTRACT_FILES) -> list[dict[st
                     break
                 members.append({"name": info.name.lstrip("./"), "size": int(info.size),
                                 "is_dir": bool(info.isdir()), "is_symlink": bool(info.issym() or info.islnk())})
-    except Exception:  # noqa: BLE001 — a truncated archive yields what was read
+    except Exception as _handler_exc:  # noqa: BLE001 — a truncated archive yields what was read
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return members
 
@@ -2603,7 +3730,11 @@ def _tar_member_bytes(data: bytes, wanted: tuple[str, ...], *,
                 if handle is None:
                     continue
                 found.append((info.name.lstrip("./"), handle.read(limit)))
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return found
 
@@ -2670,6 +3801,7 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
 
     inner_format = ""
     members: list[dict[str, Any]] = []
+    member_offsets: dict[str, int] = {}
     if payload is not None:
         inner = identify(payload, "")
         inner_format = inner["format"]
@@ -2685,7 +3817,12 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
         members = archive.get("members") or []
         inner_format = archive.get("type") or "ar"
     elif fmt == "zip":
-        members = [{"name": name} for name in (_zip_members(data))[:MAX_EXTRACT_FILES]]
+        entries = list(_zip_local_entries(data, limit=MAX_EXTRACT_FILES * 4))
+        members = [{"name": entry["name"], "offset": entry.get("offset"),
+                    "sampled_bytes": len(entry.get("payload") or b"")}
+                   for entry in entries[:MAX_EXTRACT_FILES]]
+        member_offsets = {str(entry["name"]): int(entry["offset"])
+                          for entry in entries if isinstance(entry.get("offset"), int)}
         inner_format = "zip"
 
     summary["inner_format"] = inner_format
@@ -2728,13 +3865,14 @@ def explore_container(data: bytes, fmt: str, *, depth: int, prefix: str,
         summary["refused"].extend(zip_refused)
 
     _parse_member_payloads(payloads[:12], depth=depth, prefix=prefix, parsed=parsed,
-                           summary=summary, yara=yara)
+                           summary=summary, yara=yara, member_offsets=member_offsets)
     return summary
 
 
 def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, prefix: str,
                            parsed: list[dict[str, Any]], summary: dict[str, Any],
-                           yara: Any = None) -> None:
+                           yara: Any = None,
+                           member_offsets: dict[str, int] | None = None) -> None:
     """Parse the members that are real files in a known format, bounded.
 
     A member that is not a format this scanner understands is deliberately absent
@@ -2762,9 +3900,17 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         record["name"] = record.get("name") or Path(name).name
         record["file_name"] = Path(name).name
         record["path"] = f"{prefix}!{name}"
+        if member_offsets and name in member_offsets:
+            record["member_offset"] = member_offsets[name]
         record["sha256"] = hashlib.sha256(member).hexdigest()
         record["size"] = len(member)
         strings = extract_strings(member)
+        declared: list[str] = []
+        for table in (record.get("java") or {}, record.get("python") or {},
+                      record.get("dex") or {}):
+            declared.extend(str(text) for text in (table.get("strings") or []) if text)
+        if declared:
+            strings = list(dict.fromkeys(declared)) + [text for text in strings if text not in declared]
         record["strings_sampled"] = len(strings)
         record["derived_from"] = prefix
         record["depth"] = depth + 1
@@ -2780,6 +3926,14 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         # rule match in it are facts about this artefact and must survive the
         # extraction boundary
         record["findings"] = _key_findings(record) + _yara_findings(record)
+        try:
+            from devsecops.evidence_model import enrich_record
+
+            enrich_record(record)
+        except Exception as exc:  # noqa: BLE001 — retain member evidence if normalization fails
+            record["parser_state"] = "UNKNOWN"
+            record["evidence_error"] = f"{type(exc).__name__}: {exc}"
+            record["runtime_behavior_proven"] = False
         summary["opened"].append(f"parsed {record['path']} ({record['format']})")
         summary["parsed"] += 1
         parsed.append(record)
@@ -2879,6 +4033,9 @@ STRONG_MARKERS: dict[str, tuple[str, ...]] = {
     "RustCrypto": ("rustls", "ed25519-dalek", "aes_gcm::"),
     "PKCS#11": ("C_GetFunctionList", "C_Initialize"),
     "Node crypto": ("node:crypto", "createCipheriv"),
+    "Python hashlib": ("hashlib", "hmac", "secrets"),
+    "Python cryptography": ("cryptography", "hazmat"),
+    "PyCryptodome": ("Crypto.Cipher", "Crypto.Hash", "pycryptodome"),
 }
 #: tokens matched on identifier boundaries only — "sha2" must not hit "sha256",
 #: "ring::" must not hit "string::"
@@ -2939,6 +4096,15 @@ def _versions_from_bytes(data: bytes) -> dict[str, str]:
     return found
 
 
+_CRYPTO_EVIDENCE_STRING_RE = re.compile(
+    r"(?:AES|3DES|DES|ChaCha|Poly1305|RSA|ECDSA|Ed25519|X25519|SHA(?:1|2|3)?|"
+    r"MD5|HMAC|HKDF|PBKDF|Argon|scrypt|TLS|SSL|OpenSSL|BouncyCastle|crypto|"
+    r"cryptography|sodium|SecureRandom|DRBG)", re.IGNORECASE)
+_SECRET_EVIDENCE_STRING_RE = re.compile(
+    r"(?:private.?key|password|passphrase|secret|token|credential|api.?key|bearer)",
+    re.IGNORECASE)
+
+
 def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] = (),
                     exports: Iterable[str] = (), constants: Iterable[bytes] = (),
                     constant_evidence: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -2996,8 +4162,13 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
         if row["confidence"] > existing["confidence"]:
             existing["confidence"] = row["confidence"]
             existing["strongest_evidence"] = row["strongest_evidence"]
-        existing["sources"] = list(dict.fromkeys(
-            (existing.get("sources") or []) + [row["sources"][0]]))[:5]
+            # Keep the strongest provenance first. A named import/export is
+            # more probative than a coincidental transformation string.
+            existing["sources"] = list(dict.fromkeys(
+                row["sources"] + (existing.get("sources") or [])))[:5]
+        else:
+            existing["sources"] = list(dict.fromkeys(
+                (existing.get("sources") or []) + row["sources"]))[:5]
 
     # the string layer: transformations and TLS suites the symbol tables rarely show
     by_name = {row["name"]: row for row in algorithm_rows}
@@ -3098,6 +4269,13 @@ def crypto_evidence(data: bytes, strings: list[str], *, imports: Iterable[str] =
         "ecc_markers": ecc_markers,
         "quantum_vulnerable": vulnerable,
         "weak_primitives": weak,
+        # Keep only short crypto-relevant strings.  The scanner never publishes
+        # arbitrary strings because a string table can contain credentials or
+        # customer data; these are clues, not runtime observations.
+        "string_evidence": [text[:300] for text in dict.fromkeys(strings)
+                            if 2 < len(text) <= 300
+                            and _CRYPTO_EVIDENCE_STRING_RE.search(text)
+                            and not _SECRET_EVIDENCE_STRING_RE.search(text)][:120],
         "constant_evidence": (constant_evidence or {}).get("algorithms") or {},
         "constants_found": (constant_evidence or {}).get("tables") or [],
         "constants_summary": _constants_summary(constant_evidence),
@@ -3216,12 +4394,21 @@ def _strict_marker_evidence(markers: Iterable[str], names: list[str],
         if not _marker_hits(marker, names, text):
             continue
         plain.append(marker)
-        for suffix in ("::", "/", "@", "!"):
+        for suffix in ("::", "/", "@", "!", ":"):
             # the delimiter itself closes the token, so only the *head* of the
             # occurrence needs an identifier boundary: "javax/crypto/Cipher" is a
-            # qualified hit, while "string::" must not read as "ring::"
-            pattern = re.compile(r"(?:^|[^0-9a-z])" + re.escape(marker + suffix), re.IGNORECASE)
-            if any(pattern.search(name) for name in names[:6000]):
+            # qualified hit, while "string::" must not read as "ring::". A
+            # language-qualified name may put the delimiter before the marker
+            # (``python:hashlib``), so accept that form too.
+            head = re.compile(r"(?:^|[^0-9a-z])" + re.escape(marker + suffix), re.IGNORECASE)
+            # JVM/DEX descriptors conventionally prefix a package with `L`
+            # (``Ljavax/crypto/Cipher;``); a Python-qualified name puts `:`
+            # before its module (``python:hashlib``). Both are structured names,
+            # not the loose substring coincidences this guard rejects.
+            descriptor = re.compile(r"L" + re.escape(marker + suffix), re.IGNORECASE)
+            tail = re.compile(re.escape(suffix + marker) + r"(?:[^0-9a-z]|$)", re.IGNORECASE)
+            if any(head.search(name) or descriptor.search(name) or tail.search(name)
+                   for name in names[:6000]):
                 qualified.append(f"{marker}{suffix}")
                 break
     return qualified, sorted(set(plain))
@@ -3277,7 +4464,8 @@ def parse_bytes(data: bytes, *, name: str = "", yara: Any = None) -> dict[str, A
         "elf": parse_elf, "pe": parse_pe, "macho": parse_macho, "macho64": parse_macho,
         "macho-be": parse_macho, "macho64-be": parse_macho, "macho-fat": parse_macho,
         "macho-fat-le": parse_macho, "ar": parse_ar, "zip": lambda blob: parse_zip(blob, name),
-        "wasm": parse_wasm, "rpm": parse_rpm, "java-class": parse_java_class,
+        "wasm": parse_wasm, "dex": parse_dex, "python-bytecode": parse_python_bytecode,
+        "rpm": parse_rpm, "java-class": parse_java_class,
     }.get(fmt)
     if fmt == "ustar":
         record.update({"format": "ustar", "parsed": True, "libraries": [], "imports": [],
@@ -3314,6 +4502,27 @@ def parse_bytes(data: bytes, *, name: str = "", yara: Any = None) -> dict[str, A
     except Exception as exc:  # noqa: BLE001 — a malformed file is reported, never fatal
         record["parsed"] = False
         record["parse_error"] = f"{type(exc).__name__}: {exc}"
+    # ``parse_bytes`` is also a public metadata helper, not only the first half of
+    # ``scan_file``. Attach the same bounded crypto evidence here so callers that
+    # parse an embedded DEX/PYC directly do not receive a parser-only result.
+    strings = extract_strings(data)
+    declared: list[str] = []
+    for table in (record.get("java") or {}, record.get("python") or {},
+                  record.get("dex") or {}):
+        declared.extend(str(text) for text in (table.get("strings") or []) if text)
+    if declared:
+        strings = list(dict.fromkeys(declared)) + [text for text in strings if text not in declared]
+    record["strings_sampled"] = len(strings)
+    try:
+        record["crypto"] = crypto_evidence(
+            data, strings, imports=record.get("imports") or [], exports=record.get("exports") or [])
+    except Exception as exc:  # noqa: BLE001 — optional crypto catalog failure is visible, not fatal
+        record["crypto"] = {"libraries": [], "algorithms": [], "algorithm_evidence": [],
+                            "suppressed_libraries": [], "pqc_markers": [], "ecc_markers": [],
+                            "quantum_vulnerable": [], "weak_primitives": [],
+                            "constants_summary": {},
+                            "error": f"{type(exc).__name__}: {exc}"}
+    record["findings"] = _binary_findings(record)
     # identity is computed last, when imports/exports/build-id and the section
     # geometry the parsers found are all in hand
     try:
@@ -3336,6 +4545,16 @@ def parse_bytes(data: bytes, *, name: str = "", yara: Any = None) -> dict[str, A
         except Exception as exc:  # noqa: BLE001 — a rule engine must never fail a scan
             record["yara"] = {"matches": [], "error": f"{type(exc).__name__}: {exc}",
                               "ruleset_digest": (getattr(yara, "digest", "") or "")[:16]}
+    # Keep the parser contract usable for callers that invoke parse_bytes directly.
+    # scan_file re-enriches after it adds the relative path and content hash.
+    try:
+        from devsecops.evidence_model import enrich_record
+
+        enrich_record(record)
+    except Exception as exc:  # noqa: BLE001 — evidence enrichment must not hide parser output
+        record["parser_state"] = "UNKNOWN"
+        record["evidence_error"] = f"{type(exc).__name__}: {exc}"
+        record["runtime_behavior_proven"] = False
     return record
 
 
@@ -3412,9 +4631,12 @@ def scan_file(path: Path, *, root: Path | None = None, yara: Any = None) -> dict
     record["sha256"] = digest
     record["size"] = size
     strings = extract_strings(data)
-    declared = (record.get("java") or {}).get("strings") or []
-    if declared:                       # a class file's string table is its constant pool
-        strings = [text for text in declared if text not in strings] + strings
+    declared: list[str] = []
+    for table in (record.get("java") or {}, record.get("python") or {},
+                  record.get("dex") or {}):
+        declared.extend(str(text) for text in (table.get("strings") or []) if text)
+    if declared:                       # bytecode string tables carry non-ASCII-delimited constants
+        strings = list(dict.fromkeys(declared)) + [text for text in strings if text not in declared]
     record["strings_sampled"] = len(strings)
     record.setdefault("packer", None)
     record["packer"] = record["packer"] or detect_packer([], "\n".join(strings[:800]))
@@ -3441,6 +4663,14 @@ def scan_file(path: Path, *, root: Path | None = None, yara: Any = None) -> dict
             derived.pop("_constant_evidence", None)
             derived.pop("_code_windows", None)
     record["findings"] = _binary_findings(record)
+    try:
+        from devsecops.evidence_model import enrich_record
+
+        enrich_record(record)
+    except Exception as exc:  # noqa: BLE001 — retain the scan if optional normalization fails
+        record["parser_state"] = "UNKNOWN"
+        record["evidence_error"] = f"{type(exc).__name__}: {exc}"
+        record["runtime_behavior_proven"] = False
     return record
 
 
@@ -4089,6 +5319,41 @@ def _binary_findings(record: dict[str, Any]) -> list[dict[str, Any]]:
                 "detail": f"DT_RUNPATH/RPATH {rpath!r} — a writable search path can become a load hijack",
                 "path": path,
             })
+    android_manifest = ((record.get("android") or {}).get("manifest") or {})
+    if android_manifest:
+        if str(android_manifest.get("debuggable", "")).lower() in {"true", "1"}:
+            findings.append({
+                "code": "BIN-ANDROID-DEBUGGABLE", "severity": "MEDIUM",
+                "title": "Android package is marked debuggable",
+                "detail": "the binary manifest enables debugging; confirm this is intentional for the release",
+                "path": path,
+            })
+        if str(android_manifest.get("usesCleartextTraffic", "")).lower() in {"true", "1"}:
+            findings.append({
+                "code": "BIN-ANDROID-CLEARTEXT", "severity": "MEDIUM",
+                "title": "Android package permits cleartext traffic",
+                "detail": "the manifest enables cleartext network traffic; runtime policy may still narrow the scope",
+                "path": path,
+            })
+        exported = [component for component in android_manifest.get("components") or []
+                    if str(component.get("exported", "")).lower() in {"true", "1"}]
+        if exported:
+            findings.append({
+                "code": "BIN-ANDROID-EXPORTED-COMPONENT", "severity": "LOW",
+                "title": "Android components are exported",
+                "detail": (f"{len(exported)} component(s) are explicitly exported in the manifest; "
+                           "static inventory does not prove whether access is authenticated"),
+                "path": path, "components": [row.get("name") for row in exported[:20]],
+            })
+    ios_plist = ((record.get("ios") or {}).get("info_plist") or {})
+    ats = ios_plist.get("NSAppTransportSecurity") or {}
+    if str(ats.get("NSAllowsArbitraryLoads", "")).lower() in {"true", "1"}:
+        findings.append({
+            "code": "BIN-IOS-ATS-CLEARTEXT", "severity": "MEDIUM",
+            "title": "iOS App Transport Security allows arbitrary loads",
+            "detail": "Info.plist permits arbitrary network loads; this is configuration evidence, not proof of use",
+            "path": path,
+        })
     return findings
 
 
@@ -4180,6 +5445,9 @@ def _scan_key_counts(records: list[dict[str, Any]]) -> dict[str, int]:
 
 def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool = False,
               max_binaries: int = MAX_BINARIES,
+              max_total_bytes: int = MAX_TOTAL_INPUT_BYTES,
+              max_seconds: float = MAX_SCAN_SECONDS,
+              cancel_check: Callable[[], bool] | None = None,
               yara_rules: Iterable[str | Path] = (),
               yara_ruleset: Any = None,
               include_installed_rules: bool = True,
@@ -4231,6 +5499,13 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
     base = Path(target).expanduser()
     if not base.exists():
         raise FileNotFoundError(f"target not found: {base}")
+    started = time.monotonic()
+    total_input_bytes = 0
+    max_total_bytes = max(1, int(max_total_bytes))
+    max_seconds = max(0.1, float(max_seconds))
+    budget_reasons: list[dict[str, Any]] = []
+    cancelled = False
+    walk_truncated = False
     if base.is_file():
         candidates = [base]
         root = base.parent
@@ -4240,6 +5515,7 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
         candidates = []
         for index, candidate in enumerate(walker):
             if index >= MAX_FILES_WALKED:
+                walk_truncated = True
                 break
             if not candidate.is_file():
                 continue
@@ -4295,16 +5571,46 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
     }
 
     records: list[dict[str, Any]] = []
+    binary_limit_hit = False
     with use_constant_tables(extra_tables):
         for candidate in candidates:
             if len(records) >= max_binaries:
+                binary_limit_hit = True
                 break
+            try:
+                relative = str(candidate if root is None else candidate.relative_to(root))
+            except ValueError:
+                relative = candidate.name
+            if cancel_check is not None:
+                try:
+                    if cancel_check():
+                        cancelled = True
+                        budget_reasons.append({"path": relative, "reason": "cancelled by caller"})
+                        break
+                except Exception as exc:  # noqa: BLE001 — a broken callback cannot make a scan look clean
+                    budget_reasons.append({"path": relative, "reason": f"cancel callback failed: {type(exc).__name__}"})
+            if time.monotonic() - started >= max_seconds:
+                budget_reasons.append({"path": relative, "reason": "global time budget exhausted"})
+                break
+            try:
+                candidate_size = candidate.stat().st_size
+            except OSError:
+                candidate_size = 0
+            if candidate_size > MAX_FILE_BYTES:
+                budget_reasons.append({"path": relative, "reason": "file exceeds per-file read limit",
+                                       "max_file_bytes": MAX_FILE_BYTES})
+                continue
+            if candidate_size > 0 and total_input_bytes + candidate_size > max_total_bytes:
+                budget_reasons.append({"path": relative, "reason": "global input-byte budget exhausted",
+                                       "bytes_remaining": max(0, max_total_bytes - total_input_bytes)})
+                continue
             try:
                 if candidate.is_file() and candidate.resolve() in rule_sources:
                     skipped_rule_sources += 1
                     continue
             except OSError:  # pragma: no cover — a path that cannot be resolved is scanned
                 pass
+            total_input_bytes += max(0, candidate_size)
             record = scan_file(candidate, root=root, yara=ruleset)
             if record is None:
                 continue
@@ -4318,7 +5624,7 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
                 continue
             records.append(record)
 
-    return {
+    result: dict[str, Any] = {
         "target": str(base),
         "target_kind": "binary",
         "files_walked": len(candidates),
@@ -4335,8 +5641,27 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
                                      "definition")},
         "constant_tables": table_set,
         "limits": {"max_binaries": max_binaries, "max_file_bytes": MAX_FILE_BYTES,
-                   "truncated": len(records) >= max_binaries},
+                   "max_files_walked": MAX_FILES_WALKED,
+                   "max_total_bytes": max_total_bytes,
+                   "max_seconds": max_seconds,
+                   "bytes_read": total_input_bytes,
+                   "elapsed_seconds": round(time.monotonic() - started, 3),
+                   "truncated": bool(walk_truncated or binary_limit_hit or budget_reasons),
+                   "budget_exhausted": bool(walk_truncated or binary_limit_hit or budget_reasons),
+                   "walk_truncated": walk_truncated,
+                   "binary_limit_hit": binary_limit_hit,
+                   "cancelled": cancelled,
+                   "refused": budget_reasons[:200]},
     }
+    try:
+        from devsecops.evidence_model import provenance_graph, scan_state
+
+        result["result_state"] = scan_state(result)
+        result["provenance_graph"] = provenance_graph(result)
+    except Exception as exc:  # noqa: BLE001 — parser output remains available on optional-model failure
+        result["result_state"] = "PARTIAL"
+        result["provenance_error"] = f"{type(exc).__name__}: {exc}"
+    return result
 
 
 def _scan_yara_summary(records: list[dict[str, Any]], ruleset: Any) -> dict[str, Any]:
@@ -4644,6 +5969,10 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "static": record.get("static"),
             "format": record.get("format"),
             "arch": record.get("arch") or record.get("machine"),
+            "mobile": record.get("android") or record.get("ios"),
+            "bytecode": record.get("python") or record.get("dex") or record.get("java")
+                        or record.get("wasm"),
+            "wasm": record.get("wasm"),
             "hardening": record.get("hardening"),
             "packer": (record.get("packer") or {}).get("name"),
             "interpreter": record.get("interpreter"),
@@ -4721,6 +6050,12 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
                                 for record in all_records),
         },
         "limits": scan.get("limits") or {},
+        "result_state": scan.get("result_state") or "COMPLETE",
+        "provenance_graph": scan.get("provenance_graph") or {},
+        "evidence_model_version": next(
+            (row.get("evidence_model_version") for row in all_records
+             if row.get("evidence_model_version")), "1.0"),
+        "runtime_behavior_proven": False,
         "extraction_limits": {"max_payload_bytes": MAX_EXTRACT_BYTES,
                               "max_depth": MAX_EXTRACT_DEPTH,
                               "max_members": MAX_EXTRACT_FILES,
@@ -4766,6 +6101,7 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
     together with the file it was found in, so the inventory can answer both
     "what algorithms do we depend on" and "which binary brings them".
     """
+    import json
     import uuid
     from datetime import datetime, timezone
 
@@ -4791,6 +6127,13 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
         properties = _asset_properties(name, version, library_row, path,
                                        derived_from=record.get("derived_from"),
                                        depth=record.get("depth"))
+        algorithm_evidence = (record.get("crypto") or {}).get("algorithm_evidence") or []
+        match = next((row for row in algorithm_evidence
+                      if isinstance(row, dict)
+                      and str(row.get("name") or row.get("algorithm")) == str(algorithm)), None)
+        if match and match.get("confidence") is not None:
+            properties.append({"name": "cryptoscan:confidence", "value": str(match["confidence"])})
+        properties.append({"name": "cryptoscan:linkage", "value": "library-algorithm-evidence"})
         properties.append({"name": "cryptoscan:quantum-vulnerable",
                            "value": "true" if vulnerable else "false"})
         components.append({
@@ -4840,6 +6183,8 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
             {"name": "cryptoscan:material-sha256", "value": digest},
             {"name": "cryptoscan:encrypted", "value": "true" if encrypted else "false"},
             {"name": "cryptoscan:found-in", "value": str(path)},
+            {"name": "cryptoscan:evidence-scope", "value": "static-byte-evidence"},
+            {"name": "cryptoscan:runtime-behavior-proven", "value": "false"},
         ]
         if key_type:
             properties.append({"name": "cryptoscan:key-type", "value": str(key_type)})
@@ -4958,14 +6303,26 @@ def cbom_document(scan: dict[str, Any], *, target: str | None = None,
             {"name": "cryptoscan:binaries-scanned", "value": str(result.get("binaries_scanned", 0))},
             {"name": "cryptoscan:files-walked", "value": str(result.get("files_walked", 0))},
             {"name": "cryptoscan:key-material-assets", "value": str(metadata_keys)},
+            {"name": "cryptoscan:result-state", "value": str(scan.get("result_state") or "COMPLETE")},
+            {"name": "cryptoscan:evidence-model-version", "value": str(
+                next((row.get("evidence_model_version") for row in (scan.get("binaries") or [])
+                     if row.get("evidence_model_version")), "1.0"))},
+            {"name": "cryptoscan:runtime-behavior-proven", "value": "false"},
+            {"name": "cryptoscan:provenance-nodes", "value": str(
+                len((scan.get("provenance_graph") or {}).get("nodes") or []))},
         ],
     }
     if created_by:
         metadata["authors"] = [{"name": str(created_by)}]
+    stable_bom_name = json.dumps({
+        "target": str(target or scan.get("target") or "binaries"),
+        "components": components,
+        "result_state": scan.get("result_state") or "COMPLETE",
+    }, sort_keys=True, separators=(",", ":"), default=str)
     document = {
         "bomFormat": "CycloneDX",
         "specVersion": "1.5",
-        "serialNumber": f"urn:uuid:{uuid.uuid4()}",
+        "serialNumber": f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, stable_bom_name)}",
         "version": 1,
         "metadata": metadata,
         "components": components,
@@ -4988,7 +6345,10 @@ def _asset_properties(library: str, version: str | None, library_row: dict[str, 
                       depth: int | None = None) -> list[dict[str, str]]:
     """Asset properties, including where an embedded asset came from."""
     properties = [{"name": "cryptoscan:library", "value": str(library)},
-                  {"name": "cryptoscan:found-in", "value": str(path)}]
+                  {"name": "cryptoscan:found-in", "value": str(path)},
+                  {"name": "cryptoscan:evidence-scope", "value": "static-byte-evidence"},
+                  {"name": "cryptoscan:runtime-behavior-proven", "value": "false"},
+                  {"name": "cryptoscan:migration-status", "value": "not-assessed"}]
     if derived_from:
         properties.append({"name": "cryptoscan:derived-from", "value": str(derived_from)})
         properties.append({"name": "cryptoscan:depth", "value": str(depth or 1)})
