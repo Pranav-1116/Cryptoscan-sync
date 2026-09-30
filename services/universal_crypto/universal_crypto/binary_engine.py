@@ -86,7 +86,8 @@ SYMBOL_ALGORITHMS: dict[str, str] = {
     "CRYPT_Encrypt": "RSA", "CryptEncrypt": "RSA", "BCryptEncrypt": "AES",
     "MD5Init": "MD5", "MD5Update": "MD5", "MD5Final": "MD5",
     "SHA256_Init": "SHA-256", "SHA1_Init": "SHA-1",
-    # Python code-object names are direct static references.
+    # Python code-object names are prefixed by the DevSecOps parser; the bare
+    # forms are used by this standalone universal parser.
     "sha256": "SHA-256", "sha512": "SHA-512", "sha1": "SHA-1", "md5": "MD5",
     "python:sha256": "SHA-256", "python:sha512": "SHA-512",
     "python:sha1": "SHA-1", "python:md5": "MD5",
@@ -107,6 +108,7 @@ _STRING_ALGORITHMS: tuple[tuple[str, str], ...] = (
     (r"(?:SHA-?1|sha1)", "SHA-1"),
     (r"(?:MD5|md5)", "MD5"),
 )
+
 
 class BinaryArtifact:
     """Parsed view of one binary: symbols, imports, strings, constants."""
@@ -187,7 +189,6 @@ class BinaryCryptoDetector:
             match = re.search(pattern, blob, re.IGNORECASE)
             if match:
                 _add(algorithm, "STRING_MATCH", f"transformation string {match.group(0)!r}")
-
 
         for entry in findings.values():
             entry["verdict"] = (

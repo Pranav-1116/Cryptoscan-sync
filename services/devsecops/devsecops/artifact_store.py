@@ -189,7 +189,8 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                           pinning: dict[str, Any], feed_supplied: bool = False,
                           recursive: bool = True, include_raw: bool = False,
                           job_id: str | None = None, ruleset_digest: str | None = None,
-                          tenant_id: str | None = None, at_rest: dict[str, Any] | None = None) -> dict:
+                          tenant_id: str | None = None, at_rest: dict[str, Any] | None = None,
+                          bom_documents: dict[str, dict[str, Any]] | None = None) -> dict:
     """Assemble the manifest both the API response and the stored report read.
 
     ``job_id``/``ruleset_digest`` are recorded when the scan came from the queue
@@ -232,6 +233,10 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                                "note": "sealing was not recorded for this artifact"},
         "storage_key": artifact_key,
         "cbom_storage_key": f"tenants/{bucket}/{artifact_id}.cbom.json",
+        # Additional binary projections (HBOM/NBOM/VBOM/vulnerability BOM and
+        # the unified technology view) are sidecars, not silently folded into
+        # the SBOM document. Each carries its own digest and storage key.
+        "bom_documents": bom_documents or {},
         "job_id": job_id,
         "ruleset_digest": ruleset_digest,
         "scan_options": {"kind": "binary", "target": target, "as_image": False,
@@ -263,6 +268,8 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
             "yara": yara_summary(result),
             **binary_posture(result),
             "extraction_limits": result.get("extraction_limits") or {},
+            "bom_types": ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"],
+            "bom_documents": bom_documents or {},
         },
     }
     return manifest
@@ -325,7 +332,8 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                           include_raw: bool = False,
                           secret: tuple[str | None, str] | None = None,
                           tenant_id: str | None = None,
-                          encryption_secret: str | None = None) -> dict[str, Any]:
+                          encryption_secret: str | None = None,
+                          bom_bundle: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """Build the manifest for a finished scan and store it, signed.
 
     This is the one place a binary artifact is written. The synchronous endpoint
@@ -364,6 +372,28 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
     cbom_bytes = json.dumps(cbom, sort_keys=True, separators=(",", ":")).encode("utf-8")
     sealed_cbom, _ = artifact_crypto.encrypt_blob(cbom_bytes, tenant_id=scope,
                                                  secret=encryption_secret)
+    # Every projection is sealed with the same tenant key as the SBOM/CBOM. The
+    # manifest exposes only metadata and digests; readers must pass through the
+    # tenant-scoped sidecar endpoint.
+    sidecar_blobs: dict[str, bytes] = {}
+    sidecar_documents: dict[str, dict[str, Any]] = {}
+    for bom_name, document in (bom_bundle or {}).items():
+        if bom_name in {"sbom", "cbom", "vendor_bom", "vulbom"} or not isinstance(document, dict) or not document:
+            continue
+        raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        sealed, sidecar_rest = artifact_crypto.encrypt_blob(raw, tenant_id=scope,
+                                                            secret=encryption_secret)
+        key_name = str(bom_name).replace("_", "-")
+        sidecar_key = f"tenants/{scope}/{artifact_id}.{key_name}.json"
+        sidecar_blobs[sidecar_key] = sealed
+        sidecar_documents[bom_name] = {
+            "storage_key": sidecar_key,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "encrypted": bool(sidecar_rest.get("encrypted")),
+            "format": document.get("bomFormat", "json"),
+            "component_count": len(document.get("components") or []),
+            "vulnerability_count": len(document.get("vulnerabilities") or []),
+        }
     compliance = check_minimum_elements(bom)
     components = [{"name": row.get("name"),
                    "version": row.get("version") or row.get("declared_spec"),
@@ -375,15 +405,17 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
         payload_sha256=sha256, compliance=compliance, pinning=pinning,
         feed_supplied=feed_supplied, recursive=recursive, include_raw=include_raw,
         job_id=job_id, ruleset_digest=(result.get("yara") or {}).get("digest"),
-        tenant_id=tenant_id, at_rest=at_rest)
+        tenant_id=tenant_id, at_rest=at_rest, bom_documents=sidecar_documents)
     written = write_binary_artifact(
         manifest=manifest, payload=sealed_payload, cbom_blob=sealed_cbom,
+        bom_blobs=sidecar_blobs,
         secret=resolve_signing_secret(db) if secret is None else secret)
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
             "pinning": pinning, "payload_sha256": sha256, "components": components, **written}
 
 
 def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob: bytes,
+                          bom_blobs: dict[str, bytes] | None = None,
                           secret: tuple[str | None, str] = (None, "unsigned")) -> dict[str, Any]:
     """Write the SBOM, the CBOM and the manifest under the manifest's own key.
 
@@ -401,6 +433,8 @@ def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob
     store = artifact_storage()
     store.put(key, payload)
     store.put(cbom_key, cbom_blob)
+    for sidecar_key, sidecar_blob in (bom_blobs or {}).items():
+        store.put(str(sidecar_key), sidecar_blob)
     signing_secret_value, key_id = secret
     if signing_secret_value:
         from devsecops import sbom_scan as sb

@@ -129,7 +129,7 @@ def run_binary_job(job) -> bool:
                                 "artifact_id", "target", "format", "sha256",
                                 "binaries_scanned", "files_walked", "findings",
                                 "findings_by_severity", "yara_matches", "ruleset_digest",
-                                "signed", "cbom_ingested", "note")}
+                                "signed", "cbom_ingested", "bom_documents", "note")}
                             | {
                                 "report_url": f"/api/v1/devsecops/sbom/{artifact['artifact_id']}/report?fmt=markdown",
                                 "download_url": f"/api/v1/devsecops/sbom/{artifact['artifact_id']}/download",
@@ -184,6 +184,13 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
            files_walked=result.get("files_walked", 0))
     bom = sb.render_sbom(result, fmt=fmt, created_by=actor)
     cbom = bs.cbom_document(scan, target=str(scan.get("target") or resolved), created_by=actor)
+    # All BOM projections are derived from this same bounded scan. SBOM and CBOM
+    # remain the primary documents; the additional views are sealed sidecars.
+    from devsecops.binary_boms import build_binary_bom_bundle
+
+    bom_bundle = build_binary_bom_bundle(
+        scan, result, sbom=bom, cbom=cbom,
+        target=str(scan.get("target") or resolved), created_by=actor)
 
     # the artifact id is the job's own id unless the caller chose one: a retry of
     # this job rewrites this artifact instead of adding a duplicate
@@ -196,7 +203,7 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
         scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt, created_by=actor, db=session,
         artifact_id=artifact_id, job_id=job.job_id, feed_supplied=False,
         recursive=recursive, include_raw=include_raw, secret=_signing_secret(session),
-        tenant_id=str(tenant_id) if tenant_id else None)
+        tenant_id=str(tenant_id) if tenant_id else None, bom_bundle=bom_bundle)
     manifest = stored["manifest"]
     audit_artifact(session, actor, artifact_id=stored["artifact_id"], target=manifest["target"],
                    binaries=manifest["binary_count"], findings=len(result.get("findings") or []),
@@ -224,6 +231,7 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
         "ruleset_digest": manifest.get("ruleset_digest"),
         "signed": bool(stored.get("signed")),
         "cbom_ingested": bool(ingested.get("ingested")),
+        "bom_documents": manifest.get("bom_documents") or {},
         "note": (ingested.get("error") and f"CBOM not ingested: {ingested['error']}")
                 or _empty_scan_note(result),
     }

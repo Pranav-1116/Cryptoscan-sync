@@ -32,6 +32,7 @@ What is parsed, and how deep:
   package-signature artifacts, plus IPA Info.plist/native/signature paths, are
   inventoried without asserting signature validity or decoding sensitive app
   configuration.
+
 * **Embedded key material** — PEM/OpenSSH/PuTTY/OpenPGP armour, ASN.1 structures
   read by hand (PKCS#1, SEC1, PKCS#8 clear and encrypted, SubjectPublicKeyInfo,
   X.509, PKCS#7, PKCS#12), base64/hex-encoded copies of the same structures, Java
@@ -102,7 +103,6 @@ try:  # keep the parser usable when a newer CPython changes its magic
     PYTHON_BYTECODE_MAGICS.setdefault(_importlib_util.MAGIC_NUMBER, "current")
 except Exception:  # pragma: no cover - importlib is part of CPython
     pass
-
 
 # ------------------------------------------------------------- detection ---- #
 MAGICS: tuple[tuple[str, bytes], ...] = (
@@ -3815,6 +3815,27 @@ def parse_bytes(data: bytes, *, name: str = "", yara: Any = None) -> dict[str, A
     except Exception as exc:  # noqa: BLE001 — a malformed file is reported, never fatal
         record["parsed"] = False
         record["parse_error"] = f"{type(exc).__name__}: {exc}"
+    # ``parse_bytes`` is also a public metadata helper, not only the first half of
+    # ``scan_file``. Attach the same bounded crypto evidence here so callers that
+    # parse an embedded DEX/PYC directly do not receive a parser-only result.
+    strings = extract_strings(data)
+    declared: list[str] = []
+    for table in (record.get("java") or {}, record.get("python") or {},
+                  record.get("dex") or {}):
+        declared.extend(str(text) for text in (table.get("strings") or []) if text)
+    if declared:
+        strings = list(dict.fromkeys(declared)) + [text for text in strings if text not in declared]
+    record["strings_sampled"] = len(strings)
+    try:
+        record["crypto"] = crypto_evidence(
+            data, strings, imports=record.get("imports") or [], exports=record.get("exports") or [])
+    except Exception as exc:  # noqa: BLE001 — optional crypto catalog failure is visible, not fatal
+        record["crypto"] = {"libraries": [], "algorithms": [], "algorithm_evidence": [],
+                            "suppressed_libraries": [], "pqc_markers": [], "ecc_markers": [],
+                            "quantum_vulnerable": [], "weak_primitives": [],
+                            "constants_summary": {},
+                            "error": f"{type(exc).__name__}: {exc}"}
+    record["findings"] = _binary_findings(record)
     # identity is computed last, when imports/exports/build-id and the section
     # geometry the parsers found are all in hand
     try:
