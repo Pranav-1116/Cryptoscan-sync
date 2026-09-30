@@ -7,6 +7,7 @@ happens to be installed on the build machine. Nothing here needs a compiler.
 from __future__ import annotations
 
 import gzip
+import importlib.util
 import struct
 import zipfile
 
@@ -1687,3 +1688,103 @@ def test_every_table_trigger_is_long_enough_to_be_evidence():
         assert len(prefix) >= min(len(table.data), cc.TABLE_TRIGGER)
         assert (len(set(prefix)) >= cc.TRIGGER_MIN_DISTINCT
                 or prefix == table.data), (table.algorithm, table.table, prefix)
+
+
+def _dex_fixture() -> bytes:
+    """Small valid DEX index tables with JCA and an application class."""
+    strings = [
+        "Ljavax/crypto/Cipher;", "getInstance", "AES/GCM/NoPadding",
+        "Ljava/lang/Object;", "Lcom/acme/Main;",
+    ]
+    header = bytearray(0x70)
+    string_offset = 0x70
+    string_ids = bytearray(len(strings) * 4)
+    string_data = bytearray()
+    cursor = string_offset + len(string_ids)
+    for index, text in enumerate(strings):
+        struct.pack_into("<I", string_ids, index * 4, cursor)
+        encoded = text.encode("utf-8")
+        string_data.extend(bytes((len(encoded),)) + encoded + b"\x00")
+        cursor += len(encoded) + 2
+    type_offset = cursor
+    type_ids = struct.pack("<II", 0, 3)
+    class_offset = type_offset + len(type_ids)
+    class_defs = bytearray(32)
+    struct.pack_into("<I", class_defs, 0, 1)  # class_idx -> Ljava/lang/Object;
+    file_size = class_offset + len(class_defs)
+    header[:8] = b"dex\n035\x00"
+    struct.pack_into("<III", header, 0x20, file_size, 0x70, 0x12345678)
+    struct.pack_into("<II", header, 0x38, len(strings), string_offset)
+    struct.pack_into("<II", header, 0x40, 2, type_offset)
+    struct.pack_into("<II", header, 0x60, 1, class_offset)
+    return bytes(header + string_ids + string_data + type_ids + class_defs)
+
+
+def test_python_bytecode_is_parsed_without_execution(tmp_path):
+    """PYC metadata and constants are useful evidence, but code is never run."""
+    import importlib.util
+    import marshal
+    import time
+
+    code = compile(
+        "import hashlib\nhashlib.sha256(b'x')\nmode = 'AES/GCM/NoPadding'",
+        "app.py", "exec")
+    pyc = (importlib.util.MAGIC_NUMBER + struct.pack("<III", 0, int(time.time()), 64)
+           + marshal.dumps(code))
+    path = tmp_path / "app.pyc"
+    path.write_bytes(pyc)
+
+    record = bs.scan_file(path)
+    assert record is not None and record["format"] == "python-bytecode"
+    assert record["python"]["code_objects"] == 1
+    assert "hashlib" in record["python"]["names"]
+    assert "AES/GCM/NoPadding" in record["python"]["strings"]
+    assert any(row["name"] == "AES" for row in record["crypto"]["algorithm_evidence"])
+    assert record["crypto"]["libraries"]
+
+
+def test_dex_and_android_package_recursion_preserve_provenance(tmp_path):
+    """APK structure, DEX indexes, and nested crypto evidence reach the SBOM."""
+    import zipfile
+
+    dex = _dex_fixture()
+    apk = tmp_path / "app.apk"
+    with zipfile.ZipFile(apk, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", dex)
+        archive.writestr("lib/arm64-v8a/libnative.so", _elf64(
+            exports=("EVP_sha256",), strings=("OpenSSL 3.0.20",)))
+        archive.writestr("META-INF/CERT.RSA", b"certificate placeholder")
+
+    record = bs.scan_file(apk)
+    assert record is not None and record["type"] == "android-package"
+    assert record["android"]["dex_count"] == 1
+    assert record["android"]["native_library_count"] == 1
+    assert record["android"]["package_signature_present"] is True
+    embedded = {row["file_name"]: row for row in record["embedded"]}
+    assert embedded["classes.dex"]["format"] == "dex"
+    assert embedded["classes.dex"]["derived_from"].endswith("app.apk")
+    assert embedded["libnative.so"]["format"] == "elf"
+    assert "JCA-JCE" in {row["library"] for row in embedded["classes.dex"]["crypto"]["libraries"]}
+
+    result = bs.sbom_result(bs.scan_path(tmp_path))
+    apk_row = next(row for row in result["binaries"] if row["file_name"] == "app.apk")
+    assert apk_row["mobile"]["package_kind"] == "android"
+    assert any(row["format"] == "dex" for row in result["binaries"])
+    assert any(row["derived_from"] for row in result["binaries"] if row["format"] == "elf")
+
+
+def test_bytecode_headers_fail_closed_at_metadata_bounds():
+    """Untrusted DEX counts and malformed PYC payloads never escape the scanner."""
+    dex = bytearray(0x70)
+    dex[:8] = b"dex\n035\x00"
+    struct.pack_into("<III", dex, 0x20, len(dex), 0x70, 0x12345678)
+    struct.pack_into("<II", dex, 0x38, bs.MAX_DEX_IDS + 1, 0x70)
+    record = bs.parse_bytes(bytes(dex), name="hostile.dex")
+    assert record["format"] == "dex" and record["parsed"] is False
+    assert "exceeds the bound" in record["parse_error"]
+
+    pyc = importlib.util.MAGIC_NUMBER + bytes(12)
+    partial = bs.parse_bytes(pyc, name="partial.pyc")
+    assert partial["format"] == "python-bytecode"
+    assert partial["parsed"] is True and partial["python"].get("marshal_error")

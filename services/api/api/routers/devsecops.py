@@ -314,7 +314,8 @@ class SbomScanRequest(BaseModel):
 
 
 @router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
-def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
+def sbom_scan(body: SbomScanRequest, request: Request,
+              db: Session = Depends(get_db_session),
               user: str = Depends(require_roles(*_SBOM_OPERATORS))):
     """End-to-end SBOM generation: scan a source tree or container target and
     produce a deterministic CycloneDX 1.5 / SPDX 2.3 bill of materials with
@@ -399,6 +400,43 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    binary_bundle: dict[str, dict] = {}
+    if kind == "binary":
+        cbom = binary.cbom_document(binary_result, target=str(binary_result.get("target") or resolved),
+                                    created_by=user)
+        from devsecops.binary_boms import build_binary_bom_bundle
+
+        binary_bundle = build_binary_bom_bundle(
+            binary_result, result, sbom=bom, cbom=cbom,
+            target=str(binary_result.get("target") or resolved), created_by=user)
+        # The generic scanner predates tenant-aware binary storage. Route binary
+        # scans through the same sealed artifact writer as the dedicated endpoint
+        # and worker so a caller cannot receive an unencrypted, platform-scoped
+        # sidecar by choosing /sbom/scan.
+        stored = store_binary_artifact(
+            scan=binary_result, result=result, bom=bom, cbom=cbom, fmt=fmt,
+            created_by=user, db=db, artifact_id=None, feed_supplied=bool(body.feed),
+            recursive=body.recursive, include_raw=body.include_raw,
+            secret=_sbom_signing_secret(db),
+            tenant_id=_artifact_tenant(request, db, user), bom_bundle=binary_bundle)
+        manifest = stored["manifest"]
+        artifact_id = stored["artifact_id"]
+        UserRepository(db).audit(
+            user, "devsecops.sbom_scan", target_type="sbom_artifact", target_id=artifact_id,
+            detail={"kind": kind, "target": manifest["target"], "format": fmt,
+                    "components": manifest.get("component_count", 0),
+                    "sha256": manifest.get("sha256", "")[:16]},
+        )
+        db.commit()
+        return {
+            "artifact_id": artifact_id, "manifest": manifest,
+            "compliance": stored["compliance"], "download_url":
+            f"/api/v1/devsecops/sbom/{artifact_id}/download",
+            "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
+            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom,
+            "cbom": cbom, "bom_documents": manifest.get("bom_documents") or {},
+            "bom_types": ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"],
+        }
     packages = result.get("packages") or []
     payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
     sha256 = hashlib.sha256(payload).hexdigest()
@@ -457,6 +495,17 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user,
         "storage_key": key,
+        "cbom_storage_key": f"{artifact_id}.cbom.json" if kind == "binary" else None,
+        "bom_documents": ({
+            name: {"storage_key": f"{artifact_id}.{name.replace('_', '-')}.json",
+                   "sha256": hashlib.sha256(json.dumps(document, sort_keys=True,
+                                                        separators=(",", ":")).encode("utf-8")).hexdigest(),
+                   "encrypted": False, "format": document.get("bomFormat", "json"),
+                   "component_count": len(document.get("components") or []),
+                   "vulnerability_count": len(document.get("vulnerabilities") or [])}
+            for name, document in binary_bundle.items()
+            if name not in {"sbom", "cbom", "vendor_bom", "vulbom"} and isinstance(document, dict) and document
+        } if kind == "binary" else {}),
         # what it takes to re-scan the very same target with the same options
         "scan_options": {"kind": kind, "target": str(result.get("target") or body.target),
                          "as_image": bool(body.as_image),
@@ -473,6 +522,17 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         manifest["signature"] = sb.sign_manifest(manifest, secret)
     store = _sbom_storage()
     store.put(key, payload)
+    if kind == "binary" and binary_bundle:
+        cbom_payload = json.dumps(binary_bundle.get("cbom") or {}, sort_keys=True,
+                                  separators=(",", ":")).encode("utf-8")
+        store.put(str(manifest["cbom_storage_key"]), cbom_payload)
+        for name, document in binary_bundle.items():
+            if name in {"sbom", "cbom", "vendor_bom", "vulbom"} or not isinstance(document, dict) or not document:
+                continue
+            side_key = str((manifest.get("bom_documents") or {}).get(name, {}).get("storage_key") or "")
+            if side_key:
+                store.put(side_key, json.dumps(document, sort_keys=True,
+                                                separators=(",", ":")).encode("utf-8"))
     store.put_manifest(key, manifest)
     UserRepository(db).audit(user, "devsecops.sbom_scan", target_type="sbom_artifact",
                              target_id=artifact_id,
@@ -482,7 +542,11 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
             "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
             "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
-            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom}
+            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",
+            "bom": bom,
+            "bom_documents": manifest.get("bom_documents") or {},
+            "bom_types": (["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"]
+                          if kind == "binary" else ["SBOM"])}
 
 
 def _scanner_findings(manifest: dict) -> dict[str, int] | None:
@@ -1024,6 +1088,11 @@ def binary_scan(body: BinaryScanRequest, request: Request,
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     cbom = bs.cbom_document(scan, target=str(scan.get("target")), created_by=user)
+    from devsecops.binary_boms import build_binary_bom_bundle
+
+    bom_bundle = build_binary_bom_bundle(
+        scan, result, sbom=bom, cbom=cbom,
+        target=str(scan.get("target") or resolved), created_by=user)
 
     findings = result.get("findings") or []
     stored = store_binary_artifact(
@@ -1031,7 +1100,7 @@ def binary_scan(body: BinaryScanRequest, request: Request,
         artifact_id=body.artifact_id, job_id=body.job_id, feed_supplied=bool(body.feed),
         recursive=body.recursive, include_raw=body.include_raw,
         secret=_sbom_signing_secret(db),
-        tenant_id=_artifact_tenant(request, db, user))
+        tenant_id=_artifact_tenant(request, db, user), bom_bundle=bom_bundle)
     artifact_id = stored["artifact_id"]
     manifest = stored["manifest"]
     compliance = stored["compliance"]
@@ -1073,6 +1142,8 @@ def binary_scan(body: BinaryScanRequest, request: Request,
         "binaries": result.get("binaries") or [],
         "cbom": cbom,
         "cbom_result": cbom_result,
+        "bom_documents": manifest.get("bom_documents") or {},
+        "bom_types": ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"],
         "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
         "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
         "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",
@@ -1350,6 +1421,52 @@ def binary_cbom(artifact_id: str, request: Request, db: Session = Depends(get_db
     return json.loads(blob.decode("utf-8"))
 
 
+@router.get("/binary/artifacts/{artifact_id}/bom/{bom_type}")
+def binary_bom(artifact_id: str, bom_type: str, request: Request,
+               db: Session = Depends(get_db_session),
+               user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Read a tenant-scoped BOM projection produced by a binary scan.
+
+    ``bom_type`` is one of ``sbom``, ``cbom``, ``hbom``, ``nbom``, ``vbom``,
+    ``vulnerability-bom`` or ``technology-bom``. SBOM/CBOM retain their existing
+    download paths; this endpoint makes every additional projection discoverable
+    without exposing storage keys or another tenant's artifact.
+    """
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    requested = str(bom_type).strip().lower()
+    aliases = {
+        "hbom": "hbom", "nbom": "nbom", "vbom": "vbom", "vendor-bom": "vbom",
+        "vulnerability-bom": "vulnerability_bom", "vulbom": "vulnerability_bom",
+        "technology-bom": "technology_bom", "technology": "technology_bom",
+    }
+    key = aliases.get(requested)
+    if requested not in {"sbom", "cbom"} and key is None:
+        raise HTTPException(status_code=404, detail="unsupported binary BOM type")
+    tenant = _artifact_tenant(request, db, user)
+    store = _sbom_storage()
+    man = _find_manifest(store, artifact_id, tenant_id=tenant)
+    if man is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    if requested == "sbom":
+        document = {"storage_key": man.get("storage_key")}
+        key = "sbom"
+    elif requested == "cbom":
+        document = {"storage_key": man.get("cbom_storage_key")}
+        key = "cbom"
+    else:
+        document = (man.get("bom_documents") or {}).get(key)
+    if not document or not document.get("storage_key"):
+        raise HTTPException(status_code=404, detail="BOM projection was not stored")
+    scoped = dict(man, storage_key=document["storage_key"])
+    try:
+        blob, _ = _read_artifact_blob(store, scoped, tenant_id=tenant,
+                                      label=f"stored {key}")
+    except ArtifactCryptoError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return json.loads(blob.decode("utf-8"))
+
+
 @router.get("/sbom/artifacts")
 def sbom_artifacts(request: Request, kind: str | None = None, fmt: str | None = None,
                   q: str | None = None, limit: int = 50,
@@ -1377,6 +1494,9 @@ def sbom_artifacts(request: Request, kind: str | None = None, fmt: str | None = 
         item["download_url"] = f"/api/v1/devsecops/sbom/{aid}/download" if aid else None
         item["verify_url"] = f"/api/v1/devsecops/sbom/{aid}/verify" if aid else None
         item["report_url"] = f"/api/v1/devsecops/sbom/{aid}/report" if aid else None
+        item["bom_urls"] = ({name: f"/api/v1/devsecops/binary/artifacts/{aid}/bom/{name.replace('_', '-')}"
+                             for name in (item.get("bom_documents") or {})}
+                            if str(item.get("kind") or "").lower() == "binary" else {})
     return {"total": len(items), "returned": len(bounded), "artifacts": bounded}
 
 
@@ -1443,6 +1563,31 @@ def sbom_diff(body: SbomDiffRequest, request: Request, db: Session = Depends(get
                                                      "or from_doc+to_doc"))
     result = diff_boms(old, new)
     result["sources"] = meta
+    if body.from_artifact and body.to_artifact and \
+            str(old_man.get("kind") or "").lower() == "binary" and \
+            str(new_man.get("kind") or "").lower() == "binary":
+        from devsecops.binary_boms import diff_binary_bom_bundles
+
+        def _binary_views(document: dict, manifest: dict) -> dict[str, dict]:
+            views: dict[str, dict] = {"sbom": document}
+            try:
+                cbom_blob, _ = _artifact_cbom_blob(store, manifest, tenant)
+                views["cbom"] = json.loads(cbom_blob)
+            except (ArtifactCryptoError, FileNotFoundError, ValueError, TypeError, KeyError):
+                pass
+            for name, descriptor in (manifest.get("bom_documents") or {}).items():
+                if not isinstance(descriptor, dict) or not descriptor.get("storage_key"):
+                    continue
+                try:
+                    scoped = dict(manifest, storage_key=descriptor["storage_key"])
+                    sidecar, _ = _artifact_blob(store, scoped, tenant, label=f"stored {name}")
+                    views[name] = json.loads(sidecar)
+                except (ArtifactCryptoError, FileNotFoundError, ValueError, TypeError, KeyError):
+                    continue
+            return views
+
+        result["binary_bom_diff"] = diff_binary_bom_bundles(
+            _binary_views(old, old_man), _binary_views(new, new_man))
     return result
 
 
@@ -1995,8 +2140,14 @@ def sbom_prune(request: Request, older_than_days: int = 90,
             continue
         if stamp < cutoff and man.get("storage_key"):
             store.delete(man["storage_key"])
+            if man.get("cbom_storage_key"):
+                store.delete(man["cbom_storage_key"])
+            for document in (man.get("bom_documents") or {}).values():
+                if document.get("storage_key"):
+                    store.delete(document["storage_key"])
             deleted.append({"artifact_id": man.get("artifact_id"), "created_at": created,
-                            "target": man.get("target")})
+                            "target": man.get("target"),
+                            "bom_documents_deleted": len(man.get("bom_documents") or {})})
         else:
             kept += 1
     if deleted:
