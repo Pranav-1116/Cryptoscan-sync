@@ -23,9 +23,15 @@ What is parsed, and how deep:
   device-tree `model`/`compatible` identity. Magic and offsets only: the
   platform does **not** unpack squashfs/JFFS2 (that needs binwalk), and claiming
   a filesystem listing it never produced would be a lie.
-* **WASM**, **Java class** files, **Python bytecode**, **RPM** and **raw** blobs
-  — identified and string-scanned; a format we cannot parse is reported as
-  identified-but-not-parsed rather than silently passed.
+* **WASM**, **Java class** files, **Android DEX/APK/AAB**, **Python bytecode**,
+  **RPM** and **raw** blobs — bounded type/string/index metadata is extracted;
+  DEX method bodies and Python bytecode are not disassembled or executed. A
+  format we cannot parse is reported as identified-but-not-parsed rather than
+  silently passed.
+* **Mobile package structure** — APK/AAB/APKS/XAPK DEX/native-library and
+  package-signature artifacts, plus IPA Info.plist/native/signature paths, are
+  inventoried without asserting signature validity or decoding sensitive app
+  configuration.
 * **Embedded key material** — PEM/OpenSSH/PuTTY/OpenPGP armour, ASN.1 structures
   read by hand (PKCS#1, SEC1, PKCS#8 clear and encrypted, SubjectPublicKeyInfo,
   X.509, PKCS#7, PKCS#12), base64/hex-encoded copies of the same structures, Java
@@ -72,6 +78,31 @@ MAX_EXTRACT_DEPTH = 2                    # containers followed inside containers
 MAX_EXTRACT_FILES = 60                   # members listed/parsed per archive
 MAX_MEMBER_BYTES = 16 * 1024 * 1024      # member size we are willing to parse
 MAX_RPM_ENTRIES = 400                    # header index entries read
+MAX_BYTECODE_STRINGS = 400               # decoded strings retained per bytecode file
+MAX_BYTECODE_OBJECTS = 1000              # nested code objects walked per file
+MAX_DEX_IDS = 20000                      # DEX id rows read from untrusted headers
+
+# Python's four-byte magic is versioned.  These are the released CPython 3.x
+# magics we can identify without trusting a .pyc filename.  The parser still
+# validates the header and reports an unknown version rather than inferring one.
+PYTHON_BYTECODE_MAGICS: dict[bytes, str] = {
+    bytes.fromhex("ee0c0d0a"): "3.4",
+    bytes.fromhex("170d0d0a"): "3.5",
+    bytes.fromhex("330d0d0a"): "3.6",
+    bytes.fromhex("420d0d0a"): "3.7",
+    bytes.fromhex("550d0d0a"): "3.8",
+    bytes.fromhex("610d0d0a"): "3.9",
+    bytes.fromhex("6f0d0d0a"): "3.10",
+    bytes.fromhex("a70d0d0a"): "3.11",
+    bytes.fromhex("cb0d0d0a"): "3.12",
+    bytes.fromhex("f30d0d0a"): "3.13",
+}
+try:  # keep the parser usable when a newer CPython changes its magic
+    import importlib.util as _importlib_util
+    PYTHON_BYTECODE_MAGICS.setdefault(_importlib_util.MAGIC_NUMBER, "current")
+except Exception:  # pragma: no cover - importlib is part of CPython
+    pass
+
 
 # ------------------------------------------------------------- detection ---- #
 MAGICS: tuple[tuple[str, bytes], ...] = (
@@ -86,6 +117,7 @@ MAGICS: tuple[tuple[str, bytes], ...] = (
     ("ar", b"!<arch>\n"),
     ("zip", b"PK\x03\x04"),
     ("wasm", b"\x00asm"),
+    ("dex", b"dex\n"),
     ("rpm", b"\xed\xab\xee\xdb"),
     ("squashfs", b"hsqs"),
     ("squashfs-be", b"sqsh"),
@@ -397,6 +429,8 @@ def identify(data: bytes, name: str = "") -> dict[str, str]:
         if 1 <= count <= 20:
             return {"format": "macho-fat", "arch": "universal"}
         return {"format": "java-class", "arch": "bytecode"}
+    if data[:4] in PYTHON_BYTECODE_MAGICS:
+        return {"format": "python-bytecode", "arch": "bytecode"}
     for fmt, magic in MAGICS:
         if not head.startswith(magic):
             continue
@@ -2153,13 +2187,64 @@ def _zip_member(data: bytes, suffix: str) -> bytes | None:
     return None
 
 
+def _mobile_zip_metadata(entries: list[str], *, android: bool) -> dict[str, Any]:
+    """Inventory mobile package structure without claiming signature verification."""
+    lower = [entry.lower() for entry in entries]
+    if android:
+        dex = [entry for entry in entries if entry.lower().rsplit("/", 1)[-1].startswith("classes")
+               and entry.lower().endswith(".dex")]
+        native = [entry for entry in entries if entry.lower().startswith("lib/")
+                  and entry.lower().endswith(".so")]
+        signing = [entry for entry in entries
+                   if entry.lower().startswith("meta-inf/")
+                   and entry.lower().rsplit("/", 1)[-1].endswith((".rsa", ".dsa", ".ec"))]
+        return {
+            "package_kind": "android",
+            "manifest_present": "androidmanifest.xml" in lower,
+            "dex_files": dex[:100], "dex_count": len(dex),
+            "native_libraries": native[:200], "native_library_count": len(native),
+            "signature_artifacts": signing[:20],
+            "package_signature_present": bool(signing),
+            "signature_verification": "not_performed",
+        }
+    plist = [entry for entry in entries if entry.lower().endswith("/info.plist")]
+    native = [entry for entry in entries
+              if entry.lower().startswith("payload/")
+              and entry.lower().endswith(('.dylib', '.framework'))]
+    code_signatures = [entry for entry in entries
+                       if entry.lower().startswith("payload/")
+                       and "/_codesignature/" in entry.lower()]
+    return {
+        "package_kind": "ios",
+        "info_plists": plist[:20],
+        "info_plist_count": len(plist),
+        "native_libraries": native[:200],
+        "native_library_count": len(native),
+        "code_signature_files": code_signatures[:20],
+        "package_signature_present": bool(code_signatures),
+        "signature_verification": "not_performed",
+    }
+
+
 def parse_zip(data: bytes, name: str = "") -> dict[str, Any]:
-    """Zip containers: jars, wheels, nupkgs, APKs — with their metadata."""
+    """Zip containers: jars, wheels, nupkgs, APK/AAB/IPA packages, with metadata."""
     entries = [entry["name"] for entry in _zip_local_entries(data)]
     lower = name.lower()
+    lower_entries = {entry.lower() for entry in entries}
     out: dict[str, Any] = {"format": "zip", "entry_count": len(entries),
                            "entries": entries[:300], "libraries": [], "imports": []}
-    if lower.endswith((".jar", ".war", ".ear")) or "META-INF/MANIFEST.MF" in entries:
+    android = (lower.endswith((".apk", ".aab", ".xapk", ".apks"))
+               or "androidmanifest.xml" in lower_entries
+               or any(entry.startswith("lib/") and entry.endswith(".so") for entry in lower_entries))
+    ios = (lower.endswith(".ipa") or any(entry.startswith("payload/") and entry.endswith("/info.plist")
+                                         for entry in lower_entries))
+    if android:
+        out["type"] = "android-package"
+        out["android"] = _mobile_zip_metadata(entries, android=True)
+    elif ios:
+        out["type"] = "ios-package"
+        out["ios"] = _mobile_zip_metadata(entries, android=False)
+    elif lower.endswith((".jar", ".war", ".ear")) or "meta-inf/manifest.mf" in lower_entries:
         out["type"] = "java-archive"
         out["java"] = _java_metadata(data, entries)
         if any(entry.startswith("org/bouncycastle") for entry in entries):
@@ -2217,6 +2302,230 @@ def _python_metadata(data: bytes, entries: list[str]) -> dict[str, Any]:
             elif lower.startswith("requires-dist:"):
                 out.setdefault("requires", []).append(line.split(":", 1)[1].strip())
     out["native_extensions"] = [entry for entry in entries if entry.endswith((".so", ".pyd", ".dylib"))][:50]
+    return out
+
+
+def _dex_uleb(data: bytes, offset: int) -> tuple[int, int]:
+    """Read one bounded DEX ULEB128 value.
+
+    DEX string_data items are length-prefixed with ULEB128.  A malformed value
+    must stop this one item, not make the scanner walk past the file or allocate
+    from an attacker-controlled length.
+    """
+    value = 0
+    shift = 0
+    for _ in range(5):
+        if offset >= len(data):
+            raise ValueError("truncated DEX ULEB128")
+        byte = data[offset]
+        offset += 1
+        value |= (byte & 0x7f) << shift
+        if not byte & 0x80:
+            return value, offset
+        shift += 7
+    raise ValueError("oversized DEX ULEB128")
+
+
+def _dex_strings(data: bytes, size: int, offset: int) -> tuple[list[str], bool]:
+    """Decode bounded DEX string IDs, returning strings and a truncation flag."""
+    if size > MAX_DEX_IDS or offset < 0 or offset + size * 4 > len(data):
+        raise ValueError("DEX string table is outside the file or exceeds the bound")
+    values: list[str] = []
+    truncated = False
+    for index in range(size):
+        (string_offset,) = struct.unpack_from("<I", data, offset + index * 4)
+        if string_offset >= len(data):
+            truncated = True
+            values.append("")
+            continue
+        try:
+            utf16_length, position = _dex_uleb(data, string_offset)
+            end = data.find(b"\x00", position,
+                            min(len(data), position + utf16_length * 4 + 1))
+            if end < 0:
+                truncated = True
+                values.append("")
+                continue
+            values.append(data[position:end].decode("utf-8", "replace"))
+        except (ValueError, UnicodeError):
+            truncated = True
+            values.append("")
+    return values, truncated
+
+
+def parse_dex(data: bytes) -> dict[str, Any]:
+    """Parse the bounded, crypto-relevant index tables of an Android DEX file.
+
+    This is deliberately not a Dalvik disassembler.  The DEX header, type/string
+    pools, class definitions and method names are stable evidence for package and
+    crypto-library inventory, while method bodies are left uninterpreted.  A DEX
+    can be a member of an APK/AAB/embedded ZIP and is parsed through the same
+    container path as an ELF member.
+    """
+    if len(data) < 0x70 or not data.startswith(b"dex\n"):
+        raise ValueError("not a DEX file")
+    version = data[4:7].decode("ascii", "replace")
+    if data[7] != 0:
+        raise ValueError("invalid DEX magic terminator")
+    file_size, header_size, endian_tag = struct.unpack_from("<III", data, 0x20)
+    if header_size != 0x70:
+        raise ValueError(f"unsupported DEX header size: {header_size}")
+    if file_size and file_size > len(data):
+        # A truncated file is still useful if all tables we read are present; the
+        # discrepancy is retained as an explicit integrity warning below.
+        size_mismatch = True
+    else:
+        size_mismatch = bool(file_size and file_size != len(data))
+    if endian_tag not in (0x12345678, 0x78563412):
+        raise ValueError(f"invalid DEX endian tag: 0x{endian_tag:08x}")
+    if endian_tag == 0x78563412:
+        raise ValueError("reverse-endian DEX is not supported")
+
+    string_count, string_offset = struct.unpack_from("<II", data, 0x38)
+    type_count, type_offset = struct.unpack_from("<II", data, 0x40)
+    method_count, method_offset = struct.unpack_from("<II", data, 0x58)
+    class_count, class_offset = struct.unpack_from("<II", data, 0x60)
+    strings, strings_truncated = _dex_strings(data, string_count, string_offset)
+
+    if type_count > MAX_DEX_IDS or type_offset + type_count * 4 > len(data):
+        raise ValueError("DEX type table is outside the file or exceeds the bound")
+    types: list[str] = []
+    for index in range(type_count):
+        (string_index,) = struct.unpack_from("<I", data, type_offset + index * 4)
+        types.append(strings[string_index] if string_index < len(strings) else "")
+
+    # class_defs.class_idx identifies locally defined types.  The remaining type
+    # descriptors are dependencies/imports, which is more useful than treating
+    # every DEX type as an exported class.
+    if class_count > MAX_DEX_IDS or class_offset + class_count * 32 > len(data):
+        raise ValueError("DEX class definition table is outside the file or exceeds the bound")
+    defined: set[str] = set()
+    for index in range(class_count):
+        (class_index,) = struct.unpack_from("<I", data, class_offset + index * 32)
+        if class_index < len(types) and types[class_index]:
+            defined.add(types[class_index])
+
+    methods: list[str] = []
+    methods_truncated = False
+    if method_count <= MAX_DEX_IDS and method_offset + method_count * 8 <= len(data):
+        for index in range(method_count):
+            _class_index, _proto_index, name_index = struct.unpack_from(
+                "<HHI", data, method_offset + index * 8)
+            if name_index < len(strings) and strings[name_index]:
+                methods.append(strings[name_index])
+    else:
+        methods_truncated = True
+
+    imports = [name for name in types if name and name not in defined]
+    out: dict[str, Any] = {
+        "format": "dex", "arch": "dalvik", "libraries": [],
+        "imports": imports[:600], "exports": sorted(defined)[:600],
+        "symbols": sorted(set(methods))[:600],
+        "dex": {
+            "version": version,
+            "file_size": file_size,
+            "header_size": header_size,
+            "endian": "little",
+            "string_count": string_count,
+            "type_count": type_count,
+            "method_count": method_count,
+            "class_count": class_count,
+            "classes": sorted(defined)[:300],
+            "method_names": sorted(set(methods))[:300],
+            "strings": [text for text in strings if len(text) >= 3][:MAX_BYTECODE_STRINGS],
+            "truncated": bool(strings_truncated or size_mismatch or methods_truncated),
+        },
+    }
+    out["java"] = {"runtime": "Android DEX", "version": version,
+                    "classes": sorted(defined)[:300],
+                    "strings": out["dex"]["strings"]}
+    if any("bouncycastle" in name.lower() or "bcprov" in name.lower()
+           for name in (*imports, *defined)):
+        out["libraries"].append("BouncyCastle")
+    return out
+
+
+def _python_code_metadata(code: Any, *, strings: list[str], names: list[str],
+                          filenames: list[str], depth: int = 0,
+                          objects: list[Any] | None = None) -> None:
+    """Collect Python code-object metadata without executing it."""
+    if objects is None:
+        objects = []
+    if depth > 64 or len(objects) >= MAX_BYTECODE_OBJECTS or code in objects:
+        return
+    objects.append(code)
+    for value in getattr(code, "co_names", ()):
+        if isinstance(value, str):
+            names.append(value)
+    filename = getattr(code, "co_filename", "")
+    if isinstance(filename, str) and filename:
+        filenames.append(filename)
+    for value in getattr(code, "co_consts", ()):
+        if isinstance(value, str):
+            strings.append(value)
+        elif isinstance(value, bytes):
+            strings.extend(extract_strings(value, min_len=3, limit=32))
+        elif hasattr(value, "co_consts"):
+            _python_code_metadata(value, strings=strings, names=names,
+                                  filenames=filenames, depth=depth + 1,
+                                  objects=objects)
+
+
+def parse_python_bytecode(data: bytes) -> dict[str, Any]:
+    """Read CPython pyc metadata and constants, never execute the code object."""
+    if len(data) < 16 or data[:4] not in PYTHON_BYTECODE_MAGICS:
+        raise ValueError("not a supported CPython bytecode file")
+    magic = data[:4]
+    flags = struct.unpack_from("<I", data, 4)[0]
+    version = PYTHON_BYTECODE_MAGICS[magic]
+    header_size = 16
+    header: dict[str, Any] = {"magic": magic.hex(), "version": version,
+                               "flags": flags, "hash_based": bool(flags & 1)}
+    if flags & 1:
+        header["source_hash"] = data[8:16].hex()
+    else:
+        timestamp, source_size = struct.unpack_from("<II", data, 8)
+        header["timestamp"] = timestamp
+        header["source_size"] = source_size
+
+    strings: list[str] = []
+    names: list[str] = []
+    filenames: list[str] = []
+    objects: list[Any] = []
+    marshal_error: str | None = None
+    try:
+        import marshal
+        code = marshal.loads(data[header_size:header_size + MAX_MEMBER_BYTES])
+        if hasattr(code, "co_consts"):
+            _python_code_metadata(code, strings=strings, names=names,
+                                  filenames=filenames, objects=objects)
+        else:
+            marshal_error = "marshal payload is not a code object"
+    except Exception as exc:  # noqa: BLE001 — malformed bytecode is a partial parse
+        marshal_error = f"{type(exc).__name__}: {exc}"
+
+    strings = list(dict.fromkeys(text for text in strings if text))[:MAX_BYTECODE_STRINGS]
+    names = list(dict.fromkeys(name for name in names if name))[:MAX_BYTECODE_STRINGS]
+    out: dict[str, Any] = {
+        "format": "python-bytecode", "arch": "bytecode", "libraries": [],
+        # Prefix code-object names so the shared fingerprint layer can distinguish
+        # a Python import from an unrelated native symbol with the same spelling.
+        "imports": [f"python:{name}" for name in names[:600]], "exports": [],
+        "python": {**header, "code_objects": len(objects), "names": names[:300],
+                    "filenames": filenames[:100], "strings": strings,
+                    "truncated": len(objects) >= MAX_BYTECODE_OBJECTS},
+    }
+    if marshal_error:
+        out["python"]["marshal_error"] = marshal_error
+    library_names = "\\n".join((*names, *strings)).lower()
+    for marker, library in (("cryptography", "Python cryptography"),
+                            ("hashlib", "Python hashlib"),
+                            ("pycryptodome", "PyCryptodome"),
+                            ("Crypto.Cipher", "PyCryptodome"),
+                            ("openssl", "OpenSSL"), ("ssl", "Python ssl"),
+                            ("nacl", "PyNaCl")):
+        if marker.lower() in library_names:
+            out["libraries"].append(library)
     return out
 
 
@@ -2938,6 +3247,12 @@ def _parse_member_payloads(payloads: list[tuple[str, bytes]], *, depth: int, pre
         record["sha256"] = hashlib.sha256(member).hexdigest()
         record["size"] = len(member)
         strings = extract_strings(member)
+        declared: list[str] = []
+        for table in (record.get("java") or {}, record.get("python") or {},
+                      record.get("dex") or {}):
+            declared.extend(str(text) for text in (table.get("strings") or []) if text)
+        if declared:
+            strings = list(dict.fromkeys(declared)) + [text for text in strings if text not in declared]
         record["strings_sampled"] = len(strings)
         record["derived_from"] = prefix
         record["depth"] = depth + 1
@@ -3052,6 +3367,9 @@ STRONG_MARKERS: dict[str, tuple[str, ...]] = {
     "RustCrypto": ("rustls", "ed25519-dalek", "aes_gcm::"),
     "PKCS#11": ("C_GetFunctionList", "C_Initialize"),
     "Node crypto": ("node:crypto", "createCipheriv"),
+    "Python hashlib": ("hashlib", "hmac", "secrets"),
+    "Python cryptography": ("cryptography", "hazmat"),
+    "PyCryptodome": ("Crypto.Cipher", "Crypto.Hash", "pycryptodome"),
 }
 #: tokens matched on identifier boundaries only — "sha2" must not hit "sha256",
 #: "ring::" must not hit "string::"
@@ -3389,12 +3707,21 @@ def _strict_marker_evidence(markers: Iterable[str], names: list[str],
         if not _marker_hits(marker, names, text):
             continue
         plain.append(marker)
-        for suffix in ("::", "/", "@", "!"):
+        for suffix in ("::", "/", "@", "!", ":"):
             # the delimiter itself closes the token, so only the *head* of the
             # occurrence needs an identifier boundary: "javax/crypto/Cipher" is a
-            # qualified hit, while "string::" must not read as "ring::"
-            pattern = re.compile(r"(?:^|[^0-9a-z])" + re.escape(marker + suffix), re.IGNORECASE)
-            if any(pattern.search(name) for name in names[:6000]):
+            # qualified hit, while "string::" must not read as "ring::". A
+            # language-qualified name may put the delimiter before the marker
+            # (``python:hashlib``), so accept that form too.
+            head = re.compile(r"(?:^|[^0-9a-z])" + re.escape(marker + suffix), re.IGNORECASE)
+            # JVM/DEX descriptors conventionally prefix a package with `L`
+            # (``Ljavax/crypto/Cipher;``); a Python-qualified name puts `:`
+            # before its module (``python:hashlib``). Both are structured names,
+            # not the loose substring coincidences this guard rejects.
+            descriptor = re.compile(r"L" + re.escape(marker + suffix), re.IGNORECASE)
+            tail = re.compile(re.escape(suffix + marker) + r"(?:[^0-9a-z]|$)", re.IGNORECASE)
+            if any(head.search(name) or descriptor.search(name) or tail.search(name)
+                   for name in names[:6000]):
                 qualified.append(f"{marker}{suffix}")
                 break
     return qualified, sorted(set(plain))
@@ -3450,7 +3777,8 @@ def parse_bytes(data: bytes, *, name: str = "", yara: Any = None) -> dict[str, A
         "elf": parse_elf, "pe": parse_pe, "macho": parse_macho, "macho64": parse_macho,
         "macho-be": parse_macho, "macho64-be": parse_macho, "macho-fat": parse_macho,
         "macho-fat-le": parse_macho, "ar": parse_ar, "zip": lambda blob: parse_zip(blob, name),
-        "wasm": parse_wasm, "rpm": parse_rpm, "java-class": parse_java_class,
+        "wasm": parse_wasm, "dex": parse_dex, "python-bytecode": parse_python_bytecode,
+        "rpm": parse_rpm, "java-class": parse_java_class,
     }.get(fmt)
     if fmt == "ustar":
         record.update({"format": "ustar", "parsed": True, "libraries": [], "imports": [],
@@ -3585,9 +3913,12 @@ def scan_file(path: Path, *, root: Path | None = None, yara: Any = None) -> dict
     record["sha256"] = digest
     record["size"] = size
     strings = extract_strings(data)
-    declared = (record.get("java") or {}).get("strings") or []
-    if declared:                       # a class file's string table is its constant pool
-        strings = [text for text in declared if text not in strings] + strings
+    declared: list[str] = []
+    for table in (record.get("java") or {}, record.get("python") or {},
+                  record.get("dex") or {}):
+        declared.extend(str(text) for text in (table.get("strings") or []) if text)
+    if declared:                       # bytecode string tables carry non-ASCII-delimited constants
+        strings = list(dict.fromkeys(declared)) + [text for text in strings if text not in declared]
     record["strings_sampled"] = len(strings)
     record.setdefault("packer", None)
     record["packer"] = record["packer"] or detect_packer([], "\n".join(strings[:800]))
@@ -4817,6 +5148,8 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
             "static": record.get("static"),
             "format": record.get("format"),
             "arch": record.get("arch") or record.get("machine"),
+            "mobile": record.get("android") or record.get("ios"),
+            "bytecode": record.get("python") or record.get("dex") or record.get("java"),
             "hardening": record.get("hardening"),
             "packer": (record.get("packer") or {}).get("name"),
             "interpreter": record.get("interpreter"),
