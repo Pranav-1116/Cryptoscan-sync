@@ -24,14 +24,13 @@ import os
 import random
 import shutil
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services" / "scanner" / "tests"))  # for accuracy.corpus
 
-from accuracy import corpus as _corpus_mod  # noqa: E402  # forces CASES population
 from accuracy.corpus import CASES, canonical_family, canonical_families, spec_families  # noqa: E402
 
 # Allowlist: cases that scan exactly to their labelled families when scanned in isolation
@@ -490,7 +489,6 @@ def write_estate(ent_root: Path, ent: dict, systems: list[dict]) -> dict[str, se
                     labels[rel].add(cf)
             labels.setdefault(rel, set())
 
-    import yaml
     # YAML layout matches the Dubai/UAE runners: a `systems:` list with `- system: NAME`, `paths:`,
     # `criticality:`, `compliance_scopes:`, `depends_on:` (and top-level legal_entity/business_unit defaults).
     lines = [f"legal_entity: {ent['code']}", f"business_unit: {ent['name']}", "systems:"]
@@ -552,7 +550,7 @@ def run(backend: str, workdir: Path, systems_target: int = 1020) -> dict:
     from db.connection.session import Base
     from db.models.evidence_record import EvidenceRecord
     from db.models.scan import Scan
-    from db.testing import drop_engine, estate_engine
+    from db.testing import estate_engine
     from worker.pipeline.pipeline_runner import PipelineRunner
     from api.main import create_app
     from api.security.session_manager import SessionManager

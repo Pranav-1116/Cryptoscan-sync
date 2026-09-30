@@ -20,7 +20,8 @@ spec:
         runAsUser: 10001
       containers:
         - name: api
-          image: cryptoscan-api:latest   # pin a real tag per release
+          image: cryptoscan-api:v1.0.0
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8010
               name: http

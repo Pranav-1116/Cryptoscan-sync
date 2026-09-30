@@ -10,6 +10,15 @@ repository, not from a plan. Version 1.0.0, 2026-09-23._
 
 _Figure 1 — CryptoScan in one picture. Each block is explained in depth in the pages below and in the explanatory posters (images 10–31)._
 
+## Enterprise documentation center
+
+For a vendor-style documentation experience covering product, deployment,
+operations, security, API, integrations, developer extensions, support,
+adoption, and readiness, use the [CryptoScan Enterprise Documentation
+Center](enterprise/README.md). It organizes the existing detailed manuals into
+one end-to-end journey and keeps implementation, operational, and external
+assurance claims separate.
+
 ## Read in this order
 
 | # | Document | What it answers |
@@ -54,7 +63,7 @@ is fabricated: it is empty until a real scan produces evidence.
 | Database | PostgreSQL 15/16 in production (SQLite for development), 60 Alembic migrations, 102 tables |
 | Identity | local + TOTP MFA, OIDC (relay / auth-code / PKCE), SAML 2.0, LDAP/AD, SCIM 2.0, API keys; 9 RBAC roles |
 | Tests | 4,808 backend test functions, hermetic and parallel (~8 min); frontend vitest suite; live PostgreSQL migration test |
-| Readiness | ~80 % overall, core path ~92 % — [PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) |
+| Readiness | Explicit PASS/FAIL/SKIP gate — [root PRODUCTION-READINESS.md](../../PRODUCTION-READINESS.md) |
 
 ## Image index
 

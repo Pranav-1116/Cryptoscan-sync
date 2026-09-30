@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 from pathlib import Path
 
@@ -297,7 +302,11 @@ def parse_config_file(file_path: Path, repo_root: Path | None = None) -> list[Ra
             for f in findings
         }
         findings.extend(run_config_rules(file_path, repo_root, text, SCANNER_ID, seen))
-    except Exception:  # rule pack must never break the base parser
+    except Exception as _handler_exc:  # rule pack must never break the base parser
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return findings
 

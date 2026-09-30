@@ -1,0 +1,270 @@
+# Control register — what kind of evidence backs each procurement control.
+#
+# fix.md item 5: "The product must clearly distinguish: Implemented repository
+# control / Operational record / Customer attestation / External certification.
+# For example, having encryption code does not prove FIPS certification."
+#
+# That distinction is the whole point of this file. Each control records the
+# HIGHEST tier it can actually evidence today, and scripts/control_register.py
+# refuses to let a claim outrank its artifact. The tiers are ordered:
+#
+#   repository_control   code, config or tests in this repo. Proves the
+#                        mechanism exists. Proves nothing about operation.
+#   operational_record   a dated artifact from running it for real: a drill
+#                        output, an audit export, a signed release record.
+#   customer_attestation the customer or operator has signed that they accept
+#                        or perform it. Not something this repo can generate.
+#   external_certification an independent body has certified it (SOC 2, ISO
+#                        27001, FIPS 140-3, PCI). Never inferable from code.
+#
+# `claimed` may never exceed what `evidence` supports. `gap` states plainly
+# what is missing to reach the next tier; "none" means the control is at the
+# highest tier that applies to it.
+#
+# This register is deliberately unflattering. A procurement reviewer who finds
+# one overstated row discounts every other row, so an honest "repository
+# control only" is worth more than an optimistic "compliant".
+
+schema: cryptoscan.control-register/1
+updated: "2026-09-29"
+
+controls:
+  - id: SDLC-01
+    topic: Secure SDLC
+    claimed: repository_control
+    evidence:
+      - .github/workflows/ci.yml
+      - .pre-commit-config.yaml
+    detail: >-
+      Lint, typed frontend build, sharded backend suite and a production
+      configuration guard run on every pull request.
+    gap: >-
+      No dated record that the gate was enforced over a release period, and no
+      independent review of the SDLC itself.
+
+  - id: SDLC-02
+    topic: Code review requirements
+    claimed: repository_control
+    evidence:
+      - .github/CODEOWNERS
+      - .github/PULL_REQUEST_TEMPLATE.md
+    detail: >-
+      Ownership and a review template are declared in the repository.
+    gap: >-
+      Enforcement is a provider setting, not a repository fact. The engineering
+      gate reports branch protection as SKIP until the GitHub/GitLab API is
+      queried with credentials, so required-approval and required-check
+      enforcement is NOT currently evidenced. See fix.md item 7.
+
+  - id: VULN-01
+    topic: Vulnerability management
+    claimed: repository_control
+    evidence:
+      - .github/dependabot.yml
+      - docs/security/dependency-audit-2026-08-30.md
+      - requirements.lock.txt
+    detail: >-
+      Dependencies are pinned and update proposals are automated; one dated
+      dependency audit exists.
+    gap: >-
+      A single audit is not a programme. No recurring scan record, no
+      triage-to-closure evidence across a period.
+
+  - id: VULN-02
+    topic: Patch timelines
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/operational_policy_gate.py
+    detail: >-
+      The draft operational baseline defines severity-specific remediation and
+      compensating-control windows, and the policy gate validates their shape.
+      The values are proposed internal objectives, not contractual promises.
+    gap: >-
+      Obtain approval for the customer/jurisdiction policy and retain dated
+      remediation records showing adherence over time.
+
+  - id: REL-01
+    topic: Release approval
+    claimed: repository_control
+    evidence:
+      - scripts/pin_release_images.py
+      - VERSION
+    detail: >-
+      The release boundary is scripted: manifests are rendered against
+      operator-supplied registry digests and the tool refuses tags and
+      placeholders.
+    gap: >-
+      No signed approval record for any release, and no published image
+      digests yet (fix.md item 1), so no release has actually crossed this
+      boundary.
+
+  - id: VEND-01
+    topic: Vendor risk assessment
+    claimed: repository_control
+    evidence:
+      - docs/compliance/sub-service-matrix.md
+      - docs/compliance/risk-register.md
+    detail: >-
+      Sub-service organisations and platform risks are enumerated.
+    gap: >-
+      Assessments are self-authored. No counterparty questionnaires returned,
+      no reviewer sign-off.
+
+  - id: DATA-01
+    topic: Data residency
+    claimed: customer_attestation
+    evidence: []
+    detail: >-
+      Residency is determined entirely by where the customer deploys. The
+      product ships as containers plus a database; it selects no region.
+    gap: >-
+      This is the customer's statement to make, not the vendor's. Record it in
+      the deployment attestation. The repository must not claim a region.
+
+  - id: DATA-02
+    topic: Deployment location
+    claimed: customer_attestation
+    evidence: []
+    detail: >-
+      Deployment topology is published in k8s/ and docker-compose.prod.yml,
+      but those describe HOW it deploys, not WHERE. The location is chosen by
+      the operator, so the attestation is theirs to issue; citing repository
+      paths here would be the vendor attesting to its own customer's estate.
+    gap: Same as DATA-01 — the operator attests to the actual location.
+
+  - id: BKP-01
+    topic: Backup retention
+    claimed: repository_control
+    evidence:
+      - scripts/backup_evidence.py
+      - scripts/db_backup.sh
+      - docs/admin-guide/backup-restore.md
+    detail: >-
+      Backup tooling produces SHA-256 manifests, and db_backup.sh refuses to
+      write a plaintext artifact when encryption is required but unavailable
+      -- verified on three paths, none of which left a file behind.
+    gap: >-
+      Retention is an operational policy with a stated period and an artifact
+      showing it was honoured. Neither exists. See fix.md item 11.
+
+  - id: BKP-02
+    topic: Backup destruction
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/backup_evidence.py
+    detail: >-
+      The draft operational baseline requires a two-person destruction
+      authorization and destruction evidence; backup evidence tooling provides
+      the machine-readable artifact boundary.
+    gap: >-
+      Approve the customer-specific retention/destruction policy and retain
+      dated destruction certificates and authorization records.
+
+  - id: BKP-03
+    topic: Restore provenance
+    claimed: operational_record
+    evidence:
+      - docs/readiness-evidence/backup-restore-drill-2026-09-28.md
+      - docs/readiness-evidence/postgres-dr-drill-2026-09-29.md
+      - scripts/postgres_drill.py
+      - scripts/postgres_dr_sandbox.sh
+    detail: >-
+      Two qualifications executed. SQLite (2026-09-28): hot online backup
+      restored into a clean data dir, a second instance booted from the
+      backup alone, estate verified through the real API including the CBOM
+      hash chain verifying from genesis (12/12). PostgreSQL (2026-09-29):
+      full DR drill PASS 35/35 against a real primary/standby pair including
+      a controlled one-way promotion -- measured RPO 0.0 s and RTO 0.15 s,
+      marker and all table counts surviving promotion, a live API answering
+      healthy against the promoted node, and a pg_dump/pg_restore into an
+      empty third database where the audit-chain and evidence invariants
+      hold.
+    gap: >-
+      Both ran on one host against local sandboxes, not the customer
+      topology, so the RPO/RTO figures are instrument readings rather than
+      service targets: replication was async, the tables were empty, and
+      there was no load. No failback, no off-host copy, no encrypted round
+      trip (age absent, though the fail-closed paths are verified), no
+      restore-authorisation audit. One drill is not a schedule.
+
+  - id: INC-01
+    topic: Incident notification
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/operational_policy_gate.py
+    detail: >-
+      The draft operational baseline defines internal acknowledgement,
+      customer notification, update, evidence-preservation and regulator-
+      notification fields, with channel names validated by the policy gate.
+    gap: >-
+      Approve the contractual/jurisdiction-specific windows and retain a
+      dated notification/tabletop record; the draft is not an SLA or legal
+      determination.
+
+  - id: SLA-01
+    topic: SLA commitments
+    claimed: repository_control
+    evidence:
+      - services/sla/
+    detail: >-
+      SLA tracking exists in the product as a feature.
+    gap: >-
+      A feature that measures SLAs is not a commitment to one. No availability
+      or response target is published, and no measured attainment exists.
+
+  - id: SUP-01
+    topic: Support escalation
+    claimed: repository_control
+    evidence:
+      - config/operational-policy.yaml
+      - scripts/operational_policy_gate.py
+    detail: >-
+      The draft operational baseline defines severity levels, availability,
+      acknowledgement and update windows, and the policy gate validates every
+      level.
+    gap: >-
+      Convert the draft into an approved customer-specific support schedule,
+      assign real contacts, and retain dated escalation exercise records.
+
+  - id: QRE-01
+    topic: Customer security questionnaire
+    claimed: repository_control
+    evidence:
+      - docs/security-questionnaire.md
+    detail: >-
+      A prepared questionnaire response exists.
+    gap: >-
+      Self-authored and unreviewed. Every answer it gives should map to a row
+      in this register; answers resting on rows at `none` must say so.
+
+  - id: CERT-01
+    topic: External certifications and attestations
+    claimed: none
+    evidence:
+      - docs/soc2-readiness-gap-analysis.md
+    detail: >-
+      A SOC 2 readiness gap analysis exists. Readiness analysis is not an
+      audit and confers no certification.
+    gap: >-
+      No SOC 2 report, no ISO 27001 certificate, no FIPS 140-3 validation, no
+      PCI attestation. The cryptographic code calls FIPS-validatable
+      primitives; that is not a validation and must never be presented as one.
+
+  - id: PEN-01
+    topic: Independent penetration test
+    claimed: none
+    evidence:
+      - docs/security/pen-test-scope.md
+      - services/api/tests/security/
+    detail: >-
+      A scope document exists and the repository carries its own cross-tenant
+      security tests.
+    gap: >-
+      No independent test has been performed. Self-authored tests of
+      self-authored isolation are the weakest form of assurance; two
+      cross-tenant leaks were found in this code by inspection, which is the
+      argument for an external review rather than against it. See fix.md
+      item 9.

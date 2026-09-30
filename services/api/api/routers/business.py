@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
@@ -219,6 +220,25 @@ def list_vendors(user: str = Depends(get_current_user), db: Session = Depends(ge
 @router.post("/vendors")
 def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
+
+    # Check the system BEFORE creating the vendor. system_vendors has a
+    # foreign key to systems, so an unknown id used to surface as a
+    # ForeignKeyViolation and a bare 500 -- a client-supplied value must not
+    # read as a server fault. Checking first also avoids the worse outcome:
+    # the vendor row is created and committed, then the link fails, leaving
+    # an orphan the caller was told nothing about.
+    if body.system_id:
+        from db.models.system import System
+
+        exists = db.execute(
+            select(System.id).where(System.id == body.system_id)
+        ).scalars().first()
+        if exists is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown system_id {body.system_id!r}; create the system first",
+            )
+
     vendor = intel.create_vendor(
         body.name,
         body.criticality,

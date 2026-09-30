@@ -14,7 +14,7 @@ from pathlib import Path
 
 from scanner.models.raw_finding import RawFinding
 from scanner.parsers.pqc_names import PQC_NAMES as _PQC_NAMES
-from scanner.parsers.rule_engine import filter_prng_context, DIGEST_TOKENS, Rule, run_rules
+from scanner.parsers.rule_engine import filter_prng_context, Rule, run_rules
 
 SCANNER_ID = "static-go-scanner-v1.1"
 

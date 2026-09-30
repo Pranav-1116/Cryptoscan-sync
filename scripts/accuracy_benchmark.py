@@ -21,6 +21,10 @@ No network, no database; runs in a few seconds.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import argparse
 import json
 import os
@@ -41,12 +45,15 @@ from accuracy.corpus import CASES, canonical_families, spec_families, summary  #
 
 def _quiet_logging() -> None:
     try:
-        import logging
         import structlog
 
         logging.basicConfig(level=logging.WARNING)
         structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(logging.WARNING))
-    except Exception:  # pragma: no cover
+    except Exception as _handler_exc:  # pragma: no cover
+        logger.debug(
+            "expected_exception_boundary",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
 

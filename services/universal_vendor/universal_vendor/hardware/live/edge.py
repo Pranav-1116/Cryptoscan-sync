@@ -15,6 +15,11 @@ hardware removal — the queue grows and sync retries later.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -40,7 +45,11 @@ class EdgeHardwareQueue:
             if line.strip():
                 try:
                     self._queued.append(HardwareEvent.model_validate_json(line))
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     continue  # corrupted tail: skip, keep file for forensics
 
     def enqueue(self, event: HardwareEvent) -> None:

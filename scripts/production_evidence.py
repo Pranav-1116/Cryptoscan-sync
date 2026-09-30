@@ -33,6 +33,11 @@ FAIL; 2 on usage error. The JSON report is written under
 data/evidence/production-evidence/ and its location is printed at the end.
 """
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 from _bootstrap import bootstrap  # noqa: E402
 
 bootstrap()
@@ -215,7 +220,11 @@ def _wait_healthy(url: str, timeout: float = 60.0) -> bool:
             status, _ = http_json(url, timeout=3.0)
             if status == 200:
                 return True
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         time.sleep(1.0)
     return False
@@ -254,11 +263,19 @@ def teardown_staging(proc: subprocess.Popen, meta: dict) -> None:
     except Exception:
         try:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     try:
         meta["log"].close()
-    except Exception:
+    except Exception as _handler_exc:
+        logger.debug(
+            "expected_exception_boundary",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
 
@@ -412,7 +429,11 @@ def identity(release: str = "") -> dict:
         dirty = bool(subprocess.run(
             ["git", "status", "--porcelain"], cwd=str(ROOT),
             capture_output=True, text=True, timeout=10).stdout.strip())
-    except Exception:
+    except Exception as _handler_exc:
+        logger.debug(
+            "expected_exception_boundary",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     version = ""
     vfile = ROOT / "VERSION"

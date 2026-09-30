@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import socket
 import ssl
 import subprocess
@@ -326,7 +331,11 @@ def test_probe_endpoint_starttls_end_to_end(tmp_path):
             ctx.load_cert_chain(cert, key)
             with ctx.wrap_socket(conn, server_side=True) as tls:
                 tls.recv(1024)                   # tolerate client bytes
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         finally:
             try:
