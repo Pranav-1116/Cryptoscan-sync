@@ -98,7 +98,11 @@ def _db_load_snapshot() -> dict[str, Any] | None:
         with SessionLocal() as session:
             snap = SettingsRepository(session).get(SNAPSHOT_SETTING_KEY)
         return snap if isinstance(snap, dict) else None
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -131,7 +135,11 @@ def _privacy_policy_obj() -> Any | None:
             from privacy.policy import PrivacyPolicy
 
             return PrivacyPolicy()
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
 
@@ -181,11 +189,13 @@ class LiveScanRunner:
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
+        self._cancel_requested = threading.Event()
         self.interval: int = int(os.environ.get("CRYPTOSCAN_LIVE_INTERVAL", "900"))
         self.last_snapshot: dict[str, Any] | None = None
         self.last_run_at: str | None = None
         self.running: bool = False
         self._started_at: float | None = None
+        self._run_tenant_id: str | None = None
         self._persisted: bool = False
         self._prev_inventory: dict[str, Any] | None = None
         self.last_drift: dict[str, Any] | None = None
@@ -438,31 +448,35 @@ class LiveScanRunner:
             return {"events": data.get("events_count") or len(data.get("events") or [])}
         return {}
 
-    #: lifecycle/result events are durable: they are persisted to the DB event
-    #: log in addition to the in-memory bus, so they reach browsers on other
-    #: API workers (via the DB tailer) and survive a restart. High-frequency
-    #: progress ticks (scanner_started/scanner_completed) stay in-memory only.
+    #: Lifecycle/result events also become audit rows. Every event is written
+    #: to the Redis stream by EventBus in production; only these important
+    #: milestones are additionally retained in monitor_events for audit/history.
     _DURABLE_EVENTS = frozenset({
-        "live_scan.started", "live_scan.completed", "live_scan.error", "live_scan.drift",
+        "live_scan.started", "live_scan.completed", "live_scan.error",
+        "live_scan.drift", "live_scan.cancelled",
     })
 
     def _publish(self, event_type: str, payload: dict[str, Any]) -> None:
         try:
             from api.events.bus import get_event_bus
+            from api.events.platform_events import emit_platform_event
 
-            get_event_bus().publish(event_type, payload, source="live-scanner")
-        except Exception:  # noqa: BLE001 — event failure must never kill a scan
-            pass
-        if event_type in self._DURABLE_EVENTS:
-            try:
-                from api.events.platform_events import persist_platform_event
-
+            if event_type in self._DURABLE_EVENTS:
                 detail = payload.get("error") or payload.get("trigger") or event_type
-                persist_platform_event(event_type, str(detail), payload, target_name="live-scan")
-            except Exception:  # noqa: BLE001 — best-effort durability
-                pass
+                emit_platform_event(
+                    event_type, str(detail), payload, target_name="live-scan",
+                    tenant_id=self._run_tenant_id,
+                )
+            else:
+                get_event_bus().publish(
+                    event_type, payload, source="live-scanner",
+                    tenant_id=self._run_tenant_id,
+                )
+        except Exception as exc:  # noqa: BLE001 — health/audit records the fault
+            logger.error("live_scan_event_publish_failed", extra={"error_type": type(exc).__name__})
 
-    def _auto_sync_graph(self, *, trigger: str, requested: list[str]) -> None:
+    def _auto_sync_graph(self, *, trigger: str, requested: list[str],
+                         tenant_id: str | None = None) -> None:
         """After a scan cycle, reconcile the persisted graph and publish a
         precise graph.updated event. Best-effort and never raises."""
         try:
@@ -485,9 +499,13 @@ class LiveScanRunner:
                     "graph.updated",
                     f"Scan cycle ({trigger}) completed — inventory may have changed",
                     {"trigger": trigger, "scanners": requested, "changed": True},
-                    target_name="graph",
+                    target_name="graph", tenant_id=tenant_id,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             return
         try:
@@ -504,7 +522,7 @@ class LiveScanRunner:
                     "synced": result.get("synced", True),
                     "changed": True,
                 },
-                target_name="graph",
+                target_name="graph", tenant_id=tenant_id,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("graph_update_event_failed: %s", exc)
@@ -515,6 +533,7 @@ class LiveScanRunner:
         only: list[str] | None = None,
         targets: dict[str, str] | None = None,
         trigger: str = "manual",
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute one scan cycle (blocking). Publishes SSE events and stores
         the merged snapshot. Callers on the request thread should use
@@ -524,6 +543,7 @@ class LiveScanRunner:
                 return {"status": "already_running"}
             self.running = True
             self._started_at = time.time()
+            self._run_tenant_id = tenant_id
         try:
             specs = self._specs(only=only, targets=targets)
             requested = [s.key for s in specs]
@@ -531,6 +551,11 @@ class LiveScanRunner:
                           {"trigger": trigger, "scanners": requested})
             results: dict[str, Any] = {}
             for spec in specs:
+                if self._cancel_requested.is_set():
+                    self._publish("live_scan.cancelled", {"trigger": trigger,
+                                                           "scanners": list(results)})
+                    return {"status": "cancelled", "trigger": trigger,
+                            "results": results}
                 self._publish("live_scan.scanner_started",
                               {"scanner": spec.key})
                 res = self._run_spec(spec)
@@ -542,6 +567,11 @@ class LiveScanRunner:
                      "summary": res.get("summary"),
                      "error": res.get("error")},
                 )
+                if self._cancel_requested.is_set():
+                    self._publish("live_scan.cancelled", {"trigger": trigger,
+                                                           "scanners": list(results)})
+                    return {"status": "cancelled", "trigger": trigger,
+                            "results": results}
             snapshot = {
                 "ts": _now(),
                 "trigger": trigger,
@@ -600,11 +630,14 @@ class LiveScanRunner:
             # graph (Neo4j when configured) and publish a precise graph.updated
             # platform event so SSE consumers refresh without polling. Best-effort
             # — a graph/event failure must never fail the scan cycle.
-            self._auto_sync_graph(trigger=trigger, requested=requested)
+            self._auto_sync_graph(trigger=trigger, requested=requested,
+                                   tenant_id=tenant_id)
             return {"status": "completed", **snapshot}
         finally:
             self.running = False
             self._started_at = None
+            self._run_tenant_id = None
+            self._cancel_requested.clear()
 
     # ------------------------------------------------------------- threading
     def start_cycle(self, **kwargs: Any) -> dict[str, Any]:
@@ -639,6 +672,20 @@ class LiveScanRunner:
     def stop_periodic(self) -> dict[str, Any]:
         self._stop.set()
         return {"status": "stopping"}
+
+    def request_cancel(self) -> bool:
+        """Request cancellation of the active manual cycle.
+
+        Scanner subprocesses finish their current bounded operation; the next
+        scanner is not started and the durable orchestrator state records the
+        cancellation. This avoids pretending a process was killed when it was
+        only asked to stop.
+        """
+        with self._lock:
+            active = self.running
+            if active:
+                self._cancel_requested.set()
+            return active
 
     def load_persisted_snapshot(self) -> bool:
         """Restore the last snapshot from the settings table on startup so the

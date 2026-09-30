@@ -15,6 +15,7 @@ probes behind NAT) is telecom.ingest; triggering scans is scan.trigger.
 from __future__ import annotations
 
 import json
+import logging
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,9 +26,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from api.dependencies import get_tenant_context
 from api.security.rbac import require_permission
 
 router = APIRouter(prefix="/telecom", tags=["telecom"])
+logger = logging.getLogger(__name__)
 
 # ------------------------------------------------------------ snapshot store
 # Last scan/ingest result, kept in memory for the running process and
@@ -41,38 +44,116 @@ _SNAPSHOT: dict[str, Any] | None = None
 
 def _snapshot_file() -> Path:
     root = Path(__file__).resolve().parents[3]
-    return Path(__import__("os").environ.get("CRYPTOSCAN_SNAPSHOT_DIR") or (root / "data")) / "telecom_snapshot.json"
+    directory = Path(__import__("os").environ.get("CRYPTOSCAN_SNAPSHOT_DIR") or (root / "data"))
+    tenant_id = _active_tenant_id()
+    suffix = "" if not tenant_id else "." + "".join(ch for ch in str(tenant_id) if ch.isalnum() or ch in "-_" )
+    return directory / f"telecom_snapshot{suffix}.json"
 
 
 _SNAPSHOT_MTIME: float | None = None
+_SNAPSHOT_FILE_PATH: str | None = None
+_TELECOM_REDIS_KEY = "zelinx:telecom:snapshot"
+_TELECOM_JOURNEY_REDIS_KEY = "zelinx:telecom:journey"
+
+
+def _active_tenant_id() -> str | None:
+    try:
+        from db.tenancy import current_tenant
+
+        return current_tenant()
+    except Exception:
+        return None
+
+
+def _state_key(base: str) -> str:
+    tenant_id = _active_tenant_id()
+    return f"{base}:{tenant_id}" if tenant_id else base
+
+
+def _is_production() -> bool:
+    import os
+    try:
+        from api.config.settings import get_settings
+
+        return bool(get_settings().is_production)
+    except Exception:
+        return os.environ.get("ENVIRONMENT", "development").lower() in {"production", "prod"}
+
+
+def _redis_snapshot_client():
+    """Return the shared realtime store in production, never a process-local
+    cache. Development keeps the file fallback for offline scanner work."""
+    import os
+    try:
+        from api.config.settings import get_settings
+
+        url = (get_settings().REDIS_URL or "").strip()
+    except Exception:
+        url = os.environ.get("REDIS_URL", "").strip()
+    if not url:
+        return None
+    import redis
+
+    client = redis.Redis.from_url(url, socket_timeout=2, socket_connect_timeout=2,
+                                  decode_responses=True)
+    client.ping()
+    return client
 
 
 def _load_snapshot() -> dict[str, Any] | None:
     """In-process cache, re-read when the file's mtime changes — monitor-daemon
     passes (written from another process) show up without an API restart."""
-    global _SNAPSHOT, _SNAPSHOT_MTIME
+    global _SNAPSHOT, _SNAPSHOT_MTIME, _SNAPSHOT_FILE_PATH
+    try:
+        client = _redis_snapshot_client()
+        if client is not None:
+            raw = client.get(_state_key(_TELECOM_REDIS_KEY))
+            if raw is None:
+                return None
+            value = json.loads(raw)
+            return value if isinstance(value, dict) else None
+    except Exception as exc:  # production callers must not see outage as an empty scan
+        logger.error("telecom_realtime_store_unavailable", extra={"error_type": type(exc).__name__})
+        if _is_production():
+            raise HTTPException(status_code=503,
+                                detail="telecom realtime state is unavailable") from exc
+        return None
     file = _snapshot_file()
     try:
         mtime = file.stat().st_mtime if file.is_file() else None
     except OSError:
         mtime = None
-    if _SNAPSHOT is not None and mtime == _SNAPSHOT_MTIME:
+    path_key = str(file)
+    if _SNAPSHOT is not None and path_key == _SNAPSHOT_FILE_PATH and mtime == _SNAPSHOT_MTIME:
         return _SNAPSHOT
     if mtime is None:
-        _SNAPSHOT, _SNAPSHOT_MTIME = None, None
+        _SNAPSHOT, _SNAPSHOT_MTIME, _SNAPSHOT_FILE_PATH = None, None, None
         return None
     try:
         _SNAPSHOT = json.loads(file.read_text())
         _SNAPSHOT_MTIME = mtime
+        _SNAPSHOT_FILE_PATH = path_key
     except (OSError, json.JSONDecodeError):
         _SNAPSHOT = None
     return _SNAPSHOT
 
 
 def _store_snapshot(snapshot: dict[str, Any]) -> None:
-    global _SNAPSHOT
+    global _SNAPSHOT, _SNAPSHOT_FILE_PATH
     with _LOCK:
         _SNAPSHOT = snapshot
+        _SNAPSHOT_FILE_PATH = str(_snapshot_file())
+    try:
+        client = _redis_snapshot_client()
+        if client is not None:
+            client.set(_state_key(_TELECOM_REDIS_KEY), json.dumps(snapshot))
+            return
+    except Exception as exc:
+        logger.error("telecom_realtime_store_write_failed", extra={"error_type": type(exc).__name__})
+        if _is_production():
+            raise HTTPException(status_code=503,
+                                detail="telecom realtime state is unavailable") from exc
+        return
     file = _snapshot_file()
     global _SNAPSHOT_MTIME
     try:
@@ -94,6 +175,7 @@ def _event_key(event: dict[str, Any]) -> str:
 
 _JOURNEY: dict[str, Any] | None = None
 _JOURNEY_MTIME: float | None = None
+_JOURNEY_FILE_PATH: str | None = None
 
 
 def _journey_file() -> Path:
@@ -101,35 +183,64 @@ def _journey_file() -> Path:
 
 
 def _load_journey() -> dict[str, Any] | None:
-    """mtime-aware like the snapshot: daemon-written passes show up live."""
-    global _JOURNEY, _JOURNEY_MTIME
+    """Read the shared adoption journey from Redis in production."""
+    global _JOURNEY, _JOURNEY_MTIME, _JOURNEY_FILE_PATH
+    try:
+        client = _redis_snapshot_client()
+        if client is not None:
+            raw = client.get(_state_key(_TELECOM_JOURNEY_REDIS_KEY))
+            if raw is None:
+                return None
+            value = json.loads(raw)
+            return value if isinstance(value, dict) else None
+    except Exception as exc:
+        logger.error("telecom_realtime_journey_unavailable", extra={"error_type": type(exc).__name__})
+        if _is_production():
+            raise HTTPException(status_code=503,
+                                detail="telecom realtime journey state is unavailable") from exc
+        return None
     file = _journey_file()
     try:
         mtime = file.stat().st_mtime if file.is_file() else None
     except OSError:
         mtime = None
-    if _JOURNEY is not None and mtime == _JOURNEY_MTIME:
+    path_key = str(file)
+    if _JOURNEY is not None and path_key == _JOURNEY_FILE_PATH and mtime == _JOURNEY_MTIME:
         return _JOURNEY
     if mtime is None:
-        _JOURNEY, _JOURNEY_MTIME = None, None
+        _JOURNEY, _JOURNEY_MTIME, _JOURNEY_FILE_PATH = None, None, None
         return None
     try:
         _JOURNEY = json.loads(file.read_text())
         _JOURNEY_MTIME = mtime
+        _JOURNEY_FILE_PATH = path_key
     except (OSError, json.JSONDecodeError):
         _JOURNEY = None
     return _JOURNEY
 
 
 def _store_journey(journey: dict[str, Any]) -> None:
-    global _JOURNEY, _JOURNEY_MTIME
+    global _JOURNEY, _JOURNEY_MTIME, _JOURNEY_FILE_PATH
+    try:
+        client = _redis_snapshot_client()
+        if client is not None:
+            client.set(_state_key(_TELECOM_JOURNEY_REDIS_KEY), json.dumps(journey))
+            _JOURNEY = journey
+            _JOURNEY_FILE_PATH = None
+            return
+    except Exception as exc:
+        logger.error("telecom_realtime_journey_write_failed", extra={"error_type": type(exc).__name__})
+        if _is_production():
+            raise HTTPException(status_code=503,
+                                detail="telecom realtime journey state is unavailable") from exc
+        return
     file = _journey_file()
     try:
         file.parent.mkdir(parents=True, exist_ok=True)
         tmp = file.with_suffix(".tmp")
         tmp.write_text(json.dumps(journey))
         tmp.replace(file)
-        _JOURNEY, _JOURNEY_MTIME = journey, file.stat().st_mtime
+        _JOURNEY, _JOURNEY_MTIME, _JOURNEY_FILE_PATH = journey, file.stat().st_mtime, str(file)
     except OSError:
         pass  # in-memory is still correct; persistence is best-effort
 
@@ -140,8 +251,11 @@ def _fold_journey(rows: list[dict[str, Any]], generated_at: str) -> None:
         from telecom_scanner.journey import update_journey
 
         _store_journey(update_journey(_load_journey(), generated_at, rows))
-    except Exception:  # noqa: BLE001 — journey must never break a scan
-        pass
+    except Exception as journey_exc:  # noqa: BLE001 — journey must never break a scan
+        logger.warning(
+            "telecom_journey_update_failed",
+            extra={"error_type": type(journey_exc).__name__},
+        )
 
 
 def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
@@ -152,6 +266,7 @@ def _publish(event: dict[str, Any], target_hint: dict[str, Any]) -> None:
         "telecom.event",
         {**target_hint, **event, "kind": event.get("kind")},
         source="telecom-scanner",
+        tenant_id=_active_tenant_id(),
     )
     platform_events.published_event_ids().add(_event_key(event))
 
@@ -182,6 +297,7 @@ class TelecomTarget(BaseModel):
     endpoint: str = Field(min_length=6, max_length=253)
     carrier_code: str = Field(default="", max_length=24)
     environment: str = Field(default="production", max_length=16)
+    interface: str = Field(default="", max_length=8, description="optional N3 or N9 user-plane reference point")
 
 
 class ScanRequest(BaseModel):
@@ -411,11 +527,15 @@ def telecom_posture(user: str = Depends(require_permission("findings.read"))):
 
 @router.get("/events")
 def telecom_events(limit: int = Query(50, ge=1, le=200),
-                   user: str = Depends(require_permission("findings.read"))):
+                   user: str = Depends(require_permission("findings.read")),
+                   tenant=Depends(get_tenant_context)):
     from api.events.bus import get_event_bus
 
+    tenant_id = getattr(tenant, "tenant_id", None)
     recent = get_event_bus().recent(since_id=0, limit=500)
-    events = [e for e in recent if str(e.get("type")) == "telecom.event"]
+    events = [e for e in recent
+              if str(e.get("type")) == "telecom.event"
+              and (e.get("tenant_id") is None or e.get("tenant_id") == tenant_id)]
     return {"count": len(events), "events": list(reversed(events))[:limit]}
 
 # ------------------------------------------------------- roadmap + roaming

@@ -5,10 +5,11 @@
   buffer SSE)
 - GET /events/stats   (bus health: subscribers, buffered events)
 
-Cross-process events (the monitor daemon runs as its own process) are
-federated by a DB tailer started in the app lifespan: it polls monitor_events
-every EVENT_TAILER_SECONDS (default 2s) and republishes new rows onto the bus
-as `monitor.*`. That latency is stated, not hidden.
+Production cross-process events use the Redis Stream/Pub/Sub federation
+installed during app startup. The DB tailer remains for monitor-worker audit
+rows and compatibility when a row has no Redis journal frame; it polls
+``monitor_events`` every ``EVENT_TAILER_SECONDS`` and republishes new rows as
+``monitor.*``. Redis Stream replay is the Last-Event-ID recovery authority.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ import logging
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
 
-from api.dependencies import get_current_user
+from api.dependencies import get_current_user, get_tenant_context
 from api.events import platform_events
 from api.events.bus import get_event_bus
 
@@ -32,10 +33,35 @@ HEARTBEAT_SECONDS = 15.0
 BACKLOG_DEFAULT = 25
 
 
+def _event_tenant_id(event: dict) -> str | None:
+    value = event.get("tenant_id")
+    if value:
+        return str(value)
+    payload = event.get("payload") or {}
+    return str(payload["tenant_id"]) if payload.get("tenant_id") else None
+
+
+def _visible_to_tenant(event: dict, tenant_id: str | None, is_platform_admin: bool) -> bool:
+    """Apply the same scope to replay and live delivery.
+
+    Unowned events are platform events and are visible to a selected tenant as
+    shared control-plane information, but never to a platform-admin connection
+    that has explicitly selected another tenant. Owned events require an exact
+    tenant match; no wildcard tenant is accepted from the client.
+    """
+    owner = _event_tenant_id(event)
+    if owner is None:
+        return True
+    if is_platform_admin and tenant_id is None:
+        return False
+    return tenant_id is not None and owner == str(tenant_id)
+
+
 def format_sse(event: dict) -> str:
     payload = json.dumps(
         {"id": event["id"], "ts": event["ts"], "type": event["type"],
-         "source": event["source"], "payload": event["payload"]},
+         "source": event["source"], "tenant_id": event.get("tenant_id"),
+         "payload": event["payload"]},
         default=str,
         separators=(",", ":"),
     )
@@ -49,7 +75,8 @@ def _db_backlog(limit: int = 25) -> list[dict]:
         from api.events.platform_events import published_event_ids
 
         rows = _fetch_recent_monitor_events(limit=limit)
-    except Exception:
+    except Exception as backlog_exc:
+        logger.warning("event_backlog_unavailable", extra={"error_type": type(backlog_exc).__name__})
         return []
     already = published_event_ids()
     out: list[dict] = []
@@ -62,8 +89,10 @@ def _db_backlog(limit: int = 25) -> list[dict]:
                 "ts": row["created_at"] or "",
                 "type": f"monitor.{row['event_type'].lower()}",
                 "source": "monitor",
+                "tenant_id": row.get("tenant_id"),
                 "payload": {
                     "target": row["target_name"],
+                    "row_id": row.get("id"),
                     "detail": row.get("detail"),
                     "data": row.get("payload") or {},
                     "occurred_at": row["created_at"],
@@ -78,22 +107,37 @@ async def stream_events(
     request: Request,
     last_event_id: int | None = Query(None, ge=0),
     user: str = Depends(get_current_user),
+    tenant=Depends(get_tenant_context),
 ) -> StreamingResponse:
     bus = get_event_bus()
+    tenant_id = getattr(tenant, "tenant_id", None)
+    is_platform_admin = bool(getattr(tenant, "is_platform_admin", False))
+    visible = lambda event: _visible_to_tenant(event, tenant_id, is_platform_admin)
+    requested_resume = last_event_id is not None
     resume_id = last_event_id if last_event_id is not None else 0
     if resume_id == 0:
         # fresh connection: start from the tail of history, not the dawn of time
         resume_id = max(0, bus.latest_id() - BACKLOG_DEFAULT)
-    backlog = bus.recent(since_id=resume_id, limit=BACKLOG_DEFAULT * 2)
+    backlog = [event for event in bus.recent(since_id=resume_id, limit=BACKLOG_DEFAULT * 4)
+               if visible(event)][: BACKLOG_DEFAULT * 2]
     if not backlog and bus.latest_id() == 0:
-        backlog = _db_backlog(limit=BACKLOG_DEFAULT)
+        backlog = [event for event in _db_backlog(limit=BACKLOG_DEFAULT) if visible(event)]
 
-    sub = bus.subscribe()
-    bus.publish("events.subscribe", {"user": user}, source="events")
+    oldest_id = bus.oldest_id()
+    replay_gap = bool(requested_resume and oldest_id is not None and resume_id < oldest_id - 1)
+    sub = bus.subscribe(event_filter=visible)
+    bus.publish("events.subscribe", {"user": user}, source="events", tenant_id=tenant_id)
 
     async def gen():
         try:
             yield "retry: 3000\n\n"
+            if replay_gap:
+                yield (
+                    "event: events.gap\n"
+                    f"data: {{\"requested_after\": {resume_id}, "
+                    f"\"oldest_replayable_id\": {oldest_id}, "
+                    "\"advice\": \"perform a fresh snapshot or resync\"}}\n\n"
+                )
             for event in backlog:
                 yield format_sse(event)
             while True:
@@ -129,14 +173,21 @@ def recent_events(
     since_id: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     user: str = Depends(get_current_user),
+    tenant=Depends(get_tenant_context),
 ) -> dict:
+    tenant_id = getattr(tenant, "tenant_id", None)
+    is_platform_admin = bool(getattr(tenant, "is_platform_admin", False))
+    visible = lambda event: _visible_to_tenant(event, tenant_id, is_platform_admin)
     bus = get_event_bus()
-    events = bus.recent(since_id=since_id, limit=limit)
+    events = [event for event in bus.recent(since_id=since_id, limit=limit * 4) if visible(event)][:limit]
     if not events and bus.latest_id() == 0:
-        events = _db_backlog(limit=min(limit, BACKLOG_DEFAULT))
+        events = [event for event in _db_backlog(limit=min(limit, BACKLOG_DEFAULT)) if visible(event)]
+    oldest_id = bus.oldest_id()
     return {
         "events": events,
         "latest_id": bus.latest_id(),
+        "oldest_replayable_id": oldest_id,
+        "replay_gap": bool(oldest_id is not None and since_id < oldest_id - 1),
         "subscribers": bus.subscriber_count(),
     }
 
@@ -211,32 +262,58 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
         while True:
             try:
                 rows = _fetch_recent_monitor_events(limit=100)
-            except Exception:  # DB not ready / mid-migration — retry quietly
+            except Exception as rows_exc:  # DB not ready / mid-migration — retry
+                logger.warning("event_tail_rows_unavailable", extra={"error_type": type(rows_exc).__name__})
                 rows = []
             try:
                 directly_published = platform_events.published_event_ids()
-            except Exception:
+            except Exception as published_exc:
+                logger.warning("event_tail_published_ids_unavailable", extra={"error_type": type(published_exc).__name__})
                 directly_published = set()
-            fresh = [r for r in rows if r["id"] not in seen and r["id"] not in directly_published]
+            # A platform publisher writes the audit row and the Redis journal
+            # in the same operation. On a different replica the DB tailer must
+            # not emit a second event after the Redis Pub/Sub frame arrives.
+            # The row id is carried in every journal payload for this durable
+            # cross-process deduplication.
+            journal_row_ids: set[str] = set()
+            try:
+                for event in bus.recent(since_id=0, limit=10_000):
+                    row_id = (event.get("payload") or {}).get("row_id")
+                    if row_id is not None:
+                        journal_row_ids.add(str(row_id))
+            except Exception as journal_exc:
+                logger.warning("event_journal_dedup_unavailable", extra={"error_type": type(journal_exc).__name__})
+            fresh = [
+                r for r in rows
+                if r["id"] not in seen
+                and r["id"] not in directly_published
+                and str(r["id"]) not in journal_row_ids
+            ]
             if fresh:
                 for row in fresh:
+                    try:
+                        bus.publish(
+                            f"monitor.{row['event_type'].lower()}",
+                            {
+                                "target": row["target_name"],
+                                "row_id": row.get("id"),
+                                "detail": row.get("detail"),
+                                "data": row.get("payload") or {},
+                                "occurred_at": row["created_at"],
+                            },
+                            source="monitor",
+                            tenant_id=row.get("tenant_id"),
+                        )
+                    except Exception as publish_exc:  # retry the row next tick
+                        logger.error("event_tail_publish_failed", extra={"error_type": type(publish_exc).__name__})
+                        continue
                     seen.add(row["id"])
-                    bus.publish(
-                        f"monitor.{row['event_type'].lower()}",
-                        {
-                            "target": row["target_name"],
-                            "detail": row.get("detail"),
-                            "data": row.get("payload") or {},
-                            "occurred_at": row["created_at"],
-                        },
-                        source="monitor",
-                    )
                 if len(seen) > 2_000:
                     seen = set(list(seen)[-1_000:])
             try:
                 platform_events.prune_published_ids()
-            except Exception:
-                pass
+            except Exception as prune_exc:
+                logger.warning("event_tail_prune_failed", extra={"error_type": type(prune_exc).__name__})
             await asyncio.sleep(interval)
     finally:
         with contextlib.suppress(Exception):
@@ -262,6 +339,7 @@ def _fetch_recent_monitor_events(limit: int = 100) -> list[dict]:
                     "id": row.id,
                     "target_name": row.target_name,
                     "event_type": row.event_type,
+                    "tenant_id": row.tenant_id,
                     "detail": row.detail,
                     "payload": row.payload,
                     "created_at": row.created_at.isoformat() if row.created_at else None,
@@ -308,8 +386,8 @@ async def tail_telecom_snapshot(interval: float = 2.0) -> None:
                              if (f"telecom:{ev.get('kind')}:{ev.get('target')}:"
                                  f"{ev.get('at')}:{ev.get('fingerprint')}") not in directly]
                     _drain_telecom_events(seen, publish, {"events": fresh})
-        except Exception:  # snapshot unreadable / mid-write — retry quietly
-            pass
+        except Exception as snapshot_exc:  # snapshot unreadable / mid-write — retry
+            logger.warning("telecom_event_snapshot_unavailable", extra={"error_type": type(snapshot_exc).__name__})
         await asyncio.sleep(interval)
 
 

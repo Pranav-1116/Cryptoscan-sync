@@ -14,12 +14,17 @@ single product, not four scanners.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, require_roles
+from api.dependencies import get_current_user, get_db_session, get_tenant_context, require_roles
 from api.events.bus import get_event_bus
 from api.live_scan.orchestrator import collapse_scan_events, get_scan_orchestrator
 from api.routers.inventory import collect_inventory
@@ -44,7 +49,11 @@ def _org_policy(repo: OnboardingRepository, org_id: str) -> dict | None:
             return None
         import json
         return json.loads(row.value or "{}")
-    except Exception:  # noqa: BLE001 — policy read is best-effort
+    except Exception as _handler_exc:  # noqa: BLE001 — policy read is best-effort
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -73,6 +82,7 @@ def orchestrator_start(
     scanners: list[str] | None = None,
     user: str = Depends(require_roles(*_OPERATORS)),
     db: Session = Depends(get_db_session),
+    tenant=Depends(get_tenant_context),
 ):
     """Start one integrated scan for the tenant's authorized scope."""
     repo = OnboardingRepository(db)
@@ -83,13 +93,25 @@ def orchestrator_start(
     orch = get_scan_orchestrator()
     run = orch.start(org.to_dict(), entries, conns, envs, only=scanners, db=db,
                      updated_by=user, actor=user, policy=_org_policy(repo, org.id),
-                     sector=getattr(org, "sector", None))
+                     sector=getattr(org, "sector", None),
+                     tenant_id=getattr(tenant, "tenant_id", None))
     return {"status": "started", "scan": run.to_dict()}
+
+
+@router.post("/orchestrator/{scan_id}/cancel", status_code=202)
+def orchestrator_cancel(
+    scan_id: str,
+    user: str = Depends(require_roles(*_OPERATORS)),
+    tenant=Depends(get_tenant_context),
+):
+    """Request cancellation from any replica; the command is shared and audited."""
+    return get_scan_orchestrator().cancel(scan_id, actor=user)
 
 
 @router.get("/orchestrator/status")
 def orchestrator_status(
     user: str = Depends(get_current_user),
+    tenant=Depends(get_tenant_context),
 ):
     """Current integrated scan run: scan id, phase, per-domain progress."""
     return get_scan_orchestrator().status()
@@ -100,6 +122,7 @@ def orchestrator_history(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
     limit: int = 25,
+    tenant=Depends(get_tenant_context),
 ):
     """Recent integrated scan runs, rebuilt from the durable platform event log.
 
@@ -113,7 +136,8 @@ def orchestrator_history(
         db.query(MonitorEvent)
         .filter(
             MonitorEvent.target_name == "platform",
-            MonitorEvent.event_type.in_(("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED")),
+            MonitorEvent.event_type.in_(("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED",
+                                          "SCAN_CANCEL_REQUESTED", "SCAN_CANCELLED")),
         )
         .order_by(MonitorEvent.created_at.desc(), MonitorEvent.id.desc())
         .limit(800)
@@ -135,6 +159,7 @@ def orchestrator_history(
 def live_environment(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
+    tenant=Depends(get_tenant_context),
 ):
     """ONE live view of the whole estate.
 
