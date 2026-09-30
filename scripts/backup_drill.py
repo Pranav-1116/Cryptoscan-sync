@@ -20,6 +20,11 @@ Usage:
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import argparse
 import json
 import os
@@ -181,7 +186,11 @@ def main() -> int:
                 if s == 200:
                     up = True
                     break
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
         check("restore: recovered instance boots", up, base)
         if not up:

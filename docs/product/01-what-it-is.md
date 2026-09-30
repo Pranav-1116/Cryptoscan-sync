@@ -43,11 +43,11 @@ Read the layers top to bottom:
 | **Data** | One unified asset model in PostgreSQL. Systems, crypto assets, certificates, hardware, vendors, dependencies, scans, jobs, baselines, drift, snapshots | `database` |
 | **Normalise + policy** | Names and sizes brought to IANA/NIST vocabulary; YAML rule packs evaluated deterministically | `normalization`, `policy`, `ruleset` |
 | **Analysis** | Drift, dependency graph and blast radius, PQC readiness, agility score, deduplication, correlation, business impact, unified risk | `drift`, `graph_engine`, `quantum`, `agility`, `deduplication`, `correlation`, `anomaly`, `business_context`, `compliance`, `universal_platform` |
-| **Technology BOM** | One materialised state with four views (SBOM, CBOM, HBOM, VBOM), fingerprinted into immutable snapshots | `cbom` |
+| **Technology BOM** | One materialised state with shared SBOM, CBOM, HBOM and VBOM views; binary scans add static NBOM capability candidates and a separate vulnerability BOM, all fingerprinted into snapshots | `cbom`, `devsecops.binary_boms` |
 | **Export + evidence package** | Six formats, each signed; audit pack, exit report, engagement archive; schedules | `reporting`, `governance` |
 | **Real-time** | Every operation emits a platform event: persisted, fanned out in-process, tailed across processes, federated across nodes over Redis, delivered by SSE | `eventstream`, `api/events` |
 | **API gateway** | FastAPI `/api/v1`, GraphQL, auth, RBAC, rate limits, audit, metrics | `api`, `control_plane`, `automation`, `observability` |
-| **Console** | React SPA, 71 pages, live feed, EN + AR, GA / beta / preview badges | `frontend/` |
+| **Console** | React SPA with six sidebar sections, 31 menu slots / 30 unique primary routes, deep-linked pages, live feed, EN + AR, and GA / beta / preview badges | `frontend/` · [navigation reference](../NAVIGATION-FEATURE-REFERENCE.md) |
 
 ## Who it is for
 

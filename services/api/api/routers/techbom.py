@@ -923,7 +923,11 @@ def technology_bom_xbom(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    """Correlate the four BOM layers (SBOM/CBOM/HBOM/Vendor) — the xBOM trace."""
+    """Correlate the shared BOM layers — the xBOM trace.
+
+    Binary NBOM and vulnerability-BOM sidecars are correlated by the binary
+    projector and remain distinguishable from this inventory view.
+    """
     from cbom.assurance import correlate_xbom
 
     state = _resolve_state(db, version)

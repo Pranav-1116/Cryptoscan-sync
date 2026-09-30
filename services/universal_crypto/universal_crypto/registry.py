@@ -16,6 +16,11 @@ live CBOM speaks the ecosystem's representation, not a ZELNX-only one.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any, Optional
 
 from universal_crypto.models import (
@@ -173,7 +178,11 @@ def registry_entry(name: str) -> RegistryEntry:
             from shared_models.algorithm_registry import parse_algorithm
             parsed = parse_algorithm(canonical)
             canonical = parsed.canonical
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
     shared = _shared_entry(canonical) or {}
 
@@ -243,7 +252,11 @@ def catalog() -> list[RegistryEntry]:
 def find(name: str) -> Optional[RegistryEntry]:
     try:
         return registry_entry(name)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

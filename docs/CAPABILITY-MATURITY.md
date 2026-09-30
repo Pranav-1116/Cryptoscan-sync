@@ -8,6 +8,13 @@ The platform ships ~50 services and ~70 console surfaces. They are not equally
 proven, and the console says so on every page header. Unknown routes default to
 **preview** — nothing is promoted by omission.
 
+The sidebar is organized into six sections: **Overview, Discovery, Intelligence,
+Governance, Output and Administration**. It currently has 31 menu slots and 30
+unique primary route paths; deep-linked routes remain in the maturity inventory
+without being duplicated in the sidebar. See the [Navigation & Feature
+Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and
+role-guarded actions.
+
 | Tier | Meaning | Surfaces |
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 33 |
@@ -32,7 +39,7 @@ Total: 72 surfaces.
 | `/assets` | Discovery | Unified asset inventory (System/CryptoAsset/Certificate) backed by Alembic-managed tables. |
 | `/certificates` | Discovery | Certificate inventory + expiry from network and source scans. |
 | `/cloud` | Discovery | Read-only AWS/Azure/GCP estate scan; 15k LOC, 25 test files. Needs credentials to show data. |
-| `/dev-sec-ops` | Discovery | SBOM/binary/firmware scanning, VEX, licence, gates; 16k LOC, 520 tests, air-gap packs. |
+| `/dev-sec-ops` | Discovery | SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states. |
 | `/live-scanners` | Discovery | Live scan runner status; same orchestrator as /scanners. |
 | `/network` | Discovery | TLS/cipher/cert probes; 15k LOC, 33 test files. |
 | `/scanners` | Discovery | Source/network/cloud/container/OT scan triggers over the worker pipeline (12 stages, 29 test files). |
@@ -40,7 +47,7 @@ Total: 72 surfaces.
 | `/compliance` | Governance | Requirement-by-requirement reports from policy evidence, 6 templates. |
 | `/evidence` | Governance | SHA-256 content/chain/manifest hashes, audit packs, verify endpoint. |
 | `/security-policy` | Governance | YAML policy packs (BASELINE/PCI/NIST 131A/CNSA 2.0/FIPS/HIPAA), 82 tests, no AI. |
-| `/cbom` | Intelligence | Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots, signed exports; 19 test files. |
+| `/cbom` | Intelligence | Shared Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots and signed exports; binary scans additionally expose static NBOM and vulnerability sidecars through Applications. |
 | `/crypto` | Intelligence | Algorithm registry + normalized crypto view (114 normalization tests). |
 | `/crypto-assets` | Intelligence | Crypto inventory from the normalized findings table. |
 | `/drift` | Intelligence | Baseline approval + drift events + CI gate; 15 test files. |
@@ -96,7 +103,7 @@ Total: 72 surfaces.
 | `/platform-p2` | Administration | Phase-2 platform features behind one page (marketplace, datalake, anomaly) — each < 700 LOC. |
 | `/supervision` | Governance | Supervisory-review view for regulators; a read model over evidence, early. |
 | `/trust` | Governance | Trust-score surface; scoring inputs still being defined. |
-| `/nbom` | Intelligence | Network BOM: listeners, certificates, cipher suites and tunnels with a dependency graph. The generator and its cascade are tested, but no network scan feeds it yet, so the page ships ahead of its data source. |
+| `/nbom` | Intelligence | Network BOM from authorized network evidence plus static binary capability candidates. Binary-derived records are marked `observed: false` and do not prove a live listener; corroboration requires a separately authorized network probe. |
 | `/pqc-map` | Intelligence | Geographic/estate PQC map; needs location context the scanners do not collect yet. |
 | `/security-intelligence` | Intelligence | Cross-scanner identity resolution + profiles; roadmap in SECURITY-INTELLIGENCE-ROADMAP.md. |
 | `/what-if` | Intelligence | Scenario simulation over the inventory; scenarios are fixed templates today. |
@@ -111,7 +118,6 @@ redirected to the dashboard). They are removed, and a test keeps them out:
 - `/activity`
 - `/audit-merkle`
 - `/cryptographic-digital-twin`
-- `/devsecops`
 - `/digital-twin`
 - `/hsm-fleet-orchestrator`
 - `/pqc-code-signing-orchestrator`

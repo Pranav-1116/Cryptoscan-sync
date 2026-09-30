@@ -6,7 +6,7 @@
 > scanned a real bank, and that is the binding constraint.
 >
 > **Read [BACKEND-DATABASE-GAPS.md](../BACKEND-DATABASE-GAPS.md) before quoting
-> any readiness figure in this tree.** A 2026-09-27 audit ran the code rather
+> any readiness figure in this tree.** A 2026-09-28 audit ran the code rather
 > than reading the docs and found several controls described here as enforced
 > that were not — most seriously, tenant isolation on the scan surface. Where
 > that file and anything here disagree, that file is what the code does. It
@@ -17,7 +17,12 @@
 > signup ships disabled for the reason given in that document.
 
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
-> **How production-ready is it?** [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) — ~80% overall, core path ~92%, with the evidence and the gaps. Read it alongside the gap audit above.
+> **For an enterprise vendor-style manual, use the [Enterprise Documentation Center](product/enterprise/README.md)** — product, deployment, security, API, operations, developer, support, adoption, and readiness in one path.
+> **For the current console menu and route map, use [Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** — it mirrors the six sidebar sections in `frontend/src/components/Layout.tsx` and the deep links in `frontend/src/App.tsx`.
+> **How production-ready is it?** Read the current gate at
+> [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
+> explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
+> estates into a production approval.
 > **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview (33 / 30 / 8), labelled in the UI and served at `GET /api/v1/platform/capabilities`.
 
 Production cryptographic inventory and compliance platform: deterministic
@@ -33,14 +38,21 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | Doc | What it covers |
 |---|---|
 | **[The product, end to end](product/README.md)** | nine documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, a scan step by step, scope & readiness, glossary, the engines behind the pages, an end-to-end trace |
+| **[Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** | the current six-section sidebar, primary routes, deep-linked pages, role-guarded actions, and the binary BOM workflow behind Applications |
+| **[Enterprise Documentation Center](product/enterprise/README.md)** | vendor-style documentation path covering overview, capability catalog, deployment, first scan, architecture, data, identity, privacy, scanners, policy, API, operations, support, developer extensions, lifecycle, adoption, and readiness |
 | [Telecom — 5G crypto configuration](telecom-5g-crypto.md) | SUPI concealment, NEA/NIA, N32 roaming, MILENAGE/TUAK and the 5G key hierarchy — the TS 33.501 controls no external probe can see, where the permissive setting looks healthy in service |
 | [Network controls](security/NETWORK-CONTROLS.md) | how the product behaves behind a bank's IDS, firewalls, proxies and rate limits — traffic matrix and pilot firewall rules |
 | [Key inventory](accuracy/KEY-INVENTORY.md) | HSM / KMS / keystore / certificate exports ingested and reconciled with code (consumers, orphans, keys outside the estate) |
 | [Cascade analysis](accuracy/CASCADE-ANALYSIS.md) | dependency & blast-radius layer: providers, migration waves, libraries, shared keys, weak key sizes |
-| [Production readiness](PRODUCTION-READINESS.md) | the number, what moved it, what holds it back — each line pointing at its evidence |
+| [Production readiness](../PRODUCTION-READINESS.md) | unified timestamped evidence gate with explicit PASS/FAIL/SKIP; no synthetic-estate or corpus-only production claim |
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |
+| **[Standard bank pilot](pilot-standard.md)** | standardized pilot scope, objectives, roles, evidence, acceptance criteria, and decision language |
+| [Pilot duration and phases](pilot-duration-and-phases.md) | proposed two-, six-, eight-, and twelve-week pilot models with phase exit criteria |
+| [Business model](business-model.md) | customer profile, offers, pricing basis, responsibilities, revenue model, and commercial guardrails |
+| **[Detailed price model](price-model.md)** | proposed evaluation, subscription, estate-band, implementation, support, discount, margin, and quote structures |
+| **[Company legal, privacy, assurance, and questionnaire pack](company/README.md)** | MSA, NDA, DPA, SLA, security, privacy, subprocessors, assurance, and reusable vendor-questionnaire answer bank |
 | [Platform boundaries](architecture/platform-boundaries.md) | what CryptoScan is and is not (single source of truth: `shared_models/platform_scope.py`) |
 | [Real-world comparison](architecture/real-world-comparison.md) | honest benchmark vs. Venafi, SandboxAQ, Prowler, Trivy, testssl.sh, Nozomi, SAST |
 | [SBOM scanner architecture vs. what ships](architecture/sbom-scanner-architecture.md) | the 11-source / Kafka-Flink target architecture mapped against this repo, gap by gap |
@@ -66,7 +78,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Migration tracking](user-guide/migration-tracking.md) | PQC program progress |
 | [Drift detection](user-guide/drift-detection.md) | baseline vs. observed |
 | [CI/CD gates](user-guide/cicd-gates.md) · [CI drift gate](user-guide/ci-drift-gate.md) | pipeline enforcement |
-| [Binary & firmware scanning](user-guide/binary-firmware-scanning.md) | what is parsed in ELF/PE/Mach-O/archives/firmware, how crypto evidence is graded, and which limits are stated up front |
+| [Binary & firmware scanning](user-guide/binary-firmware-scanning.md) | bounded ELF/PE/Mach-O/WASM/mobile/archive/firmware parsing, graded crypto evidence, correlated SBOM/CBOM/HBOM/NBOM/VBOM/vulnerability views, and explicit limits |
 | [SBOM supply-chain gate](user-guide/sbom-supply-chain-gate.md) | generate an SBOM, match advisories offline, block the build, re-scan and diff |
 | [Evidence pack](user-guide/evidence-pack.md) | hash-manifested exports |
 | **[Audit pack, exit report, engagement archive](user-guide/audit-pack-and-exit-report.md)** | the three hash-sealed engagement deliverables, SC-1…4 scorecard |

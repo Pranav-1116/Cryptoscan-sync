@@ -1,0 +1,124 @@
+{
+  "schema": "cryptoscan.bank-readiness/1",
+  "captured_at": "2026-09-29T09:18:41.814722+00:00",
+  "repository": {
+    "commit": "001b73abd1f6c5682988d969b40ef6831d4dec1f",
+    "branch": "arena/01a0e27a-cryproscan",
+    "dirty": false
+  },
+  "artifact_generation_state": {
+    "commit": "001b73abd1f6c5682988d969b40ef6831d4dec1f",
+    "branch": "arena/01a0e27a-cryproscan",
+    "dirty": true
+  },
+  "command": "/usr/bin/python scripts/bank_readiness.py --run-engineering --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-09-29.json --compliance docs/readiness-evidence/control-register.json --out docs/readiness-evidence/bank-readiness.json",
+  "environment": {
+    "environment": "unset",
+    "ci": false
+  },
+  "required_categories": [
+    "engineering",
+    "postgresql_dr",
+    "hsm",
+    "integrations",
+    "compliance",
+    "load_soak",
+    "documentation",
+    "operational_policy",
+    "readiness_closure",
+    "external_attestations"
+  ],
+  "categories": [
+    {
+      "category": "engineering",
+      "status": "FAIL",
+      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=6439d4e54204d3da3bcd88527752955154e7270bbbcb64232264a0d3ffdde472",
+      "artifact": "docs/readiness-evidence/engineering-gate.json",
+      "artifact_sha256": "6439d4e54204d3da3bcd88527752955154e7270bbbcb64232264a0d3ffdde472",
+      "observed_statuses": [
+        "FAIL",
+        "PASS",
+        "SKIP"
+      ]
+    },
+    {
+      "category": "postgresql_dr",
+      "status": "SKIP",
+      "detail": "artifact=docs/readiness-evidence/postgres-dr-drill-2026-09-29.json; sha256=f58955b1aa1b7c0ab303d917b68b575df9bf1bfd0e8ba19e6f4996df9cc44317",
+      "artifact": "docs/readiness-evidence/postgres-dr-drill-2026-09-29.json",
+      "artifact_sha256": "f58955b1aa1b7c0ab303d917b68b575df9bf1bfd0e8ba19e6f4996df9cc44317",
+      "observed_statuses": [
+        "",
+        "PASS"
+      ]
+    },
+    {
+      "category": "hsm",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "integrations",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "compliance",
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/control-register.json; sha256=5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
+      "artifact": "docs/readiness-evidence/control-register.json",
+      "artifact_sha256": "5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
+      "observed_statuses": [
+        "PASS"
+      ]
+    },
+    {
+      "category": "load_soak",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    },
+    {
+      "category": "documentation",
+      "status": "PASS",
+      "detail": "checked 229 Markdown files and required readiness documents",
+      "checked_files": 229,
+      "ignored_directories": [
+        ".git",
+        ".mypy_cache",
+        ".next",
+        ".nuxt",
+        ".pytest_cache",
+        ".venv",
+        "__pycache__",
+        "build",
+        "coverage",
+        "dist",
+        "node_modules",
+        "out",
+        "venv"
+      ]
+    },
+    {
+      "category": "operational_policy",
+      "status": "PASS",
+      "detail": "structural findings=0; status=draft",
+      "policy": "/home/user/CryproScan/config/operational-policy.yaml",
+      "policy_status": "draft",
+      "findings": [],
+      "approval_required": "run operational_policy_gate.py --strict for release approval"
+    },
+    {
+      "category": "readiness_closure",
+      "status": "SKIP",
+      "detail": "no P0/P1 closure manifest supplied; external evidence is not inferred"
+    },
+    {
+      "category": "external_attestations",
+      "status": "SKIP",
+      "detail": "no external artifact supplied; this is not evidence"
+    }
+  ],
+  "external_evidence_boundary": "PASS means only that the supplied artifact contained no FAIL/SKIP statuses. Missing customer/provider evidence is never inferred from source code, mocks, documentation or local SoftHSM.",
+  "verdict": "FAIL",
+  "deployment_recommendation": "do not approve production; remediation and/or evidence collection required"
+}

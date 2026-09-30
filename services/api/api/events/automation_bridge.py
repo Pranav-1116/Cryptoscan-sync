@@ -186,7 +186,11 @@ def _publish_bus(event_type: str, payload: dict) -> None:
         from api.events.bus import get_event_bus
 
         get_event_bus().publish(event_type, payload, source="automation-sweep")
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
 

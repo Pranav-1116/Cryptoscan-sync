@@ -3,7 +3,8 @@
    and OT engineer. Each persona sees only the tiles relevant to its job; data
    renders zero/empty until a real scan runs. */
 import React, { useEffect, useState } from "react";
-import { getRoles, getToken } from "../lib/api.js";
+import { getToken } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 import {
   apiStatsSummary, apiAuditAttestation, apiAirgapStatus, apiSlaPosture,
 } from "../lib/api.js";
@@ -40,7 +41,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default function RoleDashboard() {
   const { t } = useI18n();
-  const roles = getRoles();
+  const { roles } = useAuth();
   const persona = personaFromRoles(roles);
   const [stats, setStats] = useState<Record<string, unknown> | null>(null);
   const [attest, setAttest] = useState<any>(null);

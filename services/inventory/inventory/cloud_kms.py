@@ -18,6 +18,11 @@ raises a RuntimeError with the exact install hint.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import base64
 from datetime import date, datetime, timezone
 from typing import Any
@@ -456,7 +461,11 @@ def normalize_acm_certificate(detail: dict[str, Any], *, pem: str,
         return None
     try:
         cert = x509.load_pem_x509_certificate(pem.encode("utf-8"))
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     family, bits = _ACM_KEY_ALGOS[algorithm]
     fingerprint = cert.fingerprint(hashes.SHA256()).hex()
