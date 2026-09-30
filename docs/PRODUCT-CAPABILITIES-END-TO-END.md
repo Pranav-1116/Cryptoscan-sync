@@ -10,7 +10,7 @@ endpoint or console page that implements each step.
 |---|---|
 | Backend services | **51** packages under `services/` |
 | REST surface | **642 paths / 707 operations** across **85 tagged groups** (`docs/api-reference/rest-api.md`, regenerated from the live schema) |
-| Console | **71 pages** in **8 navigation sections** (`frontend/src/pages`) |
+| Console | **71 page surfaces** in **6 sidebar sections**, with **31 menu slots / 30 unique primary routes** (`frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`) |
 | Database migrations | **59** (`services/database/migrations/versions`) |
 | Tests collected | **4,471** across the repo |
 | Docs | **153** markdown files |
@@ -52,7 +52,7 @@ inventing a finding.
 | **Network / TLS** | live TLS endpoints, protocol+cipher posture, certificate chains, STARTTLS | `services/network_scanner` |
 | **Certificates** | inventory, expiry, chain validation + full lifecycle (CSR → issue → renew → revoke) | `services/api` certificates group, `Certificates` page |
 | **Cloud** | AWS KMS, Azure Key Vault, GCP Cloud KMS key metadata; AWS ACM certificates (fingerprint = real SHA-256 of the DER) | `services/cloud_scanner` |
-| **Binaries / firmware** | **real parsing, not name matching**: ELF (deps, RPATH, build-id, compiler, symbols, Go build-info + module graph), PE, Mach-O, `ar`/`.deb`, jars/wheels/nupkgs, WASM, firmware container chains + device-tree identity — graded crypto evidence, then SBOM components and an ingestible CBOM | `services/devsecops/devsecops/binary_scan.py`, `POST /devsecops/binary/scan` |
+| **Binaries / firmware** | **real bounded parsing, not name matching**: ELF (deps, RPATH, build-id, compiler, symbols, Go build-info + module graph), PE, Mach-O, `ar`/`.deb`, jars/wheels/nupkgs, WASM, Android binary XML, iOS `Info.plist`, firmware container chains + device-tree identity — graded crypto evidence and correlated SBOM/CBOM/HBOM/static-NBOM/VBOM/vulnerability views | `services/devsecops/devsecops/binary_scan.py`, `services/devsecops/devsecops/binary_boms.py`, `POST /devsecops/binary/scan` |
 | **Containers / IaC** | image and filesystem package inventory, crypto binaries, Dockerfile/IaC rules | `services/container_scanner`, `container_scans` group |
 | **OT / ICS** | **passive — zero packets sent**; PLC/RTU/SCADA crypto posture | `services/ot_scanner`, `services/ot_safety` |
 | **Telecom** | 5GC / EPC / IMS / roaming verdicts, SEPP PQC readiness, per-carrier packs, closed-network ingest | `services/telecom_scanner` |
@@ -85,8 +85,9 @@ Raw findings from eleven collectors become one canonical Technology BOM model
 | **Crypto assets / libraries / protocols** | what cryptography is where, by primitive | `/crypto-assets`, `/libraries`, `/protocols` |
 | **CBOM** | CycloneDX-style cryptographic bill of materials, versioned + fingerprinted | `/cbom`, `services/cbom` |
 | **HBOM / VBOM** | hardware and vendor bills of materials | `/hbom`, `/vendor` |
-| **NBOM** | network bill of materials — listeners, certificates, cipher suites, tunnels, with the dependency graph that gives each component a blast radius. Derived from stored network scans; renders zeroes until one has run. **Preview:** the generator, cascade and DB derivation are tested, but no scheduled network scan populates it yet | `/nbom`, `services/cbom/cbom/nbom.py` |
-| **SBOM** | software bill of materials for any artifact, with licence + VEX + gate (see §6) | `/devsecops` → SBOM |
+| **NBOM** | network bill of materials from authorized network scans, plus a distinct static binary capability view. Binary-derived candidates are explicitly `observed: false`; imported socket/TLS APIs do not prove a live endpoint | `/nbom`, `/dev-sec-ops`, `services/cbom/cbom/nbom.py`, `services/devsecops/devsecops/binary_boms.py` |
+| **Vulnerability BOM** | separate normalized findings view for binary weak/deprecated algorithms, hardening failures, malformed/truncated/refused artifacts and supplied package/library matches; “no evidence” is not “not vulnerable” | `/dev-sec-ops`, `/devsecops/binary/artifacts/{id}/bom/vulnerability-bom` |
+| **SBOM** | software bill of materials for any artifact, with licence + VEX + gate (see §6) | `/dev-sec-ops` → SBOM |
 | **Dependency graph** | component/system relationships, blast radius (Neo4j when configured, in-process otherwise) | `/graph`, `services/graph_engine` |
 | **Live asset intelligence** | build-time vs live view of the same estate | `/live-asset-intelligence` |
 
@@ -213,7 +214,8 @@ tenant model with provisioning/invites, Prometheus metrics, `/healthz` +
 |---|---|
 | Code, SBOM, containers, network, certificates, cloud, hardware, payment, telecom, OT, runtime | shipped |
 | CBOM / HBOM / VBOM / SBOM + dependency graph | shipped |
-| NBOM + per-component blast radius | shipped (preview — needs a scheduled network scan to populate) |
+| Binary BOM bundle: static NBOM, vulnerability BOM and correlated technology snapshot | shipped for supervised pilot / pre-production evaluation; bounded evidence and tenant-scoped sidecars |
+| NBOM + per-component blast radius | shipped for authorized network evidence; static binary candidates remain `observed: false` until corroborated |
 | Policy, risk, drift, PQC, agility, assurance | shipped |
 | CI/CD + SBOM gates, automation, remediation, SLA | shipped |
 | Evidence, audit chain, WORM, JWS signing, DR drills | shipped |
@@ -242,7 +244,8 @@ tenant model with provisioning/invites, Prometheus metrics, `/healthz` +
 
 | Doc | For |
 |---|---|
-| `docs/NAVIGATION-FEATURE-REFERENCE.md` | every console page, button by button |
+| `docs/NAVIGATION-FEATURE-REFERENCE.md` | current six-section console navigation, primary/deep-linked routes, role-guarded actions and feature ownership |
+| `docs/product/02-features.md` · `docs/user-guide/binary-firmware-scanning.md` | correlated binary BOM family and bounded binary/mobile/WASM behavior |
 | `docs/END-TO-END-ARCHITECTURE.md` · `docs/DATAFLOW.md` | how data moves between services |
 | `docs/enterprise-readiness.md` | capability matrix with honest gaps |
 | `docs/PLATFORM-STATUS.md` | every planned capability vs what ships |

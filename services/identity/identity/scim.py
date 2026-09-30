@@ -11,6 +11,11 @@ router enforces that; this module enforces schema and role rules.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any, Protocol
 
 # SCIM standard schemas
@@ -175,7 +180,11 @@ def deactivate_scim_user(store: UserStore, username: str) -> dict[str, Any]:
     # also revoke sessions by soft-deleting downstream; store handles cascade
     try:
         store.soft_delete(username)
-    except Exception:  # pragma: no cover - set_active already disables login
+    except Exception as _handler_exc:  # pragma: no cover - set_active already disables login
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return to_scim_user(store.get_by_username(username) or user)
 

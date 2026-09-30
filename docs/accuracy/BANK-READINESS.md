@@ -1,6 +1,16 @@
 # Bank-estate readiness — what is validated, what is not
 
-_Companion to `EXTERNAL-VALIDATION.md` (rounds 11–12) and `REPORT.md` (594/594 on the ground-truth corpus). Written 2026-09-24._
+> **Current gate (2026-09-28 UTC):** the authoritative deployment decision is
+> [`../../PRODUCTION-READINESS.md`](../../PRODUCTION-READINESS.md) and the
+> generated `docs/readiness-evidence/bank-readiness.{json,md}` from
+> `python scripts/bank_readiness.py`. This document is detector and
+> bank-shaped-estate evidence, not a production approval.
+>
+> This page's synthetic estates, corpus measurements and open-source
+> repositories do not constitute customer evidence. A field result remains
+> `NO_FIELD_DATA` until a bank supplies and publishes a reviewed triage set.
+>
+_Companion to `EXTERNAL-VALIDATION.md` (rounds 11–12) and `REPORT.md` (594/594 on the ground-truth corpus). Historical evidence below is retained with its original scope; it is not a current production verdict._
 
 The question behind "real-time testing on banks" is not the generic-language corpus (that is at F1 1.000 across nine waves, seven of them measured blind or first-pass before tuning). It is whether the detector sees the **kinds of cryptography a bank actually has**. This page keeps that list honest.
 

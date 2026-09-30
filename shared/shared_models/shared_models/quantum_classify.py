@@ -34,6 +34,25 @@ HASH_DIGEST_FLOOR_BITS = 384
 
 _CIPHER_FAMILIES = {"block-cipher", "stream-cipher", "aead"}
 
+#: Families Grover acts on, whether or not the registry bothered to say so.
+_GROVER_FAMILIES = _CIPHER_FAMILIES | {"hash"}
+
+
+def _grover_applies(info) -> bool:
+    """True when Grover is the relevant quantum attack on this primitive.
+
+    The registry only stamps ``quantum_impact`` on algorithms it still allows,
+    so every DEPRECATED/DISALLOWED symmetric primitive carries ``None`` —
+    3DES, DES, RC4, SHA-1, MD5, IDEA, SEED, CAST5. Trusting that field alone
+    sent all of them to UNKNOWN, which is wrong twice over: they are recognized,
+    modelled families with known parameters, and they are exactly the legacy
+    crypto a migration programme exists to find. Being classically broken does
+    not remove the quantum dimension — it compounds it.
+
+    So the family decides, and the registry field is only a fast path.
+    """
+    return info.quantum_impact == "grover" or info.family in _GROVER_FAMILIES
+
 
 def quantum_verdict(raw: str | None) -> dict[str, Any]:
     """Classify one algorithm name. Never guesses: unrecognized -> UNKNOWN."""
@@ -47,17 +66,23 @@ def quantum_verdict(raw: str | None) -> dict[str, Any]:
         elif info.family.endswith("-pqc"):
             verdict = PQC_RESISTANT
             reason = "post-quantum family (FIPS 203/204/205)"
-        elif info.quantum_impact == "grover":
+        elif _grover_applies(info):
             size = info.key_size
             if info.family in _CIPHER_FAMILIES:
-                if size is not None and size < CIPHER_KEY_FLOOR_BITS:
+                if size is None:
+                    verdict = UNKNOWN
+                    reason = "key size unknown — resistance cannot be asserted"
+                elif size < CIPHER_KEY_FLOOR_BITS:
                     verdict = GROVER_MARGINAL
                     reason = f"{size}-bit key halved to ~{size // 2} bits under Grover"
                 else:
                     verdict = QUANTUM_RESISTANT
                     reason = "symmetric at adequate post-quantum strength"
             elif info.family == "hash":
-                if size is not None and size < HASH_DIGEST_FLOOR_BITS:
+                if size is None:
+                    verdict = UNKNOWN
+                    reason = "digest size unknown — resistance cannot be asserted"
+                elif size < HASH_DIGEST_FLOOR_BITS:
                     verdict = GROVER_MARGINAL
                     reason = f"{size}-bit digest below the {HASH_DIGEST_FLOOR_BITS}-bit post-quantum floor"
                 else:

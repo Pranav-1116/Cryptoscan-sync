@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import uuid
 from typing import Any
 
@@ -28,7 +33,11 @@ def cloud_finding(
 
         if key_size is None:
             key_size = infer_key_size(algorithm)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     finding_id = str(uuid.uuid4())

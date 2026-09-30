@@ -1,8 +1,10 @@
 """§7 Binary crypto detection.
 
-ELF / PE / Mach-O / WASM / firmware / shared libraries / static binaries:
-extract imports, exports, symbols, strings, constants, known implementation
-fingerprints and crypto tables — then score evidence levels.
+ELF / PE / Mach-O / WASM / Android DEX / CPython bytecode / firmware /
+shared libraries / static binaries: extract imports, exports, symbols, strings,
+constants, known implementation fingerprints and crypto tables — then score
+evidence levels. This engine remains metadata-only: it never disassembles or
+executes bytecode.
 
 Hard rule: **binary detection never claims certainty from a string match
 alone.** Each artifact signal is tagged with an evidence level:
@@ -16,6 +18,11 @@ The §28 fusion engine turns combinations of these into confidence.
 """
 
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 import re
 import struct
@@ -52,6 +59,10 @@ IMPLEMENTATION_FINGERPRINTS: dict[str, tuple[str, ...]] = {
     "libsodium": ("libsodium", "sodium_"),
     "Crypto++": ("cryptopp", "CryptoPP"),
     "GnuTLS": ("gnutls", "GnuTLS"),
+    "JCA-JCE": ("javax/crypto", "javax.crypto", "java/security/MessageDigest"),
+    "Python hashlib": ("hashlib", "hmac", "secrets"),
+    "Python cryptography": ("cryptography", "hazmat"),
+    "PyCryptodome": ("Crypto.Cipher", "Crypto.Hash", "pycryptodome"),
 }
 
 #: symbol-name → algorithm (imports/exports catalogs)
@@ -75,11 +86,28 @@ SYMBOL_ALGORITHMS: dict[str, str] = {
     "CRYPT_Encrypt": "RSA", "CryptEncrypt": "RSA", "BCryptEncrypt": "AES",
     "MD5Init": "MD5", "MD5Update": "MD5", "MD5Final": "MD5",
     "SHA256_Init": "SHA-256", "SHA1_Init": "SHA-1",
+    # Python code-object names are prefixed by the DevSecOps parser; the bare
+    # forms are used by this standalone universal parser.
+    "sha256": "SHA-256", "sha512": "SHA-512", "sha1": "SHA-1", "md5": "MD5",
+    "python:sha256": "SHA-256", "python:sha512": "SHA-512",
+    "python:sha1": "SHA-1", "python:md5": "MD5",
     "RAND_bytes": "CSPRNG", "RAND_poll": "CSPRNG",
 }
 
 #: TLS record/version bytes (fingerprint-level evidence)
 _TLS_BYTES = (b"\x16\x03\x03", b"\x16\x03\x01", b"\x16\x03\x04")
+
+#: API-independent transformation strings found in Java/DEX/Python constants.
+#: They remain STRING_MATCH evidence; a literal is not proof the operation runs.
+_STRING_ALGORITHMS: tuple[tuple[str, str], ...] = (
+    (r"AES/(?:GCM|CBC|CTR|CCM)/[A-Za-z0-9]+", "AES"),
+    (r"ChaCha20-Poly1305", "ChaCha20-Poly1305"),
+    (r"PBKDF2WithHmacSHA(?:1|224|256|384|512)", "PBKDF2"),
+    (r"(?:SHA-?256|sha256)", "SHA-256"),
+    (r"(?:SHA-?512|sha512)", "SHA-512"),
+    (r"(?:SHA-?1|sha1)", "SHA-1"),
+    (r"(?:MD5|md5)", "MD5"),
+)
 
 
 class BinaryArtifact:
@@ -154,6 +182,14 @@ class BinaryCryptoDetector:
                 _add("TLS", "FINGERPRINT", f"TLS record bytes {tls_bytes.hex()}")
                 break
 
+        # 4. Transformation/API-independent strings.  These are deliberately
+        # lower confidence than imports and symbols: a class constant can be
+        # documentation, a test vector, or dead code.
+        for pattern, algorithm in _STRING_ALGORITHMS:
+            match = re.search(pattern, blob, re.IGNORECASE)
+            if match:
+                _add(algorithm, "STRING_MATCH", f"transformation string {match.group(0)!r}")
+
         for entry in findings.values():
             entry["verdict"] = (
                 "CONFIRMED_IMPLEMENTATION" if entry["best_level"] >= 0.9
@@ -169,10 +205,30 @@ class BinaryCryptoDetector:
 # minimal binary parsers — ELF / PE / Mach-O / WASM
 # --------------------------------------------------------------------------- #
 
+_PYTHON_BYTECODE_MAGICS = {
+    bytes.fromhex(value) for value in (
+        "ee0c0d0a", "170d0d0a", "330d0d0a", "420d0d0a", "550d0d0a",
+        "610d0d0a", "6f0d0d0a", "a70d0d0a", "cb0d0d0a", "f30d0d0a",
+    )
+}
+try:  # recognize a newer interpreter's current magic without version guessing
+    import importlib.util as _importlib_util
+    _PYTHON_BYTECODE_MAGICS.add(_importlib_util.MAGIC_NUMBER)
+except Exception as _handler_exc:  # pragma: no cover - importlib is part of CPython
+    logger.debug(
+        "python_bytecode_magic_registration_failed",
+        extra={"error_type": type(_handler_exc).__name__},
+    )
+
+
 class BinaryParser:
     """Parse binaries into BinaryArtifacts (deterministic, stdlib-only)."""
 
     def parse(self, data: bytes, path: str = "") -> BinaryArtifact:
+        if data[:4] == b"dex\n":
+            return self._parse_dex(data, path)
+        if data[:4] in _PYTHON_BYTECODE_MAGICS:
+            return self._parse_python_bytecode(data, path)
         if data[:4] == b"\x7fELF":
             return self._parse_elf(data, path)
         if data[:2] == b"MZ":
@@ -183,6 +239,85 @@ class BinaryParser:
             return self._parse_wasm(data, path)
         return BinaryArtifact(format="raw", path=path,
                               strings=_extract_strings(data))
+
+    @staticmethod
+    def _dex_uleb(data: bytes, offset: int) -> tuple[int, int]:
+        value = shift = 0
+        for _ in range(5):
+            if offset >= len(data):
+                raise ValueError("truncated DEX ULEB128")
+            byte = data[offset]
+            offset += 1
+            value |= (byte & 0x7f) << shift
+            if not byte & 0x80:
+                return value, offset
+            shift += 7
+        raise ValueError("oversized DEX ULEB128")
+
+    def _parse_dex(self, data: bytes, path: str) -> BinaryArtifact:
+        """Read DEX string/type tables, bounded to metadata needed by crypto scans."""
+        if len(data) < 0x70 or data[7] != 0:
+            return BinaryArtifact(format="dex", path=path, strings=_extract_strings(data))
+        string_count, string_offset = struct.unpack_from("<II", data, 0x38)
+        type_count, type_offset = struct.unpack_from("<II", data, 0x40)
+        if string_count > 20000 or type_count > 20000:
+            return BinaryArtifact(format="dex", path=path, strings=_extract_strings(data))
+        if (string_offset + string_count * 4 > len(data)
+                or type_offset + type_count * 4 > len(data)):
+            return BinaryArtifact(format="dex", path=path, strings=_extract_strings(data))
+        strings: list[str] = []
+        for index in range(string_count):
+            (offset,) = struct.unpack_from("<I", data, string_offset + index * 4)
+            if offset >= len(data):
+                continue
+            try:
+                _length, position = self._dex_uleb(data, offset)
+                end = data.find(b"\x00", position,
+                                min(len(data), position + _length * 4 + 1))
+                if end >= 0:
+                    strings.append(data[position:end].decode("utf-8", "replace"))
+            except (ValueError, UnicodeError):
+                continue
+        types: list[str] = []
+        for index in range(type_count):
+            (string_index,) = struct.unpack_from("<I", data, type_offset + index * 4)
+            if string_index < len(strings):
+                types.append(strings[string_index])
+        return BinaryArtifact(format="dex", path=path, imports=types[:600],
+                              symbols=types[:600], strings=strings[:6000])
+
+    def _parse_python_bytecode(self, data: bytes, path: str) -> BinaryArtifact:
+        """Read CPython code-object names/constants without executing them."""
+        strings: list[str] = []
+        names: list[str] = []
+        symbols: list[str] = []
+        try:
+            import marshal
+            code = marshal.loads(data[16:16 + 16 * 1024 * 1024])
+            stack = [code]
+            objects = 0
+            while stack and objects < 1000:
+                current = stack.pop()
+                objects += 1
+                current_names = [value for value in getattr(current, "co_names", ())
+                                 if isinstance(value, str)]
+                names.extend(current_names)
+                symbols.extend(value for value in current_names
+                               if value in {"sha256", "sha512", "sha1", "md5"})
+                for value in getattr(current, "co_consts", ()):
+                    if isinstance(value, str):
+                        strings.append(value)
+                    elif hasattr(value, "co_consts"):
+                        stack.append(value)
+        except Exception as _handler_exc:  # malformed or foreign-version marshal is metadata-only failure
+            logger.debug(
+                "python_bytecode_metadata_parse_failed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
+        return BinaryArtifact(format="python-bytecode", path=path,
+                              imports=list(dict.fromkeys(names))[:600],
+                              symbols=list(dict.fromkeys(symbols))[:600],
+                              strings=list(dict.fromkeys(strings))[:6000])
 
     # -- ELF64/ELF32 -------------------------------------------------------
 
@@ -209,7 +344,11 @@ class BinaryParser:
                 offset = struct.unpack_from(fmt, data, sh + 0x18)[0]
                 size = struct.unpack_from(fmt, data, sh + 0x20)[0]
                 name = _cstr(shstr, name_off)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             if name in (".symtab", ".dynsym"):  # SHT_SYMTAB=2, SHT_DYNSYM=11
                 entsize = 24 if is64 else 16
@@ -221,7 +360,11 @@ class BinaryParser:
                     str_off = struct.unpack_from(fmt, data, lsh + 0x18)[0]
                     str_size = struct.unpack_from(fmt, data, lsh + 0x20)[0]
                     strbuf = data[str_off:str_off + str_size]
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     pass
                 for j in range(0, min(size, len(data) - offset) - entsize + 1, entsize):
                     try:
@@ -229,7 +372,11 @@ class BinaryParser:
                         sym = _cstr(strbuf, st_name)
                         if sym:
                             symbols.append(sym)
-                    except Exception:
+                    except Exception as _handler_exc:
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         pass
             elif name == ".rodata":
                 strings.extend(_extract_strings(data[offset:offset + size]))
