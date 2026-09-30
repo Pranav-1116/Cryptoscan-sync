@@ -18,6 +18,7 @@
 
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
 > **For an enterprise vendor-style manual, use the [Enterprise Documentation Center](product/enterprise/README.md)** — product, deployment, security, API, operations, developer, support, adoption, and readiness in one path.
+> **For the current console menu and route map, use [Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** — it mirrors the six sidebar sections in `frontend/src/components/Layout.tsx` and the deep links in `frontend/src/App.tsx`.
 > **How production-ready is it?** Read the current gate at
 > [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
 > explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
@@ -37,6 +38,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | Doc | What it covers |
 |---|---|
 | **[The product, end to end](product/README.md)** | nine documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, a scan step by step, scope & readiness, glossary, the engines behind the pages, an end-to-end trace |
+| **[Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** | the current six-section sidebar, primary routes, deep-linked pages, role-guarded actions, and the binary BOM workflow behind Applications |
 | **[Enterprise Documentation Center](product/enterprise/README.md)** | vendor-style documentation path covering overview, capability catalog, deployment, first scan, architecture, data, identity, privacy, scanners, policy, API, operations, support, developer extensions, lifecycle, adoption, and readiness |
 | [Telecom — 5G crypto configuration](telecom-5g-crypto.md) | SUPI concealment, NEA/NIA, N32 roaming, MILENAGE/TUAK and the 5G key hierarchy — the TS 33.501 controls no external probe can see, where the permissive setting looks healthy in service |
 | [Network controls](security/NETWORK-CONTROLS.md) | how the product behaves behind a bank's IDS, firewalls, proxies and rate limits — traffic matrix and pilot firewall rules |
@@ -76,7 +78,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Migration tracking](user-guide/migration-tracking.md) | PQC program progress |
 | [Drift detection](user-guide/drift-detection.md) | baseline vs. observed |
 | [CI/CD gates](user-guide/cicd-gates.md) · [CI drift gate](user-guide/ci-drift-gate.md) | pipeline enforcement |
-| [Binary & firmware scanning](user-guide/binary-firmware-scanning.md) | what is parsed in ELF/PE/Mach-O/archives/firmware, how crypto evidence is graded, and which limits are stated up front |
+| [Binary & firmware scanning](user-guide/binary-firmware-scanning.md) | bounded ELF/PE/Mach-O/WASM/mobile/archive/firmware parsing, graded crypto evidence, correlated SBOM/CBOM/HBOM/NBOM/VBOM/vulnerability views, and explicit limits |
 | [SBOM supply-chain gate](user-guide/sbom-supply-chain-gate.md) | generate an SBOM, match advisories offline, block the build, re-scan and diff |
 | [Evidence pack](user-guide/evidence-pack.md) | hash-manifested exports |
 | **[Audit pack, exit report, engagement archive](user-guide/audit-pack-and-exit-report.md)** | the three hash-sealed engagement deliverables, SC-1…4 scorecard |

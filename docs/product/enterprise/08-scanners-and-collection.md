@@ -26,16 +26,32 @@ wrapped by another library, overridden by configuration, or unreachable in the
 production build. Pair source evidence with binary, runtime, container, or
 operator-supplied evidence where the question is operational behavior.
 
-## 3. Binary, package, and firmware scanning
+## 3. Binary, package, mobile, and firmware scanning
 
-Supported binary and archive paths may extract metadata, hardening controls,
-embedded crypto indicators, package signatures, firmware headers, checksums,
-and nested components. The scanner must report extraction caps, truncation,
-unsupported compression, checksum failure, and missing signature explicitly.
+Supported bounded binary and archive paths may extract metadata, hardening
+controls, embedded crypto indicators, package signatures, firmware headers,
+checksums, and nested components. Current parsers include ELF, PE, Mach-O,
+archives/packages, WASM, Android binary XML and selected iOS `Info.plist`/ATS
+metadata, plus firmware container and device-tree identity. Mobile metadata is
+not a proof of runtime behavior, and WASM modules are inspected but never
+compiled or executed.
 
-A parser result does not certify a binary's provenance. A package signature,
-registry record, source commit, build attestation, and deployment record answer
-different questions and should not be merged into one status.
+The binary bundle projects evidence into SBOM, CBOM, HBOM, static-only NBOM,
+VBOM, a separate vulnerability BOM, and a deterministic technology snapshot.
+NBOM candidates from a binary always carry `observed: false`; imported socket or
+TLS APIs are not live network observations. Only an authorized network scan can
+supply corroborating exposure evidence. VBOM remains the vendor/product and
+supply-chain layer; the vulnerability BOM is the separate normalized findings
+layer.
+
+Every parser is bounded. It records confidence, unknown, partial, skipped,
+refused, malformed, and truncated states instead of converting missing data to
+zero or a clean result. Sidecars are tenant-scoped, retain artifact and scan
+provenance, and can be compared as bundle diffs. A parser result does not
+certify a binary's provenance, signature trust, malware status, or completeness
+of reverse engineering. A package signature, registry record, source commit,
+build attestation, and deployment record answer different questions and should
+not be merged into one status.
 
 ## 4. TLS, network, and certificates
 

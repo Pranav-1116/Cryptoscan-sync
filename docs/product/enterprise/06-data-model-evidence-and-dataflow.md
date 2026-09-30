@@ -99,18 +99,29 @@ Reports and BOMs select a declared time range, scope, policy version, and
 format. The export should include a manifest, source references, content hash,
 signature where configured, and limitations.
 
-## 5. Technology BOM views
+## 5. Technology BOM family
 
-CryptoScan uses one underlying inventory with multiple views:
+CryptoScan uses one underlying inventory and bounded scan evidence with multiple
+correlated views:
 
 - **SBOM:** software components and dependencies;
 - **CBOM:** cryptographic algorithms, libraries, keys, protocols, and usages;
 - **HBOM:** hardware and firmware context;
-- **VBOM:** vendors, products, services, and supply-chain relationships.
+- **NBOM:** authorized network observations when a network scan supplies them;
+  binary-derived NBOM records are static capability candidates and carry
+  `observed: false` until separately corroborated;
+- **VBOM:** vendors, products, services, and supply-chain relationships;
+- **Vulnerability BOM:** a separate normalized findings view for weak or
+  deprecated algorithms, hardening failures, malformed/truncated/refused
+  artifacts, and supplied advisory/package matches; it is not VBOM; and
+- **Technology-BOM snapshot:** the deterministic, tenant-scoped correlation of
+  stable component references, evidence states, provenance, fingerprints and
+  per-layer bundle diffs.
 
-The views must not be treated as four independent truths. A CBOM component
-should link back to evidence and the owning system; a vendor relationship
-should not be treated as proof that every vendor product is deployed.
+These are not independent truths. A CBOM component should link back to bounded
+source or binary evidence and the owning system; a vendor relationship should
+not be treated as proof that every vendor product is deployed; and imported
+socket/TLS APIs must not be represented as live network exposure.
 
 ## 6. Retention and deletion
 

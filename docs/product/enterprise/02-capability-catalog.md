@@ -23,7 +23,7 @@ chapter](../02-features.md).
 | PQC and crypto agility | Estimates migration urgency and replacement planning | Buckets, HNDL indicators, waves, scores, and roadmaps | `services/quantum`, `services/agility` |
 | Risk and business context | Connects technical findings to systems, owners, revenue, and dependencies | Priority, blast radius, and business impact | `services/business_context`, `services/graph_engine`, `services/correlation` |
 | Remediation and workflow | Turns findings into templates, work items, exceptions, and SLA states | Remediation records, status, deadlines, and audit actions | `services/remediation`, `services/sla`, `services/governance` |
-| BOM and reporting | Materializes inventory and exports evidence | SBOM, CBOM, HBOM, VBOM, reports, packs, and manifests | `services/cbom`, `services/reporting`, `services/evidence` |
+| BOM and reporting | Materializes inventory and exports evidence | Shared SBOM, CBOM, HBOM, VBOM plus binary static NBOM, vulnerability BOM, correlated snapshots, reports, packs, and manifests | `services/cbom`, `services/devsecops/devsecops/binary_boms.py`, `services/reporting`, `services/evidence` |
 | Automation and integrations | Delivers events and actions to configured systems | Webhooks, tickets, SIEM events, API results, and schedules | `services/automation`, `services/connector_sdk`, `services/eventstream` |
 | Platform administration | Provides identity, tenancy boundary, plans, health, billing, and configuration | Sessions, audit, API keys, metrics, and lifecycle records | `services/api`, `services/identity`, `services/control_plane` |
 

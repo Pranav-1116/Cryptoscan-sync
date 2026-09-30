@@ -58,7 +58,33 @@ can be verified.
 | Act | Produce gates, work items, alerts, templates, and exports | Remediate systems, approve exceptions, and verify changes |
 | Prove | Provide verification endpoints, reports, manifests, and packs | Decide what evidence is acceptable for the customer, auditor, or regulator |
 
-## 4. Who uses it
+## 4. Correlated technology-BOM output
+
+The shared Technology BOM model exposes SBOM, CBOM, HBOM, and VBOM views over
+bounded, provenance-linked evidence. A binary or firmware scan adds a correlated
+bundle containing:
+
+- **SBOM** components and dependencies;
+- **CBOM** cryptographic assets and algorithm evidence;
+- **HBOM** hardware and firmware context when the artifact provides it;
+- **static NBOM** capability candidates from imports, exports, and strings;
+- **VBOM** vendor/product evidence when supplied or inferred from bounded
+  metadata;
+- a separate **vulnerability BOM** for weak/deprecated algorithms, hardening
+  failures, malformed/truncated/refused artifacts, and supplied advisory or
+  package matches; and
+- a deterministic technology-BOM snapshot with tenant-scoped storage,
+  stable references, confidence/unknown states, provenance, and per-layer
+  bundle diffs.
+
+Binary-derived NBOM records are marked `observed: false`; imports of socket or
+TLS APIs are not live network observations. An authorized network scan must
+supply corroborating evidence before a candidate is described as an exposed
+listener or endpoint. Parsers are bounded and static-only: they do not execute
+or compile modules, mount firmware filesystems, decrypt private material, or
+prove signatures, malware absence, provenance, or complete reverse engineering.
+
+## 5. Who uses it
 
 ### Security and cryptography teams
 
@@ -95,7 +121,7 @@ They install the stack, configure databases and queues, maintain credentials,
 monitor health, run backups and restore drills, rotate keys, and manage
 upgrades.
 
-## 5. Positioning relative to large enterprise platforms
+## 6. Positioning relative to large enterprise platforms
 
 Large vendors often publish separate product, administrator, developer,
 security, compliance, API, operations, and support manuals. CryptoScan follows
@@ -111,7 +137,7 @@ IBM or Google service. Specifically:
   operational evidence; and
 - the current production decision is the readiness gate, not marketing prose.
 
-## 6. What it does not do
+## 7. What it does not do
 
 CryptoScan does not:
 

@@ -177,7 +177,7 @@ someone who does not trust the server._
 
 ![Inventory and the Technology BOM explained](img/12-technology-bom-explained.png)
 
-_Figure 12 — one inventory, four views, immutable versions, signed export._
+_Figure 12 — one inventory, shared BOM views, binary-derived NBOM/vulnerability evidence, immutable versions, and signed export._
 
 ### How the Technology BOM works
 
@@ -196,17 +196,30 @@ fingerprint is unchanged, **no new version is created** — so version numbers
 mean something. If it changed, a new snapshot `vN` is written together with
 a per-layer diff against its parent.
 
-**Four views of the same state.** The snapshot is rendered as
+**Shared views of the same state.** The general Technology BOM snapshot is
+rendered as:
 - **SBOM** — systems and components, resolved and transitive, licences, VEX;
 - **CBOM** — algorithms, keys, certificates and protocols as CycloneDX 1.5
   crypto components with evidence links (ADR-009);
 - **HBOM** — HSMs, TPMs and devices with firmware and quantum-resistant
-  flags, each with provenance;
+  flags, each with provenance; and
 - **VBOM** — vendors and products with lifecycle, 0–100 risk and vendor ↔
   system links.
 
-Because all four are rendered from the same row set, the CBOM and the SBOM
-can never disagree about a component.
+A **binary or firmware scan** produces a correlated bundle in addition to the
+shared views:
+- **NBOM** — static network capability and listener candidates from imports,
+  exports and strings. Every binary-derived candidate is `observed: false` and
+  must not be described as a live endpoint without a separately authorized
+  network probe;
+- **Vulnerability BOM** — normalized weak/deprecated algorithm, hardening,
+  malformed/truncated/refused-artifact and supplied-feed findings. It keeps
+  “no evidence” separate from “not vulnerable”; and
+- **Technology-BOM snapshot** — stable component references, scan provenance,
+  fingerprints, layer counts and diffs that correlate all of the above.
+
+The general four-view model and binary bundle are materialized from the same
+bounded evidence boundary; they are not independent claims about the estate.
 
 **Snapshots are immutable.** A snapshot (`TECHBOM-YYYYMMDD-HHMMSS`, with
 `fingerprint`, `parent_fingerprint`, full state, per-layer diff, `created_by`
@@ -236,7 +249,8 @@ _One asset model; a key seen by two collectors is one asset with two evidence so
 | **CBOM** | CycloneDX 1.5 cryptographic BOM; versioned, fingerprinted, signed | `/cbom` · `cbom/*` · `cbom` | GA |
 | **HBOM / VBOM** | hardware and vendor views over the same Technology BOM | `/hbom`, `/vendor` · `technology-bom` | beta / GA |
 | **SBOM** | per-artifact software BOM with licence, VEX and gate | `/dev-sec-ops` · `devsecops/sbom/*` | GA |
-| Technology BOM materialisation | `materialize_technology_bom()` → one state, four views; unchanged fingerprint → no new version; per-layer diff | `/live-asset-intelligence` · `technology-bom/*` · `cbom/technology_bom.py` | GA |
+| **Binary BOM bundle** | one bounded binary/firmware scan materializes SBOM, CBOM, HBOM, static NBOM, VBOM, vulnerability BOM and a correlated technology snapshot | `/dev-sec-ops` · `/binary/artifacts/{id}/bom/{type}` · `devsecops.binary_boms` | pilot / pre-production |
+| Technology BOM materialisation | `materialize_technology_bom()` → shared four-view state; binary scans add static NBOM and vulnerability evidence; unchanged fingerprint → no new version; per-layer diff | `/live-asset-intelligence` · `technology-bom/*` · `cbom/technology_bom.py`, `devsecops.binary_boms` | GA / pilot |
 | Dependency graph and blast radius | component/system relationships; interactive graph; Neo4j when configured, in-database otherwise | `/graph`, `/dependency-graph` · `graph` · `graph_engine` | beta |
 | Library fingerprint database | fingerprints for crypto libraries and versions (ADR-007) | `/libraries` · `fingerprints` · `database` | GA |
 

@@ -63,7 +63,7 @@ describe("ui primitives", () => {
   });
 
   it("PageHead renders crumb and title", () => {
-    render(<PageHead crumb="Intelligence" title="CBOM" sub="one model, four views" />);
+    render(<PageHead crumb="Intelligence" title="CBOM" sub="shared BOM views and binary sidecars" />);
     expect(screen.getByText("Intelligence")).toBeInTheDocument();
     expect(screen.getByText("CBOM")).toBeInTheDocument();
   });
