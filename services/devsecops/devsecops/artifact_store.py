@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -36,6 +37,8 @@ from pathlib import Path
 from typing import Any
 
 from devsecops import artifact_crypto
+
+logger = logging.getLogger(__name__)
 
 #: how many scanner findings a manifest carries for the report; the counts in
 #: ``findings_by_severity`` are always complete, this is the readable excerpt
@@ -189,7 +192,8 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                           pinning: dict[str, Any], feed_supplied: bool = False,
                           recursive: bool = True, include_raw: bool = False,
                           job_id: str | None = None, ruleset_digest: str | None = None,
-                          tenant_id: str | None = None, at_rest: dict[str, Any] | None = None) -> dict:
+                          tenant_id: str | None = None, at_rest: dict[str, Any] | None = None,
+                          bom_documents: dict[str, dict[str, Any]] | None = None) -> dict:
     """Assemble the manifest both the API response and the stored report read.
 
     ``job_id``/``ruleset_digest`` are recorded when the scan came from the queue
@@ -223,6 +227,10 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
         "pinned": pinning["pinned"],
         "unpinned": pinning["unpinned"],
         "vulnerability_count": len(result.get("vulnerabilities") or []),
+        # PARTIAL is a first-class result, not a storage failure.  Consumers can
+        # gate on this field without mistaking an incomplete static walk for a
+        # clean release.
+        "result_state": str(scan.get("result_state") or "COMPLETE"),
         "feed_supplied": bool(feed_supplied),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": created_by,
@@ -232,6 +240,10 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                                "note": "sealing was not recorded for this artifact"},
         "storage_key": artifact_key,
         "cbom_storage_key": f"tenants/{bucket}/{artifact_id}.cbom.json",
+        # Additional binary projections (HBOM/NBOM/VBOM/vulnerability BOM and
+        # the unified technology view) are sidecars, not silently folded into
+        # the SBOM document. Each carries its own digest and storage key.
+        "bom_documents": bom_documents or {},
         "job_id": job_id,
         "ruleset_digest": ruleset_digest,
         "scan_options": {"kind": "binary", "target": target, "as_image": False,
@@ -253,7 +265,22 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
             "findings_excerpt": finding_excerpt(findings),
             "findings_excerpt_limit": MAX_REPORT_FINDINGS,
             "cbom_components": len(cbom.get("components") or []),
+            "result_state": str(scan.get("result_state") or "COMPLETE"),
             "truncated": bool((result.get("limits") or {}).get("truncated")),
+            "limits": result.get("limits") or {},
+            "parser_states": {
+                state: sum(1 for row in (result.get("binaries") or [])
+                           if str(row.get("parser_state") or "UNKNOWN") == state)
+                for state in ("COMPLETE", "PARTIAL", "MALFORMED", "UNSUPPORTED", "REFUSED_BY_LIMIT", "UNKNOWN")
+            },
+            "evidence_model_version": next(
+                (row.get("evidence_model_version") for row in (result.get("binaries") or [])
+                 if row.get("evidence_model_version")), None),
+            "provenance_graph": {
+                "nodes": len((result.get("provenance_graph") or {}).get("nodes") or []),
+                "edges": len((result.get("provenance_graph") or {}).get("edges") or []),
+                "truncated": bool((result.get("provenance_graph") or {}).get("truncated")),
+            },
             "embedded_binaries": result.get("embedded_binaries", 0),
             "containers_followed": result.get("containers_followed", 0),
             "containers_refused": result.get("containers_refused", 0),
@@ -263,9 +290,199 @@ def build_binary_manifest(*, scan: dict[str, Any], result: dict[str, Any], bom: 
             "yara": yara_summary(result),
             **binary_posture(result),
             "extraction_limits": result.get("extraction_limits") or {},
+            "bom_types": ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"],
+            "bom_documents": bom_documents or {},
         },
     }
     return manifest
+
+
+# --------------------------------------------------------------------------- #
+# database read model
+# --------------------------------------------------------------------------- #
+
+MAX_INDEXED_BINARY_OBSERVATIONS = 5000
+MAX_INDEXED_LIST_ITEMS = 120
+MAX_INDEXED_STRING = 2000
+_REDACTED_INDEX_KEYS = {"private_key", "private_keys", "secret", "secrets", "key_material",
+                        "material", "raw_bytes", "payload", "certificate_der", "signature_blob"}
+
+
+def _bounded_index_json(value: Any, depth: int = 0) -> Any:
+    """Bound nested parser JSON before it enters a query/read model."""
+    if depth > 5:
+        return "[truncated]"
+    if isinstance(value, str):
+        return value[:MAX_INDEXED_STRING]
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, dict):
+        output = {}
+        for key, item in list(value.items())[:MAX_INDEXED_LIST_ITEMS]:
+            key_text = str(key)
+            normalized_key = "".join(char for char in key_text.lower() if char.isalnum() or char == "_")
+            if key_text.lower() in _REDACTED_INDEX_KEYS or normalized_key in {
+                    "privatekey", "privatekeys", "keymaterial", "secretmaterial"}:
+                continue
+            output[key_text[:200]] = _bounded_index_json(item, depth + 1)
+        return output
+    if isinstance(value, (list, tuple)):
+        return [_bounded_index_json(item, depth + 1) for item in value[:MAX_INDEXED_LIST_ITEMS]]
+    return str(value)[:MAX_INDEXED_STRING]
+
+
+def _indexed_signature(value: Any) -> dict[str, Any] | None:
+    """Keep signature posture metadata, never a certificate/signature blob."""
+    if not isinstance(value, dict):
+        return None
+    allowed = ("present", "type", "entries", "size", "hash_type", "flags",
+               "team_id", "identifier", "signing_identifier", "verification",
+               "note", "hardened_runtime", "ad_hoc")
+    return _bounded_index_json({key: value[key] for key in allowed if key in value})
+
+
+def _indexed_observation(row: dict[str, Any], *, artifact_id: str,
+                         scan_record_id: str, tenant_id: str | None) -> dict[str, Any]:
+    """Project one parser record into a bounded, redacted database row."""
+    parsed = row.get("parsed")
+    parser_note = str(row.get("parse_error") or row.get("parse_note") or "").lower()
+    if parsed is False:
+        if row.get("unsupported") or row.get("refused") or any(
+                token in parser_note for token in ("unrecognised", "unsupported", "refused")):
+            state = "unsupported"
+        else:
+            state = "partial" if parser_note else "unknown"
+    elif parsed is True:
+        state = "observed"
+    else:
+        state = "unknown"
+    # The normalized model is more precise than the legacy projection, but keep
+    # the API's lower-case states stable for existing clients.
+    explicit_state = str(row.get("parser_state") or "").upper()
+    state = {"COMPLETE": "observed", "PARTIAL": "partial", "MALFORMED": "partial",
+             "UNSUPPORTED": "unsupported", "REFUSED_BY_LIMIT": "refused",
+             "UNKNOWN": "unknown"}.get(explicit_state, state)
+    metadata_keys = ("type", "machine", "bits", "endianness", "subsystem", "libraries",
+                     "imports", "import_symbols", "delay_imports", "delay_import_symbols",
+                     "exports", "sections", "section_count", "library_count", "parse_note",
+                     "parse_error", "strings_sampled", "packer", "encrypted", "encryption_id",
+                     "minimum_os", "platform", "framework", "name", "file_name", "size",
+                     "android", "ios", "java", "python", "dotnet", "packages_inside",
+                     "containers_followed", "containers_refused", "go_build_info", "build_info",
+                     "parser_state", "evidence_model_version", "runtime_behavior_proven",
+                     "runtime_behavior_caveat", "identity", "evidence", "member_offset")
+    metadata = {key: row[key] for key in metadata_keys if key in row}
+    for key in ("libraries", "imports", "import_symbols", "delay_imports",
+                "delay_import_symbols", "exports", "sections"):
+        if isinstance(metadata.get(key), list):
+            metadata[key] = metadata[key][:MAX_INDEXED_LIST_ITEMS]
+    crypto = row.get("crypto")
+    if isinstance(crypto, dict):
+        crypto = {key: crypto.get(key) for key in (
+            "libraries", "algorithms", "algorithm_evidence", "suppressed_libraries",
+            "pqc_markers", "ecc_markers", "quantum_vulnerable", "weak_primitives",
+            "string_evidence", "constants_summary") if key in crypto}
+    coverage = {
+        key: row[key] for key in ("crypto_constants", "strings_sampled", "fingerprints",
+                                  "identity", "parser_state", "evidence_model_version")
+        if key in row
+    }
+    if isinstance(coverage.get("fingerprints"), dict):
+        coverage["fingerprints"] = {
+            key: coverage["fingerprints"].get(key) for key in (
+                "build_id", "build_fingerprint", "code_sha256", "imports_sha256")
+            if key in coverage["fingerprints"]
+        }
+    findings = row.get("findings") or []
+    return {
+        "tenant_id": tenant_id,
+        "scan_record_id": scan_record_id,
+        "artifact_id": artifact_id,
+        "path": str(row.get("path") or row.get("name") or "")[:MAX_INDEXED_STRING],
+        "format": str(row.get("format") or "raw")[:32],
+        "arch": str(row.get("arch") or row.get("machine") or "")[:100] or None,
+        "sha256": str(row.get("sha256"))[:64] if row.get("sha256") else None,
+        "parsed": parsed,
+        "evidence_state": state,
+        "derived_from": str(row.get("derived_from"))[:MAX_INDEXED_STRING] if row.get("derived_from") else None,
+        "depth": row.get("depth"),
+        "crypto": _bounded_index_json(crypto),
+        "hardening": _bounded_index_json(row.get("hardening")) if isinstance(row.get("hardening"), dict) else None,
+        "signature": _indexed_signature(row.get("signature")),
+        "coverage": _bounded_index_json(coverage),
+        "findings": _bounded_index_json(findings[:40]),
+        "parser_metadata": _bounded_index_json(metadata),
+    }
+
+
+def persist_binary_scan_index(*, db: Any, artifact_id: str, scan: dict[str, Any],
+                              result: dict[str, Any], manifest: dict[str, Any],
+                              created_by: str, tenant_id: str | None = None) -> bool:
+    """Upsert the queryable binary read model inside a savepoint.
+
+    Artifact storage is authoritative and must not fail because an optional
+    index is unavailable during a rolling migration. A savepoint isolates an
+    index failure from the caller's audit/CBOM transaction; the returned boolean
+    is surfaced to operators rather than pretending the database was updated.
+    """
+    if db is None:
+        return False
+    try:
+        from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
+
+        with db.begin_nested():
+            record_query = db.query(BinaryScanRecord).filter(
+                BinaryScanRecord.artifact_id == str(artifact_id))
+            record_query = record_query.filter(
+                BinaryScanRecord.tenant_id.is_(None) if tenant_id is None
+                else BinaryScanRecord.tenant_id == str(tenant_id))
+            record = record_query.first()
+            if record is None:
+                record = BinaryScanRecord(artifact_id=str(artifact_id))
+                db.add(record)
+            record.tenant_id = tenant_id
+            record.job_id = manifest.get("job_id")
+            record.target = str(manifest.get("target") or scan.get("target") or "")
+            record.format = str(manifest.get("format") or "cyclonedx")
+            record.sha256 = str(manifest.get("sha256") or "")
+            record.status = str(scan.get("result_state") or "COMPLETE").upper()
+            record.created_by = str(created_by or "system")
+            record.files_walked = int(result.get("files_walked") or 0)
+            record.binaries_scanned = int(result.get("binaries_scanned") or 0)
+            record.findings_count = len(result.get("findings") or [])
+            record.summary = _bounded_index_json(manifest.get("binary_summary") or {})
+            summary = manifest.get("binary_summary") or {}
+            record.coverage = _bounded_index_json({
+                "result_state": scan.get("result_state") or "COMPLETE",
+                "parser_states": summary.get("parser_states") or {},
+                "provenance_graph": summary.get("provenance_graph") or {},
+                "constants": summary.get("constants") or {},
+                "evidence_model_version": summary.get("evidence_model_version"),
+            })
+            record.limits = _bounded_index_json(result.get("limits") or result.get("extraction_limits") or {})
+            # BaseModel generates the UUID at flush time; observations reference it.
+            db.flush()
+
+            observation_query = db.query(BinaryScanObservation).filter(
+                BinaryScanObservation.artifact_id == str(artifact_id))
+            observation_query = observation_query.filter(
+                BinaryScanObservation.tenant_id.is_(None) if tenant_id is None
+                else BinaryScanObservation.tenant_id == str(tenant_id))
+            observation_query.delete(synchronize_session=False)
+            rows = (result.get("binaries") or [])[:MAX_INDEXED_BINARY_OBSERVATIONS]
+            for row in rows:
+                db.add(BinaryScanObservation(**_indexed_observation(
+                    row, artifact_id=str(artifact_id), scan_record_id=record.id,
+                    tenant_id=tenant_id)))
+            record.observations_count = len(rows)
+            record.observations_truncated = len(result.get("binaries") or []) > len(rows)
+            db.flush()
+        return True
+    except Exception as exc:  # noqa: BLE001 — optional read model must not lose an artifact
+        logger.warning("binary_scan_index_persist_failed: %s", exc, extra={
+            "error_type": type(exc).__name__, "error": str(exc)[:300],
+            "artifact_id": str(artifact_id)[:64]})
+        return False
 
 
 # --------------------------------------------------------------------------- #
@@ -325,7 +542,8 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
                           include_raw: bool = False,
                           secret: tuple[str | None, str] | None = None,
                           tenant_id: str | None = None,
-                          encryption_secret: str | None = None) -> dict[str, Any]:
+                          encryption_secret: str | None = None,
+                          bom_bundle: dict[str, dict[str, Any]] | None = None) -> dict[str, Any]:
     """Build the manifest for a finished scan and store it, signed.
 
     This is the one place a binary artifact is written. The synchronous endpoint
@@ -364,6 +582,28 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
     cbom_bytes = json.dumps(cbom, sort_keys=True, separators=(",", ":")).encode("utf-8")
     sealed_cbom, _ = artifact_crypto.encrypt_blob(cbom_bytes, tenant_id=scope,
                                                  secret=encryption_secret)
+    # Every projection is sealed with the same tenant key as the SBOM/CBOM. The
+    # manifest exposes only metadata and digests; readers must pass through the
+    # tenant-scoped sidecar endpoint.
+    sidecar_blobs: dict[str, bytes] = {}
+    sidecar_documents: dict[str, dict[str, Any]] = {}
+    for bom_name, document in (bom_bundle or {}).items():
+        if bom_name in {"sbom", "cbom", "vendor_bom", "vulbom"} or not isinstance(document, dict) or not document:
+            continue
+        raw = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        sealed, sidecar_rest = artifact_crypto.encrypt_blob(raw, tenant_id=scope,
+                                                            secret=encryption_secret)
+        key_name = str(bom_name).replace("_", "-")
+        sidecar_key = f"tenants/{scope}/{artifact_id}.{key_name}.json"
+        sidecar_blobs[sidecar_key] = sealed
+        sidecar_documents[bom_name] = {
+            "storage_key": sidecar_key,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "encrypted": bool(sidecar_rest.get("encrypted")),
+            "format": document.get("bomFormat", "json"),
+            "component_count": len(document.get("components") or []),
+            "vulnerability_count": len(document.get("vulnerabilities") or []),
+        }
     compliance = check_minimum_elements(bom)
     components = [{"name": row.get("name"),
                    "version": row.get("version") or row.get("declared_spec"),
@@ -375,15 +615,21 @@ def store_binary_artifact(*, scan: dict[str, Any], result: dict[str, Any], bom: 
         payload_sha256=sha256, compliance=compliance, pinning=pinning,
         feed_supplied=feed_supplied, recursive=recursive, include_raw=include_raw,
         job_id=job_id, ruleset_digest=(result.get("yara") or {}).get("digest"),
-        tenant_id=tenant_id, at_rest=at_rest)
+        tenant_id=tenant_id, at_rest=at_rest, bom_documents=sidecar_documents)
     written = write_binary_artifact(
         manifest=manifest, payload=sealed_payload, cbom_blob=sealed_cbom,
+        bom_blobs=sidecar_blobs,
         secret=resolve_signing_secret(db) if secret is None else secret)
+    database_indexed = persist_binary_scan_index(
+        db=db, artifact_id=artifact_id, scan=scan, result=result, manifest=manifest,
+        created_by=created_by, tenant_id=str(tenant_id) if tenant_id else None)
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
-            "pinning": pinning, "payload_sha256": sha256, "components": components, **written}
+            "pinning": pinning, "payload_sha256": sha256, "components": components,
+            "database_indexed": database_indexed, **written}
 
 
 def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob: bytes,
+                          bom_blobs: dict[str, bytes] | None = None,
                           secret: tuple[str | None, str] = (None, "unsigned")) -> dict[str, Any]:
     """Write the SBOM, the CBOM and the manifest under the manifest's own key.
 
@@ -401,6 +647,8 @@ def write_binary_artifact(*, manifest: dict[str, Any], payload: bytes, cbom_blob
     store = artifact_storage()
     store.put(key, payload)
     store.put(cbom_key, cbom_blob)
+    for sidecar_key, sidecar_blob in (bom_blobs or {}).items():
+        store.put(str(sidecar_key), sidecar_blob)
     signing_secret_value, key_id = secret
     if signing_secret_value:
         from devsecops import sbom_scan as sb

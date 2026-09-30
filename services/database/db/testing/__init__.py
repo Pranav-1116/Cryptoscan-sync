@@ -13,6 +13,11 @@ Not imported by production code.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import atexit
 import os
 import tempfile
@@ -35,7 +40,11 @@ def postgres_url() -> str | None:
         return _EMBEDDED["url"]
     try:
         import pgserver  # type: ignore
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     try:
         pgdata = tempfile.mkdtemp(prefix="cryptoscan-pg-")
@@ -47,7 +56,11 @@ def postgres_url() -> str | None:
         _EMBEDDED["url"] = url
         atexit.register(lambda: _EMBEDDED.get("server") and _EMBEDDED["server"].cleanup())
         return url
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

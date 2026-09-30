@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -16,6 +18,7 @@ from db.repositories.baseline_repository import BaselineRepository
 from db.repositories.scan_repository import ScanRepository
 
 router = APIRouter(prefix="/baselines", tags=["baselines"])
+logger = logging.getLogger(__name__)
 
 
 class ApproveBody(BaseModel):
@@ -55,8 +58,14 @@ def approve(
             detail={"system_identifier": scan.target_location, "environment": body.environment},
         )
         db.commit()
-    except Exception:
-        pass
+    except Exception as audit_exc:
+        # A baseline without an audit record is not an acceptable approval.
+        db.rollback()
+        logger.exception(
+            "baseline_approval_audit_failed",
+            extra={"error_type": type(audit_exc).__name__, "scan_id": str(scan.id)},
+        )
+        raise HTTPException(status_code=503, detail="Baseline approval audit is unavailable") from audit_exc
     return {
         "baseline_id": baseline.id,
         "system_identifier": baseline.system_identifier,

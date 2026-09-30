@@ -118,6 +118,10 @@ class APISettings(BaseSettings):
 
     CORS_ORIGINS: str = "*"
     ALLOW_INSECURE_CORS: bool = False
+    # Prometheus scrapes estate-shape and request-volume metrics. Keep the
+    # endpoint open in development/test for local tooling, but require an
+    # explicit bearer token in production; metrics are not public health data.
+    METRICS_TOKEN: str = ""
     TRUSTED_HOSTS: list[str] = Field(default_factory=lambda: ["*"])
 
     GITHUB_WEBHOOK_SECRET: str = "dev-webhook-secret-change-me-32chars!!"
@@ -192,8 +196,15 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
         errors.append("GITHUB_WEBHOOK_SECRET must be a unique value of at least 24 characters")
     if settings.DATABASE_URL.startswith("sqlite") and not settings.ALLOW_SQLITE:
         errors.append("DATABASE_URL must be PostgreSQL in production (or set ALLOW_SQLITE=true)")
+    if not (settings.REDIS_URL or "").strip():
+        errors.append("REDIS_URL must be configured in production for durable realtime events and shared scan state")
+    if float(settings.EVENT_TAILER_SECONDS or 0) <= 0:
+        errors.append("EVENT_TAILER_SECONDS must be greater than zero in production")
     if settings.cors_origin_list == ["*"] and not settings.ALLOW_INSECURE_CORS:
         errors.append("CORS_ORIGINS must be an explicit origin list (or set ALLOW_INSECURE_CORS=true)")
+    metrics_token = (settings.METRICS_TOKEN or "").strip()
+    if len(metrics_token) < 32:
+        errors.append("METRICS_TOKEN must be a unique value of at least 32 characters")
     if errors:
         raise RuntimeError("production configuration rejected: " + "; ".join(errors))
 

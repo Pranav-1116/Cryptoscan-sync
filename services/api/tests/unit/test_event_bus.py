@@ -119,3 +119,18 @@ def test_pipeline_publishes_stage_and_completion_events():
     assert completed["type"] == "scan.completed"
     assert completed["payload"]["extra"]["gate_decision"] == "FAIL"
     assert completed["source"] == "pipeline"
+
+
+def test_production_remote_publish_failure_is_not_reported_as_success():
+    bus = EventBus()
+    bus.set_remote_publisher(lambda _event: (_ for _ in ()).throw(OSError("redis down")))
+    bus.set_remote_publish_required(True)
+
+    try:
+        bus.publish("scan.completed", {"scan_id": "S1"})
+    except RuntimeError as exc:
+        assert "publication failed" in str(exc)
+    else:  # pragma: no cover - assertion branch
+        raise AssertionError("durable publication failure was swallowed")
+
+    assert bus.stats()["remote_publish_failures"] == 1

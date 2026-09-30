@@ -115,6 +115,7 @@ class MonitorRepository:
         row = MonitorEvent(
             target_id=target.id if target is not None else None,
             target_name=target.name if target is not None else "monitor",
+            tenant_id=getattr(target, "tenant_id", None),
             event_type=event_type,
             detail=(detail or "")[:1000] or None,
             payload=payload,

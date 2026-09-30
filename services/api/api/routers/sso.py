@@ -73,9 +73,32 @@ _OUTSTANDING_REQUESTS: "OrderedDict[str, None]" = OrderedDict()
 
 
 def _remember_outstanding(request_id: str) -> None:
+    try:
+        from api.security import sso_state
+
+        sso_state.remember(request_id)
+    except Exception as exc:  # noqa: BLE001 — SSO cannot proceed without replay state
+        raise HTTPException(status_code=503,
+                            detail="SAML login state store is unavailable") from exc
+    # Keep the legacy map for local test/introspection compatibility; the
+    # security decision is made by the shared store below.
     _OUTSTANDING_REQUESTS[request_id] = None
     while len(_OUTSTANDING_REQUESTS) > _MAX_OUTSTANDING:
         _OUTSTANDING_REQUESTS.popitem(last=False)
+
+
+def _outstanding(request_id: str) -> bool:
+    from api.security import sso_state
+
+    return sso_state.contains(request_id)
+
+
+def _consume_outstanding(request_id: str) -> bool:
+    from api.security import sso_state
+
+    consumed = sso_state.consume(request_id)
+    _OUTSTANDING_REQUESTS.pop(request_id, None)
+    return consumed
 
 
 class SamlLoginStarted(BaseModel):
@@ -198,7 +221,12 @@ def saml_acs(body: SamlAcsRequest, db: Session = Depends(get_db_session)) -> dic
     from identity.saml import extract_in_response_to
 
     claimed = extract_in_response_to(body.SAMLResponse)
-    if not claimed or claimed not in _OUTSTANDING_REQUESTS:
+    try:
+        outstanding = bool(claimed) and _outstanding(claimed)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=503,
+                            detail="SAML login state store is unavailable") from exc
+    if not outstanding:
         raise HTTPException(status_code=401, detail=(
             "SAML response does not correspond to an outstanding login request"))
     try:
@@ -206,7 +234,8 @@ def saml_acs(body: SamlAcsRequest, db: Session = Depends(get_db_session)) -> dic
             body.SAMLResponse, cfg, expected_in_response_to=claimed)
     except SamlError as exc:
         raise HTTPException(status_code=401, detail=f"SAML validation failed: {exc}")
-    _OUTSTANDING_REQUESTS.discard(claimed)
+    if not _consume_outstanding(claimed):
+        raise HTTPException(status_code=401, detail="SAML response has already been consumed")
     token = _issue_session_for_identity(
         db, identity, auto_provision=bool(settings.SAML_AUTO_PROVISION))
     return {"token": token, "username": identity.nameid, "roles": normalize_roles(identity.roles)}
