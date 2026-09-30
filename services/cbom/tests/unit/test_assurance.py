@@ -1,7 +1,7 @@
 """Unit tests for the Assurance & Control engine.
 
-Covers VEX enrichment + prioritization, xBOM correlation across the four BOM
-layers, the pre-deploy admission gate, and runtime drift verification.
+Covers VEX enrichment + prioritization, xBOM correlation across the shared
+BOM layers, the pre-deploy admission gate, and runtime drift verification.
 """
 
 from __future__ import annotations

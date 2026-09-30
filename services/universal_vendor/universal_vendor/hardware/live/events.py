@@ -13,6 +13,11 @@ impact rules are explicit tables, never heuristics or learned models.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -112,7 +117,11 @@ class HardwareEventBus:
         for fn in list(self._subscribers):
             try:
                 fn(event)
-            except Exception:  # one bad subscriber never breaks the bus
+            except Exception as _handler_exc:  # one bad subscriber never breaks the bus
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
         return event
 

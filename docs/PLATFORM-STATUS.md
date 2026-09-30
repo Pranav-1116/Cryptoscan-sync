@@ -17,7 +17,7 @@ real infrastructure or credentials.
 > plus a vitest frontend suite, and every console surface labelled GA / beta / preview
 > ([CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)). The migration chain has now been
 > applied on a real PostgreSQL for the first time; it did not work before 2026-09-23
-> (see [PRODUCTION-READINESS.md](PRODUCTION-READINESS.md) and
+> (see [root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) and
 > [soak-evidence/](soak-evidence/README.md) for what was found and fixed). The paragraphs
 > below record earlier measurements.
 

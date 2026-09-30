@@ -20,6 +20,11 @@ or embedded in the BOM.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import base64
 import hashlib
 import hmac
@@ -116,7 +121,11 @@ def _header_alg(header_b64: str) -> str | None:
     try:
         header = json.loads(b64url_decode(header_b64))
         return header.get("alg") if isinstance(header, dict) else None
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

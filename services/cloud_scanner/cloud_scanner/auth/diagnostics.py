@@ -15,6 +15,11 @@ Rules of engagement:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import importlib.util
 from pathlib import Path
 from typing import Any, Mapping
@@ -34,7 +39,11 @@ _FALLBACK_SOURCES = {"instance-metadata-imds", "metadata-server", "imds-managed-
 def _sdk_installed(module: str) -> str | None:
     try:
         spec = importlib.util.find_spec(module)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     return module if spec is not None else None
 

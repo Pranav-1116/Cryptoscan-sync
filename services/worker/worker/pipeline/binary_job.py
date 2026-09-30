@@ -129,7 +129,8 @@ def run_binary_job(job) -> bool:
                                 "artifact_id", "target", "format", "sha256",
                                 "binaries_scanned", "files_walked", "findings",
                                 "findings_by_severity", "yara_matches", "ruleset_digest",
-                                "signed", "cbom_ingested", "note")}
+                                "signed", "database_indexed", "cbom_ingested", "bom_documents",
+                                "result_state", "limits", "note")}
                             | {
                                 "report_url": f"/api/v1/devsecops/sbom/{artifact['artifact_id']}/report?fmt=markdown",
                                 "download_url": f"/api/v1/devsecops/sbom/{artifact['artifact_id']}/download",
@@ -171,11 +172,14 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
     fmt = str(options.get("format") or "cyclonedx").lower()
     recursive = bool(options.get("recursive", True))
     include_raw = bool(options.get("include_raw", False))
+    max_total_bytes = int(options.get("max_total_bytes") or bs.MAX_TOTAL_INPUT_BYTES)
+    max_seconds = float(options.get("max_seconds") or bs.MAX_SCAN_SECONDS)
     rule_paths = [str(entry) for entry in (options.get("yara_rules") or []) if str(entry).strip()]
     actor = job.triggered_by or "worker"
 
     report("binary_scan", note=f"scanning {resolved} with {len(rule_paths)} rule source(s)")
     scan = bs.scan_path(resolved, recursive=recursive, include_raw=include_raw,
+                        max_total_bytes=max_total_bytes, max_seconds=max_seconds,
                         yara_rules=tuple(rule_paths))
     result = bs.sbom_result(scan)
 
@@ -184,6 +188,13 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
            files_walked=result.get("files_walked", 0))
     bom = sb.render_sbom(result, fmt=fmt, created_by=actor)
     cbom = bs.cbom_document(scan, target=str(scan.get("target") or resolved), created_by=actor)
+    # All BOM projections are derived from this same bounded scan. SBOM and CBOM
+    # remain the primary documents; the additional views are sealed sidecars.
+    from devsecops.binary_boms import build_binary_bom_bundle
+
+    bom_bundle = build_binary_bom_bundle(
+        scan, result, sbom=bom, cbom=cbom,
+        target=str(scan.get("target") or resolved), created_by=actor)
 
     # the artifact id is the job's own id unless the caller chose one: a retry of
     # this job rewrites this artifact instead of adding a duplicate
@@ -196,7 +207,7 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
         scan=scan, result=result, bom=bom, cbom=cbom, fmt=fmt, created_by=actor, db=session,
         artifact_id=artifact_id, job_id=job.job_id, feed_supplied=False,
         recursive=recursive, include_raw=include_raw, secret=_signing_secret(session),
-        tenant_id=str(tenant_id) if tenant_id else None)
+        tenant_id=str(tenant_id) if tenant_id else None, bom_bundle=bom_bundle)
     manifest = stored["manifest"]
     audit_artifact(session, actor, artifact_id=stored["artifact_id"], target=manifest["target"],
                    binaries=manifest["binary_count"], findings=len(result.get("findings") or []),
@@ -223,7 +234,11 @@ def _run(session, job, options: dict, report: Callable[..., None]) -> dict[str, 
         "yara_matches": (summary.get("yara") or {}).get("matches", 0),
         "ruleset_digest": manifest.get("ruleset_digest"),
         "signed": bool(stored.get("signed")),
+        "database_indexed": bool(stored.get("database_indexed")),
         "cbom_ingested": bool(ingested.get("ingested")),
+        "bom_documents": manifest.get("bom_documents") or {},
+        "result_state": scan.get("result_state") or "COMPLETE",
+        "limits": scan.get("limits") or {},
         "note": (ingested.get("error") and f"CBOM not ingested: {ingested['error']}")
                 or _empty_scan_note(result),
     }

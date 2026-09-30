@@ -1,7 +1,31 @@
 # Backend & database — what was wrong, what is fixed, what is left
 
-**Audited:** 2026-09-27 · ~330k LOC across 50 services · every claim below was
-verified by running the code, not by reading a document.
+**Audited:** 2026-09-28 · implementation review; this is not a production
+qualification report. The current decision is owned by
+[`PRODUCTION-READINESS.md`](PRODUCTION-READINESS.md) and
+`scripts/bank_readiness.py`.
+
+> **Status reconciliation.** Sections marked **Closed** are historical defects
+> that have an implementation and regression evidence. They are not open gaps.
+> Sections marked **Open** are the remaining controls or external evidence
+> boundaries. A passing unit/parity test does not close a host-bound DR/HSM,
+> customer integration, certification or attestation requirement.
+
+| Area | Current status | What closes it |
+|---|---|---|
+| Tenant isolation and request scoping | **Closed in code; adversarial review open** | Independent security test before shared multi-tenant deployment |
+| Session/RBAC and frontend route guard | **Closed in code; server authorization remains authoritative** | `engineering_gate.py` plus API integration tests |
+| API-key network/policy failure behavior | **Hardened fail-closed in production; coverage gate required** | AST coverage report and live `X-API-Key` route matrix |
+| Exceptions | **Open inventory** | Review/replace or explicitly justify each swallowed handler |
+| Image provenance | **Open until release digests exist** | Build/publish and record immutable OCI digests; current local tags are not proof |
+| PostgreSQL DR and clean restore | **Open external qualification** | `scripts/postgres_drill.py` on two real instances with retained evidence |
+| HSM/provider qualification | **Open external qualification** | Customer-controlled PKCS#11/CloudHSM/Managed HSM/GCP run |
+| Live integrations, compliance and procurement | **Open external evidence** | `burn_in.py`, `compliance_burn.py` and signed customer/provider records |
+
+**Verified implementation controls are not claims of certification.** In
+particular, repository code cannot assert SOC 2/ISO/FIPS certification,
+customer residency, SLA acceptance, branch protection enforcement, or a bank
+attestation.
 
 This exists because the repository's own documentation was, in several places,
 describing controls that were not implemented. Where a doc and the code
@@ -13,8 +37,10 @@ disagreed, the code is what is recorded here.
 
 **Deploy one instance per bank.** That is the only supported topology today,
 and it is enforced rather than assumed (self-serve tenant signup ships
-disabled). With that constraint the backend is in reasonable shape: 5,712
-tests green on both SQLite and PostgreSQL, a real auth gate, real scanners.
+disabled). With that constraint the backend has a real auth gate and real
+scanners. A prior repository evidence run recorded 5,712 tests green on both
+SQLite and PostgreSQL; that historical count is not a substitute for rerunning
+the current suite or the external qualification gates.
 
 Data-layer tenant isolation is now **built and tested** — 87 of 102 tables
 scoped, filtered by the ORM rather than per repository, with the request
@@ -87,6 +113,92 @@ read the estate.
 9 tests in `services/database/tests/unit/test_tenant_isolation.py`, including
 that the *count* is filtered (an unfiltered total leaks the other tenant's
 volume) and that a known-id fetch is absence rather than a 403 oracle.
+
+#### 1.1a Follow-up — the middleware that enters the scope failed open
+
+Found on a second pass, after the above was written. It is the same defect
+class one layer up, and it is exactly what the warning at the top of this
+document was about.
+
+The ORM guard only filters **while a tenant scope is active**; outside one it
+is inert and a query returns every tenant's rows. `TenantScopeMiddleware` is
+what enters that scope for the ~85 routers that do not depend on
+`get_tenant_context` — and it caught every exception from
+`resolve_tenant_for_request`, which itself caught every exception and returned
+`None`. `None` means *do not scope*. So a failed resolution did not deny the
+request; it ran it against the whole estate.
+
+Two reachable paths, neither requiring anything exotic:
+
+- a member sends another tenant's `X-Tenant-ID` → `_resolve_tenant_context`
+  raises 404 → swallowed → full estate read;
+- a member of **two** tenants sends no header → 400 ("send X-Tenant-ID") →
+  swallowed → full estate read. No forged header at all.
+
+Both docstrings claimed the opposite: *"a forged header cannot be used to
+scope into — and so read — another tenant's data; it 404s before it reaches
+the filter."* True only for the five routers with the dependency.
+
+**Fixed:** refusals raise `TenantResolutionRefused`, carrying the status the
+route's own dependency would have returned; the middleware answers with it
+instead of proceeding unscoped. `None` is now reserved for principals who
+legitimately have no tenant (unauthenticated, platform operator, legacy
+single-tenant identity). An unexpected error is a 503, not a silent
+full-estate read.
+
+**Why the suite missed it:** the middleware is not installed when
+`ENVIRONMENT=test` (`api.main`), so it had **no coverage at all** — the same
+shape of blind spot as §1.1's `test_cross_tenant_access_is_absent_not_forbidden`
+asserting isolation on the one table that had it. Added
+`services/api/tests/unit/test_tenant_scope_middleware.py`: 8 tests that drive
+the ASGI middleware directly and assert the downstream app is **not reached**
+for each refusal status.
+
+This strengthens, rather than weakens, the "one instance per bank" conclusion
+above. Two cross-tenant leaks have now been found in the isolation machinery
+itself, the second in code written to fix the first. Both were negative-space
+bugs — a control that silently returns *more* data when it fails. Hand a
+penetration tester §1.1 **and** §1.1a before two banks share a deployment.
+
+#### 1.1b The worker ran every scan unscoped
+
+A third, found by writing the cross-tenant battery fix.md item 9 asks for.
+Same defect class, third layer.
+
+The API resolves a tenant from the caller's session. A worker has no caller,
+so it can only use what the queue carried — and the queue descriptor
+`worker.core.job_consumer.ScanJob` had no `tenant_id` field at all. The
+tenant was dropped at the queue boundary, and `JobExecutor` entered no scope,
+so **every worker-executed scan wrote with `tenant_id = NULL`**.
+
+That is not a missing label. `db.tenancy` defines NULL as the platform
+estate, visible to every tenant, so each customer's scan findings were
+written where all of their neighbours could read them. The work succeeded and
+nothing logged, which is why it survived: outside a scope the guard is inert
+and `stamp_tenant` is simply a no-op.
+
+`monitor/network_sweep.py` had been doing it correctly all along, which is
+what made the omission legible once the battery went looking.
+
+**Fixed:** `tenant_id` is now a field on the queue descriptor, serialised in
+`publish_job`, read back in `_deserialize`, captured into the payload by
+`trigger.py` while the request scope is still open (the publish is a
+background task and runs after it is gone), and re-entered by
+`JobExecutor.execute` around the *whole* dispatch — binary, org and cloud
+jobs write the same tenant-owned rows, so scoping only the git pipeline would
+have left three branches unattributed. The inline no-queue path is scoped the
+same way for the same reason. A payload without the field still
+deserializes to `None`, so jobs queued before this keep their old behaviour
+rather than failing to parse.
+
+9 tests in `services/worker/tests/unit/test_worker_tenant_scope.py`,
+including a real enqueue → serialize → deserialize → execute round trip
+asserting the scope is active during execution and torn down after.
+
+Three leaks now, in three different layers of the same control. The pattern
+is consistent enough to be the finding in itself: **isolation here fails
+open and fails silently**, so absence of errors has never been evidence that
+it works. That is the case for §9's independent review, not against it.
 
 ### 1.2 Authentication defects
 
@@ -224,16 +336,50 @@ findings point at the correct line.
 9. **Accuracy figures are corpus-scored.** `BANK-READINESS.md` concedes
    `NO_FIELD_DATA` — no pilot bank has reviewed output. Do not quote 100%.
 
-### Operational
-10. **132 silently swallowed exceptions** (`except: pass`) across services.
-11. **Backups are unencrypted at rest** (`db_backup.sh`).
-12. **`:latest` image tags** in k8s deployments — no reproducible rollback.
-13. **OTLP endpoint is dead code** — stored, never used; traces only reach a
-    local JSONL.
-14. **Live cloud/TLS/HSM scanning has never been run against real
-    infrastructure.** All gated off by default and never exercised live.
+### Operational — reconciled 2026-09-27
+10. **Exception handling is still an open inventory.** `scripts/engineering_gate.py`
+    enumerates bare/broad handlers that discard failures; an allowlist entry
+    must carry a location and review rationale. This is not closed merely
+    because a handler has a comment.
+11. **Backup encryption/restore implementation is hardened in the repository**
+    and must still be exercised on the target deployment with retention and
+    destruction evidence.
+12. **Kubernetes application images remain an open release-control item until
+    an actual published OCI digest is recorded.** A version tag such as
+    `v1.0.0` is not immutable evidence; do not describe it as pinned.
+13. **OTLP export is implemented as a bounded best-effort queue** when
+    configured; collector delivery remains an environment qualification.
+14. **Live cloud/TLS/HSM/integration scanning has not been run against a
+    customer environment in this repository.** The harnesses are deliberately
+    gated and report SKIP rather than fabricate a pass.
 
 ---
+
+## 3A. Enterprise-hardening update — 2026-09-27
+
+The following roadmap items are now implemented in the repository and covered
+by focused regression tests or release configuration checks:
+
+- `/metrics` requires a dedicated `METRICS_TOKEN` bearer token in production;
+  development/test remains convenient. Prometheus is configured to read the
+  same token from its mounted secret file.
+- `db_backup.sh` refuses plaintext backups by default, encrypts PostgreSQL and
+  optional Neo4j artifacts with `age`, and records checksums over the encrypted
+  bytes. `db_restore.sh` verifies the manifest before decrypting and restoring.
+- Kubernetes API and worker images are pinned to `v1.0.0` instead of `latest`.
+- `TraceStore` now exports OTLP/HTTP JSON from a bounded background queue when
+  `OTEL_EXPORTER_OTLP_ENDPOINT` is configured; collector failure cannot block
+  API requests.
+
+These changes close the implementation side of roadmap items 2.1 (`/metrics`,
+backup encryption, image tags, OTLP). Phase 3 repository slices are also now
+wired and tested: the monitor executes due `NetworkScanTarget` rows and stores
+scheduled runs for NBOM, high-value frontend mutations use server-verified
+`RequireRole`, SoftHSM2/OpenSC PKCS#11 coverage is runnable in CI, and
+operator-side GTP-U/IPsec N3/N9 evidence is classified without active
+user-plane packets. They do **not** constitute the external proof items: a
+third-party penetration test, two-node DR drill, real HSM/CloudHSM exercise,
+controlled live worker/NBOM run, bank pilot, or SOC 2/ISO audit remain open.
 
 ## 4. Honest position for a Dubai bank
 
@@ -340,7 +486,10 @@ MILENAGE/TUAK sets, and the K → K_gNB key hierarchy. Full reasoning in
 *configured* for NEA0; they do not tell you what a UE negotiated, which needs
 a UE-side capture this product does not perform. Not "we verified the air
 interface" — configuration assurance, which is a different and still useful
-control. GTP-U / IPsec on N3 and N9 remain uncovered.
+control. The repository now classifies operator-side GTP-U/IPsec evidence for
+N3/N9 (GTP-U/UDP-2152, IPsec/IKEv2, AEAD, integrity and DH floors); missing
+evidence remains `USER_PLANE_UNKNOWN`. Carrier-side captures and ingest are
+still required for an operational claim.
 
 ### 6.3 NBOM, and what the BOM audit actually found
 
@@ -369,8 +518,11 @@ NBOM also joined `correlate_xbom` as a fifth layer, so the chain is
 SBOM → CBOM → NBOM → HBOM → VBOM → business process. That is the difference
 between "we use RSA-1024 somewhere" and "api.bank.ae:443 presents it".
 
-**Still preview.** The generator, the cascade and the DB derivation are
-tested, but no *scheduled* network scan populates it — the demonstration row
-was seeded by hand. Until a scan runs on a cadence against a real estate the
-page is correct and empty. That is pipeline work, not BOM work, and it is the
-next concrete piece.
+**Repository pipeline now implemented; live proof pending.** The worker leader
+tick selects due API-created targets, groups them by tenant, calls the live TLS
+scanner, persists tenant-attributed `target_kind="scheduled"` runs, and
+advances schedules only after success. Focused tests cover this contract and
+the manual `/network/run-due` path uses the same durable run ledger. Scan
+submission now follows the central `scan.trigger` permission matrix rather
+than an auditor-only shortcut. A controlled live worker run against a real
+estate is still required before calling NBOM operationally proven.

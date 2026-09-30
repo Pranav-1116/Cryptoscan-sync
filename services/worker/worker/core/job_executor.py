@@ -15,6 +15,23 @@ class JobExecutor:
         self.runner = PipelineRunner()
 
     def execute(self, job: ScanJob) -> bool:
+        """Run the job inside its owning tenant's scope.
+
+        The scope wraps every branch, not just the pipeline: a binary, org or
+        cloud job writes the same tenant-owned rows. Outside a scope the ORM
+        guard is inert and stamp_tenant is a no-op, so the results would land
+        with tenant_id NULL — the platform estate, readable by every tenant.
+
+        ``tenant_id`` None is the platform-owned case and also what a job
+        queued before the field existed looks like; tenant_scope(None) is a
+        no-op, so those keep behaving exactly as before.
+        """
+        from db.tenancy import tenant_scope
+
+        with tenant_scope(job.tenant_id):
+            return self._execute_in_scope(job)
+
+    def _execute_in_scope(self, job: ScanJob) -> bool:
         from cloud_scanner.estate import is_org_target, should_run_cloud_job
 
         from worker.pipeline.binary_job import is_binary_target, run_binary_job

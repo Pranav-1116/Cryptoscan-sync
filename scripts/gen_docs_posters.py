@@ -167,8 +167,8 @@ def p_evidence():
 # ============================================================ 12. inventory & technology BOM
 
 def p_bom():
-    fig, ax = canvas(13.4, "Inventory and the Technology BOM — one model, four views, immutable versions",
-                     "services/cbom/technology_bom.py materialize_technology_bom(); tables in services/database. CycloneDX 1.5 for CBOM (ADR-009).")
+    fig, ax = canvas(13.4, "Inventory and the Technology BOM — shared views, binary sidecars, immutable versions",
+                     "services/cbom/technology_bom.py materialize_technology_bom(); services/devsecops/devsecops/binary_boms.py; tenant-scoped bounded evidence and bundle diffs. CycloneDX 1.5 for CBOM (ADR-009).")
     # source tables
     tables = [("systems", "name, owner, environment, criticality"), ("crypto_assets", "algorithm, key_size, purpose, mode, libraries, file_path, confidence"),
               ("certificates", "fingerprint_sha256, subject, expiry, self-signed, revocation"), ("hardware_live", "manufacturer, model, firmware, hsm, tpm, risk"),
@@ -180,24 +180,32 @@ def p_bom():
     box(ax, 5.4, 6.4, 2.6, 5.5, "materialize", "gather\n(env, tenant filters)\n↓\none canonical state\n↓\nfingerprint =\nSHA-256(state)\n↓\nunchanged?\n→ no new version\nchanged?\n→ snapshot vN\n+ per-layer diff", fc=C["bom"], fs=8.2, tfs=10)
     for i in range(6):
         arrow(ax, 4.7, 10.75 - i * 1.28 + 0.56, 5.4, 9.15, lw=0.9, color="#7A8797")
-    # four views
-    views = [("SBOM", "systems and components,\nresolved + transitive,\nlicences, VEX"), ("CBOM", "algorithms, keys, certs,\nprotocols as CycloneDX 1.5\ncrypto components + evidence"),
-             ("HBOM", "HSMs, TPMs, devices,\nfirmware, quantum-resistant\nflags with provenance"), ("VBOM", "vendors, products,\nlifecycle, 0–100 risk,\nvendor ↔ system links")]
+    # Shared inventory views plus binary-derived sidecars.
+    views = [
+        ("SBOM", "systems and components,\nresolved + transitive, licences"),
+        ("CBOM", "algorithms, keys, certs,\nCycloneDX crypto evidence"),
+        ("HBOM", "HSMs, TPMs, devices,\nfirmware with provenance"),
+        ("NBOM", "static binary capability\ncandidates; observed: false"),
+        ("VBOM", "vendors, products, lifecycle,\nsupply-chain relationships"),
+        ("Vulnerability BOM", "separate weak/hardening/refusal\nfindings; not the VBOM layer"),
+        ("Technology snapshot", "stable refs, provenance, fingerprint,\nper-layer bundle diff"),
+    ]
     for i, (t, b) in enumerate(views):
-        box(ax, 8.7, 10.75 - i * 1.42, 3.1, 1.25, t, b, fc=C["bom"], fs=7.9, tfs=10)
-        arrow(ax, 8.0, 9.15, 8.7, 10.75 - i * 1.42 + 0.62, lw=1.0)
-    ax.text(10.25, 12.0, "four views of the same state", fontsize=9.5, fontweight="bold", ha="center")
+        y = 10.75 - i * 1.0
+        box(ax, 8.7, y, 3.1, 0.88, t, b, fc=C["bom"], fs=7.1, tfs=8.7)
+        arrow(ax, 8.0, 9.15, 8.7, y + 0.44, lw=0.9)
+    ax.text(10.25, 12.0, "correlated BOM family", fontsize=9.5, fontweight="bold", ha="center")
     # snapshot + export
     box(ax, 12.5, 8.9, 3.1, 3.1, "snapshot vN", "TECHBOM-YYYYMMDD-HHMMSS\nfingerprint, parent_fingerprint\nfull state · per-layer diff\ncreated_by · environment\n\nimmutable — read paths\nnever recompute", fc=C["bom"], fs=7.9, tfs=10)
     box(ax, 12.5, 6.4, 3.1, 2.1, "signed export", "json · csv · cyclonedx ·\ncyclonedx-xml · spdx · xml · pdf\nintegrity_sha256 + HMAC + JWS\naudit event per export", fc=C["export"], fs=7.9, tfs=10)
     arrow(ax, 11.8, 8.5, 12.5, 10.4, lw=1.1); arrow(ax, 14.05, 8.9, 14.05, 8.5, lw=1.1)
     # explanatory panels
     panel(ax, 0.4, 0.35, 5.0, 3.6, "Why one model",
-          "Every regulator asks a different question of the same facts: PCI wants the algorithms, a supply-chain review wants the components, an HSM audit wants the hardware, procurement wants the vendors. Materialising once and rendering four views keeps the answers consistent — the CBOM and the SBOM can never disagree about a component because they are the same row.", fs=8.4)
+          "Every reviewer asks a different question of bounded evidence: PCI wants algorithms, a supply-chain review wants components, an HSM audit wants hardware, procurement wants vendors, and a binary review needs static capability and vulnerability sidecars. Shared materialization keeps the SBOM, CBOM, HBOM and VBOM correlated; binary-derived NBOM remains observed: false until a network scan corroborates it.", fs=8.4)
     panel(ax, 5.6, 0.35, 5.0, 3.6, "Why versions are immutable",
           "A snapshot is the exact state that was exported and signed. If nothing changed, materialising again makes no new version, so version numbers mean something. Compare, diff and export read snapshots and never recompute, so what a user compares on the CBOM page is what an auditor receives.", fs=8.4)
     panel(ax, 10.8, 0.35, 4.8, 3.6, "Where it shows up",
-          "Console: /cbom, /hbom, /vendor, /dev-sec-ops (SBOM), /live-asset-intelligence (materialise → version → compare → export).\nAPI: /technology-bom, /versions, /diff, /export, /schedules.\nDrift, agility and PQC readiness all read the same materialised state.", fs=8.4)
+          "Console: /cbom, /hbom, /vendor, /nbom, /dev-sec-ops (SBOM + binaries), /live-asset-intelligence (materialise → version → compare → export).\nAPI: /technology-bom, /versions, /diff, /export, /schedules; binary sidecars at /binary/artifacts/{id}/bom/{type}.\nDrift, agility and PQC readiness read the shared state; binary bundle diffs preserve artifact provenance.", fs=8.4)
     save(fig, "12-technology-bom-explained.png")
 
 
