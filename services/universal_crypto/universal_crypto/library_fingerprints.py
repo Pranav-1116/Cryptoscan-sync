@@ -24,7 +24,7 @@ LIBRARIES: list[dict[str, Any]] = [
     {"name": "Botan", "provider": "Botan", "markers": ["botan/", "Botan::"], "version": r"Botan\s+([0-9]+\.[0-9]+\.[0-9]+)"},
     {"name": "libsodium", "provider": "libsodium", "markers": ["sodium.h", "sodium_", "SODIUM_VERSION"], "version": r"SODIUM_VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)"},
     {"name": "Crypto++", "provider": "Crypto++", "markers": ["cryptopp/", "CryptoPP::"], "version": r""},
-    {"name": "JCA-JCE", "provider": "Oracle/OpenJDK", "markers": ["java.security.", "javax.crypto.", "MessageDigest", "KeyPairGenerator"], "version": r""},
+    {"name": "JCA-JCE", "provider": "Oracle/OpenJDK", "markers": ["java.security.", "javax.crypto.", "javax/crypto", "MessageDigest", "KeyPairGenerator"], "version": r""},
     {"name": "BouncyCastle", "provider": "Legion of the Bouncy Castle", "markers": ["org.bouncycastle", "bcprov", "BouncyCastleProvider"], "version": r""},
     {"name": ".NET cryptography", "provider": "Microsoft", "markers": ["System.Security.Cryptography", "System.Security.Cryptography.X509Certificates"], "version": r""},
     {"name": "Go crypto/*", "provider": "Go", "markers": ["crypto/sha256", "crypto/rsa", "crypto/tls", "crypto/ecdsa", "crypto/x509"], "version": r"go([0-9]+\.[0-9]+(?:\.[0-9]+)?)"},
@@ -33,6 +33,9 @@ LIBRARIES: list[dict[str, Any]] = [
     {"name": "Node crypto", "provider": "Node.js", "markers": ["require('crypto')", "require(\"crypto\")", "node:crypto"], "version": r""},
     {"name": "PKCS#11", "provider": "OASIS", "markers": ["pkcs11", "PKCS11", "C_Initialize", "C_GetFunctionList"], "version": r""},
     {"name": "CryptoKit", "provider": "Apple", "markers": ["CryptoKit", "import CryptoKit"], "version": r""},
+    {"name": "Python hashlib", "provider": "Python", "markers": ["hashlib", "hmac", "secrets"], "version": r""},
+    {"name": "Python cryptography", "provider": "Python cryptography", "markers": ["cryptography", "hazmat"], "version": r""},
+    {"name": "PyCryptodome", "provider": "PyCryptodome", "markers": ["Crypto.Cipher", "Crypto.Hash", "pycryptodome"], "version": r""},
     {"name": "GnuTLS", "provider": "GnuTLS", "markers": ["gnutls/", "gnutls_"], "version": r"gnutls\s+([0-9]+\.[0-9]+\.[0-9]+)"},
 ]
 

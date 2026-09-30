@@ -34,6 +34,8 @@ export type AuthState = {
   verified: boolean;
   /** Re-ask the server (after sign-in, or when a 401 is observed). */
   refresh: () => Promise<void>;
+  /** Verified-role predicate for UI affordances; backend remains authoritative. */
+  hasRole: (role: string) => boolean;
 };
 
 const AuthContext = createContext<AuthState>({
@@ -42,6 +44,7 @@ const AuthContext = createContext<AuthState>({
   roles: [],
   verified: false,
   refresh: async () => {},
+  hasRole: () => false,
 });
 
 export function useAuth(): AuthState {
@@ -87,9 +90,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("zelinx:auth", onAuthChange);
   }, [refresh]);
 
+  const hasRole = useCallback((role: string) => verified && roles.includes(role), [verified, roles]);
   const value = useMemo<AuthState>(
-    () => ({ status, user, roles, verified, refresh }),
-    [status, user, roles, verified, refresh],
+    () => ({ status, user, roles, verified, refresh, hasRole }),
+    [status, user, roles, verified, refresh, hasRole],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -135,10 +139,10 @@ export function RequireRole({
   fallback = null,
 }: {
   anyOf: string[];
-  children: React.ReactNode;
+  children?: React.ReactNode;
   fallback?: React.ReactNode;
 }) {
-  const { roles } = useAuth();
-  const allowed = roles.some((r) => anyOf.includes(r));
+  const { hasRole } = useAuth();
+  const allowed = anyOf.some(hasRole);
   return <>{allowed ? children : fallback}</>;
 }

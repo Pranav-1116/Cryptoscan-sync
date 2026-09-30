@@ -21,6 +21,11 @@ inside the package (``app.apk!classes2.dex``).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import io
 import re
 import struct
@@ -230,7 +235,11 @@ def scan_mobile_bytes(blob: bytes, rel: str) -> list[RawFinding]:
                 continue
             try:
                 data = archive.read(name)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             if is_dex or data[:4] == b"dex\n":
                 classes, strings = dex_tables(data)

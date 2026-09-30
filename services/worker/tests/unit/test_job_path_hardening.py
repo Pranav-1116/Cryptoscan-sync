@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
 fakeredis = pytest.importorskip("fakeredis")
 
-from worker.core.job_consumer import JobConsumer, ScanJob
+from worker.core.job_consumer import JobConsumer
 from worker.core.job_reaper import fail_job, reap_stale_jobs
+
+# The ORM row, not worker.core.job_consumer.ScanJob (the queue descriptor).
+# Both are called ScanJob; importing this one per-function shadowed the other
+# four times over, which is the kind of collision that reads fine until
+# someone needs both in the same test.
+from db.models.scan_job import ScanJob
 
 Q = "cryptoscan:test:queue"
 
@@ -119,16 +124,12 @@ def test_reaper_fails_running_without_progress_and_leaves_fresh_alone(test_db):
     fresh = _job(test_db, "RUNNING", timedelta(minutes=5))
     stats = reap_stale_jobs(test_db, queued_ids=set(), publish=lambda p: None, running_timeout=timedelta(minutes=90))
     assert stats["failed_running"] == 1
-    from db.models.scan_job import ScanJob
-
     assert test_db.get(ScanJob, stale).status == "FAILED"
     assert "worker lost" in test_db.get(ScanJob, stale).error_message
     assert test_db.get(ScanJob, fresh).status == "RUNNING"
 
 
 def test_reaper_republishes_lost_queued_then_fails_after_max(test_db):
-    from db.models.scan_job import ScanJob
-
     lost = _job(test_db, "QUEUED", timedelta(minutes=30))
     visible = _job(test_db, "QUEUED", timedelta(minutes=30))
     published: list[dict] = []
@@ -146,8 +147,6 @@ def test_reaper_republishes_lost_queued_then_fails_after_max(test_db):
 
 
 def test_reaper_without_redis_visibility_never_touches_queued(test_db):
-    from db.models.scan_job import ScanJob
-
     q = _job(test_db, "QUEUED", timedelta(hours=5))
     stats = reap_stale_jobs(test_db, queued_ids=None, publish=None)
     assert stats["requeued"] == 0 and stats["failed_queued"] == 0
@@ -155,8 +154,6 @@ def test_reaper_without_redis_visibility_never_touches_queued(test_db):
 
 
 def test_fail_job_marks_row_failed(test_db):
-    from db.models.scan_job import ScanJob
-
     j = _job(test_db, "QUEUED", timedelta(minutes=1))
     fail_job(test_db, j, "dead-lettered")
     assert test_db.get(ScanJob, j).status == "FAILED"

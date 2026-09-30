@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -297,7 +302,11 @@ class SystemRepository(BaseRepository[System]):
         system.extra = extra
         try:
             flag_modified(system, "extra")
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         self.session.flush()
         return system

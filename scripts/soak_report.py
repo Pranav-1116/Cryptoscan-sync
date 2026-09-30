@@ -9,6 +9,11 @@ not grade them. The pass/fail criteria live in docs/burn-in.md.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import sys
 from pathlib import Path
@@ -134,7 +139,11 @@ def main(argv: list[str]) -> int:
     for lt in sorted(d.glob("load_test_*.txt")):
         try:
             res = json.loads(lt.read_text())
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         p(f"## Load test (`{lt.name}`)")
         p("")

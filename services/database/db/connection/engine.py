@@ -140,14 +140,20 @@ def get_engine() -> Engine:
         _ENGINE_URL = url
         try:
             stale.dispose()
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as dispose_exc:  # noqa: BLE001
+            logger.warning(
+                "stale_database_engine_dispose_failed",
+                extra={"error_type": type(dispose_exc).__name__},
+            )
         try:
             from db.connection.session import configure_session
 
             configure_session(_ENGINE)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as configure_exc:  # noqa: BLE001
+            logger.exception(
+                "database_session_reconfigure_failed",
+                extra={"error_type": type(configure_exc).__name__},
+            )
     return _ENGINE
 
 

@@ -1,8 +1,13 @@
-# What to do next (as of 2026-09-25)
+# What to do next (reconciled 2026-09-27)
 
-State at the time of writing: branch `arena/01a0cd74-cryproscan` (cascade analysis + network-controls doc added after `f99a218`).
-Discovery ~95 % (748/748 corpus, 15 blind waves), pipeline ~92 %, bank ops ~75 %, first-pilot ~87 %
-(details: `docs/accuracy/BANK-READINESS.md`, `docs/PRODUCTION-READINESS.md`).
+The current deployment decision is owned by the root
+[`PRODUCTION-READINESS.md`](../PRODUCTION-READINESS.md) and the generated
+`docs/readiness-evidence/bank-readiness.{json,md}`. The accuracy page
+[`accuracy/BANK-READINESS.md`](accuracy/BANK-READINESS.md) remains detector and
+synthetic-estate evidence; its figures are not a production approval.
+
+The work below is ordered by the evidence or engineering change that closes a
+real gate. Historical percentages are intentionally not repeated here.
 
 Everything below is ordered by what raises the pilot number the most for the least effort.
 Items marked **[target host]** cannot be executed in the development sandbox (no Docker, Redis,
@@ -58,7 +63,7 @@ CRC/FNV/djb2/xxHash/murmur/adler never reported, comments never count.
 
 ## 3. Pipeline — evidence still missing
 
-- **[target host]** `REDIS_URL=… python scripts/queue_kill9_drill.py` against real Redis; paste the JSON into `docs/PRODUCTION-READINESS.md` (the `--fake` self-check passed here).
+- **[target host]** `REDIS_URL=… python scripts/queue_kill9_drill.py` against real Redis; attach the JSON to `docs/readiness-evidence/` and rerun `scripts/bank_readiness.py` (the `--fake` self-check passed here).
 - **[target host]** 7-day soak with PostgreSQL + Redis, 2+ workers, one real 5–10 MLOC monorepo; watch API RSS (158 → 181 MB over 120 k requests here — confirm it plateaus) and queue depth.
 - Multi-worker (not multi-process) throughput evidence: two `worker` containers on one queue, same 3 MLOC synthetic tree (`scripts/scale_evidence.py`), expect ~1.8× as with the in-process pool.
 - API: run `scripts/load_test.py --identity api-keys` behind 2–4 uvicorn workers + PostgreSQL to confirm the ~180 rps/worker figure scales linearly; then set the documented sizing.
@@ -75,7 +80,9 @@ CRC/FNV/djb2/xxHash/murmur/adler never reported, comments never count.
 ## 5. Housekeeping
 
 - Do **not** push CI/CD workflow changes from this branch (standing instruction).
-- Keep `docs/accuracy/REPORT.md`, `BANK-READINESS.md`, `PRODUCTION-READINESS.md` in step whenever a number changes; they are what a bank reads first.
+- Keep the generated `docs/readiness-evidence/bank-readiness.{json,md}` and the
+  scoped accuracy documents consistent; use root `PRODUCTION-READINESS.md` as
+  the current decision, not historical percentage documents.
 - Sandbox restarts wipe `.venv` and unpushed work — commit and push after every green step.
 
 ## Quick commands

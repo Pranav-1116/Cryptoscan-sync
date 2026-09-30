@@ -13,6 +13,7 @@ for d in sorted((SERVICES).iterdir()):
 
 from observability.metrics import (  # noqa: E402
     MetricsRegistry,
+    TraceStore,
     compute_slo,
     evaluate_self_alerts,
     forecast_quota,
@@ -58,8 +59,6 @@ def test_traceparent_parse_valid_and_invalid():
 
 
 def test_trace_store_continues_inbound_context(tmp_path):
-    from observability.metrics import TraceStore
-
     store = TraceStore(sink_path=tmp_path / "spans.jsonl")
     span = store.start_span(method="GET", path="/api/v1/x",
                             traceparent="00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
@@ -69,6 +68,18 @@ def test_trace_store_continues_inbound_context(tmp_path):
     store.finish_span(span, 200)
     assert store.spans[0]["duration_ms"] >= 0
     assert (tmp_path / "spans.jsonl").exists()
+
+
+def test_otlp_endpoint_normalization_and_payload():
+    store = TraceStore(otlp_endpoint="http://collector:4318")
+    assert store.otlp_endpoint == "http://collector:4318/v1/traces"
+    span = store.start_span(method="POST", path="/api/v1/scans", traceparent=None, seed="otlp")
+    started = span["started"]
+    payload = store._otlp_payload({**span, "status": 503}, started, started + 0.25)
+    exported = payload["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+    assert exported["traceId"] == span["trace_id"]
+    assert exported["status"]["code"] == 2
+    assert exported["attributes"][-1]["value"]["intValue"] == 503
 
 
 # ---------------------------------------------------------------------------

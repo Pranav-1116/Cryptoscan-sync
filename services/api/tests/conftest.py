@@ -111,10 +111,31 @@ def mock_repo_config_repo() -> MagicMock:
 
 @pytest.fixture
 def mock_db_session() -> MagicMock:
+    """An empty *synchronous* session, matching the one the app actually uses.
+
+    commit/rollback/execute used to be AsyncMock, which modelled a session this
+    codebase does not have: the repositories are sync SQLAlchemy, so
+    ``session.execute(...)`` returned a coroutine and the first ``.scalars()``
+    on it raised AttributeError. That stayed invisible while the audit helper
+    swallowed exceptions; once it began answering 503 instead, the drift
+    acknowledge/resolve tests started failing on it. Two other test modules had
+    already worked around the default by overriding these with MagicMock.
+
+    execute() returns an empty result rather than a bare MagicMock on purpose:
+    UserRepository._audit_chain_head does ``.scalars().first()`` and treats a
+    non-None row as an existing hash-chain head, so an auto-created mock would
+    feed MagicMocks into the chain instead of starting cleanly at GENESIS.
+    """
     session = MagicMock()
-    session.commit = AsyncMock()
-    session.rollback = AsyncMock()
-    session.execute = AsyncMock()
+    session.commit = MagicMock()
+    session.rollback = MagicMock()
+
+    empty = MagicMock()
+    empty.scalars.return_value.first.return_value = None
+    empty.scalars.return_value.all.return_value = []
+    empty.scalar_one_or_none.return_value = None
+    empty.scalar.return_value = 0
+    session.execute = MagicMock(return_value=empty)
     return session
 
 
@@ -192,6 +213,7 @@ async def client(app) -> AsyncGenerator[AsyncClient, None]:
 async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
     """Authenticated async test client (mocked auth)."""
     from api import dependencies
+    from api.routers.trigger import require_scan_trigger
 
     # Override auth to always return test user
     app.dependency_overrides[dependencies.get_current_user] = (
@@ -200,12 +222,29 @@ async def authenticated_client(app) -> AsyncGenerator[AsyncClient, None]:
     # Role-gated dependencies default to the same test user (admin powers).
     app.dependency_overrides[dependencies.require_admin] = lambda: "testuser"
     app.dependency_overrides[dependencies.require_auditor] = lambda: "testuser"
+    app.dependency_overrides[require_scan_trigger] = lambda: "testuser"
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as ac:
         yield ac
+
+@_async_fixture
+async def role_client(app) -> AsyncGenerator[AsyncClient, None]:
+    """Client that exercises the real scan-trigger permission dependency."""
+    from api.routers.trigger import require_scan_trigger
+
+    # The regular authenticated fixture deliberately bypasses role resolution
+    # for broad endpoint tests. This fixture removes only that bypass so tests
+    # can inject server-side roles through the RBAC resolver.
+    app.dependency_overrides.pop(require_scan_trigger, None)
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as ac:
+        yield ac
+
 
 @_async_fixture
 async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
@@ -218,6 +257,7 @@ async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
     from fastapi import HTTPException
 
     from api import dependencies
+    from api.routers.trigger import require_scan_trigger
 
     app.dependency_overrides[dependencies.get_current_user] = lambda: "lowpriv"
 
@@ -226,6 +266,7 @@ async def lowpriv_client(app) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[dependencies.require_admin] = _deny
     app.dependency_overrides[dependencies.require_auditor] = _deny
+    app.dependency_overrides[require_scan_trigger] = _deny
 
     async with AsyncClient(
         transport=ASGITransport(app=app),

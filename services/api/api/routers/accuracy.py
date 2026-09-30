@@ -10,6 +10,11 @@ Triage lives in `Scan.statistics["field_triage"]` (no schema change); a scan hol
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 from pathlib import Path
 from typing import Any, Optional
@@ -32,7 +37,11 @@ def corpus_f1() -> Optional[float]:
     try:
         rep = json.loads(_CORPUS_REPORT.read_text())
         return float(rep["overall"]["f1"])
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

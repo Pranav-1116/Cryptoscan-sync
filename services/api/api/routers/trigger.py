@@ -10,11 +10,15 @@ from db.repositories.job_repository import JobRepository
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from api.config.settings import get_settings
-from api.dependencies import get_job_repository, require_auditor
+from api.dependencies import get_job_repository
 from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
+from api.security.rbac import require_permission
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["trigger"])
+# Exposed as a named dependency so applications and tests can override the
+# scan-trigger capability without bypassing the central permission matrix.
+require_scan_trigger = require_permission("scan.trigger")
 
 
 def _resolve_sector(explicit: str | None, job_repo: JobRepository) -> str:
@@ -40,7 +44,11 @@ def _resolve_sector(explicit: str | None, job_repo: JobRepository) -> str:
                 return str(stored["sector"])
         finally:
             session.close()
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return "generic"
 
@@ -100,6 +108,20 @@ def _publish_job(payload: dict) -> None:
 
 
 def _run_inline(payload: dict) -> None:
+    """Run the pipeline in-process when no queue is configured.
+
+    Scoped for the same reason the worker is: this runs as a background task,
+    after the request has returned and its tenant scope has been torn down, so
+    without re-entering it the results would be written unscoped and land in
+    the platform estate where every tenant can read them.
+    """
+    from db.tenancy import tenant_scope
+
+    with tenant_scope(payload.get("tenant_id")):
+        _run_inline_in_scope(payload)
+
+
+def _run_inline_in_scope(payload: dict) -> None:
     try:
         from worker.core.job_consumer import ScanJob
         from worker.pipeline.binary_job import is_binary_target, run_binary_job
@@ -114,6 +136,7 @@ def _run_inline(payload: dict) -> None:
                     target_commit=payload.get("target_commit"),
                     job_type=payload.get("job_type") or "BINARY",
                     system_id=payload.get("system_id"),
+                    tenant_id=payload.get("tenant_id"),
                     progress=payload.get("progress"),
                 )
             )
@@ -133,6 +156,7 @@ def _run_inline(payload: dict) -> None:
                     target_commit=payload.get("target_commit"),
                     job_type=payload.get("job_type") or "CLOUD",
                     system_id=payload.get("system_id"),
+                    tenant_id=payload.get("tenant_id"),
                 )
             )
             return
@@ -184,8 +208,18 @@ def enqueue_scan_job(
     _annotate_sector(created, effective_sector, scan_mode)
     try:
         job_repo.session.commit()
-    except Exception:
-        logger.debug("job_commit_skipped", exc_info=True)
+    except Exception as exc:
+        # A job that was not committed must never be reported as accepted:
+        # otherwise the caller receives an id that a worker can never claim.
+        try:
+            job_repo.session.rollback()
+        except Exception:
+            logger.exception("job_commit_rollback_failed")
+        logger.exception("job_commit_failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scan queue is temporarily unavailable; no job was accepted",
+        ) from exc
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     created_at = getattr(created, "created_at", None)
     payload = {
@@ -197,6 +231,11 @@ def enqueue_scan_job(
         "triggered_by": triggered_by,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
         "system_id": system_id,
+        # Captured here, from the row the ORM guard just stamped, because the
+        # publish runs as a background task after the request has finished and
+        # the tenant ContextVar is gone by then. Without this the worker has
+        # no way to know whose scan it is running.
+        "tenant_id": getattr(created, "tenant_id", None),
         "sector": effective_sector,
         "scan_mode": scan_mode,
         "progress": progress,
@@ -215,7 +254,11 @@ def enqueue_scan_job(
              "triggered_by": triggered_by},
             source="api",
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return TriggerScanResponse(
         job_id=str(job_id),
@@ -229,7 +272,7 @@ def enqueue_scan_job(
 async def trigger_manual_scan(
     request_body: TriggerScanRequest,
     background_tasks: BackgroundTasks,
-    current_user: str = Depends(require_auditor),
+    current_user: str = Depends(require_scan_trigger),
     job_repo: JobRepository = Depends(get_job_repository),
 ):
     from cloud_scanner.estate import is_cloud_target
@@ -246,13 +289,21 @@ async def trigger_manual_scan(
         target_commit=request_body.commit,
         triggered_by=current_user,
     )
-    _annotate_sector(created, effective_sector, getattr(request_body, "scan_mode", None))
     if inspect.isawaitable(created):
         created = await created
+    _annotate_sector(created, effective_sector, getattr(request_body, "scan_mode", None))
     try:
         job_repo.session.commit()
-    except Exception:
-        logger.debug("job_commit_skipped", exc_info=True)
+    except Exception as exc:
+        try:
+            job_repo.session.rollback()
+        except Exception:
+            logger.exception("job_commit_rollback_failed")
+        logger.exception("job_commit_failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Scan queue is temporarily unavailable; no job was accepted",
+        ) from exc
 
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     created_at = getattr(created, "created_at", None)
@@ -264,6 +315,9 @@ async def trigger_manual_scan(
         "target_commit": request_body.commit,
         "triggered_by": current_user,
         "created_at": created_at.isoformat() if hasattr(created_at, "isoformat") else datetime.now(timezone.utc).isoformat(),
+        # See the note on the other payload: the background publish runs after
+        # the request scope is gone, so the tenant is captured now.
+        "tenant_id": getattr(created, "tenant_id", None),
         "sector": effective_sector,
         "scan_mode": getattr(request_body, "scan_mode", None),
     }

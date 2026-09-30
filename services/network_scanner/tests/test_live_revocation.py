@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import http.server
 import socket
 import ssl
@@ -123,19 +128,37 @@ class FileServer:
         # serve at the requested path
         self._path = path
         self.server.timeout = 0.05
-        threading.Thread(target=self._serve, daemon=True).start()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._serve, daemon=True)
+        self._thread.start()
 
     def _serve(self):
-        while True:
+        # Watches _stop, and treats ValueError as a stop signal. With
+        # `while True` and a close() that only called server_close(), the next
+        # handle_request() registered the closed listening socket with a
+        # selector, raising ValueError rather than OSError; the generic arm
+        # caught it and continued, so the thread span at full tilt for the rest
+        # of the process. Three copies of this receiver had the same defect.
+        while not self._stop.is_set():
             try:
                 self.server.handle_request()
-            except OSError:
+            except (OSError, ValueError):
                 return
-            except Exception:  # noqa: BLE001 — client disconnects must not noise tests
+            except Exception as _handler_exc:  # noqa: BLE001 — client disconnects must not noise tests
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
 
     def close(self):
+        self._stop.set()
+        self._thread.join(timeout=5)
         self.server.server_close()
+        assert not self._thread.is_alive(), (
+            "HTTP server thread outlived close(); a spinning server starves "
+            "every test that runs after it"
+        )
 
 
 class OcspResponder:
@@ -432,7 +455,11 @@ def test_probe_endpoint_live_revocation_flags_revoked(pki, monkeypatch, tmp_path
             with ctx.wrap_socket(conn, server_side=True) as tls:
                 tls.settimeout(4)
                 tls.recv(1024)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     threading.Thread(target=serve_tls, daemon=True).start()

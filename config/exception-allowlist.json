@@ -1,0 +1,13 @@
+{
+  "schema": "cryptoscan.exception-allowlist/1",
+  "policy": "An entry is permitted only for an intentionally defensive boundary where the exception is logged or the caller receives an explicit degraded/unknown result. Do not use this file to make a readiness gate green without owner review.",
+  "entries": [
+    {
+      "location": "scripts/postgres_drill.py:86",
+      "owner": "database-reliability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-09-29",
+      "reason": "Rollback is best effort during a connection-loss poll. The caller records the original transient error, retries the probe, and the connection is discarded if it cannot roll back; no success is returned from this handler."
+    }
+  ]
+}

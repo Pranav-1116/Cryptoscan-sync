@@ -23,7 +23,10 @@ implementation, and this surface would rather say so than pretend.
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any, Iterable
+
+logger = logging.getLogger(__name__)
 
 from api.graphql_lang import MAX_LIST, Argument, ExecutionContext, Resolver, execute, parse
 from api.job_view import job_card
@@ -104,7 +107,8 @@ def _artifact_cbom(manifest: dict[str, Any],
     try:
         raw, _at_rest = read_artifact_cbom(_store(), manifest, tenant_id=_tenant(context))
         return json.loads(raw.decode("utf-8"))
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("artifact_cbom_read_failed", extra={"error_type": type(exc).__name__})
         return None
 
 

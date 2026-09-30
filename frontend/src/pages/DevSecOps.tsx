@@ -8,6 +8,7 @@ import {
   apiSbomAdvisories, downloadSbomArtifact, downloadSbomReport,
   apiBinaryScan, apiBinaryScanJob, apiBinaryCbom, apiBinaryDynamic, apiBinaryBatch,
   apiBinaryBatchStatus, apiJobStatus, apiYaraValidate, apiConnectorPreview,
+  apiBinaryScans, apiBinaryScanDetail,
   DynamicScanResult, BinaryBatchResult, KnowledgeState,
   apiBinaryAtRest, apiKnowledge, apiKnowledgeInstall, apiKnowledgeUninstall,
 } from "../lib/api.js";
@@ -707,6 +708,13 @@ function BinaryPanel() {
     at_rest: { algorithm: string; encrypted: boolean; key_id?: string; key_source: string; note?: string };
   } | null>(null);
   const [packInfo, setPackInfo] = useState<{ ok: boolean; text: string; reasons: string[] } | null>(null);
+  // database-backed history/read model: the signed artifact response remains the
+  // authoritative export, while this index makes prior observations searchable.
+  const [history, setHistory] = useState<ApiResult<any> | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [historyQuery, setHistoryQuery] = useState("");
+  const [selectedHistory, setSelectedHistory] = useState<any | null>(null);
+  const [selectedHistoryBusy, setSelectedHistoryBusy] = useState(false);
 
   // dynamic analysis (ADR-012 LD_PRELOAD tracer). The host has to allow it and the
   // sample has to pass the preflight; a refusal is shown with its reasons, never as
@@ -800,6 +808,27 @@ function BinaryPanel() {
     const answer = await apiBinaryAtRest();
     if (answer.ok) setAtRest(answer.data);
   };
+
+  const loadHistory = async () => {
+    setHistoryBusy(true);
+    try {
+      setHistory(await apiBinaryScans({ limit: 50, q: historyQuery.trim() || undefined }));
+    } catch (e) {
+      setHistory({ source: "live", ok: false, data: null, error: String(e) });
+    }
+    setHistoryBusy(false);
+  };
+
+  const inspectHistory = async (scanId: string) => {
+    setSelectedHistoryBusy(true);
+    try {
+      const answer = await apiBinaryScanDetail(scanId);
+      setSelectedHistory(answer.ok ? answer.data : { error: answer.error });
+    } catch (e) { setSelectedHistory({ error: String(e) }); }
+    setSelectedHistoryBusy(false);
+  };
+
+  React.useEffect(() => { void loadHistory(); }, []);
 
   /** Verify (dry run) or verify-and-install a pack. Refusal reasons are the answer. */
   const installPack = async (dryRun: boolean) => {
@@ -988,10 +1017,85 @@ function BinaryPanel() {
     if (b.encrypted) bits.push("ENCRYPTED");
     return bits.join(" · ") || "—";
   };
+  const parserStateOf = (b: any) => {
+    if (b.parsed === true) return "observed";
+    const note = String(b.parse_error || b.parse_note || b.reason || "").toLowerCase();
+    if (b.unsupported || b.refused || ["unrecognised", "unsupported", "refused"].some((token) => note.includes(token))) return "unsupported";
+    if (note) return "partial";
+    return "unknown";
+  };
+  const staticEvidenceOf = (b: any) => {
+    const bits: string[] = [];
+    if ((b.import_symbols || []).length) bits.push(`${b.import_symbols.length} named imports`);
+    if ((b.delay_import_symbols || []).length) bits.push(`${b.delay_import_symbols.length} delay imports`);
+    if ((b.exports || []).length) bits.push(`${b.exports.length} exports`);
+    const signing = b.android?.apk_signing_block;
+    if (signing?.present) bits.push(`APK ${((signing.schemes || []).join("/") || "block")}`);
+    if (signing && !signing.present && signing.state === "partial") bits.push("APK block partial");
+    return bits.join(" · ") || "—";
+  };
   const severityTone = (s: string) => (s === "CRITICAL" || s === "HIGH" ? "red" : (s === "MEDIUM" ? "amber" : "gray"));
   return (
     <Panel title="Binaries, archives & firmware — parse, not guess"
       sub="Magic-byte identification and real parsing: ELF dynamic/symbol/Go-buildinfo/program-headers/hardening/symbol-version floors/section table, PE imports/delay-imports/resources/version-info/debug/CLR/Authenticode presence/ASLR-DEP-CFG-GS mitigations, Mach-O dylib versions + symbol table + code-signature entitlements + signing team, Java constant pools, RPM headers, ar/zip/cpio(initramfs)/deb members, WASM imports, firmware container chains — containers (gzip/xz/bzip2/tar/cpio/zip/ar/RPM) are followed inside a stated budget, with graded crypto evidence and the same SBOM/CBOM pipeline" className="mt">
+      <div className="mt" style={{ marginBottom: 12 }}>
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 5 }}>
+          <strong style={{ fontSize: 13 }}>Persisted binary history</strong>
+          <span className="muted" style={{ fontSize: 12 }}>
+            database read model · bounded observations · signed artifact remains authoritative
+          </span>
+          <input className="inp" style={{ width: 220, marginLeft: "auto" }} placeholder="filter target…"
+            value={historyQuery} onChange={(e) => setHistoryQuery(e.target.value)} />
+          <button className="btn sm" onClick={() => void loadHistory()} disabled={historyBusy}>
+            {historyBusy ? "loading…" : "Refresh"}
+          </button>
+        </div>
+        <Err res={history} />
+        {history?.data?.records?.length ? (
+          <Table head={["created", "target", "format", "coverage", "findings", "inspect"]}
+            rows={history.data.records.map((row: any) => [
+              <span className="muted" style={{ fontSize: 11.5 }}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</span>,
+              <span className="mono" style={{ fontSize: 11.5 }}>{row.target}</span>,
+              row.format,
+              `${row.binaries_scanned} binaries · ${row.observations_count}${row.observations_truncated ? "+" : ""} observations`,
+              <Badge tone={row.findings_count ? "amber" : "green"}>{row.findings_count}</Badge>,
+              <button className="btn sm" onClick={() => void inspectHistory(row.id)} disabled={selectedHistoryBusy}>Inspect</button>,
+            ])} />
+        ) : (
+          <div className="muted" style={{ fontSize: 12 }}>No indexed scans yet. Run a scan after migration 0063, or refresh if the index is still being populated.</div>
+        )}
+        {selectedHistory?.error && (
+          <div className="muted" style={{ color: "var(--red, #e5484d)", fontSize: 12, marginTop: 6 }}>{selectedHistory.error}</div>
+        )}
+        {selectedHistory?.record && (
+          <div className="mt" style={{ borderTop: "1px solid var(--line, #e5e7eb)", paddingTop: 8 }}>
+            <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 5 }}>
+              <strong style={{ fontSize: 12.5 }}>Observation detail</strong>
+              <span className="mono muted" style={{ fontSize: 11 }}>{selectedHistory.record.artifact_id}</span>
+              <button className="btn sm" onClick={() => setSelectedHistory(null)}>close</button>
+            </div>
+            <div className="muted" style={{ fontSize: 12, marginBottom: 5 }}>
+              {selectedHistory.record.files_walked} files · {selectedHistory.record.binaries_scanned} binaries · {selectedHistory.observations?.length ?? 0} loaded
+              {selectedHistory.record.observations_truncated ? " · database observation cap reached" : ""}
+            </div>
+            <Table head={["path", "format", "state", "arch", "crypto", "hardening / findings", "metadata / provenance", "signature / package evidence"]}
+              rows={(selectedHistory.observations || []).slice(0, 80).map((row: any) => [
+                <span className="mono" style={{ fontSize: 11.5 }}>{row.path}</span>, row.format,
+                <Badge tone={row.evidence_state === "observed" ? "green" : row.evidence_state === "partial" ? "amber" : "gray"}>{row.evidence_state}</Badge>,
+                row.arch || "—",
+                `${row.crypto?.algorithms?.length || 0} algorithms${row.crypto?.libraries?.length ? ` · ${row.crypto.libraries.length} libraries` : ""}`,
+                `${Object.entries(row.hardening || {}).filter(([, value]) => value === true).map(([key]) => key).slice(0, 3).join(", ") || "no flags"} · ${row.findings?.length || 0} findings`,
+                `${row.metadata?.type || row.metadata?.android?.package_kind || row.metadata?.ios?.package_kind || "binary"}${row.derived_from ? ` · from ${String(row.derived_from).slice(0, 20)}` : ""}`,
+                row.signature?.present ? "signature present (not trust-validated)" : (
+                  row.metadata?.android?.apk_signing_block?.present
+                    ? `APK ${((row.metadata.android.apk_signing_block.schemes || []).join("/") || "signing block")} (not verified)`
+                    : row.metadata?.android?.apk_signing_block?.state === "partial" ? "APK signing block partial"
+                    : row.metadata?.type === "android-package" ? "APK package metadata" : "—"
+                ),
+              ])} />
+          </div>
+        )}
+      </div>
       <div className="grid" style={{ gridTemplateColumns: "1fr 130px", gap: 8, marginBottom: 8 }}>
         <input className="inp" placeholder="file or directory (e.g. /opt/app, /tmp/firmware.img, /lib/x86_64-linux-gnu/libcrypto.so.3)"
           value={target} onChange={(e) => setTarget(e.target.value)} />
@@ -1289,6 +1393,7 @@ function BinaryPanel() {
           <>
             <Badge tone={d.manifest?.signature ? "green" : "gray"}>{d.manifest?.signature ? "signed artifact" : "unsigned artifact"}</Badge>
             <span className="muted" style={{ fontSize: 12 }}>artifact {String(d.artifact_id).slice(0, 8)}</span>
+            <Badge tone={d.database_indexed ? "green" : "amber"}>{d.database_indexed ? "history indexed" : "history unavailable"}</Badge>
           </>
         )}
       </div>
@@ -1354,16 +1459,18 @@ function BinaryPanel() {
               <div className="muted" style={{ fontSize: 12.5, marginBottom: 4 }}>
                 binaries parsed ({binaries.length}) — embedded files are listed under the container they came from
               </div>
-              <Table head={["path", "format", "arch", "publisher / product", "linkage / signature", "hardening", "packer", "crypto", "build fingerprint", "packages inside"]}
+              <Table head={["path", "format", "state", "provenance", "arch", "publisher / product", "linkage / signature", "static evidence", "hardening", "packer", "crypto", "build fingerprint", "packages inside"]}
                 rows={binaries.map((b: any) => [
                   <span style={{ fontSize: 12 }}>
                     {b.derived_from ? "└ " : ""}{b.path}
-                    {b.derived_from && <span className="muted"> · depth {b.depth}</span>}
                   </span>,
                   formatOf(b),
+                  <Badge tone={parserStateOf(b) === "observed" ? "green" : parserStateOf(b) === "partial" ? "amber" : "gray"}>{parserStateOf(b)}</Badge>,
+                  <span className="mono muted" style={{ fontSize: 11 }}>{b.derived_from ? `${String(b.derived_from).slice(0, 26)} · depth ${b.depth ?? 1}` : "root target"}</span>,
                   b.arch || "—",
                   [b.publisher, b.product].filter(Boolean).join(" / ") || "—",
                   <span style={{ fontSize: 12 }}>{linkageOf(b)}</span>,
+                  <span style={{ fontSize: 12 }}>{staticEvidenceOf(b)}</span>,
                   <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>{hardeningOf(b)}</span>,
                   b.packer ? <Badge tone="amber">{b.packer}</Badge> : "—",
                   (b.crypto_constants || []).length > 0

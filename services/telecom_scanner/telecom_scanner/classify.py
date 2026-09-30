@@ -119,9 +119,18 @@ def classify_target(
     spec = NF_CATALOG.get(nf_type, spec)
     findings: list[dict[str, Any]] = []
     pqc_groups: list[str] = []
+    user_plane: dict[str, Any] | None = None
     now_iso = (as_of or datetime.now(timezone.utc).date()).isoformat()
 
-    if spec["transport"] == "ipsec":
+    from telecom_scanner.user_plane import assess_user_plane, is_user_plane_target
+
+    if is_user_plane_target(target):
+        # N3/N9 is GTP-U, not a TLS endpoint. No active user-plane packets
+        # are emitted here; operator-side evidence is ingested and classified.
+        user_plane = assess_user_plane(target, probe)
+        findings.extend(user_plane.get("findings") or [])
+        status = str(user_plane.get("status") or "USER_PLANE_UNKNOWN")
+    elif spec["transport"] == "ipsec":
         # NDS/IP gateways: live IKE from this vantage is unreliable (UDP,
         # filtered); classification comes from operator-side ingest.
         ike = (probe or {}).get("ike") or {}
@@ -214,6 +223,7 @@ def classify_target(
         "status": status,
         "severity": severity,
         "findings": findings,
+        "user_plane": user_plane,
         "pqc_kex": sorted(set(pqc_groups)),
         # drift-diff fact for the realtime layer: hybrid ML-KEM observed on
         # THIS probe (roaming/rollup views derive the same flag from pqc_kex)

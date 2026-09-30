@@ -140,7 +140,8 @@ def _shared_rate_limit_backend():
         import redis
 
         return redis.Redis.from_url(url, socket_timeout=1, socket_connect_timeout=1)
-    except Exception:
+    except Exception as exc:
+        logger.exception("shared_rate_limit_backend_unavailable", extra={"error_type": type(exc).__name__})
         return None
 
 
@@ -244,8 +245,8 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         if redis_sync is not None:
             try:
                 redis_sync.stop()
-            except Exception:  # noqa: BLE001
-                pass
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("redis_sync_stop_failed", extra={"error_type": type(exc).__name__})
         logger.info("cryptoscan_api_stopped")
 
     app = FastAPI(
@@ -279,7 +280,11 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         # the request is known to be authenticated.
         app.add_middleware(TenantScopeMiddleware)
         app.add_middleware(AuthMiddleware, settings=settings)
-        app.add_middleware(RateLimitMiddleware, redis_client=_shared_rate_limit_backend())
+        app.add_middleware(
+            RateLimitMiddleware,
+            redis_client=_shared_rate_limit_backend(),
+            fail_closed=settings.is_production,
+        )
     # Platform self-observability: W3C trace-context + Prometheus metrics on
     # every request (works in all environments; cheap single pass).
     from observability.metrics import MetricsRegistry

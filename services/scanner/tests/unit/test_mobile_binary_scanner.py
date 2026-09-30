@@ -1,5 +1,4 @@
 """Android APK / DEX and iOS IPA / Mach-O packages without source."""
-import io
 import struct
 import zipfile
 from pathlib import Path
