@@ -1630,7 +1630,11 @@ async function _sbomReq<T>(path: string, method: string, body?: unknown, timeout
   try {
     const resp = await fetch(path, {
       method,
-      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        ...(activeTenantId() ? { "X-Tenant-ID": activeTenantId()! } : {}),
+      },
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
@@ -1880,6 +1884,80 @@ export const apiKnowledgeUninstall = (name: string) =>
 /** The CBOM stored next to a binary-scan artifact. */
 export const apiBinaryCbom = (artifactId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/binary/artifacts/${artifactId}/cbom`, "GET", undefined, 30000);
+
+export interface BinaryScanRecord {
+  id: string; artifact_id: string; job_id?: string | null; target: string;
+  format: string; sha256: string; status: string; created_by: string;
+  created_at?: string; files_walked: number; binaries_scanned: number;
+  findings_count: number; observations_count: number; observations_truncated: boolean;
+  summary?: any; coverage?: any; limits?: any;
+}
+
+export interface BinaryScanObservation {
+  id: string; scan_record_id: string; artifact_id: string; path: string;
+  format: string; arch?: string | null; sha256?: string | null;
+  parsed?: boolean | null; evidence_state: string; derived_from?: string | null;
+  depth?: number | null; crypto?: any; hardening?: any; signature?: any;
+  coverage?: any; findings?: any[]; metadata?: any;
+}
+
+/** Queryable tenant-scoped binary history; signed manifests remain authoritative. */
+export const apiBinaryScans = (filters: {
+  limit?: number; status?: string; format?: string; q?: string;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.status) params.set("status_filter", filters.status);
+  if (filters.format) params.set("format_filter", filters.format);
+  if (filters.q) params.set("q", filters.q);
+  const qs = params.toString();
+  return _sbomReq<{ total: number; returned: number; records: BinaryScanRecord[]; source: string; note: string }>(
+    `/api/v1/devsecops/binary/scans${qs ? `?${qs}` : ""}`, "GET", undefined, 30000);
+};
+
+/** Read one indexed binary scan and its bounded parser observations. */
+export const apiBinaryScanDetail = (scanId: string) =>
+  _sbomReq<{ record: BinaryScanRecord; observations: BinaryScanObservation[]; observation_limit: number }>(
+    `/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}`, "GET", undefined, 30000);
+
+export const apiBinaryScanObservations = (scanId: string, filters: {
+  limit?: number; offset?: number; format?: string; evidence_state?: string;
+  q?: string; crypto_only?: boolean;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
+  if (filters.format) params.set("format_filter", filters.format);
+  if (filters.evidence_state) params.set("evidence_state", filters.evidence_state);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.crypto_only) params.set("crypto_only", "true");
+  const qs = params.toString();
+  return _sbomReq<{ scan_id: string; total: number; returned: number; observations: BinaryScanObservation[]; observations_truncated: boolean }>(
+    `/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}/observations${qs ? `?${qs}` : ""}`,
+    "GET", undefined, 30000);
+};
+
+export const apiBinaryScanFindings = (scanId: string, filters: {
+  severity?: string; code?: string; limit?: number; offset?: number;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (filters.severity) params.set("severity", filters.severity);
+  if (filters.code) params.set("code", filters.code);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return _sbomReq<{ scan_id: string; total: number; returned: number; findings: any[] }>(
+    `/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}/findings${qs ? `?${qs}` : ""}`,
+    "GET", undefined, 30000);
+};
+
+export const apiBinaryScanCoverage = (scanId: string) =>
+  _sbomReq<any>(`/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}/coverage`, "GET", undefined, 30000);
+
+export const apiBinaryScanCompare = (fromScanId: string, toScanId: string) =>
+  _sbomReq<any>("/api/v1/devsecops/binary/scans/compare", "POST", {
+    from_scan_id: fromScanId, to_scan_id: toScanId,
+  }, 30000);
 
 /** Advisories recorded across checked artifacts (matched scans only). */
 export const apiSbomAdvisories = (filters: { severity?: string; cve?: string } = {}) => {

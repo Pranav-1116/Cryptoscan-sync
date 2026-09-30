@@ -19,9 +19,14 @@ separator so that prose, image tags and unrelated words never match.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import re
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Iterable
 
 from scanner.extractors.cipher_suites import suite_components
 from scanner.models.raw_finding import RawFinding
@@ -445,7 +450,11 @@ def run_config_rules(
                 parsed = parse_transformation(raw)
                 algo = parsed.algorithm or raw
                 mode, padding = parsed.mode, parsed.padding
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         api_type = "HASH" if algo.upper().startswith(("SHA", "MD5")) else "MAC" if "HMAC" in algo.upper() else "KDF" if "PBKDF2" in algo.upper() else "CIPHER_INSTANCE"
         emit(m.start(), algo, api_type, "DATA_ENCRYPTION", "jca-config", raw, reason="jca-transformation-setting",

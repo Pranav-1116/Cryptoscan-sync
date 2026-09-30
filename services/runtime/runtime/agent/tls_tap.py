@@ -19,6 +19,11 @@ Usage (ops):
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import os
 import socket
@@ -196,7 +201,11 @@ class TLSTap:
             if self.on_session is not None:
                 try:
                     self.on_session(session)
-                except Exception:  # noqa: BLE001 — observer errors must not kill taps
+                except Exception as _handler_exc:  # noqa: BLE001 — observer errors must not kill taps
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     pass
             if self.session_jsonl:
                 try:

@@ -13,6 +13,11 @@ the xBOM correlation and the assurance surfaces automatically.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import csv
 import io
 import json
@@ -865,7 +870,11 @@ def _group_rollups_from_db(db: Session):
             claimed = set().union(*(ids_by_system.get(k, set()) for k in kids)) if kids else set()
             if claimed and parent_id in assets_by_system:
                 assets_by_system[parent_id] = [a for a in assets_by_system[parent_id] if a["id"] not in claimed]
-    except Exception:  # pragma: no cover — dependency table absent in a minimal schema
+    except Exception as _handler_exc:  # pragma: no cover — dependency table absent in a minimal schema
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     rollups: list[dict[str, Any]] = []

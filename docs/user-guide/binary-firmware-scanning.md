@@ -57,21 +57,57 @@ every rule that was refused — before a scan is trusted to them; **Queue as job
 submits the scan and shows the job's stage and percentage as it runs, then the
 artifact, counts and a link to the report.
 
+The panel also loads **Persisted binary history** from the tenant-scoped database
+read model. `GET /api/v1/devsecops/binary/scans` lists prior scan summaries and
+`GET /api/v1/devsecops/binary/scans/{scan_id}` returns bounded per-file parser
+observations: format, architecture, hash, evidence state, crypto metadata,
+hardening, signature posture, findings and provenance. For large scans, use the
+paginated child views: `/observations` supports path/format/state/crypto filters,
+`/findings` supports severity/code drill-down, `/coverage` reports evidence-state
+and format counts, and `POST /binary/scans/compare` compares two tenant-owned
+read-model scans. The index is populated by migration `0063`; the signed artifact
+and its BOM sidecars remain authoritative, and a missing index is shown as
+unavailable rather than as an empty clean result.
+
 `GET /api/v1/devsecops/binary/artifacts/{artifact_id}/cbom` returns the CBOM that
-was stored with the scan.
+was stored with the scan. The same artifact exposes the additional projections
+through `GET /api/v1/devsecops/binary/artifacts/{artifact_id}/bom/{bom_type}`
+using `hbom`, `nbom`, `vbom`, `vulnerability-bom` and `technology-bom` aliases.
+The `sbom` and `cbom` aliases are also accepted for a single projection-oriented
+client.
+
+## 1.1 One scan, correlated BOM views
+
+`services/devsecops/devsecops/binary_boms.py` materializes the BOM family from
+the same bounded records; it does not run a second parser or infer runtime
+state:
+
+| View | Binary evidence included | Important boundary |
+|---|---|---|
+| SBOM | binaries, packages, libraries, versions, hashes, dependency edges, nested provenance, signing/package metadata | package/signature presence is metadata; trust validation is not claimed |
+| CBOM | algorithm/library/protocol observations, key and certificate metadata, evidence level, confidence and PQC/migration fields | static evidence does not prove execution or negotiated use |
+| HBOM | architecture, machine type, firmware/container identity, device-tree, uImage/image and bootloader context | unknown hardware fields remain explicit; a binary is not a live device inventory |
+| NBOM | socket/TLS/HTTP/DNS/SSH/MQTT/QUIC capability candidates from imports, exports and strings | every binary-derived candidate is `observed: false`; imported APIs do not prove a live listener or endpoint |
+| VBOM | vendor/product/provider data from package metadata, version resources, linked libraries, firmware identity and signing metadata | an absent supplier field is unknown, not evidence that no supplier exists |
+| Vulnerability BOM | weak/deprecated algorithms, hardening failures, malformed/truncated/refused artifacts, binary findings and supplied package/library matches | “no evidence” is separate from “not vulnerable”; feed absence is not a clean verdict |
+| Technology BOM | stable references, scan metadata, provenance, fingerprints and correlated layer counts/diffs | the snapshot records bounded coverage and does not claim complete reverse engineering |
+
+The documents are stored as tenant-scoped sidecars. The API and worker use the
+same materializer, and `POST /api/v1/devsecops/sbom/diff` adds a
+`binary_bom_diff` when both stored artifacts are binary scans.
 
 ## 2. What is actually parsed
 
 | Format | Depth |
 |---|---|
 | ELF (32/64, LE/BE) | type (exec/PIE/shared/core), machine, `DT_NEEDED` libraries, `RPATH`/`RUNPATH`, `DT_SONAME`, `.note.gnu.build-id`, `.comment` compiler string, dynamic symbols split into imports/exports, stripped/static detection, **Go build info** (toolchain + module graph with exact versions and sums), **program headers** (segment list, `PT_INTERP` interpreter, `PT_GNU_STACK` executable-stack flag), **`.gnu.version_r` symbol-version floors** (e.g. `libcrypto.so.3` requires `OPENSSL_3.0.3`), **`.note.gnu.property`** CPU features (CET IBT/SHSTK), **hardening flags** (PIE, NX, RELRO, full RELRO/BIND_NOW, stack canary, `_FORTIFY_SOURCE`), **crypto constant tables** (whole AES/SHA-1/SHA-2/SHA-3/MD5/BLAKE2/Blowfish/ChaCha20/TEA tables located in `.rodata`/`.text`/`.data`, graded by the byte-count ladder in §3.1) |
-| PE (PE32/PE32+) | machine, subsystem (incl. UEFI runtime/boot → `type: efi-image`), COFF timestamp, sections, **mitigations from `DllCharacteristics`** (ASLR/DYNAMIC_BASE, high-entropy VA, DEP/NX_COMPAT, SEH, isolation, CFG, force-integrity) and **`IMAGE_LOAD_CONFIG_DIRECTORY`** (SecurityCookie ⇒ `/GS` is really initialised, SafeSEH table, `GuardFlags` ⇒ CFG is instrumented, not merely declared), imported DLLs resolved through the section table, **delay-load imports**, **`RT_VERSION` resources** (StringFileInfo: company/product/file version/original filename, `VS_FIXEDFILEINFO`, translation table), **debug directory** (CodeView `RSDS` PDB path, GUID, age), **Authenticode presence** (entries, size, PKCS#7 — validity and chain are explicitly *not* verified), **CLR/`.NET` metadata** (BSJB → framework version), **Rich header** (linker product/build pairs — attribution evidence only) |
+| PE (PE32/PE32+) | machine, subsystem (incl. UEFI runtime/boot → `type: efi-image`), COFF timestamp, sections, **mitigations from `DllCharacteristics`** (ASLR/DYNAMIC_BASE, high-entropy VA, DEP/NX_COMPAT, SEH, isolation, CFG, force-integrity) and **`IMAGE_LOAD_CONFIG_DIRECTORY`** (SecurityCookie ⇒ `/GS` is really initialised, SafeSEH table, `GuardFlags` ⇒ CFG is instrumented, not merely declared), imported DLLs resolved through the section table, **bounded import-thunk function names and named exports** (ordinal-only entries remain `ordinal:N`), **delay-load imports**, **`RT_VERSION` resources** (StringFileInfo: company/product/file version/original filename, `VS_FIXEDFILEINFO`, translation table), **debug directory** (CodeView `RSDS` PDB path, GUID, age), **Authenticode presence** (entries, size, PKCS#7 — validity and chain are explicitly *not* verified), **CLR/`.NET` metadata** (BSJB → framework version), **Rich header** (linker product/build pairs — attribution evidence only) |
 | Mach-O (thin + fat) | CPU type/subtype, file type, `LC_UUID`, platform + minimum OS + SDK (`LC_BUILD_VERSION` / `LC_VERSION_MIN_*`), **linked dylibs with their current/compatibility versions** (`LC_LOAD_DYLIB`/weak/reexport/lazy), `install_name`, `LC_RPATH`, section list, **symbol table split into imports/exports** via `LC_DYSYMTAB` (dyld's leading `_` is stripped so the C name keys the crypto tables), **code signature**: signing identifier, team id, hash type, flags (hardened runtime, library validation, ad-hoc), **entitlements** (with the notable ones called out), **encryption** (`LC_ENCRYPTION_INFO*` cryptid → the file's strings and symbols are not readable) |
 | `ar` / `.deb` | members incl. GNU long-name table, symbol-index presence, **Debian `control` file** (package, version, architecture, maintainer, section, homepage, `Depends`) |
-| zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), native extensions, and the members themselves are decompressed and parsed (§2.1) |
+| zip (`.jar`/`.war`/`.whl`/`.nupkg`/`.apk`/`.aab`/`.ipa`) | entry list, Maven coordinates from `pom.properties`, `MANIFEST.MF` version/main-class, Python `dist-info/METADATA` (name/version/licence/requires), bounded Android binary `AndroidManifest.xml` identity/permissions/components/SDK/policy metadata, **APK Signing Block structure and v2/v3/v4 pair IDs when present (cryptographic verification is not performed)**, selected iOS `Info.plist` identity/version/platform/ATS metadata, native extensions, and eligible members themselves are decompressed and parsed (§2.1) |
 | **Java class** | constant pool: referenced classes (`javax/crypto/Cipher`, `org/bouncycastle/…`), method names, transformation strings (`AES/GCM/NoPadding`), class file version; a truncated pool says where the walk stopped |
 | **RPM** | lead + **signature header** + main header: whether the package is **signed** (RSA/DSA/PGP/GPG tags) and which digests it carries (sha256/sha1/md5, read as raw bytes and reported as hex — a digest tag is integrity metadata, not a signature), name, version, release, licence, vendor, architecture, `PROVIDES`/`REQUIRES` package names (the crypto sonames a package depends on), payload digest algorithm, payload compressor and payload offset |
-| WASM | import and export names (where crypto markers live) |
+| WASM | bounded section summaries, version, imports, exports, memories, tables, globals, custom sections, producer metadata and target features; imports are capability evidence only and the module is never compiled or executed |
 | Firmware | **uImage (legacy U-Boot) header decoded**: image name, OS, architecture, image type (kernel/ramdisk/filesystem/firmware/…), compression, load/entry addresses, payload size, build date — and **both CRCs verified** (header CRC over the header with its own field zeroed; payload CRC when present and the image is within the 64 MiB verification cap, with `data_crc_checked: false` and a reason when it is not). A mismatch or a truncated payload is a finding (`BIN-UIMAGE-CRC`, `BIN-UIMAGE-PAYLOAD`). Also: container chain with offsets (device-tree, squashfs, JFFS2, UBIFS, cramfs, gzip/xz/zstd/bzip2/lzma/lz4, tar), device-tree `model` + `compatible` identity, Shannon entropy / packed-content signal, **cpio/initramfs member listing** |
 | Raw blobs | reported only when they carry crypto evidence **or a rule matched** — a ransom note has no magic bytes, and a rule match is the evidence that the file belongs in the report |
 
@@ -95,6 +131,19 @@ deep the chain went. Parsed members become components in the SBOM and assets in
 the CBOM with `cryptoscan:derived-from` / `cryptoscan:depth` properties — an
 implementation inside an image is never presented as a loose file at the top
 level.
+
+For an Android package, `android.apk_signing_block` records `present`,
+`state`, bounded pair IDs/sizes, and recognized `schemes` (`v2`, `v3`, `v4`)
+when the block is structurally located. `verification` remains
+`not_performed`: the scanner does not validate digests, certificates, signer
+lineage, or package integrity. A missing block is not a clean or unsigned
+verdict because legacy `META-INF` signing and unsupported/ZIP64 layouts are
+separate cases.
+
+For PE, `import_symbols` and `delay_import_symbols` are bounded named/ordinal
+thunk evidence, while `libraries` remains the DLL layer and `exports` contains
+named exports. These fields identify static capabilities only; they do not
+prove that a function was called or that an exported implementation is safe.
 
 ## 3. Evidence, not assertions
 

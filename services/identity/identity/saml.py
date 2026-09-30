@@ -21,6 +21,11 @@ XML with a hardened stdlib ElementTree resolver (no external entities).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import base64
 import hashlib
 import textwrap
@@ -96,7 +101,11 @@ def extract_in_response_to(saml_response_b64: str) -> str | None:
     try:
         xml_bytes = base64.b64decode("".join(saml_response_b64.split()), validate=True)
         root = _safe_parse(xml_bytes)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     val = root.get("InResponseTo")
     if not val:

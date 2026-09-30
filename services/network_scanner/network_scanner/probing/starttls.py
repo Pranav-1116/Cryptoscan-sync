@@ -11,6 +11,11 @@ them with scripted servers.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any
 
 #: well-known ports -> protocol (auto-detection when starttls="auto")
@@ -43,7 +48,11 @@ def negotiate_starttls(sock, protocol: str, *, timeout: float = 5.0) -> dict[str
     """
     try:
         sock.settimeout(timeout)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     try:
         handler = _NEGOTIATORS[protocol]

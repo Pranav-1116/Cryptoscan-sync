@@ -97,5 +97,9 @@ class WorkerPool:
         for future in list(self.futures):
             try:
                 future.result()
-            except Exception:  # pragma: no cover - already logged in _run
+            except Exception as _handler_exc:  # pragma: no cover - already logged in _run
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass

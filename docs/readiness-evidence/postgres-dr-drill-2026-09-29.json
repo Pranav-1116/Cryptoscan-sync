@@ -1,0 +1,203 @@
+{
+  "schema": "cryptoscan.postgres-drill/1",
+  "started_at": "2026-09-29T03:59:03.770891+00:00",
+  "mode": "promotion",
+  "checks": [
+    {
+      "check": "primary reachable",
+      "ok": true,
+      "detail": "psycopg2"
+    },
+    {
+      "check": "standby reachable",
+      "ok": true,
+      "detail": "psycopg2"
+    },
+    {
+      "check": "primary is writable",
+      "ok": true,
+      "detail": "pg_is_in_recovery=False"
+    },
+    {
+      "check": "standby is in recovery",
+      "ok": true,
+      "detail": "pg_is_in_recovery=True"
+    },
+    {
+      "check": "wal_level is replica/logical",
+      "ok": true,
+      "detail": "replica"
+    },
+    {
+      "check": "primary reports streaming standby",
+      "ok": true,
+      "detail": "[{\"application_name\": \"walreceiver\", \"client_addr\": \"172.24.0.3/32\", \"state\": \"streaming\", \"sync_state\": \"async\", \"sent_lsn\": \"0/340A9A8\", \"write_lsn\": \"0/340A9A8\", \"flush_lsn\": \"0/340A9A8\", \"replay_lsn\": \"0/340A9A8\"}]"
+    },
+    {
+      "check": "drill marker replicated",
+      "ok": true,
+      "detail": "marker=cryptoscan-dr-fc2806b16677468698afb73ab87d9b3f; replication_seconds=1.003"
+    },
+    {
+      "check": "audit/evidence tables inspected",
+      "ok": true,
+      "detail": "{\"audit_log\": 0, \"evidence_records\": 0, \"scans\": 0, \"scan_jobs\": 0}"
+    },
+    {
+      "check": "primary:audit_log present",
+      "ok": true,
+      "detail": "audit_log"
+    },
+    {
+      "check": "primary:audit_log has timestamp",
+      "ok": true,
+      "detail": "columns=action,actor,chain_sequence,created_at,detail,entry_hash,id,ip_address,outcome,previous_hash,target_id,target_type,updated_at"
+    },
+    {
+      "check": "primary:audit_log hash fields complete",
+      "ok": true,
+      "detail": "{\"chain_sequence\": 0, \"entry_hash\": 0}"
+    },
+    {
+      "check": "primary:audit chain continuity",
+      "ok": true,
+      "detail": "rows=0 first_previous_empty=True"
+    },
+    {
+      "check": "primary:evidence_records present",
+      "ok": true,
+      "detail": "evidence_records"
+    },
+    {
+      "check": "primary:evidence_records has timestamp",
+      "ok": true,
+      "detail": "columns=algorithm,algorithm_family,chain_hash,chain_position,class_name,compliance_status,confidence,content_hash,created_at,file_path,finding_data,highest_severity_failed,id,is_hardcoded_key,key_size,line_number,method_name,mode,nist_designation,normalization_confidence,normalization_status,normalization_version,normalized_algorithm,normalized_crypto,padding,policy_evaluated_at,policy_evaluation,policy_version,previous_hash,provenance"
+    },
+    {
+      "check": "primary:evidence_records hash fields complete",
+      "ok": true,
+      "detail": "{\"chain_hash\": 0, \"chain_position\": 0, \"content_hash\": 0}"
+    },
+    {
+      "check": "promotion command succeeded",
+      "ok": true,
+      "detail": "waiting for server to promote.... done\nserver promoted"
+    },
+    {
+      "check": "standby promoted to writable",
+      "ok": true,
+      "detail": "rto_seconds=0.15"
+    },
+    {
+      "check": "marker survives promotion",
+      "ok": true,
+      "detail": "cryptoscan-dr-fc2806b16677468698afb73ab87d9b3f"
+    },
+    {
+      "check": "audit_log count not lost",
+      "ok": true,
+      "detail": "before=0 after=0"
+    },
+    {
+      "check": "evidence_records count not lost",
+      "ok": true,
+      "detail": "before=0 after=0"
+    },
+    {
+      "check": "scans count not lost",
+      "ok": true,
+      "detail": "before=0 after=0"
+    },
+    {
+      "check": "scan_jobs count not lost",
+      "ok": true,
+      "detail": "before=0 after=0"
+    },
+    {
+      "check": "API ready after failover",
+      "ok": true,
+      "detail": "HTTP 200"
+    },
+    {
+      "check": "worker recovery command",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "check": "clean restore target has no drill marker",
+      "ok": true,
+      "detail": "cryptoscan-dr-fc2806b16677468698afb73ab87d9b3f"
+    },
+    {
+      "check": "clean restore command succeeded",
+      "ok": true,
+      "detail": "restore output withheld; elapsed=1.998s"
+    },
+    {
+      "check": "clean restore reachable",
+      "ok": true,
+      "detail": "psycopg2"
+    },
+    {
+      "check": "clean restore contains drill marker",
+      "ok": true,
+      "detail": "cryptoscan-dr-fc2806b16677468698afb73ab87d9b3f"
+    },
+    {
+      "check": "clean_restore:audit_log present",
+      "ok": true,
+      "detail": "audit_log"
+    },
+    {
+      "check": "clean_restore:audit_log has timestamp",
+      "ok": true,
+      "detail": "columns=action,actor,chain_sequence,created_at,detail,entry_hash,id,ip_address,outcome,previous_hash,target_id,target_type,updated_at"
+    },
+    {
+      "check": "clean_restore:audit_log hash fields complete",
+      "ok": true,
+      "detail": "{\"chain_sequence\": 0, \"entry_hash\": 0}"
+    },
+    {
+      "check": "clean_restore:audit chain continuity",
+      "ok": true,
+      "detail": "rows=0 first_previous_empty=True"
+    },
+    {
+      "check": "clean_restore:evidence_records present",
+      "ok": true,
+      "detail": "evidence_records"
+    },
+    {
+      "check": "clean_restore:evidence_records has timestamp",
+      "ok": true,
+      "detail": "columns=algorithm,algorithm_family,chain_hash,chain_position,class_name,compliance_status,confidence,content_hash,created_at,file_path,finding_data,highest_severity_failed,id,is_hardcoded_key,key_size,line_number,method_name,mode,nist_designation,normalization_confidence,normalization_status,normalization_version,normalized_algorithm,normalized_crypto,padding,policy_evaluated_at,policy_evaluation,policy_version,previous_hash,provenance"
+    },
+    {
+      "check": "clean_restore:evidence_records hash fields complete",
+      "ok": true,
+      "detail": "{\"chain_hash\": 0, \"chain_position\": 0, \"content_hash\": 0}"
+    }
+  ],
+  "commands": {
+    "promotion": "docker exec -u postgres cryptoscan-dr-standby pg_ctl promote -D /var/lib/postgresql/data",
+    "restore": "bash scripts/postgres_dr_sandbox.sh restore-now",
+    "worker_health": "docker exec cryptoscan-dr-restore pg_isready -U postgres -q"
+  },
+  "rpo_seconds": 0.0,
+  "rto_seconds": 0.15,
+  "before_counts": {
+    "audit_log": 0,
+    "evidence_records": 0,
+    "scans": 0,
+    "scan_jobs": 0
+  },
+  "after_counts": {
+    "audit_log": 0,
+    "evidence_records": 0,
+    "scans": 0,
+    "scan_jobs": 0
+  },
+  "verdict": "PASS",
+  "finished_at": "2026-09-29T03:59:07.114077+00:00"
+}

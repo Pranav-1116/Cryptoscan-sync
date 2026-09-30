@@ -217,6 +217,10 @@ def _caller_roles(db: Session, username: str) -> list[str]:
         u = UserRepository(db).get_by_username(username)
         if u is not None:
             return list(u.role_list)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return []

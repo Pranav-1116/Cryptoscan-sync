@@ -2,6 +2,7 @@ from db.models.asset_evidence_link import AssetEvidenceLink
 from db.models.asset_system_link import AssetSystemLink
 from db.models.base import BaseModel
 from db.models.baseline import Baseline
+from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
 from db.models.business_owner import BusinessOwner
 from db.models.business_process import BusinessProcess
 from db.models.certificate import Certificate
@@ -46,6 +47,8 @@ __all__ = [
     "AssetSystemLink",
     "BaseModel",
     "Baseline",
+    "BinaryScanObservation",
+    "BinaryScanRecord",
     "BusinessOwner",
     "BusinessProcess",
     "Certificate",

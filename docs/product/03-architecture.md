@@ -38,7 +38,7 @@ Two consequences worth stating:
 | **Data** | SQLAlchemy models, repositories (no raw SQL in routers), Alembic migrations. PostgreSQL in production; SQLite for development only (the production guard refuses it). | `db.models`, `db.repositories`, `migrations/versions/0001–0060` |
 | **Normalise + policy** | Canonical names (IANA/NIST/CBOM), key-size normalisation; YAML rule packs with scopes and exceptions; verdict per finding. | `normalization`, `policy.engine`, `policy/rule_definitions/{baseline,pci_dss,nist,cnsa,fips,hipaa,uae}` |
 | **Analysis** | Derived views: drift against baselines, dependency graph and blast radius, quantum classification, agility score, dedup/correlation, business impact, unified risk. | `drift.core`, `graph_engine`, `quantum`, `agility`, `deduplication`, `correlation`, `business_context`, `universal_platform.unified_risk` |
-| **Technology BOM** | `materialize_technology_bom()` gathers inventory into one state; four renderers (SBOM/CBOM/HBOM/VBOM); fingerprint; snapshot; diff. | `cbom.technology_bom`, `cbom.export_service` |
+| **Technology BOM** | `materialize_technology_bom()` gathers the shared inventory state; the binary materializer adds bounded SBOM/CBOM/HBOM/NBOM/VBOM/vulnerability projections; stable fingerprints, snapshots and diffs preserve correlation without turning static evidence into runtime claims. | `cbom.technology_bom`, `cbom.export_service`, `devsecops.binary_boms` |
 | **Export + evidence package** | Validate → filter → generate → sign → audit. Report templates; audit pack, exit report, engagement archive; schedules. | `reporting`, `governance.audit_attest`, `reporting.exit_report` |
 | **Real-time** | `emit_platform_event()` persists to `monitor_events` and publishes on an in-process bus; a DB tailer picks up events from other processes; Redis federates across nodes; SSE and WebSocket deliver. | `eventstream`, `api.events.bus`, `api.events.redis_sync`, `api.routers.events`, `api.routers.stream`, `api.routers.ws` |
 | **API gateway** | FastAPI app, 88 routers, GraphQL, middleware stack, dependencies (`require_permission`, tenancy). | `api.main`, `api.routers.*`, `api.middleware.*`, `api.security.*` |
@@ -244,10 +244,25 @@ error shaping), one SSE subscription shared by every page
 from `shared_models/capability_maturity.py`) that puts a **Beta** or
 **Preview** badge in the sidebar and page header for anything not GA.
 
-The sidebar shows 6 sections and ~35 primary pages; the remaining routes are
-reached from those pages, from search, or from deep links in alerts and
-reports. Every one of the 71 pages is smoke-tested to mount against a mocked
-API (`pages.smoke.test.tsx`), and no page seeds or fabricates data.
+The sidebar has the six sections **Overview, Discovery, Intelligence,
+Governance, Output and Administration**. It currently exposes 31 menu slots
+across 30 unique primary route paths; the remaining routed pages are reached
+from role workspaces, search, alerts, reports or deep links. The exact route
+map is maintained in the [Navigation & Feature Reference](../NAVIGATION-FEATURE-REFERENCE.md)
+and must be updated with `Layout.tsx` or `App.tsx`. Every page surface is
+smoke-tested to mount against a mocked API (`pages.smoke.test.tsx`), and no
+page seeds or fabricates data.
+
+The **Applications** route (`/dev-sec-ops`) is the console entry point for the
+binary pipeline. Its one-scan bundle is persisted as tenant-scoped sidecars:
+SBOM, CBOM, HBOM, static-only NBOM, VBOM, a separate vulnerability BOM and a
+correlated technology snapshot. The parser retains bounded PE function-level
+imports/exports and Android APK Signing Block scheme IDs as static evidence;
+these do not prove runtime calls or signature validity. Migration `0063` also
+builds a tenant-scoped binary scan read model (`binary_scan_records` and bounded
+`binary_scan_observations`) for history and drill-down; the signed artifact
+remains authoritative. `POST /sbom/diff` adds
+a binary-layer diff when both stored artifacts are binary scans.
 
 ## 3.6 Design decisions that shape everything
 

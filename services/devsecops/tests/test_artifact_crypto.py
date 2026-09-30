@@ -81,7 +81,25 @@ def test_a_rotated_master_secret_is_reported_as_such():
     assert caught.value.reason == "wrong_key"
 
 
-def test_encrypted_objects_need_key_material_to_be_opened():
+@pytest.fixture
+def unkeyed_host(monkeypatch):
+    """A host with no artifact key configured anywhere.
+
+    ``secret=""`` alone does not produce that state: resolve_master_secret
+    treats a falsy argument as "fall back to the environment" and then picks up
+    CRYPTOSCAN_ARTIFACT_KEY or SECRET_KEY, which is deliberate so an install
+    with a platform master gets encryption without another knob.
+
+    The tests below assert the "host with neither" branch, so they have to
+    clear both. Without this they passed only on a machine that happened to
+    have no SECRET_KEY exported -- and CI sets SECRET_KEY for every backend
+    shard, so they failed there.
+    """
+    monkeypatch.delenv("CRYPTOSCAN_ARTIFACT_KEY", raising=False)
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+
+
+def test_encrypted_objects_need_key_material_to_be_opened(unkeyed_host):
     blob, _ = ac.encrypt_blob(b"secret", tenant_id="acme", secret=MASTER)
     with pytest.raises(ac.ArtifactCryptoError) as caught:
         ac.decrypt_blob(blob, tenant_id="acme", secret="")
@@ -89,7 +107,7 @@ def test_encrypted_objects_need_key_material_to_be_opened():
     assert "CRYPTOSCAN_ARTIFACT_KEY" in str(caught.value)
 
 
-def test_without_key_material_objects_are_stored_plain_and_say_so():
+def test_without_key_material_objects_are_stored_plain_and_say_so(unkeyed_host):
     """No key configured is a stated fact, not a silent downgrade."""
     blob, report = ac.encrypt_blob(b"plain", tenant_id="acme", secret="")
     assert blob == b"plain"
@@ -145,7 +163,7 @@ def test_a_tenant_id_that_could_escape_its_scope_is_refused():
     assert ac.normalize_tenant("   ") == ac.PLATFORM_TENANT
 
 
-def test_the_at_rest_report_names_the_key_without_revealing_it():
+def test_the_at_rest_report_names_the_key_without_revealing_it(unkeyed_host):
     report = ac.at_rest_report("acme", MASTER)
     assert report == {"tenant": "acme", "algorithm": "AES-256-GCM", "key_source": "explicit",
                       "encrypted": True, "key_id": ac.key_id("acme", MASTER)}

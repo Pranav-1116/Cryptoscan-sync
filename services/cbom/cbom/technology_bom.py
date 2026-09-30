@@ -1,14 +1,21 @@
-"""Unified Technology BOM — SBOM / CBOM / HBOM / Vendor from ONE asset model.
+"""Unified Technology BOM — shared SBOM / CBOM / HBOM / VBOM state.
 
-The spec is explicit: SBOM, CBOM and HBOM are NOT three separate databases.
-They are different **materialized views of the same underlying environment
-graph** (assets + evidence + identity + relationships). This module is the pure,
-deterministic materializer: it takes a single structured inventory snapshot and
-derives the four BOM layers, a content-addressed state version, an immutable
-snapshot id, a diff between versions and the export formats.
+The spec is explicit: the shared BOM views are NOT separate databases. They are
+materialized views of the same underlying environment graph
+(assets + evidence + identity + relationships). This module is the pure,
+deterministic materializer for the shared inventory state: it takes one
+structured inventory snapshot and derives SBOM, CBOM, HBOM and vendor-layer
+projections, a
+content-addressed state version, an immutable snapshot id, a diff between
+versions and export formats.
+
+Binary and firmware scans extend this shared state with bounded, tenant-scoped
+NBOM capability candidates and a separate vulnerability BOM through
+``devsecops.binary_boms``. Those sidecars are not live network observations and
+must remain distinguishable from the authorized network-scan layer.
 
 Pipeline (spec):  Scan -> Evidence -> Normalize -> Resolve Asset -> Build Graph
-              -> Materialize SBOM/CBOM/HBOM -> Version the state
+              -> Materialize shared BOM state -> Version the state
               -> Live investigation -> Export an exact snapshot.
 
 The engine is pure (no DB, no I/O) so it is unit-testable in isolation. The
@@ -130,11 +137,13 @@ def materialize_technology_bom(
     environment: str = "",
     state_version: int = 0,
 ) -> dict[str, Any]:
-    """Materialize the four BOM layers from ONE inventory snapshot.
+    """Materialize the shared BOM layers from ONE inventory snapshot.
 
     ``inventory`` keys are the unified-model collections. The same underlying
-    asset/relationship set is projected into SBOM, CBOM, HBOM and vendor layers;
-    a single change to an asset therefore updates whichever layers it appears in.
+    asset/relationship set is projected into SBOM, CBOM, HBOM and the vendor
+    layer; a single change to an asset therefore updates whichever layers it
+    appears in. Binary sidecars are materialized by the bounded binary BOM
+    projector, not inferred by this general inventory materializer.
     """
     inv = inventory or empty_inventory()
     layers: dict[str, Any] = {}

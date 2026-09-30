@@ -7,6 +7,11 @@ long-lived, unsupported algorithm.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timezone
 from typing import Any, Iterable, Optional
 
@@ -113,5 +118,9 @@ def _parse_dt(value: Any) -> Optional[datetime]:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None

@@ -11,6 +11,11 @@ nothing here scans or mutates the estate.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from db.repositories.settings_repository import SECTOR_SETTING_KEY, SettingsRepository
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -31,7 +36,11 @@ def _active_sector(db: Session) -> str:
             return stored.get("sector") or "generic"
         if isinstance(stored, str):
             return stored
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return "generic"
 
@@ -93,14 +102,22 @@ def set_active_sector(
             admin, "sector.set", target_type="organization", target_id="sector_profile",
             detail={"sector": sector}, ip=request.client.host if request.client else None,
         )
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     db.commit()
     try:
         from api.events.bus import get_event_bus
 
         get_event_bus().publish("sector.changed", {"sector": sector, "by": admin}, source="sectors")
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     profile = get_profile(sector)
     return {"sector": sector, "name": profile.name, "policy_packs": list(profile.policy_packs),

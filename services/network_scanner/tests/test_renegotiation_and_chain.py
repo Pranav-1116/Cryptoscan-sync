@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import socket
 import ssl
 import subprocess
@@ -63,21 +68,37 @@ class Tls12Server:
                 tls.settimeout(3)
                 try:
                     tls.recv(4096)
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.debug(
+                        "expected_exception_boundary",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     pass
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         finally:
             try:
                 conn.close()
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
 
     def close(self):
         self.done.set()
         try:
             self.sock.close()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
 

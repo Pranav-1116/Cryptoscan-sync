@@ -136,3 +136,36 @@ def test_graph_hotspots_and_agility_agree_with_shared_classifier():
         )
         expected_count = 1 if shared == SHOR_VULNERABLE else 0
         assert graph.crypto_hotspots()["hotspots"][0]["quantum_vulnerable_assets"] == expected_count, name
+
+
+def test_deprecated_symmetric_primitives_are_classified_not_unknown():
+    """The registry only stamps quantum_impact on ALLOWED algorithms.
+
+    Every DEPRECATED/DISALLOWED symmetric primitive carries None, which used
+    to fall through to UNKNOWN — so a bank estate full of 3DES and SHA-1, the
+    exact legacy crypto a migration programme exists to find, reported "no
+    quantum model". They are recognized families with known parameters and
+    Grover applies to them regardless of their classical status.
+    """
+    assert quantum_verdict("3DES")["verdict"] == GROVER_MARGINAL
+    assert quantum_verdict("DES")["verdict"] == GROVER_MARGINAL
+    assert quantum_verdict("SHA-1")["verdict"] == GROVER_MARGINAL
+    assert quantum_verdict("MD5")["verdict"] == GROVER_MARGINAL
+    assert quantum_verdict("IDEA")["verdict"] == GROVER_MARGINAL
+
+
+def test_unknown_parameter_never_asserts_resistance():
+    """Absence of a key size is UNKNOWN, never QUANTUM_RESISTANT.
+
+    Deriving Grover applicability from the family (above) would otherwise
+    promote RC4 — no key size in the registry, classically broken — from
+    UNKNOWN to "quantum resistant", which is a worse answer than the bug it
+    replaced. The module's contract is that absence is never silently safe.
+    """
+    for name in ["RC4", "Blowfish", "AES"]:
+        row = quantum_verdict(name)
+        assert row["verdict"] == UNKNOWN, name
+        assert "unknown" in row["reason"]
+    # …while a stated parameter still classifies both ways.
+    assert quantum_verdict("AES-128")["verdict"] == GROVER_MARGINAL
+    assert quantum_verdict("AES-256")["verdict"] == QUANTUM_RESISTANT

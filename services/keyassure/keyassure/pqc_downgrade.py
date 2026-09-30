@@ -24,6 +24,11 @@ synthetic ClientHello/ServerHello evidence).
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Protocol
@@ -149,7 +154,11 @@ def _default_handshaker(host: str, port: int, groups: list[str], sni: str | None
                 negotiated = None
                 try:
                     negotiated = tls.selected_alpn_protocol()  # placeholder
-                except Exception:
+                except Exception as _handler_exc:
+                    logger.warning(
+                        "exception_suppressed",
+                        extra={"error_type": type(_handler_exc).__name__},
+                    )
                     pass
                 # negotiated group isn't exposed by stdlib ssl; cipher only.
                 # We infer via the OpenSSL NPN/ALPN-free path: report group via

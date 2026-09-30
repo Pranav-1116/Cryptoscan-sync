@@ -19,7 +19,7 @@
 6. [Layer 3 — Data (the unified asset model)](#6-layer-3--data-the-unified-asset-model)
 7. [Layer 4 — Normalization & policy](#7-layer-4--normalization--policy)
 8. [Layer 5 — Analysis (risk, drift, graph, agility, quantum)](#8-layer-5--analysis)
-9. [Layer 6 — The Technology BOM (unified SBOM/CBOM/HBOM)](#9-layer-6--the-technology-bom)
+9. [Layer 6 — The Technology BOM (shared views and binary BOM family)](#9-layer-6--the-technology-bom)
 10. [Layer 7 — Export Service & Evidence Package](#10-layer-7--export-service--evidence-package)
 11. [Layer 8 — Real-time delivery (event bus, SSE, Redis)](#11-layer-8--real-time-delivery)
 12. [Layer 9 — API gateway & dashboard](#12-layer-9--api-gateway--dashboard)
@@ -63,9 +63,10 @@
   └───────────────────────────────┬──────────────────────────────────────┘
                                   │
                                   ▼
-  ┌────────────────── TECHNOLOGY BOM (one model, 4 views) ─────────────┐
-  │  materialize_technology_bom() → SBOM · CBOM · HBOM · VBOM          │
-  │  fingerprint → immutable snapshot_id (TECHBOM-YYYYMMDD-HHMMSS)     │
+  ┌──────────── TECHNOLOGY BOM (shared views + binary BOM family) ──────┐
+  │  materialize_technology_bom() → SBOM · CBOM · HBOM · VBOM            │
+  │  binary_boms → static NBOM · vulnerability BOM · technology sidecar │
+  │  fingerprint → immutable snapshot_id (TECHBOM-YYYYMMDD-HHMMSS)       │
   └───────────────────────────────┬──────────────────────────────────────┘
                                   │ state
                                   ▼
@@ -87,7 +88,8 @@
                                   ▼
   ┌──────────────────────────── DASHBOARD ──────────────────────────────┐
   │  Vite/React SPA (Live Asset Intelligence, CBOM, HBOM, graph, ...)   │
-  │  live SSE feed · no full-page refresh · 57 navigation surfaces      │
+  │  live SSE feed · no full-page refresh · 6 sidebar sections          │
+  │  31 menu slots / 30 unique primary routes + deep-linked pages       │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -252,8 +254,8 @@ The centerpiece the customer asked for. **One change updates multiple
 inventories** because the BOM is a **materialised view**, not a separate store.
 
 `cbom.technology_bom.materialize_technology_bom(inventory, environment,
-state_version)` takes **one** inventory dict and projects it into four layers
-via `_LAYER_BUILDERS`:
+state_version)` takes **one** inventory dict and projects the shared inventory
+views via `_LAYER_BUILDERS`:
 
 | View | Collection | Builder | bom-ref prefix |
 |---|---|---|---|
@@ -263,7 +265,23 @@ via `_LAYER_BUILDERS`:
 | **VBOM** | vendors | `_vendor_component` | `vendor:` |
 
 Certificates are attached to the CBOM as evidence; dependencies are retained as
-relationship edges.
+relationship edges. A bounded binary or firmware scan additionally materializes
+a correlated bundle with static-only **NBOM** capability candidates,
+**Vulnerability BOM** findings and a deterministic **Technology-BOM snapshot**
+sidecar. The full family is therefore SBOM, CBOM, HBOM, NBOM, VBOM,
+Vulnerability BOM and the unified Technology-BOM snapshot. Binary NBOM records
+carry `observed: false` until an authorized network scan corroborates them;
+VBOM remains vendor/product/supply-chain evidence and is not vulnerability data.
+
+The lifecycle is shared by the synchronous API and worker: parser output enters
+`store_binary_artifact()`, which writes the signed artifact first and then
+upserts migration-`0063`'s tenant-scoped database read model inside a savepoint.
+The read model is bounded and redacted (no raw bytes or private-key material),
+so a migration/index failure does not discard the authoritative artifact and is
+returned as `database_indexed: false`. The DevSecOps console queries the read
+model for history and drill-down, while download, verify and BOM endpoints read
+the signed artifact; this separation prevents an index row from being mistaken
+for a new source of truth.
 
 Key properties:
 
@@ -420,8 +438,10 @@ Every BOM operation emits a typed event on `target_name="technology-bom"`:
   polls a live endpoint and `useLiveTicker` for the SSE tick.
 - `frontend/src/pages/LiveAssetIntelligence.tsx` — the unified BOM page with
   **6 tabs**: Overview, Components, Compare, Export, Schedules, Evidence & Vendor.
-- 57 navigation surfaces, grouped into Overview / Scanners / Assets /
-  Intelligence / Assess / Operations / Govern / Platform.
+- Six primary sidebar sections — Overview / Discovery / Intelligence /
+  Governance / Output / Administration — with 31 menu slots, 30 unique
+  primary route paths and additional deep-linked pages. See
+  `docs/NAVIGATION-FEATURE-REFERENCE.md` for the exact current map.
 
 ---
 
@@ -469,7 +489,8 @@ scan source/network/cloud/container/hardware/runtime/OT
   → unified asset model (Postgres/SQLite + Alembic)
   → normalize (IANA/NIST/CBOM) → YAML policy (deterministic)
   → drift / graph / risk / agility / quantum
-  → materialize Technology BOM (SBOM/CBOM/HBOM/VBOM — one model, 4 views)
+  → materialize shared Technology BOM (SBOM/CBOM/HBOM/VBOM)
+  → for binary scans: static NBOM + vulnerability BOM + correlated sidecars
   → immutable snapshot + version/compare
   → Export Service (validate/filter/generate/sign/audit)
   → EventBus → SSE (+ Redis federation) → dashboard (no full-page refresh)
@@ -483,4 +504,5 @@ scan source/network/cloud/container/hardware/runtime/OT
   described here. Use it to follow a single fact from scanner → evidence →
   inventory → BOM → snapshot → export → SSE, plus the scheduled-export flow.
 - **[NAVIGATION-FEATURE-REFERENCE.md](./NAVIGATION-FEATURE-REFERENCE.md)** — the
-  57 navigation surfaces, each mapped to the live API/pipeline it consumes.
+  current six-section sidebar, 31 menu slots, deep-linked routes, role guards
+  and the pipeline each primary page consumes.

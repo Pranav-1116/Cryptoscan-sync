@@ -59,7 +59,11 @@ class MonitorLoop:
                         logger.exception("monitor_commit_failed")
                     try:
                         session.close()
-                    except Exception:
+                    except Exception as _handler_exc:
+                        logger.warning(
+                            "exception_suppressed",
+                            extra={"error_type": type(_handler_exc).__name__},
+                        )
                         pass
             self.ticks += 1
             if self._stop:

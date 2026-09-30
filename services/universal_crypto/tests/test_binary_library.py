@@ -124,3 +124,53 @@ def test_algorithms_exposed_vs_referenced():
         library="OpenSSL", symbols=["EVP_sha256"], apis=["EVP_EncryptInit_ex"])
     assert "SHA-256" in result["algorithms_referenced"]
     assert "AES" in result["algorithms_exposed"]
+
+
+def _dex_fixture() -> bytes:
+    import struct
+
+    strings = ["Ljavax/crypto/Cipher;", "AES/GCM/NoPadding", "Lapp/Main;"]
+    header = bytearray(0x70)
+    string_offset = 0x70
+    ids = bytearray(len(strings) * 4)
+    payload = bytearray()
+    cursor = string_offset + len(ids)
+    for index, text in enumerate(strings):
+        struct.pack_into("<I", ids, index * 4, cursor)
+        encoded = text.encode()
+        payload.extend(bytes((len(encoded),)) + encoded + b"\x00")
+        cursor += len(encoded) + 2
+    type_offset = cursor
+    types = struct.pack("<II", 0, 2)
+    header_size = type_offset + len(types)
+    header[:8] = b"dex\n035\x00"
+    struct.pack_into("<III", header, 0x20, header_size, 0x70, 0x12345678)
+    struct.pack_into("<II", header, 0x38, len(strings), string_offset)
+    struct.pack_into("<II", header, 0x40, 2, type_offset)
+    return bytes(header + ids + payload + types)
+
+
+def test_dex_and_python_bytecode_parser_surfaces_metadata():
+    import importlib.util
+    import marshal
+    import struct
+
+    dex = BinaryParser().parse(_dex_fixture(), path="classes.dex")
+    assert dex.format == "dex"
+    assert "Ljavax/crypto/Cipher;" in dex.imports
+    assert "AES/GCM/NoPadding" in dex.strings
+
+    code = compile("import hashlib\nhashlib.sha256(b'x')", "module.py", "exec")
+    pyc = importlib.util.MAGIC_NUMBER + struct.pack("<III", 0, 0, 0) + marshal.dumps(code)
+    py = BinaryParser().parse(pyc, path="module.pyc")
+    assert py.format == "python-bytecode"
+    assert "hashlib" in py.imports
+    py_analysis = BinaryCryptoDetector().analyze(py)
+    sha = next(row for row in py_analysis["detections"] if row["algorithm"] == "SHA-256")
+    assert sha["verdict"] == "POSSIBLE_CRYPTO" and "SYMBOL_MATCH" in sha["levels"]
+
+    analysis = BinaryCryptoDetector().analyze(
+        BinaryArtifact(format="dex", imports=dex.imports, strings=dex.strings))
+    aes = next(row for row in analysis["detections"] if row["algorithm"] == "AES")
+    assert aes["verdict"] == "POSSIBLE_CRYPTO"
+    assert "STRING_MATCH" in aes["levels"]

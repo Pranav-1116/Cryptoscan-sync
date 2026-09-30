@@ -10,6 +10,21 @@ repository, not from a plan. Version 1.0.0, 2026-09-23._
 
 _Figure 1 — CryptoScan in one picture. Each block is explained in depth in the pages below and in the explanatory posters (images 10–31)._
 
+## Enterprise documentation center
+
+For a vendor-style documentation experience covering product, deployment,
+operations, security, API, integrations, developer extensions, support,
+adoption, and readiness, use the [CryptoScan Enterprise Documentation
+Center](enterprise/README.md). It organizes the existing detailed manuals into
+one end-to-end journey and keeps implementation, operational, and external
+assurance claims separate.
+
+For the current console menu and route map, read the
+[Navigation & Feature Reference](../NAVIGATION-FEATURE-REFERENCE.md). It mirrors
+the six sidebar sections in `frontend/src/components/Layout.tsx`, the routed
+pages in `frontend/src/App.tsx`, and the server-verified role guard on the
+**Start Scan** action.
+
 ## Read in this order
 
 | # | Document | What it answers |
@@ -36,8 +51,10 @@ against **deterministic YAML policy packs** (PCI-DSS, NIST SP 800-131A, CNSA
 2.0, FIPS, HIPAA, UAE, a baseline), watched for **drift** against approved
 baselines, scored for **post-quantum readiness** and **crypto agility**, and
 enforced in **CI as a gate**. What comes out is a versioned **Technology BOM**
-(SBOM · CBOM · HBOM · VBOM), signed exports in six formats, and hash-manifested
-**audit and evidence packs** a regulator can check. Policy is never decided by
+with the shared SBOM · CBOM · HBOM · VBOM views; a binary/firmware scan also
+materializes static NBOM capability candidates and a separate vulnerability BOM.
+Exports are signed and hash-manifested, while audit and evidence packs remain
+verifiable by the intended reviewer. Policy is never decided by
 AI, unknowns are reported as unknown with the reason, and nothing on any page
 is fabricated: it is empty until a real scan produces evidence.
 
@@ -47,14 +64,14 @@ is fabricated: it is empty until a real scan produces evidence.
 |---|---|
 | Backend services | 51 packages under `services/` |
 | REST surface | 642 paths / 86 tag groups, plus GraphQL and SSE/WebSocket ([reference](../api-reference/rest-api.md)) |
-| Console | 71 pages, 6 sidebar sections, English + Arabic |
-| Scanners | 6 first-class languages (Python, Java, C#, JS/TS, Go, Rust) + Kotlin, PHP, Ruby, config/IaC; 10 lockfile formats; ELF/PE/Mach-O/archive/firmware parsing; TLS; AWS/Azure/GCP; containers; OT; telecom; hardware; payment |
+| Console | 71 page surfaces, 6 sidebar sections, 31 menu slots / 30 unique primary routes, English + Arabic |
+| Scanners | 6 first-class languages (Python, Java, C#, JS/TS, Go, Rust) + Kotlin, PHP, Ruby, config/IaC; 10 lockfile formats; ELF/PE/Mach-O/WASM/mobile/archive/firmware parsing; TLS; AWS/Azure/GCP; containers; OT; telecom; hardware; payment |
 | Policy packs | baseline · PCI-DSS · NIST · CNSA 2.0 · FIPS · HIPAA · UAE (`services/policy/rule_definitions`) |
 | Export formats | json · csv · cyclonedx · cyclonedx-xml · spdx · xml · pdf — each with content hash + HMAC + RFC 7515 JWS |
 | Database | PostgreSQL 15/16 in production (SQLite for development), 60 Alembic migrations, 102 tables |
 | Identity | local + TOTP MFA, OIDC (relay / auth-code / PKCE), SAML 2.0, LDAP/AD, SCIM 2.0, API keys; 9 RBAC roles |
 | Tests | 4,808 backend test functions, hermetic and parallel (~8 min); frontend vitest suite; live PostgreSQL migration test |
-| Readiness | ~80 % overall, core path ~92 % — [PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) |
+| Readiness | Explicit PASS/FAIL/SKIP gate — [root PRODUCTION-READINESS.md](../../PRODUCTION-READINESS.md) |
 
 ## Image index
 
@@ -75,7 +92,7 @@ product on the image itself; 22–31 cover the engines behind the pages.
 | 09 | [scope and readiness](img/09-scope-readiness.png) | GA / beta / preview and readiness | [06](06-scope-and-readiness.md) |
 | 10 | [collection in depth](img/10-collection-in-depth.png) | eleven collectors, what each finds, the "unknown is unknown" rule | [02](02-features.md) |
 | 11 | [evidence explained](img/11-evidence-explained.png) | canonicalise → content hash → chain hash → manifest → verify; what tampering looks like | [02](02-features.md) |
-| 12 | [Technology BOM explained](img/12-technology-bom-explained.png) | one inventory, four views, immutable versions, signed export | [02](02-features.md) |
+| 12 | [Technology BOM explained](img/12-technology-bom-explained.png) | one inventory, shared views plus binary-derived NBOM and vulnerability evidence, immutable versions, signed export | [02](02-features.md) |
 | 13 | [assessment explained](img/13-assessment-explained.png) | a rule as YAML, 7 packs / 37 rules, per-finding evaluation, drift, PQC, agility, risk | [02](02-features.md) |
 | 14 | [gate and automation](img/14-gate-and-automation-explained.png) | CI gate, SBOM gate, monitor, alerts, WHEN/IF/THEN with approval | [02](02-features.md) |
 | 15 | [prove](img/15-prove-explained.png) | exports, reports, evidence pack, audit pack, how an auditor checks without trusting the server | [02](02-features.md) |

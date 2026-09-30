@@ -11,14 +11,22 @@ exercise the payload builders with an injected transport.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import os
 import re
 import tempfile
 from pathlib import Path
+from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from pydantic import BaseModel, Field
+from sqlalchemy import func
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_db_session, get_job_repository, require_roles
@@ -314,7 +322,8 @@ class SbomScanRequest(BaseModel):
 
 
 @router.post("/sbom/scan", status_code=status.HTTP_201_CREATED)
-def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
+def sbom_scan(body: SbomScanRequest, request: Request,
+              db: Session = Depends(get_db_session),
               user: str = Depends(require_roles(*_SBOM_OPERATORS))):
     """End-to-end SBOM generation: scan a source tree or container target and
     produce a deterministic CycloneDX 1.5 / SPDX 2.3 bill of materials with
@@ -399,6 +408,44 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+    binary_bundle: dict[str, dict] = {}
+    if kind == "binary":
+        cbom = binary.cbom_document(binary_result, target=str(binary_result.get("target") or resolved),
+                                    created_by=user)
+        from devsecops.binary_boms import build_binary_bom_bundle
+
+        binary_bundle = build_binary_bom_bundle(
+            binary_result, result, sbom=bom, cbom=cbom,
+            target=str(binary_result.get("target") or resolved), created_by=user)
+        # The generic scanner predates tenant-aware binary storage. Route binary
+        # scans through the same sealed artifact writer as the dedicated endpoint
+        # and worker so a caller cannot receive an unencrypted, platform-scoped
+        # sidecar by choosing /sbom/scan.
+        stored = store_binary_artifact(
+            scan=binary_result, result=result, bom=bom, cbom=cbom, fmt=fmt,
+            created_by=user, db=db, artifact_id=None, feed_supplied=bool(body.feed),
+            recursive=body.recursive, include_raw=body.include_raw,
+            secret=_sbom_signing_secret(db),
+            tenant_id=_artifact_tenant(request, db, user), bom_bundle=binary_bundle)
+        manifest = stored["manifest"]
+        artifact_id = stored["artifact_id"]
+        UserRepository(db).audit(
+            user, "devsecops.sbom_scan", target_type="sbom_artifact", target_id=artifact_id,
+            detail={"kind": kind, "target": manifest["target"], "format": fmt,
+                    "components": manifest.get("component_count", 0),
+                    "sha256": manifest.get("sha256", "")[:16]},
+        )
+        db.commit()
+        return {
+            "artifact_id": artifact_id, "manifest": manifest,
+            "database_indexed": bool(stored.get("database_indexed")),
+            "compliance": stored["compliance"], "download_url":
+            f"/api/v1/devsecops/sbom/{artifact_id}/download",
+            "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
+            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom,
+            "cbom": cbom, "bom_documents": manifest.get("bom_documents") or {},
+            "bom_types": ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"],
+        }
     packages = result.get("packages") or []
     payload = json.dumps(bom, sort_keys=True, separators=(",", ":")).encode("utf-8")
     sha256 = hashlib.sha256(payload).hexdigest()
@@ -457,6 +504,17 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "created_by": user,
         "storage_key": key,
+        "cbom_storage_key": f"{artifact_id}.cbom.json" if kind == "binary" else None,
+        "bom_documents": ({
+            name: {"storage_key": f"{artifact_id}.{name.replace('_', '-')}.json",
+                   "sha256": hashlib.sha256(json.dumps(document, sort_keys=True,
+                                                        separators=(",", ":")).encode("utf-8")).hexdigest(),
+                   "encrypted": False, "format": document.get("bomFormat", "json"),
+                   "component_count": len(document.get("components") or []),
+                   "vulnerability_count": len(document.get("vulnerabilities") or [])}
+            for name, document in binary_bundle.items()
+            if name not in {"sbom", "cbom", "vendor_bom", "vulbom"} and isinstance(document, dict) and document
+        } if kind == "binary" else {}),
         # what it takes to re-scan the very same target with the same options
         "scan_options": {"kind": kind, "target": str(result.get("target") or body.target),
                          "as_image": bool(body.as_image),
@@ -473,6 +531,17 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
         manifest["signature"] = sb.sign_manifest(manifest, secret)
     store = _sbom_storage()
     store.put(key, payload)
+    if kind == "binary" and binary_bundle:
+        cbom_payload = json.dumps(binary_bundle.get("cbom") or {}, sort_keys=True,
+                                  separators=(",", ":")).encode("utf-8")
+        store.put(str(manifest["cbom_storage_key"]), cbom_payload)
+        for name, document in binary_bundle.items():
+            if name in {"sbom", "cbom", "vendor_bom", "vulbom"} or not isinstance(document, dict) or not document:
+                continue
+            side_key = str((manifest.get("bom_documents") or {}).get(name, {}).get("storage_key") or "")
+            if side_key:
+                store.put(side_key, json.dumps(document, sort_keys=True,
+                                                separators=(",", ":")).encode("utf-8"))
     store.put_manifest(key, manifest)
     UserRepository(db).audit(user, "devsecops.sbom_scan", target_type="sbom_artifact",
                              target_id=artifact_id,
@@ -482,7 +551,11 @@ def sbom_scan(body: SbomScanRequest, db: Session = Depends(get_db_session),
     return {"artifact_id": artifact_id, "manifest": manifest, "compliance": compliance,
             "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
             "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
-            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify", "bom": bom}
+            "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",
+            "bom": bom,
+            "bom_documents": manifest.get("bom_documents") or {},
+            "bom_types": (["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"]
+                          if kind == "binary" else ["SBOM"])}
 
 
 def _scanner_findings(manifest: dict) -> dict[str, int] | None:
@@ -1024,6 +1097,11 @@ def binary_scan(body: BinaryScanRequest, request: Request,
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     cbom = bs.cbom_document(scan, target=str(scan.get("target")), created_by=user)
+    from devsecops.binary_boms import build_binary_bom_bundle
+
+    bom_bundle = build_binary_bom_bundle(
+        scan, result, sbom=bom, cbom=cbom,
+        target=str(scan.get("target") or resolved), created_by=user)
 
     findings = result.get("findings") or []
     stored = store_binary_artifact(
@@ -1031,7 +1109,7 @@ def binary_scan(body: BinaryScanRequest, request: Request,
         artifact_id=body.artifact_id, job_id=body.job_id, feed_supplied=bool(body.feed),
         recursive=body.recursive, include_raw=body.include_raw,
         secret=_sbom_signing_secret(db),
-        tenant_id=_artifact_tenant(request, db, user))
+        tenant_id=_artifact_tenant(request, db, user), bom_bundle=bom_bundle)
     artifact_id = stored["artifact_id"]
     manifest = stored["manifest"]
     compliance = stored["compliance"]
@@ -1066,6 +1144,7 @@ def binary_scan(body: BinaryScanRequest, request: Request,
         # "is this scan encrypted at rest, and under whose key" is part of the
         # answer, not something to go and read off the disk afterwards
         "at_rest": manifest.get("at_rest") or {},
+        "database_indexed": bool(stored.get("database_indexed")),
         "tenant": manifest.get("tenant_id"),
         "summary": manifest["binary_summary"],
         "findings": findings[:200],
@@ -1073,6 +1152,8 @@ def binary_scan(body: BinaryScanRequest, request: Request,
         "binaries": result.get("binaries") or [],
         "cbom": cbom,
         "cbom_result": cbom_result,
+        "bom_documents": manifest.get("bom_documents") or {},
+        "bom_types": ["SBOM", "CBOM", "HBOM", "NBOM", "VBOM", "VULNERABILITY_BOM", "TECHNOLOGY_BOM"],
         "download_url": f"/api/v1/devsecops/sbom/{artifact_id}/download",
         "report_url": f"/api/v1/devsecops/sbom/{artifact_id}/report?fmt=markdown",
         "verify_url": f"/api/v1/devsecops/sbom/{artifact_id}/verify",
@@ -1336,6 +1417,353 @@ def knowledge_uninstall(body: KnowledgeUninstallRequest,
     return report
 
 
+def _binary_tenant_clause(model: Any, tenant: str | None):
+    """Keep the DB read model aligned with file-artifact visibility."""
+    # A tenant-bound principal must never see legacy/platform rows with a NULL
+    # owner. Only an unbound platform request can read the unowned estate.
+    if tenant:
+        return model.tenant_id == tenant
+    return model.tenant_id.is_(None)
+
+
+def _binary_record_json(record: Any) -> dict[str, Any]:
+    data = record.to_dict()
+    data.pop("tenant_id", None)
+    # SQLAlchemy reserves the attribute name `metadata`; the model stores this
+    # JSON projection as `parser_metadata`, while the API keeps the evidence
+    # vocabulary stable for the console and clients.
+    if "parser_metadata" in data:
+        data["metadata"] = data.pop("parser_metadata")
+    return data
+
+
+@router.get("/binary/scans")
+def binary_scans(request: Request, limit: int = 50, status_filter: str | None = None,
+                 format_filter: str | None = None, q: str | None = None,
+                 db: Session = Depends(get_db_session),
+                 user: str = Depends(require_roles(*_SBOM_READERS))):
+    """List the tenant-scoped binary read model, newest first.
+
+    The signed manifest remains authoritative. This endpoint is intentionally a
+    queryable index, so the console can show scan history and coverage without
+    opening every potentially large artifact document.
+    """
+    from db.models.binary_scan import BinaryScanRecord
+
+    try:
+        tenant = _artifact_tenant(request, db, user)
+        query = db.query(BinaryScanRecord).filter(_binary_tenant_clause(BinaryScanRecord, tenant))
+        if status_filter:
+            query = query.filter(BinaryScanRecord.status == status_filter.strip().upper())
+        if format_filter:
+            query = query.filter(BinaryScanRecord.format == format_filter.strip().lower())
+        if q:
+            needle = f"%{q.strip()}%"
+            query = query.filter(BinaryScanRecord.target.ilike(needle))
+        total = query.count()
+        rows = query.order_by(BinaryScanRecord.created_at.desc()).limit(max(1, min(limit, 200))).all()
+        return {"total": total, "returned": len(rows),
+                "records": [_binary_record_json(row) for row in rows],
+                "source": "database-read-model",
+                "note": "signed artifact manifests remain the authoritative export"}
+    except SQLAlchemyError as exc:
+        logger.warning("binary_scan_index_unavailable", extra={"error_type": type(exc).__name__})
+        raise HTTPException(status_code=503,
+                            detail="binary scan index is unavailable; apply migration 0063") from exc
+
+
+def _binary_scan_row(db: Session, scan_id: str, tenant: str | None):
+    """Load one scan using the same exact tenant predicate for every read path."""
+    from db.models.binary_scan import BinaryScanRecord
+
+    return db.query(BinaryScanRecord).filter(
+        BinaryScanRecord.id == scan_id,
+        _binary_tenant_clause(BinaryScanRecord, tenant)).first()
+
+
+def _binary_scan_observation_query(db: Session, scan_id: str, tenant: str | None):
+    """Build the bounded observation query after the parent scan is authorized."""
+    from db.models.binary_scan import BinaryScanObservation
+
+    return db.query(BinaryScanObservation).filter(
+        BinaryScanObservation.scan_record_id == scan_id,
+        _binary_tenant_clause(BinaryScanObservation, tenant))
+
+
+def _binary_finding_rows(record: Any, observations: list[Any]) -> list[dict[str, Any]]:
+    """Project scan and observation findings into a bounded, deduplicated list."""
+    rows: list[dict[str, Any]] = []
+    summary = record.summary if isinstance(record.summary, dict) else {}
+    binary_summary = summary.get("binary_summary") if isinstance(summary.get("binary_summary"), dict) else summary
+    for finding in (binary_summary or {}).get("findings_excerpt") or []:
+        if isinstance(finding, dict):
+            rows.append({**finding, "source": "scan-summary"})
+    for observation in observations:
+        for finding in observation.findings or []:
+            if not isinstance(finding, dict):
+                continue
+            rows.append({
+                **finding,
+                "path": finding.get("path") or observation.path,
+                "observation_id": observation.id,
+                "evidence_state": observation.evidence_state,
+                "source": "parser-observation",
+            })
+    unique: list[dict[str, Any]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for row in rows:
+        # Scan-summary excerpts and observation findings often describe the
+        # same issue. Identity is the stable finding location, not its wording.
+        key = (str(row.get("code") or ""), str(row.get("severity") or "").upper(),
+               str(row.get("path") or ""), "")
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(row)
+    return unique
+
+
+@router.get("/binary/scans/{scan_id}/observations")
+def binary_scan_observations(
+    scan_id: str,
+    request: Request,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0, le=100000),
+    format_filter: str | None = Query(None, max_length=32),
+    evidence_state: str | None = Query(None, max_length=32),
+    q: str | None = Query(None, max_length=300),
+    crypto_only: bool = False,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_READERS)),
+):
+    """Page bounded parser observations for one authorized scan."""
+    from db.models.binary_scan import BinaryScanObservation
+
+    try:
+        tenant = _artifact_tenant(request, db, user)
+        record = _binary_scan_row(db, scan_id, tenant)
+        if record is None:
+            raise HTTPException(status_code=404, detail="binary scan not found")
+        query = _binary_scan_observation_query(db, record.id, tenant)
+        if format_filter:
+            query = query.filter(BinaryScanObservation.format == format_filter.strip().lower())
+        if evidence_state:
+            query = query.filter(BinaryScanObservation.evidence_state == evidence_state.strip().lower())
+        if q:
+            query = query.filter(BinaryScanObservation.path.ilike(f"%{q.strip()}%"))
+        if crypto_only:
+            query = query.filter(BinaryScanObservation.crypto.is_not(None))
+        total = query.count()
+        rows = query.order_by(BinaryScanObservation.path.asc()).offset(offset).limit(limit).all()
+        return {
+            "scan_id": record.id,
+            "artifact_id": record.artifact_id,
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "returned": len(rows),
+            "observations_truncated": bool(record.observations_truncated),
+            "observations": [_binary_record_json(row) for row in rows],
+            "source": "database-read-model",
+            "note": "observations are bounded projections; signed artifacts remain authoritative",
+        }
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.warning("binary_scan_observations_unavailable", extra={"error_type": type(exc).__name__})
+        raise HTTPException(status_code=503,
+                            detail="binary scan index is unavailable; apply migration 0063") from exc
+
+
+@router.get("/binary/scans/{scan_id}/findings")
+def binary_scan_findings(
+    scan_id: str,
+    request: Request,
+    severity: str | None = Query(None, max_length=20),
+    code: str | None = Query(None, max_length=100),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0, le=100000),
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_READERS)),
+):
+    """Read finding/evidence drill-down without opening the signed artifact."""
+    try:
+        from db.models.binary_scan import BinaryScanObservation
+
+        tenant = _artifact_tenant(request, db, user)
+        record = _binary_scan_row(db, scan_id, tenant)
+        if record is None:
+            raise HTTPException(status_code=404, detail="binary scan not found")
+        observations = _binary_scan_observation_query(db, record.id, tenant).order_by(
+            # The database projection is bounded to 5,000 rows by the writer.
+            # Ordering keeps pagination deterministic across retries.
+            BinaryScanObservation.path.asc()
+        ).limit(5000).all()
+        findings = _binary_finding_rows(record, observations)
+        if severity:
+            wanted = severity.strip().upper()
+            findings = [row for row in findings if str(row.get("severity") or "INFO").upper() == wanted]
+        if code:
+            wanted = code.strip().lower()
+            findings = [row for row in findings if str(row.get("code") or "").lower() == wanted]
+        page = findings[offset:offset + limit]
+        return {
+            "scan_id": record.id,
+            "artifact_id": record.artifact_id,
+            # `total` is the available bounded projection, while the record count
+            # is the authoritative scanner count. They can differ when the
+            # manifest excerpt or observation index cap was reached.
+            "total": len(findings),
+            "authoritative_count": record.findings_count,
+            "findings_truncated": len(findings) < record.findings_count,
+            "offset": offset,
+            "limit": limit,
+            "returned": len(page),
+            "findings": page,
+            "source": "database-read-model",
+            "note": "finding excerpts are bounded; use the signed artifact/report for the authoritative export",
+        }
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.warning("binary_scan_findings_unavailable", extra={"error_type": type(exc).__name__})
+        raise HTTPException(status_code=503,
+                            detail="binary scan index is unavailable; apply migration 0063") from exc
+
+
+@router.get("/binary/scans/{scan_id}/coverage")
+def binary_scan_coverage(
+    scan_id: str,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_READERS)),
+):
+    """Return parser coverage and evidence-state counts for one scan."""
+    from db.models.binary_scan import BinaryScanObservation
+
+    try:
+        tenant = _artifact_tenant(request, db, user)
+        record = _binary_scan_row(db, scan_id, tenant)
+        if record is None:
+            raise HTTPException(status_code=404, detail="binary scan not found")
+        states = db.query(BinaryScanObservation.evidence_state, func.count(BinaryScanObservation.id)).filter(
+            BinaryScanObservation.scan_record_id == record.id,
+            _binary_tenant_clause(BinaryScanObservation, tenant)).group_by(
+                BinaryScanObservation.evidence_state).all()
+        formats = db.query(BinaryScanObservation.format, func.count(BinaryScanObservation.id)).filter(
+            BinaryScanObservation.scan_record_id == record.id,
+            _binary_tenant_clause(BinaryScanObservation, tenant)).group_by(
+                BinaryScanObservation.format).all()
+        summary = record.summary if isinstance(record.summary, dict) else {}
+        return {
+            "scan_id": record.id,
+            "artifact_id": record.artifact_id,
+            "status": record.status,
+            "files_walked": record.files_walked,
+            "binaries_scanned": record.binaries_scanned,
+            "findings_count": record.findings_count,
+            "observations_count": record.observations_count,
+            "observations_truncated": bool(record.observations_truncated),
+            "coverage": record.coverage or {},
+            "limits": record.limits or {},
+            "summary": summary,
+            "evidence_states": {str(key): int(value) for key, value in states},
+            "formats": {str(key): int(value) for key, value in formats},
+            "source": "database-read-model",
+        }
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.warning("binary_scan_coverage_unavailable", extra={"error_type": type(exc).__name__})
+        raise HTTPException(status_code=503,
+                            detail="binary scan index is unavailable; apply migration 0063") from exc
+
+
+class BinaryScanCompareRequest(BaseModel):
+    from_scan_id: str = Field(..., min_length=1, max_length=36)
+    to_scan_id: str = Field(..., min_length=1, max_length=36)
+
+
+@router.post("/binary/scans/compare")
+def binary_scan_compare(
+    body: BinaryScanCompareRequest,
+    request: Request,
+    db: Session = Depends(get_db_session),
+    user: str = Depends(require_roles(*_SBOM_READERS)),
+):
+    """Compare two tenant-owned read-model scans by path/hash/evidence state."""
+    try:
+        tenant = _artifact_tenant(request, db, user)
+        before = _binary_scan_row(db, body.from_scan_id, tenant)
+        after = _binary_scan_row(db, body.to_scan_id, tenant)
+        if before is None or after is None:
+            raise HTTPException(status_code=404, detail="one or both binary scans not found")
+        from db.models.binary_scan import BinaryScanObservation
+
+        def load(record: Any) -> dict[str, dict[str, Any]]:
+            rows = _binary_scan_observation_query(db, record.id, tenant).order_by(
+                BinaryScanObservation.path.asc()).limit(5000).all()
+            return {row.path: {
+                "path": row.path, "format": row.format, "arch": row.arch,
+                "sha256": row.sha256, "evidence_state": row.evidence_state,
+                "derived_from": row.derived_from, "depth": row.depth,
+                "crypto": row.crypto or {}, "hardening": row.hardening or {},
+                "signature": row.signature or {}, "findings_count": len(row.findings or []),
+            } for row in rows}
+
+        left, right = load(before), load(after)
+        added = [right[path] for path in sorted(set(right) - set(left))]
+        removed = [left[path] for path in sorted(set(left) - set(right))]
+        changed = [{"before": left[path], "after": right[path]} for path in sorted(set(left) & set(right))
+                   if left[path] != right[path]]
+        max_rows = 1000
+        return {
+            "from_scan_id": before.id, "to_scan_id": after.id,
+            "from_artifact_id": before.artifact_id, "to_artifact_id": after.artifact_id,
+            "counts": {"added": len(added), "removed": len(removed), "changed": len(changed)},
+            "added": added[:max_rows], "removed": removed[:max_rows], "changed": changed[:max_rows],
+            "truncated": any(len(rows) > max_rows for rows in (added, removed, changed)),
+            "observations_truncated": bool(before.observations_truncated or after.observations_truncated),
+            "source": "database-read-model",
+            "note": "This is a bounded observation diff; use signed BOM diff for the authoritative export",
+        }
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.warning("binary_scan_compare_unavailable", extra={"error_type": type(exc).__name__})
+        raise HTTPException(status_code=503,
+                            detail="binary scan index is unavailable; apply migration 0063") from exc
+
+
+@router.get("/binary/scans/{scan_id}")
+def binary_scan_detail(scan_id: str, request: Request,
+                       db: Session = Depends(get_db_session),
+                       user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Read one bounded scan record and its parser observations."""
+    from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
+
+    try:
+        tenant = _artifact_tenant(request, db, user)
+        row = db.query(BinaryScanRecord).filter(
+            BinaryScanRecord.id == scan_id,
+            _binary_tenant_clause(BinaryScanRecord, tenant)).first()
+        if row is None:
+            raise HTTPException(status_code=404, detail="binary scan not found")
+        observations = db.query(BinaryScanObservation).filter(
+            BinaryScanObservation.scan_record_id == row.id,
+            _binary_tenant_clause(BinaryScanObservation, tenant)).order_by(
+                BinaryScanObservation.path.asc()).limit(5000).all()
+        return {"record": _binary_record_json(row),
+                "observations": [_binary_record_json(item) for item in observations],
+                "observation_limit": 5000}
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.warning("binary_scan_detail_unavailable", extra={"error_type": type(exc).__name__})
+        raise HTTPException(status_code=503,
+                            detail="binary scan index is unavailable; apply migration 0063") from exc
+
+
 @router.get("/binary/artifacts/{artifact_id}/cbom")
 def binary_cbom(artifact_id: str, request: Request, db: Session = Depends(get_db_session),
                 user: str = Depends(require_roles(*_SBOM_READERS))):
@@ -1347,6 +1775,52 @@ def binary_cbom(artifact_id: str, request: Request, db: Session = Depends(get_db
     if man is None:
         raise HTTPException(status_code=404, detail="no CBOM stored for this artifact")
     blob, _at_rest = _artifact_cbom_blob(store, man, _artifact_tenant(request, db, user))
+    return json.loads(blob.decode("utf-8"))
+
+
+@router.get("/binary/artifacts/{artifact_id}/bom/{bom_type}")
+def binary_bom(artifact_id: str, bom_type: str, request: Request,
+               db: Session = Depends(get_db_session),
+               user: str = Depends(require_roles(*_SBOM_READERS))):
+    """Read a tenant-scoped BOM projection produced by a binary scan.
+
+    ``bom_type`` is one of ``sbom``, ``cbom``, ``hbom``, ``nbom``, ``vbom``,
+    ``vulnerability-bom`` or ``technology-bom``. SBOM/CBOM retain their existing
+    download paths; this endpoint makes every additional projection discoverable
+    without exposing storage keys or another tenant's artifact.
+    """
+    if not _ARTIFACT_ID_RE.match(artifact_id):
+        raise HTTPException(status_code=404, detail="artifact not found")
+    requested = str(bom_type).strip().lower()
+    aliases = {
+        "hbom": "hbom", "nbom": "nbom", "vbom": "vbom", "vendor-bom": "vbom",
+        "vulnerability-bom": "vulnerability_bom", "vulbom": "vulnerability_bom",
+        "technology-bom": "technology_bom", "technology": "technology_bom",
+    }
+    key = aliases.get(requested)
+    if requested not in {"sbom", "cbom"} and key is None:
+        raise HTTPException(status_code=404, detail="unsupported binary BOM type")
+    tenant = _artifact_tenant(request, db, user)
+    store = _sbom_storage()
+    man = _find_manifest(store, artifact_id, tenant_id=tenant)
+    if man is None:
+        raise HTTPException(status_code=404, detail="artifact not found")
+    if requested == "sbom":
+        document = {"storage_key": man.get("storage_key")}
+        key = "sbom"
+    elif requested == "cbom":
+        document = {"storage_key": man.get("cbom_storage_key")}
+        key = "cbom"
+    else:
+        document = (man.get("bom_documents") or {}).get(key)
+    if not document or not document.get("storage_key"):
+        raise HTTPException(status_code=404, detail="BOM projection was not stored")
+    scoped = dict(man, storage_key=document["storage_key"])
+    try:
+        blob, _ = _read_artifact_blob(store, scoped, tenant_id=tenant,
+                                      label=f"stored {key}")
+    except ArtifactCryptoError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     return json.loads(blob.decode("utf-8"))
 
 
@@ -1377,6 +1851,9 @@ def sbom_artifacts(request: Request, kind: str | None = None, fmt: str | None = 
         item["download_url"] = f"/api/v1/devsecops/sbom/{aid}/download" if aid else None
         item["verify_url"] = f"/api/v1/devsecops/sbom/{aid}/verify" if aid else None
         item["report_url"] = f"/api/v1/devsecops/sbom/{aid}/report" if aid else None
+        item["bom_urls"] = ({name: f"/api/v1/devsecops/binary/artifacts/{aid}/bom/{name.replace('_', '-')}"
+                             for name in (item.get("bom_documents") or {})}
+                            if str(item.get("kind") or "").lower() == "binary" else {})
     return {"total": len(items), "returned": len(bounded), "artifacts": bounded}
 
 
@@ -1443,6 +1920,31 @@ def sbom_diff(body: SbomDiffRequest, request: Request, db: Session = Depends(get
                                                      "or from_doc+to_doc"))
     result = diff_boms(old, new)
     result["sources"] = meta
+    if body.from_artifact and body.to_artifact and \
+            str(old_man.get("kind") or "").lower() == "binary" and \
+            str(new_man.get("kind") or "").lower() == "binary":
+        from devsecops.binary_boms import diff_binary_bom_bundles
+
+        def _binary_views(document: dict, manifest: dict) -> dict[str, dict]:
+            views: dict[str, dict] = {"sbom": document}
+            try:
+                cbom_blob, _ = _artifact_cbom_blob(store, manifest, tenant)
+                views["cbom"] = json.loads(cbom_blob)
+            except (ArtifactCryptoError, FileNotFoundError, ValueError, TypeError, KeyError):
+                pass
+            for name, descriptor in (manifest.get("bom_documents") or {}).items():
+                if not isinstance(descriptor, dict) or not descriptor.get("storage_key"):
+                    continue
+                try:
+                    scoped = dict(manifest, storage_key=descriptor["storage_key"])
+                    sidecar, _ = _artifact_blob(store, scoped, tenant, label=f"stored {name}")
+                    views[name] = json.loads(sidecar)
+                except (ArtifactCryptoError, FileNotFoundError, ValueError, TypeError, KeyError):
+                    continue
+            return views
+
+        result["binary_bom_diff"] = diff_binary_bom_bundles(
+            _binary_views(old, old_man), _binary_views(new, new_man))
     return result
 
 
@@ -1685,17 +2187,17 @@ def sbom_rescan(artifact_id: str, request: Request, body: SbomRescanRequest | No
             "this artifact predates recorded scan options — scan the target again "
             "to enable re-scan"))
     overrides = body or SbomRescanRequest()
-    request = {"kind": opts.get("kind") or "source", "target": opts["target"],
-               "format": opts.get("format") or "cyclonedx",
-               "as_image": bool(opts.get("as_image")),
-               "include_vendored": (overrides.include_vendored if overrides.include_vendored is not None
-                                    else bool(opts.get("include_vendored"))),
-               "use_lockfiles": (overrides.use_lockfiles if overrides.use_lockfiles is not None
-                                 else bool(opts.get("use_lockfiles"))),
-               "recursive": bool(opts.get("recursive", True)),
-               "include_raw": bool(opts.get("include_raw", False))}
+    scan_request = {"kind": opts.get("kind") or "source", "target": opts["target"],
+                    "format": opts.get("format") or "cyclonedx",
+                    "as_image": bool(opts.get("as_image")),
+                    "include_vendored": (overrides.include_vendored if overrides.include_vendored is not None
+                                         else bool(opts.get("include_vendored"))),
+                    "use_lockfiles": (overrides.use_lockfiles if overrides.use_lockfiles is not None
+                                      else bool(opts.get("use_lockfiles"))),
+                    "recursive": bool(opts.get("recursive", True)),
+                    "include_raw": bool(opts.get("include_raw", False))}
     try:
-        fresh = sbom_scan(SbomScanRequest(**request), db=db, user=user)
+        fresh = sbom_scan(SbomScanRequest(**scan_request), request=request, db=db, user=user)
     except HTTPException as exc:
         raise HTTPException(status_code=exc.status_code,
                             detail=f"re-scan of {opts['target']} failed: {exc.detail}")
@@ -1898,7 +2400,11 @@ def sbom_components(request: Request, q: str | None = None, crypto: bool | None 
         scanned += 1
         try:
             doc = json.loads(_sbom_storage().get(str(man.get("storage_key"))).decode("utf-8"))
-        except Exception:  # noqa: BLE001 — a corrupt artifact must not break the index
+        except Exception as _handler_exc:  # noqa: BLE001 — a corrupt artifact must not break the index
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         for comp in _bom_components(doc):
             is_crypto = bool(comp.get("crypto")) or _is_crypto_component(comp, doc)
@@ -1945,7 +2451,11 @@ def sbom_advisories(request: Request, severity: str | None = None, cve: str | No
         checked += 1
         try:
             doc = json.loads(_sbom_storage().get(str(man.get("storage_key"))).decode("utf-8"))
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         for vuln in doc.get("vulnerabilities") or []:
             if not isinstance(vuln, dict):
@@ -1995,8 +2505,14 @@ def sbom_prune(request: Request, older_than_days: int = 90,
             continue
         if stamp < cutoff and man.get("storage_key"):
             store.delete(man["storage_key"])
+            if man.get("cbom_storage_key"):
+                store.delete(man["cbom_storage_key"])
+            for document in (man.get("bom_documents") or {}).values():
+                if document.get("storage_key"):
+                    store.delete(document["storage_key"])
             deleted.append({"artifact_id": man.get("artifact_id"), "created_at": created,
-                            "target": man.get("target")})
+                            "target": man.get("target"),
+                            "bom_documents_deleted": len(man.get("bom_documents") or {})})
         else:
             kept += 1
     if deleted:

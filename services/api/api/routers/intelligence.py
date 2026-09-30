@@ -254,8 +254,11 @@ def ci_gate(
         logger.debug("gate_evaluation_not_recorded", exc_info=True)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_exc:
+            logger.warning(
+                "gate_evaluation_rollback_failed",
+                extra={"error_type": type(rollback_exc).__name__},
+            )
     return gate
 
 
