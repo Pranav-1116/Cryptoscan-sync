@@ -429,16 +429,71 @@ def parse_der(der: bytes | None) -> dict[str, Any] | None:
 
 
 def hostname_matches(hostname: str, cert: dict[str, Any]) -> bool:
-    host = (hostname or "").lower().split(":")[0]
-    if not host:
+    """Apply RFC-style endpoint identity matching without over-accepting certs.
+
+    Subject Alternative Name is authoritative when present; the common-name
+    fallback is used only for certificates that have no SAN at all. Wildcards
+    match exactly one DNS label and never an IP address.
+    """
+    import ipaddress
+
+    raw_host = str(hostname or "").strip().lower().rstrip(".")
+    if raw_host.startswith("[") and "]" in raw_host:
+        raw_host = raw_host[1:].split("]", 1)[0]
+    elif raw_host.count(":") == 1:
+        # A caller may pass host:port. Do not split an IPv6 literal.
+        candidate, port = raw_host.rsplit(":", 1)
+        if port.isdigit():
+            raw_host = candidate
+    if not raw_host:
         return False
-    subject = normalize_dn(str(cert.get("subject") or "")).lower()
-    if f"cn={host}" in subject.replace(" ", ""):
-        return True
-    for san in cert.get("san") or []:
-        value = san.split(":", 1)[-1].lower()
+    try:
+        host = str(ipaddress.ip_address(raw_host))
+        host_is_ip = True
+    except ValueError:
+        host_is_ip = False
+        try:
+            host = raw_host.encode("idna").decode("ascii")
+        except UnicodeError:
+            host = raw_host
+
+    def _dns_equal(value: str) -> bool:
+        value = value.strip().lower().rstrip(".")
+        if host_is_ip:
+            try:
+                return str(ipaddress.ip_address(value)) == host
+            except ValueError:
+                return False
+        try:
+            value = value.encode("idna").decode("ascii")
+        except UnicodeError:
+            return False
         if value == host:
             return True
-        if value.startswith("*.") and host.endswith(value[1:]):
+        # RFC 6125: a wildcard covers one complete left-most label only.
+        return (
+            not host_is_ip
+            and value.startswith("*.")
+            and host.endswith(value[1:])
+            and "." not in host[: -len(value[1:])]
+            and host[: -len(value[1:])].strip(".") != ""
+        )
+
+    sans = list(cert.get("san") or [])
+    if sans:
+        for san in sans:
+            kind, separator, value = str(san).partition(":")
+            if separator and kind.lower() not in {"dns", "ip address", "ip"}:
+                continue
+            if _dns_equal(value if separator else kind):
+                return True
+        return False
+
+    # CN fallback only when SAN is absent, and compare the parsed attribute
+    # rather than searching for a substring in the whole distinguished name.
+    subject = normalize_dn(str(cert.get("subject") or ""))
+    for part in subject.split(","):
+        key, separator, value = part.partition("=")
+        if separator and key.strip().lower() == "cn" and _dns_equal(value):
             return True
     return False
