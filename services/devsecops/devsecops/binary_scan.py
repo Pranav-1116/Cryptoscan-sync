@@ -5506,13 +5506,22 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
     budget_reasons: list[dict[str, Any]] = []
     cancelled = False
     walk_truncated = False
+    outside_root_paths: list[str] = []
+    duplicate_paths: list[str] = []
     if base.is_file():
         candidates = [base]
         root = base.parent
     else:
         root = base
-        walker = base.rglob("*") if recursive else base.glob("*")
+        root_real = root.resolve()
+        # Filesystem enumeration order is not a scan input. Sort before
+        # applying the walk cap so repeated scans choose the same canonical
+        # alias and the same bounded prefix.
+        walker = iter(sorted(base.rglob("*") if recursive else base.glob("*"),
+                            key=lambda path: (path.is_symlink(), path.as_posix())))
         candidates = []
+        seen_real_paths: set[Path] = set()
+        seen_file_ids: set[tuple[int, int]] = set()
         for index, candidate in enumerate(walker):
             if index >= MAX_FILES_WALKED:
                 walk_truncated = True
@@ -5521,6 +5530,26 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
                 continue
             if any(part in SKIP_DIRS for part in candidate.parts):
                 continue
+            try:
+                real_path = candidate.resolve(strict=True)
+            except (OSError, RuntimeError):
+                outside_root_paths.append(str(candidate))
+                continue
+            # Directory walks must not follow a symlink out of the requested
+            # root, and a symlink to an in-root file must not double-count its
+            # cryptographic evidence under a second path.
+            try:
+                real_path.relative_to(root_real)
+                stat = real_path.stat()
+            except (OSError, ValueError):
+                outside_root_paths.append(str(candidate))
+                continue
+            file_id = (int(stat.st_dev), int(stat.st_ino))
+            if real_path in seen_real_paths or file_id in seen_file_ids:
+                duplicate_paths.append(str(candidate))
+                continue
+            seen_real_paths.add(real_path)
+            seen_file_ids.add(file_id)
             candidates.append(candidate)
 
     # a rule file contains the very strings its rules look for, so scanning the
@@ -5628,6 +5657,15 @@ def scan_path(target: str | Path, *, recursive: bool = True, include_raw: bool =
         "target": str(base),
         "target_kind": "binary",
         "files_walked": len(candidates),
+        "files_rejected": len(outside_root_paths),
+        "files_deduplicated": len(duplicate_paths),
+        "path_restrictions": {
+            "outside_root": outside_root_paths[:200],
+            "duplicate_real_paths": duplicate_paths[:200],
+            "note": ("directory traversal follows only files whose resolved path remains inside "
+                     "the requested root; symlink aliases are counted once")
+                     if (outside_root_paths or duplicate_paths) else None,
+        },
         "binaries_scanned": len(records),
         "binaries": records,
         "by_format": _counts(record["format"] for record in records),
@@ -6022,6 +6060,9 @@ def sbom_result(scan: dict[str, Any]) -> dict[str, Any]:
         "yara": scan.get("yara") or {},
         "binaries_scanned": scan.get("binaries_scanned", 0),
         "files_walked": scan.get("files_walked", 0),
+        "files_rejected": scan.get("files_rejected", 0),
+        "files_deduplicated": scan.get("files_deduplicated", 0),
+        "path_restrictions": scan.get("path_restrictions") or {},
         "by_format": scan.get("by_format") or {},
         "by_arch": scan.get("by_arch") or {},
         "embedded_binaries": sum(1 for record in all_records if record.get("derived_from")),

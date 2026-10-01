@@ -1851,3 +1851,23 @@ def test_bytecode_headers_fail_closed_at_metadata_bounds():
     partial = bs.parse_bytes(pyc, name="partial.pyc")
     assert partial["format"] == "python-bytecode"
     assert partial["parsed"] is True and partial["python"].get("marshal_error")
+
+
+def test_directory_scan_rejects_symlink_escapes_and_deduplicates_real_files(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(_elf64())
+    real = root / "real.bin"
+    real.write_bytes(_elf64())
+    (root / "alias.bin").symlink_to(real)
+    (root / "escape.bin").symlink_to(outside)
+
+    result = bs.scan_path(root, include_raw=True)
+
+    assert result["files_walked"] == 1
+    assert result["binaries_scanned"] == 1
+    assert result["files_deduplicated"] == 1
+    assert result["files_rejected"] == 1
+    assert str(root / "escape.bin") in result["path_restrictions"]["outside_root"]
+    assert str(root / "alias.bin") in result["path_restrictions"]["duplicate_real_paths"]

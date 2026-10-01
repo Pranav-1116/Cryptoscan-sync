@@ -293,9 +293,14 @@ class HardwareObservation(BaseModel):
     hardware_revision: Optional[str] = None
     environment: Optional[str] = None
     region: Optional[str] = None
-    source: str = "unknown"                 # discovery method used
+    source: str = "unknown"                 # highest-confidence discovery method
     confidence: str = HardwareConfidence.LOW.value
     visibility: str = CloudVisibility.OBSERVED.value
+    # All contributing discovery methods remain visible even when one source
+    # wins the canonical fields. Conflicts are uncertainty, not permission to
+    # silently overwrite identity evidence.
+    discovery_sources: list[str] = Field(default_factory=list)
+    identity_conflicts: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
 
     cpu: Optional[dict[str, Any]] = None
     tpm: Optional[dict[str, Any]] = None

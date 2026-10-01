@@ -278,8 +278,26 @@ class HardwareEventPipeline:
             return resolved.asset_id, matched
         if event.asset_id:
             return event.asset_id, []
-        # no identity signals at all -> deterministic fallback key
-        fallback = f"hw-unknown-{abs(hash(event.observed_at + event.source)) % 10**9}"
+        # no identity signals at all -> stable fallback key. Python's built-in
+        # hash is intentionally randomized between processes, so it cannot be
+        # used as an asset identity or timeline join key.
+        import hashlib
+        import json
+
+        # Include the immutable event shape so two anonymous events emitted at
+        # the same timestamp/source do not collapse merely because their
+        # process-local hash seed happened to differ. Hash only the canonical
+        # envelope; do not expose payload contents in the fallback identity.
+        seed = json.dumps({
+            "observed_at": event.observed_at,
+            "source": event.source,
+            "event_type": event.event_type.value,
+            "component": event.component,
+            "version": event.version,
+            "device_type": event.device_type,
+            "payload": event.payload,
+        }, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        fallback = f"hw-unknown-{hashlib.sha256(seed).hexdigest()[:12]}"
         return fallback, []
 
     def process(self, event: HardwareEvent) -> HardwareEventEnvelope:
