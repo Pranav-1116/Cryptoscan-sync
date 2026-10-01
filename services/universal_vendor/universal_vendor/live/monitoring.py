@@ -157,7 +157,10 @@ class LiveVendorMonitor:
             if isinstance(nested, Mapping):
                 merged = dict(nested)
                 for key in ("vendor", "product", "asset_id", "asset", "method", "name", "status", "authorized", "auth_ref", "auth_status", "auth_updated_at"):
-                    if row.get(key) is not None and (key not in merged or merged.get(key) is None):
+                    if row.get(key) is not None and (
+                        key in {"status", "authorized"}
+                        or key not in merged or merged.get(key) is None
+                    ):
                         merged[key] = row[key]
                 row = merged
             if "authorized" in row and row.get("authorized") is not True:
