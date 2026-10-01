@@ -329,6 +329,14 @@ class MonitorEngine:
 
         try:
             result = runner(dict(target.config or {}), self.session)
+            # Domain adapters still own their operational persistence, but all
+            # explicit crypto observations/findings enter the same durable
+            # tenant-scoped CBOM/event journal before the target summary is
+            # committed. Projection failures are real degradation, not a
+            # silently successful scan.
+            from worker.monitor.realtime_projection import persist_monitor_projection
+
+            persist_monitor_projection(target, result, self.session)
             self._meter_scan(target)
         except Exception as exc:  # 24/7 rule: the target fails, the loop does not
             logger.warning("monitor_target_failed", extra={"target": target.name})

@@ -33,16 +33,23 @@ _OPERATORS = ("admin", "superadmin", "ciso", "security_analyst", "scanner")
 
 
 class RunScanRequest(BaseModel):
-    # Subset of scanners to run; default = the periodic host set plus the
-    # configured vendor realtime poll. Target-based scanners need a value below.
+    # All crypto-producing families are represented by default. Families that
+    # need a target/credential are returned as UNCONFIGURED/BLOCKED rather than
+    # silently omitted; configured sources enter the same CBOM/evidence path.
     scanners: list[str] = Field(
-        default_factory=lambda: ["vendor", "hardware", "runtime"],
-        description=("vendor | hardware | runtime | network | container | ot | cloud "
-                     "| source | universal"),
+        default_factory=lambda: [
+            "vendor", "universal", "source", "runtime", "hardware", "network",
+            "cloud", "container", "ot", "telecom", "payment", "keyassure",
+            "binary", "devsecops",
+        ],
+        description=("vendor | universal | source | runtime | hardware | network | cloud "
+                     "| container | ot | telecom | payment | keyassure | binary | devsecops"),
     )
     network_target: Optional[str] = Field(
         default=None, description="host:port for a TLS probe, e.g. example.com:443")
     network_full: bool = False
+    network_ipsec: bool = Field(default=False, description="explicitly enable the IKE/IPsec probe")
+    network_dnssec: bool = Field(default=False, description="explicitly enable the DNSSEC zone probe")
     container_target: Optional[str] = Field(
         default=None, description="filesystem root, docker-save .tar, or registry image")
     ot_logs: Optional[str] = Field(
@@ -53,6 +60,16 @@ class RunScanRequest(BaseModel):
         default=None, description="source directory for the static crypto-API scanner")
     universal_target: Optional[str] = Field(
         default=None, description="source path for the universal crypto scanner")
+    telecom_target: Optional[str] = Field(
+        default=None, description="operator registry path/config for the 3GPP telecom scanner")
+    payment_config: Optional[str] = Field(
+        default=None, description="JSON path containing an operator-supplied HSM audit path or URL")
+    keyassure_target: Optional[str] = Field(
+        default=None, description="operator-supplied key-assurance input path")
+    binary_target: Optional[str] = Field(
+        default=None, description="operator-supplied binary/firmware input path")
+    devsecops_target: Optional[str] = Field(
+        default=None, description="operator-supplied DevSecOps artifact/SBOM input path")
 
 
 class PeriodicRequest(BaseModel):
@@ -90,6 +107,7 @@ def status(user: str = Depends(get_current_user)) -> dict[str, Any]:
         for key, res in (snap.get("results") or {}).items():
             summaries[key] = {
                 "ok": res.get("ok"),
+                "status": res.get("status"),
                 "elapsed_s": res.get("elapsed_s"),
                 "summary": res.get("summary"),
                 "error": res.get("error"),
@@ -118,11 +136,18 @@ def run_scan(
     targets = {
         "network": body.network_target,
         "network_full": body.network_full,
+        "network_ipsec": body.network_ipsec,
+        "network_dnssec": body.network_dnssec,
         "container": body.container_target,
         "ot_logs": body.ot_logs,
         "cloud_live": body.cloud_live,
         "source": body.source_target,
         "universal": body.universal_target,
+        "telecom": body.telecom_target,
+        "payment": body.payment_config,
+        "keyassure": body.keyassure_target,
+        "binary": body.binary_target,
+        "devsecops": body.devsecops_target,
     }
     # SSRF / path-traversal / shell-injection guard: refuse unsafe scan
     # targets (loopback, cloud-metadata, secret paths, shell metachars)

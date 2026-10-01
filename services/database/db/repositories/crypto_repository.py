@@ -48,12 +48,26 @@ class CryptoRepository(BaseRepository[CryptoLiveState]):
     def upsert_state(self, state: dict[str, Any]) -> CryptoLiveState:
         """Persist a LiveCryptoState.to_dict() as the current truth."""
         asset_id = str(state.get("asset_id") or "")
+        tenant_id = state.get("tenant_id")
+        if tenant_id is None:
+            try:
+                from db.tenancy import current_tenant
+
+                tenant_id = current_tenant()
+            except Exception:
+                tenant_id = None
+        predicates = [CryptoLiveState.asset_id == asset_id]
+        if tenant_id is not None:
+            predicates.append(CryptoLiveState.tenant_id == tenant_id)
+        else:
+            predicates.append(CryptoLiveState.tenant_id.is_(None))
         row = self.session.execute(
-            select(CryptoLiveState).where(CryptoLiveState.asset_id == asset_id)
+            select(CryptoLiveState).where(*predicates)
         ).scalar_one_or_none()
         if row is None:
-            row = CryptoLiveState(asset_id=asset_id)
+            row = CryptoLiveState(asset_id=asset_id, tenant_id=tenant_id)
             self.session.add(row)
+        row.tenant_id = tenant_id
         row.cbom_version = int(state.get("cbom_version") or 1)
         row.algorithms = state.get("algorithms")
         row.quantum_status = state.get("quantum_status")
@@ -90,7 +104,16 @@ class CryptoRepository(BaseRepository[CryptoLiveState]):
     # ── event journal ──────────────────────────────────────────────────
 
     def append_event(self, event: dict[str, Any]) -> CryptoLiveEventRow:
+        tenant_id = event.get("tenant_id")
+        if tenant_id is None:
+            try:
+                from db.tenancy import current_tenant
+
+                tenant_id = current_tenant()
+            except Exception:
+                tenant_id = None
         row = CryptoLiveEventRow(
+            tenant_id=tenant_id,
             event_type=str(event.get("event_type") or ""),
             asset_id=str(event.get("asset_id") or ""),
             source=str(event.get("source") or "live"),
