@@ -46,6 +46,8 @@ class ScanReport:
     mode: str
     plugin_id: Optional[str] = None
     detection: dict[str, Any] = field(default_factory=dict)
+    connection: dict[str, Any] = field(default_factory=dict)
+    capabilities: dict[str, Any] = field(default_factory=dict)
     observations: list[UniversalObservation] = field(default_factory=list)
     evidence: list[dict[str, Any]] = field(default_factory=list)
     evidence_verification: dict[str, Any] = field(default_factory=dict)
@@ -60,6 +62,8 @@ class ScanReport:
             "mode": self.mode,
             "plugin_id": self.plugin_id,
             "detection": self.detection,
+            "connection": self.connection,
+            "capabilities": self.capabilities,
             "observations": [obs.model_dump(mode="json") for obs in self.observations],
             "evidence": self.evidence,
             "evidence_verification": self.evidence_verification,
@@ -149,17 +153,26 @@ class UniversalVendorScanner:
         report.plugin_id = plugin.plugin_id
         report.stages_run.append("select")
 
+        # Explicit plugin scans still expose their detector result. Selection
+        # is operator-directed in these modes, so a low-confidence detector
+        # result must not silently abort the requested scan.
+        if not report.detection:
+            report.detection = plugin.detect(context).model_dump(mode="json")
+
         connection = plugin.validate_connection(context)
+        report.connection = connection.model_dump(mode="json")
         report.stages_run.append("validate")
         if not connection.connected:
             return report
 
         if mode in (ScanMode.AUTO_DETECT, ScanMode.DEEP_DISCOVERY,
                     ScanMode.CONTINUOUS_MONITORING):
+            report.capabilities = plugin.capabilities().model_dump(mode="json")
             report.stages_run.append("capabilities")
 
         # collect by mode
         raw: list[dict[str, Any]] = []
+        dependencies: list[dict[str, Any]] = []
         if "inventory" in stages:
             raw.extend(plugin.discover_inventory(context))
             report.stages_run.append("inventory")
@@ -173,14 +186,45 @@ class UniversalVendorScanner:
             raw.extend(plugin.discover_certificates(context))
             report.stages_run.append("certificates")
         if "dependencies" in stages:
-            raw.extend(plugin.discover_dependencies(context))
+            # Dependency records are graph edges, not crypto observations.
+            # Keeping them out of normalization prevents phantom assets while
+            # preserving their source/target attribution in the graph.
+            dependencies = [
+                {**dependency, "source_vendor": plugin.vendor,
+                 "source_product": plugin.product}
+                for dependency in plugin.discover_dependencies(context)
+            ]
             report.stages_run.append("dependencies")
 
         if "collect" in stages:
-            raw = plugin.collect_evidence(context)
+            # Collect explicitly so the dependency rows used in the graph are
+            # the same rows that were included in evidence, avoiding a second
+            # potentially time-varying API call.
+            raw = []
+            raw.extend(plugin.discover_inventory(context))
+            raw.extend(plugin.discover_configuration(context))
+            raw.extend(plugin.discover_crypto(context))
+            raw.extend(plugin.discover_certificates(context))
+            dependencies = [
+                {**dependency, "source_vendor": plugin.vendor,
+                 "source_product": plugin.product}
+                for dependency in plugin.discover_dependencies(context)
+            ]
             report.stages_run.append("collect")
 
         observations = plugin.normalize_all(raw)
+        # Normalizers keep the canonical fields concise, so attach the raw
+        # record's provenance at the orchestration boundary. This preserves
+        # source field/location and discovery method without exposing secrets.
+        for observation, source_record in zip(observations, raw):
+            evidence = dict(observation.evidence)
+            evidence.setdefault("source", source_record.get("source", plugin.plugin_id))
+            evidence.setdefault("field", source_record.get("evidence_field")
+                                or source_record.get("crypto_type", "observation"))
+            evidence.setdefault("discovery_method", source_record.get(
+                "discovery_method", "artifact"))
+            evidence.setdefault("visibility", observation.visibility)
+            observation.evidence = evidence
         report.observations = observations
         report.stages_run.append("normalize")
 
@@ -190,9 +234,16 @@ class UniversalVendorScanner:
         report.evidence_verification = verify_evidence_chain(report.evidence, scan_id=scan_id)
         report.stages_run.append("evidence")
 
-        # dependency graph (spec §21)
-        deps = plugin.discover_dependencies(context) if "dependencies" not in stages else []
-        graph = build_graph(observations, dependencies=deps)
+        # dependency graph (spec §21). Reuse the collected dependency rows;
+        # the previous implementation passed an empty list for DEEP discovery,
+        # silently dropping the very edges that mode promised to collect.
+        if "dependencies" not in stages:
+            dependencies = [
+                {**dependency, "source_vendor": plugin.vendor,
+                 "source_product": plugin.product}
+                for dependency in plugin.discover_dependencies(context)
+            ]
+        graph = build_graph(observations, dependencies=dependencies)
         report.graph = graph.to_dict()
         report.stages_run.append("graph")
 

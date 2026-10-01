@@ -9,6 +9,7 @@ TRUSTS, USES_ALGORITHM).
 
 from __future__ import annotations
 
+import json
 from typing import Any, Iterable
 
 from universal_vendor.models import UniversalObservation
@@ -18,6 +19,7 @@ class VendorGraph:
     def __init__(self) -> None:
         self._nodes: dict[str, dict[str, Any]] = {}
         self._edges: list[dict[str, Any]] = []
+        self._edge_keys: set[tuple[str, str, str, str]] = set()
 
     # ── nodes ──────────────────────────────────────────────────────────
 
@@ -52,13 +54,20 @@ class VendorGraph:
 
     def add_edge(self, source: str, target: str, relationship: str,
                  detail: dict[str, Any] | None = None) -> None:
+        detail = detail or {}
+        detail_key = json.dumps(detail, sort_keys=True, default=str,
+                                separators=(",", ":"))
+        key = (str(source), str(target), str(relationship), detail_key)
+        if key in self._edge_keys:
+            return
+        self._edge_keys.add(key)
         self.add_node(source)
         self.add_node(target)
         self._edges.append({
             "source": source,
             "target": target,
             "relationship": relationship,
-            "detail": detail or {},
+            "detail": detail,
         })
 
     def add_dependency(self, raw: dict[str, Any]) -> None:
@@ -67,7 +76,20 @@ class VendorGraph:
         target = raw.get("target_asset")
         relationship = raw.get("relationship", "DEPENDS_ON")
         if source and target:
-            self.add_edge(str(source), str(target), str(relationship),
+            source = str(source)
+            target = str(target)
+            self.add_node(
+                source,
+                vendor=str(raw.get("vendor") or raw.get("source_vendor") or ""),
+                product=str(raw.get("product") or raw.get("source_product") or ""),
+                asset_type=str(raw.get("asset_type") or "other"),
+            )
+            self.add_node(
+                target,
+                vendor=str(raw.get("target_vendor") or ""),
+                product=str(raw.get("target_product") or ""),
+            )
+            self.add_edge(source, target, str(relationship),
                           detail=raw.get("detail") or {})
 
     # ── queries ────────────────────────────────────────────────────────

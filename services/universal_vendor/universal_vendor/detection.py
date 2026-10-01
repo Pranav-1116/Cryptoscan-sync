@@ -38,7 +38,7 @@ _SIGNAL_CATALOG: list[tuple[str, str, str, float]] = [
     (r"fortios", "Fortinet", "FortiOS", 0.88),
     (r"fortigate", "Fortinet", "FortiGate", 0.9),
     (r"check point (?:gaia|secureplatform)", "Check Point", "Gaia", 0.92),
-    (r"checkpoint", "Check Point", "Gaia", 0.8),
+    (r"\bcheckpoint\b", "Check Point", "Gaia", 0.8),
     (r"sophos (?:xg|xg firewall)", "Sophos", "XG", 0.9),
     (r"sonicwall", "SonicWall", "SonicOS", 0.9),
     (r"watchguard (?:fireware|xtm)", "WatchGuard", "Fireware", 0.9),
@@ -56,7 +56,7 @@ _SIGNAL_CATALOG: list[tuple[str, str, str, float]] = [
     (r"digicert", "DigiCert", "PKI", 0.85),
     (r"sectigo", "Sectigo", "PKI", 0.85),
     (r"globalsign", "GlobalSign", "PKI", 0.85),
-    (r"openssl", "OpenSSL", "Internal PKI", 0.7),
+    (r"\bopenssl\b", "OpenSSL", "Internal PKI", 0.7),
     # HSM vendors
     (r"thales (?:luna|pay|dsm)", "Thales", "Luna HSM", 0.95),
     (r"entrust nshield", "Entrust", "nShield HSM", 0.95),
@@ -69,22 +69,22 @@ _SIGNAL_CATALOG: list[tuple[str, str, str, float]] = [
     (r"pingidentity|ping federate", "Ping Identity", "PingFederate", 0.9),
     (r"auth0", "Auth0", "Auth0", 0.9),
     # database vendors
-    (r"postgresql|postgres", "PostgreSQL", "PostgreSQL", 0.92),
-    (r"mysql", "MySQL", "MySQL", 0.92),
-    (r"mariadb", "MariaDB", "MariaDB", 0.92),
+    (r"\b(?:postgresql|postgres)\b", "PostgreSQL", "PostgreSQL", 0.92),
+    (r"\bmysql\b", "MySQL", "MySQL", 0.92),
+    (r"\bmariadb\b", "MariaDB", "MariaDB", 0.92),
     (r"microsoft sql server", "Microsoft", "SQL Server", 0.92),
     (r"oracle database", "Oracle", "Database", 0.92),
-    (r"mongodb", "MongoDB", "MongoDB", 0.9),
-    (r"redis", "Redis", "Redis", 0.9),
-    (r"cassandra", "Apache", "Cassandra", 0.9),
+    (r"\bmongodb\b", "MongoDB", "MongoDB", 0.9),
+    (r"\bredis\b", "Redis", "Redis", 0.9),
+    (r"\bcassandra\b", "Apache", "Cassandra", 0.9),
     # middleware vendors
     (r"apache(?:/|\s)", "Apache", "HTTP Server", 0.88),
-    (r"tomcat", "Apache", "Tomcat", 0.9),
-    (r"websphere", "IBM", "WebSphere", 0.9),
-    (r"weblogic", "Oracle", "WebLogic", 0.9),
-    (r"jboss", "Red Hat", "JBoss", 0.9),
-    (r"kafka", "Apache", "Kafka", 0.88),
-    (r"rabbitmq", "RabbitMQ", "RabbitMQ", 0.88),
+    (r"\btomcat\b", "Apache", "Tomcat", 0.9),
+    (r"\bwebsphere\b", "IBM", "WebSphere", 0.9),
+    (r"\bweblogic\b", "Oracle", "WebLogic", 0.9),
+    (r"\bjboss\b", "Red Hat", "JBoss", 0.9),
+    (r"\bkafka\b", "Apache", "Kafka", 0.88),
+    (r"\brabbitmq\b", "RabbitMQ", "RabbitMQ", 0.88),
     (r"microsoft-?iis", "Microsoft", "IIS", 0.9),
     # OS vendors
     (r"red hat enterprise linux|rhel", "Red Hat", "RHEL", 0.9),
@@ -94,22 +94,22 @@ _SIGNAL_CATALOG: list[tuple[str, str, str, float]] = [
     (r"microsoft windows", "Microsoft", "Windows", 0.9),
     (r"vmware esxi|esxi", "VMware", "ESXi", 0.92),
     # container registries
-    (r"harbor", "Harbor", "Harbor", 0.9),
-    (r"amazon ecr|ecr", "AWS", "ECR", 0.85),
+    (r"\bharbor\b", "Harbor", "Harbor", 0.9),
+    (r"amazon ecr|\becr\b", "AWS", "ECR", 0.85),
     (r"google artifact registry|gcr\.io", "Google", "Artifact Registry", 0.85),
-    (r"azure container registry|acr", "Microsoft", "ACR", 0.85),
+    (r"azure container registry|\bacr\b", "Microsoft", "ACR", 0.85),
     (r"docker registry", "Docker", "Registry", 0.85),
     # kubernetes
     (r"kube-apiserver|kubernetes", "Kubernetes", "Kubernetes", 0.92),
-    (r"eks|amazon elastic kubernetes", "AWS", "EKS", 0.85),
-    (r"aks|azure kubernetes", "Microsoft", "AKS", 0.85),
-    (r"gke|google kubernetes", "Google", "GKE", 0.85),
+    (r"\beks\b|amazon elastic kubernetes", "AWS", "EKS", 0.85),
+    (r"\baks\b|azure kubernetes", "Microsoft", "AKS", 0.85),
+    (r"\bgke\b|google kubernetes", "Google", "GKE", 0.85),
     (r"openshift", "Red Hat", "OpenShift", 0.9),
     (r"rancher", "Rancher", "Rancher", 0.9),
     # cloud
-    (r"aws|amazon web services", "AWS", "AWS", 0.8),
-    (r"azure", "Microsoft", "Azure", 0.8),
-    (r"google cloud|gcp", "Google", "GCP", 0.8),
+    (r"\baws\b|amazon web services", "AWS", "AWS", 0.8),
+    (r"\bazure\b", "Microsoft", "Azure", 0.8),
+    (r"google cloud|\bgcp\b", "Google", "GCP", 0.8),
     # devops
     (r"github", "GitHub", "GitHub", 0.92),
     (r"gitlab", "GitLab", "GitLab", 0.92),
@@ -118,7 +118,7 @@ _SIGNAL_CATALOG: list[tuple[str, str, str, float]] = [
     # SIEM
     (r"azure sentinel", "Microsoft", "Sentinel", 0.9),
     (r"splunk", "Splunk", "Splunk", 0.9),
-    (r"elastic", "Elastic", "Elastic", 0.85),
+    (r"\belastic(?: stack|search)?\b", "Elastic", "Elastic", 0.85),
     (r"qradar", "IBM", "QRadar", 0.9),
     # EDR
     (r"crowdstrike", "CrowdStrike", "Falcon", 0.9),
@@ -138,47 +138,72 @@ class UniversalVendorDetectionEngine:
         for regex, vendor, product, weight in catalog or _SIGNAL_CATALOG:
             self._patterns.append((re.compile(regex, re.IGNORECASE), vendor, product, weight))
 
-    def detect(self, context: dict[str, Any]) -> DetectionResult:
-        haystacks: list[str] = []
-        for key in ("banner", "ssh_banner", "server_header", "config",
-                    "snmp_sysdescr", "api_metadata", "cloud_metadata",
-                    "oidc_document", "kubeconfig"):
-            value = context.get(key)
-            if isinstance(value, str) and value.strip():
-                haystacks.append(value)
-        if isinstance(context.get("tls_certificate"), dict):
-            cert = context["tls_certificate"]
-            for field in ("subject", "issuer", "cn", "san"):
-                if isinstance(cert.get(field), str):
-                    haystacks.append(cert[field])
-        elif isinstance(context.get("certificate"), dict):
-            cert = context["certificate"]
-            for field in ("subject", "issuer", "cn"):
-                if isinstance(cert.get(field), str):
-                    haystacks.append(cert[field])
-        if isinstance(context.get("http_headers"), dict):
-            for value in context["http_headers"].values():
-                if isinstance(value, str):
-                    haystacks.append(value)
-        if isinstance(context.get("banners"), list):
-            for banner in context["banners"]:
-                if isinstance(banner, str):
-                    haystacks.append(banner)
-        joined = "\n".join(haystacks)
+    @staticmethod
+    def _flatten(value: Any, *, path: str = "") -> list[tuple[str, str]]:
+        """Flatten metadata into source-labelled text without losing structure."""
+        if isinstance(value, str):
+            return [(path or "context", value)] if value.strip() else []
+        if isinstance(value, dict):
+            rows: list[tuple[str, str]] = []
+            for key in sorted(value, key=str):
+                child = f"{path}.{key}" if path else str(key)
+                rows.extend(UniversalVendorDetectionEngine._flatten(value[key], path=child))
+            return rows
+        if isinstance(value, set):
+            value = sorted(value, key=str)
+        if isinstance(value, (list, tuple)):
+            rows = []
+            for index, item in enumerate(value):
+                rows.extend(UniversalVendorDetectionEngine._flatten(
+                    item, path=f"{path}[{index}]" if path else f"[{index}]"))
+            return rows
+        if value is None:
+            return []
+        return [(path or "context", str(value))]
 
-        scores: dict[tuple[str, str], list[tuple[str, float]]] = {}
+    @classmethod
+    def _haystacks(cls, context: dict[str, Any]) -> list[tuple[str, str]]:
+        fields = (
+            "banner", "ssh_banner", "server_header", "config", "snmp_sysdescr",
+            "api_metadata", "cloud_metadata", "oidc_document", "kubeconfig",
+            "vendor", "product", "manufacturer", "model", "version",
+        )
+        rows: list[tuple[str, str]] = []
+        for key in fields:
+            rows.extend(cls._flatten(context.get(key), path=key))
+        for key in ("tls_certificate", "certificate", "http_headers", "banners"):
+            rows.extend(cls._flatten(context.get(key), path=key))
+        return rows
+
+    def detect(self, context: dict[str, Any]) -> DetectionResult:
+        haystacks = self._haystacks(context)
+        joined = "\n".join(value for _source, value in haystacks)
+
+        # Count one match per pattern and evidence source. Repeating the same
+        # banner value in two fields must not manufacture confidence, while an
+        # independent certificate/API/header signal may corroborate it.
+        scores: dict[tuple[str, str], list[tuple[str, float, str]]] = {}
         for pattern, vendor, product, weight in self._patterns:
-            if pattern.search(joined):
-                scores.setdefault((vendor, product), []).append((pattern.pattern, weight))
+            matched_sources = sorted({
+                source for source, value in haystacks if pattern.search(value)
+            })
+            for source in matched_sources:
+                scores.setdefault((vendor, product), []).append(
+                    (pattern.pattern, weight, source))
 
         if not scores:
             return DetectionResult(confidence=0.0)
 
-        # best vendor/product by summed weight, confidence bounded
-        best_key = max(scores, key=lambda key: sum(w for _, w in scores[key]))
+        # Deterministic tie-breaking prevents dictionary/input ordering from
+        # changing the selected vendor when unrelated signals collide.
+        best_key = sorted(
+            scores,
+            key=lambda key: (-sum(weight for _regex, weight, _source in scores[key]),
+                             key[0].lower(), key[1].lower()),
+        )[0]
         vendor, product = best_key
         matched = scores[best_key]
-        raw_conf = sum(w for _, w in matched)
+        raw_conf = sum(weight for _regex, weight, _source in matched)
         confidence = min(0.5 + 0.25 * raw_conf, 0.99)
         return DetectionResult(
             detected_vendor=vendor,
@@ -186,7 +211,8 @@ class UniversalVendorDetectionEngine:
             detected_version=self._version(context, joined),
             detection_method="multi-signal",
             confidence=round(confidence, 3),
-            signals=[{"regex": r, "weight": w} for r, w in matched],
+            signals=[{"regex": regex, "weight": weight, "source": source}
+                     for regex, weight, source in matched],
         )
 
     @staticmethod

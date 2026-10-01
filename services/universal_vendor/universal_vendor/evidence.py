@@ -46,7 +46,11 @@ def build_evidence_chain(
         chain = _sha256(chain_input)
         records.append(
             {
-                "evidence_id": str(uuid.uuid4()),
+                # UUID5 makes the evidence identifier reproducible for the
+                # same scan, position, and observation. A UUID4 here made
+                # otherwise identical vendor reports differ on every run.
+                "evidence_id": str(uuid.uuid5(
+                    uuid.NAMESPACE_URL, f"{scan_id}:{index}:{chash}")),
                 "scan_id": scan_id,
                 "chain_position": index,
                 "content_hash": chash,
@@ -59,15 +63,41 @@ def build_evidence_chain(
     return records
 
 
-def verify_evidence_chain(records: Iterable[dict[str, Any]], *, scan_id: str) -> dict[str, Any]:
+def verify_evidence_chain(
+    records: Iterable[dict[str, Any]],
+    *,
+    scan_id: str,
+    previous_hash: Optional[str] = None,
+) -> dict[str, Any]:
+    """Verify content, ordering, scan identity, and chain linkage.
+
+    ``previous_hash`` is used when verifying an increment appended to an
+    existing chain. Without it, the first record must be rooted at ``scan_id``
+    (its stored ``previous_hash`` is therefore ``None``).
+    """
     rows = list(records)
     errors: list[str] = []
-    previous: Optional[str] = None
+    previous: Optional[str] = previous_hash
+    seen_ids: set[str] = set()
+    last_position: Optional[int] = None
     for index, record in enumerate(rows):
-        # incremental chains store their own absolute position; use it when
-        # present so per-record appends verify against their original bodies
-        body = {"index": record.get("chain_position", index),
-                "observation": record.get("observation")}
+        position = record.get("chain_position", index)
+        if not isinstance(position, int):
+            errors.append(f"invalid chain position at record {index}")
+            position = index
+        if last_position is not None and position != last_position + 1:
+            errors.append(f"chain position discontinuity at record {index}")
+        last_position = position
+        if record.get("scan_id") != scan_id:
+            errors.append(f"scan_id mismatch at position {index}")
+        evidence_id = record.get("evidence_id")
+        if evidence_id in seen_ids:
+            errors.append(f"duplicate evidence_id at position {index}")
+        if evidence_id:
+            seen_ids.add(evidence_id)
+        if record.get("previous_hash") != previous:
+            errors.append(f"previous_hash mismatch at position {index}")
+        body = {"index": position, "observation": record.get("observation")}
         expected_hash = content_hash(body)
         if record.get("content_hash") != expected_hash:
             errors.append(f"content_hash mismatch at position {index}")

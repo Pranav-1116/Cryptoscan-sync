@@ -170,21 +170,37 @@ class UniversalVendorPlugin(ABC):
         patterns: list of (regex, vendor, product, weight)
         Confidence = highest single matched weight (bounded 0.55–0.97).
         """
-        haystacks: list[str] = []
+        haystacks: list[tuple[str, str]] = []
+        seen_fields: set[str] = set()
         for field in banner_fields:
+            if field in seen_fields:
+                continue
+            seen_fields.add(field)
             value = context.get(field)
             if isinstance(value, str) and value.strip():
-                haystacks.append(value)
-        if isinstance(context.get("config"), str):
-            haystacks.append(context["config"])
-        joined = "\n".join(haystacks)
+                haystacks.append((field, value))
+        for field in ("vendor", "product", "manufacturer", "model"):
+            value = context.get(field)
+            if isinstance(value, str) and value.strip():
+                haystacks.append((field, value))
+        joined = "\n".join(value for _source, value in haystacks)
         best: tuple[float, str, str, str] = (0.0, "", "", "")
         matched_signals: list[dict[str, Any]] = []
+        matched_keys: set[tuple[str, str]] = set()
         for regex, vendor, product, weight in patterns:
-            if re.search(regex, joined, re.IGNORECASE):
+            for source, value in haystacks:
+                if not re.search(regex, value, re.IGNORECASE):
+                    continue
+                key = (regex, source)
+                if key in matched_keys:
+                    continue
+                matched_keys.add(key)
                 if weight > best[0]:
                     best = (weight, vendor, product, regex)
-                matched_signals.append({"regex": regex, "vendor": vendor, "product": product})
+                matched_signals.append({
+                    "regex": regex, "vendor": vendor, "product": product,
+                    "source": source,
+                })
         if best[0] == 0.0:
             return DetectionResult(confidence=0.0)
         version = self._version_from(context, joined)
