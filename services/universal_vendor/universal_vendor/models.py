@@ -97,6 +97,9 @@ class CryptoType(str, Enum):
     KEY_MATERIAL = "key_material"
     LIBRARY = "library"
     DEPENDENCY = "dependency"
+    SERVICE = "service"
+    RNG = "rng"
+    SECRET = "secret"
     PROTOCOL = "protocol"
     CONFIGURATION = "configuration"
 
@@ -175,15 +178,24 @@ class UniversalObservation(BaseModel):
     # crypto content
     crypto_type: str = CryptoType.ALGORITHM.value
     algorithm: Optional[str] = None
+    algorithm_type: Optional[str] = None
+    algorithm_mode: Optional[str] = None
+    padding_scheme: Optional[str] = None
+    algorithm_oid: Optional[str] = None
     algorithm_parameters: dict[str, Any] = Field(default_factory=dict)
+    quantum_safe_status: Optional[str] = None
 
     # Protocol, implementation, and library identity
     protocol: Optional[str] = None
     protocol_version: Optional[str] = None
+    cipher_suites: list[str] = Field(default_factory=list)
+    protocol_configuration: dict[str, Any] = Field(default_factory=dict)
     implementation: Optional[str] = None
     implementation_version: Optional[str] = None
     library: Optional[str] = None
     library_version: Optional[str] = None
+    library_dependencies: list[Any] = Field(default_factory=list)
+    fips_certification: Optional[str] = None
 
     # Key and non-secret material metadata. Values are never stored here.
     key_id: Optional[str] = None
@@ -191,17 +203,50 @@ class UniversalObservation(BaseModel):
     key_type: Optional[str] = None
     key_size: Optional[int] = None
     curve: Optional[str] = None
+    key_storage_location: Optional[str] = None
+    key_lifecycle_state: Optional[str] = None
     public_material_present: Optional[bool] = None
     private_material_present: Optional[bool] = None
     initialization_vector: Optional[dict[str, Any]] = None
     salt: Optional[dict[str, Any]] = None
     material_type: Optional[str] = None
     material_metadata: Optional[dict[str, Any]] = None
+    secret_type: Optional[str] = None
+    secret_storage_location: Optional[str] = None
 
     certificate: Optional[dict[str, Any]] = None
+    certificate_serial_number: Optional[str] = None
+    certificate_issuer: Optional[str] = None
+    certificate_subject: Optional[str] = None
+    certificate_valid_from: Optional[str] = None
+    certificate_valid_to: Optional[str] = None
+    certificate_public_key_type: Optional[str] = None
+    certificate_public_key_size: Optional[int] = None
+    certificate_public_key_curve: Optional[str] = None
+    certificate_signature_algorithm: Optional[str] = None
     certificate_chain: list[dict[str, Any]] = Field(default_factory=list)
     configuration: Optional[dict[str, Any]] = None
     observed_usage: Optional[bool] = None
+
+    # Runtime/service, risk, compliance, and migration metadata. These are
+    # references and classifications only; secret values are never fields.
+    rng_name: Optional[str] = None
+    rng_type: Optional[str] = None
+    rng_source: Optional[str] = None
+    component_usage: dict[str, Any] = Field(default_factory=dict)
+    related_vulnerabilities: list[Any] = Field(default_factory=list)
+    compliance: list[Any] = Field(default_factory=list)
+    authenticated_encryption: Optional[bool] = None
+    forward_secrecy: Optional[bool] = None
+    side_channel_resistance: Optional[str] = None
+    crypto_service_type: Optional[str] = None
+    crypto_service_provider: Optional[str] = None
+    crypto_service_name: Optional[str] = None
+    crypto_service_version: Optional[str] = None
+    quantum_vulnerability: Optional[str] = None
+    migration_priority: Optional[str] = None
+    pqc_alternatives: list[str] = Field(default_factory=list)
+    migration_status: Optional[str] = None
 
     # provenance
     source: str = "unknown"
@@ -224,15 +269,27 @@ class CryptoObservation(BaseModel):
     product_version: Optional[str] = None
     algorithm: Optional[str] = None
     algorithm_family: Optional[str] = None
+    algorithm_type: Optional[str] = None
+    algorithm_mode: Optional[str] = None
+    padding_scheme: Optional[str] = None
+    algorithm_oid: Optional[str] = None
     algorithm_parameters: dict[str, Any] = Field(default_factory=dict)
+    quantum_safe_status: Optional[str] = None
     protocol: Optional[str] = None
     protocol_version: Optional[str] = None
+    cipher_suites: list[str] = Field(default_factory=list)
+    protocol_configuration: dict[str, Any] = Field(default_factory=dict)
+    configuration: Optional[dict[str, Any]] = None
     implementation: Optional[str] = None
     implementation_version: Optional[str] = None
     library: Optional[str] = None
     library_version: Optional[str] = None
+    library_dependencies: list[Any] = Field(default_factory=list)
+    fips_certification: Optional[str] = None
     key_id: Optional[str] = None
     key_role: Optional[str] = None
+    key_storage_location: Optional[str] = None
+    key_lifecycle_state: Optional[str] = None
     key_type: Optional[str] = None
     key_size: Optional[int] = None
     curve: Optional[str] = None
@@ -242,9 +299,38 @@ class CryptoObservation(BaseModel):
     salt: Optional[dict[str, Any]] = None
     material_type: Optional[str] = None
     material_metadata: Optional[dict[str, Any]] = None
+    secret_type: Optional[str] = None
+    secret_storage_location: Optional[str] = None
     certificate: Optional[dict[str, Any]] = None
+    certificate_serial_number: Optional[str] = None
+    certificate_issuer: Optional[str] = None
+    certificate_subject: Optional[str] = None
+    certificate_valid_from: Optional[str] = None
+    certificate_valid_to: Optional[str] = None
+    certificate_public_key_type: Optional[str] = None
+    certificate_public_key_size: Optional[int] = None
+    certificate_public_key_curve: Optional[str] = None
+    certificate_signature_algorithm: Optional[str] = None
     certificate_chain: list[dict[str, Any]] = Field(default_factory=list)
     observed_usage: Optional[bool] = None
+    rng_name: Optional[str] = None
+    rng_type: Optional[str] = None
+    rng_source: Optional[str] = None
+    component_usage: dict[str, Any] = Field(default_factory=dict)
+    related_vulnerabilities: list[Any] = Field(default_factory=list)
+    compliance: list[Any] = Field(default_factory=list)
+    authenticated_encryption: Optional[bool] = None
+    forward_secrecy: Optional[bool] = None
+    side_channel_resistance: Optional[str] = None
+    crypto_service_type: Optional[str] = None
+    crypto_service_provider: Optional[str] = None
+    crypto_service_name: Optional[str] = None
+    crypto_service_version: Optional[str] = None
+    quantum_safe_status: Optional[str] = None
+    quantum_vulnerability: Optional[str] = None
+    migration_priority: Optional[str] = None
+    pqc_alternatives: list[str] = Field(default_factory=list)
+    migration_status: Optional[str] = None
     purpose: Optional[str] = None
     nist_status: Optional[str] = None
     quantum_vulnerable: Optional[bool] = None

@@ -101,6 +101,28 @@ def _material_metadata(record: dict[str, Any], *keys: str) -> dict[str, Any] | N
     return None
 
 
+_SENSITIVE_METADATA_KEYS = {
+    "secret", "secrets", "password", "passwd", "token", "access_token",
+    "authorization", "credential", "credentials", "private_key", "private_key_pem",
+    "private_material", "key_material", "plaintext", "ciphertext", "raw_value",
+}
+
+
+def _safe_mapping(value: Any) -> Any:
+    if isinstance(value, dict):
+        return {
+            str(key): _safe_mapping(item)
+            for key, item in value.items()
+            if str(key).lower() not in _SENSITIVE_METADATA_KEYS
+            and not any(token in str(key).lower() for token in ("password", "secret", "private_key", "token"))
+        }
+    if isinstance(value, list):
+        return [_safe_mapping(item) for item in value]
+    if isinstance(value, tuple):
+        return [_safe_mapping(item) for item in value]
+    return value
+
+
 def _certificate_metadata(value: Any) -> dict[str, Any]:
     if isinstance(value, str):
         text = value.strip()
@@ -113,8 +135,79 @@ def _certificate_metadata(value: Any) -> dict[str, Any]:
     for key in sorted(_CERTIFICATE_FIELDS):
         if key in value and value[key] not in (None, ""):
             result[key] = value[key]
+    public_key = value.get("public_key") or value.get("public_key_details")
+    if isinstance(public_key, dict):
+        result["public_key"] = {
+            key: public_key[key]
+            for key in ("type", "algorithm", "key_type", "size", "key_size", "curve", "named_curve")
+            if public_key.get(key) not in (None, "")
+        }
     result["present"] = True
     return result
+
+
+def _safe_list(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    values = value if isinstance(value, (list, tuple, set)) else [value]
+    safe: list[Any] = []
+    for item in values:
+        if isinstance(item, dict):
+            safe.append({
+                key: item[key]
+                for key in ("id", "cve", "name", "severity", "score", "summary", "description", "source")
+                if item.get(key) not in (None, "")
+            })
+        elif _text(item):
+            safe.append(_text(item))
+    return safe
+
+
+def _common_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    """Project whitelisted non-secret metadata shared by all asset kinds."""
+    values: dict[str, Any] = {}
+    text_fields = {
+        "rng_name": ("rng_name", "rng", "random_source"),
+        "rng_type": ("rng_type", "random_type"),
+        "rng_source": ("rng_source", "random_source_type"),
+        "side_channel_resistance": ("side_channel_resistance", "side_channel"),
+        "crypto_service_type": ("crypto_service_type", "service_type"),
+        "crypto_service_provider": ("crypto_service_provider", "service_provider", "provider"),
+        "crypto_service_name": ("crypto_service_name", "service_name"),
+        "crypto_service_version": ("crypto_service_version", "service_version"),
+        "quantum_vulnerability": ("quantum_vulnerability", "quantum_risk", "quantum_risk_level"),
+        "migration_priority": ("migration_priority", "pqc_priority"),
+        "migration_status": ("migration_status", "pqc_migration_status"),
+        "secret_type": ("secret_type", "secret_kind"),
+        "secret_storage_location": ("secret_storage_location", "secret_store", "vault_reference"),
+    }
+    for output, keys in text_fields.items():
+        value = _first(record, *keys)
+        if value not in (None, ""):
+            values[output] = _text(value)
+    bool_fields = {
+        "authenticated_encryption": ("authenticated_encryption", "aead"),
+        "forward_secrecy": ("forward_secrecy", "pfs"),
+    }
+    for output, keys in bool_fields.items():
+        value = _first(record, *keys)
+        if isinstance(value, bool):
+            values[output] = value
+    usage = _first(record, "component_usage", "usage", "purposes", "purpose", "operations")
+    if usage not in (None, "", [], {}):
+        values["component_usage"] = _safe_mapping(usage if isinstance(usage, dict) else {"value": usage})
+    vulnerabilities = _first(record, "related_vulnerabilities", "vulnerabilities", "vulnerability")
+    if vulnerabilities not in (None, "", [], {}):
+        values["related_vulnerabilities"] = _safe_list(vulnerabilities)
+    compliance = _first(record, "compliance", "compliance_status", "standards", "controls")
+    if compliance not in (None, "", [], {}):
+        values["compliance"] = _safe_list(compliance)
+    alternatives = _first(record, "pqc_alternatives", "pqc_replacements", "migration_alternatives")
+    if alternatives not in (None, "", [], {}):
+        values["pqc_alternatives"] = [_text(item) for item in (
+            alternatives if isinstance(alternatives, (list, tuple, set)) else [alternatives]
+        ) if _text(item)]
+    return values
 
 
 def _base(plugin: Any, context: dict[str, Any], *, crypto_type: str,
@@ -197,11 +290,22 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                     field=f"{root_name}.components[{index}]",
                     asset_id=_text(_first(component, "bom-ref", "ref", "name")) or None,
                     algorithm=_text(algorithm),
+                    algorithm_type=_text(algorithm_properties.get("primitive")) or None,
+                    algorithm_mode=_text(algorithm_properties.get("mode")) or None,
+                    padding_scheme=_text(algorithm_properties.get("padding")) or None,
+                    algorithm_oid=_text(properties.get("oid")) or None,
+                    key_size=_int(algorithm_properties.get("parameterSetIdentifier")),
+                    curve=_text(algorithm_properties.get("curve")) or None,
+                    quantum_safe_status=("QUANTUM_VULNERABLE"
+                                         if properties.get("quantumVulnerable") is True
+                                         else "QUANTUM_SAFE"
+                                         if properties.get("quantumVulnerable") is False else None),
                     algorithm_parameters={
                         key: algorithm_properties.get(key)
-                        for key in ("primitive", "parameterSetIdentifier", "mode")
+                        for key in ("primitive", "parameterSetIdentifier", "mode", "padding", "curve")
                         if algorithm_properties.get(key) is not None
                     },
+                    **_common_metadata(component),
                 ))
             library = _first(component, "library", "implementation", "provider")
             if library:
@@ -211,6 +315,7 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                     asset_id=_text(_first(component, "bom-ref", "ref", "name")) or None,
                     library=_text(library),
                     library_version=_text(_first(component, "version", "release")) or None,
+                    **_common_metadata(component),
                 ))
 
     algorithm_names = (
@@ -223,16 +328,41 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 details = {"mode": _first(item, "mode"),
                            "key_size": _int(_first(item, "key_size", "key_bits", "bits"))}
                 asset_id = _text(_first(item, "asset_id", "id", "name")) or None
+                algorithm_type = _text(_first(item, "algorithm_type", "type", "primitive")) or None
+                padding_scheme = _text(_first(item, "padding_scheme", "padding")) or None
+                algorithm_oid = _text(_first(item, "algorithm_oid", "oid")) or None
+                quantum_value = _first(
+                    item, "quantum_safe_status", "quantum_status", "pqc_status", "quantum_safe",
+                )
+                if isinstance(quantum_value, bool):
+                    quantum_safe_status = "QUANTUM_SAFE" if quantum_value else "QUANTUM_VULNERABLE"
+                else:
+                    quantum_safe_status = _text(quantum_value) or None
+                mode = _text(_first(item, "algorithm_mode", "mode")) or None
+                key_size = details["key_size"]
+                algorithm_parameters = {
+                    **details,
+                    "curve": _first(item, "curve", "named_curve"),
+                    "parameters": _first(item, "parameters", "parameter_set", "parameterSetIdentifier"),
+                }
             else:
                 algorithm, details, asset_id = item, {}, None
+                algorithm_type = padding_scheme = algorithm_oid = quantum_safe_status = None
+                mode = None
+                key_size = None
+                algorithm_parameters = details
             algorithm_text = _text(algorithm)
             if not algorithm_text or algorithm_text.upper() in {"UNKNOWN", "NONE"}:
                 continue
             records.append(_base(
                 plugin, context, crypto_type="algorithm", field=field,
                 asset_id=asset_id or f"{context.get('asset_id') or plugin.plugin_id}:algorithm:{index}",
-                algorithm=algorithm_text, algorithm_parameters=details,
+                algorithm=algorithm_text, algorithm_type=algorithm_type,
+                algorithm_mode=mode, padding_scheme=padding_scheme,
+                algorithm_oid=algorithm_oid, quantum_safe_status=quantum_safe_status,
+                key_size=key_size, algorithm_parameters=algorithm_parameters,
                 configuration=details,
+                **_common_metadata(item if isinstance(item, dict) else {}),
             ))
 
     protocol_names = (
@@ -247,8 +377,11 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 algorithm = _first(item, "algorithm", "cipher", "cipher_suite")
                 observed = _presence(item, "observed", "negotiated")
                 asset_id = _text(_first(item, "asset_id", "id", "name")) or None
+                cipher_suites = _first(item, "cipher_suites", "ciphers", "supported_ciphers")
+                protocol_configuration = _first(item, "protocol_configuration", "configuration", "config", "extensions")
             else:
                 protocol, versions, algorithm, observed, asset_id = item, None, None, None, None
+                cipher_suites, protocol_configuration = None, None
             protocol_text = _text(protocol)
             # A scalar TLS 1.3 / SSH-2 value is a protocol plus version.
             scalar_match = re.match(
@@ -274,8 +407,23 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 plugin, context, crypto_type="protocol", field=field,
                 asset_id=asset_id or f"{context.get('asset_id') or plugin.plugin_id}:protocol:{index}",
                 protocol=protocol_text, protocol_version=version_text,
+                cipher_suites=[
+                    (_text(_first(cipher, "name", "cipher_suite", "cipher", "id"))
+                     if isinstance(cipher, dict) else _text(cipher))
+                    for cipher in (cipher_suites if isinstance(cipher_suites, (list, tuple))
+                                   else ([cipher_suites] if cipher_suites else []))
+                    if ((isinstance(cipher, dict)
+                         and _text(_first(cipher, "name", "cipher_suite", "cipher", "id")))
+                        or (not isinstance(cipher, dict) and _text(cipher)))
+                ],
+                protocol_configuration=_safe_mapping(
+                    protocol_configuration if isinstance(protocol_configuration, dict)
+                    else ({"value": protocol_configuration}
+                          if protocol_configuration is not None else {})
+                ),
                 algorithm=_text(algorithm) or None,
                 observed_usage=observed,
+                **_common_metadata(item if isinstance(item, dict) else {}),
             ))
 
     library_names = (
@@ -289,8 +437,13 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 version = _first(item, "library_version", "version", "release")
                 implementation = _first(item, "implementation", "provider", "engine")
                 asset_id = _text(_first(item, "asset_id", "id", "name")) or None
+                fips_certification = _text(_first(
+                    item, "fips_certification", "fips_validation", "fips_certificate",
+                )) or None
+                library_dependencies = _first(item, "library_dependencies", "dependencies")
             else:
                 name, version, implementation, asset_id = item, None, None, None
+                fips_certification, library_dependencies = None, None
             name_text = _text(name)
             if not name_text:
                 continue
@@ -299,6 +452,12 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 asset_id=asset_id or f"{context.get('asset_id') or plugin.plugin_id}:library:{index}",
                 library=name_text, library_version=_text(version) or None,
                 implementation=_text(implementation) or None,
+                fips_certification=fips_certification,
+                library_dependencies=_safe_mapping(
+                    library_dependencies if isinstance(library_dependencies, list)
+                    else ([library_dependencies] if library_dependencies else [])
+                ),
+                **_common_metadata(item if isinstance(item, dict) else {}),
             ))
 
     version_library_fields = (
@@ -315,6 +474,54 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 library=library_name, library_version=_text(context[field]),
             ))
 
+    service_names = (
+        "crypto_services", "cryptographic_services", "services", "hsm", "hsm_services",
+        "kms", "kms_services", "vaults", "certificate_authorities", "pki_services",
+        "crypto_providers",
+    )
+    for field, value in _field_values(context, service_names):
+        for index, item in enumerate(_items(value)):
+            if not isinstance(item, dict):
+                item = {"name": item}
+            service_name = _text(_first(item, "crypto_service_name", "service_name", "name", "id"))
+            if not service_name:
+                continue
+            records.append(_base(
+                plugin, context, crypto_type="service", field=field,
+                asset_id=_text(_first(item, "asset_id", "id", "name"))
+                         or f"{context.get('asset_id') or plugin.plugin_id}:service:{index}",
+                crypto_service_type=_text(_first(item, "crypto_service_type", "service_type", "type")) or None,
+                crypto_service_provider=_text(_first(item, "crypto_service_provider", "provider", "vendor")) or None,
+                crypto_service_name=service_name,
+                crypto_service_version=_text(_first(item, "crypto_service_version", "version")) or None,
+                configuration=_safe_mapping({
+                    key: item[key] for key in ("endpoint", "region", "partition", "mode", "status")
+                    if item.get(key) not in (None, "")
+                }),
+                **{key: value for key, value in _common_metadata(item).items()
+                   if key not in {"crypto_service_type", "crypto_service_provider",
+                                  "crypto_service_name", "crypto_service_version"}},
+            ))
+
+    rng_names = ("rngs", "random_number_generators", "random_sources", "rng")
+    for field, value in _field_values(context, rng_names):
+        for index, item in enumerate(_items(value)):
+            if not isinstance(item, dict):
+                item = {"name": item}
+            rng_name = _text(_first(item, "rng_name", "name", "id", "generator"))
+            if not rng_name:
+                continue
+            records.append(_base(
+                plugin, context, crypto_type="rng", field=field,
+                asset_id=_text(_first(item, "asset_id", "id", "name"))
+                         or f"{context.get('asset_id') or plugin.plugin_id}:rng:{index}",
+                rng_name=rng_name,
+                rng_type=_text(_first(item, "rng_type", "type", "kind")) or None,
+                rng_source=_text(_first(item, "rng_source", "source", "provider")) or None,
+                **{key: value for key, value in _common_metadata(item).items()
+                   if key not in {"rng_name", "rng_type", "rng_source"}},
+            ))
+
     dependency_names = ("dependencies", "cryptographic_dependencies")
     for field, value in _field_values(context, dependency_names):
         for index, item in enumerate(_items(value)):
@@ -329,11 +536,13 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                          or f"{plugin.plugin_id}:dependency:{index}",
                 library=_text(library), library_version=_text(_first(item, "version", "release")) or None,
                 implementation=_text(_first(item, "implementation", "provider")) or None,
+                **_common_metadata(item),
             ))
 
     key_names = (
         "keys", "key_metadata", "cryptographic_keys", "key_pairs",
-        "public_keys", "private_keys", "key_material",
+        "public_keys", "private_keys", "key_material", "secrets", "secret_metadata",
+        "secret_material", "credentials",
     )
     for field, value in _field_values(context, key_names):
         for index, item in enumerate(_items(value)):
@@ -341,6 +550,12 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 item = {"value": item}
             key_id = _text(_first(item, "key_id", "id", "alias", "name", "reference")) or None
             role = _text(_first(item, "key_role", "role", "type")) or None
+            key_storage_location = _text(_first(
+                item, "key_storage_location", "storage_location", "storage", "location",
+            )) or None
+            key_lifecycle_state = _text(_first(
+                item, "key_lifecycle_state", "lifecycle_state", "state", "status",
+            )) or None
             public_present = _presence(item, "public_key", "public_key_present",
                                        "public_material_present", "public")
             private_present = _presence(item, "private_key", "private_key_present",
@@ -351,19 +566,23 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
             if field.endswith("private_keys"):
                 private_present = True
                 role = role or "private"
+            is_secret = any(token in field.lower() for token in ("secret", "credential"))
             records.append(_base(
-                plugin, context, crypto_type="key", field=field,
-                asset_id=key_id or f"{context.get('asset_id') or plugin.plugin_id}:key:{index}",
+                plugin, context, crypto_type="secret" if is_secret else "key", field=field,
+                asset_id=key_id or f"{context.get('asset_id') or plugin.plugin_id}:{'secret' if is_secret else 'key'}:{index}",
                 key_id=key_id, key_role=role,
                 key_type=_text(_first(item, "key_type", "algorithm", "key_algorithm")) or None,
                 key_size=_int(_first(item, "key_size", "key_bits", "bits", "size")),
                 curve=_text(_first(item, "curve", "named_curve")) or None,
+                key_storage_location=key_storage_location,
+                key_lifecycle_state=key_lifecycle_state,
                 public_material_present=public_present, private_material_present=private_present,
                 initialization_vector=_material_metadata(item, "initialization_vector", "iv", "ivs"),
                 salt=_material_metadata(item, "salt", "salts"),
                 configuration={"state": _first(item, "state", "status"),
                                "usage": _first(item, "usage", "purposes", "purpose"),
                                "extractable": _first(item, "extractable", "exportable")},
+                **_common_metadata(item),
             ))
 
     for field, value in _field_values(context, ("initialization_vectors", "ivs", "salts")):
@@ -381,10 +600,25 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
         entries = _items(value)
         if field.endswith("certificate_chain") and entries:
             chain = [_certificate_metadata(entry) for entry in entries]
+            primary = chain[0]
+            primary_key = primary.get("public_key") if isinstance(primary.get("public_key"), dict) else {}
             records.append(_base(
                 plugin, context, crypto_type="certificate", field=field,
                 asset_id=f"{context.get('asset_id') or plugin.plugin_id}:certificate-chain",
-                certificate=chain[0], certificate_chain=chain,
+                certificate=primary, certificate_chain=chain,
+                certificate_serial_number=_text(primary.get("serial_number") or primary.get("serial")) or None,
+                certificate_issuer=_text(primary.get("issuer")) or None,
+                certificate_subject=_text(primary.get("subject") or primary.get("cn")) or None,
+                certificate_valid_from=_text(primary.get("not_before") or primary.get("valid_from")) or None,
+                certificate_valid_to=_text(primary.get("not_after") or primary.get("valid_to") or primary.get("expires")) or None,
+                certificate_public_key_type=_text(primary_key.get("type") or primary_key.get("algorithm")
+                                                  or primary.get("key_type") or primary.get("key_algorithm")) or None,
+                certificate_public_key_size=_int(primary_key.get("size") or primary_key.get("key_size")
+                                                 or primary.get("key_size")),
+                certificate_public_key_curve=_text(primary_key.get("curve") or primary_key.get("named_curve")
+                                                   or primary.get("curve")) or None,
+                certificate_signature_algorithm=_text(primary.get("signature_algorithm")) or None,
+                **_common_metadata(entries[0] if isinstance(entries[0], dict) else {}),
             ))
             continue
         for index, item in enumerate(entries):
@@ -399,10 +633,25 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                             or certificate.get("serial") or certificate.get("reference")
                             or certificate.get("name") or certificate.get("id")
                             or certificate.get("arn")) or None
+            public_key = certificate.get("public_key") if isinstance(certificate.get("public_key"), dict) else {}
             records.append(_base(
                 plugin, context, crypto_type="certificate", field=field,
                 asset_id=cert_id or f"{context.get('asset_id') or plugin.plugin_id}:certificate:{index}",
                 certificate=certificate, certificate_chain=chain,
+                certificate_serial_number=_text(certificate.get("serial_number") or certificate.get("serial")) or None,
+                certificate_issuer=_text(certificate.get("issuer")) or None,
+                certificate_subject=_text(certificate.get("subject") or certificate.get("cn")) or None,
+                certificate_valid_from=_text(certificate.get("not_before") or certificate.get("valid_from")) or None,
+                certificate_valid_to=_text(certificate.get("not_after") or certificate.get("valid_to")
+                                          or certificate.get("expires")) or None,
+                certificate_public_key_type=_text(public_key.get("type") or public_key.get("algorithm")
+                                                  or certificate.get("key_type") or certificate.get("key_algorithm")) or None,
+                certificate_public_key_size=_int(public_key.get("size") or public_key.get("key_size")
+                                                 or certificate.get("key_size")),
+                certificate_public_key_curve=_text(public_key.get("curve") or public_key.get("named_curve")
+                                                   or certificate.get("curve")) or None,
+                certificate_signature_algorithm=_text(certificate.get("signature_algorithm")) or None,
+                **_common_metadata(item if isinstance(item, dict) else {}),
             ))
 
     # Algorithms stated in an explicit configuration artifact are useful even

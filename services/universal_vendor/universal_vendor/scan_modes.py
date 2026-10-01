@@ -28,7 +28,9 @@ from universal_vendor.models import ScanMode, UniversalObservation
 from universal_vendor.pqc_readiness import PqcReadinessDatabase
 from universal_vendor.registry import PluginRegistry
 
-_COMMON_CRYPTO_TYPES = {"algorithm", "protocol", "library", "key", "key_material"}
+_COMMON_CRYPTO_TYPES = {
+    "algorithm", "protocol", "library", "key", "key_material", "service", "rng", "secret",
+}
 
 
 def _raw_identity(record: dict[str, Any]) -> str:
@@ -305,12 +307,25 @@ class UniversalVendorScanner:
             # fields. Project the newly discovered metadata into the canonical
             # model here while keeping their vendor-specific payload intact.
             for field_name in (
-                "product_version", "algorithm_parameters", "protocol", "protocol_version",
+                "product_version", "algorithm_type", "algorithm_mode", "padding_scheme",
+                "algorithm_oid", "algorithm_parameters", "quantum_safe_status",
+                "protocol", "protocol_version", "cipher_suites", "protocol_configuration",
                 "implementation", "implementation_version", "library", "library_version",
-                "key_id", "key_role", "key_type", "key_size", "curve",
-                "public_material_present", "private_material_present", "initialization_vector",
-                "salt", "material_type", "material_metadata", "certificate_chain",
-                "observed_usage",
+                "library_dependencies", "fips_certification", "key_id", "key_role",
+                "key_type", "key_size", "curve", "key_storage_location",
+                "key_lifecycle_state", "public_material_present", "private_material_present",
+                "initialization_vector", "salt", "material_type", "material_metadata",
+                "secret_type", "secret_storage_location", "certificate_chain",
+                "certificate_serial_number", "certificate_issuer", "certificate_subject",
+                "certificate_valid_from", "certificate_valid_to", "certificate_public_key_type",
+                "certificate_public_key_size", "certificate_public_key_curve",
+                "certificate_signature_algorithm", "observed_usage", "rng_name", "rng_type",
+                "rng_source", "component_usage",
+                "related_vulnerabilities", "compliance", "authenticated_encryption",
+                "forward_secrecy", "side_channel_resistance", "crypto_service_type",
+                "crypto_service_provider", "crypto_service_name", "crypto_service_version",
+                "quantum_vulnerability", "migration_priority", "pqc_alternatives",
+                "migration_status",
             ):
                 value = source_record.get(field_name)
                 if value is not None:
