@@ -33,6 +33,12 @@ from universal_vendor.live import (
 )
 from universal_vendor.live.cbom import LiveCbom
 from universal_vendor.live.cert_watcher import UniversalCertificateWatcher
+from universal_vendor.live.connectors import (
+    HttpVendorConnector,
+    JsonLinesEventConnector,
+    UdpJsonEventConnector,
+    build_connector,
+)
 from universal_vendor.live.correlation import CorrelationEngine
 from universal_vendor.live.credentials import CredentialVault
 from universal_vendor.live.drift import CryptoDriftEngine, DriftState
@@ -73,7 +79,8 @@ __all__ = [
     "AssetIdentityResolver", "CiscoLiveMonitor", "ConfigFingerprintTracker",
     "ControlPlane", "CorrelationEngine", "CredentialVault", "CryptoDriftEngine",
     "DriftState", "EventGateway", "EventNormalizer", "EventType", "ChangeType",
-    "FirewallLiveMonitor", "FirmwareMonitor", "HealthMonitor", "HealthState",
+    "HttpVendorConnector", "JsonLinesEventConnector", "UdpJsonEventConnector",
+    "build_connector", "FirewallLiveMonitor", "FirmwareMonitor", "HealthMonitor", "HealthState",
     "HsmLiveMonitor", "LiveAssetStateEngine", "LiveCbom", "LiveConnector",
     "LivePqcMonitor", "LiveVendorMonitor", "LoadBalancerLiveMonitor",
     "LocalEventQueue", "LocalEvidenceStore", "MonitorMode", "PkiLiveMonitor",

@@ -8,6 +8,8 @@ pretending to have scanned.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 from typing import Any
 
@@ -77,6 +79,7 @@ def network_runner(config: dict, session: Any) -> dict:
     issues: list[str] = list(ssrf_issues)
     ok = unreachable = 0
     scope_summary: dict | None = None
+    observed: dict[str, Any] = {}
 
     # Global Network Discovery scope: full enterprise pipeline (assets, protocol
     # detection, dependency graph, PQC readiness, simulation) on each tick.
@@ -90,6 +93,7 @@ def network_runner(config: dict, session: Any) -> dict:
             )
             discovery_issues = _discovery_issues(discovery)
             issues.extend(discovery_issues)
+            observed.update(discovery)
             scope_summary = {
                 "specs": len(discovery.get("scope") or []),
                 "assets": len(discovery.get("assets") or []),
@@ -102,6 +106,7 @@ def network_runner(config: dict, session: Any) -> dict:
             issues.append(f"SCOPE_ERROR:{type(exc).__name__}:{str(exc)[:120]}")
     if endpoints:
         result = scanner.scan_hosts(endpoints)
+        observed.update(result)
         for finding in result.get("findings") or []:
             endpoint = finding.get("endpoint") or "?"
             if finding.get("status") != "OK":
@@ -138,6 +143,7 @@ def network_runner(config: dict, session: Any) -> dict:
                 int(p) for p in str(config.get("ike_ports", "500,4500")).split(",") if p.strip().isdigit()
             ) or (500, 4500)
             vpn = scanner.scan_ipsec_hosts(ipsec_hosts, ports=ports)
+            observed["ipsec"] = vpn
             for finding in vpn.get("findings") or []:
                 for issue in finding.get("issues") or []:
                     issues.append(f"{issue}:{finding.get('endpoint')}")
@@ -152,6 +158,7 @@ def network_runner(config: dict, session: Any) -> dict:
                 resolver=config.get("dns_resolver"),
                 check_transfer=bool(config.get("check_zone_transfer", True)),
             )
+            observed["dnssec"] = dns
             for issue in dns.get("issues") or []:
                 issues.append(issue)
         except Exception:
@@ -167,7 +174,8 @@ def network_runner(config: dict, session: Any) -> dict:
     }
     if scope_summary is not None:
         summary["scope"] = scope_summary
-    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
+    return {"scanner": "network", "summary": summary, "degraded": bool(issues),
+            "issues": sorted(set(issues)), "data": observed}
 
 
 def _persist_certificates(result: dict, session: Any) -> None:
@@ -230,7 +238,15 @@ def cloud_runner(config: dict, session: Any) -> dict:
         "findings": len(findings),
         "issues": issues,
     }
-    return {"summary": summary, "degraded": bool(issues), "issues": issues}
+    # Cloud scanner already redacts provider secrets; keep the real crypto
+    # resources/findings so the common projection can persist explicit inputs.
+    safe_data = {
+        key: result.get(key) for key in
+        ("resources", "assets", "findings", "certificates", "kms", "encryption", "iam")
+        if result.get(key) is not None
+    }
+    return {"scanner": "cloud", "summary": summary, "degraded": bool(issues),
+            "issues": issues, "data": safe_data}
 
 
 # ---------------------------------------------------------------- repository
@@ -291,7 +307,13 @@ def container_runner(config: dict, session: Any) -> dict:
         "secrets": len(result.get("secrets") or []),
         "issues": sorted(set(issues)),
     }
-    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
+    safe_data = {
+        key: result.get(key) for key in
+        ("packages", "libraries", "findings", "vulnerabilities", "crypto", "algorithms")
+        if result.get(key) is not None
+    }
+    return {"scanner": "container", "summary": summary, "degraded": bool(issues),
+            "issues": sorted(set(issues)), "data": safe_data}
 
 
 # ------------------------------------------------------------------ payment
@@ -336,8 +358,10 @@ def payment_runner(config: dict, session: Any) -> dict:
 
     feed_errors = list(polled.errors)
     if not polled.records and feed_errors:
-        return {"summary": {"events_ingested": 0, "issues": [f"AUDIT_FEED_ERROR:{feed_errors[0]}"]},
-                "degraded": True, "issues": [f"AUDIT_FEED_ERROR:{feed_errors[0]}"]}
+        issue = f"AUDIT_FEED_ERROR:{feed_errors[0]}"
+        return {"scanner": "payment", "summary": {"events_ingested": 0, "issues": [issue]},
+                "degraded": True, "issues": [issue],
+                "data": {"findings": [{"kind": "audit_feed", "message": issue}]}}
 
     fresh = polled.records
     repo = PaymentCryptoRepository(session)
@@ -381,10 +405,17 @@ def payment_runner(config: dict, session: Any) -> dict:
         "activation_at": k.activation_at.isoformat() if k.activation_at else None,
         "key_block_version": k.key_block_version, "key_block_error": k.key_block_error,
     } for k in keys]
-    event_rows = [{
-        "occurred_at": e.occurred_at.isoformat(), "device": e.device,
-        "event_type": e.event_type, "key_id": e.key_id, "detail": e.detail or {},
-    } for e in repo.recent_events(days=90)]
+    event_rows = []
+    for event in repo.recent_events(days=90):
+        row = {
+            "occurred_at": event.occurred_at.isoformat(), "device": event.device,
+            "event_type": event.event_type, "key_id": event.key_id,
+            "detail": event.detail or {},
+        }
+        row["evidence_reference"] = "sha256:" + hashlib.sha256(
+            json.dumps(row, sort_keys=True, default=str).encode("utf-8")
+        ).hexdigest()
+        event_rows.append(row)
 
     findings = list(PaymentPolicyEngine().evaluate(
         key_rows,
@@ -428,7 +459,11 @@ def payment_runner(config: dict, session: Any) -> dict:
     }
     if feed_errors:
         summary["feed_warnings"] = feed_errors
-    return {"summary": summary, "degraded": bool(issues), "issues": issues}
+        issues = sorted(set(issues + [f"AUDIT_FEED_WARNING:{error}" for error in feed_errors]))
+    observed = {"observations": event_rows, "keys": key_rows, "findings": all_findings,
+                "cursor": polled.cursor}
+    return {"scanner": "payment", "summary": summary, "degraded": bool(issues),
+            "issues": issues, "data": observed}
 
 
 def _ingest_transaction_file(path: Any, repo) -> int:
@@ -516,7 +551,8 @@ def ot_runner(config: dict, session: Any) -> dict:
         "posture": risk.get("posture") or "UNKNOWN",
         "issues": sorted(set(issues)),
     }
-    return {"summary": summary, "degraded": bool(issues), "issues": sorted(set(issues))}
+    return {"scanner": "ot", "summary": summary, "degraded": bool(issues),
+            "issues": sorted(set(issues)), "data": result}
 
 
 # ------------------------------------------------------------------- vendor
@@ -570,7 +606,10 @@ def vendor_runner(config: dict, session: Any) -> dict:
         "issues": sorted(set(issues)),
     }
     degraded = bool(issues) or score >= 50
-    return {"summary": summary, "degraded": degraded, "issues": sorted(set(issues))}
+    return {"scanner": "vendor", "summary": summary, "degraded": degraded,
+            "issues": sorted(set(issues)),
+            "data": {"vendor": name, "algorithms": inventory,
+                     "findings": [{"message": issue} for issue in issues]}}
 
 
 def _discovery_issues(discovery: dict) -> list[str]:
@@ -704,5 +743,7 @@ def telecom_runner(config: dict, session: Any) -> dict:
     except Exception:  # noqa: BLE001 — snapshot mirroring must never fail the scan
         logger.exception("telecom_monitor_snapshot_mirror_failed")
 
-    return {"summary": summary, "degraded": bool(issues), "issues": issues}
+    return {"scanner": "telecom", "summary": summary, "degraded": bool(issues),
+            "issues": issues, "data": {"rows": rows, "events": events,
+                                        "rollup": posture_rollup(rows, reg.get("carriers") or {})}}
 

@@ -24,7 +24,16 @@ def validate_chain(
 ) -> dict[str, Any]:
     chain = [dict(item) for item in certs if item]
     if not chain:
-        return {"is_valid": False, "errors": ["EMPTY_CHAIN"], "chain_length": 0}
+        return {
+            "is_valid": False,
+            "structural_valid": False,
+            "structural_status": "INVALID",
+            "errors": ["EMPTY_CHAIN"],
+            "chain_length": 0,
+            "chain_completeness": "EMPTY",
+            "trust_status": "NOT_VERIFIED",
+            "trust_verification": {"status": "NOT_PERFORMED", "reason": "trust_store_not_loaded"},
+        }
     errors: list[str] = []
     leaf = chain[0]
     if leaf.get("expiry_status") == "EXPIRED":
@@ -36,8 +45,18 @@ def validate_chain(
         errors.append("CERT_NOT_YET_VALID")
     if hostname and not hostname_matches(hostname, leaf):
         errors.append("HOSTNAME_MISMATCH")
-    if leaf.get("is_self_signed"):
+    leaf_issuer = normalize_dn(str(leaf.get("issuer") or ""))
+    leaf_subject = normalize_dn(str(leaf.get("subject") or ""))
+    inferred_self_signed = bool(leaf_issuer and leaf_subject and leaf_issuer == leaf_subject)
+    if leaf.get("is_self_signed") or inferred_self_signed:
         errors.append("SELF_SIGNED")
+    elif len(chain) == 1:
+        # A peer certificate alone cannot prove issuer linkage or trust. Do
+        # not report it as a healthy chain merely because no broken pair was
+        # available to inspect. A self-signed certificate is handled above;
+        # all other leaf-only observations are explicitly incomplete.
+        if not leaf_issuer or leaf_issuer != leaf_subject:
+            errors.append("CHAIN_INCOMPLETE")
     for index in range(len(chain) - 1):
         issuer = normalize_dn(str(chain[index].get("issuer") or ""))
         subject = normalize_dn(str(chain[index + 1].get("subject") or ""))
@@ -45,4 +64,32 @@ def validate_chain(
             errors.append("CHAIN_ISSUER_MISMATCH")
         if chain[index + 1].get("expiry_status") == "EXPIRED":
             errors.append("INTERMEDIATE_EXPIRED")
-    return {"is_valid": not errors, "errors": errors, "chain_length": len(chain)}
+    structural_valid = not errors
+    terminal = chain[-1]
+    terminal_issuer = normalize_dn(str(terminal.get("issuer") or ""))
+    terminal_subject = normalize_dn(str(terminal.get("subject") or ""))
+    terminal_self_signed = bool(terminal.get("is_self_signed") or (
+        terminal_issuer and terminal_subject and terminal_issuer == terminal_subject
+    ))
+    if len(chain) == 1 and not terminal_self_signed:
+        chain_completeness = "INCOMPLETE"
+    elif terminal_self_signed:
+        chain_completeness = "COMPLETE"
+    else:
+        chain_completeness = "NOT_ESTABLISHED"
+    return {
+        "is_valid": structural_valid,  # backwards-compatible structural verdict
+        "structural_valid": structural_valid,
+        "structural_status": "VALID" if structural_valid else "INVALID",
+        "errors": errors,
+        "chain_length": len(chain),
+        "chain_completeness": chain_completeness,
+        # This scanner does not build a platform trust-store path. Keeping
+        # this separate prevents structural validity from being mistaken for
+        # proof that a root is trusted by an operating system or browser.
+        "trust_status": "NOT_VERIFIED",
+        "trust_verification": {
+            "status": "NOT_PERFORMED",
+            "reason": "trust_store_not_loaded",
+        },
+    }

@@ -13,6 +13,11 @@ Hardware removal requires explicit discovery/management evidence.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -44,7 +49,11 @@ def _parse(ts: Optional[str]) -> Optional[datetime]:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

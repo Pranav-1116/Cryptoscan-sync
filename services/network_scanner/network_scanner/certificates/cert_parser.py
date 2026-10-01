@@ -8,6 +8,11 @@ Field extraction prefers, in order:
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import re
 import ssl
@@ -94,7 +99,11 @@ def pem_to_der(pem: str | None) -> bytes | None:
         return None
     try:
         return base64.b64decode("".join(match.group(1).split()))
-    except Exception:  # noqa: BLE001 — malformed PEM: caller treats as absent
+    except Exception as _handler_exc:  # noqa: BLE001 — malformed PEM: caller treats as absent
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -111,11 +120,19 @@ def _parse_ssl_date(value: str | None) -> datetime | None:
         return None
     try:
         return parsedate_to_datetime(value).astimezone(timezone.utc)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     try:
         return datetime.strptime(value.strip(), _OPENSSL_DATE).replace(tzinfo=timezone.utc)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -279,7 +296,11 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
         try:
             info["subject"] = parsed.subject.rfc4514_string()
             info["issuer"] = parsed.issuer.rfc4514_string()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         if isinstance(public, rsa.RSAPublicKey):
             info["public_key_algorithm"] = "RSA"
@@ -305,7 +326,11 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
             san = parsed.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_ALTERNATIVE_NAME).value
             info["san"] = [f"DNS:{name}" if not str(name).startswith(("DNS:", "IP:")) else str(name) for name in san.get_values_for_type(x509.DNSName)]
             info["san"] += [f"IP:{ip}" for ip in san.get_values_for_type(x509.IPAddress)]
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         try:
             usage = parsed.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
@@ -322,17 +347,29 @@ def _cryptography_parse(pem: str) -> dict[str, Any]:
                 if getattr(usage, attr, False):
                     flags.append(name)
             info["key_usage"] = flags
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         try:
             eku = parsed.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE).value
             info["extended_key_usage"] = [item._name for item in eku]  # noqa: SLF001
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         try:
             basic = parsed.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS).value
             info["is_ca"] = bool(basic.ca)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
         return info
     except Exception:
@@ -355,7 +392,11 @@ def parse_pem(text: str) -> list[dict[str, Any]]:
         pem = f"-----BEGIN CERTIFICATE-----{match.group(1)}-----END CERTIFICATE-----"
         try:
             der = ssl.PEM_cert_to_DER_cert(pem)
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             continue
         info = from_ssl_dict({}, der=der)
         info["pem"] = pem
@@ -377,23 +418,82 @@ def parse_der(der: bytes | None) -> dict[str, Any] | None:
         return None
     try:
         pem = ssl.DER_cert_to_PEM_cert(der)
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     parsed = parse_pem(pem)
     return parsed[0] if parsed else None
 
 
 def hostname_matches(hostname: str, cert: dict[str, Any]) -> bool:
-    host = (hostname or "").lower().split(":")[0]
-    if not host:
+    """Apply RFC-style endpoint identity matching without over-accepting certs.
+
+    Subject Alternative Name is authoritative when present; the common-name
+    fallback is used only for certificates that have no SAN at all. Wildcards
+    match exactly one DNS label and never an IP address.
+    """
+    import ipaddress
+
+    raw_host = str(hostname or "").strip().lower().rstrip(".")
+    if raw_host.startswith("[") and "]" in raw_host:
+        raw_host = raw_host[1:].split("]", 1)[0]
+    elif raw_host.count(":") == 1:
+        # A caller may pass host:port. Do not split an IPv6 literal.
+        candidate, port = raw_host.rsplit(":", 1)
+        if port.isdigit():
+            raw_host = candidate
+    if not raw_host:
         return False
-    subject = normalize_dn(str(cert.get("subject") or "")).lower()
-    if f"cn={host}" in subject.replace(" ", ""):
-        return True
-    for san in cert.get("san") or []:
-        value = san.split(":", 1)[-1].lower()
+    try:
+        host = str(ipaddress.ip_address(raw_host))
+        host_is_ip = True
+    except ValueError:
+        host_is_ip = False
+        try:
+            host = raw_host.encode("idna").decode("ascii")
+        except UnicodeError:
+            host = raw_host
+
+    def _dns_equal(value: str) -> bool:
+        value = value.strip().lower().rstrip(".")
+        if host_is_ip:
+            try:
+                return str(ipaddress.ip_address(value)) == host
+            except ValueError:
+                return False
+        try:
+            value = value.encode("idna").decode("ascii")
+        except UnicodeError:
+            return False
         if value == host:
             return True
-        if value.startswith("*.") and host.endswith(value[1:]):
+        # RFC 6125: a wildcard covers one complete left-most label only.
+        return (
+            not host_is_ip
+            and value.startswith("*.")
+            and host.endswith(value[1:])
+            and "." not in host[: -len(value[1:])]
+            and host[: -len(value[1:])].strip(".") != ""
+        )
+
+    sans = list(cert.get("san") or [])
+    if sans:
+        for san in sans:
+            kind, separator, value = str(san).partition(":")
+            if separator and kind.lower() not in {"dns", "ip address", "ip"}:
+                continue
+            if _dns_equal(value if separator else kind):
+                return True
+        return False
+
+    # CN fallback only when SAN is absent, and compare the parsed attribute
+    # rather than searching for a substring in the whole distinguished name.
+    subject = normalize_dn(str(cert.get("subject") or ""))
+    for part in subject.split(","):
+        key, separator, value = part.partition("=")
+        if separator and key.strip().lower() == "cn" and _dns_equal(value):
             return True
     return False

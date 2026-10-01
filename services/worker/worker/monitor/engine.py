@@ -72,6 +72,7 @@ class MonitorEngine:
                  probe_timeout: float = 10.0,
                  session_factory: Callable[[], Any] | None = None, concurrency: int = 1,
                  run_reports: bool = True, run_backups: bool = True,
+                 run_network: bool = True,
                  backup_backend_for: Callable[[str], Any] | None = None,
                  backup_storage: Any = None):
         self.session = session
@@ -88,6 +89,7 @@ class MonitorEngine:
         self.concurrency = max(1, int(concurrency))
         self.run_reports = bool(run_reports)
         self.run_backups = bool(run_backups)
+        self.run_network = bool(run_network)
         self._backup_backend_for = backup_backend_for
         self._backup_storage = backup_storage
 
@@ -115,6 +117,19 @@ class MonitorEngine:
         ordered = triggered + due
         results = self._execute_many(ordered)
 
+        network_summary: dict[str, Any] = {}
+        if self.run_network:
+            # API-created network_scan_targets are a separate persisted
+            # schedule from monitor_target rows. Run them in this same leader
+            # tick so their results become the durable NBOM input.
+            try:
+                from worker.monitor.network_sweep import run_due_network_targets
+
+                network_summary = run_due_network_targets(self.session, now=now)
+            except Exception as exc:  # noqa: BLE001 — network sweep must not stop other monitor work
+                logger.exception("network_sweep_failed")
+                network_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
         report_outcomes: list[dict[str, Any]] = []
         if self.run_reports:
             from worker.monitor.report_sweep import run_due_report_schedules
@@ -132,6 +147,7 @@ class MonitorEngine:
             "results": results,
             "watch_triggered": len(triggered),
             "due": len(due),
+            "network": network_summary,
             "report_ran": len(report_outcomes),
             "reports": report_outcomes,
             "backups": backup_summary,
@@ -313,6 +329,14 @@ class MonitorEngine:
 
         try:
             result = runner(dict(target.config or {}), self.session)
+            # Domain adapters still own their operational persistence, but all
+            # explicit crypto observations/findings enter the same durable
+            # tenant-scoped CBOM/event journal before the target summary is
+            # committed. Projection failures are real degradation, not a
+            # silently successful scan.
+            from worker.monitor.realtime_projection import persist_monitor_projection
+
+            persist_monitor_projection(target, result, self.session)
             self._meter_scan(target)
         except Exception as exc:  # 24/7 rule: the target fails, the loop does not
             logger.warning("monitor_target_failed", extra={"target": target.name})

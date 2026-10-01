@@ -40,7 +40,10 @@ SCAN_ID_FORMAT = "SCAN-{year}-{seq:06d}"
 # Platform event types the orchestrator (and downstream pipeline) emit for the
 # unified scan flow. These are the durable audit log that run history is rebuilt
 # from — so past integrated scans survive a restart and are cluster-visible.
-SCAN_EVENT_TYPES = ("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED")
+SCAN_EVENT_TYPES = (
+    "SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED",
+    "SCAN_CANCEL_REQUESTED", "SCAN_CANCELLED",
+)
 
 
 def collapse_scan_events(events: list[dict]) -> list[dict]:
@@ -87,6 +90,10 @@ def collapse_scan_events(events: list[dict]) -> list[dict]:
         if evt_type == "SCAN_COMPLETED":
             run["status"] = "completed"
             run["ended_at"] = ts
+        elif evt_type == "SCAN_CANCELLED":
+            run["status"] = "cancelled"
+            run["error"] = payload.get("reason") or run.get("error")
+            run["ended_at"] = ts
         elif evt_type == "SCAN_FAILED":
             run["status"] = "failed"
             run["error"] = payload.get("reason") or run.get("error")
@@ -117,6 +124,7 @@ class ScanPhase(str, Enum):
     RISK_CALCULATION = "risk_calculation"
     LIVE_MONITORING = "live_monitoring"
     COMPLETED = "completed"
+    CANCELLED = "cancelled"
     FAILED = "failed"
 
 
@@ -135,12 +143,18 @@ class OrchestratorScan:
     error: Optional[str] = None
     domain_counts: dict[str, int] = field(default_factory=dict)
     gate: Optional[dict] = None
+    tenant_id: str | None = None
+    cancel_requested: bool = False
+    cancel_requested_by: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "scan_id": self.scan_id,
             "org_id": self.org_id,
             "org_name": self.org_name,
+            "tenant_id": self.tenant_id,
+            "cancel_requested": self.cancel_requested,
+            "cancel_requested_by": self.cancel_requested_by,
             "phase": self.phase,
             "status": self.status,
             "started_at": self.started_at,
@@ -158,8 +172,24 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _active_tenant_id() -> str | None:
+    try:
+        from db.tenancy import current_tenant
+
+        return current_tenant()
+    except ImportError:
+        # Standalone orchestrator tests may omit the database package. An API
+        # process has db.tenancy installed, so unexpected failures propagate.
+        return None
+
+
 class ScanOrchestrator:
-    """Singleton orchestrator. In-memory current run + real scanner execution."""
+    """Execution coordinator with Redis-backed shared status in production.
+
+    The local object tracks the worker's live execution, while every transition
+    is mirrored to the shared current-run store and emitted to the durable event
+    journal for cross-replica readers and replay.
+    """
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -167,6 +197,7 @@ class ScanOrchestrator:
         self._current: Optional[OrchestratorScan] = None
         self._runner: LiveScanRunner = get_live_scan_runner()
         self._status_store: Any = None
+        self._shared_state_error: str | None = None
 
     def set_status_store(self, store: Any) -> None:
         """Optional shared current-run store (Redis) for multi-instance status."""
@@ -178,8 +209,10 @@ class ScanOrchestrator:
             return
         try:
             self._status_store.set(self.status())
-        except Exception:  # noqa: BLE001 — mirror must never break a scan
-            pass
+            self._shared_state_error = None
+        except Exception as exc:  # noqa: BLE001 — expose lost fleet visibility
+            self._shared_state_error = type(exc).__name__
+            logger.error("shared_scan_state_write_failed", extra={"error_type": type(exc).__name__})
 
     # -------------------------------------------------------------- planning
     def _plan(self, org, scope_entries, connectors, environments) -> tuple[dict[str, list[str]], dict[str, bool]]:
@@ -256,7 +289,11 @@ class ScanOrchestrator:
                 db.add(row)
                 db.commit()
                 return SCAN_ID_FORMAT.format(year=date, seq=next_seq)
-            except Exception:  # noqa: BLE001 — scan persistence is best-effort
+            except Exception as _handler_exc:  # noqa: BLE001 — scan persistence is best-effort
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
         with self._lock:
             self._seq += 1
@@ -266,7 +303,7 @@ class ScanOrchestrator:
     def start(self, org, scope_entries, connectors, environments, *, only: list[str] | None = None,
               db=None, updated_by: str = "orchestrator", actor: str | None = None,
               policy: dict | None = None, scope_meta: dict | None = None,
-              sector: str | None = None) -> OrchestratorScan:
+              sector: str | None = None, tenant_id: str | None = None) -> OrchestratorScan:
         """Start one integrated scan, through the fail-closed scanner gate.
 
         A scan is only started if it passes the full control chain:
@@ -285,6 +322,8 @@ class ScanOrchestrator:
                 scan_id=scan_id,
                 org_id=org_id,
                 org_name=org_name,
+                tenant_id=(tenant_id or str((org or {}).get("tenant_id")))
+                if (tenant_id or (org or {}).get("tenant_id")) else None,
                 phase=ScanPhase.SCOPE_VALIDATION.value,
                 status="running",
                 started_at=_now(),
@@ -313,6 +352,7 @@ class ScanOrchestrator:
             {"scan_id": scan_id, "org": org_name, "targets": targets,
              "credentials": credentials, "scope_validated": run.scope_validated,
              "gate": run.gate, "actor": actor or updated_by},
+            tenant_id=run.tenant_id,
         )
         # phase transitions are emitted as they happen (real, streamed)
         self._emit_phase(run, ScanPhase.DISCOVERY)
@@ -376,6 +416,7 @@ class ScanOrchestrator:
             event_type,
             f"scan {run.scan_id} denied by {denied_by}: {reason}",
             {"scan_id": run.scan_id, "reason": reason, "denied_by": denied_by, "gate": run.gate},
+            tenant_id=run.tenant_id,
         )
         return run
 
@@ -400,11 +441,31 @@ class ScanOrchestrator:
             targets["universal"] = app[0]
         domains = list(run.targets.keys())
         try:
-            res = lt.run_cycle(only=only, targets=targets, trigger=f"orchestrator:{run.scan_id}")
+            if self._status_store is not None:
+                shared = self._status_store.get()
+                if (shared or {}).get("scan", {}).get("cancel_requested"):
+                    lt.request_cancel()
+            res = lt.run_cycle(
+                only=only, targets=targets, trigger=f"orchestrator:{run.scan_id}",
+                tenant_id=run.tenant_id,
+            )
         except Exception as exc:  # noqa: BLE001
             run.status = "failed"
             run.error = str(exc)
             self._emit_phase(run, ScanPhase.FAILED)
+            return
+        if res.get("status") == "cancelled":
+            run.status = "cancelled"
+            run.phase = ScanPhase.CANCELLED.value
+            run.error = "scan cancellation requested"
+            emit_platform_event(
+                "SCAN_CANCELLED",
+                f"scan {run.scan_id} cancelled",
+                {"scan_id": run.scan_id, "reason": run.error,
+                 "progress": run.progress},
+                tenant_id=run.tenant_id,
+            )
+            self._mirror_status()
             return
         # correlation + risk + live monitoring phases are the downstream
         # pipeline that the platform runs over the merged observations.
@@ -423,6 +484,7 @@ class ScanOrchestrator:
             f"scan {run.scan_id} completed ({res.get('elapsed_s', 0)}s)",
             {"scan_id": run.scan_id, "ok": res.get("ok_count"), "failed": res.get("failed_count"),
              "elapsed_s": res.get("elapsed_s"), "progress": run.progress},
+            tenant_id=run.tenant_id,
         )
 
     def _emit_phase(self, run: OrchestratorScan, phase: ScanPhase) -> None:
@@ -432,13 +494,63 @@ class ScanOrchestrator:
             f"scan {run.scan_id} phase {phase.value}",
             {"scan_id": run.scan_id, "phase": phase.value, "progress": run.progress,
              "scope_validated": run.scope_validated},
+            tenant_id=run.tenant_id,
         )
         self._mirror_status()
+
+    def cancel(self, scan_id: str, *, actor: str = "unknown") -> dict[str, Any]:
+        """Request cancellation and persist the request immediately.
+
+        The worker finishes its current bounded subprocess, then records the
+        terminal ``cancelled`` state. A replica that did not start the scan can
+        issue this request because the current-run snapshot is shared.
+        """
+        with self._lock:
+            run = self._current
+            if run is None or run.scan_id != scan_id:
+                run = None
+            else:
+                if run.status in {"completed", "failed", "cancelled"}:
+                    return {"status": run.status, "scan": run.to_dict()}
+                run.cancel_requested = True
+                run.cancel_requested_by = actor
+                run.status = "cancelling"
+                run.error = "cancellation requested"
+            tenant_id = run.tenant_id if run is not None else None
+        if run is None:
+            if self._status_store is None:
+                return {"status": "not_found", "scan_id": scan_id}
+            shared = self._status_store.request_cancel(scan_id, actor)
+            if not shared:
+                return {"status": "not_found", "scan_id": scan_id}
+            scan = shared.get("scan") or {}
+            if scan.get("status") in {"completed", "failed", "cancelled"}:
+                return {"status": scan.get("status"), "scan": scan, "source": "shared"}
+            emit_platform_event(
+                "SCAN_CANCEL_REQUESTED",
+                f"scan {scan_id} cancellation requested by {actor}",
+                {"scan_id": scan_id, "actor": actor},
+                tenant_id=scan.get("tenant_id"),
+            )
+            return {"status": "cancelling", "scan": scan, "source": "shared"}
+        self._runner.request_cancel()
+        emit_platform_event(
+            "SCAN_CANCEL_REQUESTED",
+            f"scan {scan_id} cancellation requested by {actor}",
+            {"scan_id": scan_id, "actor": actor}, tenant_id=tenant_id,
+        )
+        self._mirror_status()
+        return {"status": "cancelling", "scan": run.to_dict()}
 
     # --------------------------------------------------------------- status
     def status(self) -> dict[str, Any]:
         with self._lock:
-            if self._current is None:
+            active_tenant = _active_tenant_id()
+            local_matches_scope = (
+                self._current is not None
+                and self._current.tenant_id == active_tenant
+            )
+            if not local_matches_scope:
                 # no local run: if a shared store (Redis) is configured, serve the
                 # latest status mirrored by whichever replica ran the scan.
                 if self._status_store is not None:
@@ -446,11 +558,25 @@ class ScanOrchestrator:
                         shared = self._status_store.get()
                         if shared and shared.get("scan"):
                             return {**shared, "source": "scan_orchestrator:shared"}
-                    except Exception:  # noqa: BLE001
-                        pass
-                return {"scan": None, "source": "scan_orchestrator", "runner": {"running": self._runner.running}}
-            return {"scan": self._current.to_dict(), "source": "scan_orchestrator",
-                    "runner": {"running": self._runner.running}}
+                    except Exception as exc:  # noqa: BLE001 — do not report an outage as no active run
+                        self._shared_state_error = type(exc).__name__
+                        logger.error("shared_scan_state_read_failed", extra={"error_type": type(exc).__name__})
+                        return {
+                            "scan": None,
+                            "source": "scan_orchestrator",
+                            "availability": "unavailable",
+                            "runner": {"running": self._runner.running},
+                        }
+                result = {"scan": None, "source": "scan_orchestrator",
+                          "runner": {"running": self._runner.running}}
+                if self._shared_state_error:
+                    result["shared_state"] = {"status": "unavailable", "error": self._shared_state_error}
+                return result
+            result = {"scan": self._current.to_dict(), "source": "scan_orchestrator",
+                      "runner": {"running": self._runner.running}}
+            if self._shared_state_error:
+                result["shared_state"] = {"status": "unavailable", "error": self._shared_state_error}
+            return result
 
 
 _orchestrator: Optional[ScanOrchestrator] = None

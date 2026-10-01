@@ -23,6 +23,11 @@ PQC impact. Heartbeats (§4) and edge sync (§21) plug in alongside.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from datetime import datetime, timezone
 from typing import Any, Callable, Optional
 
@@ -314,7 +319,11 @@ class LiveHardwareController:
         for raw in monitor.collect():
             try:
                 event = HardwareEvent(**raw) if isinstance(raw, dict) else raw
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
             results.append(self.ingest(event))
         return results

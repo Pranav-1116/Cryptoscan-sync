@@ -16,28 +16,33 @@ Resolution costs one indexed query on the memberships table, and is skipped
 entirely for unauthenticated paths (health, login, metrics, static) and for
 anything that is not an API route.
 
-Failure is closed-ish by design: if the tenant cannot be resolved the request
-proceeds **unscoped**, which is correct because the only ways to get here are
-(a) a platform operator with no active tenant, whose job is the platform
-estate, or (b) an unauthenticated request, which the auth gate has already
-rejected. It is never the case that an authenticated tenant member silently
-loses their filter — that path raises, and the error surfaces.
+Failure is closed. The request proceeds **unscoped** only when the principal
+affirmatively has no tenant: (a) a platform operator with no active tenant,
+whose job is the platform estate, or (b) an unauthenticated request, which the
+auth gate has already rejected. Any other outcome — a refusal (403/404/423/400)
+or an unexpected error — raises ``TenantResolutionRefused`` and is answered
+with that status here.
+
+That distinction is the whole point. Outside a tenant scope the ORM guard in
+``db.tenancy`` is inert, so "unscoped" means *every tenant's rows*. While
+these refusals were swallowed into an unscoped request, a member sending
+another tenant's ``X-Tenant-ID`` (404) or a member of two tenants sending no
+header at all (400) read the entire estate on any of the ~85 routers that do
+not depend on ``get_tenant_context`` — the very routers this middleware
+covers.
 """
 
 from __future__ import annotations
 
-import logging
-
 from starlette.requests import Request
-
-logger = logging.getLogger(__name__)
 
 # Paths that never carry a tenant and must not pay for a lookup.
 _SKIP_PREFIXES = (
     "/health", "/ready", "/metrics", "/assets", "/favicon", "/static", "/login",
     "/api/docs", "/api/redoc", "/api/openapi.json",
-    "/api/v1/auth/", "/api/v1/saas/signup", "/api/v1/saas/invites/accept",
-    "/api/v1/meta", "/api/v1/healthz", "/api/v1/readyz", "/api/v1/webhooks",
+    "/api/v1/auth/", "/api/v1/saas/signup", "/api/v1/saas/memberships",
+    "/api/v1/saas/invites/accept", "/api/v1/meta", "/api/v1/healthz",
+    "/api/v1/readyz", "/api/v1/webhooks",
     "/api/v1/discovery",
 )
 
@@ -58,7 +63,17 @@ class TenantScopeMiddleware:
             await self.app(scope, receive, send)
             return
 
-        tenant_id = await self._resolve(Request(scope, receive))
+        from api.dependencies import TenantResolutionRefused
+
+        try:
+            tenant_id = await self._resolve(Request(scope, receive))
+        except TenantResolutionRefused as exc:
+            from starlette.responses import JSONResponse
+
+            response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+            await response(scope, receive, send)
+            return
+
         if tenant_id is None:
             await self.app(scope, receive, send)
             return
@@ -69,18 +84,13 @@ class TenantScopeMiddleware:
             await self.app(scope, receive, send)
 
     async def _resolve(self, request: Request) -> str | None:
-        """The membership-validated tenant for this request, or None."""
+        """The membership-validated tenant, or None when there legitimately is none.
+
+        Raises :class:`api.dependencies.TenantResolutionRefused` for every
+        other outcome. Swallowing it here would put the request back on the
+        unscoped path this middleware exists to close.
+        """
         from starlette.concurrency import run_in_threadpool
+        from api.dependencies import resolve_tenant_for_request
 
-        try:
-            from api.dependencies import resolve_tenant_for_request
-
-            return await run_in_threadpool(resolve_tenant_for_request, request)
-        except Exception:  # pragma: no cover - never fail a request on scoping
-            # Resolution problems are the route's business (it will raise the
-            # proper 403/404/423 through get_tenant_context). Here, leaving the
-            # request unscoped is safe: an unauthenticated caller was already
-            # refused by the auth gate, and a platform operator legitimately
-            # has no tenant.
-            logger.debug("tenant scope not resolved for %s", request.url.path, exc_info=True)
-            return None
+        return await run_in_threadpool(resolve_tenant_for_request, request)

@@ -215,7 +215,7 @@ def validate_scan_targets(targets: dict) -> dict:
     out: dict = dict(targets or {})
     if out.get("network"):
         out["network"] = validate_network_target(str(out["network"]))
-    for key in ("source", "universal"):
+    for key in ("source", "universal", "telecom", "payment", "keyassure", "binary", "devsecops"):
         if out.get(key):
             out[key] = validate_source_target(str(out[key]), label=f"{key}_target")
     return out

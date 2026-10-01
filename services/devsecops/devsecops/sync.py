@@ -16,6 +16,11 @@ Deterministic, network-injected (no real sockets imported here):
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import hashlib
 import hmac
 import json
@@ -238,7 +243,11 @@ def splunk_hec_with_ack(events: Iterable[dict], *, hec_url: str, token: str,
     ack_id = None
     try:
         ack_id = json.loads(res.body).get("ackId")
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
 
     acknowledged = True
@@ -299,7 +308,11 @@ def elastic_bulk_with_retry(events: Iterable[dict], *, base_url: str, index: str
                     item_errors.append({"doc_id": doc_ids[i] if i < len(doc_ids) else None,
                                         "type": op["error"].get("type"),
                                         "reason": op["error"].get("reason")})
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return {"provider": "elastic", "ok": not item_errors, "status": res.status,
             "events_sent": len(events) - len(item_errors), "attempts": attempts,

@@ -7,6 +7,8 @@ happens to be installed on the build machine. Nothing here needs a compiler.
 from __future__ import annotations
 
 import gzip
+import importlib.util
+import io
 import struct
 import zipfile
 
@@ -189,6 +191,47 @@ def _pe(*, machine: int = 0x8664, imports=("KERNEL32.dll",), dotnet: bool = Fals
     data[raw_offset:raw_offset + len(descriptors)] = descriptors
     blob = b"".join(dll.encode() + b"\x00" for dll in imports)
     data[raw_offset + 0x40:raw_offset + 0x40 + len(blob)] = blob
+    return bytes(data)
+
+
+def _apk_with_signing_block() -> bytes:
+    """Build a tiny ZIP with a structurally valid v2 signing-block pair."""
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+    data = bytearray(output.getvalue())
+    eocd = data.rfind(b"PK\x05\x06")
+    central_offset = struct.unpack_from("<I", data, eocd + 16)[0]
+    pair_value = struct.pack("<I", 0x7109871A) + b"bounded-test-pair"
+    pair = struct.pack("<Q", len(pair_value)) + pair_value
+    block_size = len(pair) + 24
+    signing_block = struct.pack("<Q", block_size) + pair + struct.pack(
+        "<Q", block_size) + b"APK Sig Block 42"
+    data[central_offset:central_offset] = signing_block
+    struct.pack_into("<I", data, eocd + len(signing_block) + 16, central_offset + len(signing_block))
+    return bytes(data)
+
+
+def _pe_with_named_api_symbols() -> bytes:
+    """Extend the small PE fixture with one named import and one export."""
+    data = bytearray(_pe(imports=("BCRYPT.dll",)))
+    raw = 0x400
+    optional = 0x98
+    # IMAGE_IMPORT_DESCRIPTOR: use an Import Name Table at RVA 0x1080.
+    struct.pack_into("<IIIII", data, raw, 0x1080, 0, 0, 0x1040, 0x1080)
+    struct.pack_into("<Q", data, raw + 0x80, 0x10A0)
+    data[raw + 0xA0:raw + 0xA0 + 2 + len("BCryptGenRandom") + 1] = (
+        b"\x00\x00BCryptGenRandom\x00")
+
+    # IMAGE_EXPORT_DIRECTORY plus one name/ordinal/function entry.
+    export_rva = 0x10C0
+    struct.pack_into("<II", data, optional + 112, export_rva, 0x40)
+    struct.pack_into("<IIHHIIIIIII", data, raw + 0xC0,
+                     0, 0, 0, 0, 0x1120, 1, 1, 1, 0x1118, 0x1110, 0x1114)
+    struct.pack_into("<I", data, raw + 0x110, 0x1120)
+    struct.pack_into("<H", data, raw + 0x114, 0)
+    struct.pack_into("<I", data, raw + 0x118, 0x2000)
+    data[raw + 0x120:raw + 0x120 + len("BCryptGenRandom") + 1] = b"BCryptGenRandom\x00"
     return bytes(data)
 
 
@@ -666,6 +709,27 @@ def test_pe_imports_subsystem_and_dotnet():
     assert parsed["libraries"] == ["KERNEL32.dll", "CRYPT32.dll"]
     assert parsed["sections"] == [".rdata"]
     assert bs.parse_pe(_pe(dotnet=True)).get("dotnet") is True
+
+
+def test_pe_named_imports_and_exports_are_crypto_capability_evidence():
+    parsed = bs.parse_pe(_pe_with_named_api_symbols())
+    assert parsed["import_symbols"] == ["BCryptGenRandom"]
+    assert "delay_import_symbols" not in parsed
+    assert parsed["exports"] == ["BCryptGenRandom"]
+    assert parsed["imports"] == ["BCRYPT.dll!", "BCryptGenRandom"]
+    crypto = bs.parse_bytes(_pe_with_named_api_symbols(), name="provider.dll")["crypto"]
+    assert any(row["name"] == "CSPRNG" for row in crypto["algorithm_evidence"])
+
+
+def test_apk_signing_block_is_inventoried_without_verification():
+    parsed = bs.parse_zip(_apk_with_signing_block(), "release.apk")
+    android = parsed["android"]
+    block = android["apk_signing_block"]
+    assert block["present"] is True and block["state"] == "complete"
+    assert block["schemes"] == ["v2"]
+    assert android["package_signature_present"] is True
+    assert android["signature_verification"] == "not_performed"
+    assert "verification was not performed" in block["note"]
 
 
 def test_ar_resolves_gnu_long_names(tmp_path):
@@ -1687,3 +1751,123 @@ def test_every_table_trigger_is_long_enough_to_be_evidence():
         assert len(prefix) >= min(len(table.data), cc.TABLE_TRIGGER)
         assert (len(set(prefix)) >= cc.TRIGGER_MIN_DISTINCT
                 or prefix == table.data), (table.algorithm, table.table, prefix)
+
+
+def _dex_fixture() -> bytes:
+    """Small valid DEX index tables with JCA and an application class."""
+    strings = [
+        "Ljavax/crypto/Cipher;", "getInstance", "AES/GCM/NoPadding",
+        "Ljava/lang/Object;", "Lcom/acme/Main;",
+    ]
+    header = bytearray(0x70)
+    string_offset = 0x70
+    string_ids = bytearray(len(strings) * 4)
+    string_data = bytearray()
+    cursor = string_offset + len(string_ids)
+    for index, text in enumerate(strings):
+        struct.pack_into("<I", string_ids, index * 4, cursor)
+        encoded = text.encode("utf-8")
+        string_data.extend(bytes((len(encoded),)) + encoded + b"\x00")
+        cursor += len(encoded) + 2
+    type_offset = cursor
+    type_ids = struct.pack("<II", 0, 3)
+    class_offset = type_offset + len(type_ids)
+    class_defs = bytearray(32)
+    struct.pack_into("<I", class_defs, 0, 1)  # class_idx -> Ljava/lang/Object;
+    file_size = class_offset + len(class_defs)
+    header[:8] = b"dex\n035\x00"
+    struct.pack_into("<III", header, 0x20, file_size, 0x70, 0x12345678)
+    struct.pack_into("<II", header, 0x38, len(strings), string_offset)
+    struct.pack_into("<II", header, 0x40, 2, type_offset)
+    struct.pack_into("<II", header, 0x60, 1, class_offset)
+    return bytes(header + string_ids + string_data + type_ids + class_defs)
+
+
+def test_python_bytecode_is_parsed_without_execution(tmp_path):
+    """PYC metadata and constants are useful evidence, but code is never run."""
+    import importlib.util
+    import marshal
+    import time
+
+    code = compile(
+        "import hashlib\nhashlib.sha256(b'x')\nmode = 'AES/GCM/NoPadding'",
+        "app.py", "exec")
+    pyc = (importlib.util.MAGIC_NUMBER + struct.pack("<III", 0, int(time.time()), 64)
+           + marshal.dumps(code))
+    path = tmp_path / "app.pyc"
+    path.write_bytes(pyc)
+
+    record = bs.scan_file(path)
+    assert record is not None and record["format"] == "python-bytecode"
+    assert record["python"]["code_objects"] == 1
+    assert "hashlib" in record["python"]["names"]
+    assert "AES/GCM/NoPadding" in record["python"]["strings"]
+    assert any(row["name"] == "AES" for row in record["crypto"]["algorithm_evidence"])
+    assert record["crypto"]["libraries"]
+
+
+def test_dex_and_android_package_recursion_preserve_provenance(tmp_path):
+    """APK structure, DEX indexes, and nested crypto evidence reach the SBOM."""
+    import zipfile
+
+    dex = _dex_fixture()
+    apk = tmp_path / "app.apk"
+    with zipfile.ZipFile(apk, "w", compression=zipfile.ZIP_STORED) as archive:
+        archive.writestr("AndroidManifest.xml", b"manifest")
+        archive.writestr("classes.dex", dex)
+        archive.writestr("lib/arm64-v8a/libnative.so", _elf64(
+            exports=("EVP_sha256",), strings=("OpenSSL 3.0.20",)))
+        archive.writestr("META-INF/CERT.RSA", b"certificate placeholder")
+
+    record = bs.scan_file(apk)
+    assert record is not None and record["type"] == "android-package"
+    assert record["android"]["dex_count"] == 1
+    assert record["android"]["native_library_count"] == 1
+    assert record["android"]["package_signature_present"] is True
+    embedded = {row["file_name"]: row for row in record["embedded"]}
+    assert embedded["classes.dex"]["format"] == "dex"
+    assert embedded["classes.dex"]["derived_from"].endswith("app.apk")
+    assert embedded["libnative.so"]["format"] == "elf"
+    assert "JCA-JCE" in {row["library"] for row in embedded["classes.dex"]["crypto"]["libraries"]}
+
+    result = bs.sbom_result(bs.scan_path(tmp_path))
+    apk_row = next(row for row in result["binaries"] if row["file_name"] == "app.apk")
+    assert apk_row["mobile"]["package_kind"] == "android"
+    assert any(row["format"] == "dex" for row in result["binaries"])
+    assert any(row["derived_from"] for row in result["binaries"] if row["format"] == "elf")
+
+
+def test_bytecode_headers_fail_closed_at_metadata_bounds():
+    """Untrusted DEX counts and malformed PYC payloads never escape the scanner."""
+    dex = bytearray(0x70)
+    dex[:8] = b"dex\n035\x00"
+    struct.pack_into("<III", dex, 0x20, len(dex), 0x70, 0x12345678)
+    struct.pack_into("<II", dex, 0x38, bs.MAX_DEX_IDS + 1, 0x70)
+    record = bs.parse_bytes(bytes(dex), name="hostile.dex")
+    assert record["format"] == "dex" and record["parsed"] is False
+    assert "exceeds the bound" in record["parse_error"]
+
+    pyc = importlib.util.MAGIC_NUMBER + bytes(12)
+    partial = bs.parse_bytes(pyc, name="partial.pyc")
+    assert partial["format"] == "python-bytecode"
+    assert partial["parsed"] is True and partial["python"].get("marshal_error")
+
+
+def test_directory_scan_rejects_symlink_escapes_and_deduplicates_real_files(tmp_path):
+    root = tmp_path / "root"
+    root.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(_elf64())
+    real = root / "real.bin"
+    real.write_bytes(_elf64())
+    (root / "alias.bin").symlink_to(real)
+    (root / "escape.bin").symlink_to(outside)
+
+    result = bs.scan_path(root, include_raw=True)
+
+    assert result["files_walked"] == 1
+    assert result["binaries_scanned"] == 1
+    assert result["files_deduplicated"] == 1
+    assert result["files_rejected"] == 1
+    assert str(root / "escape.bin") in result["path_restrictions"]["outside_root"]
+    assert str(root / "alias.bin") in result["path_restrictions"]["duplicate_real_paths"]

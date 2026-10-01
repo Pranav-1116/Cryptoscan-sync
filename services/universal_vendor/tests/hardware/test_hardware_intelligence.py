@@ -326,3 +326,31 @@ def test_risk_components_recorded():
         asset_id="srv-1", pqc_capability="UNKNOWN")
     assert result.components["pqc_capability"] == "UNKNOWN"
     assert result.asset_id == "srv-1"
+
+
+def test_empty_plugin_capability_container_does_not_claim_known_hardware():
+    from universal_vendor.hardware.capabilities import CryptoCapabilityEngine
+
+    engine = CryptoCapabilityEngine()
+    engine.record_hardware_from_dict("host-empty", {"supported_algorithms": []})
+    assert engine.summary("host-empty") == {"asset_id": "host-empty", "known": False}
+
+
+def test_scanner_reports_capability_evidence_even_without_identity_claim():
+    from universal_vendor.hardware.scanner import UniversalHardwareScanner
+
+    result = UniversalHardwareScanner().scan({
+        "asset_id": "cap-only", "capabilities": {"aes": True},
+        "used_algorithms": ["AES"],
+    })
+    assert result["observations"] == []
+    assert result["capabilities"] == [{
+        "asset_id": "cap-only", "known": True,
+        "hardware_supported": {
+            "aes": True, "sha2": False, "sha3": False, "rsa": False,
+            "ecc": False, "ecdsa": False, "ecdh": False, "rng": False,
+            "secure_key_storage": False, "pqc_hybrid": False,
+            "supported_algorithms": [], "used_algorithms": [],
+        },
+        "software_used": ["AES"], "supported_but_unused": [],
+    }]
