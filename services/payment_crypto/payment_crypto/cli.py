@@ -84,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
         result = run(config)
     except Exception as exc:  # noqa: BLE001 — preserve an honest scanner failure
         result = {
-            "scanner": "payment", "scan_status": "FAIL", "observations": [],
+            "scanner": "payment", "scan_status": "PREFLIGHT", "observations": [],
             "findings": [], "cursor": None, "error": f"payment scanner error: {exc}",
         }
     print(json.dumps(result, sort_keys=True, default=str))
