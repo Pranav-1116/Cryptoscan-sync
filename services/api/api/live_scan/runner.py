@@ -74,7 +74,13 @@ def _now() -> str:
 SNAPSHOT_SETTING_KEY = "live_scan.last_snapshot"
 
 
-def _db_persist(snapshot: dict[str, Any]) -> bool:
+def _setting_key(base: str, tenant_id: str | None) -> str:
+    # AppSetting historically has a globally unique key. Namespacing keeps
+    # legacy platform settings intact while making worker writes tenant-safe.
+    return f"{base}:{tenant_id}" if tenant_id else base
+
+
+def _db_persist(snapshot: dict[str, Any], tenant_id: str | None = None) -> bool:
     """Best-effort: write the snapshot to the settings table. Never raises —
     a missing/unconfigured DB must not block scanning."""
     try:
@@ -82,23 +88,34 @@ def _db_persist(snapshot: dict[str, Any]) -> bool:
         from db.repositories.settings_repository import SettingsRepository
 
         with SessionLocal() as session:
-            SettingsRepository(session).set(SNAPSHOT_SETTING_KEY, snapshot,
-                                            updated_by="live-scanner")
+            SettingsRepository(session).set(
+                _setting_key(SNAPSHOT_SETTING_KEY, tenant_id),
+                snapshot,
+                updated_by="live-scanner",
+                tenant_id=tenant_id,
+            )
             session.commit()
         return True
     except Exception:  # noqa: BLE001
         return False
 
 
-def _db_load_snapshot() -> dict[str, Any] | None:
+def _db_load_snapshot(tenant_id: str | None = None) -> dict[str, Any] | None:
     try:
         from db.connection.session import SessionLocal
         from db.repositories.settings_repository import SettingsRepository
 
         with SessionLocal() as session:
-            snap = SettingsRepository(session).get(SNAPSHOT_SETTING_KEY)
+            snap = SettingsRepository(session).get(
+                _setting_key(SNAPSHOT_SETTING_KEY, tenant_id),
+                tenant_id=tenant_id,
+            )
         return snap if isinstance(snap, dict) else None
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -131,7 +148,11 @@ def _privacy_policy_obj() -> Any | None:
             from privacy.policy import PrivacyPolicy
 
             return PrivacyPolicy()
-        except Exception:  # noqa: BLE001
+        except Exception as _handler_exc:  # noqa: BLE001
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return None
 
 
@@ -181,15 +202,30 @@ class LiveScanRunner:
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
-        self._run_tenant_id: str | None = None
+        self._cancel_requested = threading.Event()
         self.interval: int = int(os.environ.get("CRYPTOSCAN_LIVE_INTERVAL", "900"))
         self.last_snapshot: dict[str, Any] | None = None
+        self._tenant_snapshots: dict[str, dict[str, Any]] = {}
         self.last_run_at: str | None = None
         self.running: bool = False
         self._started_at: float | None = None
+        self._run_tenant_id: str | None = None
+        self._loaded_tenant_id: str | None = None
+        self._periodic_tenant_id: str | None = None
         self._persisted: bool = False
         self._prev_inventory: dict[str, Any] | None = None
         self.last_drift: dict[str, Any] | None = None
+
+    @staticmethod
+    def _tenant_cache_key(tenant_id: str | None) -> str:
+        return tenant_id or "__platform__"
+
+    def snapshot_for_tenant(self, tenant_id: str | None = None) -> dict[str, Any] | None:
+        """Return only the requested tenant's in-memory snapshot."""
+        return self._tenant_snapshots.get(self._tenant_cache_key(tenant_id))
+
+    def _snapshot_for_current_run(self) -> dict[str, Any] | None:
+        return self.last_snapshot
 
     # ------------------------------------------------------------------ specs
     def _specs(
@@ -439,36 +475,32 @@ class LiveScanRunner:
             return {"events": data.get("events_count") or len(data.get("events") or [])}
         return {}
 
-    #: lifecycle/result events are durable: they are persisted to the DB event
-    #: log in addition to the in-memory bus, so they reach browsers on other
-    #: API workers (via the DB tailer) and survive a restart. High-frequency
-    #: progress ticks (scanner_started/scanner_completed) stay in-memory only.
+    #: Lifecycle/result events also become audit rows. Every event is written
+    #: to the Redis stream by EventBus in production; only these important
+    #: milestones are additionally retained in monitor_events for audit/history.
     _DURABLE_EVENTS = frozenset({
-        "live_scan.started", "live_scan.completed", "live_scan.error", "live_scan.drift",
-        "universal_vendor.event",
+        "live_scan.started", "live_scan.completed", "live_scan.error",
+        "live_scan.drift", "live_scan.cancelled", "universal_vendor.event",
     })
 
     def _publish(self, event_type: str, payload: dict[str, Any]) -> None:
         try:
             from api.events.bus import get_event_bus
+            from api.events.platform_events import emit_platform_event
 
-            get_event_bus().publish(
-                event_type, payload, source="live-scanner",
-                tenant_id=self._run_tenant_id,
-            )
-        except Exception:  # noqa: BLE001 — event failure must never kill a scan
-            pass
-        if event_type in self._DURABLE_EVENTS:
-            try:
-                from api.events.platform_events import persist_platform_event
-
+            if event_type in self._DURABLE_EVENTS:
                 detail = payload.get("error") or payload.get("trigger") or event_type
-                persist_platform_event(
+                emit_platform_event(
                     event_type, str(detail), payload, target_name="live-scan",
                     tenant_id=self._run_tenant_id,
                 )
-            except Exception:  # noqa: BLE001 — best-effort durability
-                pass
+            else:
+                get_event_bus().publish(
+                    event_type, payload, source="live-scanner",
+                    tenant_id=self._run_tenant_id,
+                )
+        except Exception as exc:  # noqa: BLE001 — health/audit records the fault
+            logger.error("live_scan_event_publish_failed", extra={"error_type": type(exc).__name__})
 
     def _auto_sync_graph(self, *, trigger: str, requested: list[str],
                          tenant_id: str | None = None) -> None:
@@ -496,7 +528,11 @@ class LiveScanRunner:
                     {"trigger": trigger, "scanners": requested, "changed": True},
                     target_name="graph", tenant_id=tenant_id,
                 )
-            except Exception:  # noqa: BLE001
+            except Exception as _handler_exc:  # noqa: BLE001
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             return
         try:
@@ -535,6 +571,9 @@ class LiveScanRunner:
             self.running = True
             self._started_at = time.time()
             self._run_tenant_id = tenant_id
+            self.last_snapshot = self._tenant_snapshots.get(
+                self._tenant_cache_key(tenant_id)
+            )
         try:
             specs = self._specs(only=only, targets=targets)
             # Universal vendor monitoring is a real source poll, not a
@@ -552,6 +591,7 @@ class LiveScanRunner:
 
                 vendor_result = run_vendor_realtime(
                     tenant_id=getattr(self, "_run_tenant_id", None),
+                    persist_events=False,
                 )
                 results["vendor"] = vendor_result
                 for vendor_event in ((vendor_result.get("data") or {}).get("events") or []):
@@ -567,6 +607,11 @@ class LiveScanRunner:
                      "error": vendor_result.get("error")},
                 )
             for spec in specs:
+                if self._cancel_requested.is_set():
+                    self._publish("live_scan.cancelled", {"trigger": trigger,
+                                                           "scanners": list(results)})
+                    return {"status": "cancelled", "trigger": trigger,
+                            "results": results}
                 self._publish("live_scan.scanner_started",
                               {"scanner": spec.key})
                 res = self._run_spec(spec)
@@ -578,6 +623,11 @@ class LiveScanRunner:
                      "summary": res.get("summary"),
                      "error": res.get("error")},
                 )
+                if self._cancel_requested.is_set():
+                    self._publish("live_scan.cancelled", {"trigger": trigger,
+                                                           "scanners": list(results)})
+                    return {"status": "cancelled", "trigger": trigger,
+                            "results": results}
             snapshot = {
                 "ts": _now(),
                 "trigger": trigger,
@@ -605,7 +655,20 @@ class LiveScanRunner:
             # policy (no PII/secrets/private keys, data minimization). Fail-soft:
             # a sanitizer error never blocks an already-completed scan.
             snapshot = _privacy_scrub(snapshot, _privacy_policy_obj())
+            # Materialize one cross-scanner CBOM while full scanner payloads
+            # are still present; the bounded snapshot retains this evidence
+            # backed projection across restart.
             self.last_snapshot = snapshot
+            try:
+                snapshot["live_cbom"] = self.bom()
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("live_cbom_aggregation_failed", extra={
+                    "error_type": type(exc).__name__,
+                })
+            snapshot = _privacy_scrub(snapshot, _privacy_policy_obj())
+            self.last_snapshot = snapshot
+            self._tenant_snapshots[self._tenant_cache_key(self._run_tenant_id)] = snapshot
+            self._loaded_tenant_id = self._run_tenant_id
             self.last_run_at = snapshot["ts"]
             # persist a trimmed snapshot (summaries, not full scanner payloads)
             # so it survives restarts without bloating the settings row
@@ -633,7 +696,7 @@ class LiveScanRunner:
                 self._prev_inventory = current_inv
             except Exception:  # noqa: BLE001
                 trimmed["inventory"] = None
-            self._persisted = _db_persist(trimmed)
+            self._persisted = _db_persist(trimmed, tenant_id=self._run_tenant_id)
             self._publish("live_scan.completed",
                           {"ts": snapshot["ts"], "elapsed_s": snapshot["elapsed_s"],
                            "ok": snapshot["ok_count"], "failed": snapshot["failed_count"],
@@ -651,6 +714,7 @@ class LiveScanRunner:
             self.running = False
             self._started_at = None
             self._run_tenant_id = None
+            self._cancel_requested.clear()
 
     # ------------------------------------------------------------- threading
     def start_cycle(self, **kwargs: Any) -> dict[str, Any]:
@@ -670,11 +734,19 @@ class LiveScanRunner:
         except Exception as exc:  # noqa: BLE001
             self._publish("live_scan.error", {"error": str(exc)})
 
-    def start_periodic(self, interval: int | None = None) -> dict[str, Any]:
+    def start_periodic(
+        self,
+        interval: int | None = None,
+        *,
+        tenant_id: str | None = None,
+    ) -> dict[str, Any]:
         if interval:
             self.interval = max(30, int(interval))
         if self._thread and self._thread.is_alive():
             return {"status": "already_running", "interval": self.interval}
+        # The loop outlives the request ContextVar. Pin the authorized tenant
+        # explicitly so its worker cannot fall back to the first organization.
+        self._periodic_tenant_id = tenant_id
         self._stop.clear()
         self._thread = threading.Thread(
             target=self._periodic_loop, daemon=True, name="live-scan-loop",
@@ -682,27 +754,53 @@ class LiveScanRunner:
         self._thread.start()
         return {"status": "started", "interval": self.interval}
 
-    def stop_periodic(self) -> dict[str, Any]:
+    def stop_periodic(self, *, tenant_id: str | None = None) -> dict[str, Any]:
+        if (
+            self._thread and self._thread.is_alive()
+            and self._periodic_tenant_id not in (None, tenant_id)
+        ):
+            return {"status": "not_owner"}
         self._stop.set()
         return {"status": "stopping"}
 
-    def load_persisted_snapshot(self) -> bool:
-        """Restore the last snapshot from the settings table on startup so the
-        UI shows the most recent real scan immediately. Returns True if one
-        was loaded."""
-        snap = _db_load_snapshot()
+    def request_cancel(self) -> bool:
+        """Request cancellation of the active manual cycle.
+
+        Scanner subprocesses finish their current bounded operation; the next
+        scanner is not started and the durable orchestrator state records the
+        cancellation. This avoids pretending a process was killed when it was
+        only asked to stop.
+        """
+        with self._lock:
+            active = self.running
+            if active:
+                self._cancel_requested.set()
+            return active
+
+    def load_persisted_snapshot(self, tenant_id: str | None = None) -> bool:
+        """Restore a tenant's last snapshot from durable settings."""
+        snap = _db_load_snapshot(tenant_id=tenant_id)
+        cache_key = self._tenant_cache_key(tenant_id)
+        self._loaded_tenant_id = tenant_id
         if not snap:
+            self._tenant_snapshots.pop(cache_key, None)
+            if not self.running:
+                self.last_snapshot = None
+                self.last_run_at = None
             return False
-        self.last_snapshot = snap
-        self.last_run_at = snap.get("ts")
+        self._tenant_snapshots[cache_key] = snap
+        if not self.running:
+            self.last_snapshot = snap
+            self.last_run_at = snap.get("ts")
         return True
 
     # ------------------------------------------------------------------ inventory
-    def inventory(self) -> dict[str, Any]:
+    def inventory(self, tenant_id: str | None = None) -> dict[str, Any]:
         """Build page-ready structures for the dashboard pages from the most
         recent live snapshot (in-memory with full payloads, else the persisted
         summaries). Real scan data only — empty until a scan runs."""
-        snap = self.last_snapshot or {}
+        snap = (self.snapshot_for_tenant(tenant_id) if tenant_id is not None
+                else self.last_snapshot) or {}
         results: dict[str, Any] = snap.get("results") or {}
 
         def _data(key: str) -> dict[str, Any]:
@@ -903,11 +1001,11 @@ class LiveScanRunner:
         return built
 
     # ------------------------------------------------------------------ alerts
-    def alerts(self) -> dict[str, Any]:
+    def alerts(self, tenant_id: str | None = None) -> dict[str, Any]:
         """Deterministic, cross-scanner risk aggregation. Derives alerts from
         the page-ready inventory (so it also works after a restart) plus the
         per-scanner summaries/errors in the latest snapshot."""
-        inv = self.inventory()
+        inv = self.inventory(tenant_id=tenant_id)
         ts = inv.get("generated_at")
         out: list[dict[str, Any]] = []
         sev_rank = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}
@@ -1102,11 +1200,12 @@ class LiveScanRunner:
                 "previous_ts": prev.get("generated_at"),
                 "changes": changes, "change_count": len(changes)}
 
-    def drift(self) -> dict[str, Any]:
+    def drift(self, tenant_id: str | None = None) -> dict[str, Any]:
         """Latest drift between consecutive live cycles (persisted-safe)."""
-        if self.last_drift:
+        if tenant_id is None and self.last_drift:
             return self.last_drift
-        snap = self.last_snapshot or {}
+        snap = (self.snapshot_for_tenant(tenant_id) if tenant_id is not None
+                else self.last_snapshot) or {}
         inv = snap.get("inventory") if isinstance(snap.get("inventory"), dict) else None
         prev = (inv or {}).get("_prev") if inv else None
         if prev:
@@ -1122,12 +1221,165 @@ class LiveScanRunner:
         return prev if isinstance(prev, dict) else None
 
     # ------------------------------------------------------------------ bom
-    def bom(self) -> dict[str, Any]:
+    @staticmethod
+    def _bom_value(value: Any) -> list[Any]:
+        if value in (None, "", [], {}):
+            return []
+        if isinstance(value, (list, tuple, set)):
+            return list(value)
+        return [value]
+
+    @classmethod
+    def _scanner_cbom_components(
+        cls,
+        scanner: str,
+        payload: Any,
+    ) -> list[dict[str, Any]]:
+        """Project explicit crypto records from every live scanner payload.
+
+        Scanner schemas differ, but this projection only emits values that the
+        scanner actually reported. A package/resource/finding without an
+        explicit crypto field is not turned into an ``unknown`` algorithm.
+        """
+        output: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+
+        def text(value: Any) -> str | None:
+            if isinstance(value, dict):
+                value = (value.get("name") or value.get("algorithm")
+                         or value.get("protocol") or value.get("cipher_suite")
+                         or value.get("id"))
+            if value in (None, "", [], {}):
+                return None
+            return str(value)
+
+        def evidence(record: dict[str, Any]) -> str | None:
+            for key in ("evidence_reference", "source_evidence_reference",
+                        "evidence_id", "hash", "sha256"):
+                value = record.get(key)
+                if value not in (None, ""):
+                    return str(value)
+            return None
+
+        def emit(kind: str, name: Any, record: dict[str, Any], **extra: Any) -> None:
+            normalized = text(name)
+            if not normalized or normalized.lower() in {"unknown", "none", "null"}:
+                return
+            version = record.get("version") or record.get("product_version")
+            key = (kind, normalized, str(version or ""))
+            if key in seen:
+                return
+            seen.add(key)
+            component: dict[str, Any] = {
+                "type": kind,
+                "name": normalized,
+                "version": version,
+                "source": scanner,
+                "evidence_reference": evidence(record),
+            }
+            for field in (
+                "mode", "padding", "key_size", "key_bits", "curve", "algorithm_oid",
+                "protocol_version", "cipher_suites", "library", "package",
+                "status", "severity", "quantum_status", "quantum_safe_status",
+                "migration_priority", "pqc_alternatives", "compliance",
+                "asset_id", "endpoint", "file_path", "line_number", "resource_id",
+            ):
+                if record.get(field) not in (None, "", [], {}):
+                    component[field] = record[field]
+            component.update({key: value for key, value in extra.items()
+                             if value not in (None, "", [], {})})
+            output.append(component)
+
+        def walk(node: Any, depth: int = 0) -> None:
+            if depth > 5:
+                return
+            if isinstance(node, list):
+                for item in node:
+                    walk(item, depth + 1)
+                return
+            if not isinstance(node, dict):
+                return
+            record = node
+            crypto = record.get("crypto")
+            crypto_records = crypto if isinstance(crypto, dict) else {}
+            merged = {**record, **crypto_records}
+
+            # Universal/source findings and network crypto objects.
+            algorithms: list[Any] = []
+            for key in ("algorithm", "crypto_algorithm", "signature_algorithm",
+                        "key_exchange", "cipher_suite", "cipher"):
+                algorithms.extend(cls._bom_value(merged.get(key)))
+            algorithms.extend(cls._bom_value(merged.get("algorithms")))
+            for algorithm in algorithms:
+                algorithm_record = {**merged, **algorithm} if isinstance(algorithm, dict) else merged
+                emit("algorithm", algorithm, algorithm_record)
+            for protocol in cls._bom_value(merged.get("protocol")) + cls._bom_value(merged.get("protocols")):
+                protocol_record = {**merged, **protocol} if isinstance(protocol, dict) else merged
+                emit("protocol", protocol, protocol_record,
+                     protocol_version=protocol_record.get("protocol_version") or protocol_record.get("version"),
+                     cipher_suites=protocol_record.get("cipher_suites") or protocol_record.get("ciphers"))
+
+            # Certificates and public-key metadata are separate CBOM assets.
+            for certificate in cls._bom_value(merged.get("certificate")) + cls._bom_value(merged.get("certificates")):
+                if isinstance(certificate, dict):
+                    emit("certificate", certificate.get("serial_number")
+                         or certificate.get("serial") or certificate.get("subject"),
+                         {**merged, **certificate})
+            key_values = (cls._bom_value(merged.get("key_id"))
+                          + cls._bom_value(merged.get("key"))
+                          + cls._bom_value(merged.get("key_material")))
+            for key_value in key_values:
+                if isinstance(key_value, dict):
+                    emit("key", key_value.get("id") or key_value.get("name")
+                         or key_value.get("type"), {**merged, **key_value})
+                else:
+                    emit("key", key_value, merged)
+
+            # Libraries/packages/services are only projected when their source
+            # record explicitly labels them as such.
+            for library in (
+                cls._bom_value(merged.get("library"))
+                + cls._bom_value(merged.get("tls_library"))
+                + cls._bom_value(merged.get("tls_libraries"))
+            ):
+                library_record = {**merged, **library} if isinstance(library, dict) else merged
+                emit("library", library, library_record)
+            for package in cls._bom_value(merged.get("package")):
+                package_record = {**merged, **package} if isinstance(package, dict) else merged
+                emit("package", package, package_record)
+            for dependency in (
+                cls._bom_value(merged.get("dependency"))
+                + cls._bom_value(merged.get("dependencies"))
+                + cls._bom_value(merged.get("library_dependencies"))
+            ):
+                dependency_record = {**merged, **dependency} if isinstance(dependency, dict) else merged
+                emit("dependency", dependency, dependency_record)
+            for service in cls._bom_value(merged.get("crypto_service")):
+                service_record = {**merged, **service} if isinstance(service, dict) else merged
+                emit("service", service, service_record)
+            for rng in cls._bom_value(merged.get("rng")) + cls._bom_value(merged.get("random_number_generator")):
+                rng_record = {**merged, **rng} if isinstance(rng, dict) else merged
+                emit("rng", rng, rng_record)
+            if merged.get("secret_type") not in (None, ""):
+                emit("secret", merged.get("secret_type"), merged)
+
+            for value in record.values():
+                if isinstance(value, (dict, list)):
+                    walk(value, depth + 1)
+
+        walk(payload)
+        return output
+
+    def bom(self, tenant_id: str | None = None) -> dict[str, Any]:
         """Cryptographic Bill of Materials (CBOM) and Hardware Bill of Materials
         (HBOM) assembled from the live scans. Real components only; quantum
         verdicts come from the universal crypto classifier (left null where no
         classifier ran, rather than guessed)."""
-        snap = self.last_snapshot or {}
+        snap = (self.snapshot_for_tenant(tenant_id) if tenant_id is not None
+                else self.last_snapshot) or {}
+        persisted_cbom = snap.get("live_cbom")
+        if isinstance(persisted_cbom, dict):
+            return persisted_cbom
         results: dict[str, Any] = snap.get("results") or {}
 
         def _data(key: str) -> dict[str, Any]:
@@ -1149,7 +1401,7 @@ class LiveScanRunner:
             })
 
         # 2. crypto libraries observed on the host (runtime)
-        inv = self.inventory()
+        inv = self.inventory(tenant_id=tenant_id)
         for lib in inv.get("libraries", []):
             components.append({
                 "type": "library", "name": lib.get("name"),
@@ -1185,33 +1437,56 @@ class LiveScanRunner:
                     for item in component.get("properties") or []
                     if isinstance(item, dict)
                 }
+                crypto = component.get("cryptoProperties") or {}
+                algorithm_properties = crypto.get("algorithmProperties") or {}
+                library_properties = crypto.get("libraryProperties") or {}
                 components.append({
-                    "type": component.get("type") or "crypto-asset",
+                    "type": crypto.get("assetType") or component.get("type") or "crypto-asset",
                     "name": component.get("name"),
                     "version": component.get("version"),
                     "ref": component.get("bom-ref"),
-                    "algorithm": props.get("algorithm"),
-                    "protocol": props.get("protocol"),
-                    "library": props.get("library"),
+                    "algorithm": props.get("algorithm") or algorithm_properties.get("algorithm"),
+                    "protocol": props.get("protocol") or crypto.get("protocol"),
+                    "library": props.get("library") or library_properties.get("name"),
+                    "quantum_status": crypto.get("nistDesignation"),
+                    "quantum_vulnerable": crypto.get("quantumVulnerable"),
                     "source": "vendor-realtime",
-                    "evidence_reference": props.get("evidence_reference"),
+                    "evidence_reference": props.get("evidence_reference")
+                    or crypto.get("evidenceReference"),
                 })
+
+        # 5. Every API scanner result class contributes its explicit crypto
+        # records (network, cloud, container, telecom, OT, runtime, source,
+        # and universal). The vendor engine above already owns its canonical
+        # CBOM, so do not re-project that payload here.
+        for scanner_key, result in results.items():
+            if scanner_key == "vendor":
+                continue
+            data = (result or {}).get("data") if isinstance(result, dict) else None
+            components.extend(self._scanner_cbom_components(scanner_key, data or {}))
 
         # de-duplicate by (type, name, version)
         seen: set[tuple] = set()
         uniq: list[dict[str, Any]] = []
         for c in components:
-            k = (c["type"], c.get("name"), c.get("version"))
+            k = (
+                c["type"], c.get("name"), c.get("version"), c.get("ref"),
+                c.get("algorithm"), c.get("protocol"), c.get("library"),
+            )
             if k in seen:
                 continue
             seen.add(k)
             uniq.append(c)
 
         def _quantum_bad(c: dict[str, Any]) -> bool:
-            q = str(c.get("quantum_status") or "").lower()
+            q = str(c.get("quantum_status") or c.get("quantum_safe_status") or "").lower()
             return ("vulnerable" in q or "broken" in q or "at_risk" in q) and "safe" not in q
 
         quantum_vulnerable = sum(1 for c in uniq if _quantum_bad(c))
+        type_counts: dict[str, int] = {}
+        for component in uniq:
+            kind = str(component.get("type") or "unknown")
+            type_counts[kind] = type_counts.get(kind, 0) + 1
 
         # HBOM: hardware devices
         hbom_components = [
@@ -1230,6 +1505,12 @@ class LiveScanRunner:
                     "algorithms": sum(1 for c in uniq if c["type"] == "algorithm"),
                     "libraries": sum(1 for c in uniq if c["type"] == "library"),
                     "packages": sum(1 for c in uniq if c["type"] == "package"),
+                    "protocols": sum(1 for c in uniq if c["type"] == "protocol"),
+                    "certificates": sum(1 for c in uniq if c["type"] == "certificate"),
+                    "keys": sum(1 for c in uniq if c["type"] == "key"),
+                    "services": sum(1 for c in uniq if c["type"] == "service"),
+                    "rngs": sum(1 for c in uniq if c["type"] == "rng"),
+                    "by_type": type_counts,
                     "quantum_vulnerable": quantum_vulnerable,
                 },
             },
@@ -1242,7 +1523,10 @@ class LiveScanRunner:
     def _periodic_loop(self) -> None:
         while not self._stop.is_set():
             try:
-                self.run_cycle(trigger="scheduled")
+                self.run_cycle(
+                    trigger="scheduled",
+                    tenant_id=self._periodic_tenant_id,
+                )
             except Exception as exc:  # noqa: BLE001
                 self._publish("live_scan.error", {"error": str(exc)})
             # interruptible sleep

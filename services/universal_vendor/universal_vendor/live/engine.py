@@ -82,21 +82,117 @@ class LiveVendorEngine:
         self.scanner = scanner
         self._evidence: dict[str, dict[str, Any]] = {}
         self._evidence_verification: dict[str, dict[str, Any]] = {}
+        # EventGateway is append-only, but each event must enter the state,
+        # CBOM, graph, and targeted scanner exactly once. Replaying the whole
+        # gateway on every tick causes duplicate deep scans and falsely bumps
+        # the realtime CBOM version even when the source is unchanged.
+        self._processed_gateway_index = 0
         self._tick_count = 0
+
+    @staticmethod
+    def _connector_state_key(connector: Any) -> str:
+        """Identify a source without persisting credentials or raw evidence."""
+        endpoint = getattr(connector, "_endpoint", None)
+        path = getattr(connector, "_path", None)
+        host = getattr(connector, "_host", None)
+        port = getattr(connector, "_port", None)
+        return "|".join(str(value or "") for value in (
+            getattr(connector, "asset_id", ""), endpoint, path, host, port,
+        ))
+
+    @staticmethod
+    def _safe_durable_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            sensitive = ("password", "secret", "token", "private", "plaintext",
+                         "ciphertext", "keymaterial", "authorization")
+            return {
+                str(key): "<redacted>" if any(
+                    token in "".join(char for char in str(key).lower() if char.isalnum())
+                    for token in sensitive
+                ) else LiveVendorEngine._safe_durable_value(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [LiveVendorEngine._safe_durable_value(item) for item in value]
+        if isinstance(value, str) and "BEGIN " in value and "PRIVATE KEY" in value:
+            return "<redacted-private-key>"
+        return value
+
+    def export_state(self) -> dict[str, Any]:
+        """Export durable cursors, evidence references, and safe CBOM state."""
+        cursors: dict[str, dict[str, Any]] = {}
+        for connector in self.monitor.connectors():
+            key = self._connector_state_key(connector)
+            cursor: dict[str, Any] = {}
+            for attribute in ("_last_fingerprint", "_etag", "_last_modified", "_offset"):
+                value = getattr(connector, attribute, None)
+                if value is not None:
+                    cursor[attribute.removeprefix("_")] = value
+            if key and cursor:
+                cursors[key] = cursor
+        return {
+            "tick_count": self._tick_count,
+            "cbom": self.cbom.export_state(),
+            "source_cursors": cursors,
+            "evidence": self._safe_durable_value(list(self._evidence.values())),
+            "evidence_verification": self._safe_durable_value(
+                list(self._evidence_verification.values())
+            ),
+        }
+
+    def restore_state(self, state: dict[str, Any] | None) -> None:
+        """Restore state produced by :meth:`export_state` before polling."""
+        if not isinstance(state, dict):
+            return
+        self.cbom.restore_state(state.get("cbom"))
+        self._evidence = {
+            str(item.get("evidence_id") or item.get("hash") or index): item
+            for index, item in enumerate(state.get("evidence") or [])
+            if isinstance(item, dict)
+        }
+        self._evidence_verification = {
+            str(index): item
+            for index, item in enumerate(state.get("evidence_verification") or [])
+            if isinstance(item, dict)
+        }
+        try:
+            self._tick_count = max(0, int(state.get("tick_count") or 0))
+        except (TypeError, ValueError):
+            self._tick_count = 0
+        cursors = state.get("source_cursors") or {}
+        if not isinstance(cursors, dict):
+            return
+        for connector in self.monitor.connectors():
+            values = cursors.get(self._connector_state_key(connector))
+            if not isinstance(values, dict):
+                continue
+            for name, value in values.items():
+                attribute = f"_{name}"
+                if attribute in {"_last_fingerprint", "_etag", "_last_modified", "_offset"}:
+                    setattr(connector, attribute, value)
+        # A new process starts with an empty in-memory gateway. When restoring
+        # an already-running cached engine, retain its current suffix so the
+        # restore itself cannot replay events already consumed this process.
+        self._processed_gateway_index = len(self.gateway)
 
     def tick(self, *, deep_scan: bool = True) -> dict[str, Any]:
         """One incremental pass. Returns per-stage outcomes."""
         self._tick_count += 1
 
-        # 1. collect from live connectors (§1)
-        events = self.monitor.collect()
-        for event in events:
+        # 1. collect from live connectors (§1). Ingestion is separated from
+        # processing so events already inserted by an offline sync or another
+        # source are handled by the same cursor below.
+        collected = self.monitor.collect()
+        for event in collected:
             self.gateway.ingest(event)
-            self._apply_event(event, deep_scan=deep_scan)
 
-        # 2. ingest any events already in the gateway (e.g. offline sync)
-        for event in self.gateway.events():
+        # 2. process only the append-only gateway suffix that this engine has
+        # not consumed. This is the realtime boundary: no synthetic replay,
+        # no repeated targeted scans, and no repeated CBOM version bumps.
+        pending = self.gateway.events(since_index=self._processed_gateway_index)
+        for event in pending:
             self._apply_event(event, deep_scan=deep_scan)
+        self._processed_gateway_index += len(pending)
 
         # 3. persist only the source fingerprint in live asset state. The raw
         # artifact remains behind its evidence hash and is never fabricated by
@@ -134,7 +230,8 @@ class LiveVendorEngine:
 
         return {
             "tick": self._tick_count,
-            "events_processed": len(events),
+            "events_processed": len(pending),
+            "source_events_collected": len(collected),
             "state_assets": self.state.count(),
             "cbom_version": self.cbom.version(),
             "cbom_components": len(self.cbom.components()),
@@ -182,6 +279,15 @@ class LiveVendorEngine:
             metadata = event.vendor_metadata or {}
             context = dict(metadata.get("scan_context") or {})
             artifact = metadata.get("artifact")
+            evidence_candidates = [
+                artifact, context.get("config"), context.get("banner"),
+                context.get("api_metadata"), context.get("metadata"),
+                context.get("crypto_metadata"), context.get("cbom"),
+                context.get("sbom"),
+            ]
+            has_source_evidence = any(
+                candidate not in (None, "", [], {}) for candidate in evidence_candidates
+            )
             if not context and artifact is not None:
                 if isinstance(artifact, dict):
                     context["api_metadata"] = artifact
@@ -191,9 +297,18 @@ class LiveVendorEngine:
                         context["banner"] = artifact["banner"]
                 elif isinstance(artifact, str):
                     context["config"] = artifact
+            # Preserve only the event's real identity/provenance as scanner
+            # context. These values help common discovery correlate records;
+            # they are not used to invent a banner or crypto observation.
+            if event.asset_id is not None:
+                context.setdefault("asset_id", event.asset_id)
+            context.setdefault("vendor", event.vendor)
+            context.setdefault("product", event.product)
             if event.product_version is not None and "version" not in context:
                 context["version"] = event.product_version
-            if not context:
+            if event.evidence_reference is not None:
+                context.setdefault("evidence_reference", event.evidence_reference)
+            if not has_source_evidence:
                 logger.info("live_targeted_scan_unavailable", extra={
                     "reason": "source_evidence_not_scan_readable",
                 })

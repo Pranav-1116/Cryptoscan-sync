@@ -61,6 +61,33 @@ def test_common_discovery_projects_full_metadata_without_material():
     assert rng["rng_type"] == "hardware"
 
 
+def test_live_cbom_keeps_non_algorithm_assets_distinct_and_does_not_invent_unknown():
+    cbom = LiveCbom()
+    cbom.materialize(UniversalVendorEvent(
+        vendor="Cisco", product="IOS-XE", asset_id="router-1",
+        event_type=EventType.CONFIG_CHANGED,
+        vendor_metadata={"availability": "UNAVAILABLE"},
+    ))
+    cbom.materialize(UniversalVendorEvent(
+        vendor="Cisco", product="IOS-XE", asset_id="router-1",
+        event_type=EventType.CRYPTO_CHANGED,
+        vendor_metadata={"observation": {
+            "crypto_type": "protocol", "protocol": "TLS", "protocol_version": "1.3",
+        }},
+    ))
+    cbom.materialize(UniversalVendorEvent(
+        vendor="Cisco", product="IOS-XE", asset_id="router-1",
+        event_type=EventType.KEY_CHANGED,
+        vendor_metadata={"observation": {
+            "crypto_type": "key", "key_id": "hsm-key-1", "key_role": "signing",
+        }},
+    ))
+    components = cbom.components()
+    assert len(components) == 2
+    assert {item["cryptoProperties"]["assetType"] for item in components} == {"protocol", "key"}
+    assert not any(item["bom-ref"].endswith(":unknown") for item in components)
+
+
 def test_realtime_cbom_retains_algorithm_protocol_certificate_and_migration_data():
     observation = {
         "crypto_type": "algorithm",

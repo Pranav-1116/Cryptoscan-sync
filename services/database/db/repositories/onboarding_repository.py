@@ -78,8 +78,19 @@ class OnboardingRepository:
     def get_org(self, org_id: str) -> Organization | None:
         return self.session.execute(select(Organization).where(Organization.id == org_id)).scalars().first()
 
-    def get_default_org(self) -> Organization | None:
-        return self.session.execute(select(Organization).order_by(Organization.created_at.asc()).limit(1)).scalars().first()
+    def get_default_org(self, tenant_id: str | None = None) -> Organization | None:
+        """Return the oldest organization visible to the optional tenant.
+
+        Background workers do not inherit the request tenant context, so
+        realtime adapters must pass the tenant explicitly instead of relying
+        on the ORM request guard.
+        """
+        stmt = select(Organization)
+        if tenant_id is not None:
+            stmt = stmt.where(Organization.tenant_id == tenant_id)
+        return self.session.execute(
+            stmt.order_by(Organization.created_at.asc()).limit(1)
+        ).scalars().first()
 
     def create_org(self, name: str, sector: str = "generic", **fields) -> Organization:
         org = Organization(name=name, sector=sector, **fields)

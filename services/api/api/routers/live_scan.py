@@ -65,10 +65,26 @@ def _runner():
     return get_live_scan_runner()
 
 
+def _active_tenant_id() -> str | None:
+    try:
+        from db.tenancy import current_tenant
+
+        return current_tenant()
+    except ImportError:
+        return None
+
+
+def _tenant_runner():
+    runner = _runner()
+    runner.load_persisted_snapshot(tenant_id=_active_tenant_id())
+    return runner
+
+
 @router.get("/status")
 def status(user: str = Depends(get_current_user)) -> dict[str, Any]:
-    r = _runner()
-    snap = r.last_snapshot
+    tenant_id = _active_tenant_id()
+    r = _tenant_runner()
+    snap = r.snapshot_for_tenant(tenant_id)
     summaries: dict[str, Any] = {}
     if snap:
         for key, res in (snap.get("results") or {}).items():
@@ -79,10 +95,11 @@ def status(user: str = Depends(get_current_user)) -> dict[str, Any]:
                 "error": res.get("error"),
             }
     loop_alive = bool(r._thread and r._thread.is_alive())  # noqa: SLF001
+    owns_loop = r._periodic_tenant_id in (None, _active_tenant_id())  # noqa: SLF001
     return {
         "running": r.running,
         "last_run_at": r.last_run_at,
-        "periodic": {"enabled": loop_alive, "interval_seconds": r.interval},
+        "periodic": {"enabled": loop_alive and owns_loop, "interval_seconds": r.interval},
         "scanners": summaries,
         "ok_count": snap.get("ok_count") if snap else 0,
         "failed_count": snap.get("failed_count") if snap else 0,
@@ -97,6 +114,7 @@ def run_scan(
     r = _runner()
     if r.running:
         return {"status": "already_running"}
+    r.load_persisted_snapshot(tenant_id=_active_tenant_id())
     targets = {
         "network": body.network_target,
         "network_full": body.network_full,
@@ -116,7 +134,12 @@ def run_scan(
             status_code=HTTP_400,
             detail={"error": "invalid_target", "field": exc.field, "reason": str(exc)},
         )
-    return r.start_cycle(only=body.scanners, targets=targets, trigger="manual")
+    return r.start_cycle(
+        only=body.scanners,
+        targets=targets,
+        trigger="manual",
+        tenant_id=_active_tenant_id(),
+    )
 
 
 @router.post("/start", status_code=202)
@@ -124,7 +147,13 @@ def start_periodic(
     body: PeriodicRequest,
     user: str = Depends(require_roles(*_OPERATORS)),
 ) -> dict[str, Any]:
-    return _runner().start_periodic(body.interval_seconds)
+    runner = _runner()
+    if not runner.running:
+        runner.load_persisted_snapshot(tenant_id=_active_tenant_id())
+    return runner.start_periodic(
+        body.interval_seconds,
+        tenant_id=_active_tenant_id(),
+    )
 
 
 @router.get("/inventory")
@@ -132,30 +161,30 @@ def inventory(user: str = Depends(get_current_user)) -> dict[str, Any]:
     """Page-ready live inventory (hardware devices, network TLS assets,
     crypto libraries) from the most recent real scan cycle — for the
     Hardware / Network / Libraries dashboards."""
-    return _runner().inventory()
+    return _tenant_runner().inventory(tenant_id=_active_tenant_id())
 
 
 @router.get("/alerts")
 def alerts(user: str = Depends(get_current_user)) -> dict[str, Any]:
     """Deterministic, cross-scanner risk aggregation for the Alerts/Risk view."""
-    return _runner().alerts()
+    return _tenant_runner().alerts(tenant_id=_active_tenant_id())
 
 
 @router.get("/drift")
 def drift(user: str = Depends(get_current_user)) -> dict[str, Any]:
     """Crypto-relevant changes between the most recent two live scan cycles."""
-    return _runner().drift()
+    return _tenant_runner().drift(tenant_id=_active_tenant_id())
 
 
 @router.get("/bom")
 def bom(user: str = Depends(get_current_user)) -> dict[str, Any]:
     """CBOM (algorithms/libraries/packages + quantum verdicts) and HBOM
     (hardware components) assembled from the live scans."""
-    return _runner().bom()
+    return _tenant_runner().bom(tenant_id=_active_tenant_id())
 
 
 @router.post("/stop", status_code=202)
 def stop_periodic(
     user: str = Depends(require_roles(*_OPERATORS)),
 ) -> dict[str, Any]:
-    return _runner().stop_periodic()
+    return _runner().stop_periodic(tenant_id=_active_tenant_id())

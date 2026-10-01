@@ -19,14 +19,15 @@ class SettingsRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def get_raw(self, key: str) -> str | None:
-        row = self.session.execute(
-            select(AppSetting).where(AppSetting.key == key)
-        ).scalar_one_or_none()
+    def get_raw(self, key: str, *, tenant_id: str | None = None) -> str | None:
+        stmt = select(AppSetting).where(AppSetting.key == key)
+        if tenant_id is not None:
+            stmt = stmt.where(AppSetting.tenant_id == tenant_id)
+        row = self.session.execute(stmt).scalar_one_or_none()
         return row.value if row is not None else None
 
-    def get(self, key: str, default: Any = None) -> Any:
-        raw = self.get_raw(key)
+    def get(self, key: str, default: Any = None, *, tenant_id: str | None = None) -> Any:
+        raw = self.get_raw(key, tenant_id=tenant_id)
         if raw is None:
             return default
         try:
@@ -34,17 +35,30 @@ class SettingsRepository:
         except (TypeError, ValueError):
             return raw
 
-    def set(self, key: str, value: Any, *, updated_by: str | None = None) -> AppSetting:
+    def set(
+        self,
+        key: str,
+        value: Any,
+        *,
+        updated_by: str | None = None,
+        tenant_id: str | None = None,
+    ) -> AppSetting:
         raw = value if isinstance(value, str) else json.dumps(value, default=str)
-        row = self.session.execute(
-            select(AppSetting).where(AppSetting.key == key)
-        ).scalar_one_or_none()
+        stmt = select(AppSetting).where(AppSetting.key == key)
+        if tenant_id is not None:
+            stmt = stmt.where(AppSetting.tenant_id == tenant_id)
+        row = self.session.execute(stmt).scalars().first()
         if row is None:
-            row = AppSetting(key=key, value=raw, updated_by=updated_by)
+            row = AppSetting(
+                key=key, value=raw, updated_by=updated_by,
+                tenant_id=tenant_id,
+            )
             self.session.add(row)
         else:
             row.value = raw
             row.updated_by = updated_by
+            if tenant_id is not None and row.tenant_id != tenant_id:
+                raise PermissionError("settings tenant does not match requested tenant")
         self.session.flush()
         return row
 

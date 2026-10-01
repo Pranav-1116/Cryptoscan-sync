@@ -19,6 +19,68 @@ logger = logging.getLogger(__name__)
 
 _ENGINE_CACHE: dict[str, tuple[str, Any]] = {}
 _ENGINE_LOCK = threading.Lock()
+_VENDOR_STATE_KEY = "live_vendor.realtime_state"
+
+
+def _tenant_state_key(tenant_id: str | None) -> str:
+    # AppSetting keys are globally unique in older installations; namespace the
+    # state key while also writing the explicit tenant_id column.
+    return f"{_VENDOR_STATE_KEY}:{tenant_id}" if tenant_id else _VENDOR_STATE_KEY
+
+
+def _load_engine_state(tenant_id: str | None) -> dict[str, Any] | None:
+    try:
+        from db.connection.session import SessionLocal
+        from db.repositories.settings_repository import SettingsRepository
+
+        with SessionLocal() as session:
+            state = SettingsRepository(session).get(
+                _tenant_state_key(tenant_id), tenant_id=tenant_id,
+            )
+        return state if isinstance(state, dict) else None
+    except Exception as exc:  # DB may be absent on an edge process
+        logger.warning("vendor_realtime_state_load_failed", extra={
+            "error_type": type(exc).__name__,
+        })
+        return None
+
+
+def _persist_engine_state(
+    tenant_id: str | None,
+    engine: Any,
+    events: list[dict[str, Any]],
+    *,
+    persist_events: bool = True,
+) -> str | None:
+    """Persist source cursors/CBOM and the append-only observation journal."""
+    try:
+        from db.connection.session import SessionLocal
+        from db.models.monitor import MonitorEvent
+        from db.repositories.settings_repository import SettingsRepository
+
+        with SessionLocal() as session:
+            if persist_events:
+                for event in events:
+                    session.add(MonitorEvent(
+                        tenant_id=tenant_id,
+                        target_name=f"vendor:{event.get('asset_id') or event.get('vendor') or 'unknown'}",
+                        # The audit column is legacy-sized; the full canonical
+                        # event type remains in the JSON payload.
+                        event_type=str(event.get("event_type") or "UNKNOWN")[:30],
+                        detail="vendor realtime observation",
+                        payload=event,
+                    ))
+            SettingsRepository(session).set(
+                _tenant_state_key(tenant_id),
+                engine.export_state(),
+                updated_by="vendor-live-scanner",
+                tenant_id=tenant_id,
+            )
+            session.commit()
+        return None
+    except Exception as exc:  # do not report durable success when state is lost
+        logger.exception("vendor_realtime_state_persist_failed")
+        return f"durable realtime state unavailable: {type(exc).__name__}"
 
 
 def _credential_resolver(credential: Any):
@@ -73,7 +135,9 @@ def _persisted_sources(tenant_id: str | None) -> tuple[list[dict[str, Any]], dic
 
     with SessionLocal() as session:
         onboarding = OnboardingRepository(session)
-        org = onboarding.get_default_org()
+        # This code runs on a worker thread, outside the request ContextVar;
+        # the explicit filter is therefore mandatory for tenant isolation.
+        org = onboarding.get_default_org(tenant_id=tenant_id)
         if org is None:
             return [], {}
         scope_targets = [
@@ -147,7 +211,20 @@ def _event_projection(event: Any) -> dict[str, Any]:
 def _source_configuration_key(configurations: list[dict[str, Any]],
                                source_origin: str) -> str:
     """Stable non-secret key used to retain connector state between polls."""
-    return json.dumps({"origin": source_origin, "sources": configurations},
+    sensitive_tokens = ("password", "secret", "token", "private", "credential", "authorization")
+
+    def scrub(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {
+                str(key): "<redacted>" if any(token in str(key).lower() for token in sensitive_tokens)
+                else scrub(item)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [scrub(item) for item in value]
+        return value
+
+    return json.dumps({"origin": source_origin, "sources": scrub(configurations)},
                       sort_keys=True, default=str, separators=(",", ":"))
 
 
@@ -178,7 +255,11 @@ def _get_engine(*, tenant_id: str | None, source_origin: str,
         return engine
 
 
-def run_vendor_realtime(*, tenant_id: str | None = None) -> dict[str, Any]:
+def run_vendor_realtime(
+    *,
+    tenant_id: str | None = None,
+    persist_events: bool = True,
+) -> dict[str, Any]:
     """Poll configured production vendor sources once and run real evidence scans."""
     try:
         if tenant_id is None:
@@ -233,6 +314,9 @@ def run_vendor_realtime(*, tenant_id: str | None = None) -> dict[str, Any]:
                         scanner=UniversalVendorScanner(registry=build_registry()),
                     ))
                 engine = _ENGINE_CACHE[tenant_id or "__unscoped__"][1]
+        persisted_state = _load_engine_state(tenant_id)
+        if persisted_state:
+            engine.restore_state(persisted_state)
         before = len(engine.gateway)
         outcome = engine.tick(deep_scan=True)
         events = engine.gateway.events(since_index=before)
@@ -242,7 +326,13 @@ def run_vendor_realtime(*, tenant_id: str | None = None) -> dict[str, Any]:
             for event in events
         )
         status = monitor.status()
-        ok = bool(monitor.connectors()) and not unavailable
+        persistence_error = _persist_engine_state(
+            tenant_id, engine, projected, persist_events=persist_events,
+        )
+        ok = bool(monitor.connectors()) and not unavailable and persistence_error is None
+        errors = list(status.get("configuration_errors") or [])
+        if persistence_error:
+            errors.append(persistence_error)
         return {
             "scanner": "vendor",
             "ok": ok,
@@ -253,13 +343,14 @@ def run_vendor_realtime(*, tenant_id: str | None = None) -> dict[str, Any]:
                 "events": len(events),
                 "source_status": status,
                 "event_ids": [event.get("event_id") for event in projected],
+                "state_persisted": persistence_error is None,
             },
             "data": {
                 "engine": outcome,
                 "events": projected,
                 "cbom": engine.cbom.generate_document(name="live-vendor-cbom"),
             },
-            "error": None if ok else "; ".join(status.get("configuration_errors") or [
+            "error": None if ok else "; ".join(errors or [
                 "configured vendor source returned no usable evidence",
             ]),
         }

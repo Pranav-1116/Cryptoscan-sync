@@ -29,7 +29,8 @@ from universal_vendor.pqc_readiness import PqcReadinessDatabase
 from universal_vendor.registry import PluginRegistry
 
 _COMMON_CRYPTO_TYPES = {
-    "algorithm", "protocol", "library", "key", "key_material", "service", "rng", "secret",
+    "algorithm", "protocol", "library", "dependency", "key", "key_material",
+    "certificate", "certificate_chain", "service", "rng", "secret", "configuration",
 }
 
 
@@ -68,8 +69,16 @@ def _merge_raw_records(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for key, value in record.items():
             if value in (None, "", [], {}):
                 continue
-            if key == "configuration" and isinstance(current.get(key), dict) and isinstance(value, dict):
+            if isinstance(current.get(key), dict) and isinstance(value, dict):
+                # Preserve policy/configuration detail contributed by both the
+                # vendor parser and common structured discovery.
                 current[key] = {**current[key], **value}
+            elif isinstance(current.get(key), list) and isinstance(value, list):
+                merged_values = list(current[key])
+                for item in value:
+                    if item not in merged_values:
+                        merged_values.append(item)
+                current[key] = merged_values
             elif key == "source":
                 sources = list(current.get("evidence_sources") or [current.get(key)])
                 if value not in sources:
@@ -306,6 +315,10 @@ class UniversalVendorScanner:
             # Most existing vendor normalizers predate the shared library/key
             # fields. Project the newly discovered metadata into the canonical
             # model here while keeping their vendor-specific payload intact.
+            if source_record.get("crypto_type") is not None:
+                observation.crypto_type = source_record["crypto_type"]
+            if source_record.get("asset_id") and not observation.asset_id:
+                observation.asset_id = source_record["asset_id"]
             for field_name in (
                 "product_version", "algorithm_type", "algorithm_mode", "padding_scheme",
                 "algorithm_oid", "algorithm_parameters", "quantum_safe_status",
@@ -347,6 +360,9 @@ class UniversalVendorScanner:
             evidence.setdefault("discovery_method", source_record.get(
                 "discovery_method", "artifact"))
             evidence.setdefault("visibility", observation.visibility)
+            if source_record.get("source_evidence_reference"):
+                evidence.setdefault("source_evidence_reference",
+                                    source_record["source_evidence_reference"])
             observation.evidence = evidence
         report.observations = observations
         report.stages_run.append("normalize")

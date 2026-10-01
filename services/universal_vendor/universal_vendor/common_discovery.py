@@ -42,9 +42,11 @@ def _items(value: Any) -> list[Any]:
         # A single record has crypto-shaped keys. Otherwise treat a mapping as
         # a name -> record map, retaining the map key as a stable identifier.
         if set(value).intersection(_CRYPTO_TYPE_KEYS | {
-            "name", "id", "key_id", "algorithm", "protocol", "library",
-            "version", "type", "key_type", "public_key", "private_key",
-            "initialization_vector", "iv", "salt", "subject", "issuer",
+            "name", "id", "key_id", "keyId", "algorithm", "algorithmType",
+            "protocol", "protocolVersion", "library", "version", "type",
+            "key_type", "public_key", "publicKey", "private_key", "privateKey",
+            "initialization_vector", "initializationVector", "iv", "salt",
+            "subject", "issuer", "provider", "serviceName", "rngName",
         }):
             return [value]
         return [{"name": key, **(item if isinstance(item, dict) else {"value": item})}
@@ -58,10 +60,18 @@ def _text(value: Any) -> str:
     return str(value).strip() if value is not None else ""
 
 
+def _normalized_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
 def _first(record: dict[str, Any], *keys: str) -> Any:
     for key in keys:
         value = record.get(key)
         if value not in (None, "", []):
+            return value
+    wanted = {_normalized_key(key) for key in keys}
+    for actual, value in record.items():
+        if _normalized_key(actual) in wanted and value not in (None, "", []):
             return value
     return None
 
@@ -74,10 +84,40 @@ def _int(value: Any) -> int | None:
         return None
 
 
+def _infer_algorithm_metadata(algorithm: Any, details: dict[str, Any]) -> dict[str, Any]:
+    """Extract explicit parameters embedded in a reported algorithm token.
+
+    This is parsing of the source token, not a risk guess: only values with a
+    recognizable textual delimiter/pattern are returned. OIDs and quantum
+    status still require source evidence or a trusted registry projection.
+    """
+    text = _text(algorithm)
+    upper = text.upper()
+    inferred: dict[str, Any] = {}
+    if details.get("key_size") is None:
+        match = re.search(r"(?:AES|RSA|DSA|DH|EC)[-_]?(128|192|224|256|384|512|1024|2048|3072|4096)", upper)
+        if match:
+            inferred["key_size"] = int(match.group(1))
+    if details.get("mode") in (None, ""):
+        match = re.search(r"(?:-|/)(GCM|CBC|CCM|CTR|XTS|OCB|CFB|OFB|ECB)(?:$|[-_/])", upper)
+        if match:
+            inferred["mode"] = match.group(1)
+    if details.get("padding") in (None, ""):
+        match = re.search(r"(?:-|/)(OAEP|PSS|PKCS(?:1|7)?)(?:$|[-_/])", upper)
+        if match:
+            inferred["padding"] = match.group(1)
+    curve = details.get("curve")
+    if curve in (None, ""):
+        match = re.search(r"(?:P-[0-9]{3}|SECP[0-9]+R[0-9]+|BRAINPOOLP[0-9]+R[0-9]+|CURVE(?:19|448)[0-9]+)", upper)
+        if match:
+            inferred["curve"] = match.group(0)
+    return inferred
+
+
 def _presence(record: dict[str, Any], *keys: str) -> bool | None:
-    for key in keys:
-        if key in record:
-            value = record[key]
+    wanted = {_normalized_key(key) for key in keys}
+    for actual, value in record.items():
+        if _normalized_key(actual) in wanted:
             if isinstance(value, bool):
                 return value
             return value not in (None, "", [], {})
@@ -110,11 +150,17 @@ _SENSITIVE_METADATA_KEYS = {
 
 def _safe_mapping(value: Any) -> Any:
     if isinstance(value, dict):
+        def safe_key(key: Any) -> bool:
+            normalized = _normalized_key(key)
+            sensitive = {_normalized_key(item) for item in _SENSITIVE_METADATA_KEYS}
+            return normalized not in sensitive and not any(
+                token in normalized for token in ("password", "secret", "privatekey", "token", "apikey")
+            )
+
         return {
             str(key): _safe_mapping(item)
             for key, item in value.items()
-            if str(key).lower() not in _SENSITIVE_METADATA_KEYS
-            and not any(token in str(key).lower() for token in ("password", "secret", "private_key", "token"))
+            if safe_key(key)
         }
     if isinstance(value, list):
         return [_safe_mapping(item) for item in value]
@@ -133,14 +179,15 @@ def _certificate_metadata(value: Any) -> dict[str, Any]:
         return {"present": value not in (None, "", [], {})}
     result: dict[str, Any] = {}
     for key in sorted(_CERTIFICATE_FIELDS):
-        if key in value and value[key] not in (None, ""):
-            result[key] = value[key]
-    public_key = value.get("public_key") or value.get("public_key_details")
+        candidate = _first(value, key)
+        if candidate not in (None, ""):
+            result[key] = candidate
+    public_key = _first(value, "public_key", "public_key_details")
     if isinstance(public_key, dict):
         result["public_key"] = {
-            key: public_key[key]
+            key: _first(public_key, key)
             for key in ("type", "algorithm", "key_type", "size", "key_size", "curve", "named_curve")
-            if public_key.get(key) not in (None, "")
+            if _first(public_key, key) not in (None, "")
         }
     result["present"] = True
     return result
@@ -183,6 +230,8 @@ def _common_metadata(record: dict[str, Any]) -> dict[str, Any]:
     }
     for output, keys in text_fields.items():
         value = _first(record, *keys)
+        if isinstance(value, dict):
+            value = _first(value, "name", "type", "kind", "provider", "id", "reference")
         if value not in (None, ""):
             values[output] = _text(value)
     bool_fields = {
@@ -212,27 +261,54 @@ def _common_metadata(record: dict[str, Any]) -> dict[str, Any]:
 
 def _base(plugin: Any, context: dict[str, Any], *, crypto_type: str,
           field: str, asset_id: str | None = None, **values: Any) -> dict[str, Any]:
-    source = "api_metadata" if field.startswith("api_metadata") else "artifact"
+    source = "api_metadata" if _normalized_key(field.split(".", 1)[0]) == "apimetadata" else "artifact"
     visibility = "API_VISIBLE" if source == "api_metadata" else "OBSERVED"
+    source_evidence_reference = _first(
+        context, "evidence_reference", "evidenceReference",
+        "source_evidence_reference", "sourceEvidenceReference",
+    )
+    if source_evidence_reference in (None, ""):
+        for _root_name, root in _metadata_roots(context):
+            source_evidence_reference = _first(
+                root, "evidence_reference", "evidenceReference",
+                "source_evidence_reference", "sourceEvidenceReference",
+            )
+            if source_evidence_reference not in (None, ""):
+                break
     record = {
         "vendor": plugin.vendor,
         "product": plugin.product,
-        "product_version": context.get("version"),
-        "asset_id": asset_id or context.get("asset_id") or f"{plugin.vendor}:{plugin.product}",
+        "product_version": _first(context, "version", "product_version", "productVersion"),
+        "asset_id": asset_id or _first(context, "asset_id", "assetId") or f"{plugin.vendor}:{plugin.product}",
         "crypto_type": crypto_type,
         "source": f"{plugin.plugin_id}:common",
         "evidence_field": field,
         "discovery_method": "structured_metadata" if source == "api_metadata" else "artifact",
         "confidence": 0.85 if source == "api_metadata" else 0.75,
         "visibility": visibility,
+        "source_evidence_reference": source_evidence_reference,
     }
+    # Source-level risk, compliance, RNG, service, and migration metadata can
+    # sit beside an algorithms/protocols list rather than inside each item.
+    # Carry only the same whitelisted metadata onto each observation; never
+    # copy an entire source document into a crypto record.
+    context_metadata = _common_metadata(context)
+    for _root_name, root in _metadata_roots(context):
+        if isinstance(root, dict):
+            context_metadata.update(_common_metadata(root))
+    record.update({key: value for key, value in context_metadata.items()
+                   if value is not None})
     record.update({key: value for key, value in values.items() if value is not None})
     return record
 
 
 def _metadata_roots(context: dict[str, Any]) -> Iterable[tuple[str, Any]]:
-    for key in ("api_metadata", "metadata", "crypto_metadata", "cbom", "sbom"):
-        value = context.get(key)
+    wanted = {_normalized_key(key) for key in
+              ("api_metadata", "metadata", "crypto_metadata", "cbom", "sbom")}
+    for actual, raw_value in context.items():
+        if _normalized_key(actual) not in wanted:
+            continue
+        value = raw_value
         if isinstance(value, str):
             # JSON parsing is deliberately limited to explicit metadata blobs.
             try:
@@ -241,17 +317,21 @@ def _metadata_roots(context: dict[str, Any]) -> Iterable[tuple[str, Any]]:
             except (TypeError, ValueError):
                 continue
         if isinstance(value, dict):
-            yield key, value
+            yield str(actual), value
 
 
 def _field_values(context: dict[str, Any], names: Iterable[str]) -> Iterable[tuple[str, Any]]:
-    for name in names:
-        if name in context and context[name] not in (None, "", [], {}):
-            yield name, context[name]
+    """Yield configured fields with snake_case/camelCase equivalence."""
+    wanted = {_normalized_key(name) for name in names}
+    for actual, value in context.items():
+        if (_normalized_key(actual) in wanted
+                and value not in (None, "", [], {})):
+            yield str(actual), value
     for root_name, root in _metadata_roots(context):
-        for name in names:
-            if name in root and root[name] not in (None, "", [], {}):
-                yield f"{root_name}.{name}", root[name]
+        for actual, value in root.items():
+            if (_normalized_key(actual) in wanted
+                    and value not in (None, "", [], {})):
+                yield f"{root_name}.{actual}", value
 
 
 def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[str, Any]]:
@@ -325,11 +405,16 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
         for index, item in enumerate(_items(value)):
             if isinstance(item, dict):
                 algorithm = _first(item, "algorithm", "name", "cipher", "suite", "value")
-                details = {"mode": _first(item, "mode"),
-                           "key_size": _int(_first(item, "key_size", "key_bits", "bits"))}
+                details = {"mode": _first(item, "mode", "algorithm_mode"),
+                           "key_size": _int(_first(item, "key_size", "key_bits", "bits")),
+                           "padding": _first(item, "padding_scheme", "padding"),
+                           "curve": _first(item, "curve", "named_curve")}
+                inferred = _infer_algorithm_metadata(algorithm, details)
+                details.update({key: value for key, value in inferred.items()
+                                if details.get(key) in (None, "")})
                 asset_id = _text(_first(item, "asset_id", "id", "name")) or None
                 algorithm_type = _text(_first(item, "algorithm_type", "type", "primitive")) or None
-                padding_scheme = _text(_first(item, "padding_scheme", "padding")) or None
+                padding_scheme = _text(details.get("padding")) or None
                 algorithm_oid = _text(_first(item, "algorithm_oid", "oid")) or None
                 quantum_value = _first(
                     item, "quantum_safe_status", "quantum_status", "pqc_status", "quantum_safe",
@@ -338,11 +423,10 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                     quantum_safe_status = "QUANTUM_SAFE" if quantum_value else "QUANTUM_VULNERABLE"
                 else:
                     quantum_safe_status = _text(quantum_value) or None
-                mode = _text(_first(item, "algorithm_mode", "mode")) or None
-                key_size = details["key_size"]
+                mode = _text(details.get("mode")) or None
+                key_size = details.get("key_size")
                 algorithm_parameters = {
                     **details,
-                    "curve": _first(item, "curve", "named_curve"),
                     "parameters": _first(item, "parameters", "parameter_set", "parameterSetIdentifier"),
                 }
             else:
@@ -360,7 +444,8 @@ def discover_common_crypto(plugin: Any, context: dict[str, Any]) -> list[dict[st
                 algorithm=algorithm_text, algorithm_type=algorithm_type,
                 algorithm_mode=mode, padding_scheme=padding_scheme,
                 algorithm_oid=algorithm_oid, quantum_safe_status=quantum_safe_status,
-                key_size=key_size, algorithm_parameters=algorithm_parameters,
+                key_size=key_size, curve=_text(details.get("curve")) or None,
+                algorithm_parameters=algorithm_parameters,
                 configuration=details,
                 **_common_metadata(item if isinstance(item, dict) else {}),
             ))

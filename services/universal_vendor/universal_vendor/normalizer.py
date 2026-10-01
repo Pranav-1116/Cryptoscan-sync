@@ -38,6 +38,20 @@ def _family(family: Optional[str]) -> Optional[str]:
     return _FAMILY_MAP.get(family.lower(), family.lower())
 
 
+def _string_list(values: Any) -> list[str]:
+    if values is None:
+        return []
+    items = values if isinstance(values, (list, tuple, set)) else [values]
+    output: list[str] = []
+    for item in items:
+        if isinstance(item, dict):
+            item = (item.get("name") or item.get("cipher_suite")
+                    or item.get("cipher") or item.get("id"))
+        if item not in (None, ""):
+            output.append(str(item))
+    return output
+
+
 def _algorithm_facts(algorithm: Optional[str]) -> dict[str, Any]:
     """Canonical name / family / nist status / pqc flags via shared registry."""
     if not algorithm or parse_algorithm is None:
@@ -71,7 +85,7 @@ def normalize_to_crypto(observation: UniversalObservation) -> CryptoObservation:
         quantum_safe_status=observation.quantum_safe_status,
         protocol=observation.protocol,
         protocol_version=observation.protocol_version,
-        cipher_suites=list(observation.cipher_suites),
+        cipher_suites=_string_list(observation.cipher_suites),
         protocol_configuration=dict(observation.protocol_configuration),
         configuration=dict(observation.configuration) if observation.configuration else None,
         implementation=observation.implementation,
@@ -122,7 +136,7 @@ def normalize_to_crypto(observation: UniversalObservation) -> CryptoObservation:
         crypto_service_version=observation.crypto_service_version,
         quantum_vulnerability=observation.quantum_vulnerability,
         migration_priority=observation.migration_priority,
-        pqc_alternatives=list(observation.pqc_alternatives),
+        pqc_alternatives=_string_list(observation.pqc_alternatives),
         migration_status=observation.migration_status,
         purpose=None,
         nist_status=facts.get("nist_status"),

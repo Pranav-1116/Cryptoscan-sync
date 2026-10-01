@@ -162,6 +162,8 @@ class HttpVendorConnector(LiveConnector):
         parsed_endpoint = urllib.parse.urlsplit(endpoint)
         if parsed_endpoint.scheme not in {"http", "https"}:
             raise ValueError("vendor endpoint must use http or https")
+        if parsed_endpoint.query or parsed_endpoint.fragment:
+            raise ValueError("vendor endpoint query/fragment credentials are not permitted")
         if parsed_endpoint.username or parsed_endpoint.password:
             raise ValueError("credentials are not permitted in a vendor endpoint")
         for name, value in (("vendor", vendor), ("product", product), ("asset_id", asset_id)):
