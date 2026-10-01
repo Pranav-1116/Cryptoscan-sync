@@ -149,3 +149,76 @@ def test_dependency_graph_relationships():
     paths = graph.paths("payments", "ECDSA")
     assert paths and paths[0] == ["payments", "OpenSSL", "TLS", "ECDSA"]
     assert graph.to_cbom_relationships()
+
+
+def test_binary_library_marker_is_not_reported_as_an_algorithm():
+    import base64
+
+    report = UniversalCryptoEngine().scan({
+        "binaries": [{"name": "banner.bin", "asset_id": "svc",
+                      "data": base64.b64encode(b"OpenSSL 3.0.13").decode()}],
+    })
+    assert not any(row["algorithm"] == "OPENSSL" for row in report["observations"])
+    openssl = [row for row in report["libraries"] if row["library"] == "OpenSSL"]
+    assert openssl and openssl[0]["verdict"] == "POSSIBLE_CRYPTO"
+    assert openssl[0]["evidence_classes"] == ["binary"]
+
+
+def test_duplicate_and_runtime_crypto_evidence_merge_by_asset_without_promoting_loaded_library():
+    report = UniversalCryptoEngine().scan({
+        "source_code": [{"language": "python", "asset_id": "svc-a",
+                         "text": "import hashlib\nh = hashlib.sha256(payload)"}],
+        "runtime": [{"process": "svc-b", "asset_id": "svc-b",
+                     "loaded_libraries": ["libssl.so"],
+                     "api_calls": ["EVP_DigestUpdate"]}],
+    })
+    static = next(row for row in report["observations"]
+                  if row["algorithm"] == "SHA-256" and row["asset_id"] == "svc-a")
+    runtime = next(row for row in report["observations"]
+                   if row["algorithm"] == "SHA-256" and row["asset_id"] == "svc-b")
+    assert static["usage"] is False
+    assert runtime["usage"] is True
+    assert {item["kind"] for item in runtime["evidence"]} == {"RUNTIME"}
+    assert any(row["library"] == "OpenSSL" and row["usage"] is False
+               for row in report["libraries"])
+
+
+def test_static_and_runtime_evidence_merge_without_duplicate_algorithm_rows():
+    report = UniversalCryptoEngine().scan({
+        "source_code": [{"language": "python", "asset_id": "svc",
+                         "text": "import hashlib\nh = hashlib.sha256(payload)"}],
+        "runtime": [{"process": "svc", "asset_id": "svc",
+                     "api_calls": ["EVP_DigestUpdate"]}],
+    })
+    rows = [row for row in report["observations"]
+            if row["algorithm"] == "SHA-256" and row["asset_id"] == "svc"]
+    assert len(rows) == 1
+    assert rows[0]["confidence"] == 45.0
+    assert {item["kind"] for item in rows[0]["evidence"]} == {"AST", "RUNTIME"}
+    assert rows[0]["usage"] is True
+
+
+def test_runtime_evidence_does_not_attach_to_an_unrelated_static_operation():
+    from universal_crypto.models import Evidence, EvidenceType, Operation
+    from universal_crypto.runtime_engine import RuntimeObservation
+
+    observations = UniversalCryptoEngine()._to_observations(
+        drafts=[
+            {"algorithm": "AES", "asset_id": "svc", "operation": Operation.ENCRYPT,
+             "evidence": [Evidence(kind=EvidenceType.AST, detail="encrypt", location="a")]},
+            {"algorithm": "AES", "asset_id": "svc", "operation": Operation.DECRYPT,
+             "evidence": [Evidence(kind=EvidenceType.AST, detail="decrypt", location="b")]},
+        ],
+        runtime_obs=[RuntimeObservation(process="svc", algorithm="AES",
+                                         api="EVP_EncryptUpdate", asset_id="svc",
+                                         operation=Operation.ENCRYPT)],
+        policy="NIST",
+    )
+    assert len(observations) == 2
+    assert sum(row.usage for row in observations) == 1
+    assert {row.operation for row in observations} == {
+        Operation.ENCRYPT, Operation.DECRYPT}
+    encrypt = next(row for row in observations if row.operation == Operation.ENCRYPT)
+    decrypt = next(row for row in observations if row.operation == Operation.DECRYPT)
+    assert encrypt.usage is True
+    assert decrypt.usage is False

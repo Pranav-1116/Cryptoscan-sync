@@ -941,16 +941,31 @@ def _resolve_family(stripped: str) -> str | None:
         if direct:
             return direct
 
-    # embedded size: AES256 -> AES, RSA2048 -> RSA, SHA3256 -> SHA3-256
+    # embedded size: AES256 -> AES, RSA2048 -> RSA, SHA3256 -> SHA3-256.
+    # A valid head is not enough: accepting it unconditionally made arbitrary
+    # names such as SHA256FOO and AESX resolve to SHA-1/AES. Only permit a
+    # recognized mode/padding/composition suffix, or an exact size spelling.
     m = _EMBEDDED_SIZE.search(stripped)
     if m:
         head = stripped[: m.start()]
         tail = stripped[m.end():]
-        for option in (head, head + tail, tail):
+        exact_options = (head + tail, tail)
+        for option in exact_options:
             if option in _FAMILIES:
                 return option
             if option in _ALIASES:
                 return _ALIASES[option]
+        suffix_ok = (
+            not tail
+            or tail in _MODE_TOKENS
+            or any(tail.startswith(token) for token in (
+                "WITH", "AND", "PADDING", "OAEP", "PSS", "PKCS"))
+        )
+        if suffix_ok:
+            if head in _FAMILIES:
+                return head
+            if head in _ALIASES:
+                return _ALIASES[head]
 
     # mode token: AESECB -> AES, AES256GCM -> AES (mode recorded separately)
     for token in _MODE_TOKENS:

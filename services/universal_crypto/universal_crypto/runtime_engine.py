@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable, Optional
 
+from universal_crypto.models import Operation
+
 #: observed crypto API → algorithm (runtime catalog, same deterministic shape)
 _RUNTIME_API_ALGORITHMS: dict[str, str] = {
     "EVP_DigestUpdate": "SHA-256", "EVP_EncryptUpdate": "AES",
@@ -29,6 +31,33 @@ _RUNTIME_API_ALGORITHMS: dict[str, str] = {
     "crypto.subtle.encrypt": "AES-GCM", "crypto.subtle.sign": "ECDSA",
     "tls.connect": "TLS", "crypto.createHash": "SHA-256",
     "sha256::digest": "SHA-256", "ring::signature::sign": "RSA",
+}
+
+#: observed crypto API → operation. Keeping this separate from the algorithm
+#: map preserves the distinction between the primitive and what the process
+#: actually exercised.
+_RUNTIME_API_OPERATIONS: dict[str, Operation] = {
+    "EVP_DigestUpdate": Operation.HASH,
+    "EVP_EncryptUpdate": Operation.ENCRYPT,
+    "EVP_DecryptUpdate": Operation.DECRYPT,
+    "EVP_DigestSign": Operation.SIGN,
+    "EVP_DigestVerify": Operation.VERIFY,
+    "SSL_do_handshake": Operation.TLS_CONFIG,
+    "RSA_sign": Operation.SIGN,
+    "ECDSA_sign": Operation.SIGN,
+    "RAND_bytes": Operation.RANDOM,
+    "CryptEncrypt": Operation.ENCRYPT,
+    "BCryptEncrypt": Operation.ENCRYPT,
+    "MessageDigest.digest": Operation.HASH,
+    "Cipher.doFinal": Operation.ENCRYPT,
+    "Signature.sign": Operation.SIGN,
+    "KeyAgreement.generateSecret": Operation.KEYEXCHANGE,
+    "crypto.subtle.encrypt": Operation.ENCRYPT,
+    "crypto.subtle.sign": Operation.SIGN,
+    "tls.connect": Operation.TLS_CONFIG,
+    "crypto.createHash": Operation.HASH,
+    "sha256::digest": Operation.HASH,
+    "ring::signature::sign": Operation.SIGN,
 }
 
 #: loaded crypto library name → canonical library
@@ -55,6 +84,7 @@ class RuntimeObservation:
         protocol: Optional[str] = None,
         asset_id: str = "default",
         usage: bool = True,
+        operation: Optional[Operation] = None,
     ) -> None:
         self.process = process
         self.algorithm = algorithm
@@ -64,6 +94,7 @@ class RuntimeObservation:
         self.protocol = protocol
         self.asset_id = asset_id
         self.usage = usage
+        self.operation = operation
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -75,6 +106,7 @@ class RuntimeObservation:
             "protocol": self.protocol,
             "asset_id": self.asset_id,
             "usage": self.usage,
+            "operation": self.operation.value if self.operation else None,
         }
 
 
@@ -108,7 +140,8 @@ class RuntimeCryptoEngine:
                 seen.add((alg, call))
                 out.append(RuntimeObservation(
                     process=process, algorithm=alg, api=call,
-                    library=_library_for_call(call), asset_id=asset_id, usage=True))
+                    library=_library_for_call(call), asset_id=asset_id, usage=True,
+                    operation=_RUNTIME_API_OPERATIONS.get(call)))
         for conn in connections or []:
             protocol = conn.get("protocol")
             if protocol in ("TLS", "SSH", "IPsec", "QUIC"):

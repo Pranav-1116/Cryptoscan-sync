@@ -173,3 +173,10 @@ def test_protocol_versions_have_registry_entries():
     # suites still parse as suites, not protocol versions
     suite = parse_algorithm("TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256")
     assert suite.family == "tls-suite"
+
+
+def test_registry_rejects_algorithm_lookalike_suffixes():
+    from shared_models.algorithm_registry import parse_algorithm
+
+    assert parse_algorithm("AESX").recognized is False
+    assert parse_algorithm("SHA256foo").recognized is False

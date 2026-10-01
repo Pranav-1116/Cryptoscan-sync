@@ -95,12 +95,15 @@ PADDING_ALIASES: dict[str, str] = {
 
 # Signature algorithm pattern: "SHA256withRSA", "SHA1withDSA", etc.
 SIGNATURE_PATTERN = re.compile(
-    r"^(SHA[\d-]*|MD5|SHA\d+)with(RSA|DSA|ECDSA|EC)$",
+    r"^((?:SHA(?:-?(?:1|224|256|384|512)|3-?(?:224|256|384|512))|MD5))"
+    r"with(RSA|DSA|ECDSA|EC)$",
     re.IGNORECASE
 )
 
-# HMAC pattern
-HMAC_PATTERN = re.compile(r"^Hmac(.+)$", re.IGNORECASE)
+# HMAC transformations are emitted with all of these separator/casing forms
+# by Java, .NET, and configuration scanners: HmacSHA256, HMAC-SHA256, and
+# HMAC_SHA256 are the same algorithm, not three different names.
+HMAC_PATTERN = re.compile(r"^Hmac[-_]?(.+)$", re.IGNORECASE)
 
 
 _PBE_PATTERN = re.compile(
@@ -178,7 +181,10 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
             return ParsedAlgorithm(
                 raw_input=raw,
                 algorithm=cipher_norm,
-                mode=_normalize_mode(pbe_match.group(4)) if pbe_match.group(4) else ("CBC" if cipher_norm in {"AES", "DES", "DESede", "3DES", "RC2", "RC4"} else None),
+                # PBE names identify a KDF/PRF and sometimes a cipher, but
+                # do not state a block mode. Never infer CBC from a provider
+                # default: the provider/configuration must supply that evidence.
+                mode=_normalize_mode(pbe_match.group(4)) if pbe_match.group(4) else None,
                 padding=None,
                 hash_algorithm=digest,
                 signing_algorithm=None,
@@ -195,7 +201,7 @@ def parse_transformation(raw: str) -> ParsedAlgorithm:
     # Check for HMAC (e.g., HmacSHA256)
     hmac_match = HMAC_PATTERN.match(stripped)
     if hmac_match:
-        hash_part = hmac_match.group(1)
+        hash_part = hmac_match.group(1).lstrip("-_ ")
         normalized_hash = _normalize_algorithm(hash_part)
         return ParsedAlgorithm(
             raw_input=raw,
@@ -262,30 +268,60 @@ def _normalize_padding(raw: str) -> Optional[str]:
     upper = raw.upper().replace(" ", "").replace("-", "")
     return PADDING_ALIASES.get(upper, raw.strip())
 
-_KNOWN_PREFIXES = ("HMAC", "PBKDF2", "PBEWITH", "SHA", "MD", "AES", "DES", "RSA", "EC", "TLS", "SSL", "ARGON2", "BLAKE", "CHACHA", "XCHACHA", "SALSA", "XSALSA",
-                   "ARIA", "CAMELLIA", "SM", "ML-KEM", "ML-DSA", "MLKEM", "MLDSA", "KYBER", "DILITHIUM", "X25519", "X448", "ED25519", "ED448", "RC", "IDEA", "SEED", "CAST",
-                   "BLOWFISH", "TWOFISH", "SERPENT", "GOST", "RIPEMD", "WHIRLPOOL", "TIGER", "HKDF", "SCRYPT", "BCRYPT", "DH", "DSA", "XDH", "ECDH", "ECDSA", "ECIES", "JWT",
-                   "HS", "RS", "ES", "PS", "SIPHASH", "POLY1305", "CMAC", "GMAC", "KMAC", "SHAKE", "CSPRNG", "PRNG", "PLAINTEXT", "NULL", "EXPORT", "TRUST", "X509", "OCSP",
-                   "SSH", "PSK", "DPAPI", "PASETO", "3DES", "TDES", "TDEA", "UNKNOWN", "OAEP", "PKCS", "PGP", "NONE", "NATIVEPRNG", "WINDOWS-PRNG", "DRBG", "SHA1PRNG")
+# These are scanner vocabulary items rather than entries in the shared algorithm
+# catalog.  Keep them exact: canonicalising ``RS256`` to ``RSA`` loses the fact
+# that the evidence is a JOSE algorithm identifier, while canonicalising
+# ``TLS1.2`` to ``TLS 1.2`` breaks the scanner's stable protocol labels.
+_SCANNER_EXACT_ALIASES = {
+    "TLS": "TLS",
+    "TLS10": "TLS1.0",
+    "TLS11": "TLS1.1",
+    "TLS12": "TLS1.2",
+    "TLS13": "TLS1.3",
+    "SSLV2": "SSLv2",
+    "SSLV3": "SSLv3",
+    "X509": "X509",
+    "DPAPI": "DPAPI",
+    "JWT": "JWT",
+    "CSPRNG": "CSPRNG",
+    "PRNG": "PRNG",
+    "RNG": "RNG",
+    "SECURERANDOM": "CSPRNG",
+    "SHA1PRNG": "PRNG",
+    "SHA3": "SHA3",
+    # JOSE names identify a protocol-level signing/MAC choice, not merely the
+    # underlying RSA, EC, or HMAC primitive.
+    "HS256": "HS256", "HS384": "HS384", "HS512": "HS512",
+    "RS256": "RS256", "RS384": "RS384", "RS512": "RS512",
+    "PS256": "PS256", "PS384": "PS384", "PS512": "PS512",
+    "ES256": "ES256", "ES384": "ES384", "ES512": "ES512",
+    "ES256K": "ES256K", "EDDSA": "EdDSA",
+}
 
 
 def known_algorithm_or_unknown(name: str | None) -> str:
-    """Gate free-form algorithm strings against the scanner vocabulary.
+    """Return a catalog canonical name, or ``UNKNOWN`` without guessing.
 
-    ``new SecretKeySpec(bytes, "testJCEHandlerParam2")`` (jPOS test suite) must not put
-    ``testJCEHandlerParam2`` into an inventory; anything that is not a recognised
-    algorithm spelling becomes UNKNOWN (kept as raw_transformation upstream)."""
-    if not name:
+    This is a boundary between parser text and inventory data. Prefix heuristics
+    such as ``name.startswith("AES")`` are unsafe: ``AESX`` and
+    ``SHA256FOO`` are ordinary identifiers, not algorithms. Reuse the shared
+    registry's exact/tolerant parser and retain only explicit scanner vocabulary
+    that is deliberately outside (or more specific than) that catalog.
+    """
+    if not name or str(name).strip().upper() == "UNKNOWN":
         return "UNKNOWN"
-    upper = name.upper().replace("_", "").replace(" ", "")
-    if upper in ALGORITHM_ALIASES or upper in {v.upper() for v in ALGORITHM_ALIASES.values()}:
-        return name
-    if not upper.startswith(_KNOWN_PREFIXES):
-        return "UNKNOWN"
-    # A known prefix must be followed by a plausible suffix (digits, mode/padding, "WITH", "EDE",
-    # separators) — "DESde" or "AESX" are not algorithms.
-    for pre in sorted((p for p in _KNOWN_PREFIXES if upper.startswith(p)), key=len, reverse=True):
-        rest = upper[len(pre):]
-        if rest == "" or re.match(r"^(?:EDE|WITH|-?\d|/|-|\.|WRAP|CBC|GCM|CTR|ECB|CCM|OFB|CFB|XTS|SIV|KW|POLY|MAC|SHA|MD|AND|RSA|EC|PSS|OAEP|EDWARDS|MONTGOMERY|PRNG|DRBG|CMAC|HMAC|X|SSA|ES|KEM|DSA|B|S|P|N)", rest):
-            return name
+    text = str(name).strip()
+    normalized = re.sub(r"[^A-Z0-9]", "", text.upper())
+    if normalized in _SCANNER_EXACT_ALIASES:
+        return _SCANNER_EXACT_ALIASES[normalized]
+    try:
+        from shared_models.algorithm_registry import parse_algorithm
+
+        parsed = parse_algorithm(text)
+        if parsed.recognized and parsed.canonical:
+            return parsed.canonical
+    except (ImportError, AttributeError, TypeError, ValueError):
+        # The scanner can be used without the optional shared-model package;
+        # fall through to the local exact aliases rather than inventing a name.
+        pass
     return "UNKNOWN"

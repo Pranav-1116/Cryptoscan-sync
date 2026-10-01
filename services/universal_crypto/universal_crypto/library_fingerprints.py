@@ -143,8 +143,13 @@ class LibraryFingerprinter:
         library: str,
         symbols: Optional[Iterable[str]] = None,
         apis: Optional[Iterable[str]] = None,
-    ) -> list[str]:
-        """Which algorithms the library exposes vs the app actually references."""
+    ) -> dict[str, Any]:
+        """Which algorithms the library exposes vs the app actually references.
+
+        The result is a structured report, not a list: exposure is a library
+        capability and reference is an observed symbol/API use, so callers must
+        not collapse the two into a usage claim.
+        """
         exposed: set[str] = set()
         referenced: set[str] = set()
         hay_symbols = " ".join(symbols or [])

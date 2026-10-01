@@ -136,6 +136,8 @@ class UniversalCryptoEngine:
         policy = str(inputs.get("policy") or "NIST")
         drafts: list[dict[str, Any]] = []
         assets: set[str] = set()
+        binary_library_results: list[dict[str, Any]] = []
+        runtime_library_results: list[dict[str, Any]] = []
 
         # §1 discovery + correlation
         if inputs.get("sources"):
@@ -160,29 +162,73 @@ class UniversalCryptoEngine:
                 data = base64.b64decode(data)
             artifact = self.binary_parser.parse(data or b"", path=binary.get("name", ""))
             analysis = self.binary.analyze(artifact)
+            from universal_crypto.binary_engine import IMPLEMENTATION_FINGERPRINTS
+
             for detection in analysis.get("detections", []):
+                name = str(detection.get("algorithm") or "")
+                detail = "; ".join(e["detail"] for e in detection.get("evidence") or [])
+                asset_id = binary.get("asset_id", "default")
+                location = binary.get("name", "")
+                if name in IMPLEMENTATION_FINGERPRINTS:
+                    # A library name is implementation evidence, not an
+                    # algorithm. Keeping it out of algorithm observations avoids
+                    # false findings such as an "OpenSSL" algorithm and lets the
+                    # report express the weaker string-only verdict honestly.
+                    binary_library_results.append({
+                        "library": name,
+                        "provider": name,
+                        "version": "",
+                        "evidence_classes": ["binary"],
+                        "verdict": detection.get("verdict", "POSSIBLE_CRYPTO"),
+                        "confidence": float(detection.get("best_level") or 0),
+                        "asset_id": asset_id,
+                        "location": location,
+                        "evidence": detail,
+                    })
+                    continue
                 drafts.append({
-                    "algorithm": detection["algorithm"],
-                    "asset_id": binary.get("asset_id", "default"),
-                    "location": binary.get("name", ""),
+                    "algorithm": name,
+                    "asset_id": asset_id,
+                    "location": location,
                     "source": "binaries",
-                    "detail": "; ".join(e["detail"] for e in detection["evidence"]),
+                    "detail": detail,
                     "evidence": [Evidence(
                         kind=EvidenceType.BINARY,
-                        detail="; ".join(e["detail"] for e in detection["evidence"]),
-                        location=binary.get("name", ""))],
+                        detail=detail,
+                        location=location)],
                 })
             assets.add(binary.get("asset_id", "default"))
 
         # §9 runtime observation
         runtime_obs: list[dict[str, Any]] = []
         for process in inputs.get("runtime") or []:
-            runtime_obs.extend(self.runtime.observe(
+            observed = self.runtime.observe(
                 process=process.get("process", "?"),
                 loaded_libraries=process.get("loaded_libraries"),
                 api_calls=process.get("api_calls"),
                 connections=process.get("connections"),
-                asset_id=process.get("asset_id", "default")))
+                asset_id=process.get("asset_id", "default"))
+            runtime_obs.extend(observed)
+            assets.add(process.get("asset_id", "default"))
+            seen_runtime_libraries: set[tuple[str, str, bool]] = set()
+            for runtime in observed:
+                if not runtime.library:
+                    continue
+                identity = (runtime.library, runtime.asset_id, bool(runtime.usage))
+                if identity in seen_runtime_libraries:
+                    continue
+                seen_runtime_libraries.add(identity)
+                runtime_library_results.append({
+                    "library": runtime.library,
+                    "provider": runtime.library,
+                    "version": "",
+                    "evidence_classes": ["runtime_api" if runtime.usage
+                                         else "runtime_loaded_library"],
+                    "verdict": "OBSERVED_RUNTIME",
+                    "usage": bool(runtime.usage),
+                    "asset_id": runtime.asset_id,
+                    "location": runtime.process,
+                })
 
         # §10/§11/§12 protocol analysis
         for tls in inputs.get("tls") or []:
@@ -310,29 +356,27 @@ class UniversalCryptoEngine:
                 expected_roots=store.get("expected_roots"))
             for store in inputs.get("trust_store") or []]
 
-        # §6/§8 library fingerprinting
-        library_results: list[dict[str, Any]] = []
+        # §6/§8 library fingerprinting. Binary implementation detections
+        # already carry their evidence; source/dependency library inputs use
+        # the multi-class fingerprinter below.
+        library_results: list[dict[str, Any]] = [
+            *binary_library_results, *runtime_library_results]
         for lib in inputs.get("libraries") or []:
+            assets.add(lib.get("asset_id", "default"))
             res = self.fingerprinter.fingerprint(
                 imports=lib.get("imports"), symbols=lib.get("symbols"),
                 strings=lib.get("strings"),
                 constants=[bytes.fromhex(c) if isinstance(c, str) else c
                            for c in (lib.get("constants") or [])],
                 apis=lib.get("apis"), dependencies=lib.get("dependencies"))
-            library_results.extend(res)
             for result in res:
-                drafts.append({
-                    "algorithm": result["library"], "protocol": None,
-                    "asset_id": lib.get("asset_id", "default"),
-                    "location": lib.get("location", ""),
-                    "source": "package_dependencies",
-                    "detail": f"library {result['library']} "
-                              f"({result['verdict']})",
-                    "evidence": [Evidence(
-                        kind=EvidenceType.LIBRARY,
-                        detail=f"{result['library']} {result['verdict']}",
-                        location=lib.get("location", ""))],
-                })
+                result = dict(result)
+                result["asset_id"] = lib.get("asset_id", "default")
+                result["location"] = lib.get("location", "")
+                library_results.append(result)
+                # Library identity is not an algorithm observation. It remains
+                # in the library inventory and dependency graph inputs, while
+                # only algorithm-level evidence becomes a CryptoObservation.
 
         # §21/§22/§23/§25 structural scans
         hardcoded_results = [
@@ -401,7 +445,7 @@ class UniversalCryptoEngine:
             observations, quantum_classifications=quantum_results)
 
         # §16 dependency graph
-        graph = self._build_graph(inputs, observations)
+        graph = self._build_graph(inputs, observations, libraries=library_results)
 
         # §31 unknown crypto detection
         unknown_items = []
@@ -448,7 +492,7 @@ class UniversalCryptoEngine:
         policy: str,
     ) -> list[CryptoObservation]:
         observations: list[CryptoObservation] = []
-        seen: set[tuple[str, str, str]] = set()
+        by_key: dict[tuple[str, str, str], CryptoObservation] = {}
         for draft in drafts:
             evidence = list(draft.get("evidence") or [])
             if not evidence:
@@ -459,15 +503,41 @@ class UniversalCryptoEngine:
                         draft.get("source", ""), EvidenceType.CONFIG),
                     detail=draft.get("detail", ""),
                     location=draft.get("location", ""))]
-            algorithm = draft.get("algorithm", "")
+            algorithm = str(draft.get("algorithm") or "").strip()
+            if not algorithm or algorithm.upper() == "UNKNOWN":
+                # An unknown operation belongs in the review queue, not in the
+                # known-algorithm inventory as an empty/UNKNOWN algorithm row.
+                continue
             entry = registry_find(algorithm)
             canonical = entry.algorithm if entry else algorithm.upper()
             operation = draft.get("operation")
-            key = (draft.get("asset_id", "default"), canonical,
-                   operation.value if operation else "")
-            if key in seen:
+            operation_key = (operation.value if hasattr(operation, "value")
+                             else str(operation or ""))
+            asset_id = str(draft.get("asset_id", "default") or "default")
+            key = (asset_id, canonical, operation_key)
+            existing = by_key.get(key)
+            if existing is not None:
+                # Multiple detectors are corroborating evidence for one
+                # observation. Dropping later drafts made strong binary/runtime
+                # evidence disappear behind the first weak string match.
+                for item in evidence:
+                    signature = (item.kind.value, item.detail, item.location)
+                    if not any((old.kind.value, old.detail, old.location) == signature
+                               for old in existing.evidence):
+                        existing.evidence.append(item)
+                existing.confidence = score_evidence(existing.evidence)
+                existing.band = band_for(existing.confidence)
+                existing.usage = existing.usage or bool(draft.get("usage"))
+                existing.capability = existing.capability or bool(draft.get("capability"))
+                if not existing.library and draft.get("library"):
+                    existing.library = draft["library"]
+                if not existing.location and draft.get("location"):
+                    existing.location = draft["location"]
+                sources = existing.raw.setdefault("sources", [])
+                source = draft.get("source", "")
+                if source and source not in sources:
+                    sources.append(source)
                 continue
-            seen.add(key)
             score = score_evidence(evidence)
             obs = CryptoObservation(
                 algorithm=canonical,
@@ -478,7 +548,7 @@ class UniversalCryptoEngine:
                 padding=draft.get("padding"),
                 digest=draft.get("digest"),
                 protocol=draft.get("protocol"),
-                asset_id=draft.get("asset_id", "default"),
+                asset_id=asset_id,
                 location=draft.get("location", ""),
                 evidence=evidence,
                 confidence=score,
@@ -493,17 +563,63 @@ class UniversalCryptoEngine:
             if canonical in ("TLS", "SSH", "IPsec", "QUIC"):
                 obs.protocol = canonical  # protocol assets classify as PROTOCOL
             observations.append(obs)
-        # runtime observations merge as usage evidence
-        for obs in runtime_obs:
-            target = next((o for o in observations
-                           if o.algorithm == obs.algorithm), None)
-            if target is None:
+            by_key[key] = obs
+        # Runtime observations merge as usage evidence. A loaded library is
+        # capability/dependency evidence only (usage=False); an exercised API
+        # can create an observation even when static scanning found nothing.
+        from universal_crypto.binary_engine import IMPLEMENTATION_FINGERPRINTS
+
+        for runtime in runtime_obs:
+            algorithm = str(getattr(runtime, "algorithm", "") or "").strip()
+            if not algorithm or algorithm in IMPLEMENTATION_FINGERPRINTS:
                 continue
-            target.usage = True
-            target.evidence.append(Evidence(
+            entry = registry_find(algorithm)
+            canonical = entry.algorithm if entry else algorithm.upper()
+            asset_id = str(getattr(runtime, "asset_id", "default") or "default")
+            runtime_operation = getattr(runtime, "operation", None)
+            operation_key = (runtime_operation.value
+                             if hasattr(runtime_operation, "value")
+                             else str(runtime_operation or ""))
+            # Match on the same operation as static evidence. If runtime input
+            # has no operation, it remains a separate operation-less record
+            # rather than being attached to an arbitrary same-algorithm claim.
+            target = by_key.get((asset_id, canonical, operation_key))
+            runtime_evidence = Evidence(
                 kind=EvidenceType.RUNTIME,
-                detail=f"runtime {obs.process} {obs.api or ''}",
-                location=obs.process))
+                detail=f"runtime {getattr(runtime, 'process', '?')} "
+                       f"{getattr(runtime, 'api', '') or 'observation'}",
+                location=getattr(runtime, "process", ""))
+            if target is None:
+                if not bool(getattr(runtime, "usage", False)):
+                    continue
+                target = CryptoObservation(
+                    algorithm=canonical,
+                    operation=runtime_operation,
+                    library=getattr(runtime, "library", None),
+                    protocol=getattr(runtime, "protocol", None),
+                    asset_id=asset_id,
+                    location=getattr(runtime, "process", ""),
+                    evidence=[runtime_evidence],
+                    confidence=score_evidence([runtime_evidence]),
+                    band=band_for(score_evidence([runtime_evidence])),
+                    usage=True,
+                    source="runtime",
+                )
+                if entry is not None:
+                    target.quantum_status = entry.quantum_status
+                if canonical in ("TLS", "SSH", "IPsec", "QUIC"):
+                    target.protocol = canonical
+                observations.append(target)
+                by_key[(asset_id, canonical, operation_key)] = target
+                continue
+            signature = (runtime_evidence.kind.value, runtime_evidence.detail,
+                         runtime_evidence.location)
+            if not any((old.kind.value, old.detail, old.location) == signature
+                       for old in target.evidence):
+                target.evidence.append(runtime_evidence)
+            target.usage = target.usage or bool(getattr(runtime, "usage", False))
+            if not target.library and getattr(runtime, "library", None):
+                target.library = runtime.library
             target.confidence = score_evidence(target.evidence)
             target.band = band_for(target.confidence)
         # weak-crypto policy classification feeds `raw` context
@@ -515,30 +631,51 @@ class UniversalCryptoEngine:
         return observations
 
     def _build_graph(self, inputs: dict[str, Any],
-                     observations: list[CryptoObservation]) -> CryptoDependencyGraph:
+                     observations: list[CryptoObservation],
+                     libraries: list[dict[str, Any]] | None = None) -> CryptoDependencyGraph:
         graph = CryptoDependencyGraph()
-        apps = set(inputs.get("applications") or ["default-application"])
-        for app in apps:
+        explicit_apps = [str(app) for app in inputs.get("applications") or []]
+        if explicit_apps:
+            apps = set(explicit_apps)
+        else:
+            asset_ids = {str(obs.asset_id) for obs in observations}
+            asset_ids.update(str(row.get("asset_id")) for row in (libraries or [])
+                             if row.get("asset_id"))
+            apps = {"default-application" if asset == "default" else asset
+                    for asset in asset_ids} or {"default-application"}
+        library_rows = [row for row in (libraries or []) if row.get("library")]
+        for app in sorted(apps):
             graph.add_node(app, kind="application")
-            libs = set(o.library for o in observations if o.library)
-            for lib in libs:
+            asset_id = "default" if app == "default-application" else app
+            libs = {str(o.library) for o in observations
+                    if o.library and str(o.asset_id) == asset_id}
+            libs.update(str(row["library"]) for row in library_rows
+                        if str(row.get("asset_id", "default")) == asset_id)
+            for lib in sorted(libs):
                 graph.add_node(lib, kind="crypto_library")
                 graph.add_edge(app, lib, "dependsOn")
-            protocols = set(o.protocol for o in observations if o.protocol)
-            for protocol in protocols:
+            protocols = {str(o.protocol) for o in observations
+                         if o.protocol and str(o.asset_id) == asset_id}
+            for protocol in sorted(protocols):
                 graph.add_node(protocol, kind="protocol")
                 graph.add_edge(app, protocol, "uses")
             for obs in observations:
+                if str(obs.asset_id) != asset_id:
+                    continue
                 if obs.library:
                     graph.add_edge(obs.library, obs.algorithm, "uses")
                 if obs.protocol:
                     graph.add_edge(obs.protocol, obs.algorithm, "uses")
         for cert in inputs.get("certificates") or []:
             cert_id = cert.get("location") or cert.get("name") or "certificate"
+            cert_app = str(cert.get("asset_id") or "default-application")
+            if cert_app == "default":
+                cert_app = "default-application"
             graph.add_node(cert_id, kind="certificate")
-            graph.add_edge("default-application", cert_id, "uses")
+            graph.add_edge(cert_app, cert_id, "uses")
             for obs in observations:
-                if obs.source == "certificates" and obs.protocol == "TLS":
+                if (obs.source == "certificates" and obs.protocol == "TLS"
+                        and str(obs.asset_id) == ("default" if cert_app == "default-application" else cert_app)):
                     graph.add_edge(cert_id, obs.algorithm, "uses")
         return graph
 

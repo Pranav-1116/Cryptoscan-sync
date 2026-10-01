@@ -174,3 +174,11 @@ def test_dex_and_python_bytecode_parser_surfaces_metadata():
     aes = next(row for row in analysis["detections"] if row["algorithm"] == "AES")
     assert aes["verdict"] == "POSSIBLE_CRYPTO"
     assert "STRING_MATCH" in aes["levels"]
+
+
+def test_library_algorithm_reference_report_is_structured_and_separate():
+    result = LibraryFingerprinter().algorithms_referenced(
+        library="OpenSSL", symbols=["EVP_sha256"], apis=[])
+    assert isinstance(result, dict)
+    assert result["algorithms_referenced"] == ["SHA-256"]
+    assert "AES" in result["algorithms_exposed"]
