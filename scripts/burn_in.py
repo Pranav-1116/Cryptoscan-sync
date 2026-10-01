@@ -364,7 +364,11 @@ def main() -> int:
                         help="repeatable; --target all runs everything")
     parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8010"))
     parser.add_argument("--username", default=os.environ.get("ADMIN_USERNAME", "admin"))
-    parser.add_argument("--password", default=os.environ.get("ADMIN_PASSWORD", "cryptoscan"))
+    parser.add_argument(
+        "--password",
+        default=os.environ.get("BURN_IN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "cryptoscan")),
+        help="integration credential; prefer BURN_IN_PASSWORD or a wrapper environment",
+    )
     parser.add_argument("--webhook-secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", "dev-webhook-secret-change-me-32chars!!"))
     parser.add_argument("--host", default=os.environ.get("BURN_TLS_HOST", "github.com"))
     parser.add_argument("--port", type=int, default=443)

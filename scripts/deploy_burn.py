@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import time
@@ -91,12 +92,25 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--api", default="http://127.0.0.1:8010")
     ap.add_argument("--username", default="admin")
-    ap.add_argument("--password", default="cryptoscan")
+    ap.add_argument(
+        "--password",
+        default=os.environ.get("DEPLOY_BURN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "cryptoscan")),
+        help="deployment credential; prefer DEPLOY_BURN_PASSWORD or --password-file",
+    )
+    ap.add_argument("--password-file", type=Path, default=None,
+                    help="read the deployment credential from a file instead of argv")
     ap.add_argument("--timeout", type=float, default=8.0)
     ap.add_argument("--pace", type=float, default=0.05,
                     help="seconds between requests (default stays under the burst limiter)")
     ap.add_argument("--out", type=Path, default=REPO / "docs" / "deploy-burn.md")
     args = ap.parse_args()
+    if args.password_file is not None:
+        try:
+            args.password = args.password_file.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            ap.error(f"cannot read --password-file: {type(exc).__name__}")
+        if not args.password:
+            ap.error("--password-file is empty")
 
     client = Client(args.api, args.timeout)
     t0 = time.perf_counter()
