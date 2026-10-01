@@ -12,6 +12,13 @@ python scripts/production_qualification.py \
   --out /secure/cryptoscan-evidence/<run-id>
 ```
 
+A protected manual GitHub workflow is also available at
+`.github/workflows/production-qualification.yml`. It requires a self-hosted
+runner labelled `production-qualification` so private database, HSM, carrier,
+and cloud systems are never exposed to a GitHub-hosted runner. Store the
+qualification password and provider references in the protected GitHub
+Environment; do not put them in workflow inputs.
+
 Every phase writes `qualification.json`, `qualification.md`, and the source
 artifact digests below the selected output directory. Secrets are supplied by
 environment or a protected file and are never intended to be placed in command
