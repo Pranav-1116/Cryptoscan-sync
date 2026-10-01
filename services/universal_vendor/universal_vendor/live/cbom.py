@@ -53,6 +53,28 @@ class LiveCbom:
             algorithms = [event.vendor_metadata.get("algorithm") or "unknown"]
         event_type = event.event_type.value if hasattr(event.event_type, "value") \
             else str(event.event_type)
+        observation = event.vendor_metadata.get("observation")
+        observation = observation if isinstance(observation, dict) else {}
+        base_properties = [
+            {"name": "vendor", "value": event.vendor},
+            {"name": "product", "value": event.product},
+            {"name": "source", "value": event.source},
+            {"name": "evidence_reference",
+             "value": event.evidence_reference or ""},
+        ]
+        # Preserve canonical observation metadata and provenance in the live
+        # CBOM instead of reducing a real scanner result to only its algorithm.
+        # Values have already passed the plugin's metadata-only normalizers;
+        # this projection never stores credential material.
+        observation_properties: list[dict[str, str]] = []
+        for field_name in (
+            "crypto_type", "protocol", "protocol_version", "library",
+            "library_version", "key_id", "key_role", "key_type", "key_size",
+            "curve", "material_type", "visibility", "discovery_method",
+        ):
+            value = observation.get(field_name)
+            if value not in (None, "", [], {}):
+                observation_properties.append({"name": field_name, "value": str(value)})
         for algorithm in algorithms:
             key = (asset_id, str(algorithm), event_type)
             self._components[key] = {
@@ -61,14 +83,9 @@ class LiveCbom:
                 "name": asset_id,
                 "version": event.product_version or "unknown",
                 "purl": f"pkg:vendor/{event.vendor.lower()}/{event.product.lower()}",
-                "properties": [
-                    {"name": "vendor", "value": event.vendor},
-                    {"name": "product", "value": event.product},
+                "properties": base_properties + [
                     {"name": "algorithm", "value": str(algorithm)},
-                    {"name": "source", "value": event.source},
-                    {"name": "evidence_reference",
-                     "value": event.evidence_reference or ""},
-                ],
+                ] + observation_properties,
                 "bom-ref": f"{asset_id}:{algorithm}",
             }
 

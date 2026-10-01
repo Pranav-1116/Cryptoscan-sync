@@ -32,6 +32,7 @@ from universal_vendor.live.identity import AssetIdentityResolver
 from universal_vendor.live.monitoring import LiveVendorMonitor
 from universal_vendor.live.pqc_live import LivePqcMonitor
 from universal_vendor.live.state import LiveAssetStateEngine
+from universal_vendor.models import ScanMode
 from universal_vendor.scan_modes import UniversalVendorScanner
 from universal_vendor.lifecycle import VendorLifecycleDatabase
 from universal_vendor.pqc_readiness import PqcReadinessDatabase
@@ -45,6 +46,7 @@ class LiveVendorEngine:
         *,
         monitor: Optional[LiveVendorMonitor] = None,
         gateway: Optional[EventGateway] = None,
+        tenant_id: str | None = None,
         identity: Optional[AssetIdentityResolver] = None,
         state: Optional[LiveAssetStateEngine] = None,
         cbom: Optional[LiveCbom] = None,
@@ -59,8 +61,11 @@ class LiveVendorEngine:
         lifecycle_db: Optional[VendorLifecycleDatabase] = None,
         pqc_db: Optional[PqcReadinessDatabase] = None,
     ) -> None:
-        self.monitor = monitor or LiveVendorMonitor()
-        self.gateway = gateway or EventGateway()
+        self.tenant_id = tenant_id
+        self.monitor = monitor if monitor is not None else LiveVendorMonitor.from_environment(
+            tenant_id=tenant_id,
+        )
+        self.gateway = gateway or EventGateway(tenant_id=tenant_id)
         self.identity = identity or AssetIdentityResolver()
         self.state = state or LiveAssetStateEngine()
         self.cbom = cbom or LiveCbom()
@@ -75,6 +80,8 @@ class LiveVendorEngine:
                                          lifecycle_db=self.lifecycle_db)
         self.health = health or HealthMonitor()
         self.scanner = scanner
+        self._evidence: dict[str, dict[str, Any]] = {}
+        self._evidence_verification: dict[str, dict[str, Any]] = {}
         self._tick_count = 0
 
     def tick(self, *, deep_scan: bool = True) -> dict[str, Any]:
@@ -91,10 +98,38 @@ class LiveVendorEngine:
         for event in self.gateway.events():
             self._apply_event(event, deep_scan=deep_scan)
 
-        # 3. fingerprint + drift pass over monitored configs
+        # 3. persist only the source fingerprint in live asset state. The raw
+        # artifact remains behind its evidence hash and is never fabricated by
+        # this state layer.
+        for connector, heartbeat in zip(self.monitor.connectors(), self.monitor.heartbeats()):
+            connector_id = connector.asset_id or f"{connector.vendor}:{connector.product}"
+            if self.health.state(connector_id) is None:
+                self.health.register(connector_id, vendor=connector.vendor,
+                                     product=connector.product)
+            status = str(heartbeat.get("status") or "")
+            connection_status = "connected" if heartbeat.get("ok") else "unreachable"
+            authentication_status = (
+                "unauthorized" if "credential" in str(heartbeat.get("error") or "").lower()
+                or "401" in str(heartbeat.get("error") or "")
+                or "403" in str(heartbeat.get("error") or "")
+                else "authenticated"
+            )
+            self.health.heartbeat(
+                connector_id, connection_status=connection_status,
+                authentication_status=authentication_status,
+                plugin_health="ok" if heartbeat.get("ok") else "degraded",
+                note=status,
+            )
         drift_results = []
         for asset_id, snapshot in self.monitor.snapshots().items():
             if snapshot:
+                fingerprint_input = snapshot.get("fingerprint") or snapshot
+                observed = self.fingerprints.observe(asset_id, fingerprint_input)
+                self.state.update_config_hash(
+                    asset_id, observed["config_hash"],
+                    snapshot={"source": snapshot.get("source"),
+                              "status": snapshot.get("status")},
+                )
                 drift_results.append(self.drift.evaluate(asset_id, snapshot))
 
         return {
@@ -107,6 +142,10 @@ class LiveVendorEngine:
             "graph_edges": self.correlation.graph.edge_count(),
             "drift_results": [d.to_dict() for d in drift_results],
             "health": [h.to_dict() for h in self.health.all()],
+            "source_status": self.monitor.status(),
+            "heartbeats": self.monitor.heartbeats(),
+            "evidence": list(self._evidence.values()),
+            "evidence_verification": list(self._evidence_verification.values()),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -128,29 +167,80 @@ class LiveVendorEngine:
             self._targeted_scan(event)
 
     def _targeted_scan(self, event: UniversalVendorEvent) -> None:
-        """Run a targeted vendor scan (crypto analysis + evidence)."""
+        """Scan the evidence actually returned by a configured live source.
+
+        A realtime event without scanner-readable evidence is intentionally not
+        rescanned.  In particular, vendor/product labels are not a banner and
+        an empty config is not a valid observation.  The source event remains
+        in the durable event/CBOM path with its honest availability state.
+        """
         try:
+            plugin_id = self._best_plugin(event)
+            if not plugin_id:
+                logger.info("live_targeted_scan_unavailable", extra={"reason": "no_vendor_plugin"})
+                return
+            metadata = event.vendor_metadata or {}
+            context = dict(metadata.get("scan_context") or {})
+            artifact = metadata.get("artifact")
+            if not context and artifact is not None:
+                if isinstance(artifact, dict):
+                    context["api_metadata"] = artifact
+                    if artifact.get("config") is not None:
+                        context["config"] = artifact["config"]
+                    if artifact.get("banner") is not None:
+                        context["banner"] = artifact["banner"]
+                elif isinstance(artifact, str):
+                    context["config"] = artifact
+            if event.product_version is not None and "version" not in context:
+                context["version"] = event.product_version
+            if not context:
+                logger.info("live_targeted_scan_unavailable", extra={
+                    "reason": "source_evidence_not_scan_readable",
+                })
+                return
             report = self.scanner.run(
-                {
-                    "banner": f"{event.vendor} {event.product}",
-                    "config": "",
-                    "version": event.product_version,
-                },
+                context,
                 scan_id=f"live-{event.event_id}",
-                plugin_id=self._best_plugin(event),
+                mode=ScanMode.DEEP_DISCOVERY,
+                plugin_id=plugin_id,
             )
+            for evidence in report.evidence:
+                if isinstance(evidence, dict):
+                    evidence_id = str(evidence.get("evidence_id") or evidence.get("hash") or len(self._evidence))
+                    self._evidence[evidence_id] = evidence
+                    if len(self._evidence) > 10_000:
+                        self._evidence.pop(next(iter(self._evidence)))
+            if report.evidence_verification:
+                self._evidence_verification[report.scan_id] = report.evidence_verification
             for obs in report.observations:
+                observation = obs.model_dump(mode="json")
+                safe_metadata = {
+                    "algorithm": obs.algorithm,
+                    "algorithms": [obs.algorithm] if obs.algorithm else [],
+                    "observation": observation,
+                    "source_event_id": event.event_id,
+                    "source_evidence_reference": event.evidence_reference,
+                    "scan_id": report.scan_id,
+                    "graph": report.graph,
+                }
                 self.cbom.materialize(UniversalVendorEvent(
                     vendor=obs.vendor, product=obs.product,
-                    product_version=obs.product_version, asset_id=obs.asset_id,
+                    product_version=obs.product_version, asset_id=obs.asset_id or event.asset_id,
                     asset_type=obs.asset_type,
+                    tenant_id=event.tenant_id,
                     event_type="CRYPTO_CHANGED", change_type="OBSERVED",
-                    source="live-targeted-scan",
+                    source=event.source,
                     evidence_reference=obs.evidence.get("evidence_id")
-                    if isinstance(obs.evidence, dict) else None,
-                    vendor_metadata={"algorithm": obs.algorithm,
-                                     "algorithms": [obs.algorithm] if obs.algorithm else []},
+                    if isinstance(obs.evidence, dict) else event.evidence_reference,
+                    vendor_metadata=safe_metadata,
                 ))
+            for edge in (report.graph or {}).get("edges", []):
+                if edge.get("source") and edge.get("target"):
+                    self.correlation.graph.add_edge(
+                        str(edge["source"]), str(edge["target"]),
+                        str(edge.get("relationship") or "DEPENDS_ON"),
+                        detail=edge.get("detail") or {},
+                    )
         except Exception as _handler_exc:
             logger.warning(
                 "exception_suppressed",

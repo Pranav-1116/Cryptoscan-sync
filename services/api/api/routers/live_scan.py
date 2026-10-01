@@ -33,11 +33,11 @@ _OPERATORS = ("admin", "superadmin", "ciso", "security_analyst", "scanner")
 
 
 class RunScanRequest(BaseModel):
-    # Subset of scanners to run; default = the periodic host set
-    # (hardware + runtime). Target-based scanners need a value below.
+    # Subset of scanners to run; default = the periodic host set plus the
+    # configured vendor realtime poll. Target-based scanners need a value below.
     scanners: list[str] = Field(
-        default_factory=lambda: ["hardware", "runtime"],
-        description=("hardware | runtime | network | container | ot | cloud "
+        default_factory=lambda: ["vendor", "hardware", "runtime"],
+        description=("vendor | hardware | runtime | network | container | ot | cloud "
                      "| source | universal"),
     )
     network_target: Optional[str] = Field(
