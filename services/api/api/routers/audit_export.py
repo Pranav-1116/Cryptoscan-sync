@@ -26,8 +26,20 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from api.dependencies import require_auditor, get_db_session
+from db.tenancy import platform_scope
 
 router = APIRouter(prefix="/audit-export", tags=["audit-export"])
+
+
+def _platform_audit_scope():
+    """The audit pack is a platform-wide examiner artifact.
+
+    ``require_auditor`` is the platform auditor gate; making the bypass an
+    explicit dependency prevents a selected customer tenant from silently
+    changing a full-estate review into a partial export (or vice versa).
+    """
+    with platform_scope():
+        yield
 
 
 def _canonical(payload) -> bytes:
@@ -46,6 +58,7 @@ def exit_report(
     accepted_by: str = "",
     format: str = "json",
     user: str = Depends(require_auditor),
+    _scope=Depends(_platform_audit_scope),
     db: Session = Depends(get_db_session),
 ):
     """PoC exit report — the engagement deliverable, generated from the SAME
@@ -119,6 +132,7 @@ def engagement_archive(
     owner: str = "",
     accepted_by: str = "",
     user: str = Depends(require_auditor),
+    _scope=Depends(_platform_audit_scope),
     db: Session = Depends(get_db_session),
 ):
     """The final engagement deliverable in ONE archive: the examiner audit
@@ -173,7 +187,11 @@ def engagement_archive(
 
 
 @router.get("/pack")
-def export_pack(user: str = Depends(require_auditor), db: Session = Depends(get_db_session)):
+def export_pack(
+    user: str = Depends(require_auditor),
+    _scope=Depends(_platform_audit_scope),
+    db: Session = Depends(get_db_session),
+):
     from db.models.certificate import Certificate
     from db.models.crypto_asset import CryptoAsset
     from db.models.monitor import MonitorTarget
@@ -560,6 +578,7 @@ def access_review(
     stale_after_days: int = 90,
     format: str = "json",
     user: str = Depends(require_auditor),
+    _scope=Depends(_platform_audit_scope),
     db: Session = Depends(get_db_session),
 ):
     """Quarterly access-review report (SOC 2 CC6.3) — deterministic and signed.
@@ -618,6 +637,7 @@ _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
 def record_access_review(
     payload: _AccessReviewRecordIn,
     user: str = Depends(require_auditor),
+    _scope=Depends(_platform_audit_scope),
     db: Session = Depends(get_db_session),
 ):
     """Record a completed quarterly access review (CC6.3 minutes).
@@ -662,6 +682,7 @@ def record_access_review(
 @router.get("/access-reviews")
 def list_access_reviews(
     user: str = Depends(require_auditor),
+    _scope=Depends(_platform_audit_scope),
     db: Session = Depends(get_db_session),
 ):
     """The standing record of completed quarterly access reviews (newest first)."""

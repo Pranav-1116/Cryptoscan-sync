@@ -194,6 +194,36 @@ def whoami(
     return base
 
 
+@router.get("/memberships")
+def memberships(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Return only organizations the signed-in user may choose.
+
+    This endpoint intentionally runs outside the active-tenant middleware: a
+    user with multiple memberships must be able to populate the picker before
+    choosing ``X-Tenant-ID``. It is still authenticated and derives every row
+    from the membership table, never from a caller-supplied tenant id.
+    """
+    repo = _tenant_repo(db)
+    rows = repo.memberships_of(user)
+    tenants = []
+    for membership in rows:
+        tenant = repo.get(membership.tenant_id)
+        if tenant is None:
+            continue
+        tenants.append({
+            "id": tenant.id,
+            "name": tenant.name,
+            "slug": tenant.slug,
+            "plan": tenant.plan,
+            "status": tenant.status,
+            "tenant_role": membership.tenant_role,
+        })
+    return {"tenants": tenants}
+
+
 @router.get("/usage")
 def usage(
     ctx: TenantContext = Depends(get_tenant_context),

@@ -12,6 +12,8 @@ scan everything is new and is reported once. The reconciliation itself is stored
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 from datetime import datetime, timezone
 from typing import Any
@@ -64,7 +66,7 @@ def detect_inventory_drift(session, scan_id: str) -> list[dict]:
     from db.models.scan import Scan
     from evidence.intelligence.key_reconciliation import reconcile_key_inventory
 
-    scan = session.get(Scan, scan_id)
+    scan = filtered_get(session, Scan, scan_id)
     if scan is None:
         return []
     inventory = _inventory_findings(session, scan_id)

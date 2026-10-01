@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 from fastapi import APIRouter, Depends, HTTPException
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session
@@ -219,6 +222,25 @@ def list_vendors(user: str = Depends(get_current_user), db: Session = Depends(ge
 @router.post("/vendors")
 def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
+
+    # Check the system BEFORE creating the vendor. system_vendors has a
+    # foreign key to systems, so an unknown id used to surface as a
+    # ForeignKeyViolation and a bare 500 -- a client-supplied value must not
+    # read as a server fault. Checking first also avoids the worse outcome:
+    # the vendor row is created and committed, then the link fails, leaving
+    # an orphan the caller was told nothing about.
+    if body.system_id:
+        from db.models.system import System
+
+        exists = db.execute(
+            select(System.id).where(System.id == body.system_id)
+        ).scalars().first()
+        if exists is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Unknown system_id {body.system_id!r}; create the system first",
+            )
+
     vendor = intel.create_vendor(
         body.name,
         body.criticality,
@@ -508,14 +530,14 @@ def create_migration_from_scan(body: AutoProjectRequest, user: str = Depends(get
 
 @router.get("/migrations/{project_id}/progress")
 def migration_progress(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    if db.get(MigrationProject, project_id) is None:
+    if filtered_get(db, MigrationProject, project_id) is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
     return _task_repo(db).progress(project_id)
 
 
 @router.get("/migrations/{project_id}/forecast")
 def migration_forecast(project_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    if db.get(MigrationProject, project_id) is None:
+    if filtered_get(db, MigrationProject, project_id) is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
     return _task_repo(db).forecast(project_id)
 
@@ -543,7 +565,7 @@ def export_github_issues(project_id: str, user: str = Depends(get_current_user),
     status changes back.
     """
     repo = _task_repo(db)
-    project = db.get(MigrationProject, project_id)
+    project = filtered_get(db, MigrationProject, project_id)
     if project is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
     issues = []
@@ -573,6 +595,6 @@ def export_github_issues(project_id: str, user: str = Depends(get_current_user),
 
 @router.post("/migrations/{project_id}/sync")
 def sync_migration(project_id: str, body: ExternalSyncRequest, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    if db.get(MigrationProject, project_id) is None:
+    if filtered_get(db, MigrationProject, project_id) is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
     return _task_repo(db).sync_external(project_id, body.updates)

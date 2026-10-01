@@ -8,6 +8,8 @@ verification used by the post-load verifier.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 from collections.abc import Iterable
 from datetime import datetime, timezone
@@ -78,7 +80,7 @@ class BulkInserter:
     def _upsert_scan(self, scan_data: dict[str, Any]) -> Scan:
         raw_id = scan_data.get("scan_id") or scan_data.get("id")
         scan_id = str(raw_id) if raw_id else ""
-        scan = self.session.get(Scan, scan_id) if scan_id else None
+        scan = filtered_get(self.session, Scan, scan_id) if scan_id else None
         if scan is not None:
             return scan
 

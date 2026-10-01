@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 from pathlib import Path
 
 from typing import Literal
@@ -254,8 +256,11 @@ def ci_gate(
         logger.debug("gate_evaluation_not_recorded", exc_info=True)
         try:
             db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_exc:
+            logger.warning(
+                "gate_evaluation_rollback_failed",
+                extra={"error_type": type(rollback_exc).__name__},
+            )
     return gate
 
 
@@ -400,7 +405,7 @@ def import_scan_transfer(
             detail={"message": "transfer verification failed", "errors": verdict["errors"]},
         )
     scan_id = str(verdict["scan_id"])
-    if db.get(Scan, scan_id) is not None:
+    if filtered_get(db, Scan, scan_id) is not None:
         return {"imported": False, "reason": "scan_already_present", "scan_id": scan_id, "records": 0}
     scan_payload = body.get("scan") or {}
     column_values = {}

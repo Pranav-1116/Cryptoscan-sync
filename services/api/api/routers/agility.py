@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -89,7 +91,7 @@ def list_agility(user: str = Depends(get_current_user), db: Session = Depends(ge
 
 @router.get("/systems/{system_id}/agility")
 def get_system_agility(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    system = db.get(System, system_id)
+    system = filtered_get(db, System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     latest = MaturityRepository(db).latest_agility(system_id)
@@ -102,7 +104,7 @@ def get_system_agility(system_id: str, user: str = Depends(get_current_user), db
 
 @router.post("/systems/{system_id}/agility/recalculate")
 def recalculate(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    system = db.get(System, system_id)
+    system = filtered_get(db, System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     return _score_system(db, system)
@@ -139,7 +141,7 @@ def agility_roadmap(user: str = Depends(get_current_user), db: Session = Depends
 @router.get("/systems/{system_id}/agility/history")
 def agility_history(system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     """Saved score rows over time + trajectory classification."""
-    system = db.get(System, system_id)
+    system = filtered_get(db, System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     rows = MaturityRepository(db).agility_history(system_id)
@@ -173,7 +175,7 @@ def agility_simulate(
     body: AgilitySimulateRequest, system_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
 ):
     """What-if projection through the real scoring engine. Nothing is persisted."""
-    system = db.get(System, system_id)
+    system = filtered_get(db, System, system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
     result = simulate_improvements(_evidence_for(db, system_id), system.to_dict(), body.actions)

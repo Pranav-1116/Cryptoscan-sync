@@ -10,6 +10,13 @@ Triage lives in `Scan.statistics["field_triage"]` (no schema change); a scan hol
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 from pathlib import Path
 from typing import Any, Optional
@@ -32,7 +39,11 @@ def corpus_f1() -> Optional[float]:
     try:
         rep = json.loads(_CORPUS_REPORT.read_text())
         return float(rep["overall"]["f1"])
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -45,7 +56,7 @@ def publish_triage(
 ):
     """Attach a bank's review to a scan. Body is either a scored `TriageResult` or a raw reviewed workbook
     (`{"workbook": {...}, "reviewer": "..."}`), which is scored server-side with the same function."""
-    scan = db.get(Scan, scan_id)
+    scan = filtered_get(db, Scan, scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     if "workbook" in body:
@@ -69,7 +80,7 @@ def publish_triage(
 
 @router.get("/scans/{scan_id}/triage", response_model=TriageResult)
 def get_triage(scan_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
-    scan = db.get(Scan, scan_id)
+    scan = filtered_get(db, Scan, scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     triage = (scan.statistics or {}).get("field_triage")

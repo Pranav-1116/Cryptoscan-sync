@@ -8,6 +8,8 @@ never invented here.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 from typing import Any
 
@@ -79,7 +81,7 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
             }
             for row in rows
         ]
-        system = session.get(System, ctx.system_id) if ctx.system_id else None
+        system = filtered_get(session, System, ctx.system_id) if ctx.system_id else None
         system_rows = []
         migration_years = None
         if system is not None:
@@ -89,14 +91,18 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
         plan = build_migration_plan(findings, systems=system_rows, migration_years=migration_years)
         summary = _summary(report, plan)
         ctx.scan_meta["quantum"] = summary
-        scan = session.get(Scan, ctx.scan_id)
+        scan = filtered_get(session, Scan, ctx.scan_id)
         if scan is not None:
             stats = dict(scan.statistics or {})
             stats["quantum"] = summary
             scan.statistics = stats
             try:
                 flag_modified(scan, "statistics")
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             session.flush()
         verdict = (summary.get("mosca") or {}).get("verdict")

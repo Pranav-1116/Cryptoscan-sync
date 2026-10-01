@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 
 from worker.pipeline.pipeline_runner import PipelineContext
@@ -22,7 +24,7 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
         logger.debug("agility_stage_unavailable", exc_info=True)
         return ctx
     try:
-        system = session.get(System, ctx.system_id)
+        system = filtered_get(session, System, ctx.system_id)
         if system is None:
             return ctx
         assets = SystemRepository(session).assets_for(ctx.system_id)

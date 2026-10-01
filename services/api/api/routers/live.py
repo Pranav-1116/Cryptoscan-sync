@@ -14,6 +14,11 @@ single product, not four scanners.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -31,6 +36,17 @@ router = APIRouter(prefix="/live", tags=["live", "scans"])
 _OPERATORS = ("admin", "superadmin", "ciso", "security_analyst", "scanner")
 
 
+def _active_tenant_id() -> str | None:
+    try:
+        from db.tenancy import current_tenant
+
+        return current_tenant()
+    except ImportError:
+        # The API always ships db.tenancy; this fallback is only for isolated
+        # orchestrator tests that do not install the database service.
+        return None
+
+
 def _org_policy(repo: OnboardingRepository, org_id: str) -> dict | None:
     """Load the persisted scan/privacy policy for an org (JSON in app_settings)."""
     try:
@@ -44,7 +60,11 @@ def _org_policy(repo: OnboardingRepository, org_id: str) -> dict | None:
             return None
         import json
         return json.loads(row.value or "{}")
-    except Exception:  # noqa: BLE001 — policy read is best-effort
+    except Exception as _handler_exc:  # noqa: BLE001 — policy read is best-effort
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 
@@ -83,8 +103,18 @@ def orchestrator_start(
     orch = get_scan_orchestrator()
     run = orch.start(org.to_dict(), entries, conns, envs, only=scanners, db=db,
                      updated_by=user, actor=user, policy=_org_policy(repo, org.id),
-                     sector=getattr(org, "sector", None))
+                     sector=getattr(org, "sector", None),
+                     tenant_id=_active_tenant_id())
     return {"status": "started", "scan": run.to_dict()}
+
+
+@router.post("/orchestrator/{scan_id}/cancel", status_code=202)
+def orchestrator_cancel(
+    scan_id: str,
+    user: str = Depends(require_roles(*_OPERATORS)),
+):
+    """Request cancellation from any replica; the command is shared and audited."""
+    return get_scan_orchestrator().cancel(scan_id, actor=user)
 
 
 @router.get("/orchestrator/status")
@@ -113,7 +143,8 @@ def orchestrator_history(
         db.query(MonitorEvent)
         .filter(
             MonitorEvent.target_name == "platform",
-            MonitorEvent.event_type.in_(("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED")),
+            MonitorEvent.event_type.in_(("SCAN_STARTED", "SCAN_PHASE", "SCAN_COMPLETED", "SCAN_FAILED",
+                                          "SCAN_CANCEL_REQUESTED", "SCAN_CANCELLED")),
         )
         .order_by(MonitorEvent.created_at.desc(), MonitorEvent.id.desc())
         .limit(800)

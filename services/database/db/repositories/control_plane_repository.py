@@ -33,6 +33,18 @@ class ControlPlaneRepository:
     def __init__(self, session: Session):
         self.session = session
 
+    def _get_tenant_row(self, model, row_id: str, tenant_id: str | None = None):
+        """Load a tenant-owned row through a filtered SELECT, never identity-map get.
+
+        Request code is additionally constrained by ``db.tenancy``. Workers
+        that operate outside a request can pass the authorized tenant marker;
+        omitting it is reserved for the explicit platform-global worker path.
+        """
+        stmt = select(model).where(model.id == row_id)
+        if tenant_id is not None and hasattr(model, "tenant_id"):
+            stmt = stmt.where(model.tenant_id == tenant_id)
+        return self.session.execute(stmt).scalars().first()
+
     # ------------------------------------------------------------- tenants
     def create_tenant(self, name: str, **fields) -> Tenant:
         tenant = Tenant(name=name, **fields)
@@ -59,8 +71,9 @@ class ControlPlaneRepository:
             stmt = stmt.where((ScopeGrant.tenant_id == tenant_id) | (ScopeGrant.tenant_id.is_(None)))
         return list(self.session.execute(stmt).scalars().all())
 
-    def set_grant_active(self, grant_id: str, active: bool) -> ScopeGrant | None:
-        grant = self.session.get(ScopeGrant, grant_id)
+    def set_grant_active(self, grant_id: str, active: bool,
+                         *, tenant_id: str | None = None) -> ScopeGrant | None:
+        grant = self._get_tenant_row(ScopeGrant, grant_id, tenant_id)
         if grant is None:
             return None
         grant.is_active = active
@@ -74,8 +87,8 @@ class ControlPlaneRepository:
         self.session.flush()
         return cred
 
-    def get_credential(self, credential_id: str) -> CredentialRef | None:
-        return self.session.get(CredentialRef, credential_id)
+    def get_credential(self, credential_id: str, *, tenant_id: str | None = None) -> CredentialRef | None:
+        return self._get_tenant_row(CredentialRef, credential_id, tenant_id)
 
     def list_credentials(self, tenant_id: str | None = None) -> list[CredentialRef]:
         stmt = select(CredentialRef).order_by(CredentialRef.name)
@@ -111,8 +124,8 @@ class ControlPlaneRepository:
         self.session.flush()
         return agent
 
-    def get_agent(self, agent_id: str) -> Agent | None:
-        return self.session.get(Agent, agent_id)
+    def get_agent(self, agent_id: str, *, tenant_id: str | None = None) -> Agent | None:
+        return self._get_tenant_row(Agent, agent_id, tenant_id)
 
     def get_agent_by_fingerprint(self, fingerprint: str) -> Agent | None:
         return self.session.execute(
@@ -205,10 +218,11 @@ class ControlPlaneRepository:
         self.session.flush()
         return policy
 
-    def list_safe_policies(self) -> list[SafeScanPolicy]:
-        return list(self.session.execute(
-            select(SafeScanPolicy).where(SafeScanPolicy.is_active.is_(True))
-        ).scalars().all())
+    def list_safe_policies(self, *, tenant_id: str | None = None) -> list[SafeScanPolicy]:
+        stmt = select(SafeScanPolicy).where(SafeScanPolicy.is_active.is_(True))
+        if tenant_id is not None:
+            stmt = stmt.where(SafeScanPolicy.tenant_id == tenant_id)
+        return list(self.session.execute(stmt).scalars().all())
 
     def matching_policy(self, *, region: str | None = None, environment: str | None = None) -> SafeScanPolicy | None:
         """Most specific active policy matching the scope (region+env beats
@@ -223,8 +237,9 @@ class ControlPlaneRepository:
         glob = [p for p in policies if not p.scope_region and not p.scope_environment]
         return glob[0] if glob else None
 
-    def set_emergency_stop(self, policy_id: str, engaged: bool) -> SafeScanPolicy | None:
-        policy = self.session.get(SafeScanPolicy, policy_id)
+    def set_emergency_stop(self, policy_id: str, engaged: bool,
+                            *, tenant_id: str | None = None) -> SafeScanPolicy | None:
+        policy = self._get_tenant_row(SafeScanPolicy, policy_id, tenant_id)
         if policy is None:
             return None
         policy.emergency_stop = engaged
@@ -247,34 +262,43 @@ class ControlPlaneRepository:
         self.session.flush()
         return identity
 
-    def list_asset_identities(self) -> list[AssetIdentity]:
-        return list(self.session.execute(select(AssetIdentity).order_by(AssetIdentity.canonical_id)).scalars().all())
+    def list_asset_identities(self, *, tenant_id: str | None = None) -> list[AssetIdentity]:
+        stmt = select(AssetIdentity).order_by(AssetIdentity.canonical_id)
+        if tenant_id is not None:
+            stmt = stmt.where(AssetIdentity.tenant_id == tenant_id)
+        return list(self.session.execute(stmt).scalars().all())
 
     # ------------------------------------------------------------- events
     def enqueue(self, event_type: str, payload: dict, *, source: str = "control_plane",
                 priority: str = "normal", max_attempts: int = 5) -> QueuedEvent:
+        # Request-scoped inserts are stamped by db.tenancy. The explicit marker
+        # also preserves ownership when an authorized worker enqueues outside a
+        # request context; a tenant scope will reject a conflicting marker.
+        owner = (payload or {}).get("_authorized_tenant_id") or (payload or {}).get("tenant_id")
         ev = QueuedEvent(event_type=event_type, payload=payload, source=source,
+                         tenant_id=str(owner) if owner else None,
                          priority=priority, max_attempts=max_attempts,
                          available_at=datetime.now(timezone.utc))
         self.session.add(ev)
         self.session.flush()
         return ev
 
-    def get_event(self, event_id: str) -> QueuedEvent | None:
-        return self.session.get(QueuedEvent, event_id)
+    def get_event(self, event_id: str, *, tenant_id: str | None = None) -> QueuedEvent | None:
+        return self._get_tenant_row(QueuedEvent, event_id, tenant_id)
 
     def lease_next(self, worker_id: str, *, priority_rank: dict | None = None,
-                   now: datetime | None = None) -> QueuedEvent | None:
+                   now: datetime | None = None,
+                   tenant_id: str | None = None) -> QueuedEvent | None:
         """Atomically lease the highest-priority due event (best-effort on
         SQLite; row-locked on Postgres)."""
         from control_plane.queue import next_available
 
         now = now or datetime.now(timezone.utc)
-        rows = self.list_events("queued", limit=200)
+        rows = self.list_events("queued", limit=200, tenant_id=tenant_id)
         chosen = next_available([r.to_dict() for r in rows], now=now)
         if chosen is None:
             return None
-        ev = self.session.get(QueuedEvent, chosen["id"])
+        ev = self.get_event(chosen["id"], tenant_id=tenant_id)
         if ev is None or ev.status != "queued":
             return None
         ev.status = "leased"
@@ -284,8 +308,8 @@ class ControlPlaneRepository:
         self.session.flush()
         return ev
 
-    def complete_event(self, event_id: str) -> QueuedEvent | None:
-        ev = self.session.get(QueuedEvent, event_id)
+    def complete_event(self, event_id: str, *, tenant_id: str | None = None) -> QueuedEvent | None:
+        ev = self.get_event(event_id, tenant_id=tenant_id)
         if ev is None:
             return None
         ev.status = "completed"
@@ -294,11 +318,12 @@ class ControlPlaneRepository:
         self.session.flush()
         return ev
 
-    def fail_event(self, event_id: str, error: str, *, now: datetime | None = None) -> QueuedEvent | None:
+    def fail_event(self, event_id: str, error: str, *, now: datetime | None = None,
+                   tenant_id: str | None = None) -> QueuedEvent | None:
         """Apply backoff/retry or dead-letter after a processing failure."""
         from control_plane.queue import classify_after_failure
 
-        ev = self.session.get(QueuedEvent, event_id)
+        ev = self.get_event(event_id, tenant_id=tenant_id)
         if ev is None:
             return None
         update = classify_after_failure(ev.to_dict(), now=now or datetime.now(timezone.utc))
@@ -310,8 +335,8 @@ class ControlPlaneRepository:
         self.session.flush()
         return ev
 
-    def cancel_event(self, event_id: str) -> bool:
-        ev = self.session.get(QueuedEvent, event_id)
+    def cancel_event(self, event_id: str, *, tenant_id: str | None = None) -> bool:
+        ev = self.get_event(event_id, tenant_id=tenant_id)
         if ev is None or ev.status not in {"queued"}:
             return False
         ev.status = "dead"
@@ -320,14 +345,24 @@ class ControlPlaneRepository:
         self.session.flush()
         return True
 
-    def list_events(self, status: str | None = None, limit: int = 100) -> list[QueuedEvent]:
+    def list_events(self, status: str | None = None, limit: int = 100,
+                    *, tenant_id: str | None = None) -> list[QueuedEvent]:
+        """List queue rows in the active tenant or explicit worker tenant.
+
+        With no active scope and no marker this is the platform-global queue
+        path used by the control-plane worker; request callers are filtered by
+        the ORM middleware automatically.
+        """
         # priority-ordered for work queues: critical -> normal, FIFO within tier
         rank = {"critical": 0, "high": 1, "normal": 2, "low": 3}
         # clamp: negative LIMIT is "unlimited" in SQLite (and a DoS vector); cap result set
         limit = max(1, min(int(limit or 100), 500))
-        stmt = select(QueuedEvent).order_by(QueuedEvent.created_at.desc()).limit(limit)
+        stmt = select(QueuedEvent).order_by(QueuedEvent.created_at.desc())
         if status:
-            stmt = select(QueuedEvent).where(QueuedEvent.status == status).limit(limit * 4)
+            stmt = stmt.where(QueuedEvent.status == status)
+        if tenant_id is not None:
+            stmt = stmt.where(QueuedEvent.tenant_id == tenant_id)
+        stmt = stmt.limit(limit * 4 if status else limit)
         rows = list(self.session.execute(stmt).scalars().all())
         if status:
             rows.sort(key=lambda e: (rank.get(e.priority, 2), e.created_at or ""))
@@ -336,9 +371,14 @@ class ControlPlaneRepository:
 
     # ------------------------------------------------- outbound delivery log
     def record_delivery(self, *, result: dict, event_type: str,
-                        event_id: str | None = None) -> DeliveryLog:
+                        event_id: str | None = None,
+                        tenant_id: str | None = None) -> DeliveryLog:
         """Persist one outbound webhook delivery outcome (audit trail)."""
+        # Delivery results from an authorized worker carry the event owner;
+        # request-scoped calls are stamped by db.tenancy.
+        owner = tenant_id or result.get("tenant_id")
         log = DeliveryLog(
+            tenant_id=str(owner) if owner else None,
             integration_id=result.get("integration_id"),
             provider=result.get("provider", "webhook"),
             kind=result.get("kind", "siem"),
@@ -357,24 +397,26 @@ class ControlPlaneRepository:
         return log
 
     def list_delivery_logs(self, *, kind: str | None = None,
-                           status: str | None = None, limit: int = 100) -> list[DeliveryLog]:
+                           status: str | None = None, limit: int = 100,
+                           tenant_id: str | None = None) -> list[DeliveryLog]:
         limit = max(1, min(int(limit or 100), 500))
-        stmt = select(DeliveryLog).order_by(DeliveryLog.created_at.desc()).limit(limit)
+        stmt = select(DeliveryLog).order_by(DeliveryLog.created_at.desc())
         if kind:
-            stmt = select(DeliveryLog).where(DeliveryLog.kind == kind).order_by(
-                DeliveryLog.created_at.desc()).limit(limit)
+            stmt = stmt.where(DeliveryLog.kind == kind)
         if status:
-            stmt = select(DeliveryLog).where(DeliveryLog.status == status).order_by(
-                DeliveryLog.created_at.desc()).limit(limit)
+            stmt = stmt.where(DeliveryLog.status == status)
+        if tenant_id is not None:
+            stmt = stmt.where(DeliveryLog.tenant_id == tenant_id)
+        stmt = stmt.limit(limit)
         return list(self.session.execute(stmt).scalars().all())
 
-    def delivery_stats(self) -> dict:
+    def delivery_stats(self, *, tenant_id: str | None = None) -> dict:
         from sqlalchemy import func
 
-        rows = self.session.execute(
-            select(DeliveryLog.status, func.count(DeliveryLog.id))
-            .group_by(DeliveryLog.status)
-        ).all()
+        stmt = select(DeliveryLog.status, func.count(DeliveryLog.id))
+        if tenant_id is not None:
+            stmt = stmt.where(DeliveryLog.tenant_id == tenant_id)
+        rows = self.session.execute(stmt.group_by(DeliveryLog.status)).all()
         return {status: int(count) for status, count in rows}
 
     # ---------------------------------------------------------- benchmark
@@ -423,11 +465,16 @@ class ControlPlaneRepository:
         self.session.flush()
         return row
 
-    def latest_security_posture(self) -> SecurityPosture | None:
-        return self.session.execute(
-            select(SecurityPosture).order_by(SecurityPosture.created_at.desc()).limit(1)
-        ).scalars().first()
+    def latest_security_posture(self, *, tenant_id: str | None = None) -> SecurityPosture | None:
+        stmt = select(SecurityPosture).order_by(SecurityPosture.created_at.desc())
+        if tenant_id is not None:
+            stmt = stmt.where(SecurityPosture.tenant_id == tenant_id)
+        return self.session.execute(stmt.limit(1)).scalars().first()
 
-    def list_security_postures(self, *, limit: int = 60) -> list[SecurityPosture]:
-        stmt = select(SecurityPosture).order_by(SecurityPosture.created_at.desc()).limit(limit)
+    def list_security_postures(self, *, limit: int = 60,
+                               tenant_id: str | None = None) -> list[SecurityPosture]:
+        stmt = select(SecurityPosture).order_by(SecurityPosture.created_at.desc())
+        if tenant_id is not None:
+            stmt = stmt.where(SecurityPosture.tenant_id == tenant_id)
+        stmt = stmt.limit(limit)
         return list(self.session.execute(stmt).scalars().all())

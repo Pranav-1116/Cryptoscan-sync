@@ -16,6 +16,7 @@ from sqlalchemy import DateTime, Index, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 # Tenant plans. Limits are policy — pinned by api tests via
 # api.security.tenancy (the api-side pure engine mirrors this catalog by
@@ -39,19 +40,18 @@ class Tenant(BaseModel):
     suspend_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
-class TenantMembership(BaseModel):
+class TenantMembership(BaseModel, TenantScoped):
     __tablename__ = "tenant_memberships"
     __table_args__ = (
         UniqueConstraint("tenant_id", "username", name="uq_tenant_member"),
         Index("ix_memberships_username", "username"),
     )
 
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     tenant_role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")
 
 
-class TenantUsageEvent(BaseModel):
+class TenantUsageEvent(BaseModel, TenantScoped):
     """Append-only per-tenant metering trail (plan enforcement + billing input).
 
     kind is a meter name (e.g. "scan_run", "target_create", "member_create");
@@ -62,13 +62,12 @@ class TenantUsageEvent(BaseModel):
     __tablename__ = "tenant_usage_events"
     __table_args__ = (Index("ix_usage_tenant_kind_time", "tenant_id", "kind", "created_at"),)
 
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(60), nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     detail: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 
-class TenantProvisionEvent(BaseModel):
+class TenantProvisionEvent(BaseModel, TenantScoped):
     """Audit trail for tenant lifecycle (signup, suspend, restore, plan change).
 
     The platform-wide audit log stays actor/action-shaped; this gives the SaaS
@@ -77,14 +76,13 @@ class TenantProvisionEvent(BaseModel):
 
     __tablename__ = "tenant_provision_events"
 
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     action: Mapped[str] = mapped_column(String(60), nullable=False)
     actor: Mapped[str] = mapped_column(String(100), nullable=False)
     detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
-class TenantInvite(BaseModel):
+class TenantInvite(BaseModel, TenantScoped):
     """A pending invitation to join a tenant.
 
     The raw token is shown ONCE at creation (like API keys) and only its
@@ -96,7 +94,6 @@ class TenantInvite(BaseModel):
     __tablename__ = "tenant_invites"
     __table_args__ = (Index("ix_invites_tenant_pending", "tenant_id", "accepted_at"),)
 
-    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     username: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     tenant_role: Mapped[str] = mapped_column(String(20), nullable=False, default="member")

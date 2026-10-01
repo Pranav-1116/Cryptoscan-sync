@@ -20,7 +20,7 @@
 import React, {
   createContext, useCallback, useContext, useEffect, useRef, useState,
 } from "react";
-import { getToken, isBackendLive } from "./api.js";
+import { getToken, isBackendLive, tenantFetch } from "./api.js";
 
 export interface StreamEvent {
   id: number;
@@ -218,7 +218,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     let misses = 0;
     try {
       const resume = lastIdRef.current > 0 ? lastIdRef.current : 0;
-      const resp = await fetch(`/api/v1/events/stream?last_event_id=${resume}`, {
+      const resp = await tenantFetch(`/api/v1/events/stream?last_event_id=${resume}`, {
         headers: { Authorization: `Bearer ${token}` },
         signal: ac.signal,
       });
@@ -342,6 +342,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
     const onVisible = () => { if (document.visibilityState === "visible") void connect(); };
 
     window.addEventListener("zelinx:auth", onAuth);
+    window.addEventListener("zelinx:tenant", onAuth);
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     document.addEventListener("visibilitychange", onVisible);
@@ -350,6 +351,7 @@ export function RealtimeProvider({ children }: { children: React.ReactNode }) {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       abortRef.current?.abort();
       window.removeEventListener("zelinx:auth", onAuth);
+      window.removeEventListener("zelinx:tenant", onAuth);
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       document.removeEventListener("visibilitychange", onVisible);

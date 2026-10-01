@@ -99,7 +99,15 @@ async def test_tenant_isolation_is_total():
         a = (await _signup(client, "Alpha", "alice")).json()["tenant"]["id"]
         b = (await _signup(client, "Beta", "bob")).json()["tenant"]["id"]
 
+        # The picker must work before a tenant header is selected. Add Alice
+        # to a second tenant and verify the directory is membership-derived.
+        from db.repositories.tenant_repository import TenantRepository
+        TenantRepository(session).add_member(b, "alice", "member", actor="bob")
+        session.commit()
         _act_as(client, session, "alice")
+        memberships = await client.get("/api/v1/saas/memberships")
+        assert memberships.status_code == 200, memberships.text
+        assert {t["id"] for t in memberships.json()["tenants"]} == {a, b}
         ta = (await _create_target(client, "alpha-edge", tenant_id=a)).json()
         assert (await _create_target(client, "alpha-edge-2", tenant_id=a)).status_code == 201
 

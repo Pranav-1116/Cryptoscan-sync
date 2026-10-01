@@ -12,7 +12,7 @@
  * unreachable backend renders an empty console, never fake numbers.
  */
 import { useEffect, useState, useCallback } from "react";
-import { getToken } from "./api.js";
+import { tenantFetch } from "./api.js";
 
 export interface LiveState<T> {
   data: T;
@@ -23,10 +23,7 @@ export interface LiveState<T> {
 
 export async function liveGet<T>(path: string, init?: RequestInit): Promise<T | null> {
   try {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    const token = getToken();
-    if (token) headers.Authorization = `Bearer ${token}`;
-    const resp = await fetch(path, { signal: AbortSignal.timeout(12000), headers, ...init });
+    const resp = await tenantFetch(path, { signal: AbortSignal.timeout(12000), ...init });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     return (await resp.json()) as T;
   } catch {

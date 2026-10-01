@@ -27,7 +27,7 @@ TARGET_STATUSES = ("PENDING", "OK", "DEGRADED", "FAILING", "BLOCKED", "PAUSED")
 TARGET_TYPES = ("NETWORK", "CLOUD", "REPO", "CONTAINER", "PAYMENT", "OT", "VENDOR", "TELECOM")
 
 
-class MonitorTarget(BaseModel):
+class MonitorTarget(BaseModel, TenantScoped):
     __tablename__ = "monitor_targets"
 
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
@@ -43,9 +43,8 @@ class MonitorTarget(BaseModel):
     last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     # Owning tenant (multi-tenant SaaS). NULL = platform estate (single-tenant
-    # / on-prem stores keep working untouched); daemon passes still execute
-    # platform targets. Tenant-scoped requests never see platform rows.
-    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    # / on-prem stores keep working untouched). TenantScoped supplies the
+    # column and ensures direct ORM reads and bulk writes are guarded.
 
 
 class MonitorLease(BaseModel):

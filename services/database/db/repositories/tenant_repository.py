@@ -277,7 +277,7 @@ class TenantRepository:
         return membership
 
     def revoke_invite(self, tenant_id: str, invite_id: str) -> Optional[TenantInvite]:
-        row = self.session.get(TenantInvite, invite_id)
+        row = self.session.execute(select(TenantInvite).where(TenantInvite.id == invite_id)).scalars().first()
         if row is None or row.tenant_id != tenant_id or row.accepted_at is not None:
             return None
         row.revoked_at = utcnow()

@@ -10,9 +10,10 @@
  */
 import React, { useEffect, useState } from "react";
 import {
-  ApiResult, activeTenantId, apiSaasAdminTenants, apiTenantIsolation,
-  getRoles, getUserName, setActiveTenantId,
+  ApiResult, activeTenantId, apiSaasAdminTenants, apiSaasMemberships, apiTenantIsolation,
+  setActiveTenantId,
 } from "../lib/api.js";
+import { useAuth } from "../lib/auth.js";
 import { useEnterprise, EnvProfile } from "./EnterpriseContext";
 
 /* ── shared shell ─────────────────────────────────────────────────── */
@@ -65,7 +66,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
   const [offline, setOffline] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  const { roles } = useEnterprise();
+  const { hasRole } = useAuth();
   const current = activeTenantId();
 
   useEffect(() => {
@@ -74,7 +75,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
     setLoading(true);
     setError(undefined);
     (async () => {
-      const isAdmin = roles.includes("superadmin") || roles.includes("admin");
+      const isAdmin = hasRole("superadmin") || hasRole("admin");
       let list: TenantRow[] = [];
       let ok = false;
       if (isAdmin) {
@@ -82,8 +83,15 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           await apiSaasAdminTenants();
         ok = res.source === "live" && !!res.data;
         if (ok && res.data) list = res.data.tenants || [];
+      } else {
+        // A multi-member user must be able to populate this picker before an
+        // active tenant exists. The backend derives this list from membership,
+        // not from the currently selected header.
+        const res = await apiSaasMemberships();
+        ok = res.source === "live" && !!res.data;
+        if (ok && res.data) list = res.data.tenants || [];
       }
-      if (!ok) {
+      if (!ok && isAdmin) {
         const res = await apiTenantIsolation();
         ok = res.source === "live" && !!res.data;
         if (ok && res.data) list = (res.data.tenants || []).map((t) => ({ ...t }));
@@ -94,7 +102,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [isOpen, roles]);
+  }, [isOpen, hasRole]);
 
   if (!isOpen) return null;
 
@@ -193,8 +201,7 @@ const ROLE_CATALOG: Array<{ role: string; desc: string }> = [
 ];
 
 export function RoleModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { user, roles } = useEnterprise();
-  const mine = getRoles();
+  const { user, roles: mine } = useAuth();
   if (!isOpen) return null;
   return (
     <ModalShell title="Role Profile (RBAC)" onClose={onClose} wide>

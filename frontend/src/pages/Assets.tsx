@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Badge, Button, Tabs } from "../components/ui";
 import { Link } from "react-router-dom";
-import { getToken } from "../lib/api";
+import { getToken, tenantFetch } from "../lib/api";
 
 export interface AssetRecord {
   id: string;
@@ -37,7 +37,7 @@ export default function Assets() {
         const headers: Record<string, string> = { "Content-Type": "application/json" };
         if (token) headers["Authorization"] = `Bearer ${token}`;
 
-        const res = await fetch("/api/v1/assets?page=1&page_size=100", { headers, signal: AbortSignal.timeout(6000) });
+        const res = await tenantFetch("/api/v1/assets?page=1&page_size=100", { headers, signal: AbortSignal.timeout(6000) });
         if (res.ok) {
           const body = await res.json();
           if (!cancelled && body.assets && Array.isArray(body.assets)) {

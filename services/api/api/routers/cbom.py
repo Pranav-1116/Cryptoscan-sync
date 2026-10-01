@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
@@ -142,7 +144,7 @@ def _records_for_system(db: Session, system_id: str) -> tuple[Any, list[Any]]:
 
 
 def _records_for_scan(db: Session, scan_id: str) -> tuple[Scan, list[Any]]:
-    scan = db.get(Scan, scan_id)
+    scan = filtered_get(db, Scan, scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     return scan, EvidenceRepository(db).get_all_for_scan(scan_id)

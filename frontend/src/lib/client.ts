@@ -5,11 +5,13 @@
 let live: boolean | null = null;
 let checked = false;
 
+import { tenantFetch } from "./api.js";
+
 export async function isBackendLive(): Promise<boolean> {
   if (!checked) {
     checked = true;
     try {
-      const resp = await fetch("/api/v1/platform/scope", { signal: AbortSignal.timeout(2500) });
+      const resp = await tenantFetch("/api/v1/platform/scope", { signal: AbortSignal.timeout(2500) });
       live = resp.ok;
     } catch {
       live = false;

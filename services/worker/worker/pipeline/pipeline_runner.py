@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 import uuid
 from dataclasses import dataclass, field
@@ -340,7 +342,11 @@ class PipelineRunner:
                 },
                 source="pipeline",
             )
-        except Exception:  # standalone worker process has no bus — polling covers it
+        except Exception as _handler_exc:  # standalone worker process has no bus — polling covers it
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
     def _post_github(
@@ -446,21 +452,33 @@ class PipelineRunner:
     def _ot_findings(self, ctx: PipelineContext) -> None:
         try:
             from worker.pipeline.stage_ot_scan import execute as ot_scan
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         ot_scan(ctx, session=None)
 
     def _cloud(self, ctx: PipelineContext) -> None:
         try:
             from worker.pipeline.stage_cloud_scan import execute as cloud_scan
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         cloud_scan(ctx)
 
     def _tls(self, ctx: PipelineContext) -> None:
         try:
             from worker.pipeline.stage_network_scan import execute as network_scan
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         network_scan(ctx)
         try:
@@ -704,7 +722,7 @@ class PipelineRunner:
 
             from db.models.scan import Scan
 
-            scan = session.get(Scan, ctx.scan_id) if ctx.scan_id else None
+            scan = filtered_get(session, Scan, ctx.scan_id) if ctx.scan_id else None
             if scan is not None:
                 stats = dict(scan.statistics or {})
                 stats["dedup"] = merged["stats"]
@@ -751,7 +769,11 @@ class PipelineRunner:
             from collections import Counter
 
             from db.repositories.system_repository import SystemRepository
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         algorithms: Counter[str] = Counter()
         for record in ctx.evidence_records or ctx.findings or []:
@@ -890,7 +912,11 @@ class PipelineRunner:
             return
         try:
             from db.repositories.system_repository import SystemRepository
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         repo = SystemRepository(session)
         for asset in assets:
@@ -913,7 +939,11 @@ class PipelineRunner:
             from fnmatch import fnmatch
 
             from db.repositories.system_repository import SystemRepository
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
         repo = SystemRepository(session)
 
@@ -1039,9 +1069,13 @@ class PipelineRunner:
         try:
             from db.models.system import System
             from quantum.risk import score_asset
-        except Exception:
+        except Exception as _handler_exc:
+            logger.warning(
+                "exception_suppressed",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             return
-        system = session.get(System, ctx.system_id) if ctx.system_id else None
+        system = filtered_get(session, System, ctx.system_id) if ctx.system_id else None
         system_payload = system.to_dict() if system is not None else {}
         for asset in assets:
             try:
@@ -1056,7 +1090,11 @@ class PipelineRunner:
                     system=system_payload,
                 )
                 asset.extra = extra
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 continue
 
     def _drift(self, ctx: PipelineContext, session) -> None:
@@ -1229,7 +1267,7 @@ class PipelineRunner:
         orders = build_work_orders(findings)
         ctx.scan_meta["gate"] = gate
         ctx.scan_meta["agility"] = agility
-        scan = session.get(Scan, ctx.scan_id) if ctx.scan_id else None
+        scan = filtered_get(session, Scan, ctx.scan_id) if ctx.scan_id else None
         if scan is not None:
             stats = dict(scan.statistics or {})
             stats["gate"] = {key: value for key, value in gate.items()}
@@ -1241,7 +1279,11 @@ class PipelineRunner:
             scan.statistics = stats
             try:
                 flag_modified(scan, "statistics")
-            except Exception:
+            except Exception as _handler_exc:
+                logger.warning(
+                    "exception_suppressed",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             session.flush()
         gh_state = "success" if gate["decision"] != "FAIL" else "failure"

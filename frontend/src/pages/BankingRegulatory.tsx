@@ -8,6 +8,7 @@ import {
   apiBankingJurisdictions,
   apiBankingSwiftCsp,
   apiBankingActionPlan,
+  tenantFetch,
 } from "../lib/api";
 
 export default function BankingRegulatory() {
@@ -90,7 +91,7 @@ export default function BankingRegulatory() {
   const runIsoParse = async () => {
     setIsoLoading(true);
     try {
-      const resp = await fetch("/api/v1/banking/iso20022/parse", {
+      const resp = await tenantFetch("/api/v1/banking/iso20022/parse", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ xml_payload: isoInput }),

@@ -398,6 +398,7 @@ def deliver_event_for_repo(db_session, event: dict, *, post=None,
         out.append(d)
         if record:
             cp.record_delivery(result=d, event_type=str(event.get("event_type", "")),
-                               event_id=event.get("id"))
+                               event_id=event.get("id"),
+                               tenant_id=event.get("tenant_id") or (event.get("payload") or {}).get("tenant_id"))
             ent.mark_integration_synced(r.integration_id, r.status)
     return out

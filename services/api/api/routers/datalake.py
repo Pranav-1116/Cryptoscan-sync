@@ -11,6 +11,8 @@ detected on verification and surfaced. No AI — pure hashing/chaining.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 
 from datalake.manifest import (
@@ -193,7 +195,7 @@ def verify_stored_batch(
 ):
     from db.models.p2 import LakeExportBatch
 
-    row = db.get(LakeExportBatch, batch_pk)
+    row = filtered_get(db, LakeExportBatch, batch_pk)
     if not row:
         raise HTTPException(status_code=404, detail="batch not found")
 

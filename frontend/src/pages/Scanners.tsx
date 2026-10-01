@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Badge, Button, ProgressBar } from "../components/ui";
 import { Link, useNavigate } from "react-router-dom";
-import { getToken } from "../lib/api";
+import { getToken, tenantFetch } from "../lib/api";
 
 type ScanTarget =
   | "Network"
@@ -46,7 +46,7 @@ export default function Scanners() {
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
       // Call backend scan endpoint
-      const res = await fetch("/api/v1/onboarding/discovery/start", {
+      const res = await tenantFetch("/api/v1/onboarding/discovery/start", {
         method: "POST",
         headers,
         signal: AbortSignal.timeout(10000),
@@ -65,7 +65,7 @@ export default function Scanners() {
         }, 1800);
       } else {
         // Fallback to network discovery if onboarding scope not yet configured
-        const netRes = await fetch("/api/v1/network/discover", {
+        const netRes = await tenantFetch("/api/v1/network/discover", {
           method: "POST",
           headers,
           body: JSON.stringify({ cidr: targetInput }),

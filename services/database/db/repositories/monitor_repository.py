@@ -33,7 +33,7 @@ class MonitorRepository:
         return row
 
     def get(self, target_id: str) -> Optional[MonitorTarget]:
-        return self.session.get(MonitorTarget, target_id)
+        return self.session.execute(select(MonitorTarget).where(MonitorTarget.id == target_id)).scalars().first()
 
     def get_by_name(self, name: str) -> Optional[MonitorTarget]:
         return self.session.execute(
@@ -115,6 +115,7 @@ class MonitorRepository:
         row = MonitorEvent(
             target_id=target.id if target is not None else None,
             target_name=target.name if target is not None else "monitor",
+            tenant_id=getattr(target, "tenant_id", None),
             event_type=event_type,
             detail=(detail or "")[:1000] or None,
             payload=payload,

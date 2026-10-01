@@ -5,6 +5,8 @@ Advisory only — compliance verdicts come solely from the policy engine.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -98,7 +100,7 @@ def fix_branch(
 
     from db.models.evidence_record import EvidenceRecord
 
-    row = db.get(EvidenceRecord, body.evidence_id)
+    row = filtered_get(db, EvidenceRecord, body.evidence_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Evidence record not found")
     finding = {

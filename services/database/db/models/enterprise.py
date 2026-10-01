@@ -21,7 +21,7 @@ POLICY_LAYERS = ("sector", "region", "organization", "control", "risk")
 POLICY_VERDICTS = ("PASS", "FAIL", "WARN", "NOT_APPLICABLE")
 
 
-class PolicyDocument(BaseModel):
+class PolicyDocument(BaseModel, TenantScoped):
     """A versioned policy-as-code document (one layer of the policy stack)."""
 
     __tablename__ = "ent_policies"
@@ -30,7 +30,6 @@ class PolicyDocument(BaseModel):
     layer: Mapped[str] = mapped_column(String(20), nullable=False, default="organization", index=True)
     sector: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
     region: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
-    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     version: Mapped[str] = mapped_column(String(32), nullable=False, default="v0")
     rules: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

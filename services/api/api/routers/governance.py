@@ -12,6 +12,8 @@ migration snapshot diff.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -129,7 +131,7 @@ def decide_request(
 ):
     from db.models.p2 import GovernanceApproval
 
-    row = db.get(GovernanceApproval, request_pk)
+    row = filtered_get(db, GovernanceApproval, request_pk)
     if not row:
         raise HTTPException(status_code=404, detail="request not found")
     if row.status not in ("PENDING",):
@@ -217,6 +219,10 @@ def _caller_roles(db: Session, username: str) -> list[str]:
         u = UserRepository(db).get_by_username(username)
         if u is not None:
             return list(u.role_list)
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     return []

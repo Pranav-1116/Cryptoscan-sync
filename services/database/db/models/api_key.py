@@ -15,11 +15,12 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
 from db.models.user import VALID_ROLES
+from db.tenancy import TenantScoped
 
 KEY_PREFIX = "csk_"  # raw keys look like csk_<43 urlsafe chars>
 
 
-class ApiKey(BaseModel):
+class ApiKey(BaseModel, TenantScoped):
     __tablename__ = "api_keys"
 
     name: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
@@ -29,8 +30,8 @@ class ApiKey(BaseModel):
     roles: Mapped[str] = mapped_column(String(200), nullable=False, default="viewer")
     # Multi-tenant SaaS: a key minted inside a tenant context is bound to that
     # tenant — every request it makes is scoped to the tenant, regardless of
-    # headers. NULL = platform key (single-tenant/on-prem estate).
-    tenant_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True, index=True)
+    # headers. NULL = platform key (single-tenant/on-prem estate). The
+    # TenantScoped mixin supplies the column and the ORM guard.
     expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     last_used_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

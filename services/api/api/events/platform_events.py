@@ -1,16 +1,15 @@
-"""Realtime platform events — every control-plane operation emits a
-deterministic event that is (a) persisted to the monitor_events table
-(the durable, DB-backed event log) and (b) published immediately onto the
-in-process event bus so SSE subscribers see it with zero tailer latency.
+"""Realtime platform events with separate audit and delivery authorities.
 
-The DB tailer (api.routers.events) keeps the same rows out of its own
-publish path via the shared ``published_event_ids`` registry on app.state,
-so one row is never delivered twice.
+Every control-plane operation writes an audit row to ``monitor_events`` and
+publishes to the EventBus. In production the EventBus writes a Redis Stream
+journal with one shared event id, then uses Pub/Sub for immediate cross-replica
+fan-out. The DB row remains the operator-facing audit/history record and the
+DB tailer is a compatibility path for events written by monitor workers.
 
 Latency contract (stated, not hidden):
 - same-process subscribers: immediate (bus publish)
-- cross-process subscribers (the monitor daemon, other API workers):
-  within EVENT_TAILER_SECONDS (default 2s) via the DB tailer
+- cross-process subscribers: immediate Pub/Sub when Redis is ready, replayable
+  from the Stream after disconnects/restarts
 """
 
 from __future__ import annotations
@@ -30,6 +29,28 @@ def app_state() -> Any:
     return app.state
 
 
+def _active_tenant_id(payload: dict[str, Any] | None = None) -> str | None:
+    """Resolve event ownership without trusting caller-supplied tenant input.
+
+    Request handlers run inside ``db.tenancy.tenant_scope``. Background workers
+    pass an explicit tenant id through the function keyword after authorization;
+    an unscoped event remains platform-wide and is only visible outside a
+    tenant-owned stream.
+    """
+    try:
+        from db.tenancy import current_tenant
+
+        active = current_tenant()
+        if active:
+            return str(active)
+    except ImportError:  # database package is optional for pure bus tests
+        return None
+    # Only an internal, non-user-controlled marker is accepted outside a
+    # request context (for an authorized worker carrying tenant metadata).
+    explicit = (payload or {}).get("_authorized_tenant_id")
+    return str(explicit) if explicit else None
+
+
 def published_event_ids() -> set[str]:
     """Shared dedup registry: row ids already delivered by direct publishers."""
     state = app_state()
@@ -46,12 +67,19 @@ def emit_platform_event(
     payload: dict[str, Any] | None = None,
     *,
     target_name: str = "platform",
+    tenant_id: str | None = None,
 ) -> dict[str, Any] | None:
-    """Persist + publish one platform event (best-effort, never raises)."""
+    """Persist + publish one platform event.
+
+    The durable Redis journal is the realtime authority in production; the
+    monitor row is the audit record. Ownership is attached to both so replay
+    and live fan-out can enforce tenant isolation.
+    """
+    tenant_id = tenant_id or _active_tenant_id(payload)
     row_id: str | None = None
     try:
         row_id = _persist(target_name=target_name, event_type=event_type,
-                          detail=detail, payload=payload)
+                          detail=detail, payload=payload, tenant_id=tenant_id)
     except Exception as exc:  # DB unavailable — the bus still delivers
         logger.warning("platform_event_persist_failed: %s", exc)
 
@@ -61,14 +89,20 @@ def emit_platform_event(
         event = get_event_bus().publish(
             f"platform.{event_type.lower()}",
             {
+                **(payload or {}),
                 "row_id": row_id,
                 "detail": detail,
-                **(payload or {}),
             },
             source="platform",
+            tenant_id=tenant_id,
         )
-    except Exception as exc:  # never break a control-plane operation
+    except Exception as exc:
         logger.warning("platform_event_publish_failed: %s", exc)
+        if _is_production():
+            # A durable audit/publication boundary is part of the operation's
+            # contract in production. Do not return success while the event is
+            # only present in this process (or not delivered at all).
+            raise RuntimeError("durable platform event publication failed") from exc
         return None
 
     if row_id is not None:
@@ -85,6 +119,7 @@ def persist_platform_event(
     payload: dict[str, Any] | None = None,
     *,
     target_name: str = "platform",
+    tenant_id: str | None = None,
 ) -> str | None:
     """Durable half of a real-time event: persist to the DB event log and mark
     the row as already-delivered so the tailer never double-delivers it.
@@ -95,9 +130,10 @@ def persist_platform_event(
     restart via the tailer. The tailer republishes persisted rows to other
     workers as ``monitor.<event_type_lower>``. Best-effort; never raises.
     """
+    tenant_id = tenant_id or _active_tenant_id(payload)
     try:
         row_id = _persist(target_name=target_name, event_type=event_type,
-                          detail=detail, payload=payload)
+                          detail=detail, payload=payload, tenant_id=tenant_id)
     except Exception as exc:  # DB unavailable — in-process delivery still happened
         logger.warning("platform_event_persist_failed: %s", exc)
         return None
@@ -110,7 +146,7 @@ def persist_platform_event(
 
 
 def _persist(*, target_name: str, event_type: str, detail: str,
-             payload: dict[str, Any] | None) -> str | None:
+             payload: dict[str, Any] | None, tenant_id: str | None = None) -> str | None:
     from db.connection.session import SessionLocal
     from db.repositories.monitor_repository import MonitorRepository
 
@@ -118,15 +154,16 @@ def _persist(*, target_name: str, event_type: str, detail: str,
         """Repository expects a MonitorTarget-like object; platform rows
         are target_name='platform' with no target row behind them."""
 
-        def __init__(self, name: str) -> None:
+        def __init__(self, name: str, owner: str | None) -> None:
             self.id: str | None = None
             self.name: str = name
+            self.tenant_id: str | None = owner
 
     session = SessionLocal()
     try:
         repo = MonitorRepository(session)
         row = repo.add_event(
-            target=_TargetShim(target_name),
+            target=_TargetShim(target_name, tenant_id),
             event_type=event_type,
             detail=detail,
             payload=payload,
@@ -143,5 +180,9 @@ def prune_published_ids() -> None:
         ids = published_event_ids()
         if len(ids) > _PUBLISHED_IDS_CAP:
             ids.clear()
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass

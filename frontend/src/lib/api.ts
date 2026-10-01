@@ -42,7 +42,13 @@ export function setUserName(name: string | null): void {
 export function setToken(token: string | null): void {
   try {
     if (token) localStorage.setItem(TOKEN_KEY, token);
-    else { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(ROLES_KEY); localStorage.removeItem(USER_KEY); }
+    else {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(ROLES_KEY);
+      localStorage.removeItem(USER_KEY);
+      // Never carry the previous user's tenant selection into a new session.
+      setActiveTenantId(null);
+    }
   } catch { /* storage unavailable — session only */ }
   // realtime consumers (SSE stream) reconnect when auth changes
   try {
@@ -55,7 +61,7 @@ export async function isBackendLive(): Promise<boolean> {
   if (!checked) {
     checked = true;
     try {
-      const resp = await fetch("/api/v1/platform/scope", { signal: AbortSignal.timeout(2500) });
+      const resp = await tenantFetch("/api/v1/platform/scope", { signal: AbortSignal.timeout(2500) });
       // 200 = fully live · 401 = live but needs a token — both prove reachability
       backendLive = resp.status < 500;
     } catch {
@@ -82,6 +88,43 @@ export function setActiveTenantId(id: string | null): void {
   } catch {
     /* private mode: tenant stays per-session in memory */
   }
+  // Tenant selection is security-relevant UI state: make every live data
+  // consumer refresh its label/stream after a switch, not only the picker.
+  try { window.dispatchEvent(new CustomEvent("zelinx:tenant", { detail: { tenantId: id } })); } catch { /* non-browser */ }
+}
+
+/**
+ * Fetch wrapper for browser-facing API calls.
+ *
+ * Keeping tenant propagation here prevents the many legacy endpoints that do
+ * not use ``call()`` (downloads, streams, and action helpers) from silently
+ * dropping the selected organization. The browser must use relative paths;
+ * the Vite/production edge proxy owns the backend hop.
+ */
+export function tenantFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const normalized = new Headers(init.headers);
+  const headers: Record<string, string> = {};
+  normalized.forEach((value, key) => {
+    // Preserve the conventional casing used by the browser-facing contract;
+    // this also keeps plain-object fetch mocks and diagnostics readable.
+    const canonical = key === "authorization" ? "Authorization"
+      : key === "x-tenant-id" ? "X-Tenant-ID"
+      : key === "content-type" ? "Content-Type" : key;
+    headers[canonical] = value;
+  });
+  const hasHeader = (name: string) => Object.keys(headers).some((key) => key.toLowerCase() === name.toLowerCase());
+  const token = getToken();
+  if (token && !hasHeader("Authorization")) headers.Authorization = `Bearer ${token}`;
+  const tenant = activeTenantId();
+  if (tenant) headers["X-Tenant-ID"] = tenant;
+  else {
+    for (const key of Object.keys(headers)) if (key.toLowerCase() === "x-tenant-id") delete headers[key];
+  }
+  return globalThis.fetch(input, {
+    ...init,
+    headers,
+    credentials: init.credentials ?? "include",
+  });
 }
 
 async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
@@ -91,7 +134,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
     if (token) headers.Authorization = `Bearer ${token}`;
     const tenant = activeTenantId();
     if (tenant) headers["X-Tenant-ID"] = tenant;
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       signal: AbortSignal.timeout(8000),
       headers,
       // send the httpOnly session cookie too (server auth via cookie, not only
@@ -108,7 +151,7 @@ async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> 
 
 export async function apiLogin(username: string, password: string): Promise<{ ok: boolean; error?: string; roles?: string[] }> {
   try {
-    const resp = await fetch("/api/v1/auth/login", {
+    const resp = await tenantFetch("/api/v1/auth/login", {
       method: "POST",
       signal: AbortSignal.timeout(8000),
       headers: { "Content-Type": "application/json" },
@@ -121,6 +164,10 @@ export async function apiLogin(username: string, password: string): Promise<{ ok
     }
     const body = (await resp.json()) as { token?: string; roles?: string[]; username?: string };
     if (body.token) {
+      // A login may replace a different browser user. Force the next tenant
+      // choice to come from this user's membership directory rather than
+      // reusing an old user's X-Tenant-ID.
+      setActiveTenantId(null);
       setToken(body.token);
       try {
         localStorage.setItem("zelinx_roles", JSON.stringify(body.roles || []));
@@ -143,7 +190,7 @@ export async function apiRegister(input: {
   email?: string;
 }): Promise<{ ok: boolean; error?: string; username?: string; roles?: string[] }> {
   try {
-    const resp = await fetch("/api/v1/auth/register", {
+    const resp = await tenantFetch("/api/v1/auth/register", {
       method: "POST",
       signal: AbortSignal.timeout(8000),
       headers: { "Content-Type": "application/json" },
@@ -237,7 +284,7 @@ export const apiActiveSector = (): Promise<ApiResult<{ sector: string; profile: 
 
 export async function apiSetActiveSector(sector: string): Promise<{ ok: boolean; error?: string; sector?: string }> {
   try {
-    const resp = await fetch("/api/v1/sectors/organization/active", {
+    const resp = await tenantFetch("/api/v1/sectors/organization/active", {
       method: "PUT",
       signal: AbortSignal.timeout(8000),
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -371,7 +418,7 @@ export const apiUpdateEnvironment = (
 
 const deleteCall = async (path: string): Promise<{ ok: boolean; error?: string }> => {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method: "DELETE",
       signal: AbortSignal.timeout(8000),
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -462,7 +509,7 @@ export async function apiTriggerScan(input: {
   scan_mode?: string;
 }): Promise<{ ok: boolean; error?: string; job_id?: string; status?: string; message?: string }> {
   try {
-    const resp = await fetch("/api/v1/scans/trigger", {
+    const resp = await tenantFetch("/api/v1/scans/trigger", {
       method: "POST",
       signal: AbortSignal.timeout(15000),
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -1025,7 +1072,7 @@ export const apiDeliveries = (): Promise<ApiResult<{ deliveries: Array<Record<st
 /** Fire a signed connectivity-test event at one integration (real HTTP). */
 export async function apiTestIntegration(integrationId: string): Promise<{ ok: boolean; error?: string; status?: string; http_status?: number }> {
   try {
-    const resp = await fetch(`/api/v1/enterprise/integrations/${integrationId}/test`, {
+    const resp = await tenantFetch(`/api/v1/enterprise/integrations/${integrationId}/test`, {
       method: "POST",
       signal: AbortSignal.timeout(15000),
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -1047,7 +1094,7 @@ export const apiRegisterIntegration = (body: {
 /** Flush the durable SIEM/ITSM outbox — real signed HTTP delivery with retries. */
 export async function apiFlushDeliveries(limit = 25): Promise<{ ok: boolean; error?: string; delivered?: number; failed?: number; events_flushed?: number }> {
   try {
-    const resp = await fetch("/api/v1/control/deliveries/flush", {
+    const resp = await tenantFetch("/api/v1/control/deliveries/flush", {
       method: "POST",
       signal: AbortSignal.timeout(30000),
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -1064,7 +1111,7 @@ export async function apiFlushDeliveries(limit = 25): Promise<{ ok: boolean; err
 /** Drive the orchestrator worker tick (drains the durable queue). */
 export async function apiWorkerTick(batch = 10): Promise<{ ok: boolean; error?: string; processed?: number }> {
   try {
-    const resp = await fetch("/api/v1/control/orchestrator/tick", {
+    const resp = await tenantFetch("/api/v1/control/orchestrator/tick", {
       method: "POST",
       signal: AbortSignal.timeout(30000),
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -1085,7 +1132,7 @@ export { useApi, LiveBadge } from "./apiUi.jsx";
 export async function apiP2Plugins(state?: string): Promise<ApiResult<any[]>> {
   try {
     const q = state ? `?state=${encodeURIComponent(state)}` : "";
-    const resp = await fetch(`/api/v1/marketplace/plugins${q}`, {
+    const resp = await tenantFetch(`/api/v1/marketplace/plugins${q}`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1097,7 +1144,7 @@ export async function apiP2Plugins(state?: string): Promise<ApiResult<any[]>> {
 
 export async function apiP2AnomalyFlags(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch("/api/v1/anomaly/flags?limit=100", {
+    const resp = await tenantFetch("/api/v1/anomaly/flags?limit=100", {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1110,7 +1157,7 @@ export async function apiP2AnomalyFlags(): Promise<ApiResult<any[]>> {
 export async function apiP2GovernanceRequests(status?: string): Promise<ApiResult<any[]>> {
   try {
     const q = status ? `?status=${encodeURIComponent(status)}` : "";
-    const resp = await fetch(`/api/v1/governance/requests${q}`, {
+    const resp = await tenantFetch(`/api/v1/governance/requests${q}`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1122,7 +1169,7 @@ export async function apiP2GovernanceRequests(status?: string): Promise<ApiResul
 
 export async function apiP2LakeBatches(lake = "primary"): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/datalake/batches?lake_id=${encodeURIComponent(lake)}`, {
+    const resp = await tenantFetch(`/api/v1/datalake/batches?lake_id=${encodeURIComponent(lake)}`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1134,7 +1181,7 @@ export async function apiP2LakeBatches(lake = "primary"): Promise<ApiResult<any[
 
 export async function apiP2ApiKeys(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/api-keys`, {
+    const resp = await tenantFetch(`/api/v1/api-keys`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1148,7 +1195,7 @@ export async function apiP2ApiKeys(): Promise<ApiResult<any[]>> {
 /* ==================================================== OT safety + SLA + leases */
 export async function apiOtMaintenanceWindows(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/ot/maintenance-windows`, {
+    const resp = await tenantFetch(`/api/v1/ot/maintenance-windows`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1160,7 +1207,7 @@ export async function apiOtMaintenanceWindows(): Promise<ApiResult<any[]>> {
 
 export async function apiSlaPosture(): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/sla/evaluate`, {
+    const resp = await tenantFetch(`/api/v1/sla/evaluate`, {
       method: "POST",
       headers: { "Content-Type": "application/json",
         ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
@@ -1175,7 +1222,7 @@ export async function apiSlaPosture(): Promise<ApiResult<any>> {
 
 export async function apiCredentialLeases(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/control/credential-leases`, {
+    const resp = await tenantFetch(`/api/v1/control/credential-leases`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1188,7 +1235,7 @@ export async function apiCredentialLeases(): Promise<ApiResult<any[]>> {
 /* ============================================================ automation */
 export async function apiAutomationRuns(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/automation/runs?limit=50`, {
+    const resp = await tenantFetch(`/api/v1/automation/runs?limit=50`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1200,7 +1247,7 @@ export async function apiAutomationRuns(): Promise<ApiResult<any[]>> {
 
 export async function apiAutomationRules(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/automation/rules`, {
+    const resp = await tenantFetch(`/api/v1/automation/rules`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1212,7 +1259,7 @@ export async function apiAutomationRules(): Promise<ApiResult<any[]>> {
 
 export async function apiAutomationCapabilities(): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/automation/capabilities`, {
+    const resp = await tenantFetch(`/api/v1/automation/capabilities`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1225,7 +1272,7 @@ export async function apiAutomationCapabilities(): Promise<ApiResult<any>> {
 /* Create or update an automation rule (WHEN event · IF conditions · THEN actions). */
 export async function apiAutomationSaveRule(body: Record<string, unknown>): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/automation/rules`, {
+    const resp = await tenantFetch(`/api/v1/automation/rules`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: JSON.stringify(body),
@@ -1240,7 +1287,7 @@ export async function apiAutomationSaveRule(body: Record<string, unknown>): Prom
 /* Install the curated telecom guardrail rules (idempotent upsert). */
 export async function apiAutomationInstallTelecomGuardrails(): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/automation/telecom-guardrails`, {
+    const resp = await tenantFetch(`/api/v1/automation/telecom-guardrails`, {
       method: "POST",
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
@@ -1254,7 +1301,7 @@ export async function apiAutomationInstallTelecomGuardrails(): Promise<ApiResult
 /* Delete (disable) an automation rule. */
 export async function apiAutomationDeleteRule(ruleId: string): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/automation/rules/${encodeURIComponent(ruleId)}`, {
+    const resp = await tenantFetch(`/api/v1/automation/rules/${encodeURIComponent(ruleId)}`, {
       method: "DELETE",
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
@@ -1267,7 +1314,7 @@ export async function apiAutomationDeleteRule(ruleId: string): Promise<ApiResult
 
 export async function apiAutomationSectors(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/automation/sectors`, {
+    const resp = await tenantFetch(`/api/v1/automation/sectors`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1279,7 +1326,7 @@ export async function apiAutomationSectors(): Promise<ApiResult<any[]>> {
 
 export async function apiCbomVersions(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/automation/cbom/versions?limit=20`, {
+    const resp = await tenantFetch(`/api/v1/automation/cbom/versions?limit=20`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1291,7 +1338,7 @@ export async function apiCbomVersions(): Promise<ApiResult<any[]>> {
 
 export async function apiHealthSweep(): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/automation/health/sweep`, {
+    const resp = await tenantFetch(`/api/v1/automation/health/sweep`, {
       method: "POST",
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(20000),
@@ -1305,7 +1352,7 @@ export async function apiHealthSweep(): Promise<ApiResult<any>> {
 
 export async function apiPostMigrationValidate(payload: Record<string, unknown>): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/automation/post-migration/validate`, {
+    const resp = await tenantFetch(`/api/v1/automation/post-migration/validate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: JSON.stringify(payload),
@@ -1320,7 +1367,7 @@ export async function apiPostMigrationValidate(payload: Record<string, unknown>)
 /* ── real detection benchmark (no AI; shipping detector vs ground truth) ── */
 export async function apiRunRealBenchmark(): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/control/benchmark/run-real`, {
+    const resp = await tenantFetch(`/api/v1/control/benchmark/run-real`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: JSON.stringify({}),
@@ -1334,7 +1381,7 @@ export async function apiRunRealBenchmark(): Promise<ApiResult<any>> {
 
 export async function apiBenchmarkRuns(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/control/benchmark/runs`, {
+    const resp = await tenantFetch(`/api/v1/control/benchmark/runs`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1347,7 +1394,7 @@ export async function apiBenchmarkRuns(): Promise<ApiResult<any[]>> {
 /* ============================================ P2 interactive action gates */
 async function _postAction(path: string, body?: unknown): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1387,7 +1434,7 @@ export const apiAnomalyAck = (flagPk: string) =>
 /** Live control-plane agent fleet (enrolled agents, version, heartbeat, health). */
 export async function apiControlAgents(): Promise<ApiResult<any[]>> {
   try {
-    const resp = await fetch(`/api/v1/control/agents`, {
+    const resp = await tenantFetch(`/api/v1/control/agents`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1405,7 +1452,7 @@ export const apiAgentUpgrade = (agentId: string, action: "upgrade" | "rollback" 
  *  Returns { allowed, decision, reason, ... } with HTTP 403 body carrying the deny detail. */
 export async function apiOtAuthorize(operation: string, deviceId?: string): Promise<ApiResult<any>> {
   try {
-    const resp = await fetch(`/api/v1/ot/safety/authorize`, {
+    const resp = await tenantFetch(`/api/v1/ot/safety/authorize`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: JSON.stringify({ operation, device_id: deviceId || null }),
@@ -1430,7 +1477,7 @@ export const apiOtCancelWindow = (windowRef: string) =>
 export async function apiExceptions(status?: string): Promise<ApiResult<any[]>> {
   try {
     const q = status ? `?status=${encodeURIComponent(status)}` : "";
-    const resp = await fetch(`/api/v1/exceptions${q}`, {
+    const resp = await tenantFetch(`/api/v1/exceptions${q}`, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(15000),
     });
@@ -1452,7 +1499,7 @@ export const apiExceptionDecision = (exceptionId: string, action: "approve" | "r
 
 async function _idReq<T>(method: string, path: string, body?: unknown): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method,
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1556,7 +1603,7 @@ export const apiWorkloadVerify = (cert_pem: string, allowed_workloads?: string[]
 
 async function _ca<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1597,7 +1644,7 @@ export const apiCodeRuleScan = (filename: string, source: string) =>
 
 async function _ds<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1628,9 +1675,13 @@ export const apiSbomExport = (components: any[], format: "cyclonedx" | "spdx") =
    plus lockfiles (up to 120 s) rather than the 8–20 s used elsewhere. */
 async function _sbomReq<T>(path: string, method: string, body?: unknown, timeoutMs = 120000): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method,
-      headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+        ...(activeTenantId() ? { "X-Tenant-ID": activeTenantId()! } : {}),
+      },
       credentials: "include",
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
@@ -1732,7 +1783,7 @@ export async function apiBinaryDynamic(body: {
   submit?: boolean; hostname?: string;
 }): Promise<{ ok: boolean; status: number; data: DynamicScanResult | null; refusals: string[]; error: string }> {
   try {
-    const resp = await fetch("/api/v1/devsecops/binary/dynamic", {
+    const resp = await tenantFetch("/api/v1/devsecops/binary/dynamic", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       credentials: "include",
@@ -1853,7 +1904,7 @@ export async function apiKnowledgeInstall(body: {
   pack: string; dry_run?: boolean; allow_unsigned?: boolean; secret?: string;
 }): Promise<{ ok: boolean; status: number; data: any | null; reasons: string[]; error: string }> {
   try {
-    const resp = await fetch("/api/v1/devsecops/knowledge/install", {
+    const resp = await tenantFetch("/api/v1/devsecops/knowledge/install", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       credentials: "include",
@@ -1881,6 +1932,80 @@ export const apiKnowledgeUninstall = (name: string) =>
 export const apiBinaryCbom = (artifactId: string) =>
   _sbomReq<any>(`/api/v1/devsecops/binary/artifacts/${artifactId}/cbom`, "GET", undefined, 30000);
 
+export interface BinaryScanRecord {
+  id: string; artifact_id: string; job_id?: string | null; target: string;
+  format: string; sha256: string; status: string; created_by: string;
+  created_at?: string; files_walked: number; binaries_scanned: number;
+  findings_count: number; observations_count: number; observations_truncated: boolean;
+  summary?: any; coverage?: any; limits?: any;
+}
+
+export interface BinaryScanObservation {
+  id: string; scan_record_id: string; artifact_id: string; path: string;
+  format: string; arch?: string | null; sha256?: string | null;
+  parsed?: boolean | null; evidence_state: string; derived_from?: string | null;
+  depth?: number | null; crypto?: any; hardening?: any; signature?: any;
+  coverage?: any; findings?: any[]; metadata?: any;
+}
+
+/** Queryable tenant-scoped binary history; signed manifests remain authoritative. */
+export const apiBinaryScans = (filters: {
+  limit?: number; status?: string; format?: string; q?: string;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (filters.limit) params.set("limit", String(filters.limit));
+  if (filters.status) params.set("status_filter", filters.status);
+  if (filters.format) params.set("format_filter", filters.format);
+  if (filters.q) params.set("q", filters.q);
+  const qs = params.toString();
+  return _sbomReq<{ total: number; returned: number; records: BinaryScanRecord[]; source: string; note: string }>(
+    `/api/v1/devsecops/binary/scans${qs ? `?${qs}` : ""}`, "GET", undefined, 30000);
+};
+
+/** Read one indexed binary scan and its bounded parser observations. */
+export const apiBinaryScanDetail = (scanId: string) =>
+  _sbomReq<{ record: BinaryScanRecord; observations: BinaryScanObservation[]; observation_limit: number }>(
+    `/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}`, "GET", undefined, 30000);
+
+export const apiBinaryScanObservations = (scanId: string, filters: {
+  limit?: number; offset?: number; format?: string; evidence_state?: string;
+  q?: string; crypto_only?: boolean;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
+  if (filters.format) params.set("format_filter", filters.format);
+  if (filters.evidence_state) params.set("evidence_state", filters.evidence_state);
+  if (filters.q) params.set("q", filters.q);
+  if (filters.crypto_only) params.set("crypto_only", "true");
+  const qs = params.toString();
+  return _sbomReq<{ scan_id: string; total: number; returned: number; observations: BinaryScanObservation[]; observations_truncated: boolean }>(
+    `/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}/observations${qs ? `?${qs}` : ""}`,
+    "GET", undefined, 30000);
+};
+
+export const apiBinaryScanFindings = (scanId: string, filters: {
+  severity?: string; code?: string; limit?: number; offset?: number;
+} = {}) => {
+  const params = new URLSearchParams();
+  if (filters.severity) params.set("severity", filters.severity);
+  if (filters.code) params.set("code", filters.code);
+  if (filters.limit !== undefined) params.set("limit", String(filters.limit));
+  if (filters.offset !== undefined) params.set("offset", String(filters.offset));
+  const qs = params.toString();
+  return _sbomReq<{ scan_id: string; total: number; returned: number; findings: any[] }>(
+    `/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}/findings${qs ? `?${qs}` : ""}`,
+    "GET", undefined, 30000);
+};
+
+export const apiBinaryScanCoverage = (scanId: string) =>
+  _sbomReq<any>(`/api/v1/devsecops/binary/scans/${encodeURIComponent(scanId)}/coverage`, "GET", undefined, 30000);
+
+export const apiBinaryScanCompare = (fromScanId: string, toScanId: string) =>
+  _sbomReq<any>("/api/v1/devsecops/binary/scans/compare", "POST", {
+    from_scan_id: fromScanId, to_scan_id: toScanId,
+  }, 30000);
+
 /** Advisories recorded across checked artifacts (matched scans only). */
 export const apiSbomAdvisories = (filters: { severity?: string; cve?: string } = {}) => {
   const params = new URLSearchParams();
@@ -1894,7 +2019,7 @@ export const apiSbomPrune = (olderThanDays: number) =>
   _sbomReq<any>(`/api/v1/devsecops/sbom/artifacts?older_than_days=${olderThanDays}`, "DELETE", undefined, 30000);
 
 export const apiSbomReport = (artifactId: string, fmt = "markdown"): Promise<Response> =>
-  fetch(`/api/v1/devsecops/sbom/${artifactId}/report?fmt=${encodeURIComponent(fmt)}`, {
+  tenantFetch(`/api/v1/devsecops/sbom/${artifactId}/report?fmt=${encodeURIComponent(fmt)}`, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -1914,7 +2039,7 @@ export async function downloadSbomReport(artifactId: string): Promise<void> {
 }
 
 export const apiSbomDownload = (artifactId: string): Promise<Response> =>
-  fetch(`/api/v1/devsecops/sbom/${artifactId}/download`, {
+  tenantFetch(`/api/v1/devsecops/sbom/${artifactId}/download`, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -1945,7 +2070,7 @@ export const apiConnectorPreview = (provider: string, finding: any, target: Reco
 
 async function _rsPost<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -2252,7 +2377,7 @@ export const apiNotificationRoutingPut = (routing: Array<{ id: string; name: str
 /* PUT helper for persisted notification routing. */
 export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       method: "PUT",
       headers: { "Content-Type": "application/json", ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -2267,7 +2392,7 @@ export async function _rsPut<T>(path: string, body?: unknown): Promise<ApiResult
 
 async function _rsGet<T>(path: string): Promise<ApiResult<T>> {
   try {
-    const resp = await fetch(path, {
+    const resp = await tenantFetch(path, {
       headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) },
       signal: AbortSignal.timeout(20000),
       credentials: "include",
@@ -2347,7 +2472,7 @@ export const apiTechBomExportCsv = (params: { version?: number; layer?: string }
   if (params.version !== undefined) q.set("version", String(params.version));
   if (params.layer) q.set("layer", params.layer);
   q.set("fmt", "csv");
-  return fetch(`/api/v1/technology-bom/export?${q.toString()}`, {
+  return tenantFetch(`/api/v1/technology-bom/export?${q.toString()}`, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2441,7 +2566,7 @@ export const apiTechBomExportRaw = (params: { version?: number; fmt: string; lay
   q.set("fmt", params.fmt);
   if (params.layer) q.set("layer", params.layer);
   if (params.filters) for (const [k, v] of Object.entries(params.filters)) if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
-  return fetch(`/api/v1/technology-bom/export?${q.toString()}`, {
+  return tenantFetch(`/api/v1/technology-bom/export?${q.toString()}`, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2466,7 +2591,7 @@ export const apiTechBomEvidence = (version?: number, fmt = "json"): Promise<ApiR
   if (version !== undefined) q.set("version", String(version));
   q.set("fmt", fmt);
   if (fmt === "pdf") {
-    return fetch(`/api/v1/technology-bom/evidence-package?${q.toString()}`, { credentials: "include", ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}) });
+    return tenantFetch(`/api/v1/technology-bom/evidence-package?${q.toString()}`, { credentials: "include", ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}) });
   }
   return call(`/api/v1/technology-bom/evidence-package?${q.toString()}`);
 };
@@ -2703,7 +2828,7 @@ export const apiBankingDownload = (what: "action-plan" | "servicenow" | "qualys"
     : what === "qualys"
       ? "/api/v1/banking/integrations/qualys"
       : "/api/v1/banking/integrations/servicenow";
-  return fetch(path, {
+  return tenantFetch(path, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2769,7 +2894,7 @@ export async function downloadBankingArtifactIntl(
       + `&lang=${opts.lang || "en"}`
     : what === "qualys" ? "/api/v1/banking/integrations/qualys"
       : "/api/v1/banking/integrations/servicenow";
-  const resp = await fetch(path, {
+  const resp = await tenantFetch(path, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2819,7 +2944,7 @@ export const apiGroupEntityDelete = (code: string): Promise<ApiResult<{ ok: bool
 export const apiGroupRollup = (): Promise<ApiResult<GroupRollup>> =>
   call("/api/v1/banking/group");
 export async function downloadDoraRegister(format: "json" | "csv", entity = ""): Promise<void> {
-  const resp = await fetch(`/api/v1/banking/group/dora-register?format=${format}${entity ? `&entity=${encodeURIComponent(entity)}` : ""}`, {
+  const resp = await tenantFetch(`/api/v1/banking/group/dora-register?format=${format}${entity ? `&entity=${encodeURIComponent(entity)}` : ""}`, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2834,7 +2959,7 @@ export async function downloadDoraRegister(format: "json" | "csv", entity = ""):
   URL.revokeObjectURL(url);
 }
 export async function downloadGroupRoadmap(): Promise<void> {
-  const resp = await fetch("/api/v1/banking/group/roadmap?format=csv", {
+  const resp = await tenantFetch("/api/v1/banking/group/roadmap?format=csv", {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2960,7 +3085,7 @@ export interface TelecomJourney {
 export const apiTelecomJourney = (): Promise<ApiResult<TelecomJourney>> =>
   call("/api/v1/telecom/journey");
 export async function downloadTelecomPack(carrierCode: string, format: "json" | "csv" = "json"): Promise<void> {
-  const resp = await fetch(`/api/v1/telecom/pack?carrier=${encodeURIComponent(carrierCode)}&format=${format}`, {
+  const resp = await tenantFetch(`/api/v1/telecom/pack?carrier=${encodeURIComponent(carrierCode)}&format=${format}`, {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -2996,7 +3121,7 @@ export const apiSupervisorPack = (): Promise<ApiResult<SupervisorPackEnvelope>> 
 export const apiGroupRoadmap = (): Promise<ApiResult<GroupRoadmap>> =>
   call("/api/v1/banking/group/roadmap");
 export async function downloadSupervisorPack(): Promise<void> {
-  const resp = await fetch("/api/v1/banking/group/supervisor-pack", {
+  const resp = await tenantFetch("/api/v1/banking/group/supervisor-pack", {
     credentials: "include",
     ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
   });
@@ -3095,7 +3220,7 @@ export async function generateExitReport(
     for (const [k, v] of Object.entries(opts)) {
       if (v && v.trim()) params.set(k, v.trim());
     }
-    const resp = await fetch(`/api/v1/audit-export/exit-report?${params.toString()}`, {
+    const resp = await tenantFetch(`/api/v1/audit-export/exit-report?${params.toString()}`, {
       credentials: "include",
       ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
       signal: AbortSignal.timeout(20000),
@@ -3135,7 +3260,7 @@ export async function downloadEngagementArchive(
       if (v && v.trim()) params.set(k, v.trim());
     }
     const qs = params.toString();
-    const resp = await fetch(`/api/v1/audit-export/engagement-archive${qs ? `?${qs}` : ""}`, {
+    const resp = await tenantFetch(`/api/v1/audit-export/engagement-archive${qs ? `?${qs}` : ""}`, {
       credentials: "include",
       ...(getToken() ? { headers: { Authorization: `Bearer ${getToken()}` } } : {}),
       signal: AbortSignal.timeout(30000),
@@ -3204,7 +3329,7 @@ export async function apiSaasSignup(input: {
   email?: string;
 }): Promise<{ ok: boolean; error?: string; tenant?: { id: string; name: string; slug: string; plan: string } }> {
   try {
-    const resp = await fetch("/api/v1/saas/signup", {
+    const resp = await tenantFetch("/api/v1/saas/signup", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -3219,6 +3344,10 @@ export async function apiSaasSignup(input: {
 }
 
 export const apiSaasWhoami = () => call<SaasWhoami>("/api/v1/saas/whoami");
+export const apiSaasMemberships = () =>
+  call<{ tenants: Array<{ id: string; name: string; slug: string; plan: string; status: string; tenant_role: string }> }>(
+    "/api/v1/saas/memberships",
+  );
 export const apiSaasUsage = () =>
   call<{ plan: string; limits: Record<string, number | null>; meters: Record<string, SaasUsageMeter>; month_breakdown: Record<string, number> }>(
     "/api/v1/saas/usage",
@@ -3263,7 +3392,7 @@ export async function apiSaasCreateInvite(input: {
   days?: number;
 }): Promise<{ ok: boolean; error?: string; token?: string; username?: string; tenant_role?: string }> {
   try {
-    const resp = await fetch("/api/v1/saas/invites", {
+    const resp = await tenantFetch("/api/v1/saas/invites", {
       method: "POST",
       headers: { "Content-Type": "application/json", ...(activeTenantId() ? { "X-Tenant-ID": activeTenantId()! } : {}) },
       credentials: "include",
@@ -3284,7 +3413,7 @@ export async function apiSaasAcceptInvite(input: {
   password?: string;
 }): Promise<{ ok: boolean; error?: string; tenant_name?: string; tenant_role?: string }> {
   try {
-    const resp = await fetch("/api/v1/saas/invites/accept", {
+    const resp = await tenantFetch("/api/v1/saas/invites/accept", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -3411,7 +3540,7 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
   let sloData: any = null;
 
   try {
-    const res = await fetch("/healthz", { signal: AbortSignal.timeout(3000) });
+    const res = await tenantFetch("/healthz", { signal: AbortSignal.timeout(3000) });
     apiLatency = Math.round(performance.now() - t0);
     apiHealthy = res.ok;
   } catch {
@@ -3421,7 +3550,7 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
   try {
     const token = getToken();
     if (token) {
-      const sloRes = await fetch("/api/v1/ops/slo", {
+      const sloRes = await tenantFetch("/api/v1/ops/slo", {
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(3000),
       });
@@ -3445,7 +3574,7 @@ export const apiSystemHealthStatus = async (): Promise<SystemServiceHealth[]> =>
 export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> => {
   let scannersActive = false;
   try {
-    const res = await fetch("/healthz", { signal: AbortSignal.timeout(3000) });
+    const res = await tenantFetch("/healthz", { signal: AbortSignal.timeout(3000) });
     scannersActive = res.ok;
   } catch {
     scannersActive = false;
@@ -3456,7 +3585,7 @@ export const apiScannerEnginesHealth = async (): Promise<ScannerEngineHealth[]> 
   try {
     const token = getToken();
     if (token) {
-      const aRes = await fetch("/api/v1/assets?page_size=1", { headers: { Authorization: `Bearer ${token}` } });
+      const aRes = await tenantFetch("/api/v1/assets?page_size=1", { headers: { Authorization: `Bearer ${token}` } });
       if (aRes.ok) {
         const body = await aRes.json();
         totalAssets = body.total_count || 0;

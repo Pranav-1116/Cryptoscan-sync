@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
-import { getToken, apiReportTemplates, apiReportScheduleCreate, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
+import { getToken, tenantFetch, apiReportTemplates, apiReportScheduleCreate, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
 
 export default function Reports() {
   const snaps = useLive<{ snapshots: any[]; total?: number }>("/api/v1/report-snapshots", { snapshots: [] });
@@ -72,7 +72,7 @@ export default function Reports() {
 
   const downloadPdf = (id: string) => {
     const url = `/api/v1/report-snapshots/${encodeURIComponent(id)}/pdf`;
-    fetch(url, { headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) } })
+    tenantFetch(url, { headers: { ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}) } })
       .then((r) => (r.ok ? r.blob() : Promise.reject(r.status)))
       .then((blob) => {
         const a = document.createElement("a");

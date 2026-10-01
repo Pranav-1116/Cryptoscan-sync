@@ -16,6 +16,8 @@ signatures / small code bundles verified cryptographically.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
@@ -347,7 +349,7 @@ def enable_plugin(
                         "'plugin_enable_executable' governance request referencing "
                         f"plugin {row.plugin_id}, obtain a separate approver's approval, "
                         "then re-call /enable with {\"approval_id\": <id>}"))
-        appr = db.get(GovernanceApproval, approval_id)
+        appr = filtered_get(db, GovernanceApproval, approval_id)
         if appr is None or appr.status != "APPROVED":
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                                 detail="governance approval not found or not APPROVED")

@@ -80,7 +80,7 @@ class ApiKeyRepository:
         return row
 
     def get(self, key_id: str) -> Optional[ApiKey]:
-        return self.session.get(ApiKey, key_id)
+        return self.session.execute(select(ApiKey).where(ApiKey.id == key_id)).scalars().first()
 
     def list_keys(self, include_revoked: bool = True, *, tenant_id: str | None = None,
                   platform: bool = False) -> list[ApiKey]:

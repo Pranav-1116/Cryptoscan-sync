@@ -11,6 +11,8 @@ frequency shift) — every result carries a rule name and human explanation.
 
 from __future__ import annotations
 
+from db.tenancy import filtered_get
+
 import logging
 from datetime import datetime, timezone
 
@@ -202,7 +204,7 @@ def ack_flag(
 ):
     from db.models.p2 import AnomalyFlag
 
-    row = db.get(AnomalyFlag, flag_pk)
+    row = filtered_get(db, AnomalyFlag, flag_pk)
     if not row:
         raise HTTPException(status_code=404, detail="flag not found")
     row.status = "ACKNOWLEDGED"

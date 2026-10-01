@@ -63,23 +63,29 @@ def process_event(event: dict, *, policy_provider: Callable[[dict], dict | None]
 def worker_tick(repo, *, worker_id: str = "worker-1", batch: int = 10,
                 policy_provider=None, handler=None, now: datetime | None = None) -> TickResult:
     """Process up to ``batch`` due events from the durable queue."""
+    from db.tenancy import tenant_scope
+
     now = now or datetime.now(timezone.utc)
     result = TickResult()
     for _ in range(batch):
+        # Leasing is a deliberate platform-global operation; once an event is
+        # selected, all handler reads/writes and the terminal state transition
+        # run inside that event's authorized tenant scope.
         leased = repo.lease_next(worker_id, now=now)
         if leased is None:
             result.empty = True
             break
-        outcome = process_event(leased.to_dict(), policy_provider=policy_provider, handler=handler)
-        if outcome["outcome"] == "blocked":
-            # not retriable via backoff — complete with a record of the block
-            repo.complete_event(leased.id)
-            result.blocked.append({"event_id": leased.id, "reason": outcome["reason"]})
-        elif outcome["outcome"] == "error":
-            repo.fail_event(leased.id, outcome.get("error", "processing failed"))
-            result.failed.append({"event_id": leased.id, "error": outcome.get("error")})
-        else:
-            repo.complete_event(leased.id)
-            result.processed += 1
-            result.leased.append(leased.id)
+        with tenant_scope(getattr(leased, "tenant_id", None)):
+            outcome = process_event(leased.to_dict(), policy_provider=policy_provider, handler=handler)
+            if outcome["outcome"] == "blocked":
+                # not retriable via backoff — complete with a record of the block
+                repo.complete_event(leased.id)
+                result.blocked.append({"event_id": leased.id, "reason": outcome["reason"]})
+            elif outcome["outcome"] == "error":
+                repo.fail_event(leased.id, outcome.get("error", "processing failed"))
+                result.failed.append({"event_id": leased.id, "error": outcome.get("error")})
+            else:
+                repo.complete_event(leased.id)
+                result.processed += 1
+                result.leased.append(leased.id)
     return result

@@ -5,6 +5,7 @@ import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent, useRealtimeRefresh } from "../lib/realtime.jsx";
 import {
   getToken,
+  tenantFetch,
   apiControlAgents,
   apiP2Plugins,
   apiP2AnomalyFlags,
@@ -251,7 +252,7 @@ function usePostureStream(intervalMs = 30000) {
       const ac = new AbortController();
       abortRef.current = ac;
       try {
-        const resp = await fetch(`/api/v1/security/posture/stream?interval=${Math.max(5, Math.round(intervalMs / 1000))}`, {
+        const resp = await tenantFetch(`/api/v1/security/posture/stream?interval=${Math.max(5, Math.round(intervalMs / 1000))}`, {
           headers: { Authorization: `Bearer ${token}` },
           signal: ac.signal,
         });

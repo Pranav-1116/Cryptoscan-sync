@@ -7,6 +7,7 @@ import {
   apiAuditAttestation, apiAirgapStatus, apiAirgapImportFeed, apiOtDecode,
   apiBackupRunScheduled, apiBackupList, apiAirgapBuildBundle, apiOtIngestPcap,
   apiBackupConfigSet, apiBackupSweep,
+  tenantFetch,
 } from "../lib/api.js";
 import { useI18n } from "../i18n/I18n.jsx";
 
@@ -78,7 +79,7 @@ function ReportPanel() {
     if (download) {
       // PDF download directly from backend
       const token = localStorage.getItem("zelnx_token");
-      const r = await fetch("/api/v1/resilience/compliance-report", {
+      const r = await tenantFetch("/api/v1/resilience/compliance-report", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ framework: fw, org, evidence, format: "pdf" }),

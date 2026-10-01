@@ -26,10 +26,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
+from db.tenancy import TenantScoped
 
 # --------------------------------------------------------------------------- #
 # Authorization / tenancy
@@ -56,7 +57,7 @@ class Tenant(BaseModel):
     metadata_: Mapped[dict | None] = mapped_column("extra_info", JSON, nullable=True)
 
 
-class ScopeGrant(BaseModel):
+class ScopeGrant(BaseModel, TenantScoped):
     """An authorization grant: a subject (user/role) may act within a scope.
 
     Scope is hierarchical: region -> business_unit -> environment -> asset.
@@ -66,7 +67,6 @@ class ScopeGrant(BaseModel):
 
     __tablename__ = "cp_scope_grants"
 
-    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     subject: Mapped[str] = mapped_column(String(200), nullable=False, index=True)  # username or role:*
     subject_type: Mapped[str] = mapped_column(String(20), nullable=False, default="user")  # user/role
     actions: Mapped[list] = mapped_column(JSON, nullable=False)  # ["read"] or ["*"]
@@ -89,12 +89,11 @@ VAULT_PROVIDERS = ("aws_secrets_manager", "azure_key_vault", "gcp_secret_manager
 CREDENTIAL_STATUSES = ("active", "rotating", "expired", "revoked", "error", "pending")
 
 
-class CredentialRef(BaseModel):
+class CredentialRef(BaseModel, TenantScoped):
     """A reference to a secret held in an external vault. No key material here."""
 
     __tablename__ = "cp_credentials"
 
-    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     kind: Mapped[str] = mapped_column(String(30), nullable=False, default="other")
     vault_provider: Mapped[str] = mapped_column(String(40), nullable=False, default="manual_out_of_band")
@@ -121,12 +120,11 @@ AGENT_STATUSES = ("enrolled", "connecting", "connected", "offline", "upgrading",
 AGENT_PLATFORMS = ("linux", "windows", "container", "appliance", "ot_gateway")
 
 
-class Agent(BaseModel):
+class Agent(BaseModel, TenantScoped):
     """A deployed ZELNX agent (on-prem / air-gapped / hybrid environments)."""
 
     __tablename__ = "cp_agents"
 
-    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False, index=True)
     region: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     environment: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -153,12 +151,11 @@ class Agent(BaseModel):
 SCAN_SAFETY_MODES = ("safe", "passive", "low_impact", "standard", "deep", "emergency_stop")
 
 
-class SafeScanPolicy(BaseModel):
+class SafeScanPolicy(BaseModel, TenantScoped):
     """Impact-protection policy applied to scanning within a scope."""
 
     __tablename__ = "cp_safe_scan_policies"
 
-    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     scope_region: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     scope_environment: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -183,13 +180,17 @@ class SafeScanPolicy(BaseModel):
 # Asset identity resolution
 # --------------------------------------------------------------------------- #
 
-class AssetIdentity(BaseModel):
+class AssetIdentity(BaseModel, TenantScoped):
     """Canonical identity for a discovered asset, fused from multiple sources."""
 
     __tablename__ = "cp_asset_identities"
+    # Canonical identifiers are tenant-local. A global unique index would turn
+    # another tenant's existing asset into an existence oracle on insert.
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "canonical_id", name="uq_cp_asset_identity_tenant_canonical"),
+    )
 
-    tenant_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
-    canonical_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    canonical_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     asset_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     region: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
@@ -214,7 +215,7 @@ EVENT_STATUSES = ("queued", "leased", "completed", "dead")
 EVENT_PRIORITIES = ("critical", "high", "normal", "low")
 
 
-class QueuedEvent(BaseModel):
+class QueuedEvent(BaseModel, TenantScoped):
     """A durable event in the outbox/inbox queue (backed by Redis in prod;
     this table provides a persistent audit/outbox and fallback transport)."""
 
@@ -295,7 +296,7 @@ class BenchmarkRun(BaseModel):
 DELIVERY_STATUSES = ("delivered", "failed", "skipped")
 
 
-class SecurityPosture(BaseModel):
+class SecurityPosture(BaseModel, TenantScoped):
     """A durable snapshot of ZELNX's own security posture.
 
     The security center aggregates live signals (agent fleet health, plugin
@@ -328,7 +329,7 @@ class SecurityPosture(BaseModel):
     source: Mapped[str] = mapped_column(String(20), nullable=False, default="live")
 
 
-class DeliveryLog(BaseModel):
+class DeliveryLog(BaseModel, TenantScoped):
     """One outbound webhook delivery attempt to a registered integration.
 
     Records the deterministic outcome of actually POSTing a SIEM/ITSM event to
