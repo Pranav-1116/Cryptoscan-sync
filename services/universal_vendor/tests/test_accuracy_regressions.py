@@ -142,6 +142,8 @@ def test_deep_scan_covers_algorithms_protocols_keys_material_libraries_and_depen
             "algorithms": [{"algorithm": "AES-256-GCM", "key_size": 256, "mode": "GCM"}],
             "protocols": [
                 {"protocol": "TLS", "version": "1.3", "observed": True},
+                {"protocol": "SSH", "version": "2"},
+                {"protocol": "IPsec", "version": "1"},
                 {"protocol": "QUIC", "version": "1"},
             ],
             "libraries": [{"name": "OpenSSL", "version": "3.2.1"}],
@@ -166,6 +168,8 @@ def test_deep_scan_covers_algorithms_protocols_keys_material_libraries_and_depen
     observations = report.observations
     assert any(obs.algorithm == "AES-256-GCM" for obs in observations)
     assert any(obs.protocol == "TLS" and obs.protocol_version == "1.3" for obs in observations)
+    assert any(obs.protocol == "SSH" and obs.protocol_version == "2" for obs in observations)
+    assert any(obs.protocol == "IPsec" and obs.protocol_version == "1" for obs in observations)
     assert any(obs.protocol == "QUIC" and obs.protocol_version == "1" for obs in observations)
     library = next(obs for obs in observations if obs.library == "OpenSSL")
     assert library.library_version == "3.2.1"
