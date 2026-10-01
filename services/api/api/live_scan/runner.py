@@ -181,6 +181,7 @@ class LiveScanRunner:
         self._lock = threading.Lock()
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
+        self._run_tenant_id: str | None = None
         self.interval: int = int(os.environ.get("CRYPTOSCAN_LIVE_INTERVAL", "900"))
         self.last_snapshot: dict[str, Any] | None = None
         self.last_run_at: str | None = None
@@ -451,7 +452,10 @@ class LiveScanRunner:
         try:
             from api.events.bus import get_event_bus
 
-            get_event_bus().publish(event_type, payload, source="live-scanner")
+            get_event_bus().publish(
+                event_type, payload, source="live-scanner",
+                tenant_id=self._run_tenant_id,
+            )
         except Exception:  # noqa: BLE001 — event failure must never kill a scan
             pass
         if event_type in self._DURABLE_EVENTS:
@@ -459,11 +463,15 @@ class LiveScanRunner:
                 from api.events.platform_events import persist_platform_event
 
                 detail = payload.get("error") or payload.get("trigger") or event_type
-                persist_platform_event(event_type, str(detail), payload, target_name="live-scan")
+                persist_platform_event(
+                    event_type, str(detail), payload, target_name="live-scan",
+                    tenant_id=self._run_tenant_id,
+                )
             except Exception:  # noqa: BLE001 — best-effort durability
                 pass
 
-    def _auto_sync_graph(self, *, trigger: str, requested: list[str]) -> None:
+    def _auto_sync_graph(self, *, trigger: str, requested: list[str],
+                         tenant_id: str | None = None) -> None:
         """After a scan cycle, reconcile the persisted graph and publish a
         precise graph.updated event. Best-effort and never raises."""
         try:
@@ -486,7 +494,7 @@ class LiveScanRunner:
                     "graph.updated",
                     f"Scan cycle ({trigger}) completed — inventory may have changed",
                     {"trigger": trigger, "scanners": requested, "changed": True},
-                    target_name="graph",
+                    target_name="graph", tenant_id=tenant_id,
                 )
             except Exception:  # noqa: BLE001
                 pass
@@ -505,7 +513,7 @@ class LiveScanRunner:
                     "synced": result.get("synced", True),
                     "changed": True,
                 },
-                target_name="graph",
+                target_name="graph", tenant_id=tenant_id,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("graph_update_event_failed: %s", exc)
@@ -516,6 +524,7 @@ class LiveScanRunner:
         only: list[str] | None = None,
         targets: dict[str, str] | None = None,
         trigger: str = "manual",
+        tenant_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute one scan cycle (blocking). Publishes SSE events and stores
         the merged snapshot. Callers on the request thread should use
@@ -525,6 +534,7 @@ class LiveScanRunner:
                 return {"status": "already_running"}
             self.running = True
             self._started_at = time.time()
+            self._run_tenant_id = tenant_id
         try:
             specs = self._specs(only=only, targets=targets)
             # Universal vendor monitoring is a real source poll, not a
@@ -634,11 +644,13 @@ class LiveScanRunner:
             # graph (Neo4j when configured) and publish a precise graph.updated
             # platform event so SSE consumers refresh without polling. Best-effort
             # — a graph/event failure must never fail the scan cycle.
-            self._auto_sync_graph(trigger=trigger, requested=requested)
+            self._auto_sync_graph(trigger=trigger, requested=requested,
+                                   tenant_id=tenant_id)
             return {"status": "completed", **snapshot}
         finally:
             self.running = False
             self._started_at = None
+            self._run_tenant_id = None
 
     # ------------------------------------------------------------- threading
     def start_cycle(self, **kwargs: Any) -> dict[str, Any]:
