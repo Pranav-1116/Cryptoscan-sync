@@ -102,14 +102,28 @@ class UniversalVendorPlugin(ABC):
         """Raw dependency observations (graph edges)."""
         return []
 
+    def discover_cryptographic_metadata(self, context: dict[str, Any]) -> list[dict[str, Any]]:
+        """Common structured crypto metadata shared by all vendor plugins."""
+        from universal_vendor.common_discovery import discover_common_crypto
+
+        return discover_common_crypto(self, context)
+
+    def discover_common_dependencies(self, context: dict[str, Any]) -> list[dict[str, Any]]:
+        """Dependency edges from common structured dependency fields."""
+        from universal_vendor.common_discovery import discover_common_dependencies
+
+        return discover_common_dependencies(self, context)
+
     def collect_evidence(self, context: dict[str, Any]) -> list[dict[str, Any]]:
-        """Full raw evidence: inventory + config + crypto + certs + deps."""
+        """Full raw evidence: inventory + config + crypto + certs + metadata."""
         raw: list[dict[str, Any]] = []
         raw.extend(self.discover_inventory(context))
         raw.extend(self.discover_configuration(context))
         raw.extend(self.discover_crypto(context))
         raw.extend(self.discover_certificates(context))
+        raw.extend(self.discover_cryptographic_metadata(context))
         raw.extend(self.discover_dependencies(context))
+        raw.extend(self.discover_common_dependencies(context))
         return raw
 
     # ── Normalization (spec §1, §20) ──────────────────────────────────

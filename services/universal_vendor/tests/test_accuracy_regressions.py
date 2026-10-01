@@ -105,3 +105,75 @@ def test_public_documentation_algorithms_are_low_confidence_and_normalized():
     result = extract_crypto_mentions("The service supports TLSv1.3 and AES-256.")
     assert {row["algorithm"] for row in result["inventory"]} == {"TLS 1.3", "AES-256"}
     assert all(row["confidence"] == "LOW" for row in result["inventory"])
+
+
+def test_cbom_components_are_scanned_without_inventing_algorithms(registry):
+    report = UniversalVendorScanner(registry=registry).run(
+        {
+            "api_metadata": {
+                "components": [
+                    {
+                        "bom-ref": "crypto/aes",
+                        "name": "AES-256",
+                        "cryptoProperties": {
+                            "algorithmProperties": {
+                                "primitive": "ae", "parameterSetIdentifier": "256",
+                            },
+                        },
+                        "dependsOn": ["library/openssl"],
+                    },
+                    {"bom-ref": "generic", "name": "not-aes-service"},
+                ],
+            },
+        },
+        scan_id="cbom-scan", plugin_id="github", mode=ScanMode.DEEP_DISCOVERY,
+    )
+    assert any(obs.algorithm == "AES-256" for obs in report.observations)
+    assert not any(obs.algorithm == "AES" and obs.asset_id == "generic"
+                    for obs in report.observations)
+    assert any(edge["source"] == "crypto/aes" and edge["target"] == "library/openssl"
+               for edge in report.graph["edges"])
+
+
+def test_deep_scan_covers_algorithms_protocols_keys_material_libraries_and_dependencies(registry):
+    context = {
+        "asset_id": "service-api",
+        "api_metadata": {
+            "algorithms": [{"algorithm": "AES-256-GCM", "key_size": 256, "mode": "GCM"}],
+            "protocols": [
+                {"protocol": "TLS", "version": "1.3", "observed": True},
+                {"protocol": "QUIC", "version": "1"},
+            ],
+            "libraries": [{"name": "OpenSSL", "version": "3.2.1"}],
+            "keys": [{
+                "key_id": "key-1", "key_type": "RSA", "key_size": 2048,
+                "public_key": "public material", "private_key": "private material",
+                "initialization_vector": "iv material", "salt": "salt material",
+            }],
+            "certificate_chain": [
+                {"subject": "CN=api", "issuer": "CN=intermediate", "serial": "01"},
+                {"subject": "CN=intermediate", "issuer": "CN=root", "serial": "02"},
+            ],
+            "dependencies": [{
+                "source_asset": "service-api", "target_asset": "OpenSSL",
+                "relationship": "USES_LIBRARY", "version": "3.2.1",
+            }],
+        },
+    }
+    report = UniversalVendorScanner(registry=registry).run(
+        context, scan_id="all-crypto", plugin_id="github", mode=ScanMode.DEEP_DISCOVERY,
+    )
+    observations = report.observations
+    assert any(obs.algorithm == "AES-256-GCM" for obs in observations)
+    assert any(obs.protocol == "TLS" and obs.protocol_version == "1.3" for obs in observations)
+    assert any(obs.protocol == "QUIC" and obs.protocol_version == "1" for obs in observations)
+    library = next(obs for obs in observations if obs.library == "OpenSSL")
+    assert library.library_version == "3.2.1"
+    key = next(obs for obs in observations if obs.key_id == "key-1")
+    assert key.public_material_present is True and key.private_material_present is True
+    assert key.initialization_vector == {"present": True, "length": 11}
+    assert key.salt == {"present": True, "length": 13}
+    chain = next(obs for obs in observations if len(obs.certificate_chain) == 2)
+    assert chain.certificate_chain[0]["subject"] == "CN=api"
+    assert "private material" not in str(report.to_dict())
+    assert any(edge["relationship"] == "USES_LIBRARY" for edge in report.graph["edges"])

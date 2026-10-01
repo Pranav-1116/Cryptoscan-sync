@@ -92,7 +92,11 @@ class ScanMode(str, Enum):
 class CryptoType(str, Enum):
     ALGORITHM = "algorithm"
     CERTIFICATE = "certificate"
+    CERTIFICATE_CHAIN = "certificate_chain"
     KEY = "key"
+    KEY_MATERIAL = "key_material"
+    LIBRARY = "library"
+    DEPENDENCY = "dependency"
     PROTOCOL = "protocol"
     CONFIGURATION = "configuration"
 
@@ -171,12 +175,33 @@ class UniversalObservation(BaseModel):
     # crypto content
     crypto_type: str = CryptoType.ALGORITHM.value
     algorithm: Optional[str] = None
+    algorithm_parameters: dict[str, Any] = Field(default_factory=dict)
+
+    # Protocol, implementation, and library identity
+    protocol: Optional[str] = None
+    protocol_version: Optional[str] = None
+    implementation: Optional[str] = None
+    implementation_version: Optional[str] = None
+    library: Optional[str] = None
+    library_version: Optional[str] = None
+
+    # Key and non-secret material metadata. Values are never stored here.
+    key_id: Optional[str] = None
+    key_role: Optional[str] = None
     key_type: Optional[str] = None
     key_size: Optional[int] = None
     curve: Optional[str] = None
-    protocol: Optional[str] = None
+    public_material_present: Optional[bool] = None
+    private_material_present: Optional[bool] = None
+    initialization_vector: Optional[dict[str, Any]] = None
+    salt: Optional[dict[str, Any]] = None
+    material_type: Optional[str] = None
+    material_metadata: Optional[dict[str, Any]] = None
+
     certificate: Optional[dict[str, Any]] = None
+    certificate_chain: list[dict[str, Any]] = Field(default_factory=list)
     configuration: Optional[dict[str, Any]] = None
+    observed_usage: Optional[bool] = None
 
     # provenance
     source: str = "unknown"
@@ -199,10 +224,27 @@ class CryptoObservation(BaseModel):
     product_version: Optional[str] = None
     algorithm: Optional[str] = None
     algorithm_family: Optional[str] = None
+    algorithm_parameters: dict[str, Any] = Field(default_factory=dict)
+    protocol: Optional[str] = None
+    protocol_version: Optional[str] = None
+    implementation: Optional[str] = None
+    implementation_version: Optional[str] = None
+    library: Optional[str] = None
+    library_version: Optional[str] = None
+    key_id: Optional[str] = None
+    key_role: Optional[str] = None
     key_type: Optional[str] = None
     key_size: Optional[int] = None
     curve: Optional[str] = None
-    protocol: Optional[str] = None
+    public_material_present: Optional[bool] = None
+    private_material_present: Optional[bool] = None
+    initialization_vector: Optional[dict[str, Any]] = None
+    salt: Optional[dict[str, Any]] = None
+    material_type: Optional[str] = None
+    material_metadata: Optional[dict[str, Any]] = None
+    certificate: Optional[dict[str, Any]] = None
+    certificate_chain: list[dict[str, Any]] = Field(default_factory=list)
+    observed_usage: Optional[bool] = None
     purpose: Optional[str] = None
     nist_status: Optional[str] = None
     quantum_vulnerable: Optional[bool] = None
