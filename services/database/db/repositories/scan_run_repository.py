@@ -29,7 +29,7 @@ class ScanRunRepository:
         return row
 
     def get_run(self, run_id: str) -> NetworkScanRun | None:
-        return self.session.get(NetworkScanRun, run_id)
+        return self.session.execute(select(NetworkScanRun).where(NetworkScanRun.id == run_id)).scalars().first()
 
     def list_runs(
         self, *, limit: int = 20, target_kind: str | None = None

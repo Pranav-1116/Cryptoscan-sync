@@ -35,7 +35,7 @@ class MigrationTaskRepository:
     # ------------------------------------------------------------- tasks
 
     def add_task(self, project_id: str, **kwargs) -> MigrationTask:
-        project = self.session.get(MigrationProject, project_id)
+        project = self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first()
         if project is None:
             raise ValueError("migration project not found")
         status = str(kwargs.get("status") or "TODO").upper()
@@ -76,7 +76,7 @@ class MigrationTaskRepository:
         )
 
     def update_task(self, task_id: str, **kwargs) -> Optional[MigrationTask]:
-        task = self.session.get(MigrationTask, task_id)
+        task = self.session.execute(select(MigrationTask).where(MigrationTask.id == task_id)).scalars().first()
         if task is None:
             return None
         if "status" in kwargs and kwargs["status"] is not None:
@@ -134,7 +134,7 @@ class MigrationTaskRepository:
 
     def _refresh_project(self, project_id: str) -> None:
         """Recompute the project's progress + status from its tasks."""
-        project = self.session.get(MigrationProject, project_id)
+        project = self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first()
         if project is None:
             return
         rows = self._task_rows(project_id)
@@ -265,7 +265,7 @@ class MigrationTaskRepository:
     # -------------------------------------------------------- milestones
 
     def add_milestone(self, project_id: str, name: str, target_date: datetime | None = None, notes: str | None = None) -> MigrationMilestone:
-        if self.session.get(MigrationProject, project_id) is None:
+        if self.session.execute(select(MigrationProject).where(MigrationProject.id == project_id)).scalars().first() is None:
             raise ValueError("migration project not found")
         row = MigrationMilestone(
             project_id=project_id,

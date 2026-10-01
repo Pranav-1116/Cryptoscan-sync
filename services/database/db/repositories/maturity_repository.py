@@ -72,7 +72,7 @@ class MaturityRepository:
             readiness=payload.get("readiness"),
         )
         self.session.add(row)
-        system = self.session.get(System, system_id)
+        system = self.session.execute(select(System).where(System.id == system_id)).scalars().first()
         if system is not None:
             system.current_agility_score = row.agility_score
             system.agility_category = row.category
@@ -139,7 +139,7 @@ class MaturityRepository:
         return row
 
     def get_exception(self, exception_id: str) -> PolicyException | None:
-        return self.session.get(PolicyException, exception_id)
+        return self.session.execute(select(PolicyException).where(PolicyException.id == exception_id)).scalars().first()
 
     def list_exceptions(self, *, status: str | None = None) -> list[PolicyException]:
         stmt = select(PolicyException).order_by(PolicyException.created_at.desc())
@@ -188,7 +188,7 @@ class MaturityRepository:
         kwargs.setdefault("discovered_at", _now())
         row = VendorCryptoInventory(vendor_id=vendor_id, **kwargs)
         self.session.add(row)
-        vendor = self.session.get(Vendor, vendor_id)
+        vendor = self.session.execute(select(Vendor).where(Vendor.id == vendor_id)).scalars().first()
         if vendor is not None:
             vendor.last_assessment_date = _now()
         self.session.flush()

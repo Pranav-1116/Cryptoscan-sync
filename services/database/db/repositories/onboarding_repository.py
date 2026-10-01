@@ -76,7 +76,7 @@ class OnboardingRepository:
         return list(self.session.execute(select(Organization).order_by(Organization.name)).scalars().all())
 
     def get_org(self, org_id: str) -> Organization | None:
-        return self.session.get(Organization, org_id)
+        return self.session.execute(select(Organization).where(Organization.id == org_id)).scalars().first()
 
     def get_default_org(self) -> Organization | None:
         return self.session.execute(select(Organization).order_by(Organization.created_at.asc()).limit(1)).scalars().first()
@@ -111,7 +111,7 @@ class OnboardingRepository:
         return env
 
     def get_environment(self, env_id: str) -> Environment | None:
-        return self.session.get(Environment, env_id)
+        return self.session.execute(select(Environment).where(Environment.id == env_id)).scalars().first()
 
     def update_environment(self, env_id: str, **fields) -> Environment | None:
         env = self.get_environment(env_id)
@@ -163,7 +163,7 @@ class OnboardingRepository:
         }
 
     def get_scope_entry(self, entry_id: str) -> ScopeEntry | None:
-        return self.session.get(ScopeEntry, entry_id)
+        return self.session.execute(select(ScopeEntry).where(ScopeEntry.id == entry_id)).scalars().first()
 
     def delete_scope_entry(self, entry_id: str) -> bool:
         entry = self.get_scope_entry(entry_id)
@@ -180,7 +180,7 @@ class OnboardingRepository:
         ).scalars().all())
 
     def get_connector(self, connector_id: str) -> Connector | None:
-        return self.session.get(Connector, connector_id)
+        return self.session.execute(select(Connector).where(Connector.id == connector_id)).scalars().first()
 
     def add_connector(self, org_id: str, kind: str, name: str, method: str = "api",
                       mode: str = "passive", config: dict | None = None,
@@ -253,7 +253,7 @@ class OnboardingRepository:
         return run
 
     def get_discovery_run(self, run_id: str) -> DiscoveryRun | None:
-        return self.session.get(DiscoveryRun, run_id)
+        return self.session.execute(select(DiscoveryRun).where(DiscoveryRun.id == run_id)).scalars().first()
 
     def list_discovery_runs(self, org_id: str) -> list[DiscoveryRun]:
         return list(self.session.execute(
@@ -272,7 +272,7 @@ class OnboardingRepository:
 
     def complete_discovery_run(self, run_id: str, summary: dict, assets: int,
                                targets: int = 0, status: str = "complete") -> DiscoveryRun | None:
-        run = self.session.get(DiscoveryRun, run_id)
+        run = self.session.execute(select(DiscoveryRun).where(DiscoveryRun.id == run_id)).scalars().first()
         if run is None:
             return None
         run.status = status

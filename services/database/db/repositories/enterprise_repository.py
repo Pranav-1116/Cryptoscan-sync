@@ -92,10 +92,10 @@ class EnterpriseRepository:
         return ticket
 
     def get_ticket(self, ticket_id: str) -> Ticket | None:
-        return self.session.get(Ticket, ticket_id)
+        return self.session.execute(select(Ticket).where(Ticket.id == ticket_id)).scalars().first()
 
     def transition_ticket(self, ticket_id: str, new_state: str, actor: str) -> Ticket | None:
-        ticket = self.session.get(Ticket, ticket_id)
+        ticket = self.session.execute(select(Ticket).where(Ticket.id == ticket_id)).scalars().first()
         if ticket is None:
             return None
         history = list(ticket.history or [])
@@ -131,7 +131,7 @@ class EnterpriseRepository:
         return list(self.session.execute(select(Integration)).scalars().all())
 
     def mark_integration_synced(self, integration_id: str, status: str) -> None:
-        i = self.session.get(Integration, integration_id)
+        i = self.session.execute(select(Integration).where(Integration.id == integration_id)).scalars().first()
         if i:
             i.last_sync_at = datetime.now(timezone.utc).isoformat()
             i.last_sync_status = status
