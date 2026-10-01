@@ -46,15 +46,17 @@ class UniversalPlatform:
     # -- discovery ----------------------------------------------------------
 
     def discover(self, domains: dict[str, Any],
-                 interval_seconds: int = 3600) -> dict[str, Any]:
+                 interval_seconds: int = 3600,
+                 *, record_evidence: bool = True) -> dict[str, Any]:
         report = self.discovery.run(domains, interval_seconds)
-        self.evidence.append(
-            asset="platform", source="universal_discovery",
-            observation="platform discovery completed",
-            evidence={"asset_count": report["asset_count"],
-                      "relationship_count": report["relationship_count"]},
-            method="observation",
-            current_state={"asset_count": report["asset_count"]})
+        if record_evidence:
+            self.evidence.append(
+                asset="platform", source="universal_discovery",
+                observation="platform discovery completed",
+                evidence={"asset_count": report["asset_count"],
+                          "relationship_count": report["relationship_count"]},
+                method="observation",
+                current_state={"asset_count": report["asset_count"]})
         return report
 
     # -- risk ---------------------------------------------------------------

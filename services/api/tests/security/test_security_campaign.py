@@ -207,7 +207,9 @@ def test_production_boot_gate_fails_closed():
 
     base = {"ENVIRONMENT": "production", "SECRET_KEY": "a" * 32,
             "ADMIN_PASSWORD_HASH": "x" * 60,
-            "CORS_ORIGINS": "https://app.example.com"}
+            "METRICS_TOKEN": "m" * 32,
+            "CORS_ORIGINS": "https://app.example.com",
+            "REDIS_URL": "redis://redis:6379/0"}
     # strong config validates
     validate_runtime_settings(APISettings(**base))
     # weak/duplicate-listed secret refused

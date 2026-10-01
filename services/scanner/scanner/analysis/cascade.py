@@ -19,6 +19,11 @@ simple: package/module imports, relative file imports, COBOL ``CALL``/``COPY``, 
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import json
 import re
 from collections import defaultdict, deque
@@ -615,7 +620,11 @@ def _min_key_size(algorithm: str | None) -> int | None:
         return None
     try:
         return parse_algorithm(algorithm).min_key_size
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
 
 

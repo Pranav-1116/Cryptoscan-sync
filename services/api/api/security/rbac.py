@@ -27,6 +27,11 @@ agree.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from fastapi import HTTPException, Request, status
 
 from api.dependencies import _resolve_api_key, _token_from_request  # noqa: F401  (re-exported for tests)
@@ -191,7 +196,11 @@ def _caller_roles(request: Request) -> tuple[str, list[str]]:
                 return username, normalize_roles(user.role_list)
         finally:
             session.close()
-    except Exception:  # pragma: no cover - DB unavailable
+    except Exception as _handler_exc:  # pragma: no cover - DB unavailable
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     session = SessionManager().get_session(token)
     if session:

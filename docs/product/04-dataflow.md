@@ -59,10 +59,15 @@ with the stage name and error and leaves already-written evidence intact
 1. **Gather** — `_gather_inventory()` reads `systems`, `crypto_assets`,
    `certificates`, `hardware_live`, `vendors`, `system_dependency`,
    `system_vendor`, filtered by environment and tenant.
-2. **Materialise** — `materialize_technology_bom()` produces **one state with
-   four views**: SBOM (systems and components), CBOM (crypto assets and
+2. **Materialise** — `materialize_technology_bom()` produces **one shared state
+   with shared views**: SBOM (systems and components), CBOM (crypto assets and
    certificates, CycloneDX 1.5 crypto-component shape), HBOM (hardware), VBOM
-   (vendors), plus the dependency edges between them.
+   (vendors), plus the dependency edges between them. A binary/firmware scan
+   additionally materializes static NBOM capability candidates, a separate
+   vulnerability BOM, and a correlated technology-BOM snapshot from the same
+   bounded records; those sidecars retain their own coverage, provenance and
+   evidence limits. Binary-derived NBOM records are `observed: false` and do
+   not prove live network exposure.
 3. **Fingerprint** — SHA-256 over the canonical state. If it equals the latest
    snapshot's fingerprint, **no new version is created** — a no-op that is
    reported as such.
@@ -75,6 +80,15 @@ with the stage name and error and leaves already-written evidence intact
 **Read paths:** `GET /technology-bom/versions`, `/versions/{n}`,
 `/diff?from=&to=`, and the CBOM page's compare view all read snapshots —
 never recompute — so what a user compares is what was signed.
+
+**Binary sidecars:** `POST /devsecops/binary/scan`, queued binary jobs, and
+`POST /devsecops/sbom/scan` with `kind: binary` all use the bounded binary
+materializer. The resulting sidecars are stored under the artifact's tenant
+scope and are read through
+`GET /devsecops/binary/artifacts/{artifact_id}/bom/{bom_type}`. The aliases are
+`hbom`, `nbom`, `vbom`, `vulnerability-bom` and `technology-bom`; `sbom` and
+`cbom` retain their existing artifact documents. `POST /devsecops/sbom/diff`
+includes `binary_bom_diff` when both stored artifacts are binary scans.
 
 ## Flow C — Export and audit: BOM → artefact → audit event
 

@@ -66,6 +66,7 @@ def main() -> int:
         session_factory=SessionLocal,
         concurrency=args.concurrency,
         run_reports=settings.MONITOR_RUN_REPORTS,
+        run_network=settings.MONITOR_RUN_NETWORK,
     )
     lease = None
     if not args.no_lease:

@@ -11,12 +11,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
+import queue
 import statistics
+import threading
 import time
+import urllib.request
 from collections import deque
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # metrics (Prometheus-compatible exposition)
@@ -118,8 +124,30 @@ class TraceStore:
         self.capacity = capacity
         self.spans: deque = deque(maxlen=capacity)
         self.sink_path = sink_path
-        self.otlp_endpoint = otlp_endpoint
+        self.otlp_endpoint = self._normalize_otlp_endpoint(otlp_endpoint)
         self.service_name = service_name
+        self._otlp_queue: queue.Queue[dict[str, Any]] | None = None
+        self._otlp_thread: threading.Thread | None = None
+        if self.otlp_endpoint:
+            # Export is deliberately off the request path. A collector outage
+            # must not add its timeout to every API request or exhaust ASGI
+            # workers. The bounded queue also makes the failure mode explicit:
+            # under sustained collector outage, the oldest unsent spans are
+            # dropped and a warning is emitted rather than growing memory.
+            self._otlp_queue = queue.Queue(maxsize=1000)
+            self._otlp_thread = threading.Thread(
+                target=self._otlp_worker,
+                name="cryptoscan-otlp-exporter",
+                daemon=True,
+            )
+            self._otlp_thread.start()
+
+    @staticmethod
+    def _normalize_otlp_endpoint(endpoint: str | None) -> str | None:
+        value = str(endpoint or "").strip().rstrip("/")
+        if not value:
+            return None
+        return value if value.endswith("/v1/traces") else f"{value}/v1/traces"
 
     def start_span(self, *, method: str, path: str, traceparent: str | None,
                    seed: str) -> dict[str, Any]:
@@ -139,7 +167,9 @@ class TraceStore:
         return span
 
     def finish_span(self, span: dict[str, Any], status: int) -> None:
-        span["duration_ms"] = round((time.time() - span["started"]) * 1000, 2)
+        started = float(span.get("started") or time.time())
+        finished = time.time()
+        span["duration_ms"] = round((finished - started) * 1000, 2)
         span["status"] = status
         span["service"] = self.service_name
         span.pop("started", None)
@@ -149,8 +179,68 @@ class TraceStore:
                 self.sink_path.parent.mkdir(parents=True, exist_ok=True)
                 with self.sink_path.open("a", encoding="utf-8") as fh:
                     fh.write(json.dumps(span, separators=(",", ":")) + "\n")
-            except OSError:
-                pass
+            except OSError as exc:
+                logger.warning("trace_jsonl_write_failed", extra={"error": str(exc)})
+        if self._otlp_queue is not None:
+            payload = self._otlp_payload(span, started, finished)
+            try:
+                self._otlp_queue.put_nowait(payload)
+            except queue.Full:
+                logger.warning("otlp_export_queue_full", extra={"dropped": 1})
+
+    def _otlp_worker(self) -> None:
+        assert self._otlp_queue is not None
+        while True:
+            payload = self._otlp_queue.get()
+            try:
+                self._send_otlp(payload)
+            except Exception as exc:  # noqa: BLE001 — telemetry must not affect requests
+                logger.warning("otlp_export_failed", extra={"error": str(exc)})
+            finally:
+                self._otlp_queue.task_done()
+
+    def _send_otlp(self, payload: dict[str, Any]) -> None:
+        if not self.otlp_endpoint:
+            return
+        request = urllib.request.Request(
+            self.otlp_endpoint,
+            data=json.dumps(payload, separators=(",", ":")).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request, timeout=2.0) as response:
+            if response.status >= 300:
+                raise RuntimeError(f"collector returned HTTP {response.status}")
+
+    def _otlp_payload(self, span: dict[str, Any], started: float, finished: float) -> dict[str, Any]:
+        attributes = [
+            {"key": "http.method", "value": {"stringValue": str(span.get("method") or "")}},
+            {"key": "http.route", "value": {"stringValue": str(span.get("path") or "")}},
+            {"key": "http.status_code", "value": {"intValue": int(span.get("status") or 0)}},
+        ]
+        otlp_span = {
+            "traceId": span["trace_id"],
+            "spanId": span["span_id"],
+            "startTimeUnixNano": str(int(started * 1_000_000_000)),
+            "endTimeUnixNano": str(int(finished * 1_000_000_000)),
+            "name": f"{span.get('method', 'HTTP')} {span.get('path', '/')}",
+            "kind": 2,
+            "attributes": attributes,
+            "status": {"code": 2 if int(span.get("status") or 0) >= 500 else 1},
+        }
+        if span.get("parent_span_id"):
+            otlp_span["parentSpanId"] = span["parent_span_id"]
+        return {
+            "resourceSpans": [{
+                "resource": {"attributes": [
+                    {"key": "service.name", "value": {"stringValue": self.service_name}},
+                ]},
+                "scopeSpans": [{
+                    "scope": {"name": "cryptoscan.observability"},
+                    "spans": [otlp_span],
+                }],
+            }],
+        }
 
     def recent(self, limit: int = 50, *, slower_than_ms: float | None = None) -> list:
         spans = list(self.spans)[::-1]

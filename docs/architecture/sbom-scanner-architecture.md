@@ -28,6 +28,7 @@ Two rules govern this document:
 | Cloud resource SBOM (Lambda, Functions, Cloud Run…) | **Partial** — cloud scanning exists (`services/cloud_scanner`) but does not emit SBOM components for managed runtimes | `services/cloud_scanner` |
 | Third-party API (Venafi, Snyk, Black Duck…) | **Partial** — `services/vendor_intel` imports CycloneDX **cryptographic-asset** components from a vendor SBOM/CBOM into the inventory; per-vendor SBOM exporters (Snyk, Black Duck, FOSSA…) are not implemented | `vendor_intel/sbom_import.py`, `services/connector_sdk` |
 | Firmware (binwalk, SquashFS/JFFS2) | **Partial** — firmware images are identified and their container chain mapped (offsets for uImage/DTB/squashfs/JFFS2/UBIFS/gzip/xz/zstd), device-tree identity extracted, entropy reported; **no extraction and no filesystem mounting** (binwalk needed), and the finding `BIN-FIRMWARE-NOT-EXTRACTED` says so on every such image | `devsecops/binary_scan.py` (`parse_firmware`, `_parse_dtb`) |
+| Binary BOM family | **Pilot / pre-production** — one bounded scan materializes SBOM, CBOM, HBOM, static NBOM, VBOM, vulnerability BOM and a correlated technology snapshot; sidecars are tenant-scoped and diffable | `devsecops/binary_boms.py`, `artifact_store.py`, `/devsecops/binary/artifacts/{id}/bom/{type}` |
 | Registry webhooks (ECR, ACR, Harbor…) | **Shipped** — a single authenticated endpoint handles push events from ACR/GCR/ECR/Harbor/Docker Hub style registries (HMAC signature or machine API key, fail-closed), documented in the admin guide | `api/routers/webhooks.py::container_registry_webhook` |
 
 ### 1.1 Binary scanning — how a binary becomes a component
@@ -39,11 +40,11 @@ scoring, licence policy, gate, signing, VEX, diff and CBOM like any other scan.
 | Step | What happens | Evidence kept |
 |---|---|---|
 | Identify | magic bytes only; `MZ` must carry `PE\0\0` at `e_lfanew`, fat Mach-O is told apart from a Java class file by arch count | format, arch, bits |
-| Parse | ELF/PE/Mach-O/ar/zip/WASM/class/RPM/firmware parsers (stdlib only, every read bounds-checked) | dependencies, symbols, compiler, build-id, Go module graph, archive members, DTB model |
+| Parse | ELF/PE/Mach-O/ar/zip/WASM/class/RPM/mobile-package/firmware parsers (stdlib only, every read bounds-checked) | dependencies, symbols, compiler, build-id, Go module graph, archive members, DTB model, WASM imports/exports, Android manifest metadata, selected iOS plist metadata |
 | Fingerprint | universal-crypto tables plus version banners read from the file, with identifier-boundary matching | per library: `evidence_classes`, verdict, and the versions of anything the strict pass refused to confirm (`suppressed_libraries`, with the reason) |
 | Classify crypto | AES/RSA/ECDSA/MD5/SHA-1… graded per detection; PQC designations captured in full (`ML-KEM-768`, not `ML-KEM`); X25519/Ed25519 counted as **classical ECC** (Shor-vulnerable), never as PQC | confidence level + strongest evidence + the strings/symbols that produced it |
-| Report | findings cite the file and the evidence; EOL versions, weak primitives, statically linked crypto, packed content, non-system RPATH, and every "we did not parse this" gap | `BIN-*` codes with severity |
-| Emit | CycloneDX SBOM (crypto libraries become components, Go module graph becomes the dependency tree) and CycloneDX CBOM (`cryptographic-asset` per algorithm, ingestible via `POST /cbom/ingest`) | component `bom-ref`, sha256, `cryptoscan:*` properties |
+| Report | findings cite the file and the evidence; EOL versions, weak primitives, statically linked crypto, packed content, non-system RPATH, mobile transport/debug policy, and every "we did not parse this" gap | `BIN-*` codes with severity |
+| Emit | CycloneDX SBOM and CBOM plus HBOM, static-only NBOM, VBOM, a separate vulnerability BOM and a correlated technology snapshot | stable component refs, hashes, `cryptoscan:*` provenance, evidence state, snapshot fingerprint and layer diff |
 
 ## 2. Ingestion and processing
 
@@ -80,6 +81,7 @@ stated plainly rather than implied by a diagram.
 | S3 WORM 7-year retention | **Not implemented** — `DiskBackupStorage` is a real durable directory that survives restarts; WORM/object-lock is deployment work. Retention is enforced by `DELETE /sbom/artifacts?older_than_days=` | `governance/backup_jobs.py` |
 | Redis hot cache | **Not implemented for SBOM** | — |
 | CycloneDX 1.5 / SPDX 2.3 JSON | **Shipped** | `/sbom/scan`, `/sbom/{id}/download` |
+| Binary BOM sidecars | **Pilot / pre-production** — CBOM plus HBOM/NBOM/VBOM/vulnerability/technology documents are stored with tenant-scoped keys and read through a role-protected projection endpoint | `/binary/artifacts/{id}/bom/{bom_type}` |
 | CycloneDX 1.6 / SPDX 3.0 / SWID | **Not implemented** — the renderer pins 1.5 / 2.3 | — |
 | XML, PDF exports | **Not implemented** — JSON plus a markdown auditor report | `/sbom/{id}/report` |
 | VEX export | **Shipped** — CycloneDX VEX JSON + markdown, with `?dl=true` | `GET /sbom/{id}/vex` |
@@ -114,7 +116,8 @@ to a reviewer:
 
 ## 6. Reading the console
 
-DevSecOps → **SBOM** is a seven-tab workspace:
+The sidebar's **Applications** route (`/dev-sec-ops`) opens the DevSecOps
+pipeline. Its **SBOM** tab is a seven-tab workspace:
 
 | Tab | What it is for |
 |---|---|

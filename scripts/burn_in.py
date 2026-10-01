@@ -23,6 +23,11 @@ Exit code 0 when every selected target PASSES or cleanly SKIPs (with reason);
 1 on any FAIL. Full JSON report written to burn_in_report.json.
 """
 from __future__ import annotations
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 from _bootstrap import bootstrap  # noqa: E402
 
 bootstrap()
@@ -124,7 +129,11 @@ def burn_github(api: str, username: str, password: str, secret: str, timeout: in
                 if status in {"COMPLETED", "FAILED", "ERROR"}:
                     final = job
                     break
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass  # job may not be visible yet
             time.sleep(1)
         if final is None:
@@ -185,7 +194,11 @@ class _SmtpSink(threading.Thread):
                 return
             try:
                 self._handle(conn)
-            except Exception:
+            except Exception as _handler_exc:
+                logger.debug(
+                    "expected_exception_boundary",
+                    extra={"error_type": type(_handler_exc).__name__},
+                )
                 pass
             finally:
                 conn.close()
@@ -223,7 +236,11 @@ class _SmtpSink(threading.Thread):
         self.stop.set()
         try:
             self._srv.close()
-        except Exception:
+        except Exception as _handler_exc:
+            logger.debug(
+                "expected_exception_boundary",
+                extra={"error_type": type(_handler_exc).__name__},
+            )
             pass
 
 
@@ -347,7 +364,11 @@ def main() -> int:
                         help="repeatable; --target all runs everything")
     parser.add_argument("--api", default=os.environ.get("CRYPTOSCAN_API", "http://127.0.0.1:8010"))
     parser.add_argument("--username", default=os.environ.get("ADMIN_USERNAME", "admin"))
-    parser.add_argument("--password", default=os.environ.get("ADMIN_PASSWORD", "cryptoscan"))
+    parser.add_argument(
+        "--password",
+        default=os.environ.get("BURN_IN_PASSWORD", os.environ.get("ADMIN_PASSWORD", "cryptoscan")),
+        help="integration credential; prefer BURN_IN_PASSWORD or a wrapper environment",
+    )
     parser.add_argument("--webhook-secret", default=os.environ.get("GITHUB_WEBHOOK_SECRET", "dev-webhook-secret-change-me-32chars!!"))
     parser.add_argument("--host", default=os.environ.get("BURN_TLS_HOST", "github.com"))
     parser.add_argument("--port", type=int, default=443)

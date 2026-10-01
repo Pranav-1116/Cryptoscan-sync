@@ -11,6 +11,23 @@ from api.security.passwords import hash_password, verify_password
 from worker.config.settings import WorkerSettings
 
 
+def test_production_metrics_require_bearer_token(monkeypatch):
+    from types import SimpleNamespace
+    from fastapi import HTTPException
+    from api.routers.metrics import _require_metrics_token
+
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    monkeypatch.setenv("METRICS_TOKEN", "m" * 32)
+    get_settings.cache_clear()
+    try:
+        with pytest.raises(HTTPException) as missing:
+            _require_metrics_token(SimpleNamespace(headers={}))
+        assert missing.value.status_code == 401
+        _require_metrics_token(SimpleNamespace(headers={"authorization": "Bearer " + "m" * 32}))
+    finally:
+        get_settings.cache_clear()
+
+
 def test_password_hash_roundtrip():
     encoded = hash_password("s3cret-value!!")
     assert encoded.startswith("pbkdf2_sha256$")
@@ -42,6 +59,7 @@ def test_production_rejects_demo_defaults():
         ADMIN_PASSWORD="cryptoscan",
         ADMIN_PASSWORD_HASH="",
         GITHUB_WEBHOOK_SECRET="dev-webhook-secret-change-me-32chars!!",
+        METRICS_TOKEN="",
         DATABASE_URL="sqlite:///./data/cryptoscan.db",
         CORS_ORIGINS="*",
         ALLOW_SQLITE=False,
@@ -66,6 +84,7 @@ def test_production_rejects_plaintext_admin_password_even_when_strong():
         ADMIN_PASSWORD="correct-horse-battery",
         ADMIN_PASSWORD_HASH="",
         GITHUB_WEBHOOK_SECRET="webhook-secret-not-a-placeholder-value",
+        METRICS_TOKEN="m" * 32,
         DATABASE_URL="postgresql://cryptoscan:secret@postgres:5432/cryptoscan",
         CORS_ORIGINS="https://cryptoscan.example",
         ALLOW_SQLITE=False,
@@ -84,8 +103,10 @@ def test_production_accepts_strong_config():
         ADMIN_PASSWORD="",
         ADMIN_PASSWORD_HASH=hash_password("correct-horse-battery"),
         GITHUB_WEBHOOK_SECRET="webhook-secret-not-a-placeholder-value",
+        METRICS_TOKEN="m" * 32,
         DATABASE_URL="postgresql://cryptoscan:secret@postgres:5432/cryptoscan",
         CORS_ORIGINS="https://cryptoscan.example",
+        REDIS_URL="redis://redis:6379/0",
         ALLOW_SQLITE=False,
         ALLOW_INSECURE_CORS=False,
         DOCS_ENABLED=False,

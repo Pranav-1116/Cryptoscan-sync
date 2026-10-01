@@ -1,6 +1,7 @@
 # What to do next — getting CryptoScan to enterprise grade
 
-**Written:** 2026-09-27 · Every claim here was verified by running the code.
+**Updated:** 2026-09-28 · Implementation claims below are bounded by the current
+engineering gate and retained evidence; external qualification is not inferred.
 Companion to [BACKEND-DATABASE-GAPS.md](BACKEND-DATABASE-GAPS.md), which
 records what was broken and what was fixed. This one is forward-looking.
 
@@ -11,11 +12,12 @@ records what was broken and what was fixed. This one is forward-looking.
 You have built more product than you have evidence for. That is the whole
 situation in one sentence, and the plan below follows from it.
 
-The code is real: 5,712 backend tests green on both SQLite and PostgreSQL,
-118 frontend tests, a genuine CycloneDX 1.5 CBOM with signing, real `boto3`
-across 22 AWS services, real TLS and SSH handshakes, a real JVM constant-pool
-bytecode parser, TR-31/ISO 9564/ISO 8583/EMV, and five TS 33.501 5G modules.
-That is a credible product.
+The code includes PostgreSQL parity paths, a genuine CycloneDX 1.5 CBOM with
+signing, real `boto3` integrations, real TLS and SSH handshakes, a JVM
+constant-pool bytecode parser, TR-31/ISO 9564/ISO 8583/EMV, and TS 33.501 5G
+modules. A historical run recorded 5,712 backend tests green on both SQLite
+and PostgreSQL; that count is not presented as a current run here. This is a
+credible product, but the current gate remains the decision point.
 
 **And it has never scanned a bank.** Not once. Every estate run in this
 repository is synthetic, and `DUBAI-BANKS-E2E.md` says so itself: *"no bank
@@ -37,6 +39,30 @@ the thing, never by reading it. Whatever you build next, the acceptance
 criterion is an execution, not a description.
 
 ---
+
+## Implementation status — 2026-09-27
+
+This roadmap is now being executed in risk order rather than by adding more
+feature breadth. The first production-hardening slice is implemented:
+
+- **Done in code:** production `/metrics` bearer-token protection, encrypted
+  `age` database backups/restores with checksum verification, pinned Kubernetes
+  API/worker image tags, and non-blocking OTLP/HTTP trace export.
+- **Tests/config updated:** production settings and release/CI guard fixtures
+  require `METRICS_TOKEN`; Prometheus uses a mounted bearer-token file; focused
+  tests cover metrics auth and OTLP payloads.
+- **Still external proof:** bank pilot, third-party penetration test, required
+  GitHub CI branch protection, two-node PostgreSQL DR drill, real HSM/CloudHSM,
+  field validation, and SOC 2/ISO 27001 cannot be truthfully completed by
+  editing this repository alone.
+
+Implemented in the next Phase 3 slice (also covered by focused tests):
+worker-owned scheduled network scans now persist `NetworkScanRun` rows for NBOM;
+`RequireRole` gates the first high-value frontend mutation controls; and
+operator-side GTP-U/IPsec N3/N9 evidence is classified without emitting active
+user-plane packets. Remaining slices are exception triage, the long-tail
+frontend migration, live worker/NBOM evidence, SoftHSM/real-HSM proof, and
+external customer validation.
 
 ## Phase 1 — Evidence (weeks 1–8)
 
@@ -114,15 +140,18 @@ Verified still open as of this writing:
 
 | Item | Where | Why it matters |
 |---|---|---|
-| `/metrics` unauthenticated | `routers/metrics.py` — zero auth dependencies | Leaks estate shape and request patterns to anyone who can reach the port |
-| Backups unencrypted at rest | `scripts/db_backup.sh` — no `gpg`/`age` step | A backup of this database is a complete inventory of a bank's cryptographic weaknesses. It is arguably more sensitive than production |
-| `:latest` image tags | `k8s/app/20-api-deployment.yaml:23`, `30-worker-deployment.yaml:23` (both carry a `# pin a real tag per release` comment) | No reproducible rollback. During an incident you cannot state what is running |
-| OTLP endpoint is dead code | `observability/metrics.py:116,121` — stored, never used | Traces reach a local JSONL only. Either wire it to a collector or remove the parameter so nobody believes it works |
-| 134 swallowed exceptions | `except: pass` across services | Each is a failure that will not appear in any log during an incident |
+| ~~`/metrics` unauthenticated~~ | **Fixed 2026-09-27:** production requires `METRICS_TOKEN`; Prometheus sends a bearer token | Development/test remains open; production config and focused auth test enforce the boundary |
+| ~~Backups unencrypted at rest~~ | **Fixed 2026-09-27:** `db_backup.sh` encrypts PostgreSQL/Neo4j artifacts with `age`; plaintext is refused by default | `db_restore.sh` verifies encrypted bytes before decrypt/restore; a real restore drill remains required |
+| ~~`:latest` image tags~~ | **Tag removed 2026-09-27:** Kubernetes API/worker use `v1.0.0` | **Still open:** replace the release tag with the registry-approved immutable digest; the engineering gate currently reports three mutable references |
+| ~~OTLP endpoint is dead code~~ | **Fixed 2026-09-27:** bounded background OTLP/HTTP JSON exporter in `TraceStore` | Collector outage is logged and spans are dropped only after the bounded queue fills |
+| ~~Exception inventory~~ | **Triaged 2026-09-28:** current engineering gate reports 0 unresolved production or test/harness handlers; intentional best-effort boundaries now emit typed logs | Keep the gate in CI so newly added silent handlers cannot return |
 
 The last one should be triaged, not bulk-fixed: many are legitimate
-best-effort paths. Find the ones in **write paths and auth paths** and make
-those log.
+best-effort paths. The first auth slice now logs principal/tenant lookup
+failures, fails closed for production session-store errors, and refuses to
+claim logout/session issuance succeeded when the production auth write was not
+persisted. Remaining exception triage should continue through write-heavy
+routers and event bridges.
 
 ### 2.2 Prove the disaster-recovery story
 
@@ -145,39 +174,50 @@ schema matches models. A backup you have never restored is a hypothesis.
 
 Only after Phase 1 is moving. Ordered by what a bank will notice.
 
-### 3.1 Feed the NBOM
+### 3.1 Feed the NBOM — repository implementation complete (2026-09-27)
 
-The generator, cascade and DB derivation are built and tested; the
-demonstration data was seeded by hand. **Nothing runs a network scan on a
-schedule.** Wire the existing network scanner into the job scheduler, write
-results to `network_scan_runs`, and the NBOM populates itself.
+The monitor leader tick now selects enabled API-created `NetworkScanTarget`
+rows by their persisted schedule, calls the live `NetworkTlsScanner`, stores
+one `NetworkScanRun` with `target_kind="scheduled"`, materializes certificates
+and usages, and advances the target only after a successful scan. Due rows are
+grouped by tenant so persisted runs and materialized inventory retain tenant
+ownership. The manual `/network/run-due` path writes to the same run ledger.
+`test_network_sweep.py` proves due selection, persistence, tenant attribution,
+rescheduling, failure semantics and monitor tick wiring. NBOM continues to
+derive from stored runs; no demo seed is needed.
 
-This is pipeline work, not BOM work, and it is small. It moves NBOM from
-preview to beta.
+Remaining proof: run a live multi-target worker against a controlled estate and
+record the resulting NBOM/scan-run evidence.
 
-### 3.2 Finish the frontend authorisation migration
+### 3.2 Finish the frontend authorisation migration — first slice complete
 
-`RequireAuth` guards every route and roles are server-verified. But
-`RequireRole` exists and **no page uses it yet** — individual controls still
-use ad-hoc `canPerformAction()` checks. Those now read verified roles so they
-are no longer forgeable, but the migration is unfinished and a reviewer will
-notice the inconsistency.
+`RequireAuth` guards every route and roles are server-verified. `RequireRole`
+now gates scan submission in Findings, active-sector changes, and onboarding
+mutations/discovery; Onboarding and Sectors no longer read roles directly from
+localStorage. Frontend typecheck, production build, 118 tests and all page
+smoke tests pass. Remaining work is to migrate the long tail of ad-hoc action
+controls and keep the backend as the authoritative enforcement point.
 
-### 3.3 Prove one HSM adapter against real hardware
+### 3.3 Prove one HSM adapter against real hardware — SoftHSM gate added
 
 `keyassure/hsm_backends.py` has real adapters for AWS KMS, Azure Key Vault /
-Managed HSM, GCP KMS and PKCS#11. **None has touched a real HSM** — PyKCS11
-is not installed and those tests skip.
+Managed HSM, GCP KMS and PKCS#11. The runnable
+`scripts/softhsm2_pkcs11_check.sh` creates an ephemeral SoftHSM2 token and
+round-trips an RSA-2048 object through the real PKCS#11 module when SoftHSM2
+and OpenSC are installed. Without those binaries it reports an explicit skip,
+or fails when `REQUIRE_SOFTHSM2=1` is set by an operator's CI job. This session
+does not add a CI/CD workflow. This is not real-HSM or CloudHSM evidence: a
+customer-controlled hardware validation remains open.
 
-Stand up SoftHSM2 in CI for the PKCS#11 path, and run the AWS KMS adapter
-against a real CloudHSM-backed key once. "Verified key residence" is a strong
-claim for a bank; make it true before you make it.
+### 3.4 Telecom: GTP-U / IPsec on N3 and N9 — repository implementation complete
 
-### 3.4 Telecom: GTP-U / IPsec on N3 and N9
-
-The only named gap left in the 5G work. The user-plane interfaces carry
-subscriber traffic and have no protection of their own — they need IPsec, and
-nothing currently checks whether it is there.
+`telecom_scanner.user_plane.assess_user_plane` now classifies operator-side
+N3/N9 evidence for GTP-U/UDP-2152, IPsec presence, IKEv2, AEAD encryption,
+SHA-2 integrity and DH-group floors. Cleartext, weak or mis-port evidence is
+flagged; missing evidence is honestly `USER_PLANE_UNKNOWN`. Telecom registry
+records accept `interface: N3|N9`, the active probe never emits user-plane
+packets, and focused tests cover clean, weak, cleartext and no-evidence paths.
+Real carrier-side captures or operator ingest remain external evidence.
 
 ### 3.5 Extend external validation to the mainframe languages
 
@@ -262,7 +302,7 @@ To be fair to the work, because the list above is all deficits:
 
 | Area | State |
 |---|---|
-| Backend | 5,712 tests green on SQLite **and** PostgreSQL |
+| Backend | PostgreSQL parity paths exist; historical 5,712-test run is not a current result |
 | Auth | Global ASGI gate; 7 of 730 routes unauthenticated (health/metrics only); PBKDF2-SHA256 @ 210k; fails closed in production |
 | Tenant isolation | 87 of 102 tables, ORM-enforced, middleware-scoped — built and tested, awaiting adversarial review |
 | Scanner accuracy | ~25,000 third-party files validated across 5 languages; zero parser crashes; 5 real defects found and fixed |

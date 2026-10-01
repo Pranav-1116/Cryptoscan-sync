@@ -415,6 +415,13 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/cbom` | Binary Cbom |
+| `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/bom/{bom_type}` | Binary BOM sidecar (SBOM/CBOM/HBOM/static NBOM/VBOM/vulnerability BOM/technology BOM) |
+| `GET` | `/api/v1/devsecops/binary/scans` | Tenant-scoped binary scan history/read model |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}` | Bounded parser observations for one binary scan |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/observations` | Filtered/paginated parser observations |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/findings` | Finding/evidence drill-down |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/coverage` | Parser coverage and evidence-state counts |
+| `POST` | `/api/v1/devsecops/binary/scans/compare` | Bounded read-model scan comparison |
 | `GET` | `/api/v1/devsecops/binary/at-rest` | Binary At Rest |
 | `POST` | `/api/v1/devsecops/binary/batch` | Binary Batch |
 | `GET` | `/api/v1/devsecops/binary/batches/{batch_id}` | Binary Batch Status |

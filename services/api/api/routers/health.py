@@ -1,3 +1,4 @@
+import logging
 import time
 
 from db.connection.engine import check_db_health
@@ -7,6 +8,7 @@ from fastapi.responses import JSONResponse
 from api.config.settings import get_settings
 
 router = APIRouter(tags=["health"])
+logger = logging.getLogger(__name__)
 
 
 def _probe(name: str, configured: bool, fn) -> dict:
@@ -49,8 +51,9 @@ def dependency_report() -> dict:
         finally:
             try:
                 client.close()
-            except Exception:
-                pass
+            except Exception as close_exc:
+                # Closing a failed probe must not mask its original status.
+                logger.warning("redis_health_client_close_failed", extra={"error_type": type(close_exc).__name__})
 
     def _neo4j():
         from graph_engine.connection.neo4j_driver import get_driver
@@ -61,11 +64,29 @@ def dependency_report() -> dict:
         driver.verify_connectivity()
         return "connected"
 
+    redis_configured = bool((getattr(settings, "REDIS_URL", "") or "").strip())
+    redis_required = bool(getattr(settings, "is_production", False))
     checks = [
         _probe("database", True, _db),
-        _probe("redis", bool((settings.REDIS_URL or "").strip()), _redis),
+        _probe("redis", redis_configured or redis_required, _redis),
         _probe("neo4j", bool((settings.NEO4J_URI or "").strip()), _neo4j),
     ]
+    if redis_required and not redis_configured:
+        checks[1] = {"name": "redis", "status": "down",
+                     "detail": "REDIS_URL is required in production"}
+    # A reachable Redis server is not enough: production readiness requires the
+    # Stream/sequence adapter to have initialized as well.
+    if redis_required:
+        try:
+            from api.events.bus import get_event_bus
+
+            realtime = (get_event_bus().stats().get("durable_backend") or {})
+            if not realtime.get("ready"):
+                checks.append({"name": "realtime_events", "status": "down",
+                               "detail": "Redis event journal is not ready"})
+        except Exception as exc:  # noqa: BLE001
+            checks.append({"name": "realtime_events", "status": "down",
+                           "detail": type(exc).__name__})
     down = [c["name"] for c in checks if c["status"] == "down"]
     overall = "degraded" if down else "ok"
     return {"status": overall, "down": down, "checks": checks}
@@ -105,6 +126,13 @@ def readyz():
             connection.execute(text("SELECT 1"))
     except Exception as exc:
         return JSONResponse(status_code=503, content={"status": "not_ready", "database": str(exc)[:200]})
+    settings = get_settings()
+    if getattr(settings, "is_production", False):
+        report = dependency_report()
+        if report.get("down"):
+            return JSONResponse(status_code=503, content={
+                "status": "not_ready", "dependencies": report,
+            })
     return {"status": "ready", "database": "ok"}
 
 

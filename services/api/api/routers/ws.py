@@ -21,6 +21,11 @@ is sent — an unauthenticated socket never sees a frame.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 import asyncio
 import contextlib
 import json
@@ -309,7 +314,11 @@ async def event_stream(websocket: WebSocket) -> None:
                 await websocket.send_json({"type": "event", **_event(event)})
     except WebSocketDisconnect:
         return
-    except Exception:  # noqa: BLE001
+    except Exception as _handler_exc:  # noqa: BLE001
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return
     finally:
         bus.unsubscribe(subscription)

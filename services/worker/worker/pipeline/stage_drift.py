@@ -112,7 +112,11 @@ def _publish_drift_events(events: list[dict], ctx: "PipelineContext") -> None:
                 },
                 source="drift",
             )
-    except Exception:  # noqa: BLE001 — standalone worker: polling covers it
+    except Exception as _handler_exc:  # noqa: BLE001 — standalone worker: polling covers it
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         pass
     logger.info("stage_drift_done", extra={"events": len(events)})
     return ctx

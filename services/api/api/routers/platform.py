@@ -17,6 +17,7 @@ Endpoints (all deterministic, no AI):
 from __future__ import annotations
 
 from typing import Any, Optional
+import json
 
 from fastapi import APIRouter, Depends
 
@@ -25,6 +26,7 @@ from api.events.platform_events import emit_platform_event
 from api.security.rbac import require_permission
 from shared_models.platform_scope import scope_manifest
 from universal_platform.engine import UniversalPlatform
+from universal_platform.evidence import EvidenceChain
 
 router = APIRouter(prefix="/platform", tags=["platform"])
 
@@ -36,15 +38,54 @@ def platform_scope(user: str = Depends(get_current_user)):
 
 
 class _Platform:
-    """Lazy singleton so tests and app share one in-memory instance."""
+    """Tenant-scoped computation cache rebuilt from durable state.
 
-    _engine: Optional[UniversalPlatform] = None
+    The engine itself is intentionally not the authority: discovery inputs and
+    drift baselines are stored in Redis so another worker can reconstruct the
+    same view after a restart. The process cache only avoids repeating that
+    deterministic rebuild within a worker.
+    """
+
+    _engines: dict[str, UniversalPlatform] = {}
+    _loaded_fingerprints: dict[str, str] = {}
+
+    @staticmethod
+    def _tenant_key() -> str:
+        try:
+            from db.tenancy import current_tenant
+
+            return str(current_tenant() or "platform")
+        except Exception:
+            return "platform"
 
     @classmethod
     def engine(cls) -> UniversalPlatform:
-        if cls._engine is None:
-            cls._engine = UniversalPlatform()
-        return cls._engine
+        from api import platform_state
+
+        key = cls._tenant_key()
+        state = platform_state.load()
+        fingerprint = json.dumps(state, sort_keys=True, default=str)
+        engine = cls._engines.setdefault(key, UniversalPlatform())
+        if cls._loaded_fingerprints.get(key) != fingerprint:
+            domains = state.get("domains") or {}
+            engine = UniversalPlatform()
+            engine.evidence = EvidenceChain(records=state.get("evidence") or [])
+            if domains:
+                engine.discover(domains, record_evidence=False)
+            engine.drift.set_baseline(state.get("baseline") or {})
+            cls._engines[key] = engine
+            cls._loaded_fingerprints[key] = fingerprint
+        return engine
+
+    @classmethod
+    def update_state(cls, **changes: Any) -> dict[str, Any]:
+        from api import platform_state
+
+        state = platform_state.load()
+        state.update(changes)
+        platform_state.save(state)
+        cls._loaded_fingerprints.pop(cls._tenant_key(), None)
+        return state
 
 
 @router.get("/capabilities")
@@ -63,8 +104,11 @@ def platform_capabilities(user: str = Depends(get_current_user)):
 @router.post("/discover")
 def platform_discover(body: dict[str, Any],
                       user: str = Depends(require_permission("crypto.manage"))):
-    report = _Platform.engine().discover(body.get("domains") or {},
-                                         int(body.get("interval_seconds") or 3600))
+    domains = body.get("domains") or {}
+    _Platform.update_state(domains=domains)
+    engine = _Platform.engine()
+    report = engine.discover(domains, int(body.get("interval_seconds") or 3600))
+    _Platform.update_state(evidence=engine.evidence.records)
     emit_platform_event(
         "PLATFORM_DISCOVERY_COMPLETED",
         f"discovery over {len(report.get('sources_run') or [])} domains",
@@ -96,9 +140,9 @@ def platform_bom(user: str = Depends(require_permission("crypto.read"))):
 def platform_drift(body: dict[str, Any],
                    user: str = Depends(require_permission("crypto.read"))):
     baseline = body.get("baseline") or {}
-    engine = _Platform.engine()
     if baseline:
-        engine.drift.set_baseline(baseline)
+        _Platform.update_state(baseline=baseline)
+    engine = _Platform.engine()
     result = engine.drift_check(body.get("live") or {})
     emit_platform_event(
         "PLATFORM_DRIFT_EVALUATED",
@@ -115,9 +159,9 @@ def platform_drift(body: dict[str, Any],
 @router.post("/risk")
 def platform_risk(body: dict[str, Any],
                   user: str = Depends(require_permission("crypto.read"))):
-    engine = _Platform.engine()
     if body.get("domains"):
-        engine.discover(body["domains"])
+        _Platform.update_state(domains=body["domains"])
+    engine = _Platform.engine()
     result = engine.risk(body.get("asset") or None)
     emit_platform_event(
         "PLATFORM_RISK_SCORED",
@@ -130,9 +174,9 @@ def platform_risk(body: dict[str, Any],
 @router.post("/blast")
 def platform_blast(body: dict[str, Any],
                    user: str = Depends(require_permission("crypto.read"))):
-    engine = _Platform.engine()
     if body.get("domains"):
-        engine.discover(body["domains"])
+        _Platform.update_state(domains=body["domains"])
+    engine = _Platform.engine()
     seed = str(body.get("seed") or "")
     result = engine.blast(seed, int(body.get("max_depth") or 10))
     emit_platform_event(
@@ -146,9 +190,9 @@ def platform_blast(body: dict[str, Any],
 @router.post("/whatif")
 def platform_whatif(body: dict[str, Any],
                     user: str = Depends(require_permission("crypto.manage"))):
-    engine = _Platform.engine()
     if body.get("domains"):
-        engine.discover(body["domains"])
+        _Platform.update_state(domains=body["domains"])
+    engine = _Platform.engine()
     current = str(body.get("current") or "")
     target = str(body.get("target") or "")
     result = engine.what_if(current, target, body.get("protocols"))

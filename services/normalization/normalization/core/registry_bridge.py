@@ -12,6 +12,11 @@ recognize the input.
 
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 from typing import Any, Optional
 
 try:  # heavy import kept guarded so the service stays import-light
@@ -44,7 +49,11 @@ def _info(raw: str) -> Optional[Any]:
         return None
     try:
         info = parse_algorithm(str(raw))
-    except Exception:
+    except Exception as _handler_exc:
+        logger.warning(
+            "exception_suppressed",
+            extra={"error_type": type(_handler_exc).__name__},
+        )
         return None
     return info if getattr(info, "recognized", False) else None
 

@@ -109,7 +109,7 @@ def _days_until(iso: str | None) -> int | None:
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return max(0, (dt - datetime.now(timezone.utc)).days)
-    except Exception:
+    except (TypeError, ValueError, OverflowError):
         return None
 
 

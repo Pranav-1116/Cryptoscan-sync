@@ -2,8 +2,9 @@
 
 _Which surfaces are production-supported, how ready the whole thing is, and
 what is still open. Sources: `shared_models/capability_maturity.py`
-(generated into [CAPABILITY-MATURITY.md](../CAPABILITY-MATURITY.md)) and
-[PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md)._
+(generated into [CAPABILITY-MATURITY.md](../CAPABILITY-MATURITY.md)), the
+[current navigation reference](../NAVIGATION-FEATURE-REFERENCE.md), and the
+[root PRODUCTION-READINESS.md](../../PRODUCTION-READINESS.md)._
 
 ![Scope and readiness](img/09-scope-readiness.png)
 
@@ -24,10 +25,13 @@ the sidebar and page header. Changing a tier is a one-line, reviewed change.
 
 **GA** — scanners, assets, certificates, network, cloud, DevSecOps (SBOM /
 binary / firmware), vendors, live scanners, findings, crypto inventory and
-registry, drift, CBOM / Technology BOM, PQC, libraries, policies, compliance,
-evidence, reports, alerts, command center, live stream, search, identity,
-integrations, security center, settings, system health, scope, admin, login,
-password reset.
+registry, drift, the shared CBOM / Technology BOM model, PQC, libraries,
+policies, compliance, evidence, reports, alerts, command center, live stream,
+search, identity, integrations, security center, settings, system health,
+scope, admin, login and password reset. The correlated binary BOM bundle
+(static NBOM, vulnerability BOM and technology snapshot) is available for
+supervised pilot / pre-production evaluation and remains subject to its
+bounded-evidence limits.
 
 **Beta** — hardware, telecom, runtime, live environment, CMDB, catalog,
 graph / dependency graph, HBOM, agility, risk, migration, priorities,
@@ -44,11 +48,13 @@ The per-route reasoning ("why this tier") is in
 
 ## How production-ready is it?
 
-**~80 % overall; the core path ~92 %.** The core path is source scan →
-evidence chain → normalise → policy → dedup → CBOM → drift → gate → alert,
-running as separate api / worker / monitor processes on PostgreSQL + Redis
-with production guards on. That path has been exercised end to end on a real
-PostgreSQL 16, and every defect it exposed is fixed with a regression test.
+**Use the explicit production-readiness gate, not a percentage.** The core
+path is source scan → evidence chain → normalise → policy → dedup → shared
+CBOM/Technology BOM → drift → gate → alert, running as separate api / worker /
+monitor processes on PostgreSQL + Redis with production guards on. The binary
+BOM family is a supervised pilot / pre-production capability: implementation
+and targeted tests do not establish unattended regulated-production approval,
+customer validation, external certification, or complete estate coverage.
 
 ### What was verified on 2026-09-23
 
@@ -85,7 +91,7 @@ database said otherwise.
 | **The soak is ~20 minutes, not 7 days.** Leaks and stalls show over days; one was found in 20 minutes. | largest | `scripts/soak.py --hours 168` on a host that stays up; pass criteria in [soak-evidence/README.md](../soak-evidence/README.md) |
 | **No true capacity number.** Every virtual user shared one identity, so the rate limit was the ceiling; the API held but its capacity is unmeasured. | medium | re-run `load_test.py` with one API key per virtual user |
 | **Neo4j, cloud, container never burned live.** Skipped honestly where the host lacked them; also exactly the beta surfaces. | medium | `burn_in.py --target all` on a host with all three |
-| **Crashed job stays QUEUED forever.** No visibility timeout or dead-letter on the job queue. | small–medium | requeue / reaper on `scan_jobs` |
+| **Queue recovery needs target-host qualification.** Lease/requeue and stale-row recovery are implemented, but a real Redis kill/recovery drill remains operational evidence. | small–medium | run `scripts/queue_kill9_drill.py` against the target stack and attach the artifact to the root readiness gate |
 | **Single api / worker process tested.** `deploy/ha/` exists, not exercised in this pass. | small | HA drill on the target host |
 | **External attestation** (SOC 2 / ISO 27001 of the product), independent pen test, multi-site DR, 24/7 on-call | — | company actions; [soc2-readiness-gap-analysis.md](../soc2-readiness-gap-analysis.md) |
 
@@ -107,8 +113,9 @@ found._
   basenames across services coexist; a 120 s per-test timeout bounds the
   worst case.
 - **`make test-frontend`.** `tsc --noEmit`, then vitest + Testing Library on
-  jsdom with `fetch` mocked: the app boots and routes; every one of the 71
-  pages mounts without throwing; UI primitives; the API client's
+  jsdom with `fetch` mocked: the app boots and routes; every page surface
+  mounts without throwing; the six-section sidebar and route map are separately
+  maintained in the navigation reference; UI primitives; the API client's
   auth/refresh/error shaping; maturity lookup matches the generated table.
   Smoke-level by design — a page that throws on mount cannot ship.
 - **`make test-live`.** Tests marked `live` need a real network or a real
