@@ -85,7 +85,15 @@ class VendorProfileEvidenceWrite(BaseModel):
     evidence_reference: str = Field(min_length=1, max_length=500)
     status: Literal["PASS", "FAIL", "PENDING", "EXPIRED", "UNAVAILABLE", "UNVERIFIED"] = "UNVERIFIED"
     captured_at: datetime | None = None
+    acquired_at: datetime | None = None
+    expires_at: datetime | None = None
     issuer: str | None = None
+    source_system: str | None = None
+    collection_method: Literal["UPLOAD_REFERENCE", "API_REFERENCE", "QUESTIONNAIRE", "OBSERVATION", "ATTESTATION", "OTHER"] = "OTHER"
+    collector: str | None = None
+    reviewed_by: str | None = None
+    content_type: str | None = None
+    redaction_status: Literal["NOT_APPLICABLE", "REDACTED", "VERIFIED_NO_SECRETS", "UNKNOWN"] = "UNKNOWN"
     limitations: list[str] = Field(default_factory=list)
     sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
@@ -324,6 +332,7 @@ def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db:
             completeness_json=completeness,
             content_sha256=profile_hash(profile),
             captured_at=now_utc(),
+            created_by=user,
         )
         result["vendor_profile"] = {
             "revision": revision.revision,
@@ -403,6 +412,7 @@ def get_vendor_profile(vendor_id: str, user: str = Depends(get_current_user), db
             "source": revision.source,
             "content_sha256": revision.content_sha256,
             "captured_at": revision.captured_at.isoformat() if revision.captured_at else None,
+            "created_by": revision.created_by,
             "reviewed_by": revision.reviewed_by,
             "review_notes": revision.review_notes,
         },
@@ -455,6 +465,7 @@ def put_vendor_profile(
         completeness_json=completeness,
         content_sha256=profile_hash(profile),
         captured_at=now_utc(),
+        created_by=user,
         reviewed_by=body.reviewed_by,
         review_notes=body.review_notes,
     )
@@ -502,6 +513,7 @@ def append_vendor_profile_evidence(
         completeness_json=completeness,
         content_sha256=profile_hash(updated),
         captured_at=now_utc(),
+        created_by=user,
         reviewed_by=None,
         review_notes=f"Evidence appended by {user}",
     )
@@ -540,6 +552,7 @@ def expire_vendor_profile(
         completeness_json=current.completeness_json,
         content_sha256=current.content_sha256,
         captured_at=now_utc(),
+        created_by=user,
         reviewed_by=user,
         review_notes=reason,
     )

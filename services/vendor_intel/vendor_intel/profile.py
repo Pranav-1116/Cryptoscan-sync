@@ -339,8 +339,15 @@ class ProfileEvidence(ProfileModel):
     evidence_reference: str = Field(min_length=1)
     status: Literal["PASS", "FAIL", "PENDING", "EXPIRED", "UNAVAILABLE", "UNVERIFIED"] = "UNVERIFIED"
     captured_at: datetime | None = None
+    acquired_at: datetime | None = None
+    expires_at: datetime | None = None
     issuer: str | None = None
+    source_system: str | None = None
+    collection_method: Literal["UPLOAD_REFERENCE", "API_REFERENCE", "QUESTIONNAIRE", "OBSERVATION", "ATTESTATION", "OTHER"] = "OTHER"
+    collector: str | None = None
     reviewed_by: str | None = None
+    content_type: str | None = None
+    redaction_status: Literal["NOT_APPLICABLE", "REDACTED", "VERIFIED_NO_SECRETS", "UNKNOWN"] = "UNKNOWN"
     limitations: list[str] = Field(default_factory=list)
     sha256: str | None = None
 

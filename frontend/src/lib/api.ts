@@ -2636,7 +2636,7 @@ export interface VendorProfileResponse {
   status: string;
   profile: Record<string, unknown>;
   completeness: VendorProfileCompleteness;
-  audit: { source: string; content_sha256?: string | null; captured_at?: string | null; reviewed_by?: string | null; review_notes?: string | null };
+  audit: { source: string; content_sha256?: string | null; captured_at?: string | null; created_by?: string | null; reviewed_by?: string | null; review_notes?: string | null };
 }
 export interface VendorProfileWriteResponse {
   vendor_id: string;
@@ -2644,7 +2644,7 @@ export interface VendorProfileWriteResponse {
   status: string;
   profile: Record<string, unknown>;
   completeness: VendorProfileCompleteness;
-  audit?: { source: string; content_sha256?: string };
+  audit?: { source: string; content_sha256?: string; created_by?: string };
 }
 export const apiVendors = (): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
   call("/api/v1/vendors");

@@ -27,6 +27,7 @@ class VendorProfileRevision(BaseModel, TenantScoped):
     completeness_json: Mapped[dict] = mapped_column(JSON, nullable=False)
     content_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     captured_at: Mapped[datetime] = mapped_column(nullable=False)
+    created_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     reviewed_by: Mapped[str | None] = mapped_column(String(160), nullable=True)
     review_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
