@@ -28,6 +28,7 @@ class VendorIdentity(ProfileModel):
     vendor_id: str | None = Field(default=None, max_length=120)
     duns_number: str | None = Field(default=None, max_length=32)
     vendor_type: Literal["OEM", "ISV", "VAR", "MSP", "CSP", "SYSTEM_INTEGRATOR", "CONSULTING", "OTHER"] | None = None
+    criticality: Literal["critical", "high", "medium", "low", "unknown"] = "unknown"
     vendor_tier: int | None = Field(default=None, ge=1, le=99)
     parent_company: str | None = None
     ownership_structure: str | None = None
@@ -424,6 +425,7 @@ _REQUIRED_PATHS = (
     ("identity.legal_name", lambda p: p.identity.legal_name),
     ("identity.vendor_id", lambda p: p.identity.vendor_id),
     ("identity.vendor_type", lambda p: p.identity.vendor_type),
+    ("identity.criticality", lambda p: p.identity.criticality if p.identity.criticality != "unknown" else None),
     ("identity.vendor_tier", lambda p: p.identity.vendor_tier),
     ("identity.ownership_structure", lambda p: p.identity.ownership_structure),
     ("identity.headquarters_location", lambda p: p.identity.headquarters_location),

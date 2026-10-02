@@ -32,6 +32,7 @@ def test_profile_represents_all_due_diligence_sections():
                 "legal_name": "Example Vendor",
                 "vendor_id": "ext-1",
                 "vendor_type": "ISV",
+                "criticality": "high",
                 "vendor_tier": 1,
                 "ownership_structure": "Private company",
                 "headquarters_location": "India",
