@@ -357,6 +357,8 @@ def put_vendor_profile(
             )
         if not body.reviewed_by:
             raise HTTPException(status_code=422, detail="reviewed_by is required for an approved profile")
+        if body.reviewed_by != user:
+            raise HTTPException(status_code=403, detail="reviewed_by must match the authenticated reviewer")
 
     revision = VendorProfileRepository(db).create_revision(
         vendor_id,
