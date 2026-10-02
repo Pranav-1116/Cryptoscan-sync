@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -114,8 +114,12 @@ const NODE_TONE_COLOR: Record<string, string> = {
 function NetworkInventoryPanel() {
   const inventory = usePollingApi(apiNetworkInventory, 15000);
   const risk = usePollingApi(apiNetworkInventoryRisk, 15000);
+  const topology = usePollingApi(apiNetworkInventoryTopology, 15000);
+  const drift = usePollingApi(apiNetworkConfigurationDrift, 15000);
   const snapshot = inventory.data as NetworkInventoryResponse | null;
   const riskData = risk.data as NetworkInventoryRiskResponse | null;
+  const topologyData = topology.data as NetworkInventoryTopologyResponse | null;
+  const driftData = drift.data as NetworkConfigurationDriftResponse | null;
   const sectionCount = snapshot?.inventory ? Object.keys(snapshot.inventory).length : 0;
   const devices = Array.isArray(snapshot?.inventory?.devices) ? snapshot!.inventory.devices : [];
   return (
@@ -141,6 +145,12 @@ function NetworkInventoryPanel() {
             </div>
           )}
           {riskData?.unknowns?.length ? <div className="dim">Unknowns: {riskData.unknowns.slice(0, 4).join(" · ")}</div> : null}
+          {topologyData && <div className="dim" style={{ marginTop: 8 }}>
+            Structured graph: {topologyData.node_count} nodes · {topologyData.edge_count} observed edges · {topologyData.unknown_endpoints.length} unknown endpoints
+          </div>}
+          {driftData && <div className="dim" style={{ marginTop: 4 }}>
+            Configuration: {driftData.status} · {driftData.drifted_comparisons} drifted comparisons · {driftData.unknown_comparisons} unknown comparisons
+          </div>}
         </>
       )}
     </Panel>

@@ -72,6 +72,7 @@ class GlobalNetworkDiscoveryEngine:
         self.plugins: list[NetworkVendorPlugin] = []
         self._findings: list[dict[str, Any]] = []
         self._plugin_topology: list[dict[str, Any]] = []
+        self._inventory_observations: list[dict[str, Any]] = []
 
     # ------------------------------------------------------------- defaults
 
@@ -258,6 +259,12 @@ class GlobalNetworkDiscoveryEngine:
         for device in devices:
             if not device.get("ip") and not device.get("asset_identity"):
                 continue
+            # Keep only scrubbed, non-secret observations for the structured
+            # inventory adapter. Runtime credential material never enters this
+            # report path.
+            safe_observation = scrub_all([dict(device)])[0]
+            safe_observation["plugin"] = plugin.vendor
+            self._inventory_observations.append(safe_observation)
             try:
                 normalized = plugin.normalize(device)
             except Exception:  # noqa: BLE001
@@ -414,6 +421,7 @@ class GlobalNetworkDiscoveryEngine:
 
         observed_report = {
             "assets": self.assets.to_dicts(),
+            "inventory_observations": scrub_all(self._inventory_observations),
             "scan_metadata": self.metadata.to_dict(),
         }
         structured_inventory = inventory_from_discovery(observed_report)

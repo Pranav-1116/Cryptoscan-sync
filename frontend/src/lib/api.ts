@@ -3826,6 +3826,7 @@ export interface NetworkInventoryCompleteness {
   status: "COMPLETE" | "INCOMPLETE";
   score: number;
   missing: string[];
+  missing_sections?: string[];
   next_actions: string[];
 }
 
@@ -3878,3 +3879,46 @@ export const apiSaveNetworkInventory = (
 
 export const apiNetworkInventoryHistory = (inventoryId = "default"): Promise<ApiResult<{ inventory_id: string; revisions: NetworkInventoryResponse[] }>> =>
   call(`/api/v1/network/inventory/history?inventory_id=${encodeURIComponent(inventoryId)}`);
+
+export interface NetworkInventoryTopologyResponse {
+  inventory_id: string;
+  revision: number | null;
+  graph: { nodes: string[]; edges: Array<Record<string, any>> };
+  edge_counts: Record<string, number>;
+  node_count: number;
+  edge_count: number;
+  unlinked_devices: string[];
+  unknown_endpoints: string[];
+  unverified_edges: number;
+  neo4j_cypher: string;
+}
+
+export interface NetworkConfigurationDriftResponse {
+  inventory_id?: string;
+  revision?: number | null;
+  status: "IN_SYNC" | "DRIFTED" | "UNKNOWN";
+  devices: Array<{ device_id: string; comparisons: Array<{ comparison: string; status: string; reason: string }> }>;
+  drifted_comparisons: number;
+  unknown_comparisons: number;
+  raw_configuration_stored: false;
+}
+
+export const apiNetworkInventoryTopology = (): Promise<ApiResult<NetworkInventoryTopologyResponse>> =>
+  call("/api/v1/network/inventory/topology");
+
+export const apiNetworkConfigurationDrift = (): Promise<ApiResult<NetworkConfigurationDriftResponse>> =>
+  call("/api/v1/network/inventory/configuration/drift");
+
+export const apiNetworkInventoryCoverage = (): Promise<ApiResult<Record<string, any>>> =>
+  call("/api/v1/network/inventory/coverage");
+
+export const apiDiscoverNetworkInventory = (body: {
+  scope_specs: Array<string | Record<string, unknown>>;
+  inventory_id?: string;
+  authorization_scope?: string;
+  plugins?: string[];
+}): Promise<ApiResult<NetworkInventoryResponse & { scan_metadata?: Record<string, unknown>; asset_summary?: Record<string, number> }>> =>
+  call("/api/v1/network/inventory/discover", {
+    method: "POST",
+    body: JSON.stringify(body),
+  });

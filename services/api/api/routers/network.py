@@ -36,6 +36,11 @@ class NetworkInventoryDiscoveryRequest(BaseModel):
     scope_specs: list[str | dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=100)
     inventory_id: str = Field(default="default", min_length=1, max_length=160)
     authorization_scope: str = Field(default="", max_length=200)
+    plugins: list[str] = Field(default_factory=list, max_length=10)
+
+
+class NetworkInventoryAnalysisRequest(BaseModel):
+    inventory: dict[str, Any]
 
 
 class HostScanRequest(BaseModel):
@@ -754,9 +759,26 @@ def discover_network_inventory(
     from network_scanner.inventory_adapter import inventory_from_discovery
 
     try:
+        from api.security.target_validation import validate_network_target, validate_probe_target
+
+        # The enterprise parser supports many scope forms, but all concrete
+        # hosts/CIDRs still pass through the same SSRF and metadata guard used
+        # by the legacy network scanner routes.
+        for index, scope in enumerate(body.scope_specs):
+            if isinstance(scope, str):
+                target = scope.strip()
+                try:
+                    validate_network_target(target)
+                except ValueError:
+                    validate_probe_target(target, label=f"scope_specs[{index}]")
+            elif isinstance(scope, dict):
+                for network_index, network in enumerate(scope.get("networks") or []):
+                    validate_network_target(str(network))
+                for host_index, host in enumerate(scope.get("hosts") or []):
+                    validate_probe_target(str(host), label=f"scope_specs[{index}].hosts[{host_index}]")
         report = run_network_discovery(
             body.scope_specs,
-            plugins=["none"],
+            plugins=body.plugins or ["none"],
             authorization_scope=body.authorization_scope or f"tenant:{user}",
         )
         document = inventory_from_discovery(report, inventory_id=body.inventory_id)
@@ -784,4 +806,120 @@ def discover_network_inventory(
         "scan_metadata": report.get("scan_metadata"),
         "asset_summary": report.get("asset_summary"),
         "network_inventory_summary": report.get("network_inventory_summary"),
+    }
+
+
+@router.get("/network/inventory/topology")
+def get_network_inventory_topology(
+    inventory_id: str = "default",
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Return the typed topology graph plus explicit integrity gaps."""
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.inventory.network_inventory import NetworkInventoryDocument, parse_inventory, topology_graph
+
+    revision = NetworkInventoryRepository(db).latest(inventory_id)
+    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    result = topology_graph(document)
+    result.update({"inventory_id": inventory_id, "revision": revision.revision if revision else None})
+    return result
+
+
+@router.post("/network/inventory/topology/validate")
+def validate_network_inventory_topology(
+    body: NetworkInventoryAnalysisRequest,
+    user: str = Depends(get_current_user),
+):
+    from network_scanner.inventory.network_inventory import parse_inventory, topology_graph
+    from pydantic import ValidationError
+
+    try:
+        document = parse_inventory(body.inventory)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+    result = topology_graph(document)
+    result["valid"] = not result["unknown_endpoints"]
+    result["warnings"] = []
+    if result["unknown_endpoints"]:
+        result["warnings"].append("topology contains endpoints that are not in the device inventory")
+    if result["unlinked_devices"]:
+        result["warnings"].append("one or more devices have no observed topology link")
+    if result["unverified_edges"]:
+        result["warnings"].append("one or more topology edges are not confirmed or observed")
+    return result
+
+
+@router.get("/network/inventory/configuration/drift")
+def get_network_configuration_drift(
+    inventory_id: str = "default",
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.inventory.network_inventory import NetworkInventoryDocument, configuration_drift, parse_inventory
+
+    revision = NetworkInventoryRepository(db).latest(inventory_id)
+    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    result = configuration_drift(document)
+    result.update({"inventory_id": inventory_id, "revision": revision.revision if revision else None})
+    return result
+
+
+@router.post("/network/inventory/configuration/drift")
+def analyze_network_configuration_drift(
+    body: NetworkInventoryAnalysisRequest,
+    user: str = Depends(get_current_user),
+):
+    from network_scanner.inventory.network_inventory import configuration_drift, parse_inventory
+    from pydantic import ValidationError
+
+    try:
+        document = parse_inventory(body.inventory)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+    return configuration_drift(document)
+
+
+@router.get("/network/inventory/coverage")
+def get_network_inventory_coverage(
+    inventory_id: str = "default",
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Expose section-level readiness instead of a misleading single green score."""
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.inventory.network_inventory import (
+        NetworkInventoryDocument,
+        configuration_drift,
+        inventory_completeness,
+        inventory_risk,
+        parse_inventory,
+        topology_graph,
+    )
+
+    revision = NetworkInventoryRepository(db).latest(inventory_id)
+    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    return {
+        "inventory_id": inventory_id,
+        "revision": revision.revision if revision else None,
+        "completeness": inventory_completeness(document),
+        "risk": inventory_risk(document),
+        "topology": topology_graph(document),
+        "configuration_drift": configuration_drift(document),
+        "section_states": {
+            "devices": document.devices,
+            "topology": document.topology.observation,
+            "configuration": document.configuration.observation,
+            "network_services": document.network_services.observation,
+            "security_controls": document.security_controls.observation,
+            "wan_connectivity": document.wan_connectivity.observation,
+            "monitoring": document.monitoring.observation,
+            "wireless_networks": document.wireless_networks.observation,
+            "firmware_software": document.firmware_software.observation,
+            "documentation": document.documentation.observation,
+            "evidence": document.evidence,
+        },
     }

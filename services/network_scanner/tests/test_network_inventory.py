@@ -4,10 +4,12 @@ import pytest
 
 from network_scanner.inventory.network_inventory import (
     NetworkInventoryDocument,
+    configuration_drift,
     inventory_completeness,
     inventory_hash,
     inventory_risk,
     parse_inventory,
+    topology_graph,
 )
 from network_scanner.inventory_adapter import inventory_from_discovery
 
@@ -62,3 +64,62 @@ def test_discovery_adapter_keeps_unknown_areas_unknown() -> None:
     assert document.topology.physical_connections == []
     assert document.evidence[0].status == "UNVERIFIED"
     assert "topology" in inventory_completeness(document)["missing_sections"]
+
+
+def test_discovery_adapter_uses_scrubbed_plugin_observations_for_interfaces() -> None:
+    document = inventory_from_discovery({
+        "assets": [{"asset_identity": "r1", "ip_addresses": ["10.0.0.1"], "device_type": "router", "source": "snmp"}],
+        "inventory_observations": [{
+            "asset_identity": "r1", "ip": "10.0.0.1", "vendor": "Example", "interfaces": [{"ifDescr": "Gi0/1", "ifOperStatus": "up"}],
+        }],
+        "scan_metadata": {},
+    })
+    assert document.devices[0].discovery_source == "SNMP"
+    assert document.devices[0].interfaces[-1].name == "Gi0/1"
+
+
+def test_discovery_adapter_promotes_only_observed_graph_edges() -> None:
+    document = inventory_from_discovery({
+        "assets": [
+            {"asset_identity": "r1", "ip_addresses": ["10.0.0.1"], "device_type": "router"},
+            {"asset_identity": "r2", "ip_addresses": ["10.0.0.2"], "device_type": "router"},
+        ],
+        "topology": {"edges": [{"source": "r1", "target": "r2", "relationship": "CONNECTED_TO"}]},
+        "scan_metadata": {},
+    })
+    assert len(document.topology.graph_edges) == 1
+    assert document.topology.graph_edges[0].observation.status == "OBSERVED"
+    assert topology_graph(document)["unknown_endpoints"] == []
+
+
+def test_configuration_artifacts_must_be_secret_free() -> None:
+    with pytest.raises(ValueError, match="raw or secret-bearing"):
+        parse_inventory({"configuration": {"snapshots": [{"snapshot_id": "s", "device_id": "r1", "kind": "RUNNING", "secret_free": False}]}})
+
+
+def test_configuration_drift_requires_hashes_and_detects_differences() -> None:
+    document = parse_inventory({
+        "devices": [{"device_id": "r1", "device_type": "router", "management_ip": "10.0.0.1"}],
+        "configuration": {
+            "snapshots": [
+                {"snapshot_id": "base", "device_id": "r1", "kind": "BASELINE", "content_sha256": "a" * 64},
+                {"snapshot_id": "run", "device_id": "r1", "kind": "RUNNING", "content_sha256": "b" * 64},
+            ]
+        },
+    })
+    result = configuration_drift(document)
+    assert result["status"] == "DRIFTED"
+    assert result["drifted_comparisons"] == 1
+    assert result["raw_configuration_stored"] is False
+
+
+def test_topology_graph_reports_unknown_endpoints_and_unverified_edges() -> None:
+    document = parse_inventory({
+        "devices": [{"device_id": "r1", "device_type": "router"}],
+        "topology": {"graph_edges": [{
+            "source": "r1", "target": "not-in-inventory", "relationship": "ROUTES_TO",
+        }]},
+    })
+    result = topology_graph(document)
+    assert result["unknown_endpoints"] == ["not-in-inventory"]
+    assert result["unverified_edges"] == 1

@@ -21,6 +21,18 @@ class InventoryModel(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, populate_by_name=True)
 
 
+ObservationStatus = Literal["CONFIRMED", "OBSERVED", "INCOMPLETE", "UNKNOWN", "NOT_APPLICABLE", "STALE"]
+DriftStatus = Literal["IN_SYNC", "DRIFTED", "NOT_ASSESSED", "UNKNOWN"]
+
+
+class ObservationMetadata(InventoryModel):
+    status: ObservationStatus = "UNKNOWN"
+    evidence_ids: list[str] = Field(default_factory=list)
+    observed_at: datetime | None = None
+    source: str | None = None
+    limitation: str | None = None
+
+
 class Location(InventoryModel):
     datacenter: str | None = None
     building: str | None = None
@@ -132,6 +144,7 @@ class NetworkDevice(InventoryModel):
     appliance_capabilities: NetworkApplianceCapabilities = Field(default_factory=NetworkApplianceCapabilities)
     discovery_source: Literal["SNMP", "SSH", "API", "NMAP", "CONFIG_IMPORT", "MANUAL", "OTHER"] = "MANUAL"
     last_seen: datetime | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class Cable(InventoryModel):
@@ -151,6 +164,22 @@ class PhysicalConnection(InventoryModel):
     cable: Cable = Field(default_factory=Cable)
     redundant: bool | None = None
     status: Literal["UP", "DOWN", "UNKNOWN"] = "UNKNOWN"
+    bandwidth: str | None = None
+    latency: str | None = None
+    vlan: str | None = None
+    routing_domain: str | None = None
+    trust_zone: str | None = None
+    critical_path: bool | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
+
+
+class TopologyGraphEdge(InventoryModel):
+    source: str
+    target: str
+    relationship: Literal["CONNECTED_TO", "ROUTES_TO", "PROTECTS", "TERMINATES_TLS_FOR", "DEPENDS_ON", "AUTHENTICATES_TO", "USES_CERTIFICATE", "USES_VPN", "USES_IPSEC", "USES_TLS"] = "CONNECTED_TO"
+    bidirectional: bool = False
+    metadata: dict[str, str] = Field(default_factory=dict)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class LogicalSegment(InventoryModel):
@@ -167,6 +196,10 @@ class LogicalSegment(InventoryModel):
     bgp_as_number: int | None = None
     connected_segments: list[str] = Field(default_factory=list)
     segment_type: Literal["PRODUCTION", "DEVELOPMENT", "MANAGEMENT", "OUT_OF_BAND", "DMZ", "GUEST", "RESTRICTED", "OTHER"] | None = None
+    bandwidth_capacity: str | None = None
+    trust_boundary: str | None = None
+    segmentation_controls: list[str] = Field(default_factory=list)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class DataFlow(InventoryModel):
@@ -180,6 +213,9 @@ class DataFlow(InventoryModel):
     average_bandwidth: str | None = None
     critical: bool | None = None
     bottlenecks: list[str] = Field(default_factory=list)
+    trust_zone: str | None = None
+    qos_class: str | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class TopologySection(InventoryModel):
@@ -189,12 +225,55 @@ class TopologySection(InventoryModel):
     logical_topology_reference: str | None = None
     cabling: list[Cable] = Field(default_factory=list)
     physical_connections: list[PhysicalConnection] = Field(default_factory=list)
+    graph_edges: list[TopologyGraphEdge] = Field(default_factory=list)
     redundant_paths: list[str] = Field(default_factory=list)
     cable_management: str | None = None
     network_segments: list[LogicalSegment] = Field(default_factory=list)
     data_flows: list[DataFlow] = Field(default_factory=list)
     application_flows_reference: str | None = None
     critical_paths: list[str] = Field(default_factory=list)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
+
+
+class ConfigurationSnapshot(InventoryModel):
+    snapshot_id: str
+    device_id: str
+    kind: Literal["RUNNING", "STARTUP", "BASELINE", "TEMPLATE", "BACKUP"]
+    artifact_reference: str | None = None
+    content_sha256: str | None = None
+    captured_at: datetime | None = None
+    version: str | None = None
+    source: Literal["SNMP", "SSH", "API", "CONFIG_IMPORT", "MANUAL", "OTHER"] = "OTHER"
+    secret_free: bool = True
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
+
+    @field_validator("content_sha256")
+    @classmethod
+    def validate_content_hash(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+            raise ValueError("configuration content_sha256 must be a 64-character hexadecimal digest")
+        return value
+
+    @field_validator("secret_free")
+    @classmethod
+    def require_secret_free(cls, value: bool) -> bool:
+        if not value:
+            raise ValueError("raw or secret-bearing configuration artifacts are not accepted")
+        return value
+
+
+class ConfigurationChange(InventoryModel):
+    change_id: str
+    device_id: str
+    changed_at: datetime | None = None
+    change_ticket_reference: str | None = None
+    actor_reference: str | None = None
+    summary: str | None = None
+    before_snapshot_id: str | None = None
+    after_snapshot_id: str | None = None
+    approved: bool | None = None
+    emergency: bool | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class DeviceConfiguration(InventoryModel):
@@ -206,7 +285,11 @@ class DeviceConfiguration(InventoryModel):
     version_control_reference: str | None = None
     change_tracking_reference: str | None = None
     drift_detection_enabled: bool | None = None
+    drift_status: DriftStatus = "NOT_ASSESSED"
+    drift_paths: list[str] = Field(default_factory=list)
+    baseline_snapshot_id: str | None = None
     template_reference: str | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class RoutingConfiguration(InventoryModel):
@@ -253,9 +336,15 @@ class SecurityConfiguration(InventoryModel):
 
 class ConfigurationSection(InventoryModel):
     device_configurations: list[DeviceConfiguration] = Field(default_factory=list)
+    snapshots: list[ConfigurationSnapshot] = Field(default_factory=list)
+    changes: list[ConfigurationChange] = Field(default_factory=list)
+    configuration_repository_reference: str | None = None
+    drift_detection_reference: str | None = None
+    last_drift_check_at: datetime | None = None
     routing: RoutingConfiguration = Field(default_factory=RoutingConfiguration)
     switching: SwitchingConfiguration = Field(default_factory=SwitchingConfiguration)
     security: SecurityConfiguration = Field(default_factory=SecurityConfiguration)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class DnsService(InventoryModel):
@@ -316,6 +405,7 @@ class NetworkServices(InventoryModel):
     ntp: NtpService = Field(default_factory=NtpService)
     ipam: IpamService = Field(default_factory=IpamService)
     authentication: NetworkAuthentication = Field(default_factory=NetworkAuthentication)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class VpnConfiguration(InventoryModel):
@@ -340,7 +430,10 @@ class TlsInspection(InventoryModel):
 
 class NetworkSecurityControls(InventoryModel):
     internet_edge: list[str] = Field(default_factory=list)
+    perimeter_architecture: str | None = None
     dmz_reference: str | None = None
+    ingress_controls: list[str] = Field(default_factory=list)
+    egress_controls: list[str] = Field(default_factory=list)
     inbound_rules: list[str] = Field(default_factory=list)
     outbound_rules: list[str] = Field(default_factory=list)
     ddos_protection: list[str] = Field(default_factory=list)
@@ -360,6 +453,7 @@ class NetworkSecurityControls(InventoryModel):
     quarantine_network: str | None = None
     guest_network: str | None = None
     device_registration: str | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class IspCircuit(InventoryModel):
@@ -375,6 +469,12 @@ class IspCircuit(InventoryModel):
     bgp_peers: list[str] = Field(default_factory=list)
     route_advertisements: list[str] = Field(default_factory=list)
     prefix_filters: list[str] = Field(default_factory=list)
+    sla_reference: str | None = None
+    latency: str | None = None
+    jitter: str | None = None
+    packet_loss: str | None = None
+    redundancy: list[str] = Field(default_factory=list)
+    failover_tested_on: date | None = None
 
 
 class MplsConnectivity(InventoryModel):
@@ -413,6 +513,7 @@ class WanConnectivity(InventoryModel):
     sdwan: SdwanConnectivity = Field(default_factory=SdwanConnectivity)
     cloud: CloudConnectivity = Field(default_factory=CloudConnectivity)
     datacenter_interconnect: DatacenterInterconnect = Field(default_factory=DatacenterInterconnect)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class MonitoringSection(InventoryModel):
@@ -438,6 +539,7 @@ class MonitoringSection(InventoryModel):
     infrastructure_as_code: list[str] = Field(default_factory=list)
     api_access_reference: str | None = None
     sdn_controllers: list[str] = Field(default_factory=list)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class WirelessNetworks(InventoryModel):
@@ -456,6 +558,11 @@ class WirelessNetworks(InventoryModel):
     rogue_ap_detection: bool | None = None
     wireless_ids_ips: str | None = None
     mac_filtering: str | None = None
+    authentication_methods: list[str] = Field(default_factory=list)
+    channel_utilization: dict[str, str] = Field(default_factory=dict)
+    power_levels: dict[str, str] = Field(default_factory=dict)
+    rogue_access_points_reference: str | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class FirmwareSoftwareSection(InventoryModel):
@@ -470,6 +577,7 @@ class FirmwareSoftwareSection(InventoryModel):
     orchestration_platforms: list[str] = Field(default_factory=list)
     network_analytics: list[str] = Field(default_factory=list)
     automation_frameworks: list[str] = Field(default_factory=list)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class DocumentationSection(InventoryModel):
@@ -491,6 +599,7 @@ class DocumentationSection(InventoryModel):
     maintenance_contracts_reference: str | None = None
     vendor_contacts_reference: str | None = None
     spare_parts_reference: str | None = None
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
 
 
 class InventoryEvidence(InventoryModel):
@@ -528,6 +637,8 @@ class NetworkInventoryDocument(InventoryModel):
     firmware_software: FirmwareSoftwareSection = Field(default_factory=FirmwareSoftwareSection)
     documentation: DocumentationSection = Field(default_factory=DocumentationSection)
     evidence: list[InventoryEvidence] = Field(default_factory=list)
+    observation: ObservationMetadata = Field(default_factory=ObservationMetadata)
+    limitations: list[str] = Field(default_factory=list)
 
     @field_validator("inventory_schema")
     @classmethod
@@ -564,10 +675,82 @@ def parse_inventory(value: dict[str, Any]) -> NetworkInventoryDocument:
     return NetworkInventoryDocument.model_validate(value)
 
 
+def configuration_drift(document: NetworkInventoryDocument) -> dict[str, Any]:
+    """Compare only recorded hashes; raw configurations are never accepted.
+
+    A missing hash is UNKNOWN/NOT_ASSESSED, not IN_SYNC. This keeps a missing
+    backup or baseline from being presented as a clean configuration.
+    """
+    snapshots = document.configuration.snapshots
+    by_device: dict[str, dict[str, ConfigurationSnapshot]] = {}
+    for snapshot in snapshots:
+        by_device.setdefault(snapshot.device_id, {})[snapshot.kind] = snapshot
+    for configuration in document.configuration.device_configurations:
+        by_device.setdefault(configuration.device_id, {})
+    findings: list[dict[str, Any]] = []
+    for device_id in sorted(by_device):
+        current = by_device[device_id].get("RUNNING")
+        baseline = by_device[device_id].get("BASELINE")
+        startup = by_device[device_id].get("STARTUP")
+        comparisons: list[dict[str, Any]] = []
+        for label, left, right in (("running_vs_baseline", current, baseline), ("running_vs_startup", current, startup)):
+            if not left or not right or not left.content_sha256 or not right.content_sha256:
+                status = "UNKNOWN"
+                reason = "both configuration content hashes are required"
+            else:
+                status = "IN_SYNC" if left.content_sha256 == right.content_sha256 else "DRIFTED"
+                reason = "content hashes match" if status == "IN_SYNC" else "content hashes differ"
+            comparisons.append({"comparison": label, "status": status, "reason": reason})
+        findings.append({"device_id": device_id, "comparisons": comparisons})
+    drifted = sum(1 for item in findings for comparison in item["comparisons"] if comparison["status"] == "DRIFTED")
+    unknown = sum(1 for item in findings for comparison in item["comparisons"] if comparison["status"] == "UNKNOWN")
+    return {
+        "status": "DRIFTED" if drifted else "UNKNOWN" if unknown else "IN_SYNC",
+        "devices": findings,
+        "drifted_comparisons": drifted,
+        "unknown_comparisons": unknown,
+        "raw_configuration_stored": False,
+    }
+
+
+def topology_graph(document: NetworkInventoryDocument) -> dict[str, Any]:
+    """Build the existing typed graph from observed inventory links only."""
+    from network_scanner.enterprise.topology import NetworkGraph
+
+    graph = NetworkGraph()
+    for device in document.devices:
+        graph.add_node(device.device_id)
+    for connection in document.topology.physical_connections:
+        graph.add_edge(
+            connection.source_device,
+            connection.target_device,
+            "CONNECTED_TO",
+            source_interface=connection.source_interface,
+            target_interface=connection.target_interface,
+            status=connection.status,
+            redundant=connection.redundant,
+            evidence_ids=connection.observation.evidence_ids,
+        )
+    for edge in document.topology.graph_edges:
+        graph.add_edge(edge.source, edge.target, edge.relationship, **edge.metadata)
+    known = {device.device_id for device in document.devices}
+    linked = {node for edge in graph.edges() for node in (edge.source, edge.target)}
+    return {
+        "graph": graph.to_dict(),
+        "edge_counts": graph.edge_counts(),
+        "node_count": len(graph.nodes()),
+        "edge_count": len(graph.edges()),
+        "unlinked_devices": sorted(known - linked),
+        "unknown_endpoints": sorted(linked - known),
+        "unverified_edges": sum(1 for edge in [*document.topology.physical_connections, *document.topology.graph_edges] if edge.observation.status not in {"CONFIRMED", "OBSERVED"}),
+        "neo4j_cypher": graph.to_neo4j_cypher(),
+    }
+
+
 _REQUIRED_SECTIONS = (
     ("devices", lambda d: d.devices),
-    ("topology", lambda d: d.topology.network_segments or d.topology.physical_connections or d.topology.network_diagram_reference),
-    ("configuration", lambda d: d.configuration.device_configurations or d.configuration.routing.model_dump(exclude_defaults=True) or d.configuration.security.model_dump(exclude_defaults=True)),
+    ("topology", lambda d: d.topology.network_segments or d.topology.physical_connections or d.topology.graph_edges or d.topology.network_diagram_reference),
+    ("configuration", lambda d: d.configuration.device_configurations or d.configuration.snapshots or d.configuration.changes or d.configuration.routing.model_dump(exclude_defaults=True) or d.configuration.security.model_dump(exclude_defaults=True)),
     ("network_services", lambda d: d.network_services.model_dump(exclude_defaults=True)),
     ("security_controls", lambda d: d.security_controls.model_dump(exclude_defaults=True)),
     ("wan_connectivity", lambda d: d.wan_connectivity.model_dump(exclude_defaults=True)),
@@ -611,6 +794,7 @@ def inventory_completeness(document: NetworkInventoryDocument) -> dict[str, Any]
         "required_sections": len(_REQUIRED_SECTIONS),
         "present_sections": present_count,
         "missing": missing,
+        "missing_sections": list(missing),
         "next_actions": [f"Provide {name} observations or an evidence-backed unknown record" for name in missing],
         "sections": sections,
     }
@@ -656,6 +840,20 @@ def inventory_risk(document: NetworkInventoryDocument) -> dict[str, Any]:
             add("management_identity", min(15, unknown_management * 2), "One or more devices lack a management address")
         if unknown_firmware:
             add("firmware_visibility", min(15, unknown_firmware * 2), "One or more devices lack firmware/version visibility")
+    if not document.evidence:
+        add("evidence", 12, "No provenance or evidence record is attached to the inventory")
+    else:
+        unverified = sum(1 for evidence in document.evidence if evidence.status != "PASS")
+        if unverified:
+            add("evidence_verification", min(12, unverified * 3), "One or more evidence records are not verified")
+    drift = configuration_drift(document)
+    if drift["status"] == "DRIFTED":
+        add("configuration_drift", 15, "Recorded running configuration differs from a recorded baseline or startup snapshot")
+    elif drift["status"] == "UNKNOWN" and document.configuration.device_configurations:
+        add("configuration_assurance", 6, "Configuration drift cannot be assessed because comparison hashes are incomplete")
+    topology = topology_graph(document)
+    if topology["unknown_endpoints"]:
+        add("topology_integrity", min(10, len(topology["unknown_endpoints"])), "Topology contains endpoints absent from the device inventory")
     if not document.security_controls.inbound_rules or not document.security_controls.outbound_rules:
         add("perimeter_policy", 10, "Inbound or outbound perimeter rules are not recorded")
     if document.monitoring.snmp_version in {"UNKNOWN", "NONE"} and not document.monitoring.nms_systems:
@@ -677,8 +875,9 @@ def inventory_risk(document: NetworkInventoryDocument) -> dict[str, Any]:
 
 
 __all__ = [
+    "ObservationMetadata", "ConfigurationSnapshot", "ConfigurationChange", "TopologyGraphEdge",
     "NetworkInventoryDocument", "NetworkDevice", "TopologySection", "ConfigurationSection",
     "NetworkServices", "NetworkSecurityControls", "WanConnectivity", "MonitoringSection",
     "WirelessNetworks", "FirmwareSoftwareSection", "DocumentationSection", "InventoryEvidence",
-    "parse_inventory", "inventory_completeness", "inventory_approval_issues", "inventory_hash", "inventory_risk",
+    "parse_inventory", "configuration_drift", "topology_graph", "inventory_completeness", "inventory_approval_issues", "inventory_hash", "inventory_risk",
 ]
