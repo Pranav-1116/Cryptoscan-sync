@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -73,7 +75,16 @@ def app_db(tmp_path, monkeypatch):
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: "operator"
     monkeypatch.setenv("SBOM_STORAGE_DIR", str(tmp_path / "sboms"))
-    monkeypatch.setenv("CRYPTOSCAN_SOURCE_ROOTS", str(tmp_path))
+    # Declares both roots this module scans. It used to declare only
+    # tmp_path while several tests target the conventional
+    # <tmpdir>/cryptoscan-sources/... path, so the fixture disagreed with
+    # the tests. That went unnoticed while nothing enforced containment;
+    # the scan trigger now confines local targets to these roots.
+    monkeypatch.setenv(
+        "CRYPTOSCAN_SOURCE_ROOTS",
+        os.pathsep.join([str(tmp_path),
+                         str(Path(tempfile.gettempdir()) / "cryptoscan-sources")]),
+    )
     import api.routers.devsecops as ds
 
     monkeypatch.setattr(ds, "_SBOM_STORE", None)
@@ -113,7 +124,16 @@ def _viewer_app(tmp_path, monkeypatch):
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: "viewer1"
     monkeypatch.setenv("SBOM_STORAGE_DIR", str(tmp_path / "sboms"))
-    monkeypatch.setenv("CRYPTOSCAN_SOURCE_ROOTS", str(tmp_path))
+    # Declares both roots this module scans. It used to declare only
+    # tmp_path while several tests target the conventional
+    # <tmpdir>/cryptoscan-sources/... path, so the fixture disagreed with
+    # the tests. That went unnoticed while nothing enforced containment;
+    # the scan trigger now confines local targets to these roots.
+    monkeypatch.setenv(
+        "CRYPTOSCAN_SOURCE_ROOTS",
+        os.pathsep.join([str(tmp_path),
+                         str(Path(tempfile.gettempdir()) / "cryptoscan-sources")]),
+    )
     import api.routers.devsecops as ds
 
     monkeypatch.setattr(ds, "_SBOM_STORE", None)

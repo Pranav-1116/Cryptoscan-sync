@@ -4,6 +4,8 @@ Provides TestClient, mock repositories, and auth fixtures.
 """
 from __future__ import annotations
 
+import os
+from pathlib import Path
 from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
@@ -43,6 +45,17 @@ def override_settings(monkeypatch):
     # tenant can currently read the whole scan surface). The suite exercises
     # the feature, so it opts in explicitly rather than relying on the default.
     monkeypatch.setenv("CRYPTOSCAN_SAAS_SIGNUP", "true")
+    # Scan targets are confined to CRYPTOSCAN_SOURCE_ROOTS. The trigger
+    # endpoints enforce that now -- previously only the SBOM route did, so
+    # POST /scans/trigger accepted /etc and the worker walked it. Tests scan
+    # fixtures under the temp directory, so the suite declares that root the
+    # same way an operator would, rather than the endpoint being lenient.
+    import tempfile
+
+    monkeypatch.setenv(
+        "CRYPTOSCAN_SOURCE_ROOTS",
+        os.pathsep.join([str(Path(__file__).resolve().parents[3]), tempfile.gettempdir()]),
+    )
     get_settings.cache_clear()
 
 

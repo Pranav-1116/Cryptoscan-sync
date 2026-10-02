@@ -192,6 +192,30 @@ def enqueue_scan_job(
 
     if is_cloud_target(repo_url) and str(job_type).upper() != "CLOUD":
         job_type = "CLOUD"
+
+    # Confine local scan targets to the configured source roots.
+    #
+    # This endpoint had no containment at all, while the SBOM route next door
+    # has always called the same validator. Triggering a scan of /etc was
+    # accepted with 202 and the worker walked it, surfacing
+    # /etc/NetworkManager/system-connections/<ssid> -- a plaintext WiFi
+    # credentials file -- in the job's error message. The scan failed, but
+    # only after reading host paths it had no business reaching, and a
+    # directory it *could* parse would have put snippets from arbitrary host
+    # files into evidence_records.
+    #
+    # Cloud and remote-git targets are passed through by the validator
+    # itself; only local filesystem paths are resolved and root-checked.
+    if not is_cloud_target(repo_url):
+        from api.security.target_validation import (
+            TargetValidationError,
+            validate_source_target,
+        )
+
+        try:
+            validate_source_target(repo_url, label="repo_url")
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
     effective_sector = _resolve_sector(sector, job_repo)
     # non-git targets (a binary scan) need their options to survive a restart and a
     # retry, so they are stored on the job row, not held in this process
@@ -279,6 +303,20 @@ async def trigger_manual_scan(
 
     # fail-closed safe-scan gate (emergency stop / OT policy) before queuing
     _safe_scan_gate(is_ot=bool(getattr(request_body, "is_ot", False)))
+
+    # Same containment as _queue_scan_job below and as the SBOM route: a
+    # local target must resolve inside CRYPTOSCAN_SOURCE_ROOTS. Without it
+    # this endpoint accepted /etc with 202 and the worker walked it.
+    if not is_cloud_target(request_body.repo_url):
+        from api.security.target_validation import (
+            TargetValidationError,
+            validate_source_target,
+        )
+
+        try:
+            validate_source_target(request_body.repo_url, label="repo_url")
+        except TargetValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     job_type = "CLOUD" if is_cloud_target(request_body.repo_url) else "MANUAL"
     effective_sector = _resolve_sector(getattr(request_body, "sector", None), job_repo)

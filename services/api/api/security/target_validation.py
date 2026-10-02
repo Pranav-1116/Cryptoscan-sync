@@ -159,6 +159,20 @@ def validate_source_target(raw: str, *, label: str = "source_target") -> str:
         raise TargetValidationError("empty source target", label)
     target = str(raw).strip()
 
+    # local://, file:// and binary:// are first-class target forms here
+    # (job_schemas accepts them, scanner.core.plugin and
+    # worker.pipeline.binary_job resolve them by stripping the prefix).
+    # Strip it and keep going so the path underneath gets the same root check
+    # as a bare path -- rejecting the scheme outright would push callers onto
+    # the unvalidated spelling, and passing it through would let
+    # local:///etc or binary:///root/.ssh/id_rsa skip containment entirely.
+    for scheme in ("local://", "file://", "binary://"):
+        if target.lower().startswith(scheme):
+            target = target[len(scheme):]
+            if not target:
+                raise TargetValidationError(f"empty path after {scheme}", label)
+            break
+
     if _URL_SCHEME.match(target) and not target.startswith(("git@", "https://github.com/")):
         # only http(s) git remote URLs are acceptable; file/gopher/etc are not
         scheme = target.split("://", 1)[0].lower()
