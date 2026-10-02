@@ -108,3 +108,11 @@ def test_profile_validates_contract_dates_and_evidence_integrity():
                 "evidence_reference": "ref", "sha256": "not-a-digest",
             }],
         })
+    with pytest.raises(ValueError, match="secret value"):
+        parse_profile({
+            "identity": {"legal_name": "Example"},
+            "evidence": [{
+                "evidence_id": "e-2", "evidence_type": "OTHER",
+                "evidence_reference": "https://evidence.example/item?token=not-for-storage",
+            }],
+        })

@@ -378,7 +378,12 @@ class VendorProfile(ProfileModel):
 
 
 _SECRET_KEY = re.compile(r"(?i)(password|secret_value|private_key|api_key|access_key|client_secret|credential_value|connection_string)")
-_SECRET_VALUE = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|bearer\s+[a-z0-9._-]{20,}", re.IGNORECASE)
+_SECRET_VALUE = re.compile(
+    r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"
+    r"|bearer\s+[a-z0-9._-]{20,}"
+    r"|[?&](?:token|api[_-]?key|password|secret)=[^&\s]+",
+    re.IGNORECASE,
+)
 
 
 def _reject_secrets(value: Any, path: str = "profile") -> None:
