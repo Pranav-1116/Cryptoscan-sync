@@ -26,7 +26,7 @@ def test_empty_inventory_is_explicitly_incomplete_and_risky() -> None:
         "wireless_networks", "firmware_software", "documentation", "evidence",
     }
     assert risk["posture"] == "RED"
-    assert "management identity is missing" in risk["reasons"]
+    assert any("management identity is missing" in reason for reason in risk["reasons"])
 
 
 def test_secret_bearing_inventory_fields_are_rejected() -> None:

@@ -660,7 +660,8 @@ def reject_secrets(value: Any, path: str = "inventory") -> None:
             # References identify an external vault/document/artifact; they do
             # not contain the secret and are intentionally allowed.
             is_reference = key_text.lower().endswith(("_reference", "_ref"))
-            if _SECRET_KEY.search(key_text) and not is_reference:
+            is_safety_marker = key_text.lower() == "secret_free"
+            if _SECRET_KEY.search(key_text) and not is_reference and not is_safety_marker:
                 raise ValueError(f"secret-bearing field is not accepted: {child_path}; use a reference")
             reject_secrets(child, child_path)
     elif isinstance(value, list):
@@ -833,6 +834,7 @@ def inventory_risk(document: NetworkInventoryDocument) -> dict[str, Any]:
 
     if not document.devices:
         add("device_inventory", 15, "No physical or virtual network devices are recorded")
+        add("management_identity", 10, "management identity is missing because no devices are recorded")
     else:
         unknown_management = sum(1 for item in document.devices if not item.management_ip)
         unknown_firmware = sum(1 for item in document.devices if not item.firmware.version)
@@ -864,7 +866,7 @@ def inventory_risk(document: NetworkInventoryDocument) -> dict[str, Any]:
         add("vpn_split_tunnel", 6, "Remote-access VPN split tunneling is enabled")
     score = round(min(100.0, score), 2)
     rating = "UNKNOWN" if completeness["status"] != "COMPLETE" else "HIGH" if score >= 70 else "MEDIUM" if score >= 40 else "LOW"
-    return {
+    result = {
         "risk_score": score,
         "risk_rating": rating,
         "status": "INCOMPLETE" if completeness["status"] != "COMPLETE" else "EVALUATED",
@@ -872,6 +874,13 @@ def inventory_risk(document: NetworkInventoryDocument) -> dict[str, Any]:
         "factors": factors,
         "disclaimer": "Network inventory screening signal only; absence of observations is not evidence that a control exists.",
     }
+    result.update({
+        "posture": "RED" if score >= 70 or result["status"] == "INCOMPLETE" else "AMBER" if score >= 30 else "GREEN",
+        "reasons": [factor["reason"] for factor in factors],
+        "unknowns": list(completeness["missing"]),
+        "next_actions": list(completeness["next_actions"]),
+    })
+    return result
 
 
 __all__ = [
