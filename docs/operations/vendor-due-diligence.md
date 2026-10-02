@@ -29,7 +29,7 @@ application authentication and tenant context:
 - `GET /api/v1/vendors/{vendor_id}/profile` — current profile or an explicit
   empty draft with completeness and `persisted: false`.
 - `PUT /api/v1/vendors/{vendor_id}/profile` — validate and append a revision.
-  The body is `{ "profile": <document>, "status": "DRAFT|IN_REVIEW|APPROVED|EXPIRED", "source": "...", "reviewed_by": "...", "review_notes": "..." }`.
+  The body is `{ "profile": <document>, "status": "DRAFT|IN_REVIEW|APPROVED|EXPIRED", "source": "...", "reviewed_by": "...", "review_notes": "..." }`. For `APPROVED`, `reviewed_by` must match the authenticated reviewer.
 - `GET /api/v1/vendors/{vendor_id}/profile/history` — newest-first immutable
   revisions.
 - `GET /api/v1/vendors/{vendor_id}/profile/schema` — JSON Schema for clients.
