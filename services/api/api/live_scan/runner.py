@@ -112,6 +112,7 @@ def _persist_live_projection(snapshot: dict[str, Any], tenant_id: str | None) ->
     """
     live = snapshot.get("live_cbom") or {}
     cbom = live.get("cbom") if isinstance(live, dict) else {}
+    dependency_graph = live.get("dependency_graph") if isinstance(live, dict) else None
     components = cbom.get("components") if isinstance(cbom, dict) else []
     if not isinstance(components, list):
         components = []
@@ -169,7 +170,8 @@ def _persist_live_projection(snapshot: dict[str, Any], tenant_id: str | None) ->
                 "libraries": [row for row in rows if row.get("type") in {"library", "package", "dependency"}],
                 "readiness": None,
                 "agility": None,
-                "cbom": {"components": rows, "source": source, "asset_id": asset_id},
+                "cbom": {"components": rows, "source": source, "asset_id": asset_id,
+                         "dependency_graph": dependency_graph},
                 "last_event": "SCANNER_OBSERVED",
                 "last_seen": snapshot.get("ts"),
             }
@@ -1828,6 +1830,13 @@ class LiveScanRunner:
                 else self.last_snapshot) or {}
         persisted_cbom = snap.get("live_cbom")
         if isinstance(persisted_cbom, dict):
+            if "dependency_graph" not in persisted_cbom:
+                from api.live_scan.dependency_graph import build_live_dependency_graph
+
+                persisted_cbom = dict(persisted_cbom)
+                persisted_cbom["dependency_graph"] = build_live_dependency_graph(
+                    ((persisted_cbom.get("cbom") or {}).get("components") or [])
+                )
             return persisted_cbom
         results: dict[str, Any] = snap.get("results") or {}
 
@@ -1943,6 +1952,13 @@ class LiveScanRunner:
             kind = str(component.get("type") or "unknown")
             type_counts[kind] = type_counts.get(kind, 0) + 1
 
+        # Every live crypto observation receives a bounded dependency/cascade
+        # projection. The graph is derived only from explicit scanner metadata
+        # and shared identifiers; unresolved references remain visible.
+        from api.live_scan.dependency_graph import build_live_dependency_graph
+
+        dependency_graph = build_live_dependency_graph(uniq)
+
         # HBOM: hardware devices
         hbom_components = [
             {"type": d.get("type"), "name": d.get("vendor") or d.get("type"),
@@ -1953,6 +1969,7 @@ class LiveScanRunner:
 
         return {
             "generated_at": snap.get("ts"),
+            "dependency_graph": dependency_graph,
             "cbom": {
                 "components": uniq,
                 "counts": {

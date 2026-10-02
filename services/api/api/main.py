@@ -110,6 +110,7 @@ from api.routers import (
     governance as governance_router,
     security as security_router,
     resilience,
+    readiness,
 )
 from api.routers import metrics as metrics_router
 from api.routers import ws
@@ -447,6 +448,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(workload.router, prefix=prefix)
     app.include_router(devsecops.router, prefix=prefix)
     app.include_router(resilience.router, prefix=prefix)
+    app.include_router(readiness.router, prefix=prefix)
     app.include_router(crypto_assurance.router, prefix=prefix)
     app.include_router(onboarding.router, prefix=prefix)
     app.include_router(control_plane.router, prefix=prefix)

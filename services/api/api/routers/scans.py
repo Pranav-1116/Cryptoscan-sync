@@ -121,7 +121,7 @@ def get_scan_cascade(
                 section: value[:limit] if isinstance(value, list) else value}
     out = {"scan_id": scan_id, "summary": cascade.get("summary"), "files_in_graph": cascade.get("files_in_graph"), "edges": cascade.get("edges"),
            "migration_waves": cascade.get("migration_waves"), "systems": cascade.get("systems"), "truncated": cascade.get("truncated")}
-    for k in ("providers", "libraries", "shared_keys", "key_references", "weak_parameters"):
+    for k in ("providers", "libraries", "package_dependencies", "shared_keys", "key_references", "weak_parameters", "unresolved_relationships"):
         out[k] = (cascade.get(k) or [])[:limit]
     return out
 

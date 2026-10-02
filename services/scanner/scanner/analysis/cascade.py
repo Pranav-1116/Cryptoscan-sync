@@ -32,6 +32,7 @@ from typing import Any, Iterable
 
 from pydantic import BaseModel, Field
 
+from scanner.analysis.dependency_inventory import collect_package_dependencies, dependency_metadata_files
 from shared_models.algorithm_registry import parse_algorithm
 
 # --------------------------------------------------------------------------------------- module identity
@@ -556,12 +557,32 @@ class KeyReferenceNode(BaseModel):
     sample_files: list[str] = Field(default_factory=list)
 
 
+class PackageDependencyNode(BaseModel):
+    """Direct/transitive package node with lockfile evidence and relationship status."""
+
+    ecosystem: str
+    name: str
+    version: str | None = None
+    scope: str = "runtime"
+    dependency_type: str
+    direct: bool = False
+    parent: str | None = None
+    source: str
+    evidence_type: str
+    evidence_reference: str
+    observed_at: str
+    confidence: str = "MEDIUM"
+    unresolved: bool = False
+
+
 class CascadeReport(BaseModel):
     files_in_graph: int
     edges: int
     systems: list[SystemNode] = Field(default_factory=list)
     providers: list[ProviderNode]
     libraries: list[LibraryNode]
+    package_dependencies: list[PackageDependencyNode] = Field(default_factory=list)
+    unresolved_relationships: list[dict[str, Any]] = Field(default_factory=list)
     shared_keys: list[SharedKeyNode]
     key_references: list[KeyReferenceNode] = Field(default_factory=list)
     weak_parameters: list[WeakParameter]
@@ -630,7 +651,11 @@ def _min_key_size(algorithm: str | None) -> int | None:
 
 def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample: int = 10) -> CascadeReport:
     files = list(files)
-    graph = DependencyGraph.build(files, root)
+    metadata_files = dependency_metadata_files(root)
+    dependency_files = list(dict.fromkeys(files + metadata_files))
+    graph = DependencyGraph.build(dependency_files, root)
+    package_rows, unresolved_relationships = collect_package_dependencies(dependency_files, root)
+    package_dependencies = [PackageDependencyNode(**row) for row in package_rows if row]
 
     # providers -------------------------------------------------------------------------------
     per_file: dict[str, list] = defaultdict(list)
@@ -763,12 +788,17 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
         "libraries": len(libraries),
         "libraries_declared_but_unused": sum(1 for n in libraries if n.declared_but_unused),
         "libraries_used_but_undeclared": sum(1 for n in libraries if n.used_but_undeclared),
+        "package_dependencies": len(package_dependencies),
+        "direct_package_dependencies": sum(1 for n in package_dependencies if n.direct),
+        "transitive_package_dependencies": sum(1 for n in package_dependencies if not n.direct),
+        "unresolved_relationships": len(unresolved_relationships),
         "shared_key_identifiers": len(shared_keys),
         "key_references": len(key_ref_nodes),
         "weak_parameters": len(weak),
         "migration_waves": len(waves),
     }
     return CascadeReport(files_in_graph=len(graph.files), edges=edges, systems=systems, providers=providers, libraries=libraries,
+                         package_dependencies=package_dependencies, unresolved_relationships=unresolved_relationships,
                          shared_keys=shared_keys, key_references=key_ref_nodes, weak_parameters=weak, migration_waves=waves, summary=summary)
 
 
