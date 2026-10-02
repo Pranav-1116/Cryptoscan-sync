@@ -659,8 +659,14 @@ def test_the_cbom_inventories_key_material_without_the_material(tmp_path: Path):
     assert records_from_bom(document)
     dumped = json.dumps(document, sort_keys=True)
     assert MODULUS.hex() not in dumped and _rsa_pkcs1().hex() not in dumped
-    assert document["metadata"]["properties"][-1] == {"name": "cryptoscan:key-material-assets",
-                                                      "value": "2"}
+    # Looked up by name, not by position. This asserted properties[-1] and
+    # broke the moment the producer appended result-state,
+    # evidence-model-version, runtime-behavior-proven and provenance-nodes --
+    # none of which changed the fact under test. Ordering of a CycloneDX
+    # metadata property list is not part of the contract, so pinning it made
+    # every future property addition look like a regression here.
+    properties = {p["name"]: p["value"] for p in document["metadata"]["properties"]}
+    assert properties["cryptoscan:key-material-assets"] == "2"
 
 
 def test_one_key_shipped_twice_is_one_asset_with_two_locations(tmp_path: Path):

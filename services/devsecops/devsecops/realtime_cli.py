@@ -64,8 +64,24 @@ def _status_for(value: Any) -> str:
     return {"COMPLETE": "PASS", "PARTIAL": "DEGRADED", "REFUSED": "BLOCKED"}.get(state, state)
 
 
+def _missing_target(mode: str, target: str) -> dict[str, str]:
+    """A requested target that is not there is a failure of this run.
+
+    Distinct from UNAVAILABLE, which means the capability is not installed.
+    The operator asked for this path specifically: if it does not exist the
+    requested work did not happen, and saying otherwise matters because
+    main() exits 0 for DEGRADED. A CI gate pointed at a typo'd path, or at a
+    build artifact that was never produced, would pass green -- the "empty
+    success" this is named against.
+    """
+    return {"mode": mode, "error": f"{mode} target does not exist: {target}"}
+
+
 def _error_status(exc: Exception) -> str:
-    if isinstance(exc, (ImportError, ModuleNotFoundError, FileNotFoundError)):
+    # FileNotFoundError is deliberately NOT here. From a scanner it means the
+    # external tool is absent (UNAVAILABLE is right), but a missing *target*
+    # is caught before the scanner runs, so it cannot reach this path.
+    if isinstance(exc, (ImportError, ModuleNotFoundError)):
         return "UNAVAILABLE"
     if isinstance(exc, PermissionError):
         return "BLOCKED"
@@ -81,7 +97,10 @@ def run(config: dict[str, Any]) -> dict[str, Any]:
     modes: dict[str, str] = {}
 
     binary = config.get("binary") or config.get("firmware")
-    if binary:
+    if binary and not Path(str(binary)).exists():
+        modes["binary"] = "FAIL"
+        errors.append(_missing_target("binary", str(binary)))
+    elif binary:
         try:
             result = _with_evidence(scan_path(str(binary)))
             status = _status_for(result.get("result_state"))
