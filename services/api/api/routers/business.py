@@ -343,7 +343,16 @@ def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db:
 
 
 @router.get("/vendors/{vendor_id}/profile/schema")
-def vendor_profile_schema(vendor_id: str, user: str = Depends(get_current_user)):
+def vendor_profile_schema(
+    vendor_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    # The schema is generic, but this is still an object-scoped route. Do not
+    # let a caller use another tenant's vendor identifier to probe or operate
+    # on a vendor profile surface that is not visible in its tenant scope.
+    if IntelligenceRepository(db).get_vendor(vendor_id) is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
     from vendor_intel.profile import VendorProfile
 
     return VendorProfile.model_json_schema(by_alias=True)

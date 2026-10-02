@@ -185,8 +185,23 @@ class MaturityRepository:
     # --- vendor crypto ---
 
     def add_vendor_crypto(self, vendor_id: str, **kwargs) -> VendorCryptoInventory:
+        """Persist one normalized inventory observation without parser-only fields.
+
+        Questionnaire/CBOM adapters carry provenance fields such as
+        ``algorithm_raw`` and ``evidence_source`` that are not columns on the
+        legacy inventory table. Keep supported fields and retain an
+        unrecognized reported algorithm in the evidence reference so unknown
+        values stay explicit instead of becoming canonical facts.
+        """
         kwargs.setdefault("discovered_at", _now())
-        row = VendorCryptoInventory(vendor_id=vendor_id, **kwargs)
+        allowed = {
+            column.name for column in VendorCryptoInventory.__table__.columns
+        } - {"id", "created_at", "updated_at", "tenant_id", "vendor_id"}
+        values = {key: value for key, value in kwargs.items() if key in allowed}
+        raw_algorithm = kwargs.get("algorithm_raw")
+        if raw_algorithm and not values.get("source_document"):
+            values["source_document"] = f"reported_algorithm={raw_algorithm}"
+        row = VendorCryptoInventory(vendor_id=vendor_id, **values)
         self.session.add(row)
         vendor = self.session.execute(select(Vendor).where(Vendor.id == vendor_id)).scalars().first()
         if vendor is not None:
