@@ -23,6 +23,7 @@ capacity or resilience qualification.
 from __future__ import annotations
 
 import argparse
+import http.client
 import json
 import subprocess
 import sys
@@ -65,7 +66,14 @@ def _req(method: str, url: str, token: str | None = None, body: Any = None,
 
 def _sse(url: str, token: str, last_event_id: str | None = None,
          seconds: float = 3.0) -> list[str]:
-    """Collect raw SSE lines for a few seconds. Returns [] if unreachable."""
+    """Collect raw SSE lines for a few seconds.
+
+    Returns whatever arrived before the deadline. A transport failure yields
+    the lines read so far plus a marker line, so a caller cannot confuse
+    "the stream delivered nothing" with "the connection broke" -- the checks
+    that read this assert on event ids, and an empty list from a silent
+    except would read as a legitimate quiet stream.
+    """
     headers = {"Authorization": f"Bearer {token}"}
     if last_event_id is not None:
         headers["Last-Event-ID"] = last_event_id
@@ -79,8 +87,10 @@ def _sse(url: str, token: str, last_event_id: str | None = None,
                 if not raw:
                     break
                 lines.append(raw.decode(errors="replace").rstrip("\n"))
-    except Exception:
-        pass
+    except (OSError, http.client.HTTPException) as exc:
+        # OSError covers URLError, socket.timeout and connection resets.
+        # Recorded rather than swallowed: see the docstring.
+        lines.append(f": transport-error {type(exc).__name__}: {exc}")
     return lines
 
 
