@@ -43,8 +43,12 @@ def plain_client(app):
 class ASGIStream:
     """Consume an ASGI app's response incrementally, as a server would."""
 
-    def __init__(self, app, path: str, params: dict | None = None):
+    def __init__(self, app, path: str, params: dict | None = None,
+                 headers: dict | None = None):
         self._app, self._path, self._params = app, path, params or {}
+        # Needed to exercise the header path: EventSource resumes by sending
+        # Last-Event-ID as a header, never as a query parameter.
+        self._extra_headers = headers or {}
         self.status: int | None = None
         self.headers: dict[str, str] = {}
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -57,7 +61,11 @@ class ASGIStream:
             "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1",
             "method": "GET", "scheme": "http", "path": self._path,
             "raw_path": self._path.encode(), "query_string": query, "root_path": "",
-            "headers": [(b"host", b"test")], "client": ("testclient", 123),
+            "headers": [(b"host", b"test")] + [
+                (k.lower().encode(), str(v).encode())
+                for k, v in self._extra_headers.items()
+            ],
+            "client": ("testclient", 123),
             "server": ("test", 80),
         }
 
@@ -250,3 +258,62 @@ def test_telecom_tailer_payload_carries_full_identity():
     # automation maps it using the SAME payload the bus carries
     from telecom_scanner.automation import automation_event_kind
     assert automation_event_kind(payload) == "quantum_vulnerable_detected"
+
+
+async def test_stream_resumes_from_the_last_event_id_header(app, bus):
+    """EventSource resumes by header, not by query parameter.
+
+    The reconnect this serves is one this endpoint asks for: every response
+    carries ``retry: 3000``, which tells the browser to reconnect, and the
+    spec has it send Last-Event-ID as an HTTP header. Reading only the query
+    string meant each reconnect replayed the entire backlog and the client
+    re-processed events it had already seen -- the opposite of what the
+    id/retry framing exists for, and invisible to a test that resumes by
+    query parameter as the one above does.
+    """
+    first = bus.publish("t.keep", {"n": 1}, source="test")
+    bus.publish("t.skip", {"n": 2}, source="test")
+
+    async with ASGIStream(
+        app, "/api/v1/events/stream", headers={"Last-Event-ID": str(first["id"])}
+    ) as stream:
+        types: list[str] = []
+        async for line in stream.lines():
+            if line.startswith("event: "):
+                types.append(line[len("event: "):])
+            if len(types) >= 2:
+                break
+        assert "t.skip" in types
+        assert "t.keep" not in types
+
+
+async def test_an_explicit_query_parameter_beats_the_header(app, bus):
+    """A caller resuming by hand overrides whatever the browser remembered."""
+    first = bus.publish("t.a", {}, source="test")
+    bus.publish("t.b", {}, source="test")
+
+    async with ASGIStream(
+        app, "/api/v1/events/stream",
+        params={"last_event_id": first["id"]},
+        headers={"Last-Event-ID": "0"},
+    ) as stream:
+        types: list[str] = []
+        async for line in stream.lines():
+            if line.startswith("event: "):
+                types.append(line[len("event: "):])
+            if len(types) >= 2:
+                break
+        assert "t.a" not in types
+
+
+async def test_a_malformed_last_event_id_header_is_ignored_not_fatal(app, bus):
+    """The spec says ignore an unparseable id; refusing to stream is worse."""
+    bus.publish("t.one", {}, source="test")
+
+    async with ASGIStream(
+        app, "/api/v1/events/stream", headers={"Last-Event-ID": "not-a-number"}
+    ) as stream:
+        assert stream.status == 200
+        async for line in stream.lines():
+            if line.startswith("event: "):
+                break

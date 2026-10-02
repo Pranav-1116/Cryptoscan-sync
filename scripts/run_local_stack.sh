@@ -29,6 +29,8 @@ cd "$ROOT"
 
 DB_NAME="${LOCAL_DB_NAME:-cryptoscan-local-db}"
 DB_PORT="${LOCAL_DB_PORT:-55440}"
+REDIS_NAME="${LOCAL_REDIS_NAME:-cryptoscan-local-redis}"
+REDIS_PORT="${LOCAL_REDIS_PORT:-55441}"
 DB_USER="${LOCAL_DB_USER:-cryptoscan}"
 DB_PASS="${LOCAL_DB_PASS:-cryptoscan}"
 API_PORT="${LOCAL_API_PORT:-8010}"
@@ -40,6 +42,7 @@ ADMIN_USER="${LOCAL_ADMIN_USER:-admin}"
 ADMIN_PASS="${LOCAL_ADMIN_PASS:-cryptoscan}"
 
 export DATABASE_URL="postgresql+psycopg2://${DB_USER}:${DB_PASS}@127.0.0.1:${DB_PORT}/${DB_USER}"
+export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
 
 log() { printf '[stack] %s\n' "$*" >&2; }
 pid_on() { ss -lptn "sport = :$1" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1; }
@@ -73,6 +76,25 @@ up() {
   wait_db
   log "postgres ready"
 
+  # ---- redis -------------------------------------------------------------
+  # Not optional scaffolding: without it the API falls back to an in-process
+  # bus and the worker runs inline, so the queue, cross-replica fan-out and
+  # Last-Event-ID replay are never exercised. Those are the parts update.md
+  # section 2 asks to prove.
+  if ! docker ps --format '{{.Names}}' | grep -qx "$REDIS_NAME"; then
+    docker rm -f "$REDIS_NAME" >/dev/null 2>&1 || true
+    docker run -d --name "$REDIS_NAME" \
+      -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine >/dev/null
+    log "redis starting on 127.0.0.1:${REDIS_PORT}"
+  else
+    log "redis already running"
+  fi
+  for _ in $(seq 60); do
+    docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG && break
+    sleep 1
+  done
+  log "redis ready"
+
   # ---- schema ------------------------------------------------------------
   ( cd services/database/migrations \
     && PYTHONPATH="$(pypath)" ENVIRONMENT=development \
@@ -90,6 +112,7 @@ up() {
     GITHUB_WEBHOOK_SECRET="${LOCAL_WEBHOOK_SECRET:-local-stack-webhook-secret-abc123}" \
     ADMIN_USERNAME="$ADMIN_USER" ADMIN_PASSWORD="$ADMIN_PASS" \
     DATABASE_URL="$DATABASE_URL" \
+    REDIS_URL="$REDIS_URL" \
     CRYPTOSCAN_SNAPSHOT_DIR="$RUN/data" \
     CRYPTOSCAN_SOURCE_ROOTS="${LOCAL_SOURCE_ROOTS:-$ROOT}" \
     nohup "$PY" -m uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" \
@@ -100,6 +123,24 @@ up() {
     curl -sf --max-time 2 "http://127.0.0.1:${API_PORT}/health" >/dev/null 2>&1 && break
     sleep 1
   done
+
+  # ---- worker ------------------------------------------------------------
+  # With REDIS_URL set the API enqueues instead of running the pipeline
+  # inline, so without this process a triggered scan sits in the queue
+  # forever and the job stays QUEUED.
+  if pgrep -f "worker.main" >/dev/null 2>&1; then
+    log "worker already running"
+  else
+    PYTHONPATH="$(pypath)" \
+    ENVIRONMENT=development \
+    SECRET_KEY="${LOCAL_SECRET_KEY:-local-stack-secret-key-min-32-characters}" \
+    DATABASE_URL="$DATABASE_URL" \
+    REDIS_URL="$REDIS_URL" \
+    CRYPTOSCAN_SNAPSHOT_DIR="$RUN/data" \
+    CRYPTOSCAN_SOURCE_ROOTS="${LOCAL_SOURCE_ROOTS:-$ROOT}" \
+    nohup "$PY" -m worker.main > "$RUN/worker.log" 2>&1 &
+    log "worker starting"
+  fi
 
   # ---- frontend ----------------------------------------------------------
   if [ -n "$(pid_on "$UI_PORT")" ]; then
@@ -127,20 +168,25 @@ status() {
   printf '  %-12s %-34s %s\n' "api docs" "http://127.0.0.1:${API_PORT}/api/docs" ""
   printf '  %-12s %-34s %s\n' "postgres" "127.0.0.1:${DB_PORT}" \
     "$(docker exec -u postgres "$DB_NAME" psql -U "$DB_USER" -tAq -c 'SELECT 1' >/dev/null 2>&1 && echo up || echo DOWN)"
+  printf '  %-12s %-34s %s\n' "redis" "127.0.0.1:${REDIS_PORT}" \
+    "$(docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG && echo up || echo DOWN)"
+  printf '  %-12s %-34s %s\n' "worker" "(queue consumer)" \
+    "$(pgrep -f worker.main >/dev/null 2>&1 && echo up || echo DOWN)"
   echo
   echo "  sign in: ${ADMIN_USER} / ${ADMIN_PASS}   (development only; refused in production)"
   echo "  the estate boots EMPTY — run a scan to populate it"
-  echo "  logs: $RUN/api.log  $RUN/frontend.log"
+  echo "  logs: $RUN/api.log  $RUN/worker.log  $RUN/frontend.log"
   echo
 }
 
-logs() { tail -n 40 -F "$RUN/api.log" "$RUN/frontend.log"; }
+logs() { tail -n 40 -F "$RUN/api.log" "$RUN/worker.log" "$RUN/frontend.log"; }
 
 down() {
   for port in "$API_PORT" "$UI_PORT"; do
     p="$(pid_on "$port")"; [ -n "$p" ] && kill "$p" 2>/dev/null && log "stopped :$port"
   done
-  docker rm -f "$DB_NAME" >/dev/null 2>&1 && log "database removed" || true
+  p="$(pgrep -f worker.main | head -1)"; [ -n "$p" ] && kill "$p" 2>/dev/null && log "worker stopped"
+  docker rm -f "$DB_NAME" "$REDIS_NAME" >/dev/null 2>&1 && log "database + redis removed" || true
 }
 
 case "${1:-up}" in

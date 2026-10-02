@@ -116,12 +116,19 @@ def test_group_rollup_finds_recurring_families_and_ranks():
 # --------------------------------------------------------------------------- #
 
 def test_dora_rows_service_mapping_and_expiring_critical():
+    # Both contract dates are relative. They were datetime(2026, 10, 1) and
+    # "2026-10-15": inside the 180-day window when written, and expired on
+    # the way past, at which point this asserted 2 and got 0. The register
+    # counts 0 <= days_to_end <= 180, so a fixture pinned to a calendar date
+    # fails the moment the calendar passes it.
+    soon = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) + dt.timedelta(days=90)
+    later = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None) + dt.timedelta(days=104)
     vendors = [
         {"name": "Thales", "vendor_type": "hsm", "criticality": "MISSION-CRITICAL",
-         "contract_end_date": dt.datetime(2026, 10, 1), "data_classifications": ["keys"]},
+         "contract_end_date": soon, "data_classifications": ["keys"]},
         {"name": "Acme", "vendor_type": "cloud", "criticality": "MEDIUM"},
         {"name": "StrISO", "vendor_type": "network", "criticality": "HIGH",
-         "contract_end_date": "2026-10-15T00:00:00"},  # string dates (to_dict shape)
+         "contract_end_date": later.isoformat()},  # string dates (to_dict shape)
     ]
     reg = dora_register_rows(vendors, entity_code="de-ret")
     assert reg["total"] == 3 and reg["critical"] == 2

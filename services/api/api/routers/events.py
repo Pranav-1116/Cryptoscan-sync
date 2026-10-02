@@ -124,6 +124,27 @@ async def stream_events(
     tenant_id = _request_tenant_id()
     is_platform_admin = tenant_id is None
     visible = lambda event: _visible_to_tenant(event, tenant_id, is_platform_admin)
+    # EventSource does not add a query parameter when it reconnects -- the SSE
+    # spec has it send the Last-Event-ID *header*, and this response's
+    # `retry: 3000` field is what tells the browser to reconnect in the first
+    # place. Reading only the query string meant every reconnect replayed the
+    # whole backlog and the client re-processed events it already had, which
+    # is the opposite of what the id/retry framing is for.
+    #
+    # The query parameter still wins: it is an explicit caller choice, and
+    # tools that resume by hand use it.
+    if last_event_id is None:
+        header_value = request.headers.get("last-event-id")
+        if header_value is not None:
+            try:
+                parsed = int(header_value.strip())
+            except (TypeError, ValueError):
+                # Spec: a malformed id is ignored, not an error. Treat it as a
+                # fresh connection rather than refusing to stream.
+                parsed = None
+            if parsed is not None and parsed >= 0:
+                last_event_id = parsed
+
     requested_resume = last_event_id is not None
     resume_id = last_event_id if last_event_id is not None else 0
     if resume_id == 0:

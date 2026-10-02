@@ -389,9 +389,16 @@ async def test_dora_register_json_and_csv(app_db, tmp_path, monkeypatch):
     from db.models import Vendor as VendorModel
     import datetime as _dt
     session = app_db.state.test_session
+    # Relative, not absolute. This was datetime(2026, 10, 1): a date that was
+    # comfortably inside the 180-day window when the test was written, drifted
+    # closer every day, and started failing on 2026-10-02 when it fell one day
+    # into the past. The register counts contracts ending within the next 180
+    # days (0 <= days_to_end <= 180), so the fixture has to stay in the future
+    # relative to the run, not to the day someone typed it.
+    contract_end = _dt.datetime.now(_dt.timezone.utc).replace(tzinfo=None) + _dt.timedelta(days=90)
     session.add(VendorModel(id="v-thales", name="Thales", vendor_type="hsm",
                             criticality="MISSION-CRITICAL",
-                            contract_end_date=_dt.datetime(2026, 10, 1)))
+                            contract_end_date=contract_end))
     session.commit()
     async with AsyncClient(transport=ASGITransport(app=app_db), base_url="http://test") as client:
         await client.post("/api/v1/banking/group/entities", json={
