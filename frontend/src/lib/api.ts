@@ -2644,7 +2644,7 @@ export interface VendorProfileWriteResponse {
   status: string;
   profile: Record<string, unknown>;
   completeness: VendorProfileCompleteness;
-  audit?: { source: string; content_sha256?: string; created_by?: string };
+  audit?: { source?: string; content_sha256?: string; created_by?: string; captured_at?: string | null; reviewed_by?: string | null };
 }
 export const apiVendors = (): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
   call("/api/v1/vendors");

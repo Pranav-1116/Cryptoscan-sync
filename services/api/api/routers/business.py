@@ -475,7 +475,13 @@ def put_vendor_profile(
         "status": revision.status,
         "profile": revision.profile_json,
         "completeness": revision.completeness_json,
-        "audit": {"source": revision.source, "content_sha256": revision.content_sha256},
+        "audit": {
+            "source": revision.source,
+            "content_sha256": revision.content_sha256,
+            "created_by": revision.created_by,
+            "captured_at": revision.captured_at.isoformat() if revision.captured_at else None,
+            "reviewed_by": revision.reviewed_by,
+        },
     }
 
 
@@ -524,6 +530,7 @@ def append_vendor_profile_evidence(
         "evidence_id": body.evidence_id,
         "completeness": completeness,
         "content_sha256": revision.content_sha256,
+        "audit": {"created_by": revision.created_by, "captured_at": revision.captured_at.isoformat() if revision.captured_at else None},
     }
 
 
@@ -556,7 +563,13 @@ def expire_vendor_profile(
         reviewed_by=user,
         review_notes=reason,
     )
-    return {"vendor_id": vendor_id, "revision": revision.revision, "status": revision.status, "audit_preserved": True}
+    return {
+        "vendor_id": vendor_id,
+        "revision": revision.revision,
+        "status": revision.status,
+        "audit_preserved": True,
+        "audit": {"created_by": revision.created_by, "captured_at": revision.captured_at.isoformat() if revision.captured_at else None},
+    }
 
 
 @router.get("/vendors/{vendor_id}/profile/history")
