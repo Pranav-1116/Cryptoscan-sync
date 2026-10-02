@@ -381,3 +381,43 @@ def test_delivery_ledger_dedups():
     assert led.should_deliver("slack-target", k) is True
     assert led.should_deliver("slack-target", k) is False  # same target + key
     assert led.should_deliver("teams-target", k) is True   # different target
+
+
+def test_unresolved_build_variables_are_not_pinned():
+    """``${jackson.version}`` is not a version, and must not be counted as one.
+
+    Scanning jjwt produced an SBOM of 21 components, 18 of which carried an
+    unexpanded Maven property. check_pinning reported "21 pinned, 0 unpinned"
+    because a placeholder is a non-empty string matching no range pattern, so
+    it fell through to the pinned branch.
+
+    That is worse than reporting the version unknown: nothing can match
+    ``${jackson.version}`` against a CVE feed, and the SBOM asserted the
+    opposite of the truth to anyone reading the pinning counts.
+    """
+    comps = [
+        {"name": "jackson-databind", "version": "${jackson.version}", "ecosystem": "maven"},
+        {"name": "bcprov", "version": "$bouncycastleVersion", "ecosystem": "gradle"},
+        {"name": "libfoo", "version": "@VERSION@", "ecosystem": "generic"},
+        {"name": "jakarta.xml.bind-api", "version": "2.3.3", "ecosystem": "maven"},
+    ]
+    r = check_pinning(comps)
+
+    codes = [f["code"] for f in r["findings"]]
+    assert codes.count("PIN-UNRESOLVED") == 3
+    # Only the genuinely exact version counts as pinned.
+    assert r["pinned"] == 1
+    assert r["unpinned"] == 3
+    # HIGH, not MEDIUM: an unknown version is a gap in coverage, not a loose range.
+    assert all(f["severity"] == "HIGH" for f in r["findings"] if f["code"] == "PIN-UNRESOLVED")
+
+
+def test_real_versions_are_still_pinned_after_the_placeholder_check():
+    """The new branch must not swallow ordinary versions containing $ or @."""
+    comps = [
+        {"name": "a", "version": "1.2.3", "ecosystem": "maven"},
+        {"name": "b", "version": "2.3.3-RELEASE", "ecosystem": "maven"},
+        {"name": "c", "version": "0.14.0-SNAPSHOT", "ecosystem": "maven"},
+    ]
+    r = check_pinning(comps)
+    assert r["pinned"] == 3 and r["unpinned"] == 0

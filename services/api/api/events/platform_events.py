@@ -15,9 +15,31 @@ Latency contract (stated, not hidden):
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _is_production() -> bool:
+    """Whether a failed publication must fail the operation.
+
+    This was called below but never defined here, so the production guard
+    raised NameError instead of the RuntimeError it intends -- from inside an
+    ``except`` block, which replaced the real publication error with a
+    confusing one. In development it never reached its ``return None`` either,
+    so a transient bus failure broke every environment rather than none.
+
+    Defined locally rather than imported from a router: an events module must
+    not depend on the HTTP layer. Falls back to the environment variable when
+    settings cannot be loaded, matching the behaviour in api.routers.telecom.
+    """
+    try:
+        from api.config.settings import get_settings
+
+        return bool(get_settings().is_production)
+    except Exception:  # noqa: BLE001 - settings unavailable: trust the env
+        return os.environ.get("ENVIRONMENT", "development").lower() in {"production", "prod"}
 
 #: max rows the dedup registry keeps (tailer + direct publishers share it)
 _PUBLISHED_IDS_CAP = 4_000

@@ -185,6 +185,11 @@ def export_spdx(components: list[dict[str, Any]], *, doc_name: str = "CryptoScan
 _RANGE_RE = re.compile(r"[\^~*xX]|>=|<=|>|<|\|\||\s-\s|latest|main|master|HEAD")
 _DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
 
+#: An unexpanded build-system variable: Maven/Gradle ``${jackson.version}``,
+#: Gradle ``$bouncycastleVersion``, Make/CMake ``@VERSION@``. These reach the
+#: SBOM when a manifest is read without resolving its property block.
+_PLACEHOLDER_RE = re.compile(r"\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*|@[A-Za-z_][A-Za-z0-9_]*@")
+
 
 def check_pinning(components: Iterable[dict[str, Any]]) -> dict[str, Any]:
     """Flag dependencies not pinned to an exact, verifiable version."""
@@ -198,6 +203,15 @@ def check_pinning(components: Iterable[dict[str, Any]]) -> dict[str, Any]:
         if not version:
             findings.append({"coordinate": coord, "code": "PIN-MISSING", "severity": "HIGH",
                              "detail": "no version specified"})
+        elif _PLACEHOLDER_RE.search(str(version)):
+            # An unexpanded ${...} is not a version. It used to count as
+            # pinned because it is a non-empty string that matches no range
+            # pattern, so an SBOM of jjwt reported "21 pinned, 0 unpinned"
+            # while 18 of the 21 carried ${jackson.version} and the like.
+            # Nothing can match that against a CVE feed, and claiming it is
+            # pinned is worse than reporting it unknown.
+            findings.append({"coordinate": coord, "code": "PIN-UNRESOLVED", "severity": "HIGH",
+                             "detail": f"unresolved build variable, not a version: {version!r}"})
         else:
             if str(version).lower() in ("latest", "main", "master", "head") or _RANGE_RE.search(str(version)):
                 findings.append({"coordinate": coord, "code": "PIN-RANGE", "severity": "MEDIUM",
@@ -208,7 +222,10 @@ def check_pinning(components: Iterable[dict[str, Any]]) -> dict[str, Any]:
             if not has_digest:
                 findings.append({"coordinate": coord, "code": "PIN-NO-DIGEST", "severity": "MEDIUM",
                                  "detail": "image reference not pinned by sha256 digest"})
-    unpinned_coords = {f["coordinate"] for f in findings if f["code"] in ("PIN-MISSING", "PIN-RANGE")}
+    unpinned_coords = {
+        f["coordinate"] for f in findings
+        if f["code"] in ("PIN-MISSING", "PIN-RANGE", "PIN-UNRESOLVED")
+    }
     return {"total_components": total, "pinned": total - len(unpinned_coords),
             "unpinned": len(unpinned_coords), "findings": findings}
 

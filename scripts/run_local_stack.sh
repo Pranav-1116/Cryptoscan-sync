@@ -13,6 +13,15 @@
 # The estate boots EMPTY. There is no demo data and no seeding: inventory
 # appears only when a real scan runs against a target you configure. Pages
 # with nothing to show render honest empty states rather than samples.
+#
+# Scan targets are confined to CRYPTOSCAN_SOURCE_ROOTS, which defaults to this
+# repository. To scan code checked out elsewhere, widen it deliberately:
+#
+#   LOCAL_SOURCE_ROOTS="$PWD:/srv/checkouts" bash scripts/run_local_stack.sh up
+#
+# That containment is a real control -- the API refuses a path outside the
+# roots -- so it is set explicitly here rather than left to a default that
+# happens to be permissive.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -82,6 +91,7 @@ up() {
     ADMIN_USERNAME="$ADMIN_USER" ADMIN_PASSWORD="$ADMIN_PASS" \
     DATABASE_URL="$DATABASE_URL" \
     CRYPTOSCAN_SNAPSHOT_DIR="$RUN/data" \
+    CRYPTOSCAN_SOURCE_ROOTS="${LOCAL_SOURCE_ROOTS:-$ROOT}" \
     nohup "$PY" -m uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" \
       --log-level info > "$RUN/api.log" 2>&1 &
     log "api starting on ${API_PORT}"

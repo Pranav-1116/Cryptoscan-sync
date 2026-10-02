@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from universal_vendor.detection import UniversalVendorDetectionEngine
 from universal_vendor.evidence import build_evidence_chain, verify_evidence_chain
-from universal_vendor.graph import build_graph
-from universal_vendor.models import ScanMode, UniversalObservation
+from universal_vendor.models import ScanMode
 from universal_vendor.plugins._helpers import extract_algorithms
 from universal_vendor.scan_modes import UniversalVendorScanner
 from vendor_intel.docs_extract import extract_crypto_mentions

@@ -212,9 +212,63 @@ def test_stamping_rejects_a_tenant_forging_another_tenants_row(session):
         forged = Scan(target_location="https://git/bank-a/forge.git", status="COMPLETED",
                       tenant_id=BANK_B, scan_start=datetime.now(timezone.utc))
         session.add(forged)
-        with pytest.raises(ValueError, match="active scope"):
+        with pytest.raises(TenantScopeViolation, match="active scope"):
             session.commit()
         session.rollback()
 
     with platform_scope():
         assert session.query(Scan).count() == 0
+
+
+# --------------------------------------------------------------------------- #
+# tenant_id immutability
+# --------------------------------------------------------------------------- #
+# Filtering stops a tenant reaching another tenant's rows. It does not stop a
+# tenant *moving* its own row into someone else's namespace, or quietly
+# adopting one. Both raise rather than silently re-attributing, so these pin
+# the distinct guard that does it -- the one the three raise sites exist for.
+
+def test_a_row_cannot_be_reattributed_to_another_tenant_via_the_orm(session):
+    mine = _scan(session, "https://git/bank-a/app.git", BANK_A)
+
+    with tenant_scope(BANK_A):
+        row = session.query(Scan).filter(Scan.id == mine).one()
+        row.tenant_id = BANK_B
+        with pytest.raises(TenantScopeViolation, match="immutable"):
+            session.commit()
+        session.rollback()
+
+    with platform_scope():
+        assert session.query(Scan).filter(Scan.id == mine).one().tenant_id == BANK_A
+
+
+def test_a_bulk_update_cannot_set_tenant_id(session):
+    """The DML path needs its own check: no object is loaded to inspect."""
+    mine = _scan(session, "https://git/bank-a/app.git", BANK_A)
+
+    with tenant_scope(BANK_A):
+        with pytest.raises(TenantScopeViolation, match="immutable"):
+            session.execute(update(Scan).where(Scan.id == mine).values(tenant_id=BANK_B))
+        session.rollback()
+
+    with platform_scope():
+        assert session.query(Scan).filter(Scan.id == mine).one().tenant_id == BANK_A
+
+
+def test_reattribution_is_refused_even_when_it_looks_like_a_donation(session):
+    """Giving a row away is still a cross-tenant write.
+
+    A tenant moving its own row to another tenant reads as benign, but it is
+    how data crosses the boundary without any read ever being unfiltered.
+    """
+    mine = _scan(session, "https://git/bank-a/gift.git", BANK_A)
+
+    with tenant_scope(BANK_A):
+        row = session.query(Scan).filter(Scan.id == mine).one()
+        row.tenant_id = None  # "un-own" it into the shared platform estate
+        with pytest.raises(TenantScopeViolation):
+            session.commit()
+        session.rollback()
+
+    with platform_scope():
+        assert session.query(Scan).filter(Scan.id == mine).one().tenant_id == BANK_A
