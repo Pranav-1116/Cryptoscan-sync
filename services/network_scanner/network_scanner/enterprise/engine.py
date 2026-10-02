@@ -410,9 +410,18 @@ class GlobalNetworkDiscoveryEngine:
                 tls_intel: list[dict[str, Any]], cert_report: dict[str, Any],
                 pqc: dict[str, Any], simulation: dict[str, Any],
                 radius: dict[str, Any], geo: dict[str, Any]) -> dict[str, Any]:
+        from network_scanner.inventory_adapter import discovery_inventory_summary, inventory_from_discovery
+
+        observed_report = {
+            "assets": self.assets.to_dicts(),
+            "scan_metadata": self.metadata.to_dict(),
+        }
+        structured_inventory = inventory_from_discovery(observed_report)
         return {
             "scan_metadata": self.metadata.to_dict(),
             "scope": [spec.to_dict() for spec in specs],
+            "network_inventory": structured_inventory.model_dump(mode="json", by_alias=True),
+            "network_inventory_summary": discovery_inventory_summary(observed_report),
             "assets": self.assets.to_dicts(),
             "asset_summary": self.assets.summary(),
             "protocol_observations": self.protocols.to_dicts(),

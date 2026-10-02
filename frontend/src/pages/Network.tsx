@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
-import { apiLiveInventory, LiveNetworkAsset } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -110,6 +110,42 @@ function statusTone(status: string): "green" | "red" | "amber" | "" {
 const NODE_TONE_COLOR: Record<string, string> = {
   blue: "#3b82f6", cyan: "#00d4ff", green: "#22c55e", amber: "#f59e0b", red: "#ef4444",
 };
+
+function NetworkInventoryPanel() {
+  const inventory = usePollingApi(apiNetworkInventory, 15000);
+  const risk = usePollingApi(apiNetworkInventoryRisk, 15000);
+  const snapshot = inventory.data as NetworkInventoryResponse | null;
+  const riskData = risk.data as NetworkInventoryRiskResponse | null;
+  const sectionCount = snapshot?.inventory ? Object.keys(snapshot.inventory).length : 0;
+  const devices = Array.isArray(snapshot?.inventory?.devices) ? snapshot!.inventory.devices : [];
+  return (
+    <Panel title="Structured network inventory" sub="tenant-scoped evidence register · unknown values stay explicit" className="mt">
+      {inventory.source !== "live" || !snapshot ? (
+        <div className="dim" style={{ fontSize: 13 }}>Inventory API unavailable — no local or fabricated snapshot is shown.</div>
+      ) : (
+        <>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <Badge tone={snapshot.completeness.status === "COMPLETE" ? "green" : "amber"}>{snapshot.completeness.status}</Badge>
+            <Badge tone={riskData?.posture === "GREEN" ? "green" : riskData?.posture === "RED" ? "red" : "amber"}>{riskData?.posture ?? "UNKNOWN"}</Badge>
+            <span className="dim">revision {snapshot.revision ?? "not persisted"} · {Math.round(snapshot.completeness.score * 100)}% section coverage</span>
+          </div>
+          <div className="grid cols-4" style={{ marginBottom: 12 }}>
+            <div className="kpi"><span className="k">devices</span><span className="v">{devices.length}</span></div>
+            <div className="kpi"><span className="k">inventory sections</span><span className="v">{sectionCount}</span></div>
+            <div className="kpi"><span className="k">missing sections</span><span className="v">{snapshot.completeness.missing.length}</span></div>
+            <div className="kpi"><span className="k">evidence records</span><span className="v">{Array.isArray(snapshot.inventory.evidence) ? snapshot.inventory.evidence.length : 0}</span></div>
+          </div>
+          {snapshot.completeness.next_actions.length > 0 && (
+            <div className="tree" style={{ marginBottom: 10 }}>
+              Next actions: {snapshot.completeness.next_actions.slice(0, 4).join(" · ")}
+            </div>
+          )}
+          {riskData?.unknowns?.length ? <div className="dim">Unknowns: {riskData.unknowns.slice(0, 4).join(" · ")}</div> : null}
+        </>
+      )}
+    </Panel>
+  );
+}
 
 export default function Network() {
   const [sel, setSel] = useState<string | null>(null);

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -19,6 +21,21 @@ from network_scanner.core.scanner import NetworkTlsScanner
 from network_scanner.core.scheduler import due_targets, next_scan_time
 
 router = APIRouter(tags=["network"])
+
+
+class NetworkInventoryWrite(BaseModel):
+    inventory: dict[str, Any]
+    inventory_id: str = Field(default="default", min_length=1, max_length=160)
+    status: Literal["DRAFT", "IN_REVIEW", "APPROVED", "EXPIRED"] = "DRAFT"
+    source: Literal["SNMP", "SSH", "API", "NMAP", "CONFIG_IMPORT", "MANUAL", "MIXED"] = "MANUAL"
+    reviewed_by: str | None = Field(default=None, max_length=160)
+    review_notes: str | None = None
+
+
+class NetworkInventoryDiscoveryRequest(BaseModel):
+    scope_specs: list[str | dict[str, Any]] = Field(default_factory=list, min_length=1, max_length=100)
+    inventory_id: str = Field(default="default", min_length=1, max_length=160)
+    authorization_scope: str = Field(default="", max_length=200)
 
 
 class HostScanRequest(BaseModel):
@@ -531,3 +548,240 @@ def scan_path(body: FilesystemTlsRequest, user: str = Depends(get_current_user),
         if usage.get("fingerprint_sha256") and usage.get("location"):
             usages.upsert_usage(usage["fingerprint_sha256"], usage["location"], usage.get("usage_type") or "UNKNOWN")
     return result
+
+
+# ---------------------------------------------------------------------------
+# Structured network inventory (devices, topology, configuration, services,
+# controls, WAN, monitoring, wireless, firmware and documentation).
+# ---------------------------------------------------------------------------
+
+@router.get("/network/inventory/schema")
+def network_inventory_schema(user: str = Depends(get_current_user)):
+    from network_scanner.inventory.network_inventory import NetworkInventoryDocument
+
+    return NetworkInventoryDocument.model_json_schema(by_alias=True)
+
+
+@router.post("/network/inventory/validate")
+def validate_network_inventory(
+    body: NetworkInventoryWrite,
+    user: str = Depends(get_current_user),
+):
+    from network_scanner.inventory.network_inventory import (
+        inventory_approval_issues,
+        inventory_completeness,
+        inventory_hash,
+        parse_inventory,
+    )
+    from pydantic import ValidationError
+
+    try:
+        document = parse_inventory(body.inventory)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+    completeness = inventory_completeness(document)
+    approval_issues = inventory_approval_issues(document)
+    return {
+        "valid": True,
+        "status_allowed": body.status != "APPROVED" or (
+            completeness["status"] == "COMPLETE"
+            and not approval_issues
+            and body.reviewed_by == user
+        ),
+        "completeness": completeness,
+        "approval_issues": approval_issues,
+        "content_sha256": inventory_hash(document),
+        "persisted": False,
+    }
+
+
+@router.get("/network/inventory")
+def get_network_inventory(
+    inventory_id: str = "default",
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.inventory.network_inventory import NetworkInventoryDocument, inventory_completeness
+
+    revision = NetworkInventoryRepository(db).latest(inventory_id)
+    if revision is None:
+        document = NetworkInventoryDocument(inventory_id=inventory_id)
+        return {
+            "inventory_id": inventory_id,
+            "revision": None,
+            "persisted": False,
+            "status": "DRAFT",
+            "inventory": document.model_dump(mode="json", by_alias=True),
+            "completeness": inventory_completeness(document),
+            "audit": {"source": "system-default", "content_sha256": None},
+        }
+    return {
+        "inventory_id": inventory_id,
+        "revision": revision.revision,
+        "persisted": True,
+        "status": revision.status,
+        "inventory": revision.inventory_json,
+        "completeness": revision.completeness_json,
+        "audit": {
+            "source": revision.source,
+            "content_sha256": revision.content_sha256,
+            "captured_at": revision.captured_at.isoformat() if revision.captured_at else None,
+            "created_by": revision.created_by,
+            "reviewed_by": revision.reviewed_by,
+            "review_notes": revision.review_notes,
+        },
+    }
+
+
+@router.put("/network/inventory")
+def put_network_inventory(
+    body: NetworkInventoryWrite,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.inventory.network_inventory import (
+        inventory_approval_issues,
+        inventory_completeness,
+        inventory_hash,
+        parse_inventory,
+    )
+    from pydantic import ValidationError
+
+    try:
+        document = parse_inventory(body.inventory)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+    completeness = inventory_completeness(document)
+    approval_issues = inventory_approval_issues(document)
+    if body.status == "APPROVED":
+        if completeness["status"] != "COMPLETE" or approval_issues:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "message": "Network inventory cannot be approved with missing or unverified observations",
+                    "completeness": completeness,
+                    "approval_issues": approval_issues,
+                },
+            )
+        if body.reviewed_by != user:
+            raise HTTPException(status_code=403, detail="reviewed_by must match the authenticated reviewer")
+    revision = NetworkInventoryRepository(db).create_revision(
+        body.inventory_id,
+        schema_version=document.inventory_schema,
+        status=body.status,
+        source=body.source,
+        inventory_json=document.model_dump(mode="json", by_alias=True),
+        completeness_json=completeness,
+        content_sha256=inventory_hash(document),
+        captured_at=document.captured_at or datetime.now(timezone.utc),
+        created_by=user,
+        reviewed_by=body.reviewed_by,
+        review_notes=body.review_notes,
+    )
+    return {
+        "inventory_id": body.inventory_id,
+        "revision": revision.revision,
+        "status": revision.status,
+        "inventory": revision.inventory_json,
+        "completeness": completeness,
+        "audit": {
+            "source": revision.source,
+            "content_sha256": revision.content_sha256,
+            "created_by": revision.created_by,
+            "captured_at": revision.captured_at.isoformat() if revision.captured_at else None,
+        },
+    }
+
+
+@router.get("/network/inventory/history")
+def network_inventory_history(
+    inventory_id: str = "default",
+    limit: int = 50,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+
+    if limit < 1 or limit > 200:
+        raise HTTPException(status_code=422, detail="limit must be between 1 and 200")
+    rows = NetworkInventoryRepository(db).history(inventory_id, limit=limit)
+    return {"inventory_id": inventory_id, "revisions": [row.to_dict() for row in rows]}
+
+
+@router.get("/network/inventory/risk")
+def network_inventory_risk(
+    inventory_id: str = "default",
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.inventory.network_inventory import NetworkInventoryDocument, inventory_risk, parse_inventory
+
+    revision = NetworkInventoryRepository(db).latest(inventory_id)
+    document = parse_inventory(revision.inventory_json) if revision else NetworkInventoryDocument(inventory_id=inventory_id)
+    result = inventory_risk(document)
+    result.update({
+        "inventory_id": inventory_id,
+        "revision": revision.revision if revision else None,
+        "profile_status": revision.status if revision else "DRAFT",
+        "posture": "RED" if result["risk_score"] >= 70 or result["status"] == "INCOMPLETE" else "AMBER" if result["risk_score"] >= 30 else "GREEN",
+        "reasons": [factor["reason"] for factor in result["factors"]],
+        "unknowns": list(result["completeness"]["missing"]),
+        "next_actions": list(result["completeness"]["next_actions"]),
+    })
+    return result
+
+
+@router.post("/network/inventory/discover")
+def discover_network_inventory(
+    body: NetworkInventoryDiscoveryRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Run the existing safe discovery engine and persist its structured view.
+
+    Discovery produces a DRAFT only. Scanner observations do not prove device
+    ownership, configuration correctness, topology, firmware currency, or
+    control effectiveness; a reviewer must enrich and verify the inventory.
+    """
+    from db.repositories.network_inventory_repository import NetworkInventoryRepository
+    from network_scanner.enterprise.engine import run_network_discovery
+    from network_scanner.inventory.network_inventory import inventory_completeness, inventory_hash
+    from network_scanner.inventory_adapter import inventory_from_discovery
+
+    try:
+        report = run_network_discovery(
+            body.scope_specs,
+            plugins=["none"],
+            authorization_scope=body.authorization_scope or f"tenant:{user}",
+        )
+        document = inventory_from_discovery(report, inventory_id=body.inventory_id)
+        completeness = inventory_completeness(document)
+        revision = NetworkInventoryRepository(db).create_revision(
+            body.inventory_id,
+            schema_version=document.inventory_schema,
+            status="DRAFT",
+            source="MIXED",
+            inventory_json=document.model_dump(mode="json", by_alias=True),
+            completeness_json=completeness,
+            content_sha256=inventory_hash(document),
+            captured_at=document.captured_at,
+            created_by=user,
+            review_notes="Generated from safe network discovery; verification required.",
+        )
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail={"error": "invalid_scope", "reason": str(exc)}) from exc
+    return {
+        "inventory_id": body.inventory_id,
+        "revision": revision.revision,
+        "status": revision.status,
+        "inventory": revision.inventory_json,
+        "completeness": completeness,
+        "scan_metadata": report.get("scan_metadata"),
+        "asset_summary": report.get("asset_summary"),
+        "network_inventory_summary": report.get("network_inventory_summary"),
+    }

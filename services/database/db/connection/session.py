@@ -55,6 +55,7 @@ def init_db(engine=None) -> None:
         evidence_record,
         migration_project,
         network_scan_target,
+        network_inventory,
         ot_device,
         policy_exception,
         repo_configuration,

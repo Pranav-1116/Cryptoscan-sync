@@ -19,6 +19,7 @@ from db.models.report_snapshot import ReportSchedule, ReportSnapshot
 from db.models.monitor import MonitorEvent, MonitorTarget
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.network_scan_run import NetworkScanRun
+from db.models.network_inventory import NetworkInventoryRevision
 from db.models.repo_configuration import RepoConfiguration
 from db.models.scan import Scan
 from db.models.scan_job import ScanJob
@@ -70,6 +71,7 @@ __all__ = [
     "MonitorEvent",
     "MonitorTarget",
     "MigrationTask",
+    "NetworkInventoryRevision",
     "NetworkScanRun",
     "NetworkScanTarget",
     "OtCryptoFinding",

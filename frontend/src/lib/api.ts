@@ -3818,3 +3818,63 @@ export const apiNbomCascade = (
 ): Promise<ApiResult<NbomCascadeEntry>> =>
   call(`/api/v1/cbom/nbom/cascade?ref=${encodeURIComponent(ref)}`,
        { method: "POST", body: JSON.stringify(body) });
+
+// Structured network inventory is intentionally typed as an evidence-backed
+// snapshot: absent values remain absent/unknown and are never filled by UI
+// defaults. The backend validates the complete Pydantic contract.
+export interface NetworkInventoryCompleteness {
+  status: "COMPLETE" | "INCOMPLETE";
+  score: number;
+  missing: string[];
+  next_actions: string[];
+}
+
+export interface NetworkInventoryResponse {
+  inventory_id: string;
+  revision: number | null;
+  persisted: boolean;
+  status: "DRAFT" | "IN_REVIEW" | "APPROVED" | "EXPIRED";
+  inventory: Record<string, any>;
+  completeness: NetworkInventoryCompleteness;
+  audit: Record<string, any>;
+}
+
+export interface NetworkInventoryRiskResponse {
+  inventory_id: string;
+  revision: number | null;
+  profile_status: string;
+  posture: "GREEN" | "AMBER" | "RED";
+  reasons: string[];
+  unknowns: string[];
+  next_actions: string[];
+  risk_score?: number;
+  risk_rating?: string;
+  status?: string;
+}
+
+export const apiNetworkInventory = (): Promise<ApiResult<NetworkInventoryResponse>> =>
+  call("/api/v1/network/inventory");
+
+export const apiNetworkInventoryRisk = (): Promise<ApiResult<NetworkInventoryRiskResponse>> =>
+  call("/api/v1/network/inventory/risk");
+
+export const apiNetworkInventorySchema = (): Promise<ApiResult<Record<string, any>>> =>
+  call("/api/v1/network/inventory/schema");
+
+export const apiValidateNetworkInventory = (inventory: Record<string, any>): Promise<ApiResult<Record<string, any>>> =>
+  call("/api/v1/network/inventory/validate", {
+    method: "POST",
+    body: JSON.stringify({ inventory }),
+  });
+
+export const apiSaveNetworkInventory = (
+  inventory: Record<string, any>,
+  options: { inventory_id?: string; status?: "DRAFT" | "IN_REVIEW" | "APPROVED" | "EXPIRED"; source?: string; reviewed_by?: string; review_notes?: string } = {},
+): Promise<ApiResult<NetworkInventoryResponse>> =>
+  call("/api/v1/network/inventory", {
+    method: "PUT",
+    body: JSON.stringify({ inventory, ...options }),
+  });
+
+export const apiNetworkInventoryHistory = (inventoryId = "default"): Promise<ApiResult<{ inventory_id: string; revisions: NetworkInventoryResponse[] }>> =>
+  call(`/api/v1/network/inventory/history?inventory_id=${encodeURIComponent(inventoryId)}`);
