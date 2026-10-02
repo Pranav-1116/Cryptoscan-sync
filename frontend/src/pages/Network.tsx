@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
-import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
+import { apiLiveInventory, apiNetworkInventory, apiNetworkInventoryRisk, apiNetworkInventoryTopology, apiNetworkConfigurationDrift, apiValidateNetworkInventory, apiSaveNetworkInventory, LiveNetworkAsset, NetworkInventoryResponse, NetworkInventoryRiskResponse, NetworkInventoryTopologyResponse, NetworkConfigurationDriftResponse } from "../lib/api.js";
 
 /* Network — live TLS endpoints from the network scanner via
    GET /api/v1/live-scan/inventory. The topology is derived DETERMINISTICALLY
@@ -120,6 +120,35 @@ function NetworkInventoryPanel() {
   const riskData = risk.data as NetworkInventoryRiskResponse | null;
   const topologyData = topology.data as NetworkInventoryTopologyResponse | null;
   const driftData = drift.data as NetworkConfigurationDriftResponse | null;
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [editorMessage, setEditorMessage] = useState("");
+  useEffect(() => {
+    if (snapshot && !draft) setDraft(JSON.stringify(snapshot.inventory, null, 2));
+  }, [snapshot, draft]);
+  const parseDraft = (): Record<string, any> | null => {
+    try {
+      const parsed = JSON.parse(draft);
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error("inventory must be a JSON object");
+      return parsed;
+    } catch (error) {
+      setEditorMessage(`Invalid JSON: ${String(error)}`);
+      return null;
+    }
+  };
+  const validateDraft = async () => {
+    const parsed = parseDraft();
+    if (!parsed) return;
+    const result = await apiValidateNetworkInventory(parsed);
+    setEditorMessage(result.data ? `Validated: ${result.data.valid ? "schema accepted" : "rejected"}` : result.error || "Validation failed");
+  };
+  const saveDraft = async () => {
+    const parsed = parseDraft();
+    if (!parsed) return;
+    const result = await apiSaveNetworkInventory(parsed, { status: "DRAFT", source: "MANUAL" });
+    setEditorMessage(result.data ? `Saved revision ${result.data.revision ?? "pending"}` : result.error || "Save failed");
+    if (result.data) void inventory.run();
+  };
   const sectionCount = snapshot?.inventory ? Object.keys(snapshot.inventory).length : 0;
   const devices = Array.isArray(snapshot?.inventory?.devices) ? snapshot!.inventory.devices : [];
   return (
@@ -150,6 +179,25 @@ function NetworkInventoryPanel() {
           </div>}
           {driftData && <div className="dim" style={{ marginTop: 4 }}>
             Configuration: {driftData.status} · {driftData.drifted_comparisons} drifted comparisons · {driftData.unknown_comparisons} unknown comparisons
+          </div>}
+          <div className="row" style={{ marginTop: 14 }}>
+            <button className="btn" type="button" onClick={() => setEditorOpen((open) => !open)}>
+              {editorOpen ? "Hide inventory editor" : "Edit structured inventory"}
+            </button>
+            <span className="dim">Raw configurations and credentials are never accepted.</span>
+          </div>
+          {editorOpen && <div style={{ marginTop: 12 }}>
+            <textarea
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              aria-label="Structured network inventory JSON"
+              style={{ width: "100%", minHeight: 260, fontFamily: "var(--mono)", fontSize: 12, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: 10 }}
+            />
+            <div className="row" style={{ marginTop: 8 }}>
+              <button className="btn" type="button" onClick={() => void validateDraft()}>Validate</button>
+              <button className="btn primary" type="button" onClick={() => void saveDraft()}>Save draft</button>
+              {editorMessage && <span className="dim">{editorMessage}</span>}
+            </div>
           </div>}
         </>
       )}
