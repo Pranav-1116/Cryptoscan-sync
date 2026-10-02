@@ -83,6 +83,7 @@ const Tenancy = lazy(() => import("./pages/Tenancy"));
 const Timeline = lazy(() => import("./pages/Timeline"));
 const Trust = lazy(() => import("./pages/Trust"));
 const Vendor = lazy(() => import("./pages/Vendor"));
+const VendorDueDiligence = lazy(() => import("./pages/VendorDueDiligence"));
 const WhatIf = lazy(() => import("./pages/WhatIf"));
 
 function App() {
@@ -194,6 +195,7 @@ function RoutedPages() {
       <Route path="/timeline" element={<Timeline />} />
       <Route path="/trust" element={<Trust />} />
       <Route path="/vendor" element={<Vendor />} />
+      <Route path="/vendor-due-diligence" element={<VendorDueDiligence />} />
       <Route path="/nbom" element={<Nbom />} />
       <Route path="/what-if" element={<WhatIf />} />
       <Route path="*" element={<Navigate to="/command-center" replace />} />        </Routes>

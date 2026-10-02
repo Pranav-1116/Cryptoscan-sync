@@ -222,7 +222,16 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/migrations/{project_id}/tasks` | Add Migration Task |
 | `GET` | `/api/v1/vendor-risks` | Vendor Risks |
 | `GET` | `/api/v1/vendors` | List Vendors |
-| `POST` | `/api/v1/vendors` | Create Vendor |
+| `POST` | `/api/v1/vendors` | Create Vendor (optional validated profile) |
+| `GET` | `/api/v1/vendors/{vendor_id}` | Vendor and profile summary |
+| `PATCH` | `/api/v1/vendors/{vendor_id}` | Update vendor metadata |
+| `GET` | `/api/v1/vendors/{vendor_id}/profile` | Current versioned due-diligence profile |
+| `PUT` | `/api/v1/vendors/{vendor_id}/profile` | Validate and append profile revision |
+| `POST` | `/api/v1/vendors/{vendor_id}/profile/validate` | Dry-run profile validation |
+| `POST` | `/api/v1/vendors/{vendor_id}/profile/evidence` | Append evidence provenance metadata |
+| `GET` | `/api/v1/vendors/{vendor_id}/profile/history` | Immutable profile revision history |
+| `GET` | `/api/v1/vendors/{vendor_id}/profile/schema` | Profile JSON Schema |
+| `DELETE` | `/api/v1/vendors/{vendor_id}/profile` | Expire current profile without deleting history |
 | `POST` | `/api/v1/vendors/{vendor_id}/api-scan` | Vendor Api Scan |
 | `POST` | `/api/v1/vendors/{vendor_id}/cbom` | Post Vendor Cbom |
 | `POST` | `/api/v1/vendors/{vendor_id}/docs` | Post Vendor Docs |

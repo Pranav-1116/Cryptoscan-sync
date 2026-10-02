@@ -14,7 +14,7 @@ import re
 from datetime import date, datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 SchemaStatus = Literal["DRAFT", "IN_REVIEW", "APPROVED", "EXPIRED"]
 
@@ -66,11 +66,19 @@ class ContractDetails(ProfileModel):
     start_date: date | None = None
     end_date: date | None = None
     auto_renewal: bool | None = None
+    renewal_terms: str | None = None
     termination_notice_days: int | None = Field(default=None, ge=0)
     termination_terms: str | None = None
+    termination_assistance: str | None = None
     contract_value: float | None = Field(default=None, ge=0)
     contract_currency: str | None = Field(default=None, max_length=3)
     payment_terms: str | None = None
+
+    @model_validator(mode="after")
+    def validate_contract_dates(self):
+        if self.start_date and self.end_date and self.end_date < self.start_date:
+            raise ValueError("contract end_date cannot precede start_date")
+        return self
 
 
 class ServiceLevelAgreement(ProfileModel):
@@ -78,6 +86,9 @@ class ServiceLevelAgreement(ProfileModel):
     uptime_guarantee: str | None = None
     response_time: str | None = None
     resolution_time: str | None = None
+    business_hours: str | None = None
+    maintenance_windows: str | None = None
+    measurement_window: str | None = None
     performance_metrics: dict[str, Any] = Field(default_factory=dict)
     penalties: str | None = None
     remedies: str | None = None
@@ -118,7 +129,10 @@ class Subprocessor(ProfileModel):
 class SecurityAssessment(ProfileModel):
     assessment_id: str | None = None
     last_assessment_date: date | None = None
+    last_questionnaire_date: date | None = None
     assessment_type: Literal["QUESTIONNAIRE", "ON_SITE_AUDIT", "THIRD_PARTY_ASSESSMENT", "PEN_TEST", "CODE_REVIEW", "OTHER"] | None = None
+    assessor: str | None = None
+    assurance_level: Literal["INDEPENDENT", "INTERNAL", "SELF_ATTESTED", "UNKNOWN"] = "UNKNOWN"
     risk_rating: Literal["critical", "high", "medium", "low", "unknown"] = "unknown"
     risk_score: float | None = Field(default=None, ge=0, le=1000)
     questionnaire_results: dict[str, Any] = Field(default_factory=dict)
@@ -137,6 +151,15 @@ class SecurityCertification(ProfileModel):
     status: Literal["CURRENT", "EXPIRED", "PENDING", "NOT_APPLICABLE", "UNVERIFIED"] = "UNVERIFIED"
 
 
+class RegulatoryAttestation(ProfileModel):
+    framework: str = Field(min_length=1)
+    status: Literal["COMPLIANT", "PARTIAL", "NON_COMPLIANT", "PENDING", "UNVERIFIED"] = "UNVERIFIED"
+    scope: str | None = None
+    assessed_on: date | None = None
+    expires_on: date | None = None
+    evidence_reference: str | None = None
+
+
 class ComplianceProfile(ProfileModel):
     gdpr: bool | None = None
     ccpa_cpra: bool | None = None
@@ -146,7 +169,10 @@ class ComplianceProfile(ProfileModel):
     fedramp_level: str | None = None
     csa_star: str | None = None
     nist_csf_alignment: str | None = None
+    regulatory_attestations: list[RegulatoryAttestation] = Field(default_factory=list)
     industry_requirements: list[str] = Field(default_factory=list)
+    processor_or_controller_role: Literal["PROCESSOR", "CONTROLLER", "JOINT_CONTROLLER", "UNKNOWN"] = "UNKNOWN"
+    cross_border_transfer_mechanism: str | None = None
     dpa_signed: bool | None = None
     dpa_version: str | None = None
     dpa_date: date | None = None
@@ -162,11 +188,16 @@ class SecurityCompliance(ProfileModel):
 class DataPrivacyProfile(ProfileModel):
     data_types_processed: list[Literal["PII", "PCI", "PHI", "FINANCIAL", "PROPRIETARY", "CONFIDENTIAL", "OTHER"]] = Field(default_factory=list)
     data_classification: Literal["PUBLIC", "INTERNAL", "CONFIDENTIAL", "RESTRICTED"] | None = None
+    data_owner: str | None = None
     data_flow: str | None = None
+    data_flow_diagram_reference: str | None = None
+    processing_locations: list[str] = Field(default_factory=list)
     data_residency: list[str] = Field(default_factory=list)
     data_sovereignty: list[str] = Field(default_factory=list)
     data_retention: str | None = None
     data_deletion_process: str | None = None
+    deletion_sla: str | None = None
+    privacy_mechanisms: list[str] = Field(default_factory=list)
     privacy_policy_url: str | None = None
     data_privacy_framework: str | None = None
     standard_contractual_clauses: str | None = None
@@ -211,8 +242,11 @@ class SecurityIncident(ProfileModel):
     scope: str | None = None
     customer_impact: str | None = None
     root_cause: str | None = None
+    root_cause_evidence_reference: str | None = None
     remediation: str | None = None
+    notification_required: bool | None = None
     notification_timeliness: str | None = None
+    regulatory_notifications: str | None = None
     severity: Literal["critical", "high", "medium", "low", "unknown"] = "unknown"
     status: str | None = None
 
@@ -222,6 +256,7 @@ class IncidentHistory(ProfileModel):
     incident_response_plan: str | None = None
     notification_obligations: str | None = None
     incident_response_time: str | None = None
+    communication_plan: str | None = None
     communication_channels: list[str] = Field(default_factory=list)
 
 
@@ -253,15 +288,23 @@ class VendorDependencyProfile(ProfileModel):
     irreplaceability: Literal["high", "medium", "low", "unknown"] = "unknown"
     vendor_lock_in_summary: str | None = None
     sub_vendors: list[SubVendor] = Field(default_factory=list)
+    nth_party_visibility: str | None = None
+    fourth_party_visibility: str | None = None
     supply_chain_visibility_depth: int | None = Field(default=None, ge=1, le=99)
     subvendor_change_notification: str | None = None
     ecosystem_vendors: list[str] = Field(default_factory=list)
+    ecosystem_dependencies: list[str] = Field(default_factory=list)
     integration_points: list[IntegrationPoint] = Field(default_factory=list)
     cascading_failure_analysis: str | None = None
 
 
 class AccessPermissionProfile(ProfileModel):
     access_types: list[Literal["REMOTE", "API", "VPN", "PHYSICAL", "ADMINISTRATIVE"]] = Field(default_factory=list)
+    system_access: bool | None = None
+    api_access: bool | None = None
+    vpn_access: bool | None = None
+    physical_access: bool | None = None
+    administrative_access: bool | None = None
     access_scope: list[str] = Field(default_factory=list)
     access_controls: list[str] = Field(default_factory=list)
     mfa_required: bool | None = None
@@ -278,11 +321,14 @@ class AccessPermissionProfile(ProfileModel):
 class ExitStrategyProfile(ProfileModel):
     transition_period: str | None = None
     data_retrieval_process: str | None = None
+    data_deletion_confirmation: str | None = None
+    data_export_format: list[str] = Field(default_factory=list)
     knowledge_transfer: str | None = None
     license_portability: str | None = None
     escrow_arrangements: str | None = None
     replacement_plan: str | None = None
     migration_plan: str | None = None
+    migration_dependencies: list[str] = Field(default_factory=list)
     rollback_plan: str | None = None
     last_tested_on: date | None = None
 
@@ -297,6 +343,13 @@ class ProfileEvidence(ProfileModel):
     reviewed_by: str | None = None
     limitations: list[str] = Field(default_factory=list)
     sha256: str | None = None
+
+    @field_validator("sha256")
+    @classmethod
+    def validate_sha256(cls, value: str | None) -> str | None:
+        if value is not None and not re.fullmatch(r"[0-9a-fA-F]{64}", value):
+            raise ValueError("evidence sha256 must be a 64-character hexadecimal digest")
+        return value
 
 
 class VendorProfile(ProfileModel):
@@ -403,6 +456,22 @@ def profile_completeness(profile: VendorProfile) -> dict[str, Any]:
     total = len(_REQUIRED_PATHS)
     present = total - len(missing)
     score = round((present / total) * 100, 2) if total else 0.0
+    sections: dict[str, dict[str, Any]] = {}
+    for path, _getter in _REQUIRED_PATHS:
+        section = path.split(".", 1)[0]
+        sections.setdefault(section, {"required_fields": 0, "present_fields": 0, "missing": []})
+        sections[section]["required_fields"] += 1
+        if path in missing:
+            sections[section]["missing"].append(path)
+        else:
+            sections[section]["present_fields"] += 1
+    for section in sections.values():
+        section["score"] = round(
+            (section["present_fields"] / section["required_fields"]) * 100,
+            2,
+        ) if section["required_fields"] else 0.0
+        section["status"] = "COMPLETE" if not section["missing"] else "INCOMPLETE"
+        section["next_actions"] = [f"Provide {path}" for path in section["missing"]]
     return {
         "score": score,
         "status": "COMPLETE" if not missing else "INCOMPLETE",
@@ -410,6 +479,7 @@ def profile_completeness(profile: VendorProfile) -> dict[str, Any]:
         "present_fields": present,
         "missing": missing,
         "next_actions": [f"Provide {path}" for path in missing],
+        "sections": sections,
     }
 
 
@@ -427,6 +497,13 @@ def now_utc() -> datetime:
 
 
 __all__ = [
-    "VendorProfile", "VendorIdentity", "ProfileEvidence", "parse_profile",
+    "VendorProfile", "VendorIdentity", "ContactDirectory", "ComponentService",
+    "ContractDetails", "ServiceLevelAgreement", "LegalLiability",
+    "SecurityAssessment", "AssessmentFinding", "SecurityCertification",
+    "RegulatoryAttestation", "ComplianceProfile", "SecurityCompliance",
+    "DataPrivacyProfile", "Subprocessor", "FinancialStabilityProfile",
+    "FundingEvent", "SecurityIncident", "IncidentHistory", "SubVendor",
+    "IntegrationPoint", "VendorDependencyProfile", "AccessPermissionProfile",
+    "ExitStrategyProfile", "ProfileEvidence", "parse_profile",
     "profile_completeness", "profile_hash", "empty_profile", "ValidationError",
 ]

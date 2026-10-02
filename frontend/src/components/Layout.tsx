@@ -34,6 +34,7 @@ const PRIMARY_SECTIONS = [
       { to: "/hardware", label: "Hardware", icon: "⌬" },
       { to: "/certificates", label: "Certificates", icon: "⊞" },
       { to: "/vendor", label: "Vendors", icon: "▤" },
+      { to: "/vendor-due-diligence", label: "Vendor Due Diligence", icon: "✓" },
     ]
   },
   {

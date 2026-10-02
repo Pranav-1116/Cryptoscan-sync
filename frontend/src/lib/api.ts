@@ -2598,6 +2598,77 @@ export const apiTechBomEvidence = (version?: number, fmt = "json"): Promise<ApiR
 export const apiTechBomVendor = (): Promise<ApiResult<TechBomVendorInventory>> =>
   call("/api/v1/technology-bom/vendor");
 
+// ── Vendor due diligence ───────────────────────────────────────────────────
+export interface VendorProfileCompleteness {
+  score: number;
+  status: "COMPLETE" | "INCOMPLETE";
+  required_fields: number;
+  present_fields: number;
+  missing: string[];
+  next_actions: string[];
+  sections?: Record<string, {
+    score: number;
+    status: "COMPLETE" | "INCOMPLETE";
+    required_fields: number;
+    present_fields: number;
+    missing: string[];
+    next_actions: string[];
+  }>;
+}
+export interface VendorRecord {
+  id: string;
+  name: string;
+  criticality?: string | null;
+  vendor_type?: string | null;
+  integration_type?: string | null;
+  data_classifications?: string[] | null;
+  primary_contact?: string | null;
+  security_contact?: string | null;
+  system_ids?: string[];
+  vendor_profile?: { status: string; revision: number | null; completeness: VendorProfileCompleteness };
+  profile?: { status: string; revision: number | null; completeness: VendorProfileCompleteness | null };
+  [key: string]: unknown;
+}
+export interface VendorProfileResponse {
+  vendor_id: string;
+  revision: number | null;
+  persisted: boolean;
+  status: string;
+  profile: Record<string, unknown>;
+  completeness: VendorProfileCompleteness;
+  audit: { source: string; content_sha256?: string | null; captured_at?: string | null; reviewed_by?: string | null; review_notes?: string | null };
+}
+export interface VendorProfileWriteResponse {
+  vendor_id: string;
+  revision: number;
+  status: string;
+  profile: Record<string, unknown>;
+  completeness: VendorProfileCompleteness;
+  audit?: { source: string; content_sha256?: string };
+}
+export const apiVendors = (): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
+  call("/api/v1/vendors");
+export const apiVendor = (vendorId: string): Promise<ApiResult<VendorRecord>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}`);
+export const apiVendorProfile = (vendorId: string): Promise<ApiResult<VendorProfileResponse>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile`);
+export interface VendorRiskResponse {
+  vendor_id: string;
+  vendor: string;
+  due_diligence?: { risk_score: number; risk_rating: string; status: string; factors: Array<{ factor: string; points: number; reason: string }>; disclaimer: string };
+  [key: string]: unknown;
+}
+export const apiVendorRisk = (vendorId: string): Promise<ApiResult<VendorRiskResponse>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/risk`);
+export const apiVendorProfileHistory = (vendorId: string): Promise<ApiResult<{ vendor_id: string; revisions: VendorProfileResponse[] }>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile/history`);
+export const apiVendorProfilePut = (vendorId: string, body: { profile: Record<string, unknown>; status?: string; source?: string; reviewed_by?: string; review_notes?: string }): Promise<ApiResult<VendorProfileWriteResponse>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile`, { method: "PUT", body: JSON.stringify(body) });
+export const apiVendorProfileValidate = (vendorId: string, body: { profile: Record<string, unknown>; status?: string }): Promise<ApiResult<{ valid: boolean; status_allowed: boolean; completeness: VendorProfileCompleteness; content_sha256: string; persisted: boolean }>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile/validate`, { method: "POST", body: JSON.stringify(body) });
+export const apiVendorProfileEvidence = (vendorId: string, body: Record<string, unknown>): Promise<ApiResult<{ vendor_id: string; revision: number; status: string; evidence_id: string; completeness: VendorProfileCompleteness; content_sha256: string }>> =>
+  call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile/evidence`, { method: "POST", body: JSON.stringify(body) });
+
 export interface TechBomSchedule {
   id: string; name: string; frequency: string; fmt: string; layer: string;
   filters: Record<string, unknown>; environment: string; recipients: string[];

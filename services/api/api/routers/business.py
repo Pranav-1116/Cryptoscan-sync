@@ -52,6 +52,17 @@ class VendorCreate(BaseModel):
     data_classifications: list[str] | None = None
     primary_contact: str | None = None
     security_contact: str | None = None
+    profile: dict[str, Any] | None = None
+
+
+class VendorPatch(BaseModel):
+    name: str | None = None
+    criticality: str | None = None
+    vendor_type: str | None = None
+    integration_type: str | None = None
+    data_classifications: list[str] | None = None
+    primary_contact: str | None = None
+    security_contact: str | None = None
 
 
 class VendorProfileWrite(BaseModel):
@@ -66,6 +77,17 @@ class VendorProfileWrite(BaseModel):
     source: str = Field(default="operator", min_length=1, max_length=120)
     reviewed_by: str | None = Field(default=None, max_length=160)
     review_notes: str | None = None
+
+
+class VendorProfileEvidenceWrite(BaseModel):
+    evidence_id: str = Field(min_length=1, max_length=160)
+    evidence_type: Literal["CONTRACT", "ASSESSMENT", "CERTIFICATION", "QUESTIONNAIRE", "OBSERVED_SCAN", "ATTESTATION", "OTHER"]
+    evidence_reference: str = Field(min_length=1, max_length=500)
+    status: Literal["PASS", "FAIL", "PENDING", "EXPIRED", "UNAVAILABLE", "UNVERIFIED"] = "UNVERIFIED"
+    captured_at: datetime | None = None
+    issuer: str | None = None
+    limitations: list[str] = Field(default_factory=list)
+    sha256: str | None = Field(default=None, min_length=64, max_length=64)
 
 
 class QuestionnaireBody(BaseModel):
@@ -281,7 +303,34 @@ def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db:
     )
     if body.system_id:
         intel.link_vendor(body.system_id, vendor.id)
-    return vendor.to_dict()
+    result = vendor.to_dict()
+    if body.profile is not None:
+        from pydantic import ValidationError
+        from db.repositories.vendor_profile_repository import VendorProfileRepository
+        from vendor_intel.profile import now_utc, parse_profile, profile_completeness, profile_hash
+
+        try:
+            profile = parse_profile(body.profile)
+        except (ValidationError, ValueError) as exc:
+            detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+            raise HTTPException(status_code=422, detail=detail) from exc
+        completeness = profile_completeness(profile)
+        revision = VendorProfileRepository(db).create_revision(
+            vendor.id,
+            schema_version=profile.profile_schema,
+            status="DRAFT",
+            source="vendor-create",
+            profile_json=profile.model_dump(mode="json", by_alias=True),
+            completeness_json=completeness,
+            content_sha256=profile_hash(profile),
+            captured_at=now_utc(),
+        )
+        result["vendor_profile"] = {
+            "revision": revision.revision,
+            "status": revision.status,
+            "completeness": completeness,
+        }
+    return result
 
 
 @router.get("/vendors/{vendor_id}/profile/schema")
@@ -289,6 +338,36 @@ def vendor_profile_schema(vendor_id: str, user: str = Depends(get_current_user))
     from vendor_intel.profile import VendorProfile
 
     return VendorProfile.model_json_schema(by_alias=True)
+
+
+@router.post("/vendors/{vendor_id}/profile/validate")
+def validate_vendor_profile(
+    vendor_id: str,
+    body: VendorProfileWrite,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from pydantic import ValidationError
+    from vendor_intel.profile import parse_profile, profile_completeness, profile_hash
+
+    if IntelligenceRepository(db).get_vendor(vendor_id) is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    try:
+        profile = parse_profile(body.profile)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+    completeness = profile_completeness(profile)
+    return {
+        "valid": True,
+        "status_allowed": (
+            body.status != "APPROVED"
+            or (completeness["status"] == "COMPLETE" and body.reviewed_by == user)
+        ),
+        "completeness": completeness,
+        "content_sha256": profile_hash(profile),
+        "persisted": False,
+    }
 
 
 @router.get("/vendors/{vendor_id}/profile")
@@ -379,6 +458,53 @@ def put_vendor_profile(
         "profile": revision.profile_json,
         "completeness": revision.completeness_json,
         "audit": {"source": revision.source, "content_sha256": revision.content_sha256},
+    }
+
+
+@router.post("/vendors/{vendor_id}/profile/evidence")
+def append_vendor_profile_evidence(
+    vendor_id: str,
+    body: VendorProfileEvidenceWrite,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from pydantic import ValidationError
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+    from vendor_intel.profile import empty_profile, now_utc, parse_profile, profile_completeness, profile_hash
+
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    repo = VendorProfileRepository(db)
+    current = repo.latest(vendor_id)
+    try:
+        profile = parse_profile(current.profile_json) if current else empty_profile(vendor.name, vendor.id)
+        payload = profile.model_dump(mode="json", by_alias=True)
+        payload.setdefault("evidence", []).append(body.model_dump(mode="json", exclude_none=True))
+        updated = parse_profile(payload)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+    completeness = profile_completeness(updated)
+    revision = repo.create_revision(
+        vendor_id,
+        schema_version=updated.profile_schema,
+        status="IN_REVIEW" if current and current.status == "APPROVED" else current.status if current else "DRAFT",
+        source="evidence-ingest",
+        profile_json=updated.model_dump(mode="json", by_alias=True),
+        completeness_json=completeness,
+        content_sha256=profile_hash(updated),
+        captured_at=now_utc(),
+        reviewed_by=None,
+        review_notes=f"Evidence appended by {user}",
+    )
+    return {
+        "vendor_id": vendor_id,
+        "revision": revision.revision,
+        "status": revision.status,
+        "evidence_id": body.evidence_id,
+        "completeness": completeness,
+        "content_sha256": revision.content_sha256,
     }
 
 
@@ -554,6 +680,37 @@ def vendor_risks(user: str = Depends(get_current_user), db: Session = Depends(ge
         )
         rows.append(scored)
     return {"vendors": rows, "total_count": len(rows)}
+
+
+@router.get("/vendors/{vendor_id}")
+def get_vendor(vendor_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    current = VendorProfileRepository(db).latest(vendor_id)
+    result = vendor.to_dict()
+    result["profile"] = {
+        "status": current.status if current else "DRAFT",
+        "revision": current.revision if current else None,
+        "completeness": current.completeness_json if current else None,
+    }
+    return result
+
+
+@router.patch("/vendors/{vendor_id}")
+def patch_vendor(
+    vendor_id: str,
+    body: VendorPatch,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    values = {key: value for key, value in body.model_dump(exclude_unset=True).items() if value is not None}
+    vendor = IntelligenceRepository(db).update_vendor(vendor_id, **values)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return vendor.to_dict()
 
 
 @router.get("/migrations")

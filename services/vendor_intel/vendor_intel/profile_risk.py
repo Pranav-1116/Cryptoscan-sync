@@ -49,6 +49,10 @@ def assess_profile_risk(
         add("contract", 8, "Contract, renewal, and termination terms are not recorded")
     if profile.data_privacy.data_classification is None or not profile.data_privacy.data_residency:
         add("data_governance", 10, "Data classification or residency is unknown")
+    if profile.security_compliance.compliance.dpa_signed is False:
+        add("data_processing_agreement", 10, "The profile records that no DPA is signed")
+    if profile.data_privacy.data_types_processed and not profile.data_privacy.privacy_mechanisms:
+        add("privacy_mechanisms", 5, "Data is processed but privacy mechanisms are not recorded")
     if profile.financial_stability.financial_risk == "critical":
         add("financial_stability", 15, "Financial stability is rated critical")
     elif profile.financial_stability.financial_risk == "high":
@@ -71,14 +75,20 @@ def assess_profile_risk(
         add("concentration", 8, "Concentration risk is rated high")
     if deps.supply_chain_visibility_depth is None and deps.sub_vendors:
         add("fourth_party_visibility", 6, "Sub-vendors exist but visibility depth is not recorded")
+    if deps.sub_vendors and not deps.nth_party_visibility:
+        add("nth_party_visibility", 5, "Nth-party visibility is not recorded")
 
     if profile.access_permissions.privileged_access is True and not profile.access_permissions.access_controls:
         add("privileged_access", 10, "Privileged access is recorded without access controls")
     elif not profile.access_permissions.access_types:
         add("access_governance", 6, "Vendor access type and scope are unknown")
+    if profile.access_permissions.access_types and profile.access_permissions.mfa_required is None:
+        add("mfa_control", 5, "Access exists but MFA requirement is unknown")
 
     if not profile.exit_strategy.data_retrieval_process or not profile.exit_strategy.transition_period:
         add("exit_strategy", 10, "Data retrieval or transition planning is incomplete")
+    if not profile.exit_strategy.data_deletion_confirmation:
+        add("exit_deletion", 5, "Exit data-deletion confirmation is not recorded")
     if profile_status == "EXPIRED":
         add("profile_status", 15, "The current due-diligence revision is expired")
 

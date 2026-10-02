@@ -33,6 +33,9 @@ application authentication and tenant context:
 - `GET /api/v1/vendors/{vendor_id}/profile/history` — newest-first immutable
   revisions.
 - `GET /api/v1/vendors/{vendor_id}/profile/schema` — JSON Schema for clients.
+- `POST /api/v1/vendors/{vendor_id}/profile/evidence` — append provenance-only evidence metadata and force an approved profile back to review.
+- `POST /api/v1/vendors/{vendor_id}/profile/validate` — validate and hash without persistence.
+- The console page is `/vendor-due-diligence`; it is live-API-only and provides section readiness, a schema-validated draft editor, risk output, and evidence metadata entry.
 - Existing `GET /api/v1/vendors/{vendor_id}/risk` and
   `GET /api/v1/vendor-risks` now include `due_diligence`. This is an
   explainable screening signal, not a certification or a replacement for a

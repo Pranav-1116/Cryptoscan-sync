@@ -74,7 +74,10 @@ def test_profile_represents_all_due_diligence_sections():
     assert isinstance(profile, VendorProfile)
     assert profile.identity.vendor_type == "ISV"
     assert profile.data_privacy.data_types_processed == ["PII"]
-    assert profile_completeness(profile)["status"] == "COMPLETE"
+    completeness = profile_completeness(profile)
+    assert completeness["status"] == "COMPLETE"
+    assert completeness["sections"]["identity"]["status"] == "COMPLETE"
+    assert completeness["sections"]["data_privacy"]["status"] == "COMPLETE"
     assert len(profile_hash(profile)) == 64
 
 
@@ -86,3 +89,22 @@ def test_profile_rejects_secrets_and_unknown_fields():
 
     with pytest.raises(ValueError):
         parse_profile({"identity": {"legal_name": "Example", "not_a_field": "x"}})
+
+
+def test_profile_validates_contract_dates_and_evidence_integrity():
+    with pytest.raises(ValueError, match="end_date"):
+        parse_profile({
+            "identity": {"legal_name": "Example"},
+            "contracts": [{
+                "contract_id": "c-1", "contract_type": "MSA",
+                "start_date": "2026-02-01", "end_date": "2026-01-01",
+            }],
+        })
+    with pytest.raises(ValueError, match="sha256"):
+        parse_profile({
+            "identity": {"legal_name": "Example"},
+            "evidence": [{
+                "evidence_id": "e-1", "evidence_type": "OTHER",
+                "evidence_reference": "ref", "sha256": "not-a-digest",
+            }],
+        })
