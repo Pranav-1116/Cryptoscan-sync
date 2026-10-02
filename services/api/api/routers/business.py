@@ -489,7 +489,7 @@ def append_vendor_profile_evidence(
     revision = repo.create_revision(
         vendor_id,
         schema_version=updated.profile_schema,
-        status="IN_REVIEW" if current and current.status == "APPROVED" else current.status if current else "DRAFT",
+        status="IN_REVIEW" if current and current.status in {"APPROVED", "EXPIRED"} else current.status if current else "DRAFT",
         source="evidence-ingest",
         profile_json=updated.model_dump(mode="json", by_alias=True),
         completeness_json=completeness,
