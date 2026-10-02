@@ -68,6 +68,7 @@ def init_db(engine=None) -> None:
         user,
         vendor,
         vendor_crypto,
+        vendor_profile,
         verification_log,
         vulnerability,
     )

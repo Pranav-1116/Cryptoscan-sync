@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any, Literal
 from db.tenancy import filtered_get
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -51,6 +52,20 @@ class VendorCreate(BaseModel):
     data_classifications: list[str] | None = None
     primary_contact: str | None = None
     security_contact: str | None = None
+
+
+class VendorProfileWrite(BaseModel):
+    """Envelope for a validated, versioned profile revision.
+
+    The nested document is validated by the shared vendor-intel schema. Keeping
+    the envelope separate makes status, provenance, and review metadata
+    auditable instead of hiding it inside free-form vendor JSON.
+    """
+    profile: dict[str, Any]
+    status: Literal["DRAFT", "IN_REVIEW", "APPROVED", "EXPIRED"] = "DRAFT"
+    source: str = Field(default="operator", min_length=1, max_length=120)
+    reviewed_by: str | None = Field(default=None, max_length=160)
+    review_notes: str | None = None
 
 
 class QuestionnaireBody(BaseModel):
@@ -212,9 +227,23 @@ def create_owner(body: OwnerCreate, user: str = Depends(get_current_user), db: S
 def list_vendors(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     intel = IntelligenceRepository(db)
     rows = []
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+    from vendor_intel.profile import empty_profile, profile_completeness
+
+    profiles = VendorProfileRepository(db)
     for vendor in intel.list_vendors():
         payload = vendor.to_dict()
         payload["system_ids"] = intel.vendor_system_ids(vendor.id)
+        current_profile = profiles.latest(vendor.id)
+        payload["vendor_profile"] = {
+            "status": current_profile.status if current_profile else "DRAFT",
+            "revision": current_profile.revision if current_profile else None,
+            "completeness": (
+                current_profile.completeness_json
+                if current_profile
+                else profile_completeness(empty_profile(vendor.name, vendor.id))
+            ),
+        }
         rows.append(payload)
     return {"vendors": rows}
 
@@ -253,6 +282,142 @@ def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db:
     if body.system_id:
         intel.link_vendor(body.system_id, vendor.id)
     return vendor.to_dict()
+
+
+@router.get("/vendors/{vendor_id}/profile/schema")
+def vendor_profile_schema(vendor_id: str, user: str = Depends(get_current_user)):
+    from vendor_intel.profile import VendorProfile
+
+    return VendorProfile.model_json_schema(by_alias=True)
+
+
+@router.get("/vendors/{vendor_id}/profile")
+def get_vendor_profile(vendor_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from vendor_intel.profile import empty_profile, profile_completeness
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    revision = VendorProfileRepository(db).latest(vendor_id)
+    if revision is None:
+        profile = empty_profile(vendor.name, vendor.id)
+        return {
+            "vendor_id": vendor.id,
+            "revision": None,
+            "persisted": False,
+            "status": "DRAFT",
+            "profile": profile.model_dump(mode="json", by_alias=True),
+            "completeness": profile_completeness(profile),
+            "audit": {"source": "system-default", "content_sha256": None},
+        }
+    return {
+        "vendor_id": vendor.id,
+        "revision": revision.revision,
+        "persisted": True,
+        "status": revision.status,
+        "profile": revision.profile_json,
+        "completeness": revision.completeness_json,
+        "audit": {
+            "source": revision.source,
+            "content_sha256": revision.content_sha256,
+            "captured_at": revision.captured_at.isoformat() if revision.captured_at else None,
+            "reviewed_by": revision.reviewed_by,
+            "review_notes": revision.review_notes,
+        },
+    }
+
+
+@router.put("/vendors/{vendor_id}/profile")
+def put_vendor_profile(
+    vendor_id: str,
+    body: VendorProfileWrite,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from pydantic import ValidationError
+    from vendor_intel.profile import parse_profile, profile_completeness, profile_hash, now_utc
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    try:
+        profile = parse_profile(body.profile)
+    except (ValidationError, ValueError) as exc:
+        detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
+        raise HTTPException(status_code=422, detail=detail) from exc
+
+    completeness = profile_completeness(profile)
+    if body.status == "APPROVED":
+        if completeness["status"] != "COMPLETE":
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "An incomplete profile cannot be approved", "completeness": completeness},
+            )
+        if not body.reviewed_by:
+            raise HTTPException(status_code=422, detail="reviewed_by is required for an approved profile")
+
+    revision = VendorProfileRepository(db).create_revision(
+        vendor_id,
+        schema_version=profile.profile_schema,
+        status=body.status,
+        source=body.source,
+        profile_json=profile.model_dump(mode="json", by_alias=True),
+        completeness_json=completeness,
+        content_sha256=profile_hash(profile),
+        captured_at=now_utc(),
+        reviewed_by=body.reviewed_by,
+        review_notes=body.review_notes,
+    )
+    return {
+        "vendor_id": vendor.id,
+        "revision": revision.revision,
+        "status": revision.status,
+        "profile": revision.profile_json,
+        "completeness": revision.completeness_json,
+        "audit": {"source": revision.source, "content_sha256": revision.content_sha256},
+    }
+
+
+@router.delete("/vendors/{vendor_id}/profile")
+def expire_vendor_profile(
+    vendor_id: str,
+    reason: str | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Expire the current revision without deleting audit history or evidence."""
+    from vendor_intel.profile import now_utc
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+
+    if IntelligenceRepository(db).get_vendor(vendor_id) is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    current = VendorProfileRepository(db).latest(vendor_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Vendor has no persisted profile")
+    revision = VendorProfileRepository(db).create_revision(
+        vendor_id,
+        schema_version=current.schema_version,
+        status="EXPIRED",
+        source="operator-expire",
+        profile_json=current.profile_json,
+        completeness_json=current.completeness_json,
+        content_sha256=current.content_sha256,
+        captured_at=now_utc(),
+        reviewed_by=user,
+        review_notes=reason,
+    )
+    return {"vendor_id": vendor_id, "revision": revision.revision, "status": revision.status, "audit_preserved": True}
+
+
+@router.get("/vendors/{vendor_id}/profile/history")
+def vendor_profile_history(vendor_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+
+    if IntelligenceRepository(db).get_vendor(vendor_id) is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    return {"vendor_id": vendor_id, "revisions": [row.to_dict() for row in VendorProfileRepository(db).history(vendor_id)]}
 
 
 @router.get("/vendors/{vendor_id}/questionnaire")
@@ -337,9 +502,20 @@ def vendor_risk(vendor_id: str, user: str = Depends(get_current_user), db: Sessi
         cbom_provided=profile.get("cbom_provided"),
         profile=profile,
     )
+    from db.repositories.vendor_profile_repository import VendorProfileRepository
+    from vendor_intel.profile import empty_profile, parse_profile
+    from vendor_intel.profile_risk import assess_profile_risk
+
+    current_profile = VendorProfileRepository(db).latest(vendor.id)
+    due_profile = parse_profile(current_profile.profile_json) if current_profile else empty_profile(vendor.name, vendor.id)
     scored["vendor_id"] = vendor.id
     scored["vendor"] = vendor.name
     scored["inventory"] = inventory
+    scored["due_diligence"] = assess_profile_risk(
+        due_profile,
+        crypto_risk=dict(scored),
+        profile_status=current_profile.status if current_profile else "DRAFT",
+    )
     return scored
 
 
@@ -361,8 +537,19 @@ def vendor_risks(user: str = Depends(get_current_user), db: Session = Depends(ge
             cbom_provided=profile.get("cbom_provided"),
             profile=profile,
         )
+        from db.repositories.vendor_profile_repository import VendorProfileRepository
+        from vendor_intel.profile import empty_profile, parse_profile
+        from vendor_intel.profile_risk import assess_profile_risk
+
+        current_profile = VendorProfileRepository(db).latest(vendor.id)
+        due_profile = parse_profile(current_profile.profile_json) if current_profile else empty_profile(vendor.name, vendor.id)
         scored["vendor_id"] = vendor.id
         scored["vendor"] = vendor.name
+        scored["due_diligence"] = assess_profile_risk(
+            due_profile,
+            crypto_risk=dict(scored),
+            profile_status=current_profile.status if current_profile else "DRAFT",
+        )
         rows.append(scored)
     return {"vendors": rows, "total_count": len(rows)}
 

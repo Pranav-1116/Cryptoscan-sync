@@ -35,6 +35,7 @@ from db.models.policy_exception import ExceptionReview, PolicyException
 from db.models.system_agility_score import SystemAgilityScore
 from db.models.vendor import SystemVendor, Vendor
 from db.models.vendor_crypto import VendorCryptoInventory
+from db.models.vendor_profile import VendorProfileRevision
 from db.models.user import AuditLog, MfaRecoveryCode, User, UserSession
 from db.models.verification_log import VerificationLog
 from db.models.vulnerability import Vulnerability
@@ -95,6 +96,7 @@ __all__ = [
     "UserSession",
     "Vendor",
     "VendorCryptoInventory",
+    "VendorProfileRevision",
     "VerificationLog",
     "Vulnerability",
 ]
