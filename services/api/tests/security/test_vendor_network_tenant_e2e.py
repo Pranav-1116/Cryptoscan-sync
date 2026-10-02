@@ -89,6 +89,303 @@ def _headers(user: str, tenant: str | None = None) -> dict[str, str]:
     return result
 
 
+def _complete_profile(vendor_id: str) -> dict:
+    """A non-secret fixture covering every profile section and nested type."""
+    return {
+        "schema": "cryptoscan.vendor-profile/1",
+        "identity": {
+            "legal_name": "Evidence-backed Vendor",
+            "vendor_id": vendor_id,
+            "duns_number": "123456789",
+            "vendor_type": "OEM",
+            "criticality": "high",
+            "vendor_tier": 1,
+            "parent_company": "Parent Holdings",
+            "ownership_structure": "Private",
+            "headquarters_location": "Coimbatore, IN",
+            "jurisdictions": ["IN"],
+            "operating_locations": ["IN", "AE"],
+        },
+        "contacts": {
+            "business": "business@example.invalid",
+            "technical_support": "support@example.invalid",
+            "security_incident_response": "security@example.invalid",
+            "account_manager": "account@example.invalid",
+            "escalation_contacts": ["escalation@example.invalid"],
+            "emergency_24x7": "on-call process documented",
+        },
+        "components": [{
+            "component_id": "component-1",
+            "name": "Managed Platform",
+            "version": "1.2.3",
+            "component_type": "SAAS",
+            "license_model": "subscription",
+            "support_level": "24x7",
+            "eol_date": "2030-12-31",
+            "replacement_product": "unknown",
+            "used_by": ["payments"],
+            "criticality": "high",
+            "alternatives": ["alternative-provider"],
+            "vendor_lock_in_risk": "medium",
+        }],
+        "contracts": [{
+            "contract_id": "contract-1",
+            "contract_type": "MSA",
+            "start_date": "2026-01-01",
+            "end_date": "2027-01-01",
+            "auto_renewal": True,
+            "renewal_terms": "annual review",
+            "termination_notice_days": 90,
+            "termination_terms": "written notice",
+            "termination_assistance": "transition support",
+            "contract_value": 1000,
+            "contract_currency": "USD",
+            "payment_terms": "net 30",
+        }],
+        "service_level_agreements": [{
+            "contract_id": "contract-1",
+            "uptime_guarantee": "99.9%",
+            "response_time": "1 hour",
+            "resolution_time": "4 hours",
+            "business_hours": "24x7",
+            "maintenance_windows": "scheduled",
+            "measurement_window": "monthly",
+            "performance_metrics": {"availability": "observed"},
+            "penalties": "service credits",
+            "remedies": "remediation plan",
+            "service_credits": "defined in contract",
+        }],
+        "legal_liability": {
+            "limitation_of_liability": "contractual cap",
+            "indemnification": "mutual",
+            "insurance_requirements": "commercial coverage",
+            "intellectual_property": "licensed",
+            "confidentiality": "NDA",
+            "governing_law": "India",
+            "dispute_resolution": "arbitration",
+        },
+        "security_compliance": {
+            "assessments": [{
+                "assessment_id": "assessment-1",
+                "last_assessment_date": "2026-02-01",
+                "last_questionnaire_date": "2026-02-02",
+                "assessment_type": "QUESTIONNAIRE",
+                "assessor": "customer-security-team",
+                "assurance_level": "INTERNAL",
+                "risk_rating": "medium",
+                "risk_score": 42,
+                "questionnaire_results": {"status": "self-reported"},
+                "remediation_status": "open items tracked",
+                "open_findings": [{
+                    "finding_id": "finding-1",
+                    "title": "Evidence refresh pending",
+                    "severity": "medium",
+                    "status": "OPEN",
+                    "remediation": "collect evidence",
+                    "due_date": "2026-12-31",
+                    "evidence_reference": "evidence://finding-1",
+                }],
+            }],
+            "certifications": [{
+                "certification_type": "ISO 27001",
+                "issued_date": "2026-01-01",
+                "expires_date": "2027-01-01",
+                "report_date": "2026-01-02",
+                "certificate_number": "unknown",
+                "scope": "platform",
+                "evidence_reference": "evidence://certification-1",
+                "status": "UNVERIFIED",
+            }],
+            "compliance": {
+                "gdpr": None,
+                "ccpa_cpra": None,
+                "hipaa": None,
+                "sox": None,
+                "pci_dss": True,
+                "fedramp_level": "unknown",
+                "csa_star": "unknown",
+                "nist_csf_alignment": "partial",
+                "regulatory_attestations": [{
+                    "framework": "PCI DSS",
+                    "status": "UNVERIFIED",
+                    "scope": "payment service",
+                    "assessed_on": "2026-02-01",
+                    "expires_on": "2027-02-01",
+                    "evidence_reference": "evidence://attestation-1",
+                }],
+                "industry_requirements": ["payment security"],
+                "processor_or_controller_role": "PROCESSOR",
+                "cross_border_transfer_mechanism": "unknown",
+                "dpa_signed": None,
+                "dpa_version": "unknown",
+                "dpa_date": None,
+                "subprocessors": [{
+                    "name": "Subprocessor One",
+                    "service": "hosting",
+                    "processing_purpose": "platform operation",
+                    "locations": ["IN"],
+                    "data_categories": ["CONFIDENTIAL"],
+                    "status": "PENDING",
+                    "notification_date": "2026-03-01",
+                    "evidence_reference": "evidence://subprocessor-1",
+                }],
+            },
+        },
+        "data_privacy": {
+            "data_types_processed": ["PII", "FINANCIAL"],
+            "data_classification": "CONFIDENTIAL",
+            "data_owner": "customer privacy office",
+            "data_flow": "customer to managed platform",
+            "data_flow_diagram_reference": "evidence://data-flow",
+            "processing_locations": ["IN"],
+            "data_residency": ["IN"],
+            "data_sovereignty": ["IN"],
+            "data_retention": "contract-defined",
+            "data_deletion_process": "ticketed deletion",
+            "deletion_sla": "30 days",
+            "privacy_mechanisms": ["access review"],
+            "privacy_policy_url": "https://example.invalid/privacy",
+            "data_privacy_framework": "privacy program",
+            "standard_contractual_clauses": "unknown",
+            "binding_corporate_rules": "unknown",
+            "privacy_certifications": ["unknown"],
+            "dpo_contact": "dpo@example.invalid",
+            "subprocessors": [],
+        },
+        "financial_stability": {
+            "public_or_private": "PRIVATE",
+            "financial_statements_reference": "evidence://financials",
+            "annual_revenue_range": "unknown",
+            "profitability_status": "unknown",
+            "credit_rating": "unknown",
+            "d_and_b_rating": "unknown",
+            "funding_status": "unknown",
+            "recent_funding": [{
+                "event_date": "2025-01-01",
+                "event_type": "unknown",
+                "amount": None,
+                "currency": "USD",
+                "investors": ["unknown"],
+                "evidence_reference": "evidence://funding-1",
+            }],
+            "business_continuity_plan": "documented plan reference",
+            "financial_risk": "unknown",
+            "years_in_business": 5,
+            "customer_base_summary": "unknown",
+            "market_share_summary": "unknown",
+            "strategic_importance": "high",
+            "succession_plan": "unknown",
+        },
+        "incident_history": {
+            "incidents": [{
+                "incident_id": "incident-1",
+                "incident_type": "OUTAGE",
+                "occurred_on": "2026-01-10",
+                "disclosed_on": "2026-01-11",
+                "scope": "service region",
+                "customer_impact": "temporary outage",
+                "root_cause": "unknown",
+                "root_cause_evidence_reference": "evidence://incident-1",
+                "remediation": "corrective action tracked",
+                "notification_required": False,
+                "notification_timeliness": "within policy",
+                "regulatory_notifications": "not applicable",
+                "severity": "medium",
+                "status": "CLOSED",
+            }],
+            "incident_response_plan": "documented plan",
+            "notification_obligations": "contract-defined",
+            "incident_response_time": "1 hour",
+            "communication_plan": "customer notification process",
+            "communication_channels": ["status page"],
+        },
+        "dependencies": {
+            "critical_dependency": True,
+            "single_point_of_failure": False,
+            "concentration_risk": "medium",
+            "systemic_risk": "unknown",
+            "irreplaceability": "medium",
+            "vendor_lock_in_summary": "migration effort documented",
+            "sub_vendors": [{
+                "name": "Sub-vendor One",
+                "service": "hosting",
+                "tier": 2,
+                "locations": ["IN"],
+                "criticality": "medium",
+                "risk_rating": "unknown",
+                "evidence_reference": "evidence://sub-vendor-1",
+            }],
+            "nth_party_visibility": "tier two known",
+            "fourth_party_visibility": "unknown",
+            "supply_chain_visibility_depth": 2,
+            "subvendor_change_notification": "contract notice",
+            "ecosystem_vendors": ["Sub-vendor One"],
+            "ecosystem_dependencies": ["hosting"],
+            "integration_points": [{
+                "name": "Payment API",
+                "direction": "BIDIRECTIONAL",
+                "protocol": "HTTPS",
+                "data_exchanged": ["transaction metadata"],
+                "dependent_systems": ["payments"],
+                "criticality": "high",
+                "cascading_failure_effect": "payment processing impact",
+            }],
+            "cascading_failure_analysis": "documented analysis",
+        },
+        "access_permissions": {
+            "access_types": ["API", "VPN"],
+            "system_access": True,
+            "api_access": True,
+            "vpn_access": False,
+            "physical_access": False,
+            "administrative_access": False,
+            "access_scope": ["payment metadata"],
+            "access_controls": ["RBAC", "MFA"],
+            "mfa_required": True,
+            "ip_restrictions": "allow-listed network",
+            "time_restrictions": "business approved",
+            "privileged_access": False,
+            "access_review_frequency": "quarterly",
+            "background_checks": "unknown",
+            "nda_status": "active",
+            "training_requirements": "annual",
+            "personnel_change_notification": "contract notice",
+        },
+        "exit_strategy": {
+            "transition_period": "90 days",
+            "data_retrieval_process": "export request",
+            "data_deletion_confirmation": "written confirmation",
+            "data_export_format": ["JSON"],
+            "knowledge_transfer": "runbooks and workshops",
+            "license_portability": "contract-defined",
+            "escrow_arrangements": "unknown",
+            "replacement_plan": "qualified alternative review",
+            "migration_plan": "phased migration",
+            "migration_dependencies": ["replacement provider"],
+            "rollback_plan": "dual run",
+            "last_tested_on": "2026-02-15",
+        },
+        "evidence": [{
+            "evidence_id": "profile-evidence-1",
+            "evidence_type": "ASSESSMENT",
+            "evidence_reference": "evidence://profile-assessment-1",
+            "status": "UNVERIFIED",
+            "captured_at": "2026-02-01T00:00:00Z",
+            "acquired_at": "2026-02-02T00:00:00Z",
+            "expires_at": "2027-02-01T00:00:00Z",
+            "issuer": "customer-security-team",
+            "source_system": "vendor-review",
+            "collection_method": "QUESTIONNAIRE",
+            "collector": "reviewer",
+            "reviewed_by": "reviewer",
+            "content_type": "application/json",
+            "redaction_status": "VERIFIED_NO_SECRETS",
+            "limitations": ["self-reported"],
+            "sha256": "a" * 64,
+        }],
+    }
+
+
 @pytest.mark.asyncio
 async def test_vendor_and_network_rows_are_isolated_end_to_end(monkeypatch):
     app, session, engine = _make_app()
@@ -464,5 +761,73 @@ async def test_tenant_middleware_fails_closed_for_unknown_and_ambiguous_requests
 
     assert unknown_user.status_code == 403
     assert forged_tenant.status_code == 404
+    session.close()
+    engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_full_vendor_profile_sections_round_trip_and_remain_tenant_scoped(monkeypatch):
+    """Exercise every profile section through the real HTTP lifecycle."""
+    app, session, engine = _make_app()
+    import api.dependencies as dependencies
+
+    monkeypatch.setattr(dependencies, "resolve_tenant_for_request", _tenant_resolution)
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        vendor_a = (await client.post(
+            "/api/v1/vendors",
+            headers=_headers("user-a", TENANT_A),
+            json={"name": "Complete Profile A"},
+        )).json()
+        vendor_b = (await client.post(
+            "/api/v1/vendors",
+            headers=_headers("user-b", TENANT_B),
+            json={"name": "Complete Profile B"},
+        )).json()
+        profile = _complete_profile(vendor_a["id"])
+        saved = await client.put(
+            f"/api/v1/vendors/{vendor_a['id']}/profile",
+            headers=_headers("user-a", TENANT_A),
+            json={"profile": profile, "status": "DRAFT", "source": "e2e-fixture"},
+        )
+        fetched = await client.get(
+            f"/api/v1/vendors/{vendor_a['id']}/profile",
+            headers=_headers("user-a", TENANT_A),
+        )
+        listed = await client.get("/api/v1/vendors", headers=_headers("user-a", TENANT_A))
+        cross = await client.get(
+            f"/api/v1/vendors/{vendor_b['id']}/profile",
+            headers=_headers("user-a", TENANT_A),
+        )
+
+    assert saved.status_code == 200, saved.text
+    assert fetched.status_code == 200, fetched.text
+    persisted = fetched.json()["profile"]
+    assert persisted["identity"]["legal_name"] == "Evidence-backed Vendor"
+    assert persisted["contacts"]["emergency_24x7"] == "on-call process documented"
+    assert persisted["components"][0]["component_type"] == "SAAS"
+    assert persisted["contracts"][0]["contract_id"] == "contract-1"
+    assert persisted["service_level_agreements"][0]["uptime_guarantee"] == "99.9%"
+    assert persisted["legal_liability"]["governing_law"] == "India"
+    assert persisted["security_compliance"]["assessments"][0]["open_findings"][0]["finding_id"] == "finding-1"
+    assert persisted["security_compliance"]["certifications"][0]["certification_type"] == "ISO 27001"
+    assert persisted["security_compliance"]["compliance"]["subprocessors"][0]["name"] == "Subprocessor One"
+    assert persisted["data_privacy"]["data_types_processed"] == ["PII", "FINANCIAL"]
+    assert persisted["financial_stability"]["recent_funding"][0]["event_type"] == "unknown"
+    assert persisted["incident_history"]["incidents"][0]["incident_id"] == "incident-1"
+    assert persisted["dependencies"]["sub_vendors"][0]["name"] == "Sub-vendor One"
+    assert persisted["dependencies"]["integration_points"][0]["name"] == "Payment API"
+    assert persisted["access_permissions"]["mfa_required"] is True
+    assert persisted["exit_strategy"]["migration_plan"] == "phased migration"
+    assert persisted["evidence"][0]["redaction_status"] == "VERIFIED_NO_SECRETS"
+    assert listed.status_code == 200
+    listed_profile = listed.json()["vendors"][0]["vendor_profile"]
+    assert listed_profile["revision"] == 1
+    assert cross.status_code == 404
+
+    profile_rows = session.execute(select(VendorProfileRevision)).scalars().all()
+    assert {(row.vendor_id, row.tenant_id) for row in profile_rows} == {
+        (vendor_a["id"], TENANT_A),
+    }
     session.close()
     engine.dispose()
