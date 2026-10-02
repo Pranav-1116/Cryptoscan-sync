@@ -9,8 +9,10 @@ have an empty crypto inventory and still require a complete operational review.
 - `DRAFT` is editable by submitting a new revision and is expected during
   collection.
 - `IN_REVIEW` identifies a revision awaiting human review.
-- `APPROVED` is allowed only when every required completeness item is present
-  and `reviewed_by` is supplied.
+- `APPROVED` is allowed only when every required completeness item is present,
+  evidence is present with `PASS` status, assessments/certifications are
+  current and rated, unknown DPA/financial/dependency/access/exit controls are
+  resolved, and `reviewed_by` matches the authenticated reviewer.
 - `EXPIRED` is retained for historical evidence that is no longer current.
 - Revisions are append-only. History is exposed so an auditor can compare the
   exact JSON, completeness snapshot, source, reviewer, capture time, and
