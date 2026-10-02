@@ -240,6 +240,11 @@ def enqueue_scan_job(
         except Exception:
             logger.exception("job_commit_rollback_failed")
         logger.exception("job_commit_failed")
+        from api.observability.operational_counters import incr
+
+        # The caller is told the queue is unavailable; this is how an
+        # operator sees how often that happens without grepping logs.
+        incr("persistence_failure")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Scan queue is temporarily unavailable; no job was accepted",
@@ -338,6 +343,11 @@ async def trigger_manual_scan(
         except Exception:
             logger.exception("job_commit_rollback_failed")
         logger.exception("job_commit_failed")
+        from api.observability.operational_counters import incr
+
+        # The caller is told the queue is unavailable; this is how an
+        # operator sees how often that happens without grepping logs.
+        incr("persistence_failure")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Scan queue is temporarily unavailable; no job was accepted",

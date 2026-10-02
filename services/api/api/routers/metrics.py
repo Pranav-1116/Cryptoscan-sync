@@ -61,6 +61,127 @@ def _counter(name: str, value, help_: str) -> str:
     return f"# HELP {name} {help_}\n# TYPE {name} counter\n{name} {value}\n"
 
 
+def _histogram(name: str, buckets: dict[float, int], total: int, sum_: float,
+               help_: str) -> str:
+    """Prometheus cumulative histogram. Buckets must already be cumulative."""
+    out = [f"# HELP {name} {help_}", f"# TYPE {name} histogram"]
+    for upper in sorted(buckets):
+        out.append(f'{name}_bucket{{le="{upper}"}} {buckets[upper]}')
+    out.append(f'{name}_bucket{{le="+Inf"}} {total}')
+    out.append(f"{name}_sum {sum_}")
+    out.append(f"{name}_count {total}")
+    return "\n".join(out) + "\n"
+
+
+def _dependency_lines() -> list[str]:
+    """Readiness of PostgreSQL, Redis and the graph store as metrics.
+
+    /healthz/dependencies already reports this for a human or a probe, but
+    an operator cannot alert on an endpoint they have to read. Section 5
+    asks for readiness checks as part of the metrics surface, so the same
+    report is emitted per dependency with 1 = reachable.
+    """
+    lines: list[str] = []
+    try:
+        from api.routers.health import dependency_report
+
+        report = dependency_report()
+        for check in report.get("checks", []):
+            name = str(check.get("name") or "unknown")
+            state = str(check.get("status") or "").lower()
+            # skipped (not configured) is deliberately NOT 0: a dependency
+            # nobody configured is not a dependency that is down, and
+            # alerting on it would train operators to ignore the metric.
+            value = 1 if state == "ok" else (-1 if state == "skipped" else 0)
+            lines.append(_gauge(
+                "cryptoscan_dependency_up", value,
+                "Backing service reachable (1 up, 0 down, -1 not configured)",
+                f'dependency="{name}"'))
+            latency = check.get("latency_ms")
+            if isinstance(latency, (int, float)):
+                lines.append(_gauge(
+                    "cryptoscan_dependency_latency_ms", round(float(latency), 2),
+                    "Dependency probe latency", f'dependency="{name}"'))
+        lines.append(_gauge(
+            "cryptoscan_dependencies_degraded",
+            1 if report.get("down") else 0,
+            "Any configured backing service is down"))
+    except Exception as exc:  # noqa: BLE001 - metrics must render during an outage
+        logger.warning("dependency_metrics_unavailable",
+                       extra={"error_type": type(exc).__name__})
+        lines.append(_gauge("cryptoscan_dependencies_degraded", 1,
+                            "Any configured backing service is down"))
+    return lines
+
+
+def _operational_counter_lines() -> list[str]:
+    """The security and reliability events section 5 asks to alert on."""
+    from api.observability.operational_counters import snapshot
+
+    lines: list[str] = []
+    helps = {
+        "tenant_isolation_violation": "Cross-tenant access refused by the guard",
+        "persistence_failure": "A job was not accepted because its row would not commit",
+        "event_replay_gap": "SSE replay could not satisfy a Last-Event-ID",
+    }
+    for event, value in snapshot().items():
+        lines.append(_counter(
+            f"cryptoscan_{event}_total", value,
+            helps.get(event, f"Occurrences of {event}")))
+    return lines
+
+
+def _scan_duration_lines(session) -> list[str]:
+    """Scan duration histogram, derived from the stored start/end times."""
+    from sqlalchemy import select
+
+    from db.models.scan import Scan
+
+    bounds = [1, 5, 15, 30, 60, 120, 300, 600, 1800]
+    cumulative = dict.fromkeys(bounds, 0)
+    total = 0
+    total_seconds = 0.0
+    rows = session.execute(select(Scan.scan_start, Scan.scan_end)).all()
+    for start, end in rows:
+        if not start or not end:
+            continue  # still running, or never finished: not a duration
+        seconds = (end - start).total_seconds()
+        if seconds < 0:
+            continue
+        total += 1
+        total_seconds += seconds
+        for upper in bounds:
+            if seconds <= upper:
+                cumulative[upper] += 1
+    return [_histogram("cryptoscan_scan_duration_seconds", cumulative, total,
+                       round(total_seconds, 3),
+                       "Completed scan wall-clock duration")]
+
+
+def _scanner_family_lines(session) -> list[str]:
+    """Per-family job outcome counters.
+
+    job_type is the closest thing to a scanner family on the job row
+    (MANUAL/CLOUD/BINARY/...), so the counter is labelled by both family and
+    status rather than inventing a taxonomy the data cannot support.
+    """
+    from sqlalchemy import func, select
+
+    from db.models.scan_job import ScanJob
+
+    lines: list[str] = []
+    rows = session.execute(
+        select(ScanJob.job_type, ScanJob.status, func.count())
+        .group_by(ScanJob.job_type, ScanJob.status)
+    ).all()
+    for job_type, job_status, count in rows:
+        lines.append(_gauge(
+            "cryptoscan_scanner_family_jobs", int(count),
+            "Jobs by scanner family and outcome",
+            f'family="{job_type or "unknown"}",status="{job_status or "unknown"}"'))
+    return lines
+
+
 def _telecom_lines() -> list[str]:
     """Telecom realtime scanner metrics (best-effort — never raises).
 
@@ -211,6 +332,20 @@ def metrics(request: Request) -> Response:
             extra={"error_type": type(monitor_exc).__name__},
         )
 
+    # Section 5 observability. Each block is independently guarded: a metrics
+    # surface that disappears when one query fails is useless during the
+    # incident it exists for.
+    try:
+        from db.connection.session import SessionLocal
+
+        with SessionLocal() as session:
+            lines.extend(_scan_duration_lines(session))
+            lines.extend(_scanner_family_lines(session))
+    except Exception as exc:  # noqa: BLE001 - keep the rest of the surface
+        logger.warning("scan_metrics_unavailable", extra={"error_type": type(exc).__name__})
+
+    lines.extend(_dependency_lines())
+    lines.extend(_operational_counter_lines())
     lines.extend(_telecom_lines())
     lines.append(_gauge("cryptoscan_api_db_reachable", 1, "Database reachable for metrics"))
     return Response(content="".join(lines), media_type="text/plain; version=0.0.4; charset=utf-8")

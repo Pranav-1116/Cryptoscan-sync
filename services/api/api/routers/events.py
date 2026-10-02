@@ -157,6 +157,14 @@ async def stream_events(
 
     oldest_id = bus.oldest_id()
     replay_gap = bool(requested_resume and oldest_id is not None and resume_id < oldest_id - 1)
+    if replay_gap:
+        from api.observability.operational_counters import incr
+
+        # A client asked to resume from before the retained window, so it
+        # has missed events it will never see. The gap event below tells
+        # that one client; the counter is how an operator learns the
+        # retention window is too short for how long clients disconnect.
+        incr("event_replay_gap")
     sub = bus.subscribe(event_filter=visible)
     bus.publish("events.subscribe", {"user": user}, source="events", tenant_id=tenant_id)
 

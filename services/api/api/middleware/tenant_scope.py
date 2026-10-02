@@ -70,6 +70,12 @@ class TenantScopeMiddleware:
         except TenantResolutionRefused as exc:
             from starlette.responses import JSONResponse
 
+            from api.observability.operational_counters import incr
+
+            # Counted here because a correctly refused cross-tenant request
+            # leaves no row behind: without this the only evidence that the
+            # guard is doing anything is its absence of incidents.
+            incr("tenant_isolation_violation")
             response = JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
             await response(scope, receive, send)
             return
