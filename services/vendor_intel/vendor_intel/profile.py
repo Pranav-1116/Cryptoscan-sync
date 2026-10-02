@@ -488,6 +488,43 @@ def profile_completeness(profile: VendorProfile) -> dict[str, Any]:
     }
 
 
+def profile_approval_issues(profile: VendorProfile) -> list[str]:
+    """Controls that must be evidenced before a profile may become APPROVED.
+
+    Completeness means the collection workflow has all required sections;
+    approval additionally requires that evidence is current and verified.
+    This prevents an operator from making an unverified or unknown control look
+    green merely by filling a placeholder value.
+    """
+    issues: list[str] = []
+    if not profile.evidence:
+        issues.append("evidence: at least one verified evidence item is required")
+    for item in profile.evidence:
+        if item.status != "PASS":
+            issues.append(f"evidence.{item.evidence_id}: status must be PASS")
+    if not profile.security_compliance.assessments:
+        issues.append("security_compliance.assessments: assessment required")
+    elif any(item.risk_rating == "unknown" for item in profile.security_compliance.assessments):
+        issues.append("security_compliance.assessments: unknown risk rating")
+    if not profile.security_compliance.certifications:
+        issues.append("security_compliance.certifications: certification or formal not-applicable record required")
+    elif any(item.status not in {"CURRENT", "NOT_APPLICABLE"} for item in profile.security_compliance.certifications):
+        issues.append("security_compliance.certifications: certification evidence is not current")
+    if profile.security_compliance.compliance.dpa_signed is None:
+        issues.append("security_compliance.compliance.dpa_signed: unknown")
+    if profile.financial_stability.financial_risk == "unknown":
+        issues.append("financial_stability.financial_risk: unknown")
+    if profile.dependencies.concentration_risk == "unknown":
+        issues.append("dependencies.concentration_risk: unknown")
+    if profile.dependencies.irreplaceability == "unknown":
+        issues.append("dependencies.irreplaceability: unknown")
+    if profile.access_permissions.access_types and profile.access_permissions.mfa_required is None:
+        issues.append("access_permissions.mfa_required: unknown for vendor access")
+    if not profile.exit_strategy.data_deletion_confirmation:
+        issues.append("exit_strategy.data_deletion_confirmation: missing")
+    return issues
+
+
 def profile_hash(profile: VendorProfile) -> str:
     blob = json.dumps(profile.model_dump(mode="json", by_alias=True), sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(blob).hexdigest()
@@ -510,5 +547,5 @@ __all__ = [
     "FundingEvent", "SecurityIncident", "IncidentHistory", "SubVendor",
     "IntegrationPoint", "VendorDependencyProfile", "AccessPermissionProfile",
     "ExitStrategyProfile", "ProfileEvidence", "parse_profile",
-    "profile_completeness", "profile_hash", "empty_profile", "ValidationError",
+    "profile_completeness", "profile_approval_issues", "profile_hash", "empty_profile", "ValidationError",
 ]

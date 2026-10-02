@@ -2648,6 +2648,8 @@ export interface VendorProfileWriteResponse {
 }
 export const apiVendors = (): Promise<ApiResult<{ vendors: VendorRecord[] }>> =>
   call("/api/v1/vendors");
+export const apiVendorCreate = (body: { name: string; criticality?: string; vendor_type?: string; integration_type?: string; profile?: Record<string, unknown> }): Promise<ApiResult<VendorRecord>> =>
+  call("/api/v1/vendors", { method: "POST", body: JSON.stringify(body) });
 export const apiVendor = (vendorId: string): Promise<ApiResult<VendorRecord>> =>
   call(`/api/v1/vendors/${encodeURIComponent(vendorId)}`);
 export const apiVendorProfile = (vendorId: string): Promise<ApiResult<VendorProfileResponse>> =>
@@ -2664,7 +2666,7 @@ export const apiVendorProfileHistory = (vendorId: string): Promise<ApiResult<{ v
   call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile/history`);
 export const apiVendorProfilePut = (vendorId: string, body: { profile: Record<string, unknown>; status?: string; source?: string; reviewed_by?: string; review_notes?: string }): Promise<ApiResult<VendorProfileWriteResponse>> =>
   call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile`, { method: "PUT", body: JSON.stringify(body) });
-export const apiVendorProfileValidate = (vendorId: string, body: { profile: Record<string, unknown>; status?: string }): Promise<ApiResult<{ valid: boolean; status_allowed: boolean; completeness: VendorProfileCompleteness; content_sha256: string; persisted: boolean }>> =>
+export const apiVendorProfileValidate = (vendorId: string, body: { profile: Record<string, unknown>; status?: string; reviewed_by?: string }): Promise<ApiResult<{ valid: boolean; status_allowed: boolean; completeness: VendorProfileCompleteness; approval_issues?: string[]; content_sha256: string; persisted: boolean }>> =>
   call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile/validate`, { method: "POST", body: JSON.stringify(body) });
 export const apiVendorProfileEvidence = (vendorId: string, body: Record<string, unknown>): Promise<ApiResult<{ vendor_id: string; revision: number; status: string; evidence_id: string; completeness: VendorProfileCompleteness; content_sha256: string }>> =>
   call(`/api/v1/vendors/${encodeURIComponent(vendorId)}/profile/evidence`, { method: "POST", body: JSON.stringify(body) });

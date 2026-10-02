@@ -6,6 +6,7 @@ from vendor_intel.profile import (
     VendorProfile,
     empty_profile,
     parse_profile,
+    profile_approval_issues,
     profile_completeness,
     profile_hash,
 )
@@ -78,6 +79,8 @@ def test_profile_represents_all_due_diligence_sections():
     assert completeness["status"] == "COMPLETE"
     assert completeness["sections"]["identity"]["status"] == "COMPLETE"
     assert completeness["sections"]["data_privacy"]["status"] == "COMPLETE"
+    approval_issues = profile_approval_issues(profile)
+    assert any("evidence" in issue for issue in approval_issues)
     assert len(profile_hash(profile)) == 64
 
 

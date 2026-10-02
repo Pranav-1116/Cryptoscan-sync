@@ -348,7 +348,7 @@ def validate_vendor_profile(
     db: Session = Depends(get_db_session),
 ):
     from pydantic import ValidationError
-    from vendor_intel.profile import parse_profile, profile_completeness, profile_hash
+    from vendor_intel.profile import parse_profile, profile_approval_issues, profile_completeness, profile_hash
 
     if IntelligenceRepository(db).get_vendor(vendor_id) is None:
         raise HTTPException(status_code=404, detail="Vendor not found")
@@ -358,13 +358,15 @@ def validate_vendor_profile(
         detail = exc.errors() if isinstance(exc, ValidationError) else str(exc)
         raise HTTPException(status_code=422, detail=detail) from exc
     completeness = profile_completeness(profile)
+    approval_issues = profile_approval_issues(profile)
     return {
         "valid": True,
         "status_allowed": (
             body.status != "APPROVED"
-            or (completeness["status"] == "COMPLETE" and body.reviewed_by == user)
+            or (completeness["status"] == "COMPLETE" and not approval_issues and body.reviewed_by == user)
         ),
         "completeness": completeness,
+        "approval_issues": approval_issues,
         "content_sha256": profile_hash(profile),
         "persisted": False,
     }
@@ -415,7 +417,7 @@ def put_vendor_profile(
     db: Session = Depends(get_db_session),
 ):
     from pydantic import ValidationError
-    from vendor_intel.profile import parse_profile, profile_completeness, profile_hash, now_utc
+    from vendor_intel.profile import parse_profile, profile_approval_issues, profile_completeness, profile_hash, now_utc
     from db.repositories.vendor_profile_repository import VendorProfileRepository
 
     vendor = IntelligenceRepository(db).get_vendor(vendor_id)
@@ -428,11 +430,16 @@ def put_vendor_profile(
         raise HTTPException(status_code=422, detail=detail) from exc
 
     completeness = profile_completeness(profile)
+    approval_issues = profile_approval_issues(profile)
     if body.status == "APPROVED":
-        if completeness["status"] != "COMPLETE":
+        if completeness["status"] != "COMPLETE" or approval_issues:
             raise HTTPException(
                 status_code=422,
-                detail={"message": "An incomplete profile cannot be approved", "completeness": completeness},
+                detail={
+                    "message": "A profile with missing or unverified evidence cannot be approved",
+                    "completeness": completeness,
+                    "approval_issues": approval_issues,
+                },
             )
         if not body.reviewed_by:
             raise HTTPException(status_code=422, detail="reviewed_by is required for an approved profile")
