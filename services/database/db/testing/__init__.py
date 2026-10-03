@@ -31,6 +31,26 @@ from sqlalchemy.pool import StaticPool
 _EMBEDDED: dict[str, Any] = {}
 
 
+def _cleanup_embedded_server() -> None:
+    """Stop pgserver without writing into pytest's closed capture stream.
+
+    The embedded server is cleaned up by ``atexit`` after pytest has closed its
+    capture handlers. pgserver logs normal shutdown at INFO, but the closed
+    handler turns those harmless messages into logging tracebacks. Suppress
+    logging only for this final cleanup operation; the server is still stopped
+    and test-time failures are not hidden.
+    """
+    server = _EMBEDDED.get("server")
+    if server is None:
+        return
+    previous_disable = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        server.cleanup()
+    finally:
+        logging.disable(previous_disable)
+
+
 def postgres_url() -> str | None:
     """A PostgreSQL URL for tests, or None when no server can be had."""
     url = os.environ.get("CRYPTOSCAN_TEST_DATABASE_URL")
@@ -54,7 +74,7 @@ def postgres_url() -> str | None:
             url = "postgresql+psycopg2://" + url[len("postgresql://"):]
         _EMBEDDED["server"] = server
         _EMBEDDED["url"] = url
-        atexit.register(lambda: _EMBEDDED.get("server") and _EMBEDDED["server"].cleanup())
+        atexit.register(_cleanup_embedded_server)
         return url
     except Exception as _handler_exc:
         logger.warning(
