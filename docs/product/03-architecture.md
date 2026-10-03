@@ -230,13 +230,14 @@ Unreachable services show as unreachable. This is a product rule
 **Labelled maturity.** `lib/maturity.ts` is generated from
 `shared_models/capability_maturity.py`. Beta and Preview badges appear in
 the sidebar and page header, so the 33 GA surfaces are not presented as
-equal to the 30 beta and 8 preview ones. 71 pages, 6 sections, EN + AR, all
-smoke-tested to mount.
+equal to the 30 beta and 9 preview ones. 72 classified surfaces across 6
+sections, EN + AR, all smoke-tested to mount; authentication and deep-link
+routes are documented separately from classified primary surfaces.
 
 
 ![Console map](img/07-console-map.png)
 
-_Figure 7 — the 71 pages grouped into 6 sidebar sections, with GA / beta / preview badges as the user sees them._
+_Figure 7 — the classified console surfaces grouped into 6 sidebar sections, with GA / beta / preview badges as the user sees them._
 
 The SPA has one API client (`lib/api.ts`: bearer header, 401 → refresh,
 error shaping), one SSE subscription shared by every page

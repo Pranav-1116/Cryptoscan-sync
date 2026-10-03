@@ -4,6 +4,12 @@ Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-25:
 **659 paths, 725 operations** across 86 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
+> **Snapshot boundary:** the structured vendor-profile and network-inventory
+> contracts have a dedicated [implementation guide](../user-guide/vendor-network-inventory.md).
+> If those endpoints are present in the running schema but absent from this
+> snapshot, regenerate this file before treating the count or route list as
+> complete. Never hand-edit the generated operation tables to hide a mismatch.
+
 ## Conventions
 
 - Base path: `/api/v1`. Interactive docs: `/api/docs` (Swagger UI).

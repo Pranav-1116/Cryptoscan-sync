@@ -58,8 +58,11 @@ succession risk; incident history and response; criticality, concentration,
 single-point, fourth-party and cascading dependencies; access and personnel
 controls; and exit, migration, portability, escrow and transition planning.
 
-Migrations are applied through revision `0066`. Deployments must run the normal
-migration process before enabling profile writes; `create_all` also registers
-the model for local development. Existing questionnaire and crypto inventory
-endpoints remain available and are not treated as a substitute for this
-profile.
+Migrations are applied through revisions `0066` (profile tables), `0067`
+(audit actor), and `0068` (structured network inventory revisions). Deployments
+must run the normal migration process before enabling profile or network-inventory
+writes; `create_all` also registers the models for local development. Existing
+questionnaire and crypto inventory endpoints remain available and are not treated
+as a substitute for the complete profile. See the [vendor and network inventory
+guide](../user-guide/vendor-network-inventory.md) for the combined lifecycle and
+endpoint contract.

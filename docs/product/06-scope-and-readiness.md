@@ -8,7 +8,7 @@ what is still open. Sources: `shared_models/capability_maturity.py`
 
 ![Scope and readiness](img/09-scope-readiness.png)
 
-_Figure 9 — the three maturity tiers (33 GA · 30 beta · 8 preview) and the readiness score per area; the console shows the same labels._
+_Figure 9 — the three maturity tiers (33 GA · 30 beta · 9 preview) and the readiness score per area; the console shows the same labels._
 
 ## Three tiers, one source of truth
 
@@ -21,7 +21,7 @@ the sidebar and page header. Changing a tier is a one-line, reviewed change.
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, exercised in the burn-in and soak. | 33 |
 | **Beta** | Real code over real data; thinner test coverage or short deployment history. Shown, labelled, usable. | 30 |
-| **Preview** | A working surface over a small engine, or analysis over inputs not yet collected at scale. | 8 |
+| **Preview** | A working surface over a small engine, or analysis over inputs not yet collected at scale. | 9 |
 
 **GA** — scanners, assets, certificates, network, cloud, DevSecOps (SBOM /
 binary / firmware), vendors, live scanners, findings, crypto inventory and

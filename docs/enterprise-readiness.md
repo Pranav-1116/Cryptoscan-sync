@@ -1,8 +1,11 @@
 # Enterprise readiness — what the platform has, what a bank will ask for
 
-Status as of 2026-09-23 (measured, not aspirational): **583 OpenAPI paths /
-642 operations** (counted from the live schema), 60 ordered migrations,
-4,808 backend test functions (hermetic, parallel) plus a frontend smoke suite.
+Status of the evidence set: the generated API snapshot dated 2026-09-25 contains
+**659 OpenAPI paths / 725 operations** across 86 tagged groups. The repository
+also contains 60 ordered migrations and 4,808 backend test functions (hermetic,
+parallel) plus a frontend smoke suite. These are repository measurements, not a
+production approval; use the root readiness gate and dated evidence artifacts for
+the current decision.
 Overall readiness and its evidence: [root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) and the generated `readiness-evidence/bank-readiness.json`. Every row below states the current capability honestly —
 ✅ shipped and test-verified · ⚠️ partially shipped (gap stated) · ❌ not
 built (needs real infrastructure or a decision, never stubbed).

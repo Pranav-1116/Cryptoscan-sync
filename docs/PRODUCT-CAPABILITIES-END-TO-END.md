@@ -9,11 +9,11 @@ endpoint or console page that implements each step.
 | | |
 |---|---|
 | Backend services | **51** packages under `services/` |
-| REST surface | **642 paths / 707 operations** across **85 tagged groups** (`docs/api-reference/rest-api.md`, regenerated from the live schema) |
-| Console | **71 page surfaces** in **6 sidebar sections**, with **31 menu slots / 30 unique primary routes** (`frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`) |
+| REST surface | **659 paths / 725 operations** across **86 tagged groups** in the 2026-09-25 API snapshot (`docs/api-reference/rest-api.md`; regenerate after API changes) |
+| Console | **74 page components / 72 classified surfaces** in **6 sidebar sections**, with **31 menu slots / 30 unique primary routes** (`frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`) |
 | Database migrations | **59** (`services/database/migrations/versions`) |
-| Tests collected | **4,471** across the repo |
-| Docs | **153** markdown files |
+| Tests collected | **4,808** backend test functions, plus frontend tests and live qualification suites |
+| Docs | **270** Markdown files plus generated diagrams, JSON/CSV evidence and templates |
 | Localisation | English + Arabic, **217 keys each** (`frontend/src/i18n`) |
 
 Every capability below is marked **shipped** · **partial** (gap stated) ·
@@ -233,7 +233,7 @@ tenant model with provisioning/invites, Prometheus metrics, `/healthz` +
 1. **No AI decides compliance.** Every verdict is a formula, a rule pack or a
    recorded human approval.
 2. **Unknowns are reported, never guessed.** Unknown algorithm, undeclared
-   licence, unparsable document, unreachable target — each is surfaced with a
+   licence, unparsable documh is surfaced with a
    reason.
 3. **Unchecked ≠ clean.** An SBOM with no advisories says whether a feed was
    applied; an unreachable registry returns "unavailable", not a pass.
@@ -251,4 +251,4 @@ tenant model with provisioning/invites, Prometheus metrics, `/healthz` +
 | `docs/PLATFORM-STATUS.md` | every planned capability vs what ships |
 | `docs/user-guide/sbom-supply-chain-gate.md` | the SBOM gate end to end |
 | `docs/architecture/sbom-scanner-architecture.md` | SBOM target architecture vs this repo |
-| `docs/api-reference/rest-api.md` | all 707 operations |
+| `docs/api-reference/rest-api.md` | 725 operations in the 2026-09-25 generated snapshot; later endpoints must be regenerated into the reference |

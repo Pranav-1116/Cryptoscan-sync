@@ -12,6 +12,13 @@ CryptoScan can:
 
 Live probes stay off by default so CI and tests never phone the internet.
 
+For the versioned, tenant-scoped network inventory contract—including devices,
+topology, configuration-hash drift, coverage, risk, monitoring, wireless,
+firmware/software, documentation, evidence, and safe discovery—see
+[Vendor due diligence and structured network inventory](vendor-network-inventory.md).
+The structured inventory is not a claim of complete network visibility; missing
+sections remain incomplete or unknown.
+
 ```bash
 python scripts/run_network_scan.py demo/polyglot-app
 python scripts/run_network_scan.py example.com:443 --live

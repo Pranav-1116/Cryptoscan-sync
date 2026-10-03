@@ -23,7 +23,7 @@
 > [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
 > explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
 > estates into a production approval.
-> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every console surface is GA, beta or preview (33 / 30 / 8), labelled in the UI and served at `GET /api/v1/platform/capabilities`.
+> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 30 / 9), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
 
 Production cryptographic inventory and compliance platform: deterministic
 scanners, hashed evidence, YAML policy, drift, and a dashboard. Policy is
@@ -37,7 +37,8 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 
 | Doc | What it covers |
 |---|---|
-| **[The product, end to end](product/README.md)** | nine documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, a scan step by step, scope & readiness, glossary, the engines behind the pages, an end-to-end trace |
+| **[The product, end to end](product/README.md)** | ten implementation/strategy documents with 31 rendered diagrams and explanatory posters: what it is, every feature, architecture, data flow, scan trace, scope & readiness, glossary, engines, end-to-end trace, and the Cryptography Threat Intelligence roadmap |
+| **[Documentation status and coverage](DOCUMENTATION-STATUS.md)** | full `docs/` inventory, source-of-truth order, documentation families, stale-count reconciliation, known gaps, and update rules |
 | **[Navigation & Feature Reference](NAVIGATION-FEATURE-REFERENCE.md)** | the current six-section sidebar, primary routes, deep-linked pages, role-guarded actions, and the binary BOM workflow behind Applications |
 | **[Enterprise Documentation Center](product/enterprise/README.md)** | vendor-style documentation path covering overview, capability catalog, deployment, first scan, architecture, data, identity, privacy, scanners, policy, API, operations, support, developer extensions, lifecycle, adoption, and readiness |
 | [Telecom — 5G crypto configuration](telecom-5g-crypto.md) | SUPI concealment, NEA/NIA, N32 roaming, MILENAGE/TUAK and the 5G key hierarchy — the TS 33.501 controls no external probe can see, where the permissive setting looks healthy in service |
@@ -90,6 +91,7 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Manual scans](user-guide/manual-scans.md) · [viewing scans](user-guide/viewing-scans.md) | running and reading scans |
 | [Systems and assets](user-guide/systems-and-assets.md) · [business impact](user-guide/business-impact.md) | estate modeling |
 | [Vendor risk](user-guide/vendor-risk.md) | vendor crypto discovery, 0–100 score |
+| **[Vendor and network inventory](user-guide/vendor-network-inventory.md)** | versioned vendor due diligence and structured network inventory, topology, coverage, drift, evidence, and no-secret boundaries |
 | [Remediation templates](user-guide/remediation-templates.md) | work orders |
 | [Exceptions & analytics](user-guide/exceptions-and-analytics.md) | waivers, query |
 | [Blast radius](user-guide/blast-radius-analysis.md) | impact analysis |
@@ -125,7 +127,7 @@ Identity: [OIDC SSO](admin-guide/oidc-sso.md) ·
 
 | Doc | What it covers |
 |---|---|
-| **[REST API reference](api-reference/rest-api.md)** | generated from the live OpenAPI schema — 585 paths / 644 operations |
+| **[REST API reference](api-reference/rest-api.md)** | generated API snapshot from 2026-09-25 — 659 paths / 725 operations; later vendor/network additions are linked from the documentation status page |
 | [Plugin SDK](plugin-sdk.md) | writing source scanners |
 | [Navigation & feature reference](NAVIGATION-FEATURE-REFERENCE.md) | every page → every feature |
 | [Dataflow](DATAFLOW.md) · [end-to-end architecture](END-TO-END-ARCHITECTURE.md) | how data moves |

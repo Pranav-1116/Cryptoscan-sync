@@ -12,14 +12,17 @@ real infrastructure or credentials.
 > commits; they are retained for traceability and should not be read as the
 > current state.
 
-> **Current state (2026-09-23):** **60 migrations** (0001–0060), **71 frontend pages**,
-> **4,808 backend test functions** running hermetically in parallel (`make test`, ~8 min)
-> plus a vitest frontend suite, and every console surface labelled GA / beta / preview
-> ([CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)). The migration chain has now been
-> applied on a real PostgreSQL for the first time; it did not work before 2026-09-23
-> (see [root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md) and
-> [soak-evidence/](soak-evidence/README.md) for what was found and fixed). The paragraphs
-> below record earlier measurements.
+> **Current documentation state (2026-10-03):** **60 migrations** (0001–0060),
+> **74 frontend page components / 72 classified surfaces**, **4,808 backend test
+> functions** running hermetically in parallel (`make test`, ~8 min) plus a vitest
+> frontend suite, and **33 GA / 30 Beta /
+> 9 Preview classified surfaces** ([CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)).
+> The generated API snapshot dated 2026-09-25 reports **659 paths / 725 operations**
+> across 86 tagged groups ([REST API reference](api-reference/rest-api.md)). The
+> migration chain has now been applied on a real PostgreSQL for the first time; it
+> did not work before 2026-09-23 (see [root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md)
+> and [soak-evidence/](soak-evidence/README.md) for what was found and fixed). The
+> paragraphs below record earlier measurements and dated implementation updates.
 
 Measured at the release HEAD (`v1.0.0` + supervisory portal + telecom scanner + ops layer + enterprise readiness, 2026-09-11):
 **583 OpenAPI paths** (measured from the live schema), **56 ordered database migrations** (0001–0056),

@@ -37,6 +37,7 @@ routes are authentication flows, not primary navigation entries.
 | Hardware | `/hardware` | `Hardware` | Hardware, HSM, TPM and firmware inventory. |
 | Certificates | `/certificates` | `Certificates` | Certificate and PKI lifecycle inventory. |
 | Vendors | `/vendor` | `Vendor` | Vendor, product and supply-chain relationships. |
+| Vendor Due Diligence | `/vendor-due-diligence` | `VendorDueDiligence` | Strict, versioned supplier profile, completeness, evidence provenance and due-diligence risk review. |
 
 ### Intelligence
 
@@ -154,6 +155,7 @@ unobserved estate exists.
 - [Binary and firmware scanning](user-guide/binary-firmware-scanning.md)
 - [SBOM scanner architecture](architecture/sbom-scanner-architecture.md)
 - [Capability maturity](CAPABILITY-MATURITY.md)
+- [Vendor and network inventory](user-guide/vendor-network-inventory.md)
 - [REST API reference](api-reference/rest-api.md)
 
 Back to [the end-to-end product capability map](PRODUCT-CAPABILITIES-END-TO-END.md).
