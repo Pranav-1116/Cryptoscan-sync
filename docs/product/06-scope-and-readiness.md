@@ -8,7 +8,7 @@ what is still open. Sources: `shared_models/capability_maturity.py`
 
 ![Scope and readiness](img/09-scope-readiness.png)
 
-_Figure 9 — the three maturity tiers (33 GA · 30 beta · 9 preview) and the readiness score per area; the console shows the same labels._
+_Figure 9 — the three maturity tiers (33 GA · 30 beta · 10 preview) and the readiness score per area; the console shows the same labels._
 
 ## Three tiers, one source of truth
 

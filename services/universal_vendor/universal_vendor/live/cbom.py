@@ -26,6 +26,28 @@ except Exception:  # pragma: no cover
 # The model is intentionally explicit so realtime CBOM output remains useful
 # to consumers that do not understand the full vendor-specific payload. Values
 # are metadata/classifications only; secret material is never a CBOM property.
+# Event types that identify a concrete cryptographic surface even when the
+# source did not provide its algorithm parameters. These are observations of
+# the changed surface, not inferred algorithms; all detailed properties remain
+# absent until evidence supplies them.
+_EVENT_SURFACE_TYPES = {
+    "TLS_CHANGED": "protocol",
+    "IPSEC_CHANGED": "protocol",
+    "IKE_CHANGED": "protocol",
+    "VPN_CHANGED": "protocol",
+    "SSH_CHANGED": "protocol",
+    "CERTIFICATE_CREATED": "certificate",
+    "CERTIFICATE_RENEWED": "certificate",
+    "CERTIFICATE_REVOKED": "certificate",
+    "CERTIFICATE_REPLACED": "certificate",
+    "CERTIFICATE_EXPIRED": "certificate",
+    "CA_CHANGED": "certificate",
+    "TRUST_CHAIN_CHANGED": "certificate",
+    "SIGNATURE_ALGORITHM_CHANGED": "algorithm",
+    "KEY_CHANGED": "key",
+}
+
+
 _OBSERVATION_FIELDS = (
     "crypto_type", "algorithm_type", "algorithm_mode", "padding_scheme",
     "algorithm_oid", "algorithm_parameters", "quantum_safe_status", "protocol", "protocol_version",
@@ -288,6 +310,16 @@ class LiveCbom:
                     return
                 algorithms = [identity(identity_value)]
                 observation = {**safe_event_fields, **observation}
+
+        # The event type itself is evidence of a concrete surface transition
+        # (for example TLS or certificate replacement), but it is not evidence
+        # of an algorithm. Preserve that honest observation without creating an
+        # ``unknown`` algorithm/component for config or health-only events.
+        surface_type = _EVENT_SURFACE_TYPES.get(event_type)
+        if not algorithms and surface_type:
+            algorithms = [event_type]
+            observation = {"crypto_type": surface_type, **observation}
+
         algorithms = [value for value in algorithms if value]
         if not algorithms:
             return

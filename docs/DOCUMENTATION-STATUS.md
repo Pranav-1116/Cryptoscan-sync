@@ -44,7 +44,7 @@ When two documents disagree, use this order:
 
 The current API reference snapshot is generated on **2026-09-25** and reports
 **659 paths / 725 operations** across 86 tagged groups. The current maturity
-snapshot reports **33 GA, 30 Beta, and 9 Preview surfaces** (72 classified
+snapshot reports **33 GA, 30 Beta, and 10 Preview surfaces** (73 classified
 console surfaces). The dates and scope matter: do not merge historical counts
 with the current snapshot.
 
@@ -71,12 +71,10 @@ with the current snapshot.
 
 ### 4.1 Route and maturity reconciliation
 
-The frontend has a primary **`/vendor-due-diligence`** route, but the generated
-maturity inventory does not currently give that route its own classified row.
-The navigation guide must still document the route; until the source-of-truth
-maturity mapping is updated and regenerated, it must not be described as GA.
-The default behavior for an unclassified route is Preview, not production
-support.
+The primary **`/vendor-due-diligence`** route now has an explicit generated
+**Preview** row in the maturity inventory. Its profile/provenance machinery is
+implemented, but approval completeness and external vendor qualification remain
+unverified; it must not be described as GA.
 
 ### 4.2 Structured vendor and network workflows
 

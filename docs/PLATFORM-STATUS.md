@@ -13,10 +13,10 @@ real infrastructure or credentials.
 > current state.
 
 > **Current documentation state (2026-10-03):** **60 migrations** (0001–0060),
-> **74 frontend page components / 72 classified surfaces**, **4,808 backend test
+> **74 frontend page components / 73 classified surfaces**, **4,808 backend test
 > functions** running hermetically in parallel (`make test`, ~8 min) plus a vitest
 > frontend suite, and **33 GA / 30 Beta /
-> 9 Preview classified surfaces** ([CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)).
+> 10 Preview classified surfaces** ([CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md)).
 > The generated API snapshot dated 2026-09-25 reports **659 paths / 725 operations**
 > across 86 tagged groups ([REST API reference](api-reference/rest-api.md)). The
 > migration chain has now been applied on a real PostgreSQL for the first time; it

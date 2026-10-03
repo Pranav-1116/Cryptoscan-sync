@@ -23,7 +23,7 @@
 > [the root PRODUCTION-READINESS.md](../PRODUCTION-READINESS.md). It reports
 > explicit PASS/FAIL/SKIP evidence and does not turn percentages or synthetic
 > estates into a production approval.
-> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 30 / 9), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
+> **Which parts are production-supported?** [CAPABILITY-MATURITY.md](CAPABILITY-MATURITY.md) — every classified console surface is GA, beta or preview (33 / 30 / 10), labelled in the UI and served at `GET /api/v1/platform/capabilities`. The documentation audit and remaining gaps are tracked in [DOCUMENTATION-STATUS.md](DOCUMENTATION-STATUS.md).
 
 Production cryptographic inventory and compliance platform: deterministic
 scanners, hashed evidence, YAML policy, drift, and a dashboard. Policy is

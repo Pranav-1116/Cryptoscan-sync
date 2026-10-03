@@ -62,6 +62,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "cloud": {"tier": "ga", "area": "Discovery", "why": "Read-only AWS/Azure/GCP estate scan; 15k LOC, 25 test files. Needs credentials to show data."},
     "dev-sec-ops": {"tier": "ga", "area": "Discovery", "why": "SBOM/binary/firmware scanning, VEX, licence, gates; 16k LOC, 520 tests, air-gap packs."},
     "vendor": {"tier": "ga", "area": "Discovery", "why": "68 vendor plugins across 16 categories; 14k LOC, 31 test files."},
+    "vendor-due-diligence": {"tier": "preview", "area": "Discovery", "why": "Strict versioned supplier profiles and provenance metadata are implemented; approval completeness and external vendor validation still require customer qualification."},
     "cbom": {"tier": "ga", "area": "Intelligence", "why": "Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots, signed exports; 19 test files."},
     "live-asset-intelligence": {"tier": "ga", "area": "Intelligence", "why": "The unified BOM console: materialise → version → compare → export."},
     "drift": {"tier": "ga", "area": "Intelligence", "why": "Baseline approval + drift events + CI gate; 15 test files."},

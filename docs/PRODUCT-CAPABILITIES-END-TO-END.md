@@ -10,7 +10,7 @@ endpoint or console page that implements each step.
 |---|---|
 | Backend services | **51** packages under `services/` |
 | REST surface | **659 paths / 725 operations** across **86 tagged groups** in the 2026-09-25 API snapshot (`docs/api-reference/rest-api.md`; regenerate after API changes) |
-| Console | **74 page components / 72 classified surfaces** in **6 sidebar sections**, with **31 menu slots / 30 unique primary routes** (`frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`) |
+| Console | **74 page components / 73 classified surfaces** in **6 sidebar sections**, with **31 menu slots / 30 unique primary routes** (`frontend/src/components/Layout.tsx`, `frontend/src/App.tsx`) |
 | Database migrations | **59** (`services/database/migrations/versions`) |
 | Tests collected | **4,808** backend test functions, plus frontend tests and live qualification suites |
 | Docs | **270** Markdown files plus generated diagrams, JSON/CSV evidence and templates |

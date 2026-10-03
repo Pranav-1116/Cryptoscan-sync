@@ -34,7 +34,7 @@ pages in `frontend/src/App.tsx`, and the server-verified role guard on the
 | 3 | [Architecture](03-architecture.md) | The layers, the runtime processes, the stores, the security model — with diagrams |
 | 4 | [Data flow](04-dataflow.md) | How a finding becomes evidence, inventory, BOM, export and a live event — with diagrams |
 | 5 | [A scan, step by step](05-scan-walkthrough.md) | One job traced through all fourteen pipeline stages, with the rows it writes and how to verify it afterwards |
-| 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 72 classified surfaces are GA / beta / preview, how production-ready the whole thing is, and what is still open |
+| 6 | [Scope, maturity and readiness](06-scope-and-readiness.md) | Which of the 73 classified surfaces are GA / beta / preview, how production-ready the whole thing is, and what is still open |
 | 7 | [Glossary](07-glossary.md) | CBOM, HBOM, VBOM, evidence chain, drift, baseline, gate, PQC, HNDL … |
 | 8 | [The engines behind the pages](08-platform-engines.md) | Scanner gate and orchestrator, privacy and data controls, normalisation/identity/dedup, PQC planning and agility, remediation/SLA/exceptions, KeyAssure, dependency graph and blast radius, tenancy/billing/marketplace/data lake/connectors/workload identity, sectors/anomaly/observability |
 | 9 | [End to end — one finding, every subsystem](09-end-to-end.md) | A hard-coded 3DES key followed through all fifteen steps from push to regulator, with the artefact each step leaves |
@@ -64,7 +64,7 @@ is fabricated: it is empty until a real scan produces evidence.
 |---|---|
 | Backend services | 51 packages under `services/` |
 | REST surface | 659 paths / 725 operations across 86 tag groups in the 2026-09-25 API snapshot, plus GraphQL and SSE/WebSocket ([reference](../api-reference/rest-api.md)) |
-| Console | 74 page components, 72 classified surfaces, 6 sidebar sections, 31 menu slots / 30 unique primary routes, English + Arabic |
+| Console | 74 page components, 73 classified surfaces, 6 sidebar sections, 31 menu slots / 30 unique primary routes, English + Arabic |
 | Scanners | 6 first-class languages (Python, Java, C#, JS/TS, Go, Rust) + Kotlin, PHP, Ruby, config/IaC; 10 lockfile formats; ELF/PE/Mach-O/WASM/mobile/archive/firmware parsing; TLS; AWS/Azure/GCP; containers; OT; telecom; hardware; payment |
 | Policy packs | baseline · PCI-DSS · NIST · CNSA 2.0 · FIPS · HIPAA · UAE (`services/policy/rule_definitions`) |
 | Export formats | json · csv · cyclonedx · cyclonedx-xml · spdx · xml · pdf — each with content hash + HMAC + RFC 7515 JWS |

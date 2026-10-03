@@ -230,7 +230,7 @@ Unreachable services show as unreachable. This is a product rule
 **Labelled maturity.** `lib/maturity.ts` is generated from
 `shared_models/capability_maturity.py`. Beta and Preview badges appear in
 the sidebar and page header, so the 33 GA surfaces are not presented as
-equal to the 30 beta and 9 preview ones. 72 classified surfaces across 6
+equal to the 30 beta and 10 preview ones. 73 classified surfaces across 6
 sections, EN + AR, all smoke-tested to mount; authentication and deep-link
 routes are documented separately from classified primary surfaces.
 

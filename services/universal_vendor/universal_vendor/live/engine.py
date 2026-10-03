@@ -194,6 +194,15 @@ class LiveVendorEngine:
             self._apply_event(event, deep_scan=deep_scan)
         self._processed_gateway_index += len(pending)
 
+        # A connector can expose an unchanged observation on a later tick.
+        # Re-materialize the already-seen gateway events for the CBOM's
+        # append-only observation/version history, but do not re-run state
+        # transitions, graph writes, or targeted scans. Component keys remain
+        # idempotent, so this records liveness without building duplicates.
+        if not pending and self._processed_gateway_index:
+            for event in self.gateway.events():
+                self.cbom.materialize(event)
+
         # 3. persist only the source fingerprint in live asset state. The raw
         # artifact remains behind its evidence hash and is never fabricated by
         # this state layer.

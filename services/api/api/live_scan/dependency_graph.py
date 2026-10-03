@@ -15,13 +15,27 @@ def _text(value: Any) -> str:
 
 
 def _node_id(component: dict[str, Any], index: int) -> str:
+    """Return a stable identity, preferring the scanner's own identifiers.
+
+    Cascade consumers need the same identity that an explicit dependency uses.
+    Falling back to ``type:name:version:index`` made a service named
+    ``payments`` appear as ``service:payments::2``; an explicit
+    ``depends_on: payments`` then could not resolve it. A display name is a
+    valid fallback when no machine reference was supplied, while the builder
+    below disambiguates duplicate names deterministically.
+    """
     ref = _text(component.get("ref") or component.get("bom-ref") or component.get("id"))
     if ref:
         return ref
+    name = _text(component.get("name") or component.get("algorithm") or component.get("protocol"))
+    if name:
+        return name
+    asset = _text(component.get("asset_id") or component.get("asset") or component.get("resource_id"))
+    if asset:
+        return asset
     kind = _text(component.get("type")) or "component"
-    name = _text(component.get("name") or component.get("algorithm") or component.get("protocol")) or "unknown"
     version = _text(component.get("version"))
-    return f"{kind}:{name}:{version}:{index}"
+    return f"{kind}:{version or 'unknown'}:{index}"
 
 
 def _evidence(component: dict[str, Any]) -> dict[str, Any]:
@@ -48,12 +62,26 @@ def build_live_dependency_graph(components: list[dict[str, Any]] | None, *, max_
     """
     raw = [item for item in (components or []) if isinstance(item, dict)]
     nodes: list[dict[str, Any]] = []
+    node_ids: list[str] = []
+    used_node_ids: set[str] = set()
+    for index, component in enumerate(raw[:max_nodes]):
+        base_id = _node_id(component, index)
+        node_id = base_id
+        if node_id in used_node_ids:
+            version = _text(component.get("version"))
+            suffix = version or str(index)
+            node_id = f"{base_id}:{suffix}"
+            while node_id in used_node_ids:
+                node_id = f"{node_id}:{index}"
+        used_node_ids.add(node_id)
+        node_ids.append(node_id)
+
     by_ref: dict[str, str] = {}
     by_name: dict[tuple[str, str], str] = {}
     by_any_name: dict[str, str] = {}
     by_asset: defaultdict[str, list[str]] = defaultdict(list)
     for index, component in enumerate(raw[:max_nodes]):
-        node_id = _node_id(component, index)
+        node_id = node_ids[index]
         kind = _text(component.get("type")) or "component"
         name = _text(component.get("name") or component.get("algorithm") or component.get("protocol")) or "unknown"
         node = {
@@ -93,7 +121,7 @@ def build_live_dependency_graph(components: list[dict[str, Any]] | None, *, max_
             edges.append(_edge(source, target, relation, component))
 
     for index, component in enumerate(raw[:max_nodes]):
-        source = _node_id(component, index)
+        source = node_ids[index]
         # Explicit dependency references are authoritative. Resolve by ref,
         # type/name, or an exact component name; otherwise retain an unresolved
         # relationship rather than inventing a node.

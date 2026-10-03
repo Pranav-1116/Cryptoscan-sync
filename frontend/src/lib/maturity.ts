@@ -88,6 +88,7 @@ export const CAPABILITIES_JSON = {
   "timeline": "preview",
   "trust": "preview",
   "vendor": "ga",
+  "vendor-due-diligence": "preview",
   "what-if": "preview"
 } as const;
 

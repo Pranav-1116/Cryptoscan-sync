@@ -19,9 +19,9 @@ role-guarded actions.
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 33 |
 | **Beta** | Real code and real data; thinner test coverage or short deployment history. | 30 |
-| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 9 |
+| **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 10 |
 
-Total: 72 surfaces.
+Total: 73 surfaces.
 
 ## GA (33)
 
@@ -96,11 +96,12 @@ Total: 72 surfaces.
 | `/executive` | Overview | Executive summary over the same stats; presentation layer. |
 | `/role-dashboard` | Overview | Per-role landing view. |
 
-## Preview (9)
+## Preview (10)
 
 | Route | Area | Why this tier |
 |---|---|---|
 | `/platform-p2` | Administration | Phase-2 platform features behind one page (marketplace, datalake, anomaly) — each < 700 LOC. |
+| `/vendor-due-diligence` | Discovery | Strict versioned supplier profiles and provenance metadata are implemented; approval completeness and external vendor validation still require customer qualification. |
 | `/supervision` | Governance | Supervisory-review view for regulators; a read model over evidence, early. |
 | `/trust` | Governance | Trust-score surface; scoring inputs still being defined. |
 | `/nbom` | Intelligence | Network BOM from authorized network evidence plus static binary capability candidates. Binary-derived records are marked `observed: false` and do not prove a live listener; corroboration requires a separately authorized network probe. |
