@@ -46,6 +46,8 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | [Cascade analysis](accuracy/CASCADE-ANALYSIS.md) | dependency & blast-radius layer: providers, migration waves, libraries, shared keys, weak key sizes |
 | [Production readiness](../PRODUCTION-READINESS.md) | unified timestamped evidence gate with explicit PASS/FAIL/SKIP; no synthetic-estate or corpus-only production claim |
 | [Product capabilities, end to end](PRODUCT-CAPABILITIES-END-TO-END.md) | the whole product as one loop — collect → inventory → assess → gate → evidence → report |
+| **[Cryptography Threat Intelligence roadmap](product/cryptography-threat-intelligence-roadmap.md)** | product strategy from discovery and CBOM through threat intelligence, detection, defence, response, evidence, and governance; shipped vs planned vs research |
+| **[Global market value and commercial model](market/global-cryptography-threat-intelligence-market-value.md)** | dated market context, customer value, addressable wedge, illustrative pricing/revenue scenarios, and valuation boundaries |
 | [Platform status](PLATFORM-STATUS.md) | every planned capability vs. what ships — honest accounting |
 | [Enterprise readiness](enterprise-readiness.md) | feature matrix with honest gaps; what blocks production |
 | **[Standard bank pilot](pilot-standard.md)** | standardized pilot scope, objectives, roles, evidence, acceptance criteria, and decision language |
