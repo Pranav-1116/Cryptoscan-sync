@@ -102,7 +102,14 @@ def capacity_forecast(user: str = Depends(get_current_user),
 
     from db.models.tenant import Tenant, TenantUsageEvent
 
-    month = sa_func.strftime("%Y-%m", TenantUsageEvent.created_at)
+    # Month bucketing must work on both supported dialects: SQLite has
+    # strftime(), PostgreSQL has to_char(). The previous strftime-only
+    # expression 500'd on every PostgreSQL deployment (compliance burn,
+    # 2026-10-04).
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        month = sa_func.to_char(TenantUsageEvent.created_at, "YYYY-MM")
+    else:
+        month = sa_func.strftime("%Y-%m", TenantUsageEvent.created_at)
     plan_limit = {"FREE": 200, "PRO": 20000, "ENTERPRISE": None}
 
     def _series(tenant_ids: list[str] | None) -> list[float]:

@@ -238,7 +238,13 @@ def verify_evidence_invariants(db: Db, results: list[dict], phase: str) -> None:
             sequence = db.query("SELECT chain_sequence, previous_hash FROM public.audit_log WHERE chain_sequence IS NOT NULL ORDER BY chain_sequence")
             numbers = [int(row[0]) for row in sequence]
             contiguous = not numbers or numbers == list(range(numbers[0], numbers[-1] + 1))
-            first_previous_empty = not sequence or sequence[0][1] in (None, "")
+            # Genesis convention: the application's chain writer links the
+            # first entry to a documented all-zeros sentinel (db.repositories.
+            # user_repository.GENESIS_HASH) or leaves it empty. A chain whose
+            # first row carries a *real* previous hash starts mid-chain, which
+            # means rows were lost or the table was spliced.
+            genesis_values = (None, "", "0" * 64)
+            first_previous_empty = not sequence or sequence[0][1] in genesis_values
             check(f"{phase}:audit chain continuity", contiguous and first_previous_empty, f"rows={len(numbers)} first_previous_empty={first_previous_empty}", results)
 
 
