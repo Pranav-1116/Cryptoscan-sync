@@ -1,17 +1,17 @@
 {
   "schema": "cryptoscan.bank-readiness/1",
-  "captured_at": "2026-09-29T09:18:41.814722+00:00",
+  "captured_at": "2026-10-04T14:08:49.835030+00:00",
   "repository": {
-    "commit": "001b73abd1f6c5682988d969b40ef6831d4dec1f",
-    "branch": "arena/01a0e27a-cryproscan",
-    "dirty": false
-  },
-  "artifact_generation_state": {
-    "commit": "001b73abd1f6c5682988d969b40ef6831d4dec1f",
-    "branch": "arena/01a0e27a-cryproscan",
+    "commit": "e44568e3bb92b1982754ce4d44b2d810765df41c",
+    "branch": "arena/01a106c8-cryproscan",
     "dirty": true
   },
-  "command": "/usr/bin/python scripts/bank_readiness.py --run-engineering --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-09-29.json --compliance docs/readiness-evidence/control-register.json --out docs/readiness-evidence/bank-readiness.json",
+  "artifact_generation_state": {
+    "commit": "e44568e3bb92b1982754ce4d44b2d810765df41c",
+    "branch": "arena/01a106c8-cryproscan",
+    "dirty": true
+  },
+  "command": "/home/user/CryproScan/.venv/bin/python scripts/bank_readiness.py --run-engineering --postgresql-dr docs/readiness-evidence/postgres-dr-drill-2026-10-04.json --integrations docs/readiness-evidence/burn-in-2026-10-04.json --compliance docs/readiness-evidence/compliance-burn-2026-10-04.md --load-soak docs/readiness-evidence/load-test-2026-10-04.json",
   "environment": {
     "environment": "unset",
     "ci": false
@@ -32,9 +32,9 @@
     {
       "category": "engineering",
       "status": "FAIL",
-      "detail": "artifact=docs/readiness-evidence/engineering-gate.json; sha256=6439d4e54204d3da3bcd88527752955154e7270bbbcb64232264a0d3ffdde472",
-      "artifact": "docs/readiness-evidence/engineering-gate.json",
-      "artifact_sha256": "6439d4e54204d3da3bcd88527752955154e7270bbbcb64232264a0d3ffdde472",
+      "detail": "artifact=/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json; sha256=80cf6f05dc82ebb36a02c6bc41638e076326bdd85989e491228d16a23c5a12fc",
+      "artifact": "/home/user/CryproScan/docs/readiness-evidence/engineering-gate.json",
+      "artifact_sha256": "80cf6f05dc82ebb36a02c6bc41638e076326bdd85989e491228d16a23c5a12fc",
       "observed_statuses": [
         "FAIL",
         "PASS",
@@ -43,12 +43,11 @@
     },
     {
       "category": "postgresql_dr",
-      "status": "SKIP",
-      "detail": "artifact=docs/readiness-evidence/postgres-dr-drill-2026-09-29.json; sha256=f58955b1aa1b7c0ab303d917b68b575df9bf1bfd0e8ba19e6f4996df9cc44317",
-      "artifact": "docs/readiness-evidence/postgres-dr-drill-2026-09-29.json",
-      "artifact_sha256": "f58955b1aa1b7c0ab303d917b68b575df9bf1bfd0e8ba19e6f4996df9cc44317",
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/postgres-dr-drill-2026-10-04.json; sha256=bbc19aae30c70c393692a94a937f151469a1caa4b23eb7ad581624496180d32e",
+      "artifact": "docs/readiness-evidence/postgres-dr-drill-2026-10-04.json",
+      "artifact_sha256": "bbc19aae30c70c393692a94a937f151469a1caa4b23eb7ad581624496180d32e",
       "observed_statuses": [
-        "",
         "PASS"
       ]
     },
@@ -59,29 +58,39 @@
     },
     {
       "category": "integrations",
-      "status": "SKIP",
-      "detail": "no external artifact supplied; this is not evidence"
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/burn-in-2026-10-04.json; sha256=6209c28768630338bd453650603ef873bab5c2e26bf5f4896cc6221a13c17004",
+      "artifact": "docs/readiness-evidence/burn-in-2026-10-04.json",
+      "artifact_sha256": "6209c28768630338bd453650603ef873bab5c2e26bf5f4896cc6221a13c17004",
+      "observed_statuses": [
+        "PASS"
+      ]
     },
     {
       "category": "compliance",
       "status": "PASS",
-      "detail": "artifact=docs/readiness-evidence/control-register.json; sha256=5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
-      "artifact": "docs/readiness-evidence/control-register.json",
-      "artifact_sha256": "5b0dee3f183cdb74dff67d2e0628811aa01c8d0f1b86eaf64c644bcaf3f7783f",
+      "detail": "artifact=docs/readiness-evidence/compliance-burn-2026-10-04.md; sha256=000ba1c84c2d8fec7f155e4804d769ac8d70ea8aa420d14adb98efba6271de32",
+      "artifact": "docs/readiness-evidence/compliance-burn-2026-10-04.md",
+      "artifact_sha256": "000ba1c84c2d8fec7f155e4804d769ac8d70ea8aa420d14adb98efba6271de32",
       "observed_statuses": [
         "PASS"
       ]
     },
     {
       "category": "load_soak",
-      "status": "SKIP",
-      "detail": "no external artifact supplied; this is not evidence"
+      "status": "PASS",
+      "detail": "artifact=docs/readiness-evidence/load-test-2026-10-04.json; sha256=0c10b82c66e8994a606d866f8a9928b3b56bb3637b55bce68d0c4a03a59bee2a",
+      "artifact": "docs/readiness-evidence/load-test-2026-10-04.json",
+      "artifact_sha256": "0c10b82c66e8994a606d866f8a9928b3b56bb3637b55bce68d0c4a03a59bee2a",
+      "observed_statuses": [
+        "PASS"
+      ]
     },
     {
       "category": "documentation",
       "status": "PASS",
-      "detail": "checked 229 Markdown files and required readiness documents",
-      "checked_files": 229,
+      "detail": "checked 309 Markdown files and required readiness documents",
+      "checked_files": 309,
       "ignored_directories": [
         ".git",
         ".mypy_cache",

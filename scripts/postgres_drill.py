@@ -122,7 +122,10 @@ def one(db: Db, sql: str, params: tuple[Any, ...] = ()) -> Any:
 
 
 def check(name: str, ok: bool, detail: str, results: list[dict]) -> None:
-    row = {"check": name, "ok": bool(ok), "detail": detail}
+    # "status" mirrors ok/FAIL so downstream artifact evaluators (e.g.
+    # scripts/bank_readiness.py) can read the outcome from a standard field
+    # instead of inferring it from booleans.
+    row = {"check": name, "ok": bool(ok), "status": "PASS" if ok else "FAIL", "detail": detail}
     results.append(row)
     print(f"{'PASS' if ok else 'FAIL'}  {name}: {detail}")
 
