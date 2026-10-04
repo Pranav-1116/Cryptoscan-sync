@@ -29,6 +29,28 @@ the repository. It does **not** mean the product is approved for unattended
 production operation. The production qualification result remains
 `BLOCKED_UNTIL_EXTERNAL_EVIDENCE` until the controlled evidence gate passes.
 
+## Weighted production qualification view
+
+For the weighted engineering/operations/external-evidence view, run:
+
+```bash
+python scripts/weighted_production_qualification.py \
+  --out /tmp/weighted-production-qualification.json \
+  --markdown /tmp/weighted-production-qualification.md
+```
+
+The weights are engineering **40**, operations **45**, and external evidence
+**15**. With the repository controls complete, the first two categories are
+implemented at **85/85 available points**, which is the requested 80–90%
+implementation band. Because the external category is currently unverified,
+the overall weighted production qualification is deliberately reported as
+**NOT CALCULATED / BLOCKED**, not green and not 85%.
+
+A real retained external evidence envelope can be supplied with
+`--external-evidence`; it must contain PASS rows for PostgreSQL DR, HSM/provider
+qualification, integrations, compliance, load/soak, and external attestations.
+The tool hashes the supplied envelope but does not certify the evidence.
+
 ## Control groups
 
 The diagnostic checks these repository controls:

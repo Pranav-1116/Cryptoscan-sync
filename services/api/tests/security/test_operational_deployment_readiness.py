@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[4]
 SCRIPT = ROOT / "scripts" / "operational_deployment_readiness.py"
 ROLLBACK = ROOT / "scripts" / "rollback_plan.py"
+WEIGHTED = ROOT / "scripts" / "weighted_production_qualification.py"
 
 
 def _module(path: Path, name: str):
@@ -30,6 +31,17 @@ def test_repository_controls_reach_the_80_to_90_band_without_external_claims():
     assert report["production_qualification"] == "BLOCKED_UNTIL_EXTERNAL_EVIDENCE"
     assert report["external_qualification_reserve"]["status"] == "UNVERIFIED"
     assert report["safety"]["destructive_commands_run"] is False
+
+
+def test_weighted_view_keeps_external_evidence_unverified():
+    weighted = _module(WEIGHTED, "weighted_production_qualification")
+    report = weighted.build_report(ROOT)
+    view = report["weighted_view"]
+    assert view["engineering"]["points"] == 40
+    assert view["operations"]["points"] == 45
+    assert view["external_evidence"]["status"] == "UNVERIFIED"
+    assert view["overall_points"] is None
+    assert report["production_qualification"] == "BLOCKED_UNTIL_EXTERNAL_EVIDENCE"
 
 
 def test_rollback_plan_is_metadata_only_and_requires_immutable_release_lock(tmp_path):
