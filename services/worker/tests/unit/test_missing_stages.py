@@ -28,7 +28,7 @@ from worker.pipeline.stage_scan import execute as scan_stage
 def _ctx(tmp_path: Path, **overrides) -> PipelineContext:
     base = dict(
         job_id="j1",
-        target_repo="local://demo",
+        target_repo="local://test-fixture",
         target_branch="main",
         triggered_by="tester",
         workspace_dir=str(tmp_path),

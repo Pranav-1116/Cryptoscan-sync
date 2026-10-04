@@ -118,7 +118,7 @@ def test_viewer_cannot_manage_users_or_trigger_scans(sqlite_app):
 
     trigger = client.post(
         "/api/v1/scans/trigger",
-        json={"repo_url": "local://demo/vulnerable-app"},
+        json={"repo_url": "local://test-fixture/vulnerable-app"},
         headers=headers,
     )
     assert trigger.status_code == 403

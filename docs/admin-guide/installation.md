@@ -5,7 +5,7 @@
 1. Python 3.11+
 2. `pip install -r requirements.txt`
 3. Copy `.env.example` to `.env`
-4. `python scripts/seed_demo.py`
+4. Start the empty stack with `bash scripts/run_stack.sh`; no source data is seeded.
 5. `bash scripts/run_api.sh`
 
 SQLite is the default. Leave `REDIS_URL` empty to run jobs in-process.

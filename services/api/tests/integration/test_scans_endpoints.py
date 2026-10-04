@@ -14,7 +14,7 @@ def _scan(**overrides):
     data = dict(
         id="scan-1",
         status="COMPLETED",
-        target_location="local://demo/vulnerable-app",
+        target_location="local://test-fixture/vulnerable-app",
         target_type="LOCAL_DIRECTORY",
         target_branch="main",
         target_commit="abc123",

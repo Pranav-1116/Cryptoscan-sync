@@ -6,7 +6,7 @@ from worker.pipeline.stage_multi_scanner import execute as multi
 def _ctx(tmp_path) -> PipelineContext:
     return PipelineContext(
         job_id="j1",
-        target_repo="local://demo",
+        target_repo="local://test-fixture",
         target_branch="main",
         triggered_by="t",
         workspace_dir=str(tmp_path),

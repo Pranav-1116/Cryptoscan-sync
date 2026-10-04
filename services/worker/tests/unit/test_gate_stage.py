@@ -8,7 +8,7 @@ def test_gate_stage_persists_decision():
     runner = PipelineRunner()
     ctx = PipelineContext(
         job_id="j1",
-        target_repo="local://demo",
+        target_repo="local://test-fixture",
         target_branch="main",
         triggered_by="t",
         workspace_dir="/tmp",

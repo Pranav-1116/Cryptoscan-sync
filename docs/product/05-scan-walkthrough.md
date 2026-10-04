@@ -23,7 +23,7 @@ Four things can start a scan; all of them end in the same queue.
 ```bash
 curl -s -X POST http://127.0.0.1:8010/api/v1/scans/trigger \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"repo_url":"local://demo/vulnerable-app","branch":"main"}'
+  -d '{"repo_url":"local://<authorized-source>","branch":"main"}'
 # → {"job_id":"b5e5c286-…","status":"QUEUED"}
 ```
 

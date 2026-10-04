@@ -39,7 +39,7 @@ def test_enqueue_scan_job_fails_closed_when_job_commit_fails(monkeypatch):
         trigger.enqueue_scan_job(
             repo,
             MagicMock(),
-            repo_url="local://demo/vulnerable-app",
+            repo_url="local://test-fixture/vulnerable-app",
             triggered_by="scanner-user",
         )
 

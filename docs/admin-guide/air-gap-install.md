@@ -121,7 +121,7 @@ curl -fsS http://localhost/api/v1/healthz
 curl -fsS http://localhost/metrics | head
 
 # 4.3 — a full scan of a bundled local target, entirely in-process
-python3 scripts/trigger_scan.py local://demo/polyglot-app --inline
+python3 scripts/trigger_scan.py local://<authorized-source> --inline
 #   expect: findings across languages, exit 0
 
 # 4.4 — evidence chain verifies offline

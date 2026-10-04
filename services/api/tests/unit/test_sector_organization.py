@@ -98,6 +98,6 @@ def test_scan_trigger_carries_sector(client):
     client.put("/api/v1/sectors/organization/active", headers=h, json={"sector": "banking"})
     # trigger a scan of the bundled demo repo (inline path in dev)
     r = client.post("/api/v1/scans/trigger", headers=h,
-                    json={"repo_url": "local://demo/vulnerable-app", "branch": "main"})
+                    json={"repo_url": "local://test-fixture/vulnerable-app", "branch": "main"})
     # accepted (202) or a dev-validation response; either way sector resolution ran
     assert r.status_code in (200, 201, 202, 400, 422)

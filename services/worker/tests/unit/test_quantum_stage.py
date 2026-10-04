@@ -48,7 +48,7 @@ def _row(eid, algorithm, **extra):
 
 def _ctx(**overrides):
     base = dict(
-        job_id="j1", target_repo="local://demo", target_branch="main",
+        job_id="j1", target_repo="local://test-fixture", target_branch="main",
         triggered_by="t", workspace_dir="/tmp", scan_id="scan-1", system_id="sys-1",
     )
     base.update(overrides)

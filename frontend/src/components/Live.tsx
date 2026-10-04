@@ -48,7 +48,7 @@ export function useAlertToasts() {
       .map((e) => ({
         id: e.id,
         severity: severityOf(e.type),
-        title: e.type.replace(/^(platform|monitor|demo)\./, "").replace(/_/g, " "),
+        title: e.type.replace(/^(platform|monitor)\./, "").replace(/_/g, " "),
         detail: String(e.payload?.detail || e.payload?.target || ""),
       }));
     if (important.length === 0) return;

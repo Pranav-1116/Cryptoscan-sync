@@ -1,4 +1,4 @@
-.PHONY: help setup seed api worker test test-serial test-live test-frontend test-all scan verify
+.PHONY: help setup api worker test test-serial test-live test-frontend test-all scan verify
 
 ROOT := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 # Prefer the repo-standard .venv created by `make setup`; fall back to a venv/
@@ -14,18 +14,14 @@ export PYTHONPATH := $(shell find $(ROOT)/services $(ROOT)/shared -mindepth 1 -m
 
 help:
 	@echo "make setup  - create venv and install deps"
-	@echo "make seed   - scan demo/vulnerable-app into SQLite"
 	@echo "make api    - run the API on :8010 (frontend: cd frontend && npm run dev → :3003)"
 	@echo "make test   - run unit/integration tests"
-	@echo "make scan REPO=local://demo/vulnerable-app"
+	@echo "make scan REPO=<authorized repository or local path>"
 
 setup:
 	python3 -m venv $(ROOT)/.venv
 	$(PY) -m pip install -U pip
 	$(PY) -m pip install -r $(ROOT)/requirements.txt
-
-seed:
-	$(PY) $(ROOT)/scripts/seed_demo.py
 
 api:
 	$(PY) -m uvicorn api.main:app --host 0.0.0.0 --port 8010 --proxy-headers --forwarded-allow-ips='*'
@@ -70,6 +66,7 @@ load-test: ## $(make load-test URL=… USERS=20 DURATION=60 PASSWORD=…)
 	$(PY) $(ROOT)/scripts/load_test.py --url $(or $(URL),http://localhost:8010) --users $(or $(USERS),10) --duration $(or $(DURATION),30) --password '$(PASSWORD)'
 
 scan:
+	@test -n "$(REPO)" || (echo "REPO is required; provide an authorized repository or local path" >&2; exit 2)
 	$(PY) $(ROOT)/scripts/trigger_scan.py "$(REPO)" --inline
 
 verify:

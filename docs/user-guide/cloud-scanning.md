@@ -14,5 +14,5 @@ It flags:
 Live AWS API calls require `boto3` plus credentials and `CRYPTOSCAN_CLOUD_LIVE=1`. They are fail-open and off by default.
 
 ```bash
-python scripts/run_cloud_scan.py demo/polyglot-app
+python scripts/run_cloud_scan.py /path/to/authorized-source-tree
 ```

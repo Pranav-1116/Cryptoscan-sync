@@ -22,7 +22,7 @@ def _entries():
     return [
         {"kind": "network", "target": "10.0.0.0/8", "enabled": True, "detail": {"exclusions": ["10.0.0.0/16"]}},
         {"kind": "cloud", "target": "aws:123456789012", "enabled": True},
-        {"kind": "application", "target": "local://demo/vulnerable-app", "enabled": True},
+        {"kind": "application", "target": "local://test-fixture/vulnerable-app", "enabled": True},
     ]
 
 

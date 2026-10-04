@@ -22,7 +22,7 @@ Read-only: the scanned tree is copied into a workspace (like the worker does);
 nothing in the source tree is modified, no packets are sent.
 
 Usage:
-    python scripts/scan_estate.py --dir demo/vulnerable-app --out /tmp/estate-out
+    python scripts/scan_estate.py --dir /path/to/authorized-source-tree --out /tmp/estate-out
     python scripts/scan_estate.py --dir . --template iso-27001 --keep-workspace
 """
 

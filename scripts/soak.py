@@ -394,7 +394,7 @@ def main() -> int:
     ap.add_argument("--username", default=os.environ.get("SOAK_USERNAME", "admin"))
     ap.add_argument("--password", default=os.environ.get("SOAK_PASSWORD") or os.environ.get("STAGING_ADMIN_PASSWORD", ""))
     ap.add_argument("--staging-dir", default=os.environ.get("CRYPTOSCAN_STAGING_DIR", "/tmp/cryptoscan-staging"))
-    ap.add_argument("--target", default="local://demo/vulnerable-app", help="repo_url to scan each cycle")
+    ap.add_argument("--target", default=os.environ.get("SOAK_TARGET", ""), help="authorized repo_url to scan each cycle")
     ap.add_argument("--hours", type=float, default=None, help="run for this long (default: forever / --cycles)")
     ap.add_argument("--cycles", type=int, default=None, help="stop after N cycles")
     ap.add_argument("--interval", type=float, default=300, help="seconds between cycle starts")
@@ -402,6 +402,8 @@ def main() -> int:
     ap.add_argument("--sse-seconds", type=float, default=6)
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
+    if not args.target:
+        ap.error("--target or SOAK_TARGET is required; no bundled source is available")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)

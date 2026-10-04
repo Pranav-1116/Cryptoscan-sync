@@ -24,7 +24,6 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # ── application source ───────────────────────────────────────────────
 COPY shared   /app/shared
 COPY services /app/services
-COPY demo     /app/demo
 COPY scripts  /app/scripts
 COPY config   /app/config
 COPY .env.example /app/.env.example

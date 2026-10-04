@@ -14,7 +14,7 @@ def _scope():
     return [
         {"kind": "network", "target": "10.0.0.0/8", "enabled": True, "detail": {}},
         {"kind": "network", "target": "gateway.example.com:443", "enabled": True, "detail": {}},
-        {"kind": "application", "target": "local://demo/vulnerable-app", "enabled": True, "detail": {}},
+        {"kind": "application", "target": "local://test-fixture/vulnerable-app", "enabled": True, "detail": {}},
         {"kind": "cloud", "target": "aws:123456789012", "enabled": True, "detail": {}},
         {"kind": "hardware", "target": "hsm-bank-01", "enabled": True, "detail": {}},
     ]
@@ -40,7 +40,7 @@ def test_plan_resolves_scope_to_targets_and_credentials():
     # network host:port becomes a probe target; CIDR stays for discovery
     assert "gateway.example.com:443" in targets["network"]
     assert "10.0.0.0/8" in targets["network_scope"]
-    assert "local://demo/vulnerable-app" in targets["source"]
+    assert "local://test-fixture/vulnerable-app" in targets["source"]
     # hardware host-set fallback is added
     assert "host" in targets["hardware"]
     # credentials derived from configured connectors

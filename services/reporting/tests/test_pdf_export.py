@@ -7,7 +7,7 @@ from reporting.pdf_export import _finding_rows, _safe, render_report_pdf
 
 SAMPLE_REPORT = {
     "generated_at": "2026-08-31T00:00:00Z",
-    "scan": {"scan_id": "s1", "target_location": "local://demo/app",
+    "scan": {"scan_id": "s1", "target_location": "local://test-fixture/app",
              "status": "COMPLETED"},
     "totals": {"findings": 2, "pass": 1, "warn": 0, "fail": 1},
     "findings": [

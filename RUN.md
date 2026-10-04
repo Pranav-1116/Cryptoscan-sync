@@ -10,7 +10,7 @@ Policy is never decided by AI. Fail/pass comes from YAML in `services/policy/rul
 python3 -m pip install -r requirements.txt
 export CRYPTOSCAN_ROOT=$PWD
 export PYTHONPATH=$PWD/shared/shared_config:$PWD/shared/shared_logging:$PWD/shared/shared_models:$PWD/services/api:$PWD/services/database:$PWD/services/scanner:$PWD/services/evidence:$PWD/services/normalization:$PWD/services/policy:$PWD/services/drift:$PWD/services/worker:$PWD/services/deduplication:$PWD/services/cbom:$PWD/services/container_scanner:$PWD/services/network_scanner:$PWD/services/cloud_scanner:$PWD/services/graph_engine:$PWD/services/business_context:$PWD/services/quantum:$PWD/services/remediation:$PWD/services/reporting
-python3 scripts/seed_demo.py
+bash scripts/run_stack.sh
 bash scripts/run_stack.sh
 ```
 
@@ -21,7 +21,7 @@ make test    # per-service pytest (avoids shared `tests` package clash)
 make api     # frontend :3003 + API :8010
 ```
 
-Trigger a scan of the bundled sample with `local://demo/vulnerable-app`.
+Trigger a scan of the bundled sample with `local://<authorized-source>`.
 
 **24/7 live scanning** (see `docs/dev/LIVE-SCANNING.md` for the full picture):
 

@@ -98,7 +98,7 @@ export default function CommandCenter() {
   /* realtime feed — shows only events streamed live from the control plane */
   const liveFeed = rt.events.filter((e) => !isSystemEvent(e.type)).slice(0, 6).map((e) => ({
     t: new Date(e.ts).toLocaleTimeString("en-GB", { hour12: false }),
-    tag: e.type.replace(/^(platform|monitor|demo)\./, "").replace(/_/g, " ").slice(0, 22).toUpperCase(),
+    tag: e.type.replace(/^(platform|monitor)\./, "").replace(/_/g, " ").slice(0, 22).toUpperCase(),
     text: String(e.payload?.detail || e.payload?.target || ""),
     severity: severityOf(e.type),
   }));
@@ -106,7 +106,7 @@ export default function CommandCenter() {
     ? liveFeed
     : events.slice(0, 6).map((e: any) => ({
         t: new Date(e.ts ?? e.timestamp).toLocaleTimeString("en-GB", { hour12: false }),
-        tag: String(e.type ?? "").replace(/^(platform|monitor|demo)\./, "").slice(0, 22).toUpperCase(),
+        tag: String(e.type ?? "").replace(/^(platform|monitor)\./, "").slice(0, 22).toUpperCase(),
         text: String(e.payload?.detail || e.payload?.target || ""),
         severity: severityOf(e.type),
       }));

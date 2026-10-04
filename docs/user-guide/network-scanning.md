@@ -20,6 +20,6 @@ The structured inventory is not a claim of complete network visibility; missing
 sections remain incomplete or unknown.
 
 ```bash
-python scripts/run_network_scan.py demo/polyglot-app
+python scripts/run_network_scan.py /path/to/authorized-source-tree
 python scripts/run_network_scan.py example.com:443 --live
 ```

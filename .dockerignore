@@ -29,4 +29,3 @@ data
 *.md
 logic-*.md
 docs/
-demo/**/node_modules

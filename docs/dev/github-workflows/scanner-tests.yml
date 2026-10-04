@@ -7,7 +7,6 @@ on:
       - "services/scanner/**"
       - "services/normalization/**"
       - "services/policy/**"
-      - "demo/**"
       - ".github/workflows/scanner-tests.yml"
   pull_request:
     branches: [main]
@@ -15,7 +14,6 @@ on:
       - "services/scanner/**"
       - "services/normalization/**"
       - "services/policy/**"
-      - "demo/**"
       - ".github/workflows/scanner-tests.yml"
 
 concurrency:
@@ -49,23 +47,3 @@ jobs:
           CRYPTOSCAN_ROOT: ${{ github.workspace }}
           PYTHONPATH: ${{ github.workspace }}/shared/shared_config:${{ github.workspace }}/shared/shared_logging:${{ github.workspace }}/shared/shared_models:${{ github.workspace }}/services/api:${{ github.workspace }}/services/database:${{ github.workspace }}/services/scanner:${{ github.workspace }}/services/evidence:${{ github.workspace }}/services/normalization:${{ github.workspace }}/services/policy:${{ github.workspace }}/services/drift:${{ github.workspace }}/services/worker:${{ github.workspace }}/services/deduplication:${{ github.workspace }}/services/cbom:${{ github.workspace }}/services/container_scanner:${{ github.workspace }}/services/network_scanner:${{ github.workspace }}/services/cloud_scanner:${{ github.workspace }}/services/graph_engine:${{ github.workspace }}/services/business_context:${{ github.workspace }}/services/quantum:${{ github.workspace }}/services/remediation:${{ github.workspace }}/services/reporting:${{ github.workspace }}/services/ot_scanner:${{ github.workspace }}/services/vendor_intel:${{ github.workspace }}/services/agility
         run: python -m pytest -q "${{ matrix.suite }}" -p no:cacheprovider
-
-  polyglot-detection:
-    name: Polyglot detection matrix
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: pip
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
-      - name: Scan demo apps and assert known findings
-        env:
-          CRYPTOSCAN_ROOT: ${{ github.workspace }}
-          PYTHONPATH: ${{ github.workspace }}/shared/shared_config:${{ github.workspace }}/shared/shared_logging:${{ github.workspace }}/shared/shared_models:${{ github.workspace }}/services/api:${{ github.workspace }}/services/database:${{ github.workspace }}/services/scanner:${{ github.workspace }}/services/evidence:${{ github.workspace }}/services/normalization:${{ github.workspace }}/services/policy:${{ github.workspace }}/services/drift:${{ github.workspace }}/services/worker:${{ github.workspace }}/services/deduplication:${{ github.workspace }}/services/cbom:${{ github.workspace }}/services/container_scanner:${{ github.workspace }}/services/network_scanner:${{ github.workspace }}/services/cloud_scanner:${{ github.workspace }}/services/graph_engine:${{ github.workspace }}/services/business_context:${{ github.workspace }}/services/quantum:${{ github.workspace }}/services/remediation:${{ github.workspace }}/services/reporting:${{ github.workspace }}/services/ot_scanner:${{ github.workspace }}/services/vendor_intel:${{ github.workspace }}/services/agility
-        run: python scripts/polyglot_smoke.py

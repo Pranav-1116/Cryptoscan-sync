@@ -31,7 +31,7 @@ export default function CryptoChanges() {
   const toRow = (e: any) => ({
     t: new Date(e.ts ?? e.timestamp).toLocaleTimeString("en-GB", { hour12: false }),
     tag: categoryOf(String(e.type ?? "")),
-    text: `${String(e.type ?? "").replace(/^(platform|monitor|demo)\./, "")}: ${String(e.payload?.detail || e.payload?.target || "")}`,
+    text: `${String(e.type ?? "").replace(/^(platform|monitor)\./, "")}: ${String(e.payload?.detail || e.payload?.target || "")}`,
     severity: severityOf(e.type),
     id: e.id,
   });

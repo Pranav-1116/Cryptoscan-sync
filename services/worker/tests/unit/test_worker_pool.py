@@ -10,7 +10,7 @@ from worker.core.pool import WorkerPool
 
 
 def _job(n: int) -> ScanJob:
-    return ScanJob(job_id=f"job-{n}", target_repo=f"local://demo/repo-{n}")
+    return ScanJob(job_id=f"job-{n}", target_repo=f"local://test-fixture/repo-{n}")
 
 
 def test_jobs_run_concurrently():

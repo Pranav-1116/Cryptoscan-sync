@@ -13,7 +13,7 @@ export default function Timeline() {
 
   const fromEvent = (e: any): { t: string; tag: string; text: string; cr: boolean; hi: boolean; id: any } => ({
     t: new Date(e.ts ?? e.timestamp).toLocaleTimeString("en-GB", { hour12: false }),
-    tag: String(e.type ?? "").replace(/^(platform|monitor|demo)\./, "").replace(/_/g, " "),
+    tag: String(e.type ?? "").replace(/^(platform|monitor)\./, "").replace(/_/g, " "),
     text: String(e.payload?.detail || e.payload?.target || e.source || ""),
     cr: severityOf(e.type) === "CRITICAL",
     hi: severityOf(e.type) === "HIGH",

@@ -1,4 +1,4 @@
-# Demo X.509 certificates
+# X.509 scanner fixtures
 
 Offline PEMs used by the network TLS scanner. They are generated with
 OpenSSL and carry the extensions CryptoScan extracts without the
@@ -13,5 +13,4 @@ and a CRL distribution point.
 | `expired_cert.pem` | Expired leaf (notAfter in the past) |
 | `self_signed.pem` | Self-signed server cert |
 
-Private keys are not checked in. Copies also live under
-`demo/polyglot-app/certs/` so a full demo tree scan inventories them.
+Private keys are not checked in. These fixtures are test-only and are not included in runtime source trees.

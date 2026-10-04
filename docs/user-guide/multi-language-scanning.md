@@ -7,7 +7,7 @@ parser in one scan.
 Try the bundled sample:
 
 ```
-local://demo/polyglot-app
+local://<authorized-source>
 ```
 
 Findings keep a `source.language` field. The dashboard Findings and Assets
