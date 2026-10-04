@@ -60,6 +60,11 @@ export default function CommandCenter() {
   const activeDrift = Number((liveDrift.data as any)?.change_count ?? 0);
   const ls = (liveStats.data ?? {}) as Record<string, any>;
   const dStats = ((liveDeliveries.data as Record<string, unknown> | null)?.stats ?? {}) as Record<string, number>;
+  const inventoryObserved = !liveInventory.loading && !liveInventory.error;
+  const statsObserved = liveStats.source === "live";
+  const agentsObserved = !liveAgents.loading && !liveAgents.error;
+  const bomObserved = liveBom.source === "live";
+  const driftObserved = liveDrift.source === "live";
 
   // Derive every dashboard KPI from live endpoints (zero until real data exists).
   const cov = (ls.coverage ?? {}) as Record<string, number>;
@@ -218,12 +223,12 @@ export default function CommandCenter() {
       {/* Five-question KPI strip — what do I have / what changed / what is risky /
           what is quantum-vulnerable / what needs action. All live, zero until real. */}
       <div className="kpi-strip">
-        <HeroKpi label="Total assets" q="what do I have?" value={g.totalAssets} tone="cyan" to="#/assets" />
-        <HeroKpi label="Crypto assets" q="what do I have?" value={g.cryptoAssets} tone="blue" to="#/cbom" />
-        <HeroKpi label="Quantum-vulnerable" q="what is quantum-vulnerable?" value={g.quantumVulnerable} tone={g.quantumVulnerable ? "red" : "green"} to="#/pqc" />
-        <HeroKpi label="Critical" q="what is risky?" value={g.criticalFindings} tone={g.criticalFindings ? "red" : "green"} to="#/risk" />
-        <HeroKpi label="Active drift" q="what changed?" value={g.activeDrift} tone={g.activeDrift ? "orange" : "green"} to="#/drift" />
-        <HeroKpi label="Scanners" q="what needs action?" value={`${g.agentsHealthy}/${g.agentsTotal}`} tone={g.agentsTotal && g.agentsHealthy === g.agentsTotal ? "green" : "amber"} to="#/scanners" suffix={g.agentsTotal ? (g.agentsHealthy === g.agentsTotal ? "healthy" : "degraded") : "idle"} />
+        <HeroKpi label="Total assets" q="what do I have?" value={inventoryObserved ? g.totalAssets : "—"} tone={inventoryObserved ? "cyan" : "amber"} to="#/assets" suffix={inventoryObserved ? undefined : "unknown"} />
+        <HeroKpi label="Crypto assets" q="what do I have?" value={inventoryObserved ? g.cryptoAssets : "—"} tone={inventoryObserved ? "blue" : "amber"} to="#/cbom" suffix={inventoryObserved ? undefined : "unknown"} />
+        <HeroKpi label="Quantum-vulnerable" q="what is quantum-vulnerable?" value={bomObserved ? g.quantumVulnerable : "—"} tone={!bomObserved ? "amber" : g.quantumVulnerable ? "red" : "amber"} to="#/pqc" suffix={bomObserved ? undefined : "unknown"} />
+        <HeroKpi label="Critical" q="what is risky?" value={statsObserved ? g.criticalFindings : "—"} tone={!statsObserved ? "amber" : g.criticalFindings ? "red" : "amber"} to="#/risk" suffix={statsObserved ? undefined : "unknown"} />
+        <HeroKpi label="Active drift" q="what changed?" value={driftObserved ? g.activeDrift : "—"} tone={!driftObserved ? "amber" : g.activeDrift ? "orange" : "amber"} to="#/drift" suffix={driftObserved ? undefined : "unknown"} />
+        <HeroKpi label="Scanners" q="what needs action?" value={agentsObserved ? `${g.agentsHealthy}/${g.agentsTotal}` : "—"} tone={!agentsObserved ? "amber" : g.agentsTotal && g.agentsHealthy === g.agentsTotal ? "green" : "amber"} to="#/scanners" suffix={!agentsObserved ? "unknown" : g.agentsTotal ? (g.agentsHealthy === g.agentsTotal ? "healthy" : "degraded") : "no observations"} />
       </div>
 
       {/* readiness bars */}
@@ -231,26 +236,26 @@ export default function CommandCenter() {
         <Panel title="PQC readiness" sub="executive posture">
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {[
-              { k: "PQC ready", v: g.pqcReadyPct, tone: "green" },
-              { k: "Hybrid ready", v: g.hybridReadyPct, tone: "violet" },
-              { k: "Migration required", v: g.migrationRequiredPct, tone: "red" },
+              { k: "PQC ready", v: g.pqcReadyPct, tone: "green", observed: bomObserved },
+              { k: "Hybrid ready", v: g.hybridReadyPct, tone: "violet", observed: bomObserved },
+              { k: "Migration required", v: g.migrationRequiredPct, tone: "red", observed: bomObserved },
             ].map((r) => (
               <div key={r.k}>
                 <div className="spread" style={{ marginBottom: 4, fontSize: 13 }}>
-                  <span>{r.k}</span><span className="mono">{r.v}%</span>
+                  <span>{r.k}</span><span className="mono" style={!r.observed ? { color: "var(--amber)" } : undefined}>{r.observed ? `${r.v}%` : "UNKNOWN"}</span>
                 </div>
-                <Bar value={r.v / 100} tone={r.tone} />
+                {r.observed ? <Bar value={r.v / 100} tone={r.tone} /> : <div className="dim" style={{ fontSize: 11 }}>No live evidence returned</div>}
               </div>
             ))}
           </div>
         </Panel>
         <Panel title="Live environment" sub="five domains, one graph — populated by discovery">
           <div style={{ display: "flex", flexDirection: "column", gap: 8, fontFamily: "var(--mono)", fontSize: 13 }}>
-            <div className="spread"><span>Network</span><Badge tone={networkAssets.length ? "green" : ""}>{networkAssets.length} assets</Badge></div>
-            <div className="spread"><span>Cloud</span><Badge tone={cloudResources.length ? "green" : ""}>{cloudResources.length} resources</Badge></div>
-            <div className="spread"><span>Vendor</span><Badge tone={vendors.length ? "green" : ""}>{vendors.length} vendors</Badge></div>
-            <div className="spread"><span>Hardware</span><Badge tone={hardware.length ? "green" : ""}>{hardware.length} devices</Badge></div>
-            <div className="spread"><span>Cryptography</span><Badge tone={g.risks > 0 ? "red" : ""}>{g.risks > 0 ? "FINDINGS" : "no findings yet"}</Badge></div>
+            <div className="spread"><span>Network</span><Badge tone={!inventoryObserved ? "amber" : networkAssets.length ? "green" : ""}>{inventoryObserved ? `${networkAssets.length} assets` : "UNKNOWN"}</Badge></div>
+            <div className="spread"><span>Cloud</span><Badge tone="amber">UNKNOWN — no live cloud projection</Badge></div>
+            <div className="spread"><span>Vendor</span><Badge tone="amber">UNKNOWN — no live vendor projection</Badge></div>
+            <div className="spread"><span>Hardware</span><Badge tone={!inventoryObserved ? "amber" : hardware.length ? "green" : ""}>{inventoryObserved ? `${hardware.length} devices` : "UNKNOWN"}</Badge></div>
+            <div className="spread"><span>Cryptography</span><Badge tone={!statsObserved ? "amber" : g.risks > 0 ? "red" : ""}>{!statsObserved ? "UNKNOWN" : g.risks > 0 ? "FINDINGS" : "no findings yet"}</Badge></div>
           </div>
         </Panel>
       </div>
@@ -259,26 +264,26 @@ export default function CommandCenter() {
       <div className="grid cols-4" style={{ marginBottom: 16 }}>
         <Panel title="Telemetry" sub="24h window">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Kpi k="active scanners" v={`${g.activeScanners}/${g.totalScanners}`} tone="green" />
-            <Kpi k="scanner health" v={`${g.scannerHealthPct}%`} tone="green" />
-            <Kpi k="agents" v={`${g.agentsHealthy}/${g.agentsTotal}`} tone="green" />
-            <Kpi k="events / sec" v={g.eventsPerSec} tone="cyan" />
+            <Kpi k="active scanners" v={statsObserved ? `${g.activeScanners}/${g.totalScanners}` : "UNKNOWN"} tone={statsObserved ? "cyan" : "amber"} />
+            <Kpi k="scanner health" v={agentsObserved ? `${g.scannerHealthPct}%` : "UNKNOWN"} tone={agentsObserved ? "cyan" : "amber"} />
+            <Kpi k="agents" v={agentsObserved ? `${g.agentsHealthy}/${g.agentsTotal}` : "UNKNOWN"} tone={agentsObserved ? "cyan" : "amber"} />
+            <Kpi k="events / sec" v={statsObserved ? g.eventsPerSec : "UNKNOWN"} tone={statsObserved ? "cyan" : "amber"} />
           </div>
         </Panel>
         <Panel title="Findings" sub="evidence-linked">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Kpi k="critical findings" v={g.criticalFindings} tone="red" />
-            <Kpi k="high findings" v={g.highFindings} tone="red" />
-            <Kpi k="live changes (24h)" v={g.liveChanges24h} tone="amber" />
-            <Kpi k="evidence health" v={`${g.evidenceHealthPct}%`} tone="green" />
+            <Kpi k="critical findings" v={statsObserved ? g.criticalFindings : "UNKNOWN"} tone={statsObserved && g.criticalFindings ? "red" : "amber"} />
+            <Kpi k="high findings" v={statsObserved ? g.highFindings : "UNKNOWN"} tone={statsObserved && g.highFindings ? "red" : "amber"} />
+            <Kpi k="live changes (24h)" v={statsObserved ? g.liveChanges24h : "UNKNOWN"} tone={statsObserved ? "amber" : "amber"} />
+            <Kpi k="evidence health" v={statsObserved ? `${g.evidenceHealthPct}%` : "UNKNOWN"} tone={statsObserved ? "amber" : "amber"} />
           </div>
         </Panel>
         <Panel title="Migration" sub="post-quantum program">
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <Kpi k="PQC exposure" v={`${g.pqcExposurePct}%`} tone="red" />
-            <Kpi k="migration progress" v={`${g.migrationProgressPct}%`} tone="cyan" />
-            <Kpi k="CBOM status" v={`v${g.cbomVersion}`} tone="green" />
-            <Kpi k="HBOM status" v={`v${g.hbomVersion}`} tone="green" />
+            <Kpi k="PQC exposure" v={bomObserved ? `${g.pqcExposurePct}%` : "UNKNOWN"} tone={bomObserved && g.pqcExposurePct ? "red" : "amber"} />
+            <Kpi k="migration progress" v={bomObserved ? `${g.migrationProgressPct}%` : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
+            <Kpi k="CBOM status" v={bomObserved ? `v${g.cbomVersion}` : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
+            <Kpi k="HBOM status" v={bomObserved ? `v${g.hbomVersion}` : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
           </div>
         </Panel>
         <Panel title="Risk distribution" sub="portfolio">
@@ -309,7 +314,7 @@ export default function CommandCenter() {
               <div className="spread" key={d.k} style={{ fontSize: 13 }}>
                 <span>{d.k}</span>
                 <span className="dim">{d.detail}</span>
-                <Badge tone={d.added ? "red" : "green"}>{d.added ? `+${d.added}` : "clean"}</Badge>
+                <Badge tone="amber">UNKNOWN — no baseline</Badge>
               </div>
             ))}
             {rt.connected && rt.events.filter((e) => e.type.includes("drift")).length > 0 && (
