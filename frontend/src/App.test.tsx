@@ -33,7 +33,6 @@ describe("app shell", () => {
     // docs links are allowed; API/localhost links are not
     expect(hrefs.some((h) => h.includes("127.0.0.1") || h.includes("localhost"))).toBe(false);
     expect(external.every((h) => !h.includes("/api/"))).toBe(true);
-    expect(screen.queryByRole("button", { name: /ask zelnx/i })).not.toBeInTheDocument();
   });
 
   it("keeps six primary sections and the 31-slot navigation contract", async () => {

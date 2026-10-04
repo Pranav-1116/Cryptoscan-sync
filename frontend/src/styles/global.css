@@ -537,15 +537,6 @@ select.inp option { background: var(--panel); color: var(--text); }
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .spread { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-/* ── demobanner ───────────────────────────────────────────────────── */
-.demobanner {
-  display: flex; align-items: center; gap: 10px;
-  font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em;
-  color: var(--amber); border: 1px solid rgba(251, 191, 36, 0.35);
-  background: rgba(251, 191, 36, 0.06); border-radius: var(--r); padding: 8px 12px; line-height: 1.5;
-}
-.demobanner .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); animation: pulse 2s infinite; flex-shrink: 0; }
-
 /* Narrow tablet / split-screen: keep the left sidebar (slightly narrower). */
 @media (max-width: 980px) {
   .shell { grid-template-columns: 200px minmax(0, 1fr); }

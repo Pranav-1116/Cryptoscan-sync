@@ -26,7 +26,7 @@ function BrandPanel() {
   );
 }
 
-/** Sign in against the live control plane. No local/demo credentials are shown. */
+/** Sign in against the live control plane. No local credentials are shown. */
 export default function Login() {
   const params = new URLSearchParams(window.location.search);
   const registered = params.get("u") || "";

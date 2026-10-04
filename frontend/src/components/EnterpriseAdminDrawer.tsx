@@ -146,8 +146,8 @@ function AboutTab() {
       <p className="dim">
         Deterministic cryptographic discovery, inventory and compliance.
         Evidence-chained observations, YAML policy, drift detection and a
-        Cryptographic Digital Twin. Policy is never decided by AI — scanners
-        prove facts, rules decide compliance.
+        Cryptographic Digital Twin. Scanners prove facts and rules decide
+        compliance.
       </p>
       <p className="dim" style={{ fontSize: 11 }}>
         Version 1.0.0 · API /api/v1 · OpenAPI docs at /api/docs (when enabled)

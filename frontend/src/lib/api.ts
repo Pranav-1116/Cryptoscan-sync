@@ -1364,7 +1364,7 @@ export async function apiPostMigrationValidate(payload: Record<string, unknown>)
   } catch (e) { return { source: "live", ok: false, error: String(e), data: null } as ApiResult<any>; }
 }
 
-/* ── real detection benchmark (no AI; shipping detector vs ground truth) ── */
+/* ── real detection benchmark: shipping detector vs ground truth ── */
 export async function apiRunRealBenchmark(): Promise<ApiResult<any>> {
   try {
     const resp = await tenantFetch(`/api/v1/control/benchmark/run-real`, {

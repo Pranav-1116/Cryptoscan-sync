@@ -1,6 +1,5 @@
-/* Live ticker + alert toasts — fed by the realtime event store when the
-   SSE stream is connected (source "live"), deterministic simulation
-   otherwise (source "sim"). No polling. */
+/* Live ticker + alert toasts — fed only by the realtime event store when the
+   SSE stream is connected. Offline state stays empty and explicit. */
 
 import React, { useEffect, useState } from "react";
 import { useRealtime, severityOf } from "../lib/realtime.js";
