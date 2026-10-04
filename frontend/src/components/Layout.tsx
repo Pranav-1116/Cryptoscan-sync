@@ -3,7 +3,15 @@ import { EnterpriseAdminDrawer, AdminDrawerTab } from "./EnterpriseAdminDrawer";
 import { useEnterprise, EnterpriseProvider } from "./EnterpriseContext";
 import { TenantModal, EnvironmentModal, RoleModal } from "./EnterpriseModals";
 import SystemHealthModal from "./SystemHealthModal";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import autoAnimate from "@formkit/auto-animate";
+import {
+  Atom, Bank, Buildings, Certificate, ChartLineUp, Cloud,
+  Code, Cpu, Cube, FileText, GearSix, GlobeHemisphereWest, Graph, HardDrives,
+  Key, ListChecks, MagnifyingGlass, PlugsConnected, Pulse, Scan,
+  Scales, ShieldCheck, SlidersHorizontal, UsersThree, type Icon,
+} from "@phosphor-icons/react";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search";
 import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
@@ -14,69 +22,76 @@ import { RequireRole } from "../lib/auth.js";
 
 // Core categories per UX Prompt:
 // Overview, Discovery, Intelligence, Governance, Output, Administration
-const PRIMARY_SECTIONS = [
+type NavItem = { to: string; label: string; icon: Icon };
+type NavSection = { title: string; items: NavItem[] };
+
+// The navigation is deliberately data-driven: the same contract feeds the
+// sidebar, maturity labels, search affordances and route-coverage tests. The
+// duplicate Security Center placement is intentional: audit is a governance
+// workflow, while the same server-verified surface is also an administration
+// control. It remains one route and one source of truth.
+const PRIMARY_SECTIONS: NavSection[] = [
   {
     title: "Overview",
     items: [
-      { to: "/command-center", label: "Dashboard", icon: "◈" },
-      { to: "/live-asset-intelligence", label: "Live Asset Intelligence", icon: "⬡" },
-      { to: "/live-stream", label: "Activity", icon: "◉" },
-    ]
+      { to: "/command-center", label: "Dashboard", icon: ChartLineUp },
+      { to: "/live-asset-intelligence", label: "Live Asset Intelligence", icon: Pulse },
+      { to: "/live-stream", label: "Activity", icon: Pulse },
+    ],
   },
   {
     title: "Discovery",
     items: [
-      { to: "/scanners", label: "Scan", icon: "⌖" },
-      { to: "/assets", label: "Assets", icon: "▤" },
-      { to: "/network", label: "Network", icon: "◈" },
-      { to: "/cloud", label: "Cloud", icon: "☁" },
-      { to: "/dev-sec-ops", label: "Applications", icon: "⛀" },
-      { to: "/hardware", label: "Hardware", icon: "⌬" },
-      { to: "/certificates", label: "Certificates", icon: "⊞" },
-      { to: "/vendor", label: "Vendors", icon: "▤" },
-      { to: "/vendor-due-diligence", label: "Vendor Due Diligence", icon: "✓" },
-    ]
+      { to: "/scanners", label: "Scan", icon: Scan },
+      { to: "/assets", label: "Assets", icon: Cube },
+      { to: "/network", label: "Network", icon: GlobeHemisphereWest },
+      { to: "/cloud", label: "Cloud", icon: Cloud },
+      { to: "/dev-sec-ops", label: "Applications", icon: Code },
+      { to: "/hardware", label: "Hardware", icon: Cpu },
+      { to: "/certificates", label: "Certificates", icon: Certificate },
+      { to: "/vendor", label: "Vendors", icon: Buildings },
+    ],
   },
   {
     title: "Intelligence",
     items: [
-      { to: "/cbom", label: "CBOM", icon: "⬡" },
-      { to: "/hbom", label: "HBOM", icon: "⬢" },
-      { to: "/nbom", label: "NBOM", icon: "⬣" },
-      { to: "/graph", label: "Dependency Graph", icon: "⬟" },
-      { to: "/crypto-assets", label: "Crypto Inventory", icon: "⚿" },
-      { to: "/pqc", label: "PQC Readiness", icon: "◬" },
-      { to: "/agility", label: "Crypto Agility", icon: "◔" },
-      { to: "/drift", label: "Crypto Drift", icon: "⇄" },
-    ]
+      { to: "/cbom", label: "CBOM", icon: Atom },
+      { to: "/hbom", label: "HBOM", icon: HardDrives },
+      { to: "/nbom", label: "NBOM", icon: GlobeHemisphereWest },
+      { to: "/graph", label: "Dependency Graph", icon: Graph },
+      { to: "/crypto-assets", label: "Crypto Inventory", icon: Key },
+      { to: "/pqc", label: "PQC Readiness", icon: ShieldCheck },
+      { to: "/agility", label: "Crypto Agility", icon: SlidersHorizontal },
+      { to: "/drift", label: "Crypto Drift", icon: Pulse },
+    ],
   },
   {
     title: "Governance",
     items: [
-      { to: "/banking-regulatory", label: "Banking & SWIFT", icon: "🏛" },
-      { to: "/security-policy", label: "Policies", icon: "⚖" },
-      { to: "/compliance", label: "Compliance", icon: "✓" },
-      { to: "/evidence", label: "Evidence", icon: "⛨" },
-      { to: "/security-center", label: "Audit Log", icon: "◷" },
-    ]
+      { to: "/banking-regulatory", label: "Banking & SWIFT", icon: Bank },
+      { to: "/security-policy", label: "Policies", icon: Scales },
+      { to: "/compliance", label: "Compliance", icon: ListChecks },
+      { to: "/evidence", label: "Evidence", icon: FileText },
+      { to: "/security-center", label: "Audit Log", icon: ListChecks },
+    ],
   },
   {
     title: "Output",
     items: [
-      { to: "/reports", label: "Reports", icon: "▤" },
-      { to: "/what-if", label: "What-If Analysis", icon: "▦" },
-    ]
+      { to: "/reports", label: "Reports", icon: FileText },
+      { to: "/what-if", label: "What-If Analysis", icon: MagnifyingGlass },
+    ],
   },
   {
     title: "Administration",
     items: [
-      { to: "/system-health", label: "System Health", icon: "♥" },
-      { to: "/settings", label: "Settings & Org", icon: "⚙" },
-      { to: "/security-center", label: "Security Center", icon: "⛨" },
-      { to: "/identity", label: "Users & Teams", icon: "⛃" },
-      { to: "/integrations", label: "Integrations & API", icon: "⇌" },
-    ]
-  }
+      { to: "/system-health", label: "System Health", icon: Pulse },
+      { to: "/settings", label: "Settings & Org", icon: GearSix },
+      { to: "/security-center", label: "Security Center", icon: ShieldCheck },
+      { to: "/identity", label: "Users & Teams", icon: UsersThree },
+      { to: "/integrations", label: "Integrations & API", icon: PlugsConnected },
+    ],
+  },
 ];
 
 const TIER_STYLE: Record<Tier, { bg: string; fg: string; border: string }> = {
@@ -148,6 +163,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("zelnx-sidebar-collapsed") === "true"; } catch { return false; }
   });
+  const navRef = useRef<HTMLElement | null>(null);
   const [theme, setTheme] = useState<string>(() => {
     try { return localStorage.getItem("zelnx-theme") || "dark"; } catch { return "dark"; }
   });
@@ -166,6 +182,18 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       return next;
     });
   };
+
+  // FormKit handles the sidebar's dynamic height when groups, labels and
+  // maturity pills appear/disappear; motion handles the shell's spatial
+  // collapse. Both are opt-in and preserve the browser's reduced-motion choice.
+  useEffect(() => {
+    // jsdom does not implement matchMedia; the navigation remains fully
+    // functional in tests and reduced-motion environments without animation.
+    if (!navRef.current || typeof window.matchMedia !== "function") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const controller = autoAnimate(navRef.current, { duration: 180, easing: "ease-out" });
+    return () => controller.destroy?.();
+  }, []);
 
   // Keyboard shortcut: Ctrl+K or Cmd+K
   useEffect(() => {
@@ -208,8 +236,14 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   }, [ticker.connected]);
 
   return (
-    <div className={`shell ${isCollapsed ? "collapsed" : ""}`}>
-      <aside className="sidebar">
+    <motion.div
+      className={`shell ${isCollapsed ? "collapsed" : ""}`}
+      layout
+      transition={{ type: "spring", stiffness: 100, damping: 15 }}
+      dir={dir}
+      data-sidebar-collapsed={isCollapsed ? "true" : "false"}
+    >
+      <motion.aside className="sidebar" layout="position" aria-label="Primary navigation">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 8px 16px" }}>
           <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 17, letterSpacing: "0.02em", textDecoration: "none" }}>
             <span className="mark" style={{ width: 30, height: 30, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--grad)", color: "#04121d", fontSize: 16, boxShadow: "var(--glow-cyan)", flexShrink: 0 }}>◈</span>
@@ -294,7 +328,8 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
           </RequireRole>
         )}
 
-        {PRIMARY_SECTIONS.map((group) => (
+        <nav ref={navRef} className="primary-nav" aria-label="Primary console sections">
+          {PRIMARY_SECTIONS.map((group) => (
           <React.Fragment key={group.title}>
             <div className="nav-label">{group.title}</div>
             {group.items.map((item) => {
@@ -305,15 +340,19 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
                   to={item.to}
                   className={`nav ${active ? "active" : ""}`}
                   title={isCollapsed ? item.label : undefined}
+                  aria-label={isCollapsed ? item.label : undefined}
                 >
-                  <span className="nav-icon">{item.icon}</span>
+                  <span className="nav-icon" aria-hidden="true">
+                    <item.icon size={18} weight={active ? "fill" : "regular"} />
+                  </span>
                   <span className="nav-text">{item.label}</span>
                   <TierPill tier={tierOf(item.to)} compact />
                 </Link>
               );
             })}
           </React.Fragment>
-        ))}
+          ))}
+        </nav>
 
         <div style={{ marginTop: 24, padding: "0 8px" }}>
           <div className="realtime-banner" style={{
@@ -334,7 +373,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             ZELNX v1.0 · Continuous Crypto Observability
           </div>
         </div>
-      </aside>
+      </motion.aside>
 
       <main className="main">
         <div className="livehead">
@@ -559,7 +598,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       )}
 
       <Toasts toasts={toasts} />
-    </div>
+    </motion.div>
   );
 }
 

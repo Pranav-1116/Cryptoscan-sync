@@ -24,6 +24,45 @@ function Err({ res }: { res: ApiResult<any> | null }) {
   if (res.ok) return null;
   return <Badge tone="red"><span className="dot" /> {res.error || "OFFLINE / UNAUTHORIZED"}</Badge>;
 }
+
+function EvidenceBoundaryStrip() {
+  const stages = [
+    ["01", "Source / binary", "observed scope"],
+    ["02", "SBOM + CBOM", "components + crypto"],
+    ["03", "HBOM + NBOM", "context / candidates"],
+    ["04", "VBOM + advisories", "provider provenance"],
+    ["05", "Policy + evidence", "gates / tasks"],
+  ];
+  return (
+    <section className="pipeline-strip" aria-label="Applications evidence pipeline">
+      <div className="pipeline-strip-head">
+        <div>
+          <span className="kicker">Bounded evidence pipeline</span>
+          <h2>From artifact to accountable decision</h2>
+        </div>
+        <Badge tone="amber"><span className="dot" /> CLEAN ≠ COMPLETE</Badge>
+      </div>
+      <div className="pipeline-stages">
+        {stages.map(([number, title, detail], index) => (
+          <React.Fragment key={number}>
+            <div className="pipeline-stage">
+              <span className="pipeline-number">{number}</span>
+              <strong>{title}</strong>
+              <small>{detail}</small>
+            </div>
+            {index < stages.length - 1 && <span className="pipeline-arrow" aria-hidden="true">→</span>}
+          </React.Fragment>
+        ))}
+      </div>
+      <div className="pipeline-boundaries">
+        <span><b>Observed</b> is not inferred.</span>
+        <span><b>Signatures</b> are not trust decisions.</span>
+        <span><b>No finding</b> means no match in scope, never an unobserved clean estate.</span>
+      </div>
+    </section>
+  );
+}
+
 function sevTone(s: string) { return s === "CRITICAL" ? "red" : s === "HIGH" ? "red" : s === "MEDIUM" ? "amber" : "green"; }
 
 function FindingTable({ rows, codeKey, sevKey }: { rows: any[]; codeKey: (r: any) => string; sevKey: (r: any) => string }) {
@@ -1636,6 +1675,7 @@ export default function DevSecOps() {
         sub="Container CVE scan on push · K8s misconfig rules · cloud CIS posture · CycloneDX/SPDX SBOM + pinning · binary & firmware crypto evidence · ITSM/SIEM/bus/chat connectors — deterministic, fail-closed"
         right={<Badge tone=""><span className="dot" /> SHIFT-LEFT GATES</Badge>}
       />
+      <EvidenceBoundaryStrip />
       <div className="mt"><Tabs tabs={tabs} active={tab} onChange={setTab} /></div>
       {tab === 0 && <ContainerPanel />}
       {tab === 1 && <K8sPanel />}

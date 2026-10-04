@@ -5,6 +5,7 @@
  * Unknown routes redirect to the Command Center.
  */
 import React, { Suspense, lazy } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { RealtimeProvider } from "./lib/realtime.js";
 import Layout from "./components/Layout.jsx";
@@ -86,21 +87,27 @@ const Vendor = lazy(() => import("./pages/Vendor"));
 const VendorDueDiligence = lazy(() => import("./pages/VendorDueDiligence"));
 const WhatIf = lazy(() => import("./pages/WhatIf"));
 
+function PublicEntry({ children, resetKey }: { children: React.ReactNode; resetKey: string }) {
+  return (
+    <ErrorBoundary resetKey={resetKey}>
+      <Suspense fallback={<div className="route-loading" role="status">Loading secure entry…</div>}>
+        <div className="auth-entry">{children}</div>
+      </Suspense>
+    </ErrorBoundary>
+  );
+}
+
 function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          {/* The only page reachable without a verified session. It sits
-              outside Layout and RealtimeProvider: an anonymous visitor should
-              not get the console shell, the navigation, or an SSE connection. */}
-          <Route path="/login" element={
-            <ErrorBoundary resetKey="login">
-              <Suspense fallback={<div style={{ padding: 20 }}>Loading…</div>}>
-                <Login />
-              </Suspense>
-            </ErrorBoundary>
-          } />
+          {/* Authentication is a separate entry flow. It never mounts the
+              authenticated shell, realtime stream, or primary navigation. */}
+          <Route path="/login" element={<PublicEntry resetKey="login"><Login /></PublicEntry>} />
+          <Route path="/register" element={<PublicEntry resetKey="register"><Register /></PublicEntry>} />
+          <Route path="/reset-password" element={<PublicEntry resetKey="reset-password"><ResetPassword /></PublicEntry>} />
+          <Route path="/invite-accept" element={<PublicEntry resetKey="invite-accept"><InviteAccept /></PublicEntry>} />
           <Route path="*" element={
             <RequireAuth>
               <RealtimeProvider>
@@ -121,10 +128,20 @@ function App() {
  * instead of stranding the operator on it. */
 function RoutedPages() {
   const { pathname } = useLocation();
+  const reducedMotion = useReducedMotion();
   return (
     <ErrorBoundary resetKey={pathname}>
-      <Suspense fallback={<div style={{ padding: 20 }}>Loading page…</div>}>
-        <Routes>
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={pathname}
+          className="route-frame"
+          initial={reducedMotion ? false : { opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reducedMotion ? undefined : { opacity: 0, y: -4 }}
+          transition={reducedMotion ? { duration: 0 } : { type: "spring", stiffness: 100, damping: 15 }}
+        >
+          <Suspense fallback={<div className="route-loading" role="status">Loading workspace…</div>}>
+            <Routes>
       <Route path="/" element={<Navigate to="/command-center" replace />} />
       <Route path="/banking-regulatory" element={<BankingRegulatory />} />
       <Route path="/accuracy" element={<Accuracy />} />
@@ -156,13 +173,11 @@ function RoutedPages() {
       <Route path="/hbom" element={<Hbom />} />
       <Route path="/identity" element={<Identity />} />
       <Route path="/integrations" element={<Integrations />} />
-      <Route path="/invite-accept" element={<InviteAccept />} />
       <Route path="/libraries" element={<Libraries />} />
       <Route path="/live-asset-intelligence" element={<LiveAssetIntelligence />} />
       <Route path="/live-environment" element={<LiveEnvironment />} />
       <Route path="/live-scanners" element={<LiveScanners />} />
       <Route path="/live-stream" element={<LiveStream />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/migration" element={<Migration />} />
       <Route path="/network" element={<Network />} />
       <Route path="/notifications" element={<Notifications />} />
@@ -173,7 +188,6 @@ function RoutedPages() {
       <Route path="/pqc-map" element={<PqcMap />} />
       <Route path="/priorities" element={<Priorities />} />
       <Route path="/protocols" element={<Protocols />} />
-      <Route path="/register" element={<Register />} />
       <Route path="/reports" element={<Reports />} />
       <Route path="/resilience" element={<Resilience />} />
       <Route path="/risk" element={<Risk />} />
@@ -198,8 +212,10 @@ function RoutedPages() {
       <Route path="/vendor-due-diligence" element={<VendorDueDiligence />} />
       <Route path="/nbom" element={<Nbom />} />
       <Route path="/what-if" element={<WhatIf />} />
-      <Route path="*" element={<Navigate to="/command-center" replace />} />        </Routes>
-      </Suspense>
+      <Route path="*" element={<Navigate to="/command-center" replace />} />            </Routes>
+          </Suspense>
+        </motion.div>
+      </AnimatePresence>
     </ErrorBoundary>
   );
 }

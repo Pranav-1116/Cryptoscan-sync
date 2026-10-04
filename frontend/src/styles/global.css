@@ -1089,3 +1089,165 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .fd-sec .fd-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 12.5px; }
 .fd-sec .fd-kv .k { font-family: var(--mono); font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
 .fd-sec.verify { border-color: var(--line-strong); }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Enterprise console refresh — warm graphite / chartreuse signal system
+   These tokens deliberately avoid the generic blue SaaS treatment. Motion
+   owns spatial transitions; CSS owns only durable states and responsive form.
+   ───────────────────────────────────────────────────────────────────── */
+:root {
+  --bg: #11110f;
+  --bg-2: #171713;
+  --panel: #1d1d18;
+  --panel-2: #25251f;
+  --line: #34352c;
+  --line-strong: #555744;
+  --text: #f1f0e8;
+  --dim: #b1b2a5;
+  --faint: #777a6c;
+  --accent: #d8ff4f;
+  --cyan: #d8ff4f;
+  --blue: #bde75a;
+  --violet: #d2a7f5;
+  --green: #74e2a0;
+  --amber: #f2c36b;
+  --orange: #e9916f;
+  --red: #f18c77;
+  --slate: #96988b;
+  --display: "Space Grotesk", "Avenir Next", "Trebuchet MS", sans-serif;
+  --sans: "Manrope", "Avenir Next", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --r: 8px;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f5ef;
+  --bg-2: #edeee5;
+  --panel: #ffffff;
+  --panel-2: #f1f2e9;
+  --line: #d9dbcd;
+  --line-strong: #afb49f;
+  --text: #1a1b16;
+  --dim: #5c6053;
+  --faint: #818579;
+  --accent: #748f00;
+  --cyan: #748f00;
+  --blue: #657a00;
+  --green: #217647;
+  --amber: #996d0a;
+  --orange: #a84f2f;
+  --red: #b33f2f;
+  --slate: #74786d;
+}
+
+body {
+  background: var(--bg);
+  font-family: var(--sans);
+}
+h1, h2, h3, h4, .topbar h1, .logo-text {
+  font-family: var(--display);
+}
+.shell {
+  grid-template-columns: 256px minmax(0, 1fr);
+  background: var(--bg);
+}
+.shell.collapsed {
+  grid-template-columns: 80px minmax(0, 1fr);
+}
+.sidebar {
+  background: #151611;
+  border-right: 1px solid var(--line);
+  padding: 20px 12px 40px;
+}
+:root[data-theme="light"] .sidebar { background: #e8e9df; }
+.shell.collapsed .sidebar .logo-text,
+.shell.collapsed .sidebar .nav-label,
+.shell.collapsed .sidebar .footer-text,
+.shell.collapsed .sidebar .realtime-banner .nav-text,
+.shell.collapsed .sidebar .tier-pill,
+.shell.collapsed .sidebar .org-selector,
+.shell.collapsed .sidebar .env-selector { display: none; }
+.shell.collapsed .sidebar a.nav { justify-content: center; padding-inline: 8px; }
+.shell.collapsed .sidebar a.nav .nav-icon { width: auto; }
+.primary-nav { display: flex; flex-direction: column; gap: 2px; }
+.sidebar .nav-label {
+  margin-top: 20px;
+  color: var(--faint);
+  font-size: 9px;
+  letter-spacing: .22em;
+  font-family: var(--mono);
+}
+.sidebar a.nav {
+  border-left: 0;
+  border-radius: 9px;
+  color: var(--dim);
+  padding: 9px 12px;
+  gap: 11px;
+  transition: color .16s ease, background-color .16s ease;
+}
+.sidebar a.nav:hover { color: var(--text); background: rgba(216,255,79,.08); }
+.sidebar a.nav.active {
+  color: var(--text);
+  background: rgba(216,255,79,.12);
+  box-shadow: inset 3px 0 0 var(--accent);
+  border-left: 0;
+}
+.sidebar a.nav.active .nav-icon { color: var(--accent); }
+.sidebar .nav-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--faint); }
+.main { padding: 28px clamp(20px, 4vw, 64px) 96px; }
+.livehead {
+  margin: -28px clamp(-64px, -4vw, -20px) 28px;
+  padding: 12px clamp(20px, 4vw, 64px);
+  background: rgba(23,23,19,.92);
+  border-bottom: 1px solid var(--line);
+  backdrop-filter: blur(16px);
+}
+:root[data-theme="light"] .livehead { background: rgba(237,238,229,.92); }
+.livehead .searchbox { border-radius: 999px; min-width: 280px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #17180e; }
+.route-frame { min-height: 50vh; }
+.route-loading {
+  min-height: 38vh; display: grid; place-items: center;
+  color: var(--dim); font-family: var(--mono); letter-spacing: .08em;
+}
+.auth-entry { min-height: 100vh; }
+@media (max-width: 900px) {
+  .shell, .shell.collapsed { grid-template-columns: 76px minmax(0, 1fr); }
+  .sidebar .logo-text, .sidebar .nav-label, .sidebar .footer-text,
+  .sidebar .realtime-banner .nav-text, .sidebar .tier-pill { display: none; }
+  .sidebar a.nav { justify-content: center; padding-inline: 8px; }
+  .main { padding-inline: 18px; }
+  .livehead { margin-inline: -18px; padding-inline: 18px; }
+  .livehead .item:nth-of-type(n+4) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
+
+/* Applications / DevSecOps evidence pipeline */
+.pipeline-strip {
+  margin: 18px 0 12px;
+  padding: 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 12px 12px 0 rgba(216,255,79,.035);
+}
+.pipeline-strip-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.pipeline-strip h2 { margin: 7px 0 0; font-size: clamp(20px, 3vw, 30px); letter-spacing: -.04em; }
+.pipeline-stages { display: flex; align-items: stretch; gap: 8px; margin-top: 22px; }
+.pipeline-stage {
+  flex: 1; min-width: 0; padding: 13px; border: 1px solid var(--line-strong);
+  border-radius: 10px; background: var(--panel-2); display: flex; flex-direction: column; gap: 5px;
+}
+.pipeline-stage strong { font-size: 12px; color: var(--text); }
+.pipeline-stage small { color: var(--faint); font-family: var(--mono); font-size: 10px; }
+.pipeline-number { color: var(--accent); font-family: var(--mono); font-size: 10px; letter-spacing: .1em; }
+.pipeline-arrow { display: grid; place-items: center; color: var(--accent); font-size: 20px; }
+.pipeline-boundaries { display: flex; flex-wrap: wrap; gap: 8px 18px; margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--line); color: var(--dim); font-size: 11px; }
+.pipeline-boundaries b { color: var(--accent); font-weight: 600; }
+@media (max-width: 900px) {
+  .pipeline-stages { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pipeline-arrow { display: none; }
+}
+@media (max-width: 560px) { .pipeline-stages { grid-template-columns: 1fr; } }
