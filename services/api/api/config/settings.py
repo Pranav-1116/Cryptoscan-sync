@@ -12,7 +12,12 @@ from shared_config.base_settings import KNOWN_WEAK_SECRETS, BaseSettings
 # Canonical weak-secret registry lives in shared_config; re-exported here for
 # the production gate below.
 WEAK_SECRET_KEYS = set(KNOWN_WEAK_SECRETS)
-WEAK_PASSWORDS = {"", "cryptoscan", "admin", "password", "changeme", "secret"}
+WEAK_PASSWORDS = {
+    "", "cryptoscan", "admin", "password", "changeme", "secret",
+    "dev-stream-secret-0123456789abcdef",
+    "dev-cbom-secret-0123456789abcdef",
+    "dev-cbom-signing-secret-change-me-32ch",
+}
 WEAK_WEBHOOK_SECRETS = {
     "dev-webhook-secret-change-me-32chars!!",
     "change-me-to-a-random-webhook-secret-32ch",
@@ -125,6 +130,13 @@ class APISettings(BaseSettings):
     TRUSTED_HOSTS: list[str] = Field(default_factory=lambda: ["*"])
 
     GITHUB_WEBHOOK_SECRET: str = "dev-webhook-secret-change-me-32chars!!"
+    # Secrets consumed by separate routers/processes stay in the typed model so
+    # missing production env vars fail startup instead of selecting a module
+    # level development fallback.
+    REGISTRY_WEBHOOK_SECRET: str = ""
+    CBOM_SIGNING_SECRET: str = ""
+    STREAM_SECRET: str = ""
+    AUDITOR_API_KEY: str = ""
     GITHUB_TOKEN: str = ""
 
     NEO4J_URI: str = ""
@@ -202,9 +214,33 @@ def validate_runtime_settings(settings: APISettings | None = None) -> None:
         errors.append("EVENT_TAILER_SECONDS must be greater than zero in production")
     if settings.cors_origin_list == ["*"] and not settings.ALLOW_INSECURE_CORS:
         errors.append("CORS_ORIGINS must be an explicit origin list (or set ALLOW_INSECURE_CORS=true)")
+    hosts = settings.trusted_host_list
+    if not hosts or "*" in hosts:
+        errors.append("TRUSTED_HOSTS must be an explicit host allow-list in production")
     metrics_token = (settings.METRICS_TOKEN or "").strip()
     if len(metrics_token) < 32:
         errors.append("METRICS_TOKEN must be a unique value of at least 32 characters")
+
+    # These are independent HMAC/API-key boundaries. Do not let production
+    # silently use a development secret when one integration is unused.
+    required_secrets = {
+        "REGISTRY_WEBHOOK_SECRET": settings.REGISTRY_WEBHOOK_SECRET,
+        "CBOM_SIGNING_SECRET": settings.CBOM_SIGNING_SECRET,
+        "STREAM_SECRET": settings.STREAM_SECRET,
+        "AUDITOR_API_KEY": settings.AUDITOR_API_KEY,
+    }
+    for name, value in required_secrets.items():
+        candidate = (value or "").strip()
+        if len(candidate) < 32 or candidate.lower() in WEAK_PASSWORDS:
+            errors.append(f"{name} must be a unique value of at least 32 characters")
+
+    # Production must not silently use the in-memory graph backend or the
+    # bundled Neo4j password.
+    if not (settings.NEO4J_URI or "").strip():
+        errors.append("NEO4J_URI must be configured in production")
+    neo4j_password = (settings.NEO4J_PASSWORD or "").strip()
+    if len(neo4j_password) < 24 or neo4j_password.lower() in WEAK_PASSWORDS:
+        errors.append("NEO4J_PASSWORD must be a unique value of at least 24 characters")
     if errors:
         raise RuntimeError("production configuration rejected: " + "; ".join(errors))
 

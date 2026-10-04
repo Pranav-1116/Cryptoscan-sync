@@ -226,9 +226,19 @@ export async function syncSession(): Promise<{ user: string | null; roles: strin
     }
     if (me && me.roles) {
       try { localStorage.setItem(ROLES_KEY, JSON.stringify(me.roles)); } catch { /* ignore */ }
+    } else {
+      // _rsGet represents both 401 and transport failure as null. Treat both
+      // as an unverified session; never retain a stale cached identity.
+      setUserName(null);
+      try { localStorage.removeItem(ROLES_KEY); } catch { /* ignore */ }
     }
-  } catch { /* session not available — fall back to cached profile */ }
-  return { user: getUserName(), roles: getRoles() };
+  } catch {
+    // An outage is not proof of identity. Clear the display cache as well as
+    // the in-memory result so callers cannot render stale role-gated state.
+    setUserName(null);
+    try { localStorage.removeItem(ROLES_KEY); } catch { /* ignore */ }
+  }
+  return { user: null, roles: [] };
 }
 
 /* ── platform endpoints (contracts in api/routers/platform.py) ─────── */

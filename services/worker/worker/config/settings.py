@@ -49,6 +49,7 @@ class WorkerSettings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "cryptoscan"
     NEO4J_DATABASE: str = "neo4j"
+    STREAM_SECRET: str = ""
     ISTIO_PROMETHEUS_URL: str = ""
     GITHUB_TOKEN: str = ""
     DASHBOARD_URL: str = ""
@@ -73,6 +74,14 @@ class WorkerSettings(BaseSettings):
             errors.append("DATABASE_URL must be PostgreSQL in production (or set ALLOW_SQLITE=true)")
         if not (self.REDIS_URL or "").strip():
             errors.append("REDIS_URL is required in production")
+        if not (self.NEO4J_URI or "").strip():
+            errors.append("NEO4J_URI is required in production")
+        stream_secret = (self.STREAM_SECRET or "").strip()
+        if len(stream_secret) < 32 or stream_secret.lower() in {"", "secret", "changeme", "cryptoscan", "dev-stream-secret-0123456789abcdef"}:
+            errors.append("STREAM_SECRET must be a unique value of at least 32 characters")
+        neo4j_password = (self.NEO4J_PASSWORD or "").strip()
+        if len(neo4j_password) < 24 or neo4j_password.lower() in {"", "cryptoscan", "password", "changeme", "secret"}:
+            errors.append("NEO4J_PASSWORD must be a unique value of at least 24 characters")
         if errors:
             raise RuntimeError("production worker configuration rejected: " + "; ".join(errors))
 

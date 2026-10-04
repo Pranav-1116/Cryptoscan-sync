@@ -106,6 +106,13 @@ def test_production_accepts_strong_config():
         METRICS_TOKEN="m" * 32,
         DATABASE_URL="postgresql://cryptoscan:secret@postgres:5432/cryptoscan",
         CORS_ORIGINS="https://cryptoscan.example",
+        TRUSTED_HOSTS=["cryptoscan.example"],
+        REGISTRY_WEBHOOK_SECRET="r" * 32,
+        CBOM_SIGNING_SECRET="c" * 32,
+        STREAM_SECRET="s" * 32,
+        AUDITOR_API_KEY="a" * 32,
+        NEO4J_URI="bolt://neo4j:7687",
+        NEO4J_PASSWORD="n" * 24,
         REDIS_URL="redis://redis:6379/0",
         ALLOW_SQLITE=False,
         ALLOW_INSECURE_CORS=False,
@@ -140,6 +147,9 @@ def test_worker_production_requires_postgres_and_redis():
         ENVIRONMENT="production",
         DATABASE_URL="postgresql://cryptoscan:secret@postgres:5432/cryptoscan",
         REDIS_URL="redis://redis:6379/0",
+        NEO4J_URI="bolt://neo4j:7687",
+        NEO4J_PASSWORD="n" * 24,
+        STREAM_SECRET="s" * 32,
         ALLOW_SQLITE=False,
     ).validate_runtime()
 

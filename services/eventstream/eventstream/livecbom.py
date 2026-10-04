@@ -60,7 +60,11 @@ class LiveCbomService:
                  stale_after_seconds: int = 3600):
         self.store_dir = Path(store_dir)
         self.store_dir.mkdir(parents=True, exist_ok=True)
-        self.secret = secret or os.environ.get("CBOM_SIGNING_SECRET") or _DEFAULT_SECRET
+        configured_secret = secret or os.environ.get("CBOM_SIGNING_SECRET")
+        if (os.environ.get("ENVIRONMENT", "").strip().lower() == "production"
+                and (not configured_secret or configured_secret == _DEFAULT_SECRET)):
+            raise RuntimeError("CBOM_SIGNING_SECRET is required in production; refusing the development signing key")
+        self.secret = configured_secret or _DEFAULT_SECRET
         self.stale_after_seconds = stale_after_seconds
         self._current: dict[str, dict[str, Any]] = {}
         self._load()

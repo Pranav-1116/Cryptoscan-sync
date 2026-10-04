@@ -44,13 +44,40 @@ services:
     environment:
       NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
 
+  migrate:
+    build:
+      context: .
+      dockerfile: .docker/api/Dockerfile
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
+    command:
+      - alembic
+      - -c
+      - services/database/migrations/alembic.ini
+      - upgrade
+      - head
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [cryptoscan-net]
+
   api:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
       DOCS_ENABLED: ${DOCS_ENABLED:-false}
       CORS_ORIGINS: ${CORS_ORIGINS:?set CORS_ORIGINS to an explicit origin list}
       METRICS_TOKEN: ${METRICS_TOKEN:?set METRICS_TOKEN for Prometheus /metrics scraping}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:?set TRUSTED_HOSTS as a JSON host list}
       SECRET_KEY: ${SECRET_KEY:?set SECRET_KEY}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
@@ -65,10 +92,10 @@ services:
       # are rejected 401; a wrong signature is always 401 (fail-closed).
       REGISTRY_WEBHOOK_SECRET: ${REGISTRY_WEBHOOK_SECRET:?set REGISTRY_WEBHOOK_SECRET}
       # Stream HMAC secret (event bus / replication / PITR verification).
-      STREAM_SECRET: ${STREAM_SECRET:-}
+      STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
       # Auditor API: production auditor access to /compliance/audit/* is
       # fail-closed 401 WITHOUT this key.
-      AUDITOR_API_KEY: ${AUDITOR_API_KEY:-}
+      AUDITOR_API_KEY: ${AUDITOR_API_KEY:?set AUDITOR_API_KEY}
       # Platform self-observability: W3C trace-context + Prometheus on every
       # request; set OTEL_EXPORTER_OTLP_ENDPOINT for OTLP/JSON export too.
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
@@ -109,12 +136,16 @@ services:
       - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
   worker:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment:
       ENVIRONMENT: production
       LOG_LEVEL: INFO
       ALLOW_SQLITE: "false"
       DATABASE_URL: postgresql://${POSTGRES_USER:-cryptoscan}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cryptoscan}
       REDIS_URL: redis://redis:6379/0
+      STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
       WORKSPACE_BASE_PATH: /tmp/cryptoscan-workspaces
       CRYPTOSCAN_SOURCE_ROOTS: /app:/tmp/cryptoscan-workspaces
       NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set NEO4J_PASSWORD}
@@ -129,7 +160,11 @@ services:
       - /tmp/cryptoscan-workspaces:rw,size=1024m,mode=1777
 
   monitor:
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     environment:
+      STREAM_SECRET: ${STREAM_SECRET:?set STREAM_SECRET}
       CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
       CRYPTOSCAN_TELECOM_REGISTRY: /var/lib/cryptoscan/telecom/telecom_registry.json
     volumes:

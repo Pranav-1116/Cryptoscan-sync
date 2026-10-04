@@ -6,9 +6,11 @@ import logging
 import os
 import time
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Generator
 from urllib.parse import urlparse
 
+from sqlalchemy import inspect, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -35,7 +37,13 @@ def configure_session(engine=None) -> None:
 
 
 def init_db(engine=None) -> None:
-    """Create all tables. Safe to call on every startup."""
+    """Prepare sessions and verify the runtime database contract.
+
+    Development and test environments may build a local database from
+    metadata. Production is migration-owned: application processes never
+    mutate a live schema with ``create_all`` and instead verify that the
+    dedicated Alembic job reached the repository head.
+    """
     from db.models import (  # noqa: F401 — register models
         api_key,
         app_setting,
@@ -77,23 +85,63 @@ def init_db(engine=None) -> None:
     engine = engine or get_engine()
     configure_session(engine)
     _wait_for_database(engine)
-    try:
-        from db.connection.schema_ensure import ensure_schema_extensions
+    if _is_production():
+        _assert_migrations_current(engine)
+    else:
+        try:
+            from db.connection.schema_ensure import ensure_schema_extensions
 
-        ensure_schema_extensions(engine)
-    except Exception:
-        logger.debug("schema_extensions_skipped", exc_info=True)
-    logger.info("database_schema_ready")
+            ensure_schema_extensions(engine)
+        except Exception:
+            logger.debug("schema_extensions_skipped", exc_info=True)
+    logger.info("database_schema_ready", extra={"managed_by": "alembic" if _is_production() else "metadata"})
+
+
+def _is_production() -> bool:
+    return os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
+
+
+def _assert_migrations_current(engine) -> None:
+    """Fail closed when the durable database is absent or behind this build."""
+    inspector = inspect(engine)
+    if not inspector.has_table("alembic_version"):
+        raise RuntimeError(
+            "Production database has no alembic_version table; run "
+            "alembic upgrade head before starting API or worker processes"
+        )
+
+    with engine.connect() as connection:
+        applied = {
+            str(row[0])
+            for row in connection.execute(text("SELECT version_num FROM alembic_version"))
+        }
+
+    try:
+        from alembic.config import Config
+        from alembic.script import ScriptDirectory
+
+        ini = Path(__file__).resolve().parents[2] / "migrations" / "alembic.ini"
+        heads = set(ScriptDirectory.from_config(Config(str(ini))).get_heads())
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError("Unable to determine the repository Alembic head") from exc
+
+    if applied != heads:
+        raise RuntimeError(
+            "Production database migrations are not at the repository head; "
+            "run alembic upgrade head before starting API or worker processes"
+        )
 
 
 def _wait_for_database(engine) -> None:
-    """Retry until Postgres is reachable. Compose `depends_on` is not enough on reboot."""
+    """Retry until the configured database is reachable without changing schema."""
     deadline = time.monotonic() + int(os.environ.get("DB_WAIT_SECONDS", "90"))
     delay = 1.0
     last_error: Exception | None = None
     while True:
         try:
-            Base.metadata.create_all(bind=engine)
+            # Reachability probing must not create or mutate schema.
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
             return
         except OperationalError as exc:
             last_error = exc

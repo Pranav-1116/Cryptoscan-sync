@@ -209,7 +209,14 @@ def test_production_boot_gate_fails_closed():
             "ADMIN_PASSWORD_HASH": "x" * 60,
             "METRICS_TOKEN": "m" * 32,
             "CORS_ORIGINS": "https://app.example.com",
-            "REDIS_URL": "redis://redis:6379/0"}
+            "TRUSTED_HOSTS": ["app.example.com"],
+            "REDIS_URL": "redis://redis:6379/0",
+            "REGISTRY_WEBHOOK_SECRET": "r" * 32,
+            "CBOM_SIGNING_SECRET": "c" * 32,
+            "STREAM_SECRET": "s" * 32,
+            "AUDITOR_API_KEY": "a" * 32,
+            "NEO4J_URI": "bolt://neo4j:7687",
+            "NEO4J_PASSWORD": "n" * 24}
     # strong config validates
     validate_runtime_settings(APISettings(**base))
     # weak/duplicate-listed secret refused

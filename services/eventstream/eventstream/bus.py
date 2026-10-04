@@ -34,7 +34,11 @@ class StreamBus:
 
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.secret = secret or os.environ.get("STREAM_SECRET") or _DEFAULT_SECRET
+        configured_secret = secret or os.environ.get("STREAM_SECRET")
+        if (os.environ.get("ENVIRONMENT", "").strip().lower() == "production"
+                and (not configured_secret or configured_secret == _DEFAULT_SECRET)):
+            raise RuntimeError("STREAM_SECRET is required in production; refusing the development event-stream key")
+        self.secret = configured_secret or _DEFAULT_SECRET
         self.max_mem_per_topic = max_mem_per_topic
         self._lock = threading.RLock()
         self._log: dict[str, list[dict[str, Any]]] = {t: [] for t in TOPICS}

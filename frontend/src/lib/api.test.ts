@@ -106,11 +106,13 @@ describe("syncSession", () => {
     expect(getUserName()).toBe("bob");
   });
 
-  it("falls back to the cached profile when offline", async () => {
+  it("clears the cached profile when offline instead of authorizing stale state", async () => {
     setUserName("cached");
     localStorage.setItem("zelinx_roles", JSON.stringify(["auditor"]));
     offlineFetch();
     const session = await syncSession();
-    expect(session).toEqual({ user: "cached", roles: ["auditor"] });
+    expect(session).toEqual({ user: null, roles: [] });
+    expect(getUserName()).toBeNull();
+    expect(getRoles()).toEqual([]);
   });
 });
