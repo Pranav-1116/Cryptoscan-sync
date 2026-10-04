@@ -15,6 +15,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 from db.models.base import BaseModel
 
 
+# platform-scope: platform security-review plane — auditor records about
+# the deployment itself, written by the auditor role, not tenant inventory.
 class AccessReviewRecord(BaseModel):
     __tablename__ = "access_reviews"
 

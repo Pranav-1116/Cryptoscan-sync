@@ -29,6 +29,9 @@ VALID_ROLES = (
 )
 
 
+# platform-scope: identity plane. Global usernames with per-tenant roles
+# resolved through memberships (tenant_members); a user row must not be
+# filtered away mid-resolution.
 class User(BaseModel):
     __tablename__ = "users"
 
@@ -63,6 +66,8 @@ class User(BaseModel):
         return bool(roles & set(allowed))
 
 
+# platform-scope: identity plane — server-side session inventory for
+# revocation; keyed by token hash, access is auth-gated, never tenant-listed.
 class UserSession(BaseModel):
     """Server-side session records enabling token revocation and inventory."""
 
@@ -76,6 +81,8 @@ class UserSession(BaseModel):
     ip_address: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
+# platform-scope: platform-wide audit trail (who did what, when) required
+# for the compliance system itself; reads are admin/auditor gated.
 class AuditLog(BaseModel):
     """Who did what, when — required for a compliance system."""
 
@@ -94,6 +101,8 @@ class AuditLog(BaseModel):
     entry_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
+# platform-scope: identity plane — MFA recovery codes are per-user, and
+# users are a global resource across tenants.
 class MfaRecoveryCode(BaseModel):
     """One-time MFA recovery code — only the hash is stored."""
 

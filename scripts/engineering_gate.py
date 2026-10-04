@@ -189,6 +189,43 @@ def frontend_roles(checks: list[dict]) -> None:
     add(checks, "frontend direct-role authorization", "PASS" if not findings else "FAIL", f"{len(findings)} direct role/localStorage references", findings=findings[:100])
 
 
+def tenant_isolation_audit(checks: list[dict]) -> None:
+    """Static + registry audit of the tenant-isolation plane.
+
+    Runs scripts/tenant_isolation_audit.py in a subprocess (it bootstraps its
+    own import paths) and reports its verdict: every tenant-scoped model must
+    be TenantScoped or carry an in-source '# platform-scope:' justification,
+    direct session.get() on scoped models and raw text() naming scoped tables
+    are violations, and platform_scope() sites are inventoried.
+    """
+    script = ROOT / "scripts" / "tenant_isolation_audit.py"
+    if not script.is_file():
+        add(checks, "tenant isolation audit", "FAIL", f"audit script missing: {script}")
+        return
+    report_path = ROOT / "docs" / "readiness-evidence" / "tenant-isolation-audit.json"
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--json", str(report_path)],
+            capture_output=True, text=True, cwd=str(ROOT), timeout=300,
+        )
+    except Exception as exc:  # noqa: BLE001 — report, don't crash the gate
+        add(checks, "tenant isolation audit", "FAIL", f"audit run failed: {type(exc).__name__}: {exc}")
+        return
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        add(checks, "tenant isolation audit", "FAIL",
+            f"audit exited {proc.returncode}; report unreadable: {exc}")
+        return
+    violations = report.get("violations") or []
+    detail = (f"{report.get('scoped_tables', '?')} scoped tables; "
+              f"{report.get('platform_scope_tables', '?')} justified platform-scope tables; "
+              f"{len(report.get('platform_scope_sites') or [])} platform_scope() sites; "
+              f"violations={len(violations)}")
+    status = "PASS" if proc.returncode == 0 and not violations else "FAIL"
+    add(checks, "tenant isolation audit", status, detail, violations=violations[:100])
+
+
 def image_policy(checks: list[dict], release_manifests: Path | None = None) -> None:
     """Check a rendered release, while keeping source templates honest.
 
@@ -310,6 +347,7 @@ def main(argv: list[str] | None = None) -> int:
     exception_inventory(checks)
     api_key_coverage(checks)
     frontend_roles(checks)
+    tenant_isolation_audit(checks)
     image_policy(checks, args.release_manifests)
     branch_protection(checks)
     sample_hooks(checks, args)

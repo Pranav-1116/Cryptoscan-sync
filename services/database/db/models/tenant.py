@@ -28,6 +28,8 @@ TENANT_STATUSES = ("ACTIVE", "SUSPENDED")
 TENANT_ROLES = ("owner", "admin", "member", "viewer")
 
 
+# platform-scope: the tenant registry itself — it defines the scoping axis
+# and must be readable while resolving which tenant a request belongs to.
 class Tenant(BaseModel):
     __tablename__ = "tenants"
 

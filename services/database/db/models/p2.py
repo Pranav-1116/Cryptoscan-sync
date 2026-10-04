@@ -27,6 +27,8 @@ from db.models.base import BaseModel
 from db.tenancy import TenantScoped
 
 
+# platform-scope: global plugin catalog (versions, signatures); a shared
+# resource marketplace, not tenant inventory.
 class PluginPackage(BaseModel):
     __tablename__ = "plugin_packages"
 

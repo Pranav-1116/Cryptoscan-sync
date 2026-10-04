@@ -6,6 +6,56 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — adversarial tenant-isolation review: two critical cross-tenant holes closed
+
+- **The graph plane no longer serves a tenant the global Neo4j store.**
+  `resolve_graph()` preferred the process-global `Neo4jGraphStore` whenever
+  Bolt answered a health ping, so every tenant-scoped `/graph*` route (blast
+  radius, impact, compliance, vendor chains, hotspots) read **every
+  tenant's** systems and assets, and a scoped sync wrote tenant inventory
+  into the shared store while returning global `counts()` as a volume
+  oracle. While a tenant scope is active the graph is now served from the
+  tenant-filtered payload on the in-process engine
+  (`backend="memory-tenant-isolated"`) and the driver is never touched — not
+  even for a health probe; Neo4j sync/populate under a scope is suppressed.
+  Unscoped (platform, single-tenant) behaviour is unchanged.
+- **Raw SQL and pure-Core statements fail closed inside a tenant scope.**
+  `text()` queries and statements assembled only from `Table.c` columns
+  carry no ORM mapper, so neither `with_loader_criteria` (SELECT) nor the
+  DML predicate branch reached them — verified cross-tenant read *and*
+  write under an active scope. The guard now inspects every non-ORM
+  statement executed through a Session and raises `TenantScopeViolation`
+  when its compiled SQL touches a tenant-scoped table (subqueries and
+  aliases included). Platform tables (`users`, `tenants`, `monitor_leases`,
+  ...) are unaffected, and `platform_scope()` remains the greppable
+  opt-out.
+- **ORM bulk INSERTs are tenant-stamped.** `session.execute(insert(Model)
+  .values(rows))` bypasses `before_flush`, so the PostgreSQL bulk-evidence
+  path landed unstamped rows as platform estate — readable by every tenant.
+  An omitted `tenant_id` is now stamped from the active scope and a foreign
+  claim is rejected; `BulkInserter` stamps evidence rows from their parent
+  scan explicitly.
+- **ORM statements can no longer embed unfiltered Core subqueries.** A
+  scalar subquery, `in_()`, `exists()` or `select_from(Table)` built from
+  `Table.c` inside an otherwise ORM-shaped statement escaped
+  `with_loader_criteria` (a per-row cross-tenant read and a boolean
+  oracle). Each select level is now analysed independently and raises on
+  scoped-table references the filter cannot reach; legitimate shapes —
+  `select(Model)`, the repositories' `select(func.count()).select_from(Model)`
+  pagination count, ORM joins and embedded ORM subqueries — are unaffected.
+- **54 new adversarial tests + a permanent audit.**
+  `services/database/tests/adversarial/` (31),
+  `services/graph_engine/tests/test_tenant_isolation.py` (10, recording
+  fake driver: scoped = zero Bolt statements) and
+  `services/api/tests/security/test_cross_tenant_adversarial.py` (13, over
+  HTTP: graph routes, scan-transfer ownership, 404-absence, SSE predicate).
+  `scripts/tenant_isolation_audit.py`, wired into `scripts/engineering_gate.py`,
+  requires every model to be `TenantScoped` or carry an in-source
+  `# platform-scope: <reason>` marker, flags `session.get()` on scoped
+  models and `text()` naming scoped tables in request/worker code, and
+  inventories every `platform_scope()` site. Full report:
+  `docs/security/adversarial-tenant-isolation.md`.
+
 ### Fixed — the worker ran every scan unscoped (cross-tenant disclosure)
 
 - **The tenant now survives the queue.** `worker.core.job_consumer.ScanJob`

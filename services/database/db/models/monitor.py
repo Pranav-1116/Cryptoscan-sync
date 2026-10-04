@@ -47,6 +47,9 @@ class MonitorTarget(BaseModel, TenantScoped):
     # column and ensures direct ORM reads and bulk writes are guarded.
 
 
+# platform-scope: worker leader-lease coordination table (exactly-one
+# monitor); written by conditional UPDATE from worker.monitor.lease, never
+# exposed on any tenant-facing route.
 class MonitorLease(BaseModel):
     """Leader lease for multi-AZ monitor daemons (exactly-one-scans).
 

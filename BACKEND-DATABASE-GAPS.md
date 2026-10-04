@@ -13,7 +13,7 @@ qualification report. The current decision is owned by
 
 | Area | Current status | What closes it |
 |---|---|---|
-| Tenant isolation and request scoping | **Closed in code; adversarial review open** | Independent security test before shared multi-tenant deployment |
+| Tenant isolation and request scoping | **Closed in code; adversarially reviewed 2026-10-04 (docs/security/adversarial-tenant-isolation.md) — 2 critical holes found & fixed; permanent audit in engineering gate** | Per-tenant Neo4j (or documented memory fallback) + platform-plane router boundary before shared multi-tenant deployment |
 | Session/RBAC and frontend route guard | **Closed in code; server authorization remains authoritative** | `engineering_gate.py` plus API integration tests |
 | API-key network/policy failure behavior | **Hardened fail-closed in production; coverage gate required** | AST coverage report and live `X-API-Key` route matrix |
 | Exceptions | **Open inventory** | Review/replace or explicitly justify each swallowed handler |
@@ -526,3 +526,57 @@ the manual `/network/run-due` path uses the same durable run ledger. Scan
 submission now follows the central `scan.trigger` permission matrix rather
 than an auditor-only shortcut. A controlled live worker run against a real
 estate is still required before calling NBOM operationally proven.
+
+## 7. Adversarial tenant-isolation review — 2026-10-04
+
+The open item from the register above ("adversarial review of tenant
+isolation") is closed. The full report is
+`docs/security/adversarial-tenant-isolation.md`; the substance:
+
+- **Graph plane (critical, fixed):** a healthy Bolt connection made
+  `resolve_graph()` hand every tenant-scoped `/graph*` request the global,
+  unfiltered Neo4j store (cross-tenant read of every system/asset), and a
+  scoped `sync_payload()` wrote tenant inventory into that shared store
+  while returning global `counts()` as a volume oracle. Under an active
+  scope the graph is now served from the tenant-filtered payload on the
+  in-process engine (`backend="memory-tenant-isolated"`) and the driver is
+  never touched; unscoped behaviour is unchanged. Pinned by
+  `services/graph_engine/tests/test_tenant_isolation.py` with a recording
+  fake driver (scoped = zero Bolt statements).
+- **Raw SQL / pure-Core statements (critical, fixed):** `text()` and
+  statements built only from `Table.c` columns carried no mapper, so the
+  ORM guard's branches never reached them — verified cross-tenant read
+  *and* write. The guard now fails closed on non-ORM statements whose
+  compiled SQL touches a scoped table (the existing
+  `test_table_shaped_bulk_writes_are_filtered_too` had false coverage: its
+  WHERE used `Scan.id`, which is ORM-aware; the `Table.c` variant wrote
+  across tenants).
+- **Bulk INSERT stamping (fixed):** `session.execute(insert(Model).values(
+  rows))` bypasses `before_flush`, so the PostgreSQL bulk-evidence path
+  landed rows as platform estate — visible to every tenant. Values are now
+  stamped (or a foreign claim rejected) at statement level, and
+  `BulkInserter` stamps evidence rows from their parent scan explicitly.
+- **Embedded Core subqueries (high, fixed):** ORM-shaped statements
+  embedding `Table.c`-built subqueries (`in_()`, `exists()`,
+  `select_from(Table)`, scalar subqueries — including over the same table
+  as the outer entity) read cross-tenant data that `with_loader_criteria`
+  cannot reach. Each select level is now analysed independently and
+  non-annotated scoped-table references raise.
+- **Held under attack:** `Session.get` identity-map poisoning, scan-transfer
+  import ownership (the format carries no `tenant_id` at all), foreign-id
+  absence (404, never 403), SSE queue-boundary filtering.
+- **Permanent controls:** 54 new adversarial tests
+  (`services/database/tests/adversarial/`,
+  `services/graph_engine/tests/test_tenant_isolation.py`,
+  `services/api/tests/security/test_cross_tenant_adversarial.py`) plus
+  `scripts/tenant_isolation_audit.py` wired into `scripts/engineering_gate.py`:
+  every model must be `TenantScoped` or carry an in-source
+  `# platform-scope: <reason>` marker (12 platform/identity-plane tables
+  are justified today), `session.get()` on scoped models and `text()` naming
+  scoped tables are violations in request/worker code, and every
+  `platform_scope()` site is inventoried.
+
+What remains for shared multi-tenant operation is operational, not code:
+per-tenant Neo4j databases (or accepting the memory fallback for scoped
+requests) and treating the platform-plane routers (`AuditLog`,
+`UserSession`, `AccessReviewRecord`) as the remaining trust boundary.

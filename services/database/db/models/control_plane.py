@@ -43,6 +43,8 @@ SCOPE_LEVELS = ("region", "business_unit", "environment", "asset")
 CONFIDENCE_STATES = ("CONFIRMED", "PROBABLE", "POSSIBLE", "UNKNOWN", "CONFLICT")
 
 
+# platform-scope: the tenant registry itself — it defines the scoping axis
+# and must be readable while resolving which tenant a request belongs to.
 class Tenant(BaseModel):
     """An isolated customer / tenant. Data residency is declared per tenant."""
 
@@ -242,6 +244,8 @@ class QueuedEvent(BaseModel, TenantScoped):
 BENCHMARK_RUN_STATUSES = ("created", "scored", "archived")
 
 
+# platform-scope: global ground-truth catalog shared by all deployments;
+# contains no tenant data (labelled references only).
 class BenchmarkDataset(BaseModel):
     """A labelled ground-truth dataset (references to labelled cases, not the
     raw secrets). Cases are stored as metadata rows in cp_benchmark_cases."""
@@ -254,6 +258,8 @@ class BenchmarkDataset(BaseModel):
     case_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+# platform-scope: global ground-truth catalog shared by all deployments;
+# contains no tenant data (labelled references only).
 class BenchmarkCase(BaseModel):
     """A single labelled ground-truth item: what the scanner SHOULD detect."""
 
@@ -267,6 +273,8 @@ class BenchmarkCase(BaseModel):
     metadata_: Mapped[dict | None] = mapped_column("extra_info", JSON, nullable=True)
 
 
+# platform-scope: platform quality telemetry about scanner performance,
+# not tenant inventory; access is control-plane gated.
 class BenchmarkRun(BaseModel):
     """A scored benchmark run: scanner predictions vs ground truth."""
 

@@ -120,6 +120,10 @@ class BulkInserter:
         return {
             "id": str(rec.get("evidence_id")),
             "scan_id": scan.id,
+            # Attribute evidence to the scan's owner explicitly: bulk INSERTs
+            # bypass before_flush, and an unstamped row would land as platform
+            # estate (visible to every tenant).
+            "tenant_id": scan.tenant_id,
             "content_hash": rec["content_hash"],
             "chain_hash": chain.get("chain_hash") or rec.get("chain_hash") or rec["content_hash"],
             "chain_position": int(chain.get("position", rec.get("chain_position") or 0) or 0),
