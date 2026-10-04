@@ -92,6 +92,13 @@ export default function CommandCenter() {
   g.quantumVulnerable = Number(bomCounts.quantum_vulnerable ?? 0);
   g.activeDrift = activeDrift;
   const hasInventory = g.totalAssets > 0 || g.cryptoAssets > 0;
+  const scannerObserved = liveScan.source === "live" && Boolean(lsx?.last_run_at);
+  const scannerPosture = !scannerObserved
+    ? { tone: "amber", label: "SCANNER STATUS UNKNOWN — NO COMPLETED OBSERVATION" }
+    : Number(lsx?.failed_count ?? 0) > 0
+      ? { tone: "red", label: "SCANNERS DEGRADED — FAILURES OBSERVED" }
+      : { tone: "green", label: "ALL SCANNERS NOMINAL" };
+  const pqcObserved = liveStats.source === "live" && liveBom.source === "live" && typeof cov.coverage_pct === "number";
   const riskCounts: Record<string, number> = { CRITICAL: g.criticalFindings, HIGH: g.highFindings, MEDIUM: (ls.open_drift ?? {}).MEDIUM ?? 0, LOW: (ls.open_drift ?? {}).INFO ?? 0 };
   const events = recentEvents.data.events ?? [];
 
@@ -123,8 +130,10 @@ export default function CommandCenter() {
             {backend === null && <Badge>PROBING BACKEND…</Badge>}
             {backend === true && <Badge tone="green"><span className="dot" /> CONTROL PLANE: LIVE</Badge>}
             {backend === false && <Badge tone="amber"><span className="dot" /> CONTROL PLANE: OFFLINE — SIGN IN TO LOAD LIVE DATA</Badge>}
-            <Badge tone="green"><span className="dot" /> ALL SCANNERS NOMINAL</Badge>
-            <Badge tone="violet">PQC {g.pqcReadyPct}% READY</Badge>
+            <Badge tone={scannerPosture.tone}><span className="dot" /> {scannerPosture.label}</Badge>
+            <Badge tone={pqcObserved ? "violet" : "amber"}>
+              {pqcObserved ? `PQC ${g.pqcReadyPct}% OBSERVED` : "PQC STATUS UNKNOWN — NO LIVE EVIDENCE"}
+            </Badge>
           </>
         }
       />
@@ -162,8 +171,8 @@ export default function CommandCenter() {
         >
           <div className="row" style={{ gap: 18, flexWrap: "wrap" }}>
             <LiveStat label="cycle" value={lsx.running ? "RUNNING" : "idle"} tone={lsx.running ? "cyan" : ""} />
-            <LiveStat label="scanners OK" value={Number(lsx.ok_count ?? 0)} tone="green" />
-            <LiveStat label="scanners failed" value={Number(lsx.failed_count ?? 0)} tone={lsx.failed_count ? "red" : "green"} />
+            <LiveStat label="scanners OK" value={Number(lsx.ok_count ?? 0)} tone={scannerObserved ? "green" : "amber"} />
+            <LiveStat label="scanners failed" value={Number(lsx.failed_count ?? 0)} tone={scannerObserved && lsx.failed_count ? "red" : "amber"} />
             {alx && (Number(alx.counts?.CRITICAL ?? 0) + Number(alx.counts?.HIGH ?? 0)) > 0 && (
               <a href="#/alerts" style={{ textDecoration: "none" }}>
                 <LiveStat label="critical/high alerts" value={Number(alx.counts?.CRITICAL ?? 0) + Number(alx.counts?.HIGH ?? 0)} tone="red" />

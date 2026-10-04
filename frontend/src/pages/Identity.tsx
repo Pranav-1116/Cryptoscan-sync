@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
-import { apiAuthMeDetails, apiMfaEnroll, apiMfaEnable, apiMfaDisable } from "../lib/api";
+import { apiAuthMeDetails, apiMfaEnroll, apiMfaEnable, apiMfaDisable, tenantFetch } from "../lib/api";
 
 export default function Identity() {
   const [loading, setLoading] = useState(true);
@@ -17,23 +17,32 @@ export default function Identity() {
   const loadData = async () => {
     setLoading(true);
     try {
+      const liveJson = async (path: string): Promise<unknown> => {
+        const response = await tenantFetch(path, {
+          signal: AbortSignal.timeout(8000),
+          credentials: "include",
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      };
       const [meRes, usersRes, rolesRes] = await Promise.all([
         apiAuthMeDetails(),
-        fetch("/api/v1/auth/users", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("cryptoscan_token") || ""}` }
-        }).then(r => r.ok ? r.json() : []),
-        fetch("/api/v1/auth/roles", {
-          headers: { Authorization: `Bearer ${localStorage.getItem("cryptoscan_token") || ""}` }
-        }).then(r => r.ok ? r.json() : [])
+        liveJson("/api/v1/auth/users"),
+        liveJson("/api/v1/auth/roles"),
       ]);
 
       if (meRes.source === "live" && meRes.data) {
         setCurrentUser(meRes.data);
+      } else {
+        throw new Error(meRes.error || "authenticated identity is unavailable");
       }
       if (Array.isArray(usersRes)) setUsers(usersRes);
       if (Array.isArray(rolesRes)) setRoles(rolesRes);
     } catch (err) {
-      console.error("Failed to load identity state:", err);
+      setCurrentUser(null);
+      setUsers([]);
+      setRoles([]);
+      setMessage({ text: `Identity data unavailable: ${String(err)}`, error: true });
     } finally {
       setLoading(false);
     }

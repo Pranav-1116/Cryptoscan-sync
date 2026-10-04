@@ -339,14 +339,22 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     @app.get("/ready")
     def ready_check():
-        from db.connection.engine import check_db_health
+        from db.connection.engine import check_db_health, get_engine
 
         db = check_db_health()
-        ready = db.get("status") == "healthy"
+        migration = None
+        if settings.is_production:
+            from db.connection.session import migration_status
+
+            migration = migration_status(get_engine())
+        ready = db.get("status") == "healthy" and (
+            not settings.is_production or (migration is not None and migration.get("status") == "current")
+        )
         return {
             "ready": ready,
             "status": "ok" if ready else "degraded",
             "database": db,
+            "migrations": migration,
             "environment": settings.ENVIRONMENT,
             "version": settings.API_VERSION,
         }

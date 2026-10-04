@@ -101,31 +101,39 @@ def _is_production() -> bool:
     return os.environ.get("ENVIRONMENT", "development").strip().lower() == "production"
 
 
-def _assert_migrations_current(engine) -> None:
-    """Fail closed when the durable database is absent or behind this build."""
-    inspector = inspect(engine)
-    if not inspector.has_table("alembic_version"):
-        raise RuntimeError(
-            "Production database has no alembic_version table; run "
-            "alembic upgrade head before starting API or worker processes"
-        )
+def migration_status(engine=None) -> dict[str, object]:
+    """Return the live Alembic status without changing the database.
 
-    with engine.connect() as connection:
-        applied = {
-            str(row[0])
-            for row in connection.execute(text("SELECT version_num FROM alembic_version"))
-        }
-
+    This is intentionally read-only so readiness probes can detect a database
+    that falls behind after a rolling deployment without attempting a repair
+    from an API or worker process.
+    """
+    engine = engine or get_engine()
     try:
+        inspector = inspect(engine)
+        if not inspector.has_table("alembic_version"):
+            return {"status": "missing", "applied": [], "heads": []}
+        with engine.connect() as connection:
+            applied = sorted({
+                str(row[0])
+                for row in connection.execute(text("SELECT version_num FROM alembic_version"))
+            })
         from alembic.config import Config
         from alembic.script import ScriptDirectory
 
         ini = Path(__file__).resolve().parents[2] / "migrations" / "alembic.ini"
-        heads = set(ScriptDirectory.from_config(Config(str(ini))).get_heads())
+        heads = sorted(ScriptDirectory.from_config(Config(str(ini))).get_heads())
+        status = "current" if applied == heads and bool(heads) else "behind"
+        return {"status": status, "applied": applied, "heads": heads}
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("Unable to determine the repository Alembic head") from exc
+        logger.warning("migration_status_probe_failed", extra={"error_type": type(exc).__name__})
+        return {"status": "error", "applied": [], "heads": [], "error": type(exc).__name__}
 
-    if applied != heads:
+
+def _assert_migrations_current(engine) -> None:
+    """Fail closed when the durable database is absent or behind this build."""
+    status = migration_status(engine)
+    if status.get("status") != "current":
         raise RuntimeError(
             "Production database migrations are not at the repository head; "
             "run alembic upgrade head before starting API or worker processes"

@@ -127,13 +127,21 @@ def readyz():
     except Exception as exc:
         return JSONResponse(status_code=503, content={"status": "not_ready", "database": str(exc)[:200]})
     settings = get_settings()
+    migration = None
     if getattr(settings, "is_production", False):
+        from db.connection.session import migration_status
+
+        migration = migration_status(get_engine())
+        if migration.get("status") != "current":
+            return JSONResponse(status_code=503, content={
+                "status": "not_ready", "database": "ok", "migrations": migration,
+            })
         report = dependency_report()
         if report.get("down"):
             return JSONResponse(status_code=503, content={
-                "status": "not_ready", "dependencies": report,
+                "status": "not_ready", "dependencies": report, "migrations": migration,
             })
-    return {"status": "ready", "database": "ok"}
+    return {"status": "ready", "database": "ok", **({"migrations": migration} if migration else {})}
 
 
 @router.get("/healthz/schema")
