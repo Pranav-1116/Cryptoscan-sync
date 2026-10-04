@@ -77,7 +77,11 @@ def main() -> int:
     if not args.no_lease:
         bootstrap = SessionLocal()
         try:
-            ensure_lease_table(bootstrap)  # idempotent; migration 0031 does this properly
+            if not settings.is_production:
+                # Development can bootstrap its local SQLite schema. Production
+                # schema changes are migration-owned and were verified by
+                # init_db() above.
+                ensure_lease_table(bootstrap)
         finally:
             bootstrap.close()
         lease = LeaderLease(SessionLocal, ttl_seconds=args.lease_ttl)
