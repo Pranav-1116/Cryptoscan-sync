@@ -282,8 +282,8 @@ export default function CommandCenter() {
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <Kpi k="PQC exposure" v={bomObserved ? `${g.pqcExposurePct}%` : "UNKNOWN"} tone={bomObserved && g.pqcExposurePct ? "red" : "amber"} />
             <Kpi k="migration progress" v={bomObserved ? `${g.migrationProgressPct}%` : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
-            <Kpi k="CBOM status" v={bomObserved ? `v${g.cbomVersion}` : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
-            <Kpi k="HBOM status" v={bomObserved ? `v${g.hbomVersion}` : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
+            <Kpi k="CBOM status" v={bomObserved ? "OBSERVED" : "UNKNOWN"} tone={bomObserved ? "cyan" : "amber"} />
+            <Kpi k="HBOM status" v="UNKNOWN — no HBOM evidence" tone="amber" />
           </div>
         </Panel>
         <Panel title="Risk distribution" sub="portfolio">
@@ -291,7 +291,7 @@ export default function CommandCenter() {
             {Object.entries(riskCounts).map(([lv, n]) => (
               <div key={lv} className="spread">
                 <Badge>{lv}</Badge>
-                <span className="mono">{n}</span>
+                <span className="mono" style={!statsObserved ? { color: "var(--amber)" } : undefined}>{statsObserved ? n : "UNKNOWN"}</span>
               </div>
             ))}
           </div>
