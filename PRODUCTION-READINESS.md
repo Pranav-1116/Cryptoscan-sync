@@ -125,6 +125,10 @@ session can close):
    and `target_topology_load_soak` (P1-2) artifact kinds once a continuity
    plan approval and evidence owner sign them.
 
+For the end-to-end plan from this state to production sign-off — every
+remaining phase with owners, commands and acceptance criteria — see
+[`docs/PRODUCTION-ROADMAP.md`](docs/PRODUCTION-ROADMAP.md).
+
 For detailed database history and resolved versus open implementation gaps,
 see [`BACKEND-DATABASE-GAPS.md`](BACKEND-DATABASE-GAPS.md). For operational
 procedures, see [`docs/ops/production-checklist.md`](docs/ops/production-checklist.md)
