@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiDriftEvents } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function Drift() {
   const [loading, setLoading] = useState(true);
@@ -52,15 +53,14 @@ export default function Drift() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/drift"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/drift"
+            filename="cryptoscan-drift.json"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export Drift Feed
-          </a>
+          </AuthenticatedDownload>
           <a
             href="#/scanners"
             className="btn primary"

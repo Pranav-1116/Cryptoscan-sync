@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiCbomCatalog, apiCbomCoverage } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
 
 interface CbomItem {
@@ -120,15 +121,14 @@ export default function Cbom() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/cbom"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/cbom"
+            filename="cryptoscan-cbom.json"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export CycloneDX 1.5 JSON
-          </a>
+          </AuthenticatedDownload>
           <a
             href="#/graph"
             className="btn primary"

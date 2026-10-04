@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiGraph, apiGraphStats, apiGraphBlastRadius } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import CodeCascadePanel from "../components/CodeCascadePanel";
 
 export default function DependencyGraph() {
@@ -78,15 +79,14 @@ export default function DependencyGraph() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/graph"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/graph"
+            filename="cryptoscan-graph.json"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export Graph JSON
-          </a>
+          </AuthenticatedDownload>
           <a
             href="#/scanners"
             className="btn primary"

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiComplianceEvidence, apiComplianceRetention } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function Compliance() {
   const [loading, setLoading] = useState(true);
@@ -60,15 +61,14 @@ export default function Compliance() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/compliance/evidence"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/compliance/evidence"
+            filename="compliance-evidence.json"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export Compliance Evidence
-          </a>
+          </AuthenticatedDownload>
           <a
             href="#/evidence"
             className="btn primary"

@@ -10,6 +10,7 @@ import {
   apiBankingActionPlan,
   tenantFetch,
 } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function BankingRegulatory() {
   const [loading, setLoading] = useState(true);
@@ -122,15 +123,14 @@ export default function BankingRegulatory() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/banking/action-plan/export?format=html&framework=ecb"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/banking/action-plan/export?format=html&framework=ecb"
+            filename="ecb-supervisory-pack.html"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export ECB Supervisory Pack
-          </a>
+          </AuthenticatedDownload>
         </div>
       </div>
 

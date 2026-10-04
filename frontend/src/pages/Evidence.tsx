@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiAuditList, apiAuditVerify } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function Evidence() {
   const [loading, setLoading] = useState(true);
@@ -71,15 +72,14 @@ export default function Evidence() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/auth/audit/export?format=jsonl"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/auth/audit/export?format=jsonl"
+            filename="audit-export.jsonl"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export JSONL WORM Pack
-          </a>
+          </AuthenticatedDownload>
           <Button
             variant="primary"
             onClick={runVerification}

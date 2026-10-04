@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiTechBomLive, apiBankingRoadmap, apiBankingHndl } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function Pqc() {
   const [loading, setLoading] = useState(true);
@@ -55,15 +56,14 @@ export default function Pqc() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/banking/roadmap"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/banking/roadmap"
+            filename="ir-8547-roadmap.json"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             Export IR 8547 Roadmap
-          </a>
+          </AuthenticatedDownload>
           <a
             href="#/cbom"
             className="btn primary"

@@ -127,6 +127,24 @@ export function tenantFetch(input: RequestInfo | URL, init: RequestInit = {}): P
   });
 }
 
+/** Download a browser-facing resource only through the authenticated tenant path. */
+export async function downloadAuthenticatedResource(path: string, fallbackFilename: string): Promise<void> {
+  const response = await tenantFetch(path, { signal: AbortSignal.timeout(30000) });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const disposition = response.headers.get("content-disposition") || "";
+  const advertised = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+  const filename = (advertised || fallbackFilename).replace(/[^a-zA-Z0-9._-]/g, "_");
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -234,7 +252,8 @@ export async function syncSession(): Promise<{ user: string | null; roles: strin
     }
   } catch {
     // An outage is not proof of identity. Clear the display cache as well as
-    // the in-memory result so callers cannot render stale role-gated state.
+    // the in-memory result so callers cannot accidentally render stale tenant
+    // data or role-gated actions while the server is unavailable.
     setUserName(null);
     try { localStorage.removeItem(ROLES_KEY); } catch { /* ignore */ }
   }

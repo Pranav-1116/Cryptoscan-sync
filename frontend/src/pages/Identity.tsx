@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiAuthMeDetails, apiMfaEnroll, apiMfaEnable, apiMfaDisable, tenantFetch } from "../lib/api";
+import AuthenticatedDownload from "../components/AuthenticatedDownload";
 
 export default function Identity() {
   const [loading, setLoading] = useState(true);
@@ -132,24 +133,22 @@ export default function Identity() {
         </div>
 
         <div style={{ display: "flex", gap: "10px" }}>
-          <a
-            href="/api/v1/scim/v2/ServiceProviderConfig"
-            target="_blank"
-            rel="noreferrer"
+          <AuthenticatedDownload
+            path="/api/v1/scim/v2/ServiceProviderConfig"
+            filename="scim-service-provider-config.json"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             SCIM 2.0 Config
-          </a>
-          <a
-            href="/api/v1/auth/saml/metadata"
-            target="_blank"
-            rel="noreferrer"
+          </AuthenticatedDownload>
+          <AuthenticatedDownload
+            path="/api/v1/auth/saml/metadata"
+            filename="saml-metadata.xml"
             className="btn outline"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
           >
             SAML Metadata
-          </a>
+          </AuthenticatedDownload>
         </div>
       </div>
 

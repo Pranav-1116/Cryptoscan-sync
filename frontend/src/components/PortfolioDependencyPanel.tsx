@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Badge, Panel, Table } from "./ui";
 import { apiCbomPortfolio, PortfolioCbom } from "../lib/api";
+import AuthenticatedDownload from "./AuthenticatedDownload";
 
 export type SystemRow = { ref: string; name: string; criticality: string; businessUnit: string; coverage: string; assets: number; dependsOn: string[]; dependents: string[] };
 
@@ -44,8 +45,8 @@ export default function PortfolioDependencyPanel() {
   return (
     <Panel title="Estate dependency graph (CycloneDX)" sub="GET /api/v1/cbom/portfolio — dependencies[]: root → systems → crypto assets + the systems each one depends on; the same graph auditors get in the signed export" className="mt">
       <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
-        <a href="/api/v1/cbom/portfolio?signed=true" target="_blank" rel="noreferrer" className="btn sm outline" style={{ textDecoration: "none" }}>Signed JSON</a>
-        <a href="/api/v1/cbom/portfolio?fmt=xml" target="_blank" rel="noreferrer" className="btn sm outline" style={{ textDecoration: "none" }}>XML</a>
+        <AuthenticatedDownload path="/api/v1/cbom/portfolio?signed=true" filename="crypto-portfolio.json" className="btn sm outline">Signed JSON</AuthenticatedDownload>
+        <AuthenticatedDownload path="/api/v1/cbom/portfolio?fmt=xml" filename="crypto-portfolio.xml" className="btn sm outline">XML</AuthenticatedDownload>
         {state === "ready" && <span style={{ fontSize: 12, color: "var(--dim)", alignSelf: "center" }}>{rows.length} systems · {edges} system→system edges</span>}
       </div>
       {state === "offline" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Backend offline.</p>}
