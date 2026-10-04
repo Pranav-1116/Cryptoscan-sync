@@ -337,10 +337,10 @@ function HeroKpi({ label, q, value, tone, to, suffix }: { label: string; q: stri
   );
 }
 
-function LiveStat({ label, value, tone }: { label: string; value: number | string; tone?: "green" | "red" | "cyan" | "" }) {
+function LiveStat({ label, value, tone }: { label: string; value: number | string; tone?: "green" | "red" | "cyan" | "amber" | "" }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", minWidth: 120 }}>
-      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : tone === "cyan" ? "var(--cyan, var(--accent))" : "var(--text)" }}>
+      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : tone === "cyan" ? "var(--cyan, var(--accent))" : "var(--text)" }}>
         {typeof value === "number" ? value.toLocaleString() : value}
       </span>
       <span className="dim" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
