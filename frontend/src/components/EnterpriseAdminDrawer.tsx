@@ -83,7 +83,7 @@ function SecurityCenterTab() {
       <Row k="Audit chain" v={posture.audit_ok ? "VALID" : "BROKEN"} tone={posture.audit_ok ? "ok" : "bad"} />
       <Row k="Credentials" v={`${posture.credentials_active} active / ${posture.credentials_total}`} />
       <p className="dim" style={{ fontSize: 11, marginTop: 10 }}>
-        Score is computed deterministically by the control plane — no AI. Full view:
+        Score is computed deterministically by the control plane. Full view:
         <a href="#/security-center" style={{ color: "var(--cyan)" }}> Security Center</a>
       </p>
     </div>

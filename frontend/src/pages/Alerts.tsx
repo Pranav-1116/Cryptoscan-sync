@@ -9,7 +9,7 @@ import { apiLiveAlerts, LiveAlert, LiveAlertsResponse } from "../lib/api.js";
    SSE events. Empty until scans produce findings. No static/seed data.
    Click a finding to open its deterministic detail: Why → Evidence →
    Dependencies → Recommendation → Remediation → Verification. All guidance is
-   a static rule map keyed on the finding's kind (no AI, no fabricated data). */
+   a static rule map keyed on the finding's kind (no fabricated data). */
 
 // Deterministic, rule-based guidance per finding kind. Every field is derived
 // from the scanner/kind — there is no model inference and no invented facts.
@@ -257,7 +257,7 @@ function FindingDetail({ finding, onClose }: { finding: AlertRow; onClose: () =>
 
         <section className="fd-sec">
           <h4><span className="fd-num">2</span> Evidence</h4>
-          <p>The raw observation recorded by the deterministic scanner (no AI classification):</p>
+          <p>The raw observation recorded by the deterministic scanner:</p>
           <ul>
             <li className="mono" style={{ wordBreak: "break-word" }}>{finding.detail}</li>
             {finding.asset && <li className="mono">asset: {finding.asset}</li>}

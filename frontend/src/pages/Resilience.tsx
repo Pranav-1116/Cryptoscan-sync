@@ -1,6 +1,6 @@
 /* Resilience, compliance & air-gap console (features 21, 22, 25, 26, 27).
    All actions call the LIVE backend (/api/v1/resilience/*). No demo data:
-   panels render zeros/empty until real operations run. Deterministic, no AI. */
+   panels render zeros/empty until real operations run. Deterministic and live. */
 import React, { useEffect, useState } from "react";
 import {
   apiComplianceReport, apiRetentionPlan, apiBackupCreate, apiBackupRestore,

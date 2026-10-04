@@ -53,7 +53,7 @@ export default function Accuracy() {
         {rows.length === 0 && !loading && <p className="dim" style={{ fontSize: 13 }}>Benchmark metrics unavailable — run the benchmark to populate.</p>}
       </Panel>
       <div className="grid cols-2 mt">
-        <Panel title="How accuracy is verified" sub="no AI · no LLM · no heuristics in the loop">
+        <Panel title="How accuracy is verified" sub="labeled corpus · deterministic rules · replayable evidence">
           <ol className="dim" style={{ fontSize: 13.5, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
             <li>Labeled corpus: certificates, algorithms, libraries, PQC classes, weak crypto, obfuscated payloads, real-world binaries.</li>
             <li>Engines: parsing + graph + classification rules — the same code path in prod and in the test gate.</li>

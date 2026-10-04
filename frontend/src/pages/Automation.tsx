@@ -166,7 +166,7 @@ export default function Automation() {
         </div>
         <div className="row" style={{ gap: 14, marginTop: 8, fontSize: 11.5, flexWrap: "wrap" }}>
           <span className="dim"><Badge tone="green">auto</Badge> OBSERVE · ANALYZE · RECOMMEND — run without intervention</span>
-          <span className="dim"><Badge tone="amber">approval</Badge> APPROVE · EXECUTE — open a governance gate, AI never decides</span>
+          <span className="dim"><Badge tone="amber">approval</Badge> APPROVE · EXECUTE — open a governance gate for human authorization</span>
         </div>
       </Panel>
 

@@ -6,6 +6,8 @@ import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "./i18n/I18n";
 import { RealtimeProvider } from "./lib/realtime";
 import Layout from "./components/Layout";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
 
 function shell(route: string) {
   return render(
@@ -31,6 +33,7 @@ describe("app shell", () => {
     // docs links are allowed; API/localhost links are not
     expect(hrefs.some((h) => h.includes("127.0.0.1") || h.includes("localhost"))).toBe(false);
     expect(external.every((h) => !h.includes("/api/"))).toBe(true);
+    expect(screen.queryByRole("button", { name: /ask zelnx/i })).not.toBeInTheDocument();
   });
 
   it("keeps six primary sections and the 31-slot navigation contract", async () => {
@@ -44,6 +47,19 @@ describe("app shell", () => {
     expect(new Set(hrefs).size).toBe(30);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
     expect(hrefs).not.toContain("/vendor-due-diligence");
+  });
+
+  it("keeps public auth pages focused on live account operations", async () => {
+    await act(async () => {
+      render(<I18nProvider><MemoryRouter><Login /></MemoryRouter></I18nProvider>);
+    });
+    expect(screen.queryByText(/bootstrap|admin \/ cryptoscan|FIPS 140-3|SOC 2|ISO 27001/i)).not.toBeInTheDocument();
+    cleanupShell();
+    await act(async () => {
+      render(<I18nProvider><MemoryRouter><Register /></MemoryRouter></I18nProvider>);
+    });
+    expect(screen.queryByText(/FIPS 140-3|SOC 2|ISO 27001/i)).not.toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Minimum 12 characters")).toBeInTheDocument();
   });
 
   it("boots App: shows the loading gate, then the router", async () => {

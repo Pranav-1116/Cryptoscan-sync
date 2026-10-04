@@ -8,7 +8,7 @@ import { apiPriority, PriorityResponse, RankedItem } from "../lib/api.js";
    correlation engine: priority = revenue x severity x agility, effort =
    assets x complexity x (2 - agility), replacement from the fixed rule table,
    blast radius from the system dependency graph. Empty until real findings
-   exist. No AI, no invented numbers. */
+   exist. No invented numbers. */
 
 const SEV_TONE: Record<string, string> = {
   CRITICAL: "bad", HIGH: "warn", ALERT: "warn", MEDIUM: "warn", LOW: "ok",

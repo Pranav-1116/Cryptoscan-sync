@@ -1,7 +1,7 @@
-/* Static internationalization (feature 23) — resource dictionaries only, no AI
-   translation. English (LTR) and Arabic (RTL). The provider sets <html dir> and
-   persists the choice; t(key) looks up the active dictionary with an English
-   fallback so a missing key never renders blank. */
+/* Static internationalization — resource dictionaries keep labels deterministic.
+   English (LTR) and Arabic (RTL). The provider sets <html dir> and persists the
+   choice; t(key) looks up the active dictionary with an English fallback so a
+   missing key never renders blank. */
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import en from "./en.json";
 import ar from "./ar.json";

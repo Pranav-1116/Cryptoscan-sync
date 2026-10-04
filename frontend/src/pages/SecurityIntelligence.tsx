@@ -25,36 +25,26 @@ function K({ k, v, tone }: { k: string; v: React.ReactNode; tone?: string }) {
   );
 }
 
-const SAMPLE_OBSERVATIONS = JSON.stringify([
-  { source: "network", ids: { hostname: "pay01", ip: "10.10.1.20" }, observed_at: "2026-09-09T00:00:00Z" },
-  { source: "agent", ids: { hostname: "pay01", agent_id: "agent-7" }, observed_at: "2026-09-09T00:05:00Z" },
-  { source: "hardware", ids: { serial: "server-009", hostname: "pay01" }, observed_at: "2026-09-09T01:00:00Z" },
-], null, 2);
-
-const SAMPLE_FINDINGS = JSON.stringify([
-  { category: "weak_tls", asset_id: "asset-42", severity: "high", title: "TLS 1.0", source: "network" },
-  { category: "weak_tls", asset_id: "asset-42", severity: "high", title: "TLS 1.0", source: "application" },
-  { category: "weak_tls", asset_id: "asset-42", severity: "high", title: "TLS 1.0", source: "crypto" },
-  { category: "internet_exposure", asset_id: "asset-42", severity: "medium", title: "Internet exposure", source: "cloud" },
-], null, 2);
-
 export default function SecurityIntelligence() {
   const [profiles, setProfiles] = useState<string[]>([]);
-  const [selProfile, setSelProfile] = useState("bank-production");
-  const [selSector, setSelSector] = useState("banking");
+  const [selProfile, setSelProfile] = useState("");
+  const [selSector, setSelSector] = useState("generic");
   const [resolved, setResolved] = useState<ScanProfileResolve | null>(null);
 
-  const [obsJson, setObsJson] = useState(SAMPLE_OBSERVATIONS);
+  const [obsJson, setObsJson] = useState("");
   const [assets, setAssets] = useState<IdentityAsset[] | null>(null);
   const [merges, setMerges] = useState<number | null>(null);
 
-  const [findJson, setFindJson] = useState(SAMPLE_FINDINGS);
+  const [findJson, setFindJson] = useState("");
+  const [riskAssetId, setRiskAssetId] = useState("");
+  const [riskCritical, setRiskCritical] = useState(false);
+  const [riskBusinessValue, setRiskBusinessValue] = useState("");
   const [dedup, setDedup] = useState<{ count: number; inputs: number; deduped_by: number } | null>(null);
   const [chain, setChain] = useState<{ overall_severity: string; compound_risk: boolean } | null>(null);
 
-  const [sources, setSources] = useState("crypto:observed, agent:observed");
-  const [ageSec, setAgeSec] = useState("30");
-  const [verified, setVerified] = useState(true);
+  const [sources, setSources] = useState("");
+  const [ageSec, setAgeSec] = useState("");
+  const [verified, setVerified] = useState(false);
   const [state, setState] = useState<Record<string, unknown> | null>(null);
 
   const [cadence, setCadence] = useState("on_change");
@@ -65,7 +55,11 @@ export default function SecurityIntelligence() {
 
   useEffect(() => {
     apiScanProfiles().then((r) => {
-      if (r.ok && r.data) setProfiles(r.data.profiles.map((p) => p.id));
+      if (r.ok && r.data) {
+        const ids = r.data.profiles.map((p) => p.id);
+        setProfiles(ids);
+        setSelProfile((current) => current || ids[0] || "");
+      }
     });
   }, []);
 
@@ -76,10 +70,14 @@ export default function SecurityIntelligence() {
     else setErr(`HTTP error: ${r.error || "unknown"}`);
   };
 
-  const resolveProfile = () => run(() => apiScanProfileResolve({ profile: selProfile, sector: selSector }), setResolved);
+  const resolveProfile = () => {
+    if (!selProfile) { setErr("Select a scan profile returned by the live control plane"); return; }
+    run(() => apiScanProfileResolve({ profile: selProfile, sector: selSector }), setResolved);
+  };
 
   const resolveIdentity = () => {
     let obs: unknown;
+    if (!obsJson.trim()) { setErr("Paste observations returned by an authorized scanner"); return; }
     try { obs = JSON.parse(obsJson); } catch { setErr("Observations must be valid JSON"); return; }
     run(() => apiIdentityResolve({ observations: obs as unknown as never[] as { source: string; ids: Record<string, string> }[] }),
       (d) => { setAssets(d.assets); setMerges(d.merges); });
@@ -87,6 +85,7 @@ export default function SecurityIntelligence() {
 
   const correlate = () => {
     let f: unknown;
+    if (!findJson.trim()) { setErr("Paste findings returned by an authorized scanner"); return; }
     try { f = JSON.parse(findJson); } catch { setErr("Findings must be valid JSON"); return; }
     run(() => apiCorrelateFindings({ findings: f as Record<string, unknown>[] }),
       (d) => setDedup({ count: d.count, inputs: d.inputs, deduped_by: d.deduped_by }));
@@ -94,8 +93,10 @@ export default function SecurityIntelligence() {
 
   const chainIt = () => {
     let f: unknown;
+    if (!riskAssetId.trim()) { setErr("Enter the asset identifier from the live inventory"); return; }
+    if (!findJson.trim()) { setErr("Paste findings returned by an authorized scanner"); return; }
     try { f = JSON.parse(findJson); } catch { setErr("Findings must be valid JSON"); return; }
-    run(() => apiRiskChain({ asset_id: "asset-42", findings: f as Record<string, unknown>[], critical_asset: true, business_value: "critical" }),
+    run(() => apiRiskChain({ asset_id: riskAssetId.trim(), findings: f as Record<string, unknown>[], critical_asset: riskCritical, business_value: riskBusinessValue.trim() || undefined }),
       (d) => setChain({ overall_severity: String(d.overall_severity), compound_risk: Boolean(d.compound_risk) }));
   };
 
@@ -105,7 +106,8 @@ export default function SecurityIntelligence() {
       const [k, v] = p.split(":").map((s) => s.trim());
       if (k && v) src[k] = v;
     });
-    run(() => apiAssetState({ sources: src, verification: verified ? "VERIFIED" : undefined, last_seen_epoch: Date.now() / 1000 - Number(ageSec || 0) }),
+    if (!Object.keys(src).length) { setErr("Enter source freshness values returned by the live inventory"); return; }
+    run(() => apiAssetState({ sources: src, verification: verified ? "VERIFIED" : undefined, last_seen_epoch: ageSec.trim() ? Date.now() / 1000 - Number(ageSec) : null }),
       setState);
   };
 
@@ -169,7 +171,7 @@ export default function SecurityIntelligence() {
 
         {/* Identity resolution */}
         <Panel title="Universal asset identity" sub="Spec #1 — cross-scanner collision into ONE asset" style={{ flex: "1 1 380px", minWidth: 380 }}>
-          <textarea value={obsJson} onChange={(e) => setObsJson(e.target.value)} rows={7} style={{ width: "100%", ...inp, resize: "vertical" }} />
+          <textarea value={obsJson} onChange={(e) => setObsJson(e.target.value)} rows={7} placeholder="Paste observations returned by an authorized scanner" style={{ width: "100%", ...inp, resize: "vertical" }} />
           <div className="row" style={{ gap: 10, marginTop: 10 }}>
             <button className="btn" onClick={resolveIdentity}>Resolve identity</button>
           </div>
@@ -211,8 +213,15 @@ export default function SecurityIntelligence() {
         </Panel>
 
         {/* Finding dedup + chain */}
-        <Panel title="Finding deduplication & risk chain" sub="Spec #21/#22 — five scanners, one finding; compound risk" style={{ flex: "1 1 380px", minWidth: 380 }}>
-          <textarea value={findJson} onChange={(e) => setFindJson(e.target.value)} rows={8} style={{ width: "100%", ...inp, resize: "vertical" }} />
+        <Panel title="Finding deduplication & risk chain" sub="Spec #21/#22 — uses findings and asset context returned by the live scanners" style={{ flex: "1 1 380px", minWidth: 380 }}>
+          <textarea value={findJson} onChange={(e) => setFindJson(e.target.value)} rows={8} placeholder="Paste the JSON findings payload from an authorized scanner" style={{ width: "100%", ...inp, resize: "vertical" }} />
+          <div className="row" style={{ gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <input value={riskAssetId} onChange={(e) => setRiskAssetId(e.target.value)} placeholder="live asset ID for risk chain" style={{ ...inp, flex: "1 1 180px" }} />
+            <input value={riskBusinessValue} onChange={(e) => setRiskBusinessValue(e.target.value)} placeholder="business value (optional)" style={{ ...inp, flex: "1 1 150px" }} />
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12 }}>
+              <input type="checkbox" checked={riskCritical} onChange={(e) => setRiskCritical(e.target.checked)} /> critical asset
+            </label>
+          </div>
           <div className="row" style={{ gap: 10, marginTop: 10 }}>
             <button className="btn" onClick={correlate}>Deduplicate</button>
             <button className="btn" onClick={chainIt}>Build risk chain</button>

@@ -9,7 +9,7 @@ import {
 
 /* Executive view — a board/CISO one-screen summary. Every figure is derived
    from live endpoints (stats summary, scan-derived CBOM, drift, alerts). There
-   are no targets, no illustrative numbers, and no AI narrative: until scans
+   are no targets, no illustrative numbers, and no generated narrative: until scans
    run, the board sees honest zeros and a "no data" posture. The posture score
    is a deterministic, transparent function of coverage, quantum exposure and
    open drift — shown with its inputs, not asserted. */

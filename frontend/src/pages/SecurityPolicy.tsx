@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
 import {
-  apiSecurityPolicyGet, apiSecurityPolicyPut, apiSecurityGate,
+  apiSecurityPolicyGet, apiSecurityPolicyPut,
   SecurityPolicy as SecurityPolicyData,
 } from "../lib/api.js";
 
@@ -78,10 +78,6 @@ export default function SecurityPolicy() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [gate, setGate] = useState<Record<string, unknown> | null>(null);
-  const [gateBusy, setGateBusy] = useState(false);
-  const [gateErr, setGateErr] = useState<string | null>(null);
-
   const setScan = (k: string, v: unknown) => setPolicy((p) => ({ ...p, scan: { ...p.scan, [k]: v } }));
   const setPriv = (k: string, v: unknown) => setPolicy((p) => ({ ...p, privacy: { ...p.privacy, [k]: v } }));
 
@@ -102,21 +98,6 @@ export default function SecurityPolicy() {
     else setError(r.error ?? "save failed");
   };
 
-  const testGate = async () => {
-    setGateBusy(true); setGateErr(null);
-    const r = await apiSecurityGate({
-      actor: "admin", tenant: "bank-a", environment: "prod-uae",
-      targets: { network: ["10.20.0.10:443"], hardware: ["hsm-core-01"] },
-      credentials: { network: true, hardware: true },
-      scanners: ["network", "hardware"], scope: { excluded: [], special: ["hsm-core-01"], special_approved: false },
-    });
-    setGateBusy(false);
-    if (r.ok && r.data) setGate(r.data);
-    else setGateErr(r.error ?? "gate eval failed");
-  };
-
-  const permits = gate ? (gate.permitted as boolean) : null;
-
   return (
     <>
       <PageHead
@@ -130,7 +111,7 @@ export default function SecurityPolicy() {
         <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="badge" style={{ background: "var(--accent-2, #123)", color: "#fff" }}>SECTOR · {sector}</span>
           <span className="dim" style={{ fontSize: 12.5 }}>
-            Policy is seeded from the <b>{sector}</b> sector profile (read-only, conservative intensity, sensitive-data collection off) and can never be looser than it.
+            Policy is loaded from the live <b>{sector}</b> sector profile (read-only, conservative intensity, sensitive-data collection off) and can never be looser than it.
           </span>
         </div>
       )}
@@ -256,29 +237,6 @@ export default function SecurityPolicy() {
         {error && <Badge tone="red">{error}</Badge>}
       </div>
 
-      <Panel title="Scanner gate test" sub="run a proposed scan request through the full control chain (§21) — read-only, never starts a scan">
-        <div className="row" style={{ gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-          <button className="btn" disabled={gateBusy} onClick={testGate}>{gateBusy ? "Evaluating…" : "Evaluate sample request"}</button>
-          {gateErr && <Badge tone="red">{gateErr}</Badge>}
-          {permits != null && (
-            <Badge tone={permits ? "green" : "red"}>
-              {permits ? "PERMITTED" : `DENIED · ${String(gate?.denied_by ?? "")}`}
-            </Badge>
-          )}
-          {permits != null && gate && <span className="dim" style={{ fontSize: 12.5 }}>{String(gate.reason)}</span>}
-        </div>
-        {!!gate?.checks && (
-          <div style={{ marginTop: 14 }}>
-            {(gate.checks as unknown as { control: string; passed: boolean; reason: string }[]).map((c, i) => (
-              <div key={c.control} style={{ display: "flex", gap: 8, alignItems: "center", padding: "5px 0", fontSize: 13 }}>
-                <span className="mono" style={{ width: 110, color: "var(--text)" }}>{c.control}</span>
-                <span className="dot" style={{ width: 8, height: 8, borderRadius: "50%", background: c.passed ? "var(--green)" : "var(--red)" }} />
-                <span className="dim" style={{ fontSize: 12 }}>{c.reason}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
     </>
   );
 }

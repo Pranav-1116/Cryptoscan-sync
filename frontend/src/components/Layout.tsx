@@ -158,7 +158,6 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
   const { t, dir } = useI18n();
   const [showSearch, setShowSearch] = useState(false);
-  const [showAiAssistant, setShowAiAssistant] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem("zelnx-sidebar-collapsed") === "true"; } catch { return false; }
@@ -422,15 +421,6 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "4px", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
           </div>
 
-          <button
-            className="btn sm"
-            onClick={() => setShowAiAssistant(!showAiAssistant)}
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: showAiAssistant ? "rgba(0, 212, 255, 0.15)" : undefined, borderColor: showAiAssistant ? "var(--cyan)" : undefined }}
-            title="Ask ZELNX Assistant"
-          >
-            <span>✦</span> Ask ZELNX
-          </button>
-
           
           {/* Section 52: Multi-Level Info Switcher */}
           <select
@@ -496,64 +486,9 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
           )}
         </div>
 
-        {/* Layout with optional Right-Side Assistant Panel */}
-        <div style={{ display: "flex", gap: "24px", minWidth: 0 }}>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <MaturityBanner tier={tierOf(route)} route={route} />
-            {children}
-          </div>
-
-          {/* Assistant Panel (Section 16 — Future Ready Assistant, Deterministic Backed) */}
-          {showAiAssistant && (
-            <aside style={{ width: "340px", flexShrink: 0, background: "var(--panel)", border: "1px solid var(--line)", borderRadius: "10px", padding: "18px", height: "fit-content", position: "sticky", top: "70px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, fontSize: "14px" }}>
-                  <span style={{ color: "var(--cyan)" }}>✦</span> Ask ZELNX
-                </div>
-                <button onClick={() => setShowAiAssistant(false)} style={{ background: "none", border: "none", color: "var(--dim)", cursor: "pointer", fontSize: "16px" }}>✕</button>
-              </div>
-              <p style={{ fontSize: "12px", color: "var(--dim)", margin: "0 0 14px", lineHeight: 1.5 }}>
-                Ask questions regarding cryptographic posture, CBOM findings, and deterministic policy evidence.
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "16px" }}>
-                {[
-                  "Why is RSA-2048 flagged?",
-                  "Show affected payment applications",
-                  "What evidence supports finding #OBS-8F93A21?",
-                  "Explain NIST FIPS 203 timeline impact"
-                ].map((prompt, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {}}
-                    style={{
-                      background: "var(--bg-2)",
-                      border: "1px solid var(--line)",
-                      borderRadius: "6px",
-                      padding: "8px 10px",
-                      textAlign: "left",
-                      fontSize: "11.5px",
-                      color: "var(--text)",
-                      cursor: "pointer"
-                    }}
-                  >
-                    &gt; {prompt}
-                  </button>
-                ))}
-              </div>
-              <div style={{ position: "relative" }}>
-                <input
-                  type="text"
-                  placeholder="Ask about your cryptographic estate..."
-                  className="inp"
-                  style={{ fontSize: "12px", paddingRight: "30px" }}
-                />
-                <button style={{ position: "absolute", right: "8px", top: "50%", transform: "translateY(-50%)", background: "none", border: "none", color: "var(--cyan)", cursor: "pointer" }}>➔</button>
-              </div>
-              <div style={{ marginTop: "10px", fontSize: "10.5px", color: "var(--faint)", lineHeight: 1.4 }}>
-                🔒 Responses are grounded on deterministic scan evidence and verified policy engines.
-              </div>
-            </aside>
-          )}
+        <div>
+          <MaturityBanner tier={tierOf(route)} route={route} />
+          {children}
         </div>
       </main>
 

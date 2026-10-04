@@ -168,7 +168,7 @@ function CertLifecyclePanel() {
   const due = (queue.data as any)?.due ?? [];
 
   return (
-    <Panel title="Certificate lifecycle" sub="issue · renew (key rotation) · revoke (CRL) — deterministic local PKI, no AI" className="mt">
+    <Panel title="Certificate lifecycle" sub="issue · renew (key rotation) · revoke (CRL) — deterministic local PKI" className="mt">
       <div className="row" style={{ flexWrap: "wrap", gap: 10, marginBottom: 10 }}>
         <input style={input} placeholder="common name (e.g. tls.payments.demo.local)" value={cn} onChange={(e) => setCn(e.target.value)} />
         <input style={input} placeholder="SAN hostnames (comma-separated)" value={san} onChange={(e) => setSan(e.target.value)} />

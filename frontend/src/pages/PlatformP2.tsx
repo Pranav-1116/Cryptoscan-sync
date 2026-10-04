@@ -16,7 +16,7 @@ import {
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 
-/* P2 enterprise platform — deterministic (no AI/ML):
+/* P2 enterprise platform — deterministic:
    - Plugin marketplace: hash-pinned, Ed25519-signed plugins (quarantine on failure)
    - Data lake: append-only hash-chained export batches
    - Anomaly: statistical (z-score / EWMA / rate-of-change / frequency)
@@ -134,7 +134,7 @@ export default function PlatformP2() {
       <PageHead
         crumb="platform / P2"
         title="P2 enterprise platform"
-        sub="Plugin marketplace, tamper-evident data lake, statistical anomaly detection, rule-based governance — deterministic, no AI"
+        sub="Plugin marketplace, tamper-evident data lake, statistical anomaly detection, rule-based governance — live and deterministic"
         right={<><LiveBadge source={plugins.source} /> <Badge tone="cyan">DETERMINISTIC</Badge></>}
       />
 
@@ -509,7 +509,7 @@ export default function PlatformP2() {
 
         <Panel
           title="Detection accuracy — real benchmark"
-          sub="shipping detector scored against labelled ground truth (85 cases / 9 datasets) · no AI, no simulation"
+          sub="shipping detector scored against labelled ground truth (85 cases / 9 datasets) · live benchmark only"
         >
           <div style={{ marginBottom: 10 }}>
             <button className="btn" onClick={() => void runBenchmark()} disabled={realBenchmark.running}>
@@ -555,7 +555,7 @@ export default function PlatformP2() {
           })()}
         </Panel>
 
-        <Panel title="Post-migration verification" sub="DETECT→ANALYZE→VERIFY · deterministic weak-crypto regression check (no AI) · PASS closes findings, FAIL raises a critical ticket">
+        <Panel title="Post-migration verification" sub="DETECT→ANALYZE→VERIFY · deterministic weak-crypto regression check · PASS closes findings, FAIL raises a critical ticket">
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
             <label className="muted" style={{ fontSize: 12 }}>PRE-migration findings (JSON array)
               <textarea
