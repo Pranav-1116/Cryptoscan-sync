@@ -272,12 +272,80 @@ class PipelineRunner:
                 self.workspaces.cleanup(workspace_path)
 
     def _set_job_status(self, session, job_id: str, status: str, **kwargs) -> None:
-        try:
-            from db.repositories.job_repository import JobRepository
+        """Publish job status/progress so it is visible WHILE the job runs.
 
-            JobRepository(session).update_status(job_id, status, **kwargs)
+        BaseRepository.update only flushes, and run() commits its own session
+        once, after the final stage. Every progress update therefore sat in an
+        uncommitted transaction that no other connection could read: the API
+        reported QUEUED with started_at NULL for the whole scan and then
+        jumped straight to COMPLETED, because that was the moment the work
+        became visible rather than the moment it happened. A nine-minute scan
+        was indistinguishable from a wedged one.
+
+        Committing inline on the pipeline session is not the fix -- that would
+        also commit the half-built scan and evidence rows it is carrying, and
+        the evidence load is deliberately atomic.
+
+        So status, progress and error_message travel on their own short-lived
+        session and commit immediately: they are operational telemetry about
+        the job, not part of the scan's data transaction. scan_id is the one
+        exception. It is a foreign key to scans.id, so it cannot be written
+        before the scan row commits and stays on the pipeline's transaction.
+        """
+        from db.repositories.job_repository import JobRepository
+
+        scan_id = kwargs.pop("scan_id", None)
+        if scan_id is not None:
+            # FK-bound: must land in the same transaction as the scan row.
+            try:
+                JobRepository(session).update(job_id, {"scan_id": scan_id})
+            except Exception:
+                logger.warning("job_scan_id_update_failed",
+                               extra={"job_id": job_id, "scan_id": scan_id})
+
+        from db.connection.session import SessionLocal
+
+        telemetry = None
+        try:
+            telemetry = SessionLocal()
+            updated = JobRepository(telemetry).update_status(job_id, status, **kwargs)
+            if updated is None:
+                # The job row is not visible on a fresh connection -- it was
+                # created in the caller's uncommitted transaction, which is
+                # what the in-process tests do. Fall back to that session so
+                # their behaviour is unchanged.
+                telemetry.rollback()
+                JobRepository(session).update_status(job_id, status, **kwargs)
+            else:
+                telemetry.commit()
         except Exception:
-            logger.debug("job_status_update_skipped", extra={"job_id": job_id, "status": status})
+            if telemetry is not None:
+                try:
+                    telemetry.rollback()
+                except Exception:
+                    logger.debug("job_status_rollback_failed", extra={"job_id": job_id})
+            # A second connection cannot always write. SQLite allows one
+            # writer at a time, so while the pipeline holds its transaction
+            # the telemetry session is locked out -- and this backend is
+            # supported (ALLOW_SQLITE, the staging estate the backup drill
+            # runs against). Falling back to the pipeline's own session
+            # keeps the update deferred-but-applied, which is exactly the
+            # old behaviour, instead of dropping it on the floor. On a
+            # backend with concurrent writers the fast path above wins and
+            # progress is live.
+            try:
+                JobRepository(session).update_status(job_id, status, **kwargs)
+                logger.debug("job_status_deferred_to_pipeline_session",
+                             extra={"job_id": job_id, "status": status})
+            except Exception:
+                # Previously the only outcome, logged at debug, so a failing
+                # status update was invisible. A job whose progress stops
+                # updating is what an operator needs told.
+                logger.warning("job_status_update_failed",
+                               extra={"job_id": job_id, "status": status})
+        finally:
+            if telemetry is not None:
+                telemetry.close()
 
     def _advance(
         self,

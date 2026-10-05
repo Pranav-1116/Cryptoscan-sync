@@ -182,7 +182,39 @@ a brand mark measuring 1.14:1 in dark mode. Those are now 0, and type colours
 no longer borrow status colours: CBOM read amber ("warning") and HBOM orange
 ("high risk") purely to tell BOM layers apart.
 
-**Findings recorded, not fixed.** Two things worth a decision rather than a
+**Job progress was written but never visible.** The status transition was not
+missing. `BaseRepository.update` only flushes, and the pipeline commits its own
+session once, after the final stage — so every progress update sat in an
+uncommitted transaction that no other connection could read. The API, reading
+on a separate connection, saw `QUEUED` for the whole scan and then `COMPLETED`,
+because that was the moment the work became *visible* rather than the moment it
+happened. A nine-minute scan was indistinguishable from a wedged one, and
+`started_at` only appeared once it no longer mattered.
+
+Committing inline on the pipeline session would have been the wrong fix: that
+session carries the half-built scan and evidence rows, and the evidence load is
+deliberately atomic. Status, progress and `error_message` now travel on their
+own short-lived session and commit immediately — they are operational telemetry
+about the job, not part of the scan's data transaction. `scan_id` is the one
+exception; it is a foreign key to `scans.id`, so it stays on the pipeline's
+transaction and lands with the scan row.
+
+One backend caveat is handled explicitly. SQLite permits a single writer, so
+while the pipeline holds its transaction the telemetry connection is locked
+out; it falls back to the pipeline session, which defers the update exactly as
+before rather than dropping it. On PostgreSQL the fast path wins and progress
+is live. Measured on a real scan after the change:
+
+```
+RUNNING | started_at=2026-10-05T15:44:09 | stage=load 29
+...
+COMPLETED | stage=alert 100
+```
+
+The swallow that hid this is also gone: the handler logged at `debug`, so a
+failing status update was invisible in normal operation.
+
+**Findings recorded, not fixed.** One thing worth a decision rather than a
 quiet change:
 
 * `config/exception-allowlist.json` keys reviewed exception handlers by
@@ -190,10 +222,12 @@ quiet change:
   silently un-reviews it — which is how the engineering gate failed during this
   work, on a handler nobody had touched. Keying on handler content or enclosing
   function would survive formatting churn while still catching real changes.
-* Job status appears to skip the `RUNNING` transition: the API reports `QUEUED`
-  with `started_at: null` while the worker is demonstrably mid-pipeline. Not
-  harmful, but it means the UI cannot show progress, and a long scan looks
-  stuck to an operator.
+
+The job-status item previously listed here is resolved and moved above. Worth
+noting why it was mis-described: recorded as "status skips the `RUNNING`
+transition", it was really "every transition is written and none are visible".
+The observable symptom was identical, and the wrong description would have sent
+someone hunting for a missing assignment that was never missing.
 
 ---
 
