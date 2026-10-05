@@ -138,7 +138,6 @@ def audit_models(facts: dict[str, Any]) -> tuple[list[str], list[str]]:
     """Every __tablename__ class must be TenantScoped or carry a marker."""
     violations: list[str] = []
     justified: list[str] = []
-    known_scoped_tables = set((facts.get("scoped_tables") or {}).values())
 
     for path in _iter_python_files():
         if not path.parts or "models" not in path.parts:

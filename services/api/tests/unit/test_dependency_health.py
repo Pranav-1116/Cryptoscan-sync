@@ -129,3 +129,73 @@ def test_root_probe_aliases_behaviour(monkeypatch):
         assert drained.json()["status"] == "not_ready"
         # liveness stays 200 through a database outage
         assert client.get("/healthz").status_code == 200
+
+
+def test_liveness_answers_while_the_database_hangs(monkeypatch):
+    """An unreachable database must not take the liveness probe with it.
+
+    The existing outage test mocks an engine that *raises* immediately, which
+    a refused connection does. A paused or partitioned database does not
+    refuse -- it accepts the TCP connection and never answers, so the driver
+    blocks until its own timeout. /healthz used to call check_db_health()
+    inline and hung for the full probe budget, so Kubernetes would record a
+    liveness failure and kill a pod whose only problem was that the database
+    was briefly away.
+
+    This models the blocking case the old mock could not.
+    """
+    import time
+
+    from fastapi.testclient import TestClient
+
+    from api.main import create_app
+
+    class _HangingEngine:
+        def connect(self):
+            time.sleep(30)  # never reached if liveness is dependency-free
+            raise AssertionError("liveness touched the database")
+
+    monkeypatch.setattr("db.connection.engine.get_engine", lambda: _HangingEngine())
+
+    with TestClient(create_app()) as client:
+        started = time.monotonic()
+        response = client.get("/healthz")
+        elapsed = time.monotonic() - started
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    assert elapsed < 2.0, (
+        f"liveness took {elapsed:.1f}s; it must not wait on a dependency"
+    )
+
+
+def test_readiness_answers_503_rather_than_hanging(monkeypatch):
+    """Readiness may check the database, but must do it inside its budget.
+
+    A probe that exceeds its budget fails by timing out, which is
+    indistinguishable from a wedged process. Answering 503 says the opposite:
+    drain me, I am alive.
+    """
+    import time
+
+    from fastapi.testclient import TestClient
+
+    from api.routers import health
+
+    class _HangingEngine:
+        def connect(self):
+            time.sleep(30)
+
+    monkeypatch.setattr("db.connection.engine.get_engine", lambda: _HangingEngine())
+    monkeypatch.setattr(health, "READINESS_PROBE_TIMEOUT_SECONDS", 1.0)
+
+    from api.main import create_app
+
+    with TestClient(create_app()) as client:
+        started = time.monotonic()
+        response = client.get("/readyz")
+        elapsed = time.monotonic() - started
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert elapsed < 5.0, f"readiness took {elapsed:.1f}s despite a 1s budget"

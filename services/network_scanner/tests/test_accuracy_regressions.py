@@ -11,7 +11,12 @@ from network_scanner.core.scanner import NetworkTlsScanner, normalize_endpoint
 from network_scanner.probing.active_prober import probe_endpoint
 
 
-CERTS = __import__("pathlib").Path(__file__).resolve().parents[3] / "demo" / "certs"
+# The certificate fixtures live beside this suite, not under demo/. This
+# pointed at <repo>/demo/certs, which does not exist and is not tracked, so
+# every test in the module that loaded a PEM died on FileNotFoundError
+# rather than on anything it was asserting. test_pem_inventory.py in the
+# same directory already resolved it correctly.
+CERTS = __import__("pathlib").Path(__file__).resolve().parent / "fixtures" / "certs"
 
 
 def _load(name: str) -> dict:

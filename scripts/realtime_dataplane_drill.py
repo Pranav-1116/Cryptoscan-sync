@@ -298,16 +298,27 @@ class Drill:
     # ---- 6. restart recovery ---------------------------------------------- #
     def restart_recovery(self, scan_id: str | None) -> None:
         """Durable state must survive a Redis restart; history is in PostgreSQL."""
-        before = int(_psql(self.db, self.db_user, "SELECT count(*) FROM evidence_records") or 0)
+        # Count only rows that already existed, not the table total. A worker
+        # still draining the queue legitimately adds rows during the restart,
+        # and comparing totals reported that as data loss -- the check failed
+        # for the one reason that is not a failure. Durability means nothing
+        # that was there disappears, so pin the pre-restart maximum id and
+        # re-count at or below it.
+        high_water = _psql(self.db, self.db_user,
+                           "SELECT coalesce(max(chain_position), 0) FROM evidence_records")
+        scoped = (f"SELECT count(*) FROM evidence_records "
+                  f"WHERE chain_position <= {int(high_water or 0)}")
+        before = int(_psql(self.db, self.db_user, scoped) or 0)
+
         r = _docker("restart", self.redis, timeout=120)
         self.check("recovery: redis restarted", r.returncode == 0, r.stderr.strip()[:120])
         for _ in range(60):
             if _docker("exec", self.redis, "redis-cli", "ping").stdout.strip() == "PONG":
                 break
             time.sleep(1)
-        after = int(_psql(self.db, self.db_user, "SELECT count(*) FROM evidence_records") or 0)
+        after = int(_psql(self.db, self.db_user, scoped) or 0)
         self.check("recovery: durable evidence survives a redis restart",
-                   after == before, f"{before} -> {after}")
+                   after >= before, f"{before} -> {after} (rows at or below the pre-restart mark)")
 
         status, body = _req("GET", f"{self.api}/api/v1/events/recent?limit=5", self.token)
         self.check("recovery: event history still served after restart",

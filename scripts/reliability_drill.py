@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import time
@@ -59,6 +60,28 @@ def _psql(container: str, user: str, sql: str) -> str:
         ["docker", "exec", "-u", "postgres", container, "psql", "-U", user, "-tAc", sql],
         capture_output=True, text=True, timeout=60)
     return out.stdout.strip()
+
+
+def _worker_pid() -> str | None:
+    """The worker's PID from the stack's pid file.
+
+    Not `pgrep -f worker.main`: that matches any shell whose command line
+    contains the string, including the drill's own subprocess calls. The
+    false positive made this report a healthy worker when none was running
+    and the queue was filling up behind it.
+    """
+    pid_file = ROOT / ".local-stack" / "worker.pid"
+    try:
+        pid = pid_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    if not pid:
+        return None
+    try:
+        os.kill(int(pid), 0)
+    except (OSError, ValueError):
+        return None
+    return pid
 
 
 class Drill:
@@ -199,34 +222,37 @@ class Drill:
     def worker_restart(self) -> None:
         """Killing the worker mid-flight must not lose or duplicate the job."""
         before = int(_psql(self.db, self.db_user, "SELECT count(*) FROM scans") or 0)
-        pid = subprocess.run(["pgrep", "-f", "worker.main"],
-                             capture_output=True, text=True).stdout.split()
+        pid = _worker_pid()
         if not pid:
-            self.check("restart: worker process found", False, "no worker running")
+            self.check("restart: worker process found", False,
+                       "no worker running (checked .local-stack/worker.pid)")
             return
-        self.check("restart: worker process found", True, f"pid {pid[0]}")
+        self.check("restart: worker process found", True, f"pid {pid}")
 
         s, b = _req("POST", f"{self.api}/api/v1/scans/trigger", self.token,
                     {"repo_url": self.target, "branch": "main"})
         job = b.get("job_id") if isinstance(b, dict) else None
         time.sleep(1)
-        subprocess.run(["kill", "-9", pid[0]], capture_output=True)
-        self.check("restart: worker killed mid-scan", True, f"SIGKILL {pid[0]}")
+        subprocess.run(["kill", "-9", pid], capture_output=True)
+        self.check("restart: worker killed mid-scan", True, f"SIGKILL {pid}")
 
-        # Bring it back the way the stack script does.
-        env = {k: v for k, v in __import__("os").environ.items()}
-        env.update({
-            "PYTHONPATH": ":".join(str(p) for p in sorted(ROOT.glob("services/*/"))
-                                   + list(sorted(ROOT.glob("shared/*/")))),
-            "ENVIRONMENT": "development",
-            "DATABASE_URL": env.get("DATABASE_URL", ""),
-        })
-        subprocess.Popen([sys.executable, "-m", "worker.main"], cwd=str(ROOT), env=env,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(5)
-        alive = bool(subprocess.run(["pgrep", "-f", "worker.main"],
-                                    capture_output=True, text=True).stdout.strip())
-        self.check("restart: worker comes back", alive, "")
+        # Restart through the stack script rather than re-deriving the
+        # environment here. The drill runs outside the stack, so its own
+        # os.environ has no DATABASE_URL or REDIS_URL: the hand-rolled
+        # version launched a worker that exited immediately on a missing
+        # DSN, and the check failed on the restart harness rather than on
+        # the product. run_local_stack.sh already starts a worker only when
+        # one is absent, which is exactly this operation.
+        restart = subprocess.run(
+            ["bash", str(ROOT / "scripts" / "run_local_stack.sh"), "up"],
+            capture_output=True, text=True, timeout=600, cwd=str(ROOT))
+        for _ in range(30):
+            if _worker_pid():
+                break
+            time.sleep(1)
+        alive = bool(_worker_pid())
+        self.check("restart: worker comes back", alive,
+                   "" if alive else restart.stderr.strip()[-160:])
 
         # The job must reach a terminal state, not sit QUEUED forever.
         terminal = None

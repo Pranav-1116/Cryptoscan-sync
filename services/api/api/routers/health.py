@@ -10,6 +10,15 @@ from api.config.settings import get_settings
 router = APIRouter(tags=["health"])
 logger = logging.getLogger(__name__)
 
+#: Wall-clock budget for the readiness database probe.
+#:
+#: Chosen to sit inside a typical Kubernetes readinessProbe timeoutSeconds
+#: (commonly 5-10 s) so the endpoint answers 503 itself rather than being
+#: recorded as a probe timeout. Answering is strictly better: a 503 says
+#: "drain me, I am alive"; a timeout is indistinguishable from a wedged
+#: process and will eventually be read as a liveness problem too.
+READINESS_PROBE_TIMEOUT_SECONDS = 4.0
+
 
 def _probe(name: str, configured: bool, fn) -> dict:
     """Run one dependency probe with an honest status:
@@ -94,7 +103,24 @@ def dependency_report() -> dict:
 
 @router.get("/healthz")
 def healthz():
-    return {"status": "ok", "database": check_db_health()}
+    """Liveness only: is this process able to serve? No dependency checks.
+
+    This used to return check_db_health() inline, which made the liveness
+    probe depend on PostgreSQL answering. The contract stated two lines down
+    in readyz -- "Liveness (/healthz) stays 200 through a DB outage" -- was
+    therefore not what the code did.
+
+    The existing test did not catch it because it mocks an engine that
+    *raises* immediately. A real outage does not raise, it blocks: with the
+    database container paused this endpoint hung for the full 20 s probe
+    budget, so Kubernetes would record a liveness failure and kill a pod
+    whose only problem is that the database is briefly away -- a restart
+    storm at precisely the moment the database is already struggling.
+
+    Database state is still reported, by the two endpoints whose job it is:
+    /readyz (503 drains the load balancer) and /healthz/dependencies.
+    """
+    return {"status": "ok"}
 
 
 @router.get("/healthz/dependencies")
@@ -118,13 +144,46 @@ def readyz():
     and keeps retrying; readiness tells nginx/kubernetes to stop routing to
     this replica until the failover completes.
     """
+    import concurrent.futures
+
     from db.connection.engine import get_engine
     from sqlalchemy import text
 
-    try:
+    def _probe() -> None:
         with get_engine().connect() as connection:
             connection.execute(text("SELECT 1"))
+
+    # Bounded on wall clock, not just on the driver's own timeouts.
+    #
+    # Unreachable is not the same as refused. A paused or partitioned
+    # database accepts the TCP connection and never answers, so pool
+    # pre-ping and pool checkout each wait out their own timeout and stack:
+    # measured at over 25 s here, well past any sane probe budget. The
+    # endpoint then fails by *timing out* rather than by answering 503,
+    # which looks identical to the API being wedged and ties up a worker
+    # thread for the whole duration on every probe interval.
+    #
+    # A readiness probe that cannot answer inside its budget is not a
+    # readiness probe, so the slow path is turned into an explicit 503.
+    # Deliberately not a `with` block: ThreadPoolExecutor.__exit__ calls
+    # shutdown(wait=True), which blocks until the probe thread finishes and
+    # so waits out the very stall the timeout exists to escape. On timeout
+    # the executor is released without waiting and the orphaned thread ends
+    # on its own when the driver's own timeout expires.
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1,
+                                                 thread_name_prefix="readyz-probe")
+    try:
+        pool.submit(_probe).result(timeout=READINESS_PROBE_TIMEOUT_SECONDS)
+        pool.shutdown(wait=False)
+    except concurrent.futures.TimeoutError:
+        pool.shutdown(wait=False, cancel_futures=True)
+        return JSONResponse(status_code=503, content={
+            "status": "not_ready",
+            "database": (f"no answer within {READINESS_PROBE_TIMEOUT_SECONDS}s "
+                         "(unreachable, not refused)"),
+        })
     except Exception as exc:
+        pool.shutdown(wait=False)
         return JSONResponse(status_code=503, content={"status": "not_ready", "database": str(exc)[:200]})
     settings = get_settings()
     migration = None

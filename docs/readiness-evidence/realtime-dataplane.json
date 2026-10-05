@@ -1,6 +1,6 @@
 {
   "schema": "cryptoscan.realtime-dataplane-drill/1",
-  "ran_at": "2026-10-02T03:40:35.207989+00:00",
+  "ran_at": "2026-10-05T01:42:50.515720+00:00",
   "api": "http://127.0.0.1:8010",
   "target": "/home/array/Desktop/CryptoScan/_tmp/snbchk/src",
   "checks": [
@@ -12,17 +12,17 @@
     {
       "check": "persistence: scan completes",
       "ok": true,
-      "detail": "55867a62-6fad-42df-ac14-4afc23f33b0c"
+      "detail": "b5679e49-2f22-4bac-9463-ee6f1bc98f64"
     },
     {
       "check": "persistence: scan row written to PostgreSQL",
       "ok": true,
-      "detail": "3 -> 4"
+      "detail": "0 -> 1"
     },
     {
       "check": "persistence: evidence rows written",
       "ok": true,
-      "detail": "3259 -> 3355"
+      "detail": "0 -> 96"
     },
     {
       "check": "persistence: evidence is attached to its scan",
@@ -32,7 +32,7 @@
     {
       "check": "persistence: a later scan preserves earlier history",
       "ok": true,
-      "detail": "scans 4 -> 5, evidence 3355 -> 3451"
+      "detail": "scans 1 -> 2, evidence 96 -> 192"
     },
     {
       "check": "persistence: the first scan's evidence survives the second",
@@ -42,22 +42,22 @@
     {
       "check": "replay: event history is readable",
       "ok": true,
-      "detail": "10 events"
+      "detail": "5 events"
     },
     {
       "check": "replay: Last-Event-ID header resumes after that id",
       "ok": true,
-      "detail": "resumed at 161 after 160"
+      "detail": "resumed at 4 after 3"
     },
     {
       "check": "replay: a fresh connection streams without a full history dump",
       "ok": true,
-      "detail": "106 lines"
+      "detail": "35 lines"
     },
     {
       "check": "dedup: event ids are unique in history",
       "ok": true,
-      "detail": "196 events, 196 distinct ids"
+      "detail": "8 events, 8 distinct ids"
     },
     {
       "check": "dedup: no duplicate (timestamp, type, payload) tuples",
@@ -87,7 +87,7 @@
     {
       "check": "dependency: redis reported down, rollup degraded",
       "ok": true,
-      "detail": "{\"status\": \"degraded\", \"down\": [\"redis\"], \"checks\": [{\"name\": \"database\", \"status\": \"ok\", \"detail\": \"postgresql\", \"latency_ms\": 3.0}, {\"name\": \"redis\", \"status\": \"down\", \"detail\": \"Timeout reading fro"
+      "detail": "{\"status\": \"degraded\", \"down\": [\"redis\"], \"checks\": [{\"name\": \"database\", \"status\": \"ok\", \"detail\": \"postgresql\", \"latency_ms\": 1.5}, {\"name\": \"redis\", \"status\": \"down\", \"detail\": \"Timeout reading fro"
     },
     {
       "check": "dependency: scan trigger does not fake success with redis down",
@@ -97,7 +97,7 @@
     {
       "check": "dependency: rollup returns to ok after redis comes back",
       "ok": true,
-      "detail": "{\"status\": \"ok\", \"down\": [], \"checks\": [{\"name\": \"database\", \"status\": \"ok\", \"detail\": \"postgresql\", \"latency_ms\": 1.7}, {\"name\": \"redis\", \"status\": \"ok\", \"deta"
+      "detail": "{\"status\": \"ok\", \"down\": [], \"checks\": [{\"name\": \"database\", \"status\": \"ok\", \"detail\": \"postgresql\", \"latency_ms\": 2.4}, {\"name\": \"redis\", \"status\": \"ok\", \"deta"
     },
     {
       "check": "recovery: redis restarted",
@@ -107,7 +107,7 @@
     {
       "check": "recovery: durable evidence survives a redis restart",
       "ok": true,
-      "detail": "3547 -> 3547"
+      "detail": "288 -> 288 (rows at or below the pre-restart mark)"
     },
     {
       "check": "recovery: event history still served after restart",

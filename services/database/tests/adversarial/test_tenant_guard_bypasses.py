@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine, delete, exists, func, insert, select, text, update
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from db.connection.session import Base

@@ -292,6 +292,28 @@ def header_client(monkeypatch, tmp_path):
     # Without it validate_runtime_settings rejects the config and the fixture
     # dies before the test can assert anything about headers.
     monkeypatch.setenv("METRICS_TOKEN", "metrics-token-32-characters-minimum-x")
+    # The production guard keeps gaining required settings, and each time
+    # this fixture goes stale the whole module errors at setup rather than
+    # failing a specific assertion -- which reads as "the security tests are
+    # broken" instead of "the fixture is missing a value". Everything the
+    # guard demands is supplied here so the module exercises what it is
+    # named for: the response headers.
+    # JSON: pydantic-settings parses a list field from env as JSON, so a
+    # bare hostname raises SettingsError rather than becoming a one-host list.
+    monkeypatch.setenv("TRUSTED_HOSTS", '["cryptoscan.example.com"]')
+    monkeypatch.setenv("REGISTRY_WEBHOOK_SECRET", "registry-webhook-secret-32-chars-min")
+    monkeypatch.setenv("CBOM_SIGNING_SECRET", "cbom-signing-secret-32-characters-min")
+    monkeypatch.setenv("STREAM_SECRET", "stream-secret-32-characters-minimum-x")
+    monkeypatch.setenv("AUDITOR_API_KEY", "auditor-api-key-32-characters-minimum")
+    monkeypatch.setenv("NEO4J_URI", "bolt://neo4j.internal:7687")
+    monkeypatch.setenv("NEO4J_PASSWORD", "neo4j-password-24-characters-min")
+    # Production startup also refuses to boot unless the database is at the
+    # migration head. That guard is right and stays in force everywhere
+    # else; this module is about response headers, and migrating 60-plus
+    # revisions into a throwaway SQLite file to read a Content-Security-Policy
+    # would make the test slow and about the wrong thing.
+    monkeypatch.setattr("db.connection.session.migration_status",
+                        lambda engine: {"status": "current", "applied": [], "heads": []})
     # Production readiness is fail-closed for durable realtime state. The
     # lifespan is skipped by the pytest harness, so no live Redis is required.
     monkeypatch.setenv("REDIS_URL", "redis://redis:6379/0")

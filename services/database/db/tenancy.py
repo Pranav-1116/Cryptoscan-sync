@@ -61,7 +61,7 @@ from typing import Any
 
 from sqlalchemy import String, Table, event, inspect as sa_inspect, or_, select
 from sqlalchemy.orm import Mapped, Session, mapped_column, with_loader_criteria
-from sqlalchemy.sql import Join, Select, visitors
+from sqlalchemy.sql import Join, Select
 from sqlalchemy.sql.annotation import AnnotatedColumn, AnnotatedTable
 
 #: The tenant whose rows the current unit of work may see. ``None`` means no

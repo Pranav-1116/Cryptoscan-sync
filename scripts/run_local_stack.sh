@@ -34,7 +34,7 @@ REDIS_PORT="${LOCAL_REDIS_PORT:-55441}"
 DB_USER="${LOCAL_DB_USER:-cryptoscan}"
 DB_PASS="${LOCAL_DB_PASS:-cryptoscan}"
 API_PORT="${LOCAL_API_PORT:-8010}"
-UI_PORT="${LOCAL_UI_PORT:-3003}"   # must match frontend/vite.config.ts
+UI_PORT="${LOCAL_UI_PORT:-3003}"   # must match frontend/vite.config.js
 PY="${PY:-$ROOT/.venv/bin/python}"
 RUN="${LOCAL_RUN_DIR:-$ROOT/.local-stack}"
 
@@ -46,6 +46,21 @@ export REDIS_URL="redis://127.0.0.1:${REDIS_PORT}/0"
 
 log() { printf '[stack] %s\n' "$*" >&2; }
 pid_on() { ss -lptn "sport = :$1" 2>/dev/null | grep -oP 'pid=\K[0-9]+' | head -1; }
+
+# Worker liveness by PID file, not by pgrep.
+#
+# `pgrep -f worker.main` matches any shell whose command line happens to
+# contain that string -- including the very commands an operator or a drill
+# runs to check on it. That false positive made this script report "worker
+# already running" and skip starting a real one, leaving jobs queued in
+# Redis with nothing consuming them, and made the reliability drill's
+# restart check pass against a phantom.
+worker_pid() {
+  local f="$RUN/worker.pid"
+  [ -f "$f" ] || return 1
+  local p; p="$(cat "$f" 2>/dev/null)"
+  [ -n "$p" ] && kill -0 "$p" 2>/dev/null && echo "$p"
+}
 
 # Absolute, deliberately: the migration step runs alembic from
 # services/database/migrations, and relative entries stop resolving the
@@ -128,7 +143,7 @@ up() {
   # With REDIS_URL set the API enqueues instead of running the pipeline
   # inline, so without this process a triggered scan sits in the queue
   # forever and the job stays QUEUED.
-  if pgrep -f "worker.main" >/dev/null 2>&1; then
+  if worker_pid >/dev/null; then
     log "worker already running"
   else
     PYTHONPATH="$(pypath)" \
@@ -139,7 +154,8 @@ up() {
     CRYPTOSCAN_SNAPSHOT_DIR="$RUN/data" \
     CRYPTOSCAN_SOURCE_ROOTS="${LOCAL_SOURCE_ROOTS:-$ROOT}" \
     nohup "$PY" -m worker.main > "$RUN/worker.log" 2>&1 &
-    log "worker starting"
+    echo $! > "$RUN/worker.pid"
+    log "worker starting (pid $(cat "$RUN/worker.pid"))"
   fi
 
   # ---- frontend ----------------------------------------------------------
@@ -171,7 +187,7 @@ status() {
   printf '  %-12s %-34s %s\n' "redis" "127.0.0.1:${REDIS_PORT}" \
     "$(docker exec "$REDIS_NAME" redis-cli ping 2>/dev/null | grep -q PONG && echo up || echo DOWN)"
   printf '  %-12s %-34s %s\n' "worker" "(queue consumer)" \
-    "$(pgrep -f worker.main >/dev/null 2>&1 && echo up || echo DOWN)"
+    "$(worker_pid >/dev/null && echo up || echo DOWN)"
   echo
   echo "  sign in: ${ADMIN_USER} / ${ADMIN_PASS}   (development only; refused in production)"
   echo "  the estate boots EMPTY — run a scan to populate it"
@@ -185,7 +201,8 @@ down() {
   for port in "$API_PORT" "$UI_PORT"; do
     p="$(pid_on "$port")"; [ -n "$p" ] && kill "$p" 2>/dev/null && log "stopped :$port"
   done
-  p="$(pgrep -f worker.main | head -1)"; [ -n "$p" ] && kill "$p" 2>/dev/null && log "worker stopped"
+  p="$(worker_pid)" && kill "$p" 2>/dev/null && log "worker stopped"
+  rm -f "$RUN/worker.pid"
   docker rm -f "$DB_NAME" "$REDIS_NAME" >/dev/null 2>&1 && log "database + redis removed" || true
 }
 

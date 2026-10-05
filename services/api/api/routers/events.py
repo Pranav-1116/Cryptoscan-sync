@@ -21,6 +21,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
+from starlette.concurrency import run_in_threadpool
 
 from api.dependencies import get_current_user
 from api.events import platform_events
@@ -300,7 +301,21 @@ async def tail_monitor_events(interval: float = 2.0) -> None:
     try:
         while True:
             try:
-                rows = _fetch_recent_monitor_events(limit=100)
+                # Off the event loop. _fetch_recent_monitor_events is a
+                # synchronous SQLAlchemy query, and this coroutine runs on
+                # the loop that serves every request. While PostgreSQL
+                # answers in milliseconds nobody notices; when it stops
+                # answering the call blocks until the socket times out and
+                # the whole API freezes with it -- /healthz included, so
+                # Kubernetes kills a pod whose only problem is that the
+                # database is briefly away. That turns a recoverable blip
+                # into a restart storm exactly when the database is already
+                # struggling.
+                #
+                # Same defect class PRODUCTION-READINESS.md records for the
+                # auth middleware's session-revocation check, in a different
+                # place.
+                rows = await run_in_threadpool(_fetch_recent_monitor_events, 100)
             except Exception as rows_exc:  # DB not ready / mid-migration — retry
                 logger.warning("event_tail_rows_unavailable", extra={"error_type": type(rows_exc).__name__})
                 rows = []

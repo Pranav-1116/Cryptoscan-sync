@@ -13,6 +13,73 @@ is fail-closed by design.
 
 ---
 
+## 0. Internal-work update (2026-10-05)
+
+Everything in this section is work that needed no credential, provider or
+customer — the "internal" remainder. It does **not** move any phase below:
+the gate categories still turn on external evidence. What it changes is that
+three defects which would have surfaced *in* production are now fixed, and
+two drills that could not previously pass are green.
+
+**Probe behaviour under a database outage — three defects, all fixed.**
+Found by running `scripts/reliability_drill.py` against a paused PostgreSQL
+container rather than a mock that raises:
+
+| Endpoint | Before | After |
+|---|---|---|
+| `/healthz` (liveness) | hung 20 s+ | **200 in 2 ms** |
+| `/health` | hung 20 s+ | **200 in 1 ms** |
+| `/readyz` (readiness) | hung 25 s+ | **503 in 4.0 s** |
+
+1. `tail_monitor_events` is an `async` coroutine that called a synchronous
+   SQLAlchemy query directly, so an unreachable database blocked the event
+   loop and froze *every* endpoint. Now `run_in_threadpool`. This is the same
+   defect class `PRODUCTION-READINESS.md` records for the auth middleware's
+   session-revocation check, in a different place.
+2. `/healthz` called `check_db_health()` inline, making the **liveness** probe
+   depend on PostgreSQL. `readyz`'s own docstring already stated the intended
+   contract — *"Liveness (/healthz) stays 200 through a DB outage"* — so the
+   implementation contradicted its documented spec. A hung liveness probe
+   means Kubernetes kills a pod whose only problem is that the database is
+   briefly away: a restart storm exactly when the database is already
+   struggling.
+3. `/readyz` may check the database, but exceeded any probe budget. An
+   unreachable host is not a refused one — it accepts the TCP connection and
+   never answers, so pool pre-ping and checkout each wait out their own
+   timeout and stack. Now bounded at `READINESS_PROBE_TIMEOUT_SECONDS = 4.0`
+   and answering 503, which says "drain me, I am alive" rather than looking
+   like a wedged process.
+
+The existing outage test passed throughout, because it mocks an engine that
+*raises* immediately. Two tests now model the blocking case instead.
+
+**Drill evidence (local sandbox, not target topology):**
+
+| Drill | Result | Artifact |
+|---|---|---|
+| Realtime data plane | **PASS 23/23** | `readiness-evidence/realtime-dataplane.json` |
+| Reliability | **PASS 21/21** | `readiness-evidence/reliability.json` |
+
+**A phantom-process bug in the local stack.** `pgrep -f worker.main` matches
+any shell whose command line contains that string — including the commands
+used to check on it. `run_local_stack.sh` therefore reported "worker already
+running" and never started a real one, leaving jobs queued in Redis with
+nothing consuming them, while the drill's restart check passed against the
+phantom. Both now track the worker by PID file.
+
+**One unresolved product question, pinned in CI rather than silently fixed.**
+`engine.tick()` re-materializes every known gateway event when none are
+pending, to record liveness. Components stay idempotent, but the CBOM version
+and `_event_log` grow once per tick: measured at version 53 and 52 log entries
+after one real event and 50 quiet ticks. On a two-second loop that is ~43k
+duplicate entries a day and a version that counts ticks rather than changes.
+Two comments inside `tick()` disagree about whether this should happen. A test
+now records the shipped behaviour so the contradiction is visible; whether
+liveness belongs in the version, a heartbeat, or a bounded log is a product
+decision, not a cleanup.
+
+---
+
 ## 1. Where we are now (2026-10-04)
 
 The unified gate (`scripts/bank_readiness.py`) currently records:
@@ -315,6 +382,27 @@ the operating cadence:
 Also ongoing: `docs/ops/on-call-and-comms.md` rotations, patch/vulnerability
 program records (P0-6), and audit exports on request
 (`docs/compliance-burn.md`).
+
+Add to the per-release set the two drills added on 2026-10-05, both of which
+need a live stack rather than a test double:
+
+```bash
+bash scripts/run_local_stack.sh up          # or point --api at staging
+python scripts/realtime_dataplane_drill.py --out <evidence>/realtime-dataplane.json
+python scripts/reliability_drill.py         --out <evidence>/reliability.json
+```
+
+The reliability drill is destructive by design — it SIGKILLs the worker and
+pauses the database container — so run it against staging, never production,
+and expect it to restart the worker through `run_local_stack.sh`.
+
+A note on how to read their output: both drills measure the product only when
+nothing else is loading the machine. Run concurrently with the full test
+suite, the data-plane drill reported three failures — an API timeout and an
+apparent loss of durable evidence — that were entirely contention. Neither
+reproduced on a quiet host. A drill that can fail for the wrong reason is
+worse than no drill, so run them alone and treat a failure as real only after
+re-running on an idle machine.
 
 ---
 
