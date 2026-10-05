@@ -8,7 +8,8 @@
 #   bash scripts/run_local_stack.sh up      # start everything, print URLs
 #   bash scripts/run_local_stack.sh status  # what is listening
 #   bash scripts/run_local_stack.sh logs    # tail api + frontend
-#   bash scripts/run_local_stack.sh down    # stop everything
+#   bash scripts/run_local_stack.sh down    # stop everything, KEEP the data
+#   bash scripts/run_local_stack.sh purge   # stop, then DELETE the estate
 #
 # The estate boots EMPTY. There is no demo data and no seeding: inventory
 # appears only when a real scan runs against a target you configure. Pages
@@ -33,6 +34,11 @@ REDIS_NAME="${LOCAL_REDIS_NAME:-cryptoscan-local-redis}"
 REDIS_PORT="${LOCAL_REDIS_PORT:-55441}"
 DB_USER="${LOCAL_DB_USER:-cryptoscan}"
 DB_PASS="${LOCAL_DB_PASS:-cryptoscan}"
+# Named volumes, so the estate outlives the containers. Without these the
+# data lived only in the container filesystem and `down` -- which does a
+# `docker rm -f` -- destroyed every scan with no warning and no recovery.
+DB_VOLUME="${LOCAL_DB_VOLUME:-cryptoscan-local-pgdata}"
+REDIS_VOLUME="${LOCAL_REDIS_VOLUME:-cryptoscan-local-redisdata}"
 API_PORT="${LOCAL_API_PORT:-8010}"
 UI_PORT="${LOCAL_UI_PORT:-3003}"   # must match frontend/vite.config.js
 PY="${PY:-$ROOT/.venv/bin/python}"
@@ -83,6 +89,7 @@ up() {
     docker rm -f "$DB_NAME" >/dev/null 2>&1 || true
     docker run -d --name "$DB_NAME" \
       -e POSTGRES_USER="$DB_USER" -e POSTGRES_PASSWORD="$DB_PASS" -e POSTGRES_DB="$DB_USER" \
+      -v "${DB_VOLUME}:/var/lib/postgresql/data" \
       -p "127.0.0.1:${DB_PORT}:5432" postgres:16-alpine >/dev/null
     log "postgres starting on 127.0.0.1:${DB_PORT}"
   else
@@ -99,7 +106,8 @@ up() {
   if ! docker ps --format '{{.Names}}' | grep -qx "$REDIS_NAME"; then
     docker rm -f "$REDIS_NAME" >/dev/null 2>&1 || true
     docker run -d --name "$REDIS_NAME" \
-      -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine >/dev/null
+      -v "${REDIS_VOLUME}:/data" \
+      -p "127.0.0.1:${REDIS_PORT}:6379" redis:7-alpine redis-server --appendonly yes >/dev/null
     log "redis starting on 127.0.0.1:${REDIS_PORT}"
   else
     log "redis already running"
@@ -197,13 +205,33 @@ status() {
 
 logs() { tail -n 40 -F "$RUN/api.log" "$RUN/worker.log" "$RUN/frontend.log"; }
 
+# Stop everything. The estate SURVIVES: the containers are removed but the
+# named volumes are not, so `up` brings the same scans back. Use `purge` to
+# delete the data on purpose.
 down() {
   for port in "$API_PORT" "$UI_PORT"; do
     p="$(pid_on "$port")"; [ -n "$p" ] && kill "$p" 2>/dev/null && log "stopped :$port"
   done
   p="$(worker_pid)" && kill "$p" 2>/dev/null && log "worker stopped"
   rm -f "$RUN/worker.pid"
-  docker rm -f "$DB_NAME" "$REDIS_NAME" >/dev/null 2>&1 && log "database + redis removed" || true
+  docker rm -f "$DB_NAME" "$REDIS_NAME" >/dev/null 2>&1 && log "containers removed" || true
+  log "data kept in volumes ${DB_VOLUME} / ${REDIS_VOLUME} — 'up' restores the estate"
+  log "to delete it: $0 purge"
+}
+
+# Destroy the estate. Separate from `down`, named for what it does, and it
+# asks first -- `down` used to do this silently because the containers had
+# no volumes, and a restart that was only meant to reload the frontend took
+# every scan with it.
+purge() {
+  down
+  if [ "${2:-}" != "--yes" ] && [ "${FORCE_PURGE:-}" != "1" ]; then
+    printf '[stack] delete volumes %s and %s? every scan in them is lost. [y/N] ' \
+      "$DB_VOLUME" "$REDIS_VOLUME" >&2
+    read -r reply
+    case "$reply" in [yY]|[yY][eE][sS]) ;; *) log "purge cancelled"; return 0 ;; esac
+  fi
+  docker volume rm "$DB_VOLUME" "$REDIS_VOLUME" >/dev/null 2>&1 && log "volumes deleted" || true
 }
 
 case "${1:-up}" in
@@ -211,5 +239,6 @@ case "${1:-up}" in
   status) status ;;
   logs) logs ;;
   down) down ;;
-  *) echo "usage: $0 {up|status|logs|down}" >&2; exit 2 ;;
+  purge) purge "$@" ;;
+  *) echo "usage: $0 {up|status|logs|down|purge}" >&2; exit 2 ;;
 esac
