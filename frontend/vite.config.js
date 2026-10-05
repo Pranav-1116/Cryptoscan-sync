@@ -35,4 +35,25 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // The pages already code-split via React.lazy; what stayed in one
+        // 588 kB entry chunk was the dependency floor every route pays
+        // before anything renders. Splitting it by cache lifetime means a
+        // console deploy re-downloads the app chunk while React, the
+        // router and the icon set stay in the browser cache -- they only
+        // change when a dependency is actually upgraded.
+        //
+        // Grouped rather than one-chunk-per-package on purpose: dozens of
+        // tiny chunks cost a request each on a cold load, which is worse
+        // on the sort of locked-down bank network this runs on.
+        manualChunks: {
+          "vendor-react": ["react", "react-dom", "react-router-dom"],
+          "vendor-motion": ["framer-motion", "@formkit/auto-animate"],
+          "vendor-icons": ["@phosphor-icons/react"],
+        },
+      },
+    },
+  },
 });

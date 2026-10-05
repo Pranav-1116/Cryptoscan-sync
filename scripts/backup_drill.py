@@ -171,28 +171,56 @@ def main() -> int:
         "PYTHONPATH": os.environ.get("PYTHONPATH", ""),
     })
     port = args.restore_port
+    # Keep the recovered instance's output. It used to go to DEVNULL, so a
+    # restore that failed to boot reported only "did not come up" with no
+    # way to tell a port clash from a corrupt backup -- the one moment in
+    # the drill where the reason matters most.
+    boot_log = restore_root / "recovered-api.log"
+    boot_fh = boot_log.open("wb")
     proc = subprocess.Popen(
         [args.python, "-m", "uvicorn",
          "api.main:app", "--host", "127.0.0.1", "--port", str(port)],
         cwd=str(REPO), env=env,
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        stdout=boot_fh, stderr=subprocess.STDOUT)
     try:
         base = f"http://127.0.0.1:{port}"
         up = False
+        detail = base
+        # Readiness, not liveness. This polled /healthz, which until
+        # 776bb1e9 happened to touch the database -- so it accidentally
+        # proved the restored estate was readable. That commit correctly
+        # removed the DB check from the liveness probe (a liveness probe
+        # that depends on PostgreSQL causes restart storms during an
+        # outage), which silently downgraded this assertion to "uvicorn
+        # started". A restore drill that cannot tell a recovered database
+        # from an empty one is not a restore drill, so it now waits on
+        # /readyz and requires the probe to name the database as ok.
         for _ in range(40):
             time.sleep(0.5)
             try:
-                s, _b = call(base, "/api/v1/healthz")
+                s, b = call(base, "/api/v1/readyz")
                 if s == 200:
-                    up = True
-                    break
+                    body = b if isinstance(b, dict) else {}
+                    if str(body.get("database", "")).lower() in {"ok", "up", "ready"}:
+                        up = True
+                        detail = f"{base} readyz={body}"
+                        break
+                    detail = f"{base} readyz 200 but database={body.get('database')!r}"
             except Exception as _handler_exc:
                 logger.debug(
                     "expected_exception_boundary",
                     extra={"error_type": type(_handler_exc).__name__},
                 )
                 continue
-        check("restore: recovered instance boots", up, base)
+        if not up:
+            try:
+                boot_fh.flush()
+                tail = boot_log.read_text(encoding="utf-8", errors="replace").strip().splitlines()[-12:]
+                if tail:
+                    detail = f"{detail} | boot log: " + " / ".join(t.strip() for t in tail)
+            except OSError:
+                pass
+        check("restore: recovered instance serves the restored database", up, detail)
         if not up:
             return _finish(args, backup_root, restore_root)
 
