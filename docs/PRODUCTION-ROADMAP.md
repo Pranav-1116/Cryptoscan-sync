@@ -222,12 +222,17 @@ short-run qualification, not a capacity claim) and operational readiness.
    python scripts/postgres_drill.py \
      --primary-dsn  postgresql://… --standby-dsn postgresql://… \
      --promote-command "…" --execute-promotion --acknowledge-destructive \
-     --require-promotion --api-url https://staging…/api/v1/healthz \
+     --require-promotion --api-url https://staging…/api/v1/readyz \
      --worker-health-command "python scripts/drill_worker_recovery.py --run-seconds 6" \
      --restore-command "bash -c 'pg_dump … | psql …'" \
      --clean-restore-dsn postgresql://… \
      --out releases/dr-drill-<date>.json
    ```
+
+   `/readyz`, not `/healthz`: since `fe0fddf` the drill refuses liveness URLs
+   outright — liveness stays 200 through a database outage by design, so it
+   cannot prove failover. The probe also requires the response body to name
+   the database as `ok`.
 
 5. **Alert-escalation exercise** (`docs/ops/on-call-and-comms.md`) and a
    **backup drill** (`docs/backup-drill.md` / `scripts/backup_drill.py`).
