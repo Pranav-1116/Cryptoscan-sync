@@ -60,14 +60,14 @@ export default function Pqc() {
             path="/api/v1/banking/roadmap"
             filename="ir-8547-roadmap.json"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export IR 8547 Roadmap
           </AuthenticatedDownload>
           <a
             href="#/cbom"
             className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Filter CBOM
           </a>
@@ -140,7 +140,7 @@ export default function Pqc() {
                 padding: "16px",
                 background: "var(--bg-2)",
                 border: "1px solid var(--line)",
-                borderRadius: "8px",
+                borderRadius: "var(--r)",
                 display: "flex",
                 flexDirection: "column",
                 gap: "8px"

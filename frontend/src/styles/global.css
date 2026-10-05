@@ -33,6 +33,13 @@
   --accent: #4a9eff;
   --violet: #9d8df1;    /* graph: application nodes         */
   --magenta: #9d8df1;
+  /* Foreground for text sitting ON the accent (selected chips, primary
+     buttons). It has to flip with the theme: the dark theme's accent is a
+     light blue, where white text measures 2.75:1 and fails AA, while the
+     light theme's accent is a dark blue, where near-black measures 3.35:1
+     and fails. Call sites previously hardcoded "#fff" or "#000", so each
+     one was unreadable in exactly one of the two themes. */
+  --on-accent: #06121f;
   /* Semantic status. Each has exactly one meaning and is used nowhere else.
      Tuned for legibility on graphite rather than for saturation. */
   --green: #3fb950;     /* pass / live / low                */
@@ -73,6 +80,7 @@
   --accent: #0b62d6;
   --violet: #5b46c4;
   --magenta: #5b46c4;
+  --on-accent: #ffffff;   /* light theme's accent is dark: white wins here */
   --green: #1a7f37;
   --amber: #9a6700;
   --orange: #bc4c00;
@@ -99,11 +107,11 @@ body {
   font-variant-numeric: tabular-nums;
 }
 a { color: var(--cyan); text-decoration: none; }
-a:hover { color: #7ab8ff; text-decoration: underline; }
+a:hover { color: color-mix(in srgb, var(--accent) 80%, var(--text)); text-decoration: underline; }
 button { font-family: inherit; }
 ::selection { background: rgba(74, 158, 255, 0.3); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #2a3650; border-radius: var(--r); }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: var(--r); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ── accent text ───────────────────────────────────────────────────── */
@@ -111,6 +119,91 @@ button { font-family: inherit; }
   color: var(--cyan);
 }
 .glow-cyan { color: var(--cyan); }
+
+/* ── iconography ───────────────────────────────────────────────────── */
+/* One icon set at one optical size (see components/icons.tsx). Icons sit
+   on the text baseline and inherit currentColor, so a status colour set on
+   the parent reaches the mark without the call site restating it. */
+.ico {
+  flex-shrink: 0;
+  vertical-align: -0.125em;
+}
+/* Icon + label, the shape most buttons and list rows actually are. */
+.ico-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.ico-row > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Brand mark. Flat, token-driven, and legible in both themes.
+   This was `background: var(--grad); color: #04121d` — once --grad was
+   flattened from a gradient to the solid --panel-2, that hardcoded
+   near-black foreground fell to 1.14:1 against it and the mark went
+   invisible in dark mode (it only ever passed on the light theme's white
+   panel). Using the accent on a neutral surface keeps one rule for both. */
+.brandmark {
+  display: grid;
+  place-items: center;
+  border-radius: var(--r);
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Icon-only control (sidebar collapse, modal close, row actions). These
+   were one-off inline styles that each re-picked their own padding and
+   colour, so no two sat the same way against their neighbours. */
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r);
+  color: var(--faint);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 0;
+}
+.icon-btn:hover { color: var(--text); background: var(--panel-2); }
+.icon-btn:focus-visible { outline: none; border-color: var(--accent); color: var(--text); }
+
+/* ── sidebar scope selectors (tenant / environment) ────────────────── */
+.scope-group { padding: 0 8px 12px; display: flex; flex-direction: column; gap: 6px; }
+.scope-sel {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  padding: 6px 10px;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.scope-sel:hover { border-color: var(--line-strong); }
+.scope-sel:focus-visible { outline: none; border-color: var(--accent); }
+.scope-sel.env { font-size: 11.5px; color: var(--dim); letter-spacing: 0.04em; }
+.scope-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+
+/* Production is the one place the sidebar is allowed to carry colour: an
+   operator about to run a scan needs to know which estate they are in.
+   Previously hardcoded rgba(239,68,68,…) and #fca5a5 -- neither of which
+   is in the palette, and both of which ignored the light theme entirely. */
+.scope-sel.env.is-prod {
+  background: color-mix(in srgb, var(--red) 8%, var(--bg-2));
+  border-color: color-mix(in srgb, var(--red) 30%, var(--line));
+  color: var(--red);
+}
+.scope-sel.env.is-prod .scope-dot { background: var(--red); }
 
 /* ── kicker ────────────────────────────────────────────────────────── */
 .kicker {
@@ -196,19 +289,19 @@ button { font-family: inherit; }
 .badge .dot { width: 6px; height: 6px; border-radius: 50%; }
 .badge.cyan { color: var(--accent); border-color: var(--line-strong); background: var(--panel-2); }
 .badge.cyan .dot { background: var(--cyan); }
-.badge.blue { color: #9cc0ff; border-color: #234a8f; background: rgba(59,130,246,0.12); }
+.badge.blue { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
 .badge.blue .dot { background: var(--blue); }
-.badge.green { color: #86efac; border-color: #1c6b3c; background: rgba(34,197,94,0.12); }
+.badge.green { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--line)); background: color-mix(in srgb, var(--green) 12%, var(--panel)); }
 .badge.green .dot { background: var(--green); }
-.badge.amber { color: #fcd34d; border-color: #7a5a14; background: rgba(245,158,11,0.12); }
+.badge.amber { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); background: color-mix(in srgb, var(--amber) 12%, var(--panel)); }
 .badge.amber .dot { background: var(--amber); }
-.badge.orange { color: #fdba74; border-color: #7a3c12; background: rgba(249,115,22,0.13); }
+.badge.orange { color: var(--orange); border-color: color-mix(in srgb, var(--orange) 40%, var(--line)); background: color-mix(in srgb, var(--orange) 12%, var(--panel)); }
 .badge.orange .dot { background: var(--orange); }
-.badge.red { color: #fca5a5; border-color: #7f2722; background: rgba(239,68,68,0.14); }
+.badge.red { color: var(--red); border-color: color-mix(in srgb, var(--red) 40%, var(--line)); background: color-mix(in srgb, var(--red) 12%, var(--panel)); }
 .badge.red .dot { background: var(--red); }
-.badge.slate { color: #cbd5e1; border-color: #475569; background: rgba(100,116,139,0.14); }
+.badge.slate { color: var(--dim); border-color: color-mix(in srgb, var(--slate) 40%, var(--line)); background: color-mix(in srgb, var(--slate) 12%, var(--panel)); }
 .badge.slate .dot { background: var(--slate); }
-.badge.violet { color: #cbbfff; border-color: #43347f; background: rgba(139,124,246,0.12); }
+.badge.violet { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 40%, var(--line)); background: color-mix(in srgb, var(--violet) 12%, var(--panel)); }
 .badge.violet .dot { background: var(--violet); }
 /* pulsing LIVE dot for scanner/health status */
 .badge .dot.pulse { animation: pulse-ring 1.8s infinite; }
@@ -233,7 +326,7 @@ button { font-family: inherit; }
 /* One primary action per view. A flat accent fill, not a gradient: the
    gradient made every form look like a signup page. */
 .btn.primary {
-  background: var(--accent); color: #05070a; border: 1px solid var(--accent);
+  background: var(--accent); color: var(--on-accent); border: 1px solid var(--accent);
   font-weight: 600;
 }
 .btn.primary:hover:not(:disabled) { filter: brightness(1.12); }
@@ -279,7 +372,7 @@ select.inp option { background: var(--panel); color: var(--text); }
 .tbl.clickable tbody tr.sel td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
 
 /* ── bars / meters ────────────────────────────────────────────────── */
-.bar { height: 6px; border-radius: 3px; background: #212c44; overflow: hidden; }
+.bar { height: 6px; border-radius: var(--r); background: var(--bg-2); overflow: hidden; }
 .bar > i { display: block; height: 100%; border-radius: 3px; background: var(--cyan); }
 .bar > i.green { background: var(--green); }
 .bar > i.amber { background: var(--amber); }
@@ -311,8 +404,9 @@ select.inp option { background: var(--panel); color: var(--text); }
   align-self: start;
   padding: 16px 12px 40px;
   border-right: 1px solid var(--line);
-  /* near-black navy, darker than content — persistent left control rail */
-  background: #050d18;
+  /* Darker than content: a persistent left control rail. Uses the token
+     so it tracks the theme instead of being a fixed navy. */
+  background: var(--bg-2);
   position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
 .sidebar .logo { flex-shrink: 0; }
@@ -481,7 +575,7 @@ select.inp option { background: var(--panel); color: var(--text); }
 .matrix .cell span { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.16em; color: var(--dim); text-transform: uppercase; }
 .matrix .cell.hh { background: rgba(248, 113, 113, 0.10); border-color: rgba(248, 113, 113, 0.4); }
 .matrix .cell.hl { background: rgba(251, 191, 36, 0.07); border-color: rgba(251, 191, 36, 0.3); }
-.matrix .cell.lh { background: rgba(124,156,255,0.07); border-color: #39477f; }
+.matrix .cell.lh { background: color-mix(in srgb, var(--accent) 7%, transparent); border-color: var(--line-strong); }
 .matrix .cell.ll { background: rgba(52, 211, 153, 0.06); border-color: rgba(52, 211, 153, 0.25); }
 
 /* ── dependency graph ─────────────────────────────────────────────── */
@@ -529,7 +623,7 @@ select.inp option { background: var(--panel); color: var(--text); }
 .code {
   font-family: var(--mono); font-size: 12px; background: var(--bg-2);
   border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px;
-  overflow: auto; white-space: pre; color: #a9c6e8; line-height: 1.6;
+  overflow: auto; white-space: pre; color: var(--text); line-height: 1.6;
 }
 .mono { font-family: var(--mono); }
 .dim { color: var(--dim); }
@@ -592,7 +686,8 @@ select.inp option { background: var(--panel); color: var(--text); }
 .auth-logo .mark {
   width: 40px; height: 40px; border-radius: var(--r);
   display: grid; place-items: center;
-  background: var(--grad); color: #04121d;
+  /* Was `color: #04121d` on var(--grad): 1.14:1 in dark mode. See .brandmark. */
+  background: var(--panel-2); border: 1px solid var(--line-strong); color: var(--accent);
   font-family: var(--sans); font-weight: 800; font-size: 20px;
 }
 .auth-logo .tagline {
@@ -630,9 +725,9 @@ select.inp option { background: var(--panel); color: var(--text); }
   border: 1px solid var(--line); color: var(--dim);
 }
 .auth-status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
-.auth-status.live { color: #9fe6c6; border-color: #23634a; background: rgba(34,197,94,0.08); }
+.auth-status.live { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--line)); background: color-mix(in srgb, var(--green) 9%, var(--panel)); }
 .auth-status.live .dot { background: var(--green); animation: pulse 2s infinite; }
-.auth-status.down { color: #f0d398; border-color: #6b5220; background: rgba(224,163,41,0.08); }
+.auth-status.down { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); background: color-mix(in srgb, var(--amber) 9%, var(--panel)); }
 .auth-status.down .dot { background: var(--amber); }
 
 /* labelled form fields */
@@ -666,8 +761,22 @@ select.inp option { background: var(--panel); color: var(--text); }
   border-radius: var(--r); padding: 10px 13px; margin-bottom: 15px;
   font-family: var(--sans);
 }
-.auth-alert.err { color: #f2b2ae; border: 1px solid #6e2f2c; background: rgba(224,86,79,0.10); }
-.auth-alert.ok  { color: #9fe6c6; border: 1px solid #23634a; background: rgba(34,197,94,0.09); }
+/* Derived from the status tokens rather than hand-picked hexes. The old
+   values (#f2b2ae / #9fe6c6 on rgba fills) were mixed for the dark theme
+   only, so on the light theme they put pale pink text on a white panel.
+   color-mix keeps one rule legible in both. */
+.auth-alert.err {
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 40%, var(--line));
+  background: color-mix(in srgb, var(--red) 10%, var(--panel));
+}
+.auth-alert.ok {
+  color: var(--green);
+  border: 1px solid color-mix(in srgb, var(--green) 40%, var(--line));
+  background: color-mix(in srgb, var(--green) 10%, var(--panel));
+}
+/* Optical alignment: the mark sits with the first line, not above it. */
+.auth-alert .ico { margin-top: 1px; }
 
 .auth-submit { width: 100%; padding: 13px; font-size: 14px; margin-top: 4px; }
 
@@ -862,9 +971,9 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
   border: 1px solid var(--line); background: rgba(59,130,246,.07);
 }
 /* provider accent bar on the card's top edge */
-.cloud-prov[data-prov="AWS"]   { border-top: 2px solid #f59e0b; }
-.cloud-prov[data-prov="AZURE"] { border-top: 2px solid #3b82f6; }
-.cloud-prov[data-prov="GCP"]   { border-top: 2px solid #22c55e; }
+/* Provider stripes were amber / blue / green -- three status colours
+   spent on telling clouds apart. The provider name already does that. */
+.cloud-prov[data-prov] { border-top: 2px solid var(--line-strong); }
 .cloud-prov[data-prov="OTHER"] { border-top: 2px solid var(--line-strong); }
 
 /* ── hardware root-of-trust & device cards ────────────────────────── */
@@ -915,7 +1024,7 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .vendor-card .v-stat .l { font-family: var(--mono); font-size: 9.5px; letter-spacing: .07em; color: var(--faint); text-transform: uppercase; }
 
 .vendor-detail-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.verdict-bar { display: flex; height: 8px; border-radius: var(--r); overflow: hidden; margin: 12px 0 6px; background: #212c44; }
+.verdict-bar { display: flex; height: 8px; border-radius: var(--r); overflow: hidden; margin: 12px 0 6px; background: var(--bg-2); }
 .verdict-bar > i { height: 100%; }
 .verdict-legend { display: flex; flex-wrap: wrap; gap: 14px; font-family: var(--mono); font-size: 11px; color: var(--dim); }
 .verdict-legend .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-inline-end: 5px; }
@@ -926,7 +1035,7 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .cbom-node { cursor: pointer; }
 .cbom-node circle.node-ring { fill: var(--panel); stroke-width: 2; transition: stroke-width .12s; }
 .cbom-node:hover circle.node-ring { stroke-width: 3.5; }
-.cbom-node.sel circle.node-ring { stroke: #f8fafc !important; stroke-width: 3.5; }
+.cbom-node.sel circle.node-ring { stroke: var(--text) !important; stroke-width: 3.5; }
 .cbom-node text { fill: var(--text); font-size: 11px; font-family: var(--mono); text-anchor: middle; pointer-events: none; }
 .cbom-node text.gsub { fill: var(--faint); font-size: 9px; }
 .cbom-edge { stroke: rgba(30,58,82,.9); stroke-width: 1.4; fill: none; }
@@ -998,8 +1107,8 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
   text-align: center; font-family: var(--mono); font-size: 9.5px; letter-spacing: .06em;
   padding: 7px 4px; border-radius: var(--r); border: 1px solid var(--line); color: var(--faint);
 }
-.rb-tier .tier.auto { color: var(--green); border-color: #1c6b3c; background: rgba(34,197,94,.08); }
-.rb-tier .tier.gate { color: var(--amber); border-color: #7a5a14; background: rgba(245,158,11,.08); }
+.rb-tier .tier.auto { color: var(--green); border-color: color-mix(in srgb, var(--green) 40%, var(--line)); background: color-mix(in srgb, var(--green) 8%, transparent); }
+.rb-tier .tier.gate { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 40%, var(--line)); background: color-mix(in srgb, var(--amber) 8%, transparent); }
 .rb-whenthen { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: start; }
 .rb-clause { font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--cyan);
   padding-top: 9px; text-transform: uppercase; }
@@ -1014,8 +1123,8 @@ html[dir="rtl"] .lang-switch button { font-family: var(--sans); }
 .opt.sel { border-color: var(--cyan); background: var(--panel-2); }
 .opt .opt-tag { font-family: var(--mono); font-size: 8.5px; letter-spacing: .05em; margin-inline-start: auto;
   padding: 1px 6px; border-radius: var(--r); white-space: nowrap; }
-.opt .opt-tag.auto { color: var(--green); border: 1px solid #1c6b3c; }
-.opt .opt-tag.gate { color: var(--amber); border: 1px solid #7a5a14; }
+.opt .opt-tag.auto { color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 40%, var(--line)); }
+.opt .opt-tag.gate { color: var(--amber); border: 1px solid color-mix(in srgb, var(--amber) 40%, var(--line)); }
 .rb-rule-card {
   border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2);
   padding: 13px 15px; margin-bottom: 10px;
@@ -1107,12 +1216,16 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
 .shell.collapsed {
   grid-template-columns: 80px minmax(0, 1fr);
 }
+/* This rule used to set a warm olive (#151611, with #e8e9df for light)
+   while every other surface in the product is neutral graphite, so the
+   rail read as a different application bolted to the side. It also
+   silently overrode the .sidebar background set further up. One token
+   now serves both themes. */
 .sidebar {
-  background: #151611;
+  background: var(--bg-2);
   border-right: 1px solid var(--line);
   padding: 20px 12px 40px;
 }
-:root[data-theme="light"] .sidebar { background: #e8e9df; }
 .shell.collapsed .sidebar .logo-text,
 .shell.collapsed .sidebar .nav-label,
 .shell.collapsed .sidebar .footer-text,
@@ -1157,7 +1270,7 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
 }
 :root[data-theme="light"] .livehead { background: rgba(237,238,229,.92); }
 .livehead .searchbox { border-radius: 999px; min-width: 280px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #17180e; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 .route-frame { min-height: 50vh; }
 .route-loading {
   min-height: 38vh; display: grid; place-items: center;
@@ -1173,8 +1286,64 @@ h1, h2, h3, h4, .topbar h1, .logo-text {
   .livehead { margin-inline: -18px; padding-inline: 18px; }
   .livehead .item:nth-of-type(n+4) { display: none; }
 }
+/* ── interaction motion ────────────────────────────────────────────────
+   Entrances live in lib/motion.tsx; this is the hover/active layer, which
+   belongs in CSS because it must survive re-renders and never run on the
+   main thread. Everything animates transform/opacity/border only -- never
+   width, height or top, which would force layout on a 200-row table.
+
+   The budget is deliberately small. On an instrument, hover feedback
+   exists to confirm "this row is the one I am about to click", so it
+   lands in ~120ms and moves at most 1px. Anything larger starts to feel
+   like the data is floating.
+   ──────────────────────────────────────────────────────────────────── */
+.tbl tbody tr {
+  transition: background-color .12s ease-out, box-shadow .12s ease-out;
+}
+.tbl.clickable tbody tr:hover {
+  background: var(--panel-2);
+  /* an inset rule rather than a border: no reflow, no 1px row jump */
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.panel, .stat, .hw-card, .vendor-card, .plug-card, .check-card, .domain-card, .cascade-stat {
+  transition: border-color .14s ease-out, transform .14s ease-out;
+}
+.hw-card:hover, .vendor-card:hover, .plug-card:hover, .check-card:hover,
+.domain-card:hover, .cascade-stat:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+.btn, .icon-btn, .scope-sel, .badge {
+  transition: background-color .12s ease-out, border-color .12s ease-out, color .12s ease-out;
+}
+.btn:active { transform: translateY(1px); }
+.sidebar a, .primary-nav a {
+  transition: background-color .12s ease-out, color .12s ease-out, box-shadow .12s ease-out;
+}
+.gnode rect { transition: stroke .15s ease-out, opacity .2s ease-out; }
+.edge { transition: stroke .2s ease-out, opacity .2s ease-out; }
+
+/* The one looping animation in the product: a live data-plane indicator.
+   It earns the exception because a static dot cannot distinguish "stream
+   connected" from "stream died three minutes ago". */
+@keyframes zx-live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.live-dot { animation: zx-live-pulse 2s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  /* The operator asked for stillness: honour it for transitions and
+     scroll behaviour too, not just keyframe animations. The JS side
+     checks the same signal via useMotionOK() in lib/motion.tsx. */
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .btn:active, .hw-card:hover, .vendor-card:hover, .plug-card:hover,
+  .check-card:hover, .domain-card:hover, .cascade-stat:hover { transform: none; }
 }
 
 /* Applications / DevSecOps evidence pipeline */

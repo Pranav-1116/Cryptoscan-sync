@@ -43,7 +43,7 @@ export default function Timeline() {
         <div className="timeline">
           {rows.map((r) => (
             <div className={`tl ${r.cr ? "cr" : r.hi ? "hi" : ""}`} key={`${r.id}-${r.t}`}>
-              <span className="mono faint">{r.t}</span> <span className="tag" style={{ fontFamily: "var(--mono)", fontSize: 10.5, padding: "2px 8px", borderRadius: 6, border: "1px solid var(--line)", color: "var(--cyan)" }}>{r.tag}</span>
+              <span className="mono faint">{r.t}</span> <span className="tag" style={{ fontFamily: "var(--mono)", fontSize: 10.5, padding: "2px 8px", borderRadius: "var(--r)", border: "1px solid var(--line)", color: "var(--cyan)" }}>{r.tag}</span>
               <span className="dim" style={{ fontSize: 13, marginLeft: 8 }}>{r.text}</span>
             </div>
           ))}

@@ -1,6 +1,7 @@
 import React from "react";
 import { Panel, Badge, Bar, Ring, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
+import { ICON_SM, IconTrendUp } from "../components/icons";
 
 interface AgilitySystem {
   system?: string;
@@ -69,7 +70,7 @@ export default function Agility() {
             <Badge tone={(a.agility_score ?? 0) >= 70 ? "green" : (a.agility_score ?? 0) >= 50 ? "amber" : "red"}>{a.agility_score ?? 0}</Badge>,
             <Badge tone="violet">{a.category ?? "—"}</Badge>,
             <span className="mono" style={{ fontSize: 12 }}>
-              {a.score_delta === undefined ? "—" : a.score_delta > 0 ? `▲ ${a.score_delta}` : a.score_delta < 0 ? `▼ ${Math.abs(a.score_delta)}` : "flat"}
+              {a.score_delta === undefined ? "—" : a.score_delta > 0 ? <><IconTrendUp className="ico" size={ICON_SM} /> {a.score_delta}</> : a.score_delta < 0 ? `▼ ${Math.abs(a.score_delta)}` : "flat"}
             </span>,
           ])}
         />

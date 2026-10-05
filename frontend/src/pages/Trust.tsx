@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
+import { StatusMark } from "../components/icons";
 import {
   apiPaymentKeys, apiPaymentSummary, apiPaymentForecast, apiPaymentCeremonies,
   apiApiKeyRotationReport, apiWorkloadCa, apiWorkloadIssueSvid, apiWorkloadVerify,
@@ -137,7 +138,7 @@ export default function Trust() {
             value={svidWorkload}
             onChange={(e) => setSvidWorkload(e.target.value)}
             placeholder="workload name (e.g. payment-gateway)"
-            style={{ flex: 1, maxWidth: 320, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" }}
+            style={{ flex: 1, maxWidth: 320, background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" }}
           />
           <button className="btn sm primary" onClick={() => void issueSvid()} disabled={svidBusy}>{svidBusy ? "Issuing…" : "Issue SVID"}</button>
           <button className="btn sm" onClick={() => void verifySvid()} disabled={!svid?.data}>Verify SVID</button>
@@ -219,7 +220,7 @@ function OtWindowsPanel({ onChange }: { onChange: () => void }) {
   };
 
   const wins = list.data.windows ?? [];
-  const input: React.CSSProperties = { flex: 1, minWidth: 150, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" };
+  const input: React.CSSProperties = { flex: 1, minWidth: 150, background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" };
 
   return (
     <Panel title="OT maintenance windows" sub={`${list.data.total_count ?? wins.length} authorized window(s) — active probing allowed only inside these`} className="mt">
@@ -246,7 +247,7 @@ function OtWindowsPanel({ onChange }: { onChange: () => void }) {
         </label>
         <button className="btn primary" onClick={() => void create()} disabled={busy}>{busy ? "Requesting…" : "Declare window"}</button>
       </div>
-      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "✓ " : ""}{msg.text}</Badge></div>}
+      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? <StatusMark ok muted /> : null}{msg.text}</Badge></div>}
 
       <Table
         head={["window", "title", "window (UTC)", "zones", "ticket", "status", ""]}

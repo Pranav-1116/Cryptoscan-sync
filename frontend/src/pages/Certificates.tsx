@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead, Drawer, Code } from "../components/ui.jsx";
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { StatusMark } from "../components/icons";
 import {
   apiLiveInventory,
   apiExpiryCalendar,
@@ -122,7 +123,7 @@ function CertLifecyclePanel() {
   const [showPem, setShowPem] = useState<string | null>(null);
 
   const sans = san.split(",").map((s) => s.trim()).filter(Boolean);
-  const input: React.CSSProperties = { flex: 1, minWidth: 150, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" };
+  const input: React.CSSProperties = { flex: 1, minWidth: 150, background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "8px 12px" };
 
   const genCsr = async () => {
     if (!cn.trim()) { setMsg({ ok: false, text: "common name (CN) is required" }); return; }
@@ -179,7 +180,7 @@ function CertLifecyclePanel() {
         <button className="btn sm" onClick={() => void genCsr()} disabled={busy}>{busy ? "…" : "Generate CSR"}</button>
         <button className="btn primary" onClick={() => void issue()} disabled={busy}>{busy ? "Issuing…" : "Issue certificate"}</button>
       </div>
-      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "✓ " : ""}{msg.text}</Badge></div>}
+      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? <StatusMark ok muted /> : null}{msg.text}</Badge></div>}
 
       {due.length > 0 && (
         <div style={{ marginBottom: 12 }}>

@@ -232,7 +232,7 @@ function SbomScanTab() {
         <textarea className="inp" rows={2} style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
           placeholder='[{"cve_id":"CVE-2024-21538","severity":"CRITICAL","affected":[{"ecosystem":"npm","package":"jws","ranges":[{"introduced":"0","fixed":"3.2.3"}]}]}]'
           value={feedText} onChange={(e) => setFeedText(e.target.value)} />
-        {feedError && <div style={{ color: "var(--red, #e5484d)", fontSize: 12.5, marginTop: 4 }}>{feedError}</div>}
+        {feedError && <div style={{ color: "var(--red)", fontSize: 12.5, marginTop: 4 }}>{feedError}</div>}
       </div>
       <button className="btn sm primary" onClick={() => void scan()} disabled={scanning}>{scanning ? "Scanning…" : "Scan & generate SBOM"}</button>
       <div className="mt" style={{ marginBottom: 8 }}><Err res={scanRes} /></div>
@@ -1104,10 +1104,10 @@ function BinaryPanel() {
           <div className="muted" style={{ fontSize: 12 }}>No indexed scans yet. Run a scan after migration 0063, or refresh if the index is still being populated.</div>
         )}
         {selectedHistory?.error && (
-          <div className="muted" style={{ color: "var(--red, #e5484d)", fontSize: 12, marginTop: 6 }}>{selectedHistory.error}</div>
+          <div className="muted" style={{ color: "var(--red)", fontSize: 12, marginTop: 6 }}>{selectedHistory.error}</div>
         )}
         {selectedHistory?.record && (
-          <div className="mt" style={{ borderTop: "1px solid var(--line, #e5e7eb)", paddingTop: 8 }}>
+          <div className="mt" style={{ borderTop: "1px solid var(--line)", paddingTop: 8 }}>
             <div className="row" style={{ gap: 8, alignItems: "center", marginBottom: 5 }}>
               <strong style={{ fontSize: 12.5 }}>Observation detail</strong>
               <span className="mono muted" style={{ fontSize: 11 }}>{selectedHistory.record.artifact_id}</span>
@@ -1174,7 +1174,7 @@ function BinaryPanel() {
               ) : null}
             </div>
           )}
-          {jobError && <div style={{ color: "var(--red, #e5484d)", marginTop: 4 }}>{jobError}</div>}
+          {jobError && <div style={{ color: "var(--red)", marginTop: 4 }}>{jobError}</div>}
         </div>
       )}
       <div className="mt" style={{ marginBottom: 8 }}>
@@ -1198,7 +1198,7 @@ function BinaryPanel() {
           {dynError && <Badge tone="red"><span className="dot" /> {dynError}</Badge>}
         </div>
         {dynRefusals.length > 0 && (
-          <div style={{ color: "var(--red, #e5484d)", fontSize: 12.5, marginTop: 4 }}>
+          <div style={{ color: "var(--red)", fontSize: 12.5, marginTop: 4 }}>
             not executed: {dynRefusals.join("; ")}
           </div>
         )}
@@ -1270,7 +1270,7 @@ function BinaryPanel() {
               )}
             </div>
             {batch.state_note && (
-              <div style={{ color: "var(--red, #e5484d)", marginTop: 2 }}>{batch.state_note}</div>
+              <div style={{ color: "var(--red)", marginTop: 2 }}>{batch.state_note}</div>
             )}
             <Table
               head={["file", "decision", "why", "covers"]}
@@ -1332,7 +1332,7 @@ function BinaryPanel() {
           </button>
         </div>
         {rulesInfo && (
-          <div style={{ fontSize: 12.5, marginTop: 4, color: rulesInfo.ok ? "var(--green, #30a46c)" : "var(--red, #e5484d)" }}>
+          <div style={{ fontSize: 12.5, marginTop: 4, color: rulesInfo.ok ? "var(--green)" : "var(--red)" }}>
             {rulesInfo.text}
           </div>
         )}
@@ -1353,7 +1353,7 @@ function BinaryPanel() {
           <button className="btn sm" onClick={() => void installPack(false)} disabled={packBusy}>Install pack</button>
         </div>
         {packInfo && (
-          <div style={{ fontSize: 12.5, marginTop: 4, color: packInfo.ok ? "var(--green, #30a46c)" : "var(--red, #e5484d)" }}>
+          <div style={{ fontSize: 12.5, marginTop: 4, color: packInfo.ok ? "var(--green)" : "var(--red)" }}>
             {packInfo.text}
             {packInfo.reasons.map((reason, i) => (
               <div key={i} className="muted">refused: {reason}</div>
@@ -1376,7 +1376,7 @@ function BinaryPanel() {
                     <span className="mono">{atRest.at_rest.key_id}</span>
                   </>
                 ) : (
-                  <span style={{ color: "var(--red, #e5484d)" }}>
+                  <span style={{ color: "var(--red)" }}>
                     plaintext — {atRest.at_rest.note || "no artifact key configured"}
                   </span>
                 )}
@@ -1405,7 +1405,7 @@ function BinaryPanel() {
               </div>
             ))}
             {knowledge.tables?.errors?.map((problem, i) => (
-              <div key={i} className="muted" style={{ color: "var(--red, #e5484d)" }}>
+              <div key={i} className="muted" style={{ color: "var(--red)" }}>
                 table not searched: {problem.file} ({problem.source}) — {problem.error}
               </div>
             ))}
@@ -1420,7 +1420,7 @@ function BinaryPanel() {
         <textarea className="inp" rows={2} style={{ width: "100%", fontFamily: "ui-monospace, monospace", fontSize: 12 }}
           placeholder='[{"cve_id":"CVE-2026-0001","severity":"HIGH","affected":[{"ecosystem":"generic","package":"OpenSSL","ranges":[{"introduced":"3.0.0","fixed":"3.0.21"}]}]}]'
           value={feedText} onChange={(e) => setFeedText(e.target.value)} />
-        {feedError && <div style={{ color: "var(--red, #e5484d)", fontSize: 12.5, marginTop: 4 }}>{feedError}</div>}
+        {feedError && <div style={{ color: "var(--red)", fontSize: 12.5, marginTop: 4 }}>{feedError}</div>}
       </div>
       <div className="row" style={{ gap: 8 }}>
         <button className="btn sm primary" onClick={() => void scan()} disabled={busy}>{busy ? "scanning…" : "Scan binaries"}</button>
@@ -1543,7 +1543,7 @@ function BinaryPanel() {
                   <span style={{ fontSize: 12 }}>
                     {(c.opened || []).join("; ") || "—"}
                     {(c.refused || []).map((r: any) => (
-                      <div key={String(r.member || r.format)} style={{ color: "var(--amber, #d97706)" }}>
+                      <div key={String(r.member || r.format)} style={{ color: "var(--amber)" }}>
                         refused {r.member || r.format}: {r.reason}
                       </div>
                     ))}

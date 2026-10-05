@@ -15,13 +15,14 @@ import {
 } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 import { useEnterprise } from "./EnterpriseContext";
+import { IconClose, IconSecurity, IconUser, IconInfo, ICON_MD, type Icon } from "./icons";
 
 export type AdminDrawerTab = "security_center" | "user_profile" | "about";
 
-const TABS: Array<{ id: AdminDrawerTab; label: string; icon: string }> = [
-  { id: "security_center", label: "Security Center", icon: "⛨" },
-  { id: "user_profile", label: "User Profile", icon: "👤" },
-  { id: "about", label: "About", icon: "ℹ" },
+const TABS: Array<{ id: AdminDrawerTab; label: string; icon: Icon }> = [
+  { id: "security_center", label: "Security Center", icon: IconSecurity },
+  { id: "user_profile", label: "User Profile", icon: IconUser },
+  { id: "about", label: "About", icon: IconInfo },
 ];
 
 function Row({ k, v, tone }: { k: string; v: React.ReactNode; tone?: "ok" | "warn" | "bad" }) {
@@ -176,23 +177,24 @@ export function EnterpriseAdminDrawer({
         onClick={(e) => e.stopPropagation()}
         style={{
           position: "absolute", top: 0, right: 0, bottom: 0, width: "420px", maxWidth: "94vw",
-          background: "var(--bg-1)", borderLeft: "1px solid var(--line-strong)",
+          background: "var(--bg-2)", borderLeft: "1px solid var(--line-strong)",
           boxShadow: "-20px 0 40px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 16px", borderBottom: "1px solid var(--line)" }}>
-          <span style={{ fontWeight: 700, fontSize: "14px" }}>⛨ Administration</span>
-          <button onClick={onClose} className="btn sm">✕</button>
+          <span className="ico-row" style={{ fontWeight: 700, fontSize: "14px" }}><IconSecurity className="ico" size={ICON_MD} /><span>Administration</span></span>
+          <button onClick={onClose} className="icon-btn" aria-label="Close"><IconClose size={ICON_MD} /></button>
         </div>
         <div style={{ display: "flex", gap: "4px", padding: "10px 12px", borderBottom: "1px solid var(--line)" }}>
           {TABS.map((t) => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={tab === t.id ? "btn sm" : "btn sm ghost"}
+              className={`ico-row ${tab === t.id ? "btn sm" : "btn sm ghost"}`}
               style={{ fontSize: "11.5px", flex: 1 }}
             >
-              {t.icon} {t.label}
+              <t.icon className="ico" size={ICON_MD} />
+              <span>{t.label}</span>
             </button>
           ))}
         </div>

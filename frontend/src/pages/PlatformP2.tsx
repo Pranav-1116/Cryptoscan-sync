@@ -15,6 +15,7 @@ import {
 } from "../lib/api.js";
 import { usePollingApi, useApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { StatusMark } from "../components/icons";
 
 /* P2 enterprise platform — deterministic:
    - Plugin marketplace: hash-pinned, Ed25519-signed plugins (quarantine on failure)
@@ -154,7 +155,7 @@ export default function PlatformP2() {
 
       {notice && (
         <div className={`badge ${notice.kind === "ok" ? "green" : "red"}`} style={{ display: "block", marginBottom: 12, padding: "8px 12px" }}>
-          {notice.kind === "ok" ? "✓ " : "✕ "}{notice.text}
+          <StatusMark ok={notice.kind === "ok"} muted />{notice.text}
         </div>
       )}
 

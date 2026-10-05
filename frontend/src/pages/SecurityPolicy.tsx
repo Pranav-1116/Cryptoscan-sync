@@ -16,17 +16,17 @@ const row: React.CSSProperties = {
   alignItems: "center", padding: "9px 0", borderBottom: "1px solid var(--line)",
 };
 const label: React.CSSProperties = { fontSize: 13 };
-const hint: React.CSSProperties = { fontSize: 11.5, color: "var(--muted)", maxWidth: 420 };
+const hint: React.CSSProperties = { fontSize: 11.5, color: "var(--dim)", maxWidth: 420 };
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button type="button" onClick={() => onChange(!on)} style={{
-      width: 44, height: 24, borderRadius: 12, border: "1px solid var(--line-strong)",
+      width: 44, height: 24, borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
       background: on ? "var(--green)" : "var(--line)", position: "relative", cursor: "pointer",
     }}>
       <span style={{
         position: "absolute", top: 2, left: on ? 22 : 2, width: 18, height: 18,
-        borderRadius: "50%", background: "#fff", transition: "left .12s",
+        borderRadius: "50%", background: "var(--panel)", transition: "left .12s",
       }} />
     </button>
   );
@@ -36,7 +36,7 @@ function Num({ v, onChange, min = 0, max = 1e6 }: { v: number; onChange: (n: num
   return (
     <input type="number" value={v} min={min} max={max}
       onChange={(e) => onChange(Math.max(min, Math.min(max, Number(e.target.value) || 0)))}
-      style={{ width: 96, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--line-strong)",
+      style={{ width: 96, padding: "4px 8px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
         background: "var(--bg)", color: "var(--text)", fontSize: 13 }} />
   );
 }
@@ -46,9 +46,9 @@ function Seg({ options, value, onChange }: { options: string[]; value: string; o
     <div style={{ display: "inline-flex", gap: 4 }}>
       {options.map((o) => (
         <button key={o} onClick={() => onChange(o)} style={{
-          padding: "4px 12px", borderRadius: 6, border: "1px solid var(--line-strong)",
+          padding: "4px 12px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
           background: value === o ? "var(--accent)" : "var(--bg)",
-          color: value === o ? "#fff" : "var(--text)", cursor: "pointer", fontSize: 12.5,
+          color: value === o ? "var(--on-accent)" : "var(--text)", cursor: "pointer", fontSize: 12.5,
         }}>{o}</button>
       ))}
     </div>
@@ -109,7 +109,7 @@ export default function SecurityPolicy() {
 
       {sector && (
         <div style={{ marginBottom: 14, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="badge" style={{ background: "var(--accent-2, #123)", color: "#fff" }}>SECTOR · {sector}</span>
+          <span className="badge" style={{ background: "var(--violet)", color: "var(--text)" }}>SECTOR · {sector}</span>
           <span className="dim" style={{ fontSize: 12.5 }}>
             Policy is loaded from the live <b>{sector}</b> sector profile (read-only, conservative intensity, sensitive-data collection off) and can never be looser than it.
           </span>
@@ -242,6 +242,6 @@ export default function SecurityPolicy() {
 }
 
 const inp: React.CSSProperties = {
-  width: 84, padding: "4px 8px", borderRadius: 6, border: "1px solid var(--line-strong)",
+  width: 84, padding: "4px 8px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
   background: "var(--bg)", color: "var(--text)", fontSize: 13,
 };

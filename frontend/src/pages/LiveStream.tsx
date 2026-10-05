@@ -60,9 +60,9 @@ function AttacksPanel() {
     <>
       <div className="row" style={{ gap: 12, margin: "12px 0" }}>
         <Kpi k="Detections (recent)" v={detections.length} />
-        <Kpi k="Critical" v={sev.CRITICAL ?? 0} tone="var(--bad)" />
-        <Kpi k="High/Alert" v={(sev.HIGH ?? 0) + (sev.ALERT ?? 0)} tone="var(--warn)" />
-        <Kpi k="Medium" v={sev.MEDIUM ?? 0} tone="var(--warn)" />
+        <Kpi k="Critical" v={sev.CRITICAL ?? 0} tone="var(--red)" />
+        <Kpi k="High/Alert" v={(sev.HIGH ?? 0) + (sev.ALERT ?? 0)} tone="var(--amber)" />
+        <Kpi k="Medium" v={sev.MEDIUM ?? 0} tone="var(--amber)" />
       </div>
       <Panel title="Real-time attack detections (13 deterministic rules)">
         {rows.length === 0 ? (
@@ -111,15 +111,15 @@ function CbomPanel() {
         />
         <button onClick={() => void load()} disabled={busy}>{busy ? "…" : "Inspect"}</button>
       </div>
-      {err && <p className="sub" style={{ color: "var(--bad)" }}>{err}</p>}
+      {err && <p className="sub" style={{ color: "var(--red)" }}>{err}</p>}
       {live && (
         <div className="row" style={{ gap: 12, margin: "12px 0", flexWrap: "wrap" }}>
           <Kpi k="Version" v={String(live.version_no)} />
           <Kpi k="Assets" v={String(live.asset_count)} />
           <Kpi k="Freshness" v={fresh ? (fresh.stale ? "STALE" : `${Math.round(fresh.seconds_since_update)}s`) : "?"}
-               tone={fresh?.stale ? "var(--warn)" : "var(--ok)"} />
+               tone={fresh?.stale ? "var(--amber)" : "var(--green)"} />
           <Kpi k="Chain" v={verdict ? (verdict.chain_valid ? "VERIFIED" : `BROKEN @${verdict.broke_at}`) : "?"}
-               tone={verdict?.chain_valid ? "var(--ok)" : "var(--bad)"} />
+               tone={verdict?.chain_valid ? "var(--green)" : "var(--red)"} />
         </div>
       )}
       {live && (

@@ -201,7 +201,7 @@ export function CapabilityMaturityPanel() {
         {rows.map(([slug, tier]) => (
           <span key={slug} data-tier={tier} title={`${TIER_LABEL[tier]} — ${TIER_DETAIL[tier]}`}
             style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "var(--mono)", fontSize: 11,
-              padding: "3px 8px", border: "1px solid var(--line)", borderRadius: 5 }}>
+              padding: "3px 8px", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
             /{slug}
             <TierPill tier={tier} />
           </span>

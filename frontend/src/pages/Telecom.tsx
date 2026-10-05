@@ -239,13 +239,13 @@ export default function Telecom() {
       <Panel title="Roaming partners" sub="inter-PLMN SBI protection per partner (GSMA IR.21 context · TS 33.501 SEPP)" frame>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
           <input placeholder="carrier (de-telekom)" value={partner.carrier_code} onChange={(e) => setPartner({ ...partner, carrier_code: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 150 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 150 }} />
           <input placeholder="partner PLMN (208-01)" value={partner.partner_plmn} onChange={(e) => setPartner({ ...partner, partner_plmn: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 160 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 160 }} />
           <input placeholder="partner name" value={partner.partner_name} onChange={(e) => setPartner({ ...partner, partner_name: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 150 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 150 }} />
           <input placeholder="country (fr)" value={partner.country} onChange={(e) => setPartner({ ...partner, country: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 90 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 90 }} />
           <button onClick={() => void addPartner()} disabled={!partner.carrier_code || !partner.partner_plmn || !partner.partner_name} style={{ padding: "4px 12px" }}>Add partner</button>
         </div>
         {roamingRows.length === 0 ? (
@@ -287,30 +287,30 @@ export default function Telecom() {
       <Panel title="Estate registry" sub="carriers (PLMN) and network functions — telecom.manage" frame>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
           <input placeholder="code (de-telekom)" value={carrier.code} onChange={(e) => setCarrier({ ...carrier, code: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 140 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 140 }} />
           <input placeholder="name" value={carrier.name} onChange={(e) => setCarrier({ ...carrier, name: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 150 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 150 }} />
           <input placeholder="country (de)" value={carrier.country} onChange={(e) => setCarrier({ ...carrier, country: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 80 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 80 }} />
           <input placeholder="plmn (262-01)" value={carrier.plmn} onChange={(e) => setCarrier({ ...carrier, plmn: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 90 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 90 }} />
           <input placeholder="entity (optional)" value={carrier.legal_entity} onChange={(e) => setCarrier({ ...carrier, legal_entity: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 110 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 110 }} />
           <button onClick={() => void addCarrier()} disabled={!carrier.code || !carrier.name} style={{ padding: "4px 12px" }}>Add carrier</button>
         </div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, alignItems: "center" }}>
           <input placeholder="nf_id (amf-prod-01)" value={target.nf_id} onChange={(e) => setTarget({ ...target, nf_id: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 140 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 140 }} />
           <select value={target.nf_type} onChange={(e) => setTarget({ ...target, nf_type: e.target.value })}
-            style={{ background: "#0b1220", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }}>
+            style={{ background: "var(--bg)", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)" }}>
             {Object.entries(reg?.nf_catalog ?? {}).map(([id, spec]) => (
               <option key={id} value={id}>{id} — {spec.plane}</option>
             ))}
           </select>
           <input placeholder="host:port" value={target.endpoint} onChange={(e) => setTarget({ ...target, endpoint: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 190 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 190 }} />
           <input placeholder="carrier (optional)" value={target.carrier_code} onChange={(e) => setTarget({ ...target, carrier_code: e.target.value })}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4, width: 130 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)", width: 130 }} />
           <button onClick={() => void addTarget()} disabled={!target.nf_id || !target.endpoint} style={{ padding: "4px 12px" }}>Add NF</button>
         </div>
         <div style={{ opacity: 0.7 }}>

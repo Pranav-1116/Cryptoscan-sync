@@ -5,6 +5,7 @@ import {
   type ApiResult, type SectorProfile,
 } from "../lib/api.js";
 import { RequireRole } from "../lib/auth.js";
+import { ICON_SM, IconSatellite, StatusMark } from "../components/icons";
 
 /* Sector Layer — one universal scanning engine; the sector profile changes
    context only (criticality, policy packs, compliance frameworks, evidence,
@@ -85,7 +86,7 @@ export default function Sectors() {
       />
       {msg && (
         <div style={{ margin: "10px 2px", fontFamily: "var(--mono)", fontSize: 12, color: msg.ok ? "var(--green)" : "var(--red)" }}>
-          {msg.ok ? "✓ " : "✕ "}{msg.text}
+          <StatusMark ok={msg.ok} muted />{msg.text}
         </div>
       )}
 
@@ -138,8 +139,8 @@ export default function Sectors() {
                       <div className="dim" style={{ fontSize: 10, letterSpacing: ".08em", textTransform: "uppercase", marginBottom: 5 }}>scan modes</div>
                       <div className="row" style={{ gap: 5, flexWrap: "wrap" }}>
                         {(s.recommended_modes || []).slice(0, 4).map((m) => (
-                          <span key={m.id} className="cap-chip" style={m.ot_safe ? { color: "var(--cyan)", borderColor: "#14637a" } : undefined}>
-                            {m.ot_safe ? "🛰 " : ""}{m.id}
+                          <span key={m.id} className="cap-chip" style={m.ot_safe ? { color: "var(--cyan)", borderColor: "var(--line-strong)" } : undefined}>
+                            {m.ot_safe ? <IconSatellite className="ico" size={ICON_SM} /> : null} {m.id}
                           </span>
                         ))}
                       </div>

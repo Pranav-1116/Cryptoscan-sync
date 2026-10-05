@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Badge, Panel, Table } from "./ui";
 import { apiCbomPortfolio, PortfolioCbom } from "../lib/api";
 import AuthenticatedDownload from "./AuthenticatedDownload";
+import { CountUp } from "../lib/motion";
 
 export type SystemRow = { ref: string; name: string; criticality: string; businessUnit: string; coverage: string; assets: number; dependsOn: string[]; dependents: string[] };
 
@@ -47,7 +48,11 @@ export default function PortfolioDependencyPanel() {
       <div style={{ display: "flex", gap: 10, marginBottom: 10, flexWrap: "wrap" }}>
         <AuthenticatedDownload path="/api/v1/cbom/portfolio?signed=true" filename="crypto-portfolio.json" className="btn sm outline">Signed JSON</AuthenticatedDownload>
         <AuthenticatedDownload path="/api/v1/cbom/portfolio?fmt=xml" filename="crypto-portfolio.xml" className="btn sm outline">XML</AuthenticatedDownload>
-        {state === "ready" && <span style={{ fontSize: 12, color: "var(--dim)", alignSelf: "center" }}>{rows.length} systems · {edges} system→system edges</span>}
+        {state === "ready" && (
+          <span style={{ fontSize: 12, color: "var(--dim)", alignSelf: "center" }}>
+            <CountUp value={rows.length} /> systems · <CountUp value={edges} /> system→system edges
+          </span>
+        )}
       </div>
       {state === "offline" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Backend offline.</p>}
       {state === "loading" && <p style={{ color: "var(--dim)", fontSize: 13 }}>Loading…</p>}

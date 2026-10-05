@@ -59,7 +59,7 @@ export function LanguageSwitcher() {
   const { lang, setLang, t } = useI18n();
   return (
     <span className="lang-switch" title={t("lang.label")}
-      style={{ display: "inline-flex", border: "1px solid var(--line-strong)", borderRadius: 6, overflow: "hidden" }}>
+      style={{ display: "inline-flex", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", overflow: "hidden" }}>
       {(["en", "ar"] as Lang[]).map((l) => (
         <button key={l}
           onClick={() => setLang(l)}
@@ -67,7 +67,7 @@ export function LanguageSwitcher() {
           style={{
             border: "none", borderRadius: 0,
             background: lang === l ? "var(--grad)" : "transparent",
-            color: lang === l ? "#fff" : "var(--faint)",
+            color: lang === l ? "var(--text)" : "var(--faint)",
             fontWeight: lang === l ? 700 : 500, padding: "3px 10px",
           }}>
           {l === "en" ? "EN" : "ع"}

@@ -24,14 +24,14 @@ function MeterBar({ label, used, limit }: { label: string; used: number; limit: 
           {used} / {limit === null ? "unlimited" : limit}
         </span>
       </div>
-      <div style={{ background: "var(--border, #333)", height: 6, borderRadius: 3, marginTop: 3 }}>
+      <div style={{ background: "var(--line)", height: 6, borderRadius: "var(--r)", marginTop: 3 }}>
         <div
           data-tone={tone}
           style={{
             width: `${limit === null ? 0 : pct}%`,
             height: 6,
-            borderRadius: 3,
-            background: tone === "ok" ? "var(--ok, #3fb950)" : tone === "warn" ? "var(--warn, #d29922)" : "var(--bad, #f85149)",
+            borderRadius: "var(--r)",
+            background: tone === "ok" ? "var(--green)" : tone === "warn" ? "var(--amber)" : "var(--red)",
           }}
         />
       </div>
@@ -151,7 +151,7 @@ function InvitesPanel() {
         <button onClick={invite}>Create invite</button>
       </div>
       {freshToken && (
-        <p style={{ fontSize: 12, background: "var(--bg, #161b22)", padding: 8, borderRadius: 6 }}>
+        <p style={{ fontSize: 12, background: "var(--bg)", padding: 8, borderRadius: "var(--r)" }}>
           one-time token (shown once): <code>{freshToken}</code>
         </p>
       )}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Badge, Button, ProgressBar } from "../components/ui";
 import { Link, useNavigate } from "react-router-dom";
 import { getToken, tenantFetch } from "../lib/api";
+import { IconNetwork, IconCloud, IconCode, IconContainer, IconHardware, IconCertificate, IconEstate, IconPass, IconTarget, ICON_LG, type Icon } from "../components/icons";
 
 type ScanTarget =
   | "Network"
@@ -24,14 +25,14 @@ export default function Scanners() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
-  const targets: { id: ScanTarget; label: string; desc: string; icon: string }[] = [
-    { id: "Network", label: "Network Scanner", desc: "Passive TLS JA3/JA3S/JARM fingerprinting and cipher suite audit", icon: "◈" },
-    { id: "Cloud", label: "Cloud KMS Scanner", desc: "AWS KMS, Azure Key Vault, GCP Cloud KMS key hierarchy audit", icon: "☁" },
-    { id: "Source Repository", label: "Source Repository AST", desc: "Deterministic AST scanner for hardcoded crypto secrets & weak ciphers", icon: "⬡" },
-    { id: "Container", label: "Container Registry", desc: "Trivy & Syft image SBOM crypto package extraction", icon: "⧉" },
-    { id: "Hardware", label: "Hardware & HSM Fleet", desc: "FIPS 140-3 HSM fleet, TPM 2.0, Secure Boot measurements", icon: "⌬" },
-    { id: "Certificate", label: "Certificates & CT Logs", desc: "X.509 cert lifecycle, CT logs, and expiry monitoring", icon: "⊞" },
-    { id: "Full Estate", label: "Full Estate Discovery", desc: "Comprehensive continuous cryptographic estate discovery", icon: "✦" },
+  const targets: { id: ScanTarget; label: string; desc: string; icon: Icon }[] = [
+    { id: "Network", label: "Network Scanner", desc: "Passive TLS JA3/JA3S/JARM fingerprinting and cipher suite audit", icon: IconNetwork },
+    { id: "Cloud", label: "Cloud KMS Scanner", desc: "AWS KMS, Azure Key Vault, GCP Cloud KMS key hierarchy audit", icon: IconCloud },
+    { id: "Source Repository", label: "Source Repository AST", desc: "Deterministic AST scanner for hardcoded crypto secrets & weak ciphers", icon: IconCode },
+    { id: "Container", label: "Container Registry", desc: "Trivy & Syft image SBOM crypto package extraction", icon: IconContainer },
+    { id: "Hardware", label: "Hardware & HSM Fleet", desc: "FIPS 140-3 HSM fleet, TPM 2.0, Secure Boot measurements", icon: IconHardware },
+    { id: "Certificate", label: "Certificates & CT Logs", desc: "X.509 cert lifecycle, CT logs, and expiry monitoring", icon: IconCertificate },
+    { id: "Full Estate", label: "Full Estate Discovery", desc: "Comprehensive continuous cryptographic estate discovery", icon: IconEstate },
   ];
 
   const handleStartScan = async () => {
@@ -110,14 +111,14 @@ export default function Scanners() {
                   onClick={() => setSelectedTarget(t.id)}
                   style={{
                     padding: "16px 18px",
-                    background: isSelected ? "rgba(0, 212, 255, 0.08)" : "var(--panel)",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--panel)",
                     border: isSelected ? "1px solid var(--cyan)" : "1px solid var(--line)",
-                    borderRadius: "10px",
+                    borderRadius: "var(--r)",
                     cursor: "pointer",
                     transition: "all 0.15s ease"
                   }}
                 >
-                  <div style={{ fontSize: "20px", marginBottom: "8px", color: isSelected ? "var(--cyan)" : "var(--dim)" }}>{t.icon}</div>
+                  <div style={{ marginBottom: "8px", lineHeight: 0, color: isSelected ? "var(--accent)" : "var(--dim)" }}><t.icon size={20} /></div>
                   <div style={{ fontWeight: 600, fontSize: "14.5px", marginBottom: "4px" }}>{t.label}</div>
                   <div style={{ fontSize: "12.5px", color: "var(--dim)", lineHeight: "1.4" }}>{t.desc}</div>
                 </div>
@@ -156,7 +157,7 @@ export default function Scanners() {
                   width: "100%",
                   background: "var(--bg-2)",
                   border: "1px solid var(--line)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--r)",
                   padding: "8px 12px",
                   color: "var(--text)",
                   fontFamily: "var(--mono)",
@@ -176,7 +177,7 @@ export default function Scanners() {
                   width: "100%",
                   background: "var(--bg-2)",
                   border: "1px solid var(--line)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--r)",
                   padding: "8px 12px",
                   color: "var(--text)",
                   fontSize: "13px"
@@ -203,7 +204,7 @@ export default function Scanners() {
       {step === "running" && (
         <div className="panel" style={{ padding: "32px 24px", textAlign: "center" }}>
           <div style={{ fontSize: "36px", marginBottom: "16px" }}>
-            {scanStatus === "completed" ? "✓" : "⌖"}
+            {scanStatus === "completed" ? <IconPass size={ICON_LG} /> : <IconTarget size={ICON_LG} />}
           </div>
           <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 8px" }}>
             {scanStatus === "completed" ? "Discovery Scan Complete" : "Discovery Scan In Progress"}

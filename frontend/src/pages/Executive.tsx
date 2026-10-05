@@ -2,6 +2,7 @@ import React from "react";
 import { Panel, Badge, Bar, Ring, PageHead } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
+import { ICON_SM, IconTrendDown, IconTrendFlat, IconTrendUp } from "../components/icons";
 import {
   apiStatsSummary, apiLiveBom, apiLiveDrift, apiLiveAlerts,
   LiveBomResponse, LiveAlertsResponse,
@@ -133,7 +134,7 @@ export default function Executive() {
               {priorities.map((p) => (
                 <a key={p.label} href={p.to} className="scan-row" style={{ textDecoration: "none" }}>
                   <div className="s-ico">
-                    <Badge tone={p.tone}>{p.tone === "red" ? "▲" : p.tone === "amber" ? "◆" : "●"}</Badge>
+                    <Badge tone={p.tone}>{p.tone === "red" ? <IconTrendUp size={ICON_SM} /> : p.tone === "amber" ? <IconTrendFlat size={ICON_SM} /> : <IconTrendDown size={ICON_SM} />}</Badge>
                   </div>
                   <div className="s-meta"><div className="s-name">{p.label}</div></div>
                   <div className="s-right"><span className="s-elapsed" style={{ fontSize: 16, fontWeight: 700, color: `var(--${p.tone})` }}>{p.n}</span></div>
@@ -158,14 +159,14 @@ export default function Executive() {
                   {order.map(([state, col]) => Number(counts[state] || 0) > 0 && (
                     <i key={state} style={{
                       width: `${(Number(counts[state]) / total) * 100}%`,
-                      background: { green: "#22c55e", amber: "#f59e0b", red: "#ef4444", slate: "#64748b" }[col],
+                      background: { green: "var(--green)", amber: "var(--amber)", red: "var(--red)", slate: "var(--slate)" }[col],
                     }} title={`${state}: ${counts[state]}`} />
                   ))}
                 </div>
                 <div className="verdict-legend">
                   {order.map(([state, col]) => (
                     <span key={state}><span className="sw" style={{
-                      background: { green: "#22c55e", amber: "#f59e0b", red: "#ef4444", slate: "#64748b" }[col],
+                      background: { green: "var(--green)", amber: "var(--amber)", red: "var(--red)", slate: "var(--slate)" }[col],
                     }} />{state.toLowerCase()} {Number(counts[state] || 0)}</span>
                   ))}
                 </div>

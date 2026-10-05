@@ -3,6 +3,7 @@ import { Panel, Badge, Table, PageHead, Kpi } from "../components/ui.jsx";
 import { useLive } from "../lib/useLive.js";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
 import { apiSafeScanPolicy } from "../lib/api.js";
+import { StatusMark } from "../components/icons";
 
 /* Security is a live enforcement view: the RBAC permission matrix comes from
    GET /api/v1/auth/roles, the ABAC scope from /api/v1/control/me/grants, and
@@ -85,7 +86,7 @@ export default function Security() {
                 <span className="mono" style={{ fontWeight: 600 }}>{action}</span>,
                 ...roleNames.map((r) => {
                   const has = matrix[r]?.has(action);
-                  return <span key={r} style={{ color: has ? "var(--green)" : "var(--faint)" }}>{has ? "✓" : "·"}</span>;
+                  return <span key={r} style={{ color: has ? "var(--green)" : "var(--faint)" }}><StatusMark ok={has ? true : null} muted /></span>;
                 }),
               ])}
             />

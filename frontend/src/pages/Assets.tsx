@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Badge, Button, Tabs } from "../components/ui";
 import { Link } from "react-router-dom";
 import { getToken, tenantFetch } from "../lib/api";
+import { IconEstate } from "../components/icons";
 
 export interface AssetRecord {
   id: string;
@@ -115,7 +116,7 @@ export default function Assets() {
         </div>
       ) : assetsList.length === 0 ? (
         <div className="panel" style={{ padding: "48px 24px", textAlign: "center" }}>
-          <div style={{ fontSize: "32px", marginBottom: "12px" }}>▤</div>
+          <div style={{ marginBottom: "12px", lineHeight: 0, color: "var(--faint)" }}><IconEstate size={32} /></div>
           <h3 style={{ fontSize: "18px", fontWeight: 600, margin: "0 0 8px" }}>No cryptographic assets discovered yet</h3>
           <p style={{ color: "var(--dim)", fontSize: "14px", maxWidth: "480px", margin: "0 auto 20px", lineHeight: "1.5" }}>
             Connect a discovery source (Network TAP, Cloud KMS, CI/CD, or Container Registry) to start continuously observing your cryptographic estate.
@@ -139,7 +140,7 @@ export default function Assets() {
                     flex: 1,
                     background: "var(--bg-2)",
                     border: "1px solid var(--line)",
-                    borderRadius: "6px",
+                    borderRadius: "var(--r)",
                     padding: "6px 10px",
                     color: "var(--text)",
                     fontSize: "13px"
@@ -156,9 +157,9 @@ export default function Assets() {
                       onClick={() => setSelectedAsset(asset)}
                       style={{
                         padding: "10px 12px",
-                        background: isSel ? "rgba(0, 212, 255, 0.08)" : "transparent",
+                        background: isSel ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "transparent",
                         border: isSel ? "1px solid var(--cyan)" : "1px solid var(--line)",
-                        borderRadius: "6px",
+                        borderRadius: "var(--r)",
                         cursor: "pointer",
                         transition: "all 0.15s ease"
                       }}
@@ -248,7 +249,7 @@ export default function Assets() {
                   {activeTab === 2 && (
                     <div style={{ fontSize: "13px", color: "var(--dim)" }}>
                       <div>Direct cryptographic dependency relationships:</div>
-                      <div style={{ marginTop: "12px", padding: "12px", background: "var(--bg-2)", borderRadius: "6px" }}>
+                      <div style={{ marginTop: "12px", padding: "12px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
                         Application Mesh → Gateway Ingress → <b>{selectedAsset.algorithm} ({selectedAsset.keySize})</b> → Root Certificate Authority
                       </div>
                     </div>

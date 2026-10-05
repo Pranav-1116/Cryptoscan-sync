@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, PageHead } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { ICON_SM, IconClose, IconRadioOff, IconRadioOn, StatusMark } from "../components/icons";
 import {
   apiAutomationRules, apiAutomationCapabilities,
   apiAutomationSaveRule, apiAutomationDeleteRule,
@@ -188,7 +189,7 @@ export default function Automation() {
                   {conditions.map((c, i) => (
                     <div key={i}>• {c.field} {c.operator} {c.value || "∅"}
                       <button className="btn sm" style={{ marginInlineStart: 8, padding: "1px 7px" }}
-                        onClick={() => setConditions((p) => p.filter((_, j) => j !== i))}>✕</button>
+                        onClick={() => setConditions((p) => p.filter((_, j) => j !== i))} aria-label="Remove condition"><IconClose size={ICON_SM} /></button>
                     </div>
                   ))}
                 </div>
@@ -210,7 +211,7 @@ export default function Automation() {
                 const tier = tierOf(a);
                 return (
                   <button key={a} className={`opt ${sel ? "sel" : ""}`} onClick={() => toggleAction(a)}>
-                    <span>{sel ? "◉" : "○"}</span>
+                    <span>{sel ? <IconRadioOn size={ICON_SM} /> : <IconRadioOff size={ICON_SM} />}</span>
                     <span style={{ fontFamily: "var(--mono)", fontSize: 11.5 }}>{a}</span>
                     <span className={`opt-tag ${tier}`}>{tier === "auto" ? "auto" : "approval"}</span>
                   </button>
@@ -316,11 +317,11 @@ export default function Automation() {
         </div>
         {connectorMsg && (
           <div style={{ fontSize: 12.5, marginTop: 8, color: connectorMsg.ok ? "var(--green)" : "var(--red)" }}>
-            {connectorMsg.ok ? "✓" : "✕"} {connectorMsg.text}
+            <StatusMark ok={connectorMsg.ok} muted /> {connectorMsg.text}
           </div>
         )}
         {connectorPayload && (
-          <pre className="mono" style={{ background: "var(--panel-2)", padding: 10, borderRadius: 6, fontSize: 11.5, overflow: "auto", marginTop: 8, maxHeight: 280 }}>
+          <pre className="mono" style={{ background: "var(--panel-2)", padding: 10, borderRadius: "var(--r)", fontSize: 11.5, overflow: "auto", marginTop: 8, maxHeight: 280 }}>
             {JSON.stringify(connectorPayload, null, 2)}
           </pre>
         )}

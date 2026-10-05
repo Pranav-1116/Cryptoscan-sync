@@ -7,6 +7,7 @@ import {
 } from "../lib/api.js";
 import { Corners, Kicker } from "../components/ui.jsx";
 import { RequireRole } from "../lib/auth.js";
+import { ICON_MD, ICON_SM, IconOk, IconWarn, StatusMark } from "../components/icons";
 
 /* Enterprise onboarding wizard — the customer journey:
    1 Create organization · 2 Select sector · 3 Create environment
@@ -22,25 +23,25 @@ const STEPS = [
 
 const card: React.CSSProperties = {
   position: "relative", background: "var(--panel)", border: "1px solid var(--line)",
-  borderRadius: 16, padding: 24,
+  borderRadius: "var(--r)", padding: 24,
 };
 const field: React.CSSProperties = {
-  width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid var(--line-strong)",
-  background: "rgba(0,0,0,.25)", color: "var(--fg)", fontSize: 13, fontFamily: "var(--mono)",
+  width: "100%", padding: "10px 12px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
+  background: "rgba(0,0,0,.25)", color: "var(--text)", fontSize: 13, fontFamily: "var(--mono)",
 };
 const label: React.CSSProperties = { fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: ".08em", marginBottom: 6, display: "block" };
 const btn: React.CSSProperties = {
-  padding: "10px 18px", borderRadius: 10, border: "1px solid var(--cyan)", background: "rgba(34,211,238,.12)",
+  padding: "10px 18px", borderRadius: "var(--r)", border: "1px solid var(--cyan)", background: "color-mix(in srgb, var(--accent) 12%, transparent)",
   color: "var(--cyan)", fontSize: 13, cursor: "pointer", fontFamily: "var(--mono)",
 };
 const btnGhost: React.CSSProperties = { ...btn, border: "1px solid var(--line-strong)", background: "transparent", color: "var(--dim)" };
 const chip: React.CSSProperties = {
-  fontFamily: "var(--mono)", fontSize: 10.5, padding: "3px 9px", borderRadius: 6,
+  fontFamily: "var(--mono)", fontSize: 10.5, padding: "3px 9px", borderRadius: "var(--r)",
   border: "1px solid var(--line-strong)", color: "var(--dim)",
 };
-const okChip: React.CSSProperties = { ...chip, color: "#34d399", border: "1px solid rgba(52,211,153,.5)", background: "rgba(52,211,153,.08)" };
-const badChip: React.CSSProperties = { ...chip, color: "#f87171", border: "1px solid rgba(248,113,113,.5)", background: "rgba(248,113,113,.08)" };
-const warnChip: React.CSSProperties = { ...chip, color: "#fbbf24", border: "1px solid rgba(251,191,36,.5)", background: "rgba(251,191,36,.08)" };
+const okChip: React.CSSProperties = { ...chip, color: "var(--green)", border: "1px solid color-mix(in srgb, var(--green) 50%, transparent)", background: "color-mix(in srgb, var(--green) 8%, transparent)" };
+const badChip: React.CSSProperties = { ...chip, color: "var(--red)", border: "1px solid color-mix(in srgb, var(--red) 50%, transparent)", background: "color-mix(in srgb, var(--red) 8%, transparent)" };
+const warnChip: React.CSSProperties = { ...chip, color: "var(--amber)", border: "1px solid color-mix(in srgb, var(--amber) 50%, transparent)", background: "color-mix(in srgb, var(--amber) 8%, transparent)" };
 
 const SECTORS_FALLBACK = ["banking", "healthcare", "government", "energy", "manufacturing", "retail", "technology", "telecom", "generic"];
 
@@ -137,21 +138,21 @@ export default function Onboarding() {
             const active = i === step;
             return (
               <button key={s} onClick={() => setStep(i)} style={{
-                display: "flex", alignItems: "center", gap: 7, padding: "7px 12px", borderRadius: 10, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 7, padding: "7px 12px", borderRadius: "var(--r)", cursor: "pointer",
                 border: `1px solid ${active ? "var(--cyan)" : "var(--line)"}`,
-                background: active ? "rgba(34,211,238,.1)" : "transparent",
-                color: isDone ? "#34d399" : active ? "var(--cyan)" : "var(--dim)", fontSize: 12, fontFamily: "var(--mono)",
+                background: active ? "color-mix(in srgb, var(--accent) 10%, transparent)" : "transparent",
+                color: isDone ? "var(--green)" : active ? "var(--cyan)" : "var(--dim)", fontSize: 12, fontFamily: "var(--mono)",
               }}>
-                <span>{isDone ? "✓" : i + 1}</span>{s}
+                <span>{isDone ? <IconOk size={ICON_SM} /> : i + 1}</span>{s}
               </button>
             );
           })}
         </div>
         {msg && (
-          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 10, fontSize: 12.5, fontFamily: "var(--mono)",
-            border: `1px solid ${msg.ok ? "rgba(52,211,153,.5)" : "rgba(248,113,113,.5)"}`,
-            color: msg.ok ? "#34d399" : "#f87171", background: msg.ok ? "rgba(52,211,153,.06)" : "rgba(248,113,113,.06)" }}>
-            {msg.ok ? "✓ " : "✕ "}{msg.text}
+          <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: "var(--r)", fontSize: 12.5, fontFamily: "var(--mono)",
+            border: `1px solid ${msg.ok ? "color-mix(in srgb, var(--green) 50%, transparent)" : "color-mix(in srgb, var(--red) 50%, transparent)"}`,
+            color: msg.ok ? "var(--green)" : "var(--red)", background: msg.ok ? "color-mix(in srgb, var(--green) 6%, transparent)" : "color-mix(in srgb, var(--red) 6%, transparent)" }}>
+            <StatusMark ok={msg.ok} muted />{msg.text}
           </div>
         )}
         {state && (
@@ -213,7 +214,7 @@ function OrgStep({ state, sectors, busy, setBusy, refresh, flash, onNext }: {
     <Section title="Step 1 · Create organization" hint="The root entity for all environments, scope, connections and findings.">
       {existing ? (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span style={okChip}>✓ {existing.name}</span>
+          <span style={okChip}><IconOk className="ico" size={ICON_MD} /> {existing.name}</span>
           <span style={chip}>sector: {existing.sector}</span>
           {existing.industry && <span style={chip}>{existing.industry}</span>}
           <Btn ghost onClick={onNext}>Continue to sector →</Btn>
@@ -328,7 +329,7 @@ function EnvStep({ state, busy, setBusy, refresh, flash }: {
 
   return (
     <Section title="Step 3 · Create environment" hint="Environments group scope and set the scanning posture. Operational (OT/ICS) environments are forced to passive/no active probing — safety first. Active probing, when enabled, runs only inside a declared maintenance window.">
-      {isOt && <div style={{ ...warnChip, marginBottom: 14, display: "inline-block" }}>⚠ OT/ICS environment — active probing disabled, passive-only scanning; maintenance windows are respected</div>}
+      {isOt && <div style={{ ...warnChip, marginBottom: 14, display: "inline-block" }}><IconWarn className="ico" size={ICON_SM} /> OT/ICS environment — active probing disabled, passive-only scanning; maintenance windows are respected</div>}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 14, alignItems: "flex-end" }}>
         <div><label style={label}>Name</label><input style={field} value={name} placeholder="Production" onChange={(e) => setName(e.target.value)} /></div>
         <div><label style={label}>Type</label>
@@ -343,13 +344,13 @@ function EnvStep({ state, busy, setBusy, refresh, flash }: {
       </div>
       <div style={{ display: "grid", gap: 10, marginTop: 18 }}>
         {(state?.environments ?? []).map((e) => (
-          <div key={e.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, background: "rgba(0,0,0,.2)" }}>
+          <div key={e.id} style={{ border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 14, background: "rgba(0,0,0,.2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
               <span style={e.env_type === "ot" ? warnChip : okChip}>
                 {e.name} · {e.env_type} · {e.scan_mode}{e.env_type === "ot" ? " · no active probing" : ""}
               </span>
               <Btn ghost onClick={() => setMwEnv(mwEnv === e.id ? null : e.id)}>
-                {e.maintenance_window_enabled ? "Maintenance window ✓" : "Set maintenance window"}
+                {e.maintenance_window_enabled ? "Maintenance window set" : "Set maintenance window"}
               </Btn>
             </div>
             {e.maintenance_window_enabled && e.maintenance_windows?.length ? (
@@ -425,7 +426,7 @@ function ScopeStep({ state, busy, setBusy, refresh, flash }: {
       </div>
       <div style={{ display: "grid", gap: 6, marginTop: 14 }}>
         {entries.map((e) => (
-          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", background: "rgba(0,0,0,.2)" }}>
+          <div key={e.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 12px", background: "rgba(0,0,0,.2)" }}>
             <span style={{ fontFamily: "var(--mono)", fontSize: 12 }}><span className="dim">[{e.kind}]</span> {e.target}</span>
             <RequireRole anyOf={ONBOARDING_WRITE_ROLES}>
               <button style={{ ...btnGhost, padding: "3px 10px", fontSize: 11 }} disabled={busy === e.id} onClick={() => remove(e.id)}>{busy === e.id ? "…" : "remove"}</button>
@@ -458,7 +459,7 @@ function ConnectStep({ state, busy, setBusy, refresh, flash }: {
   return (
     <Section title="Step 5 · Connect infrastructure" hint="Connections Center — register how the engine reaches each domain. Provide NON-SECRET references only (role ARN, project, repo URL, host). Grant read-only access out-of-band; key material is never collected.">
       <div style={{ ...okChip, display: "inline-block", marginBottom: 16 }}>
-        ✓ No secret fields — enter references like IAM role ARN or project ID. Grant read-only access out-of-band.
+        <IconOk className="ico" size={ICON_MD} /> No secret fields — enter references like IAM role ARN or project ID. Grant read-only access out-of-band.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "160px 1fr", gap: 14 }}>
         <div><label style={label}>Connector</label>
@@ -479,7 +480,7 @@ function ConnectStep({ state, busy, setBusy, refresh, flash }: {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(260px,1fr))", gap: 12, marginTop: 20 }}>
         {(state?.connections ?? []).map((c) => (
-          <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, background: "rgba(0,0,0,.2)" }}>
+          <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 14, background: "rgba(0,0,0,.2)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <b style={{ fontSize: 13 }}>{c.name}</b>
               <span style={c.status === "connected" ? okChip : c.status === "error" ? badChip : chip}>{c.status}</span>
@@ -487,7 +488,7 @@ function ConnectStep({ state, busy, setBusy, refresh, flash }: {
             <div className="dim" style={{ fontSize: 11.5, marginTop: 4, fontFamily: "var(--mono)" }}>{c.kind} · {c.method}</div>
             {c.method === "agent" && (
               <div style={{ marginTop: 8, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                <span style={c.agent_healthy ? okChip : warnChip}>{c.agent_healthy ? "✓ agent healthy" : "awaiting agent"}</span>
+                <span style={c.agent_healthy ? okChip : warnChip}>{c.agent_healthy ? "agent healthy" : "awaiting agent"}</span>
                 {c.agent_link && <span style={c.agent_link === "encrypted" ? okChip : chip}>link: {c.agent_link}</span>}
               </div>
             )}
@@ -531,7 +532,7 @@ function TestStep({ state, busy, setBusy, refresh, flash, onNext }: {
         {conns.map((c) => {
           const checks = c.test_result?.checks ?? [];
           return (
-            <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: 12, padding: 14, background: "rgba(0,0,0,.2)" }}>
+            <div key={c.id} style={{ border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 14, background: "rgba(0,0,0,.2)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: checks.length ? 10 : 0 }}>
                 <b style={{ fontSize: 13 }}>{c.name} <span className="dim" style={{ fontFamily: "var(--mono)", fontSize: 11 }}>· {c.kind}</span></b>
                 <RoleBtn ghost busy={busy === c.id} disabled={busy === c.id} onClick={() => test(c.id)}>
@@ -541,7 +542,7 @@ function TestStep({ state, busy, setBusy, refresh, flash, onNext }: {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {checks.map((chk) => (
                   <span key={chk.check} style={chk.ok ? okChip : badChip} title={chk.detail}>
-                    {chk.ok ? "✓" : "✕"} {chk.check}
+                    <StatusMark ok={chk.ok} muted /> {chk.check}
                   </span>
                 ))}
                 {!checks.length && <span className="dim" style={{ fontSize: 12 }}>Not tested yet.</span>}
@@ -575,7 +576,7 @@ function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash, refresh }: 
   };
   return (
     <Section title="Step 7 · Start discovery" hint="The universal engine then takes over: asset identification → specialized scans auto-selected by asset type → evidence fusion → CBOM/HBOM → dependency graph → sector policy → risk → PQC, followed by 24/7 event-driven monitoring.">
-      {otEnv && <div style={{ ...warnChip, marginBottom: 14, display: "inline-block" }}>⚠ OT estate present — network/hardware domains will use passive discovery</div>}
+      {otEnv && <div style={{ ...warnChip, marginBottom: 14, display: "inline-block" }}><IconWarn className="ico" size={ICON_SM} /> OT estate present — network/hardware domains will use passive discovery</div>}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 18 }}>
         <span style={state?.environments?.length ? okChip : badChip}>{state?.environments?.length ? "✓" : "✕"} {state?.environments?.length ?? 0} environment(s)</span>
         <span style={(state?.scope?.total ?? 0) > 0 ? okChip : badChip}>{(state?.scope?.total ?? 0) > 0 ? "✓" : "✕"} {state?.scope?.total ?? 0} authorized target(s)</span>
@@ -588,7 +589,7 @@ function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash, refresh }: 
       ) : (
         <div>
           <div style={{ ...okChip, display: "inline-block", marginBottom: 14 }}>
-            ✓ Discovery run {plan.run_id.slice(0, 8)} complete — registered scope into the engine over {plan.connectors_used.join(", ")}
+            <IconOk className="ico" size={ICON_MD} /> Discovery run {plan.run_id.slice(0, 8)} complete — registered scope into the engine over {plan.connectors_used.join(", ")}
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
             <span style={chip}>~{plan.assets_estimate ?? 0} assets in scope</span>
@@ -601,7 +602,7 @@ function DiscoveryStep({ state, plan, setPlan, busy, setBusy, flash, refresh }: 
           <label style={label}>Domain plan (auto-derived from scope)</label>
           <div style={{ display: "grid", gap: 8 }}>
             {plan.plan.map((d) => (
-              <div key={d.domain} style={{ display: "flex", justifyContent: "space-between", border: "1px solid var(--line)", borderRadius: 10, padding: "10px 14px", background: "rgba(0,0,0,.2)" }}>
+              <div key={d.domain} style={{ display: "flex", justifyContent: "space-between", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "10px 14px", background: "rgba(0,0,0,.2)" }}>
                 <span style={{ fontFamily: "var(--mono)", fontSize: 13 }}>{d.domain}</span>
                 <span className="dim" style={{ fontFamily: "var(--mono)", fontSize: 12 }}>targets: {d.targets} · mode: {d.mode}</span>
               </div>

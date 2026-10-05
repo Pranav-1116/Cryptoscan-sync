@@ -3,6 +3,8 @@ import { Panel, Badge, Table, PageHead, Tabs, Drawer } from "../components/ui.js
 import KeyReconciliationPanel from "../components/KeyReconciliationPanel";
 import { usePollingApi, useApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { StatusMark } from "../components/icons";
+import { IconHardware, IconSecret, IconCrypto, IconSecurity, IconAccelerator, IconComponent, ICON_MD, type Icon } from "../components/icons";
 import {
   apiLiveInventory, apiHardwareCatalog, apiLiveScanStatus,
   LiveInventory, HardwareEntry, LiveHardwareDevice,
@@ -20,8 +22,9 @@ const HW_STATUS_TONE: Record<string, string> = {
   UNKNOWN: "", ALLOWED: "green", REQUIRED: "green",
 };
 
-const DEVICE_GLYPH: Record<string, string> = {
-  CPU: "▦", TPM: "🔐", HSM: "⌬", SECURE_ELEMENT: "⚿", ACCELERATOR: "⚡",
+const DEVICE_ICON: Record<string, Icon> = {
+  CPU: IconHardware, TPM: IconSecret, HSM: IconCrypto,
+  SECURE_ELEMENT: IconSecurity, ACCELERATOR: IconAccelerator,
 };
 
 export default function Hardware() {
@@ -80,7 +83,7 @@ export default function Hardware() {
             <div key={cell.k} className={`rot-cell ${cell.present ? "present" : "absent"}`}>
               <span className="rot-k">{cell.k}</span>
               <span className={`rot-v ${cell.present ? "yes" : "no"}`}>
-                {cell.present ? "✓ " : ""}{cell.v}
+                {cell.present ? <StatusMark ok muted /> : null}{cell.v}
               </span>
             </div>
           ))}
@@ -102,7 +105,10 @@ export default function Hardware() {
             {devices.map((h, i) => (
               <button key={`${h.id}-${i}`} className="hw-card" onClick={() => setSel(h)}>
                 <div className="hw-top">
-                  <span className="hw-type">{DEVICE_GLYPH[h.type] ?? "▣"} {h.type}</span>
+                  <span className="hw-type ico-row">
+                    {(() => { const I = DEVICE_ICON[h.type] ?? IconComponent; return <I className="ico" size={ICON_MD} />; })()}
+                    <span>{h.type}</span>
+                  </span>
                   <Badge tone={String(h.status).startsWith("middleware") ? "amber" : "green"}>{h.status}</Badge>
                 </div>
                 <div className="hw-id">{h.id}</div>

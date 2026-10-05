@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { apiBlast, LiveBadge, ApiResult } from "../lib/api.js";
 import { useLive, LiveStatus } from "../lib/useLive.js";
+import { motion } from "framer-motion";
+import { EASE, useMotionOK } from "../lib/motion";
 
 /* Dependency graph (spec §17) — renders the REAL crypto dependency graph from
    the control plane (/graph). Nodes/edges are auto-laid-out in a circle; a
@@ -16,24 +18,30 @@ interface GNode { id: string; label: string; sub: string; x: number; y: number; 
 const KIND_TONE: Record<string, string> = {
   system: "violet", cert: "cyan", certificate: "green", infra: "blue", network: "blue",
   cloud: "cyan", app: "violet", application: "violet", process: "violet",
-  lib: "amber", library: "amber", algo: "red", algorithm: "red", vendor: "slate", owner: "green",
+  lib: "cyan", library: "cyan", algo: "red", algorithm: "red", vendor: "slate", owner: "green",
   hardware: "orange", risk: "red",
 };
 
 /* Node stroke colors per spec graph key (kept dark/subtle on navy). */
 const KIND_COLOR: Record<string, string> = {
-  network: "#3b82f6", infra: "#3b82f6",
-  cloud: "#00d4ff",
-  app: "#8b7cf6", application: "#8b7cf6", process: "#8b7cf6",
-  crypto: "#00d4ff",
-  cert: "#22c55e", certificate: "#22c55e",
-  hardware: "#f97316",
-  algo: "#ef4444", algorithm: "#ef4444",
-  lib: "#f59e0b", library: "#f59e0b",
-  risk: "#ef4444",
-  vendor: "#64748b", owner: "#f8fafc", system: "#f8fafc",
+  network: "var(--accent)", infra: "var(--accent)",
+  cloud: "var(--accent)",
+  app: "var(--violet)", application: "var(--violet)", process: "var(--violet)",
+  crypto: "var(--accent)",
+  cert: "var(--green)", certificate: "var(--green)",
+  hardware: "var(--orange)",
+  algo: "var(--red)", algorithm: "var(--red)",
+  // Libraries were amber. In this design system amber means "warning /
+  // medium risk" and nothing else, so a library node was telling the
+  // operator something was wrong with it when the colour only meant
+  // "this is a library". Node *type* is not a status, so it does not get
+  // to spend a status colour: libraries now share the cryptography
+  // family, which is what they are -- the code that performs the crypto.
+  lib: "var(--accent)", library: "var(--accent)",
+  risk: "var(--red)",
+  vendor: "var(--slate)", owner: "var(--text)", system: "var(--text)",
 };
-const graphColor = (kind: string) => KIND_COLOR[String(kind).toLowerCase()] ?? "#1e3a52";
+const graphColor = (kind: string) => KIND_COLOR[String(kind).toLowerCase()] ?? "var(--line-strong)";
 
 function layout(nodes: RawNode[]): GNode[] {
   const cx = 400, cy = 190, r = nodes.length > 1 ? 145 : 40;
@@ -54,6 +62,7 @@ export default function Graph() {
   const graph = useLive<{ nodes: RawNode[]; edges: RawEdge[]; backend?: string }>("/api/v1/graph", { nodes: [], edges: [] });
   const stats = useLive<any>("/api/v1/graph/stats", {});
   const [sel, setSel] = useState<string | null>(null);
+  const motionOK = useMotionOK();
   const [live, setLive] = useState<ApiResult<Record<string, unknown>> | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -122,7 +131,7 @@ export default function Graph() {
       <Panel title="Graph" sub={NODES.length ? `edges are dependency edges from the CBOM · backend: ${graph.data.backend ?? "—"}` : "no CBOM yet — run discovery and a scan to build the crypto dependency graph"}>
         {NODES.length === 0 ? (
           <div style={{ minHeight: 200, display: "grid", placeItems: "center" }}>
-            <div className="frame" style={{ border: "1px dashed var(--line-strong)", borderRadius: 12, padding: "34px 40px", textAlign: "center", color: "var(--faint)", fontSize: 13.5, maxWidth: 440 }}>
+            <div className="frame" style={{ border: "1px dashed var(--line-strong)", borderRadius: "var(--r)", padding: "34px 40px", textAlign: "center", color: "var(--faint)", fontSize: 13.5, maxWidth: 440 }}>
               No dependency graph yet.<br />
               <span className="dim">Configure your estate in <a href="#/onboarding">Onboarding</a>, then run a scan. The graph renders systems → certificates → infrastructure → applications → libraries → algorithms from the real CBOM.</span>
             </div>
@@ -134,14 +143,35 @@ export default function Graph() {
                 const a = byId.get(e.from); const b = byId.get(e.to);
                 if (!a || !b) return null;
                 const cls = sel === null ? "edge" : blast.has(e.to) && blast.has(e.from) ? "edge blast" : e.to === sel || e.from === sel ? "edge hit" : "edge";
-                return <path key={`${e.from}-${e.to}-${i}`} className={cls} d={`M${a.x} ${a.y + 24} L${b.x} ${b.y - 20}`} />;
+                const d = `M${a.x} ${a.y + 24} L${b.x} ${b.y - 20}`;
+                if (!motionOK) return <path key={`${e.from}-${e.to}-${i}`} className={cls} d={d} />;
+                // Edges draw themselves from source to target, so the
+                // direction of the dependency is visible as it appears.
+                return (
+                  <motion.path
+                    key={`${e.from}-${e.to}-${i}`}
+                    className={cls}
+                    d={d}
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={{ pathLength: 1, opacity: 1 }}
+                    transition={{ duration: 0.45, ease: EASE, delay: Math.min(i * 0.012, 0.3) }}
+                  />
+                );
               })}
-              {NODES.map((n) => {
+              {NODES.map((n, nodeIndex) => {
                 const isSel = sel === n.id;
                 const isBlast = sel && blast.has(n.id);
                 const isUp = sel && upline.has(n.id);
                 return (
-                  <g key={n.id} className={`gnode ${isSel ? "sel" : ""}`} onClick={() => setSel(isSel ? null : n.id)}>
+                  <motion.g
+                    key={n.id}
+                    className={`gnode ${isSel ? "sel" : ""}`}
+                    onClick={() => setSel(isSel ? null : n.id)}
+                    initial={motionOK ? { opacity: 0, scale: 0.96 } : false}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.22, ease: EASE, delay: Math.min(nodeIndex * 0.02, 0.35) }}
+                    style={{ transformOrigin: `${n.x}px ${n.y + 21}px` }}
+                  >
                     <rect
                       x={n.x - 80} y={n.y} width={160} height={42} rx={8}
                       opacity={sel && !isSel && !isBlast && !isUp ? 0.35 : 1}
@@ -151,7 +181,7 @@ export default function Graph() {
                       style={{ fill: graphColor(n.kind), stroke: "none", opacity: sel && !isSel && !isBlast && !isUp ? 0.2 : 0.85 }} />
                     <text x={n.x} y={n.y + 18} textAnchor="middle" style={{ fontWeight: 600, fontSize: 12 }}>{n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label}</text>
                     <text x={n.x} y={n.y + 32} textAnchor="middle" className="gsub">{n.kind}</text>
-                  </g>
+                  </motion.g>
                 );
               })}
             </svg>

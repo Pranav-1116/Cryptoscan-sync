@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiRegister, isBackendLive } from "../lib/api.js";
 import { LanguageSwitcher } from "../i18n/I18n.jsx";
+import { BrandMark, ICON_MD, IconClose } from "../components/icons";
 
 /* These are the roles accepted by the live registration endpoint. The backend
  * remains authoritative and rejects unknown or admin-only roles. */
@@ -22,7 +23,7 @@ function BrandPanel() {
     <aside className="auth-brand">
       <div style={{ display: "flex", justifyContent: "flex-end" }}><LanguageSwitcher /></div>
       <div className="auth-logo">
-        <span className="mark">◈</span>
+        <BrandMark size={40} />
         <span>
           ZELNX
           <span className="tagline">CRYPTO INTELLIGENCE PLATFORM</span>
@@ -99,7 +100,7 @@ export default function Register() {
             </span>
           </div>
 
-          {error && <div className="auth-alert err" role="alert">✕ {error}</div>}
+          {error && <div className="auth-alert err" role="alert"><IconClose className="ico" size={ICON_MD} /> {error}</div>}
 
           <form onSubmit={(e) => void submit(e)}>
             <div className="field-row">

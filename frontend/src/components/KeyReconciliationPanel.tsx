@@ -53,7 +53,7 @@ export default function KeyReconciliationPanel() {
             {[["Inventory keys", s.inventory_keys, ""], ["With consumers", s.consumers, "referenced by scanned code"], ["Orphans", s.orphans, "no scanned repo uses them"], ["In code, in no inventory", s.not_in_inventory, "aliases / keystores unaccounted for"]].map(([k, v, sub]) => (
               <div key={String(k)} className="panel" style={{ padding: 12 }}>
                 <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{k}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: k === "Orphans" && Number(v) > 0 ? "var(--warn, #e0a300)" : k === "In code, in no inventory" && Number(v) > 0 ? "var(--red)" : undefined }}>{v}</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: k === "Orphans" && Number(v) > 0 ? "var(--amber)" : k === "In code, in no inventory" && Number(v) > 0 ? "var(--red)" : undefined }}>{v}</div>
                 <div style={{ fontSize: 11, color: "var(--dim)" }}>{sub}</div>
               </div>
             ))}

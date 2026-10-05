@@ -12,14 +12,14 @@ import {
    mutate the estate. */
 
 const inp: React.CSSProperties = {
-  padding: "6px 10px", borderRadius: 6, border: "1px solid var(--line-strong)",
+  padding: "6px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
   background: "var(--bg)", color: "var(--text)", fontSize: 13, fontFamily: "var(--mono)",
 };
 
 function K({ k, v, tone }: { k: string; v: React.ReactNode; tone?: string }) {
   return (
     <div style={{ display: "flex", gap: 6, alignItems: "baseline", padding: "3px 0" }}>
-      <span style={{ width: 150, color: "var(--muted)", fontSize: 12.5 }}>{k}</span>
+      <span style={{ width: 150, color: "var(--dim)", fontSize: 12.5 }}>{k}</span>
       <span className="mono" style={{ fontSize: 13, color: tone ? `var(--${tone})` : "var(--text)" }}>{v}</span>
     </div>
   );
@@ -136,9 +136,9 @@ export default function SecurityIntelligence() {
             <div className="row" style={{ gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
               {profiles.map((p) => (
                 <button key={p} onClick={() => setSelProfile(p)} style={{
-                  padding: "4px 10px", borderRadius: 6, border: "1px solid var(--line-strong)",
+                  padding: "4px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)",
                   background: selProfile === p ? "var(--accent)" : "var(--bg)",
-                  color: selProfile === p ? "#fff" : "var(--text)", cursor: "pointer", fontSize: 12,
+                  color: selProfile === p ? "var(--on-accent)" : "var(--text)", cursor: "pointer", fontSize: 12,
                 }}>{p}</button>
               ))}
             </div>
@@ -180,7 +180,7 @@ export default function SecurityIntelligence() {
               <K k="observations" v={String(assets.length)} />
               <K k="merges" v={String(merges ?? 0)} tone={(merges ?? 0) > 0 ? "green" : "slate"} />
               {assets.map((a) => (
-                <div key={a.id} style={{ marginTop: 8, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: 6 }}>
+                <div key={a.id} style={{ marginTop: 8, padding: "8px 10px", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
                   <div className="mono" style={{ fontSize: 12.5 }}>{a.id} <span className="dim">· {a.asset_type}</span></div>
                   <div className="dim" style={{ fontSize: 11.5 }}>{a.aliases.join(" · ")}</div>
                   <div className="dim" style={{ fontSize: 11.5 }}>sources: {a.sources.join(", ")}</div>
@@ -195,7 +195,7 @@ export default function SecurityIntelligence() {
           <K k="sources" v={<input value={sources} onChange={(e) => setSources(e.target.value)} style={{ width: 200, ...inp }} />} />
           <K k="last seen (s ago)" v={<input value={ageSec} onChange={(e) => setAgeSec(e.target.value)} style={{ width: 80, ...inp }} />} />
           <K k="verified" v={
-            <button onClick={() => setVerified(!verified)} style={verified ? { padding: "4px 10px", borderRadius: 6, border: "1px solid var(--line-strong)", background: "var(--green)", color: "#fff" } : { padding: "4px 10px", borderRadius: 6, border: "1px solid var(--line-strong)", background: "var(--bg)", color: "var(--text)" }}>
+            <button onClick={() => setVerified(!verified)} style={verified ? { padding: "4px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--green)", color: "var(--text)" } : { padding: "4px 10px", borderRadius: "var(--r)", border: "1px solid var(--line-strong)", background: "var(--bg)", color: "var(--text)" }}>
               {verified ? "VERIFIED" : "UNVERIFIED"}
             </button>
           } />

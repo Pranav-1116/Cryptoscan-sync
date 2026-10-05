@@ -127,7 +127,7 @@ export default function BankingRegulatory() {
             path="/api/v1/banking/action-plan/export?format=html&framework=ecb"
             filename="ecb-supervisory-pack.html"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export ECB Supervisory Pack
           </AuthenticatedDownload>
@@ -164,7 +164,7 @@ export default function BankingRegulatory() {
           <div style={{ fontSize: "11.5px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
             SWIFT CSP Controls
           </div>
-          <div style={{ fontSize: "28px", fontWeight: 700, color: swiftCsp?.cscf?.attestation_ready ? "var(--green)" : "var(--yellow)", margin: "4px 0" }}>
+          <div style={{ fontSize: "28px", fontWeight: 700, color: swiftCsp?.cscf?.attestation_ready ? "var(--green)" : "var(--amber)", margin: "4px 0" }}>
             {loading ? "..." : (swiftCsp?.cscf?.attestation_ready ? "Attestation Ready" : "Review Required")}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
@@ -201,7 +201,7 @@ export default function BankingRegulatory() {
                   padding: "12px 14px",
                   background: "var(--bg-2)",
                   border: "1px solid var(--line)",
-                  borderRadius: "8px",
+                  borderRadius: "var(--r)",
                   display: "flex",
                   flexDirection: "column",
                   gap: "6px"
@@ -240,7 +240,7 @@ export default function BankingRegulatory() {
               height: "170px",
               background: "var(--bg-2)",
               border: "1px solid var(--line)",
-              borderRadius: "6px",
+              borderRadius: "var(--r)",
               padding: "10px",
               color: "var(--text)",
               fontFamily: "var(--mono)",
@@ -256,7 +256,7 @@ export default function BankingRegulatory() {
           </Button>
 
           {isoResult && (
-            <div style={{ marginTop: "16px", padding: "14px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "8px" }}>
+            <div style={{ marginTop: "16px", padding: "14px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
                 <span style={{ fontSize: "12.5px", fontWeight: 600 }}>{isoResult.business_message_identifier || isoResult.message_type}</span>
                 <Badge variant={isoResult.compliance_status === "PASS" ? "success" : "danger"}>
@@ -266,11 +266,11 @@ export default function BankingRegulatory() {
               <div style={{ fontSize: "12px", color: "var(--dim)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px" }}>
                 <div>Algorithm: <span style={{ color: "var(--text)" }}>{isoResult.signature_algorithm?.split("#")[1] || isoResult.signature_algorithm}</span></div>
                 <div>Key Type: <span style={{ color: "var(--text)" }}>{isoResult.key_type} ({isoResult.key_size_bits || "?"} bits)</span></div>
-                <div>PQC Ready: <span style={{ color: isoResult.pqc_ready ? "var(--green)" : "var(--yellow)" }}>{isoResult.pqc_ready ? "YES" : "NO (Classical)"}</span></div>
+                <div>PQC Ready: <span style={{ color: isoResult.pqc_ready ? "var(--green)" : "var(--amber)" }}>{isoResult.pqc_ready ? "YES" : "NO (Classical)"}</span></div>
                 <div>Quantum Vulnerable: <span style={{ color: isoResult.quantum_vulnerable ? "var(--red)" : "var(--green)" }}>{isoResult.quantum_vulnerable ? "YES" : "NO"}</span></div>
               </div>
               {isoResult.findings && isoResult.findings.length > 0 && (
-                <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px dashed var(--line)", fontSize: "11.5px", color: "#fca5a5" }}>
+                <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px dashed var(--line)", fontSize: "11.5px", color: "var(--red)" }}>
                   {isoResult.findings.map((f: string, i: number) => (
                     <div key={i}>• {f}</div>
                   ))}
@@ -298,11 +298,11 @@ export default function BankingRegulatory() {
                 onClick={() => setSelectedJurisdiction(j.code)}
                 style={{
                   padding: "6px 12px",
-                  borderRadius: "6px",
+                  borderRadius: "var(--r)",
                   fontSize: "12px",
                   cursor: "pointer",
                   background: selectedJurisdiction === j.code ? "var(--cyan)" : "var(--bg-2)",
-                  color: selectedJurisdiction === j.code ? "#04121d" : "var(--text)",
+                  color: selectedJurisdiction === j.code ? "var(--on-accent)" : "var(--text)",
                   border: "1px solid var(--line)",
                   fontWeight: selectedJurisdiction === j.code ? 700 : 500,
                 }}
@@ -314,7 +314,7 @@ export default function BankingRegulatory() {
         </div>
 
         {actionPlan && (
-          <div style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "8px", padding: "16px" }}>
+          <div style={{ background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "16px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
               <span style={{ fontSize: "14px", fontWeight: 700 }}>
                 {actionPlan.framework_title || `${selectedJurisdiction.toUpperCase()} Supervisory Framework`}
@@ -323,7 +323,7 @@ export default function BankingRegulatory() {
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "14px" }}>
               {(actionPlan.milestones || []).map((m: any, idx: number) => (
-                <div key={idx} style={{ padding: "12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+                <div key={idx} style={{ padding: "12px", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
                   <div style={{ fontSize: "12px", fontWeight: 600, color: "var(--cyan)", marginBottom: "4px" }}>
                     Phase {idx + 1}: {m.title || m.phase}
                   </div>

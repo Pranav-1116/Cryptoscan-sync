@@ -3,6 +3,7 @@ import { Panel, Badge, Table, PageHead, Kpi, Code, Drawer } from "../components/
 import { usePollingApi, LiveBadge } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
 import { RequireRole } from "../lib/auth.js";
+import { ICON_MD, ICON_SM, IconClose, IconRunning, StatusMark } from "../components/icons";
 import {
   apiFindings,
   apiFindingDetail,
@@ -186,13 +187,13 @@ export default function Findings() {
             fallback={<span className="dim" style={{ fontSize: 12 }}>Your role is read-only for scan submission.</span>}
           >
             <button className="btn primary" onClick={() => void runScan()} disabled={scanBusy || !repoUrl.trim()}>
-              {scanBusy ? "Queuing…" : "▶ Run scan"}
+              {scanBusy ? "Queuing…" : <><IconRunning className="ico" size={ICON_SM} /> Run scan</>}
             </button>
           </RequireRole>
         </div>
         {scanMsg && (
           <div className={`auth-alert ${scanMsg.ok ? "ok" : "err"}`} style={{ marginTop: 10 }}>
-            {scanMsg.ok ? "✓ " : "✕ "}{scanMsg.text}
+            <StatusMark ok={scanMsg.ok} muted />{scanMsg.text}
           </div>
         )}
         <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>
@@ -249,7 +250,7 @@ export default function Findings() {
           sub={detailLive ? "GET /api/v1/findings/{evidence_id} — live evidence record" : detail ? "evidence record" : "loading…"}
           onClose={() => { setSelected(-1); setDetail(null); }}
         >
-          {detailErr && <div className="auth-alert err">✕ {detailErr}</div>}
+          {detailErr && <div className="auth-alert err"><IconClose className="ico" size={ICON_MD} /> {detailErr}</div>}
           {!detail && !detailErr && <div className="dim">Loading evidence record…</div>}
           {detail && (
             <FindingDetail f={detail} />

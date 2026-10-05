@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiAuditList, apiAuditVerify } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
+import { ICON_MD, IconOk } from "../components/icons";
 
 export default function Evidence() {
   const [loading, setLoading] = useState(true);
@@ -76,7 +77,7 @@ export default function Evidence() {
             path="/api/v1/auth/audit/export?format=jsonl"
             filename="audit-export.jsonl"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export JSONL WORM Pack
           </AuthenticatedDownload>
@@ -84,7 +85,7 @@ export default function Evidence() {
             variant="primary"
             onClick={runVerification}
             disabled={verifying}
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             {verifying ? "Computing Hash-Chain..." : "Verify Ledger Integrity"}
           </Button>
@@ -98,8 +99,8 @@ export default function Evidence() {
           style={{
             padding: "16px 20px",
             marginBottom: "20px",
-            background: verifyResult.status === "OK" ? "rgba(16, 185, 129, 0.06)" : "rgba(239, 68, 68, 0.08)",
-            border: `1px solid ${verifyResult.status === "OK" ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)"}`,
+            background: verifyResult.status === "OK" ? "color-mix(in srgb, var(--green) 6%, transparent)" : "color-mix(in srgb, var(--red) 8%, transparent)",
+            border: `1px solid ${verifyResult.status === "OK" ? "color-mix(in srgb, var(--green) 30%, transparent)" : "color-mix(in srgb, var(--red) 30%, transparent)"}`,
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
@@ -108,8 +109,8 @@ export default function Evidence() {
           }}
         >
           <div>
-            <div style={{ fontSize: "13px", fontWeight: 600, color: verifyResult.status === "OK" ? "var(--green)" : "#fca5a5" }}>
-              {verifyResult.status === "OK" ? "✓ Hash Chain Integrity Verified" : "⚠ Chain Verification Discrepancy"}
+            <div style={{ fontSize: "13px", fontWeight: 600, color: verifyResult.status === "OK" ? "var(--green)" : "var(--red)" }}>
+              {verifyResult.status === "OK" ? "Hash Chain Integrity Verified" : "⚠ Chain Verification Discrepancy"}
             </div>
             <div style={{ fontSize: "11.5px", color: "var(--dim)", marginTop: "2px" }}>
               Total entries verified: {verifyResult.checked ?? verifyResult.entry_count ?? 0} · Chain Head: <span style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{verifyResult.chain_head || "Genesis (Clean)"}</span>
@@ -138,9 +139,9 @@ export default function Evidence() {
                   onClick={() => setSelectedRecord(r)}
                   style={{
                     padding: "12px 14px",
-                    background: isSelected ? "rgba(0, 212, 255, 0.08)" : "var(--bg-2)",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-2)",
                     border: `1px solid ${isSelected ? "var(--cyan)" : "var(--line)"}`,
-                    borderRadius: "8px",
+                    borderRadius: "var(--r)",
                     cursor: "pointer",
                     transition: "all 0.15s ease"
                   }}
@@ -211,7 +212,7 @@ export default function Evidence() {
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
                   Action Payload
                 </div>
-                <div style={{ padding: "10px 14px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", fontSize: "13px", color: "var(--text)" }}>
+                <div style={{ padding: "10px 14px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: "13px", color: "var(--text)" }}>
                   {selectedRecord.action} {selectedRecord.detail ? `— ${JSON.stringify(selectedRecord.detail)}` : ""}
                 </div>
               </div>
@@ -220,7 +221,7 @@ export default function Evidence() {
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "4px" }}>
                   Observation Identifier (UUID)
                 </div>
-                <div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--cyan)", wordBreak: "break-all" }}>
+                <div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--cyan)", wordBreak: "break-all" }}>
                   {selectedRecord.id}
                 </div>
               </div>
@@ -235,7 +236,7 @@ export default function Evidence() {
                 <div>
                   <div style={{ fontSize: "11px", color: "var(--dim)", marginBottom: "4px" }}>WORM Immutability</div>
                   <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12.5px", color: "var(--green)" }}>
-                    <span>✓</span> <span>Append-Only Ledger</span>
+                    <IconOk className="ico" size={ICON_MD} /> <span>Append-Only Ledger</span>
                   </div>
                 </div>
               </div>

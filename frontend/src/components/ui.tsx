@@ -1,6 +1,9 @@
 /* Reusable HUD primitives */
 
 import React, { ReactNode } from "react";
+import { IconClose, ICON_MD } from "./icons";
+import { motion } from "framer-motion";
+import { CountUp, DecryptText, DUR, EASE, useAutoAnimate, useMotionOK } from "../lib/motion";
 
 export function Corners() {
   return (
@@ -14,24 +17,52 @@ export function Corners() {
 }
 
 export function Panel({ title, sub, children, frame = true, className = "", style }: {
-  title?: string; sub?: string; children: ReactNode; frame?: boolean; className?: string; style?: React.CSSProperties;
+  title?: ReactNode; sub?: string; children: ReactNode; frame?: boolean; className?: string; style?: React.CSSProperties;
 }) {
-  return (
-    <section className={`panel frame ${className}`} style={style}>
+  const ok = useMotionOK();
+  const body = (
+    <>
       {frame && <Corners />}
       {title && <h3>{title}</h3>}
       {sub && <p className="sub">{sub}</p>}
       {children}
-    </section>
+    </>
+  );
+  // Every page is built from Panels, so animating here is what makes the
+  // whole console settle in rather than snapping into place. Kept to an
+  // 8px rise so a screen full of panels does not look like it is sliding.
+  if (!ok) return <section className={`panel frame ${className}`} style={style}>{body}</section>;
+  return (
+    <motion.section
+      className={`panel frame ${className}`}
+      style={style}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: DUR.base, ease: EASE }}
+    >
+      {body}
+    </motion.section>
   );
 }
 
 export function Stat({ label, value, delta, tone = "" }: { label: string; value: ReactNode; delta?: string; tone?: string }) {
+  // A KPI that is a plain number counts up to it; anything else (a string,
+  // a ratio, an element) renders as-is. Counting a figure the operator is
+  // about to read is the one place motion carries information: it shows
+  // the number is freshly measured rather than a static label.
+  const numeric =
+    typeof value === "number" && Number.isFinite(value)
+      ? value
+      : typeof value === "string" && /^\d{1,3}(,\d{3})*$|^\d+$/.test(value.trim())
+        ? Number(value.replace(/,/g, ""))
+        : null;
   return (
     <div className={`panel stat frame ${tone}`}>
       <Corners />
       <div className="label">{label}</div>
-      <div className="value grad-text">{value}</div>
+      <div className="value grad-text">
+        {numeric === null ? value : <CountUp value={numeric} />}
+      </div>
       {delta && <div className="delta">{delta}</div>}
     </div>
   );
@@ -102,12 +133,12 @@ export function Ring({ pct, label, sub, tone = "cyan" }: { pct: number; label: R
   const r = 62;
   const c = 2 * Math.PI * r;
   const off = c * (1 - Math.min(1, Math.max(0, pct)));
-  const colors: Record<string, string> = { cyan: "#00d4ff", green: "#22c55e", amber: "#f59e0b", orange: "#f97316", red: "#ef4444", violet: "#8b7cf6", blue: "#3b82f6" };
+  const colors: Record<string, string> = { cyan: "var(--accent)", green: "var(--green)", amber: "var(--amber)", orange: "var(--orange)", red: "var(--red)", violet: "var(--violet)", blue: "var(--accent)" };
   const col = colors[tone || "cyan"] || colors.cyan;
   return (
     <div className="ring">
       <svg width="150" height="150" viewBox="0 0 150 150">
-        <circle cx="75" cy="75" r={r} fill="none" stroke="#26324b" strokeWidth="10" />
+        <circle cx="75" cy="75" r={r} fill="none" stroke="var(--line-strong)" strokeWidth="10" />
         <circle cx="75" cy="75" r={r} fill="none" stroke={col} strokeWidth="10" strokeLinecap="round"
           strokeDasharray={c} strokeDashoffset={off} />
       </svg>
@@ -124,13 +155,18 @@ export function Ring({ pct, label, sub, tone = "cyan" }: { pct: number; label: R
 export function Table({ head, rows, clickable = false, selected = -1, onSelect }: {
   head: ReactNode[]; rows: ReactNode[][]; clickable?: boolean; selected?: number; onSelect?: (i: number) => void;
 }) {
+  const bodyRef = useAutoAnimate<HTMLTableSectionElement>();
   return (
     <div style={{ overflowX: "auto" }}>
       <table className={`tbl ${clickable ? "clickable" : ""}`}>
         <thead>
           <tr>{head.map((h, i) => <th key={i}>{h}</th>)}</tr>
         </thead>
-        <tbody>
+        {/* auto-animate moves rows that are added, removed or reordered
+            instead of letting the table jump under the cursor — which
+            matters most on the live views, where rows arrive from SSE
+            while the operator is reading. */}
+        <tbody ref={bodyRef}>
           {rows.map((row, i) => (
             <tr key={i} className={selected === i ? "sel" : ""} onClick={clickable && onSelect ? () => onSelect(i) : undefined}>
               {row.map((cell, j) => (
@@ -175,7 +211,7 @@ export function Code({ children }: { children: ReactNode }) {
 export function Drawer({ title, sub, onClose, children }: { title: ReactNode; sub?: ReactNode; onClose: () => void; children: ReactNode }) {
   return (
     <div className="drawer">
-      <button className="close" onClick={onClose}>✕</button>
+      <button className="close" onClick={onClose} aria-label="Close"><IconClose size={ICON_MD} /></button>
       <h2>{title}</h2>
       {sub && <div className="sub dim" style={{ marginBottom: 14, fontSize: 12.5 }}>{sub}</div>}
       {children}
@@ -188,7 +224,9 @@ export function PageHead({ crumb, title, sub, right }: { crumb: string; title: s
     <div className="topbar">
       <div>
         <div className="crumb">{crumb}</div>
-        <h1>{title}</h1>
+        {/* Page titles resolve out of ciphertext on route change -- the
+            console's one piece of thematic motion. See lib/motion.tsx. */}
+        <h1><DecryptText text={title} className="mono-settle" /></h1>
         {sub && <div className="sub">{sub}</div>}
       </div>
       {right && <div className="row">{right}</div>}
@@ -211,8 +249,8 @@ export function Button({
   title?: string;
 }) {
   const colors: Record<string, { bg: string; border: string; fg: string }> = {
-    primary: { bg: "rgba(0,212,255,0.14)", border: "var(--cyan)", fg: "#04121d" },
-    danger: { bg: "rgba(239,68,68,0.12)", border: "var(--red)", fg: "#fca5a5" },
+    primary: { bg: "color-mix(in srgb, var(--accent) 14%, transparent)", border: "var(--cyan)", fg: "var(--accent)" },
+    danger: { bg: "color-mix(in srgb, var(--red) 12%, transparent)", border: "var(--red)", fg: "var(--red)" },
     default: { bg: "var(--bg-2)", border: "var(--line-strong)", fg: "var(--text)" },
     ghost: { bg: "transparent", border: "var(--line)", fg: "var(--dim)" },
   };
@@ -227,7 +265,7 @@ export function Button({
       disabled={disabled}
       style={{
         display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
-        padding, borderRadius: 7, fontSize, fontWeight: 600,
+        padding, borderRadius: "var(--r)", fontSize, fontWeight: 600,
         cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1,
         background: c.bg, border: `1px solid ${c.border}`, color: variant === "primary" ? c.fg : c.fg,
         transition: "filter 120ms ease", fontFamily: "inherit", ...style,

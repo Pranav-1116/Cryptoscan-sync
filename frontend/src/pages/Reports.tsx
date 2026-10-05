@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useLive, LiveStatus } from "../lib/useLive.js";
 import { getToken, tenantFetch, apiReportTemplates, apiReportScheduleCreate, generateExitReport, downloadEngagementArchive } from "../lib/api.js";
+import { StatusMark } from "../components/icons";
 
 export default function Reports() {
   const snaps = useLive<{ snapshots: any[]; total?: number }>("/api/v1/report-snapshots", { snapshots: [] });
@@ -111,17 +112,17 @@ export default function Reports() {
       <Panel title="New report schedule" sub="reports render the chosen framework against the latest scan" className="mt">
         <div className="row" style={{ flexWrap: "wrap", gap: 10 }}>
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="schedule name (e.g. Q4 PCI-DSS)"
-            style={{ flex: 1, minWidth: 200, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "9px 12px" }} />
+            style={{ flex: 1, minWidth: 200, background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "9px 12px" }} />
           <select value={freq} onChange={(e) => setFreq(e.target.value as "monthly" | "quarterly")}
-            style={{ background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontSize: 13, padding: "9px 12px" }}>
+            style={{ background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontSize: 13, padding: "9px 12px" }}>
             <option value="quarterly">quarterly</option>
             <option value="monthly">monthly</option>
           </select>
           <input value={target} onChange={(e) => setTarget(e.target.value)} placeholder="scan target (optional)"
-            style={{ flex: 1, minWidth: 160, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "9px 12px" }} />
+            style={{ flex: 1, minWidth: 160, background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 13, padding: "9px 12px" }} />
           <button className="btn primary" onClick={() => void create()} disabled={busy}>{busy ? "Scheduling…" : "Create schedule"}</button>
         </div>
-        {msg && <div style={{ marginTop: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "✓ " : ""}{msg.text}</Badge></div>}
+        {msg && <div style={{ marginTop: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? <StatusMark ok muted /> : null}{msg.text}</Badge></div>}
       </Panel>
 
       {schedules.length > 0 && (
@@ -161,7 +162,7 @@ export default function Reports() {
         </div>
         {exitMsg && (
           <div style={{ marginTop: 8, fontSize: 12.5, color: exitMsg.ok ? "var(--green)" : "var(--red)" }}>
-            {exitMsg.ok ? "✓" : "✕"} {exitMsg.text}
+            <StatusMark ok={exitMsg.ok} muted /> {exitMsg.text}
           </div>
         )}
         <div className="dim" style={{ fontSize: 12, marginTop: 8 }}>

@@ -57,14 +57,14 @@ export default function Drift() {
             path="/api/v1/drift"
             filename="cryptoscan-drift.json"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export Drift Feed
           </AuthenticatedDownload>
           <a
             href="#/scanners"
             className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Trigger Drift Audit
           </a>
@@ -132,9 +132,9 @@ export default function Drift() {
                   onClick={() => setSelectedEvent(e)}
                   style={{
                     padding: "12px 14px",
-                    background: isSelected ? "rgba(0, 212, 255, 0.08)" : "var(--bg-2)",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-2)",
                     border: `1px solid ${isSelected ? "var(--cyan)" : "var(--line)"}`,
-                    borderRadius: "8px",
+                    borderRadius: "var(--r)",
                     cursor: "pointer",
                     display: "flex",
                     flexDirection: "column",
@@ -185,7 +185,7 @@ export default function Drift() {
 
           {selectedEvent ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+              <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Event Title</div>
                 <div style={{ fontSize: "14.5px", fontWeight: 700, color: "var(--text)", marginTop: "2px" }}>
                   {selectedEvent.title || selectedEvent.event_type}
@@ -194,21 +194,21 @@ export default function Drift() {
 
               <div>
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", marginBottom: "4px" }}>Baseline Authorized State</div>
-                <div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", fontSize: "12px", fontFamily: "var(--mono)", color: "var(--green)" }}>
+                <div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: "12px", fontFamily: "var(--mono)", color: "var(--green)" }}>
                   {selectedEvent.previousState || selectedEvent.expected_state || "TLS 1.3 / ML-KEM-768 / AES-256-GCM"}
                 </div>
               </div>
 
               <div>
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", marginBottom: "4px" }}>Observed Drift State</div>
-                <div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", fontSize: "12px", fontFamily: "var(--mono)", color: "var(--red)" }}>
+                <div style={{ padding: "8px 12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontSize: "12px", fontFamily: "var(--mono)", color: "var(--red)" }}>
                   {selectedEvent.currentState || selectedEvent.observed_state || "Deprecated primitive or altered cipher configuration"}
                 </div>
               </div>
 
               <div style={{ borderTop: "1px solid var(--line)", paddingTop: "12px" }}>
                 <div style={{ fontSize: "11px", color: "var(--dim)", marginBottom: "4px" }}>Policy Enforcement Impact</div>
-                <div style={{ fontSize: "12.5px", color: "#fca5a5" }}>
+                <div style={{ fontSize: "12.5px", color: "var(--red)" }}>
                   {selectedEvent.policyImpact || selectedEvent.detail || "Flagged for security team review"}
                 </div>
               </div>

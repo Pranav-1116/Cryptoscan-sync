@@ -83,14 +83,14 @@ export default function DependencyGraph() {
             path="/api/v1/graph"
             filename="cryptoscan-graph.json"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export Graph JSON
           </AuthenticatedDownload>
           <a
             href="#/scanners"
             className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Discover Topology
           </a>
@@ -161,9 +161,9 @@ export default function DependencyGraph() {
                   onClick={() => handleSelectNode(n)}
                   style={{
                     padding: "10px 14px",
-                    background: isSelected ? "rgba(0, 212, 255, 0.08)" : "var(--bg-2)",
+                    background: isSelected ? "color-mix(in srgb, var(--accent) 8%, transparent)" : "var(--bg-2)",
                     border: `1px solid ${isSelected ? "var(--cyan)" : "var(--line)"}`,
-                    borderRadius: "6px",
+                    borderRadius: "var(--r)",
                     cursor: "pointer",
                     display: "flex",
                     justifyContent: "space-between",
@@ -210,7 +210,7 @@ export default function DependencyGraph() {
 
           {selectedNode ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+              <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
                 <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Selected Asset</div>
                 <div style={{ fontSize: "15px", fontWeight: 700, color: "var(--cyan)", margin: "3px 0" }}>{selectedNode.label || selectedNode.id}</div>
                 <div style={{ fontSize: "12px", color: "var(--text)" }}>ID: {selectedNode.id}</div>
@@ -220,7 +220,7 @@ export default function DependencyGraph() {
               </div>
 
               {selectedNode.code_cascade && (
-                <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px" }}>
+                <div style={{ padding: "12px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)" }}>
                   <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase" }}>Code-level crypto (latest scan)</div>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, margin: "6px 0" }}>
                     <div><div style={{ fontSize: 11, color: "var(--dim)" }}>Providers</div><div style={{ fontWeight: 700 }}>{selectedNode.code_cascade.providers}</div></div>
@@ -242,13 +242,13 @@ export default function DependencyGraph() {
               ) : blastRadius ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-                    <div style={{ padding: "10px", background: "var(--bg-2)", borderRadius: "6px" }}>
+                    <div style={{ padding: "10px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
                       <div style={{ fontSize: "11px", color: "var(--dim)" }}>Impacted Systems</div>
                       <div style={{ fontSize: "20px", fontWeight: 700, color: "var(--red)" }}>
                         {blastRadius.affected_systems?.length ?? 0}
                       </div>
                     </div>
-                    <div style={{ padding: "10px", background: "var(--bg-2)", borderRadius: "6px" }}>
+                    <div style={{ padding: "10px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
                       <div style={{ fontSize: "11px", color: "var(--dim)" }}>Max Traversal Depth</div>
                       <div style={{ fontSize: "20px", fontWeight: 700 }}>
                         {blastRadius.hops || 2} hops
@@ -263,7 +263,7 @@ export default function DependencyGraph() {
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
                         {blastRadius.affected_systems.map((s: string, idx: number) => (
-                          <div key={idx} style={{ fontSize: "12px", padding: "6px 8px", background: "var(--bg-2)", borderRadius: "4px" }}>
+                          <div key={idx} style={{ fontSize: "12px", padding: "6px 8px", background: "var(--bg-2)", borderRadius: "var(--r)" }}>
                             ↳ {s}
                           </div>
                         ))}
@@ -272,7 +272,7 @@ export default function DependencyGraph() {
                   )}
                 </div>
               ) : (
-                <div style={{ padding: "14px", background: "var(--bg-2)", borderRadius: "6px", fontSize: "12.5px", color: "var(--dim)" }}>
+                <div style={{ padding: "14px", background: "var(--bg-2)", borderRadius: "var(--r)", fontSize: "12.5px", color: "var(--dim)" }}>
                   No downstream dependencies detected for this node at 2-hop radius.
                 </div>
               )}

@@ -4,9 +4,10 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { apiAlgorithmCatalog } from "../lib/api.js";
+import { IconCrypto, ICON_SM, type Icon } from "./icons";
 
 interface Item { name: string; to: string; meta: string }
-interface Group { label: string; icon: string; items: Item[] }
+interface Group { label: string; icon: Icon; items: Item[] }
 
 export default function SearchOverlay({ onClose }: { onClose: () => void }) {
   const [q, setQ] = useState("");
@@ -35,7 +36,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
           to: "#/catalog",
           meta: a.status ?? a.quantum_status ?? "",
         }));
-        setGroups(items.length ? [{ label: "Algorithms", icon: "🔐", items }] : []);
+        setGroups(items.length ? [{ label: "Algorithms", icon: IconCrypto, items }] : []);
         setSearching(false);
       }).catch(() => { if (!cancelled) { setGroups([]); setSearching(false); } });
     }, 200);
@@ -61,7 +62,7 @@ export default function SearchOverlay({ onClose }: { onClose: () => void }) {
           <div className="groups">
             {groups.map((g) => (
               <div className="group" key={g.label}>
-                <div className="glabel">{g.icon} {g.label} · {g.items.length}</div>
+                <div className="glabel ico-row"><g.icon className="ico" size={ICON_SM} /><span>{g.label} · {g.items.length}</span></div>
                 {g.items.map((it, i) => (
                   <a className="gitem" key={`${it.name}-${i}`} href={it.to} onClick={onClose}>
                     <span>{it.name}</span>

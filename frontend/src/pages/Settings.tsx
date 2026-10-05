@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Panel, Badge, Table, PageHead, Code } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
+import { StatusMark } from "../components/icons";
 import {
   apiActiveSector,
   apiListSectors,
@@ -123,7 +124,7 @@ export default function Settings() {
 
         {/* Notification routing */}
         <Panel title="Notification routing" sub="which channels carry each event severity (in-app / email / webhook / SIEM)">
-          {routeMsg && <div className={`auth-alert ${routeMsg.ok ? "ok" : "err"}`}>{routeMsg.ok ? "✓ " : "✕ "}{routeMsg.text}</div>}
+          {routeMsg && <div className={`auth-alert ${routeMsg.ok ? "ok" : "err"}`}><StatusMark ok={routeMsg.ok} muted />{routeMsg.text}</div>}
           {!routes && routing.source !== "live" && (
             <div className="dim" style={{ fontSize: 13 }}>Backend offline — routing unavailable.</div>
           )}
@@ -143,7 +144,7 @@ export default function Settings() {
                         setRoutes((prev) => (prev ?? []).map((x) => x.id === r.id ? { ...x, channels: { ...x.channels, [ch]: !x.channels[ch] } } : x))
                       }
                     >
-                      {r.channels?.[ch] ? "✓" : "·"}
+                      <StatusMark ok={r.channels?.[ch] ? true : null} muted />
                     </button>
                   )),
                 ])}
@@ -184,5 +185,5 @@ function sev(s?: string): string {
 
 function sectorMsgs(m: { ok: boolean; text: string } | null) {
   if (!m) return null;
-  return <div className={`auth-alert ${m.ok ? "ok" : "err"}`} style={{ marginBottom: 8 }}>{m.ok ? "✓ " : "✕ "}{m.text}</div>;
+  return <div className={`auth-alert ${m.ok ? "ok" : "err"}`} style={{ marginBottom: 8 }}><StatusMark ok={m.ok} muted />{m.text}</div>;
 }

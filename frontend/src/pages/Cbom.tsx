@@ -3,6 +3,7 @@ import { Badge, Button } from "../components/ui";
 import { apiCbomCatalog, apiCbomCoverage } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import PortfolioDependencyPanel from "../components/PortfolioDependencyPanel";
+import { ICON_SM, IconCaretDown, IconCaretRight } from "../components/icons";
 
 interface CbomItem {
   id: string;
@@ -125,14 +126,14 @@ export default function Cbom() {
             path="/api/v1/cbom"
             filename="cryptoscan-cbom.json"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export CycloneDX 1.5 JSON
           </AuthenticatedDownload>
           <a
             href="#/graph"
             className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             View Dependency Graph
           </a>
@@ -169,7 +170,7 @@ export default function Cbom() {
           <div style={{ fontSize: "11px", color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
             PQC Migration Targets
           </div>
-          <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--amber)", margin: "4px 0" }}>
+          <div style={{ fontSize: "26px", fontWeight: 700, color: "var(--accent)", margin: "4px 0" }}>
             {loading ? "..." : components.filter(c => !c.pqcReady).length}
           </div>
           <div style={{ fontSize: "12px", color: "var(--dim)" }}>
@@ -200,7 +201,7 @@ export default function Cbom() {
               className="btn sm"
               style={{
                 background: filterRisk === r ? "var(--cyan)" : undefined,
-                color: filterRisk === r ? "#000" : undefined,
+                color: filterRisk === r ? "var(--on-accent)" : undefined,
                 fontWeight: filterRisk === r ? 700 : 500
               }}
             >
@@ -232,10 +233,10 @@ export default function Cbom() {
                   <React.Fragment key={item.id}>
                     <tr
                       onClick={() => setExpandedRow(isExpanded ? null : item.id)}
-                      style={{ cursor: "pointer", background: isExpanded ? "rgba(0, 212, 255, 0.05)" : undefined }}
+                      style={{ cursor: "pointer", background: isExpanded ? "color-mix(in srgb, var(--accent) 5%, transparent)" : undefined }}
                     >
                       <td style={{ color: "var(--cyan)", fontWeight: 700, fontSize: "14px" }}>
-                        {isExpanded ? "▼" : "▶"}
+                        {isExpanded ? <IconCaretDown className="ico" size={ICON_SM} /> : <IconCaretRight className="ico" size={ICON_SM} />}
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, color: "var(--text)", fontFamily: "var(--mono)", fontSize: "13px" }}>{item.algorithm}</div>
@@ -280,14 +281,14 @@ export default function Cbom() {
                                   padding: "8px 12px",
                                   background: "var(--panel)",
                                   border: "1px solid var(--line)",
-                                  borderRadius: "6px",
+                                  borderRadius: "var(--r)",
                                   fontSize: "12.5px"
                                 }}
                               >
                                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
                                   <span style={{ color: "var(--dim)" }}>├──</span>
                                   <span style={{ fontWeight: 600, color: "var(--text)" }}>{sub.name}</span>
-                                  <span style={{ fontSize: "11px", background: "var(--bg-2)", padding: "2px 6px", borderRadius: "4px", color: "var(--dim)" }}>{sub.type}</span>
+                                  <span style={{ fontSize: "11px", background: "var(--bg-2)", padding: "2px 6px", borderRadius: "var(--r)", color: "var(--dim)" }}>{sub.type}</span>
                                 </div>
                                 <span style={{ fontFamily: "var(--mono)", fontSize: "11.5px", color: "var(--dim)" }}>{sub.details}</span>
                               </div>

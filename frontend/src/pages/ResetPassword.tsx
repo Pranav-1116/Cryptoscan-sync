@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { authService } from "../lib/authService";
 import { Button } from "../components/ui";
+import { BrandMark } from "../components/icons";
 
 export default function ResetPassword() {
   const [password, setPassword] = useState("");
@@ -52,16 +53,16 @@ export default function ResetPassword() {
             style={{
               width: 32,
               height: 32,
-              borderRadius: 8,
+              borderRadius: "var(--r)",
               display: "grid",
               placeItems: "center",
               background: "var(--grad)",
-              color: "#04121d",
+              color: "var(--accent)",
               fontSize: 18,
               boxShadow: "var(--glow-cyan)",
             }}
           >
-            ◈
+            <BrandMark size={40} />
           </span>
           <span style={{ fontSize: "24px", fontWeight: 700, letterSpacing: "-0.01em", color: "var(--text)" }}>
             ZELNX
@@ -77,7 +78,7 @@ export default function ResetPassword() {
           padding: "32px 28px",
           background: "var(--panel)",
           border: "1px solid var(--line)",
-          borderRadius: "12px",
+          borderRadius: "var(--r)",
           boxShadow: "0 12px 40px rgba(0, 0, 0, 0.45)",
         }}
       >
@@ -96,10 +97,10 @@ export default function ResetPassword() {
               <div
                 style={{
                   padding: "10px 12px",
-                  background: "rgba(239, 68, 68, 0.08)",
-                  border: "1px solid rgba(239, 68, 68, 0.3)",
-                  borderRadius: "6px",
-                  color: "#fca5a5",
+                  background: "color-mix(in srgb, var(--red) 8%, transparent)",
+                  border: "1px solid color-mix(in srgb, var(--red) 30%, transparent)",
+                  borderRadius: "var(--r)",
+                  color: "var(--red)",
                   fontSize: "12px",
                   marginBottom: "16px",
                 }}
@@ -146,7 +147,7 @@ export default function ResetPassword() {
                 disabled={loading}
                 style={{ width: "100%", height: "42px", marginTop: "6px" }}
               >
-                {loading ? "◌ Resetting password..." : "Reset password"}
+                {loading ? "Resetting password…" : "Reset password"}
               </Button>
             </form>
           </>

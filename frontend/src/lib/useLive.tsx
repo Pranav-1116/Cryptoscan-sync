@@ -71,12 +71,12 @@ export function LiveStatus({ loading, error }: { loading?: boolean; error?: stri
   if (loading) return <span className="dim" style={{ fontSize: 12 }}>● loading live data…</span>;
   if (error)
     return (
-      <span className="badge" style={{ background: "rgba(224,30,90,0.10)", color: "var(--red)", fontSize: 11 }}>
+      <span className="badge" style={{ background: "color-mix(in srgb, var(--red) 10%, transparent)", color: "var(--red)", fontSize: 11 }}>
         backend offline — showing empty state
       </span>
     );
   return (
-    <span className="badge" style={{ background: "rgba(34,197,94,0.12)", color: "var(--green)", fontSize: 11 }}>
+    <span className="badge" style={{ background: "color-mix(in srgb, var(--green) 12%, transparent)", color: "var(--green)", fontSize: 11 }}>
       <span className="dot" /> LIVE
     </span>
   );

@@ -9,6 +9,7 @@ import {
   apiScannerEnginesHealth, apiSystemHealthStatus,
   ScannerEngineHealth, SystemServiceHealth,
 } from "../lib/api.js";
+import { IconClose, IconHealth, ICON_MD, ICON_LG } from "./icons";
 
 function statusColor(s: string): string {
   if (s === "Operational" || s === "Healthy") return "var(--green)";
@@ -50,11 +51,11 @@ export default function SystemHealthModal({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", borderRadius: "10px", padding: "20px", width: "560px", maxWidth: "92vw", maxHeight: "82vh", overflowY: "auto", boxShadow: "0 20px 40px rgba(0,0,0,0.6)" }}
+        style={{ background: "var(--bg-2)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "20px", width: "560px", maxWidth: "92vw", maxHeight: "82vh", overflowY: "auto", boxShadow: "0 20px 40px rgba(0,0,0,0.6)" }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
-          <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--text)" }}>♥ Platform Health</div>
-          <button onClick={onClose} className="btn sm">✕</button>
+          <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--text)" }} className="ico-row"><IconHealth className="ico" size={ICON_LG} /><span>Platform Health</span></div>
+          <button onClick={onClose} className="icon-btn" aria-label="Close"><IconClose size={ICON_MD} /></button>
         </div>
 
         {loading && <div className="dim" style={{ fontSize: 12 }}>probing services…</div>}
@@ -69,7 +70,7 @@ export default function SystemHealthModal({
           {services.map((s) => (
             <div
               key={s.name}
-              style={{ display: "flex", alignItems: "center", gap: "10px", border: "1px solid var(--line)", borderRadius: "8px", padding: "8px 12px", fontSize: "12.5px" }}
+              style={{ display: "flex", alignItems: "center", gap: "10px", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 12px", fontSize: "12.5px" }}
             >
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor(s.status), flexShrink: 0 }} />
               <span style={{ fontWeight: 600, flex: 1 }}>{s.name}</span>
@@ -86,7 +87,7 @@ export default function SystemHealthModal({
           {engines.map((e) => (
             <div
               key={e.id}
-              style={{ display: "flex", alignItems: "center", gap: "10px", border: "1px solid var(--line)", borderRadius: "8px", padding: "8px 12px", fontSize: "12.5px" }}
+              style={{ display: "flex", alignItems: "center", gap: "10px", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: "8px 12px", fontSize: "12.5px" }}
             >
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: statusColor(e.status), flexShrink: 0 }} />
               <span style={{ fontWeight: 600, flex: 1 }}>{e.name}</span>

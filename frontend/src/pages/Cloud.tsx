@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { useApi, LiveBadge } from "../lib/apiUi.jsx";
 import { apiCloudAccounts, apiCloudKeys, apiCloudCollect, CloudAccount, CloudCollectResult } from "../lib/api.js";
+import { ICON_MD, ICON_SM, IconCaretDown, IconCaretRight, IconCloud, IconClose } from "../components/icons";
 
 /* Cloud — connected read-only cloud accounts rendered as a provider tree
    (AWS / Azure / GCP → account → regions). Source of truth is
@@ -17,11 +18,17 @@ import { apiCloudAccounts, apiCloudKeys, apiCloudCollect, CloudAccount, CloudCol
 const PROVIDERS = ["AWS", "AZURE", "GCP"] as const;
 type Prov = (typeof PROVIDERS)[number] | "OTHER";
 
-const PROV_META: Record<Prov, { glyph: string; name: string; color: string }> = {
-  AWS: { glyph: "☁", name: "Amazon Web Services", color: "#f59e0b" },
-  AZURE: { glyph: "◇", name: "Microsoft Azure", color: "#3b82f6" },
-  GCP: { glyph: "◈", name: "Google Cloud Platform", color: "#22c55e" },
-  OTHER: { glyph: "▤", name: "Other / unknown", color: "#64748b" },
+// One mark for every provider, in neutral ink. Each provider used to get
+// its own geometric glyph in its own off-palette hex (#f59e0b, #3b82f6,
+// #22c55e, #64748b -- none of them in the token set, none of them
+// inverting for the light theme). Which cloud an account lives in is an
+// attribute, not a decision the operator has to make, so per global.css
+// it does not get to spend colour; the name carries the identity.
+const PROV_META: Record<Prov, { name: string }> = {
+  AWS: { name: "Amazon Web Services" },
+  AZURE: { name: "Microsoft Azure" },
+  GCP: { name: "Google Cloud Platform" },
+  OTHER: { name: "Other / unknown" },
 };
 
 function providerOf(a: CloudAccount): Prov {
@@ -141,8 +148,10 @@ export default function Cloud() {
               return (
                 <div key={p} className={`cloud-prov ${isOpen ? "open" : ""}`} data-prov={p}>
                   <button className="prov-head" onClick={() => toggle(p)}>
-                    <span className="prov-caret">▶</span>
-                    <span className="prov-glyph" style={{ color: meta.color }}>{meta.glyph}</span>
+                    <span className="prov-caret">
+                      {isOpen ? <IconCaretDown className="ico" size={ICON_SM} /> : <IconCaretRight className="ico" size={ICON_SM} />}
+                    </span>
+                    <IconCloud className="ico prov-glyph" size={ICON_MD} />
                     <span className="prov-name">{meta.name}</span>
                     <span className="prov-count">{list.length} account{list.length === 1 ? "" : "s"} · {acctRegions} region{acctRegions === 1 ? "" : "s"}</span>
                     <span className="prov-spacer" />
@@ -212,7 +221,7 @@ export default function Cloud() {
           </button>
         </div>
         {collectErr && (
-          <div style={{ color: "var(--red)", fontSize: 12.5, marginTop: 8 }}>✕ {collectErr}</div>
+          <div style={{ color: "var(--red)", fontSize: 12.5, marginTop: 8 }}><IconClose className="ico" size={ICON_MD} /> {collectErr}</div>
         )}
         {collectResult && (
           <div style={{ marginTop: 10, fontSize: 12.5, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>

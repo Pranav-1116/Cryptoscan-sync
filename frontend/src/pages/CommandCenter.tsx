@@ -4,6 +4,7 @@ import { apiScope, apiStatsSummary, apiDeliveries, isBackendLive, apiLiveScanSta
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, severityOf, isSystemEvent, useRealtimeRefresh, RealtimeChip } from "../lib/realtime.js";
 import { useLive } from "../lib/useLive.js";
+import { ICON_SM, IconRunning, StatusMark } from "../components/icons";
 
 export default function CommandCenter() {
   // Live domain counts straight from the control plane (no static asset lists).
@@ -209,14 +210,14 @@ export default function CommandCenter() {
         <Panel title="Start here — run your first real scan" sub="deterministic local hardware + runtime inventory; results land in the live CBOM" className="mt">
           <div className="row" style={{ gap: 14, alignItems: "center", flexWrap: "wrap" }}>
             <button className="btn primary" onClick={() => void runFirstScan()} disabled={firstScanBusy} style={{ fontSize: 14, padding: "11px 20px" }}>
-              {firstScanBusy ? "Scanning this host…" : "▶ Scan this host now"}
+              {firstScanBusy ? "Scanning this host…" : <><IconRunning className="ico" size={ICON_SM} /> Scan this host now</>}
             </button>
             <a href="#/onboarding" className="btn sm" style={{ textDecoration: "none" }}>Set up environments & scope →</a>
             <span className="dim" style={{ fontSize: 12.5 }}>
               Hardware (CPU crypto caps, TPM/HSM, RNG) and runtime (crypto libraries, processes, certificates) are read locally — no targets, no credentials, nothing simulated.
             </span>
           </div>
-          {firstScanMsg && <div style={{ marginTop: 10 }}><Badge tone={firstScanMsg.ok ? "green" : "red"}>{firstScanMsg.ok ? "✓ " : ""}{firstScanMsg.text}</Badge></div>}
+          {firstScanMsg && <div style={{ marginTop: 10 }}><Badge tone={firstScanMsg.ok ? "green" : "red"}>{firstScanMsg.ok ? <StatusMark ok muted /> : null}{firstScanMsg.text}</Badge></div>}
         </Panel>
       )}
 
@@ -345,7 +346,7 @@ function HeroKpi({ label, q, value, tone, to, suffix }: { label: string; q: stri
 function LiveStat({ label, value, tone }: { label: string; value: number | string; tone?: "green" | "red" | "cyan" | "amber" | "" }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", minWidth: 120 }}>
-      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : tone === "cyan" ? "var(--cyan, var(--accent))" : "var(--text)" }}>
+      <span className="mono" style={{ fontSize: 28, fontWeight: 700, color: tone === "red" ? "var(--red)" : tone === "green" ? "var(--green)" : tone === "amber" ? "var(--amber)" : tone === "cyan" ? "var(--cyan))" : "var(--text)" }}>
         {typeof value === "number" ? value.toLocaleString() : value}
       </span>
       <span className="dim" style={{ fontSize: 11.5, textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>

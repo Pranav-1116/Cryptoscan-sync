@@ -20,10 +20,10 @@ const FRAMEWORKS = [
 
 function Err({ e }: { e: string | undefined }) {
   if (!e) return null;
-  return <div style={{ color: "var(--red,#e01e5a)", fontSize: 12, marginTop: 8 }}>{e}</div>;
+  return <div style={{ color: "var(--red)", fontSize: 12, marginTop: 8 }}>{e}</div>;
 }
 function Badge({ ok, children }: { ok?: boolean; children: React.ReactNode }) {
-  return <span className="badge" style={{ background: ok ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)", color: ok ? "var(--green)" : "var(--amber)" }}>{children}</span>;
+  return <span className="badge" style={{ background: ok ? "color-mix(in srgb, var(--green) 12%, transparent)" : "color-mix(in srgb, var(--amber) 12%, transparent)", color: ok ? "var(--green)" : "var(--amber)" }}>{children}</span>;
 }
 
 const TABS = ["report", "backup", "attestation", "airgap", "ot"];
@@ -47,7 +47,7 @@ export default function Resilience() {
         {TABS.map((x) => (
           <button key={x} className={`btn sm ${tab === x ? "primary" : ""}`}
             onClick={() => setTab(x)}
-            style={tab === x ? { background: "var(--grad)", color: "#fff", border: "none" } : {}}>
+            style={tab === x ? { background: "var(--grad)", color: "var(--text)", border: "none" } : {}}>
             {TAB_LABELS[x]}
           </button>
         ))}
@@ -115,7 +115,7 @@ function ReportPanel() {
       <div style={{ display: "flex", gap: 8 }}>
         <button className="btn sm" disabled={busy} onClick={() => gen(false)}>preview mapping</button>
         <button className="btn sm primary" disabled={busy} onClick={() => gen(true)}
-          style={{ background: "var(--grad)", color: "#fff", border: "none" }}>{t("resilience.generatePdf")}</button>
+          style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>{t("resilience.generatePdf")}</button>
       </div>
       <Err e={err} />
       {res && (
@@ -209,7 +209,7 @@ function BackupPanel() {
           encrypts (Fernet), signs a manifest, persists artifacts, then applies GFS retention/purge.
         </p>
         <button className="btn sm primary" onClick={runScheduled}
-          style={{ background: "var(--grad)", color: "#fff", border: "none" }}>run scheduled backup cycle</button>
+          style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>run scheduled backup cycle</button>
         <button className="btn sm" onClick={persistAndSweep} style={{ marginLeft: 8 }}>
           persist schedule + worker sweep
         </button>
@@ -411,7 +411,7 @@ function OtPanel() {
       </div>
       <textarea className="input" rows={3} value={hexInput} onChange={(e) => setHexInput(e.target.value)}
         style={{ width: "100%", fontFamily: "var(--mono)", fontSize: 12, margin: "10px 0" }} />
-      <button className="btn sm primary" onClick={decode} style={{ background: "var(--grad)", color: "#fff", border: "none" }}>decode frame</button>
+      <button className="btn sm primary" onClick={decode} style={{ background: "var(--grad)", color: "var(--text)", border: "none" }}>decode frame</button>
       <div style={{ marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
         <label style={{ fontSize: 12, color: "var(--faint)" }}>Upload a passive capture (.pcap) — parsed offline, never probed</label>
         <input type="file" accept=".pcap,.cap" className="input" style={{ display: "block", margin: "6px 0" }}
@@ -434,7 +434,7 @@ function OtPanel() {
           </Badge>
           {res.findings?.map((f: any, i: number) => (
             <div key={i} className="card" style={{ padding: 12, marginTop: 10, fontSize: 12 }}>
-              <b style={{ color: f.risk === "HIGH" ? "var(--red,#e01e5a)" : "var(--amber)" }}>{f.protocol} · {f.risk}</b>
+              <b style={{ color: f.risk === "HIGH" ? "var(--red)" : "var(--amber)" }}>{f.protocol} · {f.risk}</b>
               <div style={{ marginTop: 4 }}>{f.flags?.join(", ")}</div>
               <div style={{ color: "var(--faint)", fontFamily: "var(--mono)", fontSize: 11, marginTop: 4 }}>{JSON.stringify(f.detail)}</div>
             </div>

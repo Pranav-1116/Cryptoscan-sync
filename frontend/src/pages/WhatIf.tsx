@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Panel, Badge, Table, PageHead } from "../components/ui.jsx";
 import { apiWhatIf, LiveBadge, ApiResult } from "../lib/api.js";
+import { ICON_LG, ICON_MD, IconTarget, IconWarn } from "../components/icons";
 
 /* What-if migration simulator — SEPARATED FROM EXECUTION. This surface only
    READS the estate and runs the deterministic feasibility engine
@@ -77,7 +78,7 @@ export default function WhatIf() {
 
       {/* simulation-only banner — this surface never executes */}
       <div className="sim-banner">
-        <span className="sim-ico">▣</span>
+        <span className="sim-ico"><IconTarget size={ICON_LG} /></span>
         <div>
           <div className="sim-t">SIMULATION ONLY — NO EXECUTION</div>
           <div className="sim-d">
@@ -91,7 +92,7 @@ export default function WhatIf() {
         <div className="row" style={{ flexWrap: "wrap" }}>
           {SCENARIOS.map((sc, i) => (
             <button key={sc.label} className="btn sm"
-              style={i === sel ? { borderColor: "var(--cyan)", color: "#aef3ff", background: "rgba(0,212,255,0.10)" } : {}}
+              style={i === sel ? { borderColor: "var(--cyan)", color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" } : {}}
               onClick={() => { setSel(i); setLive(null); }}>
               {sc.label}
             </button>
@@ -131,7 +132,7 @@ export default function WhatIf() {
             </div>
             {unknowns.length > 0 && (
               <div className="mono" style={{ marginTop: 14, fontSize: 12, color: "var(--amber)" }}>
-                ⚠ honest unknowns (engine could not verify — never assumed true): {unknowns.join(", ")}
+                <IconWarn className="ico" size={ICON_MD} /> honest unknowns (engine could not verify — never assumed true): {unknowns.join(", ")}
               </div>
             )}
           </Panel>

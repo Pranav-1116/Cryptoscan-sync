@@ -15,6 +15,7 @@ import {
 } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
 import { useEnterprise, EnvProfile } from "./EnterpriseContext";
+import { IconClose, IconTenant, IconNetwork, ICON_MD } from "./icons";
 
 /* ── shared shell ─────────────────────────────────────────────────── */
 function ModalShell({
@@ -34,15 +35,15 @@ function ModalShell({
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "var(--bg-1)", border: "1px solid var(--line-strong)",
-          borderRadius: "10px", padding: "20px", width: wide ? "640px" : "440px",
+          background: "var(--bg-2)", border: "1px solid var(--line-strong)",
+          borderRadius: "var(--r)", padding: "20px", width: wide ? "640px" : "440px",
           maxWidth: "92vw", maxHeight: "80vh", overflowY: "auto",
           boxShadow: "0 20px 40px rgba(0,0,0,0.6)",
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
           <div style={{ fontWeight: 700, fontSize: "15px", color: "var(--text)" }}>{title}</div>
-          <button onClick={onClose} className="btn sm">✕</button>
+          <button onClick={onClose} className="icon-btn" aria-label="Close"><IconClose size={ICON_MD} /></button>
         </div>
         {children}
       </div>
@@ -132,7 +133,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
               border: current === t.id ? "1px solid var(--cyan)" : undefined,
             }}
           >
-            <span>🏢 {t.name}{t.sector ? ` · ${t.sector}` : ""}</span>
+            <span className="ico-row"><IconTenant className="ico" size={ICON_MD} /><span>{t.name}{t.sector ? ` · ${t.sector}` : ""}</span></span>
             <span style={{ fontSize: 10, color: "var(--faint)" }}>
               {current === t.id ? "ACTIVE" : t.plan || ""}
             </span>
@@ -143,7 +144,7 @@ export function TenantModal({ isOpen, onClose }: { isOpen: boolean; onClose: () 
           style={{ textAlign: "left", width: "100%" }}
           onClick={() => pick(null)}
         >
-          <span>🌐 Platform estate (no tenant)</span>
+          <span className="ico-row"><IconNetwork className="ico" size={ICON_MD} /><span>Platform estate (no tenant)</span></span>
         </button>
       </div>
     </ModalShell>

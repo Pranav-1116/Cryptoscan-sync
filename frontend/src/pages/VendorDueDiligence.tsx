@@ -13,8 +13,8 @@ import {
 import type { VendorProfileCompleteness, VendorProfileResponse, VendorRecord, VendorRiskResponse } from "../lib/api.js";
 
 const CONTROL_STYLE: React.CSSProperties = {
-  color: "var(--text)", background: "#0a1020", border: "1px solid var(--line)",
-  borderRadius: 4, padding: "8px 10px",
+  color: "var(--text)", background: "var(--bg)", border: "1px solid var(--line)",
+  borderRadius: "var(--r)", padding: "8px 10px",
 };
 
 const SECTIONS: Array<[string, string]> = [
@@ -224,11 +224,11 @@ export default function VendorDueDiligence() {
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
                     {sectionKeys.map((key) => <details key={key} open={key === "identity" || key === "contacts"} className="panel" style={{ padding: 12 }}>
                       <summary style={{ cursor: "pointer", color: "var(--cyan)", fontWeight: 600 }}>{SECTIONS.find(([candidate]) => candidate === key)?.[1] || key}</summary>
-                      <textarea value={sectionDrafts[key] || "{}"} onChange={(event) => setSectionDrafts((previous) => ({ ...previous, [key]: event.target.value }))} spellCheck={false} style={{ width: "100%", minHeight: 180, marginTop: 10, fontFamily: "var(--mono, monospace)", fontSize: 11, color: "var(--text)", background: "#0a1020", border: "1px solid var(--line)", borderRadius: 4, padding: 10 }} />
+                      <textarea value={sectionDrafts[key] || "{}"} onChange={(event) => setSectionDrafts((previous) => ({ ...previous, [key]: event.target.value }))} spellCheck={false} style={{ width: "100%", minHeight: 180, marginTop: 10, fontFamily: "var(--mono)", fontSize: 11, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 10 }} />
                     </details>)}
                   </div>
                 ) : (
-                  <textarea value={raw} onChange={(event) => setRaw(event.target.value)} spellCheck={false} style={{ width: "100%", minHeight: 420, fontFamily: "var(--mono, monospace)", fontSize: 12, color: "var(--text)", background: "#0a1020", border: "1px solid var(--line)", borderRadius: 4, padding: 12 }} />
+                  <textarea value={raw} onChange={(event) => setRaw(event.target.value)} spellCheck={false} style={{ width: "100%", minHeight: 420, fontFamily: "var(--mono)", fontSize: 12, color: "var(--text)", background: "var(--bg)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 12 }} />
                 )}
                 <div className="row" style={{ gap: 8, marginTop: 12, alignItems: "center" }}>
                   <button className="btn" onClick={() => void validate()} disabled={profileRes.running}>Validate without saving</button>

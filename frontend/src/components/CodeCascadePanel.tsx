@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Badge, Panel, Table } from "./ui";
 import { apiScanCascade, apiScansRecent, CascadeReport, ScanSummaryRow } from "../lib/api";
+import { CountUp, StaggerGroup, StaggerItem } from "../lib/motion";
 
 /** Code-level dependency & cascade for one scan: which files do crypto, who depends on them, in what order to migrate. */
 export default function CodeCascadePanel() {
@@ -67,7 +68,7 @@ export default function CodeCascadePanel() {
 
       {state === "ready" && report && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
+          <StaggerGroup step={0.04} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
             {[
               ["Crypto providers", s.providers, "files that perform crypto"],
               ["With dependents", s.providers_with_dependents, "other files import them"],
@@ -76,13 +77,15 @@ export default function CodeCascadePanel() {
               ["Weak parameters", s.weak_parameters, "key size below floor"],
               ["Migration waves", s.migration_waves, "topological order"],
             ].map(([k, v, sub]) => (
-              <div key={String(k)} className="panel" style={{ padding: 12 }}>
+              <StaggerItem key={String(k)} className="panel cascade-stat" style={{ padding: 12 }}>
                 <div style={{ fontSize: 11, color: "var(--dim)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{k}</div>
-                <div style={{ fontSize: 22, fontWeight: 700 }}>{v ?? "—"}</div>
+                <div style={{ fontSize: 22, fontWeight: 700 }}>
+                  {typeof v === "number" ? <CountUp value={v} /> : (v ?? "—")}
+                </div>
                 <div style={{ fontSize: 11, color: "var(--dim)" }}>{sub}</div>
-              </div>
+              </StaggerItem>
             ))}
-          </div>
+          </StaggerGroup>
 
           {report.systems && report.systems.length > 0 && (
             <>

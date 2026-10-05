@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Badge, Button } from "../components/ui";
 import { apiAuthMeDetails, apiMfaEnroll, apiMfaEnable, apiMfaDisable, tenantFetch } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
+import { ICON_MD, IconOk } from "../components/icons";
 
 export default function Identity() {
   const [loading, setLoading] = useState(true);
@@ -137,7 +138,7 @@ export default function Identity() {
             path="/api/v1/scim/v2/ServiceProviderConfig"
             filename="scim-service-provider-config.json"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             SCIM 2.0 Config
           </AuthenticatedDownload>
@@ -145,7 +146,7 @@ export default function Identity() {
             path="/api/v1/auth/saml/metadata"
             filename="saml-metadata.xml"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             SAML Metadata
           </AuthenticatedDownload>
@@ -158,9 +159,9 @@ export default function Identity() {
           style={{
             padding: "12px 16px",
             marginBottom: "20px",
-            background: message.error ? "rgba(239, 68, 68, 0.08)" : "rgba(16, 185, 129, 0.08)",
-            border: `1px solid ${message.error ? "rgba(239, 68, 68, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
-            color: message.error ? "#fca5a5" : "var(--green)",
+            background: message.error ? "color-mix(in srgb, var(--red) 8%, transparent)" : "color-mix(in srgb, var(--green) 8%, transparent)",
+            border: `1px solid ${message.error ? "color-mix(in srgb, var(--red) 30%, transparent)" : "color-mix(in srgb, var(--green) 30%, transparent)"}`,
+            color: message.error ? "var(--red)" : "var(--green)",
             fontSize: "13px"
           }}
         >
@@ -243,7 +244,7 @@ export default function Identity() {
                   <div style={{ fontSize: "12px", color: "var(--dim)" }}>
                     1. Add this secret to your Authenticator (or YubiKey TOTP slot):
                   </div>
-                  <div style={{ padding: "10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "6px", fontFamily: "var(--mono)", fontSize: "13px", color: "var(--cyan)", textAlign: "center", letterSpacing: "0.1em" }}>
+                  <div style={{ padding: "10px", background: "var(--bg-2)", border: "1px solid var(--line)", borderRadius: "var(--r)", fontFamily: "var(--mono)", fontSize: "13px", color: "var(--cyan)", textAlign: "center", letterSpacing: "0.1em" }}>
                     {mfaSecretData.secret}
                   </div>
                   <div style={{ fontSize: "12px", color: "var(--dim)" }}>
@@ -269,7 +270,7 @@ export default function Identity() {
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "var(--green)", fontSize: "13.5px", fontWeight: 600 }}>
-                <span>✓</span> <span>MFA is actively enforced on your session</span>
+                <IconOk className="ico" size={ICON_MD} /> <span>MFA is actively enforced on your session</span>
               </div>
               <p style={{ margin: 0, fontSize: "12.5px", color: "var(--dim)" }}>
                 To disable MFA, enter your current account password. This will terminate all other active enterprise sessions.
@@ -291,7 +292,7 @@ export default function Identity() {
           )}
 
           {recoveryCodes.length > 0 && (
-            <div style={{ marginTop: "20px", padding: "14px", background: "rgba(0, 212, 255, 0.05)", border: "1px solid var(--cyan)", borderRadius: "8px" }}>
+            <div style={{ marginTop: "20px", padding: "14px", background: "color-mix(in srgb, var(--accent) 5%, transparent)", border: "1px solid var(--cyan)", borderRadius: "var(--r)" }}>
               <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--cyan)", marginBottom: "6px" }}>
                 Emergency Recovery Codes (Save These Now)
               </div>
@@ -319,7 +320,7 @@ export default function Identity() {
                   padding: "10px 12px",
                   background: "var(--bg-2)",
                   border: "1px solid var(--line)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--r)",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center"

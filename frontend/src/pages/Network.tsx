@@ -108,7 +108,7 @@ function statusTone(status: string): "green" | "red" | "amber" | "" {
 }
 
 const NODE_TONE_COLOR: Record<string, string> = {
-  blue: "#3b82f6", cyan: "#00d4ff", green: "#22c55e", amber: "#f59e0b", red: "#ef4444",
+  blue: "var(--accent)", cyan: "var(--accent)", green: "var(--green)", amber: "var(--amber)", red: "var(--red)",
 };
 
 function NetworkInventoryPanel() {
@@ -191,7 +191,7 @@ function NetworkInventoryPanel() {
               value={draft}
               onChange={(event) => setDraft(event.target.value)}
               aria-label="Structured network inventory JSON"
-              style={{ width: "100%", minHeight: 260, fontFamily: "var(--mono)", fontSize: 12, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: 6, padding: 10 }}
+              style={{ width: "100%", minHeight: 260, fontFamily: "var(--mono)", fontSize: 12, background: "var(--bg)", color: "var(--text)", border: "1px solid var(--line)", borderRadius: "var(--r)", padding: 10 }}
             />
             <div className="row" style={{ marginTop: 8 }}>
               <button className="btn" type="button" onClick={() => void validateDraft()}>Validate</button>
@@ -269,7 +269,7 @@ export default function Network() {
                 );
               })}
               {topo.nodes.map((n) => {
-                const col = NODE_TONE_COLOR[n.tone] ?? "#1e3a52";
+                const col = NODE_TONE_COLOR[n.tone] ?? "var(--line-strong)";
                 const isSel = sel === n.id;
                 const clickable = n.kind === "service";
                 return (
@@ -279,7 +279,7 @@ export default function Network() {
                     <rect
                       x={n.x - NODE_W / 2} y={n.y - NODE_H / 2} width={NODE_W} height={NODE_H}
                       rx={9}
-                      fill={n.kind === "subnet" ? "rgba(59,130,246,0.10)" : "var(--panel)"}
+                      fill={n.kind === "subnet" ? "color-mix(in srgb, var(--violet) 10%, transparent)" : "var(--panel)"}
                       stroke={col} strokeWidth={n.kind === "subnet" ? 1.4 : 1.6}
                     />
                     <text x={n.x} y={n.y - 2} textAnchor="middle"

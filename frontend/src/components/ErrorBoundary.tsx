@@ -53,8 +53,8 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             whiteSpace: "pre-wrap",
             wordBreak: "break-word",
             padding: 12,
-            borderRadius: 6,
-            background: "rgba(127,127,127,0.12)",
+            borderRadius: "var(--r)",
+            background: "color-mix(in srgb, var(--violet) 12%, transparent)",
             fontSize: 12,
           }}
         >

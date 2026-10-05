@@ -5,6 +5,7 @@ import {
   LiveScanStatus,
 } from "../lib/api.js";
 import { useRealtime } from "../lib/realtime.jsx";
+import { ICON_SM, IconRunning, StatusMark } from "../components/icons";
 
 /* Realtime scanners — drives the actual CryptoScan scanner CLIs server-side
    and shows them live. Every number comes from a real scan (hardware /
@@ -237,7 +238,7 @@ export default function LiveScanners() {
                 : kv(r.summary).map(([k, v]) => `${k}=${String(v)}`).join("  ·  ");
               return (
                 <div key={r.key} className={`scan-row ${cls}`}>
-                  <div className="s-ico">{isRunning ? "▶" : failed ? "✗" : r.ok === true ? "✓" : "·"}</div>
+                  <div className="s-ico">{isRunning ? <IconRunning size={ICON_SM} /> : <StatusMark ok={failed ? false : r.ok === true ? true : null} muted />}</div>
                   <div className="s-meta">
                     <div className="s-name">{r.label}</div>
                     {facts && <div className="s-detail">{facts}</div>}

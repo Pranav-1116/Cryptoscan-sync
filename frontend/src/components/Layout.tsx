@@ -12,6 +12,7 @@ import {
   Key, ListChecks, MagnifyingGlass, PlugsConnected, Pulse, Scan,
   Scales, ShieldCheck, SlidersHorizontal, UsersThree, type Icon,
 } from "@phosphor-icons/react";
+import { BrandMark, ICON_LG, ICON_MD, ICON_SM, IconCaretDown, IconCaretLeft, IconCaretRight, IconClock, IconClose, IconDark, IconKeyboard, IconLight, IconSearch, IconSecurity, IconTenant, IconUser } from "./icons";
 import { useLiveTicker, useAlertToasts, Toasts } from "./Live.jsx";
 import SearchOverlay from "./Search";
 import { getToken, setToken, getUserName, apiMyGrants, apiStatsSummary } from "../lib/api.js";
@@ -95,9 +96,9 @@ const PRIMARY_SECTIONS: NavSection[] = [
 ];
 
 const TIER_STYLE: Record<Tier, { bg: string; fg: string; border: string }> = {
-  ga: { bg: "rgba(34,197,94,0.10)", fg: "var(--green)", border: "rgba(34,197,94,0.35)" },
-  beta: { bg: "rgba(245,158,11,0.10)", fg: "var(--amber)", border: "rgba(245,158,11,0.40)" },
-  preview: { bg: "rgba(148,163,184,0.12)", fg: "var(--slate)", border: "rgba(148,163,184,0.45)" },
+  ga: { bg: "color-mix(in srgb, var(--green) 10%, transparent)", fg: "var(--green)", border: "color-mix(in srgb, var(--green) 35%, transparent)" },
+  beta: { bg: "color-mix(in srgb, var(--amber) 10%, transparent)", fg: "var(--amber)", border: "color-mix(in srgb, var(--amber) 40%, transparent)" },
+  preview: { bg: "color-mix(in srgb, var(--violet) 12%, transparent)", fg: "var(--slate)", border: "color-mix(in srgb, var(--violet) 45%, transparent)" },
 };
 
 /* TierPill — GA surfaces carry no pill (the default); beta/preview are marked
@@ -112,7 +113,7 @@ export function TierPill({ tier, compact = false }: { tier: Tier; compact?: bool
       title={TIER_DETAIL[tier]}
       style={{
         marginLeft: compact ? "auto" : 8, fontSize: compact ? 9 : 10, fontWeight: 700, letterSpacing: 0.5,
-        textTransform: "uppercase", padding: compact ? "1px 5px" : "2px 7px", borderRadius: 4,
+        textTransform: "uppercase", padding: compact ? "1px 5px" : "2px 7px", borderRadius: "var(--r)",
         background: st.bg, color: st.fg, border: `1px solid ${st.border}`, lineHeight: 1.4, whiteSpace: "nowrap",
       }}
     >
@@ -133,7 +134,7 @@ export function MaturityBanner({ tier, route }: { tier: Tier; route: string }) {
       role="note"
       style={{
         display: "flex", alignItems: "center", gap: 10, margin: "0 0 12px", padding: "6px 12px",
-        borderRadius: 7, background: st.bg, border: `1px solid ${st.border}`, fontSize: 12, color: "var(--dim)",
+        borderRadius: "var(--r)", background: st.bg, border: `1px solid ${st.border}`, fontSize: 12, color: "var(--dim)",
       }}
     >
       <TierPill tier={tier} />
@@ -245,69 +246,45 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       <motion.aside className="sidebar" layout="position" aria-label="Primary navigation">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "4px 8px 16px" }}>
           <Link to="/" className="logo" style={{ display: "flex", alignItems: "center", gap: 11, fontWeight: 700, fontSize: 17, letterSpacing: "0.02em", textDecoration: "none" }}>
-            <span className="mark" style={{ width: 30, height: 30, borderRadius: 7, display: "grid", placeItems: "center", background: "var(--grad)", color: "#04121d", fontSize: 16, boxShadow: "var(--glow-cyan)", flexShrink: 0 }}>◈</span>
+            <BrandMark size={30} />
             <span className="logo-text" style={{ color: "var(--text)" }}>ZELNX<span style={{ color: "var(--faint)", fontWeight: 500, fontSize: 10, marginLeft: 6, letterSpacing: "0.14em" }}>SEC</span></span>
           </Link>
           <button
             onClick={toggleSidebar}
             title={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            style={{ background: "none", border: "none", color: "var(--faint)", cursor: "pointer", padding: "4px 6px", fontSize: "14px" }}
+            className="icon-btn"
+            aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {isCollapsed ? "»" : "«"}
+            {isCollapsed ? <IconCaretRight size={ICON_MD} /> : <IconCaretLeft size={ICON_MD} />}
           </button>
         </div>
 
         
         {/* Enterprise Organization & Environment Selectors (Sections 54 & 55) */}
         {!isCollapsed && (
-          <div style={{ padding: "0 8px 12px", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <div className="scope-group">
             <button
               onClick={() => setShowTenantModal(true)}
-              style={{
-                width: "100%",
-                background: "var(--bg-2)",
-                border: "1px solid var(--line)",
-                borderRadius: "6px",
-                padding: "6px 10px",
-                textAlign: "left",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                fontSize: "12px",
-                color: "var(--text)"
-              }}
+              className="scope-sel"
               title="Switch Organization / Business Unit"
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 600 }}>
-                🏢 {org.name.split("·")[1]?.trim() || org.name}
+              <span className="ico-row">
+                <IconTenant className="ico" size={ICON_MD} />
+                <span>{org.name.split("·")[1]?.trim() || org.name}</span>
               </span>
-              <span style={{ fontSize: "10px", color: "var(--faint)" }}>▼</span>
+              <IconCaretDown className="ico" size={ICON_SM} color="var(--faint)" />
             </button>
 
             <button
               onClick={() => setShowEnvModal(true)}
-              style={{
-                width: "100%",
-                background: env === "Production" ? "rgba(239, 68, 68, 0.08)" : "var(--bg-2)",
-                border: `1px solid ${env === "Production" ? "rgba(239, 68, 68, 0.3)" : "var(--line)"}`,
-                borderRadius: "6px",
-                padding: "5px 10px",
-                textAlign: "left",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                fontSize: "11.5px",
-                color: env === "Production" ? "#fca5a5" : "var(--dim)"
-              }}
+              className={`scope-sel env${env === "Production" ? " is-prod" : ""}`}
               title="Switch Deployment Environment"
             >
-              <span style={{ fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-                <span style={{ width: 6, height: 6, borderRadius: "50%", background: env === "Production" ? "var(--red)" : "var(--cyan)" }} />
-                {env.toUpperCase()}
+              <span className="ico-row">
+                <span className="scope-dot" />
+                <span>{env.toUpperCase()}</span>
               </span>
-              <span style={{ fontSize: "10px", color: "var(--faint)" }}>▼</span>
+              <IconCaretDown className="ico" size={ICON_SM} color="var(--faint)" />
             </button>
           </div>
         )}
@@ -319,7 +296,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
               <Link
                 to="/scanners"
                 className="btn primary"
-                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "8px 12px", textDecoration: "none", borderRadius: "7px", fontSize: "12.5px" }}
+                style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", width: "100%", padding: "8px 12px", textDecoration: "none", borderRadius: "var(--r)", fontSize: "12.5px" }}
               >
                 <span>+</span> Start Scan
               </Link>
@@ -356,8 +333,8 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
         <div style={{ marginTop: 24, padding: "0 8px" }}>
           <div className="realtime-banner" style={{
             color: ticker.backend ? "var(--green)" : "var(--amber)",
-            borderColor: ticker.backend ? "rgba(34,197,94,0.35)" : undefined,
-            background: ticker.backend ? "rgba(34,197,94,0.07)" : undefined,
+            borderColor: ticker.backend ? "color-mix(in srgb, var(--green) 35%, transparent)" : undefined,
+            background: ticker.backend ? "color-mix(in srgb, var(--green) 7%, transparent)" : undefined,
           }}>
             <span className="dot" style={{ background: ticker.backend ? "var(--green)" : "var(--amber)" }} />
             <span className="nav-text">
@@ -389,12 +366,12 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
               <>
                 <div
     onClick={() => setShowHealthModal(true)}
-    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--panel)", padding: "4px 10px", borderRadius: "6px", border: "1px solid var(--line)" }}
+    style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", background: "var(--panel)", padding: "4px 10px", borderRadius: "var(--r)", border: "1px solid var(--line)" }}
     title="Click to view 24/7 Engine Health & Status"
   >
-    <span className="live-dot" style={{ background: s.c, boxShadow: `0 0 10px ${s.c}`, animation: s.pulse ? undefined : "none" }} />
+    <span className="live-dot" style={{ background: s.c, animation: s.pulse ? undefined : "none" }} />
     <span style={{ fontWeight: 600, color: s.c, fontSize: "12px" }}>ZELNX Operational</span>
-    <span style={{ fontSize: "10px", color: "var(--faint)" }}>▼</span>
+    <IconCaretDown className="ico" size={ICON_SM} color="var(--faint)" />
   </div>
               </>
             );
@@ -414,11 +391,11 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
           <div
             className="searchbox"
             onClick={() => setShowSearch(true)}
-            style={{ borderRadius: "8px", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "6px 14px", cursor: "pointer", border: "1px solid var(--line)" }}
+            style={{ borderRadius: "var(--r)", background: "var(--panel)", display: "flex", alignItems: "center", gap: "10px", padding: "6px 14px", cursor: "pointer", border: "1px solid var(--line)" }}
           >
-            <span style={{ color: "var(--cyan)" }}>⌕</span>
+            <IconSearch className="ico" size={ICON_MD} color="var(--accent)" />
             <span style={{ fontSize: "12.5px" }}>Search cryptographic assets...</span>
-            <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "4px", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
+            <span style={{ marginLeft: "auto", fontSize: "10px", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "1px 6px", fontFamily: "var(--mono)" }}>⌘K</span>
           </div>
 
           
@@ -442,35 +419,40 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
             style={{ fontFamily: "var(--mono)", fontSize: "11px" }}
             title="Toggle Global Timezone (UTC / Local / GST)"
           >
-            🕒 {timezone}
+            <span className="ico-row">
+              <IconClock className="ico" size={ICON_SM} />
+              <span>{timezone}</span>
+            </span>
           </button>
 
           {/* Section 53: Role Badge / Selector */}
           <button
             onClick={() => setShowRoleModal(true)}
-            className="btn sm"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11.5px" }}
+            className="btn sm ico-row"
+            style={{ fontSize: "11.5px" }}
             title="Click to Switch Role Profile (RBAC)"
           >
-            <span>👤</span> {role}
+            <IconUser className="ico" size={ICON_SM} />
+            <span>{role}</span>
           </button>
 
           <button
             className="btn sm"
             title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
             onClick={() => setTheme((x) => (x === "dark" ? "light" : "dark"))}
-            style={{ fontFamily: "var(--mono)" }}
+            aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
           >
-            {theme === "dark" ? "☾" : "☀"}
+            {theme === "dark" ? <IconDark className="ico" size={ICON_MD} /> : <IconLight className="ico" size={ICON_MD} />}
           </button>
 
           <button
-            className="btn sm"
+            className="btn sm ico-row"
             onClick={() => { setAdminDrawerTab("security_center"); setShowAdminDrawer(true); }}
-            style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontSize: "11px", borderColor: "var(--cyan)", color: "var(--cyan)" }}
+            style={{ fontSize: "11px", borderColor: "var(--accent)", color: "var(--accent)" }}
             title="Enterprise Identity, Access & Governance Suite"
           >
-            🛡 <span>Security Center</span>
+            <IconSecurity className="ico" size={ICON_SM} />
+            <span>Security Center</span>
           </button>
 
           {getToken() ? (
@@ -507,10 +489,10 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
       {/* Section 97: Global Keyboard Shortcuts Modal */}
       {showShortcutsHelp && (
         <div style={{ position: "fixed", inset: 0, zIndex: 10000, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--bg-1)", border: "1px solid var(--line-strong)", borderRadius: "10px", padding: "24px", maxWidth: "480px", width: "90%", boxShadow: "0 20px 40px rgba(0,0,0,0.6)" }}>
+          <div style={{ background: "var(--bg-2)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "24px", maxWidth: "480px", width: "90%", boxShadow: "0 20px 40px rgba(0,0,0,0.6)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <div style={{ fontWeight: 700, fontSize: "16px", color: "var(--text)" }}>⌨ Global Keyboard Shortcuts</div>
-              <button onClick={() => setShowShortcutsHelp(false)} className="btn sm">✕</button>
+              <div className="ico-row" style={{ fontWeight: 700, fontSize: "16px", color: "var(--text)" }}><IconKeyboard className="ico" size={ICON_LG} /><span>Global Keyboard Shortcuts</span></div>
+              <button onClick={() => setShowShortcutsHelp(false)} className="icon-btn" aria-label="Close"><IconClose size={ICON_MD} /></button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "10px", fontSize: "13px" }}>
               {[
@@ -521,7 +503,7 @@ function LayoutInner({ route: propRoute, children }: { route?: string; children:
               ].map((sc, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
                   <span style={{ color: "var(--dim)" }}>{sc.desc}</span>
-                  <code style={{ background: "var(--bg-2)", border: "1px solid var(--line)", padding: "3px 8px", borderRadius: "4px", color: "var(--cyan)", fontFamily: "var(--mono)" }}>{sc.key}</code>
+                  <code style={{ background: "var(--bg-2)", border: "1px solid var(--line)", padding: "3px 8px", borderRadius: "var(--r)", color: "var(--cyan)", fontFamily: "var(--mono)" }}>{sc.key}</code>
                 </div>
               ))}
             </div>

@@ -4,6 +4,7 @@ import {
 } from "../components/ui.jsx";
 import { useRealtime, useRealtimeRefresh, severityOf } from "../lib/realtime.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
+import { ICON_MD, ICON_SM, IconCalendar, IconClose, IconWarn } from "../components/icons";
 import {
   apiTechBomLive, apiTechBomSnapshot, apiTechBomVersions, apiTechBomCompare,
   apiTechBomExport, apiTechBomExportCsv, apiTechBomExportRaw, fmtSnapshotId,
@@ -40,8 +41,15 @@ const LAYER_LABELS: Record<string, string> = {
   vendor: "VBOM — Vendor",
   certificates: "TLS Certificates",
 };
+// BOM layer is a *type*, not a verdict, so none of these may borrow a
+// status colour. cbom was amber and hbom was orange -- "warning" and
+// "high risk" -- which told an operator the cryptography and hardware
+// inventories were in trouble when the colour only meant "this is the
+// crypto one". Cryptography now shares the accent used for crypto nodes
+// in the dependency graph, so one subject reads the same colour
+// everywhere in the product.
 const LAYER_TONE: Record<string, string> = {
-  sbom: "cyan", cbom: "amber", hbom: "orange", vendor: "violet", certificates: "green",
+  sbom: "violet", cbom: "cyan", hbom: "slate", vendor: "slate", certificates: "green",
 };
 
 function download(filename: string, text: string, mime: string) {
@@ -85,22 +93,22 @@ function BomGraph({ state }: { state: TechBomState }) {
   }, [components, state.dependency_count]);
 
   const color = (layer: string) =>
-    ({ sbom: "#00d4ff", cbom: "#f59e0b", hbom: "#f97316", vendor: "#8b7cf6", certificates: "#22c55e" }[layer] || "#64748b");
+    ({ sbom: "var(--violet)", cbom: "var(--accent)", hbom: "var(--slate)", vendor: "var(--slate)", certificates: "var(--green)" }[layer] || "var(--slate)");
 
   if (components.length === 0) return <div className="empty">No components — run a scan to populate the BOM.</div>;
   return (
     <svg viewBox="0 0 840 500" width="100%">
       {edges.map((e, i) => (
         <line key={i} x1={e.a.x} y1={e.a.y} x2={e.b.x} y2={e.b.y}
-          stroke="rgba(120,140,170,.35)" strokeWidth="1.4" />
+          stroke="color-mix(in srgb, var(--violet) 35%, transparent)" strokeWidth="1.4" />
       ))}
       {components.map((c, i) => (
         <g key={i}>
           <circle cx={c.x} cy={c.y} r={14} fill={color(c.layer)} fillOpacity={0.85} />
-          <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize="9" fill="#0b1220" fontWeight="600">
+          <text x={c.x} y={c.y + 4} textAnchor="middle" fontSize="9" fill="var(--bg)" fontWeight="600">
             {(c.name || c["bom-ref"] || "").slice(0, 3).toUpperCase()}
           </text>
-          <text x={c.x} y={c.y + 30} textAnchor="middle" fontSize="9.5" fill="#e5e7eb">
+          <text x={c.x} y={c.y + 30} textAnchor="middle" fontSize="9.5" fill="var(--text)">
             {c.name || c["bom-ref"] || ""}
           </text>
         </g>
@@ -385,16 +393,16 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
           ))}
           <input placeholder="institution (optional)" value={institution}
             onChange={(e) => setInstitution(e.target.value)}
-            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
+            style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)" }} />
           <button onClick={generatePlan} style={{ padding: "4px 14px" }}>Generate</button>
           {jurisdictions.length ? (
             <select value={jurisdiction} onChange={(e) => loadJurisdiction(e.target.value)}
-              style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+              style={{ background: "var(--bg)", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: "var(--r)" }}>
               {jurisdictions.map((j) => <option key={j.code} value={j.code}>{j.display}</option>)}
             </select>
           ) : null}
           <select value={exportLang} onChange={(e) => setExportLang(e.target.value)}
-            style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+            style={{ background: "var(--bg)", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: "var(--r)" }}>
             {["en", "de", "fr", "es", "it", "ar"].map((l) => <option key={l} value={l}>{l.toUpperCase()}</option>)}
           </select>
           <button onClick={() => downloadBankingArtifactIntl("action-plan", { format: "html", lang: exportLang, jurisdiction })}
@@ -404,7 +412,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
           <div style={{ marginBottom: 10 }}>
             {(plan.milestones as Array<{ label: string; date?: string | null; note?: string }>).slice(0, 5).map((m, i) => (
               <div key={i} style={{ fontSize: 11, opacity: 0.75 }}>
-                📅 <strong>{m.label}</strong>{m.date ? ` — ${m.date}` : ""}{m.note ? ` · ${m.note}` : ""}
+                <IconCalendar className="ico" size={ICON_MD} /> <strong>{m.label}</strong>{m.date ? ` — ${m.date}` : ""}{m.note ? ` · ${m.note}` : ""}
               </div>
             ))}
           </div>
@@ -425,7 +433,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
             ))}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginTop: 12 }}>
               {(plan?.phases ?? []).map((p) => (
-                <div key={p.phase} style={{ border: "1px solid #1b2740", borderRadius: 6, padding: 10 }}>
+                <div key={p.phase} style={{ border: "1px solid #1b2740", borderRadius: "var(--r)", padding: 10 }}>
                   <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
                     <Badge tone={p.phase === "P1" ? "red" : p.phase === "P2" ? "amber" : "cyan"}>{p.phase}</Badge>
                     <strong style={{ fontSize: 12 }}>{p.title}</strong>
@@ -489,7 +497,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
       <Panel title="Mainframe Ingest — z/OS into the unified BOM" sub="RACF RACDCERT LIST text or ICSF key CSV → same crypto_assets as every scanner" frame>
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
           <select value={mfKind} onChange={(e) => setMfKind(e.target.value)}
-            style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+            style={{ background: "var(--bg)", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: "var(--r)" }}>
             <option value="racdcert">RACDCERT LIST</option>
             <option value="icsf_csv">ICSF CSV</option>
           </select>
@@ -506,7 +514,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
           placeholder={mfKind === "racdcert"
             ? "Digital certificate information for site certificate PAYGW:\n    Status: TRUST\n    Certificate Key Size: 2048\n    Algorithm Signature: SHA256WithRSA"
             : "LABEL,ALGORITHM,KEYBITS,USAGE,STATUS\nPAY.ZEK.2026,AES,256,CIPHER,ACTIVE"}
-          style={{ width: "100%", background: "#0b1020", color: "var(--ink, #cdd6f4)", border: "1px solid #233047", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 11 }} />
+          style={{ width: "100%", background: "var(--bg)", color: "var(--text)", border: "1px solid #233047", borderRadius: "var(--r)", padding: 8, fontFamily: "monospace", fontSize: 11 }} />
         {mainframe && mainframe.total ? (
           <div style={{ marginTop: 8 }}>
             <Table
@@ -525,7 +533,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
         <Panel title="z/OS Deep Analysis" sub="DB2 SSL config · CICS TCPIPSERVICE · RACDCERT · ICSF — assessed inline" frame>
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
             <select value={deepKind} onChange={(e) => setDeepKind(e.target.value)}
-              style={{ background: "#0b1020", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: 4 }}>
+              style={{ background: "var(--bg)", color: "inherit", border: "1px solid #233047", padding: "4px 8px", borderRadius: "var(--r)" }}>
               <option value="db2_tls">DB2 TLS config</option>
               <option value="cics_tcpservice">CICS TCPIPSERVICE</option>
               <option value="racdcert">RACDCERT LIST</option>
@@ -537,9 +545,9 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
             placeholder={deepKind === "db2_tls"
               ? "[database PAYDB]\nSSL_VERSIONS = TLSv1.2\nSSL_CIPHERSPECS = TLS_AES_256_GCM_SHA384"
               : "TCPIPSERVICE(PAYMENTS) PORTNUMBER(9443) PROTOCOL(https) CIPHERS(...)"}
-            style={{ width: "100%", background: "#0b1020", color: "var(--ink, #cdd6f4)", border: "1px solid #233047", borderRadius: 6, padding: 8, fontFamily: "monospace", fontSize: 11 }} />
+            style={{ width: "100%", background: "var(--bg)", color: "var(--text)", border: "1px solid #233047", borderRadius: "var(--r)", padding: 8, fontFamily: "monospace", fontSize: 11 }} />
           {deepOut ? (
-            <pre style={{ fontSize: 11, background: "#0b1020", padding: 8, borderRadius: 6, overflowX: "auto", maxHeight: 180 }}>
+            <pre style={{ fontSize: 11, background: "var(--bg)", padding: 8, borderRadius: "var(--r)", overflowX: "auto", maxHeight: 180 }}>
               {JSON.stringify((deepOut as { assessment?: unknown }).assessment ?? deepOut, null, 2).slice(0, 1600)}
             </pre>
           ) : null}
@@ -555,11 +563,11 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
           <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
             <input placeholder="FIPS 140 module lookup (CMVP registry)" value={fipsMod}
               onChange={(e) => setFipsMod(e.target.value)}
-              style={{ flex: 1, background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
+              style={{ flex: 1, background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)" }} />
             <button onClick={lookupFips} disabled={fipsMod.trim().length < 2} style={{ padding: "4px 14px" }}>Lookup</button>
           </div>
           {fipsOut ? (
-            <pre style={{ fontSize: 11, background: "#0b1020", padding: 8, borderRadius: 6, overflowX: "auto", marginTop: 8 }}>
+            <pre style={{ fontSize: 11, background: "var(--bg)", padding: 8, borderRadius: "var(--r)", overflowX: "auto", marginTop: 8 }}>
               {JSON.stringify(fipsOut, null, 2).slice(0, 800)}
             </pre>
           ) : null}
@@ -593,7 +601,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
             <input placeholder="new entity code (e.g. sg-ops)" value={newEntity}
               onChange={(e) => setNewEntity(e.target.value)}
-              style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: 4 }} />
+              style={{ background: "none", border: "1px solid #233047", color: "inherit", padding: "4px 8px", borderRadius: "var(--r)" }} />
             <button onClick={addEntity} disabled={!newEntity.trim()} style={{ padding: "4px 12px" }}>Add</button>
             <button onClick={() => downloadDoraRegister("csv", groupEntities[0]?.code || "")} style={{ padding: "4px 12px" }}>DORA register (CSV)</button>
             <button onClick={() => downloadDoraRegister("json", groupEntities[0]?.code || "")} style={{ padding: "4px 12px" }}>DORA (JSON)</button>
@@ -615,7 +623,7 @@ function BankingTab({ overview }: { overview: BankOverview | null }) {
                   e.systems, e.crypto_instances,
                   <Badge key="w" tone={e.weak_legacy_instances ? "red" : "green"}>{e.weak_legacy_instances}</Badge>,
                   <Badge key="q" tone={e.quantum_vulnerable_public_key ? "amber" : "green"}>{e.quantum_vulnerable_public_key}</Badge>,
-                  <button key="d" onClick={() => removeEntity(e.entity.code)} style={{ padding: "2px 8px" }}>✕</button>,
+                  <button key="d" onClick={() => removeEntity(e.entity.code)} style={{ padding: "2px 8px" }} aria-label="Remove"><IconClose size={ICON_SM} /></button>,
                 ])}
               />
               {(group.group?.recurring_weak_families ?? []).length ? (
@@ -797,14 +805,14 @@ export default function LiveAssetIntelligence() {
       <div className="grid" style={{ gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 16 }}>
         <Kpi k="Assets" v={total} tone="cyan" />
         <Kpi k="SBOM" v={counts.sbom ?? 0} tone="cyan" />
-        <Kpi k="CBOM" v={counts.cbom ?? 0} tone="amber" />
+        <Kpi k="CBOM" v={counts.cbom ?? 0} tone="cyan" />
         <Kpi k="HBOM" v={counts.hbom ?? 0} tone="orange" />
         <Kpi k="Vendors" v={counts.vendor ?? 0} tone="violet" />
       </div>
 
       {state?.scan_in_progress && (
         <div className="notice" style={{ marginBottom: 12, borderColor: "var(--amber)", color: "var(--amber)" }}>
-          <strong>⚠ LIVE SCAN IN PROGRESS</strong> — the BOM is partially updated. Use <em>Capture snapshot</em> or wait for the scan to finish for a stable export.
+          <strong className="ico-row"><IconWarn className="ico" size={ICON_MD} />LIVE SCAN IN PROGRESS</strong> — the BOM is partially updated. Use <em>Capture snapshot</em> or wait for the scan to finish for a stable export.
         </div>
       )}
       {snapshotMsg && <div className="notice" style={{ marginBottom: 12 }}>{snapshotMsg}</div>}

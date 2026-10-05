@@ -8,10 +8,13 @@ import {
 } from "../lib/api.js";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtimeRefresh } from "../lib/realtime.js";
+import { StatusMark } from "../components/icons";
 
 const CRED_KINDS = ["cloud", "network_device", "hsm", "database", "kubernetes", "git", "siem", "api", "other"];
 
-const KIND_TONE: Record<string, string> = { siem: "cyan", itsm: "violet", cmdb: "amber", soar: "green" };
+// Integration kind is a type, not a status: cmdb was amber ("warning")
+// and soar green ("pass") purely to tell four connectors apart.
+const KIND_TONE: Record<string, string> = { siem: "cyan", itsm: "violet", cmdb: "slate", soar: "slate" };
 
 function statusTone(status: string): "green" | "red" | "amber" | "cyan" {
   if (status === "delivered" || status === "resolved") return "green";
@@ -28,7 +31,7 @@ function VaultPanel() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const set = (k: string, v: string | number) => setF((p) => ({ ...p, [k]: v }));
-  const input: React.CSSProperties = { flex: 1, minWidth: 130, background: "rgba(8,12,24,0.8)", border: "1px solid var(--line-strong)", borderRadius: 10, color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12.5, padding: "7px 11px" };
+  const input: React.CSSProperties = { flex: 1, minWidth: 130, background: "color-mix(in srgb, var(--bg) 80%, transparent)", border: "1px solid var(--line-strong)", borderRadius: "var(--r)", color: "var(--text)", fontFamily: "var(--mono)", fontSize: 12.5, padding: "7px 11px" };
 
   const credentialList = (creds.data as any)?.credentials ?? [];
   const leaseList = (leases.data as any)?.leases ?? [];
@@ -83,7 +86,7 @@ function VaultPanel() {
         <input style={input} placeholder="least-privilege scope (e.g. cloud:read)" value={f.least_privilege_scope} onChange={(e) => set("least_privilege_scope", e.target.value)} />
         <button className="btn primary" onClick={() => void register()} disabled={busy === "reg"}>{busy === "reg" ? "Registering…" : "Register reference"}</button>
       </div>
-      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? "✓ " : ""}{msg.text}</Badge></div>}
+      {msg && <div style={{ marginBottom: 10 }}><Badge tone={msg.ok ? "green" : "red"}>{msg.ok ? <StatusMark ok muted /> : null}{msg.text}</Badge></div>}
 
       <Table
         head={["credential", "kind", "vault", "health", "rotation due", "actions"]}

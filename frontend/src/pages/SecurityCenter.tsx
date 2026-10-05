@@ -128,7 +128,7 @@ export default function SecurityCenter() {
       />
 
       {dropped && (
-        <div className="banner" style={{ background: "rgba(224,30,90,0.10)", border: "1px solid var(--red)", padding: "10px 14px", borderRadius: 8 }}>
+        <div className="banner" style={{ background: "color-mix(in srgb, var(--red) 10%, transparent)", border: "1px solid var(--red)", padding: "10px 14px", borderRadius: "var(--r)" }}>
           <b>Attention — security posture regressed.</b>{" "}
           <span style={{ fontSize: 13 }}>score dropped {scorePrevious ?? "—"} → {score} (Δ {scoreDelta}). Review the live threat feed below.</span>
         </div>
@@ -326,7 +326,7 @@ function PostureTrendChart({ trend }: { trend: PostureTrend | null }) {
               const y = H - pad - (g / max) * (H - 2 * pad);
               return <line key={g} x1={pad} x2={W - pad} y1={y} y2={y} stroke="var(--line)" strokeWidth={1} />;
             })}
-            {area && <path d={area} fill="rgba(34,197,94,0.10)" stroke="none" />}
+            {area && <path d={area} fill="color-mix(in srgb, var(--green) 10%, transparent)" stroke="none" />}
             <polyline points={line} fill="none" stroke={scoreTone(buckets[buckets.length - 1]?.score_avg ?? 0)} strokeWidth={2.2} strokeLinejoin="round" strokeLinecap="round" />
             {points.map(([x, y], i) => (
               <circle key={i} cx={x} cy={y} r={2.5} fill={scoreTone(scores[i] ?? 0)} />
@@ -361,8 +361,8 @@ function PerSignal({ label, value }: { label: string; value: number }) {
     <div style={{ textAlign: "center" }}>
       <div className="dim" style={{ fontSize: 11 }}>{label}</div>
       <div className="mono" style={{ fontSize: 15, color: scoreTone(value) }}>{value}%</div>
-      <div style={{ background: "var(--line)", height: 4, borderRadius: 2, marginTop: 4 }}>
-        <div style={{ width: `${value}%`, height: 4, borderRadius: 2, background: scoreTone(value) }} />
+      <div style={{ background: "var(--line)", height: 4, borderRadius: "var(--r)", marginTop: 4 }}>
+        <div style={{ width: `${value}%`, height: 4, borderRadius: "var(--r)", background: scoreTone(value) }} />
       </div>
     </div>
   );

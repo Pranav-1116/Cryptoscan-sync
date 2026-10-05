@@ -61,7 +61,7 @@ export default function SystemHealth() {
                   alignItems: "center",
                   padding: "10px 12px",
                   background: "var(--bg-2)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--r)",
                   border: "1px solid var(--line)"
                 }}
               >
@@ -90,7 +90,7 @@ export default function SystemHealth() {
                   alignItems: "center",
                   padding: "10px 12px",
                   background: "var(--bg-2)",
-                  borderRadius: "6px",
+                  borderRadius: "var(--r)",
                   border: "1px solid var(--line)"
                 }}
               >

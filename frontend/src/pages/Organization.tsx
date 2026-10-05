@@ -69,7 +69,7 @@ export default function Organization() {
             <div className="row">
               {regions.map((r, i) => (
                 <button key={r.name} className="btn sm"
-                  style={i === regionIdx ? { borderColor: "var(--cyan)", color: "#aef3ff", background: "rgba(0,212,255,0.10)" } : {}}
+                  style={i === regionIdx ? { borderColor: "var(--cyan)", color: "var(--accent)", background: "color-mix(in srgb, var(--accent) 10%, transparent)" } : {}}
                   onClick={() => { setRegionIdx(i); setBu(null); }}>
                   {r.name}
                 </button>

@@ -161,7 +161,7 @@ export default function Runtime() {
       {!hasData ? (
         <Panel title="No runtime agents reporting yet" sub="install and run the lightweight runtime agent on a machine to see its live cryptography">
           <div style={{ display: "grid", placeItems: "center", padding: "26px 10px" }}>
-            <div className="frame" style={{ minHeight: 120, maxWidth: 760, width: "100%", display: "grid", placeItems: "center", border: "1px dashed var(--line-strong)", borderRadius: 12, color: "var(--faint)", fontSize: 13, padding: 24, textAlign: "center" }}>
+            <div className="frame" style={{ minHeight: 120, maxWidth: 760, width: "100%", display: "grid", placeItems: "center", border: "1px dashed var(--line-strong)", borderRadius: "var(--r)", color: "var(--faint)", fontSize: 13, padding: 24, textAlign: "center" }}>
               No host has reported in yet. Run the runtime agent on a Linux machine to inventory its TLS libraries,
               versions and listening endpoints — findings appear here within seconds of submission.
             </div>
@@ -178,7 +178,7 @@ export default function Runtime() {
               </div>
             </Panel>
             <Panel title="Weak / EOL observations" sub="libraries past end-of-life or capable of weak TLS">
-              <div className="num" style={{ fontSize: 34, fontWeight: 700, color: summary.weak_findings ? "var(--red,#f87171)" : undefined }}>
+              <div className="num" style={{ fontSize: 34, fontWeight: 700, color: summary.weak_findings ? "var(--red)" : undefined }}>
                 {summary.weak_findings ?? 0}
               </div>
               <div className="dim mono" style={{ fontSize: 12, marginTop: 6 }}>of {summary.total_findings ?? findings.length} total observations</div>
@@ -263,9 +263,9 @@ function DrawerLite({ title, sub, onClose, children }: { title: string; sub?: st
   return (
     <div
       onClick={onClose}
-      style={{ position: "fixed", inset: 0, background: "rgba(2,6,17,0.55)", zIndex: 60, display: "grid", placeItems: "center", padding: 24 }}
+      style={{ position: "fixed", inset: 0, background: "color-mix(in srgb, var(--bg) 55%, transparent)", zIndex: 60, display: "grid", placeItems: "center", padding: 24 }}
     >
-      <div onClick={(e) => e.stopPropagation()} className="frame" style={{ width: "min(720px, 96vw)", maxHeight: "86vh", overflow: "auto", borderRadius: 14, padding: 20 }}>
+      <div onClick={(e) => e.stopPropagation()} className="frame" style={{ width: "min(720px, 96vw)", maxHeight: "86vh", overflow: "auto", borderRadius: "var(--r)", padding: 20 }}>
         <div className="spread" style={{ marginBottom: 12 }}>
           <div>
             <div style={{ fontWeight: 700 }}>{title}</div>

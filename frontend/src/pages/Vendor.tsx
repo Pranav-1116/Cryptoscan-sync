@@ -15,8 +15,8 @@ const HW_STATUS_TONE: Record<string, string> = {
 };
 const VERDICT_ORDER = ["REQUIRED", "ALLOWED", "RESTRICTED", "DEPRECATED", "DISALLOWED", "UNKNOWN"];
 const VERDICT_COLOR: Record<string, string> = {
-  REQUIRED: "#22c55e", ALLOWED: "#22c55e", RESTRICTED: "#f59e0b",
-  DEPRECATED: "#f97316", DISALLOWED: "#ef4444", UNKNOWN: "#64748b",
+  REQUIRED: "var(--green)", ALLOWED: "var(--green)", RESTRICTED: "var(--amber)",
+  DEPRECATED: "var(--orange)", DISALLOWED: "var(--red)", UNKNOWN: "var(--slate)",
 };
 
 interface VendorAgg {

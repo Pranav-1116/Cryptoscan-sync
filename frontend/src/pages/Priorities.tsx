@@ -19,7 +19,7 @@ function Detail({ item, onClose }: { item: RankedItem; onClose: () => void }) {
     <Panel title={`#${item.rank} — ${item.kind}`}>
       <div className="row" style={{ gap: 12, flexWrap: "wrap", margin: "8px 0" }}>
         <button className="btn" onClick={onClose} style={{ position: "absolute", right: 12, top: 12 }}>close</button>
-        <Kpi k="Priority" v={item.priority.toFixed(1)} tone="var(--warn)" />
+        <Kpi k="Priority" v={item.priority.toFixed(1)} tone="var(--amber)" />
         <Kpi k="Effort" v={item.effort.toFixed(1)} />
         <Kpi k="Severity" v={item.severity_in} tone={SEV_TONE[item.severity_in] ? `var(--${SEV_TONE[item.severity_in]})` : undefined} />
         <Kpi k="Source" v={item.source} />
@@ -78,8 +78,8 @@ export default function Priorities() {
       />
       <div className="row" style={{ gap: 12, margin: "12px 0", flexWrap: "wrap" }}>
         <Kpi k="Open items" v={ranked.length} />
-        <Kpi k="Critical" v={counts.CRITICAL ?? 0} tone="var(--bad)" />
-        <Kpi k="High/Alert" v={(counts.HIGH ?? 0) + (counts.ALERT ?? 0)} tone="var(--warn)" />
+        <Kpi k="Critical" v={counts.CRITICAL ?? 0} tone="var(--red)" />
+        <Kpi k="High/Alert" v={(counts.HIGH ?? 0) + (counts.ALERT ?? 0)} tone="var(--amber)" />
         <Kpi k="Medium" v={counts.MEDIUM ?? 0} />
       </div>
       <Panel title="Ranked remediation queue">

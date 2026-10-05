@@ -20,7 +20,7 @@ function personaFromRoles(roles: string[]): Persona {
 }
 
 function Tile({ label, value, tone = "default", sub }: { label: string; value: React.ReactNode; tone?: "good" | "bad" | "warn" | "default"; sub?: string }) {
-  const color = tone === "good" ? "var(--green)" : tone === "bad" ? "var(--red, #e01e5a)" : tone === "warn" ? "var(--amber)" : "var(--text)";
+  const color = tone === "good" ? "var(--green)" : tone === "bad" ? "var(--red)" : tone === "warn" ? "var(--amber)" : "var(--text)";
   return (
     <div className="card" style={{ padding: 16, minWidth: 200 }}>
       <div style={{ fontSize: 11, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--faint)" }}>{label}</div>
@@ -68,7 +68,7 @@ export default function RoleDashboard() {
     <div className="page" style={{ padding: 24 }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
         <h1 style={{ fontSize: 22, margin: 0 }}>{t("role.title")} · {personaTitle}</h1>
-        <span className="badge" style={{ background: live ? "rgba(34,197,94,0.12)" : "rgba(245,158,11,0.12)", color: live ? "var(--green)" : "var(--amber)" }}>
+        <span className="badge" style={{ background: live ? "color-mix(in srgb, var(--green) 12%, transparent)" : "color-mix(in srgb, var(--amber) 12%, transparent)", color: live ? "var(--green)" : "var(--amber)" }}>
           {live ? t("common.liveData") : t("common.offline")}
         </span>
       </div>
@@ -121,7 +121,7 @@ export default function RoleDashboard() {
           <p style={{ color: "var(--faint)", fontSize: 12, marginTop: 14 }}>
             Passive OT decoders flag cleartext engineering access (S7 download, BACnet WriteProperty,
             CIP ForwardOpen, OPC-UA security-mode None) from observed spans only. Upload a capture in
-            the <a href="#/resilience" style={{ color: "var(--blue,#4d9fff)" }}>Resilience console</a>.
+            the <a href="#/resilience" style={{ color: "var(--blue)" }}>Resilience console</a>.
           </p>
         </>
       )}

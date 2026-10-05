@@ -65,14 +65,14 @@ export default function Compliance() {
             path="/api/v1/compliance/evidence"
             filename="compliance-evidence.json"
             className="btn outline"
-            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Export Compliance Evidence
           </AuthenticatedDownload>
           <a
             href="#/evidence"
             className="btn primary"
-            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "6px" }}
+            style={{ textDecoration: "none", fontSize: "12px", padding: "8px 14px", borderRadius: "var(--r)" }}
           >
             Audit Evidence Lake
           </a>
@@ -138,10 +138,10 @@ export default function Compliance() {
             onClick={() => setSelectedStandard(s.id)}
             style={{
               padding: "8px 16px",
-              borderRadius: "8px",
+              borderRadius: "var(--r)",
               border: "1px solid var(--line)",
               background: selectedStandard === s.id ? "var(--cyan)" : "var(--bg-2)",
-              color: selectedStandard === s.id ? "#04121d" : "var(--text)",
+              color: selectedStandard === s.id ? "var(--on-accent)" : "var(--text)",
               fontWeight: selectedStandard === s.id ? 700 : 500,
               fontSize: "12.5px",
               cursor: "pointer"

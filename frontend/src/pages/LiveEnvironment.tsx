@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Panel, Badge, PageHead, Table } from "../components/ui.jsx";
 import { usePollingApi } from "../lib/apiUi.jsx";
 import { useRealtime, useRealtimeRefresh, severityOf, isSystemEvent } from "../lib/realtime.js";
+import { IconNetwork, IconHardware, IconTenant, IconCrypto, IconCode, IconCertificate, IconEstate, type Icon } from "../components/icons";
 import {
   apiLiveEnvironment, apiLiveOrchestratorStart, apiLiveOrchestratorStatus, apiLiveOrchestratorHistory,
   LiveEnvironmentResponse, OrchestratorScan, ScanRunSummary,
@@ -57,11 +58,11 @@ export default function LiveEnvironment() {
     }
   };
 
-  const domainTiles: { name: string; icon: string; value: number; active: boolean }[] = [
-    { name: "Network", icon: "◈", value: domains.network, active: domains.network > 0 },
-    { name: "Hardware", icon: "⌬", value: domains.hardware, active: domains.hardware > 0 },
-    { name: "Vendor", icon: "▤", value: domains.vendor, active: domains.vendor > 0 },
-    { name: "Cryptography", icon: "⚿", value: domains.crypto, active: domains.crypto > 0 },
+  const domainTiles: { name: string; icon: Icon; value: number; active: boolean }[] = [
+    { name: "Network", icon: IconNetwork, value: domains.network, active: domains.network > 0 },
+    { name: "Hardware", icon: IconHardware, value: domains.hardware, active: domains.hardware > 0 },
+    { name: "Vendor", icon: IconTenant, value: domains.vendor, active: domains.vendor > 0 },
+    { name: "Cryptography", icon: IconCrypto, value: domains.crypto, active: domains.crypto > 0 },
   ];
 
   return (
@@ -96,7 +97,7 @@ export default function LiveEnvironment() {
               {Object.entries(scan.progress || {}).slice(0, 8).map(([k, v]) => (
                 <div key={k} style={{ minWidth: 110 }}>
                   <div className="dim" style={{ fontSize: 11, marginBottom: 3 }}>{k}</div>
-                  <div className="bar-row" style={{ height: 8, background: "var(--line)", borderRadius: 6, overflow: "hidden" }}>
+                  <div className="bar-row" style={{ height: 8, background: "var(--line)", borderRadius: "var(--r)", overflow: "hidden" }}>
                     <div className="bar" style={{ width: `${v}%`, height: "100%", background: v >= 100 ? "var(--green)" : "var(--amber)" }} />
                   </div>
                   <div className="num" style={{ fontSize: 11, marginTop: 2 }}>{v}%</div>
@@ -121,11 +122,11 @@ export default function LiveEnvironment() {
           <div className="row" style={{ justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
             {domainTiles.map((d) => <EnvNode key={d.name} name={d.name} icon={d.icon} count={d.value} active={d.active} />)}
           </div>
-          <svg width="560" height="26"><path d="M70 0 v14 H280 v-14" stroke="rgba(56,189,248,.5)" fill="none" /><path d="M210 0 v14" stroke="rgba(56,189,248,.5)" fill="none" /><path d="M490 0 v14 H280 v-14" stroke="rgba(56,189,248,.5)" fill="none" /></svg>
+          <svg width="560" height="26"><path d="M70 0 v14 H280 v-14" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" fill="none" /><path d="M210 0 v14" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" fill="none" /><path d="M490 0 v14 H280 v-14" stroke="color-mix(in srgb, var(--accent) 50%, transparent)" fill="none" /></svg>
           <div className="row" style={{ justifyContent: "center", gap: 16, flexWrap: "wrap" }}>
-            <EnvNode name="Applications" icon="▣" count={domains.application} active={domains.application > 0} />
-            <EnvNode name="Certificates" icon="⊞" count={domains.certificate} active={domains.certificate > 0} />
-            <EnvNode name="Total estate" icon="⬟" count={domains.total} active={domains.total > 0} />
+            <EnvNode name="Applications" icon={IconCode} count={domains.application} active={domains.application > 0} />
+            <EnvNode name="Certificates" icon={IconCertificate} count={domains.certificate} active={domains.certificate > 0} />
+            <EnvNode name="Total estate" icon={IconEstate} count={domains.total} active={domains.total > 0} />
           </div>
         </div>
         <div className="dim" style={{ fontSize: 12, textAlign: "center", marginTop: 4 }}>
@@ -192,13 +193,13 @@ export default function LiveEnvironment() {
   );
 }
 
-function EnvNode({ name, icon, count, active }: { name: string; icon: string; count: number; active?: boolean }) {
+function EnvNode({ name, icon: I, count, active }: { name: string; icon: Icon; count: number; active?: boolean }) {
   return (
     <div className="frame" style={{
-      border: "1px solid var(--line-strong)", borderRadius: 12, padding: "14px 26px",
-      background: "rgba(8,12,24,0.6)", opacity: active ? 1 : 0.55, textAlign: "center", minWidth: 150,
+      border: "1px solid var(--line-strong)", borderRadius: "var(--r)", padding: "14px 26px",
+      background: "color-mix(in srgb, var(--bg) 60%, transparent)", opacity: active ? 1 : 0.55, textAlign: "center", minWidth: 150,
     }}>
-      <div style={{ fontSize: 22 }}>{icon}</div>
+      <div style={{ color: "var(--accent)", lineHeight: 0 }}><I size={24} /></div>
       <div style={{ fontWeight: 700, fontSize: 15, marginTop: 4 }}>{name}</div>
       <div className="mono faint" style={{ fontSize: 11 }}>{count.toLocaleString()}</div>
     </div>
