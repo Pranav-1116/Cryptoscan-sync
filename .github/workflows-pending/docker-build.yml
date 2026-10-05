@@ -1,0 +1,148 @@
+# Release image build -> GHCR -> OCI digests for pin_release_images.py
+#
+# WHY THIS FILE IS NOT IN .github/workflows/
+# ------------------------------------------
+# Pushing anything under .github/workflows/ requires a token with the
+# `workflow` scope. The push credential used here does not have it, which
+# is why commit 5a32105e ("Revert workflow file fills so the branch can be
+# pushed") emptied the original file -- a non-empty workflow made every
+# push fail. Parking it one directory across keeps the branch pushable and
+# the content reviewable. Install it with a workflow-scoped token:
+#
+#   git mv .github/workflows-pending/docker-build.yml .github/workflows/docker-build.yml
+#   git commit -m "Enable release image build workflow"
+#   git push        # requires a token with the `workflow` scope
+#
+# WHAT THE PREVIOUS VERSION COULD NOT DO
+# --------------------------------------
+# The only non-empty version in history (39e0a3e2, 470 bytes) ran
+# `docker build -t cryptoscan-api:ci` and stopped. It never logged in to a
+# registry, never pushed, and never emitted a digest -- so it could not
+# feed scripts/pin_release_images.py, which is the step that turns
+# "3 mutable template references" into digest-pinned release evidence.
+# A locally built image also has a different digest from the registry
+# manifest, so building alone cannot produce the value that gate wants.
+#
+# This workflow pushes by digest and prints the three digests in exactly
+# the form pin_release_images.py accepts: bare 64-hex, no "sha256:"
+# prefix (scripts/pin_release_images.py: DIGEST = ^[0-9a-f]{64}$).
+
+name: Release images
+
+on:
+  workflow_dispatch:
+    inputs:
+      neo4j_image:
+        description: "Third-party image to resolve a digest for"
+        default: "neo4j:5.26-community"
+        required: true
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+  packages: write        # required to push to ghcr.io
+
+env:
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      api_digest: ${{ steps.collect.outputs.api_digest }}
+      worker_digest: ${{ steps.collect.outputs.worker_digest }}
+      neo4j_digest: ${{ steps.collect.outputs.neo4j_digest }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Both Dockerfiles build from the repository root: they COPY shared,
+      # services and scripts, so the context cannot be the .docker subdir.
+      - name: Build and push API image
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .docker/api/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/cryptoscan-api:${{ github.sha }}
+          provenance: false     # keep the manifest a plain image, so the
+                                # digest pinned here is the digest pulled
+
+      - name: Build and push worker image
+        id: worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .docker/worker/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/cryptoscan-worker:${{ github.sha }}
+          provenance: false
+
+      # neo4j is a third-party image: it is not built here, only resolved,
+      # because pinning requires the digest of the image that will actually
+      # be pulled rather than a rebuild of it.
+      - name: Resolve neo4j digest
+        id: neo4j
+        run: |
+          set -euo pipefail
+          image="${{ github.event.inputs.neo4j_image || 'neo4j:5.26-community' }}"
+          digest="$(docker buildx imagetools inspect "$image" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          echo "digest=${digest#sha256:}" >> "$GITHUB_OUTPUT"
+
+      - name: Collect digests
+        id: collect
+        run: |
+          set -euo pipefail
+          api="${{ steps.api.outputs.digest }}";    api="${api#sha256:}"
+          worker="${{ steps.worker.outputs.digest }}"; worker="${worker#sha256:}"
+          neo4j="${{ steps.neo4j.outputs.digest }}"
+          for pair in "api:$api" "worker:$worker" "neo4j:$neo4j"; do
+            name="${pair%%:*}"; value="${pair#*:}"
+            # Fail loudly rather than emit a half-digest that would be
+            # pinned as release evidence.
+            if ! printf '%s' "$value" | grep -Eq '^[0-9a-f]{64}$'; then
+              echo "::error::$name digest is not 64 hex characters: '$value'"
+              exit 1
+            fi
+          done
+          {
+            echo "api_digest=$api"
+            echo "worker_digest=$worker"
+            echo "neo4j_digest=$neo4j"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Print the pinning command
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+          ## Release image digests
+
+          | image  | digest |
+          |--------|--------|
+          | api    | \`${{ steps.collect.outputs.api_digest }}\` |
+          | worker | \`${{ steps.collect.outputs.worker_digest }}\` |
+          | neo4j  | \`${{ steps.collect.outputs.neo4j_digest }}\` |
+
+          Pin them into a release (Phase 1, Move 2):
+
+          \`\`\`
+          python scripts/pin_release_images.py \\
+            --api-digest ${{ steps.collect.outputs.api_digest }} \\
+            --worker-digest ${{ steps.collect.outputs.worker_digest }} \\
+            --neo4j-digest ${{ steps.collect.outputs.neo4j_digest }} \\
+            --registry ${{ env.REGISTRY }} \\
+            --source k8s \\
+            --out releases/\${RELEASE:-v1.0.1}
+          \`\`\`
+          EOF

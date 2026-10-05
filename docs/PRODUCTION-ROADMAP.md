@@ -135,10 +135,24 @@ unblocks the release pipeline.
 The qualification session of 2026-10-04 proved the code and evidence; these
 two items failed only on token scope and must be done by someone with rights:
 
-1. **Publish the release CI workflow.** A complete `.github/workflows/docker-build.yml`
-   (multi-arch build, SBOM, provenance, digest recording, tag on green runs)
-   exists locally but could not be pushed — the automation token lacks the
-   `workflow` scope (HTTP 403). Push it from a credential that has it.
+1. **Publish the release CI workflow.** `.github/workflows/docker-build.yml`
+   is **0 bytes on `main`**, along with `db-migration.yml` and
+   `scanner-tests.yml`: commit `5a32105e` emptied all three because the
+   automation token lacks the `workflow` scope and any non-empty file under
+   that directory makes the push fail with HTTP 403. Only `ci.yml` still has
+   content.
+
+   This entry previously described a complete workflow with multi-arch
+   build, SBOM, provenance and digest recording as "existing locally". That
+   was not accurate: the last version with any content (`39e0a3e2`, 470
+   bytes) ran `docker build -t cryptoscan-api:ci` and stopped — no registry
+   login, no push, no digest — so it could not have fed the digest pinning
+   in §4 even if it had been pushed.
+
+   A workflow that does produce those digests now lives in
+   `.github/workflows-pending/`, together with the other two restored files
+   and install instructions. Moving them into `.github/workflows/` and
+   pushing requires a `workflow`-scoped credential.
 2. **Enable branch protection on `main`.** The API call was attempted and
    refused (403, Administration scope). Run from an admin session:
 
