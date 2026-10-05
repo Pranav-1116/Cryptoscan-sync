@@ -56,6 +56,18 @@ _DISALLOWED_TLS = {"ssl2", "sslv2", "ssl3", "sslv3", "tls1", "tls10", "tlsv1", "
                    "tls11", "tlsv11"}
 _WEAK_TLS = {"tls12", "tlsv12"}  # permitted, but no longer preferred
 
+#: The five TLS 1.3 suites (RFC 8446 §B.4), normalised by _norm().
+#: Their names carry no key-exchange token because (EC)DHE is mandatory in
+#: TLS 1.3 — there is no static-key mode — so they must not be mistaken for
+#: suites that lack forward secrecy.
+_TLS13_SUITES = {
+    "tlsaes128gcmsha256",
+    "tlsaes256gcmsha384",
+    "tlschacha20poly1305sha256",
+    "tlsaes128ccmsha256",
+    "tlsaes128ccm8sha256",
+}
+
 #: Substrings that make a cipher suite weak regardless of the rest of it.
 _WEAK_SUITE_TOKENS = {
     "null": ("critical", "no encryption"),
@@ -115,6 +127,40 @@ def assess_tls_version(version: Any) -> list[dict[str, Any]]:
     return []
 
 
+def assess_transport_encryption(
+    tls_version: Any, cipher_suite: Any, protocol: Any = None,
+) -> list[dict[str, Any]]:
+    """An observed endpoint that negotiated nothing is carrying plaintext.
+
+    assess_tls_version() returns [] for an absent version, because it grades
+    the version it is given and there is nothing to grade. That left the
+    worst transport posture — no encryption at all — as the only one the
+    NBOM scored clean: an endpoint with TLS 1.0 was critical, and an
+    endpoint with no TLS was silent. A real estate scan of 14 listening
+    services, every one of them plaintext (PostgreSQL, MySQL, Redis, AMQP
+    among them), produced `findings: 0`.
+
+    That also contradicted this module's own rule, stated at the top of the
+    file: absence of evidence is never a pass. An observed endpoint with no
+    negotiated version and no suite is not missing data — the probe
+    succeeded and the answer was "none". Unprobed endpoints are a different
+    case and are already excluded by ``observed: false`` before this runs.
+
+    Rated critical, matching a disallowed TLS version rather than sitting
+    below it: TLS 1.0 at least authenticates the peer and encrypts the
+    stream against a passive observer, and plaintext does neither.
+    """
+    if _norm(tls_version) or _norm(cipher_suite):
+        return []
+    label = str(protocol).strip() if protocol else ""
+    detail = f" ({label})" if label and _norm(label) != "unknown" else ""
+    return [_finding(
+        "nbom.no_transport_encryption", "critical",
+        f"endpoint negotiated no TLS{detail}: traffic is carried in plaintext",
+        "NIST SP 800-52r2",
+    )]
+
+
 def assess_cipher_suite(suite: Any) -> list[dict[str, Any]]:
     key = _norm(suite)
     if not key:
@@ -126,7 +172,16 @@ def assess_cipher_suite(suite: Any) -> list[dict[str, Any]]:
                                 f"{suite}: {why}", "NIST SP 800-52r2"))
             break
     # Forward secrecy is a property of the key exchange, not the cipher.
-    if not any(t in key for t in ("ecdhe", "dhe")) and key.startswith("tls"):
+    #
+    # TLS 1.3 suite names omit the key exchange entirely (RFC 8446 §B.4:
+    # TLS_AES_256_GCM_SHA384 and friends), because (EC)DHE is mandatory for
+    # every one of them -- the handshake has no static-key mode to fall back
+    # to. Matching on the absence of an "ecdhe"/"dhe" token therefore flagged
+    # every TLS 1.3 endpoint as lacking forward secrecy: a false positive on
+    # precisely the configuration this product exists to move estates toward.
+    if (not any(t in key for t in ("ecdhe", "dhe"))
+            and key.startswith("tls")
+            and key not in _TLS13_SUITES):
         out.append(_finding("nbom.no_forward_secrecy", "medium",
                             f"{suite} does not provide forward secrecy: recorded traffic "
                             "becomes readable if the server key is ever recovered"))
@@ -217,6 +272,8 @@ def build_nbom(
         ep_findings: list[dict[str, Any]] = []
         if observed:
             ep_findings += assess_tls_version(ep.get("tls_version"))
+            ep_findings += assess_transport_encryption(
+                ep.get("tls_version"), ep.get("cipher_suite"), ep.get("protocol"))
         add(_component("endpoint", f"{host}:{port}", ep_ref, {
             "host": host, "port": port,
             "protocol": ep.get("protocol"),
@@ -271,20 +328,43 @@ def build_nbom(
         name = tunnel.get("name") or f"{tunnel.get('kind', 'tunnel')}:{tunnel.get('peer', '?')}"
         t_ref = _ref("tunnel", name)
         t_findings: list[dict[str, Any]] = []
+        # Same contract as an endpoint: a tunnel nobody could inspect is
+        # inventoried and scored by nothing.
+        t_observed = tunnel.get("observed", True)
         for label, value in (("encryption", tunnel.get("encryption")),
                              ("integrity", tunnel.get("integrity"))):
             key = _norm(value)
+            if not key:
+                # The weak-token loop below is guarded by `if key`, so a
+                # tunnel that declares no algorithm at all used to score
+                # clean -- the same blind spot endpoints had, and worse
+                # here: an unencrypted tunnel is the thing a VPN exists to
+                # prevent.
+                if t_observed:
+                    t_findings.append(_finding(
+                        "nbom.no_tunnel_encryption" if label == "encryption"
+                        else "nbom.no_tunnel_integrity",
+                        "critical" if label == "encryption" else "high",
+                        f"{name} declares no {label} algorithm",
+                        "3GPP TS 33.210 / RFC 8221"))
+                continue
             for token, (severity, why) in _WEAK_SUITE_TOKENS.items():
-                if key and _norm(token) in key:
+                if _norm(token) in key:
                     t_findings.append(_finding(
                         "nbom.weak_tunnel_algorithm", severity,
                         f"{name} {label} uses {value}: {why}", "3GPP TS 33.210 / RFC 8221"))
                     break
-        t_findings += assess_public_key(tunnel.get("key_exchange"), tunnel.get("key_exchange_bits"))
+        if t_observed:
+            t_findings += assess_public_key(tunnel.get("key_exchange"),
+                                            tunnel.get("key_exchange_bits"))
         add(_component("tunnel", str(name), t_ref, {
             "kind": tunnel.get("kind"), "peer": tunnel.get("peer"),
             "encryption": tunnel.get("encryption"), "integrity": tunnel.get("integrity"),
             "key_exchange": tunnel.get("key_exchange"),
+            # summarise() counts unobserved components off this property;
+            # without it an unprobed tunnel was scored by nothing and also
+            # reported as nothing, so it vanished from the honesty tally.
+            "observed": t_observed,
         }, t_findings))
         device_name = tunnel.get("device")
         if device_name:
