@@ -37,6 +37,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import re
@@ -164,9 +165,51 @@ def replication_rows(db: Db) -> list[dict[str, Any]]:
 
 
 def health(url: str, timeout: float) -> tuple[bool, str]:
+    """Prove the API serves the PROMOTED database, not merely that it runs.
+
+    This accepted any status < 400 from any URL. Two ways that passed a
+    failed failover:
+
+    * Pointed at /healthz. Until 776bb1e that probe touched the database,
+      so liveness incidentally proved the estate was readable. That commit
+      correctly made liveness independent of PostgreSQL -- a liveness probe
+      that depends on the database causes restart storms during an outage
+      -- which silently reduced this check to "uvicorn is running". A
+      promotion that left the API pointed at the dead primary would still
+      have been recorded as "API ready after failover".
+    * Pointed at /readyz but never reading the body. Readiness answers 503
+      when the database is unreachable, so the status alone is a real
+      signal, but a degraded body that still returns 200 would pass.
+
+    So a liveness URL is refused outright -- it cannot answer this
+    question, and accepting it would produce DR evidence that looks
+    stronger than the check behind it -- and the body must name the
+    database as ok when it reports one.
+    """
+    path = urllib.parse.urlparse(url).path.rstrip("/")
+    if path.endswith("/healthz") or path.endswith("/health"):
+        return False, (
+            f"{url} is a liveness probe and cannot prove failover: since 776bb1e "
+            "it stays 200 through a database outage by design. Point "
+            "--api-url/DR_API_READY_URL at /readyz."
+        )
     try:
         with urllib.request.urlopen(url, timeout=timeout) as response:
-            return response.status < 400, f"HTTP {response.status}"
+            raw = response.read(8192)
+            if response.status >= 400:
+                return False, f"HTTP {response.status}"
+            try:
+                body = json.loads(raw.decode("utf-8", "replace"))
+            except (ValueError, UnicodeDecodeError):
+                body = None
+            if isinstance(body, dict) and "database" in body:
+                db_state = str(body.get("database", "")).lower()
+                if db_state not in {"ok", "up", "ready"}:
+                    return False, f"HTTP {response.status} but database={body.get('database')!r}"
+                return True, f"HTTP {response.status} database={db_state}"
+            # No database field to assert on: report what came back rather
+            # than implying the probe verified more than it did.
+            return True, f"HTTP {response.status} (no database field in body)"
     except urllib.error.HTTPError as exc:
         return False, f"HTTP {exc.code}"
     except Exception as exc:

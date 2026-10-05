@@ -3,7 +3,7 @@
   "policy": "An entry is permitted only for an intentionally defensive boundary where the exception is logged or the caller receives an explicit degraded/unknown result. Do not use this file to make a readiness gate green without owner review.",
   "entries": [
     {
-      "location": "scripts/postgres_drill.py:86",
+      "location": "scripts/postgres_drill.py:87",
       "owner": "database-reliability",
       "reviewed_by": "security-engineering",
       "reviewed_at": "2026-09-29",

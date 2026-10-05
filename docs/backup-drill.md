@@ -1,6 +1,6 @@
 # Backup / restore drill
 
-Ran 2026-09-21T09:49:56Z. Hot online backup (SQLite backup API) + event-bus logs +
+Ran 2026-10-05T09:39:13Z. Hot online backup (SQLite backup API) + event-bus logs +
 live-CBOM store -> restored into a clean data dir -> second instance
 booted from the backup alone -> estate verified through the real API.
 
@@ -11,7 +11,7 @@ booted from the backup alone -> estate verified through the real API.
 | backup: online SQLite image taken | ✅ |
 | backup: bus + CBOM stores copied | ✅ |
 | restore: fresh data dir built from backup only | ✅ |
-| restore: recovered instance boots | ✅ |
+| restore: recovered instance serves the restored database | ✅ |
 | recover: login works on restored estate | ✅ |
 | recover: seeded system survived | ✅ |
 | recover: CBOM asset set intact (version monotone) | ✅ |
