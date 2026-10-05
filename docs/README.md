@@ -15,6 +15,13 @@
 >
 > **Supported topology: one deployment per customer.** Self-serve tenant
 > signup ships disabled for the reason given in that document.
+>
+> **Newer than that audit:**
+> [PRODUCTION-ROADMAP.md §0](PRODUCTION-ROADMAP.md#0-internal-work-update-2026-10-05)
+> records the 2026-10-05 internal pass — probe behaviour under a database
+> outage, evidence-chain de-duplication, monitor liveness, DR and restore
+> probes, local-stack data durability, and the browser-facing npm advisories.
+> It flips no gate category: those still turn on external evidence.
 
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
 > **For an enterprise vendor-style manual, use the [Enterprise Documentation Center](product/enterprise/README.md)** — product, deployment, security, API, operations, developer, support, adoption, and readiness in one path.

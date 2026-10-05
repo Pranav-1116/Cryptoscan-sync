@@ -16,10 +16,17 @@ is fail-closed by design.
 ## 0. Internal-work update (2026-10-05)
 
 Everything in this section is work that needed no credential, provider or
-customer — the "internal" remainder. It does **not** move any phase below:
-the gate categories still turn on external evidence. What it changes is that
-three defects which would have surfaced *in* production are now fixed, and
-two drills that could not previously pass are green.
+customer — the "internal" remainder. It does **not** move any phase below, and
+no gate category flips: those still turn on external evidence. What it changes
+is that a set of defects which would each have surfaced *in* production are
+fixed, three drills are green, and the one product question this document
+previously recorded as open has been decided.
+
+Most of these were found by **running** the product rather than reading it: a
+paused database rather than a mock that raises, a restart rather than a review
+of the restart path, a scan of a real directory rather than a fixture. Each
+one was silent — a passing check, a probe that proved less than it appeared
+to, or a number that was simply too large.
 
 **Probe behaviour under a database outage — three defects, all fixed.**
 Found by running `scripts/reliability_drill.py` against a paused PostgreSQL
@@ -59,6 +66,15 @@ The existing outage test passed throughout, because it mocks an engine that
 |---|---|---|
 | Realtime data plane | **PASS 23/23** | `readiness-evidence/realtime-dataplane.json` |
 | Reliability | **PASS 21/21** | `readiness-evidence/reliability.json` |
+| Backup / restore | **PASS 12/12** | `readiness-evidence/backup-restore-drill-2026-10-05.md` |
+
+The backup drill had been reported as blocked: it needs the SQLite staging
+estate and the local stack runs PostgreSQL, so it backed up an empty SQLite
+file and found zero event-bus logs. Four checks failed for that reason
+alone. Standing a SQLite staging API up on a separate port — the
+configuration the drill is written for — was the answer rather than
+recording the mismatch as a defect. The green run also exercises the
+hardened restore assertion below against a genuine restore.
 
 **A phantom-process bug in the local stack.** `pgrep -f worker.main` matches
 any shell whose command line contains that string — including the commands
@@ -67,16 +83,117 @@ running" and never started a real one, leaving jobs queued in Redis with
 nothing consuming them, while the drill's restart check passed against the
 phantom. Both now track the worker by PID file.
 
-**One unresolved product question, pinned in CI rather than silently fixed.**
-`engine.tick()` re-materializes every known gateway event when none are
-pending, to record liveness. Components stay idempotent, but the CBOM version
-and `_event_log` grow once per tick: measured at version 53 and 52 log entries
-after one real event and 50 quiet ticks. On a two-second loop that is ~43k
-duplicate entries a day and a version that counts ticks rather than changes.
-Two comments inside `tick()` disagree about whether this should happen. A test
-now records the shipped behaviour so the contradiction is visible; whether
-liveness belongs in the version, a heartbeat, or a bounded log is a product
-decision, not a cleanup.
+**Monitor liveness — the open product question, now resolved.** `engine.tick()`
+re-materialized every known gateway event on each quiet tick to record
+liveness. Components stayed idempotent, but the CBOM version and `_event_log`
+grew once per event per tick: measured at version 53 and 52 log entries after
+one real event and 50 quiet ticks — roughly 43k rows a day on a two-second
+loop against an estate that never changed, and a version that counted ticks
+rather than content.
+
+Two comments inside `tick()` disagreed about whether this should happen, and
+that settled it: the step-2 block already promised *"no repeated CBOM version
+bumps"*, so the contract was written and the code contradicted it. Liveness is
+now a separate `LiveCbom.observe_liveness()` heartbeat — O(1) per tick, bounded
+in memory, carried through `export_state`/`restore_state`. The version and log
+move only when content changes, and `cbom.liveness()` answers *"when was this
+last confirmed"*. Measured after: version 2 and 1 log row for the same
+sequence, with `observations: 12`.
+
+The diagnostic consequence matters more than the row count. A dead collector
+and a quiet estate both used to produce a steadily rising version, so neither
+was distinguishable from the other. Change and confirmation are now separate
+facts.
+
+**Evidence integrity — duplicate findings no longer reach the chain.** The AST
+and regex detection paths can both report the same crypto use on the same
+line, and each emitted its own evidence record. `content_hash` excludes
+`evidence_id`, `finding_id`, `created_at` and `scan_timestamp`, so the two hash
+identically: the duplicate is provably the same observed fact stored twice.
+The inflated number reaches finding totals, compliance percentages and CBOM
+component counts, which are the figures a bank reads.
+
+Measured on two real scans in the same estate, before and after the fix:
+
+| Scan | Records | Duplicate `(scan_id, content_hash)` groups |
+|---|---|---|
+| `6c5f7684` (before) | 7,315 | **1** |
+| `e1a4621e` (after) | 4,012 | **0** |
+
+Collapsed in `EvidencePipeline.process_findings`, immediately before
+`chain_position` is assigned. The placement is the point: `evidence_records` is
+a contiguous append-only hash chain, so the obvious alternative — a unique
+index on `(scan_id, content_hash)` — is wrong twice over. It aborts a load
+mid-chain, and a duplicate already stored cannot be deleted afterwards without
+breaking the `previous_hash` links around it. Duplicates are counted and logged
+rather than dropped silently, so a detector that starts double-reporting stays
+visible.
+
+**DR and restore probes now prove the database serves.** Removing the database
+check from `/healthz` was correct, but it silently weakened two drills that had
+been relying on liveness to touch the database incidentally:
+
+| Drill | Was | Now |
+|---|---|---|
+| `backup_drill.py` | polled `/healthz` → "uvicorn started" | waits on `/readyz` **and** requires `database: ok` |
+| `postgres_drill.py` | any URL returning `< 400` | refuses liveness URLs outright; requires `database: ok` |
+
+A liveness URL is now rejected with the reason rather than quietly accepted:
+taking one would produce DR evidence stronger than the check behind it. The
+restore drill also keeps the recovered instance's output instead of sending it
+to `DEVNULL` — a drill that cannot say *why* a boot failed is useless at the
+one moment it matters.
+
+**The local stack no longer destroys its own estate.** The postgres and redis
+containers ran with no volume, so the data lived only in the container
+filesystem — and `down` does a `docker rm -f`. Stopping the stack to reload the
+frontend deleted every scan, unrecoverably; 3,163 evidence records were lost
+that way during this work. Both containers now use named volumes, and the
+destructive path is split out and named for what it does: `down` keeps the data
+and says which volumes hold it, `purge` deletes it and asks first. Verified by
+dumping the estate, migrating, restoring, and taking it through `down` → `up`
+three times with the chain intact.
+
+**A scan of a directory containing its own workspace.** Scanning the project
+checkout died at pipeline stage `init` with `maximum recursion depth exceeded`,
+before a file was read. `shutil.copytree` walks the source while writing into
+the destination, so when the destination sits under the source it descends into
+the tree it is still producing. Two distinct causes, both handled: the
+destination inside the source, and a tree that is simply pathological — this
+repository carried `_tmp/snbchk/ws/repo/ws/repo/...` some 250 levels deep,
+5,167 files of recursively duplicated fixture committed by an earlier harness
+run hitting exactly this bug, since removed. The copy is now iterative, prunes
+the workspace root, caps depth at 64, copies directory symlinks as links, and
+logs what it skipped — a silently truncated scan would under-report an estate.
+
+**Frontend.** The two advisories that actually ship to the browser are closed:
+`react-router-dom` v7 took the production count from 2 to 0. Budgeted at one to
+two days as a semver-major migration, it needed no code changes, because the
+console only uses the declarative core and v7's breaking changes are in the
+data-router APIs it has never used. The remaining npm advisories are
+devDependencies that never reach the browser. The dev server was also binding
+`0.0.0.0` with `allowedHosts: true`, publishing a development server and its
+authenticated `/api` proxy on every attached network with DNS-rebinding
+protection off; it now binds loopback with host checking on.
+
+Separately, the console was bypassing its own design system — 90 emoji used as
+icons, 185 hardcoded colours, 10 CSS custom properties that did not exist, and
+a brand mark measuring 1.14:1 in dark mode. Those are now 0, and type colours
+no longer borrow status colours: CBOM read amber ("warning") and HBOM orange
+("high risk") purely to tell BOM layers apart.
+
+**Findings recorded, not fixed.** Two things worth a decision rather than a
+quiet change:
+
+* `config/exception-allowlist.json` keys reviewed exception handlers by
+  `file:line`. Adding an import above a reviewed handler shifts its line and
+  silently un-reviews it — which is how the engineering gate failed during this
+  work, on a handler nobody had touched. Keying on handler content or enclosing
+  function would survive formatting churn while still catching real changes.
+* Job status appears to skip the `RUNNING` transition: the API reports `QUEUED`
+  with `started_at: null` while the worker is demonstrably mid-pipeline. Not
+  harmful, but it means the UI cannot show progress, and a long scan looks
+  stuck to an operator.
 
 ---
 
