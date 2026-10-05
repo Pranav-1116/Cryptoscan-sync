@@ -195,13 +195,18 @@ class LiveVendorEngine:
         self._processed_gateway_index += len(pending)
 
         # A connector can expose an unchanged observation on a later tick.
-        # Re-materialize the already-seen gateway events for the CBOM's
-        # append-only observation/version history, but do not re-run state
-        # transitions, graph writes, or targeted scans. Component keys remain
-        # idempotent, so this records liveness without building duplicates.
+        # That is liveness, not change, and it is recorded as such: one
+        # O(1) heartbeat rather than re-materializing every known event.
+        #
+        # This block used to loop materialize() over the whole gateway, which
+        # appended a row to the CBOM event log and bumped its version per
+        # event per tick -- K*T growth for an estate that never changed, and
+        # a version that counted ticks. That also contradicted the promise
+        # ten lines above this: "no repeated CBOM version bumps". The log and
+        # the version now move only when content does; cbom.liveness() answers
+        # "when was this last confirmed".
         if not pending and self._processed_gateway_index:
-            for event in self.gateway.events():
-                self.cbom.materialize(event)
+            self.cbom.observe_liveness(event_count=self._processed_gateway_index)
 
         # 3. persist only the source fingerprint in live asset state. The raw
         # artifact remains behind its evidence hash and is never fabricated by

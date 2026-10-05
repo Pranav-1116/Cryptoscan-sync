@@ -106,31 +106,32 @@ def test_engine_repeated_ticks_incremental():
     assert second["events_processed"] == 0
     # The property this test is named for: no duplicate component build-up.
     assert second["cbom_components"] == first["cbom_components"]
-    # A quiet tick still re-materializes the known events to record liveness
-    # in the append-only history, so the version advances. That is the
-    # documented intent at engine.py's "records liveness without building
-    # duplicates" — see test_quiet_ticks_grow_the_event_log for the cost.
-    assert second["cbom_version"] > first["cbom_version"]
+    # A quiet tick records liveness on the heartbeat, not by re-materializing
+    # known events, so the version holds steady while nothing changes. See
+    # test_quiet_ticks_record_liveness_without_growing_the_event_log.
+    assert second["cbom_version"] == first["cbom_version"]
+    assert engine.cbom.liveness()["observations"] == 2
 
 
-def test_quiet_ticks_grow_the_event_log_without_new_events():
-    """Records a real cost of the liveness re-materialization, unresolved.
+def test_quiet_ticks_record_liveness_without_growing_the_event_log():
+    """A quiet tick is liveness, not change: O(1), not O(known events).
 
-    engine.tick() re-applies every known gateway event when none are
-    pending, which keeps components idempotent (asserted above) but appends
-    one row to LiveCbom._event_log and bumps the version on every tick.
+    This test previously pinned the opposite behaviour as an open product
+    decision. engine.tick() re-materialized every known gateway event on
+    every quiet tick, which kept components idempotent but appended a row
+    to the CBOM event log and bumped its version each time. Measured then:
+    one real event plus 50 quiet ticks left version 53 and 52 log entries
+    for a single observation -- K*T growth, roughly 43k rows a day on a
+    two-second loop against an estate that never changed, and a version
+    number that counted ticks rather than content.
 
-    Measured: one real event followed by 50 quiet ticks leaves version 53
-    and 52 log entries for a single observation. A 24/7 loop on a two-second
-    interval therefore accumulates ~43k duplicate entries a day and a
-    version number that counts ticks rather than changes.
-
-    Two comments in engine.tick() disagree about this: the step-2 block
-    promises "no repeated CBOM version bumps" and the block ten lines below
-    performs exactly that. This test pins the behaviour that actually ships
-    so the contradiction is visible in CI rather than in a reading of the
-    source; it is a product decision whether liveness belongs in the
-    version, in a separate heartbeat, or in a bounded log.
+    It was resolved in favour of a separate heartbeat, because the engine's
+    own step-2 comment already promised "no repeated CBOM version bumps"
+    and the block below it did exactly that. The log and the version are
+    reserved for change; cbom.liveness() answers "when was this last
+    confirmed", which is the question a 24/7 monitor actually needs -- a
+    dead collector and an unchanged estate are now distinguishable, where
+    before both produced a steadily rising version.
     """
     engine = _engine()
     engine.monitor.register(CiscoLiveMonitor(asset_id="r1", events=[
@@ -142,8 +143,15 @@ def test_quiet_ticks_grow_the_event_log_without_new_events():
     last = engine.tick()
 
     assert last["cbom_components"] == first["cbom_components"]  # still idempotent
-    assert last["cbom_version"] == first["cbom_version"] + 11
-    assert len(engine.cbom._event_log) == 12  # 1 real + 11 re-materializations
+    # Content did not change, so neither the version nor the log moves.
+    assert last["cbom_version"] == first["cbom_version"]
+    assert len(engine.cbom._event_log) == 1  # the one real event
+
+    # Liveness still advanced, so "quiet" stays distinguishable from "dead".
+    live = engine.cbom.liveness()
+    assert live["observations"] == 12  # 1 materialization + 11 quiet ticks
+    assert live["last_observed_at"] is not None
+    assert live["version"] == first["cbom_version"]
 
 
 def test_engine_drift_pass():

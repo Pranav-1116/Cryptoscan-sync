@@ -10,7 +10,12 @@ component set, and each materialization is versioned.
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 from universal_vendor.live.events import UniversalVendorEvent
 
@@ -228,6 +233,10 @@ class LiveCbom:
         self._components: dict[tuple[str, str, str, str], dict[str, Any]] = {}
         self._event_log: list[dict[str, Any]] = []
         self._version = 1
+        # Liveness, kept separately from the event log and the version.
+        # See observe_liveness().
+        self._observations = 0
+        self._last_observed_at: str | None = None
 
     def materialize(self, event: UniversalVendorEvent) -> dict[str, Any]:
         """Apply one vendor event to the CBOM state. Returns the event record."""
@@ -238,7 +247,33 @@ class LiveCbom:
         else:
             self._upsert_components(event)
         self._version += 1
+        self._observations += 1
+        self._last_observed_at = _utc_now_iso()
         return record
+
+    def observe_liveness(self, *, event_count: int) -> None:
+        """Record that a quiet poll re-saw `event_count` known events.
+
+        The engine used to express this by calling materialize() again for
+        every known event on every quiet tick. That kept components
+        idempotent, but each call appended to the event log and bumped the
+        version -- so with K known events and T quiet ticks the log grew by
+        K*T rows and the version counted ticks rather than changes. On a
+        two-second loop that is roughly 43k rows a day for an estate that
+        never changed, and a CBOM consumer diffing on `version` saw constant
+        churn against identical content.
+
+        It also contradicted the engine's own contract: the comment above
+        the processing step promises "no repeated CBOM version bumps".
+
+        Liveness is a different fact from change, so it gets its own
+        fields. This is O(1) per tick, bounded in memory, and leaves
+        `version` meaning "the content changed this many times".
+        """
+        if event_count <= 0:
+            return
+        self._observations += 1
+        self._last_observed_at = _utc_now_iso()
 
     def _upsert_components(self, event: UniversalVendorEvent) -> None:
         asset_id = event.asset_id or f"{event.vendor}:{event.product}"
@@ -381,6 +416,10 @@ class LiveCbom:
         """Return the safe materializer state for durable realtime replay."""
         return {
             "version": self._version,
+            # Liveness travels with the state so a replayed engine does not
+            # look like it has never observed anything.
+            "observations": self._observations,
+            "last_observed_at": self._last_observed_at,
             "components": [
                 {
                     "asset_id": key[0],
@@ -410,9 +449,28 @@ class LiveCbom:
             self._version = max(1, int(state.get("version") or 1))
         except (TypeError, ValueError):
             self._version = 1
+        try:
+            self._observations = max(0, int(state.get("observations") or 0))
+        except (TypeError, ValueError):
+            self._observations = 0
+        last_seen = state.get("last_observed_at")
+        self._last_observed_at = last_seen if isinstance(last_seen, str) else None
 
     def event_log(self) -> list[dict[str, Any]]:
         return list(self._event_log)
+
+    def liveness(self) -> dict[str, Any]:
+        """How recently the estate was confirmed, independent of change.
+
+        `observations` counts polls that saw the estate (changed or not);
+        `version` counts only content changes. A monitor that has gone
+        quiet is the difference between the two moving and neither moving.
+        """
+        return {
+            "observations": self._observations,
+            "last_observed_at": self._last_observed_at,
+            "version": self._version,
+        }
 
     def version(self) -> int:
         return self._version
