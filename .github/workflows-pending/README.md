@@ -17,9 +17,11 @@ Needs a token with the `workflow` scope (classic PAT: tick `workflow`;
 fine-grained: Actions → Read and write).
 
 ```bash
-git mv .github/workflows-pending/docker-build.yml   .github/workflows/docker-build.yml
-git mv .github/workflows-pending/db-migration.yml   .github/workflows/db-migration.yml
-git mv .github/workflows-pending/scanner-tests.yml  .github/workflows/scanner-tests.yml
+# -f: the three files under .github/workflows/ exist as tracked 0-byte
+# placeholders, and plain `git mv` refuses with "destination exists".
+git mv -f .github/workflows-pending/docker-build.yml   .github/workflows/docker-build.yml
+git mv -f .github/workflows-pending/db-migration.yml   .github/workflows/db-migration.yml
+git mv -f .github/workflows-pending/scanner-tests.yml  .github/workflows/scanner-tests.yml
 git rm .github/workflows-pending/README.md
 git commit -m "Enable the build, schema and scanner workflows"
 git push
