@@ -4,6 +4,7 @@ import { LiveBadge, ApiResult } from "../lib/api.js";
 import {
   apiDigitalTwinOverview,
   apiDigitalTwinFidelity,
+  apiDigitalTwinReconciliation,
   apiDigitalTwinScenarios,
   apiDigitalTwinSimulate,
   apiDigitalTwinTimeline,
@@ -32,9 +33,22 @@ interface TwinOverview {
   dependency_source?: string;
   network_endpoints?: number;
   network_endpoints_observed?: number;
+  hardware_assets?: number;
+  hardware_hsms?: number;
   quantum_mix?: Record<string, number>;
   scenarios_available?: string[];
   fidelity?: TwinFidelity;
+}
+
+interface TwinReconciliation {
+  schema?: string;
+  verdict?: string;
+  twin_algorithm_families?: Record<string, number>;
+  evidence_algorithm_families?: Record<string, number>;
+  families_in_both?: string[];
+  families_only_in_twin?: string[];
+  families_only_in_evidence?: string[];
+  honest_unknowns?: string[];
 }
 
 interface TwinFidelity {
@@ -84,6 +98,7 @@ const INPUT_DEFAULTS: Record<string, string> = {
 export default function DigitalTwin() {
   const overview = useApi<Record<string, unknown>>(apiDigitalTwinOverview);
   const scenarios = useApi<{ scenario_count: number; scenarios: TwinScenarioDescriptor[] }>(apiDigitalTwinScenarios);
+  const reconciliation = useApi<Record<string, unknown>>(apiDigitalTwinReconciliation);
 
   const [selected, setSelected] = useState<string>("");
   const [params, setParams] = useState<Record<string, string>>({});
@@ -94,6 +109,7 @@ export default function DigitalTwin() {
   const [timeline, setTimeline] = useState<ApiResult<TimelineResp> | null>(null);
 
   const ov = overview.data as TwinOverview | null;
+  const rec = reconciliation.data as TwinReconciliation | null;
   const fid = (overview.data as TwinOverview | null)?.fidelity ?? ({} as TwinFidelity);
   const scen = scenarios.data?.scenarios ?? [];
   const active = scen.find((s) => s.id === selected);
@@ -148,6 +164,11 @@ export default function DigitalTwin() {
       k: "network endpoints",
       v: `${ov?.network_endpoints_observed ?? 0}/${ov?.network_endpoints ?? 0}`,
       sub: "observed on the wire (stored scans) / total incl. registered targets",
+    },
+    {
+      k: "hardware fleet",
+      v: `${ov?.hardware_hsms ?? 0} HSM${(ov?.hardware_hsms ?? 0) === 1 ? "" : "s"} / ${ov?.hardware_assets ?? 0}`,
+      sub: "HSMs / all hardware assets known to the live hardware engine",
     },
   ], [ov]);
 
@@ -269,6 +290,63 @@ export default function DigitalTwin() {
         </Panel>
       </div>
 
+      {/* ── reconciliation ───────────────────────────────────────── */}
+      <Panel
+        className="mt"
+        title="Twin ↔ evidence reconciliation"
+        sub="the twin's algorithm inventory diffed against its own evidence store — twin-vs-sources, not twin-vs-reality"
+      >
+        {reconciliation.error && (
+          <p className="dim" style={{ fontSize: 13 }}>{reconciliation.error}</p>
+        )}
+        {rec && (
+          <>
+            <div className="feas-verdict">
+              <span
+                className="feas-big"
+                style={{
+                  color: rec.verdict === "IN_SYNC" ? "var(--green)"
+                    : rec.verdict === "INSUFFICIENT_DATA" ? "var(--amber)"
+                      : "var(--red)",
+                }}
+              >
+                {rec.verdict ?? "—"}
+              </span>
+              <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+                <Badge tone="slate">{Object.keys(rec.twin_algorithm_families ?? {}).length} twin families</Badge>
+                <Badge tone="slate">{Object.keys(rec.evidence_algorithm_families ?? {}).length} evidence families</Badge>
+                <Badge tone="green">{(rec.families_in_both ?? []).length} in both</Badge>
+              </div>
+            </div>
+            <div className="grid cols-2" style={{ marginTop: 14 }}>
+              <Table
+                head={["only in evidence (twin lags)", "only in twin (unbacked)"]}
+                rows={Array.from({
+                  length: Math.max((rec.families_only_in_evidence ?? []).length,
+                    (rec.families_only_in_twin ?? []).length),
+                }).map((_, i) => [
+                  (rec.families_only_in_evidence ?? [])[i] ?? "—",
+                  (rec.families_only_in_twin ?? [])[i] ?? "—",
+                ])}
+              />
+              {(rec.honest_unknowns ?? []).length > 0 && (
+                <div className="mono" style={{ fontSize: 12, color: "var(--amber)" }}>
+                  <IconWarn className="ico" size={ICON_MD} /> honest unknowns:
+                  <ul className="plan-steps" style={{ marginTop: 6 }}>
+                    {(rec.honest_unknowns ?? []).map((u, i) => <li key={i}>{u}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        {!rec && !reconciliation.running && (
+          <p className="dim" style={{ fontSize: 13 }}>
+            No reconciliation data returned.
+          </p>
+        )}
+      </Panel>
+
       {/* ── scenario launcher ───────────────────────────────────── */}
       <Panel className="mt" title="Scenario launcher" sub={`${scenarios.data?.scenario_count ?? 0} deterministic scenario types from the engine — no hardcoded templates`}>
         {scen.length === 0 && !scenarios.running && (
@@ -336,11 +414,17 @@ export default function DigitalTwin() {
                 head={["what", "count / items"]}
                 rows={Object.entries(res.affected ?? {}).map(([k, v]) => {
                   const items = Array.isArray(v) ? v : null;
+                  const label = (x: unknown): string =>
+                    typeof x === "object" && x !== null
+                      ? String((x as Record<string, unknown>).asset_id
+                        ?? (x as Record<string, unknown>).system_id
+                        ?? JSON.stringify(x))
+                      : String(x);
                   return [
                     k,
                     items === null
                       ? String(v ?? "—")
-                      : `${items.length}${items.length ? `: ${items.slice(0, 4).join(", ")}${items.length > 4 ? "…" : ""}` : ""}`,
+                      : `${items.length}${items.length ? `: ${items.slice(0, 4).map(label).join(", ")}${items.length > 4 ? "…" : ""}` : ""}`,
                   ];
                 })}
               />

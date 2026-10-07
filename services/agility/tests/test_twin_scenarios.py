@@ -15,6 +15,7 @@ import pytest
 
 from agility.twin_scenarios import (
     SCENARIOS,
+    reconcile,
     run_scenario,
     twin_fidelity,
 )
@@ -188,6 +189,48 @@ def test_hsm_outage_finds_usage_signals():
     result = run_scenario("hsm_outage", _snapshot(), now=NOW, params={})
     assert result["affected"]["assets"] == ["sys-core"]
     assert result["impact"]["dependency_signals"]["sys-core"]
+    # No hardware fleet in the base fixture: the fleet list is honestly empty.
+    assert result["affected"]["hardware_hsms"] == []
+    assert result["affected"]["hardware_hsm_count"] == 0
+
+
+def test_hsm_outage_lists_the_real_hardware_fleet():
+    """With hardware rows from the live engine, the fleet is inventory,
+    not keyword inference — and the blast-radius limit is named."""
+    snap = _snapshot()
+    snap["hardware"] = [
+        {"asset_id": "hsm-01", "manufacturer": "Thales", "model": "Luna 7",
+         "device_type": "hsm", "firmware": "7.7.0",
+         "hsm": {"pqc_capability": "HYBRID_SUPPORTED"}, "last_seen": NOW.isoformat()},
+        {"asset_id": "hsm-02", "manufacturer": "Utimaco", "model": "Se Gen2",
+         "device_type": "hsm", "firmware": "4.5",
+         "hsm": {"pqc_capability": "NOT_READY"}, "last_seen": NOW.isoformat()},
+        {"asset_id": "srv-01", "manufacturer": "Dell", "model": "R750",
+         "device_type": "server", "hsm": None, "last_seen": NOW.isoformat()},
+    ]
+    result = run_scenario("hsm_outage", snap, now=NOW, params={})
+    fleet = result["affected"]["hardware_hsms"]
+    assert [d["asset_id"] for d in fleet] == ["hsm-01", "hsm-02"]
+    assert fleet[0]["manufacturer"] == "Thales"
+    assert result["impact"]["hsm_fleet"] == ["Thales Luna 7", "Utimaco Se Gen2"]
+    assert any("not the blast radius" in u for u in result["honest_unknowns"])
+
+
+def test_pqc_migration_reports_hardware_capability():
+    snap = _snapshot()
+    snap["hardware"] = [
+        {"asset_id": "hsm-01", "device_type": "hsm",
+         "hsm": {"pqc_capability": "HYBRID_SUPPORTED"}},
+        {"asset_id": "hsm-02", "device_type": "hsm",
+         "hsm": {"pqc_capability": "NOT_READY"}},
+        {"asset_id": "hsm-03", "device_type": "hsm",
+         "hsm": {"pqc_capability": "UNKNOWN"}},
+    ]
+    result = run_scenario("pqc_migration", snap, now=NOW, params={})
+    hw = result["impact"]["hardware"]
+    assert hw == {"hsms": 3, "pqc_capable": 1, "pqc_not_capable": 1,
+                  "pqc_unknown": 1, "not_capable_devices": ["hsm-02"]}
+    assert any("not independently verified" in u for u in result["honest_unknowns"])
 
 
 def test_vendor_compromise_blast_radius():
@@ -329,3 +372,75 @@ def test_fidelity_is_deterministic_and_time_explicit():
     assert a == b
     later = twin_fidelity(snap, now=NOW + timedelta(days=2))
     assert later["staleness"]["assets_stale"] >= a["staleness"]["assets_stale"]
+
+
+def test_fidelity_counts_the_hardware_fleet():
+    snap = _snapshot()
+    snap["hardware"] = [
+        {"asset_id": "hsm-01", "device_type": "hsm", "hsm": {"pqc_capability": "READY"}},
+        {"asset_id": "srv-01", "device_type": "server", "hsm": None},
+    ]
+    fidelity = twin_fidelity(snap, now=NOW)
+    assert fidelity["twin"]["hardware_assets"] == 2
+
+
+# --------------------------------------------------------- reconciliation
+
+def test_reconcile_in_sync_when_twin_matches_evidence():
+    snap = _snapshot()
+    snap["assets"] = [{"asset_id": "a", "algorithms": {"RSA-2048": 1, "MD5": 2}}]
+    snap["evidence"] = [{"algorithm": "RSA-2048"}, {"algorithm": "MD5"}]
+    result = reconcile(snap, now=NOW)
+    assert result["schema"] == "cryptoscan.twin-reconciliation/1"
+    assert result["verdict"] == "IN_SYNC"
+    assert result["families_in_both"] == ["md5", "rsa-2048"]
+    assert result["families_only_in_twin"] == []
+    assert result["families_only_in_evidence"] == []
+    assert result["deterministic"] is True
+
+
+def test_reconcile_flags_twin_lagging_its_evidence():
+    """Scanners keep finding MD5; no twin asset reflects it."""
+    snap = _snapshot()
+    snap["assets"] = [{"asset_id": "a", "algorithms": {"RSA-2048": 1}}]
+    snap["evidence"] = [{"algorithm": "RSA-2048"}, {"algorithm": "MD5"}]
+    result = reconcile(snap, now=NOW)
+    assert result["verdict"] == "TWIN_LAGS_EVIDENCE"
+    assert result["families_only_in_evidence"] == ["md5"]
+
+
+def test_reconcile_flags_twin_claims_without_evidence():
+    """The twin still claims RSA; no current evidence record backs it."""
+    snap = _snapshot()
+    snap["assets"] = [{"asset_id": "a",
+                       "algorithms": {"AES-256-GCM": 1, "RSA-2048": 2}}]
+    snap["evidence"] = [{"algorithm": "AES-256-GCM"}]
+    result = reconcile(snap, now=NOW)
+    assert result["verdict"] == "EVIDENCE_LAGS_TWIN"
+    assert result["families_only_in_twin"] == ["rsa-2048"]
+    assert result["families_only_in_evidence"] == []
+
+
+def test_reconcile_diverged_when_both_sides_lag():
+    snap = _snapshot()
+    snap["assets"] = [{"asset_id": "a", "algorithms": {"RSA-2048": 1, "AES-256-GCM": 1}}]
+    snap["evidence"] = [{"algorithm": "RSA-2048"}, {"algorithm": "MD5"}]
+    result = reconcile(snap, now=NOW)
+    assert result["verdict"] == "DIVERGED"
+
+
+def test_reconcile_is_honest_when_either_side_is_empty():
+    result = reconcile({}, now=NOW)
+    assert result["verdict"] == "INSUFFICIENT_DATA"
+    assert any("evidence store is empty" in u for u in result["honest_unknowns"])
+    assert any("no algorithm inventory" in u for u in result["honest_unknowns"])
+
+    snap = {"assets": [{"asset_id": "a", "algorithms": {"RSA-2048": 1}}]}
+    result = reconcile(snap, now=NOW)
+    assert result["verdict"] == "INSUFFICIENT_DATA"
+    assert result["twin_algorithm_families"] == {"rsa-2048": 1}
+
+
+def test_reconcile_is_deterministic():
+    snap = _snapshot()
+    assert reconcile(snap, now=NOW) == reconcile(snap, now=NOW)

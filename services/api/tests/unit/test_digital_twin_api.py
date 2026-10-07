@@ -24,6 +24,7 @@ from db.models.certificate import Certificate
 from db.models.crypto_live import CryptoLiveState
 from db.models.evidence_record import EvidenceRecord
 from db.models.graph_snapshot import GraphSnapshot
+from db.models.hardware_live import HardwareAsset
 from db.models.network_scan_run import NetworkScanRun
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.system import System
@@ -397,6 +398,92 @@ def test_relational_edges_win_over_graph_snapshot(client, session):
     body = r.json()
     assert body["dependency_source"] == "system_dependencies"
     assert body["dependency_edges"] == 1
+
+
+# ---------------------------------------------------- hardware fleet feed
+
+def _seed_hardware(session) -> None:
+    session.add(HardwareAsset(
+        asset_id="hsm-core-01", agent_id="agent-1",
+        manufacturer="Thales", model="Luna 7", device_type="hsm",
+        firmware={"version": "7.7.0"},
+        hsm={"device_type": "hsm", "manufacturer": "Thales", "model": "Luna 7",
+             "firmware": "7.7.0", "pqc_capability": "HYBRID_SUPPORTED"},
+        capabilities={}, crypto_capabilities={},
+    ))
+    session.add(HardwareAsset(
+        asset_id="hsm-pay-02", agent_id="agent-2",
+        manufacturer="Utimaco", model="Se Gen2", device_type="hsm",
+        firmware={"version": "4.5"},
+        hsm={"device_type": "hsm", "manufacturer": "Utimaco", "model": "Se Gen2",
+             "firmware": "4.5", "pqc_capability": "NOT_READY"},
+        capabilities={}, crypto_capabilities={},
+    ))
+    session.commit()
+
+
+def test_overview_counts_the_hardware_fleet(client, session):
+    _seed_twin(session)
+    _seed_hardware(session)
+    r = client.get("/api/v1/digital-twin")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["hardware_assets"] == 2
+    assert body["hardware_hsms"] == 2
+    assert body["fidelity"]["twin"]["hardware_assets"] == 2
+
+
+def test_hsm_outage_lists_real_devices_not_keywords(client, session):
+    _seed_twin(session)
+    _seed_hardware(session)
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "hsm_outage", "params": {},
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    fleet = body["affected"]["hardware_hsms"]
+    assert [d["asset_id"] for d in fleet] == ["hsm-core-01", "hsm-pay-02"]
+    assert fleet[0]["pqc_capability"] == "HYBRID_SUPPORTED"
+    assert body["impact"]["hsm_fleet"] == ["Thales Luna 7", "Utimaco Se Gen2"]
+
+
+def test_pqc_migration_reports_hardware_pqc_capability(client, session):
+    _seed_twin(session)
+    _seed_hardware(session)
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "pqc_migration", "params": {},
+    })
+    assert r.status_code == 200, r.text
+    hw = r.json()["impact"]["hardware"]
+    assert hw["hsms"] == 2
+    assert hw["pqc_capable"] == 1
+    assert hw["pqc_not_capable"] == 1
+    assert hw["not_capable_devices"] == ["hsm-pay-02"]
+
+
+# ---------------------------------------------------------- reconciliation
+
+def test_reconciliation_flags_divergence_between_twin_and_evidence(client, session):
+    """Seeded twin claims RSA+AES+ML-KEM; evidence holds RSA+MD5."""
+    _seed_twin(session)
+    r = client.get("/api/v1/digital-twin/reconciliation")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["schema"] == "cryptoscan.twin-reconciliation/1"
+    assert body["verdict"] == "DIVERGED"
+    assert "md5" in body["families_only_in_evidence"]
+    assert "aes-256-gcm" in body["families_only_in_twin"]
+    assert "rsa-2048" in body["families_in_both"]
+    assert body["honest_unknowns"]
+
+
+def test_reconciliation_on_empty_estate_is_insufficient_not_synced(client, session):
+    r = client.get("/api/v1/digital-twin/reconciliation")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["verdict"] == "INSUFFICIENT_DATA"
+    assert body["families_in_both"] == []
+    assert any("evidence store is empty" in u for u in body["honest_unknowns"])
 
 
 # ------------------------------------------------------------ timeline

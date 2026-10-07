@@ -117,7 +117,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "resilience": {"tier": "beta", "area": "Administration", "why": "Backup/DR/air-gap status; scripts are tested, the page is new."},
     "security": {"tier": "beta", "area": "Administration", "why": "Security settings surface; overlaps security-center."},
     "role-dashboard": {"tier": "beta", "area": "Overview", "why": "Per-role landing view."},
-    "digital-twin": {"tier": "beta", "area": "Intelligence", "why": "Estate replica with measured fidelity and ten deterministic scenario types, fed by live state, wire scans and the dependency graph; scenario models are heuristic projections, not vendor simulations."},
+    "digital-twin": {"tier": "beta", "area": "Intelligence", "why": "Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations."},
 
     # ── preview: shown for direction, labelled so it is not mistaken for GA ──
     "what-if": {"tier": "preview", "area": "Intelligence", "why": "Scenario simulation over the inventory; scenarios are fixed templates today."},

@@ -14,9 +14,11 @@ bank asks of a twin:
 2. **"Does the twin match reality?"** — :func:`twin_fidelity`, which measures
    what can be measured from the twin itself (staleness, coverage, journal
    lag, quantum mix) and names, as honest unknowns, the parts that need a
-   fresh scan to compute (reconciliation diff).
+   fresh scan to compute (reconciliation diff). :func:`reconcile` computes
+   the half that is computable today: the diff between the twin's algorithm
+   inventory and the last ingested evidence.
 
-Both operate on a plain-dict ``EstateSnapshot`` so the engine stays
+All three operate on a plain-dict ``EstateSnapshot`` so the engine stays
 unit-testable without a database; the API router adapts ORM rows into the
 snapshot shape. Field-by-field, the snapshot is:
 
@@ -34,6 +36,10 @@ snapshot shape. Field-by-field, the snapshot is:
                  run wins per endpoint, same derivation as the NBOM), plus
                  registered scan targets that no run has observed yet as
                  version-less placeholders.
+``hardware``     hardware fleet rows from the live hardware engine
+                 (manufacturer, model, firmware, HSM observations with
+                 declared PQC capability). Vendor management APIs are the
+                 operator's to connect; whatever they feed lands here.
 
 Missing sections are always legal: scenarios report what the missing data
 prevents as honest unknowns instead of inventing it.
@@ -249,6 +255,53 @@ def scenario_key_rotation(snapshot: Mapping[str, Any], *, now: datetime,
         ])
 
 
+def _hsm_devices(snapshot: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """HSM entries from the hardware fleet section (live hardware engine).
+
+    An entry counts when the row says it is an HSM (device_type) or carries
+    an HSM observation (the ``hsm`` dict the scanner produces).
+    """
+    out: list[dict[str, Any]] = []
+    for hw in snapshot.get("hardware") or []:
+        hsm = hw.get("hsm") if isinstance(hw.get("hsm"), Mapping) else {}
+        device_type = str(hw.get("device_type") or hsm.get("device_type") or "").lower()
+        if device_type != "hsm" and not hsm:
+            continue
+        out.append({
+            "asset_id": hw.get("asset_id"),
+            "manufacturer": hw.get("manufacturer") or hsm.get("manufacturer"),
+            "model": hw.get("model") or hsm.get("model"),
+            "firmware": (hw.get("firmware") or {}).get("version")
+            if isinstance(hw.get("firmware"), Mapping) else hsm.get("firmware"),
+            "pqc_capability": str(hsm.get("pqc_capability") or "").upper() or None,
+            "last_seen": hw.get("last_seen"),
+        })
+    return out
+
+
+def _hardware_pqc_summary(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    """PQC capability of the HSM fleet, as declared to the hardware engine."""
+    devices = _hsm_devices(snapshot)
+    capable, not_capable, unknown = [], [], []
+    for device in devices:
+        verdict = str(device.get("pqc_capability") or "").upper()
+        if not verdict or verdict == "UNKNOWN":
+            unknown.append(device["asset_id"])
+        elif "NOT" in verdict:
+            not_capable.append(device["asset_id"])
+        elif "HYBRID" in verdict or "READY" in verdict or "SUPPORTED" in verdict:
+            capable.append(device["asset_id"])
+        else:
+            unknown.append(device["asset_id"])
+    return {
+        "hsms": len(devices),
+        "pqc_capable": len(capable),
+        "pqc_not_capable": len(not_capable),
+        "pqc_unknown": len(unknown),
+        "not_capable_devices": sorted(d for d in not_capable if d),
+    }
+
+
 def scenario_hsm_outage(snapshot: Mapping[str, Any], *, now: datetime) -> dict:
     """One HSM/partner becomes unavailable: who loses what capability."""
     dependent, signals = [], {}
@@ -267,19 +320,33 @@ def scenario_hsm_outage(snapshot: Mapping[str, Any], *, now: datetime) -> dict:
         if hits:
             dependent.append(asset.get("asset_id"))
             signals[str(asset.get("asset_id"))] = sorted(set(hits))
+    # The actual fleet that would be down — from the live hardware engine,
+    # not inferred from keywords.
+    fleet = _hsm_devices(snapshot)
     return _result(
         "hsm_outage", {"as_of": now.isoformat()},
-        affected={"assets": dependent, "asset_count": len(dependent)},
+        affected={
+            "assets": dependent,
+            "asset_count": len(dependent),
+            "hardware_hsms": fleet,
+            "hardware_hsm_count": len(fleet),
+        },
         impact={
             "dependency_signals": signals,
             "operations_at_risk": ["signing", "key generation", "tokenisation"]
-            if dependent else [],
+            if dependent or fleet else [],
+            "hsm_fleet": [
+                f"{d.get('manufacturer') or 'unknown'} {d.get('model') or ''}".strip()
+                for d in fleet
+            ],
         },
         unknowns=[
             "fallback and HA topology is not modelled: an asset with a KMS "
             "signal may have a working local fallback",
             "vendor-specific outage behaviour (rate limiting, caching) is not "
             "represented in the twin",
+            "which crypto assets depend on which physical HSM is not modelled "
+            "in the twin; the device list is the fleet, not the blast radius",
         ])
 
 
@@ -478,17 +545,29 @@ def scenario_pqc_migration(snapshot: Mapping[str, Any], *, now: datetime) -> dic
                 buckets["ready"].append(asset.get("asset_id"))
             else:
                 buckets["unknown"].append(asset.get("asset_id"))
+
+    # The hardware fleet grounds the migration in devices that must be
+    # firmware-upgraded or replaced — from the live hardware engine, not
+    # from vendor marketing claims.
+    hardware_pqc = _hardware_pqc_summary(snapshot)
     return _result(
         "pqc_migration", {"as_of": now.isoformat()},
         affected=buckets,
         impact={
             "counts": {k: len(v) for k, v in buckets.items()},
             "vulnerable_algorithm_families": dict(sorted(vulnerable_algos.items())),
+            "hardware": hardware_pqc,
         },
         unknowns=[
             "quantum classification falls back to algorithm names when the "
             "twin has no per-asset verdict; protocol-level exposure "
             "(e.g. TLS key exchange) may differ",
+            *(
+                ["hardware PQC capability is as declared by agents/management "
+                  "APIs, not independently verified against the vendor's "
+                  "certification matrix"]
+                if hardware_pqc["hsms"] else []
+            ),
         ])
 
 
@@ -551,7 +630,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
     "hsm_outage": {
         "name": "HSM / KMS outage",
-        "description": "Which assets lose which capabilities if the key custodian is unavailable.",
+        "description": "Which assets lose which capabilities if the key custodian is unavailable — grounded in the hardware fleet the live engine knows.",
         "inputs": {},
         "run": scenario_hsm_outage,
     },
@@ -650,11 +729,13 @@ def twin_fidelity(snapshot: Mapping[str, Any], *, now: datetime,
     covered_systems = len(system_ids & asset_ids)
     endpoints = list(snapshot.get("network_endpoints") or [])
     endpoints_observed = sum(1 for e in endpoints if e.get("observed", True))
+    hardware = list(snapshot.get("hardware") or [])
     return {
         "schema": "cryptoscan.twin-fidelity/1",
         "as_of": now.isoformat(),
         "deterministic": True,
         "twin": {
+            "hardware_assets": len(hardware),
             "assets": len(assets),
             "systems_known": len(systems),
             "systems_with_twin_state": covered_systems,
@@ -693,6 +774,87 @@ def twin_fidelity(snapshot: Mapping[str, Any], *, now: datetime,
                   "network endpoints were never observed by a scan: their "
                   "protocol posture is unknown, not healthy"]
                 if endpoints and endpoints_observed < len(endpoints) else []
+            ),
+        ],
+    }
+
+
+def reconcile(snapshot: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
+    """Diff the twin's algorithm inventory against its own evidence store.
+
+    This is the twin-vs-sources half of reconciliation: the algorithm
+    families the twin claims (aggregated over its assets) against the
+    families present in the last ingested evidence records. It catches the
+    twin lagging its own inputs — an algorithm scanners keep finding that no
+    twin asset reflects, or a twin claim nothing currently backs.
+
+    It is deliberately *not* a claim of matching reality: evidence is only
+    as fresh as the last scan, and the twin's asset ids and the evidence's
+    system linkage are different id spaces, so the diff is portfolio-level.
+    Identifiers are matched exactly as recorded (lowercased): ``rsa-2048``
+    and ``rsa-3072`` are different entries by design — a key-size change is
+    a real divergence. Both limits are stated as honest unknowns.
+    """
+    twin_families: dict[str, int] = {}
+    for asset in snapshot.get("assets") or []:
+        algos = asset.get("algorithms") or {}
+        names = algos.keys() if isinstance(algos, Mapping) else []
+        for name in names:
+            family = _algo_family(name)
+            if family:
+                twin_families[family] = twin_families.get(family, 0) + 1
+
+    evidence_families: dict[str, int] = {}
+    for record in snapshot.get("evidence") or []:
+        family = _algo_family(record.get("algorithm") or record.get("normalized_algorithm"))
+        if family:
+            evidence_families[family] = evidence_families.get(family, 0) + 1
+
+    in_both = sorted(set(twin_families) & set(evidence_families))
+    twin_only = sorted(set(twin_families) - set(evidence_families))
+    evidence_only = sorted(set(evidence_families) - set(twin_families))
+
+    if not twin_families or not evidence_families:
+        # One side empty means there is nothing to compare — never verdict
+        # "lags" off an absence.
+        verdict = "INSUFFICIENT_DATA"
+    elif not evidence_only and not twin_only:
+        verdict = "IN_SYNC"
+    elif evidence_only and not twin_only:
+        # Scanners see families the twin has not absorbed yet.
+        verdict = "TWIN_LAGS_EVIDENCE"
+    elif twin_only and not evidence_only:
+        # The twin claims families no current evidence backs.
+        verdict = "EVIDENCE_LAGS_TWIN"
+    else:
+        verdict = "DIVERGED"
+
+    return {
+        "schema": "cryptoscan.twin-reconciliation/1",
+        "as_of": now.isoformat(),
+        "deterministic": True,
+        "verdict": verdict,
+        "twin_algorithm_families": dict(sorted(twin_families.items())),
+        "evidence_algorithm_families": dict(sorted(evidence_families.items())),
+        "families_in_both": in_both,
+        "families_only_in_twin": twin_only,
+        "families_only_in_evidence": evidence_only,
+        "honest_unknowns": [
+            "this diff compares the twin against the last *ingested* "
+            "evidence, not against reality: only a fresh scan of the estate "
+            "can prove the twin matches production",
+            "twin asset ids and evidence system linkage are different id "
+            "spaces; this diff is portfolio-level and cannot attribute a "
+            "divergence to one system",
+            *(
+                ["evidence store is empty: nothing to reconcile against — "
+                  "run a scan first"]
+                if not evidence_families else []
+            ),
+            *(
+                ["twin has no algorithm inventory: no live state has been "
+                  "ingested for any asset"]
+                if not twin_families else []
             ),
         ],
     }

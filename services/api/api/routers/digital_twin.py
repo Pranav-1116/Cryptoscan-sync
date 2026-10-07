@@ -6,6 +6,7 @@ This router exposes what a twin owes its operator:
 
 * ``GET  /digital-twin``            — replica overview (what the twin holds)
 * ``GET  /digital-twin/fidelity``   — how well the twin tracks the estate
+* ``GET  /digital-twin/reconciliation`` — twin's algorithms vs its evidence
 * ``GET  /digital-twin/scenarios``  — the ten deterministic scenario types
 * ``POST /digital-twin/simulate``   — run one scenario (reads, never mutates)
 * ``GET  /digital-twin/timeline/{asset_id}`` — the journal (time-travel)
@@ -25,13 +26,14 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from agility.twin_scenarios import SCENARIOS, run_scenario, twin_fidelity
+from agility.twin_scenarios import SCENARIOS, run_scenario, reconcile, twin_fidelity
 from api.dependencies import get_current_user, get_db_session
 from db.models.certificate import Certificate
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.crypto_live import CryptoLiveEventRow, CryptoLiveState
 from db.models.evidence_record import EvidenceRecord
 from db.models.graph_snapshot import GraphSnapshot
+from db.models.hardware_live import HardwareAsset
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.system import System
 from db.models.system_asset import SystemAsset
@@ -50,6 +52,7 @@ SNAPSHOT_CAPS = {
     "certificates": 20000,
     "evidence": 20000,
     "endpoints": 20000,
+    "hardware": 20000,
 }
 
 
@@ -218,6 +221,27 @@ def _snapshot(db: Session) -> dict:
             "protocol": None, "version": None, "observed": False,
         })
 
+    # The hardware fleet from the live hardware engine — agents and authorized
+    # management APIs feed it; the twin only reads. HSM observations carry
+    # the scanner's declared PQC capability, never vendor marketing claims.
+    hardware = [
+        {
+            "asset_id": hw.asset_id,
+            "agent_id": hw.agent_id,
+            "manufacturer": hw.manufacturer,
+            "model": hw.model,
+            "device_type": hw.device_type,
+            "firmware": hw.firmware,
+            "hsm": hw.hsm,
+            "capabilities": hw.capabilities,
+            "crypto_capabilities": hw.crypto_capabilities,
+            "last_seen": hw.last_seen.isoformat() if hw.last_seen else None,
+            "risk_score": hw.risk_score,
+            "risk_level": hw.risk_level,
+        }
+        for hw in db.query(HardwareAsset).limit(SNAPSHOT_CAPS["hardware"]).all()
+    ]
+
     return {
         "assets": assets,
         "systems": systems,
@@ -236,6 +260,7 @@ def _snapshot(db: Session) -> dict:
         "dependencies": dependencies,
         "dependency_source": dependency_source,
         "network_endpoints": network_endpoints,
+        "hardware": hardware,
     }
 
 
@@ -261,6 +286,11 @@ def digital_twin_overview(user: str = Depends(get_current_user),
         else:
             quantum_mix["unknown"] += 1
     endpoints = snapshot["network_endpoints"]
+    hardware = snapshot.get("hardware") or []
+    hardware_hsms = sum(
+        1 for hw in hardware
+        if str(hw.get("device_type") or "").lower() == "hsm" or hw.get("hsm")
+    )
     return {
         "schema": "cryptoscan.digital-twin/1",
         "twin_assets": len(assets),
@@ -272,6 +302,8 @@ def digital_twin_overview(user: str = Depends(get_current_user),
         "network_endpoints": len(endpoints),
         "network_endpoints_observed": sum(
             1 for e in endpoints if e.get("observed")),
+        "hardware_assets": len(hardware),
+        "hardware_hsms": hardware_hsms,
         "quantum_mix": quantum_mix,
         "scenarios_available": sorted(SCENARIOS),
         "fidelity": twin_fidelity(snapshot, now=datetime.now(timezone.utc)),
@@ -283,6 +315,19 @@ def digital_twin_fidelity(user: str = Depends(get_current_user),
                           db: Session = Depends(get_db_session)):
     """Measured twin-vs-estate tracking, with honest unknowns."""
     return twin_fidelity(_snapshot(db), now=datetime.now(timezone.utc))
+
+
+@router.get("/digital-twin/reconciliation")
+def digital_twin_reconciliation(user: str = Depends(get_current_user),
+                                db: Session = Depends(get_db_session)):
+    """Diff the twin's algorithm inventory against its own evidence store.
+
+    Catches the twin lagging its inputs: families scanners keep finding that
+    no twin asset reflects, and twin claims nothing currently backs. This is
+    twin-vs-stored-evidence — matching *reality* still needs a fresh scan,
+    and the result says so.
+    """
+    return reconcile(_snapshot(db), now=datetime.now(timezone.utc))
 
 
 @router.get("/digital-twin/scenarios")

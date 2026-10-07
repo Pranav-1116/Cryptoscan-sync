@@ -298,6 +298,9 @@ export const apiDigitalTwinOverview = (): Promise<ApiResult<Record<string, unkno
 export const apiDigitalTwinFidelity = (): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/digital-twin/fidelity");
 
+export const apiDigitalTwinReconciliation = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/digital-twin/reconciliation");
+
 export const apiDigitalTwinScenarios = (): Promise<ApiResult<{ scenario_count: number; scenarios: TwinScenarioDescriptor[] }>> =>
   call("/api/v1/digital-twin/scenarios");
 

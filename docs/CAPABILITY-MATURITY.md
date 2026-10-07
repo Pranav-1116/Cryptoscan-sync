@@ -87,7 +87,7 @@ Total: 74 surfaces.
 | `/agility` | Intelligence | Crypto-agility scoring; 900 LOC, 37 tests; scoring model still being calibrated. |
 | `/crypto-changes` | Intelligence | Change timeline from drift + scan history. |
 | `/dependency-graph` | Intelligence | Same graph engine as /graph. |
-| `/digital-twin` | Intelligence | Estate replica with measured fidelity and ten deterministic scenario types, fed by live state, wire scans and the dependency graph; scenario models are heuristic projections, not vendor simulations. |
+| `/digital-twin` | Intelligence | Estate replica with measured fidelity, evidence reconciliation and ten deterministic scenario types, fed by live state, wire scans, the dependency graph and the hardware fleet; scenario models are heuristic projections, not vendor simulations. |
 | `/graph` | Intelligence | Neo4j dependency graph is optional at runtime; 3.2k LOC, 9 test files. |
 | `/hbom` | Intelligence | Hardware BOM view over the Technology BOM; depends on hardware scan coverage. |
 | `/migration` | Intelligence | Scan → project → tasks → velocity forecast; forecast model is simple. |
