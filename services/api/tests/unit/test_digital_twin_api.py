@@ -23,6 +23,8 @@ from db.connection.session import Base, SessionLocal, configure_session
 from db.models.certificate import Certificate
 from db.models.crypto_live import CryptoLiveState
 from db.models.evidence_record import EvidenceRecord
+from db.models.graph_snapshot import GraphSnapshot
+from db.models.network_scan_run import NetworkScanRun
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.system import System
 from db.models.system_dependency import SystemDependency
@@ -303,6 +305,98 @@ def test_fidelity_measures_staleness_and_unknowns(client, session):
     assert body["twin"]["systems_with_twin_state"] == 0  # no system↔asset link
     assert body["coverage"]["systems_covered_pct"] == 0.0
     assert any("reconciliation" in u for u in body["honest_unknowns"])
+
+
+# ------------------------------------------------- network evidence feed
+
+def test_network_endpoints_come_from_stored_scan_probes(client, session):
+    """The twin reads the wire, not just the target registry: endpoints and
+    their TLS versions are derived from stored scan runs (newest wins)."""
+    _seed_twin(session)
+    session.add(NetworkScanRun(
+        target_kind="hosts", verdict="OK", probed=3, ok=2,
+        result={"probes": [
+            {"endpoint": "api.bank.ae:443", "status": "TLS_OK",
+             "tls_version": "TLSv1.0", "cipher_suite": "TLS_RSA_WITH_3DES_EDE_CBC_SHA",
+             "certificates": [{"subject": "CN=old", "issuer": "CN=CA",
+                               "serial_number": "01",
+                               "public_key_algorithm": "RSA",
+                               "public_key_size": 1024}]},
+            {"endpoint": "ib.bank.ae:443", "status": "TLS_OK",
+             "tls_version": "TLSv1.3", "cipher_suite": "TLS_AES_256_GCM_SHA384",
+             "certificates": []},
+            {"endpoint": "legacy.bank.ae:8443", "status": "TIMEOUT"},
+        ]},
+    ))
+    session.commit()
+
+    r = client.get("/api/v1/digital-twin")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # 3 probe endpoints (2 probed OK + 1 unreachable, inventoried but not
+    # judged — same semantics as the NBOM) + the registered target
+    # api.bank.example:443 which no run has seen yet.
+    assert body["network_endpoints"] == 4
+    assert body["network_endpoints_observed"] == 2
+
+    # The protocol floor now bites on real wire evidence.
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "protocol_deprecation",
+        "params": {"protocol": "TLS", "min_version": "1.2"},
+    })
+    assert r.status_code == 200, r.text
+    affected = r.json()["affected"]["endpoints"]
+    assert "api.bank.ae:443" in affected          # TLSv1.0 — below the floor
+    assert "ib.bank.ae:443" not in affected       # TLSv1.3 — fine
+    assert "legacy.bank.ae:8443" not in affected  # never probed — unknown
+
+
+# --------------------------------------------------- graph edge fallback
+
+def test_attack_path_uses_graph_snapshot_when_no_relational_edges(client, session):
+    """Estates that keep their dependency graph in the graph engine still
+    get attack paths: edges come from the latest versioned snapshot."""
+    _seed_twin(session)
+    session.query(SystemDependency).delete()
+    session.add(GraphSnapshot(
+        version=1, fingerprint="a" * 64, node_count=3, edge_count=2,
+        nodes=[{"id": "sys-core", "kind": "system"},
+               {"id": "sys-pay", "kind": "system"},
+               {"id": "sys-legacy", "kind": "system"}],
+        edges=[{"from": "sys-core", "to": "sys-pay", "label": "CALLS"},
+               {"from": "sys-pay", "to": "sys-legacy", "label": "READS"}],
+    ))
+    session.commit()
+
+    r = client.get("/api/v1/digital-twin")
+    assert r.status_code == 200, r.text
+    assert r.json()["dependency_source"] == "graph_snapshot:v1"
+    assert r.json()["dependency_edges"] == 2
+
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "attack_path",
+        "params": {"seed_asset": "sys-core", "max_depth": 5},
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # JSON turns the depth keys into strings.
+    assert body["affected"]["by_depth"] == {"1": ["sys-pay"], "2": ["sys-legacy"]}
+    assert body["impact"]["reachable_count"] == 2
+
+
+def test_relational_edges_win_over_graph_snapshot(client, session):
+    """Both sources present: the relational table is the authority."""
+    _seed_twin(session)
+    session.add(GraphSnapshot(
+        version=1, fingerprint="b" * 64, node_count=2, edge_count=1,
+        edges=[{"from": "sys-pay", "to": "sys-core", "label": "CALLS"}],
+    ))
+    session.commit()
+    r = client.get("/api/v1/digital-twin")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["dependency_source"] == "system_dependencies"
+    assert body["dependency_edges"] == 1
 
 
 # ------------------------------------------------------------ timeline

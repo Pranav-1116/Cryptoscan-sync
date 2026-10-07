@@ -29,7 +29,9 @@ interface TwinOverview {
   certificates?: number;
   evidence_records?: number;
   dependency_edges?: number;
+  dependency_source?: string;
   network_endpoints?: number;
+  network_endpoints_observed?: number;
   quantum_mix?: Record<string, number>;
   scenarios_available?: string[];
   fidelity?: TwinFidelity;
@@ -39,7 +41,7 @@ interface TwinFidelity {
   schema?: string;
   twin?: { assets?: number; systems_known?: number; systems_with_twin_state?: number; journal_events?: number; cbom_versions?: Record<string, number> };
   staleness?: { assets_fresh?: number; assets_stale?: number; staleness_pct?: number | null; age_seconds_p50?: number | null; age_seconds_max?: number | null };
-  coverage?: { systems_covered_pct?: number | null };
+  coverage?: { systems_covered_pct?: number | null; network_endpoints?: number; network_endpoints_observed?: number; network_observed_pct?: number | null };
   honest_unknowns?: string[];
 }
 
@@ -135,8 +137,18 @@ export default function DigitalTwin() {
     { k: "systems", v: ov?.systems ?? 0, sub: "registered estate systems" },
     { k: "certificates", v: ov?.certificates ?? 0, sub: "inventory certificates" },
     { k: "evidence records", v: ov?.evidence_records ?? 0, sub: "source-scan findings feeding the twin" },
-    { k: "dependency edges", v: ov?.dependency_edges ?? 0, sub: "system dependency graph" },
-    { k: "network endpoints", v: ov?.network_endpoints ?? 0, sub: "registered scan targets" },
+    {
+      k: "dependency edges",
+      v: ov?.dependency_edges ?? 0,
+      sub: ov?.dependency_source && ov.dependency_source !== "none"
+        ? `from ${ov.dependency_source.replace(/_/g, " ")}`
+        : "no dependency graph materialised yet",
+    },
+    {
+      k: "network endpoints",
+      v: `${ov?.network_endpoints_observed ?? 0}/${ov?.network_endpoints ?? 0}`,
+      sub: "observed on the wire (stored scans) / total incl. registered targets",
+    },
   ], [ov]);
 
   return (
@@ -200,6 +212,9 @@ export default function DigitalTwin() {
               ["max CBOM version", String(fid.twin?.cbom_versions?.max ?? "—")],
               ["systems with twin state", `${fid.twin?.systems_with_twin_state ?? 0} / ${fid.twin?.systems_known ?? 0}`],
               ["coverage", fid.coverage?.systems_covered_pct == null ? "unknown" : `${fid.coverage.systems_covered_pct}%`],
+              ["network observed", fid.coverage?.network_observed_pct == null
+                ? "no endpoints registered"
+                : `${fid.coverage.network_endpoints_observed ?? 0}/${fid.coverage.network_endpoints ?? 0} (${fid.coverage.network_observed_pct}%)`],
             ]}
           />
           {fidelityUnknowns.length > 0 && (

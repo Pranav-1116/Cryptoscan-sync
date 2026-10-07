@@ -31,6 +31,7 @@ from db.models.certificate import Certificate
 from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.crypto_live import CryptoLiveEventRow, CryptoLiveState
 from db.models.evidence_record import EvidenceRecord
+from db.models.graph_snapshot import GraphSnapshot
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.system import System
 from db.models.system_asset import SystemAsset
@@ -168,17 +169,53 @@ def _snapshot(db: Session) -> dict:
         {"source": dep.parent_id, "target": dep.child_id, "type": dep.relation}
         for dep in db.query(SystemDependency).limit(50000).all()
     ]
+    dependency_source = "system_dependencies"
+    if not dependencies:
+        # Estates that maintain their dependency graph in the graph engine
+        # (versioned graph_snapshots) get their edges from the latest
+        # snapshot instead — attack paths work on both shapes of estate.
+        snap = (
+            db.query(GraphSnapshot)
+            .order_by(GraphSnapshot.version.desc()).first()
+        )
+        if snap and snap.edges:
+            dependencies = [
+                {"source": str(edge.get("from")),
+                 "target": str(edge.get("to")),
+                 "type": str(edge.get("label") or "graph")}
+                for edge in snap.edges
+                if edge.get("from") and edge.get("to")
+            ]
+            dependency_source = f"graph_snapshot:v{snap.version}"
+    if not dependencies:
+        dependency_source = "none"
+
+    # Observed endpoints come from stored network scans — the same derivation
+    # the NBOM uses (newest run wins per endpoint), so the twin and the NBOM
+    # can never disagree about what was seen on the wire.
+    from api.routers.cbom import _gather_network_inventory
 
     network_endpoints = []
+    for ep in _gather_network_inventory(db)["endpoints"]:
+        network_endpoints.append({
+            "host": ep.get("host"), "port": ep.get("port"),
+            "protocol": ep.get("protocol"), "version": ep.get("tls_version"),
+            "cipher_suite": ep.get("cipher_suite"),
+            "observed": bool(ep.get("observed", True)),
+        })
+    observed_keys = {f"{e['host']}:{e['port']}" for e in network_endpoints}
+    # Registered scan targets that no run has observed yet still count as
+    # endpoints — intent without observation carries no protocol version,
+    # and the protocol scenario reports that gap honestly.
     for target in db.query(NetworkScanTarget).limit(
             SNAPSHOT_CAPS["endpoints"]).all():
         host, port = _split_endpoint(target.endpoint or "")
+        if f"{host}:{port}" in observed_keys:
+            continue
         network_endpoints.append({
             "host": host, "port": port,
             "system_id": target.system_id,
-            # TLS version detail lives in scan-run results, not the target
-            # row; the protocol scenario reports the gap honestly.
-            "protocol": None, "version": None,
+            "protocol": None, "version": None, "observed": False,
         })
 
     return {
@@ -197,6 +234,7 @@ def _snapshot(db: Session) -> dict:
         ],
         "evidence": evidence,
         "dependencies": dependencies,
+        "dependency_source": dependency_source,
         "network_endpoints": network_endpoints,
     }
 
@@ -222,6 +260,7 @@ def digital_twin_overview(user: str = Depends(get_current_user),
             quantum_mix["ready"] += 1
         else:
             quantum_mix["unknown"] += 1
+    endpoints = snapshot["network_endpoints"]
     return {
         "schema": "cryptoscan.digital-twin/1",
         "twin_assets": len(assets),
@@ -229,7 +268,10 @@ def digital_twin_overview(user: str = Depends(get_current_user),
         "certificates": len(snapshot["certificates"]),
         "evidence_records": len(snapshot["evidence"]),
         "dependency_edges": len(snapshot["dependencies"]),
-        "network_endpoints": len(snapshot["network_endpoints"]),
+        "dependency_source": snapshot.get("dependency_source"),
+        "network_endpoints": len(endpoints),
+        "network_endpoints_observed": sum(
+            1 for e in endpoints if e.get("observed")),
         "quantum_mix": quantum_mix,
         "scenarios_available": sorted(SCENARIOS),
         "fidelity": twin_fidelity(snapshot, now=datetime.now(timezone.utc)),

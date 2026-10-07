@@ -206,6 +206,24 @@ def test_protocol_deprecation_below_floor():
     assert result["affected"]["assets"] == ["sys-core"]
 
 
+def test_protocol_deprecation_parses_wire_format_versions():
+    """Scan probes report 'TLSv1.0', not '1.0' — the floor must still bite."""
+    snap = _snapshot()
+    snap["network_endpoints"] = [
+        {"host": "old.bank", "port": 443, "protocol": "tls",
+         "version": "TLSv1.0", "observed": True},
+        {"host": "new.bank", "port": 443, "protocol": "tls",
+         "version": "TLSv1.3", "observed": True},
+        {"host": "dark.bank", "port": 8443, "protocol": "tls",
+         "version": None, "observed": False},  # registered, never probed
+    ]
+    result = run_scenario("protocol_deprecation", snap, now=NOW,
+                          params={"protocol": "TLS", "min_version": "1.2"})
+    assert result["affected"]["endpoints"] == ["old.bank:443"]
+    # The unprobed endpoint is unknown, not "below the floor".
+    assert "dark.bank:8443" not in result["affected"]["endpoints"]
+
+
 def test_compliance_change_flips_weak_keys_and_hashes():
     result = run_scenario("compliance_change", _snapshot(), now=NOW,
                           params={"min_key_bits": 3072})
@@ -279,8 +297,29 @@ def test_fidelity_measures_staleness_and_coverage():
     assert fidelity["coverage"]["systems_covered_pct"] == 66.7
     assert fidelity["twin"]["journal_events"] == 17
     assert fidelity["twin"]["cbom_versions"]["max"] == 4
+    # The fixture's two endpoints carry versions (observed by construction).
+    assert fidelity["coverage"]["network_endpoints_observed"] == 2
+    assert fidelity["coverage"]["network_observed_pct"] == 100.0
     # The reconciliation unknown must be declared, not silently omitted.
     assert any("reconciliation" in u for u in fidelity["honest_unknowns"])
+
+
+def test_fidelity_reports_unprobed_network_surface():
+    """Registered-but-unprobed endpoints are named, not silently healthy."""
+    snap = _snapshot()
+    snap["network_endpoints"] = [
+        {"host": "a.bank", "port": 443, "protocol": "tls",
+         "version": "TLSv1.3", "observed": True},
+        {"host": "b.bank", "port": 443, "protocol": None,
+         "version": None, "observed": False},
+        {"host": "c.bank", "port": 8443, "protocol": None,
+         "version": None, "observed": False},
+    ]
+    fidelity = twin_fidelity(snap, now=NOW)
+    assert fidelity["coverage"]["network_endpoints"] == 3
+    assert fidelity["coverage"]["network_endpoints_observed"] == 1
+    assert fidelity["coverage"]["network_observed_pct"] == 33.3
+    assert any("never observed" in u for u in fidelity["honest_unknowns"])
 
 
 def test_fidelity_is_deterministic_and_time_explicit():

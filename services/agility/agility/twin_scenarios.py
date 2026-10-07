@@ -27,11 +27,13 @@ snapshot shape. Field-by-field, the snapshot is:
 ``vendors``      vendor registry rows.
 ``evidence``     a bounded projection of evidence records (algorithm,
                  key_size, is_hardcoded_key, file_path).
-``dependencies`` graph edges ``{"source", "target", "type"}`` when the
-                 dependency graph has been materialised.
-``network_endpoints`` registered network scan targets; protocol version
-                 detail is only present when a scan captured it — targets
-                 alone carry no version, and scenarios say so.
+``dependencies`` graph edges ``{"source", "target", "type"}`` — from the
+                 relational dependency table, or the latest versioned graph
+                 snapshot when that table is empty.
+``network_endpoints`` endpoints observed by stored network scans (newest
+                 run wins per endpoint, same derivation as the NBOM), plus
+                 registered scan targets that no run has observed yet as
+                 version-less placeholders.
 
 Missing sections are always legal: scenarios report what the missing data
 prevents as honest unknowns instead of inventing it.
@@ -39,6 +41,7 @@ prevents as honest unknowns instead of inventing it.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Mapping
 
@@ -336,9 +339,15 @@ def scenario_protocol_deprecation(snapshot: Mapping[str, Any], *, now: datetime,
         raise ValueError("min_version must be numeric, e.g. 1.2") from None
 
     def _below(version: Any) -> bool:
+        # Wire formats spell versions "TLSv1.0", "tlsv1.1", "TLS 1.2";
+        # the engine reads the first numeric version token. An endpoint with
+        # no version (unprobed target) is never "below" — it is unknown.
+        match = re.search(r"\d+(?:\.\d+)?", str(version or ""))
+        if not match:
+            return False
         try:
-            return float(str(version).strip().lower().lstrip("v")) < floor_num
-        except (TypeError, ValueError):
+            return float(match.group(0)) < floor_num
+        except ValueError:
             return False
 
     endpoints = [
@@ -639,6 +648,8 @@ def twin_fidelity(snapshot: Mapping[str, Any], *, now: datetime,
     asset_ids = {a.get("asset_id") for a in assets}
     events = sum(int(a.get("event_count") or 0) for a in assets)
     covered_systems = len(system_ids & asset_ids)
+    endpoints = list(snapshot.get("network_endpoints") or [])
+    endpoints_observed = sum(1 for e in endpoints if e.get("observed", True))
     return {
         "schema": "cryptoscan.twin-fidelity/1",
         "as_of": now.isoformat(),
@@ -657,6 +668,11 @@ def twin_fidelity(snapshot: Mapping[str, Any], *, now: datetime,
             if system_ids else None,
             "assets_without_journal_activity": sum(
                 1 for a in assets if not int(a.get("event_count") or 0)),
+            "network_endpoints": len(endpoints),
+            "network_endpoints_observed": endpoints_observed,
+            "network_observed_pct": round(
+                100.0 * endpoints_observed / len(endpoints), 1)
+            if endpoints else None,
         },
         "staleness": {
             "stale_after_seconds": stale_after_seconds,
@@ -672,5 +688,11 @@ def twin_fidelity(snapshot: Mapping[str, Any], *, now: datetime,
             "coverage counts systems registered in the inventory; systems "
             "nobody registered are invisible to both the estate and this "
             "number",
+            *(
+                [f"{len(endpoints) - endpoints_observed} of {len(endpoints)} "
+                  "network endpoints were never observed by a scan: their "
+                  "protocol posture is unknown, not healthy"]
+                if endpoints and endpoints_observed < len(endpoints) else []
+            ),
         ],
     }
