@@ -22,7 +22,10 @@ from api.security.session_manager import SessionManager
 from db.connection.session import Base, SessionLocal, configure_session
 from db.models.certificate import Certificate
 from db.models.crypto_live import CryptoLiveState
+from db.models.crypto_asset import CryptoAsset
+from db.models.crypto_asset_evidence import CryptoAssetEvidence
 from db.models.evidence_record import EvidenceRecord
+from db.models.system_asset import SystemAsset
 from db.models.graph_snapshot import GraphSnapshot
 from db.models.hardware_live import HardwareAsset
 from db.models.network_scan_run import NetworkScanRun
@@ -398,6 +401,46 @@ def test_relational_edges_win_over_graph_snapshot(client, session):
     body = r.json()
     assert body["dependency_source"] == "system_dependencies"
     assert body["dependency_edges"] == 1
+
+
+# ---------------------------------------------- evidence linkage shape
+
+def test_evidence_linked_to_two_systems_is_one_record(client, session):
+    """The adapter ships one row per (record, system) so per-system
+    attribution works, and estate-wide counts dedup it back to one record."""
+    _seed_twin(session)
+    session.query(EvidenceRecord).delete()
+
+    record = EvidenceRecord(
+        scan_id="scan-1", content_hash="e" * 64, chain_hash="", chain_position=1,
+        algorithm="RSA-2048", key_size=1024, is_hardcoded_key=True,
+        file_path="src/Shared.java", line_number=1, finding_data={"metadata": {}},
+    )
+    session.add(record)
+    asset_a = CryptoAsset(algorithm="RSA-2048", file_path="src/Shared.java",
+                          line_number=1, is_hardcoded_key=True)
+    asset_b = CryptoAsset(algorithm="RSA-2048", file_path="src/Shared.java",
+                          line_number=1, is_hardcoded_key=True)
+    session.add_all([asset_a, asset_b])
+    session.flush()
+    session.add(CryptoAssetEvidence(asset_id=asset_a.id, evidence_id=record.id))
+    session.add(CryptoAssetEvidence(asset_id=asset_b.id, evidence_id=record.id))
+    # the same asset also sits in two systems -> two (record, system) rows
+    session.add(SystemAsset(system_id="sys-core", asset_id=asset_a.id))
+    session.add(SystemAsset(system_id="sys-pay", asset_id=asset_a.id))
+    session.commit()
+
+    body = client.get("/api/v1/digital-twin").json()
+    # one record, however many systems/assets reference it
+    assert body["evidence_records"] == 1
+
+    r = client.post("/api/v1/digital-twin/simulate", json={
+        "scenario": "compliance_change", "params": {"min_key_bits": 3072},
+    })
+    assert r.status_code == 200, r.text
+    result = r.json()
+    assert result["affected"]["newly_failing_key_size"] == [record.id]  # once
+    assert result["impact"]["counts"]["key_size"] == 1
 
 
 # ---------------------------------------------------- hardware fleet feed

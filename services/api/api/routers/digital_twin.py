@@ -53,6 +53,9 @@ SNAPSHOT_CAPS = {
     "evidence": 20000,
     "endpoints": 20000,
     "hardware": 20000,
+    "systems": 20000,
+    "system_vendors": 20000,
+    "vendors": 20000,
 }
 
 
@@ -111,7 +114,8 @@ def _snapshot(db: Session) -> dict:
             "event_count": event_counts.get(state.asset_id, 0),
         })
 
-    system_vendors = db.query(SystemVendor).all()
+    system_vendors = db.query(SystemVendor).limit(
+        SNAPSHOT_CAPS["system_vendors"]).all()
     systems = [
         {
             "id": system.id,
@@ -126,7 +130,7 @@ def _snapshot(db: Session) -> dict:
             "vendor_ids": [sv.vendor_id for sv in system_vendors
                            if sv.system_id == system.id],
         }
-        for system in db.query(System).all()
+        for system in db.query(System).limit(SNAPSHOT_CAPS["systems"]).all()
     ]
 
     certificates = [
@@ -146,12 +150,16 @@ def _snapshot(db: Session) -> dict:
 
     # Evidence → system linkage runs the real chain:
     # evidence_records → crypto_asset_evidence → crypto_assets → system_assets.
+    # distinct(): an evidence record reachable through two assets of the same
+    # system must not appear twice. The row list is capped; the exact
+    # per-algorithm counts for reconciliation come from the GROUP BY below.
     evidence_rows = (
         db.query(EvidenceRecord, SystemAsset.system_id)
         .outerjoin(CryptoAssetEvidence,
                    CryptoAssetEvidence.evidence_id == EvidenceRecord.id)
         .outerjoin(SystemAsset,
                    SystemAsset.asset_id == CryptoAssetEvidence.asset_id)
+        .distinct()
         .order_by(EvidenceRecord.created_at.desc())
         .limit(SNAPSHOT_CAPS["evidence"]).all()
     )
@@ -167,6 +175,17 @@ def _snapshot(db: Session) -> dict:
         }
         for record, system_id in evidence_rows
     ]
+
+    # Exact per-algorithm evidence counts, unbounded and cheap — the GROUP BY
+    # keeps reconciliation correct even when the capped evidence-row list
+    # above had to truncate on a very large estate.
+    evidence_algorithm_counts = {
+        algorithm: int(count)
+        for algorithm, count in db.query(
+            EvidenceRecord.algorithm, func.count(EvidenceRecord.id)
+        ).group_by(EvidenceRecord.algorithm).all()
+        if algorithm
+    }
 
     dependencies = [
         {"source": dep.parent_id, "target": dep.child_id, "type": dep.relation}
@@ -249,7 +268,7 @@ def _snapshot(db: Session) -> dict:
         "vendors": [
             {"id": v.id, "name": v.name, "criticality": v.criticality,
              "vendor_type": v.vendor_type}
-            for v in db.query(Vendor).all()
+            for v in db.query(Vendor).limit(SNAPSHOT_CAPS["vendors"]).all()
         ],
         "system_vendors": [
             {"system_id": sv.system_id, "vendor_id": sv.vendor_id,
@@ -257,6 +276,7 @@ def _snapshot(db: Session) -> dict:
             for sv in system_vendors
         ],
         "evidence": evidence,
+        "evidence_algorithm_counts": evidence_algorithm_counts,
         "dependencies": dependencies,
         "dependency_source": dependency_source,
         "network_endpoints": network_endpoints,
@@ -296,7 +316,10 @@ def digital_twin_overview(user: str = Depends(get_current_user),
         "twin_assets": len(assets),
         "systems": len(snapshot["systems"]),
         "certificates": len(snapshot["certificates"]),
-        "evidence_records": len(snapshot["evidence"]),
+        # unique records, not (record, system) linkage rows: the snapshot's
+        # evidence list carries one row per linked system for per-system
+        # attribution, and a record linked to two systems is still one record.
+        "evidence_records": len({e.get("id") for e in snapshot["evidence"]}),
         "dependency_edges": len(snapshot["dependencies"]),
         "dependency_source": snapshot.get("dependency_source"),
         "network_endpoints": len(endpoints),

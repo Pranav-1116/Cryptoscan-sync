@@ -178,6 +178,16 @@ def test_certificate_expiry_buckets_and_backlog():
     assert result["impact"]["counts"]["no_expiry_date"] == 1
 
 
+def test_certificate_expiry_rejects_absurd_horizons():
+    """timedelta would overflow on astronomical horizons and 500 the API."""
+    with pytest.raises(ValueError, match="out of range"):
+        run_scenario("certificate_expiry", _snapshot(), now=NOW,
+                     params={"horizon_days": 10**18})
+    with pytest.raises(ValueError, match="out of range"):
+        run_scenario("certificate_expiry", _snapshot(), now=NOW,
+                     params={"horizon_days": -(10**18)})
+
+
 def test_key_rotation_flags_hardcoded_blockers():
     result = run_scenario("key_rotation", _snapshot(), now=NOW,
                           params={"algorithm": "RSA"})
@@ -439,6 +449,52 @@ def test_reconcile_is_honest_when_either_side_is_empty():
     result = reconcile(snap, now=NOW)
     assert result["verdict"] == "INSUFFICIENT_DATA"
     assert result["twin_algorithm_families"] == {"rsa-2048": 1}
+
+
+def test_evidence_linked_to_two_systems_is_counted_once():
+    """The adapter ships one row per (record, system); estate-wide counts
+    must not double-count a record linked to two systems."""
+    snap = _snapshot()
+    snap["evidence"] = [
+        {"id": "e1", "system_id": "sys-core", "algorithm": "RSA-2048",
+         "key_size": 1024, "is_hardcoded_key": True, "file_path": "a.java"},
+        {"id": "e1", "system_id": "sys-pay", "algorithm": "RSA-2048",
+         "key_size": 1024, "is_hardcoded_key": True, "file_path": "a.java"},
+        {"id": "e2", "system_id": "sys-core", "algorithm": "MD5",
+         "key_size": None, "is_hardcoded_key": False, "file_path": "h.py"},
+    ]
+    result = run_scenario("compliance_change", snap, now=NOW,
+                          params={"min_key_bits": 3072})
+    assert result["affected"]["newly_failing_key_size"] == ["e1"]  # not twice
+    assert result["impact"]["counts"]["key_size"] == 1
+
+    result = run_scenario("key_rotation", snap, now=NOW,
+                          params={"algorithm": "RSA"})
+    assert result["affected"]["hardcoded_keys"] == ["e1"]
+    assert result["impact"]["blockers"]["hardcoded_key_count"] == 1
+
+
+def test_reconcile_prefers_exact_counts_over_the_capped_row_list():
+    """On a huge estate the evidence-row list truncates; the GROUP BY counts
+    do not. The diff must follow the counts, not the truncated slice."""
+    snap = _snapshot()
+    # The capped row list lost the RSA records entirely…
+    snap["evidence"] = [{"algorithm": "MD5"}]
+    # …but the adapter's exact counts still know about them.
+    snap["evidence_algorithm_counts"] = {"RSA-2048": 900, "MD5": 5}
+    snap["assets"] = [{"asset_id": "a", "algorithms": {"RSA-2048": 1}}]
+    result = reconcile(snap, now=NOW)
+    assert result["evidence_algorithm_families"] == {"md5": 5, "rsa-2048": 900}
+    assert "rsa-2048" in result["families_in_both"]
+    assert result["families_only_in_evidence"] == ["md5"]
+
+
+def test_reconcile_falls_back_to_rows_without_counts():
+    snap = _snapshot()
+    snap["assets"] = [{"asset_id": "a", "algorithms": {"RSA-2048": 1}}]
+    snap["evidence"] = [{"algorithm": "RSA-2048"}]
+    result = reconcile(snap, now=NOW)
+    assert result["verdict"] == "IN_SYNC"
 
 
 def test_reconcile_is_deterministic():

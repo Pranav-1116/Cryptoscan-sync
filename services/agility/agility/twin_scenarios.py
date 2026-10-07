@@ -90,6 +90,24 @@ def _algo_family(name: Any) -> str:
     return str(name or "").strip().lower()
 
 
+def _unique_evidence(rows: Any) -> list[dict[str, Any]]:
+    """Deduplicate evidence rows by id, keeping first sight.
+
+    The API adapter ships one row per (record, linked system) so per-system
+    scenarios can attribute correctly; a record linked to two systems is
+    still one record, and estate-wide counts must not double-count it.
+    """
+    seen: set[Any] = set()
+    out: list[dict[str, Any]] = []
+    for row in rows or []:
+        key = row.get("id") if isinstance(row, Mapping) else row
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(dict(row) if isinstance(row, Mapping) else {"id": row})
+    return out
+
+
 def _algo_matches(name: Any, wanted: str) -> bool:
     """Deterministic containment match: 'rsa' matches 'RSA-2048', 'rsa-3072'."""
     family = _algo_family(name)
@@ -181,7 +199,12 @@ def scenario_algorithm_migration(snapshot: Mapping[str, Any], *, now: datetime,
 def scenario_certificate_expiry(snapshot: Mapping[str, Any], *, now: datetime,
                                 horizon_days: int = 90) -> dict:
     """Certificates that expire within ``horizon_days`` — the renewal wave."""
-    horizon = timedelta(days=int(horizon_days))
+    # A horizon beyond ~100 years is not a planning window; timedelta would
+    # silently overflow on astronomical values and 500 the API.
+    horizon_days = int(horizon_days)
+    if abs(horizon_days) > 36500:
+        raise ValueError("horizon_days out of range (±36500)")
+    horizon = timedelta(days=horizon_days)
     expired, expiring, no_date, backlog = [], [], [], []
     for cert in snapshot.get("certificates") or []:
         not_after = _parse(cert.get("not_after"))
@@ -224,11 +247,11 @@ def scenario_key_rotation(snapshot: Mapping[str, Any], *, now: datetime,
                           algorithm: str = "") -> dict:
     """Rotate keys of one family (or all): what blocks a clean rotation."""
     algo = str(algorithm or "").strip()
-    rows = [
+    rows = _unique_evidence([
         e for e in (snapshot.get("evidence") or [])
         if not algo or _algo_matches(e.get("algorithm") or e.get("normalized_algorithm"), algo)
-    ]
-    hardcoded = [e for e in rows if e.get("is_hardcoded_key")]
+    ])
+    hardcoded = _unique_evidence([e for e in rows if e.get("is_hardcoded_key")])
     sizes: dict[str, int] = {}
     for e in rows:
         if isinstance(e.get("key_size"), int):
@@ -451,7 +474,7 @@ def scenario_compliance_change(snapshot: Mapping[str, Any], *, now: datetime,
     """Policy tightens: which current findings would flip to violations."""
     min_bits = int(min_key_bits)
     weak_size, weak_hash = [], []
-    for e in snapshot.get("evidence") or []:
+    for e in _unique_evidence(snapshot.get("evidence") or []):
         if isinstance(e.get("key_size"), int) and 0 < e["key_size"] < min_bits:
             weak_size.append(e)
         algo = _algo_family(e.get("algorithm") or e.get("normalized_algorithm"))
@@ -804,11 +827,21 @@ def reconcile(snapshot: Mapping[str, Any], *, now: datetime) -> dict[str, Any]:
             if family:
                 twin_families[family] = twin_families.get(family, 0) + 1
 
-    evidence_families: dict[str, int] = {}
-    for record in snapshot.get("evidence") or []:
-        family = _algo_family(record.get("algorithm") or record.get("normalized_algorithm"))
-        if family:
-            evidence_families[family] = evidence_families.get(family, 0) + 1
+    # Prefer exact pre-aggregated counts when the adapter provides them: the
+    # GROUP BY covers the whole evidence table, so a capped evidence-row list
+    # on a very large estate cannot silently shrink this diff.
+    counted = snapshot.get("evidence_algorithm_counts")
+    if isinstance(counted, Mapping) and counted:
+        evidence_families = {
+            _algo_family(name): int(n or 0)
+            for name, n in counted.items() if _algo_family(name)
+        }
+    else:
+        evidence_families = {}
+        for record in snapshot.get("evidence") or []:
+            family = _algo_family(record.get("algorithm") or record.get("normalized_algorithm"))
+            if family:
+                evidence_families[family] = evidence_families.get(family, 0) + 1
 
     in_both = sorted(set(twin_families) & set(evidence_families))
     twin_only = sorted(set(twin_families) - set(evidence_families))
