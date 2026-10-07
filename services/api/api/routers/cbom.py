@@ -21,6 +21,7 @@ from api.schemas.cbom_schemas import (
     IngestCbomRequest,
 )
 from cbom.generator import CbomGenerator
+from cbom.builders.dependency_builder import build_estate_dependencies
 from cbom.inventory import (
     bom_system_name,
     diff_records,
@@ -618,7 +619,26 @@ def cbom_for_system(
         data["system_id"] = system.id
         data["system_name"] = system.name
         records.append(data)
-    bom = CbomGenerator().from_records(records, name=system.name, version=system.environment or "unknown")
+    # Real edges, not a root-fan-out: the system depends on the crypto assets
+    # registered to it, plus its registered inter-system dependencies in both
+    # directions (upstream callers keep their direction — that is the point).
+    from db.models.system_dependency import SystemDependency
+
+    system_edges = [
+        {"parent": d.parent_id, "child": d.child_id, "relation": d.relation}
+        for d in db.query(SystemDependency).filter(
+            (SystemDependency.parent_id == system.id)
+            | (SystemDependency.child_id == system.id)).all()
+    ]
+    dependencies = build_estate_dependencies(
+        system.id, [str(r.get("id")) for r in records if r.get("id")],
+        system_edges)
+    bom = CbomGenerator().from_records(
+        records, name=system.name, version=system.environment or "unknown",
+        dependencies=dependencies,
+        metadata_properties=[
+            {"name": "cryptoscan:dependencies", "value": "estate-linkage"},
+        ])
     return _render(bom, fmt, signed)
 
 

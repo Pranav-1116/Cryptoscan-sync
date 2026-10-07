@@ -82,8 +82,9 @@ never decided by AI; unknowns are skipped with reasons, never faked.
 | **[Telecom scanning](user-guide/telecom-scanning.md)** | 5GC/roaming/EPC/IMS verdicts, SEPP PQC readiness, carrier packs |
 | **[Hardware crypto catalog](user-guide/hardware-catalog.md)** | HSM/key-store registry, quantum-resistant flags with firmware-cited provenance |
 | [Payment crypto](user-guide/payment-crypto.md) | HSM/PCI/TR-39, ceremony provenance |
-| [Estate CBOM](user-guide/cbom-export.md) | CycloneDX CBOM export |
+| [Estate CBOM](user-guide/cbom-export.md) | CycloneDX CBOM export with real estate dependency edges |
 | [Dependency graph](user-guide/dependency-graph.md) | graph model, blast radius |
+| [Cross-BOM cascade](user-guide/cross-bom-cascade.md) | one target — algorithm, certificate, endpoint, system, vendor, device, library — fanned out across every BOM layer with persisted run history |
 | [Crypto agility](user-guide/crypto-agility.md) | what-if, migration tracking |
 | [Migration tracking](user-guide/migration-tracking.md) | PQC program progress |
 | [Drift detection](user-guide/drift-detection.md) | baseline vs. observed |

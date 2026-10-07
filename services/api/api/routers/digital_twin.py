@@ -224,13 +224,24 @@ def _snapshot(db: Session) -> dict:
             "protocol": ep.get("protocol"), "version": ep.get("tls_version"),
             "cipher_suite": ep.get("cipher_suite"),
             "observed": bool(ep.get("observed", True)),
+            "certificate_subject": (ep.get("certificate") or {}).get("subject"),
         })
     observed_keys = {f"{e['host']}:{e['port']}" for e in network_endpoints}
     # Registered scan targets that no run has observed yet still count as
     # endpoints — intent without observation carries no protocol version,
-    # and the protocol scenario reports that gap honestly.
-    for target in db.query(NetworkScanTarget).limit(
-            SNAPSHOT_CAPS["endpoints"]).all():
+    # and the protocol scenario reports that gap honestly. Registered
+    # host:port → system linkage is also stamped onto observed endpoints so
+    # certificate and endpoint cascades can name the owning system.
+    registered = db.query(NetworkScanTarget).limit(
+        SNAPSHOT_CAPS["endpoints"]).all()
+    registered_system = {
+        f"{_split_endpoint(t.endpoint or '')[0]}:{_split_endpoint(t.endpoint or '')[1]}":
+        t.system_id for t in registered}
+    for endpoint in network_endpoints:
+        if endpoint.get("system_id") is None:
+            endpoint["system_id"] = registered_system.get(
+                f"{endpoint.get('host')}:{endpoint.get('port')}")
+    for target in registered:
         host, port = _split_endpoint(target.endpoint or "")
         if f"{host}:{port}" in observed_keys:
             continue
@@ -238,6 +249,7 @@ def _snapshot(db: Session) -> dict:
             "host": host, "port": port,
             "system_id": target.system_id,
             "protocol": None, "version": None, "observed": False,
+            "certificate_subject": None,
         })
 
     # The hardware fleet from the live hardware engine — agents and authorized

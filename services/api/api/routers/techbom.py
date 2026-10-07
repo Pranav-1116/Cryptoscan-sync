@@ -48,6 +48,7 @@ from db.models import (
 )
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -997,3 +998,104 @@ def _resolve_state(db: Session, version: int | None) -> dict[str, Any]:
     return materialize_technology_bom(_gather_inventory(db),
                                       environment=_environment_of(db),
                                       state_version=_next_version(db))
+
+
+# --------------------------------------------------------------------------
+# Cross-BOM cascade — "what breaks if X changes?" over the digital twin
+# --------------------------------------------------------------------------
+
+class CascadeRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=500,
+                        description="Algorithm, certificate fingerprint/subject, "
+                                    "host[:port], system id/name, vendor, device or library")
+    kind: str | None = Field(default=None,
+                             description="Optional explicit target kind: algorithm, "
+                                         "certificate, endpoint, system, vendor, device, library")
+    max_depth: int = Field(default=6, ge=1, le=12,
+                           description="System-graph propagation hops (1..12, as /graph/blast-radius)")
+
+
+@router.post("/cascade")
+def technology_bom_cascade(
+    request: CascadeRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One target, every layer: code, network, system graph, hardware, vendor.
+
+    Runs over the digital-twin snapshot (live estate, not a stale export),
+    persists the answer as an auditable run, and names its honest unknowns —
+    the same contract the twin engine set: deterministic, read-only, never
+    estimating what it cannot see.
+    """
+    from api.routers.digital_twin import _snapshot
+    from cbom.unified_cascade import MAX_DEPTH_LIMIT, unified_cascade
+    from db.repositories.cascade_run_repository import CascadeRunRepository
+
+    try:
+        result = unified_cascade(
+            _snapshot(db), target=request.target, kind=request.kind,
+            max_depth=request.max_depth, now=datetime.now(timezone.utc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    run = CascadeRunRepository(db).create(
+        target=request.target, target_kind=result["target"]["kind"],
+        max_depth=request.max_depth, verdict=result["verdict"],
+        result=result, created_by=user)
+    db.commit()
+
+    emit_platform_event(
+        "technology_bom.cascade",
+        f"Cross-BOM cascade run: {result['verdict']} for target "
+        f"{result['target']['kind']} {request.target!r} "
+        f"({result['impact']['affected_system_count']} systems affected)",
+        {"target": request.target, "kind": result["target"]["kind"],
+         "verdict": result["verdict"], "run_id": run.id,
+         "affected_system_count": result["impact"]["affected_system_count"]},
+        target_name="technology-bom",
+    )
+    return {**result, "run_id": run.id, "max_depth_limit": MAX_DEPTH_LIMIT}
+
+
+@router.get("/cascade/runs")
+def technology_bom_cascade_runs(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Cascade history, newest first — the audit trail of past answers."""
+    from db.repositories.cascade_run_repository import CascadeRunRepository
+
+    runs = CascadeRunRepository(db).list_runs(limit=limit, offset=offset)
+    return {
+        "runs": [
+            {"id": r.id, "target": r.target, "target_kind": r.target_kind,
+             "max_depth": r.max_depth, "verdict": r.verdict,
+             "affected_system_count": (r.result or {}).get("impact", {}).get(
+                 "affected_system_count"),
+             "created_by": r.created_by,
+             "created_at": r.created_at.isoformat() if r.created_at else None}
+            for r in runs
+        ],
+        "count": len(runs),
+    }
+
+
+@router.get("/cascade/runs/{run_id}")
+def technology_bom_cascade_run(
+    run_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """One persisted cascade answer, exactly as it was returned."""
+    from db.repositories.cascade_run_repository import CascadeRunRepository
+
+    run = CascadeRunRepository(db).get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"cascade run not found: {run_id}")
+    return {"id": run.id, "target": run.target, "target_kind": run.target_kind,
+            "max_depth": run.max_depth, "verdict": run.verdict,
+            "result": run.result, "created_by": run.created_by,
+            "created_at": run.created_at.isoformat() if run.created_at else None}

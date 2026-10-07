@@ -5,6 +5,7 @@ from db.models.baseline import Baseline
 from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
 from db.models.business_owner import BusinessOwner
 from db.models.business_process import BusinessProcess
+from db.models.cascade_run import CascadeRun
 from db.models.certificate import Certificate
 from db.models.cloud_account import CloudAccount
 from db.models.container_scan import ContainerScan
@@ -53,6 +54,7 @@ __all__ = [
     "BinaryScanRecord",
     "BusinessOwner",
     "BusinessProcess",
+    "CascadeRun",
     "Certificate",
     "CertificateUsage",
     "CloudAccount",

@@ -3,6 +3,7 @@ from db.repositories.asset_repository import AssetRepository
 from db.repositories.baseline_repository import BaselineRepository
 from db.repositories.business_owner_repository import BusinessOwnerRepository
 from db.repositories.business_process_repository import BusinessProcessRepository
+from db.repositories.cascade_run_repository import CascadeRunRepository
 from db.repositories.cloud_account_repository import CloudAccountRepository
 from db.repositories.crypto_asset_repository import CryptoAssetRepository
 from db.repositories.drift_repository import DriftRepository
@@ -23,6 +24,7 @@ __all__ = [
     "BaselineRepository",
     "BusinessOwnerRepository",
     "BusinessProcessRepository",
+    "CascadeRunRepository",
     "CloudAccountRepository",
     "CryptoAssetRepository",
     "DriftRepository",

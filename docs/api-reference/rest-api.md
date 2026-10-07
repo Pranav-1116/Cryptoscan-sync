@@ -1,14 +1,8 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-09-25:
-**659 paths, 725 operations** across 86 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-07:
+**706 paths, 779 operations** across 89 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
-
-> **Snapshot boundary:** the structured vendor-profile and network-inventory
-> contracts have a dedicated [implementation guide](../user-guide/vendor-network-inventory.md).
-> If those endpoints are present in the running schema but absent from this
-> snapshot, regenerate this file before treating the count or route list as
-> complete. Never hand-edit the generated operation tables to hide a mismatch.
 
 ## Conventions
 
@@ -25,6 +19,14 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
   (`/verify` siblings) — see [user-guide/evidence-pack.md](../user-guide/evidence-pack.md).
 - Export manifests are signed with compact JWS (`signature_jws`, RFC 7515; legacy
   `signature_hmac` retained).
+
+## accuracy
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/accuracy/field` | Field Accuracy |
+| `GET` | `/api/v1/scans/{scan_id}/triage` | Get Triage |
+| `POST` | `/api/v1/scans/{scan_id}/triage` | Publish Triage |
 
 ## agility
 
@@ -228,19 +230,19 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/migrations/{project_id}/tasks` | Add Migration Task |
 | `GET` | `/api/v1/vendor-risks` | Vendor Risks |
 | `GET` | `/api/v1/vendors` | List Vendors |
-| `POST` | `/api/v1/vendors` | Create Vendor (optional validated profile) |
-| `GET` | `/api/v1/vendors/{vendor_id}` | Vendor and profile summary |
-| `PATCH` | `/api/v1/vendors/{vendor_id}` | Update vendor metadata |
-| `GET` | `/api/v1/vendors/{vendor_id}/profile` | Current versioned due-diligence profile |
-| `PUT` | `/api/v1/vendors/{vendor_id}/profile` | Validate and append profile revision |
-| `POST` | `/api/v1/vendors/{vendor_id}/profile/validate` | Dry-run profile validation |
-| `POST` | `/api/v1/vendors/{vendor_id}/profile/evidence` | Append evidence provenance metadata |
-| `GET` | `/api/v1/vendors/{vendor_id}/profile/history` | Immutable profile revision history |
-| `GET` | `/api/v1/vendors/{vendor_id}/profile/schema` | Profile JSON Schema |
-| `DELETE` | `/api/v1/vendors/{vendor_id}/profile` | Expire current profile without deleting history |
+| `POST` | `/api/v1/vendors` | Create Vendor |
+| `GET` | `/api/v1/vendors/{vendor_id}` | Get Vendor |
+| `PATCH` | `/api/v1/vendors/{vendor_id}` | Patch Vendor |
 | `POST` | `/api/v1/vendors/{vendor_id}/api-scan` | Vendor Api Scan |
 | `POST` | `/api/v1/vendors/{vendor_id}/cbom` | Post Vendor Cbom |
 | `POST` | `/api/v1/vendors/{vendor_id}/docs` | Post Vendor Docs |
+| `GET` | `/api/v1/vendors/{vendor_id}/profile` | Get Vendor Profile |
+| `PUT` | `/api/v1/vendors/{vendor_id}/profile` | Put Vendor Profile |
+| `DELETE` | `/api/v1/vendors/{vendor_id}/profile` | Expire Vendor Profile |
+| `POST` | `/api/v1/vendors/{vendor_id}/profile/evidence` | Append Vendor Profile Evidence |
+| `GET` | `/api/v1/vendors/{vendor_id}/profile/history` | Vendor Profile History |
+| `GET` | `/api/v1/vendors/{vendor_id}/profile/schema` | Vendor Profile Schema |
+| `POST` | `/api/v1/vendors/{vendor_id}/profile/validate` | Validate Vendor Profile |
 | `GET` | `/api/v1/vendors/{vendor_id}/questionnaire` | Get Questionnaire |
 | `POST` | `/api/v1/vendors/{vendor_id}/questionnaire` | Post Questionnaire |
 | `GET` | `/api/v1/vendors/{vendor_id}/risk` | Vendor Risk |
@@ -266,6 +268,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/cbom/custom` | Cbom Custom |
 | `POST` | `/api/v1/cbom/diff` | Cbom Diff |
 | `POST` | `/api/v1/cbom/ingest` | Cbom Ingest |
+| `GET` | `/api/v1/cbom/nbom` | Nbom Live |
+| `POST` | `/api/v1/cbom/nbom` | Nbom Build |
+| `POST` | `/api/v1/cbom/nbom/cascade` | Nbom Cascade |
 | `GET` | `/api/v1/cbom/portfolio` | Cbom Portfolio |
 | `POST` | `/api/v1/cbom/scan-uncovered` | Cbom Scan Uncovered |
 | `GET` | `/api/v1/cbom/scan/{scan_id}` | Cbom For Scan |
@@ -429,20 +434,20 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/bom/{bom_type}` | Binary Bom |
 | `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/cbom` | Binary Cbom |
-| `GET` | `/api/v1/devsecops/binary/artifacts/{artifact_id}/bom/{bom_type}` | Binary BOM sidecar (SBOM/CBOM/HBOM/static NBOM/VBOM/vulnerability BOM/technology BOM) |
-| `GET` | `/api/v1/devsecops/binary/scans` | Tenant-scoped binary scan history/read model |
-| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}` | Bounded parser observations for one binary scan |
-| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/observations` | Filtered/paginated parser observations |
-| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/findings` | Finding/evidence drill-down |
-| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/coverage` | Parser coverage and evidence-state counts |
-| `POST` | `/api/v1/devsecops/binary/scans/compare` | Bounded read-model scan comparison |
 | `GET` | `/api/v1/devsecops/binary/at-rest` | Binary At Rest |
 | `POST` | `/api/v1/devsecops/binary/batch` | Binary Batch |
 | `GET` | `/api/v1/devsecops/binary/batches/{batch_id}` | Binary Batch Status |
 | `POST` | `/api/v1/devsecops/binary/dynamic` | Binary Dynamic |
 | `POST` | `/api/v1/devsecops/binary/jobs` | Binary Scan Job |
 | `POST` | `/api/v1/devsecops/binary/scan` | Binary Scan |
+| `GET` | `/api/v1/devsecops/binary/scans` | Binary Scans |
+| `POST` | `/api/v1/devsecops/binary/scans/compare` | Binary Scan Compare |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}` | Binary Scan Detail |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/coverage` | Binary Scan Coverage |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/findings` | Binary Scan Findings |
+| `GET` | `/api/v1/devsecops/binary/scans/{scan_id}/observations` | Binary Scan Observations |
 | `POST` | `/api/v1/devsecops/chat/action` | Chat Action |
 | `POST` | `/api/v1/devsecops/cloud-posture` | Cloud Posture |
 | `POST` | `/api/v1/devsecops/connectors/preview` | Connector Preview |
@@ -471,6 +476,17 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/devsecops/sbom/{artifact_id}/vex` | Sbom Vex For Artifact |
 | `POST` | `/api/v1/devsecops/tickets/sync-pull` | Ticket Sync Pull |
 | `POST` | `/api/v1/devsecops/yara/validate` | Yara Validate |
+
+## digital-twin
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/digital-twin` | Digital Twin Overview |
+| `GET` | `/api/v1/digital-twin/fidelity` | Digital Twin Fidelity |
+| `GET` | `/api/v1/digital-twin/reconciliation` | Digital Twin Reconciliation |
+| `GET` | `/api/v1/digital-twin/scenarios` | Digital Twin Scenarios |
+| `POST` | `/api/v1/digital-twin/simulate` | Digital Twin Simulate |
+| `GET` | `/api/v1/digital-twin/timeline/{asset_id}` | Digital Twin Timeline |
 
 ## drift
 
@@ -692,6 +708,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/live/orchestrator/history` | Orchestrator History |
 | `POST` | `/api/v1/live/orchestrator/start` | Orchestrator Start |
 | `GET` | `/api/v1/live/orchestrator/status` | Orchestrator Status |
+| `POST` | `/api/v1/live/orchestrator/{scan_id}/cancel` | Orchestrator Cancel |
 
 ## live-scan
 
@@ -752,6 +769,18 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/network/discover` | Discover Subnet Endpoints |
 | `GET` | `/api/v1/network/drift/latest` | Latest Scan Drift |
 | `GET` | `/api/v1/network/due` | List Due |
+| `GET` | `/api/v1/network/inventory` | Get Network Inventory |
+| `PUT` | `/api/v1/network/inventory` | Put Network Inventory |
+| `GET` | `/api/v1/network/inventory/configuration/drift` | Get Network Configuration Drift |
+| `POST` | `/api/v1/network/inventory/configuration/drift` | Analyze Network Configuration Drift |
+| `GET` | `/api/v1/network/inventory/coverage` | Get Network Inventory Coverage |
+| `POST` | `/api/v1/network/inventory/discover` | Discover Network Inventory |
+| `GET` | `/api/v1/network/inventory/history` | Network Inventory History |
+| `GET` | `/api/v1/network/inventory/risk` | Network Inventory Risk |
+| `GET` | `/api/v1/network/inventory/schema` | Network Inventory Schema |
+| `GET` | `/api/v1/network/inventory/topology` | Get Network Inventory Topology |
+| `POST` | `/api/v1/network/inventory/topology/validate` | Validate Network Inventory Topology |
+| `POST` | `/api/v1/network/inventory/validate` | Validate Network Inventory |
 | `POST` | `/api/v1/network/metrics` | Render Metrics |
 | `GET` | `/api/v1/network/protocols` | List Protocols |
 | `POST` | `/api/v1/network/run-due` | Run Due |
@@ -838,15 +867,18 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/payment-crypto/ceremonies` | List Ceremonies |
 | `POST` | `/api/v1/payment-crypto/ceremonies` | Upsert Ceremony |
 | `PATCH` | `/api/v1/payment-crypto/ceremonies/{ceremony_id}` | Update Ceremony |
+| `POST` | `/api/v1/payment-crypto/emv/analyse` | Analyse Emv |
 | `POST` | `/api/v1/payment-crypto/evaluate` | Evaluate |
 | `GET` | `/api/v1/payment-crypto/findings` | List Findings |
 | `POST` | `/api/v1/payment-crypto/findings/{finding_id}/status` | Set Finding Status |
 | `GET` | `/api/v1/payment-crypto/forecast` | Forecast |
 | `GET` | `/api/v1/payment-crypto/hsm-events` | List Hsm Events |
 | `POST` | `/api/v1/payment-crypto/hsm-events` | Ingest Hsm Events |
+| `POST` | `/api/v1/payment-crypto/iso8583/analyse` | Analyse Iso8583 |
 | `GET` | `/api/v1/payment-crypto/keys` | List Keys |
 | `POST` | `/api/v1/payment-crypto/keys` | Upsert Key |
 | `DELETE` | `/api/v1/payment-crypto/keys/{key_id}` | Delete Key |
+| `POST` | `/api/v1/payment-crypto/pin-blocks/analyse` | Analyse Pin Blocks |
 | `GET` | `/api/v1/payment-crypto/summary` | Summary |
 | `POST` | `/api/v1/payment-crypto/transactions` | Record Transactions |
 | `POST` | `/api/v1/payment-crypto/transactions/bulk` | Record Transactions Bulk |
@@ -903,6 +935,12 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/reachability/compliance` | Compliance Inheritance |
 | `GET` | `/api/v1/reachability/impact` | Business Impact |
 | `GET` | `/api/v1/reachability/vendor-path` | Vendor Path |
+
+## readiness
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/readiness/summary` | Readiness Summary |
 
 ## remediation
 
@@ -985,6 +1023,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/saas/members` | List Members |
 | `POST` | `/api/v1/saas/members` | Add Member |
 | `DELETE` | `/api/v1/saas/members/{username}` | Remove Member |
+| `GET` | `/api/v1/saas/memberships` | Memberships |
 | `POST` | `/api/v1/saas/signup` | Signup |
 | `GET` | `/api/v1/saas/usage` | Usage |
 | `GET` | `/api/v1/saas/whoami` | Whoami |
@@ -1114,6 +1153,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/technology-bom/` | Technology Bom Live |
 | `GET` | `/api/v1/technology-bom/admission` | Technology Bom Admission |
 | `GET` | `/api/v1/technology-bom/assurance` | Technology Bom Assurance |
+| `POST` | `/api/v1/technology-bom/cascade` | Technology Bom Cascade |
+| `GET` | `/api/v1/technology-bom/cascade/runs` | Technology Bom Cascade Runs |
+| `GET` | `/api/v1/technology-bom/cascade/runs/{run_id}` | Technology Bom Cascade Run |
 | `GET` | `/api/v1/technology-bom/compare` | Technology Bom Compare |
 | `GET` | `/api/v1/technology-bom/evidence-package` | Evidence Package |
 | `GET` | `/api/v1/technology-bom/export` | Technology Bom Export |
@@ -1137,11 +1179,15 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `POST` | `/api/v1/telecom/air-interface/analyse` | Telecom Air Interface Analyse |
+| `POST` | `/api/v1/telecom/authentication/analyse` | Telecom Authentication Analyse |
 | `POST` | `/api/v1/telecom/carriers` | Telecom Carrier Add |
 | `DELETE` | `/api/v1/telecom/carriers/{code}` | Telecom Carrier Delete |
 | `GET` | `/api/v1/telecom/events` | Telecom Events |
 | `POST` | `/api/v1/telecom/ingest` | Telecom Ingest |
 | `GET` | `/api/v1/telecom/journey` | Telecom Journey |
+| `POST` | `/api/v1/telecom/key-hierarchy/analyse` | Telecom Key Hierarchy Analyse |
+| `POST` | `/api/v1/telecom/n32/analyse` | Telecom N32 Analyse |
 | `GET` | `/api/v1/telecom/pack` | Telecom Carrier Pack |
 | `GET` | `/api/v1/telecom/posture` | Telecom Posture |
 | `GET` | `/api/v1/telecom/registry` | Telecom Registry |
@@ -1150,6 +1196,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/telecom/roaming-partners` | Telecom Roaming Partner Add |
 | `DELETE` | `/api/v1/telecom/roaming-partners/{pid}` | Telecom Roaming Partner Delete |
 | `POST` | `/api/v1/telecom/scan` | Telecom Scan |
+| `POST` | `/api/v1/telecom/suci/analyse` | Telecom Suci Analyse |
 | `POST` | `/api/v1/telecom/targets` | Telecom Target Add |
 | `DELETE` | `/api/v1/telecom/targets/{nf_id}` | Telecom Target Delete |
 
