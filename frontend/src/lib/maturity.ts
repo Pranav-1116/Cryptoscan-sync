@@ -37,6 +37,7 @@ export const CAPABILITIES_JSON = {
   "crypto-changes": "beta",
   "dependency-graph": "beta",
   "dev-sec-ops": "ga",
+  "digital-twin": "beta",
   "drift": "ga",
   "evidence": "ga",
   "executive": "beta",
@@ -92,7 +93,7 @@ export const CAPABILITIES_JSON = {
   "what-if": "preview"
 } as const;
 
-export const RETIRED_NAV_ROUTES: readonly string[] = ["/activity", "/audit-merkle", "/cryptographic-digital-twin", "/devsecops", "/digital-twin", "/hsm-fleet-orchestrator", "/pqc-code-signing-orchestrator", "/quantum-entropy-fabric", "/realtime-system", "/telecom-signaling-analyzer", "/twin-analysis-output", "/zero-trust-crypto-enforcer"];
+export const RETIRED_NAV_ROUTES: readonly string[] = ["/activity", "/audit-merkle", "/cryptographic-digital-twin", "/devsecops", "/hsm-fleet-orchestrator", "/pqc-code-signing-orchestrator", "/quantum-entropy-fabric", "/realtime-system", "/telecom-signaling-analyzer", "/twin-analysis-output", "/zero-trust-crypto-enforcer"];
 
 /** Tier for a pathname such as "/cbom" or "/dev-sec-ops?tab=1". */
 export function tierOf(pathname: string): Tier {

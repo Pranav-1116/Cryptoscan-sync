@@ -9,7 +9,7 @@ import autoAnimate from "@formkit/auto-animate";
 import {
   Atom, Bank, Buildings, Certificate, ChartLineUp, Cloud,
   Code, Cpu, Cube, FileText, GearSix, GlobeHemisphereWest, Graph, HardDrives,
-  Key, ListChecks, MagnifyingGlass, PlugsConnected, Pulse, Scan,
+  Key, ListChecks, MagnifyingGlass, Stack, PlugsConnected, Pulse, Scan,
   Scales, ShieldCheck, SlidersHorizontal, UsersThree, type Icon,
 } from "@phosphor-icons/react";
 import { BrandMark, ICON_LG, ICON_MD, ICON_SM, IconCaretDown, IconCaretLeft, IconCaretRight, IconClock, IconClose, IconDark, IconKeyboard, IconLight, IconSearch, IconSecurity, IconTenant, IconUser } from "./icons";
@@ -81,6 +81,7 @@ const PRIMARY_SECTIONS: NavSection[] = [
     items: [
       { to: "/reports", label: "Reports", icon: FileText },
       { to: "/what-if", label: "What-If Analysis", icon: MagnifyingGlass },
+      { to: "/digital-twin", label: "Digital Twin", icon: Stack },
     ],
   },
   {

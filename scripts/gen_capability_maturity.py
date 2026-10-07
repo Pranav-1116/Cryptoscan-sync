@@ -74,6 +74,13 @@ def render_doc() -> str:
         "proven, and the console says so on every page header. Unknown routes default to",
         "**preview** — nothing is promoted by omission.",
         "",
+        "The sidebar is organized into six sections: **Overview, Discovery, Intelligence,",
+        "Governance, Output and Administration**. It currently has 32 menu slots and 31",
+        "unique primary route paths; deep-linked routes remain in the maturity inventory",
+        "without being duplicated in the sidebar. See the [Navigation & Feature",
+        "Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and",
+        "role-guarded actions.",
+        "",
         "| Tier | Meaning | Surfaces |",
         "|---|---|---|",
     ]

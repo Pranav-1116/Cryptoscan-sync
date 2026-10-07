@@ -283,6 +283,31 @@ export const apiBlast = (seed: string, maxDepth = 10): Promise<ApiResult<Record<
 export const apiWhatIf = (current: string, target: string, protocols?: string[]): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/whatif", { method: "POST", body: JSON.stringify({ current, target, protocols }) });
 
+/* ── digital twin (contracts in api/routers/digital_twin.py) ───────── */
+
+export interface TwinScenarioDescriptor {
+  id: string;
+  name: string;
+  description: string;
+  inputs: Record<string, string>;
+}
+
+export const apiDigitalTwinOverview = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/digital-twin");
+
+export const apiDigitalTwinFidelity = (): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/digital-twin/fidelity");
+
+export const apiDigitalTwinScenarios = (): Promise<ApiResult<{ scenario_count: number; scenarios: TwinScenarioDescriptor[] }>> =>
+  call("/api/v1/digital-twin/scenarios");
+
+export const apiDigitalTwinSimulate = (scenario: string, params: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
+  call("/api/v1/digital-twin/simulate", { method: "POST", body: JSON.stringify({ scenario, params }) });
+
+export const apiDigitalTwinTimeline = (assetId: string): Promise<ApiResult<Record<string, unknown>>> =>
+  call(`/api/v1/digital-twin/timeline/${encodeURIComponent(assetId)}`);
+
+
 export const apiSecurity = (request: Record<string, unknown>): Promise<ApiResult<Record<string, unknown>>> =>
   call("/api/v1/platform/security", { method: "POST", body: JSON.stringify({ request }) });
 

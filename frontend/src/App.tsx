@@ -86,6 +86,7 @@ const Trust = lazy(() => import("./pages/Trust"));
 const Vendor = lazy(() => import("./pages/Vendor"));
 const VendorDueDiligence = lazy(() => import("./pages/VendorDueDiligence"));
 const WhatIf = lazy(() => import("./pages/WhatIf"));
+const DigitalTwin = lazy(() => import("./pages/DigitalTwin"));
 
 function PublicEntry({ children, resetKey }: { children: React.ReactNode; resetKey: string }) {
   return (
@@ -212,6 +213,7 @@ function RoutedPages() {
       <Route path="/vendor-due-diligence" element={<VendorDueDiligence />} />
       <Route path="/nbom" element={<Nbom />} />
       <Route path="/what-if" element={<WhatIf />} />
+      <Route path="/digital-twin" element={<DigitalTwin />} />
       <Route path="*" element={<Navigate to="/command-center" replace />} />            </Routes>
           </Suspense>
         </motion.div>

@@ -9,7 +9,7 @@ proven, and the console says so on every page header. Unknown routes default to
 **preview** — nothing is promoted by omission.
 
 The sidebar is organized into six sections: **Overview, Discovery, Intelligence,
-Governance, Output and Administration**. It currently has 31 menu slots and 30
+Governance, Output and Administration**. It currently has 32 menu slots and 31
 unique primary route paths; deep-linked routes remain in the maturity inventory
 without being duplicated in the sidebar. See the [Navigation & Feature
 Reference](NAVIGATION-FEATURE-REFERENCE.md) for the route-to-page map and
@@ -18,10 +18,10 @@ role-guarded actions.
 | Tier | Meaning | Surfaces |
 |---|---|---|
 | **GA** | Production-supported. Deterministic core, broad tests, in the burn-in. | 33 |
-| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 30 |
+| **Beta** | Real code and real data; thinner test coverage or short deployment history. | 31 |
 | **Preview** | Working surface over a small engine, or analysis over inputs not yet collected at scale. | 10 |
 
-Total: 73 surfaces.
+Total: 74 surfaces.
 
 ## GA (33)
 
@@ -61,7 +61,7 @@ Total: 73 surfaces.
 | `/live-stream` | Overview | SSE event stream with Last-Event-ID resume and Redis federation. |
 | `/search-results` | Overview | Cross-inventory search. |
 
-## Beta (30)
+## Beta (31)
 
 | Route | Area | Why this tier |
 |---|---|---|
@@ -87,6 +87,7 @@ Total: 73 surfaces.
 | `/agility` | Intelligence | Crypto-agility scoring; 900 LOC, 37 tests; scoring model still being calibrated. |
 | `/crypto-changes` | Intelligence | Change timeline from drift + scan history. |
 | `/dependency-graph` | Intelligence | Same graph engine as /graph. |
+| `/digital-twin` | Intelligence | Estate replica with measured fidelity and ten deterministic scenario types; scenario models are heuristic projections, not vendor simulations. |
 | `/graph` | Intelligence | Neo4j dependency graph is optional at runtime; 3.2k LOC, 9 test files. |
 | `/hbom` | Intelligence | Hardware BOM view over the Technology BOM; depends on hardware scan coverage. |
 | `/migration` | Intelligence | Scan → project → tasks → velocity forecast; forecast model is simple. |
@@ -119,7 +120,7 @@ redirected to the dashboard). They are removed, and a test keeps them out:
 - `/activity`
 - `/audit-merkle`
 - `/cryptographic-digital-twin`
-- `/digital-twin`
+- `/devsecops`
 - `/hsm-fleet-orchestrator`
 - `/pqc-code-signing-orchestrator`
 - `/quantum-entropy-fabric`

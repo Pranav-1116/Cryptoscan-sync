@@ -60,10 +60,10 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "network": {"tier": "ga", "area": "Discovery", "why": "TLS/cipher/cert probes; 15k LOC, 33 test files."},
     "certificates": {"tier": "ga", "area": "Discovery", "why": "Certificate inventory + expiry from network and source scans."},
     "cloud": {"tier": "ga", "area": "Discovery", "why": "Read-only AWS/Azure/GCP estate scan; 15k LOC, 25 test files. Needs credentials to show data."},
-    "dev-sec-ops": {"tier": "ga", "area": "Discovery", "why": "SBOM/binary/firmware scanning, VEX, licence, gates; 16k LOC, 520 tests, air-gap packs."},
+    "dev-sec-ops": {"tier": "ga", "area": "Discovery", "why": "SBOM/container/binary/firmware/mobile/WASM scanning, VEX, licence, gates and correlated binary BOM sidecars; bounded evidence and explicit refusal/partial states."},
     "vendor": {"tier": "ga", "area": "Discovery", "why": "68 vendor plugins across 16 categories; 14k LOC, 31 test files."},
     "vendor-due-diligence": {"tier": "preview", "area": "Discovery", "why": "Strict versioned supplier profiles and provenance metadata are implemented; approval completeness and external vendor validation still require customer qualification."},
-    "cbom": {"tier": "ga", "area": "Intelligence", "why": "Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots, signed exports; 19 test files."},
+    "cbom": {"tier": "ga", "area": "Intelligence", "why": "Shared Technology BOM (SBOM/CBOM/HBOM/VBOM), snapshots and signed exports; binary scans additionally expose static NBOM and vulnerability sidecars through Applications."},
     "live-asset-intelligence": {"tier": "ga", "area": "Intelligence", "why": "The unified BOM console: materialise → version → compare → export."},
     "drift": {"tier": "ga", "area": "Intelligence", "why": "Baseline approval + drift events + CI gate; 15 test files."},
     "findings": {"tier": "ga", "area": "Intelligence", "why": "Policy-evaluated findings with evidence links."},
@@ -90,7 +90,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     # ── beta: real, tested, thinner ──
     "hardware": {"tier": "beta", "area": "Discovery", "why": "HSM/TPM/firmware plugins exist (ADR-014); live hardware collection needs vendor access and has a short field history."},
     "hbom": {"tier": "beta", "area": "Intelligence", "why": "Hardware BOM view over the Technology BOM; depends on hardware scan coverage."},
-    "nbom": {"tier": "preview", "area": "Intelligence", "why": "Network BOM: listeners, certificates, cipher suites and tunnels with a dependency graph. The generator and its cascade are tested, but no network scan feeds it yet, so the page ships ahead of its data source."},
+    "nbom": {"tier": "preview", "area": "Intelligence", "why": "Network BOM from authorized network evidence plus static binary capability candidates. Binary-derived records are marked `observed: false` and do not prove a live listener; corroboration requires a separately authorized network probe."},
     "graph": {"tier": "beta", "area": "Intelligence", "why": "Neo4j dependency graph is optional at runtime; 3.2k LOC, 9 test files."},
     "dependency-graph": {"tier": "beta", "area": "Intelligence", "why": "Same graph engine as /graph."},
     "agility": {"tier": "beta", "area": "Intelligence", "why": "Crypto-agility scoring; 900 LOC, 37 tests; scoring model still being calibrated."},
@@ -117,6 +117,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
     "resilience": {"tier": "beta", "area": "Administration", "why": "Backup/DR/air-gap status; scripts are tested, the page is new."},
     "security": {"tier": "beta", "area": "Administration", "why": "Security settings surface; overlaps security-center."},
     "role-dashboard": {"tier": "beta", "area": "Overview", "why": "Per-role landing view."},
+    "digital-twin": {"tier": "beta", "area": "Intelligence", "why": "Estate replica with measured fidelity and ten deterministic scenario types; scenario models are heuristic projections, not vendor simulations."},
 
     # ── preview: shown for direction, labelled so it is not mistaken for GA ──
     "what-if": {"tier": "preview", "area": "Intelligence", "why": "Scenario simulation over the inventory; scenarios are fixed templates today."},
@@ -132,7 +133,7 @@ CAPABILITIES: dict[str, dict[str, str]] = {
 #: sidebar entries that used to point at routes that do not exist. Kept as a
 #: deny-list so a test can make sure they never come back as nav links.
 RETIRED_NAV_ROUTES: tuple[str, ...] = (
-    "activity", "audit-merkle", "cryptographic-digital-twin", "devsecops", "digital-twin",
+    "activity", "audit-merkle", "cryptographic-digital-twin", "devsecops",
     "hsm-fleet-orchestrator", "pqc-code-signing-orchestrator", "quantum-entropy-fabric",
     "realtime-system", "telecom-signaling-analyzer", "twin-analysis-output",
     "zero-trust-crypto-enforcer",

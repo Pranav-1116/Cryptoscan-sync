@@ -35,15 +35,15 @@ describe("app shell", () => {
     expect(external.every((h) => !h.includes("/api/"))).toBe(true);
   });
 
-  it("keeps six primary sections and the 31-slot navigation contract", async () => {
+  it("keeps six primary sections and the 32-slot navigation contract", async () => {
     await act(async () => { shell("/command-center"); });
     const nav = document.querySelector(".primary-nav");
     expect(nav).toBeInTheDocument();
     expect(nav?.querySelectorAll(":scope > .nav-label")).toHaveLength(6);
     const links = Array.from(nav?.querySelectorAll("a.nav") || []);
     const hrefs = links.map((link) => link.getAttribute("href") || "");
-    expect(links).toHaveLength(31);
-    expect(new Set(hrefs).size).toBe(30);
+    expect(links).toHaveLength(32);
+    expect(new Set(hrefs).size).toBe(31);
     expect(hrefs.filter((href) => href === "/security-center")).toHaveLength(2);
     expect(hrefs).not.toContain("/vendor-due-diligence");
   });

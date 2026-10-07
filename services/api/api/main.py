@@ -26,6 +26,7 @@ from api.routers import (
     accuracy,
     agility,
     analytics,
+    digital_twin,
     graphql,
     billing,
     compliance,
@@ -442,6 +443,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(business.router, prefix=prefix)
     app.include_router(business_context.router, prefix=prefix)
     app.include_router(agility.router, prefix=prefix)
+    app.include_router(digital_twin.router, prefix=prefix)
     app.include_router(exceptions.router, prefix=prefix)
     app.include_router(ot.router, prefix=prefix)
     app.include_router(ot_safety.router, prefix=prefix)
