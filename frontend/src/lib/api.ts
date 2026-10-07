@@ -3979,3 +3979,117 @@ export const apiDiscoverNetworkInventory = (body: {
     method: "POST",
     body: JSON.stringify(body),
   });
+
+// ---------------------------------------------------------------------------
+// Cross-BOM cascade (unified) + dependency-edge management
+// ---------------------------------------------------------------------------
+
+export interface UnifiedCascadeResult {
+  schema: string;
+  verdict: "AFFECTED" | "NOT_FOUND" | "INSUFFICIENT_DATA";
+  run_id?: string;
+  target: { input: string; kind: string; matched?: Record<string, any> | null };
+  layers: Record<string, any>;
+  impact: {
+    affected_systems: string[];
+    affected_system_count: number;
+    affected_processes?: { id?: string; name?: string }[];
+    migration_waves?: Record<string, string[]>;
+    twin_assets?: string[];
+    libraries?: string[];
+    certificate?: Record<string, any> | null;
+    max_propagation_depth?: number;
+  };
+  honest_unknowns: string[];
+  as_of: string;
+  max_depth_limit?: number;
+}
+
+export interface CascadeRunSummary {
+  id: string;
+  target: string;
+  target_kind: string | null;
+  max_depth: number;
+  verdict: string;
+  affected_system_count?: number | null;
+  created_by: string | null;
+  created_at: string | null;
+}
+
+export interface CascadeRunDiff {
+  target: string;
+  verdict_changed: boolean;
+  run: { id: string; created_at: string | null; verdict: string };
+  against: { id: string; created_at: string | null; verdict: string };
+  affected_systems: {
+    added: string[]; removed: string[];
+    unchanged_count: number; before: number; after: number;
+  };
+  affected_processes: { added: string[]; removed: string[]; before: number; after: number };
+}
+
+export const apiUnifiedCascade = (
+  target: string,
+  kind?: string,
+  maxDepth = 6,
+): Promise<ApiResult<UnifiedCascadeResult>> =>
+  call("/api/v1/technology-bom/cascade", {
+    method: "POST",
+    body: JSON.stringify({ target, kind: kind || undefined, max_depth: maxDepth }),
+  });
+
+export const apiCascadeRuns = (
+  limit = 20,
+): Promise<ApiResult<{ runs: CascadeRunSummary[]; count: number }>> =>
+  call(`/api/v1/technology-bom/cascade/runs?limit=${limit}`);
+
+export const apiCascadeRunDiff = (
+  runId: string,
+  against?: string,
+): Promise<ApiResult<CascadeRunDiff>> =>
+  call(
+    `/api/v1/technology-bom/cascade/runs/${encodeURIComponent(runId)}/diff` +
+    (against ? `?against=${encodeURIComponent(against)}` : ""),
+  );
+
+export interface GraphEdge {
+  parent_id: string;
+  child_id: string;
+  parent_name: string | null;
+  child_name: string | null;
+  relation: string;
+}
+
+export const apiGraphEdges = (
+  systemId?: string,
+): Promise<ApiResult<{ edges: GraphEdge[]; count: number }>> =>
+  call(
+    `/api/v1/graph/edges` +
+    (systemId ? `?system_id=${encodeURIComponent(systemId)}` : ""),
+  );
+
+export const apiGraphRegisterEdge = (
+  parentId: string,
+  childId: string,
+  relation = "CALLS",
+): Promise<ApiResult<{ registered: boolean; edge: GraphEdge }>> =>
+  call("/api/v1/graph/edges", {
+    method: "POST",
+    body: JSON.stringify({ parent_id: parentId, child_id: childId, relation }),
+  });
+
+export const apiGraphDeleteEdge = (
+  parentId: string,
+  childId: string,
+): Promise<ApiResult<{ deleted: boolean }>> =>
+  call(
+    `/api/v1/graph/edges/${encodeURIComponent(parentId)}/${encodeURIComponent(childId)}`,
+    { method: "DELETE" },
+  );
+
+/** Blast radius from a crypto asset: unions the walk over every using system. */
+export const apiGraphBlastRadiusFromAsset = (
+  assetId: string,
+  hops = 5,
+): Promise<ApiResult<BlastRadiusResult & { start_kind?: string; owning_systems?: string[] }>> =>
+  call(`/api/v1/graph/blast-radius?asset_id=${encodeURIComponent(assetId)}&hops=${hops}`);

@@ -135,7 +135,7 @@ Identity: [OIDC SSO](admin-guide/oidc-sso.md) ·
 
 | Doc | What it covers |
 |---|---|
-| **[REST API reference](api-reference/rest-api.md)** | generated API snapshot from 2026-09-25 — 659 paths / 725 operations; later vendor/network additions are linked from the documentation status page |
+| **[REST API reference](api-reference/rest-api.md)** | generated API snapshot from 2026-10-07 — 709 paths / 783 operations; later vendor/network additions are linked from the documentation status page |
 | [Plugin SDK](plugin-sdk.md) | writing source scanners |
 | [Navigation & feature reference](NAVIGATION-FEATURE-REFERENCE.md) | every page → every feature |
 | [Dataflow](DATAFLOW.md) · [end-to-end architecture](END-TO-END-ARCHITECTURE.md) | how data moves |

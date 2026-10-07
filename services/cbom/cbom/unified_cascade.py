@@ -32,6 +32,7 @@ TARGET_KINDS = (
     "vendor",       # vendor registry name
     "device",       # hardware fleet asset id / manufacturer / model
     "library",      # library named in the twin's asset libraries
+    "process",      # business process (id or name)
     "algorithm",    # algorithm family (RSA, ML-KEM, TLS_RSA_WITH_...)
 )
 
@@ -188,6 +189,14 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
                     return {"kind": "library", "matched": {"library": name}}
         return None
 
+    def _process() -> dict[str, Any] | None:
+        registry = snapshot.get("business_processes") or {}
+        for processes in registry.values():
+            for process in processes:
+                if wanted in (_norm(process.get("id")), _norm(process.get("name"))):
+                    return {"kind": "process", "matched": dict(process)}
+        return None
+
     def _algorithm() -> dict[str, Any] | None:
         for record in snapshot.get("evidence") or []:
             if _match(record.get("algorithm"), wanted):
@@ -202,7 +211,7 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
     detectors = {
         "certificate": _certificate, "endpoint": _endpoint, "system": _system,
         "vendor": _vendor, "device": _device, "library": _library,
-        "algorithm": _algorithm,
+        "process": _process, "algorithm": _algorithm,
     }
     if kind is not None:
         normalized_kind = _norm(kind)
@@ -445,6 +454,53 @@ def _cascade_library(snapshot: Mapping[str, Any],
     }
 
 
+def _cascade_process(snapshot: Mapping[str, Any],
+                     matched: Mapping[str, Any], max_depth: int = 6) -> dict[str, Any]:
+    """What breaks if this business process stops.
+
+    The systems that support the process stop with it; whoever depends on
+    those systems (registered edges, walked backwards) stops too. Crypto,
+    endpoints and vendors of the supporting systems are named so the answer
+    spans every BOM layer like every other cascade kind.
+    """
+    process_id = str(matched.get("id"))
+    registry = snapshot.get("business_processes") or {}
+    systems = sorted(sid for sid, processes in registry.items()
+                     if any(str(p.get("id")) == process_id for p in processes))
+    evidence = [e for e in snapshot.get("evidence") or []
+                if str(e.get("system_id")) in systems]
+    endpoints = [e for e in snapshot.get("network_endpoints") or []
+                 if str(e.get("system_id")) in systems]
+    edges = list(snapshot.get("dependencies") or [])
+    dependents = _bfs(edges, set(systems), reverse=True, max_depth=max_depth)
+    vendor_ids = set()
+    for system in snapshot.get("systems") or []:
+        if str(system.get("id")) in systems:
+            vendor_ids.update(system.get("vendor_ids") or [])
+    vendors = sorted({str(v.get("name")) for v in snapshot.get("vendors") or []
+                      if v.get("id") in vendor_ids})
+    return {
+        "code": {
+            "evidence_ids": [str(e.get("id")) for e in evidence],
+            "systems": systems,
+            "algorithms": sorted({str(e.get("algorithm")) for e in evidence
+                                  if e.get("algorithm")}),
+        },
+        "network": {
+            "endpoints": [f"{e.get('host')}:{e.get('port')}" for e in endpoints],
+        },
+        "system": {
+            "dependents_by_depth": dependents,
+            "downstream_by_depth": {},
+            "systems": systems,
+        },
+        "process": {"processes": [{"id": matched.get("id"),
+                                   "name": matched.get("name")}]},
+        "hardware": {"devices": [], "inventory_only": True},
+        "vendor": {"vendors": vendors, "systems": []},
+    }
+
+
 def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
                     kind: str | None = None, max_depth: int = 6,
                     now: datetime) -> dict[str, Any]:
@@ -490,6 +546,8 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         layers = _cascade_device(snapshot, matched)
     elif cascade_kind == "endpoint":
         layers = _cascade_endpoint(snapshot, matched)
+    elif cascade_kind == "process":
+        layers = _cascade_process(snapshot, matched, max_depth=depth)
     else:
         layers = _cascade_library(snapshot, matched)
 
@@ -510,6 +568,16 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         {"id": p.get("id"), "name": p.get("name")}
         for p in (layers.get("process") or {}).get("processes") or []
     ]
+    # migration waves of the affected systems (twin carries the wave per
+    # system, derived from its readiness category) — "what breaks" plus
+    # "when the migration plan can fix it"
+    waves: dict[str, list[str]] = {}
+    system_wave = {str(s.get("id")): s.get("migration_wave")
+                   for s in snapshot.get("systems") or []}
+    for sid in affected_systems:
+        wave = system_wave.get(sid)
+        if wave is not None:
+            waves.setdefault(str(wave), []).append(sid)
 
     propagated = max(
         [int(d) for d in dependents] + [int(d) for d in downstream] + [0])
@@ -551,6 +619,8 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
             "affected_systems": affected_systems,
             "affected_system_count": len(affected_systems),
             "affected_processes": affected_processes,
+            "migration_waves": {wave: sorted(sids)
+                                for wave, sids in sorted(waves.items())},
             "twin_assets": extra_assets,
             "libraries": libraries,
             "certificate": certificate,

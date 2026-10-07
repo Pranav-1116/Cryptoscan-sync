@@ -121,6 +121,8 @@ def _snapshot(db: Session) -> dict:
             "event_count": event_counts.get(state.asset_id, 0),
         })
 
+    from agility.roadmap import wave_for
+
     system_vendors = db.query(SystemVendor).limit(
         SNAPSHOT_CAPS["system_vendors"]).all()
     systems = [
@@ -131,6 +133,9 @@ def _snapshot(db: Session) -> dict:
             "criticality": system.criticality,
             "agility": system.current_agility_score,
             "readiness": system.migration_readiness_category,
+            # the migration wave the roadmap plan would fix this system in —
+            # cascades group affected systems by it ("what breaks AND when")
+            "migration_wave": wave_for(system.migration_readiness_category),
             "coverage_status": system.coverage_status,
             "last_scanned_at": (system.last_scanned_at.isoformat()
                                 if system.last_scanned_at else None),

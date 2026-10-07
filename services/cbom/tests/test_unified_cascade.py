@@ -339,3 +339,55 @@ def test_process_layer_present_for_every_kind():
         assert isinstance(
             result["layers"].get("process", {}).get("processes"), list), target
         assert isinstance(result["impact"]["affected_processes"], list), target
+
+
+# ------------------------------------------------- round-3: process + waves
+
+SNAPSHOT["systems"][0]["migration_wave"] = 1   # sys-pay
+SNAPSHOT["systems"][1]["migration_wave"] = 2   # sys-web
+SNAPSHOT["systems"][2]["migration_wave"] = 3   # sys-db
+
+
+def test_process_cascade_by_name():
+    result = run("Card Payments")
+    assert result["target"]["kind"] == "process"
+    assert result["verdict"] == "AFFECTED"
+    # the supporting system, its evidence, its vendors — every layer
+    assert result["layers"]["system"]["systems"] == ["sys-pay"]
+    assert result["layers"]["code"]["systems"] == ["sys-pay"]
+    assert result["layers"]["code"]["algorithms"] == ["RSA-2048"]
+    assert result["layers"]["vendor"]["vendors"] == ["Thales"]
+    # whoever depends on the supporting system stops too
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-web"]}
+    assert result["impact"]["affected_system_count"] == 2
+
+
+def test_process_cascade_by_id():
+    result = run("bp-1")
+    assert result["target"]["kind"] == "process"
+    assert result["layers"]["process"]["processes"] == [
+        {"id": "bp-1", "name": "Card Payments"}]
+
+
+def test_process_cascade_names_endpoints():
+    result = run("Card Payments")
+    assert result["layers"]["network"]["endpoints"] == ["api.bank:443"]
+
+
+def test_migration_waves_group_affected_systems():
+    result = run("payment-api")
+    assert result["impact"]["migration_waves"] == {
+        "1": ["sys-pay"], "2": ["sys-web"], "3": ["sys-db"]}
+
+
+def test_process_kind_hint_and_not_found():
+    assert run("Card Payments", kind="process")["target"]["kind"] == "process"
+    missing = run("No Such Process")
+    assert missing["verdict"] == "NOT_FOUND"
+
+
+def test_unknown_process_kind_still_rejected():
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError):
+        run("x", kind="nonsense")

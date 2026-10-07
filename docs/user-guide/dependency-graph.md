@@ -37,6 +37,10 @@ Edges are tenant-scoped like every other row: a tenant sees its own edges
 plus the un-attributed platform estate, and cannot register an edge into
 another tenant's systems.
 
+The Dependency Graph page in the UI manages edges and runs the cross-BOM
+cascade (target input, verdict, affected systems by wave, run history with
+diffs) next to the existing blast-radius explorer.
+
 ```bash
 python scripts/populate_graph.py
 python scripts/blast_radius_query.py payment-api --impact

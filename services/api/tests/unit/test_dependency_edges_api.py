@@ -72,10 +72,14 @@ def app_db():
     application.state.test_session = session
 
     session.add_all([
-        System(id="sys-a", name="web-frontend", criticality="TIER-1"),
-        System(id="sys-b", name="mobile-gateway", criticality="TIER-1"),
-        System(id="sys-c", name="payment-core", criticality="TIER-1"),
-        System(id="sys-d", name="settlement", criticality="TIER-2"),
+        System(id="sys-a", name="web-frontend", criticality="TIER-1",
+               migration_readiness_category="READY_NOW"),
+        System(id="sys-b", name="mobile-gateway", criticality="TIER-1",
+               migration_readiness_category="NOT_READY"),
+        System(id="sys-c", name="payment-core", criticality="TIER-1",
+               migration_readiness_category="READY_WITH_PREP"),
+        System(id="sys-d", name="settlement", criticality="TIER-2",
+               migration_readiness_category="BLOCKED"),
         CryptoAsset(id="ca-shared", algorithm="RSA-2048",
                     file_path="src/KeyStore.java", purpose="signing",
                     key_size=2048, confidence=1.0),
@@ -385,4 +389,93 @@ def test_tenant_cannot_register_cross_tenant_edge(tenants):
     # parent is acme's, child is globex's — the child must not resolve
     resp = acme.post("/api/v1/graph/edges", json={
         "parent_id": "sys-acme", "child_id": "sys-globex-2"})
+    assert resp.status_code == 404
+
+
+# ------------------------------------------------- round-3: process, waves, diff
+
+def test_process_cascade_end_to_end(app_db):
+    with TestClient(app_db) as client:
+        resp = client.post("/api/v1/technology-bom/cascade",
+                           json={"target": "Card Payments"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["target"]["kind"] == "process"
+    assert body["layers"]["system"]["systems"] == ["sys-c"]
+    # both callers of payment-core stop with it
+    assert body["layers"]["system"]["dependents_by_depth"] == {
+        "1": ["sys-a", "sys-b"]}
+    assert set(body["impact"]["affected_systems"]) == {"sys-a", "sys-b", "sys-c"}
+    assert body["layers"]["vendor"]["vendors"] == ["Thales"]
+
+
+def test_twin_systems_carry_migration_wave(app_db):
+    from api.routers.digital_twin import _snapshot
+
+    snapshot = _snapshot(app_db.state.test_session)
+    waves = {s["id"]: s["migration_wave"] for s in snapshot["systems"]}
+    assert waves == {"sys-a": 1, "sys-b": 2, "sys-c": 2, "sys-d": 3}
+
+
+def test_cascade_impact_groups_migration_waves(app_db):
+    with TestClient(app_db) as client:
+        resp = client.post("/api/v1/technology-bom/cascade",
+                           json={"target": "payment-core"})
+    body = resp.json()
+    assert body["impact"]["migration_waves"] == {
+        "1": ["sys-a"], "2": ["sys-b", "sys-c"], "3": ["sys-d"]}
+
+
+def test_cascade_run_diff_shows_blast_radius_change(app_db):
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/technology-bom/cascade",
+                            json={"target": "payment-core"}).json()
+        # the blast radius shrinks: web-frontend stops calling payment-core
+        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        second = client.post("/api/v1/technology-bom/cascade",
+                             json={"target": "payment-core"}).json()
+        diff = client.get(
+            f"/api/v1/technology-bom/cascade/runs/{second['run_id']}/diff"
+        ).json()
+    assert diff["target"] == "payment-core"
+    assert diff["against"]["id"] == first["run_id"]
+    assert diff["affected_systems"]["removed"] == ["sys-a"]
+    assert diff["affected_systems"]["added"] == []
+    assert diff["affected_systems"]["before"] == 4
+    assert diff["affected_systems"]["after"] == 3
+    assert diff["verdict_changed"] is False
+
+
+def test_cascade_run_diff_explicit_against(app_db):
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/technology-bom/cascade",
+                            json={"target": "payment-core"}).json()
+        second = client.post("/api/v1/technology-bom/cascade",
+                             json={"target": "payment-core"}).json()
+        diff = client.get(
+            f"/api/v1/technology-bom/cascade/runs/{second['run_id']}/diff",
+            params={"against": first["run_id"]}).json()
+    assert diff["affected_systems"]["removed"] == []
+    assert diff["affected_systems"]["added"] == []
+    assert diff["affected_systems"]["unchanged_count"] == 4
+
+
+def test_cascade_run_diff_rejects_different_targets(app_db):
+    with TestClient(app_db) as client:
+        run_a = client.post("/api/v1/technology-bom/cascade",
+                            json={"target": "payment-core"}).json()
+        run_b = client.post("/api/v1/technology-bom/cascade",
+                            json={"target": "Card Payments"}).json()
+        resp = client.get(
+            f"/api/v1/technology-bom/cascade/runs/{run_a['run_id']}/diff",
+            params={"against": run_b["run_id"]})
+    assert resp.status_code == 400
+
+
+def test_cascade_run_diff_needs_an_earlier_run(app_db):
+    with TestClient(app_db) as client:
+        only = client.post("/api/v1/technology-bom/cascade",
+                           json={"target": "settlement"}).json()
+        resp = client.get(
+            f"/api/v1/technology-bom/cascade/runs/{only['run_id']}/diff")
     assert resp.status_code == 404

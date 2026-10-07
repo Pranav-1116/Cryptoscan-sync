@@ -1099,3 +1099,82 @@ def technology_bom_cascade_run(
             "max_depth": run.max_depth, "verdict": run.verdict,
             "result": run.result, "created_by": run.created_by,
             "created_at": run.created_at.isoformat() if run.created_at else None}
+
+
+@router.get("/cascade/runs/{run_id}/diff")
+def technology_bom_cascade_run_diff(
+    run_id: str,
+    against: str | None = Query(
+        None, description="run id to diff against; default: the previous run "
+                          "of the same target"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """How the blast radius changed between two cascade runs.
+
+    The audit question this answers: "we migrated two services last sprint —
+    did the blast radius of RSA actually shrink?" Affected systems added and
+    removed, verdict changes, count deltas — nothing recomputed, both sides
+    are the persisted answers exactly as they were returned.
+    """
+    from db.repositories.cascade_run_repository import CascadeRunRepository
+
+    repo = CascadeRunRepository(db)
+    run = repo.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"cascade run not found: {run_id}")
+
+    if against is not None:
+        other = repo.get(against)
+        if other is None:
+            raise HTTPException(status_code=404,
+                                detail=f"cascade run not found: {against}")
+    else:
+        # default: the newest earlier run of the same target (the previous
+        # answer to the same question), newest-first listing guarantees order
+        earlier = [r for r in repo.list_runs(limit=500)
+                   if r.target == run.target and r.id != run.id
+                   and (r.created_at or datetime.min.replace(tzinfo=timezone.utc))
+                   <= (run.created_at or datetime.min.replace(tzinfo=timezone.utc))]
+        if not earlier:
+            raise HTTPException(
+                status_code=404,
+                detail=f"no earlier run of target {run.target!r} to diff against")
+        other = earlier[0]
+
+    if (other.target or "") != (run.target or ""):
+        raise HTTPException(
+            status_code=400,
+            detail=f"cannot diff runs for different targets: "
+                   f"{other.target!r} vs {run.target!r}")
+
+    def _systems(result: dict) -> set[str]:
+        return set((result or {}).get("impact", {}).get("affected_systems") or [])
+
+    def _processes(result: dict) -> set[tuple[str, str]]:
+        return {(p.get("id"), p.get("name"))
+                for p in (result or {}).get("impact", {}).get(
+                    "affected_processes") or []}
+
+    old_systems, new_systems = _systems(other.result), _systems(run.result)
+    old_processes, new_processes = _processes(other.result), _processes(run.result)
+    return {
+        "schema": "cryptoscan.unified-cascade-diff/1",
+        "run": {"id": run.id, "created_at": run.created_at.isoformat()
+                if run.created_at else None, "verdict": run.verdict},
+        "against": {"id": other.id, "created_at": other.created_at.isoformat()
+                    if other.created_at else None, "verdict": other.verdict},
+        "target": run.target,
+        "verdict_changed": run.verdict != other.verdict,
+        "affected_systems": {
+            "added": sorted(new_systems - old_systems),
+            "removed": sorted(old_systems - new_systems),
+            "unchanged_count": len(new_systems & old_systems),
+            "before": len(old_systems), "after": len(new_systems),
+        },
+        "affected_processes": {
+            "added": sorted({" | ".join(filter(None, p)) for p in new_processes - old_processes}),
+            "removed": sorted({" | ".join(filter(None, p)) for p in old_processes - new_processes}),
+            "before": len(old_processes), "after": len(new_processes),
+        },
+    }

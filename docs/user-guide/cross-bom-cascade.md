@@ -36,8 +36,12 @@ Optional fields:
 | Field | Meaning |
 |---|---|
 | `target` | required — what might change |
-| `kind` | optional hint: `algorithm`, `certificate`, `endpoint`, `system`, `vendor`, `device`, `library` |
+| `kind` | optional hint: `algorithm`, `certificate`, `endpoint`, `system`, `vendor`, `device`, `library`, `process` |
 | `max_depth` | system-graph hops, 1..12 (default 6 — same bound as `/graph/blast-radius`) |
+
+A **process target** ("what breaks if Card Payments stops?") cascades the
+systems that support it, everyone who depends on them, their crypto,
+endpoints and vendors — the business-impact view of the same graph.
 
 Targets are auto-detected most-specific-first: a SHA-256 fingerprint is
 matched as a certificate, `host:port` as an endpoint, an exact system name as
@@ -85,6 +89,14 @@ Every run is persisted with its full result, who asked, and when:
 - `GET /api/v1/technology-bom/cascade/runs` — newest first
 - `GET /api/v1/technology-bom/cascade/runs/{run_id}` — one past answer,
   exactly as it was returned
+- `GET /api/v1/technology-bom/cascade/runs/{run_id}/diff` — how the blast
+  radius changed since the previous run of the same target (or pass
+  `?against={run_id}` for an explicit comparison): affected systems added
+  and removed, process changes, verdict change. Answers the audit question
+  "we migrated two services — did the RSA blast radius actually shrink?"
+
+`impact.migration_waves` groups the affected systems by the migration wave
+the roadmap would fix them in — what breaks, and when the plan repairs it.
 
 Runs are tenant-scoped like every other row: a tenant sees its own runs and
 the un-attributed platform runs, never another tenant's.

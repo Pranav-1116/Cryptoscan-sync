@@ -3,6 +3,8 @@ import { Badge, Button } from "../components/ui";
 import { apiGraph, apiGraphStats, apiGraphBlastRadius } from "../lib/api";
 import AuthenticatedDownload from "../components/AuthenticatedDownload";
 import CodeCascadePanel from "../components/CodeCascadePanel";
+import UnifiedCascadePanel from "../components/UnifiedCascadePanel";
+import EdgeManagerPanel from "../components/EdgeManagerPanel";
 
 export default function DependencyGraph() {
   const [loading, setLoading] = useState(true);
@@ -291,6 +293,8 @@ export default function DependencyGraph() {
         </div>
       </div>
       <CodeCascadePanel />
+      <UnifiedCascadePanel />
+      <EdgeManagerPanel />
     </div>
   );
 }

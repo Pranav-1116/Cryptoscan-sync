@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-07:
-**708 paths, 782 operations** across 89 tagged groups.
+**709 paths, 783 operations** across 89 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -1159,6 +1159,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/technology-bom/cascade` | Technology Bom Cascade |
 | `GET` | `/api/v1/technology-bom/cascade/runs` | Technology Bom Cascade Runs |
 | `GET` | `/api/v1/technology-bom/cascade/runs/{run_id}` | Technology Bom Cascade Run |
+| `GET` | `/api/v1/technology-bom/cascade/runs/{run_id}/diff` | Technology Bom Cascade Run Diff |
 | `GET` | `/api/v1/technology-bom/compare` | Technology Bom Compare |
 | `GET` | `/api/v1/technology-bom/evidence-package` | Evidence Package |
 | `GET` | `/api/v1/technology-bom/export` | Technology Bom Export |
