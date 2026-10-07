@@ -66,6 +66,22 @@ def _cipher_mentions(cipher_suite: Any, algorithm: str) -> bool:
                for token in re.findall(r"[A-Za-z]{2,}", algorithm))
 
 
+def _processes_for(snapshot: Mapping[str, Any],
+                   system_ids: list[str]) -> dict[str, Any]:
+    """Business processes supported by these systems (real links, deduped)."""
+    registry = snapshot.get("business_processes") or {}
+    seen: set[str] = set()
+    processes: list[dict[str, Any]] = []
+    for sid in system_ids:
+        for process in registry.get(sid) or []:
+            key = str(process.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+            processes.append({"id": process.get("id"), "name": process.get("name")})
+    return {"processes": processes}
+
+
 def _bfs(edges: list[Mapping[str, Any]], seeds: set[str], *,
          reverse: bool, max_depth: int) -> dict[int, list[str]]:
     """Depth-bounded BFS over {source,target} edges.
@@ -165,8 +181,11 @@ def identify_target(snapshot: Mapping[str, Any], target: str,
             libraries = asset.get("libraries") or {}
             names = list(libraries.keys()) if isinstance(libraries, Mapping) else [
                 str(x) for x in libraries]
-            if any(_match(name, wanted) for name in names):
-                return {"kind": "library", "matched": {"library": target}}
+            for name in names:
+                if _match(name, wanted):
+                    # matched name as the estate spells it — the cascade and
+                    # the catalog lookup need the real key, not the query text
+                    return {"kind": "library", "matched": {"library": name}}
         return None
 
     def _algorithm() -> dict[str, Any] | None:
@@ -237,6 +256,7 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
             "endpoints": [f"{e.get('host')}:{e.get('port')}" for e in endpoints],
         },
         "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
+        "process": _processes_for(snapshot, systems),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [], "systems": []},
         "_assets": [str(a.get("asset_id")) for a in assets],
@@ -246,16 +266,25 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
 
 def _cascade_certificate(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -> dict[str, Any]:
     subject = _norm(matched.get("subject"))
+    fingerprint = matched.get("fingerprint_sha256")
     endpoints = [e for e in snapshot.get("network_endpoints") or []
                  if _match((e.get("certificate") or {}).get("subject"), subject)
                  or _match(e.get("certificate_subject"), subject)]
+    # real usage links (CertificateUsage rows) name the systems that run the
+    # certificate; endpoint owners add whoever serves it on the wire
+    usage_systems = sorted(set(
+        (snapshot.get("certificate_usages") or {}).get(fingerprint) or []))
+    owning = {str(e.get("system_id")) for e in endpoints if e.get("system_id")}
+    systems = sorted(set(usage_systems) | owning)
     return {
         "code": {"evidence_ids": [], "systems": [], "files": []},
         "network": {
             "endpoints": [f"{e.get('host')}:{e.get('port')}" for e in endpoints],
             "tls_versions": sorted({str(e.get("version")) for e in endpoints if e.get("version")}),
         },
-        "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
+        "system": {"dependents_by_depth": {}, "downstream_by_depth": {},
+                   "systems": systems},
+        "process": _processes_for(snapshot, systems),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [], "systems": []},
         "_certificate": {
@@ -290,6 +319,7 @@ def _cascade_system(snapshot: Mapping[str, Any], system: Mapping[str, Any],
             "dependents_by_depth": _bfs(edges, {system_id}, reverse=True, max_depth=max_depth),
             "downstream_by_depth": _bfs(edges, {system_id}, reverse=False, max_depth=max_depth),
         },
+        "process": _processes_for(snapshot, [system_id]),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": vendors, "systems": []},
     }
@@ -310,6 +340,9 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
     assets = [a for a in snapshot.get("assets") or []
               if any(_match(lib, name) for lib in (
                   (a.get("libraries") or {}) if isinstance(a.get("libraries"), Mapping) else {}))]
+    # VBOM: what this vendor's products implement, as discovered — never
+    # marketing claims. PQC readiness is the scanner's verdict per use case.
+    crypto_inventory = list((snapshot.get("vendor_crypto") or {}).get(vendor_id) or [])
     return {
         "code": {"evidence_ids": [], "systems": [], "files": [],
                  "assets_using_vendor_libraries": [str(a.get("asset_id")) for a in assets]},
@@ -321,8 +354,19 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
             "downstream_by_depth": {},
             "systems": system_names,
         },
+        "process": _processes_for(snapshot, [str(s) for s in linked if s]),
         "hardware": {"devices": device_ids, "inventory_only": True},
-        "vendor": {"vendors": [str(matched.get("name"))], "criticality": matched.get("criticality")},
+        "vendor": {
+            "vendors": [str(matched.get("name"))],
+            "criticality": matched.get("criticality"),
+            "crypto_inventory": crypto_inventory,
+            "pqc_ready_use_cases": sorted({
+                str(row.get("crypto_use_case")) for row in crypto_inventory
+                if row.get("pqc_ready")}),
+            "pqc_not_ready_use_cases": sorted({
+                str(row.get("crypto_use_case")) for row in crypto_inventory
+                if row.get("crypto_use_case") and not row.get("pqc_ready")}),
+        },
     }
 
 
@@ -332,6 +376,7 @@ def _cascade_device(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -> 
         "code": {"evidence_ids": [], "systems": [], "files": []},
         "network": {"endpoints": []},
         "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
+        "process": {"processes": []},
         "hardware": {
             "devices": [str(matched.get("asset_id"))],
             "manufacturer": matched.get("manufacturer") or hsm.get("manufacturer"),
@@ -357,29 +402,46 @@ def _cascade_endpoint(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -
         },
         "system": {"dependents_by_depth": {}, "downstream_by_depth": {},
                    "systems": [matched["system_id"]] if matched.get("system_id") else []},
+        "process": _processes_for(
+            snapshot, [str(matched["system_id"])] if matched.get("system_id") else []),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [], "systems": []},
     }
 
 
-def _cascade_library(snapshot: Mapping[str, Any], wanted: str) -> dict[str, Any]:
+def _cascade_library(snapshot: Mapping[str, Any],
+                     matched: Mapping[str, Any]) -> dict[str, Any]:
+    name = str(matched.get("library") or "")
     assets = [a for a in snapshot.get("assets") or []
-              if any(_match(name, wanted) for name in (
-                  (a.get("libraries") or {}) if isinstance(a.get("libraries"), Mapping) else {}))]
+              if name in ((a.get("libraries") or {})
+                          if isinstance(a.get("libraries"), Mapping) else {})]
+    observed = sorted({
+        str(alg) for a in assets
+        for alg in ((a.get("algorithms") or {})
+                    if isinstance(a.get("algorithms"), Mapping) else {})
+    })
+    # the fingerprint catalog is the second source of truth: what the library
+    # implements per ADR-007, independent of what this estate has observed
+    catalog = (snapshot.get("library_catalog") or {}).get(name)
     return {
         "code": {
             "evidence_ids": [], "systems": [],
             "assets": [str(a.get("asset_id")) for a in assets],
-            "algorithms": sorted({
-                str(name) for a in assets
-                for name in ((a.get("algorithms") or {})
-                             if isinstance(a.get("algorithms"), Mapping) else {})
-            }),
+            "algorithms": observed,
         },
         "network": {"endpoints": []},
         "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
+        "process": {"processes": []},
         "hardware": {"devices": [], "inventory_only": True},
-        "vendor": {"vendors": [], "systems": []},
+        "vendor": {"vendors": [catalog.get("vendor")] if catalog and catalog.get("vendor") else []},
+        "library": {
+            "name": name,
+            "catalog_algorithms": (catalog or {}).get("algorithms") or [],
+            "deprecated": (catalog or {}).get("deprecated", False),
+            "catalog_vendor": (catalog or {}).get("vendor"),
+            "observed_algorithms": observed,
+            "in_catalog": catalog is not None,
+        },
     }
 
 
@@ -429,7 +491,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     elif cascade_kind == "endpoint":
         layers = _cascade_endpoint(snapshot, matched)
     else:
-        layers = _cascade_library(snapshot, _norm(target_text))
+        layers = _cascade_library(snapshot, matched)
 
     # Private keys (``_``-prefixed) are folded into impact, not leaked as layers.
     extra_assets = layers.pop("_assets", [])
@@ -444,13 +506,19 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         {s for by_depth in dependents.values() for s in by_depth}
         | {s for by_depth in downstream.values() for s in by_depth}
         | set(code_systems) | set(vendor_systems))
+    affected_processes = [
+        {"id": p.get("id"), "name": p.get("name")}
+        for p in (layers.get("process") or {}).get("processes") or []
+    ]
 
     propagated = max(
         [int(d) for d in dependents] + [int(d) for d in downstream] + [0])
 
     verdict = "AFFECTED" if (
         affected_systems
+        or affected_processes
         or layers["code"].get("evidence_ids")
+        or layers["code"].get("assets")
         or layers["network"].get("endpoints")
         or layers["hardware"].get("devices")
         or extra_assets
@@ -482,6 +550,7 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
         "impact": {
             "affected_systems": affected_systems,
             "affected_system_count": len(affected_systems),
+            "affected_processes": affected_processes,
             "twin_assets": extra_assets,
             "libraries": libraries,
             "certificate": certificate,

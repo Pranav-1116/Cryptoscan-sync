@@ -245,3 +245,97 @@ def test_fingerprint_wins_over_less_specific_kinds():
 
 def test_schema_version_stable():
     assert run("payment-api")["schema"] == "cryptoscan.unified-cascade/1"
+
+
+# ------------------------------------------------- round-2: real data feeds
+
+SNAPSHOT.update({
+    "certificate_usages": {"ab" * 32: ["sys-pay"]},
+    "business_processes": {
+        "sys-pay": [{"id": "bp-1", "name": "Card Payments"}],
+        "sys-web": [{"id": "bp-2", "name": "Online Banking"}],
+    },
+    "vendor_crypto": {
+        "v-thales": [
+            {"algorithm": "RSA-2048", "key_size": 2048, "pqc_ready": False,
+             "crypto_use_case": "HSM signing"},
+            {"algorithm": "ML-KEM", "key_size": 768, "pqc_ready": True,
+             "crypto_use_case": "Key establishment"},
+        ],
+    },
+    "library_catalog": {
+        "liboqs": {"algorithms": ["ML-KEM", "ML-DSA"], "deprecated": False,
+                   "vendor": "Open Quantum Safe"},
+        "BouncyCastle": None,
+    },
+})
+
+
+def test_certificate_cascade_uses_real_usage_links():
+    result = run("ab" * 32)
+    # CertificateUsage rows name the system that runs the certificate —
+    # stronger than subject matching on the wire
+    assert "sys-pay" in result["layers"]["system"]["systems"]
+    assert "sys-pay" in result["impact"]["affected_systems"]
+    assert result["verdict"] == "AFFECTED"
+
+
+def test_system_cascade_includes_business_processes():
+    result = run("payment-api")
+    assert result["layers"]["process"]["processes"] == [
+        {"id": "bp-1", "name": "Card Payments"}]
+    assert result["impact"]["affected_processes"] == [
+        {"id": "bp-1", "name": "Card Payments"}]
+
+
+def test_vendor_cascade_includes_crypto_inventory():
+    result = run("Thales")
+    vendor = result["layers"]["vendor"]
+    assert len(vendor["crypto_inventory"]) == 2
+    assert vendor["pqc_ready_use_cases"] == ["Key establishment"]
+    assert vendor["pqc_not_ready_use_cases"] == ["HSM signing"]
+    # the vendor's systems carry their business processes
+    assert result["layers"]["process"]["processes"] == [
+        {"id": "bp-1", "name": "Card Payments"}]
+
+
+def test_library_cascade_uses_fingerprint_catalog():
+    result = run("liboqs")
+    library = result["layers"]["library"]
+    assert library["in_catalog"] is True
+    assert library["catalog_algorithms"] == ["ML-KEM", "ML-DSA"]
+    assert library["observed_algorithms"] == ["ML-KEM"]
+    assert library["catalog_vendor"] == "Open Quantum Safe"
+    assert result["layers"]["vendor"]["vendors"] == ["Open Quantum Safe"]
+    assert result["verdict"] == "AFFECTED"
+
+
+def test_library_cascade_names_unknown_catalogs_honestly():
+    result = run("BouncyCastle")
+    library = result["layers"]["library"]
+    assert library["in_catalog"] is False
+    assert library["catalog_algorithms"] == []
+    assert library["deprecated"] is False
+
+
+def test_library_cascade_matches_estate_spelling():
+    # a partial query still cascades the library the estate actually names
+    result = run("libo")
+    assert result["target"]["kind"] == "library"
+    assert result["layers"]["library"]["name"] == "liboqs"
+    assert result["layers"]["code"]["assets"] == ["pay-02"]
+
+
+def test_algorithm_cascade_carries_processes():
+    result = run("RSA-2048")
+    names = sorted(p["name"] for p in result["layers"]["process"]["processes"])
+    assert names == ["Card Payments", "Online Banking"]
+
+
+def test_process_layer_present_for_every_kind():
+    for target in ("ab" * 32, "api.bank:443", "payment-api", "Thales",
+                   "hsm-001", "liboqs", "RSA-2048"):
+        result = run(target)
+        assert isinstance(
+            result["layers"].get("process", {}).get("processes"), list), target
+        assert isinstance(result["impact"]["affected_processes"], list), target

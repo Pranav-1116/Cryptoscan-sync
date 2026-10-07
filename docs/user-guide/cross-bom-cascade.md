@@ -8,8 +8,17 @@ or a library — and fans the blast radius out across all BOM layers at once:
 - **network** — endpoints on the wire, TLS versions, cipher suites (NBOM layer)
 - **system graph** — dependents and downstream via depth-bounded walks over
   registered `SystemDependency` edges (SBOM layer)
+- **process** — business processes supported by the affected systems
+  (real `SystemBusinessProcess` links)
 - **hardware** — device facts from the hardware fleet (HBOM layer)
-- **vendor** — linked systems and vendor criticality (VBOM layer)
+- **vendor** — linked systems, criticality, and the vendor's discovered
+  crypto inventory with PQC readiness per use case (`VendorCryptoInventory`)
+- **library** — for library targets: the fingerprint catalog's view (ADR-007)
+  of what the library implements, alongside what the estate has observed
+
+A certificate target also uses real `CertificateUsage` rows to name the
+systems that run the certificate — stronger than matching subjects on the
+wire.
 
 It runs over the same digital-twin snapshot the twin scenarios use, so the
 cascade and the twin can never disagree about what the estate looks like.
@@ -93,3 +102,9 @@ the un-attributed platform runs, never another tenant's.
   (`SystemAsset`) and its registered inter-system edges
   (`SystemDependency`), in both directions, marked
   `cryptoscan:dependencies=estate-linkage` in metadata.
+- `GET /api/v1/cbom/scan/{scan_id}` carries the scanner's observed cascade
+  (provider files, business systems, wave properties) — the same edges the
+  export renders, marked `cryptoscan:dependencies=scan-cascade`.
+- `POST /api/v1/graph/edges` registers the `SystemDependency` edges every
+  walk above depends on; `GET /graph/blast-radius?asset_id=` starts the
+  walk from a crypto asset instead of a system.

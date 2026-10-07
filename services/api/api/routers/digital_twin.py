@@ -37,8 +37,12 @@ from db.models.hardware_live import HardwareAsset
 from db.models.network_scan_target import NetworkScanTarget
 from db.models.system import System
 from db.models.system_asset import SystemAsset
+from db.models.business_process import BusinessProcess
+from db.models.certificate_usage import CertificateUsage
+from db.models.system_business_process import SystemBusinessProcess
 from db.models.system_dependency import SystemDependency
 from db.models.vendor import SystemVendor, Vendor
+from db.models.vendor_crypto import VendorCryptoInventory
 
 router = APIRouter(tags=["digital-twin"])
 
@@ -56,6 +60,9 @@ SNAPSHOT_CAPS = {
     "systems": 20000,
     "system_vendors": 20000,
     "vendors": 20000,
+    "certificate_usages": 20000,
+    "business_processes": 20000,
+    "vendor_crypto": 20000,
 }
 
 
@@ -273,6 +280,60 @@ def _snapshot(db: Session) -> dict:
         for hw in db.query(HardwareAsset).limit(SNAPSHOT_CAPS["hardware"]).all()
     ]
 
+    # Certificate→system usage from real CertificateUsage rows — the same
+    # linkage the inventory view reads, so a certificate cascade names the
+    # systems that run the certificate, not just the endpoints serving it.
+    certificate_usages: dict[str, list[str]] = {}
+    for cu in db.query(CertificateUsage).limit(
+            SNAPSHOT_CAPS["certificate_usages"]).all():
+        loc = str(cu.location or "")
+        if loc.startswith("system:"):
+            sid = loc.split(":", 1)[-1]
+            ids = certificate_usages.setdefault(cu.fingerprint_sha256, [])
+            if sid not in ids:
+                ids.append(sid)
+
+    # Business processes supported by each system — real SystemBusinessProcess
+    # links; cascades report process impact when a system or its vendor breaks.
+    process_names = {p.id: p.name for p in db.query(BusinessProcess).limit(
+        SNAPSHOT_CAPS["business_processes"]).all()}
+    business_processes: dict[str, list[dict]] = {}
+    for link in db.query(SystemBusinessProcess).limit(
+            SNAPSHOT_CAPS["business_processes"]).all():
+        business_processes.setdefault(link.system_id, []).append({
+            "id": link.process_id,
+            "name": process_names.get(link.process_id, link.process_id)})
+
+    # Vendor crypto inventory (VBOM): what each vendor's products implement —
+    # algorithm, key size, PQC readiness — as discovered, never as marketed.
+    vendor_crypto: dict[str, list[dict]] = {}
+    for row in db.query(VendorCryptoInventory).limit(
+            SNAPSHOT_CAPS["vendor_crypto"]).all():
+        vendor_crypto.setdefault(row.vendor_id, []).append({
+            "algorithm": row.algorithm, "key_size": row.key_size,
+            "pqc_ready": bool(row.pqc_ready),
+            "crypto_use_case": row.crypto_use_case})
+
+    # Library catalog entries for exactly the libraries the estate's assets
+    # name — looked up one by one from the fingerprint catalog (ADR-007);
+    # libraries the catalog does not know are carried as None, honestly.
+    library_catalog: dict[str, dict | None] = {}
+    try:
+        from db.repositories.fingerprint_repository import FingerprintRepository
+        fingerprint_repo = FingerprintRepository(db)
+        for state in states:
+            for lib_name in (state.libraries or {}):
+                if lib_name in library_catalog:
+                    continue
+                entry = fingerprint_repo.lookup(lib_name)
+                library_catalog[lib_name] = {
+                    "algorithms": list((entry or {}).get("algorithms") or []),
+                    "deprecated": bool((entry or {}).get("deprecated")),
+                    "vendor": (entry or {}).get("vendor"),
+                } if entry else None
+    except Exception:  # catalog unavailable — the cascade says so, not guesses
+        library_catalog = {}
+
     return {
         "assets": assets,
         "systems": systems,
@@ -293,6 +354,10 @@ def _snapshot(db: Session) -> dict:
         "dependency_source": dependency_source,
         "network_endpoints": network_endpoints,
         "hardware": hardware,
+        "certificate_usages": certificate_usages,
+        "business_processes": business_processes,
+        "vendor_crypto": vendor_crypto,
+        "library_catalog": library_catalog,
     }
 
 

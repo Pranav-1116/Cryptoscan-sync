@@ -595,12 +595,34 @@ def cbom_for_scan(
     db: Session = Depends(get_db_session),
 ):
     scan, rows = _records_for_scan(db, scan_id)
+    # Observed cascade edges — the same real graph the export renders
+    # (provider files, business systems, wave properties), instead of the
+    # generator's root-fan-out fallback. Every ref points at a component in
+    # this BOM: cascade nodes are appended as file/system components.
+    from api.routers.export import _cascade_dependencies
+
+    cascade = (scan.statistics or {}).get("cascade") or {}
+    extra_components, dependencies = _cascade_dependencies(
+        f"root:{scan.id}", cascade, rows)
     bom = CbomGenerator().from_records(
         rows,
         name=scan.target_location,
         version=scan.target_commit or scan.target_branch or "unknown",
         tool_version=scan.scanner_version,
+        dependencies=dependencies or None,
+        metadata_properties=(
+            [{"name": "cryptoscan:dependencies", "value": "scan-cascade"}]
+            if dependencies else None),
     )
+    if extra_components:
+        bom.setdefault("components", []).extend(extra_components)
+    if dependencies:
+        # the root ref must resolve: point it at the metadata application
+        # component, exactly as the export path does
+        component = (bom.setdefault("metadata", {})
+                     .setdefault("component", {}))
+        component.setdefault("type", "application")
+        component["bom-ref"] = f"root:{scan.id}"
     return _render(bom, fmt, signed)
 
 

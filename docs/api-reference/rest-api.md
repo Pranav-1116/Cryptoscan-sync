@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-07:
-**706 paths, 779 operations** across 89 tagged groups.
+**708 paths, 782 operations** across 89 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -597,6 +597,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/graph/cycles` | Graph Cycles |
 | `GET` | `/api/v1/graph/dependents` | Graph Dependents |
 | `GET` | `/api/v1/graph/drift` | Get Graph Drift |
+| `GET` | `/api/v1/graph/edges` | List Dependency Edges |
+| `POST` | `/api/v1/graph/edges` | Register Dependency Edge |
+| `DELETE` | `/api/v1/graph/edges/{parent_id}/{child_id}` | Delete Dependency Edge |
 | `GET` | `/api/v1/graph/explain` | Graph Explain |
 | `GET` | `/api/v1/graph/health` | Get Graph Health |
 | `GET` | `/api/v1/graph/hotspots` | Graph Hotspots |

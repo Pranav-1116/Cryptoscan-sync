@@ -17,7 +17,7 @@ from agility.roadmap import wave_for
 from api.dependencies import get_current_user, get_db_session
 from api.graph_builder import collect_graph_payload, graph_from_db, sync_graph
 from business_context.core.enricher import enrich_assets
-from db.models import CryptoAsset
+from db.models import CryptoAsset, System
 from db.models.graph_snapshot import GraphSnapshot
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
@@ -103,11 +103,52 @@ def get_graph(user: str = Depends(get_current_user), db: Session = Depends(get_d
 
 @router.get("/graph/blast-radius")
 def blast_radius(
-    system_id: str = Query(...),
+    system_id: str | None = Query(None),
+    asset_id: str | None = Query(None),
     hops: int = Query(5, ge=1, le=12),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    """Downstream blast radius from a system — or from a crypto asset.
+
+    An asset start fans out over EVERY system that uses it (SystemAsset
+    links), because a shared key or library breaks all its users at once;
+    the per-system walks are unioned, each system keeping its minimum hop.
+    """
+    if not system_id and not asset_id:
+        raise HTTPException(status_code=400,
+                            detail="system_id or asset_id is required")
+    if asset_id and not system_id:
+        from db.models.system_asset import SystemAsset
+
+        owning = sorted({link.system_id for link in db.query(SystemAsset)
+                         .filter(SystemAsset.asset_id == asset_id).all()})
+        if not owning:
+            raise HTTPException(
+                status_code=404,
+                detail=f"asset not linked to any system: {asset_id}")
+        graph = graph_from_db(db)
+        union: dict[str, dict[str, Any]] = {}
+        start_systems: list[str] = []
+        for sid in owning:
+            part = graph.blast_radius(sid, hops=hops)
+            if part.get("start"):
+                start_systems.append(str(part["start"]))
+            for row in part.get("systems") or []:
+                prev = union.get(str(row["id"]))
+                if prev is None or row["hops"] < prev["hops"]:
+                    union[str(row["id"])] = row
+        systems = sorted(union.values(),
+                         key=lambda row: (row["hops"], str(row.get("name") or "")))
+        return {
+            "start": asset_id,
+            "start_kind": "asset",
+            "owning_systems": owning,
+            "systems": systems,
+            "hops": hops,
+            "nodes_visited": len(union) + len(owning),
+            "backend": graph.backend,
+        }
     result = graph_from_db(db).blast_radius(system_id, hops=hops)
     if not result["start"] and result["nodes_visited"] == 0:
         raise HTTPException(status_code=404, detail="System not found in graph")
@@ -777,3 +818,141 @@ def priorities(user: str = Depends(get_current_user), db: Session = Depends(get_
         owners=payload["owners"],
     )
     return {"assets": ranked, "total_count": len(ranked)}
+
+
+# --------------------------------------------------------------------------
+# Dependency-edge management — the graph's input side
+# --------------------------------------------------------------------------
+
+class EdgeRequest(BaseModel):
+    """Register one system→system dependency edge.
+
+    Parent/child may be given as system id or name; relation defaults to
+    CALLS. Everything downstream (twin, unified cascade, blast radius, system
+    CBOMs) reads these edges — this is the only write surface for them.
+    """
+
+    parent_id: str | None = None
+    parent_name: str | None = None
+    child_id: str | None = None
+    child_name: str | None = None
+    relation: str = "CALLS"
+
+
+def _resolve_system(db: Session, system_id: str | None,
+                    system_name: str | None) -> System:
+    repo = SystemRepository(db)
+    if system_id:
+        row = db.query(System).filter(System.id == system_id).first()
+        if row is not None:
+            return row
+    if system_name:
+        row = repo.get_by_name(system_name)
+        if row is not None:
+            return row
+    raise HTTPException(
+        status_code=404,
+        detail=f"system not found: {system_id or system_name}")
+
+
+def _edge_payload(db: Session, edge) -> dict[str, Any]:
+    from db.models.system import System
+
+    names = {s.id: s.name for s in db.query(System).all()}
+    return {
+        "parent_id": edge.parent_id, "child_id": edge.child_id,
+        "parent_name": names.get(edge.parent_id),
+        "child_name": names.get(edge.child_id),
+        "relation": edge.relation or "CALLS",
+    }
+
+
+@router.get("/graph/edges")
+def list_dependency_edges(
+    relation: str | None = Query(None),
+    system_id: str | None = Query(None),
+    limit: int = Query(500, ge=1, le=5000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """List registered dependency edges, optionally filtered by relation
+    or by either endpoint of the edge."""
+    from db.models.system_dependency import SystemDependency
+
+    stmt = db.query(SystemDependency)
+    if relation:
+        stmt = stmt.filter(SystemDependency.relation == relation)
+    rows = stmt.limit(limit).all()
+    if system_id:
+        rows = [r for r in rows
+                if r.parent_id == system_id or r.child_id == system_id]
+    return {"edges": [_edge_payload(db, r) for r in rows], "count": len(rows)}
+
+
+@router.post("/graph/edges")
+def register_dependency_edge(
+    body: EdgeRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Register a system→system dependency edge (the graph's input side)."""
+    from db.models.system_dependency import SystemDependency
+
+    parent = _resolve_system(db, body.parent_id, body.parent_name)
+    child = _resolve_system(db, body.child_id, body.child_name)
+    if parent.id == child.id:
+        raise HTTPException(status_code=400,
+                            detail="self-dependency edges are not allowed")
+    existing = db.query(SystemDependency).filter(
+        SystemDependency.parent_id == parent.id,
+        SystemDependency.child_id == child.id).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"edge already exists: {parent.id} -> {child.id} "
+                   f"({existing.relation or 'CALLS'})")
+
+    edge = SystemRepository(db).add_dependency(
+        parent.id, child.id, body.relation)
+    db.commit()
+    from api.events.platform_events import emit_platform_event
+
+    emit_platform_event(
+        "graph.updated",
+        f"Dependency edge registered: {parent.name} -> {child.name} "
+        f"({body.relation})",
+        {"parent_id": parent.id, "child_id": child.id,
+         "relation": body.relation},
+        target_name="graph",
+    )
+    return {"registered": True, "edge": _edge_payload(db, edge)}
+
+
+@router.delete("/graph/edges/{parent_id}/{child_id}")
+def delete_dependency_edge(
+    parent_id: str,
+    child_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Remove a registered dependency edge (404 when it never existed)."""
+    from db.models.system_dependency import SystemDependency
+
+    edge = db.query(SystemDependency).filter(
+        SystemDependency.parent_id == parent_id,
+        SystemDependency.child_id == child_id).first()
+    if edge is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"edge not found: {parent_id} -> {child_id}")
+    db.delete(edge)
+    db.commit()
+    from api.events.platform_events import emit_platform_event
+
+    emit_platform_event(
+        "graph.updated",
+        f"Dependency edge removed: {parent_id} -> {child_id}",
+        {"parent_id": parent_id, "child_id": child_id, "removed": True},
+        target_name="graph",
+    )
+    return {"deleted": True, "parent_id": parent_id, "child_id": child_id}
