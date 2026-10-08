@@ -45,7 +45,7 @@ def test_evidence_pack_runs_live_controls_and_hashes_itself(tmp_path, monkeypatc
     # give the schema-drift control a real sqlite engine to verify against
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'estate.db'}")
     monkeypatch.setenv("ALLOW_SQLITE", "true")
-    bus_mod._BUS = None  # fresh singleton bound to tmp dir
+    bus_mod.reset_bus()  # fresh singleton(s) bound to tmp dir
     from eventstream.bus import get_bus
 
     bus = get_bus()
@@ -80,7 +80,7 @@ def test_evidence_pack_runs_live_controls_and_hashes_itself(tmp_path, monkeypatc
     obj = json.loads(lines[0]); obj["payload"]["action"] = "forged"
     lines[0] = json.dumps(obj, separators=(",", ":"))
     log_file.write_text("\n".join(lines) + "\n")
-    bus_mod._BUS = None  # force a fresh bus that re-reads the tampered file
+    bus_mod.reset_bus()  # force a fresh bus that re-reads the tampered file
     pack2 = collect_evidence(FakeDB(), app_settings=FakeSettings())
     statuses2 = {c["control"]: c["status"] for c in pack2["controls"]}
     assert statuses2["audit.chain_integrity"] == "fail"

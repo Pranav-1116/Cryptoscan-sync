@@ -22,14 +22,10 @@ def stream_env(tmp_path, monkeypatch):
     monkeypatch.setenv("STREAM_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("CBOM_STORE_DIR", str(tmp_path / "cbom"))
     bus_mod.reset_bus()
-    stream_router._processor._inst = None
-    stream_router._cbom_service._inst = None
-    stream_router._projector._inst = None
+    stream_router.reset_stream_singletons()
     yield tmp_path
     bus_mod.reset_bus()
-    stream_router._processor._inst = None
-    stream_router._cbom_service._inst = None
-    stream_router._projector._inst = None
+    stream_router.reset_stream_singletons()
 
 
 def _make_app():

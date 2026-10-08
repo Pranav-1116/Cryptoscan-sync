@@ -295,11 +295,13 @@ class MonitorEngine:
     def _publish_pass(self, target: MonitorTarget, status: str) -> None:
         """Every finished pass becomes a signed raw event on the stream
         (24/7 collection). Best-effort — publishing must never break the
-        monitor loop."""
+        monitor loop. The event lands in the TARGET's partition (2026-10):
+        a tenant-owned monitor's passes are that tenant's observations, not
+        platform-stream material — unowned targets keep the platform bus."""
         try:
-            from eventstream.bus import get_bus
+            from eventstream.bus import get_bus_for_tenant
 
-            get_bus().publish_raw(
+            get_bus_for_tenant(getattr(target, "tenant_id", None)).publish_raw(
                 {
                     "kind": "monitor_pass",
                     "target_name": target.name,

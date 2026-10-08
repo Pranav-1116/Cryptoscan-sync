@@ -28,44 +28,81 @@ from api.dependencies import get_current_user
 router = APIRouter(tags=["stream"])
 
 
-def _bus():
-    from eventstream.bus import get_bus
+def _tenant_key() -> str | None:
+    """The caller's tenant scope (set by TenantScopeMiddleware for the whole
+    request). None = platform estate / single-tenant install."""
+    from db.tenancy import current_tenant
 
-    return get_bus()
+    return current_tenant()
+
+
+def _bus():
+    from eventstream.bus import get_bus_for_tenant
+
+    return get_bus_for_tenant(_tenant_key())
+
+
+def _store_dir() -> str:
+    import os
+
+    from eventstream.partitions import tenant_partition_dir
+
+    base = os.environ.get("CBOM_STORE_DIR") or os.path.join(
+        os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data"), "live_cbom")
+    return str(tenant_partition_dir(base, _tenant_key()))
 
 
 def _processor():
     from eventstream.stream.pipeline import StreamProcessor
 
-    proc = getattr(_processor, "_inst", None)
+    cache = _processor.by_tenant
+    tenant = _tenant_key()
+    proc = cache.get(tenant)
     if proc is None or proc.bus is not _bus():
         proc = StreamProcessor(_bus())
-        _processor._inst = proc  # noqa: type-ignore
+        cache[tenant] = proc
     return proc
 
 
 def _cbom_service():
-    import os
-
     from eventstream.livecbom import LiveCbomService
 
-    svc = getattr(_cbom_service, "_inst", None)
-    if svc is None:
-        store = os.environ.get("CBOM_STORE_DIR") or os.path.join(
-            os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data"), "live_cbom")
-        svc = LiveCbomService(store)
-        _cbom_service._inst = svc
+    cache = _cbom_service.by_tenant
+    tenant = _tenant_key()
+    svc = cache.get(tenant)
+    if svc is None or str(svc.store_dir) != _store_dir():
+        svc = LiveCbomService(_store_dir())
+        cache[tenant] = svc
     return svc
 
 
 def _projector():
     from eventstream.livecbom import CbomProjector
 
-    proj = getattr(_projector, "_inst", None)
-    if proj is None or proj.bus is not _bus():
+    cache = _projector.by_tenant
+    tenant = _tenant_key()
+    proj = cache.get(tenant)
+    if proj is None or proj.bus is not _bus() or proj.service is not _cbom_service():
         proj = CbomProjector(_bus(), _cbom_service())
-        _projector._inst = proj
+        cache[tenant] = proj
     return proj
+
+
+def reset_stream_singletons() -> None:
+    """Drop every cached processor/service/projector (all partitions).
+
+    Test seam: the old module attributes (``_processor._inst`` ...) covered
+    one global instance; the caches are per-tenant now, so tests reset them
+    through this helper alongside ``eventstream.bus.reset_bus()``.
+    """
+    _processor.by_tenant = {}
+    _cbom_service.by_tenant = {}
+    _projector.by_tenant = {}
+
+
+_processor.by_tenant = {}
+_cbom_service.by_tenant = {}
+_projector.by_tenant = {}
 
 
 class IngestBody(BaseModel):

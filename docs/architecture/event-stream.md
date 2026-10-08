@@ -123,3 +123,31 @@ blast-radius. Same input ⇒ byte-identical report.
   active multi-region: run N API+daemon replicas per region against region-local
   bus dirs and ship `*.jsonl` logs to the other region with any log shipper —
   envelopes verify anywhere (HMAC secret shared per estate).
+
+## Tenant partitioning (2026-10)
+
+The bus and the CBOM store were the last process-global stores: one tenant's
+observations, attack detections and CBOM chains were readable by every other
+tenant through `/stream/*`, `/attacks*`, `/cbom/*` and the compliance
+retention clock. Both stores are partitioned by the caller's scope now
+(`eventstream.partitions`):
+
+- **Unscoped** (single-tenant install, platform operator): the base
+  directories themselves — byte-for-byte the pre-tenancy paths, so on-prem
+  deployments and their history are unchanged.
+- **Tenant-scoped**: `<base>/tenants/<tenant-id>/` for both stores, resolved
+  from the membership-validated request scope (never a client-supplied id),
+  with the id sanitized for filesystem use.
+- **Strict isolation, both directions**: each scope sees only its own
+  partition. Unlike DB rows — where a tenant also sees NULL-owned platform
+  rows because on-prem history predates tenancy — stream partitions carry
+  raw observations and detections, and one customer's data must never
+  surface in another's console. Two tenants using the same system id get
+  two independent CBOM chains.
+- The **monitor daemon** publishes each pass into the *target's* partition
+  (a tenant-owned monitor's observations belong to that tenant); unowned
+  targets keep the platform bus.
+- The **operator's `/ops/self-check`** is the one cross-partition reader:
+  it aggregates platform + every tenant partition on disk (bus lag, stale
+  CBOMs) — operator-only, read-only, and it inventories directories, never
+  the tenant table.

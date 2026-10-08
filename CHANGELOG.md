@@ -6,6 +6,39 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — /stream event bus and live-CBOM store were cross-tenant global stores
+
+- **The event-stream bus is partitioned by tenant.** Raw observations,
+  normalized events, attack detections and the audit trail lived in one
+  process-global JSONL log set: any tenant's ingest was readable by every
+  other tenant through `/stream/events`, `/attacks`, `/attacks/summary`
+  and `/stream/stats`. An unscoped request (single-tenant install, platform
+  operator) keeps the base directory — byte-for-byte the pre-tenancy
+  paths — and a tenant-scoped request gets
+  `<STREAM_LOG_DIR>/tenants/<tenant-id>/` with its own append-only logs and
+  consumer cursors. Isolation is strict in both directions: each scope sees
+  only its own partition (unlike DB rows, where tenants also see
+  NULL-owned platform rows — stream partitions carry raw observations, and
+  cross-visibility would put one customer's detections in another's
+  console).
+- **The live-CBOM version store is partitioned the same way** (`<CBOM_STORE_DIR>/tenants/<tenant-id>/`): two tenants using the same system id get two independent signed, hash-chained CBOM histories — no shared chains, no cross-tenant `/cbom/live|versions|diff|verify|stream` reads.
+- **Compliance retention reads the caller's partition.** The
+  `/compliance/retention` oldest-audit-record clock was computed over the
+  global bus; one tenant's processing history no longer drives another
+  tenant's WORM verdict.
+- **The monitor daemon publishes into the target's partition.** A
+  tenant-owned monitor's passes are that tenant's observations; unowned
+  targets keep the platform bus.
+- **The operator's `/ops/self-check` aggregates every partition** (platform
+  + each tenant directory on disk) for bus lag and stale-CBOM alerting —
+  the only cross-partition reader, operator-only, and it inventories
+  directories rather than the tenant table.
+- 5 new tenancy tests run the real stack (session cookies +
+  TenantScopeMiddleware, two tenants and an unscoped operator) covering
+  cross-tenant invisibility, same-system-id isolation, platform-partition
+  invisibility, per-partition retention and the on-disk layout;
+  `docs/architecture/event-stream.md` documents the partition contract.
+
 ### Fixed — BOM/cascade read models understated impact (P2)
 
 - **Technology BOM fingerprints now see dependency edges.**

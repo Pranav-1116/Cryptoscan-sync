@@ -95,6 +95,37 @@ round-10 commit. Docs updated: `docs/user-guide/cross-bom-cascade.md`
 (replay provenance, watch disappearance semantics, and a "read-model honesty
 guarantees" section).
 
+## Round 11 (2026-10-08, night) — /stream + live-CBOM partitioned
+
+The last open item of the P0-SaaS row ("the in-process eventstream bus
+behind `/stream/*` and the live-CBOM file store are still global stores")
+is closed in code:
+
+| Surface | What changed |
+|---|---|
+| Bus partitioning | `eventstream.partitions` + `get_bus_for_tenant()`: unscoped requests keep the base log dir (pre-tenancy paths, on-prem unchanged); tenant-scoped requests get `<base>/tenants/<tenant-id>/` with their own append-only logs and consumer cursors. Instances cached per resolved dir; `reset_bus()` clears every partition. |
+| Live-CBOM store partitioning | Same rule for the CBOM version store: `<CBOM_STORE_DIR>/tenants/<tenant-id>/`. Two tenants using the same system id get two independent signed chains (tested: same id, both chains valid, versions never cross-bump). |
+| Router | `/stream/ingest`, `/stream/events`, `/stream/stats`, `/attacks`, `/attacks/summary`, `/cbom/live|versions|diff|verify|stream` all resolve bus/service/projector per request scope (`db.tenancy.current_tenant()` set by the middleware). |
+| Compliance retention | `/compliance/retention` reads the caller's partition for the oldest audit record — one tenant's processing history is not another tenant's retention clock. |
+| Monitor daemon | `engine._publish_pass` publishes into the TARGET's partition (tenant-owned monitors write tenant observations); unowned targets keep the platform bus. |
+| Ops self-check | The one cross-partition reader: aggregates platform + every tenant partition on disk (bus lag per topic, stale CBOMs). Operator-only, read-only, inventories directories — never the tenant table. |
+| Isolation semantics | Strict both directions: each scope sees only its own partition (unlike DB rows, where tenants also see NULL-owned platform rows — stream partitions carry raw observations, and cross-visibility would put one customer's detections in another's console). Documented in `docs/architecture/event-stream.md`. |
+
+Tests: `services/api/tests/unit/test_stream_tenancy.py` (5) runs the real
+stack — session cookies, TenantScopeMiddleware, two tenants + an unscoped
+operator: cross-tenant invisibility of attacks/events/stats/CBOMs, same
+system id → two chains, platform partition invisible to tenants,
+retention per partition, and the physical on-disk layout. The existing
+stream suite (2) and worker suites (525) stay green; the monitor publish
+redirect is covered by the worker battery.
+
+Still open from the wider table: CI digest-pinned images / branch
+protection (workflow-scope token; content staged in
+`.github/workflows-pending/`), external evidence items, historical
+evidence at rest (target-environment decisions). The `/compliance/retention`
+endpoint also still lacks an auth dependency of its own (it reads settings
+only) — noted, not changed here.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

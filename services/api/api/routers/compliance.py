@@ -85,12 +85,16 @@ def retention_policy(db=Depends(get_db_session)):
     from db.repositories.settings_repository import SettingsRepository
 
     policy = SettingsRepository(db).get("compliance.retention", None) or DEFAULT_RETENTION
-    # live example: oldest audit-log record age -> WORM verdict
+    # live example: oldest audit-log record age -> WORM verdict. The audit
+    # trail is tenant-partitioned (2026-10): read the caller's partition,
+    # never the global store — one tenant's processing history is not
+    # another tenant's retention clock.
     oldest = None
     try:
-        from eventstream.bus import get_bus
+        from db.tenancy import current_tenant
+        from eventstream.bus import get_bus_for_tenant
 
-        envs = list(get_bus().replay("audit-log"))
+        envs = list(get_bus_for_tenant(current_tenant()).replay("audit-log"))
         if envs:
             oldest = min(float(e.get("ts_epoch", time.time())) for e in envs)
     except Exception as _handler_exc:

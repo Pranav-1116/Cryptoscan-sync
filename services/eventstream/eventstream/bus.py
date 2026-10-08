@@ -168,21 +168,68 @@ class StreamBus:
 
 
 _BUS: StreamBus | None = None
+_BUSES: dict[str, StreamBus] = {}
+
+
+def _base_log_dir() -> str:
+    log_dir = os.environ.get("STREAM_LOG_DIR")
+    if not log_dir:
+        from db.connection.session import SessionLocal  # noqa: F401 (env touch)
+
+        log_dir = str(Path(os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data")) / "eventstream")
+    return log_dir
+
+
+def get_bus_for_tenant(tenant_id: str | None = None) -> StreamBus:
+    """The bus partition for ``tenant_id``.
+
+    ``None`` (no scope — single-tenant install, platform operator) is the
+    base directory itself, exactly where the bus lived before tenancy.
+    A tenant gets ``<base>/tenants/<tenant-id>/`` — its own append-only
+    logs, its own consumer cursors, invisible to every other scope.
+    Instances are cached per resolved directory; ``reset_bus`` clears them
+    all (tests repoint STREAM_LOG_DIR between runs).
+    """
+    from eventstream.partitions import tenant_partition_dir
+
+    key = str(tenant_partition_dir(_base_log_dir(), tenant_id))
+    bus = _BUSES.get(key)
+    if bus is None:
+        bus = StreamBus(key)
+        _BUSES[key] = bus
+    return bus
+
+
+def iter_bus_partitions() -> list[StreamBus]:
+    """The platform bus plus every tenant partition that exists on disk —
+    the operator's aggregate view (self-monitoring). Read-only inventory:
+    a partition dir appearing here means someone wrote to it, nothing more."""
+    from eventstream.partitions import iter_tenant_partition_dirs
+
+    buses = [get_bus_for_tenant(None)]
+    for part in iter_tenant_partition_dirs(_base_log_dir()):
+        key = str(part)
+        bus = _BUSES.get(key)
+        if bus is None:
+            bus = StreamBus(key)
+            _BUSES[key] = bus
+        buses.append(bus)
+    return buses
 
 
 def get_bus() -> StreamBus:
-    """Process-wide bus singleton (log dir: STREAM_LOG_DIR or data/eventstream)."""
+    """Process-wide platform bus (log dir: STREAM_LOG_DIR or data/eventstream).
+
+    Unscoped access only — request paths must use
+    :func:`get_bus_for_tenant` with the caller's scope so partitions are
+    respected."""
     global _BUS
     if _BUS is None:
-        log_dir = os.environ.get("STREAM_LOG_DIR")
-        if not log_dir:
-            from db.connection.session import SessionLocal  # noqa: F401 (env touch)
-
-            log_dir = str(Path(os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data")) / "eventstream")
-        _BUS = StreamBus(log_dir)
+        _BUS = get_bus_for_tenant(None)
     return _BUS
 
 
 def reset_bus() -> None:
     global _BUS
     _BUS = None
+    _BUSES.clear()

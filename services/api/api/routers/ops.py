@@ -50,23 +50,34 @@ def self_alerts(request: Request, user: str = Depends(get_current_user),
     bus_lag: dict[str, int] = {}
     cbom_stale: list[str] = []
     try:
-        from eventstream.bus import get_bus
-
-        stats = get_bus().stats()
-        for topic, info in stats.get("topics", {}).items():
-            worst = max((g.get("lag", 0) for g in
-                         info.get("consumer_groups", {}).values()), default=0)
-            bus_lag[topic] = worst
+        # operator aggregate: platform partition + every tenant partition on
+        # disk (self-monitoring must see the whole deployment, never one
+        # scope). Tenants reading their own stream use their partition via
+        # the /stream endpoints; this is the only cross-partition reader,
+        # and it is operator-only.
+        from eventstream.bus import iter_bus_partitions
         from eventstream.livecbom import LiveCbomService
+        from eventstream.partitions import iter_tenant_partition_dirs
         import os
 
-        store = os.environ.get("CBOM_STORE_DIR") or os.path.join(
+        seen_topic_lag: dict[str, int] = {}
+        for bus in iter_bus_partitions():
+            stats = bus.stats()
+            for topic, info in stats.get("topics", {}).items():
+                worst = max((g.get("lag", 0) for g in
+                             info.get("consumer_groups", {}).values()), default=0)
+                seen_topic_lag[topic] = max(seen_topic_lag.get(topic, 0), worst)
+        bus_lag = seen_topic_lag
+
+        base_store = os.environ.get("CBOM_STORE_DIR") or os.path.join(
             os.environ.get("CRYPTOSCAN_SNAPSHOT_DIR", "data"), "live_cbom")
-        svc = LiveCbomService(store)
-        for system in svc.list_systems():
-            current = svc.current(system)
-            if current and current.get("freshness", {}).get("stale"):
-                cbom_stale.append(system)
+        stores = [base_store] + [str(p) for p in iter_tenant_partition_dirs(base_store)]
+        for store in stores:
+            svc = LiveCbomService(store)
+            for system in svc.list_systems():
+                current = svc.current(system)
+                if current and current.get("freshness", {}).get("stale"):
+                    cbom_stale.append(system)
     except Exception as _handler_exc:
         logger.warning(
             "exception_suppressed",
