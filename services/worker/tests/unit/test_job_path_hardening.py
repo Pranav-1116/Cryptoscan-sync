@@ -164,7 +164,7 @@ def test_republished_payload_keeps_the_jobs_tenant(test_db):
     tenant scope from the payload, and a payload without one re-ran the job
     unscoped — its results landed in the platform estate (tenant_id NULL),
     readable by every tenant."""
-    lost = _job(test_db, "QUEUED", timedelta(minutes=30), tenant_id="tenant-a")
+    _job(test_db, "QUEUED", timedelta(minutes=30), tenant_id="tenant-a")
     visible = _job(test_db, "QUEUED", timedelta(minutes=30))
     published: list[dict] = []
     stats = reap_stale_jobs(test_db, queued_ids={visible}, publish=published.append,

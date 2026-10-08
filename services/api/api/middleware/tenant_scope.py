@@ -148,12 +148,11 @@ class TenantScopeMiddleware:
         try:
             tenant_id = await self._resolve(Request(scoped))
         except TenantResolutionRefused as exc:
-            try:
-                from api.observability.operational_counters import incr
+            # counted for the same reason the HTTP half counts: a refused
+            # cross-tenant connection leaves no row behind
+            from api.observability.operational_counters import incr
 
-                incr("tenant_isolation_violation")
-            except Exception:  # pragma: no cover — observability best-effort
-                pass
+            incr("tenant_isolation_violation")
             # close-before-accept: the server answers the handshake with a
             # 403; the client sees a refusal, not a silent drop.
             await send({"type": "websocket.close", "code": 1008,

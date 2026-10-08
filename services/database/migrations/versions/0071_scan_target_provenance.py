@@ -13,6 +13,9 @@ Two fixes from docs/PRODUCTION-GAP-HANDOFF-2026-10-08.md:
    second tenant to capture version 1 collided at the database while the ORM
    guard had already scoped every read tenant-locally.
 
+Constraint changes run in batch mode: SQLite (the dev/test database and the
+migration-chain test) cannot ALTER constraints natively.
+
 Revision ID: 0071
 Revises: 0070
 """
@@ -37,36 +40,42 @@ def upgrade() -> None:
 
     # 2. per-tenant snapshot versions (index/constraint names as created by
     #    0051 / 0054 / 0055 / 0070 respectively)
-    op.drop_index("ix_cv_version", table_name="cbom_versions")
-    op.create_unique_constraint("uq_cbom_versions_tenant_version", "cbom_versions",
-                                ["tenant_id", "version"])
+    with op.batch_alter_table("cbom_versions") as batch:
+        batch.drop_index("ix_cv_version")
+        batch.create_unique_constraint("uq_cbom_versions_tenant_version",
+                                       ["tenant_id", "version"])
 
-    op.drop_index("ix_graph_snapshots_version", table_name="graph_snapshots")
-    op.create_unique_constraint("uq_graph_snapshots_tenant_version", "graph_snapshots",
-                                ["tenant_id", "version"])
+    with op.batch_alter_table("graph_snapshots") as batch:
+        batch.drop_index("ix_graph_snapshots_version")
+        batch.create_unique_constraint("uq_graph_snapshots_tenant_version",
+                                       ["tenant_id", "version"])
 
-    op.drop_index("ix_technology_bom_snapshots_version", table_name="technology_bom_snapshots")
-    op.create_unique_constraint("uq_technology_bom_snapshots_tenant_version",
-                                "technology_bom_snapshots", ["tenant_id", "version"])
+    with op.batch_alter_table("technology_bom_snapshots") as batch:
+        batch.drop_index("ix_technology_bom_snapshots_version")
+        batch.create_unique_constraint("uq_technology_bom_snapshots_tenant_version",
+                                       ["tenant_id", "version"])
 
-    op.drop_constraint("uq_twin_snapshot_version", "twin_snapshots", type_="unique")
-    op.create_unique_constraint("uq_twin_snapshots_tenant_version", "twin_snapshots",
-                                ["tenant_id", "version"])
+    with op.batch_alter_table("twin_snapshots") as batch:
+        batch.drop_constraint("uq_twin_snapshot_version", type_="unique")
+        batch.create_unique_constraint("uq_twin_snapshots_tenant_version",
+                                       ["tenant_id", "version"])
 
 
 def downgrade() -> None:
-    op.drop_constraint("uq_twin_snapshots_tenant_version", "twin_snapshots", type_="unique")
-    op.create_unique_constraint("uq_twin_snapshot_version", "twin_snapshots", ["version"])
+    with op.batch_alter_table("twin_snapshots") as batch:
+        batch.drop_constraint("uq_twin_snapshots_tenant_version", type_="unique")
+        batch.create_unique_constraint("uq_twin_snapshot_version", ["version"])
 
-    op.drop_constraint("uq_technology_bom_snapshots_tenant_version",
-                       "technology_bom_snapshots", type_="unique")
-    op.create_index("ix_technology_bom_snapshots_version", "technology_bom_snapshots",
-                    ["version"], unique=True)
+    with op.batch_alter_table("technology_bom_snapshots") as batch:
+        batch.drop_constraint("uq_technology_bom_snapshots_tenant_version", type_="unique")
+        batch.create_index("ix_technology_bom_snapshots_version", ["version"], unique=True)
 
-    op.drop_constraint("uq_graph_snapshots_tenant_version", "graph_snapshots", type_="unique")
-    op.create_index("ix_graph_snapshots_version", "graph_snapshots", ["version"], unique=True)
+    with op.batch_alter_table("graph_snapshots") as batch:
+        batch.drop_constraint("uq_graph_snapshots_tenant_version", type_="unique")
+        batch.create_index("ix_graph_snapshots_version", ["version"], unique=True)
 
-    op.drop_constraint("uq_cbom_versions_tenant_version", "cbom_versions", type_="unique")
-    op.create_index("ix_cv_version", "cbom_versions", ["version"], unique=True)
+    with op.batch_alter_table("cbom_versions") as batch:
+        batch.drop_constraint("uq_cbom_versions_tenant_version", type_="unique")
+        batch.create_index("ix_cv_version", ["version"], unique=True)
 
     op.drop_column("network_scan_targets", "source")

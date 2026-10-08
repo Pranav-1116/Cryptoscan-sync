@@ -210,11 +210,8 @@ class TestOtPassiveBoundary:
         assert r.status_code in (403, 409)
 
     def test_ot_estate_allows_active_sweep_inside_window(self, client, monkeypatch):
-        # a maintenance window covering *now* (24h duration) with the policy
-        # still in standard mode
-        import datetime as dt
-
-        now = dt.datetime.now(dt.timezone.utc)
+        # a maintenance window covering *now* (24h duration, every day) with
+        # the policy still in standard mode
         windows = [{"day": "*", "start": "00:00", "duration_minutes": 1440}]
         monkeypatch.setattr(admission, "_control_plane_state",
                             lambda: ([], {"mode": "standard",
@@ -223,8 +220,6 @@ class TestOtPassiveBoundary:
         monkeypatch.setattr(admission, "_ot_declared", lambda: True)
         monkeypatch.setattr(admission, "_authorized_network_scope",
                             lambda: ["10.0.0.0/16"])
-        import api.routers.network as net_router
-
         swept = []
 
         def _fake_sweep(cidr, ports, timeout=1.5):  # noqa: ARG001

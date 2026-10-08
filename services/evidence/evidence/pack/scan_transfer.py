@@ -116,12 +116,20 @@ def verify_transfer(payload: Mapping[str, Any]) -> dict[str, Any]:
         errors.append(f"unsupported transfer_format: {payload.get('transfer_format')!r}")
     if str(payload.get("transfer_version") or "") != TRANSFER_VERSION:
         errors.append(f"unsupported transfer_version: {payload.get('transfer_version')!r}")
-    scan = payload.get("scan") or {}
+    scan = payload.get("scan")
+    if not isinstance(scan, Mapping):
+        if scan is not None:
+            errors.append("scan must be an object")
+        scan = {}
     scan_id = str(scan.get("scan_id") or "")
     if not scan_id:
         errors.append("missing scan.scan_id")
 
-    digests = payload.get("digests") or {}
+    digests = payload.get("digests")
+    if not isinstance(digests, Mapping):
+        if digests is not None:
+            errors.append("digests must be an object")
+        digests = {}
     expected_payload = str(digests.get("payload_digest") or "")
     if expected_payload:
         actual = sha256_hex(_undigested(payload))

@@ -134,7 +134,9 @@ def test_discovery_executes_and_registers_engine_targets(client):
     assert body["status"] == "complete"
     # authorized scope is materialized into the universal engine's tables
     assert body["registered"]["cloud_accounts"] >= 1
-    assert body["registered"]["network_targets"] >= 1
+    # the declared CIDR (10.10.0.0/16) is authorization scope and must NOT
+    # be materialized as a TLS probe target; only concrete hosts are
+    assert body["registered"].get("network_scope_ranges", 0) >= 1
     assert body["assets_estimate"] > 0
     # run is persisted and retrievable
     run = client.get(f"/api/v1/onboarding/discovery/{body['run_id']}", headers=h).json()
@@ -150,7 +152,11 @@ def test_discovery_executes_and_registers_engine_targets(client):
     s = SessionLocal()
     try:
         assert any(a.account_identifier for a in CloudAccountRepository(s).list_accounts())
-        assert any(t.endpoint == "10.10.0.0/16" for t in NetworkScanTargetRepository(s).list_targets())
+        # the CIDR never enters the due-scan rotation (ranges are scope, not
+        # targets); a /16 sitting here as an enabled TLS target is the
+        # active-sweep-without-authorization bug, not a success
+        assert not any(t.endpoint == "10.10.0.0/16"
+                       for t in NetworkScanTargetRepository(s).list_targets())
     finally:
         s.close()
 

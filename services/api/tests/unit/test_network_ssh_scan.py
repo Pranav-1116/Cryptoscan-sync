@@ -86,8 +86,12 @@ async def test_ssh_scan_requires_hosts():
 
 @pytest.mark.asyncio
 async def test_ssh_scan_includes_kex_offer(monkeypatch):
+    import api.security.scan_admission as admission
     import network_scanner.probing.ssh_kex as kex_module
     import network_scanner.probing.ssh_keyscan as ssh_module
+
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
 
     def fake_keyscan(host, port, *, timeout=8.0, baseline=None):
         return _fake_finding(f"{host}:{port}")

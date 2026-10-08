@@ -251,12 +251,9 @@ def admit_scan(
         # Logging-and-continuing here is precisely how an emergency stop turns
         # advisory during an outage.
         logger.exception("scan_admission_undecidable")
-        try:
-            from api.observability.operational_counters import incr
+        from api.observability.operational_counters import incr
 
-            incr("scan_admission_unavailable")
-        except Exception:  # pragma: no cover — observability must never mask the refusal
-            pass
+        incr("scan_admission_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Scan admission is unavailable; no scan was accepted",

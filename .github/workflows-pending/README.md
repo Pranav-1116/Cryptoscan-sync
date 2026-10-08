@@ -49,7 +49,20 @@ passes. It died with `Invalid argument(s) ... sent to create_engine()`
 before reaching the schema. Both forms were run against this repository:
 `:memory:` fails, a file-backed URL prints `ok`.
 
-**`scanner-tests.yml` — restored verbatim.**
+**`scanner-tests.yml` — rewritten (2026-10-08, round 9).** The verbatim
+restore ran `services/scanner` only and installed a minimal dependency set.
+This version runs all five scanner-heavy services (`scanner`,
+`network_scanner`, `cloud_scanner`, `container_scanner`, `universal_vendor`)
+as a matrix on the full `requirements.txt` + PYTHONPATH bootstrap, offline
+env pinned, with path filtering and concurrency cancellation. It exists
+here for the same credential reason as everything else in this directory.
+
+**`ci.yml` — copy with one addition (2026-10-08, round 9).** The tracked
+`.github/workflows/ci.yml` typechecks and builds the frontend but does not
+run its tests. This copy adds `npx vitest run` to the frontend job (the
+"no fabricated data" smoke contract and the per-page suites belong in the
+gate). When a workflow-scope token installs the pending files, apply this
+copy over `.github/workflows/ci.yml` too.
 
 ## What this does not unlock on its own
 

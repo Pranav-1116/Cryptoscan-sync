@@ -260,3 +260,41 @@ async def test_report_json_html_and_pdf(app_client):
 async def test_report_pdf_missing_scan_404(app_client):
     response = await app_client.get("/api/v1/scans/nope/report.pdf")
     assert response.status_code == 404
+
+
+# ---------------------------------------------- malformed transfer payloads ---- #
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        pytest.param(lambda p: p.update({"scan": ["not", "an", "object"]}),
+                     id="scan-is-a-list"),
+        pytest.param(lambda p: p.update({"digests": "not-an-object"}),
+                     id="digests-is-a-string"),
+        pytest.param(lambda p: p.update({"records": "not-a-list"}),
+                     id="records-is-a-string"),
+        pytest.param(lambda p: p.update({"records": [{"content_hash": "x"},
+                                                    "bare-string-row"]}),
+                     id="record-row-is-a-string"),
+        pytest.param(lambda p: p.update({"transfer_version": "0.9"}),
+                     id="unsupported-version"),
+        pytest.param(lambda p: p.update({"transfer_format": "evil"}),
+                     id="wrong-format"),
+        pytest.param(lambda p: p.pop("scan"),
+                     id="scan-missing-entirely"),
+        pytest.param(lambda p: p.pop("digests"),
+                     id="digests-missing-entirely"),
+        pytest.param(lambda p: p["digests"].update({"record_count": "many"}),
+                     id="record_count-not-a-number"),
+    ],
+)
+async def test_import_malformed_payloads_are_controlled_4xx(app_client, mutate):
+    """Adversarial input gets a 400 with the verifier's reasons — never an
+    unhandled 500 (the import boundary faces files from another instance)."""
+    payload = (await app_client.get("/api/v1/scans/scan-1/transfer")).json()
+    mutate(payload)
+    response = await app_client.post("/api/v1/scans/import", json=payload)
+    assert response.status_code == 400
+    body = response.json()
+    assert body["detail"]["errors"]
