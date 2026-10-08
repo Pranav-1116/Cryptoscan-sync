@@ -5,6 +5,12 @@ from db.models.baseline import Baseline
 from db.models.binary_scan import BinaryScanObservation, BinaryScanRecord
 from db.models.business_owner import BusinessOwner
 from db.models.business_process import BusinessProcess
+from db.models.cascade_extensions import (
+    CascadeWatch,
+    CryptoHardwareLink,
+    TwinSnapshot,
+    VendorDependency,
+)
 from db.models.cascade_run import CascadeRun
 from db.models.certificate import Certificate
 from db.models.cloud_account import CloudAccount
@@ -55,6 +61,10 @@ __all__ = [
     "BusinessOwner",
     "BusinessProcess",
     "CascadeRun",
+    "CascadeWatch",
+    "CryptoHardwareLink",
+    "TwinSnapshot",
+    "VendorDependency",
     "Certificate",
     "CertificateUsage",
     "CloudAccount",

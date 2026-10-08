@@ -135,9 +135,9 @@ def test_system_cascade_walks_graph_both_directions():
     assert result["target"]["kind"] == "system"
     assert result["verdict"] == "AFFECTED"
     # web-frontend calls payment-api; payment-api calls customer-db
-    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-web"]}
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile", "sys-web"]}
     assert result["layers"]["system"]["downstream_by_depth"] == {"1": ["sys-db"]}
-    assert result["impact"]["affected_system_count"] == 3
+    assert result["impact"]["affected_system_count"] == 4
     assert result["layers"]["code"]["algorithms"] == ["RSA-2048"]
     assert result["layers"]["vendor"]["vendors"] == ["Thales"]
 
@@ -149,8 +149,10 @@ def test_vendor_cascade_spans_systems_and_hardware():
     assert result["layers"]["hardware"]["devices"] == ["hsm-001"]
     assert result["layers"]["vendor"]["criticality"] == "HIGH"
     # the vendor's system keeps its dependents: web-frontend calls payment-api
-    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-web"]}
-    assert "vendor-of-vendor" in " ".join(result["honest_unknowns"])
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile", "sys-web"]}
+    # sub-tier edges are declared in this fixture — no unknown, real data
+    # (the no-declaration branch is covered below in round-4 tests)
+    assert result["layers"]["vendor"]["sub_tier_vendors_by_depth"] == {"1": ["v-chip"]}
 
 
 def test_device_cascade_is_inventory_honest():
@@ -159,9 +161,10 @@ def test_device_cascade_is_inventory_honest():
     hardware = result["layers"]["hardware"]
     assert hardware["devices"] == ["hsm-001"]
     assert hardware["pqc_capability"] == "READY"
-    # a device with no modelled crypto linkage cannot name dependents — say so
-    assert hardware["inventory_only"] is True
-    assert any("dependents" in u for u in result["honest_unknowns"])
+    # this fixture DECLARES a crypto link for hsm-001, so the cascade names
+    # dependents; the no-link branch (inventory-only + honest unknown) is
+    # covered in the round-4 tests below
+    assert hardware["inventory_only"] is False
 
 
 def test_device_cascade_by_manufacturer():
@@ -358,8 +361,8 @@ def test_process_cascade_by_name():
     assert result["layers"]["code"]["algorithms"] == ["RSA-2048"]
     assert result["layers"]["vendor"]["vendors"] == ["Thales"]
     # whoever depends on the supporting system stops too
-    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-web"]}
-    assert result["impact"]["affected_system_count"] == 2
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile", "sys-web"]}
+    assert result["impact"]["affected_system_count"] == 3
 
 
 def test_process_cascade_by_id():
@@ -391,3 +394,96 @@ def test_unknown_process_kind_still_rejected():
 
     with _pytest.raises(ValueError):
         run("x", kind="nonsense")
+
+
+# ---------------------------------------- round-4: full propagation + links
+
+# assets carry real SystemAsset linkage now; device has a declared crypto
+# link; the vendor has a declared sub-tier vendor
+SNAPSHOT["assets"][0]["system_ids"] = ["sys-pay"]     # hsm-01
+SNAPSHOT["assets"][1]["system_ids"] = ["sys-db"]      # pay-02
+SNAPSHOT["crypto_hardware"] = {"hsm-001": ["hsm-01"]}
+# a caller with no RSA of its own: it breaks only because payment-api does
+SNAPSHOT["systems"].append({"id": "sys-mobile", "name": "mobile-app",
+                            "criticality": "TIER-2", "vendor_ids": []})
+SNAPSHOT["dependencies"].append({"source": "sys-mobile", "target": "sys-pay",
+                                  "type": "CALLS"})
+SNAPSHOT["vendor_dependencies"] = [{"parent": "v-thales", "child": "v-chip",
+                                     "relation": "supplies"}]
+SNAPSHOT["vendors"].append({"id": "v-chip", "name": "ChipWorks",
+                            "criticality": "MEDIUM", "vendor_type": "chip"})
+
+
+def test_algorithm_cascade_walks_dependents_of_affected_systems():
+    result = run("RSA-2048")
+    # affected systems come from evidence AND asset links; sys-web carries RSA
+    # itself so it is an affected system, not a dependent — mobile-app is the
+    # caller that breaks purely by dependency
+    assert set(result["layers"]["code"]["systems"]) == {"sys-pay", "sys-web"}
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile"]}
+    assert "sys-mobile" in result["impact"]["affected_systems"]
+
+
+def test_library_cascade_names_systems_and_dependents():
+    result = run("liboqs")
+    assert result["layers"]["code"]["systems"] == ["sys-db"]
+    assert result["layers"]["system"]["systems"] == ["sys-db"]
+    # whoever depends on the system running the library stops too —
+    # transitively: payment-api calls sys-db, web-frontend calls payment-api
+    assert result["layers"]["system"]["dependents_by_depth"] == {
+        "1": ["sys-pay"], "2": ["sys-mobile", "sys-web"]}
+    # sys-db (the system running liboqs) has no declared business process —
+    # an empty process layer is the honest answer for it
+    assert result["layers"]["process"]["processes"] == []
+
+
+def test_certificate_cascade_walks_graph_from_owning_systems():
+    result = run("ab" * 32)
+    assert result["layers"]["system"]["systems"] == ["sys-pay"]
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile", "sys-web"]}
+    assert result["layers"]["system"]["downstream_by_depth"] == {"1": ["sys-db"]}
+
+
+def test_endpoint_cascade_walks_graph_from_owner():
+    result = run("api.bank:443")
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile", "sys-web"]}
+
+
+def test_device_cascade_with_declared_link_names_dependents():
+    result = run("hsm-001")
+    # hsm-001 serves hsm-01, which runs on sys-pay; sys-web calls sys-pay
+    assert result["layers"]["code"]["assets"] == ["hsm-01"]
+    assert result["layers"]["code"]["systems"] == ["sys-pay"]
+    assert result["layers"]["system"]["systems"] == ["sys-pay"]
+    assert result["layers"]["system"]["dependents_by_depth"] == {"1": ["sys-mobile", "sys-web"]}
+    assert result["layers"]["hardware"]["inventory_only"] is False
+    assert not any("declare one" in u for u in result["honest_unknowns"])
+
+
+def test_device_cascade_without_link_stays_honest():
+    snapshot = dict(SNAPSHOT)
+    snapshot["crypto_hardware"] = {}
+    result = unified_cascade(snapshot, target="hsm-001", now=NOW)
+    assert result["layers"]["hardware"]["inventory_only"] is True
+    assert any("declare one" in u for u in result["honest_unknowns"])
+
+
+def test_vendor_cascade_walks_sub_tier_vendors():
+    result = run("Thales")
+    assert result["layers"]["vendor"]["sub_tier_vendors_by_depth"] == {
+        "1": ["v-chip"]}
+    assert not any("vendor-of-vendor" in u for u in result["honest_unknowns"])
+
+
+def test_vendor_cascade_without_sub_tier_stays_honest():
+    snapshot = dict(SNAPSHOT)
+    snapshot["vendor_dependencies"] = []
+    result = unified_cascade(snapshot, target="Thales", now=NOW)
+    assert result["layers"]["vendor"]["sub_tier_vendors_by_depth"] == {}
+    assert any("vendor-of-vendor" in u for u in result["honest_unknowns"])
+
+
+def test_vendor_cascade_walks_downstream_too():
+    result = run("Thales")
+    # payment-api calls customer-db — the vendor's systems' downstream matters
+    assert result["layers"]["system"]["downstream_by_depth"] == {"1": ["sys-db"]}

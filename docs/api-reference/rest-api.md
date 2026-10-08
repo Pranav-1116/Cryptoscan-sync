@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-07:
-**709 paths, 783 operations** across 89 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-08:
+**722 paths, 798 operations** across 89 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -486,6 +486,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/digital-twin/reconciliation` | Digital Twin Reconciliation |
 | `GET` | `/api/v1/digital-twin/scenarios` | Digital Twin Scenarios |
 | `POST` | `/api/v1/digital-twin/simulate` | Digital Twin Simulate |
+| `POST` | `/api/v1/digital-twin/snapshot` | Digital Twin Snapshot |
+| `GET` | `/api/v1/digital-twin/snapshots` | Digital Twin Snapshots |
+| `GET` | `/api/v1/digital-twin/snapshots/{version}` | Digital Twin Snapshot Get |
 | `GET` | `/api/v1/digital-twin/timeline/{asset_id}` | Digital Twin Timeline |
 
 ## drift
@@ -599,8 +602,13 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/graph/drift` | Get Graph Drift |
 | `GET` | `/api/v1/graph/edges` | List Dependency Edges |
 | `POST` | `/api/v1/graph/edges` | Register Dependency Edge |
+| `POST` | `/api/v1/graph/edges/adopt` | Adopt Edges |
+| `GET` | `/api/v1/graph/edges/discovered` | Discovered Edges |
 | `DELETE` | `/api/v1/graph/edges/{parent_id}/{child_id}` | Delete Dependency Edge |
 | `GET` | `/api/v1/graph/explain` | Graph Explain |
+| `GET` | `/api/v1/graph/hardware-links` | List Hardware Links |
+| `POST` | `/api/v1/graph/hardware-links` | Declare Hardware Link |
+| `DELETE` | `/api/v1/graph/hardware-links/{asset_id}/{hardware_asset_id}` | Delete Hardware Link |
 | `GET` | `/api/v1/graph/health` | Get Graph Health |
 | `GET` | `/api/v1/graph/hotspots` | Graph Hotspots |
 | `GET` | `/api/v1/graph/impact` | Business Impact |
@@ -614,6 +622,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/graph/timeline` | Graph Timeline |
 | `GET` | `/api/v1/graph/vendor-chain` | Vendor Chain |
 | `GET` | `/api/v1/graph/vendor-chains` | Vendor Chains |
+| `GET` | `/api/v1/graph/vendor-edges` | List Vendor Edges |
+| `POST` | `/api/v1/graph/vendor-edges` | Declare Vendor Edge |
+| `DELETE` | `/api/v1/graph/vendor-edges/{parent_vendor_id}/{child_vendor_id}` | Delete Vendor Edge |
 | `GET` | `/api/v1/graph/vendor-path` | Vendor Path |
 | `GET` | `/api/v1/priorities` | Priorities |
 
@@ -1160,6 +1171,10 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/technology-bom/cascade/runs` | Technology Bom Cascade Runs |
 | `GET` | `/api/v1/technology-bom/cascade/runs/{run_id}` | Technology Bom Cascade Run |
 | `GET` | `/api/v1/technology-bom/cascade/runs/{run_id}/diff` | Technology Bom Cascade Run Diff |
+| `POST` | `/api/v1/technology-bom/cascade/watch` | Cascade Watch Create |
+| `DELETE` | `/api/v1/technology-bom/cascade/watch/{watch_id}` | Cascade Watch Delete |
+| `GET` | `/api/v1/technology-bom/cascade/watches` | Cascade Watches List |
+| `POST` | `/api/v1/technology-bom/cascade/watches/run-due` | Cascade Watches Run Due |
 | `GET` | `/api/v1/technology-bom/compare` | Technology Bom Compare |
 | `GET` | `/api/v1/technology-bom/evidence-package` | Evidence Package |
 | `GET` | `/api/v1/technology-bom/export` | Technology Bom Export |

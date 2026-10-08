@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -38,6 +38,7 @@ from db.models.network_scan_target import NetworkScanTarget
 from db.models.system import System
 from db.models.system_asset import SystemAsset
 from db.models.business_process import BusinessProcess
+from db.models.cascade_extensions import CryptoHardwareLink, VendorDependency
 from db.models.certificate_usage import CertificateUsage
 from db.models.system_business_process import SystemBusinessProcess
 from db.models.system_dependency import SystemDependency
@@ -100,11 +101,20 @@ def _snapshot(db: Session) -> dict:
         ).all():
             event_counts[asset_id] = int(count)
 
+    # asset → systems (real SystemAsset links): without this, a library or
+    # algorithm cascade can name assets but never the systems running them
+    asset_systems: dict[str, list[str]] = {}
+    for link in db.query(SystemAsset).limit(SNAPSHOT_CAPS["systems"]).all():
+        ids = asset_systems.setdefault(link.asset_id, [])
+        if link.system_id not in ids:
+            ids.append(link.system_id)
+
     assets = []
     for state in states:
         last_at = last_events.get(state.asset_id) or state.last_seen
         assets.append({
             "asset_id": state.asset_id,
+            "system_ids": asset_systems.get(state.asset_id, []),
             "cbom_version": state.cbom_version,
             "algorithms": state.algorithms or {},
             "quantum_status": state.quantum_status or {},
@@ -339,6 +349,24 @@ def _snapshot(db: Session) -> dict:
     except Exception:  # catalog unavailable — the cascade says so, not guesses
         library_catalog = {}
 
+    # Declared crypto↔hardware linkage (operator-declared, never inferred):
+    # with this, a device cascade can name the crypto assets and systems a
+    # device serves; without it, the honest unknown stands.
+    crypto_hardware: dict[str, list[str]] = {}
+    for link in db.query(CryptoHardwareLink).limit(
+            SNAPSHOT_CAPS["hardware"]).all():
+        ids = crypto_hardware.setdefault(link.hardware_asset_id, [])
+        if link.asset_id not in ids:
+            ids.append(link.asset_id)
+
+    # Vendor-of-vendor (sub-tier) edges — declared supply-chain exposure.
+    vendor_dependencies = [
+        {"parent": vd.parent_vendor_id, "child": vd.child_vendor_id,
+         "relation": vd.relation}
+        for vd in db.query(VendorDependency).limit(
+            SNAPSHOT_CAPS["vendors"]).all()
+    ]
+
     return {
         "assets": assets,
         "systems": systems,
@@ -363,6 +391,8 @@ def _snapshot(db: Session) -> dict:
         "business_processes": business_processes,
         "vendor_crypto": vendor_crypto,
         "library_catalog": library_catalog,
+        "crypto_hardware": crypto_hardware,
+        "vendor_dependencies": vendor_dependencies,
     }
 
 
@@ -496,3 +526,93 @@ def digital_twin_timeline(asset_id: str,
         ],
         "truncated_to": TIMELINE_LIMIT,
     }
+
+
+# --------------------------------------------------------------------------
+# Versioned twin snapshots — point-in-time cascade replay
+# --------------------------------------------------------------------------
+
+@router.post("/digital-twin/snapshot")
+def digital_twin_snapshot(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Capture an immutable, content-addressed version of the twin estate.
+
+    The live twin answers "what breaks NOW"; a captured snapshot answers
+    "what DID break at v5 / last audit" — the cascade API can run over any
+    captured version. Same discipline as BOM snapshots: unchanged
+    fingerprint → same version, no duplicates.
+    """
+    import hashlib
+    import json as _json
+
+    from db.models.cascade_extensions import TwinSnapshot
+
+    state = _snapshot(db)
+    # canonical fingerprint over the estate sections (as_of-free: the state
+    # dict is rows, not timestamps, so identical estates hash identically)
+    canonical = _json.dumps(state, sort_keys=True, default=str)
+    fingerprint = hashlib.sha256(canonical.encode()).hexdigest()
+
+    prev = db.query(TwinSnapshot).order_by(
+        TwinSnapshot.version.desc()).first()
+    if prev is not None and prev.fingerprint == fingerprint:
+        return {"recorded": False, "version": prev.version,
+                "fingerprint": fingerprint,
+                "note": "unchanged estate — no new snapshot recorded"}
+
+    version = (prev.version + 1) if prev else 1
+    row = TwinSnapshot(version=version, fingerprint=fingerprint,
+                       parent_fingerprint=prev.fingerprint if prev else None,
+                       state=state, created_by=user)
+    db.add(row)
+    db.commit()
+    from api.events.platform_events import emit_platform_event
+
+    emit_platform_event(
+        "digital_twin.snapshot",
+        f"Digital-twin snapshot recorded (v{version})",
+        {"version": version, "fingerprint": fingerprint},
+        target_name="digital-twin",
+    )
+    return {"recorded": True, "version": version, "fingerprint": fingerprint,
+            "parent_fingerprint": row.parent_fingerprint,
+            "created_by": user}
+
+
+@router.get("/digital-twin/snapshots")
+def digital_twin_snapshots(
+    limit: int = Query(50, ge=1, le=200),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.models.cascade_extensions import TwinSnapshot
+
+    rows = db.query(TwinSnapshot).order_by(
+        TwinSnapshot.version.desc()).limit(limit).all()
+    return {"snapshots": [{
+        "version": r.version, "fingerprint": r.fingerprint,
+        "parent_fingerprint": r.parent_fingerprint,
+        "created_by": r.created_by,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in rows], "count": len(rows)}
+
+
+@router.get("/digital-twin/snapshots/{version}")
+def digital_twin_snapshot_get(
+    version: int,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.models.cascade_extensions import TwinSnapshot
+
+    row = db.query(TwinSnapshot).filter(
+        TwinSnapshot.version == version).first()
+    if row is None:
+        raise HTTPException(status_code=404,
+                            detail=f"twin snapshot not found: v{version}")
+    return {"version": row.version, "fingerprint": row.fingerprint,
+            "created_by": row.created_by,
+            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "state": row.state}

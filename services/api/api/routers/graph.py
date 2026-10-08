@@ -837,6 +837,10 @@ class EdgeRequest(BaseModel):
     child_id: str | None = None
     child_name: str | None = None
     relation: str = "CALLS"
+    # provenance: manual (default), discovered (adopted from a scanner or
+    # graph snapshot) or imported. Confidence 0..1 is optional.
+    source: str = "manual"
+    confidence: float | None = None
 
 
 def _resolve_system(db: Session, system_id: str | None,
@@ -864,6 +868,11 @@ def _edge_payload(db: Session, edge) -> dict[str, Any]:
         "parent_name": names.get(edge.parent_id),
         "child_name": names.get(edge.child_id),
         "relation": edge.relation or "CALLS",
+        "source": getattr(edge, "source", None) or "manual",
+        "created_by": getattr(edge, "created_by", None),
+        "confidence": getattr(edge, "confidence", None),
+        "last_verified": (edge.last_verified.isoformat()
+                          if getattr(edge, "last_verified", None) else None),
     }
 
 
@@ -912,17 +921,26 @@ def register_dependency_edge(
             detail=f"edge already exists: {parent.id} -> {child.id} "
                    f"({existing.relation or 'CALLS'})")
 
+    source = body.source if body.source in {"manual", "discovered", "imported"} else "manual"
     edge = SystemRepository(db).add_dependency(
         parent.id, child.id, body.relation)
+    edge.source = source
+    edge.created_by = user
+    if body.confidence is not None:
+        edge.confidence = float(body.confidence)
+    if source == "manual":
+        from datetime import datetime, timezone
+
+        edge.last_verified = datetime.now(timezone.utc)
     db.commit()
     from api.events.platform_events import emit_platform_event
 
     emit_platform_event(
         "graph.updated",
         f"Dependency edge registered: {parent.name} -> {child.name} "
-        f"({body.relation})",
+        f"({body.relation}, {source})",
         {"parent_id": parent.id, "child_id": child.id,
-         "relation": body.relation},
+         "relation": body.relation, "source": source},
         target_name="graph",
     )
     return {"registered": True, "edge": _edge_payload(db, edge)}
@@ -956,3 +974,292 @@ def delete_dependency_edge(
         target_name="graph",
     )
     return {"deleted": True, "parent_id": parent_id, "child_id": child_id}
+
+
+# --------------------------------------------------------------------------
+# Declared linkage: crypto↔hardware, vendor-of-vendor
+# --------------------------------------------------------------------------
+
+@router.get("/graph/hardware-links")
+def list_hardware_links(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Declared crypto-asset ↔ hardware-device links (operator-declared)."""
+    from db.models.cascade_extensions import CryptoHardwareLink
+
+    rows = db.query(CryptoHardwareLink).limit(5000).all()
+    return {"links": [{
+        "asset_id": r.asset_id, "hardware_asset_id": r.hardware_asset_id,
+        "declared_by": r.declared_by, "note": r.note,
+    } for r in rows], "count": len(rows)}
+
+
+@router.post("/graph/hardware-links")
+def declare_hardware_link(
+    body: dict,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Declare which hardware device serves which crypto asset.
+
+    The platform never infers this (a wrong guess here is a security claim);
+    once someone who knows declares it, device cascades name dependents.
+    """
+    from db.models.cascade_extensions import CryptoHardwareLink
+    from db.models.crypto_asset import CryptoAsset
+    from db.models.hardware_live import HardwareAsset
+
+    asset_id = str(body.get("asset_id") or "").strip()
+    hardware_asset_id = str(body.get("hardware_asset_id") or "").strip()
+    if not asset_id or not hardware_asset_id:
+        raise HTTPException(status_code=400,
+                            detail="asset_id and hardware_asset_id are required")
+    if db.query(CryptoAsset).filter(CryptoAsset.id == asset_id).first() is None:
+        raise HTTPException(status_code=404, detail=f"crypto asset not found: {asset_id}")
+    if db.query(HardwareAsset).filter(
+            HardwareAsset.asset_id == hardware_asset_id).first() is None:
+        raise HTTPException(status_code=404,
+                            detail=f"hardware asset not found: {hardware_asset_id}")
+    existing = db.query(CryptoHardwareLink).filter(
+        CryptoHardwareLink.asset_id == asset_id,
+        CryptoHardwareLink.hardware_asset_id == hardware_asset_id).first()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="link already declared")
+
+    link = CryptoHardwareLink(asset_id=asset_id,
+                              hardware_asset_id=hardware_asset_id,
+                              declared_by=user, note=body.get("note"))
+    db.add(link)
+    db.commit()
+    return {"declared": True, "asset_id": asset_id,
+            "hardware_asset_id": hardware_asset_id}
+
+
+@router.delete("/graph/hardware-links/{asset_id}/{hardware_asset_id}")
+def delete_hardware_link(
+    asset_id: str,
+    hardware_asset_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.models.cascade_extensions import CryptoHardwareLink
+
+    link = db.query(CryptoHardwareLink).filter(
+        CryptoHardwareLink.asset_id == asset_id,
+        CryptoHardwareLink.hardware_asset_id == hardware_asset_id).first()
+    if link is None:
+        raise HTTPException(status_code=404, detail="link not found")
+    db.delete(link)
+    db.commit()
+    return {"deleted": True}
+
+
+@router.get("/graph/vendor-edges")
+def list_vendor_edges(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Declared vendor-of-vendor (sub-tier supply chain) edges."""
+    from db.models.cascade_extensions import VendorDependency
+
+    rows = db.query(VendorDependency).limit(5000).all()
+    from db.models.vendor import Vendor as _V
+
+    vendor_names = {v.id: v.name for v in db.query(_V).all()}
+    return {"edges": [{
+        "parent_vendor_id": r.parent_vendor_id,
+        "child_vendor_id": r.child_vendor_id,
+        "parent_vendor": vendor_names.get(r.parent_vendor_id),
+        "child_vendor": vendor_names.get(r.child_vendor_id),
+        "relation": r.relation, "declared_by": r.declared_by,
+    } for r in rows], "count": len(rows)}
+
+
+@router.post("/graph/vendor-edges")
+def declare_vendor_edge(
+    body: dict,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Declare a sub-tier vendor relationship (vendor-of-vendor)."""
+    from db.models.cascade_extensions import VendorDependency
+    from db.models.vendor import Vendor
+
+    parent = body.get("parent_vendor_id") or body.get("parent_vendor_name")
+    child = body.get("child_vendor_id") or body.get("child_vendor_name")
+    if not parent or not child:
+        raise HTTPException(status_code=400,
+                            detail="parent and child vendor (id or name) are required")
+
+    def _vendor(ref) -> Vendor:
+        row = (db.query(Vendor).filter(Vendor.id == str(ref)).first()
+               or db.query(Vendor).filter(Vendor.name == str(ref)).first())
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"vendor not found: {ref}")
+        return row
+
+    parent_row, child_row = _vendor(parent), _vendor(child)
+    if parent_row.id == child_row.id:
+        raise HTTPException(status_code=400, detail="self-edges are not allowed")
+    existing = db.query(VendorDependency).filter(
+        VendorDependency.parent_vendor_id == parent_row.id,
+        VendorDependency.child_vendor_id == child_row.id).first()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="vendor edge already declared")
+
+    db.add(VendorDependency(parent_vendor_id=parent_row.id,
+                            child_vendor_id=child_row.id,
+                            relation=body.get("relation"),
+                            declared_by=user))
+    db.commit()
+    return {"declared": True, "parent_vendor_id": parent_row.id,
+            "child_vendor_id": child_row.id}
+
+
+@router.delete("/graph/vendor-edges/{parent_vendor_id}/{child_vendor_id}")
+def delete_vendor_edge(
+    parent_vendor_id: str,
+    child_vendor_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.models.cascade_extensions import VendorDependency
+
+    edge = db.query(VendorDependency).filter(
+        VendorDependency.parent_vendor_id == parent_vendor_id,
+        VendorDependency.child_vendor_id == child_vendor_id).first()
+    if edge is None:
+        raise HTTPException(status_code=404, detail="vendor edge not found")
+    db.delete(edge)
+    db.commit()
+    return {"deleted": True}
+
+
+# --------------------------------------------------------------------------
+# Discovered-edge adoption: scanner cascade + graph snapshots → SystemDependency
+# --------------------------------------------------------------------------
+
+@router.get("/graph/edges/discovered")
+def discovered_edges(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Candidate dependency edges the scanners already observed.
+
+    Two honest sources: the scanner cascade's ``depends_on_systems`` (from
+    cryptoscan-systems.yml declarations plus observed code imports) and the
+    latest graph snapshot's edges. Proposals only — nothing is registered
+    until an operator adopts them (POST /graph/edges/adopt), because a
+    dependency edge is a claim about production.
+    """
+    from db.models.graph_snapshot import GraphSnapshot
+    from db.models.scan import Scan
+    from db.models.system_dependency import SystemDependency
+
+    repo = SystemRepository(db)
+
+    def _system_id(ref: str):
+        row = (db.query(System).filter(System.id == str(ref)).first()
+               or repo.get_by_name(str(ref)))
+        return row.id if row else None
+
+    existing = {(d.parent_id, d.child_id)
+                for d in db.query(SystemDependency).all()}
+    proposals: list[dict[str, Any]] = []
+    unresolved: list[str] = []
+    seen: set[tuple[str, str]] = set()
+
+    def _propose(parent_ref: str, child_ref: str, source: str, note: str,
+                 confidence: float):
+        parent_id, child_id = _system_id(parent_ref), _system_id(child_ref)
+        if parent_id is None:
+            unresolved.append(str(parent_ref))
+            return
+        if child_id is None:
+            unresolved.append(str(child_ref))
+            return
+        key = (parent_id, child_id)
+        if key in seen or key in existing or parent_id == child_id:
+            return
+        seen.add(key)
+        proposals.append({
+            "parent_id": parent_id, "child_id": child_id,
+            "source": source, "note": note, "confidence": confidence,
+        })
+
+    # scanner cascade: this system imports crypto providers from those systems
+    scans = db.query(Scan).order_by(Scan.created_at.desc()).limit(200).all()
+    for scan in scans:
+        cascade = (scan.statistics or {}).get("cascade") or {}
+        for entry in cascade.get("systems") or []:
+            for dep in entry.get("depends_on_systems") or []:
+                _propose(entry.get("system"), dep, "discovered",
+                         f"scanner cascade (scan {scan.id}, declared system map + imports)",
+                         0.8)
+
+    # latest graph snapshot edges (captured graph versions)
+    snap = db.query(GraphSnapshot).order_by(
+        GraphSnapshot.version.desc()).first()
+    if snap and snap.edges:
+        for edge in snap.edges:
+            _propose(edge.get("from"), edge.get("to"), "discovered",
+                     f"graph snapshot v{snap.version}", 0.7)
+
+    return {"proposals": proposals, "count": len(proposals),
+            "unresolved_names": sorted(set(unresolved)),
+            "note": "proposals only — adopt explicitly; a dependency edge is a claim about production"}
+
+
+@router.post("/graph/edges/adopt")
+def adopt_edges(
+    body: dict,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Adopt selected discovered edges into SystemDependency (the approval
+    step of the discovery flow). Each adopted edge carries source=discovered
+    and the adopting operator's name."""
+    from db.models.system_dependency import SystemDependency
+
+    wanted = body.get("edges") or []
+    if not isinstance(wanted, list) or not wanted:
+        raise HTTPException(status_code=400, detail="edges[] is required")
+    adopted, skipped = [], []
+    for item in wanted:
+        parent_id, child_id = str(item.get("parent_id") or ""), str(item.get("child_id") or "")
+        if not parent_id or not child_id:
+            skipped.append({"parent_id": parent_id, "child_id": child_id,
+                            "reason": "missing ids"})
+            continue
+        parent = db.query(System).filter(System.id == parent_id).first()
+        child = db.query(System).filter(System.id == child_id).first()
+        if parent is None or child is None:
+            skipped.append({"parent_id": parent_id, "child_id": child_id,
+                            "reason": "system not found"})
+            continue
+        if db.query(SystemDependency).filter(
+                SystemDependency.parent_id == parent_id,
+                SystemDependency.child_id == child_id).first() is not None:
+            skipped.append({"parent_id": parent_id, "child_id": child_id,
+                            "reason": "already registered"})
+            continue
+        edge = SystemRepository(db).add_dependency(
+            parent_id, child_id, item.get("relation") or "CALLS")
+        edge.source = "discovered"
+        edge.created_by = user
+        if item.get("confidence") is not None:
+            edge.confidence = float(item.get("confidence"))
+        adopted.append(_edge_payload(db, edge))
+    db.commit()
+    if adopted:
+        from api.events.platform_events import emit_platform_event
+
+        emit_platform_event(
+            "graph.updated",
+            f"{len(adopted)} discovered dependency edge(s) adopted",
+            {"adopted": len(adopted), "by": user},
+            target_name="graph",
+        )
+    return {"adopted": adopted, "skipped": skipped,
+            "adopted_count": len(adopted)}

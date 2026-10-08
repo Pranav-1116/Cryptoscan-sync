@@ -35,7 +35,26 @@ edges; this is the only write surface for them):
 
 Edges are tenant-scoped like every other row: a tenant sees its own edges
 plus the un-attributed platform estate, and cannot register an edge into
-another tenant's systems.
+another tenant's systems. Every edge carries provenance: `source`
+(manual / discovered / imported), who registered it, an optional confidence
+and when it was last verified.
+
+Discovered-edge adoption closes the loop between scanners and the graph:
+
+- `GET /graph/edges/discovered` — candidate edges the scanners already
+  observed (scanner-cascade `depends_on_systems`, latest graph snapshot);
+  unresolvable system names are reported, never guessed
+- `POST /graph/edges/adopt` — the operator approval step: selected proposals
+  become `SystemDependency` rows with `source=discovered` and the adopter's
+  name. A dependency edge is a claim about production; nothing is
+  registered without that approval
+
+Two declared-linkage surfaces complete the graph model:
+
+- `POST /graph/hardware-links` — declare which hardware device serves which
+  crypto asset (never inferred); with it, device cascades name dependents
+- `POST /graph/vendor-edges` — declare vendor-of-vendor (sub-tier supply
+  chain) edges; vendor cascades walk them transitively
 
 The Dependency Graph page in the UI manages edges and runs the cross-BOM
 cascade (target input, verdict, affected systems by wave, run history with

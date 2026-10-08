@@ -677,6 +677,20 @@ def evidence_package(
         "certificates": cert_summary,
         "scan_in_progress": _scan_in_progress(db),
     }
+    # cross-BOM cascade runs — the audit trail of "what breaks if X changes"
+    # answers, each content-hashed so the package covers them verbatim
+    from db.models.cascade_run import CascadeRun
+
+    cascade_runs = db.query(CascadeRun).order_by(
+        CascadeRun.created_at.desc()).limit(50).all()
+    if cascade_runs:
+        package["cascade_runs"] = [{
+            "id": r.id, "target": r.target, "target_kind": r.target_kind,
+            "max_depth": r.max_depth, "verdict": r.verdict,
+            "created_by": r.created_by,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "result_sha256": hashlib_sha256(json_dumps(r.result or {})),
+        } for r in cascade_runs]
     canonical = json_dumps(package)
     package["content_sha256"] = hashlib_sha256(canonical)
     package["signature_hmac"] = hmac_sha256(canonical, signing_secret())
@@ -1018,23 +1032,39 @@ class CascadeRequest(BaseModel):
 @router.post("/cascade")
 def technology_bom_cascade(
     request: CascadeRequest,
+    version: int | None = Query(
+        None, description="captured twin-snapshot version to replay "
+                          "(default: the live estate)"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
     """One target, every layer: code, network, system graph, hardware, vendor.
 
-    Runs over the digital-twin snapshot (live estate, not a stale export),
-    persists the answer as an auditable run, and names its honest unknowns —
-    the same contract the twin engine set: deterministic, read-only, never
-    estimating what it cannot see.
+    Runs over the digital-twin snapshot (live estate, or any captured twin
+    snapshot version for point-in-time replay), persists the answer as an
+    auditable run, and names its honest unknowns — the same contract the
+    twin engine set: deterministic, read-only, never estimating what it
+    cannot see.
     """
     from api.routers.digital_twin import _snapshot
     from cbom.unified_cascade import MAX_DEPTH_LIMIT, unified_cascade
+    from db.models.cascade_extensions import TwinSnapshot
     from db.repositories.cascade_run_repository import CascadeRunRepository
 
+    if version is not None:
+        row = db.query(TwinSnapshot).filter(
+            TwinSnapshot.version == version).first()
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail=f"twin snapshot not found: v{version}")
+        estate = row.state or {}
+        replayed_version = version
+    else:
+        estate = _snapshot(db)
+        replayed_version = None
     try:
         result = unified_cascade(
-            _snapshot(db), target=request.target, kind=request.kind,
+            estate, target=request.target, kind=request.kind,
             max_depth=request.max_depth, now=datetime.now(timezone.utc))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1055,6 +1085,8 @@ def technology_bom_cascade(
          "affected_system_count": result["impact"]["affected_system_count"]},
         target_name="technology-bom",
     )
+    if replayed_version is not None:
+        result["replayed_over"] = {"twin_snapshot_version": replayed_version}
     return {**result, "run_id": run.id, "max_depth_limit": MAX_DEPTH_LIMIT}
 
 
@@ -1156,6 +1188,18 @@ def technology_bom_cascade_run_diff(
                 for p in (result or {}).get("impact", {}).get(
                     "affected_processes") or []}
 
+    def _set(result: dict, layer: str, key: str) -> set[str]:
+        try:
+            return {str(x) for x in
+                    ((result or {}).get("layers", {}).get(layer) or {}).get(key) or []}
+        except Exception:
+            return set()
+
+    def _delta(label: str, old: set[str], new: set[str]) -> dict:
+        return {"added": sorted(new - old), "removed": sorted(old - new),
+                "unchanged_count": len(new & old),
+                "before": len(old), "after": len(new)}
+
     old_systems, new_systems = _systems(other.result), _systems(run.result)
     old_processes, new_processes = _processes(other.result), _processes(run.result)
     return {
@@ -1166,15 +1210,148 @@ def technology_bom_cascade_run_diff(
                     if other.created_at else None, "verdict": other.verdict},
         "target": run.target,
         "verdict_changed": run.verdict != other.verdict,
-        "affected_systems": {
-            "added": sorted(new_systems - old_systems),
-            "removed": sorted(old_systems - new_systems),
-            "unchanged_count": len(new_systems & old_systems),
-            "before": len(old_systems), "after": len(new_systems),
-        },
+        "affected_systems": _delta("systems", old_systems, new_systems),
         "affected_processes": {
-            "added": sorted({" | ".join(filter(None, p)) for p in new_processes - old_processes}),
-            "removed": sorted({" | ".join(filter(None, p)) for p in old_processes - new_processes}),
-            "before": len(old_processes), "after": len(new_processes),
+            **_delta("processes",
+                     {p[0] or p[1] for p in old_processes},
+                     {p[0] or p[1] for p in new_processes}),
         },
+        "network_endpoints": _delta(
+            "endpoints", _set(other.result, "network", "endpoints"),
+            _set(run.result, "network", "endpoints")),
+        "hardware_devices": _delta(
+            "devices", _set(other.result, "hardware", "devices"),
+            _set(run.result, "hardware", "devices")),
+        "vendors": _delta(
+            "vendors", _set(other.result, "vendor", "vendors"),
+            _set(run.result, "vendor", "vendors")),
+        "code_evidence": _delta(
+            "evidence", _set(other.result, "code", "evidence_ids"),
+            _set(run.result, "code", "evidence_ids")),
     }
+
+
+# --------------------------------------------------------------------------
+# Cascade watches — saved targets, re-run on demand, alert on change
+# --------------------------------------------------------------------------
+
+class WatchRequest(BaseModel):
+    target: str = Field(min_length=1, max_length=500)
+    kind: str | None = None
+    max_depth: int = Field(default=6, ge=1, le=12)
+
+
+@router.post("/cascade/watch")
+def cascade_watch_create(
+    request: WatchRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Save a cascade target as a watch: re-run it via run-due, and the
+    blast-radius diff against its previous answer is reported as an event."""
+    from db.models.cascade_extensions import CascadeWatch
+
+    watch = CascadeWatch(target=request.target, target_kind=request.kind,
+                         max_depth=request.max_depth, active=True,
+                         created_by=user)
+    db.add(watch)
+    db.commit()
+    return {"watched": True, "id": watch.id, "target": watch.target}
+
+
+@router.get("/cascade/watches")
+def cascade_watches_list(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.models.cascade_extensions import CascadeWatch
+
+    rows = db.query(CascadeWatch).order_by(
+        CascadeWatch.created_at.desc()).limit(200).all()
+    return {"watches": [{
+        "id": r.id, "target": r.target, "target_kind": r.target_kind,
+        "max_depth": r.max_depth, "active": r.active,
+        "last_run_id": r.last_run_id, "created_by": r.created_by,
+        "created_at": r.created_at.isoformat() if r.created_at else None,
+    } for r in rows], "count": len(rows)}
+
+
+@router.delete("/cascade/watch/{watch_id}")
+def cascade_watch_delete(
+    watch_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    from db.models.cascade_extensions import CascadeWatch
+
+    watch = db.query(CascadeWatch).filter(CascadeWatch.id == watch_id).first()
+    if watch is None:
+        raise HTTPException(status_code=404, detail=f"watch not found: {watch_id}")
+    db.delete(watch)
+    db.commit()
+    return {"deleted": True, "id": watch_id}
+
+
+@router.post("/cascade/watches/run-due")
+def cascade_watches_run_due(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Re-run every active watch and report blast-radius changes.
+
+    The audit loop this closes: watch a target, migrate services, re-run —
+    each watch is diffed against its own previous answer, and a changed
+    blast radius (systems added or removed) is emitted as a platform event
+    the alert stream already carries.
+    """
+    from api.routers.digital_twin import _snapshot
+    from cbom.unified_cascade import unified_cascade
+    from db.models.cascade_extensions import CascadeWatch
+    from db.repositories.cascade_run_repository import CascadeRunRepository
+
+    watches = db.query(CascadeWatch).filter(
+        CascadeWatch.active.is_(True)).all()
+    repo = CascadeRunRepository(db)
+    estate = _snapshot(db)
+    results = []
+    for watch in watches:
+        try:
+            result = unified_cascade(
+                estate, target=watch.target, kind=watch.target_kind,
+                max_depth=watch.max_depth,
+                now=datetime.now(timezone.utc))
+        except ValueError as exc:
+            results.append({"watch_id": watch.id, "target": watch.target,
+                            "error": str(exc)})
+            continue
+        run = repo.create(target=watch.target,
+                          target_kind=result["target"]["kind"],
+                          max_depth=watch.max_depth,
+                          verdict=result["verdict"], result=result,
+                          created_by=f"watch:{watch.id}")
+        entry = {"watch_id": watch.id, "target": watch.target,
+                 "run_id": run.id, "verdict": result["verdict"],
+                 "affected_system_count": result["impact"]["affected_system_count"]}
+        if watch.last_run_id:
+            previous = repo.get(watch.last_run_id)
+            if previous is not None:
+                old = set((previous.result or {}).get("impact", {}).get(
+                    "affected_systems") or [])
+                new = set(result["impact"]["affected_systems"])
+                added, removed = sorted(new - old), sorted(old - new)
+                entry["diff"] = {"added": added, "removed": removed}
+                if added or removed:
+                    entry["blast_radius_changed"] = True
+                    emit_platform_event(
+                        "cascade.blast_radius_changed",
+                        f"Watched cascade '{watch.target}' blast radius changed: "
+                        f"{len(added)} added, {len(removed)} removed",
+                        {"watch_id": watch.id, "target": watch.target,
+                         "added": added, "removed": removed,
+                         "run_id": run.id},
+                        target_name="technology-bom",
+                    )
+        watch.last_run_id = run.id
+        results.append(entry)
+    db.commit()
+    return {"ran": len(results), "watches": results}

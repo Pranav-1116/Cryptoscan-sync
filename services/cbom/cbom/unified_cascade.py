@@ -83,6 +83,31 @@ def _processes_for(snapshot: Mapping[str, Any],
     return {"processes": processes}
 
 
+def _systems_for_assets(snapshot: Mapping[str, Any],
+                        asset_ids: list[str]) -> list[str]:
+    """Systems running these assets (real SystemAsset links via the twin)."""
+    wanted = {str(a) for a in asset_ids}
+    return sorted({str(sid) for asset in snapshot.get("assets") or []
+                   if str(asset.get("asset_id")) in wanted
+                   for sid in (asset.get("system_ids") or [])})
+
+
+def _dependents_of(snapshot: Mapping[str, Any], systems: list[str],
+                   max_depth: int) -> dict[str, list[str]]:
+    if not systems:
+        return {}
+    return _bfs(list(snapshot.get("dependencies") or []), set(systems),
+                reverse=True, max_depth=max_depth)
+
+
+def _downstream_of(snapshot: Mapping[str, Any], systems: list[str],
+                   max_depth: int) -> dict[str, list[str]]:
+    if not systems:
+        return {}
+    return _bfs(list(snapshot.get("dependencies") or []), set(systems),
+                reverse=False, max_depth=max_depth)
+
+
 def _bfs(edges: list[Mapping[str, Any]], seeds: set[str], *,
          reverse: bool, max_depth: int) -> dict[int, list[str]]:
     """Depth-bounded BFS over {source,target} edges.
@@ -243,7 +268,12 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
             continue
         seen_ids.add(record.get("id"))
         unique.append(record)
-    systems = sorted({str(e.get("system_id")) for e in unique if e.get("system_id")})
+    systems = sorted({str(e.get("system_id")) for e in unique if e.get("system_id")}
+                     | set(_systems_for_assets(
+                         snapshot, [str(a.get("asset_id")) for a in
+                                    [a for a in snapshot.get("assets") or []
+                                     if any(_match(name, wanted)
+                                            for name in (a.get("algorithms") or {}))]])))
     assets = [a for a in snapshot.get("assets") or []
               if any(_match(name, wanted) for name in (a.get("algorithms") or {}))]
     libraries = sorted({
@@ -251,8 +281,7 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
         for asset in assets
         for name in ((asset.get("libraries") or {})
                      if isinstance(asset.get("libraries"), Mapping) else {})
-        if _match(name, wanted) or True  # libraries of the affected assets
-    }) if assets else []
+    })
     endpoints = [e for e in snapshot.get("network_endpoints") or []
                  if _cipher_mentions(e.get("cipher_suite"), wanted)]
     return {
@@ -264,7 +293,10 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
         "network": {
             "endpoints": [f"{e.get('host')}:{e.get('port')}" for e in endpoints],
         },
-        "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
+        "system": {
+            "dependents_by_depth": _dependents_of(snapshot, systems, max_depth),
+            "downstream_by_depth": {},
+        },
         "process": _processes_for(snapshot, systems),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [], "systems": []},
@@ -273,7 +305,8 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
     }
 
 
-def _cascade_certificate(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -> dict[str, Any]:
+def _cascade_certificate(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
+                         max_depth: int = 6) -> dict[str, Any]:
     subject = _norm(matched.get("subject"))
     fingerprint = matched.get("fingerprint_sha256")
     endpoints = [e for e in snapshot.get("network_endpoints") or []
@@ -291,8 +324,12 @@ def _cascade_certificate(snapshot: Mapping[str, Any], matched: Mapping[str, Any]
             "endpoints": [f"{e.get('host')}:{e.get('port')}" for e in endpoints],
             "tls_versions": sorted({str(e.get("version")) for e in endpoints if e.get("version")}),
         },
-        "system": {"dependents_by_depth": {}, "downstream_by_depth": {},
-                   "systems": systems},
+        "system": {
+            # everyone who depends on the systems that run this certificate
+            "dependents_by_depth": _dependents_of(snapshot, systems, max_depth),
+            "downstream_by_depth": _downstream_of(snapshot, systems, max_depth),
+            "systems": systems,
+        },
         "process": _processes_for(snapshot, systems),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [], "systems": []},
@@ -352,6 +389,13 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
     # VBOM: what this vendor's products implement, as discovered — never
     # marketing claims. PQC readiness is the scanner's verdict per use case.
     crypto_inventory = list((snapshot.get("vendor_crypto") or {}).get(vendor_id) or [])
+    # sub-tier supply chain: declared vendor-of-vendor edges, walked
+    # transitively (depth-bounded) so a chip vendor under an HSM vendor shows
+    # up when the relationship has been declared — never inferred
+    vendor_edges = [{"source": str(e.get("parent")), "target": str(e.get("child"))}
+                    for e in snapshot.get("vendor_dependencies") or []]
+    sub_tier = _bfs(vendor_edges, {str(vendor_id)},
+                    reverse=False, max_depth=3) if vendor_edges else {}
     return {
         "code": {"evidence_ids": [], "systems": [], "files": [],
                  "assets_using_vendor_libraries": [str(a.get("asset_id")) for a in assets]},
@@ -360,7 +404,8 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
             "dependents_by_depth": _bfs(
                 list(snapshot.get("dependencies") or []), set(linked),
                 reverse=True, max_depth=max_depth),
-            "downstream_by_depth": {},
+            "downstream_by_depth": _downstream_of(
+                snapshot, [str(s) for s in linked if s], max_depth),
             "systems": system_names,
         },
         "process": _processes_for(snapshot, [str(s) for s in linked if s]),
@@ -368,6 +413,7 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
         "vendor": {
             "vendors": [str(matched.get("name"))],
             "criticality": matched.get("criticality"),
+            "sub_tier_vendors_by_depth": sub_tier,
             "crypto_inventory": crypto_inventory,
             "pqc_ready_use_cases": sorted({
                 str(row.get("crypto_use_case")) for row in crypto_inventory
@@ -379,28 +425,43 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
     }
 
 
-def _cascade_device(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -> dict[str, Any]:
+def _cascade_device(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
+                    max_depth: int = 6) -> dict[str, Any]:
     hsm = matched.get("hsm") if isinstance(matched.get("hsm"), Mapping) else {}
+    device_id = str(matched.get("asset_id"))
+    # declared crypto↔hardware linkage: which crypto assets this device
+    # serves, and therefore which systems depend on it. Without a declared
+    # link the cascade stays inventory-only and says so.
+    linked_assets = list((snapshot.get("crypto_hardware") or {}).get(device_id) or [])
+    systems = _systems_for_assets(snapshot, linked_assets)
+    linked = bool(linked_assets)
     return {
-        "code": {"evidence_ids": [], "systems": [], "files": []},
+        "code": {"evidence_ids": [], "systems": systems, "files": [],
+                 "assets": [str(a) for a in linked_assets]},
         "network": {"endpoints": []},
-        "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
-        "process": {"processes": []},
+        "system": {
+            "dependents_by_depth": _dependents_of(snapshot, systems, max_depth),
+            "downstream_by_depth": {},
+            "systems": systems,
+        },
+        "process": _processes_for(snapshot, systems),
         "hardware": {
-            "devices": [str(matched.get("asset_id"))],
+            "devices": [device_id],
             "manufacturer": matched.get("manufacturer") or hsm.get("manufacturer"),
             "model": matched.get("model") or hsm.get("model"),
             "firmware": hsm.get("firmware") or (
                 matched.get("firmware") or {}).get("version")
             if isinstance(matched.get("firmware"), Mapping) else matched.get("firmware"),
             "pqc_capability": str(hsm.get("pqc_capability") or "").upper() or None,
-            "inventory_only": True,
+            "inventory_only": not linked,
         },
         "vendor": {"vendors": [], "systems": []},
     }
 
 
-def _cascade_endpoint(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -> dict[str, Any]:
+def _cascade_endpoint(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
+                      max_depth: int = 6) -> dict[str, Any]:
+    owner = [str(matched["system_id"])] if matched.get("system_id") else []
     return {
         "code": {"evidence_ids": [], "systems": [], "files": []},
         "network": {
@@ -409,21 +470,26 @@ def _cascade_endpoint(snapshot: Mapping[str, Any], matched: Mapping[str, Any]) -
             "cipher_suites": [matched.get("cipher_suite")] if matched.get("cipher_suite") else [],
             "observed": bool(matched.get("observed", True)),
         },
-        "system": {"dependents_by_depth": {}, "downstream_by_depth": {},
-                   "systems": [matched["system_id"]] if matched.get("system_id") else []},
-        "process": _processes_for(
-            snapshot, [str(matched["system_id"])] if matched.get("system_id") else []),
+        "system": {
+            "dependents_by_depth": _dependents_of(snapshot, owner, max_depth),
+            "downstream_by_depth": _downstream_of(snapshot, owner, max_depth),
+            "systems": owner,
+        },
+        "process": _processes_for(snapshot, owner),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [], "systems": []},
     }
 
 
 def _cascade_library(snapshot: Mapping[str, Any],
-                     matched: Mapping[str, Any]) -> dict[str, Any]:
+                     matched: Mapping[str, Any],
+                     max_depth: int = 6) -> dict[str, Any]:
     name = str(matched.get("library") or "")
     assets = [a for a in snapshot.get("assets") or []
               if name in ((a.get("libraries") or {})
                           if isinstance(a.get("libraries"), Mapping) else {})]
+    asset_ids = [str(a.get("asset_id")) for a in assets]
+    systems = _systems_for_assets(snapshot, asset_ids)
     observed = sorted({
         str(alg) for a in assets
         for alg in ((a.get("algorithms") or {})
@@ -434,13 +500,17 @@ def _cascade_library(snapshot: Mapping[str, Any],
     catalog = (snapshot.get("library_catalog") or {}).get(name)
     return {
         "code": {
-            "evidence_ids": [], "systems": [],
-            "assets": [str(a.get("asset_id")) for a in assets],
+            "evidence_ids": [], "systems": systems,
+            "assets": asset_ids,
             "algorithms": observed,
         },
         "network": {"endpoints": []},
-        "system": {"dependents_by_depth": {}, "downstream_by_depth": {}},
-        "process": {"processes": []},
+        "system": {
+            "dependents_by_depth": _dependents_of(snapshot, systems, max_depth),
+            "downstream_by_depth": {},
+            "systems": systems,
+        },
+        "process": _processes_for(snapshot, systems),
         "hardware": {"devices": [], "inventory_only": True},
         "vendor": {"vendors": [catalog.get("vendor")] if catalog and catalog.get("vendor") else []},
         "library": {
@@ -537,19 +607,19 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     if cascade_kind == "algorithm":
         layers = _cascade_algorithm(snapshot, _norm(target_text), max_depth=depth)
     elif cascade_kind == "certificate":
-        layers = _cascade_certificate(snapshot, matched)
+        layers = _cascade_certificate(snapshot, matched, max_depth=depth)
     elif cascade_kind == "system":
         layers = _cascade_system(snapshot, matched, max_depth=depth)
     elif cascade_kind == "vendor":
         layers = _cascade_vendor(snapshot, matched, max_depth=depth)
     elif cascade_kind == "device":
-        layers = _cascade_device(snapshot, matched)
+        layers = _cascade_device(snapshot, matched, max_depth=depth)
     elif cascade_kind == "endpoint":
-        layers = _cascade_endpoint(snapshot, matched)
+        layers = _cascade_endpoint(snapshot, matched, max_depth=depth)
     elif cascade_kind == "process":
         layers = _cascade_process(snapshot, matched, max_depth=depth)
     else:
-        layers = _cascade_library(snapshot, matched)
+        layers = _cascade_library(snapshot, matched, max_depth=depth)
 
     # Private keys (``_``-prefixed) are folded into impact, not leaked as layers.
     extra_assets = layers.pop("_assets", [])
@@ -593,19 +663,23 @@ def unified_cascade(snapshot: Mapping[str, Any], *, target: str,
     ) else "INSUFFICIENT_DATA"
 
     unknowns = [
-        "which crypto asset depends on which physical HSM is not modelled: "
-        "the hardware layer is inventory, not a blast radius",
         "network evidence is only as fresh as the last authorized scan",
         "code-layer evidence is capped (20k records); an estate larger than "
         "that undercounts this cascade",
         "system propagation walks registered dependency edges only — edges "
         "nobody registered do not exist here",
     ]
-    if cascade_kind == "vendor":
-        unknowns.append("transitive (vendor-of-vendor) exposure is not modelled")
     if cascade_kind == "device":
-        unknowns.append("the device's dependents cannot be named without "
-                        "crypto-to-hardware linkage; only the device facts are certain")
+        if (layers["hardware"] or {}).get("inventory_only"):
+            unknowns.append(
+                "no declared crypto-to-hardware linkage for this device: its "
+                "dependents cannot be named, only the device facts are certain "
+                "(declare one via POST /graph/hardware-links)")
+    elif cascade_kind == "vendor":
+        if not (layers["vendor"] or {}).get("sub_tier_vendors_by_depth"):
+            unknowns.append(
+                "no declared vendor-of-vendor edges for this vendor: transitive "
+                "supply-chain exposure is unmodelled (declare via POST /graph/vendor-edges)")
 
     return {
         "schema": _SCHEMA,

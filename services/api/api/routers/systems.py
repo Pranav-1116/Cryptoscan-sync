@@ -246,5 +246,15 @@ def add_dependency(
     repo = SystemRepository(db)
     if repo.get_by_id(system_id) is None or repo.get_by_id(body.child_id) is None:
         raise HTTPException(status_code=404, detail="System not found")
+    from db.models.system_dependency import SystemDependency
+
+    if db.query(SystemDependency).filter(
+            SystemDependency.parent_id == system_id,
+            SystemDependency.child_id == body.child_id).first() is not None:
+        raise HTTPException(status_code=409, detail="edge already exists")
     edge = repo.add_dependency(system_id, body.child_id, body.relation)
+    # provenance parity with POST /graph/edges (the consolidated surface)
+    edge.source = "manual"
+    edge.created_by = user
+    db.commit()
     return edge.to_dict()

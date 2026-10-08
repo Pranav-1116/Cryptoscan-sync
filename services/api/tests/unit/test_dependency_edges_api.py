@@ -35,6 +35,7 @@ from db.models import (
     Certificate,
     CertificateUsage,
     CryptoAsset,
+    CryptoLiveState,
     EvidenceRecord,
     Scan,
     System,
@@ -44,6 +45,8 @@ from db.models import (
     SystemVendor,
     Vendor,
 )
+from db.models.graph_snapshot import GraphSnapshot
+from db.models.hardware_live import HardwareAsset
 from db.models.vendor_crypto import VendorCryptoInventory
 from db.models.tenant import Tenant, TenantMembership
 from db.repositories.user_repository import UserRepository
@@ -85,6 +88,13 @@ def app_db():
                     key_size=2048, confidence=1.0),
         Vendor(id="vendor-thales", name="Thales", criticality="HIGH",
                vendor_type="hsm"),
+        Vendor(id="vendor-chip", name="ChipWorks", criticality="MEDIUM",
+               vendor_type="chip"),
+        HardwareAsset(id="hw-1", asset_id="hsm-x", manufacturer="Thales",
+                      model="Luna 7", device_type="hsm"),
+        CryptoLiveState(asset_id="ca-shared", cbom_version=2,
+                        algorithms={"RSA-2048": 4},
+                        quantum_status={"status": "vulnerable"}),
         BusinessProcess(id="bp-1", name="Card Payments"),
         Certificate(fingerprint_sha256="ab" * 32, subject="CN=payment-core",
                     not_after=NOW + timedelta(days=200)),
@@ -119,7 +129,8 @@ def app_db():
             }],
             "systems": [{
                 "system": "payment-core", "criticality": "TIER-1",
-                "paths": ["src/**"], "depends_on_systems": [],
+                "paths": ["src/**"],
+                "depends_on_systems": [],
             }],
         },
     }
@@ -146,9 +157,12 @@ def test_register_edge_by_name_and_id(app_db):
     assert resp.status_code == 200
     body = resp.json()
     assert body["registered"] is True
-    assert body["edge"] == {"parent_id": "sys-a", "child_id": "sys-d",
-                            "parent_name": "web-frontend",
-                            "child_name": "settlement", "relation": "CONTAINS"}
+    edge = body["edge"]
+    assert edge["parent_id"] == "sys-a" and edge["child_id"] == "sys-d"
+    assert edge["parent_name"] == "web-frontend"
+    assert edge["child_name"] == "settlement"
+    assert edge["relation"] == "CONTAINS"
+    assert edge["source"] == "manual" and edge["created_by"] == "testuser"
 
 
 def test_register_edge_rejects_unknown_system(app_db):
@@ -478,4 +492,251 @@ def test_cascade_run_diff_needs_an_earlier_run(app_db):
                            json={"target": "settlement"}).json()
         resp = client.get(
             f"/api/v1/technology-bom/cascade/runs/{only['run_id']}/diff")
+    assert resp.status_code == 404
+
+
+# ------------------------------------------- round-4: internal missing parts
+
+def test_edge_provenance_recorded(app_db):
+    with TestClient(app_db) as client:
+        resp = client.post("/api/v1/graph/edges", json={
+            "parent_id": "sys-a", "child_id": "sys-b",
+            "relation": "CALLS", "confidence": 0.9})
+        assert resp.status_code == 200
+        edge = resp.json()["edge"]
+        assert edge["source"] == "manual"
+        assert edge["created_by"] == "testuser"
+        assert edge["confidence"] == 0.9
+        assert edge["last_verified"]  # manual registration self-verifies
+        listed = client.get("/api/v1/graph/edges").json()
+        assert listed["edges"][0]["source"] == "manual"
+
+
+def test_hardware_links_and_device_cascade_end_to_end(app_db):
+    with TestClient(app_db) as client:
+        # before: device cascade is inventory-only
+        before = client.post("/api/v1/technology-bom/cascade",
+                             json={"target": "hsm-x"}).json()
+        assert before["layers"]["hardware"]["inventory_only"] is True
+        assert any("declare one" in u for u in before["honest_unknowns"])
+
+        # declare the link the cascade needs
+        resp = client.post("/api/v1/graph/hardware-links", json={
+            "asset_id": "ca-shared", "hardware_asset_id": "hsm-x",
+            "note": "payment keys live on Luna 7"})
+        assert resp.status_code == 200
+        # validation: unknown asset / device, duplicate
+        assert client.post("/api/v1/graph/hardware-links", json={
+            "asset_id": "nope", "hardware_asset_id": "hsm-x"}).status_code == 404
+        assert client.post("/api/v1/graph/hardware-links", json={
+            "asset_id": "ca-shared", "hardware_asset_id": "nope"}).status_code == 404
+        assert client.post("/api/v1/graph/hardware-links", json={
+            "asset_id": "ca-shared", "hardware_asset_id": "hsm-x"}).status_code == 409
+
+        # settlement calls web-frontend: when the device dies, the systems
+        # using it stop, and so does everyone calling THEM
+        client.post("/api/v1/graph/edges", json={
+            "parent_id": "sys-d", "child_id": "sys-a"})
+
+        # after: the device cascade names its systems and dependents
+        after = client.post("/api/v1/technology-bom/cascade",
+                            json={"target": "hsm-x"}).json()
+        assert after["layers"]["hardware"]["inventory_only"] is False
+        assert sorted(after["layers"]["code"]["systems"]) == ["sys-a", "sys-b"]
+        # transitively: settlement calls web-frontend, payment-core calls settlement
+        assert after["layers"]["system"]["dependents_by_depth"] == {
+            "1": ["sys-d"], "2": ["sys-c"]}
+        assert not any("declare one" in u for u in after["honest_unknowns"])
+
+        links = client.get("/api/v1/graph/hardware-links").json()
+        assert links["count"] == 1
+        assert links["links"][0]["note"] == "payment keys live on Luna 7"
+
+
+def test_vendor_edges_and_sub_tier_cascade(app_db):
+    with TestClient(app_db) as client:
+        resp = client.post("/api/v1/graph/vendor-edges", json={
+            "parent_vendor_name": "Thales", "child_vendor_name": "ChipWorks",
+            "relation": "supplies"})
+        assert resp.status_code == 200
+        assert resp.json()["parent_vendor_id"] == "vendor-thales"
+        # duplicate + unknown vendor
+        assert client.post("/api/v1/graph/vendor-edges", json={
+            "parent_vendor_id": "vendor-thales",
+            "child_vendor_id": "vendor-chip"}).status_code == 409
+        assert client.post("/api/v1/graph/vendor-edges", json={
+            "parent_vendor_id": "vendor-thales",
+            "child_vendor_id": "nope"}).status_code == 404
+
+        cascade = client.post("/api/v1/technology-bom/cascade",
+                              json={"target": "Thales"}).json()
+        assert cascade["layers"]["vendor"]["sub_tier_vendors_by_depth"] == {
+            "1": ["vendor-chip"]}
+        assert not any("vendor-of-vendor" in u
+                       for u in cascade["honest_unknowns"])
+        listed = client.get("/api/v1/graph/vendor-edges").json()
+        assert listed["edges"][0]["child_vendor"] == "ChipWorks"
+
+
+def test_discovered_edges_and_adoption(app_db):
+    with TestClient(app_db) as client:
+        session = app_db.state.test_session
+        # this scan declares payment-core imports crypto from web-frontend
+        # (and names a system that does not exist — reported, never guessed)
+        session.add(Scan(id="scan-2", scanner_version="1.0.0",
+                         scan_start=NOW, scan_end=NOW,
+                         target_location="https://example/bank2",
+                         status="COMPLETED",
+                         statistics={"cascade": {"systems": [{
+                             "system": "payment-core", "criticality": "TIER-1",
+                             "paths": ["src/**"],
+                             "depends_on_systems": ["web-frontend",
+                                                    "ghost-system"]}]}}))
+        session.commit()
+        # a captured graph snapshot contributes candidates too
+        session.add(GraphSnapshot(version=1, fingerprint="f" * 64,
+                                  node_count=2, edge_count=1,
+                                  nodes=[], edges_by_relation={},
+                                  nodes_by_kind={},
+                                  edges=[{"from": "sys-a", "to": "sys-d",
+                                          "label": "CALLS"}]))
+        session.commit()
+
+        discovered = client.get("/api/v1/graph/edges/discovered").json()
+        pairs = {(p["parent_id"], p["child_id"]) for p in discovered["proposals"]}
+        # scanner cascade: payment-core depends on web-frontend (unresolved
+        # ghost-system reported honestly)
+        assert ("sys-c", "sys-a") in pairs
+        # graph snapshot: sys-a → sys-d (not yet a registered edge)
+        assert ("sys-a", "sys-d") in pairs
+        assert "ghost-system" in discovered["unresolved_names"]
+        # already-registered edges are not proposed
+        assert ("sys-a", "sys-c") not in pairs
+
+        # adopt one; the duplicate is skipped with a reason
+        adopt = client.post("/api/v1/graph/edges/adopt", json={
+            "edges": [{"parent_id": "sys-c", "child_id": "sys-a",
+                       "confidence": 0.8},
+                      {"parent_id": "sys-a", "child_id": "sys-c"}]})
+        assert adopt.status_code == 200
+        body = adopt.json()
+        assert body["adopted_count"] == 1
+        assert body["adopted"][0]["source"] == "discovered"
+        assert body["adopted"][0]["confidence"] == 0.8
+        assert body["skipped"][0]["reason"] == "already registered"
+
+        # adopted edge is live in the graph and carries provenance
+        listed = client.get("/api/v1/graph/edges",
+                            params={"system_id": "sys-c"}).json()
+        adopted_edge = next(e for e in listed["edges"]
+                            if e["parent_id"] == "sys-c" and e["child_id"] == "sys-a")
+        assert adopted_edge["source"] == "discovered"
+
+
+def test_twin_snapshots_and_version_replay(app_db):
+    with TestClient(app_db) as client:
+        first = client.post("/api/v1/digital-twin/snapshot").json()
+        assert first["recorded"] is True and first["version"] == 1
+        # unchanged estate → no duplicate version
+        again = client.post("/api/v1/digital-twin/snapshot").json()
+        assert again["recorded"] is False and again["version"] == 1
+
+        listed = client.get("/api/v1/digital-twin/snapshots").json()
+        assert listed["count"] == 1
+        got = client.get("/api/v1/digital-twin/snapshots/1").json()
+        assert got["state"]["systems"]
+        assert client.get("/api/v1/digital-twin/snapshots/9").status_code == 404
+
+        # the estate changes after capture…
+        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        live = client.post("/api/v1/technology-bom/cascade",
+                           json={"target": "payment-core"}).json()
+        assert "sys-a" not in live["impact"]["affected_systems"]
+        # …but the replay over v1 still answers for the estate as captured
+        replay = client.post("/api/v1/technology-bom/cascade",
+                             params={"version": 1},
+                             json={"target": "payment-core"}).json()
+        assert replay["replayed_over"] == {"twin_snapshot_version": 1}
+        assert "sys-a" in replay["impact"]["affected_systems"]
+        assert client.post("/api/v1/technology-bom/cascade",
+                           params={"version": 9},
+                           json={"target": "payment-core"}).status_code == 404
+
+
+def test_watches_run_due_and_blast_radius_change(app_db):
+    with TestClient(app_db) as client:
+        created = client.post("/api/v1/technology-bom/cascade/watch",
+                              json={"target": "payment-core"}).json()
+        assert created["watched"] is True
+        listed = client.get("/api/v1/technology-bom/cascade/watches").json()
+        assert listed["count"] == 1
+
+        # first run: no previous answer, no diff
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
+        assert first["ran"] == 1
+        assert first["watches"][0]["verdict"]
+        assert "diff" not in first["watches"][0]
+
+        # the blast radius shrinks; the next run-due must report it
+        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        second = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
+        entry = second["watches"][0]
+        assert entry["diff"] == {"added": [], "removed": ["sys-a"]}
+        assert entry["blast_radius_changed"] is True
+
+        # the watch now points at the latest run
+        watches = client.get("/api/v1/technology-bom/cascade/watches").json()
+        assert watches["watches"][0]["last_run_id"] == entry["run_id"]
+        # cleanup
+        assert client.delete(
+            f"/api/v1/technology-bom/cascade/watch/{created['id']}").json()["deleted"]
+
+
+def test_evidence_package_includes_cascade_runs(app_db):
+    with TestClient(app_db) as client:
+        client.post("/api/v1/technology-bom/cascade",
+                    json={"target": "payment-core"})
+        package = client.get("/api/v1/technology-bom/evidence-package").json()
+        assert package["cascade_runs"]
+        run = package["cascade_runs"][0]
+        assert run["target"] == "payment-core"
+        assert len(run["result_sha256"]) == 64
+        # the package hash covers the cascade section
+        assert len(package["content_sha256"]) == 64
+
+
+def test_diff_covers_all_layers(app_db):
+    with TestClient(app_db) as client:
+        # the first answer exists so the diff has a baseline to compare to
+        client.post("/api/v1/technology-bom/cascade",
+                    json={"target": "payment-core"})
+        client.delete("/api/v1/graph/edges/sys-a/sys-c")
+        second = client.post("/api/v1/technology-bom/cascade",
+                             json={"target": "payment-core"}).json()
+        diff = client.get(
+            f"/api/v1/technology-bom/cascade/runs/{second['run_id']}/diff"
+        ).json()
+        assert diff["affected_systems"]["removed"] == ["sys-a"]
+        for section in ("network_endpoints", "hardware_devices",
+                        "vendors", "code_evidence"):
+            assert section in diff
+            assert {"added", "removed", "before", "after"} <= set(diff[section])
+
+
+def test_diff_is_tenant_scoped(tenants, tenancy_session):
+    """A tenant cannot diff against another tenant's run — 404, never a leak."""
+    from db.models.cascade_run import CascadeRun
+
+    acme = tenants
+    tenancy_session.add(CascadeRun(
+        tenant_id="globex", target="Globex Core", target_kind="system",
+        max_depth=6, verdict="AFFECTED", result={"impact": {"affected_systems": ["sys-globex"]}}))
+    tenancy_session.commit()
+    mine = acme.post("/api/v1/technology-bom/cascade",
+                     json={"target": "Acme Core"}).json()
+    globex_run = tenancy_session.query(CascadeRun).filter_by(
+        tenant_id="globex").first()
+    resp = acme.get(
+        f"/api/v1/technology-bom/cascade/runs/{mine['run_id']}/diff",
+        params={"against": globex_run.id})
     assert resp.status_code == 404

@@ -18,7 +18,11 @@ or a library — and fans the blast radius out across all BOM layers at once:
 
 A certificate target also uses real `CertificateUsage` rows to name the
 systems that run the certificate — stronger than matching subjects on the
-wire.
+wire. Certificate, endpoint, library, algorithm and device cascades walk the
+system graph from everything they touch: owning systems, asset-linked
+systems, their dependents and (where relevant) downstream — a shared key on
+an HSM names the systems that use it and everyone who calls them, provided
+the crypto-to-hardware link is declared (`POST /graph/hardware-links`).
 
 It runs over the same digital-twin snapshot the twin scenarios use, so the
 cascade and the twin can never disagree about what the estate looks like.
@@ -97,6 +101,24 @@ Every run is persisted with its full result, who asked, and when:
 
 `impact.migration_waves` groups the affected systems by the migration wave
 the roadmap would fix them in — what breaks, and when the plan repairs it.
+
+The diff covers every layer: affected systems, processes, network endpoints,
+hardware devices, vendors and code-evidence counts.
+
+### Point-in-time replay
+
+`POST /technology-bom/cascade?version=N` replays the cascade over a captured
+twin snapshot instead of the live estate (`POST /digital-twin/snapshot`
+captures one; `GET /digital-twin/snapshots` lists them). Unchanged estates
+hash to the same version — the same discipline as BOM snapshots.
+
+### Watches
+
+`POST /technology-bom/cascade/watch` saves a target;
+`POST /technology-bom/cascade/watches/run-due` re-runs every active watch,
+diffs each against its own previous answer, and emits a
+`cascade.blast_radius_changed` platform event when systems were added or
+removed — the alert stream already carries it.
 
 Runs are tenant-scoped like every other row: a tenant sees its own runs and
 the un-attributed platform runs, never another tenant's.
