@@ -71,6 +71,13 @@ def app_db(tmp_path, monkeypatch):
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False},
                            poolclass=StaticPool)
     Base.metadata.create_all(engine)
+    # Bind the global SessionLocal to this test's engine: the scan-admission
+    # seam (round 9) opens the global factory, and without this the gate's
+    # answer depended on whichever test file configured it earlier in the
+    # process (unbound → 503 fail-closed).
+    from db.connection.session import configure_session
+
+    configure_session(engine)
     session = sessionmaker(bind=engine, expire_on_commit=False)()
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: "operator"

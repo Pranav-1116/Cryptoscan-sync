@@ -24,6 +24,13 @@ def app_due():
 
     engine = create_engine("sqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     Base.metadata.create_all(engine)
+    # Bind the global SessionLocal to this test's engine: the scan-admission
+    # seam (round 9) opens the global factory, and run-due passes through the
+    # gate — without this the answer depended on whichever test file
+    # configured the factory earlier in the process (unbound → 503).
+    from db.connection.session import configure_session
+
+    configure_session(engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)
     session = Session()
 

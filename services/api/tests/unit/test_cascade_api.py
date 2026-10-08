@@ -215,6 +215,114 @@ def test_missing_run_is_a_404(app_db):
     assert resp.status_code == 404
 
 
+# ------------------------------------------- P2 read-model honesty (2026-10)
+
+def test_replay_run_persists_replay_provenance(app_db):
+    """A point-in-time replay must be auditable as one: the persisted run —
+    not just the HTTP response — records which twin snapshot it replayed."""
+    with TestClient(app_db) as client:
+        cap = client.post("/api/v1/digital-twin/snapshot").json()
+        assert cap["recorded"] is True
+        version = cap["version"]
+
+        posted = client.post("/api/v1/technology-bom/cascade",
+                             params={"version": version},
+                             json={"target": "payment-api"}).json()
+        # the live answer names the replayed version...
+        assert posted["replayed_over"] == {"twin_snapshot_version": version}
+
+        # ...and so does the persisted audit trail — read the row back from
+        # the database (a fresh session, not the request session's identity
+        # map, which would hand back the same mutated dict)
+        from sqlalchemy.orm import sessionmaker
+
+        fresh = sessionmaker(bind=app_db.state.test_session.get_bind(),
+                             expire_on_commit=False)()
+        try:
+            row = fresh.query(CascadeRun).filter(
+                CascadeRun.id == posted["run_id"]).one()
+            assert (row.result or {}).get("replayed_over") == {
+                "twin_snapshot_version": version}
+        finally:
+            fresh.close()
+        fetched = client.get(
+            f"/api/v1/technology-bom/cascade/runs/{posted['run_id']}").json()
+        assert fetched["result"]["replayed_over"] == {
+            "twin_snapshot_version": version}
+        # and the history list carries it too — replay runs are identifiable
+        # without fetching each one
+        listed = client.get("/api/v1/technology-bom/cascade/runs").json()
+        entry = next(r for r in listed["runs"] if r["id"] == posted["run_id"])
+        assert entry["replayed_over"] == {"twin_snapshot_version": version}
+        # replaying a version that was never captured is a 404
+        missing = client.post("/api/v1/technology-bom/cascade",
+                              params={"version": 999},
+                              json={"target": "payment-api"})
+        assert missing.status_code == 404
+
+
+def test_algorithm_cascade_keeps_secondary_system_sharing_evidence(app_db):
+    """One evidence record linked (via its crypto asset) to assets of two
+    systems: the second system must not fall out of the blast radius."""
+    session = app_db.state.test_session
+    # ca-rsa already belongs to sys-pay; give the SAME asset to sys-db too
+    session.add(SystemAsset(system_id="sys-db", asset_id="ca-rsa"))
+    session.commit()
+    with TestClient(app_db) as client:
+        resp = client.post("/api/v1/technology-bom/cascade",
+                           json={"target": "RSA-2048"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["target"]["kind"] == "algorithm"
+    # evidence id appears once (deduped), but both owning systems survive
+    assert len(body["layers"]["code"]["evidence_ids"]) == 1
+    assert set(body["layers"]["code"]["systems"]) == {"sys-db", "sys-pay"}
+    assert set(body["impact"]["affected_systems"]) >= {"sys-db", "sys-pay"}
+
+
+def test_watch_run_due_flags_disappeared_target(app_db):
+    """A watched target that has since left the estate is reported as
+    missing — explicitly, not as an unexplained zero-impact answer."""
+    with TestClient(app_db) as client:
+        watch = client.post("/api/v1/technology-bom/cascade/watch",
+                            json={"target": "payment-api", "kind": "system",
+                                  "max_depth": 6}).json()
+        assert watch["watched"] is True
+
+        # first run-due: the target exists
+        first = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
+        entry = first["watches"][0]
+        assert entry["verdict"] == "AFFECTED"
+        assert "target_missing" not in entry
+
+        # the system leaves the estate
+        session = app_db.state.test_session
+        system = session.query(System).filter_by(id="sys-pay").one()
+        session.delete(system)
+        session.commit()
+
+        second = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
+        entry = second["watches"][0]
+        assert entry["verdict"] == "NOT_FOUND"
+        assert entry["target_missing"] is True
+        assert entry["affected_system_count"] == 0
+        assert entry["run_id"]  # the disappearance is itself an auditable run
+        # the blast radius collapsing to zero is reported as a change
+        assert entry["blast_radius_changed"] is True
+        assert entry["diff"]["removed"]  # the previous systems are named
+
+        # a third run is stable: still missing, no crash, no repeated alert
+        third = client.post("/api/v1/technology-bom/cascade/watches/run-due").json()
+        entry = third["watches"][0]
+        assert entry["verdict"] == "NOT_FOUND"
+        assert entry["target_missing"] is True
+        assert "blast_radius_changed" not in entry
+
+        # the watch stays active — the operator decides when to retire it
+        listed = client.get("/api/v1/technology-bom/cascade/watches").json()
+        assert listed["watches"][0]["active"] is True
+
+
 # ------------------------------------------------------------ tenancy
 
 @pytest.fixture()

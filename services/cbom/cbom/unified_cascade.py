@@ -268,7 +268,11 @@ def _cascade_algorithm(snapshot: Mapping[str, Any], wanted: str,
             continue
         seen_ids.add(record.get("id"))
         unique.append(record)
-    systems = sorted({str(e.get("system_id")) for e in unique if e.get("system_id")}
+    # systems come from EVERY matching row, before the id dedup: the twin
+    # emits one row per (record, system) pair, so an evidence record shared
+    # by two systems' assets appears twice with the same id — deduping first
+    # silently dropped the second system from the blast radius
+    systems = sorted({str(e.get("system_id")) for e in evidence if e.get("system_id")}
                      | set(_systems_for_assets(
                          snapshot, [str(a.get("asset_id")) for a in
                                     [a for a in snapshot.get("assets") or []
@@ -377,8 +381,9 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
     name = _norm(matched.get("name"))
     linked = [sv.get("system_id") for sv in snapshot.get("system_vendors") or []
               if sv.get("vendor_id") == vendor_id]
-    system_names = sorted({str(s.get("name")) for s in snapshot.get("systems") or []
-                           if s.get("id") in linked})
+    # canonical system IDs — every other cascade kind reports IDs, and a
+    # consumer that cannot join the answer back to systems cannot act on it
+    systems = sorted({str(s) for s in linked if s})
     devices = [hw for hw in snapshot.get("hardware") or []
                if _match(hw.get("manufacturer"), name)
                or _match((hw.get("hsm") or {}).get("manufacturer"), name)]
@@ -402,13 +407,13 @@ def _cascade_vendor(snapshot: Mapping[str, Any], matched: Mapping[str, Any],
         "network": {"endpoints": []},
         "system": {
             "dependents_by_depth": _bfs(
-                list(snapshot.get("dependencies") or []), set(linked),
+                list(snapshot.get("dependencies") or []), set(systems),
                 reverse=True, max_depth=max_depth),
             "downstream_by_depth": _downstream_of(
-                snapshot, [str(s) for s in linked if s], max_depth),
-            "systems": system_names,
+                snapshot, systems, max_depth),
+            "systems": systems,
         },
-        "process": _processes_for(snapshot, [str(s) for s in linked if s]),
+        "process": _processes_for(snapshot, systems),
         "hardware": {"devices": device_ids, "inventory_only": True},
         "vendor": {
             "vendors": [str(matched.get("name"))],

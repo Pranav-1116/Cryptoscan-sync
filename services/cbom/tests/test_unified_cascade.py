@@ -145,7 +145,9 @@ def test_system_cascade_walks_graph_both_directions():
 def test_vendor_cascade_spans_systems_and_hardware():
     result = run("Thales")
     assert result["target"]["kind"] == "vendor"
-    assert result["layers"]["system"]["systems"] == ["payment-api"]
+    # canonical system IDs (2026-10 contract fix): names could not be joined
+    # back to systems; every cascade kind now reports IDs here
+    assert result["layers"]["system"]["systems"] == ["sys-pay"]
     assert result["layers"]["hardware"]["devices"] == ["hsm-001"]
     assert result["layers"]["vendor"]["criticality"] == "HIGH"
     # the vendor's system keeps its dependents: web-frontend calls payment-api
@@ -487,3 +489,35 @@ def test_vendor_cascade_walks_downstream_too():
     result = run("Thales")
     # payment-api calls customer-db — the vendor's systems' downstream matters
     assert result["layers"]["system"]["downstream_by_depth"] == {"1": ["sys-db"]}
+
+
+# --------------------------------------------- P2 read-model honesty (2026-10)
+
+def test_algorithm_cascade_keeps_secondary_systems_sharing_evidence():
+    """One evidence record reachable through assets of two systems.
+
+    The twin emits one evidence row per (record, system) pair — the same id
+    twice with different system_ids. The cascade used to dedupe by id BEFORE
+    collecting systems, so the second system silently vanished from the blast
+    radius. Evidence ids still dedupe (one row in code.evidence_ids), but
+    every owning system must survive.
+    """
+    snapshot = dict(SNAPSHOT)
+    snapshot["evidence"] = list(SNAPSHOT["evidence"]) + [
+        {"id": "ev-1", "system_id": "sys-db", "algorithm": "RSA-2048",
+         "file_path": "src/Pay.java", "confidence": 0.9},
+    ]
+    result = unified_cascade(snapshot, target="RSA-2048", now=NOW)
+    assert "sys-db" in result["layers"]["code"]["systems"]
+    assert "sys-db" in result["impact"]["affected_systems"]
+    # the evidence id itself still appears exactly once
+    assert result["layers"]["code"]["evidence_ids"].count("ev-1") == 1
+
+
+def test_vendor_cascade_reports_canonical_system_ids():
+    """Every other cascade kind reports system IDs; the vendor path used to
+    report names — consumers could not join the answer back to systems."""
+    result = run("Thales")
+    # sys-pay is the system linked to vendor v-thales by system_vendors
+    assert result["layers"]["system"]["systems"] == ["sys-pay"]
+    assert result["layers"]["code"]["systems"] == []

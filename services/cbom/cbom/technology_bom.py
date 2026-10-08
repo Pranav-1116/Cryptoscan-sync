@@ -127,6 +127,31 @@ _LAYER_BUILDERS = {
 }
 
 
+def canonical_dependencies(inv: dict[str, Any]) -> list[list[str]]:
+    """Dependency edges, canonicalized to sorted ``[source, target, type]``.
+
+    The inventory speaks two dialects — pair lists from the system-dependency
+    table (``["sys-a", "sys-b"]``) and dicts from graph snapshots
+    (``{"source": ..., "target": ..., "type": ...}``). Both normalize here so
+    the state (and therefore the fingerprint) sees edges, not just a count:
+    a re-wired estate with identical components is a new BOM version.
+    """
+    edges: set[tuple[str, str, str]] = set()
+    for dep in inv.get("dependencies") or []:
+        if isinstance(dep, dict):
+            source = dep.get("source") or dep.get("from") or dep.get("parent")
+            target = dep.get("target") or dep.get("to") or dep.get("child")
+            edge_type = dep.get("type") or dep.get("relation") or dep.get("label") or ""
+        elif isinstance(dep, (list, tuple)) and len(dep) >= 2:
+            source, target = dep[0], dep[1]
+            edge_type = str(dep[2]) if len(dep) > 2 else ""
+        else:
+            continue
+        if source and target:
+            edges.add((str(source), str(target), str(edge_type or "")))
+    return sorted([list(edge) for edge in edges])
+
+
 # --------------------------------------------------------------------------- #
 # Materialization
 # --------------------------------------------------------------------------- #
@@ -167,6 +192,7 @@ def materialize_technology_bom(
     layers["certificates"] = {"count": len(certs), "components": list(certs)}
 
     generated_at = datetime.now(timezone.utc).isoformat()
+    deps = canonical_dependencies(inv)
     state: dict[str, Any] = {
         "environment": environment or "default",
         "state_version": int(state_version),
@@ -175,7 +201,10 @@ def materialize_technology_bom(
         "total_components": len(all_components),
         "components_by_layer": layer_counts,
         "certificate_count": len(certs),
-        "dependency_count": len(inv.get("dependencies") or []),
+        "dependency_count": len(deps),
+        # the edges themselves, canonicalized — the fingerprint hashes this
+        # list, so edge-only changes produce a new snapshot version
+        "dependencies": deps,
         "layers": layers,
         "scan": inv.get("scan") or {},
     }
@@ -214,10 +243,14 @@ def snapshot_id(state: dict[str, Any], *, version: int = 0) -> str:
 # --------------------------------------------------------------------------- #
 
 def diff_technology_bom(prev: dict[str, Any], cur: dict[str, Any]) -> dict[str, Any]:
-    """Diff two materialized states per layer (added/removed components).
+    """Diff two materialized states per layer (added/removed/changed).
 
-    Components are keyed by their ``bom-ref``; counts are the honest layer
-    deltas. ``prev`` is the baseline, ``cur`` the newer state.
+    Components are keyed by their ``bom-ref``. A component whose ref survives
+    but whose fields moved (key growth, version bump) is a *changed* entry
+    naming the fields and their from/to values — a diff that only reports
+    appearance and disappearance stays silent about migrations. Dependency
+    edges are diffed the same way. ``prev`` is the baseline, ``cur`` the newer
+    state.
     """
     out: dict[str, Any] = {
         "from": {"snapshot_id": prev.get("snapshot_id"), "state_version": prev.get("state_version"),
@@ -230,21 +263,55 @@ def diff_technology_bom(prev: dict[str, Any], cur: dict[str, Any]) -> dict[str, 
     prev_layers = prev.get("layers") or {}
     cur_layers = cur.get("layers") or {}
     for layer in ("sbom", "cbom", "hbom", "vendor"):
-        p = {c.get("bom-ref") for c in (prev_layers.get(layer) or {}).get("components", [])}
-        c = {item.get("bom-ref") for item in (cur_layers.get(layer) or {}).get("components", [])}
+        prev_by_ref = {c.get("bom-ref"): c
+                       for c in (prev_layers.get(layer) or {}).get("components", [])}
+        cur_by_ref = {c.get("bom-ref"): c
+                      for c in (cur_layers.get(layer) or {}).get("components", [])}
+        p, c = set(prev_by_ref), set(cur_by_ref)
         added = sorted(c - p)
         removed = sorted(p - c)
-        changed = bool(added or removed)
+        changed_refs = sorted(
+            ref for ref in (p & c) if prev_by_ref[ref] != cur_by_ref[ref])
+        changed = bool(added or removed or changed_refs)
         out["changed"] = out["changed"] or changed
         out["layers"][layer] = {
             "added_count": len(added),
             "removed_count": len(removed),
+            "changed_count": len(changed_refs),
             "added": _layer_diff_entries(cur_layers, layer, added),
             "removed": _layer_diff_entries(prev_layers, layer, removed),
+            "changed": [
+                {
+                    "bom-ref": ref,
+                    "fields": {
+                        key: {"from": prev_by_ref[ref].get(key),
+                              "to": cur_by_ref[ref].get(key)}
+                        for key in sorted(set(prev_by_ref[ref]) | set(cur_by_ref[ref]))
+                        if prev_by_ref[ref].get(key) != cur_by_ref[ref].get(key)
+                    },
+                }
+                for ref in changed_refs
+            ],
         }
         # aggregate counts on the summary too
         out["layers"][layer]["from_count"] = len(p)
         out["layers"][layer]["to_count"] = len(c)
+    # dependency edges: same discipline as components — appearance,
+    # disappearance, and nothing inferred
+    prev_deps = {tuple(str(x) for x in d) for d in prev.get("dependencies") or []}
+    cur_deps = {tuple(str(x) for x in d) for d in cur.get("dependencies") or []}
+    deps_added = sorted(list(d) for d in cur_deps - prev_deps)
+    deps_removed = sorted(list(d) for d in prev_deps - cur_deps)
+    out["dependencies"] = {
+        "added_count": len(deps_added),
+        "removed_count": len(deps_removed),
+        "added": deps_added,
+        "removed": deps_removed,
+        "from_count": len(prev_deps),
+        "to_count": len(cur_deps),
+    }
+    if deps_added or deps_removed:
+        out["changed"] = True
     return out
 
 

@@ -161,6 +161,71 @@ async def test_compare_detects_added_component(app_db):
 
 
 @pytest.mark.asyncio
+async def test_edge_only_change_creates_new_snapshot(app_db):
+    """A dependency edge added with zero component changes is still a new
+    BOM version — the fingerprint must see the re-wired estate."""
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        v1 = await client.post("/api/v1/technology-bom/snapshot")
+        assert v1.json()["recorded"] is True
+        assert v1.json()["snapshot"]["version"] == 1
+
+        # wire a NEW edge only — no components added or removed
+        new_session = app_db.state.test_sessionmaker()
+        new_session.add(SystemDependency(parent_id="sys-db", child_id="sys-web"))
+        new_session.commit()
+        new_session.close()
+
+        v2 = await client.post("/api/v1/technology-bom/snapshot")
+        body = v2.json()
+        assert body["recorded"] is True, "edge-only change must move the version"
+        assert body["snapshot"]["version"] == 2
+        # the state itself carries the edges (three now, canonicalized)
+        deps = body["snapshot"]["state"]["dependencies"]
+        assert ["sys-db", "sys-web", ""] in deps
+        assert len(deps) == 3
+        # and the diff names the new edge
+        assert body["diff"]["dependencies"]["added"] == [["sys-db", "sys-web", ""]]
+
+        # unchanged again -> dedup still holds
+        v3 = await client.post("/api/v1/technology-bom/snapshot")
+        assert v3.json()["recorded"] is False
+
+
+@pytest.mark.asyncio
+async def test_snapshot_diff_reports_property_changes(app_db):
+    """Key growth on an existing crypto asset: same bom-ref, changed fields —
+    the diff must say what changed, not just what appeared."""
+    transport = ASGITransport(app=app_db)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        v1 = await client.post("/api/v1/technology-bom/snapshot")
+        assert v1.json()["recorded"] is True
+
+        new_session = app_db.state.test_sessionmaker()
+        asset = new_session.query(CryptoAsset).filter_by(id="ca-rsa").one()
+        asset.key_size = 4096  # RSA 2048 -> 4096
+        new_session.commit()
+        new_session.close()
+
+        v2 = await client.post("/api/v1/technology-bom/snapshot")
+        body = v2.json()
+        assert body["recorded"] is True
+        assert body["snapshot"]["version"] == 2
+
+        compare = await client.get(
+            "/api/v1/technology-bom/compare",
+            params={"from_version": 1, "to_version": 2},
+        )
+        cbom = compare.json()["layers"]["cbom"]
+        assert cbom["added_count"] == 0
+        assert cbom["removed_count"] == 0
+        assert cbom["changed_count"] == 1
+        entry = cbom["changed"][0]
+        assert entry["bom-ref"] == "crypto:ca-rsa:"
+        assert entry["fields"]["key_size"] == {"from": 2048, "to": 4096}
+
+
+@pytest.mark.asyncio
 async def test_history_and_versions(app_db):
     transport = ASGITransport(app=app_db)
     async with AsyncClient(transport=transport, base_url="http://test") as client:

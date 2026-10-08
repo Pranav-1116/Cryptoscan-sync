@@ -116,6 +116,66 @@ def test_diff_unchanged_state_reports_no_change():
     for layer in ("sbom", "cbom", "hbom", "vendor"):
         assert d["layers"][layer]["added_count"] == 0
         assert d["layers"][layer]["removed_count"] == 0
+        assert d["layers"][layer]["changed_count"] == 0
+
+
+# ------------------------------------------- P2 read-model honesty (2026-10)
+
+def test_state_carries_dependency_edges():
+    """The materialized state must carry the actual dependency edges, not
+    just a count — otherwise the fingerprint is blind to edge-only changes
+    and a re-wired estate keeps the old snapshot version."""
+    st = materialize_technology_bom(_inventory(), state_version=1)
+    assert st["dependencies"] == [["core-bank", "c2", ""], ["pay-api", "c1", ""]]
+    assert st["dependency_count"] == 2
+
+
+def test_fingerprint_tracks_dependency_edges_only():
+    base = materialize_technology_bom(_inventory(), state_version=1)
+    # same components, one more edge — the fingerprint must move
+    inv = _inventory()
+    inv["dependencies"].append(["pay-api", "core-bank"])
+    rewired = materialize_technology_bom(inv, state_version=1)
+    assert rewired["fingerprint"] != base["fingerprint"]
+    # and dedupes: the same edge twice is one edge, not two
+    inv2 = _inventory()
+    inv2["dependencies"].append(["pay-api", "c1"])
+    assert materialize_technology_bom(inv2, state_version=1)["fingerprint"] == base["fingerprint"]
+
+
+def test_diff_reports_property_changes():
+    """A component whose bom-ref survives but whose fields changed (key
+    growth, version bump) is a changed component, not silence."""
+    prev = materialize_technology_bom(_inventory(), state_version=1)
+    inv = _inventory()
+    inv["crypto"][0]["key_size"] = 4096  # RSA 2048 -> 4096, same bom-ref
+    cur = materialize_technology_bom(inv, state_version=2)
+    d = diff_technology_bom(prev, cur)
+    assert d["changed"] is True
+    cbom = d["layers"]["cbom"]
+    assert cbom["added_count"] == 0 and cbom["removed_count"] == 0
+    assert cbom["changed_count"] == 1
+    entry = cbom["changed"][0]
+    assert entry["bom-ref"] == "crypto:c1:Server-001"
+    assert entry["fields"]["key_size"] == {"from": 2048, "to": 4096}
+
+
+def test_diff_reports_dependency_edge_changes():
+    prev = materialize_technology_bom(_inventory(), state_version=1)
+    inv = _inventory()
+    inv["dependencies"] = [["pay-api", "c1"], ["core-bank", "c2"],
+                           ["pay-api", "core-bank"]]
+    cur = materialize_technology_bom(inv, state_version=2)
+    d = diff_technology_bom(prev, cur)
+    assert d["changed"] is True
+    assert d["dependencies"]["added_count"] == 1
+    assert d["dependencies"]["added"] == [["pay-api", "core-bank", ""]]
+    assert d["dependencies"]["removed_count"] == 0
+    # and the mirror case: an edge removed
+    inv2 = _inventory()
+    inv2["dependencies"] = [["pay-api", "c1"]]
+    d2 = diff_technology_bom(prev, materialize_technology_bom(inv2, state_version=2))
+    assert d2["dependencies"]["removed"] == [["core-bank", "c2", ""]]
 
 
 def test_export_json_and_integrity():

@@ -1088,6 +1088,12 @@ def technology_bom_cascade(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    # replay provenance is stamped on the result BEFORE the run is persisted,
+    # so the audit trail records which twin snapshot the answer replayed —
+    # not just the HTTP response that happened to mention it
+    if replayed_version is not None:
+        result["replayed_over"] = {"twin_snapshot_version": replayed_version}
+
     run = CascadeRunRepository(db).create(
         target=request.target, target_kind=result["target"]["kind"],
         max_depth=request.max_depth, verdict=result["verdict"],
@@ -1101,11 +1107,10 @@ def technology_bom_cascade(
         f"({result['impact']['affected_system_count']} systems affected)",
         {"target": request.target, "kind": result["target"]["kind"],
          "verdict": result["verdict"], "run_id": run.id,
+         "replayed_over": result.get("replayed_over"),
          "affected_system_count": result["impact"]["affected_system_count"]},
         target_name="technology-bom",
     )
-    if replayed_version is not None:
-        result["replayed_over"] = {"twin_snapshot_version": replayed_version}
     return {**result, "run_id": run.id, "max_depth_limit": MAX_DEPTH_LIMIT}
 
 
@@ -1126,6 +1131,9 @@ def technology_bom_cascade_runs(
              "max_depth": r.max_depth, "verdict": r.verdict,
              "affected_system_count": (r.result or {}).get("impact", {}).get(
                  "affected_system_count"),
+             # replay provenance travels with the history entry: an auditor
+             # skimming the list sees which answers were point-in-time
+             "replayed_over": (r.result or {}).get("replayed_over"),
              "created_by": r.created_by,
              "created_at": r.created_at.isoformat() if r.created_at else None}
             for r in runs
@@ -1351,12 +1359,19 @@ def cascade_watches_run_due(
         entry = {"watch_id": watch.id, "target": watch.target,
                  "run_id": run.id, "verdict": result["verdict"],
                  "affected_system_count": result["impact"]["affected_system_count"]}
+        if result["verdict"] == "NOT_FOUND":
+            # the target has left the estate: say so explicitly instead of
+            # letting a zero-impact answer read as "all clear"
+            entry["target_missing"] = True
         if watch.last_run_id:
             previous = repo.get(watch.last_run_id)
             if previous is not None:
+                # both sides tolerate the NOT_FOUND shape, which carries a
+                # count but no system list — a disappeared target must
+                # report its collapsed blast radius, not crash the run
                 old = set((previous.result or {}).get("impact", {}).get(
                     "affected_systems") or [])
-                new = set(result["impact"]["affected_systems"])
+                new = set(result["impact"].get("affected_systems") or [])
                 added, removed = sorted(new - old), sorted(old - new)
                 entry["diff"] = {"added": added, "removed": removed}
                 if added or removed:

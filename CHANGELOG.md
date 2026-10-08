@@ -6,6 +6,47 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — BOM/cascade read models understated impact (P2)
+
+- **Technology BOM fingerprints now see dependency edges.**
+  `materialize_technology_bom` recorded only a `dependency_count`, so the
+  content-addressed fingerprint was blind to edge-only changes: a re-wired
+  estate with identical components kept the old snapshot version forever.
+  The state now carries the canonicalized `[source, target, type]` edge
+  list (both inventory dialects — pair lists and graph-snapshot dicts —
+  normalize through the new `canonical_dependencies()`; duplicates
+  collapse), and the fingerprint hashes it.
+- **Snapshot diffs name changed fields, not just appearance/disappearance.**
+  A component whose `bom-ref` survived but whose fields moved (an RSA key
+  grown 2048→4096, a version bump) was invisible to
+  `diff_technology_bom`. Per-layer `changed` entries now carry exact
+  field-level from/to values, and a `dependencies` section reports
+  added/removed edges — surfaced through both `POST /technology-bom/snapshot`
+  and `GET /technology-bom/compare`.
+- **Every cascade kind reports canonical system IDs.** The vendor cascade
+  filled `layers.system.systems` with system *names* while every other kind
+  reported registry IDs, so vendor answers could not be joined back to
+  systems. It now reports IDs like every other path.
+- **Secondary systems sharing evidence stay in the blast radius.** The
+  algorithm cascade deduped evidence rows by id *before* collecting owning
+  systems; the digital twin emits one row per (record, system) pair, so
+  when one evidence record was reachable through assets of two systems the
+  second system silently vanished. Systems are now collected from every
+  matching row; the evidence id itself still appears exactly once.
+- **Point-in-time replay provenance is persisted.** `replayed_over` was
+  stamped on the cascade result *after* the run row was committed, so the
+  audit trail lost which twin snapshot an answer replayed (only the HTTP
+  response carried it — and same-session dict identity masked the loss).
+  It is now stamped before persistence, and `/cascade/runs` list entries
+  carry `replayed_over` too.
+- **A disappeared watch target no longer crashes run-due.** The second
+  `POST /cascade/watches/run-due` after a watched target left the estate
+  raised `KeyError: affected_systems` (the NOT_FOUND result shape carries
+  a count but no system list). The diff now tolerates that shape on both
+  sides, the entry carries an explicit `target_missing: true`, the
+  disappearance is persisted as its own run, the collapsed blast radius is
+  diffed once, and the watch stays active until an operator retires it.
+
 ### Fixed — adversarial tenant-isolation review: two critical cross-tenant holes closed
 
 - **The graph plane no longer serves a tenant the global Neo4j store.**

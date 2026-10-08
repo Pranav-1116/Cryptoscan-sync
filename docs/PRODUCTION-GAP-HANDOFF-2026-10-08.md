@@ -59,6 +59,42 @@ Status of the table above after the follow-up change set (commit series on this 
 
 Verified: ruff clean on all touched files; database suite 162 passed (migration-chain parity incl. 0071); evidence + intelligence suites 77 passed; worker suites green; frontend typecheck + 125 vitest tests green. The full-suite run is recorded in the round-9 commit.
 
+## Round 10 (2026-10-08, evening) — P2 read models closed
+
+Status of the P2 row after this change set (TDD: the failing tests were
+written first, then the projections fixed):
+
+| Gap from the P2 row | Status | What changed |
+|---|---|---|
+| Fingerprints omit dependency edges | **Fixed + tested** | `materialize_technology_bom` now stores the canonicalized `[source, target, type]` edge list in `state["dependencies"]` (both inventory dialects — pair lists and graph-snapshot dicts — normalize through `canonical_dependencies`; duplicates collapse). The fingerprint already hashed that key, so an edge-only change (re-wired estate, identical components) produces a new snapshot version. Engine test + end-to-end API test (`test_edge_only_change_creates_new_snapshot`). |
+| Diffs ignore changed fields | **Fixed + tested** | `diff_technology_bom` reports per-layer `changed` entries with exact field-level from/to values for components whose `bom-ref` survived but whose fields moved (e.g. RSA 2048→4096), plus a `dependencies` section with added/removed edges. Surfaced through both `POST /technology-bom/snapshot` and `GET /technology-bom/compare`. |
+| Cascade paths mix names and IDs | **Fixed + tested** | The vendor cascade reported `layers.system.systems` as system *names* while every other kind reported canonical IDs — consumers could not join the answer back to the registry. It now reports IDs like every other path (old test pinning names updated to the canonical contract). |
+| Secondary systems sharing evidence dropped | **Fixed + tested** | `_cascade_algorithm` deduped evidence rows by id *before* collecting owning systems; the twin emits one row per (record, system) pair, so the second system silently vanished. Systems are now collected from every matching row; the evidence id still appears exactly once. |
+| Replay metadata lost | **Fixed + tested** | `replayed_over` is stamped on the result **before** the run row is persisted, so the audit trail (and the `/cascade/runs` list, which now carries `replayed_over` per entry) records which twin snapshot an answer replayed — not just the HTTP response. The same-session identity-map hole that masked the bug is covered by re-reading the row through a fresh session. |
+| Disappeared watch targets | **Fixed + tested** | run-due crashed with `KeyError: affected_systems` on the second run after a watched target left the estate (the NOT_FOUND shape carries a count but no system list). The diff now tolerates the NOT_FOUND shape on both sides, the entry carries an explicit `target_missing: true`, the disappearance is persisted as its own run, the collapsed blast radius is diffed once, and the watch stays active until retired. |
+
+Also investigated and **refuted**: the twin-snapshot replay lookup
+(`db.query(TwinSnapshot).filter(version==v)`) was suspected of missing a
+tenant filter — the ORM tenant guard (`with_loader_criteria` on
+`do_orm_execute`) reaches it automatically in tenant scope, matching the
+round-9 tenancy design; no change needed.
+
+Also fixed while re-running the full gate (test isolation, no product
+change): six pre-round-9 tests (graphql job/batch reads, binary-scan queue
+options, estate run-due) only passed through cross-file contamination — the
+round-9 admission seam opens the **global** `SessionLocal`, and whichever
+test file happened to configure the factory first in the worker process
+decided whether these tests saw a bound or unbound session (unbound →
+fail-closed 503). Adding round-10 tests shifted the xdist file grouping and
+unmasked it. Their fixtures now bind `SessionLocal` to the test's own
+engine (the pattern the tenancy fixtures already used), so each test's
+admission decision reads its own empty control plane deterministically.
+
+Verified: ruff clean repo-wide; full backend suite result recorded in the
+round-10 commit. Docs updated: `docs/user-guide/cross-bom-cascade.md`
+(replay provenance, watch disappearance semantics, and a "read-model honesty
+guarantees" section).
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

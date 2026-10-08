@@ -112,6 +112,13 @@ twin snapshot instead of the live estate (`POST /digital-twin/snapshot`
 captures one; `GET /digital-twin/snapshots` lists them). Unchanged estates
 hash to the same version — the same discipline as BOM snapshots.
 
+Replay provenance is part of the audit trail, not just the live response:
+the persisted run — and therefore `GET /cascade/runs` (each entry carries
+`replayed_over.twin_snapshot_version`) and `GET /cascade/runs/{run_id}` —
+records which twin snapshot the answer replayed. An auditor can tell a
+"what breaks NOW" answer from a "what DID break at v5" answer without
+guessing.
+
 ### Watches
 
 `POST /technology-bom/cascade/watch` saves a target;
@@ -120,8 +127,41 @@ diffs each against its own previous answer, and emits a
 `cascade.blast_radius_changed` platform event when systems were added or
 removed — the alert stream already carries it.
 
+A watched target that has left the estate (system decommissioned,
+certificate rotated away) is reported explicitly: the run-due entry carries
+`target_missing: true` with a `NOT_FOUND` verdict, the disappearance is
+persisted as its own run, and the collapse of the blast radius is diffed
+like any other change (the removed systems are named once; a second run
+reports the stable missing state without re-alerting). The watch stays
+active until an operator retires it — disappearance is information, not a
+reason to stop watching.
+
 Runs are tenant-scoped like every other row: a tenant sees its own runs and
 the un-attributed platform runs, never another tenant's.
+
+### Read-model honesty guarantees (2026-10)
+
+The answers above are built to understate nothing the estate actually
+declared:
+
+- **Systems are always canonical IDs.** Every cascade kind reports system
+  IDs (not names) in `layers.system.systems` and `impact.affected_systems`,
+  so answers join back to the system registry. Vendor cascades used to
+  report names — that path was fixed in October 2026.
+- **Shared evidence keeps every owner.** An evidence record reachable
+  through assets of two systems (a shared key file, a common library)
+  contributes *both* systems to the blast radius. The evidence id itself
+  still appears once — deduped — but no owning system is dropped.
+- **BOM snapshots see edges, not just components.** A dependency edge
+  registered (or removed) with zero component changes still produces a new
+  Technology BOM version: the snapshot state carries the canonicalized
+  `[source, target, type]` edge list and the fingerprint hashes it.
+- **Diffs name changed fields.** `POST /technology-bom/snapshot` and
+  `GET /technology-bom/compare` report per-layer `changed` entries — a
+  component whose `bom-ref` survives but whose fields moved (an RSA key
+  grown from 2048 to 4096 bits, a version bump) appears with the exact
+  field-level from/to values, plus a `dependencies` section with
+  added/removed edges.
 
 ## Related surfaces
 
