@@ -40,11 +40,18 @@ def _fake_sweep(cidr, ports, timeout=1.5):  # noqa: ARG001 — mirrors discover_
 @pytest.mark.asyncio
 async def test_discover_registers_targets(monkeypatch):
     import api.routers.network as net_router
+    import api.security.scan_admission as admission
     import network_scanner.discovery.subnet_discoverer as subnet_module
 
     monkeypatch.setattr(subnet_module, "discover_subnet", _fake_sweep)
     FakeIntelRepo.instances = []
     monkeypatch.setattr(net_router, "IntelligenceRepository", FakeIntelRepo)
+    # These tests exercise the registration path, not admission: pin the
+    # decision (no emergency stop, no OT, sweep inside authorized scope).
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_authorized_network_scope",
+                        lambda: ["10.0.0.0/30"])
 
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: "testuser"
@@ -80,11 +87,16 @@ async def test_discover_registers_targets(monkeypatch):
 @pytest.mark.asyncio
 async def test_discover_without_register_leaves_rotation_alone(monkeypatch):
     import api.routers.network as net_router
+    import api.security.scan_admission as admission
     import network_scanner.discovery.subnet_discoverer as subnet_module
 
     monkeypatch.setattr(subnet_module, "discover_subnet", _fake_sweep)
     FakeIntelRepo.instances = []
     monkeypatch.setattr(net_router, "IntelligenceRepository", FakeIntelRepo)
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_authorized_network_scope",
+                        lambda: ["10.0.0.0/30"])
 
     app = create_app()
     app.dependency_overrides[get_current_user] = lambda: "testuser"

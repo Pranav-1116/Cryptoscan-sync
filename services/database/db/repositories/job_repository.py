@@ -39,6 +39,10 @@ class JobRepository(BaseRepository[ScanJob]):
             "scan_id",
             "progress",
             "system_id",
+            # Trusted provenance only: webhook/monitor callers copy the tenant
+            # of the configuration row that authorized the scan. The ORM
+            # guard still stamps/rejects inside an active tenant scope.
+            "tenant_id",
         }
         job = ScanJob(**{k: v for k, v in payload.items() if k in allowed})
         return super().create(job)
@@ -51,6 +55,7 @@ class JobRepository(BaseRepository[ScanJob]):
         target_branch: str,
         triggered_by: str,
         target_commit: str | None = None,
+        tenant_id: str | None = None,
     ) -> ScanJob:
         job = ScanJob(
             job_type=job_type,
@@ -59,6 +64,7 @@ class JobRepository(BaseRepository[ScanJob]):
             target_commit=target_commit,
             triggered_by=triggered_by,
             status="QUEUED",
+            tenant_id=tenant_id,
         )
         return self.create(job)
 

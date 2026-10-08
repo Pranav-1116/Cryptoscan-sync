@@ -137,7 +137,14 @@ def _scan_in_progress(db: Session) -> bool:
 
 
 def _next_version(db: Session) -> int:
+    # Tenant-local numbering: versions are unique per tenant (migration 0071),
+    # so the max is taken within the caller's tenant — explicitly, because in
+    # platform scope the ORM guard is bypassed and an unfiltered max would
+    # interleave every tenant's sequence.
+    from db.tenancy import current_tenant
+
     row = db.execute(select(TechnologyBomSnapshot.version)
+                     .filter(TechnologyBomSnapshot.tenant_id == current_tenant())
                      .order_by(TechnologyBomSnapshot.version.desc())
                      .limit(1)).scalars().first()
     return (row or 0) + 1
@@ -157,8 +164,12 @@ def technology_bom_live(
     inv = _gather_inventory(db, limit=limit)
     state = materialize_technology_bom(inv, environment=_environment_of(db),
                                        state_version=version)
+    from db.tenancy import current_tenant
+
     last = db.execute(select(TechnologyBomSnapshot).order_by(
-        TechnologyBomSnapshot.version.desc()).limit(1)).scalars().first()
+        TechnologyBomSnapshot.version.desc())
+        .filter(TechnologyBomSnapshot.tenant_id == current_tenant())
+        .limit(1)).scalars().first()
     return {
         "source": "technology_bom",
         "live": True,
@@ -193,8 +204,12 @@ def technology_bom_snapshot(
     state = materialize_technology_bom(inv, environment=_environment_of(db),
                                        state_version=version)
 
+    from db.tenancy import current_tenant
+
     prev = db.execute(select(TechnologyBomSnapshot).order_by(
-        TechnologyBomSnapshot.version.desc()).limit(1)).scalars().first()
+        TechnologyBomSnapshot.version.desc())
+        .filter(TechnologyBomSnapshot.tenant_id == current_tenant())
+        .limit(1)).scalars().first()
 
     # no-op guard: identical fingerprint to the latest snapshot -> don't store
     if prev is not None and prev.fingerprint == state["fingerprint"]:
@@ -579,8 +594,12 @@ def run_due_export_schedules(
             continue
         due = False
         if row.frequency in ("after_scan", "after_major_change"):
+            from db.tenancy import current_tenant
+
             latest = db.execute(select(TechnologyBomSnapshot).order_by(
-                TechnologyBomSnapshot.version.desc()).limit(1)).scalars().first()
+                TechnologyBomSnapshot.version.desc())
+                .filter(TechnologyBomSnapshot.tenant_id == current_tenant())
+                .limit(1)).scalars().first()
             due = latest is not None and latest.snapshot_id != row.last_snapshot_id
         else:
             nxt = _as_aware(row.next_run_at)

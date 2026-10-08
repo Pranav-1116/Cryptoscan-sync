@@ -192,6 +192,7 @@ def create_target(body: TargetCreate, user: str = Depends(get_current_user), db:
         scan_frequency=body.scan_frequency,
         enabled=body.enabled,
         next_scan_time=next_scan_time(None, body.scan_frequency),
+        source="manual",
     )
     return row.to_dict()
 
@@ -205,6 +206,12 @@ def list_due(user: str = Depends(get_current_user), db: Session = Depends(get_db
 
 @router.post("/network/run-due")
 def run_due(user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    # Active TLS handshakes against the due rotation: admitted first. An
+    # emergency stop (or an OT estate outside its maintenance window) must
+    # stop the rotation, not just the scan queue.
+    from api.security.scan_admission import admit_scan
+
+    admit_scan(active_probing_requested=True)
     intel = IntelligenceRepository(db)
     rows = intel.list_targets()
     due = due_targets([row.to_dict() for row in rows])
@@ -274,6 +281,21 @@ def discover_subnet_endpoints(
     except Exception as exc:  # TargetValidationError
         raise HTTPException(status_code=400, detail={"error": "invalid_target", "reason": str(exc)})
 
+    # A CIDR sweep is active probing by nature: fail-closed admission first
+    # (emergency stop / OT passive boundary), then execution-time
+    # authorization — the range must sit inside the tenant's declared
+    # network scope (or be a registered single host). Authorized at
+    # registration is not authorized at execution: both halves are checked.
+    from api.security.scan_admission import admit_scan, authorize_network_sweep
+
+    admit_scan(active_probing_requested=True, asset=safe_cidr)
+    authorized, auth_reason = authorize_network_sweep(safe_cidr)
+    if not authorized:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "target_outside_authorized_scope", "reason": auth_reason},
+        )
+
     result = discover_subnet(safe_cidr, body.ports or list(DEFAULT_PORTS), timeout=body.timeout)
     if body.register:
         from network_scanner.discovery.registration import register_targets
@@ -324,6 +346,11 @@ def scan_ssh_hosts(body: SshScanRequest, user: str = Depends(get_current_user)):
 
     if not body.hosts:
         raise HTTPException(status_code=400, detail="hosts required")
+    # Banner/KEX reads are live probes: same admission as every other active
+    # surface. Emergency stop and the OT passive boundary apply here too.
+    from api.security.scan_admission import admit_scan
+
+    admit_scan(active_probing_requested=True)
     baselines = body.known_host_keys or {}
     findings = []
     updated: dict[str, dict[str, str]] = dict(baselines)

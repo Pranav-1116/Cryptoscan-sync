@@ -263,3 +263,67 @@ def test_a_live_event_reaches_a_connected_socket(ws_db):
     assert frame["event_type"] == "scan.queued"
     assert frame["id"] > 0
     assert frame["source"] == "api"
+
+
+# --------------------------------------------------------- tenant scoping ---- #
+
+def test_job_socket_reads_are_tenant_scoped(ws_db):
+    """The socket used to open its own UNscoped session: any authenticated
+    principal could watch any tenant's job by id. The tenant middleware now
+    scopes the whole websocket (query-param credentials are routed into the
+    same membership-validated resolution HTTP uses)."""
+    from api.middleware.tenant_scope import TenantScopeMiddleware
+    from db.models.scan_job import ScanJob
+    from db.models.tenant import Tenant, TenantMembership
+
+    ws_db.add_all([
+        Tenant(id="t-a", name="Tenant A", slug="ta"),
+        Tenant(id="t-b", name="Tenant B", slug="tb"),
+    ])
+    # _session_token creates the users; memberships bind them to tenants
+    token_a = _session_token(ws_db, "user-a", ["viewer"])
+    token_b = _session_token(ws_db, "user-b", ["viewer"])
+    ws_db.add_all([
+        TenantMembership(tenant_id="t-a", username="user-a", tenant_role="member"),
+        TenantMembership(tenant_id="t-b", username="user-b", tenant_role="member"),
+    ])
+    job_a = ScanJob(id="job-acme-1", job_type="BINARY", target_repo="/images/a.bin",
+                    target_branch="main", triggered_by="tester", status="RUNNING",
+                    tenant_id="t-a",
+                    progress={"current_stage": "binary_scan", "percent": 40})
+    ws_db.add(job_a)
+    ws_db.commit()
+
+    app = create_app()
+    app.add_middleware(TenantScopeMiddleware)
+    client = TestClient(app)
+
+    # the owning tenant's member sees the job: hello + snapshot frames
+    with client.websocket_connect(
+        f"/api/v1/ws/binary/jobs/job-acme-1?token={token_a}"
+    ) as socket:
+        hello = _recv(socket)
+        assert hello["type"] == "hello"
+        snapshot = _recv(socket)
+        assert snapshot["type"] == "snapshot"
+        assert snapshot.get("job_id") == "job-acme-1"
+
+    # another tenant's member must NOT watch it: scoped read finds no such
+    # job -> the socket's own honest not-found refusal, not a leak
+    with client.websocket_connect(
+        f"/api/v1/ws/binary/jobs/job-acme-1?token={token_b}"
+    ) as socket:
+        assert _recv(socket)["type"] == "hello"  # handshake frame, no data yet
+        frame = _recv(socket)
+        assert frame["type"] == "error"
+        assert "no job with that id" in frame["message"]
+        closed = _recv(socket)
+        assert closed["type"] == "__close__"
+
+    # and a query-param tenant the caller is NOT a member of is refused at
+    # the handshake (1008), exactly like a forged X-Tenant-ID on HTTP
+    with pytest.raises(WebSocketDisconnect):
+        with client.websocket_connect(
+            f"/api/v1/ws/binary/jobs/job-acme-1?token={token_b}&tenant=t-a"
+        ) as socket:
+            socket.receive_text()

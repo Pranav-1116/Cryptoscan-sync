@@ -648,8 +648,14 @@ def _snapshot_graph(db: Session, *, user: str = "system") -> dict[str, Any]:
     nodes, edges, nodes_by_kind, edges_by_relation = _canon_graph(graph)
     fingerprint = _fingerprint(nodes, edges)
 
+    # Tenant-local prev (migration 0071): versions number per tenant, so the
+    # fingerprint compare and the +1 must read this tenant's history only —
+    # explicit, because platform scope bypasses the ORM guard.
+    from db.tenancy import current_tenant
+
     prev = db.execute(
-        select(GraphSnapshot).order_by(GraphSnapshot.version.desc()).limit(1)
+        select(GraphSnapshot).order_by(GraphSnapshot.version.desc())
+        .filter(GraphSnapshot.tenant_id == current_tenant()).limit(1)
     ).scalars().first()
 
     if prev is not None and prev.fingerprint == fingerprint:

@@ -104,10 +104,10 @@ def test_handler_exception_acks_so_the_job_is_not_redelivered_forever():
 
 
 # ------------------------------------------------------------------ DB reaper
-def _job(session, status: str, age: timedelta, progress=None):
+def _job(session, status: str, age: timedelta, progress=None, tenant_id=None):
     from db.repositories.job_repository import JobRepository
 
-    job = JobRepository(session).create_job(job_type="MANUAL", target_repo="https://example/r.git", target_branch="main", triggered_by="t")
+    job = JobRepository(session).create_job(job_type="MANUAL", target_repo="https://example/r.git", target_branch="main", triggered_by="t", tenant_id=tenant_id)
     job.status = status
     job.progress = progress
     session.flush()
@@ -157,3 +157,17 @@ def test_fail_job_marks_row_failed(test_db):
     j = _job(test_db, "QUEUED", timedelta(minutes=1))
     fail_job(test_db, j, "dead-lettered")
     assert test_db.get(ScanJob, j).status == "FAILED"
+
+
+def test_republished_payload_keeps_the_jobs_tenant(test_db):
+    """A re-published job must carry its tenant: the worker re-enters the
+    tenant scope from the payload, and a payload without one re-ran the job
+    unscoped — its results landed in the platform estate (tenant_id NULL),
+    readable by every tenant."""
+    lost = _job(test_db, "QUEUED", timedelta(minutes=30), tenant_id="tenant-a")
+    visible = _job(test_db, "QUEUED", timedelta(minutes=30))
+    published: list[dict] = []
+    stats = reap_stale_jobs(test_db, queued_ids={visible}, publish=published.append,
+                            queued_timeout=timedelta(minutes=10), max_requeues=2)
+    assert stats["requeued"] == 1
+    assert published[0]["tenant_id"] == "tenant-a"

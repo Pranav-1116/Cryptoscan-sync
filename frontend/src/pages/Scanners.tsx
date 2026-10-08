@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Badge, Button, ProgressBar } from "../components/ui";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { getToken, tenantFetch } from "../lib/api";
 import { IconNetwork, IconCloud, IconCode, IconContainer, IconHardware, IconCertificate, IconEstate, IconPass, IconTarget, ICON_LG, type Icon } from "../components/icons";
 
@@ -13,16 +13,17 @@ type ScanTarget =
   | "Certificate"
   | "Full Estate";
 
+type ScanStatus = "queued" | "running" | "completed" | "failed";
+
 export default function Scanners() {
-  const navigate = useNavigate();
   const [step, setStep] = useState<"select" | "configure" | "running">("select");
   const [selectedTarget, setSelectedTarget] = useState<ScanTarget>("Network");
   const [targetInput, setTargetInput] = useState("10.0.0.0/16");
   const [accessMode, setAccessMode] = useState("Read-only TAP");
-  const [scope, setScope] = useState("Production Ingress & Microservices Mesh");
   const [scanJobId, setScanJobId] = useState<string | null>(null);
-  const [scanStatus, setScanStatus] = useState<"queued" | "running" | "completed" | "failed">("queued");
+  const [scanStatus, setScanStatus] = useState<ScanStatus>("queued");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [resultNote, setResultNote] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
 
   const targets: { id: ScanTarget; label: string; desc: string; icon: Icon }[] = [
@@ -38,54 +39,87 @@ export default function Scanners() {
   const handleStartScan = async () => {
     setStep("running");
     setScanStatus("queued");
-    setProgress(15);
+    setProgress(10);
     setErrorMsg(null);
+    setResultNote(null);
+
+    // The execution mode is a safety contract, not a suggestion: a passive /
+    // TAP selection must NEVER fall through to the active CIDR sweep, and a
+    // refusal from the backend (403 outside authorized scope, 409 safe-scan
+    // policy, 503 admission unavailable) is shown as a failure — never
+    // papered over with a fabricated "completed" job.
+    const wantsActiveSweep = selectedTarget === "Network" && accessMode === "Active Probe";
 
     try {
       const token = getToken();
       const headers: Record<string, string> = { "Content-Type": "application/json" };
       if (token) headers["Authorization"] = `Bearer ${token}`;
 
-      // Call backend scan endpoint
+      if (wantsActiveSweep) {
+        setScanStatus("running");
+        setProgress(40);
+        const res = await tenantFetch("/api/v1/network/discover", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ cidr: targetInput, scan: true, register: false }),
+          signal: AbortSignal.timeout(60000),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          const detail = body?.detail;
+          const reason = typeof detail === "string" ? detail : detail?.reason || detail?.error;
+          throw new Error(reason || `sweep refused (HTTP ${res.status})`);
+        }
+        const body = await res.json().catch(() => ({}));
+        const endpoints: string[] = body?.endpoints ?? [];
+        setScanJobId(null);
+        setResultNote(
+          `Swept ${body?.hosts_checked ?? 0} hosts — ${endpoints.length} open service endpoint(s) found.`
+        );
+        setProgress(100);
+        setScanStatus("completed");
+        return;
+      }
+
+      // Everything else starts from the authorized onboarding scope: the
+      // backend registers scope into the engine and runs the domain plan
+      // (passive when an OT environment is declared). There is deliberately
+      // NO fallback sweep when scope is not configured — the honest answer
+      // is the backend's own refusal plus a pointer to onboarding.
+      setScanStatus("running");
+      setProgress(45);
       const res = await tenantFetch("/api/v1/onboarding/discovery/start", {
         method: "POST",
         headers,
-        signal: AbortSignal.timeout(10000),
+        signal: AbortSignal.timeout(30000),
       });
-
-      if (res.ok) {
+      if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        setScanJobId(body.job_id || `job-${Date.now().toString(36)}`);
-        setScanStatus("running");
-        setProgress(45);
-
-        // Advance progress to completion upon authoritative acknowledgment
-        setTimeout(() => {
-          setProgress(100);
-          setScanStatus("completed");
-        }, 1800);
-      } else {
-        // Fallback to network discovery if onboarding scope not yet configured
-        const netRes = await tenantFetch("/api/v1/network/discover", {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ cidr: targetInput }),
-          signal: AbortSignal.timeout(10000),
-        });
-        if (netRes.ok) {
-          const body = await netRes.json().catch(() => ({}));
-          setScanJobId(body.job_id || `job-net-${Date.now().toString(36)}`);
-          setScanStatus("completed");
-          setProgress(100);
-        } else {
-          setScanJobId(`job-local-${Date.now().toString(36)}`);
-          setScanStatus("completed");
-          setProgress(100);
-        }
+        const reason = body?.detail || body?.message || `discovery refused (HTTP ${res.status})`;
+        throw new Error(
+          res.status === 409
+            ? `${reason} — complete onboarding (environment, authorized scope, tested connector) first.`
+            : reason
+        );
       }
-    } catch (e: any) {
-      setScanJobId(`job-sub-${Date.now().toString(36)}`);
+      const body = await res.json().catch(() => ({}));
+      setScanJobId(body?.run_id ? String(body.run_id) : null);
+      const registered = body?.registered ?? {};
+      const registeredTotal =
+        (registered?.network_targets ?? 0) + (registered?.cloud_accounts ?? 0) + (registered?.repo_configs ?? 0);
+      setResultNote(
+        `Discovery run ${body?.run_id ?? ""}: ${body?.assets_estimate ?? 0} asset(s) estimated across authorized scope` +
+          (registeredTotal ? `, ${registeredTotal} target(s) registered` : "") +
+          (body?.passive_only ? " — passive only (OT environment declared)." : ".")
+      );
+      setProgress(100);
       setScanStatus("completed");
+    } catch (e: any) {
+      // No fabricated job id, no synthetic completion: the scan either ran
+      // or it did not, and the operator sees which and why.
+      setScanJobId(null);
+      setErrorMsg(e?.message ? String(e.message) : "the scan could not be started");
+      setScanStatus("failed");
       setProgress(100);
     }
   };
@@ -164,6 +198,11 @@ export default function Scanners() {
                   fontSize: "13px"
                 }}
               />
+              <div style={{ fontSize: "12px", color: "var(--dim)", marginTop: "6px" }}>
+                {selectedTarget === "Network" && accessMode === "Active Probe"
+                  ? "An active TLS sweep of this CIDR — the backend verifies it is inside your authorized network scope before probing."
+                  : "Passive / read-only discovery runs over your declared onboarding scope; the target field is informational."}
+              </div>
             </div>
 
             <div>
@@ -207,29 +246,52 @@ export default function Scanners() {
             {scanStatus === "completed" ? <IconPass size={ICON_LG} /> : <IconTarget size={ICON_LG} />}
           </div>
           <h2 style={{ fontSize: "20px", fontWeight: 700, margin: "0 0 8px" }}>
-            {scanStatus === "completed" ? "Discovery Scan Complete" : "Discovery Scan In Progress"}
+            {scanStatus === "completed"
+              ? "Discovery Run Complete"
+              : scanStatus === "failed"
+                ? "Scan Not Started"
+                : "Discovery Scan In Progress"}
           </h2>
           <p style={{ color: "var(--dim)", fontSize: "14px", margin: "0 0 20px" }}>
-            {scanJobId && <>Job ID: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{scanJobId}</code> · </>}
-            Target: <code>{targetInput}</code>
+            {scanJobId && <>Run ID: <code style={{ fontFamily: "var(--mono)", color: "var(--cyan)" }}>{scanJobId}</code> · </>}
+            Target: <code>{selectedTarget === "Network" && accessMode === "Active Probe" ? targetInput : "authorized onboarding scope"}</code>
           </p>
 
           <div style={{ maxWidth: "400px", margin: "0 auto 24px" }}>
             <ProgressBar value={progress} />
           </div>
 
+          {scanStatus === "completed" && resultNote && (
+            <p style={{ fontSize: "13.5px", color: "var(--dim)", margin: "0 0 20px" }}>{resultNote}</p>
+          )}
+
+          {scanStatus === "failed" && errorMsg && (
+            <p style={{ fontSize: "13.5px", color: "var(--danger, #e5484d)", margin: "0 0 20px" }}>
+              {errorMsg}
+            </p>
+          )}
+
           {scanStatus === "completed" ? (
             <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
               <Link to="/assets" className="btn primary" style={{ textDecoration: "none" }}>
                 Inspect Discovered Assets →
               </Link>
-              <button onClick={() => { setStep("select"); setProgress(0); }} className="btn outline">
+              <button onClick={() => { setStep("select"); setProgress(0); setScanStatus("queued"); setResultNote(null); }} className="btn outline">
                 Run Another Scan
               </button>
             </div>
+          ) : scanStatus === "failed" ? (
+            <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+              <button onClick={() => { setStep("configure"); setProgress(0); setScanStatus("queued"); }} className="btn outline">
+                ← Adjust Target
+              </button>
+              <Link to="/onboarding" className="btn primary" style={{ textDecoration: "none" }}>
+                Review Authorized Scope
+              </Link>
+            </div>
           ) : (
             <div style={{ fontSize: "13px", color: "var(--dim)" }}>
-              The backend daemon is continuously recording observation proofs to the immutable ledger. You may navigate away at any time.
+              The backend is executing the discovery plan over your authorized scope. You may navigate away at any time.
             </div>
           )}
         </div>

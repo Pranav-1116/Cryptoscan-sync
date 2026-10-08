@@ -97,6 +97,10 @@ def register_targets(
             scan_frequency=record["scan_frequency"],
             enabled=record["enabled"],
             next_scan_time=due_at,
+            # provenance: an operator-approved sweep put this target into the
+            # rotation — scope revocation must not disable it (that's not
+            # where it came from)
+            source=record["source"],
         )
         if record["endpoint"] in known:
             updated += 1

@@ -47,6 +47,37 @@ _SKIP_PREFIXES = (
 )
 
 
+def _ws_scope_with_query_headers(scope) -> dict:
+    """A scope the HTTP resolver can read: query credentials folded into
+    headers, type patched to ``http``.
+
+    A browser cannot set custom headers on a WS handshake, so the credentials
+    the HTTP surface reads from headers travel as query params here
+    (``token`` / ``api_key`` / ``tenant``). Folding them into headers only
+    routes those values into the SAME membership-validated resolution HTTP
+    uses; it grants nothing by itself. ``Request`` asserts an http scope, so
+    the copy is retyped for the resolution call only — the app still receives
+    the original websocket scope untouched.
+    """
+    import urllib.parse
+
+    query = urllib.parse.parse_qs(
+        (scope.get("query_string") or b"").decode("latin-1") or ""
+    )
+    headers = list(scope.get("headers") or [])
+    existing = {name.lower() for name, _ in headers}
+    token = (query.get("token") or query.get("access_token") or [""])[0]
+    if token and b"authorization" not in existing:
+        headers.append((b"authorization", f"Bearer {token}".encode()))
+    api_key = (query.get("api_key") or [""])[0]
+    if api_key and b"x-api-key" not in existing:
+        headers.append((b"x-api-key", api_key.encode()))
+    tenant = (query.get("tenant") or [""])[0].strip()
+    if tenant and b"x-tenant-id" not in existing:
+        headers.append((b"x-tenant-id", tenant.encode()))
+    return {**scope, "type": "http", "headers": headers}
+
+
 class TenantScopeMiddleware:
     """Pure ASGI: the decision needs the path and the resolved tenant, never the body."""
 
@@ -54,6 +85,9 @@ class TenantScopeMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+        if scope["type"] == "websocket":
+            await self._websocket(scope, receive, send)
+            return
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
@@ -80,6 +114,51 @@ class TenantScopeMiddleware:
             await response(scope, receive, send)
             return
 
+        if tenant_id is None:
+            await self.app(scope, receive, send)
+            return
+
+        from db.tenancy import tenant_scope
+
+        with tenant_scope(tenant_id):
+            await self.app(scope, receive, send)
+
+    async def _websocket(self, scope, receive, send):
+        """Scope every WebSocket's database reads to the validated tenant.
+
+        The HTTP half of this middleware scoped requests, but WS connections
+        passed straight through: the job-progress socket opened its own
+        UNscoped session, so any authenticated principal could watch any
+        tenant's job by id. Browsers cannot set custom headers on a WS
+        handshake, so the caller's credentials travel as query params and are
+        routed into the same membership-validated resolution (a ``?tenant=``
+        the caller is not a member of is refused exactly like a forged
+        ``X-Tenant-ID``). A refusal closes the handshake with 1008 (policy
+        violation) — a WS handshake cannot carry an HTTP error status.
+        """
+        path = scope.get("path", "")
+        # mounted under the API prefix (/api/v1/ws/...) in main.py; accept
+        # both the prefixed and a bare /ws/ mount
+        if "/ws/" not in path:
+            await self.app(scope, receive, send)
+            return
+        from api.dependencies import TenantResolutionRefused
+
+        scoped = _ws_scope_with_query_headers(scope)
+        try:
+            tenant_id = await self._resolve(Request(scoped))
+        except TenantResolutionRefused as exc:
+            try:
+                from api.observability.operational_counters import incr
+
+                incr("tenant_isolation_violation")
+            except Exception:  # pragma: no cover — observability best-effort
+                pass
+            # close-before-accept: the server answers the handshake with a
+            # 403; the client sees a refusal, not a silent drop.
+            await send({"type": "websocket.close", "code": 1008,
+                        "reason": str(getattr(exc, "detail", "refused"))[:100]})
+            return
         if tenant_id is None:
             await self.app(scope, receive, send)
             return

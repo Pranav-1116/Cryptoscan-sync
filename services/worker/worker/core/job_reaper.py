@@ -92,6 +92,10 @@ def reap_stale_jobs(
             "job_type": job.job_type,
             "system_id": job.system_id,
             "progress": progress,
+            # Ownership travels with the republish: without it the worker
+            # re-ran a tenant's job unscoped and its results landed in the
+            # platform estate (tenant_id NULL — readable by every tenant).
+            "tenant_id": getattr(job, "tenant_id", None),
         }
         try:
             publish(payload)

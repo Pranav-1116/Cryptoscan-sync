@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_roles
+from api.security.scan_admission import is_range_target
 
 logger = logging.getLogger(__name__)
 
@@ -456,8 +457,64 @@ def delete_scope(
     if entry is None or entry.org_id != org.id:
         raise HTTPException(status_code=404, detail="Scope entry not found")
     repo.delete_scope_entry(entry_id)
-    _audit(db, user, "onboarding.scope_removed", target_id=entry_id, detail={"target": entry.target})
+
+    # Revocation: removing authorized scope must reach the targets it
+    # materialized. Before this, deletion left the due-scan rotation probing
+    # hosts the operator had just de-authorized. Only targets this scope
+    # created (source="onboarding") are disabled — a manually-registered or
+    # discovery-registered target survives, and so does a target another
+    # still-enabled scope entry still declares.
+    revoked = _revoke_materialized_targets(repo, org, entry)
+    _audit(db, user, "onboarding.scope_removed", target_id=entry_id,
+           detail={"target": entry.target, "revoked_targets": revoked})
     db.commit()
+
+
+def _revoke_materialized_targets(repo, org, entry) -> list[str]:
+    """Disable due-scan targets that the removed scope entry materialized.
+
+    Returns the endpoints disabled. Best-effort by design (logged, never
+    raises): the scope entry itself is already deleted, and a failed
+    revocation must not 500 the deletion — but it IS logged loudly because a
+    silent no-op here means an unauthorized host keeps getting probed.
+    """
+    if getattr(entry, "kind", None) != "network":
+        return []
+    if entry.target.startswith(("vlan:", "snmp:")) or is_range_target(entry.target):
+        return []  # ranges/references never materialized as targets
+    try:
+        from db.models.network_scan_target import NetworkScanTarget
+
+        still_declared = {
+            e["target"]
+            for e in (repo.scope_summary(org.id).get("entries") or [])
+            if e.get("kind") == "network" and e.get("target") == entry.target
+        }
+        if still_declared:
+            return []
+        rows = (
+            repo.session.query(NetworkScanTarget)
+            .filter(
+                NetworkScanTarget.endpoint == entry.target,
+                NetworkScanTarget.source == "onboarding",
+                NetworkScanTarget.enabled.is_(True),
+            )
+            .all()
+        )
+        for row in rows:
+            row.enabled = False
+        if rows:
+            repo.session.flush()
+            logger.warning(
+                "onboarding_scope_revoked_targets",
+                extra={"scope_target": entry.target,
+                       "revoked": [r.endpoint for r in rows]},
+            )
+        return [r.endpoint for r in rows]
+    except Exception:
+        logger.exception("onboarding_scope_revocation_failed",
+                         extra={"scope_target": getattr(entry, "target", None)})
+        return []
 
 
 @router.delete("/connections/{connector_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -576,9 +633,20 @@ def _register_scope_into_engine(repo, org, scope, connectors) -> dict:
             endpoint = e["target"]
             if endpoint.startswith(("vlan:", "snmp:")):
                 continue  # references resolved by connectors, not direct probes
+            if is_range_target(endpoint):
+                # A CIDR is AUTHORIZATION scope, not a probe target. This
+                # registration previously materialized ranges like
+                # 10.0.0.0/16 as always-enabled TLS targets, so the due-scan
+                # rotation actively swept whole networks that were only ever
+                # *declared*. Ranges are counted honestly here and enforced
+                # at execution time by the sweep authorization check.
+                registered["network_scope_ranges"] = (
+                    registered.get("network_scope_ranges", 0) + 1
+                )
+                continue
             if endpoint in existing_targets:
                 continue
-            net_repo.upsert(endpoint, enabled=True)
+            net_repo.upsert(endpoint, enabled=True, source="onboarding")
             registered["network_targets"] += 1
     except Exception:
         logger.debug("network target registration skipped", exc_info=True)

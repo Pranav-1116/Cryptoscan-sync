@@ -30,15 +30,24 @@ spec:
                 name: cryptoscan-config
             - secretRef:
                 name: cryptoscan-secrets
+          # Readiness must answer the DEPENDENCY-aware probe: /health returns
+          # 200 while the DB is down, so wiring it here kept a broken pod in
+          # the Service's rotation. /readyz returns 503 during DB/dependency
+          # failure — that is what "not ready to serve" means. Liveness stays
+          # on the process-alive /healthz and never depends on the database:
+          # a DB outage must remove pods from rotation, not restart them.
           readinessProbe:
             httpGet:
-              path: /health
+              path: /readyz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
+            # beyond the bounded DB probe inside /readyz so a slow-but-alive
+            # dependency check is not scored a readiness failure
+            timeoutSeconds: 10
           livenessProbe:
             httpGet:
-              path: /health
+              path: /healthz
               port: http
             initialDelaySeconds: 15
             periodSeconds: 20

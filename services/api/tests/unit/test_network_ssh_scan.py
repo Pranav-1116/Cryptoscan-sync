@@ -22,9 +22,15 @@ def _fake_finding(endpoint, status="OK", issues=None, observed=None):
 
 @pytest.mark.asyncio
 async def test_ssh_scan_endpoint(monkeypatch):
+    import api.security.scan_admission as admission
     import network_scanner.probing.ssh_keyscan as ssh_module
 
     calls = []
+
+    # this test exercises the SSH findings contract, not admission: pin the
+    # decision (no emergency stop, no OT estate, active probing allowed)
+    monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(admission, "_ot_declared", lambda: False)
 
     def fake_scan(host, port, *, timeout=8.0, baseline=None):
         endpoint = f"{host}:{port}"

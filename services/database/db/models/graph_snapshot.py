@@ -11,7 +11,7 @@ compare" view — it never invents state; it records what the graph actually was
 
 from __future__ import annotations
 
-from sqlalchemy import JSON, Integer, String
+from sqlalchemy import JSON, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -20,9 +20,14 @@ from db.tenancy import TenantScoped
 
 class GraphSnapshot(BaseModel, TenantScoped):
     __tablename__ = "graph_snapshots"
+    __table_args__ = (UniqueConstraint("tenant_id", "version",
+                                       name="uq_graph_snapshots_tenant_version"),)
 
     #: monotonic version number (1..n), unique per snapshot.
-    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # per-tenant numbering (migration 0071): each tenant numbers its own
+    # snapshot history from 1
+
     #: sha256 over the canonicalized node+edge set.
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     parent_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)

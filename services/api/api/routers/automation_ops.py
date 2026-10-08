@@ -260,8 +260,12 @@ def cbom_version_tick(db: Session, observations: list[dict] | None = None,
     components = [_canon_component(c) for c in observations]
     fingerprint = _state_fingerprint(components)
 
+    # Tenant-local prev (migration 0071): CBOM versions number per tenant.
+    from db.tenancy import current_tenant
+
     prev = db.execute(
-        select(CbomVersionRow).order_by(CbomVersionRow.version.desc()).limit(1)
+        select(CbomVersionRow).order_by(CbomVersionRow.version.desc())
+        .filter(CbomVersionRow.tenant_id == current_tenant()).limit(1)
     ).scalars().first()
 
     if prev is not None and prev.fingerprint == fingerprint:

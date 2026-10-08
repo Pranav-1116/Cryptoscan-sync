@@ -323,3 +323,51 @@ def test_member_without_membership_is_refused_not_unscoped(clients, session):
     r = client.get("/api/v1/digital-twin")
     assert r.status_code == 403
     assert "membership" in r.json()["detail"].lower()
+
+
+# --------------------------------------------------------- snapshot versions
+
+def test_snapshot_versions_are_numbered_per_tenant(clients, session):
+    """Two tenants each capture a twin snapshot: both get version 1.
+
+    The version columns used to be globally UNIQUE, so the second tenant's
+    version-1 capture was an IntegrityError at the database while every read
+    was already tenant-scoped (migration 0071 + per-tenant allocation)."""
+    from db.models.cascade_extensions import TwinSnapshot
+
+    acme_client, root_client, app = clients
+
+    # globex needs its own member client (same real-stack pattern as acme)
+    UserRepository(session).create_user("globex_viewer", hash_password("x"), ["viewer"])
+    session.add(TenantMembership(tenant_id="globex", username="globex_viewer",
+                                 tenant_role="member"))
+    session.commit()
+    globex_client = _login(session, app, "globex_viewer")
+
+    _seed(session)
+
+    r1 = acme_client.post("/api/v1/digital-twin/snapshot")
+    r2 = globex_client.post("/api/v1/digital-twin/snapshot")
+    assert r1.status_code == 200 and r2.status_code == 200
+    assert r1.json()["version"] == 1
+    assert r2.json()["version"] == 1  # not 2, and not an IntegrityError
+
+    rows = session.query(TwinSnapshot).order_by(TwinSnapshot.tenant_id).all()
+    assert sorted((r.tenant_id, r.version) for r in rows) == [("acme", 1), ("globex", 1)]
+
+    # graph snapshots take the same per-tenant numbering
+    g1 = acme_client.post("/api/v1/graph/snapshot")
+    g2 = globex_client.post("/api/v1/graph/snapshot")
+    assert g1.status_code == 200 and g2.status_code == 200
+    assert g1.json()["version"] == 1
+    assert g2.json()["version"] == 1
+
+    # and replay stays inside the tenant: acme's version-1 replay sees acme's
+    # estate, never globex's
+    replay = acme_client.post("/api/v1/technology-bom/cascade?version=1",
+                              json={"target": "sys-acme", "kind": "system"})
+    assert replay.status_code in (200, 404)
+    if replay.status_code == 200:
+        body = replay.json()
+        names = str(body)
+        assert "globex" not in names

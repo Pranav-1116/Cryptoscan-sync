@@ -183,6 +183,13 @@ async def github_webhook(
             "message": "repository not configured",
         }
 
+    # Tenant ownership: the webhook path is skipped by the tenant middleware
+    # (no authenticated principal to resolve), so the job would otherwise be
+    # created with tenant_id NULL — the platform estate, readable by every
+    # tenant. The matched RepoConfiguration row knows whose repo this is:
+    # copy its tenant onto the job and the queue payload.
+    cfg_tenant = getattr(cfg, "tenant_id", None)
+
     created = None
     if hasattr(job_repo, "create_from_webhook"):
         created = await _maybe(
@@ -200,8 +207,13 @@ async def github_webhook(
             target_branch=payload.get("branch") or "main",
             target_commit=payload.get("commit"),
             triggered_by=payload.get("author") or "github",
+            tenant_id=cfg_tenant,
         )
         created = await _maybe(created)
+    if cfg_tenant and getattr(created, "tenant_id", None) is None:
+        # legacy create_from_webhook hooks don't take a tenant: stamp the row
+        # so the job itself is owned, not just the queue payload
+        created.tenant_id = cfg_tenant
 
     job_id = getattr(created, "job_id", None) or getattr(created, "id", None)
     # Commit the job BEFORE scheduling the background task: FastAPI runs
@@ -226,22 +238,21 @@ async def github_webhook(
         "target_commit": payload.get("commit"),
         "triggered_by": payload.get("author") or "github",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        # so the worker runs the scan inside the owning tenant's scope
+        "tenant_id": getattr(created, "tenant_id", None) or cfg_tenant,
     }
     if settings.REDIS_URL:
         from worker.core.job_consumer import enqueue_job
 
         background_tasks.add_task(enqueue_job, job_payload, settings.REDIS_URL, settings.SCAN_JOB_QUEUE_KEY)
     else:
-        from worker.pipeline.pipeline_runner import PipelineRunner
+        # Inline fallback MUST re-enter the tenant scope: this background task
+        # runs after the request scope is gone, and an unscoped pipeline would
+        # write every result into the platform estate (tenant_id NULL, visible
+        # to all tenants). Same discipline as api.routers.trigger._run_inline.
+        from api.routers.trigger import _run_inline
 
-        background_tasks.add_task(
-            PipelineRunner().run,
-            job_id=job_id,
-            target_repo=repo_url,
-            target_branch=payload.get("branch") or "main",
-            triggered_by=payload.get("author") or "github",
-            target_commit=payload.get("commit"),
-        )
+        background_tasks.add_task(_run_inline, job_payload)
     return {
         "accepted": True,
         "acknowledged": True,

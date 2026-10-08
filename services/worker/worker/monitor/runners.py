@@ -262,8 +262,27 @@ def repo_runner(config: dict, session: Any) -> dict:
     from worker.core.job_consumer import enqueue_job
 
     branch = str(config.get("branch") or "main")
+    # Tenant ownership from trusted state: the monitor runs unscoped, so a
+    # job created without a tenant lands in the platform estate (tenant_id
+    # NULL — readable by every tenant). The RepoConfiguration that
+    # authorized watching this repo knows whose it is; an explicit
+    # config["tenant_id"] wins when an operator pinned it.
+    tenant_ref = str(config.get("tenant_id") or "") or None
+    if tenant_ref is None:
+        try:
+            from db.models.repo_configuration import RepoConfiguration
+
+            cfg_row = (
+                session.query(RepoConfiguration)
+                .filter(RepoConfiguration.repo_url == target)
+                .first()
+            )
+            tenant_ref = getattr(cfg_row, "tenant_id", None) if cfg_row else None
+        except Exception:  # noqa: BLE001 — lookup must not block the monitor tick
+            tenant_ref = None
     job = JobRepository(session).create_job(
-        job_type="MANUAL", target_repo=target, target_branch=branch, triggered_by="monitor"
+        job_type="MANUAL", target_repo=target, target_branch=branch,
+        triggered_by="monitor", tenant_id=tenant_ref,
     )
     payload = {
         "job_id": job.job_id,
@@ -272,6 +291,7 @@ def repo_runner(config: dict, session: Any) -> dict:
         "target_branch": branch,
         "triggered_by": "monitor",
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "tenant_id": tenant_ref,
     }
     try:
         enqueue_job(payload)  # Redis when configured; otherwise in-process memory queue

@@ -66,37 +66,6 @@ def _annotate_sector(job, sector: str, scan_mode: str | None) -> None:
         logger.debug("sector_annotation_skipped", exc_info=True)
 
 
-def _safe_scan_gate(*, region: str | None = None, environment: str | None = None,
-                    is_ot: bool = False, asset: str | None = None) -> None:
-    """Fail-closed: refuse to queue a scan when the safe-scan layer blocks it
-    (global/scope emergency stop, or an OT/policy prohibition). Reads the
-    Control Plane policies; any lookup failure fails closed for safety."""
-    try:
-        from control_plane.orchestrator import emergency_engaged
-        from control_plane.safety import evaluate_scan
-        from db.connection.session import SessionLocal
-        from db.repositories.control_plane_repository import ControlPlaneRepository
-
-        session = SessionLocal()
-        try:
-            cp = ControlPlaneRepository(session)
-            if emergency_engaged([e.to_dict() for e in cp.list_events(None, limit=500)]):
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                                    detail="Scan rejected: emergency stop is engaged")
-            policy_row = cp.matching_policy(region=region, environment=environment)
-            decision = evaluate_scan(policy_row.to_dict() if policy_row else None,
-                                     asset=asset, is_ot=is_ot)
-            if not decision.permitted:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
-                                    detail=f"Scan rejected by safe-scan policy: {decision.reason}")
-        finally:
-            session.close()
-    except HTTPException:
-        raise
-    except Exception:
-        logger.debug("safe_scan_gate_unavailable", exc_info=True)
-
-
 def _publish_job(payload: dict) -> None:
     try:
         from worker.core.job_consumer import enqueue_job
@@ -189,6 +158,17 @@ def enqueue_scan_job(
     scan_options: dict | None = None,
 ) -> TriggerScanResponse:
     from cloud_scanner.estate import is_cloud_target
+
+    # ONE fail-closed admission decision at the common queue boundary: every
+    # route that enqueues a scan goes through this helper, so emergency stop,
+    # safe-scan policy and the OT/passive boundary are enforced once, here,
+    # instead of per-route (the manual route historically gated itself while
+    # this helper — used by cbom/estate/scans/devsecops/systems/jobs/cloud —
+    # had no gate at all). Lookup failures raise 503; nothing is accepted
+    # when the decision cannot be made.
+    from api.security.scan_admission import admit_scan
+
+    admit_scan(scan_mode=scan_mode, asset=repo_url)
 
     if is_cloud_target(repo_url) and str(job_type).upper() != "CLOUD":
         job_type = "CLOUD"
@@ -306,8 +286,15 @@ async def trigger_manual_scan(
 ):
     from cloud_scanner.estate import is_cloud_target
 
-    # fail-closed safe-scan gate (emergency stop / OT policy) before queuing
-    _safe_scan_gate(is_ot=bool(getattr(request_body, "is_ot", False)))
+    # Fail-closed admission (emergency stop / safe-scan policy / OT passive
+    # boundary) before queuing. OT is DERIVED from trusted declarations by
+    # the gate itself — the old code read an ``is_ot`` request field that
+    # does not exist on TriggerScanRequest, so OT policy was never applied
+    # here and a client could not have been trusted to declare it anyway.
+    from api.security.scan_admission import admit_scan
+
+    admit_scan(scan_mode=getattr(request_body, "scan_mode", None),
+               asset=request_body.repo_url)
 
     # Same containment as _queue_scan_job below and as the SBOM route: a
     # local target must resolve inside CRYPTOSCAN_SOURCE_ROOTS. Without it

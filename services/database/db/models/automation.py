@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel, utcnow
@@ -83,8 +83,13 @@ class CbomVersionRow(BaseModel, TenantScoped):
     """Immutable, content-addressed live CBOM version (deterministic)."""
 
     __tablename__ = "cbom_versions"
+    __table_args__ = (UniqueConstraint("tenant_id", "version",
+                                       name="uq_cbom_versions_tenant_version"),)
 
-    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # per-tenant numbering: two tenants each capture a version 1 — a global
+    # UNIQUE here made the second one a database error (see migration 0071)
+
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     parent_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     component_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

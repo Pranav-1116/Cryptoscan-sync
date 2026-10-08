@@ -60,8 +60,12 @@ class VendorDependency(BaseModel, TenantScoped):
 
 class TwinSnapshot(BaseModel, TenantScoped):
     __tablename__ = "twin_snapshots"
+    __table_args__ = (UniqueConstraint("tenant_id", "version",
+                                       name="uq_twin_snapshots_tenant_version"),)
 
-    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    # per-tenant numbering (migration 0071): a global UNIQUE made the second
+    # tenant's version-1 capture a database error
+    version: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     parent_fingerprint: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
     state: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

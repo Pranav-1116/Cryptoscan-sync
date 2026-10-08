@@ -555,7 +555,13 @@ def digital_twin_snapshot(
     canonical = _json.dumps(state, sort_keys=True, default=str)
     fingerprint = hashlib.sha256(canonical.encode()).hexdigest()
 
-    prev = db.query(TwinSnapshot).order_by(
+    # Tenant-local prev (migration 0071): twin snapshot versions number per
+    # tenant; the unchanged-estate check and the +1 read this tenant's
+    # history only, explicitly (platform scope bypasses the ORM guard).
+    from db.tenancy import current_tenant
+
+    prev = db.query(TwinSnapshot).filter(
+        TwinSnapshot.tenant_id == current_tenant()).order_by(
         TwinSnapshot.version.desc()).first()
     if prev is not None and prev.fingerprint == fingerprint:
         return {"recorded": False, "version": prev.version,

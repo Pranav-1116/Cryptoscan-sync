@@ -10,7 +10,7 @@ compared or exported at any time.
 
 from __future__ import annotations
 
-from sqlalchemy import JSON, Integer, String
+from sqlalchemy import JSON, Integer, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -19,9 +19,13 @@ from db.tenancy import TenantScoped
 
 class TechnologyBomSnapshot(BaseModel, TenantScoped):
     __tablename__ = "technology_bom_snapshots"
+    __table_args__ = (UniqueConstraint("tenant_id", "version",
+                                       name="uq_technology_bom_snapshots_tenant_version"),)
 
     #: monotonic version number (1..n), unique per snapshot.
-    version: Mapped[int] = mapped_column(Integer, nullable=False, unique=True, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    # per-tenant numbering (migration 0071)
+
     #: sha256 over the canonicalized BOM component set.
     fingerprint: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     parent_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
