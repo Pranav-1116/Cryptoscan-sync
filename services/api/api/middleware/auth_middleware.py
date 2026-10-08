@@ -48,6 +48,11 @@ UNPROTECTED_PREFIXES = (
     "/api/v1/readyz",  # LB readiness probes must work without credentials
     "/api/v1/discovery",
     "/api/v1/webhooks",
+    # Stripe calls this with a signature header, never a session: the
+    # HMAC in stripe-signature IS the credential (verified in the route).
+    # Without this exemption the session gate 401'd every production
+    # billing callback — found by the 2026-10 route-auth inventory.
+    "/api/v1/saas/billing/webhook",
 )
 
 # Static assets are served under hashed filenames, so these DO match as bare

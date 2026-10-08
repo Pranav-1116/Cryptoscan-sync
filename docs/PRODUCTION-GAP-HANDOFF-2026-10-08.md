@@ -146,6 +146,37 @@ What was missing was the last mile of UX and visibility:
 Gates: full backend suite and frontend typecheck/vitest results recorded
 in the round-12 commit; ruff clean; rest-api regen unchanged.
 
+## Round 13 (2026-10-09) — route-auth inventory: a gate, two fixes
+
+The user's continuation picked up the retention-auth note from round 11
+and generalized it: audit EVERY route's authentication, then make the
+class of bug impossible to reintroduce.
+
+The audit needed three passes because authentication lives in four
+shapes: route dependencies, router-level dependencies
+(`APIRouter(dependencies=[...])` — telecom/hardware/etc. authenticate
+whole routers this way), aliased `require_permission(...)` factories
+(the inner function's name carries no marker; only its module
+identifies it), and inline handler checks (`require_auditor(request)`,
+`token_from_request` + manual 401). Name-matching catches only the
+first shape; the final audit resolves every dependency by
+module-qualified name and falls back to source inspection for inline
+checks.
+
+| Finding | Resolution |
+|---|---|
+| `GET /compliance/retention` had no authentication of any kind | Now `Depends(get_current_user)` — the retention clock is derived from the caller-partitioned audit trail (round 11), so anonymous readers learned org-specific facts. Behavioral pin: 401 without credentials. The auditor-key path for external auditors remains `/compliance/audit/retention`. |
+| The Stripe billing webhook was NOT exempt from the session gate | Its own docstring says "the signature is the only authentication" — but production's AuthMiddleware demanded a session first, so every real billing callback 401'd. Now in `UNPROTECTED_PREFIXES` (same pattern as `/api/v1/webhooks`); behavioral pin: an unsigned callback is answered by the route (400 invalid signature), never by the gate (401). |
+| `/metrics`, health, docs, login/SSO/webhooks surfaces | Intentionally open (probes, credential-bearing by design) — enumerated as the exemption list, imported from the middleware so there is one source of truth. |
+| Everything else (789 routes) | Already authenticated through one of the four shapes — no action. |
+
+The permanent gate: `services/api/tests/security/test_route_auth_inventory.py`
+walks all ~790 routes on every run, resolves each dependency tree by
+module, recognizes inline checks, and fails BY NAME if any non-exempt
+route ships without an authentication seam. Verified it catches the
+retention bug when temporarily reverted. A new route without auth now
+fails CI instead of shipping open.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

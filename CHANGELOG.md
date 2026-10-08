@@ -6,6 +6,30 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed — route-auth audit: one open endpoint, one broken webhook, and a permanent gate
+
+- **`GET /compliance/retention` answered anonymous readers.** The retention
+  clock is derived from the caller-partitioned audit trail (round 11), so an
+  unauthenticated caller learned org-specific facts. Now requires
+  `get_current_user`; the auditor-key path for external auditors remains
+  `/compliance/audit/retention`.
+- **The Stripe billing webhook was dead in production.** Its signature is
+  the only authentication it can have — Stripe never sends a session — but
+  the session gate demanded one anyway, so every real billing callback
+  401'd. `/api/v1/saas/billing/webhook` is now in the gate's exemption
+  list (same pattern as the other webhooks); the route's HMAC check is the
+  first gate it meets. Behavioral pin: an unsigned callback gets the
+  route's 400, never the gate's 401.
+- **A permanent route-auth inventory gate.** Authentication lives in four
+  shapes in this codebase (route dependencies, router-level dependencies,
+  aliased `require_permission(...)` factories, inline handler checks), and
+  name-matching sees only the first. The new security test resolves every
+  dependency tree by module-qualified name, recognizes inline checks, and
+  fails by name if any non-exempt route ships without an authentication
+  seam — exemptions are imported from the middleware's own list, one
+  source of truth. All ~790 routes audited; everything else was already
+  authenticated.
+
 ### Added — tenant_id connected end to end (browser → header → ORM → rows)
 
 - **An organization switcher on the Tenancy page.** The header modal could

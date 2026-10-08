@@ -79,11 +79,16 @@ class AttestationVerifyIn(BaseModel):
 
 
 @router.get("/retention")
-def retention_policy(db=Depends(get_db_session)):
+def retention_policy(user: str = Depends(get_current_user),
+                     db=Depends(get_db_session)):
     from compliance.engine import DEFAULT_RETENTION, can_delete
 
     from db.repositories.settings_repository import SettingsRepository
 
+    # authenticated console surface (2026-10 auth audit): the retention
+    # clock is derived from the caller's partitioned audit trail, so an
+    # anonymous reader learned org-specific facts for free. The
+    # auditor-key path for external auditors is /compliance/audit/retention.
     policy = SettingsRepository(db).get("compliance.retention", None) or DEFAULT_RETENTION
     # live example: oldest audit-log record age -> WORM verdict. The audit
     # trail is tenant-partitioned (2026-10): read the caller's partition,
