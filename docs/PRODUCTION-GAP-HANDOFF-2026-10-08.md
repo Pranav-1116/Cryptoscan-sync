@@ -126,6 +126,26 @@ evidence at rest (target-environment decisions). The `/compliance/retention`
 endpoint also still lacks an auth dependency of its own (it reads settings
 only) — noted, not changed here.
 
+## Round 12 (2026-10-08, late) — tenant_id connected end to end
+
+The user-facing ask: "connect the all API and tenant_id backend, frontend
+and database." Audit result first: the enforcement chain built in rounds
+5-11 was already complete (the repo's own `tenant_isolation_audit.py`
+passes — 99 scoped tables, 12 justified platform tables; every frontend
+call already flows through `tenantFetch`, which attaches `X-Tenant-ID`).
+What was missing was the last mile of UX and visibility:
+
+| Seam | What changed |
+|---|---|
+| Frontend picker on the Tenancy page | New inline "Switch organization" panel: one button per membership from `GET /saas/memberships` (backend-derived, never header-derived), a "Platform estate" option for platform admins, hidden for single-org users. Switching refreshes the page's live data and reconnects realtime consumers. The stale "switch orgs by signing in with a member of the other organization" copy is gone. |
+| Ownership visible in payloads | `GET /technology-bom/cascade/watches` and `/cascade/runs` now carry `tenant_id` per row (NULL = platform estate) — the DB column is connected to the surface the console reads. |
+| The chain, pinned as one test | `test_tenant_e2e_flow.py` runs the real stack (session cookies + TenantScopeMiddleware, one user in two orgs): memberships directory → header → whoami → tenant-stamped write (verified on the raw row under `platform_scope`) → scoped list with `tenant_id` → cross-tenant invisibility → no-header 400 → stranger-header 403/404. |
+| Frontend contract pinned | `Tenancy.test.tsx` (5 vitest): picker renders from memberships, switch stores the org, the NEXT API call carries the switched header, platform option only for admins, hidden for single-org users. |
+| Docs | New `docs/user-guide/multi-tenancy.md`: the whole chain (browser → header → middleware → ORM → stamped rows → scoped payloads), how switching works, per-surface isolation rules, and the platform estate. |
+
+Gates: full backend suite and frontend typecheck/vitest results recorded
+in the round-12 commit; ruff clean; rest-api regen unchanged.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

@@ -1131,6 +1131,8 @@ def technology_bom_cascade_runs(
              "max_depth": r.max_depth, "verdict": r.verdict,
              "affected_system_count": (r.result or {}).get("impact", {}).get(
                  "affected_system_count"),
+             # ownership travels with the row (NULL = platform estate)
+             "tenant_id": r.tenant_id,
              # replay provenance travels with the history entry: an auditor
              # skimming the list sees which answers were point-in-time
              "replayed_over": (r.result or {}).get("replayed_over"),
@@ -1299,6 +1301,9 @@ def cascade_watches_list(
         "id": r.id, "target": r.target, "target_kind": r.target_kind,
         "max_depth": r.max_depth, "active": r.active,
         "last_run_id": r.last_run_id, "created_by": r.created_by,
+        # ownership travels with the row (NULL = platform estate): the
+        # console can label whose watch this is without a second query
+        "tenant_id": r.tenant_id,
         "created_at": r.created_at.isoformat() if r.created_at else None,
     } for r in rows], "count": len(rows)}
 

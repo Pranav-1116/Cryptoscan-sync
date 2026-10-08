@@ -6,6 +6,36 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — tenant_id connected end to end (browser → header → ORM → rows)
+
+- **An organization switcher on the Tenancy page.** The header modal could
+  switch orgs, but the tenancy page itself said "switch orgs by signing in
+  with a member of the other organization". The page now has an inline
+  "Switch organization" panel: one button per membership (from
+  `GET /saas/memberships`, which derives the list from the membership
+  table — never from the current header), a "Platform estate" option for
+  platform admins, and nothing at all for single-organization users.
+  Switching refreshes the page's live data and reconnects realtime
+  consumers.
+- **Ownership is visible in payloads.** `GET /technology-bom/cascade/watches`
+  and `/cascade/runs` carry `tenant_id` on each row (NULL = platform
+  estate) — the database column is connected to the surface the console
+  reads.
+- **The chain is pinned as one test on each side.** Backend:
+  `test_tenant_e2e_flow.py` over the real stack (session cookies +
+  TenantScopeMiddleware, one user in two orgs) — memberships directory →
+  header → whoami → tenant-stamped write verified on the raw row → scoped
+  list → cross-tenant invisibility → no-header 400 → stranger-header
+  403/404. Frontend: `Tenancy.test.tsx` (5 vitest) — the picker renders
+  from memberships, switching stores the org, and the next API call
+  carries the switched header.
+- New user guide `docs/user-guide/multi-tenancy.md` documents the whole
+  chain and the per-surface isolation rules.
+- Audit note: the enforcement chain (rounds 5-11) was already complete —
+  `scripts/tenant_isolation_audit.py` passes (99 scoped tables) and every
+  frontend call flows through `tenantFetch`. This round connected the
+  last mile of UX and visibility.
+
 ### Fixed — /stream event bus and live-CBOM store were cross-tenant global stores
 
 - **The event-stream bus is partitioned by tenant.** Raw observations,

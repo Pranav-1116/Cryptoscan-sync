@@ -5,6 +5,7 @@ import {
   apiSaasWhoami, apiSaasUsage, apiSaasMembers, apiSaasAddMember, apiSaasRemoveMember,
   apiSaasAdminTenants, apiSaasSuspend, apiSaasRestore, apiSaasSetPlan,
   apiSaasInvites, apiSaasCreateInvite, apiSaasRevokeInvite,
+  apiSaasMemberships,
   SaasWhoami, SaasMember, SaasAdminTenant, SaasInvite, activeTenantId, setActiveTenantId,
 } from "../lib/api.js";
 
@@ -228,9 +229,72 @@ function AdminPanel() {
   );
 }
 
+/* Inline organization switcher — the tenancy page's own entry to the same
+   switching the header modal offers. Lists exactly what the backend says
+   this user may choose (GET /saas/memberships derives from the membership
+   table, never from the current header); picking one sets the active
+   tenant, which lib/api.ts attaches as X-Tenant-ID on every subsequent
+   call. The chain that makes this safe: the backend re-validates the
+   header against memberships on every request and refuses a tenant the
+   user does not belong to. */
+function OrgSwitcher({ whoami, onSwitched }: { whoami: SaasWhoami | null; onSwitched: () => void }) {
+  const membershipsRes = usePollingApi(apiSaasMemberships, 30000);
+  const rows = membershipsRes.data?.tenants ?? [];
+  const current = activeTenantId();
+  if (rows.length === 0) return null; // single-org / platform users see nothing to switch
+
+  const pick = (id: string | null, name: string) => {
+    setActiveTenantId(id);
+    try { localStorage.setItem("zelnx_tenant_name", name || ""); } catch { /* ignore */ }
+    // realtime consumers (SSE) reconnect on this event; the page refreshes
+    // its own data via onSwitched below
+    try { window.dispatchEvent(new CustomEvent("zelinx:auth", { detail: { token: true } })); } catch { /* non-browser */ }
+    onSwitched();
+  };
+
+  return (
+    <Panel title="Switch organization" sub="sent as X-Tenant-ID on every API call">
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {rows.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => pick(t.id, t.name)}
+            className={current === t.id ? "btn sm" : "btn sm ghost"}
+            style={{
+              textAlign: "left", justifyContent: "space-between", width: "100%",
+              border: current === t.id ? "1px solid var(--cyan)" : undefined,
+            }}
+          >
+            <span>{t.name}{t.status !== "ACTIVE" ? ` (${t.status})` : ""}</span>
+            <span style={{ fontSize: 10, color: "var(--faint)" }}>
+              {current === t.id ? "ACTIVE" : t.tenant_role}
+            </span>
+          </button>
+        ))}
+        {whoami?.is_platform_admin && (
+          <button
+            onClick={() => pick(null, "")}
+            className={current === null ? "btn sm" : "btn sm ghost"}
+            style={{
+              textAlign: "left", justifyContent: "space-between", width: "100%",
+              border: current === null ? "1px solid var(--cyan)" : undefined,
+            }}
+          >
+            <span>Platform estate (no organization)</span>
+            <span style={{ fontSize: 10, color: "var(--faint)" }}>
+              {current === null ? "ACTIVE" : "admin"}
+            </span>
+          </button>
+        )}
+      </div>
+    </Panel>
+  );
+}
+
 export default function Tenancy() {
-  const whoami = usePollingApi<SaasWhoami>(apiSaasWhoami, 15000);
-  const usage = usePollingApi(apiSaasUsage, 20000);
+  const [switchTick, setSwitchTick] = useState(0);
+  const whoami = usePollingApi<SaasWhoami>(apiSaasWhoami, 15000, [switchTick]);
+  const usage = usePollingApi(apiSaasUsage, 20000, [switchTick]);
   const w = whoami.data;
   const meters = useMemo(() => Object.entries(usage.data?.meters ?? {}), [usage.data]);
 
@@ -259,8 +323,9 @@ export default function Tenancy() {
               </p>
               {w.tenant_id && (
                 <p style={{ fontSize: 12, opacity: 0.7 }}>
-                  tenant: <code>{w.tenant_id}</code> — active in this browser; switch orgs by signing in
-                  with a member of the other organization.
+                  tenant: <code>{w.tenant_id}</code> — active in this browser; switch with the panel
+                  on this page or the organization button in the header. Every API call carries it
+                  as <code>X-Tenant-ID</code>.
                 </p>
               )}
             </>
@@ -279,6 +344,7 @@ export default function Tenancy() {
       {w?.tenant_id && (w.tenant_role === "owner" || w.tenant_role === "admin") && <InvitesPanel />}
       {w?.tenant_id && <MembersPanel whoami={w} />}
       {w?.is_platform_admin && <AdminPanel />}
+      <OrgSwitcher whoami={w} onSwitched={() => setSwitchTick((n) => n + 1)} />
     </div>
   );
 }
