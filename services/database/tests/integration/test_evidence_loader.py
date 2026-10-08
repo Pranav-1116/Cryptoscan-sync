@@ -116,6 +116,21 @@ def db_session(tmp_path):
     Base.metadata.drop_all(engine)
 
 
+def test_legacy_loader_rejects_post_hash_finding_changes(db_session):
+    from evidence.hashing.content_hasher import ContentHasher
+
+    finding = {"source": {"file_path": "bad\x00path", "line_number": 1},
+               "crypto": {"algorithm": "AES"}}
+    record = {"evidence_id": str(uuid.uuid4()),
+              "content_hash": ContentHasher.compute_hash(finding),
+              "finding": finding, "chain_position": 0}
+    with pytest.raises(ValueError, match="finding payload changed after hashing"):
+        EvidenceLoader(db_session).load(
+            scan_meta={"target_location": "local://fixture"},
+            evidence_records=[record], scan_id=str(uuid.uuid4()),
+        )
+
+
 @pytest.fixture
 def valid_scan_data() -> dict:
     """Valid scan metadata dict."""

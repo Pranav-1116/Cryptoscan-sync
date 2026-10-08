@@ -29,11 +29,11 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
         "unencrypted": result.get("unencrypted") or 0,
         "packets_sent": result.get("packets_sent") or 0,
     }
-    for finding in result.get("findings") or []:
+    for position, finding in enumerate(result.get("findings") or []):
         crypto = finding.get("crypto") or {}
         ctx.findings.append(
             {
-                "finding_id": f"ot-{finding.get('source', {}).get('src_ip')}-{finding.get('protocol')}",
+                "finding_id": f"ot-{finding.get('source', {}).get('src_ip')}-{finding.get('protocol')}-{position}",
                 "scanner_id": "ot-passive-scanner-v1.0",
                 "algorithm": crypto.get("encryption") or crypto.get("authentication") or "NONE",
                 "purpose": "OT_NETWORK",

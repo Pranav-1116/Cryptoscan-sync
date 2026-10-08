@@ -19,6 +19,7 @@ from api.schemas.job_schemas import TriggerScanResponse
 from api.schemas.scan_schemas import ScanListResponse, ScanResponse
 from db.repositories.job_repository import JobRepository
 from db.repositories.scan_repository import ScanRepository
+from shared_models.safe_finding import safe_finding
 
 router = APIRouter(prefix="/scans", tags=["scans"])
 
@@ -147,7 +148,7 @@ def get_key_reconciliation(
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
     inventory = [
-        row.finding_data for row in db.query(EvidenceRecord).filter(EvidenceRecord.scan_id == scan_id).all()
+        safe_finding(row.finding_data or {}) for row in db.query(EvidenceRecord).filter(EvidenceRecord.scan_id == scan_id).all()
         if ((row.finding_data or {}).get("source") or {}).get("type") == "KEY_INVENTORY"
     ]
     if not inventory:

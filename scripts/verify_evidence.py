@@ -18,25 +18,25 @@ def main() -> None:
     args = parser.parse_args()
 
     from db.connection.session import SessionLocal, init_db
+    from db.models.scan import Scan
     from db.repositories.evidence_repository import EvidenceRepository
-    from evidence.hashing.content_hasher import ContentHasher
+    from db.tenancy import filtered_get
+    from evidence.verification.stored_scan import verify_stored_scan
 
     init_db()
     session = SessionLocal()
     try:
-        rows = EvidenceRepository(session).get_all_for_scan(args.scan_id)
-        failed = 0
-        for row in rows:
-            ok = len(row.content_hash or "") == 64 and len(row.chain_hash or "") == 64
-            if row.finding_data:
-                recomputed = ContentHasher.compute_hash(row.finding_data)
-                # finding_data is a projection; length/format is the operational check
-                ok = ok and len(recomputed) == 64
-            status = "PASS" if ok else "FAIL"
-            if not ok:
-                failed += 1
-            print(f"{row.id} {status} {row.algorithm} {row.file_path}:{row.line_number}")
-        raise SystemExit(1 if failed else 0)
+        scan = filtered_get(session, Scan, args.scan_id)
+        if scan is None:
+            print(f"{args.scan_id} NOT_FOUND")
+            raise SystemExit(1)
+        verdict = verify_stored_scan(
+            scan, EvidenceRepository(session).get_all_for_scan(args.scan_id)
+        )
+        print(f"{args.scan_id} {verdict['result']} records={verdict['records']}")
+        for error in verdict["errors"]:
+            print(f"  {error}")
+        raise SystemExit(0 if verdict["result"] in {"PASS", "EMPTY"} else 1)
     finally:
         session.close()
 

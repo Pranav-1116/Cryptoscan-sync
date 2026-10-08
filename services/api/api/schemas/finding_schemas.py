@@ -26,6 +26,7 @@ class FindingResponse(BaseModel):
     normalized_crypto: Optional[dict] = None
     policy_evaluation: Optional[dict] = None
     finding_data: Optional[dict] = None
+    redacted_projection: bool = False
     # Evidence-chain timestamps (BaseModel.created_at / updated_at). Exposed so
     # the findings console can show first-seen / last-seen. Optional: rows from
     # old stores or test fixtures may not carry them, so the mapper never fails.

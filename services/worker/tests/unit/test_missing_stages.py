@@ -282,13 +282,23 @@ class TestStagePolicy:
         assert session.flushed == 1
         assert ctx is not None
 
-    def test_injects_compliance_scopes(self, tmp_path: Path):
+    def test_scopes_apply_without_changing_committed_finding(self, tmp_path: Path, monkeypatch):
+        from policy.core.engine import PolicyEngine
+
         row = _evidence_row("e1", "AES")
-        row.finding_data = {}
-        session = FakeSession([row])
-        ctx = _ctx(tmp_path, compliance_scopes=["PCI_DSS"])
-        policy_stage(ctx, session)
-        assert row.finding_data["compliance_scopes"] == ["PCI_DSS"]
+        row.finding_data = {"source": {"file_path": "Pay.java"}}
+        original = dict(row.finding_data)
+        observed = []
+        evaluate = PolicyEngine.evaluate
+
+        def capture(self, payload):
+            observed.append(payload["compliance_scopes"])
+            return evaluate(self, payload)
+
+        monkeypatch.setattr(PolicyEngine, "evaluate", capture)
+        policy_stage(_ctx(tmp_path, compliance_scopes=["PCI_DSS"]), FakeSession([row]))
+        assert observed == [["PCI_DSS"]]
+        assert row.finding_data == original
 
 
 # ── stage_agility / stage_business_enrich — degraded paths ──────────────

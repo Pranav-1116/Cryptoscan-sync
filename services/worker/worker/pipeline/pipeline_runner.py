@@ -214,6 +214,9 @@ class PipelineRunner:
             stage = "scan"
             self._advance(session, ctx, "scan")
             self._scan(ctx)
+            # Resolve system scopes before hashing; finding_data is immutable
+            # once the evidence chain has committed to its contents.
+            self._resolve_system(ctx, session)
             stage = "evidence"
             self._advance(session, ctx, "evidence", extra={"findings": len(ctx.findings)})
             self._evidence(ctx)
@@ -593,6 +596,17 @@ class PipelineRunner:
     def _evidence(self, ctx: PipelineContext) -> None:
         from evidence.core.pipeline import EvidencePipeline
 
+        declared_scopes = self._declared_scope_index(ctx)
+        for finding in ctx.findings:
+            source = finding.get("source") or {}
+            file_path = source.get("file_path") or finding.get("file_path")
+            scopes = list(ctx.compliance_scopes or [])
+            for scope in self._scopes_for_path(file_path, declared_scopes):
+                if scope not in scopes:
+                    scopes.append(scope)
+            if scopes:
+                finding["compliance_scopes"] = scopes
+
         pipeline = EvidencePipeline(scan_session_id=ctx.scan_id)
         records, manifest = pipeline.process(findings=ctx.findings, scan_id=ctx.scan_id)
         ctx.evidence_records = [r.model_dump(mode="json") for r in records]
@@ -735,7 +749,6 @@ class PipelineRunner:
                     scopes.append(scope)
             if scopes and sorted(scopes) != sorted(finding_data.get("compliance_scopes") or []):
                 finding_data["compliance_scopes"] = list(scopes)
-                row.finding_data = finding_data
             payload = {
                 "id": row.id,
                 "evidence_id": row.id,

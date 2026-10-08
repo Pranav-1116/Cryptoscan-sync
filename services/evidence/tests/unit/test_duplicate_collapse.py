@@ -15,7 +15,10 @@ deleted afterwards without breaking the previous_hash links around it.
 
 from __future__ import annotations
 
+import pytest
+
 from evidence.core.pipeline import EvidencePipeline
+from evidence.hashing.content_hasher import ContentHasher
 
 
 def _finding(fid: str, line: int = 42, algorithm: str = "MD5") -> dict:
@@ -90,3 +93,53 @@ def test_collapse_is_reported_not_silent():
     # The counter reflects the latest call rather than accumulating.
     pipeline.process_findings([_finding("x", line=1)])
     assert pipeline.duplicates_collapsed == 0
+
+
+def test_batch_hasher_refuses_conflicting_finding_ids():
+    with pytest.raises(ValueError, match="conflicting findings share finding_id"):
+        ContentHasher.compute_batch([_finding("same", line=10), _finding("same", line=11)])
+
+
+def test_reused_finding_id_does_not_overwrite_a_distinct_observation():
+    from evidence.hashing.content_hasher import ContentHasher
+
+    pipeline = EvidencePipeline(scan_session_id="scan-reused-id")
+    records = pipeline.process_findings([
+        _finding("ot-host-protocol", line=10),
+        _finding("ot-host-protocol", line=11),
+    ])
+    assert len(records) == 2
+    assert records[0].content_hash != records[1].content_hash
+    assert all(r.content_hash == ContentHasher.compute_hash(r.finding) for r in records)
+    assert pipeline.verify_integrity() == (True, None)
+
+
+def test_evidence_strips_nuls_before_hashing():
+    from evidence.hashing.content_hasher import ContentHasher
+
+    finding = {"source": {"file_path": "bad\x00path", "line_number": 1},
+               "crypto": {"algorithm": "AES"}}
+    record = EvidencePipeline(scan_session_id="scan-nul").process_findings([finding])[0]
+    assert record.finding["source"]["file_path"] == "badpath"
+    assert record.content_hash == ContentHasher.compute_hash(record.finding)
+
+
+def test_evidence_sanitizes_raw_source_before_hashing():
+    finding = {
+        "finding_id": "secret-test",
+        "scanner_id": "test-scanner",
+        "source": {"file_path": "settings.yml", "line_number": 1,
+                   "code_snippet": "jwt.secret: synthetic-value-only-for-test"},
+        "crypto": {"algorithm": "JWT", "api_type": "HARDCODED_KEY",
+                   "raw_transformation": "synthetic-value-only-for-test"},
+        "metadata": {"confidence": "HIGH", "is_hardcoded_key": True,
+                     "confidence_reason": "label synthetic-value-only-for-test"},
+        "untrusted_extra": "synthetic-value-only-for-test",
+    }
+    pipeline = EvidencePipeline(scan_session_id="scan-secret")
+    records = pipeline.process_findings([finding])
+
+    assert "synthetic-value-only-for-test" not in str(records[0].finding)
+    assert records[0].finding["source"]["file_path"] == "settings.yml"
+    assert records[0].finding["crypto"]["algorithm"] == "JWT"
+    assert pipeline.verify_integrity() == (True, None)

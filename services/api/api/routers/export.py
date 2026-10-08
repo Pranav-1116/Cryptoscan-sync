@@ -11,10 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, Response
 
 from api.dependencies import get_current_user, get_evidence_repository, get_scan_repository
+from api.security.evidence_projection import project_finding, public_evidence_row
 from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.scan_repository import ScanRepository
-from evidence.hashing.chain_hasher import ChainHasher
 from evidence.hashing.content_hasher import ContentHasher
+from evidence.verification.stored_scan import verify_stored_scan
 
 router = APIRouter(tags=["export"])
 
@@ -40,7 +41,7 @@ def export_scan(
             "statistics": scan.statistics,
             "manifest_hash": scan.manifest_hash,
         },
-        "findings": [row.to_dict() for row in rows],
+        "findings": [public_evidence_row(row) for row in rows],
         "exported_at": datetime.now(timezone.utc).isoformat(),
         "exported_by": user,
     }
@@ -163,7 +164,7 @@ def export_cbom(
         )
     # key-inventory records: export metadata as CycloneDX properties (labels, store, state, dates — never values)
     for row, comp in zip(rows, components):
-        inv = (row.finding_data or {}).get("inventory") if isinstance(row.finding_data, dict) else None
+        inv = project_finding(row.finding_data)[0].get("inventory")
         if inv:
             comp["properties"] = [{"name": f"cryptoscan:key:{k}", "value": str(v)} for k, v in sorted(inv.items()) if v not in (None, "", [])][:24]
             comp["cryptoProperties"]["assetType"] = "related-crypto-material" if inv.get("key_label") and not inv.get("subject") else ("certificate" if inv.get("subject") else "algorithm")
@@ -247,21 +248,8 @@ def verify_scan(
     scan = scans.get_by_id(scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    rows = evidence.get_all_for_scan(scan_id)
-    content_hashes = [r.content_hash for r in rows]
-    chain_hashes = [r.chain_hash for r in rows]
-    chain_ok = ChainHasher.verify_chain(content_hashes, chain_hashes, scan_id) if rows else True
-    hash_ok = all(len(h or "") == 64 for h in content_hashes + chain_hashes)
-    return {
-        "scan_id": scan_id,
-        "records": len(rows),
-        "chain_intact": chain_ok,
-        "hash_format_valid": hash_ok,
-        "manifest_hash": scan.manifest_hash,
-        "result": "PASS" if chain_ok and hash_ok else "FAIL",
-        "verified_by": user,
-        "content_hasher": ContentHasher.ALGORITHM,
-    }
+    verdict = verify_stored_scan(scan, evidence.get_all_for_scan(scan_id))
+    return {**verdict, "verified_by": user, "content_hasher": ContentHasher.ALGORITHM}
 
 
 @router.get("/export/findings.csv")

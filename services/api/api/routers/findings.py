@@ -6,12 +6,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_current_user, get_evidence_repository
 from api.schemas.finding_schemas import FindingListResponse, FindingResponse
+from api.security.evidence_projection import project_finding
 from db.repositories.evidence_repository import EvidenceRepository
 
 router = APIRouter(tags=["findings"])
 
 
 def _to_response(row, include_raw: bool = False) -> FindingResponse:
+    finding_data, redacted = project_finding(row.finding_data) if include_raw else (None, False)
     return FindingResponse(
         evidence_id=row.id,
         scan_id=row.scan_id,
@@ -31,7 +33,8 @@ def _to_response(row, include_raw: bool = False) -> FindingResponse:
         chain_hash=row.chain_hash,
         normalized_crypto=row.normalized_crypto,
         policy_evaluation=row.policy_evaluation,
-        finding_data=row.finding_data if include_raw else None,
+        finding_data=finding_data,
+        redacted_projection=redacted,
         created_at=getattr(row, "created_at", None),
         updated_at=getattr(row, "updated_at", None),
     )

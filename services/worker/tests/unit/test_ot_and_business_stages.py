@@ -22,3 +22,19 @@ def test_ot_stage_adds_findings_without_sending(tmp_path):
     assert ctx.scan_meta["ot"]["packets_sent"] == 0
     assert ctx.findings
     assert ctx.ot_result["device_count"] >= 1
+
+
+def test_distinct_ot_observations_have_distinct_ids(tmp_path, monkeypatch):
+    from ot_scanner.core.scanner import OtPassiveScanner
+
+    monkeypatch.setattr(OtPassiveScanner, "scan_filesystem", lambda *args, **kwargs: {
+        "findings": [
+            {"source": {"src_ip": "10.0.2.15", "dst_ip": dst},
+             "protocol": "OPC-UA", "crypto": {"encryption": "NONE"}}
+            for dst in ("10.0.2.1", "10.0.2.2")
+        ],
+        "devices": [], "packets_sent": 0,
+    })
+    ctx = ot_scan(_ctx(tmp_path))
+    assert len(ctx.findings) == 2
+    assert len({item["finding_id"] for item in ctx.findings}) == 2

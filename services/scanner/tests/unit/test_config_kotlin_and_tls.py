@@ -91,3 +91,26 @@ def test_live_scanner_picks_up_config_and_kotlin(tmp_path: Path):
     assert "DES" in algos
     assert "TLS1.0" in algos
     assert result.statistics.total_findings >= 2
+
+
+def test_parser_serialization_withholds_transient_source_text(tmp_path: Path):
+    config = tmp_path / "application.yml"
+    config.write_text("jwt.secret: synthetic-key-value-for-test\n")
+    finding = parse_config_file(config, tmp_path)[0]
+    assert finding.source.code_snippet  # still available for detector analysis
+    assert "synthetic-key-value-for-test" not in finding.model_dump_json()
+
+
+def test_scanner_output_never_contains_source_or_adjacent_secret(tmp_path: Path):
+    (tmp_path / "application.yml").write_text(
+        "jwt.secret: synthetic-key-value-for-test\n"
+        "ssl_protocols TLSv1.1;\n"
+        "unrelated_password: another-synthetic-value\n"
+    )
+    result = Scanner().scan(tmp_path)
+    assert any(finding.metadata.is_hardcoded_key for finding in result.findings)
+    assert any(finding.crypto.algorithm == "TLS1.1" for finding in result.findings)
+    serialized = result.model_dump_json()
+    assert "synthetic-key-value-for-test" not in serialized
+    assert "another-synthetic-value" not in serialized
+    assert all(finding.source.code_snippet is None for finding in result.findings)

@@ -391,18 +391,12 @@ def export_pack(
                 "This is reported, not hidden.\n")
         try:
             from db.repositories.evidence_repository import EvidenceRepository
-            from evidence.hashing.chain_hasher import ChainHasher
+            from evidence.verification.stored_scan import verify_stored_scan
 
             rows = EvidenceRepository(db).get_all_for_scan(scan.id)
-            content_hashes = [row.content_hash for row in rows]
-            chain_hashes = [row.chain_hash for row in rows]
-            chain_ok = ChainHasher.verify_chain(content_hashes, chain_hashes, scan.id) if rows else True
-            entries["evidence/chain-verification.json"] = _canonical({
-                "scan_id": scan.id, "records": len(rows), "chain_intact": chain_ok,
-                "hash_format_valid": all(len(h or "") == 64 for h in content_hashes + chain_hashes),
-                "manifest_hash": scan.manifest_hash,
-                "result": "PASS" if chain_ok else "FAIL",
-            })
+            entries["evidence/chain-verification.json"] = _canonical(
+                verify_stored_scan(scan, rows)
+            )
         except Exception as exc:
             entries["evidence/VERIFICATION_FAILED.txt"] = _note(
                 f"evidence verification raised {type(exc).__name__}: {exc}\n")

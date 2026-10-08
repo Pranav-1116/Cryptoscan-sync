@@ -7,7 +7,6 @@ simulation call leaves the underlying rows untouched.
 
 from __future__ import annotations
 
-import copy
 from datetime import datetime, timedelta, timezone
 
 import pytest

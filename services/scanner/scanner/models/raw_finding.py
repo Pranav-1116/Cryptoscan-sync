@@ -27,7 +27,7 @@ class SourceLocation(BaseModel):
     column_number: Optional[int] = None
     method_name: Optional[str] = None
     class_name: Optional[str] = None
-    code_snippet: Optional[str] = None
+    code_snippet: Optional[str] = Field(default=None, exclude=True)
     variable_name: Optional[str] = None
     is_in_try_catch: bool = False
 
@@ -39,7 +39,8 @@ class CryptoInfo(BaseModel):
     padding: Optional[str] = None
     key_size: Optional[int] = None
     purpose: Optional[str] = None
-    raw_transformation: Optional[str] = None
+    raw_transformation: Optional[str] = Field(default=None, exclude=True)
+    hash_algorithm: Optional[str] = None
 
 
 class FindingMetadata(BaseModel):

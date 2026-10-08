@@ -19,6 +19,7 @@ closed:
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 
 import pytest
@@ -165,8 +166,14 @@ def test_graph_sync_under_a_scope_does_not_write_the_shared_store(db_session, mo
 
 def _forge_pack(tenant_claim: str) -> dict:
     """A digest-valid transfer pack whose scan dict claims another tenant."""
+    from evidence.hashing.chain_hasher import ChainHasher
+    from evidence.hashing.content_hasher import ContentHasher
     from evidence.pack.scan_transfer import export_transfer
 
+    evidence_id = "ev-forged-import"
+    finding = {"source": {"file_path": "src/Main.java", "line_number": 42},
+               "crypto": {"algorithm": "RSA-2048"}, "metadata": {"confidence": "HIGH"}}
+    content_hash = ContentHasher.compute_hash(finding)
     scan = {
         "scan_id": "scan-forged-import",
         "scan_start": datetime.now(timezone.utc).isoformat(),
@@ -176,17 +183,20 @@ def _forge_pack(tenant_claim: str) -> dict:
         "target_type": "LOCAL_DIRECTORY",
         "target_location": "bank-b-core",
         "status": "COMPLETED",
+        "manifest_hash": hashlib.sha256(evidence_id.encode()).hexdigest(),
         "tenant_id": tenant_claim,  # the smuggled claim
     }
     records = [{
-        "content_hash": "a" * 64,
-        "chain_hash": "a" * 64,
+        "evidence_id": evidence_id,
+        "content_hash": content_hash,
+        "chain_hash": ChainHasher.compute_chain_hash(
+            content_hash, scan_session_id="scan-forged-import"),
         "chain_position": 0,
         "algorithm": "RSA-2048",
         "confidence": "HIGH",
         "file_path": "src/Main.java",
         "line_number": 42,
-        "finding_data": {"finding": {"crypto": {"algorithm": "RSA-2048"}}},
+        "finding_data": finding,
     }]
     return export_transfer(scan=scan, records=records)
 

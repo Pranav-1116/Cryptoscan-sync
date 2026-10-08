@@ -515,7 +515,7 @@ def _families(row) -> set[str]:
     fams = canonical_families(crypto.get("algorithm") or row.algorithm)
     lang = str(((fd.get("source") or {}).get("language")) or "").upper()
     if lang in {"JAVA","KOTLIN","SCALA"}:
-        fams |= spec_families(crypto.get("raw_transformation"))
+        fams |= spec_families(crypto.get("hash_algorithm"))
     return fams
 
 def _score(rows, labels):

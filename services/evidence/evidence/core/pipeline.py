@@ -12,6 +12,7 @@ from evidence.hashing.chain_hasher import ChainHasher
 from evidence.hashing.content_hasher import ContentHasher
 from evidence.models.evidence_record import EvidenceRecord
 from evidence.models.scan_manifest import ScanManifest
+from shared_models.safe_finding import safe_finding
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,13 @@ class EvidencePipeline:
     def process_findings(self, findings: list[Any]) -> list[EvidenceRecord]:
         normalized: list[dict[str, Any]] = []
         for finding in findings:
-            if hasattr(finding, "model_dump"):
-                normalized.append(finding.model_dump(mode="json"))
-            elif isinstance(finding, dict):
-                normalized.append(finding)
-            else:
-                normalized.append({"raw": str(finding)})
+            data = finding.model_dump(mode="json") if hasattr(finding, "model_dump") else finding
+            normalized.append(safe_finding(data))
 
-        content_hashes = ContentHasher.compute_batch(normalized)
+        # IDs are detector-provided and not necessarily unique (for example,
+        # passive OT observations may share a host/protocol). Hash each payload
+        # before content deduplication rather than indexing by finding_id.
+        hashed = [(finding, ContentHasher.compute_hash(finding)) for finding in normalized]
 
         # Collapse findings that are byte-identical after canonicalization.
         #
@@ -83,22 +83,21 @@ class EvidencePipeline:
         # compliance percentages and CBOM component counts -- the numbers a
         # bank reads. Duplicates are counted and logged rather than dropped
         # silently, so a detector that starts double-reporting is visible.
-        deduped: list[dict[str, Any]] = []
+        deduped: list[tuple[dict[str, Any], str]] = []
         seen_hashes: set[str] = set()
-        for finding in normalized:
-            chash = content_hashes[finding["finding_id"]]
+        for finding, chash in hashed:
             if chash in seen_hashes:
                 continue
             seen_hashes.add(chash)
-            deduped.append(finding)
+            deduped.append((finding, chash))
         duplicates_collapsed = len(normalized) - len(deduped)
 
         records: list[EvidenceRecord] = []
-        for position, finding in enumerate(deduped):
+        for position, (finding, chash) in enumerate(deduped):
             record = EvidenceRecord(
                 evidence_id=str(uuid.uuid4()),
                 scan_id=self.scan_session_id,
-                content_hash=content_hashes[finding["finding_id"]],
+                content_hash=chash,
                 chain_position=position,
                 finding=finding,
                 created_at=datetime.now(timezone.utc).isoformat(),

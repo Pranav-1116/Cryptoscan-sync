@@ -49,7 +49,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, Mapping
+from typing import Any, Mapping
 
 from agility.simulation import ACTIONS, calculate_agility_score
 

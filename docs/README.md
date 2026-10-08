@@ -22,6 +22,11 @@
 > outage, evidence-chain de-duplication, monitor liveness, DR and restore
 > probes, local-stack data durability, and the browser-facing npm advisories.
 > It flips no gate category: those still turn on external evidence.
+>
+> **2026-10-08 code handoff:** [Production gap handoff](PRODUCTION-GAP-HANDOFF-2026-10-08.md)
+> records the evidence-path changes, tests actually run, unresolved bugs and
+> suggested fixes. Its final full-suite and lint gates have **not** been rerun;
+> it is not a production approval.
 
 > **Start with [docs/product/](product/README.md)** — the whole product end to end, with diagrams.
 > **For an enterprise vendor-style manual, use the [Enterprise Documentation Center](product/enterprise/README.md)** — product, deployment, security, API, operations, developer, support, adoption, and readiness in one path.

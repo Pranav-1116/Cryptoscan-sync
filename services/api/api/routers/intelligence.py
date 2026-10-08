@@ -367,20 +367,33 @@ def export_scan_transfer(
     """Export this scan + evidence as a digest-verified transfer payload."""
     from shared_models.chrono import iso_utc
 
-    from evidence.pack.scan_transfer import export_transfer
+    from evidence.pack.scan_transfer import export_transfer, verify_transfer
 
     scan = _require_scan(scan_id, scans)
     rows = evidence.get_all_for_scan(scan_id)
     records = []
     for row in rows:
         item = evidence_to_dict(row)
+        if item["redacted_projection"]:
+            raise HTTPException(
+                status_code=409,
+                detail="Historical evidence contains raw fields; full-fidelity transfer is unavailable until reissued",
+            )
+        item.pop("redacted_projection")
         item["previous_hash"] = getattr(row, "previous_hash", None)
         item["provenance"] = getattr(row, "provenance", None)
         records.append(item)
     scan_payload = scan_to_dict(scan)
     scan_payload["scan_start"] = iso_utc(scan.scan_start) if getattr(scan, "scan_start", None) else None
     scan_payload["scan_end"] = iso_utc(scan.scan_end) if getattr(scan, "scan_end", None) else None
-    return export_transfer(scan=scan_payload, records=records)
+    payload = export_transfer(scan=scan_payload, records=records)
+    verdict = verify_transfer(payload)
+    if not verdict["valid"]:
+        raise HTTPException(status_code=409, detail={
+            "message": "Scan evidence cannot be transferred with a valid content commitment",
+            "errors": verdict["errors"],
+        })
+    return payload
 
 
 @router.post("/scans/import")

@@ -25,7 +25,6 @@ def execute(ctx: PipelineContext, session) -> PipelineContext:
         finding_data = dict(row.finding_data or {})
         if ctx.compliance_scopes and not finding_data.get("compliance_scopes"):
             finding_data["compliance_scopes"] = list(ctx.compliance_scopes)
-            row.finding_data = finding_data
         payload = {
             "id": row.id,
             "evidence_id": row.id,

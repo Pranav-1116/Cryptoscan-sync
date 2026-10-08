@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from db.models.evidence_record import EvidenceRecord
 from db.models.scan import Scan
+from shared_models.safe_finding import safe_finding
 
 logger = logging.getLogger(__name__)
 
@@ -113,6 +114,8 @@ class BulkInserter:
 
     def _build_row(self, scan: Scan, rec: dict[str, Any]) -> dict[str, Any]:
         finding = rec.get("finding") or rec.get("finding_data") or {}
+        if safe_finding(finding) != finding:
+            raise ValueError("finding payload changed after hashing; sanitize before evidence construction")
         crypto = finding.get("crypto") or {}
         source = finding.get("source") or {}
         metadata = finding.get("metadata") or {}

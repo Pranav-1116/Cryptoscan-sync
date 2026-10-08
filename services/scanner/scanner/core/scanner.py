@@ -194,6 +194,18 @@ class Scanner:
             except Exception as exc:
                 logger.warning("cascade_analysis_failed", extra={"error": str(exc)})
 
+        # Raw snippets are needed by detectors and the import cascade, but no
+        # source text may leave the scanner in a finding or CLI/worker output.
+        from shared_models.safe_finding import safe_finding
+
+        public_findings = []
+        for finding in findings:
+            data = finding.model_dump(mode="json")
+            # The transient transformation can identify a safe digest family,
+            # but the original string itself must never leave the scanner.
+            data["crypto"]["raw_transformation"] = finding.crypto.raw_transformation
+            public_findings.append(RawFinding.model_validate(safe_finding(data)))
+        findings = public_findings
         scanner_id = "static-multi-scanner-v1.0" if set(languages) - {"JAVA"} else "static-java-scanner-v0.1"
         scanner_version = "1.0.0" if scanner_id.endswith("v1.0") else "0.1.0"
         result = ScanResult(
