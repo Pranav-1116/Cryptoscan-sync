@@ -284,6 +284,48 @@ normalization 123, control_plane 81, devsecops 550, frontend 132 +
 typecheck, ruff clean repo-wide, rest-api.md regenerated (736 paths / 815
 ops / 90 groups).
 
+## Round 17 — the seven-report full read: audits 11–16 + CRYPTO_SCAN_DISCOVERY (2026-10-09)
+
+Read all seven in full; verified every claim against the code (11 of 12
+headline claims stale in the reports' favor). Six real gaps built
+(migration 0075):
+
+1. **Evidence soft-delete preserving the chain (15 §6.2, 16
+   EVIDENCE-003):** tombstone columns + auditor-gated
+   `/findings/{id}/soft-delete` and `/findings/{id}/restore`;
+   listings/CBOM/conflicts/drift/remediation/intelligence/retirement
+   exclude tombstones, chain verification and exports keep them.
+2. **Encrypted backups (15 §4):** `backup_evidence.py --encrypt`
+   (AES-256-GCM + scrypt, `BACKUP_ENCRYPTION_KEY`, `CSBC1` header);
+   restore decrypts pre-manifest, fails closed, deletes plaintext after.
+   Shared module `scripts/backup_crypto.py`.
+3. **QUIC/DTLS/WireGuard analyzers (13 §3.1, discovery P3-001):**
+   protocol_engine + engine wiring, same PROTOCOL evidence pattern as
+   TLS/SSH/IPsec.
+4. **CBOM portfolio scale (14 TD-007):** set-based `_located_assets` +
+   one-query dependency edges + `PORTFOLIO_MAX_ASSETS` explicit
+   truncation metadata (no more silent 5000-row stop).
+5. **Duplicate OpenAPI operationIds:** fixed (container history router
+   rename + explicit operation_id) and pinned by
+   `test_openapi_contract.py` (uniqueness, versioned paths + infra-probe
+   allowlist, tagged ops).
+6. **Property tests + coverage (11):** hypothesis pinned, 7 properties
+   over the hashing core; pytest-cov + `.coveragerc` +
+   `scripts/coverage.sh` opt-in (gate = suite result, never a
+   percentage).
+
+Note for the next session: universal_crypto (148 tests) must run with
+the standard PYTHONPATH (services/* + shared/*) — without shared_models
+it degrades gracefully and 18 tests fail on registry-family assertions
+that only look like regressions. Universal_crypto joins the gate list
+from this round on.
+
+Still open after this round (unchanged buckets): transitive-dependency
+crypto graph, cloud HSM detection, resource-level RBAC, official SDKs,
+deployment-scoped items (encryption at rest, mTLS, HA, read replicas),
+CI-blocked tooling (atheris/Playwright/k6/mutmut/Allure/chaos — staged in
+`.github/workflows-pending/` where applicable).
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

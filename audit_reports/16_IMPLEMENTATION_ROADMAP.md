@@ -285,3 +285,25 @@ ENTERPRISE POLISH (RBAC, Connectors, SDKs, Compliance Automation)
 | **Managed vs Self-Hosted DB** | Week 4 | RDS/Cloud SQL / Patroni / Current | Managed (reduces ops) |
 | **Service Mesh Choice** | Week 10 | Istio / Linkerd / Consul Connect / None | Linkerd (simpler) |
 | **PQC Protocol Priority** | Week 20 | QUIC / SSH / IPsec / All | QUIC first (browser adoption) |
+## UPDATE — round 17 build (2026-10-09)
+
+Closed from this roadmap:
+
+- **EVIDENCE-003 (soft-delete for EvidenceRecord, preserve chain): DONE** —
+  migration 0075 + repository `include_deleted` semantics + auditor-gated
+  `/findings/{id}/soft-delete` and `/findings/{id}/restore` endpoints +
+  consumer filtering across listings, CBOM, conflicts, drift, remediation,
+  intelligence, retirement. Chain verification and exports deliberately
+  still see tombstones (see the report-15 addendum for the full contract).
+- **EVIDENCE-001 (hourly chain-verification cron):** the manual sweep
+  (`/ops/evidence/chain-status`, round 15) plus this round's contract
+  tests cover the code path; the *schedule* is CI/CD-blocked (staged in
+  `.github/workflows-pending/`).
+- **EVIDENCE-002 (tenant_id on link tables):** still open, next natural
+  schema round.
+
+Also landed this round (not on this roadmap's task list): QUIC/DTLS/
+WireGuard protocol analyses (report 13 §3.1), CBOM portfolio set-based
+query + bounded explicit truncation (TD-007), backup encryption (report
+15 §4), OpenAPI operationId contract tests, hypothesis property tests for
+the hashing core, and opt-in coverage tooling (`scripts/coverage.sh`).

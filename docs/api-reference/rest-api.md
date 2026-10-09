@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-09:
-**736 paths, 815 operations** across 90 tagged groups.
+**738 paths, 817 operations** across 90 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -335,7 +335,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `POST` | `/api/v1/container/sbom` | Render Sbom |
 | `POST` | `/api/v1/container/scan` | Scan Container |
-| `GET` | `/api/v1/container/scans` | List Container Scans |
+| `GET` | `/api/v1/container/scans` | List Container Scan History |
 | `GET` | `/api/v1/container/scans/{scan_id}` | Get Container Scan |
 | `GET` | `/api/v1/container/scans/{scan_id}/drift` | Container Scan Drift |
 | `GET` | `/api/v1/container/scans/{scan_id}/metrics` | Container Scan Metrics |
@@ -577,6 +577,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/findings` | List All Findings |
 | `GET` | `/api/v1/findings/conflicts` | Finding Conflicts |
 | `GET` | `/api/v1/findings/{evidence_id}` | Get Finding |
+| `POST` | `/api/v1/findings/{evidence_id}/restore` | Restore Finding |
+| `POST` | `/api/v1/findings/{evidence_id}/soft-delete` | Soft Delete Finding |
 | `GET` | `/api/v1/scans/{scan_id}/findings` | List Findings |
 
 ## governance

@@ -403,3 +403,76 @@ async def test_portfolio_cbom_carries_system_dependency_graph(monkeypatch):
     from cbom.inventory import records_from_bom
     assert len(records_from_bom(bom)) == 3
     assert "system:payments-api" in xml.text
+
+
+@pytest.mark.asyncio
+async def test_portfolio_truncation_is_explicit_not_silent(monkeypatch):
+    """PORTFOLIO_MAX_ASSETS caps the estate CBOM and says so in metadata (audit 14 §3)."""
+    from db.models import crypto_asset as ca
+    from db.models.base import Base
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+
+    monkeypatch.setenv("GITHUB_WEBHOOK_SECRET", "test-webhook-secret-abc123")
+    monkeypatch.setenv("SECRET_KEY", SECRET)
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("PORTFOLIO_MAX_ASSETS", "5")
+    get_settings.cache_clear()
+    engine = create_engine(
+        "sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
+    )
+    Base.metadata.create_all(engine)
+    TestSession = sessionmaker(bind=engine)
+    with TestSession() as db:
+        db.add_all(
+            ca.CryptoAsset(algorithm="RSA", file_path=f"f{i}.py", line_number=i) for i in range(8)
+        )
+        db.commit()
+
+    application = create_app()
+    application.dependency_overrides[get_current_user] = lambda: "testuser"
+
+    def _session():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    application.dependency_overrides[get_db_session] = _session
+    transport = ASGITransport(app=application)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get("/api/v1/cbom/portfolio")
+    assert response.status_code == 200
+    bom = response.json()
+    from cbom.inventory import records_from_bom
+
+    # the 8 seeded assets were capped at 5 — explicitly
+    props = {p["name"]: p["value"] for p in bom["metadata"]["properties"]}
+    assert props["cryptoscan:truncated"] == "true"
+    assert props["cryptoscan:asset_limit"] == "5"
+    assert props["cryptoscan:assets_total"] == "8"
+    assert props["cryptoscan:assets"] == "5"
+    assert len(records_from_bom(bom)) == 5
+
+    # untruncated estate carries no truncation markers at all
+    monkeypatch.setenv("PORTFOLIO_MAX_ASSETS", "50")
+    application2 = create_app()
+    application2.dependency_overrides[get_current_user] = lambda: "testuser"
+
+    def _session2():
+        session = TestSession()
+        try:
+            yield session
+        finally:
+            session.close()
+
+    application2.dependency_overrides[get_db_session] = _session2
+    transport2 = ASGITransport(app=application2)
+    async with AsyncClient(transport=transport2, base_url="http://test") as client:
+        response2 = await client.get("/api/v1/cbom/portfolio")
+    props2 = {p["name"]: p["value"] for p in response2.json()["metadata"]["properties"]}
+    assert "cryptoscan:truncated" not in props2
+    assert len(records_from_bom(response2.json())) == 8

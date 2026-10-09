@@ -34,5 +34,10 @@ pytest-socket>=0.7
 # dead-lettering, DB reaper -- 9 tests) importorskip'd away silently, so the
 # job path was gated by nothing in CI.
 fakeredis>=2.20
+# test-only: property-based tests (services/evidence/tests/unit/test_hashing_properties.py)
+hypothesis>=6.100
+# test-only: coverage measurement for the documented scripts/coverage.sh target
+# (NOT wired into any default test run — opt-in, see .coveragerc)
+pytest-cov>=5.0
 # test-only: embedded PostgreSQL 16 for scripts/postgres_parity.sh (no server needed)
 pgserver>=0.1.4; python_version >= "3.9"

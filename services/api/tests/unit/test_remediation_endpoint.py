@@ -35,7 +35,8 @@ def app_remediation():
         get_by_id=lambda scan_id: SimpleNamespace(id=scan_id) if scan_id == "scan-1" else None
     )
     application.dependency_overrides[get_evidence_repository] = lambda: SimpleNamespace(
-        get_all_for_scan=lambda scan_id: [
+        # include_deleted: consumers pass False (soft-delete filtering, R17)
+        get_all_for_scan=lambda scan_id, include_deleted=True: [
             _evidence_row("e1", "DES", file_path="src/A.java", line_number=10),
             _evidence_row("e2", "RSA-2048", file_path="src/B.java", line_number=20),
             _evidence_row("e3", "RSA-4096", file_path="src/C.java", line_number=30),

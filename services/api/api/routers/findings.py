@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import logging
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, get_evidence_repository
+from api.dependencies import (
+    get_current_user,
+    get_db_session,
+    get_evidence_repository,
+    require_auditor,
+)
 from api.schemas.finding_schemas import FindingListResponse, FindingResponse
 from api.security.evidence_projection import project_finding
 from db.repositories.evidence_repository import EvidenceRepository
 
 router = APIRouter(tags=["findings"])
+logger = logging.getLogger(__name__)
 
 
 def _to_response(row, include_raw: bool = False) -> FindingResponse:
@@ -39,6 +49,9 @@ def _to_response(row, include_raw: bool = False) -> FindingResponse:
         redacted_projection=redacted,
         created_at=getattr(row, "created_at", None),
         updated_at=getattr(row, "updated_at", None),
+        deleted_at=getattr(row, "deleted_at", None),
+        deleted_by=getattr(row, "deleted_by", None),
+        delete_reason=getattr(row, "delete_reason", None),
     )
 
 
@@ -138,11 +151,12 @@ def finding_conflicts(
         raise HTTPException(status_code=404, detail="Scan not found")
 
     repo = EvidenceRepository(db)
-    baseline = [_view(r) for r in repo.get_all_for_scan(scan_id)]
+    # retracted (soft-deleted) evidence must not manufacture conflicts
+    baseline = [_view(r) for r in repo.get_all_for_scan(scan_id, include_deleted=False)]
     if compare_scan_id:
         if not _scan_exists(compare_scan_id):
             raise HTTPException(status_code=404, detail="Comparison scan not found")
-        current = [_view(r) for r in repo.get_all_for_scan(compare_scan_id)]
+        current = [_view(r) for r in repo.get_all_for_scan(compare_scan_id, include_deleted=False)]
         conflicts = detect_cross_scan_conflicts(
             baseline, current, baseline_scan_id=scan_id, current_scan_id=compare_scan_id)
     else:
@@ -169,5 +183,97 @@ def get_finding(
     row = repo.get_by_id(evidence_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Finding not found")
+    return _to_response(row, include_raw=True)
+
+
+class SoftDeleteRequest(BaseModel):
+    """Retraction request: a reason is mandatory (audit trail, report 15 §6.2)."""
+
+    reason: str = Field(..., min_length=3, description="Why this finding is being retracted")
+
+
+@router.post("/findings/{evidence_id}/soft-delete", response_model=FindingResponse)
+def soft_delete_finding(
+    evidence_id: str,
+    body: SoftDeleteRequest,
+    user: str = Depends(require_auditor),
+    repo: EvidenceRepository = Depends(get_evidence_repository),
+    db: Session = Depends(get_db_session),
+):
+    """Retract one finding without breaking the scan's hash chain.
+
+    Marks the evidence row as a tombstone (deleted_at / deleted_by /
+    delete_reason). Chain verification and exports still see the row — the
+    chain it committed to stays intact — while consumption surfaces
+    (listings, CBOM generation, conflicts, drift, remediation suggestions)
+    stop counting it. Auditor-only. Deleting an already-retracted row
+    returns 409 with the existing tombstone info.
+    """
+    row = repo.get_by_id(evidence_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if row.deleted_at is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Finding already retracted by {row.deleted_by} at {row.deleted_at.isoformat()}",
+        )
+    row.deleted_at = datetime.now(timezone.utc)
+    row.deleted_by = user[:100]
+    row.delete_reason = body.reason
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        UserRepository(db).audit(
+            user,
+            "evidence.soft_delete",
+            target_type="evidence",
+            target_id=str(row.id),
+            detail={"scan_id": row.scan_id, "reason": body.reason},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("evidence_soft_delete_audit_failed", extra={"evidence_id": evidence_id})
+        raise HTTPException(status_code=503, detail="Evidence retraction audit is unavailable")
+    return _to_response(row, include_raw=True)
+
+
+@router.post("/findings/{evidence_id}/restore", response_model=FindingResponse)
+def restore_finding(
+    evidence_id: str,
+    user: str = Depends(require_auditor),
+    repo: EvidenceRepository = Depends(get_evidence_repository),
+    db: Session = Depends(get_db_session),
+):
+    """Reverse a retraction: clears the tombstone, the row re-enters consumption.
+
+    The retraction's audit entry stays in the hash-chained log — undoing a
+    tombstone remains visible as a past action. Auditor-only. 409 if the
+    finding is not currently retracted.
+    """
+    row = repo.get_by_id(evidence_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Finding not found")
+    if row.deleted_at is None:
+        raise HTTPException(status_code=409, detail="Finding is not retracted")
+    prior = {"deleted_at": row.deleted_at.isoformat(), "deleted_by": row.deleted_by}
+    row.deleted_at = None
+    row.deleted_by = None
+    row.delete_reason = None
+    try:
+        from db.repositories.user_repository import UserRepository
+
+        UserRepository(db).audit(
+            user,
+            "evidence.restore",
+            target_type="evidence",
+            target_id=str(row.id),
+            detail={"scan_id": row.scan_id, "prior_tombstone": prior},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("evidence_restore_audit_failed", extra={"evidence_id": evidence_id})
+        raise HTTPException(status_code=503, detail="Evidence restore audit is unavailable")
     return _to_response(row, include_raw=True)
 

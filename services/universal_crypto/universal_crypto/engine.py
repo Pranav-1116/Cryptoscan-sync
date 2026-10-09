@@ -70,9 +70,12 @@ _SOURCE_EVIDENCE_KIND = {
 }
 from universal_crypto.pqc_readiness import PqcReadinessEngine
 from universal_crypto.protocol_engine import (
+    DtlsAnalysis,
     IpsecAnalysis,
+    QuicAnalysis,
     SshAnalysis,
     TlsAnalysis,
+    WireGuardAnalysis,
 )
 from universal_crypto.randomness import RandomnessAnalyzer
 from universal_crypto.registry import find as registry_find
@@ -95,6 +98,9 @@ class UniversalCryptoEngine:
         self.tls = TlsAnalysis()
         self.ssh = SshAnalysis()
         self.ipsec = IpsecAnalysis()
+        self.quic = QuicAnalysis()
+        self.dtls = DtlsAnalysis()
+        self.wireguard = WireGuardAnalysis()
         self.certs = CertificateIntelligence()
         self.classifier = CryptoClassifier()
         self.quantum = QuantumVulnerabilityClassifier()
@@ -300,6 +306,55 @@ class UniversalCryptoEngine:
                             kind=EvidenceType.PROTOCOL,
                             detail=f"IPsec {field} {value['value']}",
                             location=ipsec.get("gateway", ""))],
+                    })
+        for quic in inputs.get("quic") or []:
+            analysis = self.quic.analyze(
+                cipher_suite=quic.get("cipher_suite", ""),
+                key_exchange=quic.get("key_exchange", ""),
+                version=str(quic.get("version", "1")))
+            for obs in analysis["observations"]:
+                if obs["algorithm"] != "UNKNOWN" and obs["role"] != "version":
+                    drafts.append({
+                        "algorithm": obs["algorithm"], "protocol": "QUIC",
+                        "asset_id": quic.get("asset_id", "default"),
+                        "location": quic.get("endpoint", ""),
+                        "source": "quic",
+                        "detail": f"QUIC {obs['role']} {obs['value']}",
+                        "evidence": [Evidence(
+                            kind=EvidenceType.PROTOCOL,
+                            detail=f"QUIC {obs['role']} {obs['value']}",
+                            location=quic.get("endpoint", ""))],
+                    })
+        for dtls in inputs.get("dtls") or []:
+            analysis = self.dtls.analyze(
+                suite=dtls.get("suite", ""), version=str(dtls.get("version", "1.2")))
+            for obs in analysis["observations"]:
+                if obs["algorithm"] not in ("UNKNOWN", ""):
+                    drafts.append({
+                        "algorithm": obs["algorithm"], "protocol": "DTLS",
+                        "asset_id": dtls.get("asset_id", "default"),
+                        "location": dtls.get("endpoint", ""),
+                        "source": "dtls",
+                        "detail": f"DTLS {obs['role']} {obs['value']}",
+                        "evidence": [Evidence(
+                            kind=EvidenceType.PROTOCOL,
+                            detail=f"DTLS {obs['role']} {obs['value']}",
+                            location=dtls.get("endpoint", ""))],
+                    })
+        for wg in inputs.get("wireguard") or []:
+            analysis = self.wireguard.analyze(psk=bool(wg.get("psk", True)))
+            for obs in analysis["observations"]:
+                if obs["algorithm"] != "UNKNOWN" and obs["role"] != "psk_mode":
+                    drafts.append({
+                        "algorithm": obs["algorithm"], "protocol": "WireGuard",
+                        "asset_id": wg.get("asset_id", "default"),
+                        "location": wg.get("endpoint", ""),
+                        "source": "wireguard",
+                        "detail": f"WireGuard {obs['role']} {obs['value']}",
+                        "evidence": [Evidence(
+                            kind=EvidenceType.PROTOCOL,
+                            detail=f"WireGuard {obs['role']} {obs['value']}",
+                            location=wg.get("endpoint", ""))],
                     })
 
         # §13/§14/§15 certificates, key metadata, trust stores

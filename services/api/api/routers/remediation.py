@@ -84,7 +84,7 @@ def scan_suggestions(
             "compliance_status": row.compliance_status,
             "is_hardcoded_key": row.is_hardcoded_key,
         }
-        for row in EvidenceRepository(db).get_all_for_scan(scan_id)
+        for row in EvidenceRepository(db).get_all_for_scan(scan_id, include_deleted=False)
     ]
     report = suggest_remediations(findings)
     lib = _templates_lib()
@@ -113,6 +113,9 @@ def fix_branch(
     row = filtered_get(db, EvidenceRecord, body.evidence_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Evidence record not found")
+    if row.deleted_at is not None:
+        # retracted evidence must not generate new fix suggestions
+        raise HTTPException(status_code=409, detail="Evidence record is retracted (soft-deleted)")
     finding = {
         "algorithm": row.algorithm,
         "purpose": row.purpose,
@@ -230,6 +233,8 @@ def create_task(
     row = filtered_get(db, EvidenceRecord, body.evidence_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Evidence record not found")
+    if row.deleted_at is not None:
+        raise HTTPException(status_code=409, detail="Evidence record is retracted (soft-deleted)")
     scan = filtered_get(db, Scan, row.scan_id)
     if scan is None:
         raise HTTPException(status_code=400, detail="Owning scan not found — cannot track verification target")

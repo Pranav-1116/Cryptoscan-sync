@@ -6,6 +6,65 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — round 17: the seven-report full read (audits 11–16 + CRYPTO_SCAN_DISCOVERY)
+
+- **Evidence soft-delete that preserves the hash chain (audits 15/16
+  EVIDENCE-003):** `evidence_records` gains tombstone columns
+  (`deleted_at`/`deleted_by`/`delete_reason`, migration 0075).
+  `POST /api/v1/findings/{evidence_id}/soft-delete` (auditor-gated,
+  mandatory reason, hash-chained audit entry, 409 on double-delete) and
+  `POST /api/v1/findings/{evidence_id}/restore` (409 unless retracted)
+  manage the lifecycle. Consumption surfaces — findings listings, CBOM
+  generation, conflict detection, drift comparison, remediation
+  suggestions and task creation, intelligence/agility/work orders,
+  retirement planning — exclude tombstones by default, while chain
+  verification, exports and audit exports still read every row: a
+  retraction stays in the chain it committed to, which is the point.
+  `FindingResponse` carries additive `deleted_at`/`deleted_by`/
+  `delete_reason` fields.
+- **Encrypted evidence backups (audit 15):** `backup_evidence.py
+  --encrypt` writes AES-256-GCM backups (scrypt KDF over
+  `BACKUP_ENCRYPTION_KEY`, self-describing `CSBC1` salt+nonce header,
+  `.enc` suffix, plaintext removed). The manifest keeps the plaintext
+  SHA-256 plus `encrypted`/`kdf` fields; `restore_evidence.py` decrypts
+  before the manifest check, fails closed on wrong key or tamper, and
+  deletes the decrypted plaintext when the restore finishes. Shared
+  implementation in `scripts/backup_crypto.py`.
+- **QUIC / DTLS / WireGuard protocol analyzers (audit 13 §3.1, discovery
+  P3-001):** `QuicAnalysis` (RFC 9001 TLS-1.3 AEAD suites, group lookup
+  by wire name and codepoint), `DtlsAnalysis` (IANA suite registry across
+  DTLS 1.0/1.2/1.3, PFS flag), and `WireGuardAnalysis` (fixed RFC 8437
+  suite, `negotiable: False`, honest quantum-vulnerable verdict) in the
+  protocol engine, wired into `UniversalCryptoEngine.scan` via
+  `inputs["quic"|"dtls"|"wireguard"]` with the same PROTOCOL evidence the
+  TLS/SSH/IPsec analyzers emit.
+- **Property-based tests + coverage tooling (audit 11):** hypothesis is a
+  pinned test dependency;
+  `services/evidence/tests/unit/test_hashing_properties.py` holds the
+  hashing core to seven properties (determinism, key-order insensitivity,
+  runtime-field exclusion, verify-iff-untampered, link agreement, content
+  → chain composition). `pytest-cov` + root `.coveragerc` +
+  `scripts/coverage.sh` give opt-in per-service branch-coverage reports —
+  the gate stays the suite result, never a percentage.
+- **OpenAPI contract tests (audit 11/12):** duplicate operationIds fixed
+  (two `list_container_scans` definitions whose distinct paths normalized
+  to the same id) and `test_openapi_contract.py` now pins operationId
+  uniqueness, versioned paths (with the six infra-probe allowlist) and
+  tagged operations against the generated spec.
+
+### Changed — round 17
+
+- **CBOM portfolio generation (audit 14 TD-007):** `_located_assets()` is
+  a single set-based JOIN instead of a per-system loop plus a second
+  5000-row page; `_portfolio_dependencies()` loads the dependency edge
+  list in one query. Estate CBOMs are bounded by `PORTFOLIO_MAX_ASSETS`
+  (default 50,000) and truncation is explicit —
+  `cryptoscan:truncated`/`cryptoscan:asset_limit`/`cryptoscan:assets_total`
+  metadata properties and a logged warning, replacing the silent stop.
+- **Drift/remediation reads filter retracted evidence:** worker drift
+  comparison and remediation suggestion generation exclude soft-deleted
+  evidence rows.
+
 ### Added — round 16: the ten-report full read (audits 03/04/05/06/10)
 
 - **Policy rule overrides (audit 05):** `policy_rule_overrides` table

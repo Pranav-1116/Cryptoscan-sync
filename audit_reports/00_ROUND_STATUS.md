@@ -1,13 +1,13 @@
-# Audit Report Status — 2026-10-09 (post-remediation, rounds 13–16)
+# Audit Report Status — 2026-10-09 (post-remediation, rounds 13–17)
 
-**Generated:** 2026-10-09, after remediation rounds 13–16 (last full read of reports 01–10 in round 16).
+**Generated:** 2026-10-09, after remediation rounds 13–17 (last full read of reports 01–16 + CRYPTO_SCAN_DISCOVERY in round 17).
 **Purpose:** every report in this folder was read and every actionable claim
 re-verified against the code. This file records the verdict per report and what
 was built in response. The original report text is unchanged; reports that were
 acted on carry an `## UPDATE` addendum at the end.
 
 **Key fact for reading these reports:** they were generated **2026-09-20**,
-which predates rounds 9–16 of remediation (route-auth inventory, tenant-scoped
+which predates rounds 9–17 of remediation (route-auth inventory, tenant-scoped
 snapshot versions, DR/soak/load evidence, remediation verification, hybrid-PQC
 detection, retirement registry, conflict detection, asset lifecycle). A large
 share of the gap register was already closed when these reports landed in the
@@ -27,13 +27,13 @@ repository on 2026-10-09.
 | 08_EVIDENCE_CBOM_HBOM_AUDIT | 🕰 Stale + addendum | **UPDATE addendum (R16)** — CryptoAssetEvidence IS populated; HBOM ships as TechBOM layer + live page; chain sweep built R15 |
 | 09_GRAPH_AUDIT | ✅ Mostly current | **UPDATE addendum (R16)** — tenant gate + post-scan sync stage postdate it; container-image nodes remain open |
 | 10_SECURITY_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — clone-URL transport validation built; password policy/artifact store already covered |
-| 11_TESTING_AUDIT | 🕰 Stale | 498 test files → more; backend 4.1k+ across the suites run, all green |
+| 11_TESTING_AUDIT | 🔧 Extended | **UPDATE addendum (R17)** — hypothesis property tests + coverage tooling + OpenAPI contract tests built; counts stale in the report's favor |
 | 12_DOCUMENTATION_REALITY | ✅ Current | Rest-api reference regenerated per change (728 paths/805 ops) |
-| 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum** — remediation verification, HBOM/VBOM, drift/baselines, PQC built; transitive-dep graph + QUIC/DTLS/WireGuard remain open |
-| 14_TECHNICAL_DEBT | 🔧 Partially remediated | **UPDATE addendum** — TD-010 evidence-chain sweep built this round; TD-002/008/011/012/016/025 already fixed |
-| 15_PRODUCTION_READINESS | 🕰 Stale | Predates DR (RTO 0.103s/RPO 0s), soak, load, compliance-burn evidence in PRODUCTION-READINESS.md |
-| 16_IMPLEMENTATION_ROADMAP | 🕰 Superseded | docs/PRODUCTION-ROADMAP.md is the live plan |
-| CRYPTO_SCAN_DISCOVERY_REPORT | 📷 Snapshot | Honest snapshot; "what is fake" items already addressed in earlier rounds |
+| 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum (R16+R17)** — QUIC/DTLS/WireGuard protocol analyzers built R17; remediation verification, HBOM/VBOM, drift/baselines, PQC built earlier; transitive-dep graph + cloud HSM remain open |
+| 14_TECHNICAL_DEBT | 🔧 Partially remediated | **UPDATE addendum (R16+R17)** — TD-007 portfolio set-based + bounded truncation and duplicate-operationId fix built R17; TD-010 evidence-chain sweep built R16; TD-002/008/011/012/016/025 already fixed |
+| 15_PRODUCTION_READINESS | 🔧 Extended | **UPDATE addendum (R17)** — backup encryption + evidence soft-delete (chain-preserving) built; predates DR (RTO 0.103s/RPO 0s), soak, load, compliance-burn evidence in PRODUCTION-READINESS.md |
+| 16_IMPLEMENTATION_ROADMAP | 🕰 Superseded + addendum | docs/PRODUCTION-ROADMAP.md is the live plan; **UPDATE addendum (R17)** — EVIDENCE-003 closed |
+| CRYPTO_SCAN_DISCOVERY_REPORT | 📷 Snapshot + addendum | **UPDATE addendum (R17)** — P3-001 QUIC/DTLS/WireGuard closed; honest snapshot otherwise |
 | advanced/46 CROSS_BOM | ✅ Addressed | Technology BOM unification (layered exports) |
 | advanced/47 UNIFIED_ASSET_IDENTITY | 🟡 Open | Unified identity spec is product-level follow-up |
 | advanced/48 CRYPTO_FACT_GRAPH | ✅ Mostly addressed | Graph snapshots + evidence links |
@@ -85,5 +85,11 @@ repository on 2026-10-09.
 | 16 (2026-10-09) | Drift→remediation auto-linking (ack `create_remediation_tasks`, `/drift/{id}/remediation-tasks`) | 03 |
 | 16 (2026-10-09) | Clone-URL transport validation (blocks `ext::`/helper transports before git loads) | 10 |
 | 16 (2026-10-09) | Frontend a11y pass (ARIA Tabs, keyboard-activatable Table rows, scoped headers) | 06 |
+| 17 (2026-10-09) | Evidence soft-delete preserving the hash chain (`POST /findings/{id}/soft-delete`, `/restore`, migration 0075) | 15, 16 EVIDENCE-003 |
+| 17 (2026-10-09) | Backup encryption (AES-256-GCM + scrypt, `--encrypt`, fail-closed restore) | 15 |
+| 17 (2026-10-09) | QUIC/DTLS/WireGuard protocol analyzers wired into the engine | 13, CRYPTO_SCAN_DISCOVERY P3-001 |
+| 17 (2026-10-09) | CBOM portfolio set-based query + `PORTFOLIO_MAX_ASSETS` explicit truncation | 14 TD-007 |
+| 17 (2026-10-09) | OpenAPI operationId contract tests (duplicate fixed) | 11, 12 |
+| 17 (2026-10-09) | Hypothesis property tests for the hashing core + opt-in coverage tooling | 11 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

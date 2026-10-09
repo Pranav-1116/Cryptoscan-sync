@@ -55,11 +55,18 @@ def trigger_container_scan(
 
 
 @router.get("")
-@router.get("/")
+@router.get("/", operation_id="list_container_scans_trailing_slash_api_v1_container_scans_get")
 def list_container_scans(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
+    """List recent container scans.
+
+    Both routes hit this handler (with and without the trailing slash); the
+    second carries an explicit ``operation_id`` because FastAPI derives the
+    same one for both, and a duplicate operationId breaks generated clients
+    and the OpenAPI contract (audit 11).
+    """
     from sqlalchemy import select
 
     rows = list(db.execute(select(ContainerScan).order_by(ContainerScan.created_at.desc()).limit(50)).scalars())

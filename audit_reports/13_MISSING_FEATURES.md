@@ -258,3 +258,24 @@ lifecycle states (§7), conflict surfacing, evidence-chain sweep.
 Still genuinely open from this report: transitive dependency crypto graph
 (§1.3), QUIC/DTLS/WireGuard parsers (§3.1), cloud HSM detection (§3.2),
 resource-level RBAC (§2.2 — product decision), official SDKs (§5.2).
+
+## UPDATE — round 17 build (2026-10-09)
+
+- **§3.1 QUIC/DTLS/WireGuard (item 12 on the P2 list): BUILT.**
+  `protocol_engine.py` gains `QuicAnalysis` (RFC 9001 — the four TLS 1.3
+  AEAD suites, group lookup by wire name *and* numeric codepoint, version
+  catalog incl. draft variants), `DtlsAnalysis` (reuses the IANA TLS
+  suite registry over the DTLS 1.0/1.2/1.3 version catalog, PFS flag
+  included), and `WireGuardAnalysis` (RFC 8437 fixed suite: X25519 /
+  ChaCha20-Poly1305 / BLAKE2s / HMAC-BLAKE2s / HKDF-BLAKE2s, Noise_IKpsk2,
+  `negotiable: False`, honest `QUANTUM_VULNERABLE` verdict). All three
+  are wired into the engine (`inputs["quic"|"dtls"|"wireguard"]`) and
+  emit PROTOCOL evidence like TLS/SSH/IPsec do; same-asset same-algorithm
+  observations fuse as corroborating evidence per §28.
+  5 new tests in `test_protocol_engine.py` (148 total suite-green).
+- **Backup encryption (§5.2 adjacent, report 15 §5): BUILT** — see the
+  report-15 addendum.
+- Still open from this report: transitive dependency crypto graph
+  (§3.4), cloud HSM detection (§3.2), resource-level RBAC (§2.2),
+  official SDKs — all deployment/company-scope or larger builds, not
+  this round.

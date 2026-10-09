@@ -882,7 +882,7 @@ def create_migration_from_scan(body: AutoProjectRequest, user: str = Depends(get
             "compliance_status": row.compliance_status,
             "is_hardcoded_key": row.is_hardcoded_key,
         }
-        for row in EvidenceRepository(db).get_all_for_scan(body.scan_id)
+        for row in EvidenceRepository(db).get_all_for_scan(body.scan_id, include_deleted=False)
     ]
     suggestions = suggest_remediations(findings)
     project = IntelligenceRepository(db).create_migration(

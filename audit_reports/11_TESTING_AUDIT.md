@@ -293,3 +293,30 @@ pgserver pytest services/database/tests/test_migrations.py
 12. **Benchmark suite** — `pytest-benchmark` for parser performance
 13. **Test report dashboard** — Allure/ReportPortal for CI visibility
 14. **Flaky test detection** — `--reruns` + quarantine
+## UPDATE — round 17 verification + build (2026-10-09)
+
+**Built this round (this report's §5 recommendations):**
+
+- **Property-based testing (P2 recommendation):** hypothesis is now a
+  pinned test dependency and `services/evidence/tests/unit/
+  test_hashing_properties.py` explores the input space of the hashing
+  core: canonical-serializer determinism and key-order insensitivity,
+  content-hash stability, runtime-field exclusion, chain verify-iff-
+  untampered (mutate/reorder/delete/append all fail), verify_single
+  agreement, and content→chain composition. 7 properties × 50 examples.
+- **Coverage measurement (the "not configured" row in §1):** `pytest-cov`
+  is pinned in requirements.txt, root `.coveragerc` measures branch
+  coverage over the eight backend packages, and `scripts/coverage.sh`
+  produces per-service term + XML reports. Deliberately **opt-in** — the
+  gate remains the suite result, never a percentage; CI wiring stays
+  blocked by the standing no-workflows constraint (staged in
+  `.github/workflows-pending/`).
+- **OpenAPI contract tests:** `services/api/tests/unit/
+  test_openapi_contract.py` pins the spec invariants the reference doc is
+  generated from — unique operationIds (a real duplicate was found and
+  fixed this round), versioned paths (with an explicit allowlist for the
+  six unversioned infra probes), and tagged operations.
+
+**Verified stale:** none of the backend test-count claims in this report
+survived verification (4.1k+ backend tests now, 132 frontend tests); the
+pipeline-matrix and CI rows remain accurate as constraints, not findings.

@@ -79,7 +79,12 @@ def _require_scan(scan_id: str, scans: ScanRepository):
 
 
 def _findings(scan_id: str, evidence: EvidenceRepository) -> list[dict]:
-    return [evidence_to_dict(row) for row in evidence.get_all_for_scan(scan_id)]
+    # intelligence/agility/work-order/risk consumers see live findings only;
+    # retracted evidence (soft-deleted) must not drive migration planning
+    return [
+        evidence_to_dict(row)
+        for row in evidence.get_all_for_scan(scan_id, include_deleted=False)
+    ]
 
 
 def _drift_events(scan_id: str, drift: DriftRepository) -> list[dict]:

@@ -386,3 +386,143 @@ class IpsecAnalysis:
             "applications": list(applications),
             "policy": self,
         }
+
+
+# --------------------------------------------------------------------------- #
+# QUIC catalogs (§10 extension — RFC 9001: QUIC v1/v2 inherit TLS 1.3 suites)
+# --------------------------------------------------------------------------- #
+
+_QUIC_SUITES = {
+    # RFC 9001 §6: QUIC v1 uses exactly the TLS 1.3 AEAD suites — a
+    # non-AEAD or TLS 1.2 suite in QUIC is not a valid combination
+    "TLS_AES_128_GCM_SHA256": "AES-GCM",
+    "TLS_AES_256_GCM_SHA384": "AES-GCM",
+    "TLS_CHACHA20_POLY1305_SHA256": "ChaCha20-Poly1305",
+    "TLS_AES_128_CCM_SHA256": "AES-CCM",
+}
+
+_QUIC_VERSIONS = {
+    "1": "QUIC v1", "2": "QUIC v2",
+    "0x00000001": "QUIC v1", "0x00000002": "QUIC v2",
+    "0xff00001d": "QUIC draft-29", "0xff00001e": "QUIC draft-30",
+    "0xff000022": "QUIC draft-34",
+}
+
+# wire-name groups (QUIC inherits the TLS group registry; TLS_GROUPS is
+# keyed by numeric codepoint, this map covers the names scanners emit)
+_QUIC_GROUPS = {
+    "x25519": "X25519", "x448": "X448", "secp256r1": "ECDH-P-256",
+    "secp384r1": "ECDH-P-384", "secp521r1": "ECDH-P-521",
+    "kyber768": "ML-KEM-768", "x25519kyber768": "X25519Kyber768",
+    "x25519mlkem768": "X25519MLKEM768", "mlkem768": "ML-KEM-768",
+}
+
+
+class QuicAnalysis:
+    """QUIC crypto analysis (RFC 9001). QUIC v1 mandates TLS 1.3 AEAD."""
+
+    def analyze(self, *, cipher_suite: str = "", key_exchange: str = "",
+                version: str = "1") -> dict[str, Any]:
+        observations = []
+        if cipher_suite:
+            observations.append({"algorithm": _QUIC_SUITES.get(cipher_suite, "UNKNOWN"),
+                                 "role": "cipher_suite", "value": cipher_suite})
+        if key_exchange:
+            # QUIC inherits the TLS group registry: accept wire names and
+            # numeric codepoints
+            algo = _QUIC_GROUPS.get(key_exchange)
+            if algo is None:
+                try:
+                    algo = TLS_GROUPS.get(int(key_exchange, 0), "UNKNOWN")
+                except ValueError:
+                    algo = "UNKNOWN"
+            observations.append({"algorithm": algo,
+                                 "role": "key_exchange", "value": key_exchange})
+        # version is protocol metadata, not a crypto observation — the engine
+        # skips role "version" when emitting drafts
+        observations.append({"algorithm": "QUIC",
+                             "role": "version", "value": _QUIC_VERSIONS.get(version, version)})
+        return {"protocol": "QUIC", "protocol_version": _QUIC_VERSIONS.get(version, version),
+                "observations": observations}
+
+
+# --------------------------------------------------------------------------- #
+# DTLS catalogs (§10 extension — DTLS 1.2/1.3 reuse the TLS IANA registry)
+# --------------------------------------------------------------------------- #
+
+_DTLS_VERSIONS = {
+    "1.0": "DTLS 1.0", "1.2": "DTLS 1.2", "1.3": "DTLS 1.3",
+    "DTLS 1.0": "DTLS 1.0", "DTLS 1.2": "DTLS 1.2", "DTLS 1.3": "DTLS 1.3",
+}
+
+
+class DtlsAnalysis:
+    """DTLS crypto analysis: the TLS cipher-suite catalog, transported over UDP."""
+
+    def analyze(self, *, suite: str = "", version: str = "1.2") -> dict[str, Any]:
+        observations = []
+        pfs: Optional[bool] = None
+        if suite:
+            if suite in _TLS13_SUITES.values():
+                ke, _sig, cipher, hash_alg, pfs = "TLS1.3-KE", "TLS1.3-sig", "", "SHA-256", True
+                for token in ("AES_256_GCM", "AES_128_GCM", "AES_128_CCM", "CHACHA20_POLY1305"):
+                    if token in suite:
+                        cipher = _TLS_CIPHER_TO_ALG[token]
+                for token in ("SHA256", "SHA384"):
+                    if token in suite:
+                        hash_alg = token.replace("SHA", "SHA-")
+            elif suite in IANA_SUITES:
+                ke, _sig, cipher, hash_alg, pfs = IANA_SUITES[suite]
+            else:
+                ke, _sig, cipher, hash_alg, pfs = "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", False
+            observations.append({"algorithm": cipher, "role": "cipher", "value": suite})
+            if ke and ke != "UNKNOWN":
+                observations.append({"algorithm": ke, "role": "key_exchange", "value": suite})
+            if hash_alg and hash_alg != "UNKNOWN":
+                observations.append({"algorithm": hash_alg, "role": "hash", "value": suite})
+        return {"protocol": "DTLS", "protocol_version": _DTLS_VERSIONS.get(version, version),
+                "pfs": pfs,
+                "observations": observations}
+
+
+# --------------------------------------------------------------------------- #
+# WireGuard (§11 extension — RFC 8437: fixed, non-negotiable crypto)
+# --------------------------------------------------------------------------- #
+
+_WIREGUARD_FIXED = {
+    "kex": "X25519",                    # Noise_IK handshake DH
+    "cipher": "ChaCha20-Poly1305",      # AEAD for transport packets
+    "hash": "BLAKE2s",                  # hash / chaining key derivation
+    "integrity": "HMAC-BLAKE2s",        # MAC1/MAC2 cookie fields
+    "kdf": "HKDF-BLAKE2s",              # key derivation
+    "psk_mode": "psk2",                 # Noise_IKpsk2 pre-shared key
+}
+
+
+class WireGuardAnalysis:
+    """WireGuard crypto analysis (RFC 8437).
+
+    WireGuard negotiates nothing: every peer runs the same fixed suite, so
+    the observation set is constant and the honest signal is which
+    primitives the tunnel commits to — X25519 (Shor-vulnerable) unless a
+    future PQ variant replaces it.
+    """
+
+    def analyze(self, *, protocol: str = "WireGuard", psk: bool = True) -> dict[str, Any]:
+        observations = [
+            {"algorithm": _WIREGUARD_FIXED["kex"], "role": "kex", "value": "X25519"},
+            {"algorithm": _WIREGUARD_FIXED["cipher"], "role": "cipher", "value": "ChaCha20-Poly1305"},
+            {"algorithm": _WIREGUARD_FIXED["hash"], "role": "hash", "value": "BLAKE2s"},
+            {"algorithm": _WIREGUARD_FIXED["integrity"], "role": "integrity", "value": "HMAC-BLAKE2s"},
+            {"algorithm": _WIREGUARD_FIXED["kdf"], "role": "kdf", "value": "HKDF-BLAKE2s"},
+        ]
+        if psk:
+            observations.append({"algorithm": "PSK", "role": "psk_mode", "value": "Noise_IKpsk2"})
+        return {
+            "protocol": protocol,
+            "protocol_version": "1",
+            "noise_pattern": "Noise_IKpsk2",
+            "negotiable": False,
+            "quantum_status": "QUANTUM_VULNERABLE",
+            "observations": observations,
+        }

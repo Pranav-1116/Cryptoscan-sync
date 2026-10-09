@@ -151,6 +151,54 @@ asked for; the `system_dependencies` (parent, child, relation) unique-index
 ask was evaluated and deliberately kept as pair-level dedup (the codebase
 upserts by pair; a relation-level constraint would create duplicate edges).
 
+## 1.7 Round 17 — the seven-report full read (2026-10-09, same day)
+
+The user pasted reports 11–16 plus CRYPTO_SCAN_DISCOVERY_REPORT and asked
+for the same treatment: read all in full, verify every claim against the
+code, build everything real and code-buildable. Verification showed the
+usual pattern — 11 of 12 headline claims were stale in the reports' favor
+(4.1k+ backend tests vs "no coverage tooling", 132 frontend tests,
+736-path/815-operation API). Six real, code-buildable gaps remained and
+were built (migration 0075):
+
+1. **Evidence soft-delete that preserves the chain (15 §6.2,
+   16 EVIDENCE-003)** — tombstone columns on `evidence_records`;
+   auditor-gated `/findings/{id}/soft-delete` (mandatory reason, chained
+   audit entry, 409 double-delete) and `/findings/{id}/restore`;
+   consumption surfaces exclude tombstones while chain verification and
+   exports still read every row. A hard DELETE was never acceptable: each
+   row's chain_hash commits to its predecessor.
+2. **Encrypted backups (15 §4)** — `--encrypt` on backup_evidence.py:
+   AES-256-GCM, scrypt KDF over `BACKUP_ENCRYPTION_KEY`, `CSBC1`
+   self-describing header, plaintext SHA-256 kept in the manifest;
+   restore decrypts before the manifest check, fails closed on wrong
+   key/tamper, and the decrypted plaintext never outlives the restore.
+3. **QUIC/DTLS/WireGuard analyzers (13 §3.1, discovery P3-001)** — three
+   new protocol_engine analyzers wired into the engine input bundle,
+   following the SSH/IPsec observations pattern; QUIC inherits the TLS
+   group registry (wire names + codepoints), DTLS reuses the IANA suite
+   registry, WireGuard reports its fixed RFC 8437 suite as non-negotiable
+   and honestly quantum-vulnerable.
+4. **CBOM portfolio scale (14 TD-007)** — set-based `_located_assets`
+   (one JOIN, no per-system loop, no second 5000-row page), one-query
+   dependency edges, `PORTFOLIO_MAX_ASSETS` bound with explicit
+   `cryptoscan:truncated` metadata + logged warning. Streaming remains
+   open; the OOM and silent-truncation failure modes do not.
+5. **Duplicate OpenAPI operationIds (12's regeneration dependency)** —
+   two same-named functions whose distinct paths normalized to one id;
+   fixed, and pinned by a new contract test (uniqueness, versioned paths
+   with the six-probe allowlist, tagged operations).
+6. **Property tests + coverage tooling (11)** — hypothesis pinned;
+   seven properties over the hashing core; `pytest-cov` + `.coveragerc`
+   + `scripts/coverage.sh` as an opt-in measured report (the gate stays
+   the suite result; CI wiring remains credential-blocked, staged in
+   `.github/workflows-pending/`).
+
+Verified-stale highlights: the universal_crypto suite's 18 apparent
+failures were a PYTHONPATH artifact (shared_models not importable), not a
+regression — 148/148 with the standard path; audit 11's test-count and
+coverage rows describe a codebase several rounds old.
+
 ## 2. P0 gap register (88_FINAL_GAP_PRIORITIZATION) — status after round 14
 
 | Gap | Audit claim | Current status | Evidence |

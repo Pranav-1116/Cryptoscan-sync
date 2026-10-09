@@ -325,3 +325,33 @@
 
 **Total: ~14 weeks to production-ready for multi-tenant SaaS**
 **Total: ~6 weeks for single-tenant enterprise (Phases 0 + 3 only)**
+## UPDATE — round 17 build (2026-10-09)
+
+- **Backup encryption (§4 backup/restore rows): BUILT.**
+  `scripts/backup_evidence.py --encrypt` produces AES-256-GCM backups
+  (scrypt KDF over `BACKUP_ENCRYPTION_KEY`, self-describing `CSBC1`
+  salt+nonce header, `.enc` suffix, plaintext removed after encryption).
+  The manifest keeps the **plaintext** SHA-256 plus `encrypted`/`kdf`
+  fields, so integrity is verifiable after decryption without trusting
+  the GCM tag alone. `restore_evidence.py` detects encrypted backups
+  (suffix *or* magic sniff), decrypts **before** the manifest check,
+  refuses to restore on wrong key or tamper (fail-closed), and deletes
+  the decrypted plaintext when the restore finishes — the plaintext never
+  outlives the operation. 7 tests in
+  `services/api/tests/unit/test_backup_encryption.py` cover the KDF
+  policy, round trip, tamper/wrong-key failures, and the full
+  backup→encrypt→restore script path.
+- **Evidence soft-delete preserving the chain (§6.2's hard-DELETE
+  problem): BUILT.** Migration 0075 adds `deleted_at`/`deleted_by`/
+  `delete_reason` tombstones. Consumption surfaces (findings listings,
+  CBOM generation, conflicts, drift comparison, remediation suggestions
+  and task creation, intelligence/agility/work orders, retirement
+  planning) exclude tombstones; chain verification, exports, and audit
+  exports still see every row — a retraction stays in the chain it
+  committed to. `POST /findings/{id}/soft-delete` (auditor-gated,
+  mandatory reason, hash-chained audit entry, 409 on double-delete) and
+  `POST /findings/{id}/restore` (409 unless retracted) manage the
+  lifecycle. 4 tests in `test_evidence_soft_delete.py`, including the
+  chain-still-verifies assertion.
+- Still open (deployment scope, unchanged): DB encryption at rest, Redis
+  TLS, automated backup scheduling, DR automation.

@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+
 from db.tenancy import filtered_get
 
 from collections import Counter
@@ -36,6 +39,8 @@ from db.repositories.evidence_repository import EvidenceRepository
 from db.repositories.scan_repository import ScanRepository
 from db.repositories.system_repository import SystemRepository
 from db.repositories.vulnerability_repository import VulnerabilityRepository
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cbom", tags=["cbom"])
 
@@ -113,27 +118,50 @@ def _iso(value: Any) -> str | None:
     return str(value)
 
 
-def _located_assets(db: Session) -> list[dict[str, Any]]:
-    systems, _ = SystemRepository(db).list_systems(page=1, page_size=1000)
-    seen: set[str] = set()
+def _portfolio_max_assets() -> int:
+    """Bounded estate CBOMs (audit 14 §3): no unbounded query, no silent truncation."""
+    try:
+        return max(1, int(os.environ.get("PORTFOLIO_MAX_ASSETS", "50000")))
+    except ValueError:
+        return 50_000
+
+
+def _located_assets(db: Session) -> tuple[list[dict[str, Any]], int]:
+    """All crypto assets with their system location, in a bounded set-based query.
+
+    One JOIN (crypto_assets ⟕ system_assets ⟕ systems) replaces the old
+    per-system ``assets_for`` loop (N+1 queries) and the silent 5000-row
+    ``list_assets`` page cap. An asset linked to several systems appears
+    once per system (same semantics as before); unlinked assets land in the
+    ``unassigned`` bucket. The result is capped at ``PORTFOLIO_MAX_ASSETS``
+    (default 50k) — the caller reports the truncation explicitly instead of
+    the old behavior where the estate CBOM quietly stopped at 5000 assets.
+    """
+    from db.models.crypto_asset import CryptoAsset
+    from db.models.system import System
+    from db.models.system_asset import SystemAsset
+    from sqlalchemy import select
+
+    rows = db.execute(
+        select(CryptoAsset, System)
+        .outerjoin(SystemAsset, SystemAsset.asset_id == CryptoAsset.id)
+        .outerjoin(System, System.id == SystemAsset.system_id)
+    ).all()
     located: list[dict[str, Any]] = []
-    sys_repo = SystemRepository(db)
-    for system in systems:
-        for asset in sys_repo.assets_for(system.id):
-            seen.add(asset.id)
-            data = asset.to_dict()
-            data["system_id"] = system.id
-            data["system_name"] = system.name
-            located.append(data)
-    assets, _ = AssetRepository(db).list_assets(page=1, page_size=5000)
-    for asset in assets:
-        if asset.id in seen:
-            continue
+    for asset, system in rows:
         data = asset.to_dict()
-        data["system_id"] = None
-        data["system_name"] = "unassigned"
+        data["system_id"] = system.id if system is not None else None
+        data["system_name"] = system.name if system is not None else "unassigned"
         located.append(data)
-    return located
+    total = len(located)
+    limit = _portfolio_max_assets()
+    if total > limit:
+        logger.warning(
+            "portfolio_assets_truncated",
+            extra={"total": total, "limit": limit},
+        )
+        return located[:limit], total
+    return located, total
 
 
 def _records_for_system(db: Session, system_id: str) -> tuple[Any, list[Any]]:
@@ -148,7 +176,9 @@ def _records_for_scan(db: Session, scan_id: str) -> tuple[Scan, list[Any]]:
     scan = filtered_get(db, Scan, scan_id)
     if scan is None:
         raise HTTPException(status_code=404, detail="Scan not found")
-    return scan, EvidenceRepository(db).get_all_for_scan(scan_id)
+    # CBOM generation consumes evidence: retracted (soft-deleted) findings
+    # must not appear as components in the inventory.
+    return scan, EvidenceRepository(db).get_all_for_scan(scan_id, include_deleted=False)
 
 
 def _resolve_ref(db: Session, ref) -> tuple[str, str | None, list[Any]]:
@@ -283,17 +313,28 @@ def cbom_portfolio(
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
-    records = _located_assets(db)
+    records, total_assets = _located_assets(db)
+    limit = _portfolio_max_assets()
+    truncated = total_assets > limit
     system_components, dependencies = _portfolio_dependencies(db, records)
+    metadata_properties = [
+        {"name": "cryptoscan:scope", "value": "estate"},
+        {"name": "cryptoscan:systems", "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
+        {"name": "cryptoscan:assets", "value": str(len(records))},
+    ]
+    if truncated:
+        # explicit, machine-readable truncation — never a silent 5000-row stop
+        metadata_properties += [
+            {"name": "cryptoscan:truncated", "value": "true"},
+            {"name": "cryptoscan:asset_limit", "value": str(limit)},
+            {"name": "cryptoscan:assets_total", "value": str(total_assets)},
+        ]
     bom = CbomGenerator().from_records(
         records,
         name="cryptoscan-portfolio",
         version="aggregate",
         dependencies=dependencies or None,
-        metadata_properties=[
-            {"name": "cryptoscan:scope", "value": "estate"},
-            {"name": "cryptoscan:systems", "value": str(len({row.get("system_id") for row in records if row.get("system_id")}))},
-        ],
+        metadata_properties=metadata_properties,
     )
     if system_components:
         bom["metadata"]["component"]["bom-ref"] = PORTFOLIO_ROOT_REF
@@ -311,17 +352,27 @@ def _portfolio_dependencies(db: Session, records: list[dict[str, Any]]) -> tuple
     system → its crypto assets + the systems it depends on (``system_dependencies`` table, i.e. the
     edges imported from cryptoscan-systems.yml / the systems import). Every ref points at a component
     in this BOM, so downstream CycloneDX tooling can walk blast radius across systems.
+
+    Set-based (audit 14 §3): one query loads every system, one loads every
+    dependency edge — no per-system ``dependencies_for`` round trips.
     """
+    from db.models.system_dependency import SystemDependency
+    from sqlalchemy import select as sa_select
+
     systems, _ = SystemRepository(db).list_systems(page=1, page_size=1000)
     if not systems:
         return [], []
-    repo = SystemRepository(db)
     sys_ref = {s.id: f"system:{s.name}" for s in systems}
     assets_by_system: dict[str | None, list[str]] = {}
     for row in records:
         ref = row.get("id") or row.get("evidence_id") or row.get("finding_id")
         if ref:
             assets_by_system.setdefault(row.get("system_id"), []).append(str(ref))
+    # one query for the whole edge list, grouped by parent (no N+1)
+    edges_by_parent: dict[str, list[str]] = {}
+    for edge in db.execute(sa_select(SystemDependency)).scalars():
+        if edge.child_id != edge.parent_id:
+            edges_by_parent.setdefault(edge.parent_id, []).append(edge.child_id)
     components: list[dict[str, Any]] = []
     deps: list[dict[str, Any]] = []
     for s in systems:
@@ -335,7 +386,7 @@ def _portfolio_dependencies(db: Session, records: list[dict[str, Any]]) -> tuple
         components.append({"type": "application", "name": s.name, "bom-ref": sys_ref[s.id],
                            "properties": [p for p in props if p["value"]]})
         depends = list(assets_by_system.get(s.id, []))
-        depends += [sys_ref[e.child_id] for e in repo.dependencies_for(s.id) if e.child_id in sys_ref and e.child_id != s.id]
+        depends += [sys_ref[cid] for cid in edges_by_parent.get(s.id, []) if cid in sys_ref]
         if depends:
             deps.append({"ref": sys_ref[s.id], "dependsOn": depends})
     top = list(sys_ref.values())

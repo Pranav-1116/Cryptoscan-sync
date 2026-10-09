@@ -208,3 +208,28 @@ TD-005 (registries unified through shared_models normalization).
 
 Open: TD-007 (portfolio streaming), TD-009 (read replicas), TD-013/014/015
 (deployment-scope secrets/encryption/mTLS), TD-035 (rotation automation).
+
+## UPDATE — round 17 build (2026-10-09)
+
+- **TD-007 (CBOM portfolio in-memory / N+1): remediated to the honest
+  slice.** `_located_assets()` is now a single set-based JOIN
+  (crypto_assets ⟕ system_assets ⟕ systems) — no per-system
+  `assets_for()` round trips, no second 5000-row page — and the result is
+  bounded by `PORTFOLIO_MAX_ASSETS` (default 50k). Truncation is
+  **explicit**: `cryptoscan:truncated` / `cryptoscan:asset_limit` /
+  `cryptoscan:assets_total` metadata properties plus a logged warning,
+  replacing the silent 5000-asset stop. `_portfolio_dependencies()` loads
+  the whole `system_dependencies` edge list in one query and groups by
+  parent (was one `dependencies_for()` call per system). Full
+  cursor-streaming remains open (as before) but the OOM-at-scale and
+  silent-truncation failure modes are gone. Tests:
+  `test_portfolio_truncation_is_explicit_not_silent` + the existing
+  worst-first/dependency-graph portfolio tests still green.
+- **Duplicate OpenAPI operationIds: FIXED.** `container.py` and
+  `container_scans.py` both defined `list_container_scans` and their
+  distinct paths normalized to the same derived operation id; the
+  history router's function is renamed (`list_container_scan_history`)
+  and the trailing-slash duplicate route carries an explicit
+  `operation_id`. A new contract test (`test_openapi_contract.py`) pins
+  uniqueness so it cannot regress silently.
+- Still open: TD-009 (read replicas), TD-013/014/015 (deployment-scoped).

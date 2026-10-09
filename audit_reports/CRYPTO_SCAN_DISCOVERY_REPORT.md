@@ -258,3 +258,22 @@ A **genuinely deterministic, evidence-first cryptographic intelligence platform*
 The codebase is honest about its maturity (33 GA / 30 Beta / 8 Preview), documents its boundaries, and labels AI outputs appropriately. This is a rare quality in security tooling.
 
 **Recommendation:** Proceed with Phase 0-1 immediately. Make the Neo4j tenant isolation decision in Week 2. The foundation is solid; the gaps are known and fixable.
+## UPDATE — round 17 build (2026-10-09)
+
+- **P3-001 (QUIC/DTLS/WireGuard detection): CLOSED.** All three protocol
+  analyzers are in `universal_crypto/protocol_engine.py` and wired into
+  the engine's input bundle (`quic`, `dtls`, `wireguard`), emitting the
+  same PROTOCOL evidence the TLS/SSH/IPsec analyzers do. QUIC maps the
+  RFC 9001 TLS-1.3 AEAD suites and the shared TLS group registry (wire
+  names and codepoints, incl. the ML-KEM hybrids); DTLS reuses the IANA
+  suite registry across the 1.0/1.2/1.3 version catalog; WireGuard
+  reports its fixed RFC 8437 suite as non-negotiable with an honest
+  quantum-vulnerable verdict (X25519).
+- **28 (PQC protocol detection): already partially covered by rounds
+  14–16 (TLS hybrid groups, SSH sntrup/mlkem KEX, IKEv2 ML-KEM methods);
+  QUIC now inherits the same group registry, so hybrid-PQC key shares in
+  QUIC classify identically.** Full wire-capture parsing (not catalog
+  input) remains the open half.
+- Re-verified this round: the 4.1k+ backend / 132 frontend test counts
+  and the 736-path/815-operation API surface in this report are stale in
+  the report's favor — the platform is larger than documented here.

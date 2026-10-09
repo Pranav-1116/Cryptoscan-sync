@@ -1207,7 +1207,7 @@ class PipelineRunner:
             return
 
         def as_findings(scan_id: str) -> list[dict]:
-            rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)).scalars())
+            rows = list(session.execute(select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id, EvidenceRecord.deleted_at.is_(None))).scalars())
             return [
                 {
                     "algorithm": r.algorithm,
@@ -1268,7 +1268,9 @@ class PipelineRunner:
             def as_config_findings(scan_id: str) -> list[dict]:
                 rows = list(
                     session.execute(
-                        select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)
+                        select(EvidenceRecord).where(
+                            EvidenceRecord.scan_id == scan_id, EvidenceRecord.deleted_at.is_(None)
+                        )
                     ).scalars()
                 )
                 payloads = []

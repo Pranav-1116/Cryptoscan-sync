@@ -22,9 +22,14 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
         hardcoded_only: bool = False,
         page: int = 1,
         page_size: int = 50,
+        include_deleted: bool = False,
     ) -> tuple[list[EvidenceRecord], int]:
         stmt = select(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)
         count_stmt = select(func.count()).select_from(EvidenceRecord).where(EvidenceRecord.scan_id == scan_id)
+        if not include_deleted:
+            alive = EvidenceRecord.deleted_at.is_(None)
+            stmt = stmt.where(alive)
+            count_stmt = count_stmt.where(alive)
         if algorithm:
             stmt = stmt.where(EvidenceRecord.algorithm == algorithm)
             count_stmt = count_stmt.where(EvidenceRecord.algorithm == algorithm)
@@ -50,9 +55,14 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
         scan_id: str | None = None,
         page: int = 1,
         page_size: int = 50,
+        include_deleted: bool = False,
     ) -> tuple[list[EvidenceRecord], int]:
         stmt = select(EvidenceRecord)
         count_stmt = select(func.count()).select_from(EvidenceRecord)
+        if not include_deleted:
+            alive = EvidenceRecord.deleted_at.is_(None)
+            stmt = stmt.where(alive)
+            count_stmt = count_stmt.where(alive)
         if scan_id:
             stmt = stmt.where(EvidenceRecord.scan_id == scan_id)
             count_stmt = count_stmt.where(EvidenceRecord.scan_id == scan_id)
@@ -73,12 +83,21 @@ class EvidenceRepository(BaseRepository[EvidenceRecord]):
     def get_by_scan(self, scan_id: str) -> list[EvidenceRecord]:
         return self.get_all_for_scan(scan_id)
 
-    def get_all_for_scan(self, scan_id: str) -> list[EvidenceRecord]:
+    def get_all_for_scan(self, scan_id: str, *, include_deleted: bool = True) -> list[EvidenceRecord]:
+        """Chain-ordered rows for a scan.
+
+        ``include_deleted`` defaults to **True** because the chain-hash
+        contract covers tombstones: every consumer that verifies or exports
+        the chain must see every row. Consumption surfaces (CBOM
+        generation, conflict detection) pass ``include_deleted=False``.
+        """
         stmt = (
             select(EvidenceRecord)
             .where(EvidenceRecord.scan_id == scan_id)
             .order_by(EvidenceRecord.chain_position)
         )
+        if not include_deleted:
+            stmt = stmt.where(EvidenceRecord.deleted_at.is_(None))
         return list(self.session.execute(stmt).scalars().all())
 
     def algorithm_breakdown(self) -> list[dict]:

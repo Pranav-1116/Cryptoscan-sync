@@ -164,7 +164,7 @@ def check_scan(
         ).scalars().all()
     ]
 
-    evidence_rows = EvidenceRepository(db).get_all_for_scan(scan_id)
+    evidence_rows = EvidenceRepository(db).get_all_for_scan(scan_id, include_deleted=False)
     # asset linkage for ASSET-scope retirements
     asset_links: dict[str, set[str]] = {}
     if any(r["scope"] == "ASSET" for r in retirements):
