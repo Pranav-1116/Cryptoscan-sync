@@ -177,6 +177,44 @@ route ships without an authentication seam. Verified it catches the
 retention bug when temporarily reverted. A new route without auth now
 fails CI instead of shipping open.
 
+## Round 14 — audit-report reconciliation (2026-10-09)
+
+The user added `audit_reports/` (65 files, generated 2026-09-20). Every
+report was read; every actionable claim was re-checked against current code
+(audit 88's register is substantially stale — it predates rounds 9–13).
+Full verdict table: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.
+
+Two genuinely-missing code capabilities were built:
+
+1. **Remediation verification loop (GAP-006 / audit 62).** Remediation was
+   suggestions-only. New: `remediation_tasks` + `remediation_verifications`
+   (migration 0072), a pure five-verdict engine
+   (`remediation/verification.py` — VERIFIED / PARTIAL / FAILED / REGRESSION
+   / INCONCLUSIVE, decision pinned by 13 table tests), and seven endpoints
+   on the remediation router. Completion auto-verifies against the latest
+   completed scan of the same target newer than the original scan (or an
+   explicit rescan; mismatched targets are rejected 400). Findings and the
+   target location are snapshotted at task creation, verdicts persist the
+   full comparison, and every transition emits a platform event. No rescan
+   → INCONCLUSIVE, task honestly stays COMPLETED. 8 end-to-end API tests.
+2. **Hybrid-PQC protocol detection (GAP-014/015 / audits 52+59).** TLS
+   supported_groups were anonymous hex, `sntrup761x25519` was mislabelled
+   plain X25519 (a PQ KEX reported Shor-vulnerable), and the IKEv2 DH table
+   contradicted IANA (27/28 are brainpool, not X25519/X448; 24/25/26 were
+   wrong too). Fixed across the shared registry (`kem-hybrid-pqc` family →
+   PQC_RESISTANT, RFC 10024 hybrids ALLOWED, Kyber drafts + sntrup761
+   RESTRICTED), the universal protocol engine (named TLS_GROUPS incl.
+   0x11EB–0x11EF and 0x6399/0x639A; SSH hybrid wire names; IKEv2 groups
+   35/36/37 = ML-KEM-512/768/1024 per RFC ipsecme-ikev2-mlkem), and the
+   runtime TLS parser (same map; 0x00FF "ffdhe8192" bug — 8192 is 0x0104).
+
+Everything else in the register was already fixed (tenant gate, link-table
+tenancy, HBOM/VBOM layers, drift/baselines, Technology BOM, realtime cap,
+graph sync coordinator), is deployment-scoped (gVisor, encryption at rest,
+mTLS, HA/read replicas — see PRODUCTION-ROADMAP), or is not applicable
+(no AI exists in the deterministic path; the webhooks router is inbound).
+Remaining honest backlog lives in the reconciliation doc §6.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

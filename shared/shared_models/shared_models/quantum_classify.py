@@ -63,6 +63,9 @@ def quantum_verdict(raw: str | None) -> dict[str, Any]:
         if info.quantum_impact == "shor":
             verdict = SHOR_VULNERABLE
             reason = "asymmetric primitive broken by Shor's algorithm"
+        elif info.family == "kem-hybrid-pqc":
+            verdict = PQC_RESISTANT
+            reason = "hybrid key exchange: classical + post-quantum component"
         elif info.family.endswith("-pqc"):
             verdict = PQC_RESISTANT
             reason = "post-quantum family (FIPS 203/204/205)"

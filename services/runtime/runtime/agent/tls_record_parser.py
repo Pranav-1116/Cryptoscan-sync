@@ -247,7 +247,16 @@ _GROUP_NAMES: dict[int, str] = {
     0x0100: "ffdhe2048",
     0x0101: "ffdhe3072",
     0x0102: "ffdhe4096",
-    0x00FF: "ffdhe8192",
+    0x0103: "ffdhe6144",
+    0x0104: "ffdhe8192",  # 0x00FF is reserved — 8192 lives at 0x0104 (RFC 7919)
+    # RFC 10024 hybrid ML-KEM groups + pre-standard Kyber drafts
+    0x11EB: "SecP256r1MLKEM768",
+    0x11EC: "X25519MLKEM768",
+    0x11ED: "SecP384r1MLKEM1024",
+    0x11EE: "SecP521r1MLKEM1024",
+    0x11EF: "X25519MLKEM1024",
+    0x6399: "X25519Kyber768Draft00",
+    0x639A: "SecP256r1Kyber768Draft00",
 }
 
 

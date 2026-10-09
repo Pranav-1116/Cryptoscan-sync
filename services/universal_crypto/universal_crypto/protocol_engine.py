@@ -126,6 +126,24 @@ _build_iana()
 TLS_VERSIONS = {0x0300: "SSL 3.0", 0x0301: "TLS 1.0", 0x0302: "TLS 1.1",
                 0x0303: "TLS 1.2", 0x0304: "TLS 1.3", 0x0305: "TLS 1.4-draft"}
 
+#: TLS supported_groups → name (IANA registry). Hybrid ML-KEM groups
+#: (RFC 10024) and the pre-standard Kyber drafts are first-class: without
+#: them a PQC-capable endpoint reports anonymous hex codepoints and the
+#: quantum verdict silently degrades to UNKNOWN.
+TLS_GROUPS: dict[int, str] = {
+    0x0017: "secp256r1", 0x0018: "secp384r1", 0x0019: "secp521r1",
+    0x001A: "brainpoolP256r1", 0x001B: "brainpoolP384r1", 0x001C: "brainpoolP512r1",
+    0x001D: "x25519", 0x001E: "x448",
+    0x0100: "ffdhe2048", 0x0101: "ffdhe3072", 0x0102: "ffdhe4096",
+    0x0103: "ffdhe6144", 0x0104: "ffdhe8192",
+    # RFC 10024 hybrid ML-KEM groups (FIPS 203 half)
+    0x11EB: "SecP256r1MLKEM768", 0x11EC: "X25519MLKEM768",
+    0x11ED: "SecP384r1MLKEM1024", 0x11EE: "SecP521r1MLKEM1024",
+    0x11EF: "X25519MLKEM1024",
+    # pre-standard Kyber768 hybrids — still seen in the wild (0x6399/0x639A)
+    0x6399: "X25519Kyber768Draft00", 0x639A: "SecP256r1Kyber768Draft00",
+}
+
 
 class TlsAnalysis:
     """§10 deep TLS analysis (from suites, versions, groups, certs)."""
@@ -204,8 +222,11 @@ class TlsAnalysis:
                             f"0x{struct.unpack_from('>H', payload, i)[0]:04x}")
                             for i in range(0, len(payload) - 1, 2)]
                     if ext_type == 0x000a and len(payload) >= 2:  # supported_groups
-                        groups = [f"0x{struct.unpack_from('>H', payload, i)[0]:x}"
-                                  for i in range(0, len(payload) - 1, 2)]
+                        groups = [
+                            TLS_GROUPS.get(struct.unpack_from(">H", payload, i)[0],
+                                           f"0x{struct.unpack_from('>H', payload, i)[0]:x}")
+                            for i in range(0, len(payload) - 1, 2)
+                        ]
             return {
                 "record": TLS_VERSIONS.get(version_bytes, f"0x{version_bytes:04x}"),
                 "handshake_type": handshake_type,
@@ -239,8 +260,14 @@ _SSH_KEX = {
     "ecdh-sha2-nistp521": "ECDH", "diffie-hellman-group14-sha256": "DH",
     "diffie-hellman-group16-sha512": "DH", "diffie-hellman-group18-sha512": "DH",
     "diffie-hellman-group-exchange-sha256": "DH", "diffie-hellman-group1-sha1": "DH",
-    "diffie-hellman-group14-sha1": "DH", "sntrup761x25519-sha512": "X25519",
-    "mlkem768x25519-sha256": "ML-KEM-768",
+    "diffie-hellman-group14-sha1": "DH",
+    # hybrid PQ KEX (OpenSSH): map to the hybrid identity, NOT the classical
+    # half — sntrup761x25519 is not plain X25519 and must not be reported as
+    # Shor-vulnerable
+    "sntrup761x25519-sha512": "X25519SNTRUP761",
+    "sntrup761x25519-sha512@openssh.com": "X25519SNTRUP761",
+    "mlkem768x25519-sha256": "X25519MLKEM768",
+    "mlkem768x25519-sha256@openssh.com": "X25519MLKEM768",
 }
 
 _SSH_CIPHERS = {
@@ -306,11 +333,19 @@ _IPSEC_INTEGRITY = {
 }
 
 _IPSEC_DH = {
+    # IANA "Transform Type 4 - Key Exchange Method" registry
     "1": "DH-768", "2": "DH-1024", "5": "DH-1536", "14": "DH-2048",
     "15": "DH-3072", "16": "DH-4096", "17": "DH-6144", "18": "DH-8192",
     "19": "ECDH-P-256", "20": "ECDH-P-384", "21": "ECDH-P-521",
-    "24": "ECDH-P-256", "25": "ECDH-P-384", "26": "ECDH-P-521",
-    "27": "X25519", "28": "X448", "31": "Curve25519",
+    "22": "DH-1024", "23": "DH-2048", "24": "DH-2048",
+    # 192/224-bit random ECP groups — below any acceptable floor
+    "25": "ECDH-P-192", "26": "ECDH-P-224",
+    "27": "BRAINPOOLP224R1", "28": "BRAINPOOLP256R1",
+    "29": "BRAINPOOLP384R1", "30": "BRAINPOOLP512R1",
+    "31": "X25519", "32": "X448",
+    "33": "GOST3410-2012-256", "34": "GOST3410-2012-512",
+    # ML-KEM KE methods (RFC ipsecme-ikev2-mlkem): IKEv2 PQ key exchange
+    "35": "ML-KEM-512", "36": "ML-KEM-768", "37": "ML-KEM-1024",
 }
 
 _IPSEC_AUTH = {

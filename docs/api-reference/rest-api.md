@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-08:
-**722 paths, 798 operations** across 89 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-09:
+**728 paths, 805 operations** across 89 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -962,8 +962,15 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `POST` | `/api/v1/remediation/fix-branch` | Fix Branch |
 | `GET` | `/api/v1/remediation/scans/{scan_id}/suggestions` | Scan Suggestions |
+| `GET` | `/api/v1/remediation/tasks` | List Tasks |
+| `POST` | `/api/v1/remediation/tasks` | Create Task |
+| `GET` | `/api/v1/remediation/tasks/{task_id}` | Get Task |
+| `POST` | `/api/v1/remediation/tasks/{task_id}/accept` | Accept Task |
+| `POST` | `/api/v1/remediation/tasks/{task_id}/complete` | Complete Task |
+| `POST` | `/api/v1/remediation/tasks/{task_id}/verify` | Verify Task |
 | `GET` | `/api/v1/remediation/templates` | List Templates |
 | `GET` | `/api/v1/remediation/templates/{rule_id}` | Template Detail |
+| `GET` | `/api/v1/remediation/verifications` | List Verifications |
 
 ## report-schedules
 

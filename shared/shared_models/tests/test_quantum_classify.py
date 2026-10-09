@@ -169,3 +169,35 @@ def test_unknown_parameter_never_asserts_resistance():
     # …while a stated parameter still classifies both ways.
     assert quantum_verdict("AES-128")["verdict"] == GROVER_MARGINAL
     assert quantum_verdict("AES-256")["verdict"] == QUANTUM_RESISTANT
+
+
+# --------------------------------------------------------------------------- #
+# hybrid key exchange (RFC 10024 TLS groups / OpenSSH hybrid KEX) — audit 59
+# --------------------------------------------------------------------------- #
+
+def test_hybrid_mlkem_groups_are_pqc_resistant_and_allowed():
+    for name in ("X25519MLKEM768", "X25519MLKEM1024", "SecP256r1MLKEM768",
+                 "SecP384r1MLKEM1024", "SecP521r1MLKEM1024"):
+        verdict = quantum_verdict(name)
+        assert verdict["verdict"] == PQC_RESISTANT, name
+        assert verdict["status"] == "ALLOWED", name
+        assert verdict["reason"] == "hybrid key exchange: classical + post-quantum component"
+
+
+def test_prestandard_kyber_hybrid_is_pqc_resistant_but_restricted():
+    verdict = quantum_verdict("X25519Kyber768Draft00")
+    assert verdict["verdict"] == PQC_RESISTANT
+    assert verdict["status"] == "RESTRICTED"  # superseded by the ML-KEM hybrids
+
+
+def test_openssh_hybrid_kex_wire_names_classify():
+    for wire in ("sntrup761x25519-sha512@openssh.com", "sntrup761x25519-sha512",
+                 "mlkem768x25519-sha256"):
+        verdict = quantum_verdict(wire)
+        assert verdict["verdict"] == PQC_RESISTANT, wire
+        assert verdict["recognized"] is True, wire
+
+
+def test_hybrid_is_not_the_classical_half():
+    # the whole point: hybrid != plain X25519 (Shor-vulnerable)
+    assert quantum_verdict("X25519MLKEM768")["verdict"] != quantum_verdict("X25519")["verdict"]

@@ -6,6 +6,36 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — remediation verification loop (audit 62 / GAP-006)
+
+- Tracked remediation tasks with evidence-based verification instead of a
+  human "done" checkbox: `POST/GET /remediation/tasks`,
+  `.../accept|complete|verify`, `GET /remediation/verifications`. Findings
+  are snapshotted at creation; completion auto-verifies against rescan
+  evidence with five deterministic verdicts (VERIFIED / PARTIAL / FAILED /
+  REGRESSION / INCONCLUSIVE), each persisting the full machine-readable
+  comparison and emitting platform events. Migration 0072.
+
+### Fixed — hybrid PQC protocol detection (audits 52/59, GAP-014/015)
+
+- TLS supported_groups now resolve to names — including RFC 10024 hybrid
+  ML-KEM groups (0x11EB–0x11EF) and the pre-standard Kyber drafts
+  (0x6399/0x639A) — instead of anonymous hex that classified as UNKNOWN.
+- `sntrup761x25519` no longer masquerades as plain X25519: OpenSSH hybrid
+  KEX maps to a hybrid identity and classifies PQC_RESISTANT (RESTRICTED —
+  round-3 NTRU Prime, not FIPS 203); `mlkem768x25519` maps to
+  X25519MLKEM768 (ALLOWED).
+- IKEv2 DH group table corrected against the IANA registry: 27–30 are
+  brainpool curves (were X25519/X448), 22–24 and 25/26 relabelled, 31/32
+  are Curve25519/Curve448, and ML-KEM KE methods 35/36/37 added.
+- Runtime TLS parser: hybrid codepoints named; reserved 0x00FF no longer
+  masquerades as ffdhe8192 (which is 0x0104, RFC 7919).
+- Shared registry: `kem-hybrid-pqc` family with explicit hybrid quantum
+  verdict reason; Kyber-draft and sntrup761 hybrids RESTRICTED, RFC 10024
+  hybrids ALLOWED.
+
+
+
 ### Fixed — route-auth audit: one open endpoint, one broken webhook, and a permanent gate
 
 - **`GET /compliance/retention` answered anonymous readers.** The retention

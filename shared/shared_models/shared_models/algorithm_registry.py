@@ -192,6 +192,17 @@ _FAMILIES: dict[str, _Family] = {
     "ML-DSA-87": _Family("ML-DSA-87", "signature-pqc", ALLOWED, key_size=2592, parameter_kind=KEY_BITS, notes="FIPS 204 level 5"),
     "SLH-DSA-128S": _Family("SLH-DSA-128S", "signature-pqc", ALLOWED, key_size=64, parameter_kind=KEY_BITS, notes="FIPS 205 (SPHINCS+)"),
     "KYBER": _Family("Kyber", "kem-pqc", RESTRICTED, notes="pre-standardization name — prefer ML-KEM"),
+    # -- hybrid key exchange (RFC 10024 TLS groups / RFC 9370 IKEv2 / OpenSSH) --
+    # Classical + PQ combined: quantum verdict is PQC_RESISTANT via the -pqc
+    # family suffix; policy status tracks the PQ half's standardization.
+    "X25519MLKEM768": _Family("X25519MLKEM768", "kem-hybrid-pqc", ALLOWED, notes="RFC 10024 hybrid: X25519 + ML-KEM-768 (FIPS 203)"),
+    "X25519MLKEM1024": _Family("X25519MLKEM1024", "kem-hybrid-pqc", ALLOWED, notes="RFC 10024 hybrid: X25519 + ML-KEM-1024"),
+    "SECP256R1MLKEM768": _Family("SecP256r1MLKEM768", "kem-hybrid-pqc", ALLOWED, notes="RFC 10024 hybrid: P-256 + ML-KEM-768"),
+    "SECP384R1MLKEM1024": _Family("SecP384r1MLKEM1024", "kem-hybrid-pqc", ALLOWED, notes="RFC 10024 hybrid: P-384 + ML-KEM-1024"),
+    "SECP521R1MLKEM1024": _Family("SecP521r1MLKEM1024", "kem-hybrid-pqc", ALLOWED, notes="RFC 10024 hybrid: P-521 + ML-KEM-1024"),
+    "X25519KYBER768DRAFT00": _Family("X25519Kyber768Draft00", "kem-hybrid-pqc", RESTRICTED, notes="pre-standard Kyber768 hybrid (TLS 0x6399) — superseded by X25519MLKEM768"),
+    "SECP256R1KYBER768DRAFT00": _Family("SecP256r1Kyber768Draft00", "kem-hybrid-pqc", RESTRICTED, notes="pre-standard Kyber768 hybrid (TLS 0x639A) — superseded"),
+    "X25519SNTRUP761": _Family("X25519+sntrup761", "kem-hybrid-pqc", RESTRICTED, notes="OpenSSH hybrid KEX: sntrup761 (round-3 NTRU Prime) + X25519"),
     # -- protocol versions (SP 800-52r2) ---------------------------------- #
     "TLS 1.0": _Family("TLS 1.0", "protocol", DISALLOWED, notes="disallowed protocol version (SP 800-52r2)"),
     "TLS 1.1": _Family("TLS 1.1", "protocol", DISALLOWED, notes="disallowed protocol version (SP 800-52r2)"),
@@ -476,6 +487,21 @@ _ALIASES: dict[str, str] = {
     "NEWHOPE512": "NEWHOPE", "NEWHOPE1024": "NEWHOPE",
     "SABER": "SABER", "LIGHTSABER": "SABER", "FIRESABER": "SABER",
     "NTRUPRIME": "NTRUPRIME", "SNTRUP761": "NTRUPRIME", "SNTRUP1277": "NTRUPRIME", "SNTRUP": "NTRUPRIME",
+    # hybrid KEX spellings (TLS groups, IKEv2, OpenSSH, oqs-style underscores)
+    "X25519MLKEM768": "X25519MLKEM768", "X25519MLKEM1024": "X25519MLKEM1024",
+    "SECP256R1MLKEM768": "SECP256R1MLKEM768", "SECP384R1MLKEM1024": "SECP384R1MLKEM1024",
+    "SECP521R1MLKEM1024": "SECP521R1MLKEM1024",
+    "MLKEM768X25519": "X25519MLKEM768", "MLKEM1024X25519": "X25519MLKEM1024",
+    "MLKEM768SECP256R1": "SECP256R1MLKEM768", "P256MLKEM768": "SECP256R1MLKEM768",
+    "X25519KYBER768DRAFT00": "X25519KYBER768DRAFT00", "X25519KYBER768": "X25519KYBER768DRAFT00",
+    "KYBER768X25519": "X25519KYBER768DRAFT00",
+    "SECP256R1KYBER768DRAFT00": "SECP256R1KYBER768DRAFT00", "P256KYBER768": "SECP256R1KYBER768DRAFT00",
+    "X25519SNTRUP761": "X25519SNTRUP761", "SNTRUP761X25519": "X25519SNTRUP761",
+    # OpenSSH wire names for the hybrid KEX (with and without the domain suffix)
+    "SNTRUP761X25519SHA512": "X25519SNTRUP761",
+    "SNTRUP761X25519SHA512OPENSSHCOM": "X25519SNTRUP761",
+    "MLKEM768X25519SHA256": "X25519MLKEM768",
+    "MLKEM768X25519SHA256OPENSSHCOM": "X25519MLKEM768",
     "RAINBOW": "RAINBOW", "RAINBOW-I": "RAINBOW",
     "GEMSS": "GEMSS", "GEMSS128": "GEMSS",
     "XMSS": "XMSS", "XMSSMT": "XMSS",

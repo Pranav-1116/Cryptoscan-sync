@@ -56,7 +56,7 @@ def test_server_hello_tls13_extensions():
     parsed = TlsAnalysis().parse_server_hello(record)
     assert parsed["cipher_suite"] == "TLS_AES_128_GCM_SHA256"
     assert "TLS 1.3" in parsed["supported_versions"]  # 0x0304 wire value
-    assert "0x1d" in parsed["supported_groups"]  # x25519
+    assert "x25519" in parsed["supported_groups"]  # named, not raw hex
 
 
 def test_ssh_analysis():
@@ -77,8 +77,12 @@ def test_ssh_analysis():
 
 
 def test_ssh_pqc_kex():
+    # hybrid KEX reports its hybrid identity — the classical half alone would
+    # understate the endpoint's quantum posture
     analysis = SshAnalysis().analyze(kex="mlkem768x25519-sha256")
-    assert any(o["algorithm"] == "ML-KEM-768" for o in analysis["observations"])
+    assert any(o["algorithm"] == "X25519MLKEM768" for o in analysis["observations"])
+    analysis = SshAnalysis().analyze(kex="sntrup761x25519-sha512@openssh.com")
+    assert any(o["algorithm"] == "X25519SNTRUP761" for o in analysis["observations"])
 
 
 def test_ipsec_analysis():
@@ -104,3 +108,43 @@ def test_ipsec_policy_map():
                                  applications=["erp", "payments"])
     assert mapped["gateway"] == "gw-1"
     assert mapped["applications"] == ["erp", "payments"]
+
+
+def test_tls_hybrid_pqc_groups_named():
+    # RFC 10024 hybrids + pre-standard Kyber drafts must come out named, not
+    # as anonymous hex — otherwise quantum classification degrades to UNKNOWN
+    import struct
+    groups = [0x11EC, 0x11EB, 0x11EF, 0x6399, 0x001D]
+    body = struct.pack(">H", 0x0303) + b"\x00" * 32 + b"\x00"
+    body += struct.pack(">H", 0x1301) + b"\x00"
+    ext = struct.pack(">H", 0x002b) + struct.pack(">H", 2) + struct.pack(">H", 0x0304)
+    ext += struct.pack(">H", 0x000a) + struct.pack(">H", 2 * len(groups))
+    for g in groups:
+        ext += struct.pack(">H", g)
+    body += struct.pack(">H", len(ext)) + ext
+    record = bytes([0x16, 0x03, 0x03]) + struct.pack(">H", len(body)) + bytes([0x02]) + body
+    parsed = TlsAnalysis().parse_server_hello(record)
+    assert parsed["supported_groups"] == [
+        "X25519MLKEM768", "SecP256r1MLKEM768", "X25519MLKEM1024",
+        "X25519Kyber768Draft00", "x25519"]
+    # unknown codepoints still fall back to hex
+    from universal_crypto.protocol_engine import TLS_GROUPS
+    assert TLS_GROUPS.get(0x9999, "0x9999") == "0x9999"
+
+
+def test_ipsec_mlkem_dh_groups():
+    # RFC ipsecme-ikev2-mlkem KE methods: IKEv2 can negotiate pure ML-KEM
+    for group, name in (("35", "ML-KEM-512"), ("36", "ML-KEM-768"), ("37", "ML-KEM-1024")):
+        analysis = IpsecAnalysis().analyze(dh_group=group)
+        assert analysis["dh_group"]["algorithm"] == name
+        assert analysis["quantum_status"] == "QUANTUM_SAFE"
+
+
+def test_ipsec_dh_group_registry_matches_iana():
+    # groups 27-30 are brainpool (not X25519/X448); 31/32 are the RFC 8031
+    # curves — the old table mislabelled 27/28 and duplicated 31
+    from universal_crypto.protocol_engine import _IPSEC_DH
+    assert _IPSEC_DH["27"] == "BRAINPOOLP224R1"
+    assert _IPSEC_DH["28"] == "BRAINPOOLP256R1"
+    assert _IPSEC_DH["31"] == "X25519"
+    assert _IPSEC_DH["32"] == "X448"
