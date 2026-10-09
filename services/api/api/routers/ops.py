@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_auditor
 
 router = APIRouter(prefix="/ops", tags=["ops"])
 
@@ -139,3 +140,68 @@ def capacity_forecast(user: str = Depends(get_current_user),
             "note": "linear projection from the append-only metering trail; "
                     "deterministic, no invented growth assumptions beyond the "
                     "observed trend"}
+
+
+# --------------------------------------------------------------------------- #
+# Evidence-chain integrity sweep (audit 14 TD-010) — verification on demand
+# --------------------------------------------------------------------------- #
+
+@router.get("/evidence/chain-status")
+def evidence_chain_status(
+    limit: int = Query(100, ge=1, le=500, description="Most recent scans to verify"),
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Recompute every recent scan's evidence chain and report the honest verdict.
+
+    The chain hashes were only ever checked when an export happened; a silent
+    corruption between exports stayed invisible. This sweep runs the same
+    verifier the export uses (``verify_stored_scan``) across the most recent
+    scans and emits a platform event when a chain is broken, so integrity is
+    a queryable property, not an export-time surprise.
+    """
+    from sqlalchemy import select
+
+    from api.events.platform_events import emit_platform_event
+    from db.models.scan import Scan
+    from db.repositories.evidence_repository import EvidenceRepository
+    from evidence.verification.stored_scan import verify_stored_scan
+
+    scans = db.execute(
+        select(Scan).where(Scan.status == "COMPLETED")
+        .order_by(Scan.scan_start.desc()).limit(limit)
+    ).scalars().all()
+    repo = EvidenceRepository(db)
+    results = []
+    broken = []
+    for scan in scans:
+        verdict = verify_stored_scan(scan, repo.get_all_for_scan(scan.id))
+        ok = verdict["result"] == "PASS"
+        results.append({
+            "scan_id": scan.id,
+            "target_location": scan.target_location,
+            "records": verdict.get("records"),
+            "result": verdict.get("result"),
+            "chain_intact": verdict.get("chain_intact"),
+            "content_intact": verdict.get("content_intact"),
+            "manifest_intact": verdict.get("manifest_intact"),
+            "errors": verdict.get("errors", [])[:5],
+        })
+        if not ok:
+            broken.append(scan.id)
+    if broken:
+        emit_platform_event(
+            "evidence.chain_broken",
+            f"Evidence chain verification FAILED for {len(broken)} of {len(scans)} "
+            f"scans: {', '.join(broken[:10])}",
+            {"broken_scan_ids": broken, "scans_checked": len(scans)},
+            target_name="evidence",
+        )
+    return {
+        "scans_checked": len(scans),
+        "chains_valid": len(scans) - len(broken),
+        "chains_broken": len(broken),
+        "broken_scan_ids": broken,
+        "results": results,
+        "verifier": "evidence.verification.stored_scan.verify_stored_scan",
+    }

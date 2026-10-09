@@ -215,6 +215,36 @@ mTLS, HA/read replicas — see PRODUCTION-ROADMAP), or is not applicable
 (no AI exists in the deterministic path; the webhooks router is inbound).
 Remaining honest backlog lives in the reconciliation doc §6.
 
+## Round 15 — the remaining code-buildable audit gaps (2026-10-09)
+
+Round 14's reconciliation left an honest open list; the user asked for the
+code-buildable remainder to be built. Four more gaps closed (audit_reports/
+now carries per-report UPDATE addenda + 00_ROUND_STATUS.md):
+
+1. **Reintroduction detection (GAP-023 / audit 69):** retired_assets
+   registry (migration 0073), pure scope-matching detector
+   (FILE/ASSET/ALGORITHM), severity routing (hardcoded/FAIL→CRITICAL,
+   WARN→HIGH, clean→MEDIUM), auditor-gated registration/lift with reasons,
+   and POST /retirements/check/{scan_id} emitting one routed event per
+   detection. Malformed registry rows never silently match everything.
+2. **Conflict detection (audit 50):** normalization/conflicts.py classifies
+   ALGORITHM/PARAMETER/STATUS mismatches at the same site; surfaced at GET
+   /findings/conflicts (within-scan across scanners, or scan-vs-scan with
+   both sides stamped). Reported, never auto-resolved.
+3. **Crypto-asset lifecycle (audit 54):** crypto_assets.lifecycle_state
+   (migration 0073) with server-enforced DISCOVERED→VERIFIED→ACTIVE→
+   DEPRECATED→RETIRED transitions (RETIRED terminal; illegal jumps 409 with
+   the allowed set), reasons mandatory, events audited, inventory filter
+   added.
+4. **Evidence-chain sweep (TD-010):** GET /ops/evidence/chain-status runs
+   the export verifier across recent scans; evidence.chain_broken event on
+   breakage — integrity is now a queryable property, not an export-time
+   surprise.
+
+Gates: security suite (route-auth inventory now covers the 8 new routes),
+database suite (migration chain 0073), inventory/findings/ops/remediation
+blast radius, full suite rerun after these edits.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

@@ -17,11 +17,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_auditor
+from db.tenancy import filtered_get
+from pydantic import BaseModel, Field
 from db.models import (
     BusinessOwner,
     BusinessProcess,
@@ -175,6 +177,7 @@ def collect_inventory(session: Session, *,
             "source_language": a.source_language,
             "risk": _risk(None, a.confidence, alg),
             "pqc": _pqc(alg),
+            "lifecycle_state": a.lifecycle_state,
             "relationships": {"used_by": crypto_systems.get(a.id, [])},
         })
 
@@ -285,6 +288,9 @@ def list_inventory(
     query: str | None = None,
     asset_type: str | None = None,
     risk: str | None = None,
+    lifecycle_state: str | None = Query(
+        None, description="Filter crypto assets by lifecycle state "
+        "(DISCOVERED/VERIFIED/ACTIVE/DEPRECATED/RETIRED)"),
     limit: int = Query(500, ge=1, le=1000),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
@@ -293,6 +299,9 @@ def list_inventory(
     rows = collect_inventory(db, limit=limit)
     if asset_type:
         rows = [r for r in rows if r["asset_type"].lower() == asset_type.lower()]
+    if lifecycle_state:
+        rows = [r for r in rows if str(r.get("lifecycle_state") or "").lower()
+                == lifecycle_state.lower()]
     if risk:
         rows = [r for r in rows if r["risk"] and r["risk"].lower() == risk.lower()]
     if query:
@@ -327,4 +336,71 @@ def inventory_summary(
         "by_risk": by_risk,
         "by_pqc": by_pqc,
         "source": "unified_inventory",
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Crypto-asset lifecycle (audit 54) — the state machine the audit found missing
+# --------------------------------------------------------------------------- #
+
+#: Allowed lifecycle transitions. DISCOVERED is the only state the pipeline
+#: writes on its own; everything later is a recorded human judgment.
+LIFECYCLE_TRANSITIONS: dict[str, tuple[str, ...]] = {
+    "DISCOVERED": ("VERIFIED", "RETIRED"),
+    "VERIFIED": ("ACTIVE", "RETIRED"),
+    "ACTIVE": ("DEPRECATED", "RETIRED"),
+    "DEPRECATED": ("ACTIVE", "RETIRED"),  # re-activation after review
+    "RETIRED": (),  # terminal — a retirement that came back is a reintroduction (audit 69)
+}
+
+
+class LifecycleRequest(BaseModel):
+    to_state: str = Field(..., pattern="^(VERIFIED|ACTIVE|DEPRECATED|RETIRED)$")
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/assets/{asset_id}/lifecycle")
+def transition_asset_lifecycle(
+    asset_id: str,
+    body: LifecycleRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Move a crypto asset along DISCOVERED -> VERIFIED -> ACTIVE -> DEPRECATED -> RETIRED.
+
+    Transitions are validated against the rules table (no skipping to ACTIVE
+    from DISCOVERED, no resurrection from RETIRED — a retired algorithm that
+    reappears is a *reintroduction*, handled by the retirement registry).
+    Every transition is audited with its reason.
+    """
+    from api.events.platform_events import emit_platform_event
+
+    asset = filtered_get(db, CryptoAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Crypto asset not found")
+    current = asset.lifecycle_state or "DISCOVERED"
+    to_state = body.to_state.upper()
+    if to_state not in LIFECYCLE_TRANSITIONS.get(current, ()):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Invalid transition {current} -> {to_state}; allowed from {current}: "
+                   f"{', '.join(LIFECYCLE_TRANSITIONS.get(current, ())) or 'none (terminal)'}")
+    asset.lifecycle_state = to_state
+    db.commit()
+    emit_platform_event(
+        "inventory.asset_lifecycle",
+        f"Crypto asset {asset.algorithm} at {asset.file_path}:{asset.line_number} "
+        f"moved {current} -> {to_state} by {user}",
+        {"asset_id": asset.id, "algorithm": asset.algorithm,
+         "file_path": asset.file_path, "from_state": current, "to_state": to_state,
+         "reason": body.reason, "actor": user},
+        target_name="inventory",
+    )
+    return {
+        "asset_id": asset.id,
+        "algorithm": asset.algorithm,
+        "from_state": current,
+        "to_state": to_state,
+        "reason": body.reason,
+        "transitions": LIFECYCLE_TRANSITIONS,
     }

@@ -455,3 +455,20 @@ class AssetStateHistory:
 | CryptoAsset repository | `services/database/db/repositories/asset_repository.py` |
 | BaselineRepository | `services/database/db/repositories/baseline_repository.py` |
 | MigrationTaskRepository | `services/database/db/repositories/migration_task_repository.py` |
+## UPDATE — 2026-10-09: lifecycle state machine built
+
+`crypto_assets.lifecycle_state` (migration 0073) implements the state machine
+this report found missing:
+
+`DISCOVERED -> VERIFIED -> ACTIVE -> DEPRECATED -> RETIRED`
+
+* DISCOVERED is the only state the pipeline writes on its own.
+* Transitions are validated server-side against a rules table
+  (`LIFECYCLE_TRANSITIONS` in `api/routers/inventory.py`); illegal jumps get
+  409 with the allowed set.
+* RETIRED is terminal by design — a retired algorithm that reappears is a
+  *reintroduction* (see the update on report 69), not a resurrection.
+* Every transition requires a reason and emits an audited platform event
+  (`inventory.asset_lifecycle`).
+* API: `POST /inventory/assets/{id}/lifecycle`; the unified inventory lists
+  and filters by `lifecycle_state`.

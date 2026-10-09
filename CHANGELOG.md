@@ -6,6 +6,33 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — the remaining code-buildable audit gaps (audits 50/54/69, TD-010)
+
+- **Reintroduction detection:** retired-asset registry (`retired_assets`,
+  migration 0073) + `POST /retirements`, `GET /retirements`,
+  `POST /retirements/{id}/lift`, `POST /retirements/check/{scan_id}`. A
+  retired algorithm reappearing in a scan is detected with severity routing
+  (hardcoded key / policy FAIL → CRITICAL, WARN → HIGH, clean reappearance →
+  MEDIUM) and one platform event per detection — a broken promise, not a
+  "new finding". Scope-matched FILE/ASSET/ALGORITHM; malformed registry rows
+  never match.
+- **Observation conflict detection:** `GET /findings/conflicts` surfaces
+  where observers of the same site disagree — algorithm, parameters, or
+  compliance verdict — within a scan (scanner vs scanner) or between two
+  scans (both sides stamped). Conflicts are reported, never auto-resolved.
+- **Crypto-asset lifecycle state machine:** `crypto_assets.lifecycle_state`
+  (migration 0073) with server-enforced transitions
+  DISCOVERED → VERIFIED → ACTIVE → DEPRECATED → RETIRED via
+  `POST /inventory/assets/{id}/lifecycle` (reason mandatory, event audited,
+  RETIRED terminal — a comeback is a reintroduction, see above).
+- **Evidence-chain integrity sweep:** `GET /ops/evidence/chain-status`
+  recomputes recent scans' evidence chains with the export verifier and
+  emits `evidence.chain_broken` on breakage.
+- Audit reports now carry per-report UPDATE addenda plus
+  `audit_reports/00_ROUND_STATUS.md` (per-report verdict table).
+
+
+
 ### Added — remediation verification loop (audit 62 / GAP-006)
 
 - Tracked remediation tasks with evidence-based verification instead of a

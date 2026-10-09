@@ -76,6 +76,7 @@ from api.routers import (
     reachability,
     remediation,
     report_schedules,
+    retirement,
     monitor,
     payment_crypto,
     telecom,
@@ -425,6 +426,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)
     app.include_router(remediation.router, prefix=prefix)
+    app.include_router(retirement.router, prefix=prefix)
     app.include_router(report_schedules.router, prefix=prefix)
     app.include_router(monitor.router, prefix=prefix)
     app.include_router(payment_crypto.router, prefix=prefix)

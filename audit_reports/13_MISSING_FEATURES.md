@@ -246,3 +246,15 @@
 13. **PQC protocol detection** — TLS/SSH/IPsec post-quantum
 14. **Official SDKs** — Python + TypeScript client libraries
 15. **GraphQL mutations** — Full GraphQL API
+## UPDATE — 2026-10-09: missing-features status after rounds 13–15
+
+Built since this report: HBOM + vendor layers (Technology BOM, this report
+§1.1/§1.2), automated drift + baseline approval (§4.1), report schedules +
+signed exports + evidence packages (§4.2), remediation verification loop
+(§7 "Remediation: tracking/execution"), PQC protocol detection incl. hybrid
+KEM (§3.4), retired-asset registry + reintroduction detection, crypto-asset
+lifecycle states (§7), conflict surfacing, evidence-chain sweep.
+
+Still genuinely open from this report: transitive dependency crypto graph
+(§1.3), QUIC/DTLS/WireGuard parsers (§3.1), cloud HSM detection (§3.2),
+resource-level RBAC (§2.2 — product decision), official SDKs (§5.2).

@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-09:
-**728 paths, 805 operations** across 89 tagged groups.
+**734 paths, 812 operations** across 90 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -574,6 +574,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/findings` | List All Findings |
+| `GET` | `/api/v1/findings/conflicts` | Finding Conflicts |
 | `GET` | `/api/v1/findings/{evidence_id}` | Get Finding |
 | `GET` | `/api/v1/scans/{scan_id}/findings` | List Findings |
 
@@ -696,6 +697,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/inventory/assets` | List Inventory |
+| `POST` | `/api/v1/inventory/assets/{asset_id}/lifecycle` | Transition Asset Lifecycle |
 | `GET` | `/api/v1/inventory/summary` | Inventory Summary |
 
 ## inventory-cloud
@@ -851,6 +853,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 |---|---|---|
 | `GET` | `/api/v1/ops/alerts` | Self Alerts |
 | `GET` | `/api/v1/ops/capacity/forecast` | Capacity Forecast |
+| `GET` | `/api/v1/ops/evidence/chain-status` | Evidence Chain Status |
 | `GET` | `/api/v1/ops/metrics` | Prometheus Metrics |
 | `GET` | `/api/v1/ops/slo` | Slo Status |
 | `GET` | `/api/v1/ops/traces` | Recent Traces |
@@ -1015,6 +1018,15 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `POST` | `/api/v1/resilience/compliance-report` | Compliance Report |
 | `POST` | `/api/v1/resilience/ot/decode` | Ot Decode |
 | `POST` | `/api/v1/resilience/ot/ingest-pcap` | Ot Ingest Pcap |
+
+## retirement
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/retirements` | List Retirements |
+| `POST` | `/api/v1/retirements` | Register Retirement |
+| `POST` | `/api/v1/retirements/check/{scan_id}` | Check Scan |
+| `POST` | `/api/v1/retirements/{retirement_id}/lift` | Lift Retirement |
 
 ## risk
 

@@ -406,3 +406,12 @@ class MigrationProject:
 | Protocol Engine | `services/universal_crypto/universal_crypto/protocol_engine.py` |
 | Binary Engine | `services/universal_crypto/universal_crypto/binary_engine.py` |
 | Certificate Intel | `services/universal_crypto/universal_crypto/certificate_intel.py` |
+## UPDATE — 2026-10-09 (round 14): hybrid KEM visibility closed
+
+The HNDL-relevant detection holes this report lists are fixed: TLS 1.3
+hybrid KEM groups are named and classified (X25519MLKEM768 et al.),
+OpenSSH hybrid KEX no longer under-reports as classical X25519, and IKEv2
+ML-KEM groups 35/36/37 are detected. Quantum classification for hybrids is
+explicit: PQC_RESISTANT via the post-quantum component, with policy status
+tracking that component's standardization (ALLOWED for FIPS 203 hybrids,
+RESTRICTED for Kyber drafts and sntrup761).

@@ -210,3 +210,22 @@
 ---
 
 **End of Final Gap Prioritization — 88 audit documents covering every dimension of ZELNX CryptoScan.**
+## UPDATE — 2026-10-09: gap register status after rounds 13–15
+
+| Gap | Status |
+|---|---|
+| GAP-001 sandboxing, GAP-004 encryption at rest, GAP-005 mTLS | Open — deployment/target-environment scope |
+| GAP-002 tenant quotas | Largely fixed (plan quotas, 402 quota_exceeded, usage metering); CPU/memory/worker quotas are orchestrator-level |
+| GAP-003 Neo4j tenant isolation | **Fixed** (tenant gate, memory-tenant-isolated backend) |
+| GAP-006 remediation verification | **FIXED round 14** (see 62's update) |
+| GAP-007 drift detection, GAP-010 continuous monitoring, GAP-011 baselines | **Fixed** (drift service+router, monitor daemon, webhooks, SSE, report schedules, baseline approval) |
+| GAP-008 replayability | Partial by design (manifests, chain hashes, snapshots, transfer verification; full env-capture replay is target-env) |
+| GAP-009 AI boundary | N/A — no AI exists in the deterministic path (report 80 proves it); runtime enforcement is deployment work |
+| GAP-012/013 HBOM/VBOM | **Fixed** — Technology BOM layers (sbom/cbom/hbom/vendor/certificates) with signed exports |
+| GAP-014/015 PQC + hybrid detection | **FIXED round 14** (see 52/59 updates) |
+| GAP-023 reintroduction detection | **FIXED round 15, scan-time** (see 69's update); monitor-time background check remains |
+| GAP-024/025 evidence packages / coverage dashboards | Evidence packs, attestations, closure register shipped; coverage heatmap + cross-framework mapping open |
+| GAP-026+ P3 items | Open enhancements (CT logs, OCSP/CRL, binary analysis, ML, chaos) |
+
+Full evidence table: `docs/AUDIT-RECONCILIATION-2026-10-09.md` and
+`audit_reports/00_ROUND_STATUS.md`.

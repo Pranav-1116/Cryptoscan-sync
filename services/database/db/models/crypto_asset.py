@@ -30,6 +30,11 @@ class CryptoAsset(BaseModel, TenantScoped):
     scanner_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     libraries: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     extra: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
+    # lifecycle (audit 54): DISCOVERED -> VERIFIED -> ACTIVE -> DEPRECATED ->
+    # RETIRED. Transitions are enforced by the inventory router's rules table;
+    # DISCOVERED is the only state the pipeline ever writes on its own.
+    lifecycle_state: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="DISCOVERED", server_default="DISCOVERED")
 
     evidence_links = relationship(
         "CryptoAssetEvidence",

@@ -405,3 +405,25 @@ class VerificationEvidence:
 | DriftEvent Model | `services/database/db/models/drift_event.py` |
 | Baseline Model | `services/database/db/models/baseline.py` |
 | Scan Model | `services/database/db/models/scan.py` |
+## UPDATE — 2026-10-09 (round 14): verification loop built
+
+Everything in §2.2 "No Verification Model Exists" now exists:
+
+* `remediation_tasks` + `remediation_verifications` (migration 0072)
+* VerificationResult enum: VERIFIED / PARTIAL / FAILED / REGRESSION / INCONCLUSIVE
+  (§2.1's model, plus REGRESSION from §6)
+* Completion auto-verifies against the latest COMPLETED scan of the same
+  target newer than the original scan (or an explicit `rescan_id`; mismatched
+  targets rejected 400 — §3's "post-remediation rescan" made deterministic)
+* Findings and target location are snapshotted at task creation, so evidence
+  pruning cannot rewrite what is verified
+* Every verdict persists the full machine-readable comparison (§4.2's
+  "remediation-specific diff") and drives task status; INCONCLUSIVE honestly
+  leaves the task COMPLETED
+* Regression detection (§6): new non-compliant crypto at locations absent
+  from the original scan flips a fixed site to REGRESSION — target-wide when
+  the original scan's evidence survives, file-scoped otherwise
+* Workflow (§6): VERIFIED closes the task; FAILED reopens it to ACCEPTED;
+  every transition emits a platform event
+* API: 7 endpoints on `/remediation` (tasks CRUD + accept/complete/verify +
+  verifications list). Tests: 13 decision-table + 8 end-to-end.

@@ -193,3 +193,4 @@ from db.models.remediation_task import (  # noqa: E402,F401
     RemediationTask,
     RemediationVerification,
 )
+from db.models.retired_asset import RetiredAsset  # noqa: E402,F401

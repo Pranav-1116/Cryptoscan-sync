@@ -528,3 +528,20 @@
 | Quantum classification | `shared/shared_models/shared_models/quantum_classify.py` |
 | Validation corpus | `services/scanner/tests/accuracy/` |
 | External validation docs | `docs/accuracy/` |
+## UPDATE — 2026-10-09 (round 14): PQC detection gaps closed
+
+The PQC blind spots in §"Emerging Crypto" are fixed for protocol surfaces:
+
+* TLS supported_groups resolve to names — RFC 10024 hybrid ML-KEM groups
+  (0x11EB–0x11EF) and pre-standard Kyber drafts (0x6399/0x639A) included
+* SSH hybrid KEX: `sntrup761x25519-sha512[@openssh.com]` maps to a hybrid
+  identity (previously mislabelled plain X25519 — a PQ KEX reported
+  Shor-vulnerable); `mlkem768x25519-sha256` maps to X25519MLKEM768
+* IKEv2: ML-KEM KE methods 35/36/37 per RFC ipsecme-ikev2-mlkem; the DH
+  table corrected against IANA (27–30 are brainpool, 31/32 Curve25519/448)
+* Shared registry: `kem-hybrid-pqc` family classifies PQC_RESISTANT with an
+  explicit hybrid reason; Kyber drafts and sntrup761 RESTRICTED, RFC 10024
+  hybrids ALLOWED
+* Binary-source ML-KEM/ML-DSA detection (ast_engine) already existed
+
+Still open from §"Binary/Firmware": control-flow analysis (angr/ghidra) — P3.

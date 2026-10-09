@@ -194,3 +194,17 @@
 | **Deprecation policy** | None | 2-version deprecation |
 | **Shared libraries** | `shared_models` only | `shared_utils`, `shared_api`, `shared_ui` |
 | **Monolith extraction** | Reactive | Proactive quarterly review |
+## UPDATE — 2026-10-09: debt register status after rounds 13–15
+
+Fixed since this report: TD-002 (tenant gate), TD-008 (sync coordinator),
+TD-011 (all four link tables TenantScoped), TD-012 (live evidence linkage),
+TD-016 (DevSecOps split — now 1.7k lines), TD-025 (event cap), and this
+round TD-010 (evidence-chain integrity sweep at `GET /ops/evidence/chain-status`,
+same verifier the export uses, event on breakage).
+
+Deliberate architecture, not being "paid down": TD-001 (single deployable
+API), TD-003/004 (Technology BOM is the unified surface; layered exports),
+TD-005 (registries unified through shared_models normalization).
+
+Open: TD-007 (portfolio streaming), TD-009 (read replicas), TD-013/014/015
+(deployment-scope secrets/encryption/mTLS), TD-035 (rotation automation).

@@ -74,6 +74,31 @@ parsers, the shared registry and the quantum classifier agree with it.
 
 ---
 
+## 1.5 Round 15 — the next four code-buildable gaps (2026-10-09, same day)
+
+The user asked for the remaining open items to be built too. Four more audit
+gaps closed (details in `audit_reports/00_ROUND_STATUS.md` + the UPDATE
+addenda inside the affected reports):
+
+1. **Reintroduction detection (GAP-023 / audit 69)** — `retired_assets`
+   registry (migration 0073) + pure detector + `POST /retirements`,
+   `GET /retirements`, `POST /retirements/{id}/lift`,
+   `POST /retirements/check/{scan_id}` with severity-routed events
+   (CRITICAL pages / HIGH alerts / MEDIUM logs). Scan-time; monitor-time
+   background checking remains open.
+2. **Observation conflict detection (audit 50)** — pure three-class detector
+   (ALGORITHM / PARAMETER / STATUS mismatch) in the normalization service +
+   `GET /findings/conflicts` (within-scan across scanners, or scan-vs-scan).
+   Reported, never auto-resolved.
+3. **Crypto-asset lifecycle (audit 54)** — `crypto_assets.lifecycle_state`
+   (migration 0073): DISCOVERED → VERIFIED → ACTIVE → DEPRECATED → RETIRED,
+   server-side transition rules (RETIRED terminal — a comeback is a
+   reintroduction), reasons + audited events via
+   `POST /inventory/assets/{id}/lifecycle`; inventory lists/filters by state.
+4. **Evidence-chain integrity sweep (TD-010 / audit 14)** —
+   `GET /ops/evidence/chain-status` recomputes every recent scan's chain with
+   the export verifier and emits `evidence.chain_broken` on breakage.
+
 ## 2. P0 gap register (88_FINAL_GAP_PRIORITIZATION) — status after round 14
 
 | Gap | Audit claim | Current status | Evidence |
@@ -118,7 +143,7 @@ parsers, the shared registry and the quantum classifier agree with it.
   decision, not a defect.
 * **Crypto asset lifecycle states (audit 54)** — open (no `lifecycle_state` on
   `crypto_assets`); verification tasks now provide the *evidence* trail for VERIFIED/RETIRED
-  transitions, the state machine column is the remaining schema work.
+  transitions, the lifecycle state machine shipped in round 15 (migration 0073).
 
 ## 4. Technical debt register (14) — status after round 14
 
@@ -133,7 +158,7 @@ parsers, the shared registry and the quantum classifier agree with it.
 | TD-007 CBOM portfolio in-memory | Open (streaming pagination) — tracked |
 | TD-001/003/004/005 monolith/dual-CBOM/techbom-duplicate/dual-registry | **Deliberate architecture**, re-litigated in audits 02/46/53: one deployable API, one Technology BOM with layered export, registries unified through `shared_models` normalization. Merging is a rewrite, not debt paydown. |
 | TD-009 read replicas, TD-013 compose secrets, TD-014 encryption at rest, TD-015 mTLS | Deployment-scoped (see GAP-004/005); prod compose/env guidance exists |
-| TD-010 evidence chain auto-verification | **Partially fixed**: `verify_integrity` + chain verification endpoints (`audit_export` chain-verify, auth audit chain, datalake batches); a scheduled verifier is open |
+| TD-010 evidence chain auto-verification | **Fixed round 15**: `GET /ops/evidence/chain-status` sweeps recent scans with the export verifier, event on breakage; per-scan verify already ran in exports |
 | TD-034 migration 0060 risk | Superseded — chain now at **0072**, migration-chain test green |
 
 ## 5. Advanced/deep report clusters — verdicts
@@ -145,8 +170,9 @@ parsers, the shared registry and the quantum classifier agree with it.
   themselves conclude the platform's evidence chain and zero-AI pipeline are its strengths;
   their asks (formal evidence-authority enum) are enhancements, open.
 * **50 (conflict detection), 51 (observation/fact layering), 53 (normalization):** open
-  design work — conflicts are today preserved (both stored) and surface via policy FAIL/WARN
-  + verification comparisons; a dedicated conflict model is a multi-week feature.
+  design work — conflicts are now detected and surfaced (round 15:
+  `normalization/conflicts.py` + `GET /findings/conflicts`); a persisted
+  conflict model with resolution workflow remains open.
 * **52 (detection accuracy):** PQC blind spots fixed this round; binary control-flow
   analysis (angr/ghidra) remains P3.
 * **55/56/57/58 (ownership, business impact, attack surface, exposure paths):** business
@@ -180,7 +206,7 @@ parsers, the shared registry and the quantum classifier agree with it.
    images, branch protection + CI (credential-blocked; staged in `.github/workflows-pending/`).
 2. **Multi-week engineering (backlog)**: unified transitive-dependency crypto graph;
    conflict model (audit 50); crypto-asset lifecycle state machine (audit 54); outbound
-   notification delivery worker with retry/DLQ; scheduled evidence-chain verifier; CT-log
+   notification delivery worker with retry/DLQ; CT-log
    streaming; QUIC/DTLS/WireGuard parsers; monitor-time reintroduction detector;
    cross-framework compliance mapping.
 3. **External evidence (SKIP by policy):** HSM provider attestations, SOC2/ISO/FIPS,

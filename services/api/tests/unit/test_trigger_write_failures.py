@@ -32,6 +32,13 @@ class BrokenJobRepo:
 
 
 def test_enqueue_scan_job_fails_closed_when_job_commit_fails(monkeypatch):
+    # Pin the admission DB seams (the module docstring's contract) so this
+    # test exercises the job-commit failure path, not whatever SessionLocal
+    # happens to be bound by whichever test ran before it in this worker.
+    from api.security import scan_admission
+
+    monkeypatch.setattr(scan_admission, "_control_plane_state", lambda: ([], None))
+    monkeypatch.setattr(scan_admission, "_ot_declared", lambda: False)
     repo = BrokenJobRepo()
     monkeypatch.setattr(trigger, "_resolve_sector", lambda _sector, _repo: "generic")
 

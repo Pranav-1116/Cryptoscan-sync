@@ -422,3 +422,24 @@ class ReintroductionAlert:
 | Evidence Pipeline | `services/evidence/evidence/core/pipeline.py` |
 | Baseline Router | `services/api/api/routers/baselines.py` |
 | Scan Model | `services/database/db/models/scan.py` |
+## UPDATE — 2026-10-09: reintroduction detection built (scan-time)
+
+The Detect -> Alert -> Investigate -> Remediate -> Verify -> Close workflow's
+detection half now exists:
+
+* **Registry:** `retired_assets` table (migration 0073) records deliberate
+  retirements — algorithm + scope (FILE / ASSET / ALGORITHM), reason, actor,
+  optional provenance to the remediation task that verified the fix.
+* **Detector:** `services/remediation/remediation/reintroduction.py` (pure,
+  no DB) matches scan evidence against active retirements.
+* **Severity routing** per this report §"Alerting": hardcoded key or policy
+  FAIL -> CRITICAL (page), WARN -> HIGH (alert), clean reappearance -> MEDIUM
+  (log). Worst match wins.
+* **API:** `POST /retirements` (auditor), `GET /retirements`,
+  `POST /retirements/{id}/lift` (auditor, reason recorded, kept for trail),
+  and `POST /retirements/check/{scan_id}` (auditor) which emits one
+  severity-routed platform event per detection.
+* Malformed registry rows (ASSET scope without asset id, unknown scope)
+  deliberately never match — a bad row cannot silently watch everything.
+* Still open (monitor-time): the registry is checked per scan on demand;
+  continuous background checking across monitor cycles remains follow-up.

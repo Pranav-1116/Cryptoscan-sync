@@ -428,3 +428,19 @@ class ConflictEvidence:
 | Drift detection | `services/api/api/routers/drift.py` |
 | AssetRepository replace_for_scan | `services/database/db/repositories/asset_repository.py` |
 | Pipeline dedup | `services/evidence/evidence/core/pipeline.py:process_findings()` |
+## UPDATE — 2026-10-09: conflict detection built
+
+The "both stored silently" gap is closed. A deterministic conflict detector
+(`services/normalization/normalization/conflicts.py`) classifies the three
+conflict classes this report describes:
+
+* **ALGORITHM_MISMATCH** — same site (file + line), different algorithms across observers
+* **PARAMETER_MISMATCH** — same algorithm, different key size/mode across observers
+* **STATUS_MISMATCH** — same site, diverging compliance verdicts
+
+Surfaced at `GET /api/v1/findings/conflicts?scan_id=X` (scanner-vs-scanner
+within a scan) and `?scan_id=X&compare_scan_id=Y` (scan-vs-scan, both sides
+stamped). Conflicts are reported, never auto-resolved — resolution stays a
+human/policy decision, per this report's own recommendation. Tests:
+`services/normalization/tests/unit/test_conflicts.py` (9) and API tests in
+`services/api/tests/unit/test_round15_audit_surfaces.py`.
