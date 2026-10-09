@@ -156,11 +156,12 @@ export function Table({ head, rows, clickable = false, selected = -1, onSelect }
   head: ReactNode[]; rows: ReactNode[][]; clickable?: boolean; selected?: number; onSelect?: (i: number) => void;
 }) {
   const bodyRef = useAutoAnimate<HTMLTableSectionElement>();
+  const interactive = clickable && onSelect;
   return (
     <div style={{ overflowX: "auto" }}>
       <table className={`tbl ${clickable ? "clickable" : ""}`}>
         <thead>
-          <tr>{head.map((h, i) => <th key={i}>{h}</th>)}</tr>
+          <tr>{head.map((h, i) => <th key={i} scope="col">{h}</th>)}</tr>
         </thead>
         {/* auto-animate moves rows that are added, removed or reordered
             instead of letting the table jump under the cursor — which
@@ -168,7 +169,21 @@ export function Table({ head, rows, clickable = false, selected = -1, onSelect }
             while the operator is reading. */}
         <tbody ref={bodyRef}>
           {rows.map((row, i) => (
-            <tr key={i} className={selected === i ? "sel" : ""} onClick={clickable && onSelect ? () => onSelect(i) : undefined}>
+            <tr
+              key={i}
+              className={selected === i ? "sel" : ""}
+              onClick={interactive ? () => onSelect(i) : undefined}
+              /* a clickable row is a control: keyboard users get the same
+                 activation (Enter/Space) and an announced selection state —
+                 audit 06's keyboard-navigation gap. */
+              tabIndex={interactive ? 0 : undefined}
+              role={interactive ? "button" : undefined}
+              aria-selected={interactive ? (selected === i) : undefined}
+              aria-label={interactive ? `Select row ${i + 1}` : undefined}
+              onKeyDown={interactive ? (e: React.KeyboardEvent) => {
+                if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelect(i); }
+              } : undefined}
+            >
               {row.map((cell, j) => (
                 <td key={j} className={typeof cell === "number" ? "num" : ""}>{cell}</td>
               ))}
@@ -195,10 +210,39 @@ export function Feed({ items }: { items: { t: string; tag: string; text: string 
 }
 
 export function Tabs({ tabs, active, onChange }: { tabs: string[]; active: number; onChange: (i: number) => void }) {
+  /* ARIA tabs pattern (audit 06): the container is a tablist, each button a
+     tab; only the active tab is tab-reachable, and ArrowLeft/ArrowRight move
+     between tabs (Home/End jump to the ends) with focus following the
+     selection — the keyboard story a screen reader expects instead of N
+     stops per tab bar. */
+  const refs = React.useRef<(HTMLButtonElement | null)[]>([]);
+  const move = (i: number, delta: number) => {
+    const next = (i + delta + tabs.length) % tabs.length;
+    onChange(next);
+    refs.current[next]?.focus();
+  };
+  const jump = (i: number) => {
+    onChange(i);
+    refs.current[i]?.focus();
+  };
   return (
-    <div className="tabs">
+    <div className="tabs" role="tablist">
       {tabs.map((t, i) => (
-        <button key={t} className={i === active ? "active" : ""} onClick={() => onChange(i)}>{t}</button>
+        <button
+          key={t}
+          ref={(el) => { refs.current[i] = el; }}
+          role="tab"
+          className={i === active ? "active" : ""}
+          aria-selected={i === active}
+          tabIndex={i === active ? 0 : -1}
+          onClick={() => onChange(i)}
+          onKeyDown={(e) => {
+            if (e.key === "ArrowRight") { e.preventDefault(); move(i, 1); }
+            else if (e.key === "ArrowLeft") { e.preventDefault(); move(i, -1); }
+            else if (e.key === "Home") { e.preventDefault(); jump(0); }
+            else if (e.key === "End") { e.preventDefault(); jump(tabs.length - 1); }
+          }}
+        >{t}</button>
       ))}
     </div>
   );

@@ -380,3 +380,35 @@ chain_hash = SHA256(prev_chain_hash + JSON(payload))
 17. **Distroless images** — Further reduce attack surface
 18. **SBOM for own images** — Supply chain transparency
 19. **Penetration testing** — Annual third-party assessment
+---
+
+## UPDATE — round 16 verification + build (2026-10-09)
+
+**Built this round:**
+
+- **Clone-URL transport validation (§7.4's unvalidated git input):**
+  `GitClient.clone` validates the repository URL as its first statement —
+  remote-helper transports (`ext::<command>`, CVE-2022-24439), any
+  `<helper>::<address>` form, and leading-dash option injection are refused
+  with a clear ValueError **before the git module is even imported**.
+  http/https/git/ssh/file URLs, scp-style targets and local paths remain
+  supported (the scanner clones local checkouts with the same client).
+  20 parametrized tests cover the matrix.
+- **Scan-queue backpressure (operational security):** admission refuses new
+  scans with 429 once QUEUED+RUNNING jobs exceed `MAX_QUEUE_DEPTH` — an
+  unbounded accept-everything queue is an outage that hasn't noticed yet
+  (audit 05 build, same round).
+
+**Verified stale:**
+
+- "No password complexity policy" — stale: `validate_password_policy` runs
+  at register, password change, and both reset paths.
+- "SSRF guard not applied to artifact download" — stale: SBOM/binary
+  artifact downloads resolve by UUID through the tenant-bucketed, encrypted
+  artifact store (wrong-tenant reads raise, no client-supplied paths).
+- "Repo URL not validated for shell metacharacters" — the shell part was
+  already moot (GitPython, no shell); the real transport vectors are now
+  blocked (above).
+- Session concurrency limits, device fingerprinting, refresh-token
+  rotation, SAML/LDAP, mTLS, Vault, encryption at rest — remain open,
+  deployment- or product-scoped, unchanged from the report's P2/P3 ranking.

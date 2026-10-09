@@ -21,6 +21,10 @@ class ScanJob(BaseModel, TenantScoped):
     target_branch: Mapped[str] = mapped_column(String(200), nullable=False, default="main")
     triggered_by: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="QUEUED")
+    # optimistic-lock counter (audit 04): every status update is a
+    # compare-and-set on the version it read, so a stale worker completing a
+    # job the reaper already failed cannot silently overwrite the verdict.
+    version: Mapped[int] = mapped_column(nullable=False, default=0)
     scan_id: Mapped[Optional[str]] = mapped_column(
         String(36), ForeignKey("scans.id", ondelete="SET NULL"), nullable=True
     )

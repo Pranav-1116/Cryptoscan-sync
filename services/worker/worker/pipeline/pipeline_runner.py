@@ -313,10 +313,13 @@ class PipelineRunner:
             telemetry = SessionLocal()
             updated = JobRepository(telemetry).update_status(job_id, status, **kwargs)
             if updated is None:
-                # The job row is not visible on a fresh connection -- it was
-                # created in the caller's uncommitted transaction, which is
-                # what the in-process tests do. Fall back to that session so
-                # their behaviour is unchanged.
+                # Either the job row is not visible on a fresh connection --
+                # it was created in the caller's uncommitted transaction,
+                # which is what the in-process tests do -- or the optimistic
+                # lock refused the transition (a settled job must not be
+                # silently reopened). Fall back to the pipeline session: the
+                # visibility case must keep working, and a genuine conflict
+                # is refused again there, harmlessly.
                 telemetry.rollback()
                 JobRepository(session).update_status(job_id, status, **kwargs)
             else:

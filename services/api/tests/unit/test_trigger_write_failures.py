@@ -39,6 +39,7 @@ def test_enqueue_scan_job_fails_closed_when_job_commit_fails(monkeypatch):
 
     monkeypatch.setattr(scan_admission, "_control_plane_state", lambda: ([], None))
     monkeypatch.setattr(scan_admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(scan_admission, "_active_job_count", lambda: 0)
     repo = BrokenJobRepo()
     monkeypatch.setattr(trigger, "_resolve_sector", lambda _sector, _repo: "generic")
 

@@ -16,6 +16,9 @@ class DriftEventResponse(BaseModel):
     drift_details: Optional[dict] = None
     resolved_by: Optional[str] = None
     resolution_notes: Optional[str] = None
+    # populated when acknowledgement auto-opened remediation tasks (audit 03);
+    # empty otherwise, so older clients see an additive field, not a break.
+    remediation_task_ids: list[str] = []
 
 
 class DriftListResponse(BaseModel):

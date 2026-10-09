@@ -71,13 +71,16 @@ def reap_stale_jobs(
         progress = dict(job.progress or {})
         requeues = int(progress.get("requeued") or 0)
         if requeues >= max_requeues or publish is None:
-            repo.update_status(
+            updated = repo.update_status(
                 job.id,
                 "FAILED",
                 error_message=f"queued job was not in the queue after {int(age.total_seconds() // 60)} min and {requeues} re-publish(es) (reaped)",
             )
-            stats["failed_queued"] += 1
-            logger.error("job_reaped_queued", extra={"job_id": job.id, "requeues": requeues})
+            if updated is not None:
+                stats["failed_queued"] += 1
+                logger.error("job_reaped_queued", extra={"job_id": job.id, "requeues": requeues})
+            else:
+                logger.info("job_reaped_queued_lost_race", extra={"job_id": job.id})
             continue
         progress["requeued"] = requeues + 1
         progress["requeued_at"] = now.isoformat()
@@ -102,10 +105,13 @@ def reap_stale_jobs(
         except Exception:
             logger.exception("job_republish_failed", extra={"job_id": job.id})
             continue
-        # touch the row so the next sweep does not republish immediately
-        repo.update_status(job.id, "QUEUED", progress=progress)
-        stats["requeued"] += 1
-        logger.warning("job_republished", extra={"job_id": job.id, "requeue": progress["requeued"]})
+        # touch the row so the next sweep does not republish immediately.
+        # If the CAS loses a race with a worker picking the job up, the job
+        # is RUNNING now — the republish is harmless, only the requeue
+        # counter on the row is not bumped.
+        if repo.update_status(job.id, "QUEUED", progress=progress) is not None:
+            stats["requeued"] += 1
+            logger.warning("job_republished", extra={"job_id": job.id, "requeue": progress["requeued"]})
     session.commit()
     return stats
 

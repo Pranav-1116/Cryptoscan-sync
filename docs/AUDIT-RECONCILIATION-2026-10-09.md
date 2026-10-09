@@ -99,6 +99,58 @@ addenda inside the affected reports):
    `GET /ops/evidence/chain-status` recomputes every recent scan's chain with
    the export verifier and emits `evidence.chain_broken` on breakage.
 
+## 1.6 Round 16 — the ten-report full read (2026-10-09, same day)
+
+The user asked for reports 01–10 to be read in full and every remaining
+code-buildable finding built. All ten were re-verified against the code; a
+large share of their gap claims were already stale (verdict per report in
+`audit_reports/00_ROUND_STATUS.md`, with UPDATE addenda inside each). Five
+real gaps remained and were built (migration 0074):
+
+1. **Policy rule management surface (audit 05)** — `policy_rule_overrides`
+   (tenant-scoped, unique per rule): `PUT/DELETE
+   /policy/rules/{rule_id}/override` (admin, audited) disables a rule or
+   overrides its severity for one tenant without touching the reviewed YAML
+   pack. `GET /policy/rules` now reports pack state, override, and effective
+   state side by side, and the worker's evaluation stage applies the same
+   rows through the same helper (`policy.core.overrides`) — what the listing
+   shows is what the engine enforces.
+2. **Scan-queue backpressure (audit 05's MAX_QUEUE_DEPTH)** — the admission
+   decision now refuses with 429 when QUEUED+RUNNING jobs exceed
+   `MAX_QUEUE_DEPTH` (default 500, `<=0` disables). Counting is a documented
+   seam like the other admission seams; fail-closed on count failure.
+3. **Optimistic scan-job locking (audit 04's lost-update race)** —
+   `scan_jobs.version` + compare-and-set `JobRepository.update_status`,
+   which also refuses to leave a terminal state non-forcefully (a stale
+   worker completing a job the reaper already failed is a detected conflict;
+   the first verdict stands). The reaper reports lost races instead of
+   counting them.
+4. **Drift → remediation auto-linking (audit 03's strongest data-flow gap)**
+   — `POST /drift/{id}/acknowledge` accepts `create_remediation_tasks` and
+   auto-opens PROPOSED tasks (max 10) for the FAIL/WARN evidence behind the
+   drift, carrying `source="drift"`, `source_ref=drift_id` (migration 0074
+   columns) so `GET /drift/{id}/remediation-tasks` lists them afterwards.
+   Honest no-op when the drifted algorithm has no failing evidence.
+5. **Clone-URL transport validation (audit 10's unvalidated git input)** —
+   `GitClient.clone` now validates the repo URL first: remote-helper
+   transports (`ext::…`, CVE-2022-24439), helper-by-name forms and leading
+   dashes are refused before git is even imported; http/https/git/ssh/file,
+   scp-style and local paths still work.
+
+Plus one frontend accessibility pass (audit 06 P0): `Tabs` implements the
+ARIA tabs pattern (roles, aria-selected, roving tabindex, arrow/Home/End
+keys) and `Table` clickable rows are keyboard-activatable with column
+headers scoped — with tests (frontend suite 130 → 132).
+
+Verified-stale highlights recorded in the addenda: HBOM frontend is wired to
+`/live-scan/bom`; `CryptoAssetEvidence` links are populated by
+`replace_for_scan`; password policy exists at register/change/reset; the
+reaper + CAS make drift-ack races detectable; graph sync runs post-scan as a
+pipeline stage; audit_log and crypto_live already carry the indexes audit 04
+asked for; the `system_dependencies` (parent, child, relation) unique-index
+ask was evaluated and deliberately kept as pair-level dedup (the codebase
+upserts by pair; a relation-level constraint would create duplicate edges).
+
 ## 2. P0 gap register (88_FINAL_GAP_PRIORITIZATION) — status after round 14
 
 | Gap | Audit claim | Current status | Evidence |

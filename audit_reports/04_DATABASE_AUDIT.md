@@ -433,3 +433,21 @@ def filtered_get(db, model, id):
 12. **Materialized views** for common aggregations (coverage, algorithm counts)
 13. **Soft delete** for evidence_records (mark deleted, preserve chain)
 14. **Migration test suite** — up/down + data validation in CI
+---
+
+## UPDATE — round 16 verification + build (2026-10-09)
+
+Migration 0074 (`0074_queue_lock_policy_overrides`) ships what was still
+real; the rest of the report's index/migration asks were verified against
+the models and found already covered:
+
+| Ask | Verdict |
+|---|---|
+| unique (parent_id, child_id, relation) on system_dependencies | 🟡 Evaluated, deliberately NOT taken: the codebase dedups by pair (`SystemRepository.add_dependency` upserts on (parent, child)); a relation-level constraint would allow duplicate CALLS/IMPORTS edges per pair and double edges in the graph. Current `uq_system_dep` is the stronger, correct invariant |
+| graph_snapshots fingerprint index | 🕰 Stale — `version` and `fingerprint` are both `index=True` on the model |
+| audit_log (actor/action/target) index | 🕰 Stale — actor, action, target_id, chain_sequence, entry_hash all carry `index=True` |
+| crypto_live indexes | 🕰 Stale — `asset_id` unique+indexed on state; `event_type`, `asset_id`, `observed_at` indexed on events |
+| GIN on evidence_records.normalized_crypto | ❌ Not taken: the column is plain `JSON` (not JSONB) for SQLite parity, is a single object per row (not an array), and no query path filters on it — a GIN expression index would be speculative |
+| **ScanJob optimistic locking** | 🔧 **BUILT** — `scan_jobs.version` (migration 0074) + compare-and-set `JobRepository.update_status` with a terminal-state guard: a stale worker finishing a job the reaper already failed is a detected conflict (first verdict stands); the reaper counts only races it won |
+| New tables | 🔧 **BUILT** — `policy_rule_overrides` (tenant-scoped, unique per rule; see audit 05) and `remediation_tasks.source`/`source_ref` (drift auto-link provenance; see audit 03) |
+| Partitioning / replicas | 🟡 Deployment-scoped, unchanged |

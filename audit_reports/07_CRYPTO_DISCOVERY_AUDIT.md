@@ -309,3 +309,25 @@ CBOM Generator (CycloneDX 1.5 + cryptoProperties + JWS signing)
 ### P3 — Enhancement
 10. **Side-channel awareness** — document limitations explicitly
 11. **Firmware/RTOS coverage** — extend binary parser for embedded targets
+---
+
+## UPDATE — round 16 verification (2026-10-09)
+
+The discovery-surface description still matches the code. Per-claim notes
+from the round-16 full read:
+
+- "test_quantum_classify.py not found" — stale: the suite exists and was
+  extended with the IANA registry cross-checks in round 14.
+- "Two crypto registries / two CBOM generators / two live pipelines" —
+  accurate as inventory, unchanged by decision: the shared registry is the
+  classification authority; the universal_crypto registry is the runtime
+  observation view; TechBOM unifies the BOM exports as layers. Documented,
+  not a defect to merge.
+- "PKCS#11/KMIP not integrated into discovery" — partially stale: HSM
+  surfaces exist (hardware service inventory, HSM qualification commands,
+  payment-crypto KMIP flows); full scanner-pipeline integration of HSM key
+  detection remains open (backlog, unchanged).
+- QUIC parser, transitive-dependency completion, PQC-in-binaries
+  validation, vendor fingerprinting — remain open backlog items, unchanged.
+- Clone-side hardening shipped this round (audit 10 follow-up):
+  `GitClient.clone` validates the repo URL before git is imported.

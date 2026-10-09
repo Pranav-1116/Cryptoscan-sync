@@ -375,3 +375,34 @@ const liveFeed = rt.events.filter(e => !isSystemEvent(e.type)).slice(0, 6).map(e
 13. **Performance budgets** — CI gate on bundle size, LCP
 14. **Dark mode** — CSS variables already support; add toggle
 15. **Internationalization** — `i18n` folder exists but unused
+---
+
+## UPDATE — round 16 verification + build (2026-10-09)
+
+**Built (the report's P0 accessibility items):**
+
+- `Tabs` now implements the ARIA tabs pattern: `role="tablist"`/`role="tab"`,
+  `aria-selected`, roving tabindex (only the active tab is tab-reachable),
+  ArrowLeft/ArrowRight (wrapping) and Home/End navigation with focus
+  following selection.
+- `Table` clickable rows are real controls: `tabIndex=0`, `role="button"`,
+  Enter/Space activation, `aria-selected` on the selected row, and every
+  header carries `scope="col"`.
+- Both covered by tests (`ui.test.tsx`, suite 130 → 132) and the pages smoke
+  suite still passes with the stricter markup.
+
+**Verified stale:**
+
+- "Hbom.tsx is a stub / no data source" — stale: the page polls
+  `GET /api/v1/live-scan/bom` and renders `hbom.components` (TPM/HSM/CPU
+  crypto/secure elements) with an honest empty state.
+- "rt.events grows unbounded" — stale: the realtime store caps the event
+  buffer (EVENT_CAP) and the audit's own §12.2 concern was fixed earlier.
+- "Badge color-only meaning" — partially stale: Badge always renders its
+  text children next to the tone dot; tone is reinforcement, not the only
+  channel.
+
+**Remains open (accepted, not built this round):** CSP headers (needs the
+inline-style audit first — a strict CSP would break the current UI),
+virtualized tables, command palette, shared types package, i18n. These are
+UX/enhancement work, not correctness gaps.

@@ -15,6 +15,9 @@ This module is the single decision every entry point must pass before a scan
 is accepted or a live probe runs:
 
 * emergency stop → 409, always;
+* queue backpressure: more active jobs (QUEUED+RUNNING) than
+  ``MAX_QUEUE_DEPTH`` → 429, because an unbounded accept-everything queue is
+  an outage that just hasn't noticed yet;
 * safe-scan policy refusing the scan → 409 with the policy's reason;
 * OT is **derived from trusted declarations** (an enabled onboarding
   environment of type ``ot``), never from the request body;
@@ -27,8 +30,9 @@ is accepted or a live probe runs:
   how "emergency stop" becomes a suggestion.
 
 The module-level ``_control_plane_state`` / ``_ot_declared`` /
-``_authorized_network_scope`` helpers are the test seams: they are the only
-places that touch the database, so tests can pin them without one.
+``_authorized_network_scope`` / ``_active_job_count`` helpers are the test
+seams: they are the only places that touch the database, so tests can pin
+them without one.
 """
 
 from __future__ import annotations
@@ -42,6 +46,76 @@ logger = logging.getLogger(__name__)
 
 #: scan modes that actively probe the target (control_plane.safety's ordering)
 ACTIVE_SCAN_MODES = frozenset({"low_impact", "standard", "deep"})
+
+#: statuses that mean a job is still holding a queue slot.
+_ACTIVE_JOB_STATUSES = ("QUEUED", "RUNNING")
+
+
+def _max_queue_depth() -> int:
+    """Configured cap on simultaneously queued+running scan jobs.
+
+    ``MAX_QUEUE_DEPTH`` (env). Default 500 — an unbounded accept-everything
+    queue is how a burst of triggers turns into an hours-long backlog nobody
+    can triage. ``0`` or negative disables the cap (single-box installs that
+    prefer the old behaviour).
+    """
+    import os
+
+    raw = os.environ.get("MAX_QUEUE_DEPTH", "500")
+    try:
+        return int(raw)
+    except ValueError:
+        return 500
+
+
+def _count_active_jobs(session) -> int:
+    """Pure count of QUEUED+RUNNING scan jobs on the given session."""
+    from db.models.scan_job import ScanJob
+    from sqlalchemy import func, select
+
+    return int(
+        session.execute(
+            select(func.count()).select_from(ScanJob).where(ScanJob.status.in_(_ACTIVE_JOB_STATUSES))
+        ).scalar_one()
+    )
+
+
+def _active_job_count() -> int:
+    """How many scan jobs currently occupy the queue (tenant-visible only).
+
+    A database seam like the others: the only place the decision touches the
+    ScanJob table, so tests can pin it. Runs inside the request's tenant
+    scope, so one tenant's backlog cannot lock out another tenant's scans.
+    """
+    from db.connection.session import SessionLocal
+
+    session = SessionLocal()
+    try:
+        return _count_active_jobs(session)
+    finally:
+        session.close()
+
+
+def _enforce_queue_depth() -> None:
+    """Reject with 429 when the scan queue is at capacity (audit 05).
+
+    Backpressure is a *policy* refusal, not an outage: the caller may retry
+    once the backlog drains. A cap of ``<= 0`` skips the check entirely.
+    Failing to count is handled by ``admit_scan``'s fail-closed catch — no
+    count, no scan.
+    """
+    depth = _max_queue_depth()
+    if depth <= 0:
+        return
+    active = _active_job_count()
+    if active > depth:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                f"Scan rejected: queue at capacity ({active} active jobs "
+                f"> MAX_QUEUE_DEPTH {depth}); retry when the backlog drains"
+            ),
+        )
 
 
 # --------------------------------------------------------------------------- #
@@ -205,6 +279,7 @@ def admit_scan(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Scan rejected: emergency stop is engaged",
             )
+        _enforce_queue_depth()
         is_ot = bool(_ot_declared()) if is_ot_trusted is None else bool(is_ot_trusted)
         decision = evaluate_scan(policy, asset=asset, is_ot=is_ot)
         if not decision.permitted:

@@ -45,6 +45,11 @@ class RemediationTask(BaseModel, TenantScoped):
     owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_by: Mapped[str] = mapped_column(String(100), nullable=False, default="system")
+    # where this task came from: manual (default), drift auto-link, … The
+    # pairing (source, source_ref) is queryable — GET /drift/{id}/remediation-tasks
+    # lists tasks whose source="drift" and source_ref=<drift id>.
+    source: Mapped[str] = mapped_column(String(20), nullable=False, default="manual")
+    source_ref: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 

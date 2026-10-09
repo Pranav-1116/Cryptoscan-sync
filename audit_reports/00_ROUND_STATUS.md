@@ -1,13 +1,13 @@
-# Audit Report Status — 2026-10-09 (post-remediation)
+# Audit Report Status — 2026-10-09 (post-remediation, rounds 13–16)
 
-**Generated:** 2026-10-09, after remediation rounds 13–15.
+**Generated:** 2026-10-09, after remediation rounds 13–16 (last full read of reports 01–10 in round 16).
 **Purpose:** every report in this folder was read and every actionable claim
 re-verified against the code. This file records the verdict per report and what
 was built in response. The original report text is unchanged; reports that were
 acted on carry an `## UPDATE` addendum at the end.
 
 **Key fact for reading these reports:** they were generated **2026-09-20**,
-which predates rounds 9–15 of remediation (route-auth inventory, tenant-scoped
+which predates rounds 9–16 of remediation (route-auth inventory, tenant-scoped
 snapshot versions, DR/soak/load evidence, remediation verification, hybrid-PQC
 detection, retirement registry, conflict detection, asset lifecycle). A large
 share of the gap register was already closed when these reports landed in the
@@ -17,17 +17,17 @@ repository on 2026-10-09.
 
 | Report | Verdict | What happened |
 |---|---|---|
-| 01_REPOSITORY_MAP | 📷 Snapshot | Accurate as of 2026-09-20; counts have grown (796 routes, migration chain now 0073) |
+| 01_REPOSITORY_MAP | 📷 Snapshot | Accurate as of 2026-09-20; counts have grown (799 routes, migration chain now 0074) |
 | 02_ARCHITECTURE_AUDIT | ✅ Mostly current | Monolith-by-design reaffirmed; no action |
-| 03_REAL_DATAFLOW | ✅ Current | Pipeline description still matches |
-| 04_DATABASE_AUDIT | 🕰 Stale | 52 tables → now 54+ (remediation, retirements); migration chain 71 → 73 |
-| 05_BACKEND_AUDIT | 🕰 Partially stale | 85 routers → 90; remediation is no longer "suggestions only" |
-| 06_FRONTEND_AUDIT | 🕰 Partially stale | Pages have evolved; 130 frontend tests green |
-| 07_CRYPTO_DISCOVERY_AUDIT | ✅ Current | Detection surface description matches |
-| 08_EVIDENCE_CBOM_HBOM_AUDIT | 🕰 Stale | HBOM/VBOM ship as Technology BOM layers |
-| 09_GRAPH_AUDIT | ✅ Mostly current | Tenant gate + sync coordinator postdate it |
-| 10_SECURITY_AUDIT | 🕰 Stale | Route auth fully inventoried round 13 (796 routes, permanent gate) |
-| 11_TESTING_AUDIT | 🕰 Stale | 498 test files → more; backend 6.7k+ passing |
+| 03_REAL_DATAFLOW | 🔧 Extended | **UPDATE addendum (R16)** — drift→remediation auto-linking built; runtime/cloud/network/certificates already in the graph payload |
+| 04_DATABASE_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — scan_jobs.version + CAS, policy_rule_overrides + remediation task source (migration 0074); most index asks were already stale |
+| 05_BACKEND_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — policy override surface + MAX_QUEUE_DEPTH admission built; problem-details + resource-level authz documented as open |
+| 06_FRONTEND_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — Tabs ARIA + Table keyboard/scope a11y built; HBOM page + realtime cap claims stale; 132 frontend tests |
+| 07_CRYPTO_DISCOVERY_AUDIT | ✅ Current + addendum | **UPDATE addendum (R16)** — detection surface matches; QUIC/transitive-dep items remain backlog |
+| 08_EVIDENCE_CBOM_HBOM_AUDIT | 🕰 Stale + addendum | **UPDATE addendum (R16)** — CryptoAssetEvidence IS populated; HBOM ships as TechBOM layer + live page; chain sweep built R15 |
+| 09_GRAPH_AUDIT | ✅ Mostly current | **UPDATE addendum (R16)** — tenant gate + post-scan sync stage postdate it; container-image nodes remain open |
+| 10_SECURITY_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — clone-URL transport validation built; password policy/artifact store already covered |
+| 11_TESTING_AUDIT | 🕰 Stale | 498 test files → more; backend 4.1k+ across the suites run, all green |
 | 12_DOCUMENTATION_REALITY | ✅ Current | Rest-api reference regenerated per change (728 paths/805 ops) |
 | 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum** — remediation verification, HBOM/VBOM, drift/baselines, PQC built; transitive-dep graph + QUIC/DTLS/WireGuard remain open |
 | 14_TECHNICAL_DEBT | 🔧 Partially remediated | **UPDATE addendum** — TD-010 evidence-chain sweep built this round; TD-002/008/011/012/016/025 already fixed |
@@ -79,5 +79,11 @@ repository on 2026-10-09.
 | 15 (2026-10-09) | Observation conflict detection (`/findings/conflicts`) | 50 |
 | 15 (2026-10-09) | Crypto-asset lifecycle state machine (`/inventory/assets/{id}/lifecycle`) | 54 |
 | 15 (2026-10-09) | Evidence-chain integrity sweep (`/ops/evidence/chain-status`) | 14 TD-010 |
+| 16 (2026-10-09) | Policy rule overrides (`PUT/DELETE /policy/rules/{id}/override`, worker applies same rows) | 05 |
+| 16 (2026-10-09) | Scan-queue backpressure (`MAX_QUEUE_DEPTH` admission gate, 429 at capacity) | 05 |
+| 16 (2026-10-09) | Optimistic scan-job locking (`scan_jobs.version` CAS + terminal-state guard) | 04 |
+| 16 (2026-10-09) | Drift→remediation auto-linking (ack `create_remediation_tasks`, `/drift/{id}/remediation-tasks`) | 03 |
+| 16 (2026-10-09) | Clone-URL transport validation (blocks `ext::`/helper transports before git loads) | 10 |
+| 16 (2026-10-09) | Frontend a11y pass (ARIA Tabs, keyboard-activatable Table rows, scoped headers) | 06 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

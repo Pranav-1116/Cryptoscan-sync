@@ -283,3 +283,24 @@ def _edge_evidence(graph, edge, asset_rows):
 10. **Graph analytics library** — Centralize algorithms (PageRank, betweenness, community detection)
 11. **Historical graph queries** — Time-travel via snapshot versions
 12. **Graph export** — GraphML, GEXF, Cypher dump for external analysis
+---
+
+## UPDATE — round 16 verification (2026-10-09)
+
+- "Neo4j backend has no tenant isolation" — stale: the tenant gate forces
+  tenant-isolated backends (per-tenant graph state; a tenant never reads
+  another tenant's graph), shipped in the rounds after this report.
+- "No sync scheduling / manual POST /graph/sync only" — stale: graph sync
+  runs automatically after every scan as a worker pipeline stage
+  (`stage_graph_sync`), in addition to the manual admin endpoint.
+- "Only aggregated NetworkResource / generic CloudResource" — partially
+  stale: the payload now includes genuine IaC-scan CloudResource nodes
+  (provider+resource identity from scan evidence) and network-scan-target
+  NetworkResource nodes with system links. Finer-grained node kinds
+  (CloudKMSKey, container images, runtime Process→APICall edges) remain
+  open backlog.
+- Evidence linkage: `_edge_evidence` attaches detection confidence/source/
+  first-seen per edge; direct EvidenceRecord FKs on edges remain an
+  enhancement.
+- Graph drift (`/graph/drift`), snapshots/compare/timeline all verified
+  present and tenant-versioned.

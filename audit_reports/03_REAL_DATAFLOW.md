@@ -434,3 +434,18 @@ CommandCenter.tsx
 ## CONCLUSION
 
 The dataflow is **real and deterministic** for the static source scanning path (stages 1-8). The network, container, cloud, and runtime paths feed into the database but **do not fully integrate with the evidence chain, graph, and CBOM pipeline**. The live crypto engine (`universal_crypto`) maintains its own state (`crypto_live_states`) separate from the static scan evidence pipeline. This creates **two parallel truth systems** that are not fully reconciled.
+---
+
+## UPDATE — round 16 verification + build (2026-10-09)
+
+Every DATA FLOW GAP row was re-verified against the code:
+
+| Gap row | Verdict | Evidence |
+|---|---|---|
+| runtime → graph | 🕰 Stale (partially) | `collect_graph_payload` already emits `processes` (runtime process nodes with system links); live-crypto observations still feed the crypto_live plane, not graph edges — remains open |
+| cloud → graph | ✅ Already built | `cloud_resources` payload: cloud accounts **plus** genuine IaC-scan CloudResource nodes derived from crypto assets (`cloud_provider` + `resource` extras), linked to owning systems |
+| container → graph | 🟡 Still open | No `ContainerImage` graph node yet (backlog) |
+| NBOM → graph | ✅ Already built | `network_resources` from network scan targets + NetworkResource nodes with system links |
+| **drift → remediation** | 🔧 **BUILT THIS ROUND** | `POST /drift/{id}/acknowledge` with `create_remediation_tasks` auto-opens PROPOSED `RemediationTask`s (≤10) for the FAIL/WARN evidence behind the drift (`source="drift"`, `source_ref=drift_id`, migration 0074); `GET /drift/{id}/remediation-tasks` lists them. Honest no-op when the drifted algorithm has no failing evidence |
+| HBOM gap | 🕰 Stale | HBOM ships as a TechBOM layer (migration 0061-era) and the live `/live-scan/bom` HBOM; frontend page is wired to it |
+| Live-scan → evidence | 🟡 Partial (unchanged) | TD-012-era linkage stands; live observations remain a separate plane by design |

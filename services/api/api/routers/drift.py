@@ -17,9 +17,15 @@ logger = logging.getLogger(__name__)
 
 class AckBody(BaseModel):
     notes: str | None = None
+    # Audit 03's drift->remediation link: acknowledging a drift event can
+    # auto-open remediation tasks for the non-compliant evidence behind it,
+    # instead of the acknowledgement living in a separate world from the
+    # fix-tracking. Owner is optional; tasks start PROPOSED like manual ones.
+    create_remediation_tasks: bool = False
+    task_owner: str | None = None
 
 
-def _to_response(row) -> DriftEventResponse:
+def _to_response(row, remediation_task_ids: list[str] | None = None) -> DriftEventResponse:
     return DriftEventResponse(
         drift_id=row.id,
         current_scan_id=row.current_scan_id,
@@ -31,7 +37,106 @@ def _to_response(row) -> DriftEventResponse:
         drift_details=row.drift_details,
         resolved_by=row.resolved_by,
         resolution_notes=row.resolution_notes,
+        remediation_task_ids=remediation_task_ids or [],
     )
+
+
+#: cap per acknowledgement — a drift event touching one algorithm can sit on
+#: hundreds of failing evidence rows; auto-opening hundreds of tasks in one
+#: request would be its own incident.
+_MAX_AUTO_TASKS = 10
+
+
+def _create_drift_remediation_tasks(db, drift_row, user: str, owner: str | None) -> list[str]:
+    """Auto-open remediation tasks for the failing evidence behind a drift event.
+
+    Looks for FAIL/WARN evidence in the drift's current scan matching the
+    drift's algorithm (when the details name one). Honest about the no-op: a
+    drift whose algorithm has no failing evidence creates no task rather than
+    a hollow one. Tasks carry source="drift" + source_ref=drift_id so
+    ``GET /drift/{id}/remediation-tasks`` can list them later.
+    """
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.remediation_task import RemediationTask
+    from db.models.scan import Scan
+    from db.repositories.remediation_repository import RemediationTaskRepository
+    from db.tenancy import filtered_get
+    from sqlalchemy import select
+
+    details = dict(drift_row.drift_details or {})
+    algorithm = details.get("algorithm")
+    stmt = (
+        select(EvidenceRecord)
+        .where(
+            EvidenceRecord.scan_id == drift_row.current_scan_id,
+            EvidenceRecord.compliance_status.in_(("FAIL", "WARN")),
+        )
+        .order_by(EvidenceRecord.file_path, EvidenceRecord.line_number)
+        .limit(_MAX_AUTO_TASKS * 4)
+    )
+    if algorithm:
+        stmt = stmt.where(EvidenceRecord.algorithm == algorithm)
+    rows = list(db.execute(stmt).scalars())
+    tasks: list[str] = []
+    repo = RemediationTaskRepository(db)
+    for row in rows:
+        if len(tasks) >= _MAX_AUTO_TASKS:
+            break
+        scan = filtered_get(db, Scan, row.scan_id)
+        finding = {
+            "algorithm": row.algorithm,
+            "key_size": row.key_size,
+            "mode": row.mode,
+            "purpose": row.purpose,
+            "file_path": row.file_path,
+            "line_number": row.line_number,
+            "is_hardcoded_key": row.is_hardcoded_key,
+            "compliance_status": row.compliance_status,
+        }
+        rule = {"rule": "drift.followup", "category": "drift", "priority": None, "replace_with": None}
+        evaluation = dict(row.policy_evaluation or {})
+        if evaluation.get("rules_evaluated"):
+            first = evaluation["rules_evaluated"][0]
+            if isinstance(first, dict):
+                rule = {
+                    "rule": first.get("rule_id") or "drift.followup",
+                    "category": "drift",
+                    "priority": None,
+                    "replace_with": None,
+                }
+        task = repo.create(RemediationTask(
+            evidence_id=row.id,
+            scan_id=row.scan_id,
+            rule_id=rule["rule"],
+            category=rule.get("category"),
+            priority=rule.get("priority"),
+            replace_with=rule.get("replace_with"),
+            original_finding=finding,
+            target_location=scan.target_location if scan is not None else None,
+            status="PROPOSED",
+            owner=owner,
+            notes=(
+                f"Auto-opened from drift event {drift_row.id} "
+                f"({drift_row.drift_type}: {details.get('reason') or 'no reason recorded'})"
+            ),
+            created_by=user,
+            source="drift",
+            source_ref=drift_row.id,
+        ))
+        tasks.append(task.id)
+    if tasks:
+        try:
+            from api.events.platform_events import emit_platform_event
+
+            emit_platform_event(
+                "remediation.drift_tasks_created",
+                f"{len(tasks)} remediation task(s) auto-opened from drift event {drift_row.id}",
+                {"drift_id": drift_row.id, "task_ids": tasks, "scan_id": drift_row.current_scan_id},
+                target_name="remediation",
+            )
+        except Exception:
+            logger.debug("drift_task_event_publish_failed", exc_info=True)
+    return tasks
 
 
 @router.get("", response_model=DriftListResponse)
@@ -102,8 +207,46 @@ def acknowledge(
     row = repo.acknowledge(drift_id, user, notes=(body.notes if body else None))
     if row is None:
         raise HTTPException(status_code=404, detail="Drift event not found")
+    task_ids: list[str] = []
+    if body is not None and body.create_remediation_tasks:
+        task_ids = _create_drift_remediation_tasks(db, row, user, body.task_owner)
+        db.commit()
     _audit(db, user, "drift.acknowledge", drift_id, body)
-    return _to_response(row)
+    return _to_response(row, remediation_task_ids=task_ids)
+
+
+@router.get("/{drift_id}/remediation-tasks")
+def drift_remediation_tasks(
+    drift_id: str,
+    user: str = Depends(get_current_user),
+    db=Depends(get_db_session),
+):
+    """The remediation tasks auto-opened from one drift event (audit 03 link).
+
+    Returns the task rows (same shape as GET /remediation/tasks) whose
+    source is this drift event, so the acknowledgement -> fix -> verified
+    chain is followable without grepping notes.
+    """
+    from db.models.drift_event import DriftEvent
+    from db.models.remediation_task import RemediationTask
+    from db.repositories.remediation_repository import RemediationVerificationRepository
+    from db.tenancy import filtered_get
+
+    # The ORM tenant guard filters both queries for the active scope.
+    drift = filtered_get(db, DriftEvent, drift_id)
+    if drift is None:
+        raise HTTPException(status_code=404, detail="Drift event not found")
+    tasks = (
+        db.query(RemediationTask)
+        .filter(RemediationTask.source == "drift", RemediationTask.source_ref == drift_id)
+        .order_by(RemediationTask.created_at.desc())
+        .limit(100)
+        .all()
+    )
+    verifications = RemediationVerificationRepository(db)
+    from api.routers.remediation import _task_out
+
+    return {"drift_id": drift_id, "tasks": [_task_out(t, verifications.latest_for_task(t.id)) for t in tasks]}
 
 
 @router.post("/{drift_id}/resolve", response_model=DriftEventResponse)

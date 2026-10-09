@@ -245,6 +245,45 @@ Gates: security suite (route-auth inventory now covers the 8 new routes),
 database suite (migration chain 0073), inventory/findings/ops/remediation
 blast radius, full suite rerun after these edits.
 
+## Round 16 — the ten-report full read (2026-10-09)
+
+Reports 01–10 were read end to end and every finding re-verified against the
+code. Five real gaps were built (migration 0074; details in the round-16
+UPDATE addenda inside audit_reports/03–10):
+
+1. **Policy rule overrides (audit 05):** tenant-scoped
+   `policy_rule_overrides` + admin `PUT/DELETE /policy/rules/{id}/override`
+   (disable a rule / change severity per tenant, audited) with
+   `GET /policy/rules` reporting pack vs override vs effective; the worker's
+   evaluation stage applies the same rows through one shared helper.
+2. **MAX_QUEUE_DEPTH admission gate (audit 05):** 429 once active jobs
+   exceed the configured depth (default 500); counting is a documented seam,
+   fail-closed on count failure.
+3. **Optimistic scan-job locking (audit 04):** `scan_jobs.version` CAS in
+   `JobRepository.update_status` + terminal-state guard; reaper races
+   resolve to detected conflicts, not silent overwrites.
+4. **Drift → remediation auto-link (audit 03):** acknowledgement can
+   auto-open PROPOSED tasks for the failing evidence behind a drift event
+   (`source="drift"`, `source_ref`), listed at
+   `GET /drift/{id}/remediation-tasks`.
+5. **Clone-URL transport validation (audit 10):** `ext::`/helper
+   transports and leading dashes refused before git is imported.
+
+Plus the frontend a11y P0s (ARIA Tabs, keyboard-activatable Table rows,
+scoped headers). A large share of the reports' remaining claims were
+verified stale and are recorded as such in the addenda (HBOM wired,
+CryptoAssetEvidence populated, password policy exists, artifact store
+tenant-bucketed, graph sync runs post-scan, crypto_live/audit_log indexes
+present; the system_dependencies relation-level unique index was evaluated
+and deliberately kept as pair-level dedup).
+
+Gates: full API suite (1353), worker 525, scanner 286 (+20 URL-validation),
+database 162 (chain 0074 verified from repo root), cbom 233, policy 96,
+remediation 42, shared 519, evidence 55, graph_engine 52, drift 72,
+normalization 123, control_plane 81, devsecops 550, frontend 132 +
+typecheck, ruff clean repo-wide, rest-api.md regenerated (736 paths / 815
+ops / 90 groups).
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

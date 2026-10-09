@@ -38,11 +38,42 @@ describe("ui primitives", () => {
     expect(onSelect).toHaveBeenCalledWith(0);
   });
 
+  it("Table headers declare column scope and rows are keyboard-activatable (audit 06 a11y)", () => {
+    const onSelect = vi.fn();
+    render(<Table head={["Algorithm", "Count"]} rows={[["RSA-2048", 3]]} clickable onSelect={onSelect} />);
+    expect(screen.getByRole("columnheader", { name: "Algorithm" })).toHaveAttribute("scope", "col");
+    const row = screen.getByRole("button", { name: "Select row 1" });
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onSelect).toHaveBeenCalledWith(0);
+    fireEvent.keyDown(row, { key: " " });
+    expect(onSelect).toHaveBeenCalledTimes(2);
+  });
+
   it("Tabs switches on click", () => {
     const onChange = vi.fn();
     render(<Tabs tabs={["Overview", "Export"]} active={0} onChange={onChange} />);
     fireEvent.click(screen.getByText("Export"));
     expect(onChange).toHaveBeenCalledWith(1);
+  });
+
+  it("Tabs expose the ARIA tab pattern and move with arrow keys (audit 06 a11y)", () => {
+    const onChange = vi.fn();
+    render(<Tabs tabs={["Overview", "Export", "Raw"]} active={0} onChange={onChange} />);
+    const tablist = screen.getByRole("tablist");
+    expect(tablist).toBeTruthy();
+    const tabs = screen.getAllByRole("tab");
+    expect(tabs).toHaveLength(3);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs[1]).toHaveAttribute("aria-selected", "false");
+    expect(tabs[1]).toHaveAttribute("tabIndex", "-1");
+    fireEvent.keyDown(tabs[0], { key: "ArrowRight" });
+    expect(onChange).toHaveBeenCalledWith(1);
+    fireEvent.keyDown(tabs[0], { key: "ArrowLeft" });
+    expect(onChange).toHaveBeenCalledWith(2); // wraps around
+    fireEvent.keyDown(tabs[0], { key: "End" });
+    expect(onChange).toHaveBeenCalledWith(2);
+    fireEvent.keyDown(tabs[0], { key: "Home" });
+    expect(onChange).toHaveBeenCalledWith(0);
   });
 
   it("Button fires onClick and respects disabled", () => {

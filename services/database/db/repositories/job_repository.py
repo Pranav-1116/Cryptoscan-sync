@@ -68,6 +68,12 @@ class JobRepository(BaseRepository[ScanJob]):
         )
         return self.create(job)
 
+    #: statuses a settled job must not silently leave. A non-forced update
+    #: that would move a job out of one of these is a lost-update race
+    #: (typically a stale worker finishing after the reaper failed the job)
+    #: and is refused — the first verdict stands.
+    TERMINAL_STATUSES = frozenset({"COMPLETED", "FAILED", "CANCELLED"})
+
     def update_status(
         self,
         job_id: str,
@@ -76,12 +82,30 @@ class JobRepository(BaseRepository[ScanJob]):
         error_message: str | None = None,
         scan_id: str | None = None,
         progress: dict | None = None,
+        force: bool = False,
     ) -> ScanJob | None:
-        values: dict = {"status": status}
+        """Transition a job's status with optimistic locking (audit 04).
+
+        The write is a compare-and-set on ``version`` and refuses to leave a
+        terminal state unless ``force=True``. On either conflict the row is
+        left untouched and ``None`` is returned — callers that need to know
+        which way the race went can re-read the row.
+        """
+        current = self.get_by_id(job_id)
+        if current is None:
+            return None
+        if not force and current.status in self.TERMINAL_STATUSES:
+            logger.warning(
+                "job_status_conflict_terminal",
+                extra={"job_id": job_id, "from": current.status, "to": status},
+            )
+            return None
+
+        values: dict = {"status": status, "version": (current.version or 0) + 1}
         now = datetime.now(timezone.utc)
         if status == "RUNNING":
             values["started_at"] = now
-        if status in {"COMPLETED", "FAILED", "CANCELLED"}:
+        if status in self.TERMINAL_STATUSES:
             values["completed_at"] = now
         if error_message is not None:
             values["error_message"] = error_message
@@ -89,7 +113,26 @@ class JobRepository(BaseRepository[ScanJob]):
             values["scan_id"] = scan_id
         if progress is not None:
             values["progress"] = progress
-        return self.update(job_id, values)
+        rowcount = (
+            self.session.query(ScanJob)
+            .filter(ScanJob.id == job_id, ScanJob.version == (current.version or 0))
+            .update(values, synchronize_session=False)
+        )
+        if not rowcount:
+            logger.warning(
+                "job_status_conflict_version",
+                extra={"job_id": job_id, "from": current.status, "to": status,
+                       "version": current.version},
+            )
+            # No rollback: the UPDATE matched zero rows, so the session has
+            # nothing pending from this statement and the caller's other
+            # pending work (e.g. a reaper sweep) must survive the race.
+            return None
+        self.session.flush()
+        # synchronize_session=False leaves the identity-map row stale; expire
+        # it so the returned object (and any later read) sees the new state.
+        self.session.expire(current)
+        return self.get_by_id(job_id)
 
     def list_by_scan_option(self, key: str, value: str, limit: int = 500) -> list[ScanJob]:
         """Recent jobs whose stored ``scan_options[key]`` equals ``value``.

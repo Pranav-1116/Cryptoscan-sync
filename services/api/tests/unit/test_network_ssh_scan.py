@@ -31,6 +31,7 @@ async def test_ssh_scan_endpoint(monkeypatch):
     # decision (no emergency stop, no OT estate, active probing allowed)
     monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
     monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
     def fake_scan(host, port, *, timeout=8.0, baseline=None):
         endpoint = f"{host}:{port}"
@@ -92,6 +93,7 @@ async def test_ssh_scan_includes_kex_offer(monkeypatch):
 
     monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
     monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
     def fake_keyscan(host, port, *, timeout=8.0, baseline=None):
         return _fake_finding(f"{host}:{port}")

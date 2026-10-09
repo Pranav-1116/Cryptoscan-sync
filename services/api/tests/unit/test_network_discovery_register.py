@@ -50,6 +50,7 @@ async def test_discover_registers_targets(monkeypatch):
     # decision (no emergency stop, no OT, sweep inside authorized scope).
     monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
     monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
     monkeypatch.setattr(admission, "_authorized_network_scope",
                         lambda: ["10.0.0.0/30"])
 
@@ -95,6 +96,7 @@ async def test_discover_without_register_leaves_rotation_alone(monkeypatch):
     monkeypatch.setattr(net_router, "IntelligenceRepository", FakeIntelRepo)
     monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
     monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
     monkeypatch.setattr(admission, "_authorized_network_scope",
                         lambda: ["10.0.0.0/30"])
 

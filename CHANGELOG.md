@@ -6,6 +6,44 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — round 16: the ten-report full read (audits 03/04/05/06/10)
+
+- **Policy rule overrides (audit 05):** `policy_rule_overrides` table
+  (migration 0074, tenant-scoped, unique per rule) +
+  `PUT /api/v1/policy/rules/{rule_id}/override` and `DELETE` (admin-only,
+  audit-logged, severity validated) to disable a rule or change its severity
+  for one tenant without editing the reviewed YAML pack.
+  `GET /policy/rules` now reports pack state, override and effective state
+  side by side, and the worker's policy stage applies the same rows via
+  `policy.core.overrides` — the listing shows exactly what the engine
+  enforces.
+- **Scan-queue backpressure (audit 05, MAX_QUEUE_DEPTH):** the single
+  admission decision refuses with 429 once QUEUED+RUNNING scan jobs exceed
+  `MAX_QUEUE_DEPTH` (default 500; `<=0` disables). Counting is a documented
+  admission seam; failure to count fails closed.
+- **Optimistic scan-job locking (audit 04):** `scan_jobs.version` column
+  (migration 0074) + compare-and-set `JobRepository.update_status` with a
+  terminal-state guard — a stale worker completing a job the reaper already
+  failed is a detected conflict, and the first verdict stands. The reaper
+  distinguishes races it won from races it lost.
+- **Drift → remediation auto-linking (audit 03):**
+  `POST /drift/{id}/acknowledge` accepts `create_remediation_tasks` and
+  auto-opens PROPOSED remediation tasks (≤10) for the FAIL/WARN evidence
+  behind the drift; tasks carry `source="drift"` + `source_ref` (new
+  columns, migration 0074) and are listed by
+  `GET /drift/{id}/remediation-tasks`. Honest no-op when the drifted
+  algorithm has no failing evidence.
+- **Clone-URL transport validation (audit 10):** `GitClient.clone` refuses
+  remote-helper transports (`ext::`, CVE-2022-24439), helper-by-name forms
+  and leading dashes before git is even imported; normal URL/ssh/local
+  targets unaffected.
+- **Frontend accessibility (audit 06):** `Tabs` implements the ARIA tabs
+  pattern (roles, aria-selected, roving tabindex, arrow/Home/End keys);
+  `Table` clickable rows are keyboard-activatable and headers carry
+  `scope="col"`.
+- Audit reports 03–10 now carry round-16 UPDATE addenda (verified-stale
+  claims + what was built); `audit_reports/00_ROUND_STATUS.md` updated.
+
 ### Added — the remaining code-buildable audit gaps (audits 50/54/69, TD-010)
 
 - **Reintroduction detection:** retired-asset registry (`retired_assets`,

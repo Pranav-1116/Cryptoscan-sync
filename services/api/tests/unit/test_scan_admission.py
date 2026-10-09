@@ -47,9 +47,14 @@ def client(monkeypatch, tmp_path):
 
 
 def _pin_ok(monkeypatch):
-    """Pin the seams to 'nothing blocks, no OT' for tests of other behavior."""
+    """Pin the seams to 'nothing blocks, no OT, empty queue' for tests of
+    other behavior. ``_active_job_count`` is pinned too: the queue-depth
+    gate (MAX_QUEUE_DEPTH) is a documented seam like the others, and tests
+    of unrelated behavior must not depend on the shared test database
+    having a scan_jobs table."""
     monkeypatch.setattr(admission, "_control_plane_state", lambda: ([], None))
     monkeypatch.setattr(admission, "_ot_declared", lambda: False)
+    monkeypatch.setattr(admission, "_active_job_count", lambda: 0)
 
 
 def _auth(client):

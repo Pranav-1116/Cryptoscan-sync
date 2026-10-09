@@ -425,3 +425,20 @@ class ConflictError(CryptoScanError): pass
 12. **OpenAPI spec generation** — separate files per domain for client SDK generation
 13. **Request/response logging** — structured logs for all mutating endpoints
 14. **Performance budgets** — p95 latency targets per endpoint category
+---
+
+## UPDATE — round 16 verification + build (2026-10-09)
+
+Re-verified every claim; two of the report's asks were built, the rest were
+stale or deliberately deferred:
+
+| Claim | Verdict |
+|---|---|
+| "HBOM backend is a stub" | 🕰 Stale — TechBOM hbom layer + `/live-scan/bom` HBOM + wired frontend page |
+| "Remediation is suggestions only" | 🕰 Stale — tracked tasks + 5-verdict evidence-based verification shipped round 14 |
+| **Policy rule management missing** | 🔧 **BUILT** — `policy_rule_overrides` (migration 0074): `PUT/DELETE /api/v1/policy/rules/{rule_id}/override` (admin, audit-logged, severity validated) disable a rule or change its severity per tenant; `GET /policy/rules` reports pack vs override vs effective state; the worker's `stage_policy` applies the same rows through `policy.core.overrides.apply_overrides` — one helper for both surfaces |
+| **MAX_QUEUE_DEPTH not enforced** | 🔧 **BUILT** — the admission decision (`scan_admission.admit_scan`) now refuses with 429 when QUEUED+RUNNING jobs exceed `MAX_QUEUE_DEPTH` (default 500; `<=0` disables). `_active_job_count` is a documented test seam like the others; counting failure fails closed (503) |
+| RFC 9457 problem details | 🟡 Open by decision — cross-cutting response-shape change across 90 routers; FastAPI `detail` errors are consistent and clients (frontend + tests) depend on the current shape |
+| Atomic upserts (snapshot/drift races) | ✅ Largely covered — graph snapshots are tenant-versioned and content-addressed; drift ack races are now covered on the job plane by the CAS/terminal guard (audit 04 build) |
+| Resource-level authorization | 🟡 Open, product decision — per-object permissions across ~90 routers; tenant isolation is enforced by the ORM guard on every tenant-scoped model |
+| Event-bus tenant scoping / VerificationLog exposure / graph tenancy | 🕰 Stale — all shipped in earlier rounds |

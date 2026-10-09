@@ -287,3 +287,15 @@ component.properties ← cryptoscan:system_id, cryptoscan:system
 ### P3 — Enhancement
 9. **Evidence retention policy** — Archive old evidence with chain continuity
 10. **Provenance graph** — Full lineage from source → finding → evidence → asset → CBOM → graph
+---
+
+## UPDATE — round 16 verification + build (2026-10-09)
+
+| Claim | Verdict |
+|---|---|
+| "HBOM not implemented — no router/generator/table" | 🕰 Stale — HBOM ships as a TechBOM layer (`GET /techbom?layer=hbom`) fed by the hardware service, plus the live `/live-scan/bom` HBOM the frontend page renders |
+| "CryptoAssetEvidence link table not populated in pipeline" | 🕰 Stale — `AssetRepository.replace_for_scan` populates the links in bulk (one query for existing pairs) from each asset's `evidence_ids` |
+| "No periodic verification job" | 🔧 Built round 15 — `GET /ops/evidence/chain-status` sweeps recent scans with the export verifier |
+| "TechBOM duplicate implementation" | 🟢 By design — TechBOM is the layered unification (sbom/cbom/hbom/vendor/certificates) over the one CBOM core; separate snapshot tables are its versioning, not a fork |
+| "No aggregate component confidence / semantic diff / compositions / externalReferences" | 🟡 Open enhancements (P2/P3 in the report's own ranking), unchanged |
+| Drift follow-up | 🔧 Built round 16 — acknowledging a drift event can auto-open remediation tasks linked back to the drift (see audit 03 addendum) |

@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-09:
-**734 paths, 812 operations** across 90 tagged groups.
+**736 paths, 815 operations** across 90 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -499,6 +499,7 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/drift/digest` | Drift Digest |
 | `POST` | `/api/v1/drift/{drift_id}/acknowledge` | Acknowledge |
 | `POST` | `/api/v1/drift/{drift_id}/false-positive` | False Positive |
+| `GET` | `/api/v1/drift/{drift_id}/remediation-tasks` | Drift Remediation Tasks |
 | `POST` | `/api/v1/drift/{drift_id}/resolve` | Resolve Drift |
 
 ## enterprise
@@ -930,6 +931,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | Method | Path | Summary |
 |---|---|---|
 | `GET` | `/api/v1/policy/rules` | List Rules |
+| `PUT` | `/api/v1/policy/rules/{rule_id}/override` | Set Rule Override |
+| `DELETE` | `/api/v1/policy/rules/{rule_id}/override` | Clear Rule Override |
 
 ## priority
 
