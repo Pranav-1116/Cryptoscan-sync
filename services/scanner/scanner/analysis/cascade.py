@@ -573,6 +573,30 @@ class PackageDependencyNode(BaseModel):
     observed_at: str
     confidence: str = "MEDIUM"
     unresolved: bool = False
+    # transitive crypto propagation (report 13 §1.3): True when this package
+    # is itself a crypto library OR transitively depends on one
+    crypto_bearing: bool = False
+    crypto_algorithms: list[str] = Field(default_factory=list)
+
+
+class CryptoDependencyPath(BaseModel):
+    """How a crypto library reaches the application through the package graph.
+
+    ``chain`` runs from the crypto-bearing package up to the direct
+    dependency that pulls it in (the application's own manifest entry);
+    ``algorithms`` are the ones observed in this repository's first-party
+    code when the library is used there, otherwise the library identity
+    alone (the package is crypto-bearing even when this repo never calls
+    it — it still ships in the artifact).
+    """
+
+    ecosystem: str
+    crypto_package: str
+    library: str | None = None
+    algorithms: list[str] = Field(default_factory=list)
+    direct_entry: str
+    chain: list[str]
+    depth: int
 
 
 class CascadeReport(BaseModel):
@@ -583,6 +607,7 @@ class CascadeReport(BaseModel):
     libraries: list[LibraryNode]
     package_dependencies: list[PackageDependencyNode] = Field(default_factory=list)
     unresolved_relationships: list[dict[str, Any]] = Field(default_factory=list)
+    crypto_dependency_paths: list[CryptoDependencyPath] = Field(default_factory=list)
     shared_keys: list[SharedKeyNode]
     key_references: list[KeyReferenceNode] = Field(default_factory=list)
     weak_parameters: list[WeakParameter]
@@ -647,6 +672,110 @@ def _min_key_size(algorithm: str | None) -> int | None:
             extra={"error_type": type(_handler_exc).__name__},
         )
         return None
+
+
+def propagate_crypto_dependencies(
+    package_dependencies: list[PackageDependencyNode],
+    libraries: list[LibraryNode],
+    *,
+    max_paths: int = 200,
+) -> tuple[list[CryptoDependencyPath], dict[str, Any]]:
+    """Transitive crypto propagation (report 13 §1.3).
+
+    Connects two things the cascade already collected but never joined:
+    the package graph (lockfile parent edges) and the crypto-library
+    catalog/observations. A package is **crypto-bearing** when its
+    coordinate matches the crypto-library catalog (``_LIB_COORDS``) or a
+    library node of this repo; every package that (transitively) depends
+    on it inherits the exposure, and each chain up to the direct
+    dependency that pulls it in is recorded.
+
+    Honesty constraint: parent edges exist only where lockfiles carry them
+    (npm nested paths, cargo dependency blocks). For flat lockfiles
+    (go.sum, poetry.lock, …) the propagation is limited to flagging the
+    crypto-bearing packages themselves — no edges are invented. The
+    returned coverage dict says which ecosystems actually carried edges.
+    """
+    if not package_dependencies:
+        return [], {}
+
+    # lockfiles and manifests can each emit a row for the same package
+    # (version specs differ), so key → every node with that coordinate
+    nodes_by_key: dict[tuple[str, str], list[PackageDependencyNode]] = defaultdict(list)
+    parents: dict[tuple[str, str], set[tuple[str, str]]] = defaultdict(set)
+    children: dict[tuple[str, str], set[tuple[str, str]]] = defaultdict(set)
+    for node in package_dependencies:
+        key = (node.ecosystem, node.name.lower())
+        nodes_by_key[key].append(node)
+        if node.parent:
+            parent_key = (node.ecosystem, str(node.parent).lower())
+            if parent_key != key:
+                parents[key].add(parent_key)
+                children[parent_key].add(key)
+
+    # observed algorithms per canonical library (from first-party usage)
+    observed: dict[str, set[str]] = defaultdict(set)
+    for lib in libraries:
+        for algo in lib.algorithms:
+            if algo and algo != "UNKNOWN":
+                observed[lib.library].add(algo)
+
+    def _flag(key: tuple[str, str], algos: set[str]) -> None:
+        for node in nodes_by_key[key]:
+            node.crypto_bearing = True
+            merged = set(node.crypto_algorithms) | set(algos)
+            node.crypto_algorithms = sorted(merged)
+
+    # seed: crypto-bearing packages
+    seeds: dict[tuple[str, str], tuple[str | None, set[str]]] = {}
+    for key, nodes in nodes_by_key.items():
+        lib = _canon_lib(nodes[0].name, key[0])
+        if lib is None:
+            continue
+        seeds.setdefault(key, (lib, set(observed.get(lib, set()))))
+
+    # propagate upward: every ancestor of a seed is crypto-exposed
+    paths: list[CryptoDependencyPath] = []
+    ecosystems_with_edges: set[str] = {eco for (eco, _name), ps in parents.items() if ps}
+    for key, (lib, algos) in seeds.items():
+        _flag(key, algos)
+        seed_name = nodes_by_key[key][0].name
+        # walk every path up to the direct dependencies that pull this seed in
+        stack: list[tuple[tuple[str, str], list[tuple[str, str]]]] = [(key, [key])]
+        while stack:
+            current, trail = stack.pop()
+            if current != key:
+                _flag(current, algos)
+            ups = parents.get(current, set())
+            if not ups:
+                # reached the top: emit the chain when it has length, or the
+                # seed itself is a direct dependency
+                top = trail[-1]
+                if len(trail) > 1 or nodes_by_key[top][0].direct:
+                    entry = nodes_by_key[top][0]
+                    paths.append(CryptoDependencyPath(
+                        ecosystem=key[0],
+                        crypto_package=seed_name,
+                        library=lib,
+                        algorithms=sorted(algos),
+                        direct_entry=entry.name,
+                        chain=[nodes_by_key[k][0].name for k in trail],
+                        depth=len(trail),
+                    ))
+                continue
+            for up in sorted(ups):
+                if up in trail:  # defensive: lockfiles should not cycle
+                    continue
+                stack.append((up, trail + [up]))
+
+    paths.sort(key=lambda p: (p.ecosystem, p.depth, p.crypto_package.lower()))
+    if len(paths) > max_paths:
+        paths = paths[:max_paths]
+    coverage = {
+        "ecosystems_with_parent_edges": sorted(ecosystems_with_edges),
+        "ecosystems_total": sorted({n.ecosystem for n in package_dependencies}),
+    }
+    return paths, coverage
 
 
 def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample: int = 10) -> CascadeReport:
@@ -779,6 +908,10 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
     systems = _systems_rollup(root, graph, providers, weak)
 
     edges = sum(len(v) for v in graph.imports.values())
+
+    # transitive crypto propagation (report 13 §1.3): join the package graph
+    # to the crypto-library catalog/observations and propagate exposure upward
+    crypto_paths, crypto_coverage = propagate_crypto_dependencies(package_dependencies, libraries)
     summary = {
         "systems": len(systems),
         "cross_system_edges": sum(len(s.dependent_systems) for s in systems),
@@ -791,6 +924,11 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
         "package_dependencies": len(package_dependencies),
         "direct_package_dependencies": sum(1 for n in package_dependencies if n.direct),
         "transitive_package_dependencies": sum(1 for n in package_dependencies if not n.direct),
+        "crypto_bearing_packages": sum(1 for n in package_dependencies if n.crypto_bearing),
+        "crypto_bearing_direct": sum(1 for n in package_dependencies if n.crypto_bearing and n.direct),
+        "crypto_bearing_transitive": sum(1 for n in package_dependencies if n.crypto_bearing and not n.direct),
+        "crypto_dependency_paths": len(crypto_paths),
+        "crypto_dependency_coverage": crypto_coverage,
         "unresolved_relationships": len(unresolved_relationships),
         "shared_key_identifiers": len(shared_keys),
         "key_references": len(key_ref_nodes),
@@ -799,6 +937,7 @@ def analyse_cascade(findings: list, files: Iterable[Path], root: Path, *, sample
     }
     return CascadeReport(files_in_graph=len(graph.files), edges=edges, systems=systems, providers=providers, libraries=libraries,
                          package_dependencies=package_dependencies, unresolved_relationships=unresolved_relationships,
+                         crypto_dependency_paths=crypto_paths,
                          shared_keys=shared_keys, key_references=key_ref_nodes, weak_parameters=weak, migration_waves=waves, summary=summary)
 
 

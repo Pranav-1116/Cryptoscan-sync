@@ -3,16 +3,51 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session, get_job_repository
+from api.dependencies import get_current_user, get_db_session, get_job_repository, require_admin
 from db.models.system import System
 from db.repositories.asset_repository import AssetRepository
 from db.repositories.job_repository import JobRepository
+from db.repositories.resource_grant_repository import (
+    READ_ROLE,
+    WRITE_ROLE,
+    ResourceGrantRepository,
+)
 from db.repositories.system_repository import SystemRepository
 
 router = APIRouter(prefix="/systems", tags=["systems"])
+
+
+def _system_access(
+    db: Session, user: str, system_id: str, minimum_role: str, *, read_only: bool
+) -> None:
+    """Resource-level check (report 13 §2.2). Restrictive-only-when-present:
+    unrestricted systems behave exactly as before; once grants exist for a
+    system, the subject must hold one at or above ``minimum_role``.
+    Platform superadmin always passes; auditor passes read-only checks.
+    """
+    grants = ResourceGrantRepository(db)
+    if not grants.is_restricted("SYSTEM", system_id):
+        return
+    from api.dependencies import _user_roles
+    from api.security.rbac import normalize_roles
+
+    platform = set(normalize_roles(_user_roles(user, None, db)))
+    if platform & {"superadmin", "admin"}:
+        return
+    if read_only and platform & {"auditor"}:
+        return
+    if grants.check_access(user, "SYSTEM", system_id, minimum_role):
+        return
+    raise HTTPException(
+        status_code=403,
+        detail=(
+            f"System is grant-restricted; user {user} lacks {minimum_role} "
+            f"access (needed for this {'read' if read_only else 'write'} operation)"
+        ),
+    )
 
 
 class SystemCreate(BaseModel):
@@ -158,6 +193,7 @@ def update_system(
     row = repo.get_by_id(system_id)
     if row is None:
         raise HTTPException(status_code=404, detail="System not found")
+    _system_access(db, user, system_id, WRITE_ROLE, read_only=False)
     data = body.model_dump(exclude_unset=True)
     for key, value in data.items():
         setattr(row, key, value)
@@ -180,6 +216,7 @@ def get_system(
     row = repo.get_by_id(system_id)
     if row is None:
         raise HTTPException(status_code=404, detail="System not found")
+    _system_access(db, user, system_id, READ_ROLE, read_only=True)
     payload = row.to_dict()
     payload["assets"] = [asset.to_dict() for asset in repo.assets_for(system_id)]
     payload["dependencies"] = [edge.to_dict() for edge in repo.dependencies_for(system_id)]
@@ -199,6 +236,7 @@ def scan_system(
     system = repo.get_by_id(system_id)
     if system is None:
         raise HTTPException(status_code=404, detail="System not found")
+    _system_access(db, user, system_id, WRITE_ROLE, read_only=False)
     target = (system.scan_target or "").strip()
     if not target:
         raise HTTPException(
@@ -228,6 +266,7 @@ def attach_asset(
     repo = SystemRepository(db)
     if repo.get_by_id(system_id) is None:
         raise HTTPException(status_code=404, detail="System not found")
+    _system_access(db, user, system_id, WRITE_ROLE, read_only=False)
     # Graph node ids ("asset:<uuid>") are accepted alongside raw asset ids.
     asset_id = body.asset_id.removeprefix("asset:")
     if AssetRepository(db).get_by_id(asset_id) is None:
@@ -246,6 +285,7 @@ def add_dependency(
     repo = SystemRepository(db)
     if repo.get_by_id(system_id) is None or repo.get_by_id(body.child_id) is None:
         raise HTTPException(status_code=404, detail="System not found")
+    _system_access(db, user, system_id, WRITE_ROLE, read_only=False)
     from db.models.system_dependency import SystemDependency
 
     if db.query(SystemDependency).filter(
@@ -258,3 +298,104 @@ def add_dependency(
     edge.created_by = user
     db.commit()
     return edge.to_dict()
+
+
+class GrantCreate(BaseModel):
+    subject: str = Field(..., min_length=1, description="Username receiving the grant")
+    role: str = Field("viewer", description="owner | operator | viewer")
+
+
+@router.get("/{system_id}/grants")
+def list_grants(
+    system_id: str,
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Who has resource-level access to this system (admin view)."""
+    if SystemRepository(db).get_by_id(system_id) is None:
+        raise HTTPException(status_code=404, detail="System not found")
+    rows = ResourceGrantRepository(db).grants_for("SYSTEM", system_id)
+    return {
+        "system_id": system_id,
+        "restricted": bool(rows),
+        "grants": [
+            {"subject": g.subject, "role": g.role, "granted_by": g.granted_by,
+             "created_at": g.created_at.isoformat() if g.created_at else None}
+            for g in rows
+        ],
+    }
+
+
+@router.post("/{system_id}/grants")
+def add_grant(
+    system_id: str,
+    body: GrantCreate,
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Put a system under grant control / adjust one subject's role.
+
+    Admin-only: creating the first grant switches the system from
+    "unrestricted" to "grant-restricted" — a security decision, so it is
+    audited like the other admin actions.
+    """
+    if SystemRepository(db).get_by_id(system_id) is None:
+        raise HTTPException(status_code=404, detail="System not found")
+    try:
+        grants = ResourceGrantRepository(db)
+        was_restricted = grants.is_restricted("SYSTEM", system_id)
+        row = grants.grant(body.subject, "SYSTEM", system_id, body.role, granted_by=user)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    from db.repositories.user_repository import UserRepository
+
+    try:
+        UserRepository(db).audit(
+            user,
+            "system.grant" if was_restricted else "system.restrict",
+            target_type="system",
+            target_id=str(system_id),
+            detail={"subject": body.subject, "role": row.role,
+                    "first_grant": not was_restricted},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Grant audit is unavailable")
+    return {"system_id": system_id, "subject": row.subject, "role": row.role,
+            "restricted": True}
+
+
+@router.delete("/{system_id}/grants/{subject}")
+def revoke_grant(
+    system_id: str,
+    subject: str,
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Remove one subject's grant. Revoking the last grant returns the
+    system to unrestricted (also audited — that is a security decision)."""
+    if SystemRepository(db).get_by_id(system_id) is None:
+        raise HTTPException(status_code=404, detail="System not found")
+    grants = ResourceGrantRepository(db)
+    was_restricted = grants.is_restricted("SYSTEM", system_id)
+    removed = grants.revoke(subject, "SYSTEM", system_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail="No such grant")
+    still_restricted = grants.is_restricted("SYSTEM", system_id)
+    from db.repositories.user_repository import UserRepository
+
+    try:
+        UserRepository(db).audit(
+            user,
+            "system.unrestrict" if was_restricted and not still_restricted else "system.revoke",
+            target_type="system",
+            target_id=str(system_id),
+            detail={"subject": subject},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Revoke audit is unavailable")
+    return {"system_id": system_id, "subject": subject, "revoked": True,
+            "restricted": still_restricted}

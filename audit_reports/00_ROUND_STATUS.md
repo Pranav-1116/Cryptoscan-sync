@@ -1,6 +1,6 @@
-# Audit Report Status — 2026-10-09 (post-remediation, rounds 13–17)
+# Audit Report Status — 2026-10-09 (post-remediation, rounds 13–18)
 
-**Generated:** 2026-10-09, after remediation rounds 13–17 (last full read of reports 01–16 + CRYPTO_SCAN_DISCOVERY in round 17).
+**Generated:** 2026-10-09, after remediation rounds 13–18 (last full read of reports 01–16 + CRYPTO_SCAN_DISCOVERY in round 17; round 18 built the remaining open items).
 **Purpose:** every report in this folder was read and every actionable claim
 re-verified against the code. This file records the verdict per report and what
 was built in response. The original report text is unchanged; reports that were
@@ -29,7 +29,7 @@ repository on 2026-10-09.
 | 10_SECURITY_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — clone-URL transport validation built; password policy/artifact store already covered |
 | 11_TESTING_AUDIT | 🔧 Extended | **UPDATE addendum (R17)** — hypothesis property tests + coverage tooling + OpenAPI contract tests built; counts stale in the report's favor |
 | 12_DOCUMENTATION_REALITY | ✅ Current | Rest-api reference regenerated per change (728 paths/805 ops) |
-| 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum (R16+R17)** — QUIC/DTLS/WireGuard protocol analyzers built R17; remediation verification, HBOM/VBOM, drift/baselines, PQC built earlier; transitive-dep graph + cloud HSM remain open |
+| 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum (R16–R18)** — QUIC/DTLS/WireGuard analyzers (R17), transitive crypto propagation + Azure Dedicated HSM + resource-grant floor (R18); remediation verification, HBOM/VBOM, drift/baselines, PQC built earlier; cloud-HSM matrix now complete; BU inheritance/custom roles remain open |
 | 14_TECHNICAL_DEBT | 🔧 Partially remediated | **UPDATE addendum (R16+R17)** — TD-007 portfolio set-based + bounded truncation and duplicate-operationId fix built R17; TD-010 evidence-chain sweep built R16; TD-002/008/011/012/016/025 already fixed |
 | 15_PRODUCTION_READINESS | 🔧 Extended | **UPDATE addendum (R17)** — backup encryption + evidence soft-delete (chain-preserving) built; predates DR (RTO 0.103s/RPO 0s), soak, load, compliance-burn evidence in PRODUCTION-READINESS.md |
 | 16_IMPLEMENTATION_ROADMAP | 🕰 Superseded + addendum | docs/PRODUCTION-ROADMAP.md is the live plan; **UPDATE addendum (R17)** — EVIDENCE-003 closed |
@@ -91,5 +91,8 @@ repository on 2026-10-09.
 | 17 (2026-10-09) | CBOM portfolio set-based query + `PORTFOLIO_MAX_ASSETS` explicit truncation | 14 TD-007 |
 | 17 (2026-10-09) | OpenAPI operationId contract tests (duplicate fixed) | 11, 12 |
 | 17 (2026-10-09) | Hypothesis property tests for the hashing core + opt-in coverage tooling | 11 |
+| 18 (2026-10-09) | Transitive crypto propagation (`propagate_crypto_dependencies`, crypto_dependency_paths in cascade) | 13 §1.3, DISCOVERY P1-002 |
+| 18 (2026-10-09) | Azure Dedicated HSM scanner + GCP `hsm_backed` marker (cloud HSM matrix complete) | 13 §3.2 |
+| 18 (2026-10-09) | Resource-level grants floor (`resource_grants`, migration 0076, per-system enforcement + admin endpoints) | 13 §2.2 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

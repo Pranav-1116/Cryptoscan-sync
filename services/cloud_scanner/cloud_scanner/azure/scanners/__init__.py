@@ -702,3 +702,55 @@ def scan_managed_hsm(client: Any, *, subscription: str = "unknown", telemetry: S
             )
         )
     return findings
+
+
+def scan_dedicated_hsm(client: Any, *, subscription: str = "unknown", telemetry: ScanTelemetry | None = None) -> list[dict[str, Any]]:
+    """Azure Dedicated HSM (Microsoft.HardwareSecurityModules/dedicatedHSMs).
+
+    Report 13 §3.2: the cloud coverage matrix listed Azure Dedicated HSM as
+    undetected — Managed HSM (Key Vault pools) was covered, but the
+    single-tenant HSM appliances (Thales/GemSafe Luna stations bought per
+    stamp, no Key Vault control plane) were invisible. The API exposes no
+    key material (that is the product's point), so the honest finding is
+    the custody surface itself: device, provisioning state, stamp, and
+    network isolation.
+    """
+    findings: list[dict[str, Any]] = []
+    devices = _records(client, "dedicated_hsms", "list_by_subscription")
+    if not devices and not isinstance(client, list):
+        devices = _records(client, "list")
+    for device in cap_items(devices, telemetry=telemetry, provider="AZURE", service="dedicatedhsm", region=subscription):
+        name = named(device)
+        if isinstance(device, dict):
+            props = device.get("properties") or {}
+            state = props.get("provisioningState") or device.get("provisioning_state")
+            stamp = props.get("stampCode") or props.get("stamp_code")
+            mgmt_network = (props.get("networkProfile") or {}).get("NetworkInterfaces") or []
+        else:
+            state = attr(device, "provisioning_state", "provisioningState")
+            stamp = attr(device, "stamp_code", "stampCode")
+            network_profile = attr(device, "network_profile", "networkProfile") or {}
+            mgmt_network = attr(network_profile, "network_interfaces", "NetworkInterfaces") or []
+        state = str(state or "UNKNOWN")
+        issue = None if state.lower() in ("succeeded", "active") else f"STATE_{state.upper()}"
+        findings.append(
+            cloud_finding(
+                source_type="AZURE_DEDICATED_HSM",
+                resource=name,
+                algorithm="HSM",
+                purpose="KEY_MANAGEMENT",
+                file_path=f"azure://dedicatedhsm/{name}",
+                provider="AZURE",
+                issue=issue,
+                extra={
+                    "subscription": subscription,
+                    "scan_method": "LIVE_API",
+                    "provisioning_state": state,
+                    "stamp_code": str(stamp or "") or None,
+                    "network_interfaces": len(mgmt_network) if isinstance(mgmt_network, (list, tuple)) else 0,
+                    # same custody marker as GCP HSM-backed keys / AWS clusters
+                    "hsm_backed": True,
+                },
+            )
+        )
+    return findings

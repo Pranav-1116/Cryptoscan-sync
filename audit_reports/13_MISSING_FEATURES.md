@@ -279,3 +279,39 @@ resource-level RBAC (§2.2 — product decision), official SDKs (§5.2).
   (§3.4), cloud HSM detection (§3.2), resource-level RBAC (§2.2),
   official SDKs — all deployment/company-scope or larger builds, not
   this round.
+
+## UPDATE — round 18 build (2026-10-09)
+
+- **§1.3 Transitive crypto propagation: BUILT (the recursive half).** The
+  unified inventory (manifests + lockfiles across 10+ ecosystems, built
+  earlier) now feeds `propagate_crypto_dependencies`: packages are joined
+  to the crypto-library catalog, exposure propagates up every lockfile
+  parent chain, and each chain from a crypto-bearing package to the direct
+  dependency that pulls it in is recorded (`crypto_dependency_paths` in
+  the cascade report; `crypto_bearing`/`crypto_algorithms` on package
+  nodes; summary counts + an honest
+  `crypto_dependency_coverage.ecosystems_with_parent_edges` — flat
+  lockfiles invent no edges). npm nested paths and cargo blocks carry
+  real parent edges today.
+- **§3.2 Cloud HSM detection: COMPLETE.** AWS CloudHSM
+  (`scan_cloudhsm`) and Azure Managed HSM (`scan_managed_hsm`) were
+  already covered — the matrix row was stale. Added: **Azure Dedicated
+  HSM** scanner (`scan_dedicated_hsm`,
+  `AZURE_DEDICATED_HSM` findings with provisioning state, stamp, network
+  isolation) wired into the Azure live scan (optional SDK, skipped not
+  fabricated without it), and an explicit `hsm_backed` marker on GCP
+  Cloud KMS keys with `protection_level: HSM` (plus camelCase-dict
+  robustness in the KMS scanner).
+- **§2.2 Resource-level permissions: FLOOR BUILT.** `resource_grants`
+  (migration 0076): per-system grants (owner > operator > viewer) with
+  restrictive-only-when-present semantics — unrestricted systems behave
+  exactly as before; the first grant switches a system into enforcement.
+  Enforced on the per-system endpoints (read = viewer+, write =
+  operator+); platform superadmin always passes, auditor passes reads.
+  Admin-only grant management (`GET/POST /systems/{id}/grants`,
+  `DELETE /systems/{id}/grants/{subject}`), every transition audited
+  (restrict/revoke/restrict-release). Delegated administration per
+  BU, custom role definitions, and BU→System→Asset inheritance remain
+  open as designed.
+- Also re-verified stale this round: "Fixed 3 roles" (§2.2) — the RBAC
+  module ships the full 8-role catalog with a permission matrix.

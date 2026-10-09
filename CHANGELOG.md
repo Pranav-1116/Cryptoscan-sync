@@ -6,6 +6,33 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — round 18: the remaining open audit items (13 §1.3/§2.2/§3.2, DISCOVERY P1-002)
+
+- **Transitive crypto propagation:** the scanner's package inventory
+  (manifests + lockfiles) now joins to the crypto-library catalog and
+  propagates exposure up every lockfile parent chain.
+  `crypto_dependency_paths` records each chain from a crypto-bearing
+  package to the direct dependency that pulls it in; package nodes carry
+  `crypto_bearing`/`crypto_algorithms`; the cascade summary counts
+  direct/transitive crypto exposure and states which ecosystems actually
+  carried parent edges (npm nested paths, cargo blocks — flat lockfiles
+  invent no edges).
+- **Azure Dedicated HSM scanner:** `AZURE_DEDICATED_HSM` findings
+  (provisioning state, stamp code, network interfaces) via the optional
+  `azure-mgmt-hardwaresecuritymodules` SDK — skipped, not fabricated,
+  without it. AWS CloudHSM and Azure Managed HSM were already covered;
+  GCP Cloud KMS keys with `protection_level: HSM` now carry an explicit
+  `hsm_backed` marker.
+- **Resource-level access grants (per-system):** `resource_grants` table
+  (migration 0076; owner > operator > viewer) with
+  restrictive-only-when-present semantics — unrestricted systems behave
+  exactly as before; the first grant switches a system into enforcement.
+  Read endpoints require viewer+, writes operator+; platform superadmin
+  always passes, auditor passes reads. Admin-only grant management
+  (`GET/POST /systems/{id}/grants`, `DELETE /systems/{id}/grants/{subject}`)
+  with every restrict/revoke/unrestrict transition hash-chain audited.
+- Rest-api.md regenerated for the three new grant endpoints.
+
 ### Added — round 17: the seven-report full read (audits 11–16 + CRYPTO_SCAN_DISCOVERY)
 
 - **Evidence soft-delete that preserves the hash chain (audits 15/16

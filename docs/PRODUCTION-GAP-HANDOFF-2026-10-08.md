@@ -326,6 +326,33 @@ deployment-scoped items (encryption at rest, mTLS, HA, read replicas),
 CI-blocked tooling (atheris/Playwright/k6/mutmut/Allure/chaos — staged in
 `.github/workflows-pending/` where applicable).
 
+## Round 18 — the remaining open audit items (2026-10-09)
+
+Round 17's close-out left three code-buildable items; all three built
+(migration 0076):
+
+1. **Transitive crypto propagation (13 §1.3, DISCOVERY P1-002):**
+   `propagate_crypto_dependencies` in the scanner cascade — package graph
+   ⟕ crypto-library catalog, exposure propagated up lockfile parent
+   chains, `crypto_dependency_paths` with per-chain algorithms and honest
+   ecosystem edge coverage.
+2. **Cloud HSM detection (13 §3.2):** Azure Dedicated HSM scanner +
+   GCP `hsm_backed` marker; AWS CloudHSM / Azure Managed HSM were already
+   there (stale matrix).
+3. **Resource-level grants floor (13 §2.2):** `resource_grants`
+   (owner > operator > viewer), restrictive-only-when-present, enforced on
+   per-system endpoints (read viewer+/write operator+, superadmin
+   bypass, auditor read bypass), admin-only audited management endpoints.
+
+Gates this round: scanner 291 (+5 propagation), cloud_scanner 414 (+2
+HSM), api suite re-run green including 6 new grant tests; rest-api.md
+regenerated for the 3 new grant endpoints; migration chain 0001→0076.
+
+Remaining open after round 18: BU→System→Asset grant inheritance and
+custom role definitions (by design, product decision), official SDKs,
+deployment-scoped items (encryption at rest, mTLS, HA, read replicas),
+CI-blocked tooling (staged in `.github/workflows-pending/`).
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

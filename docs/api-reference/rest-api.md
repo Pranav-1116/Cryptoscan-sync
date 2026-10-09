@@ -1,7 +1,7 @@
 # REST API reference
 
 Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-09:
-**738 paths, 817 operations** across 90 tagged groups.
+**740 paths, 820 operations** across 90 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -1181,6 +1181,9 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `PATCH` | `/api/v1/systems/{system_id}` | Update System |
 | `POST` | `/api/v1/systems/{system_id}/assets` | Attach Asset |
 | `POST` | `/api/v1/systems/{system_id}/dependencies` | Add Dependency |
+| `GET` | `/api/v1/systems/{system_id}/grants` | List Grants |
+| `POST` | `/api/v1/systems/{system_id}/grants` | Add Grant |
+| `DELETE` | `/api/v1/systems/{system_id}/grants/{subject}` | Revoke Grant |
 | `POST` | `/api/v1/systems/{system_id}/scan` | Scan System |
 
 ## technology-bom

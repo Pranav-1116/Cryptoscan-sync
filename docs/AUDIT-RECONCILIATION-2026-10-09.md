@@ -199,6 +199,31 @@ failures were a PYTHONPATH artifact (shared_models not importable), not a
 regression — 148/148 with the standard path; audit 11's test-count and
 coverage rows describe a codebase several rounds old.
 
+## 1.8 Round 18 — the remaining open audit items (2026-10-09, same day)
+
+Round 17 closed with three genuinely open code-buildable items (transitive
+dependency crypto, cloud HSM detection, resource-level RBAC). Round 18
+built them (migration 0076):
+
+1. **Transitive crypto propagation (13 §1.3, DISCOVERY P1-002)** — the
+   package inventory now joins the crypto-library catalog; exposure
+   propagates up lockfile parent chains, each path from a crypto-bearing
+   package to its direct-dependency entry recorded in
+   `crypto_dependency_paths`. Honest edge coverage: only ecosystems whose
+   lockfiles carry parent edges (npm nested paths, cargo blocks) get
+   chains; the report says which.
+2. **Cloud HSM detection (13 §3.2)** — matrix complete: AWS CloudHSM and
+   Azure Managed HSM were already covered (stale claims); Azure Dedicated
+   HSM scanner added (optional SDK, skip-not-fabricate); GCP HSM keys
+   carry an explicit `hsm_backed` marker.
+3. **Resource-level grants floor (13 §2.2)** — per-system grants with
+   restrictive-only-when-present semantics, enforced on the per-system
+   endpoints, platform-role bypass rules, admin-only audited management.
+   BU→System→Asset inheritance and custom roles remain open by design.
+
+Also verified stale: "fixed 3 roles" (the RBAC module ships the 8-role
+catalog + permission matrix).
+
 ## 2. P0 gap register (88_FINAL_GAP_PRIORITIZATION) — status after round 14
 
 | Gap | Audit claim | Current status | Evidence |

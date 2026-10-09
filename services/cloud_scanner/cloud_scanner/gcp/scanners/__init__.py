@@ -72,8 +72,8 @@ def scan_cloud_kms(client: Any, *, project: str, location: str = "global", telem
         name = named(key) or str(attr(key, "name", default="key") or "key")
         algo_name = _algo_name(key)
         algo, bits = map_gcp_kms_algorithm(algo_name)
-        template = attr(key, "version_template") or key
-        protection = attr(template, "protection_level")
+        template = attr(key, "version_template", "versionTemplate") or key
+        protection = attr(template, "protection_level", "protectionLevel")
         protection_name = protection if isinstance(protection, str) else attr(protection, "name", default="")
         purpose = attr(key, "purpose")
         purpose_name = purpose if isinstance(purpose, str) else attr(purpose, "name", default="ENCRYPT_DECRYPT")
@@ -93,6 +93,10 @@ def scan_cloud_kms(client: Any, *, project: str, location: str = "global", telem
                     "scan_method": "LIVE_API",
                     "algorithm": algo_name,
                     "protection_level": protection_name,
+                    # explicit Cloud HSM marker (report 13 §3.2): GCP HSM keys
+                    # are Cloud KMS keys with protection_level == HSM — say so
+                    # instead of leaving consumers to re-derive it
+                    "hsm_backed": str(protection_name).upper() == "HSM",
                     "kms_purpose": purpose_name,
                     "rotation_period_seconds": rotation_seconds,
                 },

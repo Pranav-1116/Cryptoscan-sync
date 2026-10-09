@@ -277,3 +277,20 @@ The codebase is honest about its maturity (33 GA / 30 Beta / 8 Preview), documen
 - Re-verified this round: the 4.1k+ backend / 132 frontend test counts
   and the 736-path/815-operation API surface in this report are stale in
   the report's favor — the platform is larger than documented here.
+
+## UPDATE — round 18 build (2026-10-09)
+
+- **P1-002 (transitive dependency crypto): the recursive half is BUILT.**
+  `scanner.analysis.cascade.propagate_crypto_dependencies` joins the
+  package inventory to the crypto-library catalog and propagates exposure
+  up lockfile parent chains, recording every path from a crypto-bearing
+  package to the direct dependency that pulls it in (npm nested paths and
+  cargo blocks carry real edges; flat lockfiles invent none — the report
+  says which ecosystems carried edges).
+- **Cloud HSM detection: COMPLETE** — Azure Dedicated HSM scanner added
+  (AWS CloudHSM and Azure Managed HSM were already covered); GCP HSM keys
+  (Cloud KMS `protection_level: HSM`) now carry an explicit `hsm_backed`
+  marker.
+- **Resource-level RBAC floor BUILT:** per-system `resource_grants`
+  (migration 0076), restrictive-only-when-present, audited transitions —
+  see the report-13 addendum.
