@@ -395,3 +395,34 @@ def resolve_conflict(evidence_list):
 | Safe finding | `shared/shared_models/shared_models/safe_finding.py` |
 | VerificationLog model | `services/database/db/models/verification_log.py` |
 | ScanManifest | `services/evidence/evidence/models/scan_manifest.py` |
+---
+
+## UPDATE ADDENDUM — Round 19 (2026-10-10): authority hierarchy built
+
+**P0 #1 (formalize evidence authority hierarchy) is now code.**
+`services/normalization/normalization/authority.py` ships the explicit
+6-level model this report asked for:
+
+| Tier | Label | Provenance signal |
+|---|---|---|
+| 1 | RUNTIME | live/runtime scanners, eBPF/probe collectors, `source.type=RUNTIME` |
+| 2 | BINARY | binary/ELF/JAR/container/image analyzers |
+| 3 | STATIC | static/AST/tree-sitter/regex/semgrep scanners |
+| 4 | DECLARED | cloud/config/IaC/terraform/pipeline collectors |
+| 5 | MANUAL | manual/import/form collectors |
+| 6 | UNRANKED | no recognizable provenance — never guessed |
+
+It is wired into the conflict detector (`normalization/conflicts.py`):
+every conflict from `GET /findings/conflicts` now carries an
+`authority` annotation saying which observer the hierarchy would favor
+and whether that preference is decisive (single highest tier) or a tie
+needing a human/policy decision. Conflicts are still reported, never
+auto-resolved — the model annotates, it does not override.
+
+Also closed from this report's P0 list: #2 conflict detection was
+already built (round 15). Remaining open: freshness decay (#3/#4),
+collector calibration, negative-evidence tracking — product-level
+enhancements, honestly tracked in 00_ROUND_STATUS.
+
+Tests: `services/normalization/tests/unit/test_authority.py` (16 tests;
+suite 139).

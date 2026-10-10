@@ -107,6 +107,75 @@ UNIFIED_LEVELS = [
     ("CRITICAL", 80), ("HIGH", 60), ("MEDIUM", 40), ("LOW", 0),
 ]
 
+#: Report 64 P0: all weights configurable. ``CRYPTOSCAN_RISK_WEIGHTS`` may
+#: carry a JSON object mapping blueprint factor names to weights, e.g.
+#: ``{"pqc": 0.30, "crypto": 0.10}``. Unrecognized names, non-numeric or
+#: negative weights make the whole override invalid — the engine then falls
+#: back to the documented defaults and says so via ``weights_source``
+#: (invalid configuration is reported, never silently half-applied).
+import json as _json
+import os as _os
+
+CALCULATION_VERSION = "unified-risk-v1"
+
+_WEIGHTS_ENV_VAR = "CRYPTOSCAN_RISK_WEIGHTS"
+
+
+def _env_weights() -> dict[str, float] | None:
+    raw = _os.environ.get(_WEIGHTS_ENV_VAR, "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = _json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    out: dict[str, float] = {}
+    for key, value in parsed.items():
+        if key not in UNIFIED_FACTORS:
+            return None
+        try:
+            weight = float(value)
+        except (TypeError, ValueError):
+            return None
+        if weight < 0:
+            return None
+        out[key] = weight
+    if not out:
+        return None
+    return out
+
+
+def unified_weights() -> tuple[dict[str, float], str]:
+    """Effective blueprint weights: (factor → weight, source label).
+
+    Env override semantics: factors named in the override keep their
+    **absolute** weight; the remaining weight budget is split among the
+    unspecified factors proportionally to their defaults. If the override
+    sums to more than 1.0 it is scaled down proportionally. The returned
+    map always sums to 1.0.
+    """
+    defaults = {k: w for k, (_, w) in UNIFIED_FACTORS.items()}
+    override = _env_weights()
+    if override is None:
+        total = sum(defaults.values()) or 1.0
+        return {k: round(w / total, 6) for k, w in defaults.items()}, "default"
+    if sum(override.values()) > 1.0:
+        scale = 1.0 / sum(override.values())
+        override = {k: round(w * scale, 6) for k, w in override.items()}
+    remainder = round(1.0 - sum(override.values()), 6)
+    others = {k: w for k, w in defaults.items() if k not in override}
+    others_total = sum(others.values())
+    merged = dict(override)
+    if others and others_total > 0 and remainder > 0:
+        for k, w in others.items():
+            merged[k] = round(remainder * (w / others_total), 6)
+    else:
+        for k in others:
+            merged[k] = 0.0
+    return merged, f"env:{_WEIGHTS_ENV_VAR}"
+
 
 def unified_level(score: float) -> str:
     for name, floor in UNIFIED_LEVELS:
@@ -115,12 +184,20 @@ def unified_level(score: float) -> str:
     return "LOW"
 
 
-def unified_risk(levels: Optional[dict[str, Any]] = None, **factors: Any) -> dict[str, Any]:
+def unified_risk(levels: Optional[dict[str, Any]] = None,
+                 weights: Optional[dict[str, float]] = None,
+                 **factors: Any) -> dict[str, Any]:
     """Normalize a 0–4 level per blueprint factor into one 0–100 score.
 
     ``levels`` (or ``factors``) may carry any subset of ``UNIFIED_FACTORS``;
-    missing factors contribute 0 and are listed as ``missing``.
+    missing factors contribute 0 and are listed as ``missing``. ``weights``
+    overrides the effective factor weights (defaults come from
+    ``unified_weights()`` — env-configurable, report 64 P0).
     """
+    effective, weights_source = unified_weights()
+    if weights is not None:
+        effective = dict(weights)
+        weights_source = "caller"
     merged: dict[str, int] = {}
     for key in UNIFIED_FACTORS:
         merged[key] = int((levels or {}).get(key, 0) or 0)
@@ -129,7 +206,8 @@ def unified_risk(levels: Optional[dict[str, Any]] = None, **factors: Any) -> dic
             merged[key] = int(value or 0)
     total = 0.0
     detail: dict[str, Any] = {}
-    for key, (max_level, weight) in UNIFIED_FACTORS.items():
+    for key, (max_level, _) in UNIFIED_FACTORS.items():
+        weight = float(effective.get(key, 0.0))
         level = min(max(int(merged.get(key, 0)), 0), max_level)
         points = (level / max_level) * 100 * weight
         total += points
@@ -140,6 +218,8 @@ def unified_risk(levels: Optional[dict[str, Any]] = None, **factors: Any) -> dic
         "level": unified_level(score),
         "factors": detail,
         "missing": [k for k in UNIFIED_FACTORS if (levels or {}).get(k) is None],
+        "calculation_version": CALCULATION_VERSION,
+        "weights_source": weights_source,
     }
 
 

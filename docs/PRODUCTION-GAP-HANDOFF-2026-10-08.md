@@ -353,6 +353,46 @@ custom role definitions (by design, product decision), official SDKs,
 deployment-scoped items (encryption at rest, mTLS, HA, read replicas),
 CI-blocked tooling (staged in `.github/workflows-pending/`).
 
+## Round 19 — the advanced/deep re-study (2026-10-10)
+
+Round 18's close-out was challenged ("many things still missing"), so
+all advanced/deep reports were re-read against the code. Outcome: two
+stale verdicts corrected, four buildable cores shipped (migration
+0077):
+
+1. **Evidence authority hierarchy (49):** 6-tier model
+   (RUNTIME > BINARY > STATIC > DECLARED > MANUAL > UNRANKED) in
+   `normalization/authority.py`, wired into `detect_conflicts` — every
+   conflict now carries an `authority` preference (decisive or tie),
+   never auto-resolving.
+2. **System ownership roles (55):** `technical_owner` +
+   `security_owner` on systems (migration 0077), create/patch/import
+   surfaces, and `system.ownership_change` audit entries with old→new
+   on every effective change.
+3. **Exposure path queries (58):** `GET /exposure/paths` — bounded
+   walks entry-candidate → dependencies → crypto assets, designation
+   filters, cycle-free, honest entry heuristic (no topology scan).
+4. **Unified risk upgrades (64):** `CRYPTOSCAN_RISK_WEIGHTS`
+   env-configurable weights (all-or-nothing validation, absolute for
+   named factors), `GET /risk/systems[/{id}]` with all eight factor
+   levels derived from persisted state + raw `signals`,
+   `calculation_version` stamping. Report 64's "no unified model" was
+   already stale — `/risk/unified` + the §29b engine shipped earlier.
+
+Gates this round: api 1388 (+14), worker 525, normalization 139 (+16),
+universal_platform 40 (+5), database 162, scanner 291+12s,
+cloud_scanner 414, cbom 233, policy 96, remediation 42, evidence 62,
+graph_engine 52, drift 72, control_plane 81, devsecops 550,
+universal_crypto 148, shared_models 519; ruff clean; chain 0001→0077;
+rest-api.md regenerated (743/823/91). Frontend untouched (no frontend
+files changed).
+
+Remaining open after round 19: 47/51 (product-level layering), 57
+topology nodes (deployment), 49 freshness decay/calibration, 55
+asset-level multi-owner model, 64 threat/EPSS modeling (external
+feeds), 13 §2.1/§2.3/§2.4/§3.1 (deployment/product), 82 zero-trust
+(deployment), SDKs, CI-blocked tooling.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

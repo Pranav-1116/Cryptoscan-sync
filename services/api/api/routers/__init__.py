@@ -19,6 +19,7 @@ Modules:
 - estate: Estate coverage campaigns. One CLOUD job per account, not per resource
 - events: Real-time SSE event stream + recent/history fallback
 - exceptions: Policy exception request / approval / review / expiration
+- exposure: Bounded exposure-path queries over the system dependency graph
 - export: CBOM export and integrity verification
 - findings: Findings endpoints
 - graph: Dependency graph and blast-radius APIs (Neo4j when configured)

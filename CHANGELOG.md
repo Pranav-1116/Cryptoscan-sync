@@ -6,6 +6,39 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Added — round 19: the advanced/deep re-study (advanced/49, 55, 58, 64)
+
+- **Evidence authority hierarchy:** explicit 6-tier model (RUNTIME >
+  BINARY > STATIC > DECLARED > MANUAL > UNRANKED) in
+  `normalization/authority.py`; every conflict from
+  `GET /findings/conflicts` now carries an `authority` annotation
+  saying which observer the hierarchy favors and whether that is
+  decisive or a tie — annotation only, conflicts are never
+  auto-resolved.
+- **System ownership roles:** `systems.technical_owner` and
+  `systems.security_owner` (migration 0077) with create/patch/CMDB-
+  import surfaces; effective ownership changes write
+  `system.ownership_change` audit entries (old → new per field);
+  same-value patches are not audited.
+- **Exposure path queries:** `GET /exposure/paths` — bounded
+  (depth ≤ 4, ≤ 100 paths, cycle-free) walks from entry-candidate
+  systems (cloud-hosted or remote scan targets) over dependency edges
+  to attached crypto assets, filtered by algorithm or NIST designation
+  rank; the response states the entry heuristic honestly (no network
+  topology scan exists).
+- **Unified risk upgrades:** `CRYPTOSCAN_RISK_WEIGHTS` env variable
+  re-weights the eight blueprint factors (absolute weights for named
+  factors, remainder split proportionally; invalid JSON falls back
+  wholly and is reported via `weights_source`); new
+  `GET /risk/systems` and `GET /risk/systems/{id}` derive every factor
+  level from persisted state (registry designations, quantum impact,
+  compliance, drift, CVEs, dependencies, environment, criticality)
+  with raw derivation `signals`; every assessment is stamped with
+  `calculation_version`.
+- **Corrections:** report 64's "no unified risk model exists" was
+  already stale (`/risk/unified` + the §29b engine); report 49's
+  conflict-detection P0 was already built in round 15.
+
 ### Added — round 18: the remaining open audit items (13 §1.3/§2.2/§3.2, DISCOVERY P1-002)
 
 - **Transitive crypto propagation:** the scanner's package inventory

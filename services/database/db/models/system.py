@@ -21,6 +21,11 @@ class System(BaseModel, TenantScoped):
     name: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # Report 55 P0: accountability needs named humans/teams per role, not one
+    # free-text "owner". Technical owner answers "who changes the crypto";
+    # security owner answers "who accepts the risk".
+    technical_owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    security_owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     environment: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     compliance_scopes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     current_agility_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)

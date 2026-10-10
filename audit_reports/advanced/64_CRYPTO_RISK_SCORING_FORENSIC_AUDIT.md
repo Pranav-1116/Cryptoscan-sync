@@ -415,3 +415,46 @@ class RiskComponents:
 | Graph Engine | `services/graph_engine/graph_engine/core/engine.py` |
 | Quantum Risk | `services/quantum/quantum/risk.py` |
 | Policy Engine | `services/policy/policy/core/engine.py` |
+---
+
+## UPDATE ADDENDUM — Round 19 (2026-10-10): unified model extended — configurable weights, system view, versioning
+
+**Correction first (stale finding):** "no unified risk model exists" was
+already false when this report was re-read — the §29b engine
+(`services/universal_platform/universal_platform/risk.py`,
+`GET /risk/unified`) fuses the eight blueprint factors (technical,
+crypto, pqc, exposure, business criticality, dependency impact,
+evidence confidence, threat) into one 0–100 CRITICAL/HIGH/MEDIUM/LOW
+score with per-factor decomposition. What was genuinely missing from
+this report's P0/P2 list is now built:
+
+1. **Configurable weighting (P0 #2 / P2 #10):**
+   `CRYPTOSCAN_RISK_WEIGHTS` (JSON env) re-weights any subset of the
+   eight factors — named factors get absolute weights, the remainder is
+   split proportionally among the rest, total always 1.0. Unrecognized
+   names, non-numeric or negative values invalidate the whole override
+   (fall back to documented defaults, reported via `weights_source`) —
+   never silently half-applied.
+2. **System-level unified risk (P2 #8/#11):** `GET /risk/systems` and
+   `GET /risk/systems/{id}` derive the same eight factor levels from a
+   system's persisted state — latest-scan evidence (registry
+   designation, quantum impact, compliance, confidence), open drift
+   events, CVEs, dependency edges, environment, criticality — and
+   return the full decomposition plus the raw derivation `signals`
+   (fail ratio, quantum-weighted ratio, unknown algorithms, …).
+   Estate rollup + ranking included.
+3. **Calculation audit trail (P2 #9):** every assessment is
+   deterministic, stamped with `calculation_version`
+   (`unified-risk-v1`) and `weights_source`, and self-describing (the
+   response IS the audit trail: levels → points → weights → signals).
+
+Still open from this report, honestly: threat-actor modeling and
+exploitability/EPSS (no threat-intel feed in scope), compensating
+controls, data-value decay, Monte Carlo/forecasting (P3). These need
+external data sources or are speculative modeling — not buildable from
+persisted state without inventing numbers.
+
+Tests: `services/universal_platform/tests/test_unified_risk.py` (+5
+weight/version tests, suite 40) and
+`services/api/tests/unit/test_round19_risk_exposure_ownership.py`
+(risk block: 6 tests).

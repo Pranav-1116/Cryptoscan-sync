@@ -104,6 +104,8 @@ class SystemRepository(BaseRepository[System]):
         name: str,
         *,
         owner: str | None = None,
+        technical_owner: str | None = None,
+        security_owner: str | None = None,
         environment: str | None = None,
         description: str | None = None,
         compliance_scopes: list[str] | None = None,
@@ -133,6 +135,8 @@ class SystemRepository(BaseRepository[System]):
         row = System(
             name=name,
             owner=owner,
+            technical_owner=technical_owner,
+            security_owner=security_owner,
             environment=environment,
             description=description,
             compliance_scopes=compliance_scopes or [],
@@ -154,6 +158,8 @@ class SystemRepository(BaseRepository[System]):
             existing = self.get_or_create(
                 name,
                 owner=item.get("owner"),
+                technical_owner=item.get("technical_owner"),
+                security_owner=item.get("security_owner"),
                 environment=item.get("environment"),
                 description=item.get("description"),
                 compliance_scopes=item.get("compliance_scopes") or [],
@@ -167,6 +173,8 @@ class SystemRepository(BaseRepository[System]):
             return existing, created
         for field in (
             "owner",
+            "technical_owner",
+            "security_owner",
             "environment",
             "description",
             "scan_target",

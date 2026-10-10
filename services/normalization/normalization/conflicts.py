@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from typing import Any, Iterable
 
+from normalization.authority import authority_preference
+
 ALGORITHM_MISMATCH = "ALGORITHM_MISMATCH"
 PARAMETER_MISMATCH = "PARAMETER_MISMATCH"
 STATUS_MISMATCH = "STATUS_MISMATCH"
@@ -92,6 +94,9 @@ def detect_conflicts(findings: Iterable[dict[str, Any]]) -> list[dict[str, Any]]
             "conflict_type": conflict_type,
             "observation_count": len(group),
             "observers": _sources(group),
+            # report 49 P0: annotate which side the evidence authority
+            # hierarchy would favor (never auto-resolve — annotation only)
+            "authority": authority_preference(group),
             **details,
         })
     return conflicts

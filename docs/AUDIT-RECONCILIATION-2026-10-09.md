@@ -224,6 +224,65 @@ built them (migration 0076):
 Also verified stale: "fixed 3 roles" (the RBAC module ships the 8-role
 catalog + permission matrix).
 
+## 1.9 Round 19 — the advanced/deep re-study (2026-10-10)
+
+The round-18 close-out ("all code-buildable findings closed") was
+challenged, so every advanced/deep report was re-read against the code.
+Two things fell out: several 🟡-Open verdicts were already stale (the
+§29b unified risk engine predates report 64's "no unified model"
+verdict), and four reports carried genuinely buildable cores. Built
+(migration 0077):
+
+1. **Evidence authority hierarchy (49 P0#1)** —
+   `normalization/authority.py`: explicit 6-tier model (RUNTIME >
+   BINARY > STATIC > DECLARED > MANUAL > UNRANKED), deterministic
+   provenance matching, never guessing. Wired into `detect_conflicts`:
+   every conflict now carries an `authority` preference annotation
+   (decisive or tie) — annotation only, no auto-resolution.
+2. **System ownership roles (55 P0#1/#2)** — `systems.technical_owner`
+   + `systems.security_owner` (migration 0077), full API surface
+   (create/patch/import), and audited changes: effective ownership
+   changes write `system.ownership_change` chain entries with old→new
+   per field; no-op patches are not audited.
+3. **Exposure path queries (58 P3#14)** — `GET /exposure/paths`:
+   bounded (depth ≤ 4, ≤ 100 paths, cycle-free) walks from
+   entry-candidate systems (cloud-hosted or remote-target) over
+   dependency edges to attached crypto assets, with designation
+   filters. Honest about the entry heuristic; P0–P2 topology nodes
+   remain deployment-scoped.
+4. **Unified risk upgrades (64 P0#2, P2#8–#11)** —
+   `CRYPTOSCAN_RISK_WEIGHTS` env-configurable factor weights
+   (absolute for named factors, remainder split proportionally, invalid
+   configs fall back wholly and say so); `GET /risk/systems[/{id}]`
+   deriving all eight factor levels from persisted state with raw
+   derivation `signals`; `calculation_version` stamping on every
+   assessment. Also corrected the stale "no unified model" claim —
+   `/risk/unified` + the §29b engine predate the re-read.
+
+Gates this round: api 1388 (1374 + 14 new; unit 1094 + integration/
+security 294), worker 525, normalization 139 (+16 authority),
+universal_platform 40 (+5), database 162, scanner 291+12s,
+cloud_scanner 414, cbom 233, policy 96, remediation 42, evidence 62,
+graph_engine 52, drift 72, control_plane 81, devsecops 550,
+universal_crypto 148, shared_models 519 (+config 16 + logging 11);
+ruff clean; migration chain 0001→0077; rest-api.md regenerated
+(743 paths / 823 ops / 91 groups). Frontend untouched this round (no
+frontend files changed; last green at 13faf13).
+
+Verified stale this round: 64's "no unified risk model" (engine +
+endpoint already shipped); 49's P0#2 conflict detection (round 15);
+58's P0–P2 require discovery sources that do not exist in scope.
+
+Remaining open after round 19: 47 unified asset identity + 51
+observation→fact→risk layering (product-level), 57 attack-surface
+nodes beyond persisted data (deployment), freshness decay + collector
+calibration (49), asset-level/multi-owner model (55), threat-actor/
+exploitability modeling (64, needs external feeds), report-13 §2.1
+Neo4j tenancy/quotas + §2.3 automated compliance reports + §2.4 key
+rotation automation + §3.1 CT monitoring (deployment/product), 82
+zero-trust (deployment), SDKs, CI-blocked tooling
+(`.github/workflows-pending/`).
+
 ## 2. P0 gap register (88_FINAL_GAP_PRIORITIZATION) — status after round 14
 
 | Gap | Audit claim | Current status | Evidence |

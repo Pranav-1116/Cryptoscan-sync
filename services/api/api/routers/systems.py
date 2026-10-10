@@ -54,6 +54,8 @@ class SystemCreate(BaseModel):
     name: str
     description: str | None = None
     owner: str | None = None
+    technical_owner: str | None = None
+    security_owner: str | None = None
     environment: str | None = None
     compliance_scopes: list[str] = []
     scan_target: str | None = None
@@ -123,6 +125,8 @@ def create_system(
             name=body.name,
             description=body.description,
             owner=body.owner,
+            technical_owner=body.technical_owner,
+            security_owner=body.security_owner,
             environment=body.environment,
             compliance_scopes=body.compliance_scopes,
             scan_target=body.scan_target,
@@ -173,6 +177,8 @@ class SystemUpdate(BaseModel):
     scan_target: str | None = None
     scan_branch: str | None = None
     owner: str | None = None
+    technical_owner: str | None = None
+    security_owner: str | None = None
     environment: str | None = None
     business_unit: str | None = None
     criticality: str | None = None
@@ -195,6 +201,8 @@ def update_system(
         raise HTTPException(status_code=404, detail="System not found")
     _system_access(db, user, system_id, WRITE_ROLE, read_only=False)
     data = body.model_dump(exclude_unset=True)
+    ownership_keys = ("owner", "technical_owner", "security_owner")
+    ownership_before = {k: getattr(row, k, None) for k in ownership_keys}
     for key, value in data.items():
         setattr(row, key, value)
     if "scan_target" in data:
@@ -203,6 +211,28 @@ def update_system(
         if not row.last_scan_id:
             row.coverage_status = initial_status(row.scan_target)
     db.flush()
+    # Ownership changes are accountability decisions — audit who changed
+    # them, from what, to what (report 55: ownership must be auditable).
+    changed = {
+        k: {"from": ownership_before[k], "to": data[k]}
+        for k in ownership_keys
+        if k in data and (data[k] or None) != (ownership_before[k] or None)
+    }
+    if changed:
+        try:
+            from db.repositories.user_repository import UserRepository
+
+            UserRepository(db).audit(
+                user,
+                "system.ownership_change",
+                target_type="system",
+                target_id=str(system_id),
+                detail={"changes": changed},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise HTTPException(status_code=503, detail="Ownership audit is unavailable")
     return row.to_dict()
 
 

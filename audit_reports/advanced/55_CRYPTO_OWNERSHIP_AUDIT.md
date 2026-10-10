@@ -398,3 +398,33 @@ BusinessOwner (email, name)
 | CryptoAssetEvidence | `services/database/db/models/crypto_asset_evidence.py` |
 | BusinessOwner repository | `services/database/db/repositories/business_owner_repository.py` |
 | SystemRepository | `services/database/db/repositories/system_repository.py` |
+---
+
+## UPDATE ADDENDUM — Round 19 (2026-10-10): ownership roles built
+
+**P0 #1/#2 (technical + security owner on System) are now code.**
+Migration `0077_system_ownership` adds `systems.technical_owner` and
+`systems.security_owner` (String 200, nullable) next to the existing
+free-text `owner` — the report's exact accountability split: technical
+owner answers "who changes the crypto", security owner answers "who
+accepts the risk".
+
+Surfaces:
+
+- `POST /systems` and `PATCH /systems/{id}` accept all three owner
+  fields; CMDB import (`upsert_imported`) carries them through with
+  fill-if-empty semantics like every other field.
+- **Ownership changes are audited** (P1 #7-lite): any effective change
+  to `owner`/`technical_owner`/`security_owner` via PATCH writes a
+  `system.ownership_change` audit-chain entry recording old → new per
+  field. Same-value patches are not audited; non-ownership patches are
+  not audited as ownership changes.
+
+Remaining open from this report: direct CryptoAsset/Certificate owner
+FKs (#3/#4), the `SystemOwnership` multi-owner link table with roles
+and delegation (#4/#6), environment-scoped ownership (#5), automated
+ownership discovery from CODEOWNERS/git blame (#8) — product decisions
+with real schema cost, tracked in 00_ROUND_STATUS.
+
+Tests: `services/api/tests/unit/test_round19_risk_exposure_ownership.py`
+(ownership block: 4 tests).

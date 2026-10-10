@@ -411,3 +411,33 @@ Internet
 | NetworkInventory Model | `services/database/db/models/network_inventory.py` |
 | CloudAccount Model | `services/database/db/models/cloud_account.py` |
 | SystemDependency | `services/database/db/models/system_dependency.py` |
+---
+
+## UPDATE ADDENDUM — Round 19 (2026-10-10): exposure path query API built
+
+**P3 #14 (exposure path query API) is now code.**
+`GET /exposure/paths` (`services/api/api/routers/exposure.py`) walks the
+persisted graph — entry-candidate systems → `system_dependencies` edges
+→ `system_assets` links → crypto assets — and returns bounded paths
+with the asset's registry designation:
+
+- Entry candidates are cloud-hosted (`cloud_provider` set) or
+  remote-target systems (`http(s)://`, `git@`, `ssh://` scan targets).
+  The response says so explicitly: the platform does not scan network
+  topology, so "entry" is a heuristic over metadata, not verified
+  reachability.
+- Filters: `algorithm=` (paths ending at that algorithm) and `min_rank=`
+  (designation floor: 4=DISALLOWED, 3=DEPRECATED, 1=ALLOWED).
+- Bounds: depth ≤ 4 hops, ≤ 100 paths, cycle-free, ranked by
+  weakest designation then depth.
+
+What this is NOT (the P0–P2 items): NetworkEdge/LoadBalancer/K8s/Pod
+nodes, DNS→CDN→WAF→ALB chains, code-level DEFINES/CALLS edges, and
+network-flow nodes all require discovery sources the platform does not
+have (runtime topology, k8s APIs). They stay open as deployment-scoped
+work; the query API is deliberately built over what is actually
+persisted so it never fabricates hops.
+
+Tests: `services/api/tests/unit/test_round19_risk_exposure_ownership.py`
+(exposure block: 4 tests — chain shape, algorithm filter, empty case,
+island exclusion).

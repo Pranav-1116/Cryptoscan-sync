@@ -1,7 +1,7 @@
 # REST API reference
 
-Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-09:
-**740 paths, 820 operations** across 90 tagged groups.
+Generated from the live OpenAPI schema (`GET /api/openapi.json`) on 2026-10-10:
+**743 paths, 823 operations** across 91 tagged groups.
 Re-generate after API changes; this file is a mirror of the schema, not a hand-maintained list.
 
 ## Conventions
@@ -570,6 +570,12 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 | `GET` | `/api/v1/scans/{scan_id}/verification-script` | Export Verification Script |
 | `GET` | `/api/v1/scans/{scan_id}/verify` | Verify Scan |
 
+## exposure
+
+| Method | Path | Summary |
+|---|---|---|
+| `GET` | `/api/v1/exposure/paths` | Exposure Paths |
+
 ## findings
 
 | Method | Path | Summary |
@@ -1037,6 +1043,8 @@ Re-generate after API changes; this file is a mirror of the schema, not a hand-m
 
 | Method | Path | Summary |
 |---|---|---|
+| `GET` | `/api/v1/risk/systems` | Systems Unified Risk |
+| `GET` | `/api/v1/risk/systems/{system_id}` | System Unified Risk |
 | `GET` | `/api/v1/risk/unified` | Unified Inventory Risk |
 
 ## runtime

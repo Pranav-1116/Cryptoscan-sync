@@ -1,6 +1,6 @@
-# Audit Report Status — 2026-10-09 (post-remediation, rounds 13–18)
+# Audit Report Status — 2026-10-10 (post-remediation, rounds 13–19)
 
-**Generated:** 2026-10-09, after remediation rounds 13–18 (last full read of reports 01–16 + CRYPTO_SCAN_DISCOVERY in round 17; round 18 built the remaining open items).
+**Generated:** 2026-10-10, after remediation rounds 13–19 (last full read of reports 01–16 + CRYPTO_SCAN_DISCOVERY in round 17; round 18 built the remaining open items; round 19 re-studied the advanced/deep reports and built the open cores of 49/55/58/64).
 **Purpose:** every report in this folder was read and every actionable claim
 re-verified against the code. This file records the verdict per report and what
 was built in response. The original report text is unchanged; reports that were
@@ -37,22 +37,22 @@ repository on 2026-10-09.
 | advanced/46 CROSS_BOM | ✅ Addressed | Technology BOM unification (layered exports) |
 | advanced/47 UNIFIED_ASSET_IDENTITY | 🟡 Open | Unified identity spec is product-level follow-up |
 | advanced/48 CRYPTO_FACT_GRAPH | ✅ Mostly addressed | Graph snapshots + evidence links |
-| advanced/49 EVIDENCE_QUALITY | 🟡 Open | Formal authority model = enhancement |
+| advanced/49 EVIDENCE_QUALITY | 🔧 Partially remediated | **UPDATE addendum (R19)** — 6-level authority hierarchy built + wired into conflict annotation; freshness decay/calibration remain product-level |
 | advanced/50 CONFLICT_RESOLUTION | 🔧 **REMEDIATED** | **UPDATE addendum** — conflict detector built (3 classes) + `GET /findings/conflicts` |
 | advanced/51 OBSERVATION_FACT_RISK | 🟡 Open | Layering is design follow-up; conflicts now at least visible (50) |
 | advanced/52 DETECTION_ACCURACY | 🔧 Partially remediated | **UPDATE addendum** — hybrid-PQC detection built round 14 |
 | advanced/53 NORMALIZATION | ✅ Current | Collision catalogue still valid; conflict surfacing added |
 | advanced/54 ASSET_LIFECYCLE | 🔧 **REMEDIATED** | **UPDATE addendum** — lifecycle state machine built (DISCOVERED→…→RETIRED) |
-| advanced/55 CRYPTO_OWNERSHIP | 🟡 Open | Single-owner model is a product decision |
+| advanced/55 CRYPTO_OWNERSHIP | 🔧 Partially remediated | **UPDATE addendum (R19)** — technical/security owner fields (migration 0077) + audited ownership changes; asset-level/multi-owner model remains a product decision |
 | advanced/56 BUSINESS_IMPACT | ✅ Mostly addressed | business_context + system_business_process |
-| advanced/57 ATTACK_SURFACE | 🟡 Open | Enhancement |
-| advanced/58 EXPOSURE_PATH | 🟡 Open | Enhancement |
+| advanced/57 ATTACK_SURFACE | 🟡 Open | Supply-chain/CI-CD/data-flow nodes need discovery sources the platform lacks |
+| advanced/58 EXPOSURE_PATH | 🔧 Partially remediated | **UPDATE addendum (R19)** — `GET /exposure/paths` query API over the persisted graph (entry→deps→assets); NetworkEdge/LB/K8s nodes remain deployment-scoped |
 | advanced/59 HNDL_PQC | 🔧 Partially remediated | **UPDATE addendum** — hybrid KEM detection + classification fixed round 14 |
 | advanced/60 AGILITY | ✅ Current | 6-factor scoring shipped |
 | advanced/61 PQC_MIGRATION_DEP | ✅ Mostly addressed | Migration waves/projects shipped |
 | advanced/62 REMEDIATION_VERIFICATION | 🔧 **REMEDIATED** | **UPDATE addendum** — full verification loop built round 14 |
 | advanced/63 CONTINUOUS_MONITORING | ✅ Mostly addressed | Monitor daemon + webhooks + SSE + report schedules |
-| advanced/64 RISK_SCORING | 🟡 Open | Unified cross-score model = enhancement |
+| advanced/64 RISK_SCORING | 🔧 Partially remediated | **UPDATE addendum (R19)** — "no unified model" was already stale (§29b engine + `/risk/unified`); configurable weights, system-level view (`/risk/systems`), calculation versioning built R19; threat-actor/EPSS modeling needs external feeds |
 | advanced/65 POLICY_ENGINE | ✅ Current | Audit itself found it solid (versioning + pack hashing) |
 | advanced/66 COMPLIANCE_EVIDENCE | ✅ Addressed | Evidence packs, attestations, closure register |
 | advanced/68 TEMPORAL | ✅ Addressed | Graph snapshots + event journal |
@@ -94,5 +94,9 @@ repository on 2026-10-09.
 | 18 (2026-10-09) | Transitive crypto propagation (`propagate_crypto_dependencies`, crypto_dependency_paths in cascade) | 13 §1.3, DISCOVERY P1-002 |
 | 18 (2026-10-09) | Azure Dedicated HSM scanner + GCP `hsm_backed` marker (cloud HSM matrix complete) | 13 §3.2 |
 | 18 (2026-10-09) | Resource-level grants floor (`resource_grants`, migration 0076, per-system enforcement + admin endpoints) | 13 §2.2 |
+| 19 (2026-10-10) | Evidence authority hierarchy (6 tiers) + conflict annotation (`authority` on every conflict) | 49 P0#1, 50 |
+| 19 (2026-10-10) | System ownership roles (`technical_owner`/`security_owner`, migration 0077, audited changes) | 55 P0#1/2 |
+| 19 (2026-10-10) | Exposure path query API (`GET /exposure/paths`, bounded entry→deps→assets walks) | 58 P3#14 |
+| 19 (2026-10-10) | Unified risk upgrades: env-configurable weights, `GET /risk/systems[/{id}]` with derivation signals, calculation versioning | 64 P0#2, P2#8/9/10/11 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.
