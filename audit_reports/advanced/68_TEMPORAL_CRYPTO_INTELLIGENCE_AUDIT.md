@@ -395,3 +395,23 @@ class ReintroductionDetector:
   types classify changes (added/removed/parameter/version changes);
   a full taxonomy with severity-weighted change classes remains
   open (product-scoped).
+
+## Round 29 update (2026-10-10) — change classification taxonomy built
+
+* **Change classification (P0 #3) — NOW BUILT (this round).**
+  `universal_crypto/live/change_taxonomy.py` classifies every one of
+  the 15 journal event types into a change class (DISCOVERY / ADDITION
+  / REMOVAL / MODIFICATION / OPERATIONAL / ALERT) with a crypto-impact
+  ordinal and a direction — and the direction is **payload-aware where
+  the payload can say**: an old/new key-size pair is compared directly
+  (shrink = DETERIORATION), and old/new algorithms are compared through
+  the shared algorithm registry's designations (DES → AES-256-GCM is an
+  IMPROVEMENT). Unrecognized event types classify as ALERT with the
+  label "never guessed", and the impact ordinals are explicitly sorting
+  weights, not risk scores — the risk engine stays the single source of
+  risk truth. Wired into `GET /crypto/live/timeline`: every event
+  carries its `classification`, and the response gains a
+  `change_summary` rollup (per change class, per direction,
+  unrecognized types listed). Tests: 7 unit
+  (`services/universal_crypto/tests/unit/test_change_taxonomy.py`,
+  including full-enum coverage) + 2 API tests on the timeline surface.

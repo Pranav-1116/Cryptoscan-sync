@@ -40,3 +40,32 @@ def get_asset(
     payload = row.to_dict()
     payload["evidence_ids"] = [link.evidence_id for link in row.evidence_links]
     return payload
+
+
+@router.get("/libraries/identity")
+def library_identities(
+    limit: int = Query(500, ge=1, le=2000,
+                       description="How many assets' library lists to fold in"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Canonical library identities across the estate (audit 70, round 29).
+
+    The same library arrives as ``OpenSSL``, ``libssl.so.1.1`` and
+    ``py-openssl``; this surface folds every asset's raw library entries
+    into registry identities with their alias sets — the dedup view the
+    asset inventory could not give. Unmatched names stay unmatched.
+    """
+    from normalization.library_identity import merge_library_identities
+
+    rows, total = AssetRepository(db).list_assets(page=1, page_size=limit)
+    entries: list = []
+    for row in rows:
+        libraries = getattr(row, "libraries", None) or []
+        if isinstance(libraries, list):
+            entries.extend(libraries)
+    merged = merge_library_identities(entries)
+    merged["assets_considered"] = len(rows)
+    merged["asset_total"] = total
+    merged["raw_entries"] = len(entries)
+    return merged

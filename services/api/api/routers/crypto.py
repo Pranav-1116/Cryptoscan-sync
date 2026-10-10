@@ -157,8 +157,19 @@ def event_timeline(
     repo = CryptoRepository(db)
     rows, total = repo.list_events(asset_id=asset_id, event_type=event_type,
                                    page=page, page_size=page_size)
-    return {"events": [r.event_dict() for r in rows],
-            "total_count": total, "page": page}
+    # change classification (audit 68 P0#3): every event carries its
+    # change class / impact / direction, with a per-class rollup
+    from universal_crypto.live.change_taxonomy import classify_timeline
+
+    classified = classify_timeline([r.event_dict() for r in rows])
+    return {"events": classified["events"],
+            "total_count": total, "page": page,
+            "change_summary": {
+                "by_change_class": classified["by_change_class"],
+                "by_direction": classified["by_direction"],
+                "unrecognized_event_types": classified["unrecognized_event_types"],
+                "impact_note": classified["impact_note"],
+            }}
 
 
 # ── versioned CBOM (§35) ───────────────────────────────────────────────

@@ -111,6 +111,79 @@ def list_all_findings(
 # Observation conflicts (audit 50) — disagreement between observers, surfaced
 # --------------------------------------------------------------------------- #
 
+@router.get("/findings/corroboration")
+def finding_corroboration(
+    scan_id: str = Query(..., description="Scan whose observations are checked for agreement"),
+    compare_scan_id: str | None = Query(
+        None, description="Optional second scan: agreement across the two scans instead"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Where independent observers of the same site AGREE (audit 49 P1#5).
+
+    The complementary surface to /findings/conflicts: same normalized
+    algorithm and parameters, observed by >= 2 distinct scanners, with a
+    tier-aware *suggested* confidence uplift — annotation only, recorded
+    confidence is never rewritten. Retracted evidence never corroborates.
+    """
+    from normalization.corroboration import corroboration_summary
+
+    from db.models.scan import Scan
+
+    def _scan_exists(scan_id_value: str) -> bool:
+        return db.execute(
+            select(Scan).where(Scan.id == scan_id_value).limit(1)
+        ).scalars().first() is not None
+
+    if not _scan_exists(scan_id):
+        raise HTTPException(status_code=404, detail="Scan not found")
+    repo = EvidenceRepository(db)
+
+    def _view(row) -> dict:
+        # same observer resolution as the scorecard surface: provenance
+        # and finding-source identity become the scanner id so
+        # independence is judged on real observer names
+        from normalization.calibration import UNATTRIBUTED, detector_key
+
+        base = {
+            "algorithm": row.algorithm,
+            "key_size": row.key_size,
+            "mode": row.mode,
+            "file_path": row.file_path,
+            "line_number": row.line_number,
+            "compliance_status": row.compliance_status,
+            "scanner_ids": (row.scanner_ids or []) if hasattr(row, "scanner_ids") else [],
+            "provenance": row.provenance,
+            "finding_data": row.finding_data,
+        }
+        key = detector_key(base)
+        if key != UNATTRIBUTED:
+            base["scanner_ids"] = [key]
+        return base
+
+    # retracted evidence must not corroborate either
+    baseline = [_view(r) for r in repo.get_all_for_scan(scan_id, include_deleted=False)]
+    if compare_scan_id:
+        if not _scan_exists(compare_scan_id):
+            raise HTTPException(status_code=404, detail="Comparison scan not found")
+        current = [_view(r) for r in repo.get_all_for_scan(compare_scan_id, include_deleted=False)]
+        # cross-scan corroboration: stamp which scan each view came from
+        # so observers from the two scans stay distinct even when both
+        # fall back to unknown-observer
+        for view in baseline:
+            view.setdefault("scan_ids", [scan_id])
+        for view in current:
+            view.setdefault("scan_ids", [compare_scan_id])
+        observations = baseline + current
+    else:
+        observations = baseline
+
+    summary = corroboration_summary(observations)
+    summary["scan_id"] = scan_id
+    summary["compare_scan_id"] = compare_scan_id
+    return summary
+
+
 @router.get("/findings/conflicts")
 def finding_conflicts(
     scan_id: str = Query(..., description="Scan whose observations are checked against each other"),

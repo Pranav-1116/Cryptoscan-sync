@@ -130,6 +130,26 @@ def test_risk_summary_and_timeline(admin_client, session):
     events = timeline.json()["events"]
     assert len(events) == 1
     assert events[0]["event_type"] == "ALGORITHM_DETECTED"
+    # change classification (audit 68 P0#3): every event carries its
+    # class and the response rolls up per class
+    assert events[0]["classification"]["change_class"] == "DISCOVERY"
+    change = timeline.json()["change_summary"]
+    assert change["by_change_class"]["DISCOVERY"] == 1
+    assert "not risk scores" in change["impact_note"]
+
+
+def test_timeline_classification_payload_direction(admin_client, session):
+    admin_client.post("/api/v1/crypto/live/events", json={
+        "event_type": "KEY_ROTATED", "asset_id": "keysvc",
+        "payload": {"old_key_size": 2048, "new_key_size": 1024}})
+    timeline = admin_client.get(
+        "/api/v1/crypto/live/timeline", params={"asset_id": "keysvc"})
+    assert timeline.status_code == 200
+    body = timeline.json()
+    event = body["events"][0]
+    assert event["classification"]["change_class"] == "MODIFICATION"
+    assert event["classification"]["direction"] == "DETERIORATION"
+    assert body["change_summary"]["by_direction"]["DETERIORATION"] == 1
 
 
 def test_cbom_endpoint_cyclonedx(admin_client, session):

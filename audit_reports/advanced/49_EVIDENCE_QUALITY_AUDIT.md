@@ -492,3 +492,24 @@ suite 139).
   corroboration bonus in `confidence_from_sources` covers part of it;
   a tier-aware authority boost remains), and labeled ground-truth
   calibration (would need FP/FN labels, not proxies).
+
+## Round 29 update (2026-10-10) — cross-source correlation bonus built
+
+* **Cross-source correlation bonus (P1 #5) — NOW BUILT (this round).**
+  `normalization/corroboration.py` + `GET /findings/corroboration` are
+  the complementary surface to conflict detection: where *independent*
+  observers of the same site fully AGREE (same normalized algorithm and
+  parameters), the agreed fact is reported with a tier-aware
+  **suggested** confidence uplift — +0.05 for two same-tier observers,
+  +0.10 when the agreement spans distinct authority tiers (a static
+  scanner and a runtime probe obtained the fact by genuinely different
+  methods), +0.15 capped for three or more. Conservative by
+  construction: one scanner twice is duplication not corroboration;
+  partial agreement is a conflict, not corroboration; observers without
+  identity cannot establish independence so no uplift is suggested;
+  retracted evidence never corroborates. Annotation only — recorded
+  confidence is never rewritten. Cross-scan mode
+  (`?compare_scan_id=`) corroborates across scans while keeping the
+  same-instrument rule (one scanner in two scans is still one observer).
+  Tests: 10 unit (`services/normalization/tests/unit/test_corroboration.py`)
+  + 1 API test.

@@ -248,3 +248,108 @@ async def test_scan_coverage_clean_scan_flag():
         assert all(o["zero_observation"] for o in body["origins"])
         assert body["detectors"] == []
         assert "clean-scan" in body["method"]["clean_scan_path"]
+
+
+# --------------------------------------------------------------------------- #
+# Cross-source corroboration (audit 49 P1#5, round 29)
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_corroboration_within_and_between_scans():
+    app, session = _make_app()
+    _scan(session, "scan-1")
+    _scan(session, "scan-2")
+    # site K: two independent scanners agree -> corroborated
+    _evidence(session, "k1", "scan-1", detector="ast-scanner",
+              file_path="src/K.java", line=3)
+    _evidence(session, "k2", "scan-1", detector="runtime-probe",
+              file_path="src/K.java", line=3)
+    # site M: same scanner twice -> not corroboration
+    _evidence(session, "m1", "scan-1", detector="ast-scanner",
+              file_path="src/M.java", line=1)
+    _evidence(session, "m2", "scan-1", detector="ast-scanner",
+              file_path="src/M.java", line=1)
+    # site R: partial agreement (key size differs) -> conflict, not here
+    _evidence(session, "r1", "scan-1", detector="ast-scanner",
+              key_size=2048, file_path="src/R.java", line=9)
+    _evidence(session, "r2", "scan-1", detector="runtime-probe",
+              key_size=1024, file_path="src/R.java", line=9)
+    # site S: same fact in TWO scans -> cross-scan corroboration
+    _evidence(session, "s1", "scan-1", detector="ast-scanner",
+              file_path="src/S.java", line=2)
+    _evidence(session, "s2", "scan-2", detector="ast-scanner",
+              file_path="src/S.java", line=2)
+    session.commit()
+
+    async with _client(app) as client:
+        within = await client.get("/api/v1/findings/corroboration?scan_id=scan-1")
+        assert within.status_code == 200, within.text
+        body = within.json()
+        # only site K corroborates within scan-1: two distinct scanners,
+        # spanning STATIC and RUNTIME tiers
+        assert body["corroborated_count"] == 1
+        fact = body["corroborated_facts"][0]
+        assert fact["file_path"] == "src/K.java"
+        assert fact["distinct_authority_tiers"] is True
+        assert fact["suggested_confidence_uplift"] == 0.10
+        assert "never rewritten" in fact["note"]
+
+        between = await client.get(
+            "/api/v1/findings/corroboration?scan_id=scan-1&compare_scan_id=scan-2")
+        assert between.status_code == 200
+        cross = between.json()["corroborated_facts"]
+        # site K still corroborates; site S now corroborates ACROSS scans
+        # (same scanner, different scans -> distinct observers via the
+        # scan stamp only when scanner ids are unknown; here the scanner
+        # is the same instrument, so S must NOT corroborate)
+        paths = {f["file_path"] for f in cross}
+        assert paths == {"src/K.java"}
+
+        assert (await client.get("/api/v1/findings/corroboration?scan_id=nope")
+                ).status_code == 404
+        assert (await client.get(
+            "/api/v1/findings/corroboration?scan_id=scan-1&compare_scan_id=nope")
+        ).status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Library identity normalization (audit 70, round 29)
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_library_identity_surface_folds_aliases():
+    from db.models.crypto_asset import CryptoAsset
+
+    app, session = _make_app()
+    # three assets recording the same two libraries under different
+    # spellings, plus one unknown
+    session.add(CryptoAsset(algorithm="AES-256-GCM", purpose="ENCRYPTION",
+                            file_path="a.java", line_number=1,
+                            libraries=["OpenSSL", "bcprov"]))
+    session.add(CryptoAsset(algorithm="RSA", purpose="SIGNING",
+                            file_path="b.java", line_number=1,
+                            libraries=["libssl.so.1.1", "BouncyCastle"]))
+    session.add(CryptoAsset(algorithm="ECDSA", purpose="SIGNING",
+                            file_path="c.java", line_number=1,
+                            libraries=["py-openssl", "weird-thing"]))
+    session.commit()
+
+    async with _client(app) as client:
+        r = await client.get("/api/v1/assets/libraries/identity")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["assets_considered"] == 3
+        assert body["raw_entries"] == 6
+
+        groups = {g["canonical_name"]: g for g in body["groups"]}
+        # OpenSSL under four spellings, one identity
+        assert groups["OpenSSL"]["alias_count"] == 3
+        assert set(groups["OpenSSL"]["raw_names"]) == {"OpenSSL", "libssl.so.1.1",
+                                                       "py-openssl"}
+        # BouncyCastle under two spellings
+        assert groups["BouncyCastle"]["alias_count"] == 2
+        # the unknown stays unknown — never forced onto a registry entry
+        assert groups["weird-thing"]["matched"] is False
+        assert body["matched_count"] == 2
+        assert body["unmatched_count"] == 1
+        assert "never forced" in body["method"]["contract"]
