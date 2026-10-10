@@ -229,3 +229,15 @@
 
 Full evidence table: `docs/AUDIT-RECONCILIATION-2026-10-09.md` and
 `audit_reports/00_ROUND_STATUS.md`.
+
+
+## Round 23 note (2026-10-10) — GAP-011 status update
+
+GAP-011 (no automated baseline creation): the honest half is now BUILT.
+The worker's drift stage proposes a baseline (`status=PROPOSED`) when a
+system's first scan is clean — no FAIL policy evidence, no CRITICAL/HIGH
+drift — and a newer clean scan supersedes an older proposal. Activation
+remains an auditor decision (`POST /baselines/{id}/approve-proposed`),
+per the report's own acceptance criterion "auditor approves → baseline
+active". Full auto-activation is deliberately not built: a baseline is a
+trust anchor. See deep/31's round-23 addendum.

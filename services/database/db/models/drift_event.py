@@ -26,6 +26,12 @@ class DriftEvent(BaseModel, TenantScoped):
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM")
     drift_details: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     resolution_status: Mapped[str] = mapped_column(String(50), nullable=False, default="OPEN")
+    # Acknowledgment is not resolution (report 31 §5): an auditor has seen
+    # the event and taken ownership, the fix is still pending. Timestamps are
+    # nullable by design — rows acknowledged before this column existed have
+    # an unknown acknowledge time, surfaced honestly by the SLA endpoint.
+    acknowledged_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     resolved_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     resolved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     resolution_notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

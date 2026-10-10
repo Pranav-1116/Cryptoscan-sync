@@ -68,6 +68,7 @@ repository on 2026-10-09.
 | advanced/82 ZERO_TRUST | 🟡 Deployment | mTLS/service mesh = target environment |
 | advanced/88 FINAL_GAP_PRIORITIZATION | 🔧 Partially remediated | **UPDATE addendum** — per-gap status table |
 | deep/17–30 | 🕰 Stale | Superseded by rounds 9–15; still-open items are deployment-scoped (HA, replicas, encryption at rest) |
+| deep/31 ENTERPRISE_WORKFLOW | 🔧 Extended | **UPDATE addendum (R23)** — drift automation/distribution/resource-authz claims stale; drift SLA metrics (MTTA/MTTR, `GET /drift/sla`, migration 0079 honest ack stamps) + clean-scan baseline proposals built R23; execution/orchestration engines remain product-scoped |
 
 ## Built in direct response to these reports
 
@@ -109,5 +110,7 @@ repository on 2026-10-09.
 | 22 (2026-10-10) | CBOM compositions (INCOMPLETE) + externalReferences (provenance + file locations), XML included | 08 P2#7 |
 | 22 (2026-10-10) | Semantic CBOM diff (ALGORITHM/PARAMETER/VERSION/LOCATION_CHANGED classification) | 08 P2#8 |
 | 22 (2026-10-10) | BU → System → Asset grant inheritance (repo resolution + endpoint enforcement + BU grant management) | 13 §2.2 |
+| 23 (2026-10-10) | Drift SLA metrics — MTTA/MTTR + §5.2-window compliance (`GET /drift/sla`), honest `acknowledged_at` stamps (migration 0079, ack ≠ resolve) | 31 §5/§6 |
+| 23 (2026-10-10) | Clean-scan baseline proposals (worker proposes on first clean scan; auditor activates — `GET /baselines/proposed`, `approve-proposed`, `DELETE .../proposal`) | 31 §2.9, 88 GAP-011 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

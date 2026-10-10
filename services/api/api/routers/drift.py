@@ -35,6 +35,8 @@ def _to_response(row, remediation_task_ids: list[str] | None = None) -> DriftEve
         detected_at=row.detected_at.isoformat() if row.detected_at else None,
         resolution_status=row.resolution_status,
         drift_details=row.drift_details,
+        acknowledged_at=row.acknowledged_at.isoformat() if getattr(row, "acknowledged_at", None) else None,
+        acknowledged_by=getattr(row, "acknowledged_by", None),
         resolved_by=row.resolved_by,
         resolution_notes=row.resolution_notes,
         remediation_task_ids=remediation_task_ids or [],
@@ -164,6 +166,22 @@ def list_drift(
         page=page,
         page_size=page_size,
     )
+
+
+@router.get("/sla")
+def drift_sla(
+    user: str = Depends(require_auditor),
+    db=Depends(get_db_session),
+):
+    """Drift MTTA/MTTR + SLA compliance (report 31 §5/§6, round 23).
+
+    Deterministic arithmetic over drift timestamps. Events acknowledged
+    before ``acknowledged_at`` existed are counted as unknown (never
+    imputed); historical resolved-only rows still count toward MTTR.
+    """
+    from db.repositories.drift_repository import DriftRepository
+
+    return DriftRepository(db).sla_summary()
 
 
 @router.get("/digest")

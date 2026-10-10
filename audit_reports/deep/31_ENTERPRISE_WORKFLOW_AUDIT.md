@@ -535,3 +535,67 @@ graph TD
 | Reports | `services/api/api/routers/report_schedules.py` |
 | Monitor | `scripts/run_monitor.py`, `services/monitor/` |
 | Scheduler | `services/api/api/routers/report_schedules.py` |
+
+## Round 23 addendum (2026-10-10) — first full processing (SLA metrics, honest ack stamps, clean-scan baseline proposals)
+
+This report had never been re-verified against the remediated code (the
+round-20 status table covered deep/17–30 only). Full re-read; verdicts:
+
+**Stale (already built before this round):**
+
+- §2.10 "No automated drift detection on scan completion" — STALE: the
+  worker pipeline's drift stage runs on EVERY completed scan: baseline
+  comparison (`DriftDetector`), key-inventory drift (no baseline needed),
+  config-setting drift (Drift v2.0), DriftEvent rows created
+  automatically, and `stage_alert` notifies on CRITICAL/HIGH.
+- §2.16 "monitor re-scans but does not compare to baseline" — STALE:
+  monitor-triggered scans go through the same worker pipeline, so the
+  drift stage applies to them identically.
+- §2.15 "No automated distribution" — STALE for email:
+  `report_schedules` renders + snapshots + emails (SMTP) on schedule;
+  webhook/SIEM distribution for reports remains open (event-bus
+  webhooks exist for platform events).
+- §2.4 "resource-level authorization missing" — shipped as the grants
+  floor (R18) plus BU → System → Asset inheritance (R22).
+- §2.14 "No automated verification" — the remediation verification loop
+  (5-verdict engine, 7 endpoints) shipped round 14.
+- §2.6 "only static scanner uses evidence pipeline" — by-design split
+  (live/runtime planes documented in audits 03/14 as TD-012-era
+  decisions); network/container/cloud scans persist their own tables.
+
+**Built this round:**
+
+- **§5/§6 (SLA & workflow metrics): `GET /drift/sla`.** The acknowledge
+  path previously reused the resolve path — it stamped `resolved_at` and
+  recorded no ack time, so MTTA was uncomputable. Migration 0079 adds
+  `acknowledged_at`/`acknowledged_by` to `drift_events`;
+  `DriftRepository.acknowledge` now stamps acknowledgment without
+  touching resolution. `sla_summary()` computes MTTA/MTTR (mean + p95),
+  per-severity open counts, oldest-open age, and SLA compliance against
+  the report's §5.2 windows (CRITICAL ack 1h / resolve 24h, HIGH 4h/7d,
+  MEDIUM 24h/30d) with breach counts. Honest accounting: events
+  acknowledged before the column existed are counted as
+  `acknowledge_time_unknown` and excluded from MTTA — never imputed.
+  Reads are bounded with an explicit truncation flag.
+- **§2.9 / 88 GAP-011 (baseline lifecycle): clean-scan proposals.** When
+  a system has no active baseline and a scan comes back clean (no FAIL
+  policy evidence, no CRITICAL/HIGH drift), the drift stage creates a
+  `PROPOSED` baseline and publishes a `baseline.proposed` event. A
+  proposal NEVER activates itself — `GET /baselines/proposed`,
+  `POST /baselines/{id}/approve-proposed` and `DELETE
+  /baselines/{id}/proposal` are auditor decisions (audited either way),
+  because a baseline is a trust anchor, not an observation. A newer
+  clean-scan proposal supersedes an older one for the same system.
+
+**Still open (product/deployment-scoped, unchanged):** remediation
+execution engine (§2.13 — code refactoring/config migration automation
+is its own product), workflow orchestration engine (§3.2 —
+Temporal-style state machine), SLA escalation automation (§5 — the
+metrics exist now; auto-escalation needs a routing policy), ticketing /
+ChatOps / CMDB / native-CI integrations (§6), event-driven discovery
+feeds (with audit 63: CloudTrail, CT logs, CVE feeds).
+
+Tests: `services/api/tests/unit/test_round23_drift_sla_baselines.py`
+(5) + `services/worker/tests/unit/test_round23_baseline_proposal.py`
+(6). The migration-parity roundtrip test now discovers the chain head
+dynamically instead of hardcoding a revision.

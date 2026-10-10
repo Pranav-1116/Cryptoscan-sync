@@ -1201,6 +1201,90 @@ class PipelineRunner:
                 )
                 continue
 
+    def _propose_baseline_if_clean(self, ctx, session, baseline_repo, inventory_events) -> None:
+        """First-clean-scan baseline proposal (report 31 §2.9, 88 GAP-011)."""
+        from sqlalchemy import func, select
+
+        from db.models.baseline import Baseline
+        from db.models.evidence_record import EvidenceRecord
+
+        if not ctx.scan_id or not ctx.target_repo:
+            return
+        # a pending proposal for the same system replaces itself instead of
+        # piling up: the newest clean scan is the better candidate
+        pending = (
+            session.execute(
+                select(Baseline).where(
+                    Baseline.system_identifier == ctx.target_repo,
+                    Baseline.status == "PROPOSED",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        fail_rows = int(
+            session.execute(
+                select(func.count())
+                .select_from(EvidenceRecord)
+                .where(
+                    EvidenceRecord.scan_id == ctx.scan_id,
+                    EvidenceRecord.compliance_status == "FAIL",
+                    EvidenceRecord.deleted_at.is_(None),
+                )
+            ).scalar_one()
+        )
+        severe_drift = [
+            event
+            for event in inventory_events
+            if str(event.get("severity") or "").upper() in {"CRITICAL", "HIGH"}
+        ]
+        if fail_rows or severe_drift:
+            logger.info(
+                "baseline_proposal_not_clean",
+                extra={"scan_id": ctx.scan_id, "fail_rows": fail_rows,
+                       "severe_drift": len(severe_drift)},
+            )
+            return
+        now = datetime.now(timezone.utc)
+        for old in pending:
+            old.status = "SUPERSEDED"
+            old.notes = "superseded by a newer clean-scan proposal"
+        proposal = Baseline(
+            system_identifier=ctx.target_repo,
+            environment="default",
+            approved_scan_id=ctx.scan_id,
+            approved_by="system:clean-scan-proposal",
+            approved_at=now,
+            status="PROPOSED",
+            notes=(
+                "Auto-proposed from the first clean scan (no FAIL policy "
+                "evidence, no CRITICAL/HIGH drift). INACTIVE until an "
+                "auditor approves it: a baseline is a trust anchor, and "
+                "approval stays a human decision."
+            ),
+        )
+        session.add(proposal)
+        session.flush()
+        # publish through the same event channel stage_drift uses, so the
+        # proposal is visible to the realtime stream
+        try:
+            from api.events.bus import get_event_bus
+
+            get_event_bus().publish(
+                "baseline.proposed",
+                {"system_identifier": ctx.target_repo, "scan_id": ctx.scan_id,
+                 "baseline_id": proposal.id, "status": "PROPOSED",
+                 "target_repo": ctx.target_repo},
+                source="worker",
+            )
+        except Exception:
+            logger.debug("baseline_proposal_event_skipped", exc_info=True)
+        logger.info(
+            "baseline_proposed",
+            extra={"scan_id": ctx.scan_id, "target": ctx.target_repo,
+                   "baseline_id": proposal.id},
+        )
+
     def _drift(self, ctx: PipelineContext, session) -> None:
         from sqlalchemy import select
 
@@ -1223,6 +1307,16 @@ class PipelineRunner:
         if baseline is None:
             logger.info("no_baseline_skip_drift", extra={"target": ctx.target_repo})
             ctx.drift_events = inventory_events
+            # Report 31 §2.9 / 88 GAP-011 (round 23): with no approved
+            # baseline, a *clean* scan proposes one — it never activates it.
+            # "Clean" is strict: no FAIL policy evidence in this scan and no
+            # CRITICAL/HIGH drift from it; the proposal still waits for an
+            # auditor (POST /baselines/{id}/approve-proposed), because a
+            # baseline is a trust anchor, not an observation.
+            try:
+                self._propose_baseline_if_clean(ctx, session, baseline_repo, inventory_events)
+            except Exception:
+                logger.debug("baseline_proposal_skipped", exc_info=True)
             return
 
         def as_findings(scan_id: str) -> list[dict]:

@@ -109,6 +109,26 @@ def test_migration_0078_indexes_are_prefix_minimal():
         assert not redundant, f"0078 creates indexes that were already covered: {redundant}"
 
 
+def _chain_head() -> str:
+    """The head revision: the one no other migration lists as down_revision."""
+    import re
+
+    versions = ROOT / "services" / "database" / "migrations" / "versions"
+    revisions: dict[str, str] = {}
+    downs: set[str] = set()
+    for path in sorted(versions.glob("*.py")):
+        text = path.read_text(encoding="utf-8")
+        rev = re.search(r'^revision\s*=\s*["\']([\w-]+)["\']', text, re.M)
+        down = re.search(r'^down_revision\s*=\s*["\']([\w-]+)["\']', text, re.M)
+        if rev:
+            revisions[rev.group(1)] = path.name
+            if down:
+                downs.add(down.group(1))
+    heads = [rev for rev in revisions if rev not in downs]
+    assert len(heads) == 1, f"chain must have exactly one head, found {heads}"
+    return heads[0]
+
+
 @pytest.mark.parametrize("steps", [1, 3])
 def test_recent_downgrades_roundtrip(steps):
     """upgrade head -> downgrade N -> upgrade head must succeed (report 04:
@@ -126,7 +146,10 @@ def test_recent_downgrades_roundtrip(steps):
         command.upgrade(cfg, "head")
         conn = sqlite3.connect(db_path)
         version = conn.execute("SELECT version_num FROM alembic_version").fetchone()[0]
-        assert version == "0078"
+        # head is discovered from the chain, not hardcoded, so new migrations
+        # do not break this test
+        head = _chain_head()
+        assert version == head
         # the 0078 indexes exist again after the roundtrip
         indexes = {r[1] for r in conn.execute("PRAGMA index_list('vulnerabilities')")}
         assert "ix_vulnerabilities_scan_id" in indexes
