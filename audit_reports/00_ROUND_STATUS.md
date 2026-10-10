@@ -112,5 +112,7 @@ repository on 2026-10-09.
 | 22 (2026-10-10) | BU → System → Asset grant inheritance (repo resolution + endpoint enforcement + BU grant management) | 13 §2.2 |
 | 23 (2026-10-10) | Drift SLA metrics — MTTA/MTTR + §5.2-window compliance (`GET /drift/sla`), honest `acknowledged_at` stamps (migration 0079, ack ≠ resolve) | 31 §5/§6 |
 | 23 (2026-10-10) | Clean-scan baseline proposals (worker proposes on first clean scan; auditor activates — `GET /baselines/proposed`, `approve-proposed`, `DELETE .../proposal`) | 31 §2.9, 88 GAP-011 |
+| 24 (2026-10-10) | Monitor-time reintroduction sweep (newest scan per target vs retired-asset registry, alert-routed, `detected_by: monitor`) | 69 follow-up |
+| 24 (2026-10-10) | Drift SLA escalation sweep (window crossings alert once via CEF/webhook/email + `drift.sla_breach` events) | 31 §5.2 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

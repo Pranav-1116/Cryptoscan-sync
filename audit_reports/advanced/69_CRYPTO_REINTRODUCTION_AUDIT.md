@@ -443,3 +443,21 @@ detection half now exists:
   deliberately never match — a bad row cannot silently watch everything.
 * Still open (monitor-time): the registry is checked per scan on demand;
   continuous background checking across monitor cycles remains follow-up.
+
+
+## Round 24 update (2026-10-10) — monitor-time check SHIPPED
+
+The follow-up above is closed. `worker/monitor/reintroduction_sweep.py`
+runs on every monitor tick: the newest completed scan per target is
+checked against the active registry through the same
+`detect_reintroductions` engine the scan-time check uses (identical
+semantics — evidence predating the retirement is never a breach), with
+CRITICAL/HIGH detections escalated through the monitor's AlertRouter
+(CEF / signed webhook / email) and every detection emitting a
+`retirement.reintroduced` platform event marked `detected_by: monitor`
+so monitor-time and on-demand checks are distinguishable in the journal.
+Bounded: newest-scans cap with truncation flag, asset-link cap for
+ASSET-scope retirements. Tests:
+`services/worker/tests/unit/test_round24_monitor_sweeps.py` (4
+reintroduction cases: detection, ALGORITHM scope + alert routing,
+lifted-registry no-op, pre-retirement evidence).

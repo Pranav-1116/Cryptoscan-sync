@@ -73,6 +73,7 @@ class MonitorEngine:
                  session_factory: Callable[[], Any] | None = None, concurrency: int = 1,
                  run_reports: bool = True, run_backups: bool = True,
                  run_network: bool = True,
+                 run_reintroduction: bool = True, run_sla: bool = True,
                  backup_backend_for: Callable[[str], Any] | None = None,
                  backup_storage: Any = None):
         self.session = session
@@ -90,6 +91,10 @@ class MonitorEngine:
         self.run_reports = bool(run_reports)
         self.run_backups = bool(run_backups)
         self.run_network = bool(run_network)
+        # round 24 (audits 69 + 31 §5.2): monitor-time reintroduction
+        # detection and drift-SLA escalation run on the same tick
+        self.run_reintroduction = bool(run_reintroduction)
+        self.run_sla = bool(run_sla)
         self._backup_backend_for = backup_backend_for
         self._backup_storage = backup_storage
 
@@ -136,6 +141,36 @@ class MonitorEngine:
 
             report_outcomes = run_due_report_schedules(self.session, on_event=self._report_event)
 
+        reintroduction_summary: dict[str, Any] = {}
+        if self.run_reintroduction:
+            # audit 69's open follow-up: the retired-asset registry checked
+            # continuously, not only on demand
+            try:
+                from worker.monitor.reintroduction_sweep import run_reintroduction_sweep
+
+                reintroduction_summary = run_reintroduction_sweep(
+                    self.session, now=now,
+                    on_alert=(lambda name, issue, payload: self._on_alert(name, issue, payload))
+                    if self._on_alert is not None else None,
+                )
+            except Exception as exc:  # noqa: BLE001 — must not stop other monitor work
+                logger.exception("reintroduction_sweep_failed")
+                reintroduction_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
+        sla_summary_tick: dict[str, Any] = {}
+        if self.run_sla:
+            # audit 31 §5.2: escalate drift events that crossed an SLA window
+            try:
+                from worker.monitor.sla_sweep import run_sla_sweep
+
+                sla_summary_tick = run_sla_sweep(
+                    self.session, now=now,
+                    on_alert=self._on_alert if self._on_alert is not None else None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("sla_sweep_failed")
+                sla_summary_tick = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
         backup_summary: dict[str, Any] = {}
         if self.run_backups:
             # real subprocess backends + persistent disk store are used by
@@ -150,6 +185,8 @@ class MonitorEngine:
             "network": network_summary,
             "report_ran": len(report_outcomes),
             "reports": report_outcomes,
+            "reintroduction": reintroduction_summary,
+            "drift_sla": sla_summary_tick,
             "backups": backup_summary,
         }
 

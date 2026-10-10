@@ -599,3 +599,22 @@ Tests: `services/api/tests/unit/test_round23_drift_sla_baselines.py`
 (5) + `services/worker/tests/unit/test_round23_baseline_proposal.py`
 (6). The migration-parity roundtrip test now discovers the chain head
 dynamically instead of hardcoding a revision.
+
+
+## Round 24 addendum (2026-10-10) — SLA escalation automation SHIPPED
+
+§5.2's "auto-escalation on timeout" now exists:
+`worker/monitor/sla_sweep.py` runs on the monitor tick, evaluates open
+drift events against the §5.2 windows, and escalates the ones that just
+crossed a window — one aggregated alert per severity through the
+monitor's AlertRouter (CEF / signed webhook / email) plus a
+`drift.sla_breach` platform event. Stateless by design: a crossing
+alerts on the first tick after it happened (recent window 24h, covering
+a day of monitor downtime) and stays silent afterwards — the persistent
+signal is the open drift event and `GET /drift/sla`, not repeated pages.
+The tick outcome carries the full SLA summary. With this, §5's row is:
+SLA targets defined (round 23), tracked (round 23), escalated (this
+round); what remains of §5.2 is only the human routing policy
+(who receives which severity — a deployment configuration concern).
+Tests: 4 SLA-sweep cases in
+`services/worker/tests/unit/test_round24_monitor_sweeps.py`.
