@@ -423,3 +423,18 @@ Malware/Tool:
 | Drift correlation | `services/drift/drift/` (missing) |
 | Intelligence feeds | `services/api/api/routers/devsecops.py` (SBOM advisory feed) |
 | Export endpoints | `services/api/api/routers/export.py`, `audit_export.py` |
+---
+
+## Round 26 update (2026-10-10) — classified: product roadmap, no defects
+
+Re-verified: no STIX/TAXII, ATT&CK mapping, threat-actor, IOC or
+feed-integration code exists today, and the report's description of the
+current surfaces (vulnerability/advisory feeds, graph blast radius,
+crypto/quantum/agility risk scoring) remains accurate. Nothing here is a
+bug or a regression — every recommendation is a new product capability
+(turning the platform into a threat-intelligence platform), which is
+roadmap scope, not remediation. The scoring improvements that were
+actionable within the existing model shipped in earlier rounds
+(unified risk with configurable weights + derivation signals and
+calculation versioning, round 19; exposure-path queries, round 19;
+evidence-chain verification, round 25).
