@@ -343,6 +343,24 @@ def agent_health(
 
 # ── HBOM versions (§15) / incidents (§20) / risk (§19) ─────────────────
 
+@router.get("/hbom")
+def hbom_document(
+    fmt: str = Query("native", pattern="^(native|cyclonedx)$"),
+    user: str = Depends(require_permission("hardware.read")),
+):
+    """The current HBOM document itself.
+
+    deep/26 §5: the generators existed (native document + CycloneDX form)
+    but no API served them — only the version list did. ``fmt=native``
+    returns the ZELNX-HBOM document; ``fmt=cyclonedx`` the CycloneDX
+    hardware BOM for interop.
+    """
+    controller = _controller()
+    if fmt == "cyclonedx":
+        return controller.hbom.to_cyclonedx()
+    return controller.hbom.to_document()
+
+
 @router.get("/hbom/versions")
 def hbom_versions(
     user: str = Depends(require_permission("hardware.read")),

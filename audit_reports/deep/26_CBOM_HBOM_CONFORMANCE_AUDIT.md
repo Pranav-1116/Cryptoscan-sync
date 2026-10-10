@@ -528,3 +528,41 @@ def lookup_oid(algorithm: str) -> str | None:
 | NIST Enricher | `services/normalization/normalization/enrichers/nist_enricher.py` |
 | Quantum Classification | `shared/shared_models/shared_models/quantum_classify.py` |
 | CBOM Validation | `services/cbom/cbom/inventory.py:validate_document()` |
+---
+
+## Round 25 update (2026-10-10) — HBOM claims re-verified; empty-HBOM bug fixed
+
+* **§5 "HBOM not implemented" — STALE.** A full HBOM subsystem exists:
+  versioned `HbomGenerator` (native document + CycloneDX form, snapshot
+  history, §15) in `universal_vendor/hardware/hbom.py`, the 24/7
+  `LiveHardwareController`, a `/hardware/*` API (events, state, timeline,
+  hbom versions, incidents, risk, edge sync), and `Hbom.tsx` wired to the
+  live-scan BOM. **BUT the re-verification exposed a real bug the report
+  never caught:** the controller snapshotted the HBOM on every change
+  without ever calling `hbom.add()` — every versioned HBOM document was
+  EMPTY (versions existed; hardware never did). Fixed this round:
+  `_update_hbom()` feeds the merged live state into the generator before
+  each snapshot (identity-less events fabricate nothing; removals drop
+  the asset via new `HbomGenerator.remove()`; re-observation replaces
+  firmware/security rows instead of stacking duplicates), and a new
+  `GET /hardware/hbom?fmt=native|cyclonedx` endpoint serves the document
+  itself (previously only the version list was exposed). Tests:
+  `test_hardware_live_api.py::test_hbom_document_native_and_cyclonedx`
+  + full suite green.
+
+* **§10 P1#5/#6 (compositions, external references) — STALE**, shipped
+  round 22 (CBOM compositions INCOMPLETE + externalReferences, XML
+  included).
+
+* **§10 P1#4 (native SPDX 3.0) — REMAINS OPEN, product-scoped.** SPDX
+  2.3 is emitted today (`cbom/technology_bom.py`,
+  `container_scanner/reports/spdx.py`); SPDX 3.0 is a JSON-LD model
+  rewrite, an output-format decision rather than a bug.
+
+* **§10 P0#1/#3 (merge the three CBOM generators / deprecate TechBOM) —
+  REMAINS OPEN, product-scoped.** The three generators serve distinct
+  inputs (evidence records, technology snapshots, live crypto state)
+  with shared mappers/signing; unifying them is an architecture
+  decision with migration consequences, not a defect.
+
+Gates: api hardware 10✓, universal_vendor 368✓, ruff✓.

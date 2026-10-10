@@ -39,6 +39,13 @@ class HbomGenerator:
 
     def add(self, observation: HardwareObservation) -> None:
         asset_id = observation.asset_id
+        # re-observation replaces the asset's stale firmware/security rows
+        # instead of stacking duplicates (round 25, deep/26 §5)
+        self._firmware = [f for f in self._firmware if f.get("asset_id") != asset_id]
+        self._security_hardware = [
+            s for s in self._security_hardware
+            if s.get("asset_id") != asset_id and s.get("bom-ref") != f"hw:{asset_id}"
+        ]
         entry = {
             "bom-ref": f"hw:{asset_id}",
             "type": observation.device_type,
@@ -63,6 +70,17 @@ class HbomGenerator:
         if observation.tpm:
             self._security_hardware.append({"asset_id": asset_id,
                                             "type": "tpm", "tpm": observation.tpm})
+
+    def remove(self, asset_id: str) -> bool:
+        """Drop an asset and its firmware/security entries (lifecycle
+        removal). Returns whether the asset was present."""
+        existed = self._hardware.pop(asset_id, None) is not None
+        self._firmware = [f for f in self._firmware if f.get("asset_id") != asset_id]
+        self._security_hardware = [
+            s for s in self._security_hardware
+            if s.get("asset_id") != asset_id and s.get("bom-ref") != f"hw:{asset_id}"
+        ]
+        return existed
 
     # ── output ────────────────────────────────────────────────────────
 

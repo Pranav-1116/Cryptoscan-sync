@@ -207,6 +207,34 @@ def test_hbom_versions_and_incidents(admin_client):
     assert len(risk.json()["risks"]) == 1
 
 
+def test_hbom_document_native_and_cyclonedx(admin_client):
+    """deep/26 §5: the generators existed but no API served the document."""
+    admin_client.post("/api/v1/hardware/events", json={
+        "event_type": "HARDWARE_DISCOVERED", "asset_id": "srv-hbom",
+        "manufacturer": "Dell", "model": "R760", "device_type": "server",
+        "serial_reference": "SN-HBOM",
+    })
+
+    native = admin_client.get("/api/v1/hardware/hbom")
+    assert native.status_code == 200
+    doc = native.json()
+    assert doc["hbomFormat"] == "ZELNX-HBOM"
+    assert any(h["bom-ref"] == "hw:srv-hbom" for h in doc["hardware"])
+
+    cd = admin_client.get("/api/v1/hardware/hbom?fmt=cyclonedx")
+    assert cd.status_code == 200
+    cdoc = cd.json()
+    assert cdoc["bomFormat"] == "CycloneDX"
+    assert cdoc["specVersion"] == "1.5"
+    asset_ids = {p["value"] for c in cdoc["components"]
+                 for p in c["properties"] if p["name"] == "asset_id"}
+    assert "srv-hbom" in asset_ids
+
+    # invalid format is rejected, not silently defaulted
+    bad = admin_client.get("/api/v1/hardware/hbom?fmt=xml")
+    assert bad.status_code == 422
+
+
 def test_rbac_gates_hardware_api(viewer_client, admin_client):
     # viewers can read but never ingest/manage
     r = viewer_client.post("/api/v1/hardware/events", json={

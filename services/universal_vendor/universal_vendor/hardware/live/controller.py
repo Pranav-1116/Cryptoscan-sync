@@ -34,6 +34,7 @@ from typing import Any, Callable, Optional
 from universal_vendor.evidence import build_evidence_chain, verify_evidence_chain
 from universal_vendor.hardware.firmware import FirmwareIntelligence
 from universal_vendor.hardware.hbom import HbomGenerator
+from universal_vendor.hardware.models import HardwareObservation
 from universal_vendor.hardware.live.events import (
     HardwareEvent,
     HardwareEventBus,
@@ -100,6 +101,47 @@ class LiveHardwareController:
         self._event_count = 0
         self._chain_valid = True
 
+    def _update_hbom(self, asset_id: str, event: HardwareEvent) -> None:
+        """Keep the HBOM's content in step with the state it versions.
+
+        Merged truth: the live state (already applied this event) plus any
+        identity fields the event carries explicitly. A removal drops the
+        asset; an identity-less event never fabricates an HBOM entry.
+        """
+        if event.event_type.value in ("HARDWARE_REMOVED", "DEVICE_REMOVED"):
+            self.hbom.remove(asset_id)
+            return
+        state = self.state.get(asset_id)
+        merged: dict[str, Any] = dict(state.to_dict()) if state is not None else {}
+        for key in ("manufacturer", "model", "serial_reference",
+                    "hardware_revision", "device_type", "tpm"):
+            value = getattr(event, key, None)
+            if value is not None:
+                merged[key] = value
+        if event.firmware:
+            firmware_map = dict(merged.get("firmware") or {})
+            firmware_map.update(event.firmware)
+            merged["firmware"] = firmware_map
+        if not merged.get("manufacturer") or not merged.get("model"):
+            return  # identity unknown — do not fabricate an HBOM entry
+        firmware_map = {
+            str(k): str(v) for k, v in (merged.get("firmware") or {}).items() if v
+        }
+        primary = "; ".join(f"{k} {v}" for k, v in sorted(firmware_map.items())) or None
+        self.hbom.add(
+            HardwareObservation(
+                asset_id=asset_id,
+                manufacturer=str(merged.get("manufacturer") or "unknown"),
+                model=str(merged.get("model") or "unknown"),
+                serial_reference=merged.get("serial_reference"),
+                device_type=str(merged.get("device_type") or "other"),
+                firmware=primary,
+                hardware_revision=merged.get("hardware_revision"),
+                firmware_components=firmware_map,
+                tpm=merged.get("tpm"),
+            )
+        )
+
     # ── §2/§6 event ingestion ─────────────────────────────────────────
 
     def ingest(self, event: HardwareEvent | dict[str, Any]) -> dict[str, Any]:
@@ -134,8 +176,12 @@ class LiveHardwareController:
             self.firmware.observe(asset_id=envelope.asset_id,
                                   component=event.component, version=event.version)
 
-        # live HBOM versioning (§15) — every change produces a new state
+        # live HBOM versioning (§15) — every change produces a new state.
+        # Content first (round 25, deep/26 §5): the snapshot used to freeze
+        # an EMPTY document because hbom.add() was never called — versions
+        # existed, hardware never did.
         if verdict in ("NEW", "CHANGED", "REMOVED"):
+            self._update_hbom(envelope.asset_id, event)
             self.hbom.snapshot(reason=f"{event.event_type.value}:{event.asset_id}")
 
         # drift (§14)
