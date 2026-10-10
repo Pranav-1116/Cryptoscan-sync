@@ -455,3 +455,25 @@ System
 | Graph drift | `services/graph_engine/graph_engine/core/drift.py` |
 | Migration waves | `services/agility/agility/roadmap.py` |
 | CryptoAssetEvidence model | `services/database/db/models/crypto_asset_evidence.py` |
+---
+
+## Round 26 update (2026-10-10) — fact-traceability claims re-verified
+
+* **P0#2 / P2#14 (evidence hashes on edges) — SHIPPED round 25.**
+  `GET /graph` edges carry `evidence_count` + `evidence_refs`
+  (evidence_id, content_hash, chain_hash) from the populated
+  `crypto_asset_evidence` link table — the "WHERE EXACTLY / HOW" verdict
+  no longer holds for the asset level: an edge cites the exact evidence
+  records, each independently verifiable against the monitor's chain
+  sweep.
+* **P0#1 (evidence FK on assets) — ADDRESSED VIA THE LINK TABLE** (the
+  repository-level many-to-many with CASCADE FKs on both sides,
+  populated by the pipeline's dedup stage; verified live in round 25).
+* **P3#14 (graph export) — STALE** (round 20, GraphML/GEXF).
+* **Code/function-level nodes, key hierarchy, runtime binding, build
+  provenance, GraphQL fact traversal, graph ML — REMAIN OPEN,
+  product-scoped.** Partial substrate exists (cascade provider files +
+  transitive crypto dependency paths since round 18; ContainerImage
+  nodes with honest RUNS linkage since round 21; trust-store discovery
+  in the scanner), but a full code-level fact graph is a roadmap
+  capability, not a remediation.
