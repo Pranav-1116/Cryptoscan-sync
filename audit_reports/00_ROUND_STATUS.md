@@ -119,5 +119,6 @@ repository on 2026-10-09.
 | 25 (2026-10-10) | Monitor-time evidence chain verification sweep (content hash, chain recompute, position contiguity, manifest pin; persistent CRITICAL alerting) | 25 P0#3 |
 | 25 (2026-10-10) | Graph edges cite the evidence chain (`evidence_refs` with content/chain hashes) + reverse lookup `GET /cbom/evidence/{content_hash}` | 25 P1#4/P1#5 |
 | 25 (2026-10-10) | HBOM content bug fixed (snapshots froze EMPTY documents — `hbom.add` never called) + `GET /hardware/hbom` document endpoint + lifecycle remove/re-observe semantics | 26 §5 |
+| 25 (2026-10-10) | deep/27 addendum: P0#2/#3 + P1#5/#6 + P2#9 verified stale or shipped (link table, edge evidence refs, network/container nodes, export); Neo4j tenant isolation + CDC remain deployment-scoped | 27 P0–P2 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

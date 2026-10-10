@@ -505,3 +505,30 @@ BLOCKED → 3
 | Graph drift | `services/graph_engine/graph_engine/core/drift.py` |
 | CryptoAssetEvidence model | `services/database/db/models/crypto_asset_evidence.py` |
 | Migration roadmap | `services/agility/agility/roadmap.py` |
+---
+
+## Round 25 update (2026-10-10) — every actionable P0/P1 verified or shipped
+
+* **P0#2 (populate CryptoAssetEvidence) — STALE.** The pipeline's dedup
+  stage feeds each merged asset's `evidence_ids` and
+  `AssetRepository.replace_for_scan` bulk-inserts the links. Verified
+  live this round (2/2 links for a staged scan). See deep/25's addendum.
+* **P0#3 / P1#6 (edge evidence hashes) — SHIPPED this round.** `GET
+  /graph` edges now carry `evidence_count` + `evidence_refs`
+  (evidence_id, content_hash, chain_hash) from the link table, bounded
+  with honest counts. An edge is now cryptographically verifiable, not
+  just described.
+* **P1#5 (network/container/cloud nodes) — STALE.** NetworkResource
+  nodes (config-driven TLS probe targets, with Neo4j sync) and
+  ContainerImage nodes (honest RUNS linkage) have been in
+  `api/graph_builder.py` since rounds 20/21.
+* **P2#9 (graph export) — STALE.** `GET /graph/export` (GraphML/GEXF)
+  shipped round 20.
+* **P0#1 (Neo4j tenant isolation) — REMAINS OPEN, deployment-scoped.**
+  Requires per-tenant databases or a label-scoped Cypher regime — an
+  infrastructure decision, not a code fix; the in-memory fallback
+  remains tenant-safe.
+* **P1#4 (incremental Neo4j sync / CDC), P2#7 (Cypher passthrough API),
+  P2#8 (time-travel queries), P3 analytics/partitioning — REMAIN OPEN,
+  product-scoped.** Content-addressed snapshots already provide the
+  substrate for P2#8.
