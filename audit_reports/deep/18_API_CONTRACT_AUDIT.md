@@ -625,3 +625,19 @@ DEFAULT_LIMITS = {
 14. **Implement API deprecation headers** — `Deprecation`, `Sunset`
 15. **Add client SDK generation** — From OpenAPI spec
 16. **Add request ID correlation** — Already in middleware, expose in errors
+---
+
+## Round 26 update (2026-10-10) — claims re-verified
+
+* **P0#2 (resource-level authorization) — STALE.** Resource-level grants
+  shipped round 18 (migration 0076, per-system enforcement + admin
+  endpoints); BU → System → Asset inheritance landed round 22.
+* **P0#3 (API key authorization) — STALE.** Machine keys carry their own
+  `role_list` from the key row (never the users table) and flow through
+  the same `require_permission` matrix as sessions, with IP allow/deny
+  policy and last-use stamping.
+* **P1#8 (OpenAPI documentation) — STALE.** The spec is generated from
+  code; operationId contract tests exist since round 17.
+* **Remain open, product-scoped:** RFC 9457 error shapes, cursor
+  pagination, API versioning/deprecation headers, WS/SSE rate limits,
+  Neo4j tenant isolation, read-path auditing (a volume/policy decision).

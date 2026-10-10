@@ -500,3 +500,34 @@ chain_hash = SHA256(prev_chain_hash + JSON(payload))
 14. **Implement CHECK constraints** on all numeric columns
 15. **Add automated backup/restore testing**
 16. **Cross-region replication**
+---
+
+## Round 26 update (2026-10-10) — index/constraint claims verified stale; verification sweep shipped
+
+* **§2.2 missing composite indexes — STALE.** `drift_events` has
+  `ix_drift_events_status_severity` (migration 0007); `scan_jobs` has
+  `ix_scan_jobs_status` + `ix_scan_jobs_created_at` (migration 0008);
+  the evidence composites live in the model
+  (`ix_evidence_scan_chain`, `ix_evidence_scan_status`); round 21's
+  migration 0078 closed the remaining model-chain parity gaps (24
+  indexes, with parity/minimality/downgrade-roundtrip tests).
+* **§2.3 missing unique constraints — STALE.** `uq_system_asset`,
+  `uq_system_dep`, `uq_asset_evidence`, `graph_snapshots
+  (tenant_id, version)` all exist. (`baselines (system_id, scan_id)`
+  remains without a DB unique — creation goes through the approve
+  workflow; noted, not blocking.)
+* **§6.2 "no periodic verification" — SHIPPED round 25.** The monitor's
+  evidence-chain sweep verifies content hashes, chain recomputation,
+  position contiguity and the manifest pin for the newest scans every
+  tick, with CRITICAL alerting.
+* **§6.2 "no soft delete" — STALE** (round 17, migration 0075;
+  tombstones stay in the chain by design).
+* **§7.3 portfolio in-memory unbounded — STALE.** `_located_assets` is
+  set-based and capped by `PORTFOLIO_MAX_ASSETS` with explicit
+  truncation (rounds 17/20).
+* **§2.1 GIN indexes — REMAINS OPEN, scaling-scoped.** No current query
+  filters on the JSON columns with JSON operators (verified: no
+  jsonb/contains predicates in routers/repositories), so the index has
+  no consumer today; revisit if JSON-predicate queries are added.
+  Partitioning (§11), archival (§9), and optimistic-locking hardening
+  (§8) likewise remain scale/product decisions.
