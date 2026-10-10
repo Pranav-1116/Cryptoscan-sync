@@ -536,3 +536,28 @@ All findings traceable to source files:
 | Worker pool | `services/worker/worker/core/pool.py` |
 | Docker volumes | `docker-compose.yml` |
 | Workspace path | `services/api/api/config/settings.py:WORKSPACE_BASE_PATH` |
+---
+
+## Round 26 update (2026-10-10) — isolation claims re-verified
+
+* **§1.3 link tables without tenant_id — STALE.** `system_assets`,
+  `system_dependencies`, `crypto_asset_evidence`, `certificate_usage`
+  (and the business-process maps) all carry `TenantScoped` today.
+* **§5.2 worker tenant context — STALE.** `worker/core/job_consumer.py`
+  carries `tenant_id` across the queue and re-enters the caller's scope;
+  bulk inserts stamp the scan owner's tenant explicitly (an unscoped
+  write would land as platform estate — the code says so in comments).
+* **§3.4/§8.3 event federation cross-tenant — STALE.** Federation frames
+  carry `tenant_id`; the SSE surface uses per-tenant buses
+  (`get_bus_for_tenant`).
+* **§3.3 rate-limit keying — ADDRESSED.** Windows key on the API key
+  digest or session user (else client IP); the shared-user scenario is
+  mitigated by per-key buckets.
+* **§8.4 workspace collision — STALE.** Clones live under
+  `<workspace>/<job-id>/repo`.
+* **§6.3 /metrics — MITIGATED.** Token-gated operational counters, no
+  per-tenant dimensions.
+* **REMAIN OPEN, deployment/product-scoped:** Neo4j per-tenant isolation
+  (same item as deep/27 P0#1 — separate DBs or property-scoped Cypher
+  is an infrastructure decision; the in-memory fallback stays scoped),
+  per-tenant resource quotas, billing, data-residency enforcement.

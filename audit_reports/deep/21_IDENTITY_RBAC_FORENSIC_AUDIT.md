@@ -713,3 +713,22 @@ All findings traceable to source:
 | TOTP | `services/api/api/security/totp.py` |
 | ABAC middleware | `services/api/api/middleware/abac_middleware.py` |
 | Audit log model | `services/database/db/models/user.py:AuditLog` |
+---
+
+## Round 26 update (2026-10-10) — P0 claims re-verified
+
+* **P0#1 resource-level authorization — STALE.** Resource grants shipped
+  round 18 (migration 0076, per-system enforcement + admin endpoints).
+* **P0#2 API key roles bypassing PERMISSION_MATRIX — STALE.**
+  `require_permission` resolves the caller (session or machine key) and
+  checks `has_permission(roles, action)` against the matrix for both —
+  a key's roles are subject to exactly the same matrix as a session's.
+* **P0#3 legacy admin fallback — MITIGATED BY DESIGN.** The env
+  fallback fires only when no DB session is injected (CLI/scripts/dev);
+  production routers always authenticate against the users table, with a
+  documented first-login bootstrap.
+* **P2#11 permission inheritance — STALE.** BU → System → Asset grant
+  inheritance shipped round 22.
+* **REMAIN OPEN, product-scoped:** custom roles, WebAuthn/FIDO2, session
+  concurrency limits + role-change rotation, access certification,
+  break-glass procedure, adaptive MFA.
