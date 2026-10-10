@@ -306,3 +306,20 @@ class RegulatoryRequirement:
 | Evidence Chain | `services/evidence/evidence/hashing/` |
 | Report Templates | `services/api/api/routers/report_templates.py` |
 | Export Endpoints | `services/api/api/routers/export.py` |
+---
+
+## Round 26 update (2026-10-10) — requirement traceability re-verified
+
+* **"Finding → Requirement ❌ 1/10" — LARGELY STALE.** The traceability
+  chain exists today at the report layer: `report_templates.py` maps
+  requirements to rule packs (e.g. "PCI-DSS 4.0 req. 3.5" → PCIDSS-003
+  prefixes), `compliance_report.py` evaluates per-requirement status
+  with rule-result counts (evaluated/failing), and reports accept
+  `selected_requirements` for scoped output. The compliance engine's
+  control checks run against REAL live state and the evidence pack
+  (automated control evidence, audit.chain_integrity included).
+* **REMAIN OPEN, product-scoped:** a standalone `RegulatoryRequirement`
+  DB entity (today the mapping is template-driven rather than a
+  first-class model), per-requirement evidence bundles (packs are
+  per-scan), the control model with operating-evidence tracking, and
+  coverage heatmaps/dashboards.

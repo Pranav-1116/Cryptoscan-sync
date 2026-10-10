@@ -340,3 +340,26 @@ def fingerprint(self, imports, symbols, strings, constants, apis, dependencies):
 | Cloud Scanner | `services/cloud_scanner/cloud_scanner/core/scanner.py` |
 | Container Scanner | `services/container_scanner/container_scanner/core/scanner.py` |
 | Graph Builder | `services/api/api/graph_builder.py` |
+---
+
+## Round 26 update (2026-10-10) — dedup claims re-verified
+
+* **P0#3 / P1#7 (unified asset identity) — STALE.**
+  `cp_asset_identities` provides canonical, tenant-scoped asset
+  identities fused across sources (mac / hostname / cloud resource /
+  …), with an identity resolver and confidence scoring.
+* **P0#4 (certificate fingerprint merge) — STALE.** Certificates
+  upsert by `fingerprint_sha256` across network scans and revocation
+  checks.
+* **P0#1/#2 (graph node/edge dedup) — STALE.** The graph is rebuilt
+  from canonical DB rows (ghost-node pruning shipped round 20); node
+  identity is row identity, so cross-source duplicates collapse at the
+  source tables.
+* **Finding-level semantic dedup — STALE** (the dedup engine's
+  canonical identity merges "RSA-2048"/"rsa_2048" across scanners; the
+  evidence pipeline additionally collapses byte-identical findings
+  pre-chain, counted and logged).
+* **REMAIN OPEN, product-scoped:** canonical library identity with
+  version normalization across ecosystems, and richer
+  deduplication-provenance surfaces (scanner_ids and evidence members
+  are retained on merged assets today).
