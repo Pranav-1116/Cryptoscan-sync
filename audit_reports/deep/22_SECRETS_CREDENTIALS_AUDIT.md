@@ -687,3 +687,20 @@ All findings traceable to source:
 | Logging redaction | `services/api/api/events/auth.py` |
 | CBOM key rotation | `services/cbom/cbom/generator.py` |
 | API key rotation | `services/api/api/routers/api_keys.py` |
+---
+
+## Round 26 update (2026-10-10) — backup encryption verified; secret scanning staged
+
+* **§9.3 / P0#5 backups not encrypted — STALE.** Round 17 shipped
+  `--encrypt` (AES-256-GCM, key via `BACKUP_ENCRYPTION_KEY` +
+  `scripts/backup_crypto.py`, scrypt KDF, fail-closed restore); the
+  backup manifest records `encrypted: true` + encrypted size.
+* **§10 / P0#6 no secret scanning in CI — REAL, now staged.** New
+  `.github/workflows-pending/secret-scan.yml`: gitleaks on push/PR plus
+  a nightly full-history schedule, no inline skip lists. It follows the
+  repo's workflows-pending convention (pushing under
+  `.github/workflows/` needs a workflow-scoped token; install commands
+  in that directory's README).
+* **Remain open, deployment/product-scoped:** Vault/Secrets Manager
+  integration, PostgreSQL TDE, Redis TLS/ACL, Neo4j encryption, volume
+  encryption, automated rotation schedules, key hierarchy, SPIFFE/SPIRE.

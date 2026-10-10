@@ -1,7 +1,9 @@
 # Pending workflows
 
-Three files under `.github/workflows/` are **0 bytes** on `main`:
-`docker-build.yml`, `db-migration.yml` and `scanner-tests.yml`. Commit
+Four workflow files live here: `docker-build.yml`, `db-migration.yml`,
+`scanner-tests.yml` and `secret-scan.yml` (round 26, deep/22 P0#6 — the
+repo had no secret scanning anywhere; `ci.yml` under `.github/workflows/`
+still runs, but it has no gitleaks step). Commit
 `5a32105e` ("Revert workflow file fills so the branch can be pushed")
 emptied them because pushing anything under `.github/workflows/` needs a
 token with the `workflow` scope, and the automation credential does not
@@ -22,6 +24,7 @@ fine-grained: Actions → Read and write).
 git mv -f .github/workflows-pending/docker-build.yml   .github/workflows/docker-build.yml
 git mv -f .github/workflows-pending/db-migration.yml   .github/workflows/db-migration.yml
 git mv -f .github/workflows-pending/scanner-tests.yml  .github/workflows/scanner-tests.yml
+git mv -f .github/workflows-pending/secret-scan.yml     .github/workflows/secret-scan.yml
 git rm .github/workflows-pending/README.md
 git commit -m "Enable the build, schema and scanner workflows"
 git push
