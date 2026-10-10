@@ -27,9 +27,9 @@ from cbom.generator import CbomGenerator
 from cbom.builders.dependency_builder import build_estate_dependencies
 from cbom.inventory import (
     bom_system_name,
-    diff_records,
     records_from_bom,
     search_records,
+    semantic_diff,
     summarize_records,
     validate_document,
 )
@@ -66,8 +66,12 @@ def _server_keyring() -> dict[str, str]:
     return ring
 
 
-def _render(bom: dict, fmt: str, signed: bool):
+def _render(bom: dict, fmt: str, signed: bool | str):
     generator = CbomGenerator()
+    # "jsf" selects the CycloneDX-spec standard enveloped signature
+    # (top-level ``signature`` field, report 08 P2#6); True keeps the
+    # legacy JWS-in-metadata-property form for backward compatibility.
+    standard = isinstance(signed, str) and signed.lower() == "jsf"
     if signed:
         from api.config.settings import get_settings
 
@@ -102,9 +106,27 @@ def _render(bom: dict, fmt: str, signed: bool):
                 else Path(private_key_path).read_text(encoding="utf-8")
             )
             alg = "RS256" if sign_alg == "rs256" else "ES256"
-            bom = generator.sign_jws(bom, pem, alg=alg, key_id=key_id or sign_alg.upper())
+            if standard:
+                if fmt == "xml":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="JSF enveloped signatures apply to the JSON "
+                        "serialization; use fmt=json with signed=jsf",
+                    )
+                bom = generator.sign_standard(bom, pem, alg=alg, key_id=key_id or sign_alg.upper())
+            else:
+                bom = generator.sign_jws(bom, pem, alg=alg, key_id=key_id or sign_alg.upper())
         else:
-            bom = generator.sign(bom, secret, key_id=key_id)
+            if standard:
+                if fmt == "xml":
+                    raise HTTPException(
+                        status_code=400,
+                        detail="JSF enveloped signatures apply to the JSON "
+                        "serialization; use fmt=json with signed=jsf",
+                    )
+                bom = generator.sign_standard(bom, secret, alg="HS256", key_id=key_id)
+            else:
+                bom = generator.sign(bom, secret, key_id=key_id)
     if fmt == "xml":
         return Response(content=generator.to_xml(bom), media_type="application/xml")
     return JSONResponse(bom)
@@ -309,7 +331,7 @@ def cbom_scan_uncovered(
 @router.get("/portfolio")
 def cbom_portfolio(
     fmt: str = Query("json"),
-    signed: bool = False,
+    signed: bool | str = False,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -631,7 +653,13 @@ def cbom_diff(
 ):
     left_name, left_id, left_records = _resolve_ref(db, body.left)
     right_name, right_id, right_records = _resolve_ref(db, body.right)
-    result = diff_records(left_records, right_records)
+    # Semantic diff (report 08 P2#8): attribute deltas between the same
+    # logical component (algorithm at a location) are classified —
+    # ALGORITHM_CHANGED / PARAMETER_CHANGED / LOCATION_CHANGED /
+    # VERSION_CHANGED — instead of surfacing as an added+removed pair.
+    # The response keeps the historical added/removed/unchanged/counts
+    # shape and adds ``changed`` + ``counts.changed``.
+    result = semantic_diff(left_records, right_records)
     result["left"] = {"name": left_name, "source_id": left_id, "components": len(left_records)}
     result["right"] = {"name": right_name, "source_id": right_id, "components": len(right_records)}
     return result
@@ -641,7 +669,7 @@ def cbom_diff(
 def cbom_for_scan(
     scan_id: str,
     fmt: str = Query("json"),
-    signed: bool = False,
+    signed: bool | str = False,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -661,6 +689,7 @@ def cbom_for_scan(
         version=scan.target_commit or scan.target_branch or "unknown",
         tool_version=scan.scanner_version,
         dependencies=dependencies or None,
+        scan_id=scan.id,
         metadata_properties=(
             [{"name": "cryptoscan:dependencies", "value": "scan-cascade"}]
             if dependencies else None),
@@ -681,7 +710,7 @@ def cbom_for_scan(
 def cbom_for_system(
     system_id: str,
     fmt: str = Query("json"),
-    signed: bool = False,
+    signed: bool | str = False,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -711,7 +740,8 @@ def cbom_for_system(
         dependencies=dependencies,
         metadata_properties=[
             {"name": "cryptoscan:dependencies", "value": "estate-linkage"},
-        ])
+        ],
+        scan_id=f"system:{system.id}")
     return _render(bom, fmt, signed)
 
 
@@ -719,7 +749,7 @@ def cbom_for_system(
 def cbom_custom(
     body: CustomCbomRequest,
     fmt: str = Query("json"),
-    signed: bool = False,
+    signed: bool | str = False,
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):

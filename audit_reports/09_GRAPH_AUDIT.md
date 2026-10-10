@@ -324,3 +324,13 @@ def _edge_evidence(graph, edge, asset_rows):
 
 Still open: finer node kinds beyond persisted data (CloudKMSKey,
 container images), direct EvidenceRecord FKs on edges.
+
+
+## Round 22 note (2026-10-10)
+
+Correcting this report's status line and the round-16-era verdict: the
+container-image graph nodes listed as open are BUILT (round 21) —
+`ContainerImage` nodes with honest `RUNS` linkage on both graph planes,
+prune-set included. See report 03's round-21 addendum for the design.
+Remaining open node kinds are the deployment-scoped ones
+(NetworkEdge/LB/K8s — need infrastructure discovery sources).

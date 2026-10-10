@@ -334,3 +334,31 @@ Re-read in full against the code:
 - **Still open, unchanged:** container-image graph nodes, PKCS#11/KMIP
   scanner-pipeline integration, BU→System→Asset grant inheritance,
   custom roles, SDKs, deployment-scoped items.
+
+
+## Round 22 addendum (2026-10-10) — BU → System → Asset grant inheritance BUILT
+
+- **§2.2 inheritance shipped.** `ResourceGrantRepository` now resolves
+  grants down the hierarchy: a grant on a business unit
+  (``resource_type=BUSINESS_UNIT``) applies to every system whose
+  ``business_unit`` matches and to those systems' assets; asset checks
+  take the max of a direct ASSET grant, the owning systems' SYSTEM
+  grants and their BU grants. Restriction flows down the same path —
+  once ANY grant exists for a BU, its systems are under grant control
+  (restrictive-only-when-present is preserved everywhere else).
+- Enforcement: the systems router's gate resolves inherited roles;
+  `POST /inventory/assets/{id}/lifecycle` enforces the asset-level
+  chain (write role). Management endpoints mirror the system-grant
+  surface: `GET/POST /systems/business-units/{bu}/grants` and
+  `DELETE .../grants/{subject}` (admin-only, audited:
+  bu.restrict/bu.grant/bu.revoke/bu.unrestrict). The system grants view
+  reports `restricted_by: SYSTEM|BUSINESS_UNIT` and the inherited BU
+  grants.
+- Tests: 5 in `services/api/tests/unit/test_round22_grant_inheritance.py`
+  (repository semantics, management endpoints, gated reads/writes,
+  asset lifecycle through inheritance).
+- Also from round 21: container-image graph nodes are no longer open
+  (see report 03's round-21 addendum) — the "still open" list above
+  predates that.
+- Still open: custom role definitions (product decision), SDKs,
+  deployment-scoped items.

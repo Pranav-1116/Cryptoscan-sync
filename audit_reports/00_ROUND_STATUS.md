@@ -24,12 +24,12 @@ repository on 2026-10-09.
 | 05_BACKEND_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — policy override surface + MAX_QUEUE_DEPTH admission built; problem-details + resource-level authz documented as open |
 | 06_FRONTEND_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — Tabs ARIA + Table keyboard/scope a11y built; HBOM page + realtime cap claims stale; 132 frontend tests |
 | 07_CRYPTO_DISCOVERY_AUDIT | ✅ Current + addendum | **UPDATE addendum (R16)** — detection surface matches; QUIC/transitive-dep items remain backlog |
-| 08_EVIDENCE_CBOM_HBOM_AUDIT | 🕰 Stale + addendum | **UPDATE addendum (R16)** — CryptoAssetEvidence IS populated; HBOM ships as TechBOM layer + live page; chain sweep built R15 |
-| 09_GRAPH_AUDIT | ✅ Mostly current | **UPDATE addendum (R16)** — tenant gate + post-scan sync stage postdate it; container-image nodes remain open |
+| 08_EVIDENCE_CBOM_HBOM_AUDIT | 🔧 Extended | **UPDATE addenda (R16/R20/R22)** — CryptoAssetEvidence IS populated; HBOM ships as TechBOM layer; chain sweep R15; confidence propagation R20; standard JSF signature + compositions/externalReferences + semantic diff R22 |
+| 09_GRAPH_AUDIT | ✅ Mostly current | **UPDATE addenda (R16/R22)** — tenant gate + post-scan sync postdate it; container-image nodes BUILT R21 (see R22 note) |
 | 10_SECURITY_AUDIT | 🔧 Extended | **UPDATE addendum (R16)** — clone-URL transport validation built; password policy/artifact store already covered |
 | 11_TESTING_AUDIT | 🔧 Extended | **UPDATE addendum (R17)** — hypothesis property tests + coverage tooling + OpenAPI contract tests built; counts stale in the report's favor |
 | 12_DOCUMENTATION_REALITY | ✅ Current | Rest-api reference regenerated per change (728 paths/805 ops) |
-| 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum (R16–R18)** — QUIC/DTLS/WireGuard analyzers (R17), transitive crypto propagation + Azure Dedicated HSM + resource-grant floor (R18); remediation verification, HBOM/VBOM, drift/baselines, PQC built earlier; cloud-HSM matrix now complete; BU inheritance/custom roles remain open |
+| 13_MISSING_FEATURES | 🔧 Partially remediated | **UPDATE addendum (R16–R18, R22)** — QUIC/DTLS/WireGuard (R17), transitive propagation + Azure Dedicated HSM + resource-grant floor (R18), BU→System→Asset grant inheritance (R22); container graph nodes R21; custom roles/SDKs remain open |
 | 14_TECHNICAL_DEBT | 🔧 Partially remediated | **UPDATE addendum (R16+R17)** — TD-007 portfolio set-based + bounded truncation and duplicate-operationId fix built R17; TD-010 evidence-chain sweep built R16; TD-002/008/011/012/016/025 already fixed |
 | 15_PRODUCTION_READINESS | 🔧 Extended | **UPDATE addendum (R17)** — backup encryption + evidence soft-delete (chain-preserving) built; predates DR (RTO 0.103s/RPO 0s), soak, load, compliance-burn evidence in PRODUCTION-READINESS.md |
 | 16_IMPLEMENTATION_ROADMAP | 🕰 Superseded + addendum | docs/PRODUCTION-ROADMAP.md is the live plan; **UPDATE addendum (R17)** — EVIDENCE-003 closed |
@@ -102,5 +102,12 @@ repository on 2026-10-09.
 | 20 (2026-10-10) | Graph ghost-node pruning + NetworkResource Neo4j sync (latent TypeError fixed) | 03, 09 |
 | 20 (2026-10-10) | CBOM evidence-confidence propagation (recorded confidence → evidence block + property) | 08 P1#6 |
 | 20 (2026-10-10) | Graph export `GET /graph/export` (GraphML / GEXF, XML-escaped) | 09 #12 |
+| 21 (2026-10-10) | ContainerImage graph nodes + honest RUNS linkage (both planes, prune-set) | 03, 09, 13 |
+| 21 (2026-10-10) | Trace-context propagation across the queue (payload key + job progress → PipelineContext) | 02 P2#7 |
+| 21 (2026-10-10) | Migration 0078: 24 truly-missing model indexes + parity/minimality/downgrade-roundtrip tests | 04 |
+| 22 (2026-10-10) | CycloneDX-spec standard enveloped signature (JSF top-level field, `?signed=jsf`) | 08 P2#6 |
+| 22 (2026-10-10) | CBOM compositions (INCOMPLETE) + externalReferences (provenance + file locations), XML included | 08 P2#7 |
+| 22 (2026-10-10) | Semantic CBOM diff (ALGORITHM/PARAMETER/VERSION/LOCATION_CHANGED classification) | 08 P2#8 |
+| 22 (2026-10-10) | BU → System → Asset grant inheritance (repo resolution + endpoint enforcement + BU grant management) | 13 §2.2 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

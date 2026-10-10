@@ -43,6 +43,7 @@ class CbomGenerator:
         vulnerabilities: list[dict[str, Any]] | None = None,
         dependencies: list[dict[str, Any]] | None = None,
         metadata_properties: list[dict[str, Any]] | None = None,
+        scan_id: str | None = None,
     ) -> dict[str, Any]:
         components = [self._component(record) for record in records]
         metadata: dict[str, Any] = {
@@ -73,6 +74,29 @@ class CbomGenerator:
                 }
                 for item in vulnerabilities
             ]
+        # Report 08 P2#7: compositions + externalReferences.
+        #
+        # ``compositions`` is the honest completeness claim: a discovery-based
+        # CBOM lists what the scanners found, never a guarantee of coverage,
+        # so the assemblies aggregate is INCOMPLETE (CycloneDX semantics:
+        # "the component list may not be exhaustive"). Claiming COMPLETE
+        # would be fabricated assurance.
+        if components:
+            bom["compositions"] = [
+                {
+                    "aggregate": "INCOMPLETE",
+                    "assemblies": [
+                        str(item["bom-ref"]) for item in components if item.get("bom-ref")
+                    ],
+                }
+            ]
+        # ``externalReferences``: provenance back to the scan that produced
+        # this BOM (urn form — a resolvable pointer within the deployment).
+        refs: list[dict[str, str]] = []
+        if scan_id:
+            refs.append({"type": "provenance", "url": f"urn:cryptoscan:scan:{scan_id}"})
+        if refs:
+            bom["externalReferences"] = refs
         root_ref = None
         if dependencies:
             bom["dependencies"] = dependencies
@@ -174,6 +198,13 @@ class CbomGenerator:
                 occ = SubElement(ev, "occurrence")
                 loc = SubElement(occ, "location")
                 loc.text = str(evidence.get("file"))
+            for ref in item.get("externalReferences") or []:
+                if isinstance(ref, dict) and ref.get("url"):
+                    refs_el = SubElement(el, "externalReferences")
+                    ref_el = SubElement(refs_el, "reference")
+                    ref_el.set("type", str(ref.get("type") or "other"))
+                    url_el = SubElement(ref_el, "url")
+                    url_el.text = str(ref["url"])
                 if evidence.get("line") is not None:
                     line = SubElement(occ, "line")
                     line.text = str(evidence.get("line"))
@@ -206,6 +237,26 @@ class CbomGenerator:
                     rating_el = SubElement(vuln_el, "ratings")
                     score_el = SubElement(rating_el, "severity")
                     score_el.text = str((ratings[0] or {}).get("severity") or "unknown")
+
+        for ref in bom.get("externalReferences") or []:
+            if isinstance(ref, dict) and ref.get("url"):
+                refs_el = SubElement(root, "externalReferences")
+                ref_el = SubElement(refs_el, "reference")
+                ref_el.set("type", str(ref.get("type") or "other"))
+                url_el = SubElement(ref_el, "url")
+                url_el.text = str(ref["url"])
+        for comp in bom.get("compositions") or []:
+            if not isinstance(comp, dict):
+                continue
+            comps_el = SubElement(root, "compositions")
+            comp_el = SubElement(comps_el, "composition")
+            comp_el.set("aggregate", str(comp.get("aggregate") or "UNKNOWN"))
+            assemblies = comp.get("assemblies") or []
+            if assemblies:
+                asm_el = SubElement(comp_el, "assemblies")
+                for ref in assemblies:
+                    a = SubElement(asm_el, "assembly")
+                    a.set("ref", str(ref))
 
         return tostring(root, encoding="unicode")
 
@@ -240,6 +291,33 @@ class CbomGenerator:
         metadata["properties"] = properties
         signed["metadata"] = metadata
         return signed
+
+    def sign_standard(
+        self,
+        bom: dict[str, Any],
+        key: Any,
+        alg: str = "ES256",
+        *,
+        key_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Sign with the CycloneDX-spec standard enveloped signature (JSF).
+
+        Emits the top-level ``signature`` field CycloneDX >= 1.4 defines
+        (report 08 P2#6): ``{algorithm, publicKey (JWK) | keyId, value}``
+        where the signed bytes are the document with ``signature.value``
+        removed — verifiable by any JSF implementation, no
+        CryptoScan-specific property required.
+        """
+        from cbom.signing.jsf_signer import sign_jsf
+
+        return sign_jsf(bom, key, alg=alg, key_id=key_id)
+
+    def verify_standard(self, bom: dict[str, Any], key: Any = None) -> tuple[bool, str | None]:
+        """Verify the standard ``signature`` field. ``key`` None uses the
+        embedded JWK (integrity); pass a trusted key for authenticity."""
+        from cbom.signing.jsf_signer import verify_jsf
+
+        return verify_jsf(bom, key)
 
     def sign_jws(
         self,
@@ -288,6 +366,37 @@ class CbomGenerator:
                 "checks": checks,
                 "error": error,
             }
+
+        # report 08 P2#6: the CycloneDX-spec standard ``signature`` field
+        # takes precedence; the property-based JWS remains the fallback.
+        if isinstance(bom.get("signature"), dict) and bom["signature"].get("value"):
+            from cbom.signing.jsf_signer import verify_jsf
+
+            alg_name = str(bom["signature"].get("algorithm") or "").upper()
+            if alg_name == "HS256":
+                if isinstance(secret, dict):
+                    # keyring: kid first (rotation), primary as fallback
+                    kid = bom["signature"].get("keyId")
+                    key = (secret.get(kid) if kid else None) or secret.get("primary")
+                else:
+                    key = secret
+            else:
+                # asymmetric: the shared-secret argument cannot carry an
+                # EC/RSA public key — verify against the embedded JWK
+                # (integrity). Authenticity with a trusted PEM goes through
+                # verify_standard / a configured public key.
+                key = None
+            ok, error = verify_jsf(bom, key if key else None)
+            return report(
+                ok,
+                str(bom["signature"].get("algorithm") or "JSF"),
+                [
+                    {"name": "standard_signature_field", "passed": ok},
+                    {"name": "value_decodes_and_matches", "passed": ok},
+                ],
+                error,
+                key_id=bom["signature"].get("keyId"),
+            )
 
         if jws:
             checks: list[dict[str, Any]] = []
@@ -442,6 +551,13 @@ class CbomGenerator:
                 "compliance_status": data.get("compliance_status"),
             },
         }
+        # report 08 P2#7: the discovery location in standard
+        # externalReferences form (complements the custom properties)
+        location = data.get("file_path")
+        if location:
+            component["externalReferences"] = [
+                {"type": "other", "url": f"file://{location}"}
+            ]
         properties: list[dict[str, Any]] = []
         if data.get("system_name"):
             properties.append({"name": "cryptoscan:system", "value": str(data["system_name"])})

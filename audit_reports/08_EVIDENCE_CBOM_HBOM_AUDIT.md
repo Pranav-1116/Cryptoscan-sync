@@ -312,3 +312,41 @@ component.properties ← cryptoscan:system_id, cryptoscan:system
 - Still open: standard enveloped signatures (P2#6), compositions /
   externalReferences (P2#7), semantic CBOM diff classification (P2#8) —
   unchanged from round-16 ranking.
+
+
+## Round 22 addendum (2026-10-10) — P2#6/#7/#8 BUILT
+
+- **P2#6 (standard enveloped signatures): BUILT.** The JWS-in-property
+  form was already real; what was missing was the spec's own field.
+  `cbom/signing/jsf_signer.py` emits the CycloneDX (>= 1.4) top-level
+  ``signature`` object in JSON Signature Format —
+  ``{algorithm, publicKey (JWK) | keyId, value}`` — with the JSF signing
+  rule honored exactly (signed bytes = the document with
+  ``signature.value`` removed, canonicalized sorted-keys/compact). ES256
+  uses raw IEEE P-1363 r||s, RS256 PKCS#1 v1.5, HS256 HMAC-SHA256 with
+  ``keyId`` (shared secrets are never embedded). API surface:
+  ``?signed=jsf`` on the CBOM routes (legacy ``?signed=true`` unchanged),
+  ``verify_report`` prefers the standard field (kid-aware keyring for
+  HS256, embedded-JWK integrity for asymmetric), and JSF+XML is an
+  explicit 400 rather than a silently-dropped signature.
+- **P2#7 (compositions / externalReferences): BUILT.** Every generated
+  CBOM now carries ``compositions: [{aggregate: INCOMPLETE, assemblies:
+  [all bom-refs]}]`` — the honest completeness claim for a
+  discovery-based inventory (COMPLETE would be fabricated assurance) —
+  plus document-level ``externalReferences`` provenance
+  (``urn:cryptoscan:scan:<id>``) and per-component ``file://`` location
+  references. XML serialization renders all three.
+- **P2#8 (semantic diff classification): BUILT.**
+  ``cbom.inventory.semantic_diff`` classifies attribute deltas instead
+  of surfacing them as added+removed pairs: same-site changes classify
+  as ``ALGORITHM_CHANGED`` (algorithm/mode/padding), ``PARAMETER_CHANGED``
+  (key size/parameter set) or ``VERSION_CHANGED`` (ingested library
+  BOMs); a fingerprint that relocates to a different file classifies as
+  ``LOCATION_CHANGED``. Line-number drift is deliberately NOT a change
+  (refactors shift lines constantly). Records are matched as
+  observations, never deduplicated. ``POST /cbom/diff`` returns the
+  historical shape plus ``changed`` + ``counts.changed``.
+- Tests: 16 in `services/cbom/tests/test_round22_standard_signature_diff.py`
+  + 3 API tests in
+  `services/api/tests/unit/test_round22_cbom_standard_diff.py`.
+- Still open from this report: nothing at P2; P3 backlog unchanged.

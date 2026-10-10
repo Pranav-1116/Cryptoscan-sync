@@ -115,6 +115,98 @@ class ResourceGrantRepository(BaseRepository[ResourceGrant]):
                 return role
         return None
 
+    # ------------------------------------------------------------------ #
+    # BU -> System -> Asset inheritance (report 13 §2.2, round 22)
+    # ------------------------------------------------------------------ #
+
+    def _system_business_unit(self, system_id: str) -> str | None:
+        from db.models.system import System
+
+        row = self.session.execute(
+            select(System.business_unit).where(System.id == system_id)
+        ).scalar_one_or_none()
+        return row
+
+    def system_is_restricted(self, system_id: str) -> bool:
+        """A system is under grant control when it has grants OR its
+        business unit does — restriction flows down the hierarchy exactly
+        like permission does."""
+        if self.is_restricted("SYSTEM", system_id):
+            return True
+        bu = self._system_business_unit(system_id)
+        return bool(bu) and self.is_restricted("BUSINESS_UNIT", bu)
+
+    def system_effective_role(self, subject: str, system_id: str) -> str | None:
+        """max(direct SYSTEM grant, inherited BUSINESS_UNIT grant)."""
+        best: int | None = None
+        for role in (
+            self.effective_role(subject, "SYSTEM", system_id),
+            self.effective_role(subject, "BUSINESS_UNIT", self._system_business_unit(system_id) or "")
+            if self._system_business_unit(system_id)
+            else None,
+        ):
+            rank = ROLE_RANK.get(role) if role else None
+            if rank is not None and (best is None or rank > best):
+                best = rank
+        if best is None:
+            return None
+        for role, rank in ROLE_RANK.items():
+            if rank == best:
+                return role
+        return None
+
+    def system_check_access(
+        self, subject: str, system_id: str, minimum_role: str
+    ) -> bool:
+        minimum_rank = ROLE_RANK.get(str(minimum_role).lower())
+        if minimum_rank is None:
+            return False
+        if not self.system_is_restricted(system_id):
+            return True
+        role = self.system_effective_role(subject, system_id)
+        return role is not None and ROLE_RANK[role] >= minimum_rank
+
+    def _asset_system_ids(self, asset_id: str) -> list[str]:
+        from db.models.system_asset import SystemAsset
+
+        rows = self.session.execute(
+            select(SystemAsset.system_id).where(SystemAsset.asset_id == asset_id)
+        ).scalars().all()
+        return [str(row) for row in rows]
+
+    def asset_is_restricted(self, asset_id: str) -> bool:
+        """An asset is under grant control when it has grants, any owning
+        system does, or any owning system's business unit does."""
+        if self.is_restricted("ASSET", asset_id):
+            return True
+        return any(self.system_is_restricted(sid) for sid in self._asset_system_ids(asset_id))
+
+    def asset_effective_role(self, subject: str, asset_id: str) -> str | None:
+        """max(direct ASSET grant, owning systems' grants, their BU grants)."""
+        candidates: list[str | None] = [self.effective_role(subject, "ASSET", asset_id)]
+        for sid in self._asset_system_ids(asset_id):
+            candidates.append(self.system_effective_role(subject, sid))
+        best: int | None = None
+        for role in candidates:
+            rank = ROLE_RANK.get(role) if role else None
+            if rank is not None and (best is None or rank > best):
+                best = rank
+        if best is None:
+            return None
+        for role, rank in ROLE_RANK.items():
+            if rank == best:
+                return role
+        return None
+
+    def asset_check_access(self, subject: str, asset_id: str, minimum_role: str) -> bool:
+        minimum_rank = ROLE_RANK.get(str(minimum_role).lower())
+        if minimum_rank is None:
+            return False
+        if not self.asset_is_restricted(asset_id):
+            return True
+        role = self.asset_effective_role(subject, asset_id)
+        return role is not None and ROLE_RANK[role] >= minimum_rank
+
     def check_access(
         self, subject: str, resource_type: str, resource_id: str, minimum_role: str
     ) -> bool:

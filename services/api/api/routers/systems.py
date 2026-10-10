@@ -25,11 +25,14 @@ def _system_access(
 ) -> None:
     """Resource-level check (report 13 §2.2). Restrictive-only-when-present:
     unrestricted systems behave exactly as before; once grants exist for a
-    system, the subject must hold one at or above ``minimum_role``.
-    Platform superadmin always passes; auditor passes read-only checks.
+    system — or for its business unit (round 22: BU → System → Asset
+    inheritance; restriction flows down like permission) — the subject
+    must hold a grant at or above ``minimum_role`` (direct, or inherited
+    from the business unit). Platform superadmin always passes; auditor
+    passes read-only checks.
     """
     grants = ResourceGrantRepository(db)
-    if not grants.is_restricted("SYSTEM", system_id):
+    if not grants.system_is_restricted(system_id):
         return
     from api.dependencies import _user_roles
     from api.security.rbac import normalize_roles
@@ -39,7 +42,7 @@ def _system_access(
         return
     if read_only and platform & {"auditor"}:
         return
-    if grants.check_access(user, "SYSTEM", system_id, minimum_role):
+    if grants.system_check_access(user, system_id, minimum_role):
         return
     raise HTTPException(
         status_code=403,
@@ -344,10 +347,21 @@ def list_grants(
     """Who has resource-level access to this system (admin view)."""
     if SystemRepository(db).get_by_id(system_id) is None:
         raise HTTPException(status_code=404, detail="System not found")
-    rows = ResourceGrantRepository(db).grants_for("SYSTEM", system_id)
+    repo = ResourceGrantRepository(db)
+    rows = repo.grants_for("SYSTEM", system_id)
+    system = SystemRepository(db).get_by_id(system_id)
+    bu = getattr(system, "business_unit", None)
+    bu_rows = repo.grants_for("BUSINESS_UNIT", bu) if bu else []
     return {
         "system_id": system_id,
-        "restricted": bool(rows),
+        "restricted": repo.system_is_restricted(system_id),
+        "restricted_by": "SYSTEM" if rows else ("BUSINESS_UNIT" if bu_rows else None),
+        "business_unit": bu,
+        "business_unit_grants": [
+            {"subject": g.subject, "role": g.role, "granted_by": g.granted_by,
+             "created_at": g.created_at.isoformat() if g.created_at else None}
+            for g in bu_rows
+        ],
         "grants": [
             {"subject": g.subject, "role": g.role, "granted_by": g.granted_by,
              "created_at": g.created_at.isoformat() if g.created_at else None}
@@ -428,4 +442,104 @@ def revoke_grant(
         db.rollback()
         raise HTTPException(status_code=503, detail="Revoke audit is unavailable")
     return {"system_id": system_id, "subject": subject, "revoked": True,
+            "restricted": still_restricted}
+
+
+# --------------------------------------------------------------------------- #
+# Business-unit grants (round 22, report 13 §2.2): BU → System → Asset
+# inheritance. A grant on a business unit applies to every system whose
+# ``business_unit`` matches and to those systems' assets; restriction flows
+# down the same path (a restricted BU puts its systems under grant control).
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/business-units/{business_unit}/grants")
+def list_bu_grants(
+    business_unit: str,
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Who has inherited access to a business unit's systems (admin view)."""
+    rows = ResourceGrantRepository(db).grants_for("BUSINESS_UNIT", business_unit)
+    affected = [
+        sid
+        for (sid, bu) in db.query(System.id, System.business_unit).filter(
+            System.business_unit == business_unit
+        ).all()
+    ]
+    return {
+        "business_unit": business_unit,
+        "restricted": bool(rows),
+        "systems_inheriting": affected,
+        "grants": [
+            {"subject": g.subject, "role": g.role, "granted_by": g.granted_by,
+             "created_at": g.created_at.isoformat() if g.created_at else None}
+            for g in rows
+        ],
+    }
+
+
+@router.post("/business-units/{business_unit}/grants")
+def add_bu_grant(
+    business_unit: str,
+    body: GrantCreate,
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Grant on a business unit — inherited by its systems and their assets."""
+    try:
+        grants = ResourceGrantRepository(db)
+        was_restricted = grants.is_restricted("BUSINESS_UNIT", business_unit)
+        row = grants.grant(body.subject, "BUSINESS_UNIT", business_unit, body.role, granted_by=user)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    from db.repositories.user_repository import UserRepository
+
+    try:
+        UserRepository(db).audit(
+            user,
+            "bu.grant" if was_restricted else "bu.restrict",
+            target_type="business_unit",
+            target_id=business_unit,
+            detail={"subject": body.subject, "role": row.role,
+                    "first_grant": not was_restricted},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Grant audit is unavailable")
+    return {"business_unit": business_unit, "subject": row.subject, "role": row.role,
+            "restricted": True}
+
+
+@router.delete("/business-units/{business_unit}/grants/{subject}")
+def revoke_bu_grant(
+    business_unit: str,
+    subject: str,
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Remove one subject's business-unit grant. Revoking the last grant
+    returns the BU (and its unrestricted systems) to open access."""
+    grants = ResourceGrantRepository(db)
+    was_restricted = grants.is_restricted("BUSINESS_UNIT", business_unit)
+    removed = grants.revoke(subject, "BUSINESS_UNIT", business_unit)
+    if not removed:
+        raise HTTPException(status_code=404, detail="No such grant")
+    still_restricted = grants.is_restricted("BUSINESS_UNIT", business_unit)
+    from db.repositories.user_repository import UserRepository
+
+    try:
+        UserRepository(db).audit(
+            user,
+            "bu.unrestrict" if was_restricted and not still_restricted else "bu.revoke",
+            target_type="business_unit",
+            target_id=business_unit,
+            detail={"subject": subject},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=503, detail="Revoke audit is unavailable")
+    return {"business_unit": business_unit, "subject": subject, "revoked": True,
             "restricted": still_restricted}

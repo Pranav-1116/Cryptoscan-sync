@@ -264,6 +264,11 @@ def diff_boms(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
     return diff_records(records_from_bom(left), records_from_bom(right))
 
 
+def semantic_diff_boms(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:
+    """Classified diff over two BOM documents (see ``semantic_diff``)."""
+    return semantic_diff(records_from_bom(left), records_from_bom(right))
+
+
 def _as_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
@@ -271,3 +276,156 @@ def _as_int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _site_of(data: dict[str, Any]) -> str:
+    """A usage site: the file (line drift alone is not a semantic change —
+    refactors shift lines constantly)."""
+    return str(data.get("file_path") or "")
+
+
+#: report 08 P2#8 — the classes a semantic diff distinguishes
+SEMANTIC_CHANGE_CLASSES = ("ALGORITHM_CHANGED", "PARAMETER_CHANGED", "VERSION_CHANGED", "LOCATION_CHANGED")
+
+
+def _classify_delta(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    """Attribute deltas between two observations of the same site."""
+    classes: list[str] = []
+    if (
+        str(record_algorithm(before)).upper() != str(record_algorithm(after)).upper()
+        or str(before.get("mode") or "").upper() != str(after.get("mode") or "").upper()
+        or str(before.get("padding") or "").upper() != str(after.get("padding") or "").upper()
+    ):
+        classes.append("ALGORITHM_CHANGED")
+    if record_key_size(before) != record_key_size(after):
+        classes.append("PARAMETER_CHANGED")
+    if str(before.get("version") or "") != str(after.get("version") or "") and (
+        before.get("version") or after.get("version")
+    ):
+        classes.append("VERSION_CHANGED")
+    return classes or ["LOCATION_CHANGED"]
+
+
+def semantic_diff(left: list[Any], right: list[Any]) -> dict[str, Any]:
+    """Classified diff (report 08 P2#8): algorithm change vs. parameter
+    change vs. location change — not just added/removed fingerprints.
+
+    Matching happens in two passes over *observations* (records are never
+    deduplicated: two sites using identical crypto are two observations):
+
+    1. **By site**: the same file on both sides pairs its observations —
+       exact fingerprint first, then site-local pairing. Differing
+       algorithm/mode/padding → ``ALGORITHM_CHANGED``; differing key size /
+       parameter set → ``PARAMETER_CHANGED``; differing component version
+       (ingested library BOMs) → ``VERSION_CHANGED``. Line-number drift is
+       NOT a change (same site, same crypto).
+    2. **By identity**: a leftover observation whose exact fingerprint
+       appears on the other side at a *different* site is a
+       ``LOCATION_CHANGED`` — the same crypto moved.
+
+    Everything unmatched stays ADDED/REMOVED: a new usage site is a new
+    logical component by definition.
+    """
+    left_obs = [(fingerprint(item), record_to_dict(item)) for item in left]
+    right_obs = [(fingerprint(item), record_to_dict(item)) for item in right]
+
+    left_by_site: dict[str, list[int]] = {}
+    for idx, (_fp, data) in enumerate(left_obs):
+        left_by_site.setdefault(_site_of(data), []).append(idx)
+    right_by_site: dict[str, list[int]] = {}
+    for idx, (_fp, data) in enumerate(right_obs):
+        right_by_site.setdefault(_site_of(data), []).append(idx)
+
+    def _item(fp: str, data: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "fingerprint": fp,
+            "algorithm": record_algorithm(data),
+            "mode": record_mode(data),
+            "key_size": record_key_size(data),
+            "name": data.get("name") or data.get("algorithm"),
+            "location": str(data.get("file_path") or ""),
+        }
+
+    matched_left: set[int] = set()
+    matched_right: set[int] = set()
+    unchanged: list[dict[str, Any]] = []
+    changed: list[dict[str, Any]] = []
+
+    # pass 1 — same site on both sides
+    for site in sorted(set(left_by_site) & set(right_by_site)):
+        right_pool = [idx for idx in right_by_site[site] if idx not in matched_right]
+        for lidx in left_by_site[site]:
+            if lidx in matched_left:
+                continue
+            lfp, ldata = left_obs[lidx]
+            exact = next(
+                (ridx for ridx in right_pool if right_obs[ridx][0] == lfp), None
+            )
+            if exact is not None:
+                matched_left.add(lidx)
+                matched_right.add(exact)
+                right_pool.remove(exact)
+                unchanged.append(_item(lfp, ldata))
+                continue
+            if right_pool:
+                ridx = right_pool.pop(0)
+                matched_left.add(lidx)
+                matched_right.add(ridx)
+                rfp, rdata = right_obs[ridx]
+                changed.append(
+                    {
+                        "algorithm": record_algorithm(ldata),
+                        "name": ldata.get("name") or ldata.get("algorithm"),
+                        "location": site,
+                        "classifications": _classify_delta(ldata, rdata),
+                        "from": _item(lfp, ldata),
+                        "to": _item(rfp, rdata),
+                    }
+                )
+
+    # pass 2 — identity moves: same fingerprint, different site
+    for lidx, (lfp, ldata) in enumerate(left_obs):
+        if lidx in matched_left:
+            continue
+        move = next(
+            (
+                ridx
+                for ridx, (rfp, _rdata) in enumerate(right_obs)
+                if ridx not in matched_right and rfp == lfp and _site_of(right_obs[ridx][1]) != _site_of(ldata)
+            ),
+            None,
+        )
+        if move is None:
+            continue
+        matched_left.add(lidx)
+        matched_right.add(move)
+        changed.append(
+            {
+                "algorithm": record_algorithm(ldata),
+                "name": ldata.get("name") or ldata.get("algorithm"),
+                "location": f"{_site_of(ldata)} -> {_site_of(right_obs[move][1])}",
+                "classifications": ["LOCATION_CHANGED"],
+                "from": _item(lfp, ldata),
+                "to": _item(lfp, right_obs[move][1]),
+            }
+        )
+
+    removed = [
+        _item(fp, data) for idx, (fp, data) in enumerate(left_obs) if idx not in matched_left
+    ]
+    added = [
+        _item(fp, data) for idx, (fp, data) in enumerate(right_obs) if idx not in matched_right
+    ]
+
+    return {
+        "added": sorted(added, key=lambda item: item["fingerprint"]),
+        "removed": sorted(removed, key=lambda item: item["fingerprint"]),
+        "unchanged": sorted(unchanged, key=lambda item: item["fingerprint"]),
+        "changed": sorted(changed, key=lambda item: str(item["algorithm"])),
+        "counts": {
+            "added": len(added),
+            "removed": len(removed),
+            "unchanged": len(unchanged),
+            "changed": len(changed),
+        },
+    }

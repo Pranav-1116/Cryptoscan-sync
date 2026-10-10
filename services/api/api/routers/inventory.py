@@ -378,6 +378,30 @@ def transition_asset_lifecycle(
     asset = filtered_get(db, CryptoAsset, asset_id)
     if asset is None:
         raise HTTPException(status_code=404, detail="Crypto asset not found")
+    # Asset-level grant check (round 22, report 13 §2.2): restrictive only
+    # when present — a direct ASSET grant, an owning system's grant, or that
+    # system's business-unit grant puts the asset under control; the
+    # effective role is inherited up that chain.
+    from api.dependencies import _user_roles
+    from api.security.rbac import normalize_roles
+    from db.repositories.resource_grant_repository import (
+        ResourceGrantRepository,
+        WRITE_ROLE,
+    )
+
+    grants = ResourceGrantRepository(db)
+    if grants.asset_is_restricted(asset_id):
+        platform = set(normalize_roles(_user_roles(user, None, db)))
+        if not platform & {"superadmin", "admin"}:
+            if not grants.asset_check_access(user, asset_id, WRITE_ROLE):
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Asset is grant-restricted; user {user} lacks "
+                        f"{WRITE_ROLE} access (directly or via its system / "
+                        f"business unit)"
+                    ),
+                )
     current = asset.lifecycle_state or "DISCOVERED"
     to_state = body.to_state.upper()
     if to_state not in LIFECYCLE_TRANSITIONS.get(current, ()):
