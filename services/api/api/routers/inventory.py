@@ -175,6 +175,9 @@ def collect_inventory(session: Session, *,
             "confidence": a.confidence,
             "file_path": a.file_path,
             "source_language": a.source_language,
+            "owner": a.owner,
+            "technical_owner": a.technical_owner,
+            "security_owner": a.security_owner,
             "risk": _risk(None, a.confidence, alg),
             "pqc": _pqc(alg),
             "lifecycle_state": a.lifecycle_state,
@@ -190,6 +193,8 @@ def collect_inventory(session: Session, *,
             "issuer": c.issuer,
             "public_key_algorithm": c.public_key_algorithm,
             "public_key_size": c.public_key_size,
+            "owner": c.owner,
+            "technical_contact": c.technical_contact,
             "expiry_status": c.expiry_status,
             "days_until_expiry": c.days_until_expiry,
             "risk": _risk(None if c.expiry_status != "EXPIRED" else "HIGH", None, c.public_key_algorithm, expired=c.expiry_status == "EXPIRED"),
@@ -357,6 +362,81 @@ LIFECYCLE_TRANSITIONS: dict[str, tuple[str, ...]] = {
 class LifecycleRequest(BaseModel):
     to_state: str = Field(..., pattern="^(VERIFIED|ACTIVE|DEPRECATED|RETIRED)$")
     reason: str = Field(..., min_length=1)
+
+
+class OwnershipRequest(BaseModel):
+    """Direct ownership assignment (audit 55 P0#3). All fields optional —
+    only the supplied ones change; omitting one clears nothing."""
+    owner: str | None = Field(None, max_length=200)
+    technical_owner: str | None = Field(None, max_length=200)
+    security_owner: str | None = Field(None, max_length=200)
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/assets/{asset_id}/ownership")
+def assign_asset_ownership(
+    asset_id: str,
+    body: OwnershipRequest,
+    user: str = Depends(require_auditor),
+    db: Session = Depends(get_db_session),
+):
+    """Assign direct owners to a crypto asset (audit 55 P0#3).
+
+    Ownership used to exist only on the System row — an asset with no
+    system link had no owner at all. Every assignment is audited with
+    its reason and emits a platform event.
+    """
+    from api.events.platform_events import emit_platform_event
+
+    asset = filtered_get(db, CryptoAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Crypto asset not found")
+    # same asset-level grant check as the lifecycle transition (round 22)
+    from api.dependencies import _user_roles
+    from api.security.rbac import normalize_roles
+    from db.repositories.resource_grant_repository import (
+        ResourceGrantRepository,
+        WRITE_ROLE,
+    )
+
+    grants = ResourceGrantRepository(db)
+    if grants.asset_is_restricted(asset_id):
+        platform = set(normalize_roles(_user_roles(user, None, db)))
+        if not platform & {"superadmin", "admin"}:
+            if not grants.asset_check_access(user, asset_id, WRITE_ROLE):
+                raise HTTPException(
+                    status_code=403,
+                    detail=(
+                        f"Asset is grant-restricted; user {user} lacks "
+                        f"{WRITE_ROLE} access (directly or via its system / "
+                        f"business unit)"
+                    ),
+                )
+    before = {"owner": asset.owner, "technical_owner": asset.technical_owner,
+              "security_owner": asset.security_owner}
+    for field in ("owner", "technical_owner", "security_owner"):
+        value = getattr(body, field)
+        if value is not None:
+            setattr(asset, field, value)
+    db.commit()
+    emit_platform_event(
+        "inventory.asset_ownership",
+        f"Crypto asset {asset.algorithm} at {asset.file_path}:{asset.line_number} "
+        f"ownership set by {user}",
+        {"asset_id": asset.id, "algorithm": asset.algorithm,
+         "file_path": asset.file_path, "before": before,
+         "after": {"owner": asset.owner, "technical_owner": asset.technical_owner,
+                   "security_owner": asset.security_owner},
+         "reason": body.reason, "actor": user},
+        target_name="inventory",
+    )
+    return {
+        "asset_id": asset.id,
+        "owner": asset.owner,
+        "technical_owner": asset.technical_owner,
+        "security_owner": asset.security_owner,
+        "reason": body.reason,
+    }
 
 
 @router.post("/assets/{asset_id}/lifecycle")

@@ -24,6 +24,9 @@ class Vendor(BaseModel, TenantScoped):
     integration_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     primary_contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     security_contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    # technical contact (audit 55 P0#5, round 27): commercial + security
+    # contacts existed; the party answering crypto questions did not
+    technical_contact: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
     last_assessment_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     extra_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 

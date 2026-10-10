@@ -36,6 +36,13 @@ class CryptoAsset(BaseModel, TenantScoped):
     lifecycle_state: Mapped[str] = mapped_column(
         String(20), nullable=False, default="DISCOVERED", server_default="DISCOVERED")
 
+    # direct ownership (audit 55 P0#3, round 27): an asset without a system
+    # link used to have no owner at all. Free-form identity strings — the
+    # same convention as System.technical_owner / security_owner (round 19).
+    owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    technical_owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    security_owner: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     evidence_links = relationship(
         "CryptoAssetEvidence",
         back_populates="asset",

@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_auditor
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.models.migration_project import MigrationProject
 
@@ -218,6 +218,58 @@ class MigrationPatch(BaseModel):
     notes: str | None = None
     owner: str | None = None
     algorithm_to: str | None = None
+
+
+class VendorOwnershipRequest(BaseModel):
+    """Vendor contacts (audit 55 P0#5): the party answering crypto
+    questions. primary/security contacts already exist on the row."""
+    technical_contact: str | None = Field(None, max_length=200)
+    primary_contact: str | None = Field(None, max_length=200)
+    security_contact: str | None = Field(None, max_length=200)
+    reason: str = Field(..., min_length=1)
+
+
+@router.post("/vendors/{vendor_id}/ownership")
+def assign_vendor_ownership(
+    vendor_id: str, body: VendorOwnershipRequest,
+    user: str = Depends(require_auditor), db: Session = Depends(get_db_session),
+):
+    """Assign vendor contacts — commercial, security, and technical (audit 55 P0#5).
+
+    Vendors had a primary (commercial) and security contact but nobody
+    answering technical crypto questions (algorithms, protocols, key
+    handling). Only supplied fields change; omitting one clears nothing.
+    """
+    vendor = IntelligenceRepository(db).get_vendor(vendor_id)
+    if vendor is None:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    before = {"primary_contact": vendor.primary_contact,
+              "security_contact": vendor.security_contact,
+              "technical_contact": vendor.technical_contact}
+    for field in ("technical_contact", "primary_contact", "security_contact"):
+        value = getattr(body, field)
+        if value is not None:
+            setattr(vendor, field, value)
+    db.commit()
+    from db.repositories.user_repository import UserRepository
+
+    UserRepository(db).audit(
+        user, "vendor.ownership.assign", target_type="vendor", target_id=vendor.id,
+        detail={"before": before,
+                "after": {"primary_contact": vendor.primary_contact,
+                          "security_contact": vendor.security_contact,
+                          "technical_contact": vendor.technical_contact},
+                "reason": body.reason},
+    )
+    db.commit()
+    return {
+        "vendor_id": vendor.id,
+        "name": vendor.name,
+        "primary_contact": vendor.primary_contact,
+        "security_contact": vendor.security_contact,
+        "technical_contact": vendor.technical_contact,
+        "reason": body.reason,
+    }
 
 
 @router.get("/business/processes")

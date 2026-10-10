@@ -428,3 +428,38 @@ with real schema cost, tracked in 00_ROUND_STATUS.
 
 Tests: `services/api/tests/unit/test_round19_risk_exposure_ownership.py`
 (ownership block: 4 tests).
+
+## Round 27 update (2026-10-10) — direct ownership built on assets, certificates, vendors
+
+* **System owners (P0 #1/#2) — already shipped (round 19, re-verified):**
+  `systems.technical_owner` / `security_owner` next to the business
+  `owner`, surfaced through the inventory and risk surfaces.
+* **Direct ownership on CryptoAsset (P0 #3) — NOW BUILT (this round).**
+  Migration 0080 adds `owner` / `technical_owner` / `security_owner` to
+  `crypto_assets` (same free-form identity convention as the System
+  fields — the platform has no user directory to FK against).
+  `POST /inventory/assets/{asset_id}/ownership` assigns them under the
+  same audited-write + asset-level grant-check path as the lifecycle
+  transitions (round 22 inheritance applies), requires a reason, emits
+  a platform event with before/after, and only changes supplied fields.
+  The unified inventory listing now carries the three owner fields on
+  crypto rows.
+* **Certificate ownership (P0 #4) — NOW BUILT.** Migration 0080 adds
+  `owner` / `technical_contact` to `certificates`;
+  `POST /certificates/{fingerprint}/ownership` (permission
+  `certificates.manage`) with audit trail — a certificate with no usage
+  links used to have nobody to notify at expiry. The certificate
+  listing carries the fields.
+* **Vendor contacts (P0 #5) — NOW BUILT.** Vendors already had
+  `primary_contact` (commercial) and `security_contact`; migration
+  0080 adds `technical_contact` — the party answering crypto questions
+  (algorithms, protocols, key handling). Assigned via
+  `POST /vendors/{vendor_id}/ownership` (auditor-gated, audited).
+* **Still open (P1+):** multi-owner link table with roles,
+  environment-scoped ownership, delegation with expiry, and automated
+  ownership discovery (CODEOWNERS / git blame / HR sync) — all
+  product-scoped, tracked in 00_ROUND_STATUS.
+* Tests: `services/api/tests/unit/test_round27_ownership.py` (7:
+  assignment + partial-update semantics + reason-required + 404s +
+  viewer-403 for all three surfaces) and the migration-chain guard in
+  `services/database/tests/unit/test_schema_ensure.py`.

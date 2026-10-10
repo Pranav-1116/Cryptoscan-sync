@@ -86,6 +86,13 @@ class RenewRequest(BaseModel):
     rotate_key: bool = False
 
 
+class CertificateOwnershipRequest(BaseModel):
+    """Direct ownership on a certificate (audit 55 P0#4)."""
+    owner: str | None = Field(None, max_length=200)
+    technical_contact: str | None = Field(None, max_length=200)
+    reason: str = Field(..., min_length=1)
+
+
 class RevokeRequest(BaseModel):
     reason: str = "unspecified"
 
@@ -188,6 +195,47 @@ def lifecycle_issue(
         "not_before": result.not_before,
         "not_after": result.not_after,
         "inventory_id": row.id,
+    }
+
+
+@router.post("/{fingerprint}/ownership")
+def assign_certificate_ownership(
+    fingerprint: str,
+    body: CertificateOwnershipRequest,
+    user: str = Depends(require_permission("certificates.manage")),
+    db: Session = Depends(get_db_session),
+):
+    """Assign a direct owner + technical contact to a certificate (audit 55 P0#4).
+
+    Certificate ownership used to be inferable only through the systems the
+    certificate protects — a cert with no usage links had nobody to notify
+    at expiry. Only supplied fields change; omitting one clears nothing.
+    """
+    repo = CertificateRepository(db)
+    row = repo.get_by_fingerprint(fingerprint)
+    if row is None:
+        raise HTTPException(status_code=404, detail="certificate not found")
+    before = {"owner": row.owner, "technical_contact": row.technical_contact}
+    if body.owner is not None:
+        row.owner = body.owner
+    if body.technical_contact is not None:
+        row.technical_contact = body.technical_contact
+    db.commit()
+    from db.repositories.user_repository import UserRepository
+
+    UserRepository(db).audit(
+        user, "certificate.ownership.assign", target_type="certificate",
+        target_id=row.fingerprint_sha256,
+        detail={"before": before,
+                "after": {"owner": row.owner, "technical_contact": row.technical_contact},
+                "reason": body.reason},
+    )
+    db.commit()
+    return {
+        "fingerprint_sha256": row.fingerprint_sha256,
+        "owner": row.owner,
+        "technical_contact": row.technical_contact,
+        "reason": body.reason,
     }
 
 
