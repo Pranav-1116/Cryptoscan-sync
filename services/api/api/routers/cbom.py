@@ -665,6 +665,65 @@ def cbom_diff(
     return result
 
 
+@router.get("/evidence/{content_hash}")
+def cbom_components_for_evidence_hash(
+    content_hash: str,
+    limit: int = Query(100, ge=1, le=500),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Reverse evidence lookup: which CBOM components cite this hash.
+
+    deep/25 §3.5: the forward direction existed — every generated CBOM
+    component carries an evidence block with content_hash/chain_hash —
+    but there was no way to start from a hash (e.g. spotted in a
+    downloaded BOM) and find the scans/components that cite it. This is
+    that query. Retracted (soft-deleted) evidence is excluded: it no
+    longer renders as a component. Bounded, with an explicit truncation
+    flag.
+    """
+    from db.models.evidence_record import EvidenceRecord
+
+    cleaned = content_hash.strip().lower()
+    if len(cleaned) != 64 or any(c not in "0123456789abcdef" for c in cleaned):
+        raise HTTPException(status_code=422, detail="content_hash must be 64 hex characters")
+
+    rows = (
+        db.query(EvidenceRecord)
+        .filter(EvidenceRecord.content_hash == cleaned)
+        .filter(EvidenceRecord.deleted_at.is_(None))
+        .order_by(EvidenceRecord.created_at.desc())
+        .limit(limit + 1)
+        .all()
+    )
+    truncated = len(rows) > limit
+    components = [
+        {
+            "evidence_id": row.id,
+            "scan_id": row.scan_id,
+            "cbom_url": f"/api/v1/cbom/scan/{row.scan_id}",
+            "algorithm": row.algorithm,
+            "key_size": row.key_size,
+            "mode": row.mode,
+            "padding": row.padding,
+            "purpose": row.purpose,
+            "file_path": row.file_path,
+            "line_number": row.line_number,
+            "confidence": row.confidence,
+            "compliance_status": row.compliance_status,
+            "chain_position": row.chain_position,
+            "chain_hash": row.chain_hash,
+        }
+        for row in rows[:limit]
+    ]
+    return {
+        "content_hash": cleaned,
+        "count": len(components),
+        "truncated": truncated,
+        "components": components,
+    }
+
+
 @router.get("/scan/{scan_id}")
 def cbom_for_scan(
     scan_id: str,

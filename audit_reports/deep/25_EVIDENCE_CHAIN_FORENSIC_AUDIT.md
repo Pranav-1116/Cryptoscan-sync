@@ -703,3 +703,61 @@ def _edge_evidence(graph, edge, asset_rows):
 | Graph edge evidence | `services/api/api/routers/graph.py:_edge_evidence()` |
 | Live crypto pipeline | `services/api/api/routers/crypto.py` |
 | Evidence verification | `services/evidence/evidence/hashing/` |
+---
+
+## Round 25 update (2026-10-10) — verification sweep SHIPPED; claims re-verified
+
+Every actionable claim in this report was re-verified against the live
+tree before acting (the report predates several remediation rounds):
+
+* **§3.1 / P0#1 link table not populated — STALE.**
+  `AssetRepository.replace_for_scan` now carries a `pending_links`
+  mechanism: the pipeline's dedup stage feeds each merged asset's
+  contributing `evidence_ids`, and the links are bulk-inserted
+  idempotently. Verified live: a `StageDeduplication` run over two
+  evidence records produced 2/2 `crypto_asset_evidence` rows. The
+  `digital_twin` LEFT JOIN that this report flagged as always-empty now
+  has data behind it.
+
+* **§2.2 / P0#3 no automated verification job — REAL, now BUILT.**
+  New `services/worker/worker/monitor/evidence_chain_sweep.py`, wired
+  into the monitor tick (outcome key `evidence_chain`, isolated like the
+  R24 sweeps). Four checks per scan, records ordered by chain_position
+  with soft-deleted tombstones included by design (audit 15/16):
+  (0) `ContentHasher.compute_hash(finding_data)` == stored
+  `content_hash` (tamper-table row 1); (1) the stored chain-hash list
+  recomputes (row 4 class); (2) positions contiguous 0..n-1 (row 2 — a
+  hard delete leaves a gap); (3) `sha256(sorted evidence ids)` == the
+  `scan.manifest_hash` pin — catches a delete-and-rechain attack whose
+  surviving hashes are internally consistent but no longer what was
+  published. Persistent CRITICAL alerting is deliberate: a broken chain
+  does not age out. 9 tests
+  (`test_round25_evidence_chain_sweep.py`) build records through the
+  REAL pipeline, then tamper each way the report's table describes.
+
+* **§3.4 / P1#4 graph edge evidence — REAL, now BUILT.**
+  `GET /graph` edges now carry `evidence_count` + `evidence_refs`
+  (evidence_id, content_hash, chain_hash) from the link table — an edge
+  is independently verifiable against the chain, not just described.
+  Bounded (5 refs listed per asset, count stays honest, 2k link read
+  cap). 2 tests (`test_round25_graph_edge_evidence.py`).
+
+* **§3.5 / P1#5 CBOM reverse query — REAL, now BUILT.**
+  New `GET /cbom/evidence/{content_hash}`: the scans and components
+  that cite a hash observed in a downloaded BOM, each with its
+  `cbom_url`. Retracted evidence excluded (it is no longer a component),
+  bounded with truncation flag. 3 tests
+  (`test_round25_evidence_reverse_lookup.py`).
+
+* **§3.2/§3.3 / P0#2 route ALL discovery paths through the evidence
+  pipeline — REMAINS OPEN, product-scoped.** The enterprise live
+  collectors (network, cloud) already carry their own verifiable
+  in-memory chains (`enterprise/*/evidence.py`), but unifying every
+  scanner's output into the DB evidence chain is an architecture
+  decision (re-chaining semantics per scanner type, migration of
+  historical data) — not a bug fix. P2/P3 items (retention policy,
+  legal packaging, conflict UI) likewise remain product decisions;
+  evidence export/import already exists (`evidence/pack/`).
+
+Gates: worker 548✓ (539 + 9), api graph/cbom/openapi 22✓ + graph-edge 2✓
++ reverse-lookup 3✓ + drift/baseline 24✓, ruff✓.

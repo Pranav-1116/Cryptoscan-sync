@@ -116,5 +116,7 @@ repository on 2026-10-09.
 | 24 (2026-10-10) | Drift SLA escalation sweep (window crossings alert once via CEF/webhook/email + `drift.sla_breach` events) | 31 §5.2 |
 | 25 (2026-10-10) | Normalization alias canonicalization (exact-miss rescue: AES256/AES_256→AES-256, secp256r1/prime256v1→P-256, HMACSHA256→HMAC-SHA256, case retry) + 53's #12 collision suite | 53 §2.2/§5.1, deep/23 §1 |
 | 25 (2026-10-10) | SHA-224 normalization rule (omission: siblings 256/384/512 existed; pattern path was reporting digest size as key_size=224) | 53 §2.2 (hash family) |
+| 25 (2026-10-10) | Monitor-time evidence chain verification sweep (content hash, chain recompute, position contiguity, manifest pin; persistent CRITICAL alerting) | 25 P0#3 |
+| 25 (2026-10-10) | Graph edges cite the evidence chain (`evidence_refs` with content/chain hashes) + reverse lookup `GET /cbom/evidence/{content_hash}` | 25 P1#4/P1#5 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

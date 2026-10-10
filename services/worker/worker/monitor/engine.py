@@ -74,6 +74,7 @@ class MonitorEngine:
                  run_reports: bool = True, run_backups: bool = True,
                  run_network: bool = True,
                  run_reintroduction: bool = True, run_sla: bool = True,
+                 run_evidence_chain: bool = True,
                  backup_backend_for: Callable[[str], Any] | None = None,
                  backup_storage: Any = None):
         self.session = session
@@ -95,6 +96,7 @@ class MonitorEngine:
         # detection and drift-SLA escalation run on the same tick
         self.run_reintroduction = bool(run_reintroduction)
         self.run_sla = bool(run_sla)
+        self.run_evidence_chain = bool(run_evidence_chain)
         self._backup_backend_for = backup_backend_for
         self._backup_storage = backup_storage
 
@@ -171,6 +173,21 @@ class MonitorEngine:
                 logger.exception("sla_sweep_failed")
                 sla_summary_tick = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
 
+        evidence_chain_summary: dict[str, Any] = {}
+        if self.run_evidence_chain:
+            # deep/25 P0#3: chain verification was manual/API-triggered only;
+            # this sweep re-verifies the newest scans' evidence every tick
+            try:
+                from worker.monitor.evidence_chain_sweep import run_evidence_chain_sweep
+
+                evidence_chain_summary = run_evidence_chain_sweep(
+                    self.session, now=now,
+                    on_alert=self._on_alert if self._on_alert is not None else None,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.exception("evidence_chain_sweep_failed")
+                evidence_chain_summary = {"status": "ERROR", "error": f"{type(exc).__name__}: {exc}"}
+
         backup_summary: dict[str, Any] = {}
         if self.run_backups:
             # real subprocess backends + persistent disk store are used by
@@ -187,6 +204,7 @@ class MonitorEngine:
             "reports": report_outcomes,
             "reintroduction": reintroduction_summary,
             "drift_sla": sla_summary_tick,
+            "evidence_chain": evidence_chain_summary,
             "backups": backup_summary,
         }
 

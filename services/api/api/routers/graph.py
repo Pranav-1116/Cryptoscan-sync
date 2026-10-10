@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from agility.roadmap import wave_for
@@ -28,7 +29,66 @@ from graph_engine.core.facade import graph_health
 from graph_engine.core.migration import apply_import_constraints, merge_cycle_constraints
 
 
-def _edge_evidence(graph, edge: dict[str, Any], asset_rows: dict[str, CryptoAsset]) -> dict[str, Any]:
+def _evidence_refs(
+    db: Session,
+    asset_rows: dict[str, CryptoAsset],
+    *,
+    per_asset: int = 5,
+    max_total: int = 2_000,
+) -> dict[str, dict[str, Any]]:
+    """Evidence-chain references per asset, from the link table.
+
+    deep/25 §3.4: graph edges carried only descriptive text — no
+    cryptographic tie to the evidence chain. The link table (populated by
+    the pipeline's dedup stage) now lets every edge cite the exact
+    evidence records behind it: id + content_hash + chain_hash, so an
+    edge is independently verifiable against the chain sweep.
+
+    Bounded: at most ``per_asset`` refs listed per asset (``count`` stays
+    honest), at most ``max_total`` links read.
+    """
+    from db.models.crypto_asset_evidence import CryptoAssetEvidence
+    from db.models.evidence_record import EvidenceRecord
+
+    ids = list(asset_rows.keys())
+    if not ids:
+        return {}
+    try:
+        rows = db.execute(
+            select(
+                CryptoAssetEvidence.asset_id,
+                EvidenceRecord.id,
+                EvidenceRecord.content_hash,
+                EvidenceRecord.chain_hash,
+            )
+            .join(EvidenceRecord, EvidenceRecord.id == CryptoAssetEvidence.evidence_id)
+            .where(CryptoAssetEvidence.asset_id.in_(ids))
+            .limit(max_total)
+        ).all()
+    except Exception:
+        logger.debug("edge_evidence_refs_unavailable", exc_info=True)
+        return {}
+    result: dict[str, dict[str, Any]] = {}
+    for asset_id, evidence_id, content_hash, chain_hash in rows:
+        bucket = result.setdefault(asset_id, {"refs": [], "count": 0})
+        bucket["count"] += 1
+        if len(bucket["refs"]) < per_asset:
+            bucket["refs"].append(
+                {
+                    "evidence_id": evidence_id,
+                    "content_hash": content_hash,
+                    "chain_hash": chain_hash,
+                }
+            )
+    return result
+
+
+def _edge_evidence(
+    graph,
+    edge: dict[str, Any],
+    asset_rows: dict[str, CryptoAsset],
+    evidence_by_asset: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Attach honest, backend-derived evidence to a graph relationship.
 
     Every relationship carries: type, confidence, source, evidence text,
@@ -57,7 +117,7 @@ def _edge_evidence(graph, edge: dict[str, Any], asset_rows: dict[str, CryptoAsse
         if isinstance(ex, dict):
             evidence = str(ex.get("detection") or "")
 
-    return {
+    out = {
         "type": label,
         "confidence": confidence,
         "source": "crypto_discovery" if label == "USES" else "inventory",
@@ -66,6 +126,13 @@ def _edge_evidence(graph, edge: dict[str, Any], asset_rows: dict[str, CryptoAsse
         "last_seen": asset_row.updated_at.isoformat() if asset_row is not None and asset_row.updated_at else None,
         "verified": bool(confidence == "HIGH") if confidence else False,
     }
+    # deep/25 §3.4: cite the evidence chain, not just describe it
+    if asset_row is not None and evidence_by_asset is not None:
+        refs = evidence_by_asset.get(asset_row.id)
+        if refs:
+            out["evidence_count"] = refs["count"]
+            out["evidence_refs"] = refs["refs"]
+    return out
 
 router = APIRouter(tags=["graph"])
 
@@ -182,10 +249,11 @@ def get_graph(user: str = Depends(get_current_user), db: Session = Depends(get_d
             asset_rows[row.id] = row
     except Exception:
         asset_rows = {}
+    evidence_by_asset = _evidence_refs(db, asset_rows)
     vis = graph.to_vis()
     edges = vis.get("edges") or []
     for e in edges:
-        e.update(_edge_evidence(graph, e, asset_rows))
+        e.update(_edge_evidence(graph, e, asset_rows, evidence_by_asset))
     health = graph_health()
     vis["health"] = health
     vis["backend"] = getattr(graph, "backend", vis.get("backend") or health.get("backend"))
