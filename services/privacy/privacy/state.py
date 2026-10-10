@@ -154,6 +154,80 @@ def verification_state(confidence: Confidence, *, conflicted: bool = False,
     return "UNKNOWN"
 
 
+#: Evidence-class freshness half-lives, in seconds (audit 49 P0#3).
+#: Runtime observations describe a system that keeps changing, so they
+#: rot fast; artifact evidence (binary / static analysis) describes
+#: things that persist, so it rots slowly. Class names follow the
+#: observation authority tiers (``normalization.authority``).
+EVIDENCE_HALF_LIVES: dict[str, float] = {
+    "RUNTIME": 7.0 * 86400,
+    "BINARY": 90.0 * 86400,
+    "STATIC": 90.0 * 86400,
+    "DECLARED": 30.0 * 86400,
+    "MANUAL": 30.0 * 86400,
+    "UNRANKED": 14.0 * 86400,
+}
+
+#: Used when the evidence class is unknown.
+DEFAULT_EVIDENCE_HALF_LIFE = 30.0 * 86400
+
+#: A verified observation never decays below this floor — old
+#: verification is worth less than fresh verification, but it is still
+#: evidence, never "no evidence".
+VERIFIED_DECAY_FLOOR = 0.05
+
+
+def evidence_half_life(evidence_class: str | None) -> float:
+    """Half-life (seconds) for an evidence class; unknown -> default."""
+    key = str(evidence_class or "UNRANKED").strip().upper()
+    return EVIDENCE_HALF_LIVES.get(key, DEFAULT_EVIDENCE_HALF_LIFE)
+
+
+def decay_factor(age_seconds: float | None, half_life_seconds: float) -> float:
+    """Exponential freshness factor ``0.5 ** (age / half_life)``.
+
+    Age 0 -> 1.0 (no decay); each half-life halves the factor. Never
+    observed (``None``) -> 0.0: absence of a timestamp is absence of
+    freshness, not unlimited freshness.
+    """
+    if half_life_seconds <= 0:
+        raise ValueError("half_life_seconds must be positive")
+    if age_seconds is None:
+        return 0.0
+    if age_seconds <= 0:
+        return 1.0
+    return 0.5 ** (float(age_seconds) / float(half_life_seconds))
+
+
+def decay_confidence(confidence: Confidence, last_seen_epoch: float | None, *,
+                     now: float, evidence_class: str | None = None,
+                     half_life_seconds: float | None = None) -> Confidence:
+    """Apply evidence-freshness decay to a confidence (audit 49 P0#3).
+
+    The score decays by half each half-life of its evidence class:
+    a 3-month-old runtime observation is nearly worthless even though it
+    was HIGH confidence when collected. ``verified`` confidence decays
+    too but keeps a small floor — an old verification is weaker
+    evidence, not zero evidence. The returned ``notes`` say exactly what
+    was applied so the number is replayable.
+    """
+    half_life = half_life_seconds if half_life_seconds is not None else evidence_half_life(evidence_class)
+    age = None if last_seen_epoch is None else max(0.0, now - last_seen_epoch)
+    factor = decay_factor(age, half_life)
+    floor = VERIFIED_DECAY_FLOOR if confidence.verified else 0.0
+    score = max(floor, confidence.score * factor)
+    note = (f"freshness decay: age={None if age is None else round(age, 1)}s "
+            f"half_life={round(half_life, 1)}s factor={round(factor, 4)}")
+    return Confidence(
+        score=score,
+        quality=_quality(confidence.reliability * factor if confidence.reliability else 0.0),
+        reliability=confidence.reliability,
+        evidence_count=confidence.evidence_count,
+        verified=confidence.verified,
+        notes=(f"{confidence.notes}; " if confidence.notes else "") + note,
+    )
+
+
 def staleness(last_seen_epoch: float | None, *, now: float,
               windows: Mapping[str, int] | None = None) -> dict[str, Any]:
     """Classify how fresh an asset is.

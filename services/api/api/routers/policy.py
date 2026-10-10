@@ -102,6 +102,35 @@ def list_rules(user: str = Depends(get_current_user), db: Session = Depends(get_
     }
 
 
+@router.get("/rules/conflicts")
+def rule_conflicts(user: str = Depends(get_current_user),
+                   db: Session = Depends(get_db_session)):
+    """Cross-rule conflict analysis over the *effective* rule set (audit 65).
+
+    Detects duplicate rule ids, exact duplicates, shadowed rules (a rule
+    whose every fire is subsumed by a louder one), contradictory verdicts,
+    and partial overlaps. Rules disabled by override are excluded before
+    analysis, so an override can silence a conflict.
+    """
+    engine = PolicyEngine(str(_rules_dir()))
+    overrides = {row.rule_id: row for row in load_override_rows(db)}
+    if overrides:
+        apply_overrides(engine, overrides.values())
+    from policy.rules.rule_conflicts import detect_rule_conflicts
+
+    conflicts = detect_rule_conflicts(engine.rule_set.rules)
+    counts: dict[str, int] = {}
+    for item in conflicts:
+        counts[item["type"]] = counts.get(item["type"], 0) + 1
+    return {
+        "conflicts": conflicts,
+        "counts": counts,
+        "rule_count": len(engine.rule_set.rules),
+        "pack_hash": engine.pack_hash(),
+        "override_count": len(overrides),
+    }
+
+
 @router.put("/rules/{rule_id}/override")
 def set_rule_override(
     rule_id: str,

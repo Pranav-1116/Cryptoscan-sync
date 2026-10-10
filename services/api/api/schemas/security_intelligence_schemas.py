@@ -49,6 +49,9 @@ class AssetStateRequest(BaseModel):
     last_seen_epoch: float | None = None
     now: float | None = None
     verified: bool = False
+    evidence_class: str | None = Field(
+        None, description="Authority tier of the evidence backing the confidence "
+        "(RUNTIME/BINARY/STATIC/DECLARED/MANUAL/UNRANKED) — sets the freshness half-life")
 
 
 class ScanScheduleRequest(BaseModel):

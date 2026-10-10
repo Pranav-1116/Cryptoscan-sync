@@ -136,3 +136,42 @@ def test_schedule_event_mapping(monkeypatch):
     body = r.json()
     assert body["schedule"]["kind"] == "event"
     assert body["scans_for_event"] == ["crypto", "certificate"]
+
+
+def test_asset_state_returns_decayed_confidence(monkeypatch):
+    """Freshness decay (audit 49 P0#3): the same confidence, priced by age."""
+    c = _client(monkeypatch)
+    now = time.time()
+    base = {"verification": "VERIFIED", "sources": {"crypto": "observed"}}
+
+    # fresh runtime observation: decay is a no-op
+    fresh = c.post("/api/v1/security/intelligence/state", headers=_headers(),
+                   json={**base, "last_seen_epoch": now, "now": now,
+                         "evidence_class": "RUNTIME"})
+    assert fresh.status_code == 200
+    body = fresh.json()
+    assert "decayed_confidence" in body
+    assert body["decayed_confidence"]["score"] == pytest.approx(body["confidence"]["score"])
+
+    # 14-day-old runtime observation: two half-lives -> quarter confidence
+    old = c.post("/api/v1/security/intelligence/state", headers=_headers(),
+                 json={**base, "last_seen_epoch": now - 14 * 86400, "now": now,
+                       "evidence_class": "RUNTIME"})
+    assert old.status_code == 200
+    decayed = old.json()["decayed_confidence"]
+    original = old.json()["confidence"]
+    assert decayed["score"] == pytest.approx(original["score"] * 0.25, abs=1e-3)
+    assert "freshness decay" in decayed["notes"]
+
+    # binary evidence of the same age barely decays
+    binary = c.post("/api/v1/security/intelligence/state", headers=_headers(),
+                    json={**base, "last_seen_epoch": now - 14 * 86400, "now": now,
+                          "evidence_class": "BINARY"})
+    assert binary.status_code == 200
+    assert binary.json()["decayed_confidence"]["score"] > decayed["score"]
+
+    # never observed: zero freshness, verified floor still holds
+    never = c.post("/api/v1/security/intelligence/state", headers=_headers(),
+                   json={**base, "verified": True, "now": now})
+    assert never.status_code == 200
+    assert never.json()["decayed_confidence"]["score"] <= 0.051

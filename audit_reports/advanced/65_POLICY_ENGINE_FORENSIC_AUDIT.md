@@ -400,3 +400,42 @@ POST /policy/exceptions {rule_id, asset_id, reason, expires_at}
 | Policy Engine Pack Hash | `services/policy/policy/core/engine.py:pack_hash()` |
 | Rule Conditions | `services/policy/policy/models/policy_rule.py` |
 | Scope Resolver | `services/policy/policy/core/scope_resolver.py` |
+## Round 27 update (2026-10-10) — rule conflict detection built; exception + override recs verified
+
+* **Cross-rule conflict detection (P0 #1) — NOW BUILT (this round).**
+  New `policy/rules/rule_conflicts.py` analyzes the loaded pack
+  (all rule sets together, exactly as the engine evaluates them) and
+  reports five conflict classes: `DUPLICATE_ID`, `EXACT_DUPLICATE`
+  (same conditions + verdict under two ids), `CONTRADICTORY`
+  (overlapping conditions, different verdicts — including the identical
+  -condition FAIL-vs-PASS case), `SHADOWED` (rule A's every fire is
+  subsumed by an at-least-as-loud rule B), and `OVERLAPPING` (partial
+  coverage overlap with different severities). Coverage reasoning is
+  typed per condition shape (deny-list sets, key-size thresholds,
+  forbidden-mode sets, boolean flags; cross-type list⊇typed) and
+  **scope-aware**: rules gated by `required_scopes` are only compared
+  within their scope regime — a SAMA-scoped rule cannot shadow a
+  global one, and an unscoped rule can. Incomparable shapes (e.g.
+  COMPLEX allow-lists) are honestly skipped.
+  **The shipped packs themselves were analyzed: 3 real findings** —
+  CBUAE-001 exactly duplicates the BASELINE-001 deny-list (same 9
+  algorithms, both unscoped CRITICAL FAIL), and BASELINE-005 (weak TLS,
+  HIGH) is shadowed by both BASELINE-001 and CBUAE-001 (their lists
+  include SSLv3/TLS1.0/TLS1.1). Surfaced at
+  `GET /policy/rules/conflicts` over the *effective* (post-override)
+  rule set — disabling a rule by override removes its conflicts.
+  Tests: `services/policy/tests/unit/test_rule_conflicts.py` (17,
+  including a regression guard on the live pack findings) + API test in
+  `services/api/tests/unit/test_round16_audit_surfaces.py`.
+* **Exception workflow (P0 #2) — verified already shipped:** the
+  `policy_exceptions` model carries the full request → review → approve
+  lifecycle (requested_by/at, approved_by/at, approval_signature,
+  compensating_controls, expiration, review frequency, ExceptionReview
+  children).
+* **Override system (P0 #3) — verified already shipped:**
+  `policy_rule_overrides` (tenant+rule unique) with severity/enabled/
+  note/updated_by, applied over the pack and shown side-by-side with
+  pack state at `GET /policy/rules` (round 16).
+* **Still open:** per-rule test-coverage reporting (P0 #4) — the rule
+  *packs* are exercised by the suite, but there is no per-rule coverage
+  matrix surfaced.

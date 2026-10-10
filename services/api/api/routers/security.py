@@ -676,7 +676,13 @@ def asset_state(body: AssetStateRequest, user: str = Depends(get_current_user)):
         {"verification": body.verification, "last_seen_epoch": body.last_seen_epoch},
         now=now,
     )
+    # freshness decay (audit 49 P0#3): the same confidence, priced by age —
+    # an old runtime observation is not worth a fresh one
+    from privacy.state import decay_confidence
+    decayed = decay_confidence(confidence, body.last_seen_epoch, now=now,
+                               evidence_class=body.evidence_class)
     return {"source": "asset_state", "confidence": confidence.to_dict(),
+            "decayed_confidence": decayed.to_dict(),
             "freshness": freshness, "health": health}
 
 

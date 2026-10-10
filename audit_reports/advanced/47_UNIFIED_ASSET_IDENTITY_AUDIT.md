@@ -405,3 +405,27 @@ class AssetRelationship:
 | Network scan | `services/network_scanner/network_scanner/core/scanner.py` |
 | Cloud scanner | `services/cloud_scanner/cloud_scanner/core/scanner.py` |
 | Container scanner | `services/container_scanner/container_scanner/core/scanner.py` |
+---
+
+## Round 27 update (2026-10-10) — unified identity claims re-verified
+
+* **"No canonical identity service / no alias table / no cross-source
+  correlation — STALE.** The platform now has a full identity layer:
+  `control_plane/identity.py` computes deterministic canonical ids from
+  stable keys (mac, instance_id, resource_id, serial, hardware_uuid,
+  cert_fingerprint, fqdn, ip, hostname) and fuses multi-source
+  observations with explicit confidence states (CONFIRMED / PROBABLE /
+  POSSIBLE / UNKNOWN / CONFLICT — sources that disagree on owner/type
+  surface as CONFLICT, never silently merged). The `cp_asset_identities`
+  table (migration 0065, tenant-scoped unique) stores canonical ids with
+  `source_refs` (source → external id — the alias model) and
+  `evidence_sources`; resolver layers exist in universal_vendor
+  (hardware, live) and are tested across mac/hostname/cloud-resource
+  keys.
+* **Ownership chains (technical → business → executive) — STALE** for
+  the two-link chain: systems carry `technical_owner` /
+  `security_owner` (round 19) plus business owner linkage.
+* **REMAIN OPEN, product-scoped:** deployment-topology links
+  (Dockerfile→Image, Image→Pod, ALB↔Endpoint↔TargetGroup mappings) —
+  these need live Kubernetes/cloud API ingestion of runtime topology,
+  a discovery-feed decision rather than an identity-model gap.

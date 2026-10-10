@@ -391,3 +391,42 @@ def test_update_status_detects_version_race():
     assert repo.update_status("job-3", "COMPLETED") is None
     row = session_b.query(ScanJob).filter(ScanJob.id == "job-3").one()
     assert row.status == "FAILED" and row.version == 6
+
+
+# ---------------------------------------------------------------------------
+# Round 27 — cross-rule conflict analysis (audit 65 P0#1)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_policy_rule_conflicts_endpoint_reports_pack_findings():
+    app, session = _make_app()
+    async with _client(app) as c:
+        r = await c.get("/api/v1/policy/rules/conflicts")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["rule_count"] > 0
+        assert "pack_hash" in body and body["override_count"] == 0
+
+        # the shipped packs carry two known real findings: CBUAE-001
+        # duplicates the baseline deny-list, and BASELINE-005 is subsumed
+        # by the forbidden-algorithm rules
+        entries = {(item["type"], tuple(item["rules"])) for item in body["conflicts"]}
+        assert ("EXACT_DUPLICATE", ("BASELINE-001", "CBUAE-001")) in entries
+        assert ("SHADOWED", ("BASELINE-005", "BASELINE-001")) in entries
+        counts = {}
+        for item in body["conflicts"]:
+            counts[item["type"]] = counts.get(item["type"], 0) + 1
+        assert body["counts"] == counts
+
+        # an override disabling CBUAE-001 must remove its conflicts
+        session.add(PolicyRuleOverride(rule_id="CBUAE-001", enabled=False,
+                                       updated_by="admin-1"))
+        session.commit()
+        r2 = await c.get("/api/v1/policy/rules/conflicts")
+        assert r2.status_code == 200
+        entries2 = {(item["type"], tuple(item["rules"])) for item in r2.json()["conflicts"]}
+        assert ("EXACT_DUPLICATE", ("BASELINE-001", "CBUAE-001")) not in entries2
+        assert ("SHADOWED", ("BASELINE-005", "CBUAE-001")) not in entries2
+        # the baseline shadow is independent of the UAE pack
+        assert ("SHADOWED", ("BASELINE-005", "BASELINE-001")) in entries2

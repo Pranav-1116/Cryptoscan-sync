@@ -426,3 +426,34 @@ enhancements, honestly tracked in 00_ROUND_STATUS.
 
 Tests: `services/normalization/tests/unit/test_authority.py` (16 tests;
 suite 139).
+
+## Round 27 update (2026-10-10) — full P0 list re-verified; freshness decay built
+
+* **Authority hierarchy (#1) — confirmed shipped** (round 19, re-read this
+  round): `normalization/authority.py` defines the six RUNTIME/BINARY/
+  STATIC/DECLARED/MANUAL/UNRANKED tiers over provenance tokens;
+  `normalization/conflicts.py` annotates every conflict with the
+  hierarchy's preference (decisive vs tie) — annotation, never override.
+* **Conflict detection (#2) — confirmed shipped** (round 15): the three
+  classes (ALGORITHM/PARAMETER/STATUS mismatch) at
+  `GET /findings/conflicts`, within-scan and scan-vs-scan, with
+  retracted evidence excluded so soft-deletes cannot manufacture
+  conflicts.
+* **Evidence freshness decay (#3/#4/#7) — NOW BUILT (this round).**
+  `privacy/state.py` ships the exponential decay model this report
+  asked for: `decay_factor(age, half_life) = 0.5 ** (age / half_life)`
+  with **evidence-class-aware half-lives** (RUNTIME 7d, DECLARED/MANUAL
+  30d, BINARY/STATIC 90d — runtime observations describe a system that
+  keeps changing, artifact evidence persists), a **verified floor**
+  (old verification decays but never silently becomes "no evidence"),
+  and honest edges: never-observed → 0, clock skew → no decay.
+  Wired end to end at `POST /security/intelligence/state`: the response
+  now carries `decayed_confidence` next to the raw `confidence`, with
+  replayable notes (age, half-life, factor). Tests:
+  `services/privacy/tests/unit/test_state_engine.py` (+6) and
+  `services/api/tests/unit/test_security_intelligence.py` (+1).
+* **Still open, honestly:** collector calibration (#4 — needs FP/FN
+  ground truth per detector), cross-source correlation bonus (#5),
+  negative-evidence tracking (#6 — adjacent to the clean-scan baselines
+  from round 23, but "searched and not found" records are not yet a
+  first-class evidence type).
