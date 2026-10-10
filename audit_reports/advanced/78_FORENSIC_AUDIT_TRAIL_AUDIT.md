@@ -371,3 +371,16 @@ class AuditLogDetail:
 | DriftEvent Model | `services/database/db/models/drift_event.py` |
 | GraphSnapshot Model | `services/database/db/models/graph_snapshot.py` |
 | Scan Model | `services/database/db/models/scan.py` |
+---
+
+## Round 26 update (2026-10-10) — audit-trail claims re-verified
+
+The hash-chained audit log (auth/scan/baseline/drift/CBOM/graph/user/
+API-key operations, per deep/18 §12) is complemented by
+`governance/audit_attest.py`: end-to-end chain recomputation plus a
+deterministic, HMAC-signed attestation report verifiable offline by a
+third party. The governance request workflow captures before-state
+(`findings_before`) for approvals. **REMAIN OPEN, product-scoped:**
+field-level before/after capture on every data mutation, Alembic
+schema-migration auditing, config-change auditing with before/after,
+and a unified cross-system timeline view.

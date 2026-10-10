@@ -431,3 +431,22 @@ def test_baseline_creation_idempotent():
 | Asset Repository | `services/database/db/repositories/asset_repository.py` |
 | Graph Engine | `services/graph_engine/graph_engine/core/engine.py` |
 | Graph Sync | `services/api/api/graph_builder.py:sync_graph()` |
+---
+
+## Round 26 update (2026-10-10) — idempotency claims re-verified
+
+* **P0#1 (asset dedup key includes scan_id) — STALE.**
+  `replace_for_scan` keys by identity `(algorithm, purpose, file_path,
+  line_number)`, refreshes matching rows and keeps other scans' rows.
+* **P0#2/#3 (graph rebuild / Neo4j DELETE+RECREATE) — STALE.** The
+  graph is rebuilt from canonical DB rows and the Neo4j sync is
+  MERGE-based (`cypher_writes.MERGE_SYSTEMS/ASSETS/PROCESSES/…`), so a
+  re-run converges on the same state; ghost-node pruning shipped round
+  20.
+* **P0#4 (CBOM/NBOM dependency determinism) — STALE.** The NBOM sorts
+  component properties and `dependsOn` lists; scan CBOMs are generated
+  from record sets with stable bom-refs (evidence ids).
+* **P1#5/#6 (idempotency tests/gates) — LARGELY STALE.** Idempotency
+  is asserted across the API suites (banking endpoints, inventory
+  cloud, API keys, pentest findings, cross-tenant adversarial, …) plus
+  the evidence pipeline's own hash-based dedup tests.
