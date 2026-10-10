@@ -114,5 +114,7 @@ repository on 2026-10-09.
 | 23 (2026-10-10) | Clean-scan baseline proposals (worker proposes on first clean scan; auditor activates — `GET /baselines/proposed`, `approve-proposed`, `DELETE .../proposal`) | 31 §2.9, 88 GAP-011 |
 | 24 (2026-10-10) | Monitor-time reintroduction sweep (newest scan per target vs retired-asset registry, alert-routed, `detected_by: monitor`) | 69 follow-up |
 | 24 (2026-10-10) | Drift SLA escalation sweep (window crossings alert once via CEF/webhook/email + `drift.sla_breach` events) | 31 §5.2 |
+| 25 (2026-10-10) | Normalization alias canonicalization (exact-miss rescue: AES256/AES_256→AES-256, secp256r1/prime256v1→P-256, HMACSHA256→HMAC-SHA256, case retry) + 53's #12 collision suite | 53 §2.2/§5.1, deep/23 §1 |
+| 25 (2026-10-10) | SHA-224 normalization rule (omission: siblings 256/384/512 existed; pattern path was reporting digest size as key_size=224) | 53 §2.2 (hash family) |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

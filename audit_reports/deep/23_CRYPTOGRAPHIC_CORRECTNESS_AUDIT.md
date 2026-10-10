@@ -700,3 +700,16 @@ class CbomGenerator:
 | CBOM generator | `services/cbom/cbom/generator.py` |
 | Quantum risk | `services/quantum/quantum/risk.py` |
 | Safe finding | `shared/shared_models/shared_models/safe_finding.py` |
+---
+
+## Round 25 update (2026-10-10) — alias gap CLOSED
+
+The accuracy-gap inventory's alias findings (§1: variant spellings —
+`AES256`/`AES_256`, curve spellings, `HMACSHA256`, underscore RSA/SHA
+forms — normalizing to themselves instead of one canonical identity) are
+remediated. New `matchers/alias_canonicalizer.py` rescues exact misses
+(compound-spelling table + case retry) inside `core/processor.py` Step 1b;
+`raw_input` preserves the original observation. `SHA_384` no longer
+reports the digest size as `key_size`, and a missing SHA-224 rule was
+added. Regression suite: `services/normalization/tests/test_alias_collisions.py`
+(53's recommendation #12). Details in 53's Round 25 addendum.

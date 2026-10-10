@@ -430,3 +430,49 @@ class CryptoClassifier:
 | Library Fingerprinter | `services/universal_crypto/universal_crypto/library_fingerprints.py` |
 | Quantum Classify | `shared/shared_models/shared_models/quantum_classify.py` |
 | Normalization Rules | `services/normalization/normalization/rules/` (YAML files) |
+---
+
+## Round 25 update (2026-10-10) — alias collisions CANONICALIZED (§2.2/§5.1 remediated)
+
+The §2.2/§5.1 collision catalogue was re-verified live against the engine
+(22 rules, `rule_definitions/`) before this fix: every listed variant —
+`AES256`, `AES_256`, `RSA_2048`, `ECDSA_P256`, `secp256r1`, `prime256v1`,
+`secp384r1`, `secp521r1`, `Curve25519`, `HMACSHA256`, `HMACSHA512`,
+lowercase `aes-256` — normalized to *itself* (raw passthrough), exactly as
+the report described. Two bonus bugs confirmed: `SHA_384` carried
+`key_size=384` (the pattern path extracts the digest size as a key size),
+and `HMACSHA256`/`HMAC-SHA256` disagreed on key size (256 vs null).
+
+**Remediation (all shipped this round):**
+
+* `services/normalization/normalization/matchers/alias_canonicalizer.py`
+  (new): an exact-match alias table applied **only after an exact miss**,
+  so every working normalization path is untouched. Compound spellings map
+  to their hyphenated canonical forms; one canonical spelling per curve
+  (`SECP256R1`/`PRIME256V1`→`P-256`, `SECP384R1`→`P-384`, `SECP521R1`→
+  `P-521`, `CURVE25519`→`X25519`); mixed-case inputs are retried
+  uppercased. Curves stay curves — signature-vs-KEX remains a purpose
+  decision (report's own §5 position); no identity is fabricated.
+* `core/processor.py` wired as **Step 1b**: exact miss → canonicalize →
+  exact retry on the canonical (confidence HIGH, parse_mode
+  `exact-alias`) → pattern match runs on the match-producing string (this
+  is what kills the `SHA_384`→key_size 384 extraction). `raw_input`
+  keeps the original observation; the fallback path still receives the
+  original raw.
+* `rule_definitions/hashing/sha2.yaml`: **SHA-224 rule added** (NORM-SHA224)
+  — a genuine omission found while building the suite: 256/384/512 had
+  rules, 224 fell through to the pattern path and reported the digest
+  size as `key_size=224`. Now 23 rules.
+* `tests/test_alias_collisions.py` (new): **recommendation #12's automated
+  collision suite** — 17 tests. Every catalogue variant family asserts one
+  canonical `standard_name`, consistent family/key size, and provenance
+  (`raw_input` unchanged); hash underscore forms assert `key_size` null;
+  regression asserts `AES/GCM/NoPadding` still parses via the compound
+  path and unknowns still reach the fallback.
+
+Verification: `AES256`/`AES_256`/`aes-256` → `AES-256` (symmetric, 256);
+`RSA_2048`/`RSA_1024` → `RSA-2048`/`RSA-1024`; `ECDSA_P256` → `ECDSA-P256`;
+`SHA_384` → `SHA-384` with `key_size=null` (was 384); `HMACSHA256` →
+`HMAC-SHA256` (mac); `secp256r1`/`prime256v1` → `P-256`; `Curve25519` →
+`X25519`. Gates: normalization 156✓, worker 539✓, cbom 252✓,
+database+cbom 418✓, graph_engine 60✓, api drift/baseline 24✓, ruff✓.

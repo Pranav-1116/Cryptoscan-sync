@@ -15,6 +15,7 @@ from normalization.enrichers.quantum_enricher import QuantumEnricher
 from normalization.enrichers.iana_enricher import IanaEnricher
 from normalization.enrichers.nist_enricher import NistEnricher
 from normalization.matchers.exact_matcher import ExactMatcher
+from normalization.matchers.alias_canonicalizer import canonicalize
 from normalization.matchers.fallback_handler import FallbackHandler
 from normalization.matchers.pattern_matcher import PatternMatcher
 from normalization.core.registry_bridge import resolve_key_size
@@ -84,10 +85,28 @@ class NormalizationProcessor:
         confidence = "HIGH"
         parse_mode: str = "exact"
 
+        # ── Step 1b: Alias rescue (report 53's collision catalogue) ────
+        # Only consulted when the raw string did not exact-match, so every
+        # working path is untouched: AES256/AES_256 -> AES-256,
+        # secp256r1/prime256v1 -> P-256, HMACSHA256 -> HMAC-SHA256,
+        # lowercase spellings retried uppercased. The string that produced
+        # the match (raw or canonical) drives pattern matching and key-size
+        # extraction downstream.
+        match_input = raw_stripped
+        if matched_rule is None:
+            canonical = canonicalize(raw_stripped)
+            if canonical != raw_stripped:
+                match_input = canonical
+                aliased_hit = self._exact_matcher.match(canonical)
+                if isinstance(aliased_hit, NormalizationRule):
+                    matched_rule = aliased_hit
+                    confidence = "HIGH"
+                    parse_mode = "exact-alias"
+
         # ── Step 2: Pattern match (compound strings) ──────────────────
         pattern_hit = None
         if matched_rule is None:
-            pattern_hit = self._pattern_matcher.match(raw_stripped)
+            pattern_hit = self._pattern_matcher.match(match_input)
             if isinstance(pattern_hit, NormalizationRule):
                 matched_rule = pattern_hit
                 confidence = "MEDIUM"
@@ -119,7 +138,7 @@ class NormalizationProcessor:
         if isinstance(pattern_hit, NormalizedCrypto) and matched_rule is None:
             normalized = pattern_hit
             normalized.key_size = resolve_key_size(
-                normalized.key_size, raw_stripped, key_size
+                normalized.key_size, match_input, key_size
             )
             if mode is not None and not normalized.mode:
                 normalized.mode = str(mode).upper()
@@ -134,7 +153,7 @@ class NormalizationProcessor:
         else:
             output = matched_rule.normalized_output.copy()
             output["key_size"] = resolve_key_size(
-                output.get("key_size"), raw_stripped, key_size
+                output.get("key_size"), match_input, key_size
             )
             if mode is not None and not output.get("mode"):
                 output["mode"] = str(mode).upper()
