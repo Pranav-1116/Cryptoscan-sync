@@ -564,3 +564,30 @@ def create_remediation_task(drift_id, user=Depends(require_auditor)):
 | Monitor tick | `services/monitor/` |
 | Evidence comparison | `services/cbom/cbom/inventory.py:diff_records()` |
 | Drift types | `services/drift/drift/__init__.py` (empty — types in model) |
+---
+
+## Round 25 update (2026-10-10) — P0s re-verified: automated detection + event emission exist
+
+* **P0#1 (automated drift detection on scan completion) — STALE.**
+  `worker/pipeline/stage_drift.py` runs on every scan completion against
+  the approved baseline (plus inventory drift since R23), and the
+  monitor's reintroduction/SLA sweeps (R24) cover the between-scans
+  surface.
+* **P0#3 (drift event emission) — STALE.** `stage_drift` publishes
+  `drift.event` on the platform event bus per detection; the R24 SLA
+  sweep additionally emits `drift.sla_breach` and alert-routes CRITICAL/
+  HIGH crossings.
+* **P1#4 (drift metrics) — STALE for MTTA/MTTR/false-positive** (R23
+  `GET /drift/sla`, honest `acknowledged_at` stamps, migration 0079).
+  Recurrence detection (P2#5) remains open, product-scoped.
+* **P0#2 (evidence chain on DriftEvent) — PARTIALLY ADDRESSED, remains
+  open in the strict sense.** DriftEvent carries `current_scan_id` /
+  `baseline_id` FKs and the drift API joins EvidenceRecords by scan; the
+  events do not embed content/chain hashes directly. With this round's
+  `evidence_refs` on graph edges and the chain-verification sweep, the
+  underlying records are verifiable — but per-event hash embedding
+  remains an enrichment decision.
+* **P1#2 (semantic drift classification), P1#3 (auto MigrationTask),
+  P1#4b (scheduled digest delivery channels), P2 ticketing/policy-gate**
+  — product-scoped (the R22 semantic CBOM diff covers the CBOM level:
+  ALGORITHM/PARAMETER/VERSION/LOCATION_CHANGED).
