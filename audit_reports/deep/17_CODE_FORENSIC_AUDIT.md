@@ -822,3 +822,39 @@ Values: `"PASS"`, `"FAIL"`, `"WARN"`, `"UNKNOWN"`
 ## 17. VERIFICATION EVIDENCE
 
 All findings above are directly traceable to source files in the repository. File paths and line numbers provided for each finding. No assumptions made — every finding verified by reading actual source code.
+---
+
+## Round 26 update (2026-10-10) — claims re-verified against the live tree
+
+This report (2026-09-20) predates remediation rounds 17–25; every
+concrete claim was re-checked:
+
+* **§1.3 anomaly all-stubs — STALE.** `anomaly/detect.py` is a full
+  deterministic implementation (z-score, EWMA control, rate-of-change,
+  frequency rule; severity-banded, auditable, minimum-history guard).
+* **§1.4 payment_crypto placeholders — STALE.** `list_ceremonies`
+  serves real repository rows; `ingest_hsm_events` parses real HSM
+  audit lines (auditor-gated).
+* **§1.5 marketplace stub — STALE.** Real plugin registry with
+  semantic-version resolution and ENABLED-state gating.
+* **§1.6 governance empty — STALE.** Full request workflow
+  (create/list/decide, migration validation).
+* **§1.2 GraphQL visitor stubs — STALE.** `graphql_lang.py` was
+  rewritten as a lexer/parser (no visitor stubs remain).
+* **§2.3 evidence_loader broad catch — STALE.** The loader now RAISES
+  on a finding payload that changed after hashing
+  ("sanitize before evidence construction") instead of hashing "error".
+* **§16 P0#2 stub services — STALE.** keyassure, universal_vendor (368
+  tests), sla, vaultlease, ot_safety et al. are implemented subsystems.
+* **§1.1 CurrentRunStore bare NotImplementedError — REAL, fixed this
+  round.** The base class is now a proper ABC
+  (`@abstractmethod` on get/set, `request_cancel` stays concrete), so an
+  incomplete subclass fails at instantiation instead of on first call.
+  Live-scan/orchestrator/realtime suites green.
+* **Remain open, product/architecture-scoped:** the three-CBOM-generator
+  merge (also deep/26 P0#1), registry/serializer consolidation, RFC 9457
+  error shapes, enum columns, service-to-library consolidation,
+  `automation ↔ automation_bridge` late-import cycle (broken at import
+  time by function-level imports; no runtime breakage — restructuring is
+  an architecture decision), graph_snapshots `updated_at` (P3, needs a
+  migration).

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 import json
+from abc import ABC, abstractmethod
 from typing import Any
 
 KEY = "zelinx:current_run"
@@ -23,14 +24,22 @@ KEY = "zelinx:current_run"
 TTL_SECONDS = 86_400
 
 
-class CurrentRunStore:
-    """Shared get/set plus durable cancellation command state."""
+class CurrentRunStore(ABC):
+    """Shared get/set plus durable cancellation command state.
 
+    ABC since round 26 (deep/17 §1.1): the base used to raise a bare
+    NotImplementedError on first call, so an incomplete subclass crashed
+    at runtime instead of at instantiation. get/set are the contract;
+    request_cancel is shared behavior every backend inherits.
+    """
+
+    @abstractmethod
     def get(self) -> dict[str, Any] | None:
-        raise NotImplementedError
+        """Return the current status snapshot, or None when no run is active."""
 
+    @abstractmethod
     def set(self, status: dict[str, Any]) -> None:
-        raise NotImplementedError
+        """Persist the status snapshot for the active tenant."""
 
     def request_cancel(self, scan_id: str, actor: str) -> dict[str, Any] | None:
         status = self.get()
