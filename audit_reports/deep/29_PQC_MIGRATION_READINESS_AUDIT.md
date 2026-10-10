@@ -588,3 +588,26 @@ class MigrationTask:
 | PQC API | `services/api/api/routers/crypto.py:/crypto/simulate` |
 | Agility API | `services/api/api/routers/agility.py` |
 | Graph migration plan | `services/api/api/routers/graph.py:graph_migration_plan()` |
+---
+
+## Round 26 update (2026-10-10) — PQC detection claims re-verified
+
+* **P0#1/#4/#5 (PQC protocol + hybrid KEM detection) — STALE.** The
+  scanner detects ML-KEM / ML-DSA / SLH-DSA / Kyber / Dilithium across
+  Java (incl. JAR string scanning), .NET (assembly scanning), Go, C#,
+  and config parsers; corpus wave 17 (`corpus_wave17_pqc.py`) pins the
+  conventions — X25519MLKEM768 hybrids resolve to {MLKEM, X25519},
+  liboqs calls map to concrete algorithms — across .NET 10, Go 1.24
+  crypto/mlkem, Java 24 JEP 496/497, BouncyCastle and @noble/
+  post-quantum. The network engine carries hybrid groups through
+  enterprise tunnels/simulation/inventory.
+* **P0#2 (binary PQC detection) — STALE.** `jar_string_scanner` and
+  `assembly_scanner` (detectors) extract PQC algorithm identifiers from
+  binary artifacts, validated by the same corpus.
+* **P0#3 (drift → MigrationTask automation) — REMAINS OPEN,
+  product-scoped** (the tracking models and repos exist; wiring event →
+  task creation is an automation-policy decision, same item as deep/28
+  P1#3).
+* **§9 execution engine, PQC X.509 certificates, CT verification,
+  cost estimation, rollback/canary — REMAIN OPEN, product-scoped**
+  (execution engine is the standing product-level open item).
