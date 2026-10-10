@@ -139,6 +139,7 @@ class FakeSession:
             "merge_certs": self._merge_nodes,
             "merge_cloud": self._merge_nodes,
             "merge_network": self._merge_nodes,
+            "merge_containers": self._merge_nodes,
             "merge_uses": self._merge_uses,
             "merge_calls": self._merge_calls,
             "merge_supports": self._merge_supports,
@@ -148,6 +149,7 @@ class FakeSession:
             "merge_secured_by": self._merge_secured,
             "merge_deployed_on": self._merge_deployed,
             "merge_connects_to": self._merge_connects,
+            "merge_runs": self._merge_runs,
             "prune_kind": self._prune_kind,
             "blast_radius": self._blast,
             "dependents": self._dependents,
@@ -242,6 +244,18 @@ class FakeSession:
                 "CONNECTS_TO",
                 "NetworkResource",
                 row["network_id"],
+                {},
+            )
+        return []
+
+    def _merge_runs(self, params):
+        for row in params.get("rows") or []:
+            self.graph.merge_edge(
+                "System",
+                row["system_id"],
+                "RUNS",
+                "ContainerImage",
+                row["container_id"],
                 {},
             )
         return []

@@ -479,6 +479,34 @@ Re-read in full. Three real defects found and fixed:
    deletes kinds not in the sync; ComplianceScope excluded). Result
    carries `pruned`.
 
-Still open from this report: container-image graph nodes (no discovery
-source links a container scan to a system yet), live-crypto → evidence
-linkage (separate plane by design).
+Still open from this report: live-crypto → evidence linkage (separate
+plane by design).
+
+## Round 21 addendum (2026-10-10) — container → graph SHIPPED
+
+The last open row of this report is closed. Container scans now reach
+both graph planes:
+
+- **ContainerImage nodes** with `container_id`/`name`/`image`/
+  `package_count`/`library_count`/`vuln_count`, kind prefix
+  `container:`, prune-set included (`ContainerImage` joined the
+  per-kind prune list, so a container that disappears from the DB no
+  longer lingers as a ghost node).
+- **Honest linkage**: a container scan links to a system only when its
+  `scan_id` resolves to a `Scan` whose `target_location` matches a
+  system's `scan_target`. Floating images (no owning scan, or a scan
+  whose target no system claims) are nodes without invented edges —
+  mirroring this report's "no fabricated relationships" principle.
+- Both planes: memory engine `build(container_images=...)` emits
+  nodes + `RUNS` edges; `Neo4jGraphStore.sync` accepts the same key
+  (`merge_containers` / `merge_runs` Cypher, tagged
+  `cryptoscan.query=` like every other write).
+- `collect_graph_payload` emits `container_images` from bounded
+  `ContainerScan` rows (`container_scans_truncated` in collection
+  meta, same truncation discipline as systems).
+- Tests: graph_engine store sync/prune + memory build (2), API payload
+  + linkage honesty through the memory facade (1).
+
+`test_round21_trace_context.py` also pins this report's earlier
+trace-context gap (request trace id now crosses the queue payload into
+the worker's `PipelineContext.scan_meta`).

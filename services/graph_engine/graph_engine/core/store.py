@@ -73,6 +73,7 @@ class Neo4jGraphStore:
         certificates: Iterable[dict[str, Any]] = (),
         cloud_resources: Iterable[dict[str, Any]] = (),
         network_resources: Iterable[dict[str, Any]] = (),
+        container_images: Iterable[dict[str, Any]] = (),
         collection: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         # `collection` is collector meta (bounded-walk totals/truncation
@@ -87,6 +88,7 @@ class Neo4jGraphStore:
         cert_nodes, cert_edges = payload.cert_rows(certificates)
         cloud_nodes, cloud_edges = payload.cloud_rows(cloud_resources)
         network_nodes, network_edges = payload.network_rows(network_resources)
+        container_nodes, container_edges = payload.container_rows(container_images)
         batches = (
             (cypher_writes.MERGE_SYSTEMS, payload.systems_rows(systems)),
             (cypher_writes.MERGE_ASSETS, payload.asset_rows(assets)),
@@ -97,6 +99,7 @@ class Neo4jGraphStore:
             (cypher_writes.MERGE_CERTS, cert_nodes),
             (cypher_writes.MERGE_CLOUD, cloud_nodes),
             (cypher_writes.MERGE_NETWORK, network_nodes),
+            (cypher_writes.MERGE_CONTAINERS, container_nodes),
             (cypher_writes.MERGE_USES, payload.uses_rows(assets, systems)),
             (cypher_writes.MERGE_CALLS, payload.call_rows(edges)),
             (cypher_writes.MERGE_SUPPORTS, support_edges),
@@ -106,6 +109,7 @@ class Neo4jGraphStore:
             (cypher_writes.MERGE_SECURED_BY, cert_edges),
             (cypher_writes.MERGE_DEPLOYED_ON, cloud_edges),
             (cypher_writes.MERGE_CONNECTS_TO, network_edges),
+            (cypher_writes.MERGE_RUNS, container_edges),
         )
         written = 0
         for query, rows in batches:
@@ -129,6 +133,7 @@ class Neo4jGraphStore:
         ("Certificate", "cert_id", "cert_id"),
         ("CloudResource", "resource_id", "resource_id"),
         ("NetworkResource", "network_id", "network_id"),
+        ("ContainerImage", "container_id", "container_id"),
     )
 
     def _prune_ghosts(self, batches) -> int:
@@ -152,6 +157,7 @@ class Neo4jGraphStore:
             "cert_id": merge_rows.get(cypher_writes.MERGE_CERTS, ()),
             "resource_id": merge_rows.get(cypher_writes.MERGE_CLOUD, ()),
             "network_id": merge_rows.get(cypher_writes.MERGE_NETWORK, ()),
+            "container_id": merge_rows.get(cypher_writes.MERGE_CONTAINERS, ()),
         }
         pruned = 0
         for label, prop, key in self._PRUNE_KINDS:

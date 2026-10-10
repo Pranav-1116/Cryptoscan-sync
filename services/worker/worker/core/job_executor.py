@@ -49,6 +49,8 @@ class JobExecutor:
             from worker.pipeline.cloud_job import run_cloud_job
 
             return run_cloud_job(job)
+        from worker.pipeline.pipeline_runner import trace_id_from_job
+
         scan_id = self.runner.run(
             job_id=job.job_id,
             target_repo=job.target_repo,
@@ -56,5 +58,6 @@ class JobExecutor:
             target_commit=job.target_commit,
             triggered_by=job.triggered_by,
             system_id=getattr(job, "system_id", None),
+            trace_id=trace_id_from_job(job),
         )
         return bool(scan_id)

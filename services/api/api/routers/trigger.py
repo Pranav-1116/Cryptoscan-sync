@@ -10,6 +10,7 @@ from db.repositories.job_repository import JobRepository
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
 from api.config.settings import get_settings
+from api.middleware.trace import active_trace
 from api.dependencies import get_job_repository
 from api.schemas.job_schemas import TriggerScanRequest, TriggerScanResponse
 from api.security.rbac import require_permission
@@ -54,13 +55,19 @@ def _resolve_sector(explicit: str | None, job_repo: JobRepository) -> str:
 
 
 def _annotate_sector(job, sector: str, scan_mode: str | None) -> None:
-    """Stamp sector/scan_mode onto the job's progress JSON so the pipeline and
-    reports see the sector context (no schema change required)."""
+    """Stamp sector/scan_mode/trace_id onto the job's progress JSON so the
+    pipeline and reports see the sector context (no schema change required)."""
     try:
         progress = dict(getattr(job, "progress", None) or {})
         progress["sector"] = sector
         if scan_mode:
             progress["scan_mode"] = scan_mode
+        trace_id, _span = active_trace()
+        if trace_id:
+            # report 02 P2#7: the trace context of the request that queued
+            # this scan travels with the job row (and the queue payload),
+            # so worker-side logs and scan statistics correlate end to end.
+            progress["trace_id"] = trace_id
         job.progress = progress
     except Exception:
         logger.debug("sector_annotation_skipped", exc_info=True)
@@ -248,6 +255,9 @@ def enqueue_scan_job(
         "sector": effective_sector,
         "scan_mode": scan_mode,
         "progress": progress,
+        # distributed tracing (report 02 P2#7): the request's trace context
+        # crosses the queue boundary with the payload
+        "trace_id": (active_trace()[0] if active_trace()[0] else None),
     }
     settings = get_settings()
     if settings.REDIS_URL:

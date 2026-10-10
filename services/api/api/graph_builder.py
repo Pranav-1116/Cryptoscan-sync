@@ -166,6 +166,42 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
         item["system_ids"] = [target.system_id] if target.system_id else []
         network_resources.append(item)
 
+    # Container scans as ContainerImage nodes (report 03's container->graph
+    # gap, round 21). Honest linkage: a container scan ties to a system only
+    # when its scan_id resolves to a Scan whose target_location matches a
+    # system's scan_target — no link is invented for floating images.
+    container_images = []
+    try:
+        from db.models.container_scan import ContainerScan
+
+        container_rows, containers_truncated = _bounded_all(session.query(ContainerScan))
+        collection_meta["container_scans_truncated"] = containers_truncated
+        scan_targets = {
+            row.id: str(row.target_location or "")
+            for row in session.query(Scan).all()
+        }
+        target_to_system = {}
+        for system in systems:
+            if system.scan_target:
+                target_to_system.setdefault(str(system.scan_target), system.id)
+        for row in container_rows:
+            system_ids = []
+            scan_target = scan_targets.get(row.scan_id) if row.scan_id else None
+            if scan_target and scan_target in target_to_system:
+                system_ids = [target_to_system[scan_target]]
+            container_images.append({
+                "id": str(row.id),
+                "target": row.target,
+                "name": row.target,
+                "image": row.target,
+                "package_count": row.package_count,
+                "library_count": row.library_count,
+                "vuln_count": row.vuln_count,
+                "system_ids": system_ids,
+            })
+    except Exception:
+        container_images = []
+
     merge_code_cascade(session, system_payloads, edges)
 
     settings = get_graph_settings()
@@ -186,6 +222,7 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
         "certificates": certificates,
         "cloud_resources": cloud_resources,
         "network_resources": network_resources,
+        "container_images": container_images,
         "collection": collection_meta,
     }
 

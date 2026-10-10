@@ -469,3 +469,42 @@ the models and found already covered:
   (`uq_system_dep` is the stronger invariant; the evidence
   `(scan_id, content_hash)` constraint remains deliberately not taken —
   the chain is append-only by construction).
+
+
+## Round 21 addendum (2026-10-10) — index parity + migration rollback testing SHIPPED
+
+Re-verified this report's remaining DB recommendations against the real
+alembic chain (sqlite tmp DB, upgrade head):
+
+- **Stale claims**: `graph_snapshots.fingerprint` IS indexed
+  (`ix_graph_snapshots_fingerprint`); the tenant-scoped-table claim is
+  stale (the four non-scoped model "files" are alias registrations of
+  scoped tables or a dataclass catalog — not unscoped ORM tables);
+  `crypto_assets` has no `scan_id` (global dedup inventory by design)
+  and `baselines` has no `system_id` (uses `system_identifier` +
+  `approved_scan_id`), so those unique-constraint recommendations are
+  structurally inapplicable.
+- **Index drift FIXED**: measured model indexes vs the migrated DB —
+  27 raw misses, 24 truly missing after leftmost-prefix filtering
+  (e.g. `evidence_records.scan_id` was covered by the
+  `ix_evidence_scan_chain` prefix). Migration
+  `0078_model_chain_index_parity.py` creates the 24 (guards optional
+  tables), with a clean downgrade. Hot paths covered:
+  `vulnerabilities.scan_id`, `systems.{business_unit, cloud_provider,
+  cloud_account, coverage_status}`, `system_assets.asset_id`,
+  `system_dependencies.child_id`, `scan_jobs.system_id`,
+  `graph_snapshots.version`.
+- **Migration quality / rollback testing BUILT**:
+  `services/database/tests/unit/test_model_migration_index_parity.py`
+  (4 tests) runs the REAL alembic chain on a tmp sqlite DB and asserts
+  (a) every model index exists post-migration (prefix-aware), (b) 0078
+  is prefix-minimal (no index duplicating another's leftmost prefix),
+  (c) upgrade → downgrade(-1) → upgrade and upgrade → downgrade(-3) →
+  upgrade both return to head with `ix_vulnerabilities_scan_id`
+  recreated. This is the regression net for future migration drift.
+- **Declined (with reasons)**: GIN on `normalized_crypto` (column is
+  JSON not JSONB, and no query path predicates into it — revisit when
+  one exists); partitioning/archival/matviews (product+deployment
+  decisions); tenant backfill (NULL tenant_id = platform estate by
+  design); read replicas (deployment). Optimistic locking (0074) and
+  soft delete (0075) shipped in earlier rounds.

@@ -211,3 +211,26 @@ def network_rows(resources: Iterable[dict[str, Any]]) -> tuple[list[dict[str, An
         for system_id in resource.get("system_ids") or []:
             edges.append({"system_id": str(system_id), "network_id": rid})
     return nodes, edges
+
+
+def container_rows(images: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """ContainerImage nodes (report 03's container->graph gap, round 21)."""
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for image in images or []:
+        cid = str(image.get("id") or image.get("target") or "")
+        if not cid:
+            continue
+        nodes.append(
+            {
+                "container_id": cid,
+                "name": image.get("name") or image.get("target"),
+                "image": image.get("image") or image.get("target"),
+                "package_count": image.get("package_count"),
+                "library_count": image.get("library_count"),
+                "vuln_count": image.get("vuln_count"),
+            }
+        )
+        for system_id in image.get("system_ids") or []:
+            edges.append({"system_id": str(system_id), "container_id": cid})
+    return nodes, edges

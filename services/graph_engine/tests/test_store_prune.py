@@ -114,3 +114,54 @@ def test_engine_build_accepts_collection_meta():
     )
     assert engine.collection_meta == {"systems_total": 1}
     assert engine.counts()["nodes"] >= 1
+
+
+# --------------------------------------------------------------------------- #
+# Round 21 (report 03): ContainerImage nodes reach the graph
+# --------------------------------------------------------------------------- #
+
+def test_container_images_sync_and_prune_neo4j_path():
+    driver = FakeDriver()
+    store = Neo4jGraphStore(driver, database="neo4j")
+    store.sync(
+        systems=[{"id": "web", "name": "web"}],
+        edges=[],
+        container_images=[
+            {"id": "img-1", "target": "nginx:1.25", "package_count": 42,
+             "library_count": 7, "vuln_count": 3, "system_ids": ["web"]},
+        ],
+    )
+    node = driver.graph.nodes.get(("ContainerImage", "img-1"))
+    assert node is not None and node["name"] == "nginx:1.25"
+    assert node["vuln_count"] == 3
+    runs = driver.graph.outgoing("System", "web", "RUNS")
+    assert ("ContainerImage", "img-1") in runs
+    # next sync without img-1 (but with another image, so the kind is
+    # present) must prune the ghost
+    store.sync(
+        systems=[{"id": "web", "name": "web"}],
+        edges=[],
+        container_images=[
+            {"id": "img-2", "target": "redis:7", "system_ids": []},
+        ],
+    )
+    assert driver.graph.nodes.get(("ContainerImage", "img-1")) is None
+    assert driver.graph.nodes.get(("ContainerImage", "img-2")) is not None
+
+
+def test_container_images_memory_engine():
+    from graph_engine.core.engine import GraphEngine
+
+    engine = GraphEngine().build(
+        systems=[{"id": "web", "name": "web"}],
+        edges=[],
+        container_images=[
+            {"id": "img-1", "target": "nginx:1.25", "vuln_count": 3,
+             "system_ids": ["web"]},
+        ],
+    )
+    node = engine.nodes.get("container:img-1")
+    assert node is not None
+    assert node["kind"] == "ContainerImage"
+    assert node["vuln_count"] == 3
+    assert ("container:img-1", "RUNS") in engine.out["system:web"]

@@ -170,3 +170,23 @@ MATCH (s:System {system_id: row.system_id})
 MATCH (n:NetworkResource {network_id: row.network_id})
 MERGE (s)-[:CONNECTS_TO]->(n)
 """
+
+
+MERGE_CONTAINERS = """
+// cryptoscan.query=merge_containers
+UNWIND $rows AS row
+MERGE (c:ContainerImage {container_id: row.container_id})
+SET c.name = row.name,
+    c.image = row.image,
+    c.package_count = row.package_count,
+    c.library_count = row.library_count,
+    c.vuln_count = row.vuln_count
+"""
+
+MERGE_RUNS = """
+// cryptoscan.query=merge_runs
+UNWIND $rows AS row
+MATCH (s:System {system_id: row.system_id})
+MATCH (c:ContainerImage {container_id: row.container_id})
+MERGE (s)-[:RUNS]->(c)
+"""

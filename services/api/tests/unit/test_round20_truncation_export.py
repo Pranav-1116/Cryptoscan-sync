@@ -192,3 +192,42 @@ async def test_graph_export_escapes_xml_hostile_names():
         assert "<script>" not in resp.text
     finally:
         engine.dispose()
+
+
+# --------------------------------------------------------------------- #
+# Round 21 (report 03): container scans reach the graph payload
+# --------------------------------------------------------------------- #
+
+@pytest.mark.asyncio
+async def test_container_scans_in_graph_payload_with_honest_linkage():
+    """ContainerImage nodes appear; system link only when the container
+    scan's scan_id resolves to a Scan whose target matches a system."""
+    from db.models.container_scan import ContainerScan
+    from db.models.scan import Scan
+
+    app, session, engine = _make_app()
+    try:
+        session.add(System(id="sys-web", name="web", scan_target="https://github.com/org/web.git"))
+        session.add(Scan(id="scan-c1", scan_start=__import__("datetime").datetime(2026, 10, 10),
+                         target_location="https://github.com/org/web.git",
+                         target_type="GIT_REPOSITORY"))
+        session.add(ContainerScan(id="cs-1", scan_id="scan-c1", target="nginx:1.25",
+                                  package_count=10, library_count=4, vuln_count=2, result={}))
+        session.add(ContainerScan(id="cs-2", scan_id=None, target="redis:7",
+                                  package_count=3, library_count=1, vuln_count=0, result={}))
+        session.commit()
+
+        payload = collect_graph_payload(session)
+        by_id = {c["id"]: c for c in payload["container_images"]}
+        assert set(by_id) == {"cs-1", "cs-2"}
+        assert by_id["cs-1"]["system_ids"] == ["sys-web"]   # linked via scan target
+        assert by_id["cs-2"]["system_ids"] == []            # floating: no invented link
+        assert by_id["cs-1"]["vuln_count"] == 2
+
+        # the memory graph builds nodes + RUNS edges from the payload
+        graph = __import__("graph_engine.core.facade", fromlist=["memory_graph"]).memory_graph(**payload)
+        assert graph.nodes.get("container:cs-1", {}).get("kind") == "ContainerImage"
+        assert ("container:cs-1", "RUNS") in graph.out["system:sys-web"]
+        assert "container:cs-2" in graph.nodes
+    finally:
+        engine.dispose()

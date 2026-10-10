@@ -336,3 +336,27 @@ answers) are now bounded full walks — see audit 03/09. Graph-layer tenant
 isolation (§7.3) remains covered by the ORM guard + per-tenant graph
 isolation from earlier rounds. API decomposition / config service /
 API versioning remain P2/P3 decisions, unchanged.
+
+
+## Round 21 addendum (2026-10-10) — distributed tracing verdicts re-checked
+
+- **P2#7 (trace-context propagation): FIXED, with a stale premise.** The
+  report claimed no distributed tracing exists, but the API side already
+  had it — `RequestIDMiddleware` (pure ASGI) honors inbound
+  `X-Request-Id`/`X-Trace-Id`, mints ids, echoes both on the response
+  and binds them into `api/middleware/trace.py` contextvars for logs.
+  What was genuinely missing was the *queue boundary*: the trace id died
+  with the HTTP request. Now `enqueue_scan_job` stamps the active trace
+  onto the queue payload (`payload["trace_id"]`) and the job row
+  (`progress["trace_id"]`, alongside sector/scan_mode), and the worker
+  binds it into `PipelineContext.trace_id` → `scan_meta["trace_id"]`
+  (`trace_id_from_job` reads progress JSON first, raw payload second).
+  Stage logs and scan statistics can now correlate end to end.
+  Tests: `services/api/tests/unit/test_round21_trace_context.py` (4:
+  echo, payload carry, row extraction, context binding).
+- **Architecture P0–P3 re-verified, no action**: monolith-by-design
+  (single deployable, service dirs), read-replicas and event-bus
+  clustering = deployment concerns (memory fallback exists for both),
+  graph tenant isolation already shipped (round 20 graph scoping),
+  config consolidation already shipped (`shared_config` pydantic-settings),
+  API versioning exists (`/api/v1`).

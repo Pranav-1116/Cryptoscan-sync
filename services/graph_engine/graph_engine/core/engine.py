@@ -70,6 +70,7 @@ class GraphEngine:
         certificates: Iterable[dict[str, Any]] = (),
         cloud_resources: Iterable[dict[str, Any]] = (),
         network_resources: Iterable[dict[str, Any]] = (),
+        container_images: Iterable[dict[str, Any]] = (),
         collection: dict[str, Any] | None = None,
     ) -> "GraphEngine":
         # `collection` is payload meta from the collector (bounded-walk
@@ -166,6 +167,21 @@ class GraphEngine:
             )
             for system_id in resource.get("system_ids") or []:
                 self.add_edge(f"system:{system_id}", f"network:{rid}", "CONNECTS_TO")
+        for image in container_images:
+            cid = str(image.get("id") or image.get("target") or "")
+            if not cid:
+                continue
+            self.add_node(
+                f"container:{cid}",
+                kind="ContainerImage",
+                name=image.get("name") or image.get("target"),
+                image=image.get("image") or image.get("target"),
+                package_count=image.get("package_count"),
+                library_count=image.get("library_count"),
+                vuln_count=image.get("vuln_count"),
+            )
+            for system_id in image.get("system_ids") or []:
+                self.add_edge(f"system:{system_id}", f"container:{cid}", "RUNS")
         return self
 
     def blast_radius(self, start_id: str, *, hops: int = 5) -> dict[str, Any]:
@@ -564,7 +580,7 @@ class GraphEngine:
     def _resolve(self, raw: str) -> str | None:
         if raw in self.nodes:
             return raw
-        for prefix in ("system:", "asset:", "process:", "cert:", "vendor:", "owner:", "scope:", "cloud:"):
+        for prefix in ("system:", "asset:", "process:", "cert:", "vendor:", "owner:", "scope:", "cloud:", "network:", "container:"):
             if f"{prefix}{raw}" in self.nodes:
                 return f"{prefix}{raw}"
         for node_id, node in self.nodes.items():

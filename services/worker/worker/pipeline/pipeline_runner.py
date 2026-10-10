@@ -31,6 +31,15 @@ def ctx_name(scan_id: str) -> str:
 settings = get_settings()
 
 
+def trace_id_from_job(job: Any) -> str | None:
+    """Trace context off a ScanJob row: progress JSON first, raw payload second."""
+    for source in (getattr(job, "progress", None) or {},
+                   getattr(job, "raw", None) or {}):
+        if isinstance(source, dict) and source.get("trace_id"):
+            return str(source["trace_id"])
+    return None
+
+
 @dataclass
 class PipelineContext:
     job_id: str
@@ -53,6 +62,14 @@ class PipelineContext:
     current_stage: str = ""
     logs: list[dict[str, Any]] = field(default_factory=list)
     compliance_scopes: list[str] = field(default_factory=list)
+    # request trace context that queued this job (report 02 P2#7): carried
+    # from the API middleware through the queue payload / job progress row
+    trace_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.trace_id:
+            # visible to every stage log and the scan statistics
+            self.scan_meta["trace_id"] = self.trace_id
     system_id: str | None = None
     scan_persisted: bool = False
 
@@ -171,6 +188,7 @@ class PipelineRunner:
         target_commit: str | None = None,
         workspace_dir: str | None = None,
         system_id: str | None = None,
+        trace_id: str | None = None,
         **kwargs,
     ):
         if job is not None:
@@ -202,6 +220,7 @@ class PipelineRunner:
             workspace_dir=str(workspace_path),
             scan_id=str(uuid.uuid4()),
             system_id=system_id,
+            trace_id=trace_id or trace_id_from_job(job),
         )
         stage = "init"
         try:
