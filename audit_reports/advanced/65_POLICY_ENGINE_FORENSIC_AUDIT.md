@@ -439,3 +439,24 @@ POST /policy/exceptions {rule_id, asset_id, reason, expires_at}
 * **Still open:** per-rule test-coverage reporting (P0 #4) — the rule
   *packs* are exercised by the suite, but there is no per-rule coverage
   matrix surfaced.
+
+## Round 28 update (2026-10-10) — per-rule test coverage built
+
+* **Rule testing framework / coverage (P0 #4) — NOW BUILT (this round).**
+  `policy/rules/rule_coverage.py` + `GET /policy/rules/coverage`
+  produce the per-rule coverage matrix: every rule in the shipped packs
+  mapped to the policy test files that reference its rule_id (word-
+  boundary matching, so BASELINE-0010 cannot collapse into
+  BASELINE-001), with per-pack rollups. Honest method statement: a
+  covered rule is referenced by at least one test file; an uncovered
+  rule may still be exercised indirectly by whole-pack engine tests —
+  uncovered is a review lead, not a proof of absence.
+  **First run found 55/63 rules covered (87.3%)** — the matrix
+  immediately paid for itself: CNSA-004, FIPS140-003, HIPAA-002,
+  NIST131A-001/002/004/006 and PCIDSS-006 had no test referencing
+  them. **All 8 got direct failing/passing evaluation tests this round**
+  (`services/policy/tests/unit/test_round28_uncovered_rules.py`, 9
+  tests) and the coverage is now **63/63** — asserted by a test so a
+  new rule without coverage fails CI, not silently ships. Coverage
+  tests: 5 unit (`test_rule_coverage.py`, regression guard on the live
+  ratio) + 1 API test.

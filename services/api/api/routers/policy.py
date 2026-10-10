@@ -102,6 +102,19 @@ def list_rules(user: str = Depends(get_current_user), db: Session = Depends(get_
     }
 
 
+@router.get("/rules/coverage")
+def rule_test_coverage_surface(user: str = Depends(get_current_user)):
+    """Per-rule test coverage matrix (audit 65 P0#4, round 28).
+
+    Static analysis: which rules in the shipped packs are referenced by
+    at least one policy test file. Uncovered is a review lead, not a
+    proof of absence (whole-pack engine tests exercise rules indirectly).
+    """
+    from policy.rules.rule_coverage import rule_test_coverage
+
+    return rule_test_coverage(_rules_dir(), _rules_dir().parent / "tests")
+
+
 @router.get("/rules/conflicts")
 def rule_conflicts(user: str = Depends(get_current_user),
                    db: Session = Depends(get_db_session)):

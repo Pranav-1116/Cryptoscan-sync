@@ -430,3 +430,30 @@ async def test_policy_rule_conflicts_endpoint_reports_pack_findings():
         assert ("SHADOWED", ("BASELINE-005", "CBUAE-001")) not in entries2
         # the baseline shadow is independent of the UAE pack
         assert ("SHADOWED", ("BASELINE-005", "BASELINE-001")) in entries2
+
+
+@pytest.mark.asyncio
+async def test_policy_rule_coverage_endpoint_reports_matrix():
+    app, session = _make_app()
+    async with _client(app) as c:
+        r = await c.get("/api/v1/policy/rules/coverage")
+        assert r.status_code == 200
+        body = r.json()
+        assert body["rule_count"] >= 60
+        assert body["covered_count"] + body["uncovered_count"] == body["rule_count"]
+        assert 0.5 < body["coverage_ratio"] <= 1.0
+
+        # every rule carries its pack and coverage state
+        row = body["rules"][0]
+        assert {"rule_id", "pack", "referenced_by", "covered"} <= set(row)
+        covered_row = next(x for x in body["rules"] if x["covered"])
+        assert covered_row["referenced_by"]
+        assert all(x["pack"] for x in body["rules"])
+
+        # per-pack rollups agree with the row-level data
+        for pack, stats in body["by_pack"].items():
+            rows = [x for x in body["rules"] if x["pack"] == pack]
+            assert stats["rules"] == len(rows)
+            assert stats["covered"] == sum(1 for x in rows if x["covered"])
+
+        assert "not a proof of absence" in body["method"]["caveat"]

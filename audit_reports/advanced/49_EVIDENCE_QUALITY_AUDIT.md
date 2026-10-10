@@ -457,3 +457,38 @@ suite 139).
   negative-evidence tracking (#6 — adjacent to the clean-scan baselines
   from round 23, but "searched and not found" records are not yet a
   first-class evidence type).
+
+## Round 28 update (2026-10-10) — collector calibration + negative evidence built
+
+* **Collector calibration (P0 #4) — NOW BUILT (this round).**
+  `normalization/calibration.py` + `GET /findings/detectors/scorecards`
+  calibrate every detector over recent scans through the two honest
+  proxies production records: **retractions** (soft-deleted evidence —
+  operator-judged false positives) and **authority losses** (the
+  non-preferred side of *decisive* conflicts under the 6-tier
+  hierarchy; ties are not detector failures). Tiers are deterministic
+  (CALIBRATED / WATCH / DEGRADED, with INSUFFICIENT_DATA under 20
+  observations — thin data is reported as thin, never scored) and each
+  card carries a `reliability_multiplier` for consumers — annotation
+  only, recorded confidence is never rewritten. The loss share is
+  measured against the detector's own observation count, so one
+  disagreement out of one conflict is not a pattern. Observer identity
+  resolves from evidence provenance (`scanner_ids` → provenance →
+  finding source), with unclaimed evidence surfaced as UNATTRIBUTED
+  rather than hidden. Tombstones count toward retraction but never feed
+  conflict detection. Tests: 9 unit
+  (`services/normalization/tests/unit/test_calibration.py`) + 2 API
+  (`services/api/tests/unit/test_round28_calibration.py`).
+* **Negative evidence tracking (P1 #6) — NOW BUILT.**
+  `GET /scans/{scan_id}/coverage` is the scan coverage statement: the
+  full origin universe (source/test/generated/vendored/archive) with
+  zero-observation origins explicitly listed, per-detector observation
+  counts from evidence provenance, the unattributed count, and the
+  clean-scan flag — absence is recorded and queryable, never inferred
+  from silence. The method block states the honest edge: a zero can
+  mean "searched, nothing found" or "origin not applicable to this
+  target", and the payload says which question a zero answers.
+* **Still open:** cross-source correlation bonus (P1 #5 — the
+  corroboration bonus in `confidence_from_sources` covers part of it;
+  a tier-aware authority boost remains), and labeled ground-truth
+  calibration (would need FP/FN labels, not proxies).

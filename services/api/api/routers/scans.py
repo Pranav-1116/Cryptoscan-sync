@@ -83,6 +83,97 @@ def get_scan(
     return _to_response(scan)
 
 
+@router.get("/{scan_id}/coverage")
+def get_scan_coverage(
+    scan_id: str,
+    user: str = Depends(get_current_user),
+    repo: ScanRepository = Depends(get_scan_repository),
+    db: Session = Depends(get_db_session),
+):
+    """Scan coverage statement (audit 49 P1#6, round 28): positive AND
+    negative evidence, side by side.
+
+    What this records beyond the usual per-finding views:
+
+    * zero-observation file origins — the scanner's origin universe
+      (source/test/generated/vendored/archive) with the origins this scan
+      found *nothing* in, so absence is visible and queryable;
+    * observations per detector, resolved from evidence provenance —
+      a detector with zero observations in a scan it participated in is
+      the "searched and not found" record.
+
+    Honest edge: a zero can mean "searched, nothing found" or "origin
+    did not apply to this target" — the payload says which question a
+    zero answers and which it cannot.
+    """
+    from db.repositories.evidence_repository import EvidenceRepository
+    from normalization.calibration import UNATTRIBUTED, detector_key
+
+    scan = repo.get_by_id(scan_id)
+    if scan is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+
+    stats = dict(scan.statistics or {})
+    by_origin = dict(stats.get("findings_by_origin") or {})
+    try:
+        from scanner.core.code_origin import ARCHIVE, GENERATED, SOURCE, TEST, VENDORED
+        origin_universe = [SOURCE, TEST, GENERATED, VENDORED, ARCHIVE]
+    except Exception:  # noqa: BLE001 — scanner package unavailable in this deploy
+        origin_universe = ["source", "test", "generated", "vendored", "archive"]
+
+    origins = []
+    for origin in origin_universe:
+        count = int(by_origin.get(origin) or 0)
+        origins.append({
+            "origin": origin,
+            "observations": count,
+            "zero_observation": count == 0,
+        })
+
+    live = EvidenceRepository(db).get_all_for_scan(scan_id, include_deleted=False)
+    per_detector: dict[str, int] = {}
+    for row in live:
+        key = detector_key({
+            "scanner_ids": (row.scanner_ids or []) if hasattr(row, "scanner_ids") else [],
+            "provenance": row.provenance,
+            "finding_data": row.finding_data,
+        })
+        per_detector[key] = per_detector.get(key, 0) + 1
+
+    total_findings = int(stats.get("total_findings") or 0)
+    return {
+        "scan_id": scan_id,
+        "scanner_id": scan.scanner_id,
+        "status": scan.status,
+        "files_scanned": int(stats.get("files_scanned") or 0),
+        "files_with_crypto": int(stats.get("files_with_crypto") or 0),
+        "files_skipped": int(stats.get("files_skipped") or 0),
+        "files_with_errors": int(stats.get("files_with_errors") or 0),
+        "total_findings": total_findings,
+        "origins": origins,
+        "detectors": [
+            {"detector": name, "observations": per_detector[name]}
+            for name in sorted(per_detector)
+        ],
+        "unattributed_observations": per_detector.get(UNATTRIBUTED, 0),
+        "clean_scan": total_findings == 0,
+        "method": {
+            "zero_interpretation": "a zero-observation origin means the scan "
+                                   "recorded nothing there — either nothing "
+                                   "was found, or the origin did not apply "
+                                   "to this target; the scan statistics "
+                                   "(files scanned/skipped) say which "
+                                   "files were searched, not which origins "
+                                   "were applicable",
+            "negative_evidence": "absence is recorded, never inferred: "
+                                 "zero rows are surfaced, not assumed from "
+                                 "silence",
+            "clean_scan_path": "a zero-finding scan feeds the clean-scan "
+                               "baseline proposal path (round 23)",
+        },
+    }
+
+
 @router.get("/{scan_id}/cascade")
 def get_scan_cascade(
     scan_id: str,

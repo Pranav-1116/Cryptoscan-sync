@@ -174,6 +174,78 @@ def finding_conflicts(
     }
 
 
+@router.get("/findings/detectors/scorecards")
+def detector_scorecards(
+    scan_limit: int = Query(25, ge=1, le=200,
+                            description="How many most-recent scans calibrate over"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Per-detector calibration scorecards (audit 49 P0#4, round 28).
+
+    Production has no labeled ground truth, so calibration is measured
+    through the two honest proxies the platform records: retractions
+    (soft-deleted evidence — operator-judged false positives) and
+    authority losses (the non-preferred side of decisive observation
+    conflicts under the 6-tier hierarchy). Annotation only — recorded
+    confidence is never rewritten.
+
+    Tombstones COUNT (they are the retraction signal) but never feed
+    conflict detection, so a retraction cannot manufacture a conflict.
+    """
+    from normalization.calibration import (UNATTRIBUTED, detector_key,
+                                           detector_scorecards as score)
+    from normalization.conflicts import detect_conflicts
+
+    from db.models.scan import Scan
+
+    scan_rows = db.execute(
+        select(Scan).order_by(Scan.scan_start.desc()).limit(scan_limit)
+    ).scalars().all()
+    if not scan_rows:
+        return {"detectors": [], "detector_count": 0, "tier_counts": {},
+                "scans_considered": 0, "observations": 0,
+                "method": {"note": "no scans yet — nothing to calibrate"}}
+
+    repo = EvidenceRepository(db)
+
+    def _view(row) -> dict:
+        # EvidenceRecord has no scanner_ids column — the observer identity
+        # lives in the provenance / finding-source JSON. Resolve it once so
+        # both the scorecard grouping and the conflict detector see the
+        # same observer name (authority tokens read scanner_ids).
+        base = {
+            "algorithm": row.algorithm,
+            "key_size": row.key_size,
+            "mode": row.mode,
+            "file_path": row.file_path,
+            "line_number": row.line_number,
+            "compliance_status": row.compliance_status,
+            "scanner_ids": (row.scanner_ids or []) if hasattr(row, "scanner_ids") else [],
+            "provenance": row.provenance,
+            "finding_data": row.finding_data,
+            "deleted": row.deleted_at is not None,
+        }
+        key = detector_key(base)
+        if key != UNATTRIBUTED:
+            base["scanner_ids"] = [key]
+        return base
+
+    views: list[dict] = []
+    conflicts: list[dict] = []
+    for scan in scan_rows:
+        # tombstones included: retraction is the FP proxy being measured
+        views.extend(_view(r) for r in repo.get_all_for_scan(scan.id, include_deleted=True))
+        # tombstones excluded: retracted evidence must not manufacture conflicts
+        live = [_view(r) for r in repo.get_all_for_scan(scan.id, include_deleted=False)]
+        conflicts.extend(detect_conflicts(live))
+
+    result = score(views, conflicts)
+    result["scans_considered"] = len(scan_rows)
+    result["observations"] = len(views)
+    return result
+
+
 @router.get("/findings/{evidence_id}", response_model=FindingResponse)
 def get_finding(
     evidence_id: str,
