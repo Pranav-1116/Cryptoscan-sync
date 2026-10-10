@@ -39,6 +39,7 @@ Modules:
 - stats: Dashboard summary stats
 - systems: System inventory, CMDB import, and per-system scan
 - trigger: Manual scan trigger
+- trust_model: The platform trust model (authority tiers, confidence bands, freshness decay) as one document
 - vulnerability: Spec-named vulnerability endpoints (`/vulnerabilities`)
 - vulns: Local cryptographic-library vulnerabilities
 - webhooks: GitHub webhook receiver

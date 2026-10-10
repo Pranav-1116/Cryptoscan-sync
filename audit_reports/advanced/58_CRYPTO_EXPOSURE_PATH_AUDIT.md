@@ -441,3 +441,17 @@ persisted so it never fabricates hops.
 Tests: `services/api/tests/unit/test_round19_risk_exposure_ownership.py`
 (exposure block: 4 tests — chain shape, algorithm filter, empty case,
 island exclusion).
+
+## Round 27 update (2026-10-10) — exposure graph re-verified
+
+* **Exposure path queries — shipped (round 19):** bounded
+  entry→dependency→crypto walks at `GET /exposure/paths`, plus
+  graph-layer certificate exposure and blast-radius/reachability
+  surfaces. These run over the *persisted* system dependency graph.
+* **NetworkEdge / LoadBalancer / TERMINATES_AT / HOSTS-DEPLOYS edges
+  and K8s Service/Pod/Process nodes (P0 #1–4) — still open,
+  product-scoped:** the platform does not ingest network or Kubernetes
+  topology; DNS/CDN/WAF/ALB→target-group→workload chains need a live
+  topology feed (cloud API / K8s API discovery). This is the same
+  standing gap as 47's deployment-topology links and 57's verified
+  entry surface. Tracked in 00_ROUND_STATUS.

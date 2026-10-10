@@ -379,3 +379,19 @@ class ReintroductionDetector:
 | Graph Engine Drift | `services/graph_engine/graph_engine/core/drift.py` |
 | Event Bus | `services/api/api/events/bus.py` |
 | Redis Sync | `services/api/api/events/redis_sync.py` |
+## Round 27 update (2026-10-10) — temporal surfaces re-verified
+
+* **Temporal query engine + asset timeline (P0 #1/#2) — shipped:** the
+  crypto live journal (`GET /crypto/live/timeline`, filterable by
+  asset and event type, paginated) records every observation as an
+  event; hardware has point-in-time reconstruction
+  (`GET /hardware/timeline/state-at`); CBOMs are versioned per asset
+  (`GET /crypto/live/{asset}/cbom` with version); the digital-twin
+  surfaces carry their own timelines.
+* **Reintroduction detection (P0 #4) — shipped (round 24):** the
+  retirement registry flags a retired algorithm that reappears as a
+  reintroduction, not a resurrection.
+* **Change classification (P0 #3) — partial:** the journal's event
+  types classify changes (added/removed/parameter/version changes);
+  a full taxonomy with severity-weighted change classes remains
+  open (product-scoped).

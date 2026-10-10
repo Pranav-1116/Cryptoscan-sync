@@ -472,3 +472,21 @@ this report found missing:
   (`inventory.asset_lifecycle`).
 * API: `POST /inventory/assets/{id}/lifecycle`; the unified inventory lists
   and filters by `lifecycle_state`.
+
+## Round 27 update (2026-10-10) — lifecycle state machine re-verified
+
+* **State enum + field + machine (P0 #1/#2/#3) — shipped:** crypto
+  assets carry `lifecycle_state` (DISCOVERED → VERIFIED → ACTIVE →
+  DEPRECATED → RETIRED) with transitions guarded by the inventory
+  router's rules table — no skipping to ACTIVE from DISCOVERED, no
+  resurrection from RETIRED (a retired algorithm that reappears is a
+  *reintroduction*, handled by the retirement registry, round 24).
+  `POST /inventory/assets/{id}/lifecycle` validates, audits the
+  transition with its reason, and emits a platform event; the listing
+  filters by state.
+* **Lifecycle timestamps (P0 #4) — open, deliberately:** explicit
+  `verified_at`/`baselined_at`/... columns are not shipped; the
+  transition history lives in the audited event trail (actor, reason,
+  from/to, timestamp per transition). Deriving the columns from that
+  trail is straightforward if a query surface ever needs them — the
+  truth source already exists.

@@ -427,3 +427,19 @@ Everything in §2.2 "No Verification Model Exists" now exists:
   every transition emits a platform event
 * API: 7 endpoints on `/remediation` (tasks CRUD + accept/complete/verify +
   verifications list). Tests: 13 decision-table + 8 end-to-end.
+
+## Round 27 update (2026-10-10) — verification loop re-verified end to end
+
+* **Verification model + logic + result enum (P0 #1/#4/#5) — shipped
+  (audit 62 / GAP-006):** `remediation/verification.py` is a pure
+  comparison engine with the full verdict set — VERIFIED / PARTIAL /
+  FAILED / REGRESSION / INCONCLUSIVE — each carrying the
+  machine-readable comparison so an auditor can replay the decision
+  without trusting the label. Persisted via
+  `RemediationVerificationRepository`, surfaced as `latest_verification`
+  on the task, and `apply_result_to_status` closes the loop into task
+  state (auto-close on VERIFIED, escalation on FAILED).
+* **Automated rescan trigger (P0 #2) — partially shipped:** drift
+  events auto-link to remediation and the scan queue gates backpressure
+  (round 16); task-completion → scheduled verification rescan remains
+  workflow-scoped (needs a scheduler policy decision), honestly open.

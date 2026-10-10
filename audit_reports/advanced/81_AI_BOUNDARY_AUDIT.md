@@ -372,3 +372,17 @@ cpus: "1.0"
 | CI Checks | `.pre-commit-config.yaml`, `.github/workflows/ci.yml` |
 | Module Structure | `services/` directory structure |
 | Import Analysis | `grep -r "import openai" services/ --include="*.py"` |
+## Round 27 update (2026-10-10) — AI boundary re-verified
+
+* **Static/architectural boundary — holds (re-verified with report
+  80):** zero AI in the deterministic path — evidence, facts,
+  compliance, policy, asset identity, and now conflict/authority
+  analysis and freshness decay are all deterministic and replayable.
+  The boundary statement is published at `GET /api/v1/trust-model`
+  (report 79 P0#3/#4, built this round).
+* **Runtime sandbox, runtime AI-call detection/blocking (P0 #1/#2/#3)
+  — open, deployment-scoped:** seccomp/capability-drop sandboxing and
+  eBPF execve tracing to *prove at runtime* that deterministic
+  services never call AI binaries are infrastructure decisions
+  (container security profiles, host requirements), not application
+  code. Tracked as a standing deployment gap in 00_ROUND_STATUS.

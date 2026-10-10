@@ -545,3 +545,22 @@ The PQC blind spots in §"Emerging Crypto" are fixed for protocol surfaces:
 * Binary-source ML-KEM/ML-DSA detection (ast_engine) already existed
 
 Still open from §"Binary/Firmware": control-flow analysis (angr/ghidra) — P3.
+
+## Round 27 update (2026-10-10) — accuracy platform re-verified
+
+* **Automated accuracy measurement (P0 #1) — shipped, stale:** the
+  validation corpus is real and large — 21 files under
+  `services/scanner/tests/accuracy/` (waves 1–19: middleware, payments,
+  SQL/COBOL, PQC classification, known non-crypto negatives) with the
+  accuracy gate test; `scripts/accuracy_benchmark.py` +
+  `accuracy_inspect.py` measure precision/recall/F1 outside pytest, and
+  `GET /crypto/accuracy` surfaces per-dataset metrics from the
+  `AccuracyPlatform`.
+* **Transitive dependency crypto (P0 #2) — shipped:** dependency
+  graphs and transitive propagation exist across the live-scan
+  dependency graph, cloud enterprise dependency graph, and the CBOM
+  unified cascade (re-verified round 26 for report 61).
+* **Binary control flow analysis (P0 #3) — open, product-scoped:**
+  angr/Ghidra integration is heavy external tooling with licensing and
+  performance implications; current binary analysis is
+  symbol/string/fingerprint based. Tracked in 00_ROUND_STATUS.

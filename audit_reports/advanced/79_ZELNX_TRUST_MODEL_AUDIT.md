@@ -336,3 +336,29 @@ class UncertaintyQuantification:
 | Evidence Pipeline | `services/evidence/evidence/core/pipeline.py` |
 | Normalization Engine | `services/normalization/normalization/core/engine.py` |
 | Crypto Classifier | `services/universal_crypto/universal_crypto/classification.py` |
+## Round 27 update (2026-10-10) — trust model exposed in the API
+
+* **`/trust-model` endpoint (P0 #3) — NOW BUILT (this round).**
+  `GET /api/v1/trust-model` publishes the platform's enforced trust
+  rules as one machine-readable document, **imported live from the
+  modules that enforce them** so the document cannot drift from the
+  code: the 6-tier observation authority hierarchy (RUNTIME…UNRANKED,
+  never guessed), the calibrated multi-evidence confidence weights and
+  bands (with their corpus-calibration provenance), the freshness decay
+  model (exponential, evidence-class half-lives, verified floor —
+  built this round for report 49), staleness windows, per-source-kind
+  reliability, verification states, the three conflict classes with
+  the annotate-never-auto-resolve policy, and the AI-boundary
+  statement. Each section names its governing module.
+* **Uncertainty quantification (P0 #2) — substantially shipped across
+  rounds:** confidence bands + authority annotations + freshness decay
+  together quantify how much to trust any observation; what remains is
+  per-finding rollup surfacing (findings carry confidence; the decayed
+  score is at the state surface).
+* **AI boundary indicators (P0 #4) — shipped in API form:** the
+  deterministic-path statement is part of the trust-model document;
+  surfaces that are deterministic label themselves (`"deterministic":
+  true` on the algorithms surface, "no AI" in the anomaly router's
+  contract). UI badges (P0 #1) remain frontend-scoped.
+* Tests: `services/api/tests/unit/test_trust_model_api.py` (2 —
+  agreement with the enforcing modules, auth required).

@@ -416,3 +416,22 @@ Asset (System, CryptoAsset, Certificate, NetworkResource)
 | Monitor Targets | `services/monitor/` |
 | Drift Detection | `services/drift/drift/` |
 | Vendor Intel | `services/vendor_intel/` |
+## Round 27 update (2026-10-10) — attack-surface surfaces re-verified
+
+* **Attack path analysis (P0 #1) — shipped (round 19), with an honest
+  boundary:** `GET /exposure/paths` walks entry-candidate systems →
+  dependencies → crypto assets with the weakest designation along the
+  chain. "Entry candidate" is a heuristic over persisted system
+  metadata (cloud-hosted, URL/git-remote targets), not verified network
+  topology — the endpoint's own docstring says so.
+* **Supply chain attack surface (P0 #2) — shipped:** vendor crypto
+  fingerprinting, vendor dependencies, KMS inventories, and transitive
+  propagation (re-verified round 26 for report 61).
+* **CI/CD pipeline attack surface (P0 #3) — partially shipped:**
+  GitHub/registry webhooks (HMAC-verified) and SBOM license/VEX
+  ingestion exist; dedicated build-key / signing-key / pipeline-secret
+  discovery is open (product-scoped).
+* **Runtime attack surface (P0 #4) — shipped:** the runtime router
+  ingests eBPF/mesh crypto findings without a kernel agent, plus the
+  live-scan orchestrator; process-level continuous monitoring depth
+  remains open (deployment-scoped).

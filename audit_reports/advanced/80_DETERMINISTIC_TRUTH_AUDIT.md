@@ -410,3 +410,18 @@ def test_ai_output_labeling():
 | Digital Twin Scenarios | `services/agility/agility/twin_scenarios.py` |
 | Remediation Engine | `services/remediation/remediation/engine.py` |
 | Import Analysis | `grep -r "import openai" services/ --include="*.py"` |
+## Round 27 update (2026-10-10) — principle re-verified; contract now published
+
+* **The 10/10 verdict still holds.** This round touched the trust
+  machinery itself (authority annotations, conflict detection,
+  freshness decay, policy conflict analysis) and every addition stayed
+  on the deterministic side: pure functions, explicit constants,
+  replayable decisions, UNRANKED never guessed, conflicts annotated
+  never auto-resolved.
+* **The deterministic contract is now machine-readable (report 79
+  P0#3):** `GET /api/v1/trust-model` publishes the enforced rules —
+  authority tiers, calibrated confidence weights, decay model, conflict
+  policy, AI-boundary statement — imported live from the enforcing
+  modules. An external auditor no longer needs to read source to know
+  what the platform's trust rules are; they can fetch them and diff
+  them against the code.

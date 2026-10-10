@@ -458,3 +458,16 @@ Tests: `services/universal_platform/tests/test_unified_risk.py` (+5
 weight/version tests, suite 40) and
 `services/api/tests/unit/test_round19_risk_exposure_ownership.py`
 (risk block: 6 tests).
+
+## Round 27 update (2026-10-10) — unified risk re-verified
+
+* **Unified risk model + configurable weighting (P0 #1/#2) — shipped
+  (round 19, re-verified this round):** one 8-factor contract per
+  system, every weight env-configurable, calculations versioned,
+  derivation signals exposed so any score can be decomposed — the
+  forensic traceability this report demanded (no black-box numbers).
+* **Threat modeling + exploitability scoring (P0 #3/#4) — open,
+  product-scoped:** threat-actor capability modeling, EPSS
+  integration, PoC/weaponization signals need external intel feeds and
+  a modeling decision; tracked in 00_ROUND_STATUS (same standing family
+  as the threat-intel platform gap).

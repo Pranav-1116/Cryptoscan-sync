@@ -415,3 +415,25 @@ ML-KEM groups 35/36/37 are detected. Quantum classification for hybrids is
 explicit: PQC_RESISTANT via the post-quantum component, with policy status
 tracking that component's standardization (ALLOWED for FIPS 203 hybrids,
 RESTRICTED for Kyber drafts and sntrup761).
+
+## Round 27 update (2026-10-10) — PQC detection + HNDL longevity re-verified
+
+* **PQC protocol detection (P0 #1) — shipped:** the protocol engine
+  maps hybrid ML-KEM TLS groups (RFC 10024: X25519MLKEM768/1024,
+  SecP256r1MLKEM768) and pre-standard Kyber768 hybrids still seen in
+  the wild, plus OpenSSH hybrid PQ KEX mapped to the hybrid identity,
+  not the classical half.
+* **Binary PQC detection (P0 #2) — shipped:** ML-KEM/ML-DSA/SLH-DSA
+  signatures in the AST/findings/hardcoded/library-fingerprint
+  detectors, with a dedicated PQC-classification corpus wave
+  (re-verified round 26 for report 29).
+* **Hybrid crypto detection (P0 #3) — shipped:** HYBRID is a
+  first-class classification in the universal-crypto models, and hybrid
+  groups are normalized end to end.
+* **Data longevity modeling (P0 #4) — shipped:** `hndl_risk()` scores
+  harvest-now-decrypt-later exposure from retention years,
+  public-network exposure, regulated/PHI/HIPAA/GDPR/PCI classifications
+  (multipliers 0.8–1.5, CRITICAL escalation for regulated ≥10y), and
+  drives migration deadlines (2y/5y horizons) in the quantum plan.
+* Remaining opens are fine-grained: composite-certificate handling and
+  backup-crypto longevity propagation (product-scoped).

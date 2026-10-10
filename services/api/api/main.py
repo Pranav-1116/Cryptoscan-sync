@@ -57,6 +57,7 @@ from api.routers import (
     estate,
     events,
     exposure,
+    trust_model,
     techbom,
     exceptions,
     notifications,
@@ -424,6 +425,7 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     app.include_router(cloud_scans.router, prefix=prefix)
     app.include_router(estate.router, prefix=prefix)
     app.include_router(exposure.router, prefix=prefix)
+    app.include_router(trust_model.router, prefix=prefix)
     app.include_router(techbom.router, prefix=prefix)
     app.include_router(graph.router, prefix=prefix)
     app.include_router(reachability.router, prefix=prefix)

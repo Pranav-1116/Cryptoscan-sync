@@ -431,3 +431,17 @@ deny {
 | SPIFFE/SPIRE | Not deployed |
 | OPA | Not deployed |
 | Network Policies | None (no Calico/Cilium) |
+## Round 27 update (2026-10-10) — zero-trust state re-verified
+
+* **In-platform zero-trust controls — shipped and hardened across
+  rounds:** scoped-permission RBAC with role aliases and per-surface
+  grants, asset/system/business-unit grant inheritance (round 22),
+  machine-key authentication with scoped roles, session hardening,
+  per-principal-class rate limiting, audited writes everywhere (this
+  round added audited ownership assignment on three more surfaces).
+* **Service-mesh zero trust (P0 #1–4) — open, deployment-scoped:**
+  SPIFFE/SPIRE workload identity, Calico/Cilium network segmentation,
+  a central OPA PDP, and continuous device/session verification are
+  infrastructure-layer decisions that do not live in this codebase.
+  Standing deployment gap in 00_ROUND_STATUS (with mTLS/Vault from
+  report 75 and the sandboxing from report 81).

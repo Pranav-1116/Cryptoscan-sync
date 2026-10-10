@@ -607,3 +607,17 @@ class BreakGlassSystem:
 | Database Models | `services/database/db/models/` (APIKey, User, etc.) |
 | Docker Compose | `docker-compose.yml` (env vars) |
 | Settings | `services/api/api/config/settings.py` |
+## Round 27 update (2026-10-10) — credential scope re-verified
+
+* **Platform-credential least privilege — shipped:** the RBAC catalog
+  is permission-scoped per surface (`certificates.manage`,
+  `scan.trigger`, `api_keys.manage`, ...), machine keys carry scoped
+  roles, session auth is hardened, and rate limits are per-principal
+  class. This is the *platform's own* credential scope validation.
+* **Secret detection — shipped:** hardcoded-key/entropy detection in
+  source scans feeds findings with evidence links.
+* **External vault integration (P0 #1), automated rotation (P0 #3),
+  continuous scope-drift monitoring (P0 #4) — open, product-scoped:**
+  HashiCorp Vault / AWS Secrets Manager / Azure Key Vault backing,
+  90-day rotation automation, and drift alerts need the external
+  system and a policy decision. Standing gap in 00_ROUND_STATUS.

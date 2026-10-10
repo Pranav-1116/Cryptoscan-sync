@@ -423,3 +423,32 @@ docker run -d -p 5000:5000 \
 | Base Images | `.docker/*/Dockerfile` |
 | Vulnerability Feeds | `services/container_scanner/container_scanner/core/scanner.py` |
 | License Check | `services/api/api/security/auth.py` |
+## Round 27 update (2026-10-10) — air-gap mechanisms verified; runbook written
+
+* **Egress enforcement — shipped:** `AIRGAP_MODE` /
+  `AIRGAP_ALLOWLIST` env flags drive `governance/airgap.py`'s
+  `AirgapPolicy`; egress-capable operations are refused with a
+  decision record, and read-only mode raises `AirgapReadOnlyError`.
+* **Offline feed updates — shipped:** HMAC-SHA256-signed bundles
+  (per-entry SHA-256 manifest) with `build_bundle` on the connected
+  side and `import_bundle` on the gapped side, refusing tampered
+  bundles whole and writing through `SqlVulnerabilityFeedSink` into
+  the `vulnerabilities` table the scanners actually read
+  (de-duplicated, idempotent, unknown feeds namespaced not dropped).
+* **Signed exports out of the gap — shipped:**
+  `POST /enterprise/airgap/bundle` / `/airgap/export` (findings,
+  compliance posture, controls) with content hashes and audit trail.
+* **Telemetry (P0 #3) — structurally resolved:** the "telemetry
+  heartbeat" publishes to the in-process SSE bus for local
+  subscribers; there is no external phone-home endpoint in the
+  codebase, so there is nothing to disable — nothing leaves by default.
+* **Deployment runbook (P0 #2/#4) — NOW WRITTEN (this round):**
+  `docs/airgap-deployment.md` — install with the env flags, offline
+  feed import (with the verification and idempotency properties),
+  signed exports, offline audit attestation (hash-chain verification +
+  HMAC-signed report), encrypted backups, operating rules, and honest
+  limits.
+* **Offline license (P0 #1) — open, commercial-scoped:** no signed
+  license-file subsystem exists; entitlement enforcement on a
+  disconnected site is operational, not code. Tracked in
+  00_ROUND_STATUS.

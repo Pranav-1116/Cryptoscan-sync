@@ -469,3 +469,20 @@ RemediationPlan:
 | EvidencePipeline | `services/evidence/evidence/core/pipeline.py` |
 | CryptoAsset model | `services/database/db/models/crypto_asset.py` |
 | PolicyEvaluation model | `services/policy/policy/models/policy_result.py` |
+## Round 27 update (2026-10-10) — separation verdicts re-verified
+
+* **Unified Risk model (P0 #3) — shipped (round 19, re-verified):**
+  `GET /risk/unified` and `/risk/systems` score the estate through one
+  8-factor contract with env-configurable weights, versioned
+  calculations, and per-system derivation signals (why a score is what
+  it is, not just the number).
+* **Exposure layer (P0 #2) — shipped (round 19):** bounded exposure
+  path queries at `GET /exposure/paths` (entry-candidate system →
+  dependency chain → crypto asset, weakest algorithm along the chain),
+  honestly labeled as persisted-graph walks, not network topology.
+* **CryptographicFact as a separate pure model (P0 #1) and
+  Remediation-from-Risk (P0 #4) — still open, rearchitecture-scoped:**
+  facts, locations, and evidence links remain fused in the
+  `crypto_assets` row and the evidence pipeline's dedup model. Splitting
+  them is a data-model rearchitecture of the core inventory, tracked in
+  00_ROUND_STATUS, not a weekend build.
