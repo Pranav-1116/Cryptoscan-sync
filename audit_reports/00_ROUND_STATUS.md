@@ -121,5 +121,8 @@ repository on 2026-10-09.
 | 25 (2026-10-10) | HBOM content bug fixed (snapshots froze EMPTY documents — `hbom.add` never called) + `GET /hardware/hbom` document endpoint + lifecycle remove/re-observe semantics | 26 §5 |
 | 25 (2026-10-10) | deep/27 addendum: P0#2/#3 + P1#5/#6 + P2#9 verified stale or shipped (link table, edge evidence refs, network/container nodes, export); Neo4j tenant isolation + CDC remain deployment-scoped | 27 P0–P2 |
 | 25 (2026-10-10) | deep/28 addendum: P0#1/#3 (automated detection + `drift.event` emission) and P1#4 metrics (R23 `/drift/sla`) verified stale; per-event hash embedding + recurrence remain product-scoped | 28 P0/P1 |
+| 26 (2026-10-10) | CurrentRunStore made a real ABC (`@abstractmethod` get/set; incomplete subclasses fail at instantiation, not first call) | 17 §1.1 |
+| 26 (2026-10-10) | Secret-scan CI workflow staged under workflows-pending (gitleaks, push/PR + nightly full-history) | 22 P0#6 |
+| 26 (2026-10-10) | Full re-verification sweep of deep/17–30 + advanced 46/48/56/60/61/63/66/70/71/78: per-report addenda written; nearly all concrete claims stale (shipped R17–R25), remainder classified product/deployment-scoped | 17–30, 46–78 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.
