@@ -325,3 +325,22 @@
 | TechnologyBomSnapshot Model | `services/database/db/models/technology_bom_snapshot.py` |
 | Vendor Models | `services/database/db/models/vendor.py`, `vendor_crypto.py` |
 | HardwareLive Model | `services/database/db/models/hardware_live.py` |
+---
+
+## Round 26 update (2026-10-10) — coherence claims re-verified
+
+* **HBOM missing — STALE.** The HBOM subsystem is implemented and
+  served (`GET /hardware/hbom?fmt=native|cyclonedx`, versioned
+  snapshots; round 25 additionally fixed the empty-document content
+  bug — see deep/26's addendum).
+* **P0#1 unified asset identity — STALE.** `cp_asset_identities`
+  (control plane) stores canonical, tenant-scoped identities fused from
+  multiple sources (`source_refs`, `evidence_sources`, confidence), with
+  an identity resolver tested across mac/hostname/cloud-resource keys.
+* **VBOM — REMAINS OPEN, product-scoped.** Vendor crypto inventory,
+  vendor graph nodes and vendor chains exist; a formal vendor-BOM
+  document generator does not.
+* **P0#2/#4 (merge generators / deprecate TechBOM), P1 cross-BOM query
+  API, P2 unified versioning, P3 federated queries — REMAIN OPEN,
+  product/architecture-scoped** (consistent with deep/26's verdict on
+  the three-generator question).
