@@ -410,3 +410,17 @@ def simulate(asset_id, current_algorithm, target_algorithm,
 | Scanner Imports | `services/scanner/scanner/parsers/` (import detection) |
 | Library Fingerprinting | `services/universal_crypto/universal_crypto/library_fingerprints.py` |
 | Crypto Calls | `services/scanner/scanner/detectors/` (detectors) |
+---
+
+## Round 26 update (2026-10-10) — dependency-edge claims re-verified
+
+Several of the "missing critical dependency types" exist today:
+`CryptoHardwareLink` (hardware/HSM → crypto asset), `VendorDependency`
+(vendor edges), `certificate_usage` (certificate → application), cloud
+KMS key inventory (KMS → key, `inventory/cloud_kms.py`), and the
+round-18 transitive crypto propagation gives library-level dependency →
+algorithm paths in the cascade. **REMAIN OPEN, product-scoped:**
+Function/Library/Key as first-class graph nodes with CALLS/IMPLEMENTS/
+SIGNS/ENCRYPTS edges (a code-level fact graph — see advanced/48's
+addendum) and the migration execution engine (the standing product
+open).

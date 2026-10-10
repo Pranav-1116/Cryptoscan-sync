@@ -373,3 +373,23 @@ while True:
 | Event Bus | `services/api/api/events/bus.py` |
 | Redis Sync | `services/api/api/events/redis_sync.py` |
 | Automation Bridge | `services/api/api/events/automation_bridge.py` |
+---
+
+## Round 26 update (2026-10-10) — continuous-monitoring claims re-verified
+
+* **"Event-Based Discovery ❌" — STALE.** HMAC-verified GitHub webhook
+  receiver (push events) and registry webhooks (ACR/GCR/ECR/Harbor/
+  Docker Hub, HMAC or machine key) drive event-driven scanning; the
+  monitor daemon adds watch-state triggers on top of schedules.
+* **"Passive Network Monitoring ❌" — STALE.** `network_scanner/passive/`
+  ships envoy log parsing, an Istio telemetry client, a service-mesh
+  observer and passive OT capture/protocol decoding.
+* **Real-time alerting — LARGELY STALE.** The AlertRouter does severity
+  routing to CEF/webhook/email; monitor sweeps (reintroduction, SLA
+  escalation, evidence-chain verification) alert on state, not on
+  demand. On-call rotation integration and escalation-policy management
+  remain product-scoped.
+* **REMAIN OPEN, product-scoped:** CT-log streaming, real-time CVE feed
+  push (CVE matching itself runs during SBOM/CBOM generation and the
+  devsecops scans), CloudTrail webhook ingestion, lockfile watching
+  (asset-level drift + inventory drift already run per scan).
