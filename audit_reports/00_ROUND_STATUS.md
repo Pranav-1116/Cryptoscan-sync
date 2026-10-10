@@ -1,6 +1,6 @@
-# Audit Report Status — 2026-10-10 (post-remediation, rounds 13–19)
+# Audit Report Status — 2026-10-10 (post-remediation, rounds 13–20)
 
-**Generated:** 2026-10-10, after remediation rounds 13–19 (last full read of reports 01–16 + CRYPTO_SCAN_DISCOVERY in round 17; round 18 built the remaining open items; round 19 re-studied the advanced/deep reports and built the open cores of 49/55/58/64).
+**Generated:** 2026-10-10, after remediation rounds 13–20 (rounds 17/20 fully read reports 01–16 + CRYPTO_SCAN_DISCOVERY; round 19 built the open cores of advanced 49/55/58/64; round 20 fixed the error/bug class found on the full re-read: silent estate truncation, graph ghost nodes, Neo4j network-resource crash, CBOM confidence, graph export).
 **Purpose:** every report in this folder was read and every actionable claim
 re-verified against the code. This file records the verdict per report and what
 was built in response. The original report text is unchanged; reports that were
@@ -98,5 +98,9 @@ repository on 2026-10-09.
 | 19 (2026-10-10) | System ownership roles (`technical_owner`/`security_owner`, migration 0077, audited changes) | 55 P0#1/2 |
 | 19 (2026-10-10) | Exposure path query API (`GET /exposure/paths`, bounded entry→deps→assets walks) | 58 P3#14 |
 | 19 (2026-10-10) | Unified risk upgrades: env-configurable weights, `GET /risk/systems[/{id}]` with derivation signals, calculation versioning | 64 P0#2, P2#8/9/10/11 |
+| 20 (2026-10-10) | Bounded estate walks everywhere (`list_all_bounded`, collection meta, truncation flags) — silent 500/1000-row truncation class eliminated | 03, 04, 05, 13, 14, DISCOVERY P1-005 |
+| 20 (2026-10-10) | Graph ghost-node pruning + NetworkResource Neo4j sync (latent TypeError fixed) | 03, 09 |
+| 20 (2026-10-10) | CBOM evidence-confidence propagation (recorded confidence → evidence block + property) | 08 P1#6 |
+| 20 (2026-10-10) | Graph export `GET /graph/export` (GraphML / GEXF, XML-escaped) | 09 #12 |
 
 Detailed engineering evidence: `docs/AUDIT-RECONCILIATION-2026-10-09.md`.

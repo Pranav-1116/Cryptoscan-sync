@@ -320,3 +320,12 @@ pgserver pytest services/database/tests/test_migrations.py
 **Verified stale:** none of the backend test-count claims in this report
 survived verification (4.1k+ backend tests now, 132 frontend tests); the
 pipeline-matrix and CI rows remain accurate as constraints, not findings.
+
+## UPDATE — round 20 (2026-10-10)
+
+Round-20 suites: api 1396 (unit 1102 + integration/security 294,
++8 round-20 tests: truncation bounds, graph export formats/escaping),
+graph_engine 58 (+6: prune semantics, absent-kind safety, NetworkResource
+sync, collection meta), cbom 236 (+3: confidence propagation), worker
+522, database 162. Full counts and the standing constraints (CI blocked,
+`.github/workflows-pending/`) unchanged.

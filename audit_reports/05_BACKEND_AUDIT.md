@@ -442,3 +442,16 @@ stale or deliberately deferred:
 | Atomic upserts (snapshot/drift races) | ✅ Largely covered — graph snapshots are tenant-versioned and content-addressed; drift ack races are now covered on the job plane by the CAS/terminal guard (audit 04 build) |
 | Resource-level authorization | 🟡 Open, product decision — per-object permissions across ~90 routers; tenant isolation is enforced by the ORM guard on every tenant-scoped model |
 | Event-bus tenant scoping / VerificationLog exposure / graph tenancy | 🕰 Stale — all shipped in earlier rounds |
+
+## UPDATE — round 20 fixes (2026-10-10)
+
+A real correctness bug class from this report's surface was found and
+fixed: estate-wide backend views silently truncated their reads at one
+500/1000-row page. Affected: the graph payload (graph_builder), agility
+(`/agility`, `/agility/roadmap`, `/agility/pqc`, `/readiness`), estate
+due-scan planning (`/estate/scans/due`, `/estate/scans/run-due` — systems
+beyond the cap were NEVER scheduled for re-scan), and two CBOM portfolio
+paths. All now walk every page through `list_all_bounded()` (bounded 50k)
+and report `systems_truncated` in their responses. Unchanged from the
+round-16 verdicts: RFC 9457 (by decision), resource-level authz beyond
+the grants floor (product).

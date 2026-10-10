@@ -406,3 +406,11 @@ const liveFeed = rt.events.filter(e => !isSystemEvent(e.type)).slice(0, 6).map(e
 inline-style audit first — a strict CSP would break the current UI),
 virtualized tables, command palette, shared types package, i18n. These are
 UX/enhancement work, not correctness gaps.
+
+## UPDATE — round 20 re-verification (2026-10-10)
+
+Re-read in full; no frontend files changed in round 20 (the fixes were
+backend: bounded estate walks, graph prune/sync, CBOM confidence, graph
+export). All round-16 verdicts stand: a11y fixes shipped, HBOM page and
+realtime caps were already stale claims, CSP/virtualization/i18n remain
+accepted UX enhancements.

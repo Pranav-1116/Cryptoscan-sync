@@ -193,18 +193,21 @@ def cloud_rows(resources: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]
 
 
 def network_rows(resources: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Normalize network scan targets / devices into graph rows."""
-    nodes, edges = [], []
-    for resource in resources:
+    """NetworkResource nodes (mirrors the memory engine's network: plane)."""
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    for resource in resources or []:
         rid = str(resource.get("id") or resource.get("endpoint") or resource.get("resource_id") or "")
         if not rid:
             continue
-        nodes.append({
-            "resource_id": rid,
-            "name": resource.get("name") or resource.get("endpoint"),
-            "endpoint": resource.get("endpoint") or rid,
-            "resource_type": resource.get("resource_type") or "TLS_ENDPOINT",
-        })
+        nodes.append(
+            {
+                "network_id": rid,
+                "name": resource.get("name") or resource.get("endpoint"),
+                "endpoint": resource.get("endpoint"),
+                "resource_type": resource.get("resource_type") or "TLS_ENDPOINT",
+            }
+        )
         for system_id in resource.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "resource_id": rid})
+            edges.append({"system_id": str(system_id), "network_id": rid})
     return nodes, edges

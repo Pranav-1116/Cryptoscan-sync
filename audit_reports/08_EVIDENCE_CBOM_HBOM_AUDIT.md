@@ -299,3 +299,16 @@ component.properties ← cryptoscan:system_id, cryptoscan:system
 | "TechBOM duplicate implementation" | 🟢 By design — TechBOM is the layered unification (sbom/cbom/hbom/vendor/certificates) over the one CBOM core; separate snapshot tables are its versioning, not a fork |
 | "No aggregate component confidence / semantic diff / compositions / externalReferences" | 🟡 Open enhancements (P2/P3 in the report's own ranking), unchanged |
 | Drift follow-up | 🔧 Built round 16 — acknowledging a drift event can auto-open remediation tasks linked back to the drift (see audit 03 addendum) |
+
+## UPDATE — round 20 build (2026-10-10)
+
+- **P1#6 (CBOM confidence propagation): BUILT.** `_component` no longer
+  hardcodes evidence-method confidence 0.9: the observation's recorded
+  confidence propagates into the CycloneDX evidence block
+  (HIGH/CONFIRMED→0.9, MEDIUM/LIKELY→0.6, LOW/TENTATIVE→0.3) and surfaces
+  as a `cryptoscan:confidence` component property. Unrecorded confidence
+  keeps the historical default — nothing is fabricated upward. 3 new
+  tests in `test_generator.py`.
+- Still open: standard enveloped signatures (P2#6), compositions /
+  externalReferences (P2#7), semantic CBOM diff classification (P2#8) —
+  unchanged from round-16 ranking.

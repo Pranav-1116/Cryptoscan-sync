@@ -68,7 +68,7 @@ def exposure_paths(
     topology inference beyond the entry heuristic.
     """
     repo = SystemRepository(db)
-    systems, _ = repo.list_systems(page=1, page_size=1000)
+    systems, systems_truncated = repo.list_all_bounded()
     by_id = {s.id: s for s in systems}
 
     # adjacency: parent -> children (parent depends on child)
@@ -140,7 +140,12 @@ def exposure_paths(
             {"id": str(s.id), "name": s.name, "reason": _entry_reason(s)} for s in entries
         ],
         "entry_candidate_count": len(entries),
-        "bounds": {"max_depth": MAX_DEPTH, "max_paths": MAX_PATHS, "returned": len(paths)},
+        "bounds": {
+            "max_depth": MAX_DEPTH,
+            "max_paths": MAX_PATHS,
+            "returned": len(paths),
+            "systems_truncated": systems_truncated,
+        },
         "heuristic": (
             "entry candidates are cloud-hosted or remote-target systems; "
             "the platform does not verify network reachability"

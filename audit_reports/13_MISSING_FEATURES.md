@@ -315,3 +315,22 @@ resource-level RBAC (§2.2 — product decision), official SDKs (§5.2).
   open as designed.
 - Also re-verified stale this round: "Fixed 3 roles" (§2.2) — the RBAC
   module ships the full 8-role catalog with a permission matrix.
+
+## UPDATE — round 20 fixes + build (2026-10-10)
+
+Re-read in full against the code:
+
+- **Built/fixed this round:** estate-wide silent truncation eliminated
+  (`list_all_bounded` across the graph payload, agility, estate due-scan
+  planning, CBOM portfolio, exposure paths — systems beyond one 500-row
+  page were invisible, and overdue re-scans were never scheduled for
+  them); graph ghost-node pruning on Neo4j sync; `network_resources`
+  wired into the Neo4j store (latent TypeError); CBOM evidence-confidence
+  propagation; `GET /graph/export` (GraphML/GEXF). Details in the
+  report-03/04/05/08/09 addenda.
+- **Verified stale again:** "tenant-aware graph queries" (§7.2-era) — the
+  ORM tenant guard plus the per-tenant graph isolation shipped in rounds
+  12+; link-table tenant_id (migrations 0061/0062).
+- **Still open, unchanged:** container-image graph nodes, PKCS#11/KMIP
+  scanner-pipeline integration, BU→System→Asset grant inheritance,
+  custom roles, SDKs, deployment-scoped items.

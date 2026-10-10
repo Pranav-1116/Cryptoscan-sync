@@ -605,3 +605,11 @@
 6. **Graceful degradation** — Neo4j optional, Redis optional, in-memory fallbacks
 7. **Explicit versioning** — CBOM versions, graph snapshots, policy pack hashes
 8. **Fail-closed defaults** — Production rejects weak secrets, unsigned webhooks, demo creds
+## UPDATE — round 20 re-verification (2026-10-10)
+
+Snapshot re-confirmed: counts remain stale in the report's favor (799
+routes then, 744 paths / 824 operations now after round 20's
+`/graph/export`; migration chain 0074 then, 0077 now; ~4.3k backend
+tests). Structural inventory unchanged — no services added or removed.
+The graph_builder/graph_engine entries gained bounded-walk collection
+and prune-on-sync behavior this round (see audit 03/09 addenda).

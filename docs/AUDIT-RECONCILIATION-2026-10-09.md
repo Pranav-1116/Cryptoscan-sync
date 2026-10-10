@@ -283,6 +283,48 @@ rotation automation + §3.1 CT monitoring (deployment/product), 82
 zero-trust (deployment), SDKs, CI-blocked tooling
 (`.github/workflows-pending/`).
 
+## 1.10 Round 20 — full re-read of reports 01–16 + DISCOVERY: the error/bug pass (2026-10-10)
+
+The user challenged again ("many things missing, many errors and bugs");
+every one of the 17 files was re-read in full. Outcome: one stale-verdict
+correction, four real defects fixed, one feature built:
+
+1. **Silent estate truncation (bug, 9 surfaces):** the graph payload,
+   agility ×4, estate due-scan planning ×2, CBOM portfolio ×2, and
+   exposure paths each read a single 500/1000-row page — systems beyond
+   it were invisible to the graph, blast radius, snapshots, agility
+   aggregates, and re-scan scheduling. Fixed with
+   `SystemRepository.list_all_bounded()` (paged, 50k bound, honest
+   `truncated` flag), bounded per-kind walks in `collect_graph_payload`
+   (payload now carries `collection` meta), and `systems_truncated`
+   flags on the affected endpoints.
+2. **Graph ghost nodes (bug):** MERGE-only Neo4j sync never deleted
+   removed entities. Sync now prunes per-kind (only kinds present in the
+   sync; full keep-set per query; ComplianceScope excluded) and reports
+   `pruned`.
+3. **Neo4j `network_resources` TypeError (latent crash):** the payload
+   key existed but `Neo4jGraphStore.sync` never accepted it — any
+   real-driver sync raised; the memory fallback masked it in tests.
+   NetworkResource nodes + CONNECTS_TO now merge on Neo4j; dead duplicate
+   `network_rows` removed.
+4. **CBOM hardcoded confidence (bug + 08 P1#6):** `_component` claimed
+   0.9 detection confidence regardless of the record. Recorded
+   confidence now propagates (HIGH→0.9 / MEDIUM→0.6 / LOW→0.3) plus a
+   `cryptoscan:confidence` property.
+5. **Graph export (09 #12):** `GET /graph/export?format=graphml|gexf`.
+6. **Correction:** report 16's round-17 addendum listed EVIDENCE-002
+   (link-table tenant_id) as open — wrong; migrations 0061/0062 already
+   covered it. Fixed in that file.
+
+Gates: api 1396 (unit 1102 + 294), graph_engine 58 (+6), cbom 236 (+3),
+worker 522, database 162; ruff clean; rest-api.md regenerated
+(744/824/91). All 17 report files carry round-20 addenda.
+
+Still open after round 20: container-image graph nodes, PKCS#11/KMIP
+pipeline integration, wire-capture parsing, CBOM signatures/
+compositions/semantic diff, ADRs, deployment-scoped items, CI-blocked
+tooling, SDKs, product decisions (multi-owner, custom roles, 47/51).
+
 ## 2. P0 gap register (88_FINAL_GAP_PRIORITIZATION) — status after round 14
 
 | Gap | Audit claim | Current status | Evidence |

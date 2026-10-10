@@ -55,9 +55,10 @@ def preview_due_scans(
     """Continuous monitoring: which systems are due for a re-scan right now."""
     from cloud_scanner.estate import plan_due_scans
 
-    systems, _total = SystemRepository(db).list_systems(page=1, page_size=500)
+    systems, _trunc = SystemRepository(db).list_all_bounded()
     return {
         "dry_run": True,
+        "systems_truncated": _trunc,
         **plan_due_scans(
             systems, interval_days=interval_days, limit=limit,
             include_cloud=include_cloud, include_git=include_git,
@@ -79,10 +80,10 @@ def run_due_scans(
     from api.routers.trigger import enqueue_scan_job
     from cloud_scanner.estate import plan_due_scans
 
-    systems, _total = SystemRepository(db).list_systems(page=1, page_size=500)
+    systems, _trunc = SystemRepository(db).list_all_bounded()
     plan = plan_due_scans(systems, interval_days=interval_days, limit=limit)
     if dry_run:
-        return {"dry_run": True, "queued": 0, **plan}
+        return {"dry_run": True, "queued": 0, "systems_truncated": _trunc, **plan}
     queued = []
     for item in plan["jobs"]:
         result = enqueue_scan_job(

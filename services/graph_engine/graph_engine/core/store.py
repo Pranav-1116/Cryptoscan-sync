@@ -72,7 +72,12 @@ class Neo4jGraphStore:
         vendors: Iterable[dict[str, Any]] = (),
         certificates: Iterable[dict[str, Any]] = (),
         cloud_resources: Iterable[dict[str, Any]] = (),
+        network_resources: Iterable[dict[str, Any]] = (),
+        collection: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        # `collection` is collector meta (bounded-walk totals/truncation
+        # flags); carried into the result, not synced as a node kind.
+        collection_meta = dict(collection or {})
         systems = list(systems)
         assets = list(assets)
         process_nodes, support_edges = payload.process_rows(processes)
@@ -81,6 +86,7 @@ class Neo4jGraphStore:
         vendor_nodes, vendor_edges = payload.vendor_rows(vendors)
         cert_nodes, cert_edges = payload.cert_rows(certificates)
         cloud_nodes, cloud_edges = payload.cloud_rows(cloud_resources)
+        network_nodes, network_edges = payload.network_rows(network_resources)
         batches = (
             (cypher_writes.MERGE_SYSTEMS, payload.systems_rows(systems)),
             (cypher_writes.MERGE_ASSETS, payload.asset_rows(assets)),
@@ -90,6 +96,7 @@ class Neo4jGraphStore:
             (cypher_writes.MERGE_VENDORS, vendor_nodes),
             (cypher_writes.MERGE_CERTS, cert_nodes),
             (cypher_writes.MERGE_CLOUD, cloud_nodes),
+            (cypher_writes.MERGE_NETWORK, network_nodes),
             (cypher_writes.MERGE_USES, payload.uses_rows(assets, systems)),
             (cypher_writes.MERGE_CALLS, payload.call_rows(edges)),
             (cypher_writes.MERGE_SUPPORTS, support_edges),
@@ -98,6 +105,7 @@ class Neo4jGraphStore:
             (cypher_writes.MERGE_VENDOR_EDGE, vendor_edges),
             (cypher_writes.MERGE_SECURED_BY, cert_edges),
             (cypher_writes.MERGE_DEPLOYED_ON, cloud_edges),
+            (cypher_writes.MERGE_CONNECTS_TO, network_edges),
         )
         written = 0
         for query, rows in batches:
@@ -105,9 +113,61 @@ class Neo4jGraphStore:
                 continue
             self._run(query, rows=rows)
             written += len(rows)
+        pruned = self._prune_ghosts(batches)
         counts = self.counts()
-        logger.info("neo4j_graph_synced", extra={"written": written, **counts})
-        return {"written": written, **counts, "backend": self.backend}
+        logger.info("neo4j_graph_synced", extra={"written": written, "pruned": pruned, **counts})
+        return {"written": written, "pruned": pruned, **counts, "backend": self.backend,
+                "collection": collection_meta}
+
+    _PRUNE_KINDS = (
+        # (label, id property, id key in the merge rows)
+        ("System", "system_id", "system_id"),
+        ("CryptoAsset", "asset_id", "asset_id"),
+        ("BusinessProcess", "process_id", "process_id"),
+        ("BusinessOwner", "owner_id", "owner_id"),
+        ("Vendor", "vendor_id", "vendor_id"),
+        ("Certificate", "cert_id", "cert_id"),
+        ("CloudResource", "resource_id", "resource_id"),
+        ("NetworkResource", "network_id", "network_id"),
+    )
+
+    def _prune_ghosts(self, batches) -> int:
+        """Delete nodes of kinds present in the payload whose ids are absent.
+
+        MERGE-only sync left deleted systems/assets in the graph forever —
+        blast radius and counts kept answering for entities that no longer
+        exist. Rule: a kind is pruned ONLY when the sync carries merge rows
+        for it (an empty list means "not in this sync", never "delete
+        all"); ComplianceScope nodes are never pruned (derived, re-merge
+        idempotently). The full keep-set goes into ONE query per kind —
+        chunking it would make every chunk delete the other chunks' nodes.
+        """
+        merge_rows = {query: rows for query, rows in batches}
+        row_sources = {
+            "system_id": merge_rows.get(cypher_writes.MERGE_SYSTEMS, ()),
+            "asset_id": merge_rows.get(cypher_writes.MERGE_ASSETS, ()),
+            "process_id": merge_rows.get(cypher_writes.MERGE_PROCESSES, ()),
+            "owner_id": merge_rows.get(cypher_writes.MERGE_OWNERS, ()),
+            "vendor_id": merge_rows.get(cypher_writes.MERGE_VENDORS, ()),
+            "cert_id": merge_rows.get(cypher_writes.MERGE_CERTS, ()),
+            "resource_id": merge_rows.get(cypher_writes.MERGE_CLOUD, ()),
+            "network_id": merge_rows.get(cypher_writes.MERGE_NETWORK, ()),
+        }
+        pruned = 0
+        for label, prop, key in self._PRUNE_KINDS:
+            rows = row_sources.get(key) or []
+            keep = sorted({str(row.get(key)) for row in rows if row.get(key)})
+            if not keep:
+                continue  # kind absent from this sync — leave its nodes alone
+            query = cypher_writes.PRUNE_KIND.format(label=label, prop=prop)
+            try:
+                result = self._run(query, ids=keep)
+            except Exception:
+                logger.debug("neo4j_prune_failed", exc_info=True)
+                continue
+            if result:
+                pruned += int(result[0].get("pruned") or 0)
+        return pruned
 
     def _origin(self, start_id: str) -> str | None:
         rows = self._run(ORIGIN_SYSTEM, start=start_id)

@@ -359,7 +359,7 @@ def _portfolio_dependencies(db: Session, records: list[dict[str, Any]]) -> tuple
     from db.models.system_dependency import SystemDependency
     from sqlalchemy import select as sa_select
 
-    systems, _ = SystemRepository(db).list_systems(page=1, page_size=1000)
+    systems, _trunc = SystemRepository(db).list_all_bounded()
     if not systems:
         return [], []
     sys_ref = {s.id: f"system:{s.name}" for s in systems}
@@ -435,7 +435,7 @@ def cbom_assess_portfolio(
     ranked worst-first, plus an aggregate estate score."""
     from cbom.assessment import assess_cbom
 
-    systems, _ = SystemRepository(db).list_systems(page=1, page_size=1000)
+    systems, _trunc = SystemRepository(db).list_all_bounded()
     results = []
     for system in systems:
         assets = SystemRepository(db).assets_for(system.id)

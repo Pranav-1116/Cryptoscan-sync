@@ -20,10 +20,37 @@ from graph_engine.service_mesh.istio_client import fetch_istio_calls
 logger = logging.getLogger(__name__)
 
 
+#: per-kind bound for secondary collections (certificates, assets) — the
+#: same anti-silent-truncation contract as ``list_all_bounded``: bounded,
+#: and the bound is reported in the payload's ``collection`` meta.
+_PER_KIND_MAX_ROWS = 50_000
+
+
+def _bounded_all(query, *, max_rows: int = _PER_KIND_MAX_ROWS):
+    """Yield rows of a query in bounded pages, collecting a truncation flag."""
+    rows: list[Any] = []
+    offset = 0
+    while len(rows) < max_rows:
+        page = query.offset(offset).limit(1000).all()
+        if not page:
+            break
+        rows.extend(page)
+        offset += len(page)
+    truncated = len(rows) > max_rows
+    return (rows[:max_rows] if truncated else rows), truncated
+
+
 def collect_graph_payload(session: Session) -> dict[str, Any]:
     systems_repo = SystemRepository(session)
     intel = IntelligenceRepository(session)
-    systems, _ = systems_repo.list_systems(page=1, page_size=500)
+    # Bounded walk over ALL pages — a single 500-row page silently dropped
+    # every system beyond it from the graph, blast radius, and snapshots.
+    systems, systems_truncated = systems_repo.list_all_bounded()
+    collection_meta = {
+        "systems_total": len(systems),
+        "systems_truncated": systems_truncated,
+        "bounds": {"systems_max_rows": 50_000, "per_kind_max_rows": 50_000},
+    }
     system_payloads = []
     edges = []
     asset_payloads = []
@@ -64,7 +91,8 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
                     {"id": f"sys-owner:{system.id}", "name": system.owner, "system_ids": [system.id]},
                 )
     if not asset_payloads:
-        asset_payloads = [row.to_dict() for row in session.query(CryptoAsset).limit(500).all()]
+        fallback_assets, _fb_truncated = _bounded_all(session.query(CryptoAsset))
+        asset_payloads = [row.to_dict() for row in fallback_assets]
         links = session.query(SystemAsset).all()
         by_asset = {link.asset_id: link.system_id for link in links}
         for asset in asset_payloads:
@@ -87,7 +115,9 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
 
     certificates = []
     try:
-        for cert in session.query(Certificate).limit(500).all():
+        cert_rows, certs_truncated = _bounded_all(session.query(Certificate))
+        collection_meta["certificates_truncated"] = certs_truncated
+        for cert in cert_rows:
             payload = cert.to_dict()
             # Genuine system binding recorded by the scanner/linker (extra.system_ids).
             payload["system_ids"] = list((cert.extra or {}).get("system_ids") or [])
@@ -104,7 +134,9 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
     # them). Linked to the owning system via the asset's SystemAsset link.
     from sqlalchemy import select
     resource_seen: set[str] = set()
-    for asset in session.query(CryptoAsset).limit(500).all():
+    cloud_asset_rows, cloud_assets_truncated = _bounded_all(session.query(CryptoAsset))
+    collection_meta["cloud_resource_assets_truncated"] = cloud_assets_truncated
+    for asset in cloud_asset_rows:
         extra = asset.extra or {}
         resource = extra.get("resource")
         provider = extra.get("cloud_provider")
@@ -154,6 +186,7 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
         "certificates": certificates,
         "cloud_resources": cloud_resources,
         "network_resources": network_resources,
+        "collection": collection_meta,
     }
 
 

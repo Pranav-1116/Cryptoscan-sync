@@ -6,6 +6,36 @@ git-tagged from `VERSION`.
 
 ## [Unreleased]
 
+### Fixed / Added — round 20: full re-read of reports 01–16 + CRYPTO_SCAN_DISCOVERY (error/bug pass)
+
+- **Silent estate truncation eliminated (bug class, 9 surfaces):** the
+  graph payload, four agility endpoints, estate due-scan planning, two
+  CBOM portfolio paths, and exposure paths each read a single
+  500/1000-row page — systems beyond it were invisible to the graph,
+  blast radius, snapshots, agility aggregates, and re-scan scheduling.
+  `SystemRepository.list_all_bounded()` now walks every page (bounded at
+  50k rows), the graph payload carries `collection` meta, and affected
+  endpoints report `systems_truncated`.
+- **Graph ghost nodes pruned (bug):** MERGE-only Neo4j sync kept deleted
+  systems/assets in the graph forever. Sync now prunes each kind present
+  in the payload whose ids are absent (never touches kinds absent from a
+  sync; ComplianceScope excluded) and reports `pruned`.
+- **Neo4j `network_resources` sync (latent crash fixed):** the payload
+  key existed but the store never accepted it — any real-driver sync
+  raised `TypeError` (masked in tests by the memory fallback).
+  NetworkResource nodes and `CONNECTS_TO` edges now merge on Neo4j,
+  mirroring the memory engine.
+- **CBOM evidence-confidence propagation (was hardcoded):** recorded
+  observation confidence (HIGH/MEDIUM/LOW) now flows into the CycloneDX
+  evidence block and a `cryptoscan:confidence` component property;
+  unrecorded keeps the historical default, nothing fabricated upward.
+- **Graph export:** `GET /graph/export?format=graphml|gexf` — the same
+  graph `/graph` serves, XML-escaped, with kind/relation attributes for
+  Gephi/yEd/Cytoscape.
+- **Docs:** round-20 addenda written into all 17 report files; report
+  16's erroneous "EVIDENCE-002 still open" line corrected (migrations
+  0061/0062 had covered it).
+
 ### Added — round 19: the advanced/deep re-study (advanced/49, 55, 58, 64)
 
 - **Evidence authority hierarchy:** explicit 6-tier model (RUNTIME >

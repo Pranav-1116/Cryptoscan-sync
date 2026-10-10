@@ -143,3 +143,30 @@ MATCH (s:System {system_id: row.system_id})
 MATCH (c:CloudResource {resource_id: row.resource_id})
 MERGE (s)-[:DEPLOYED_ON]->(c)
 """
+
+# Ghost-node pruning (report 03/09 — MERGE-only sync never removed deleted
+# entities). One template per node kind; ids are chunked by the store.
+PRUNE_KIND = """
+// cryptoscan.query=prune_kind
+MATCH (n:{label})
+WHERE n.{prop} IS NOT NULL AND NOT n.{prop} IN $ids
+DETACH DELETE n
+RETURN count(n) AS pruned
+"""
+
+MERGE_NETWORK = """
+// cryptoscan.query=merge_network
+UNWIND $rows AS row
+MERGE (n:NetworkResource {network_id: row.network_id})
+SET n.name = row.name,
+    n.endpoint = row.endpoint,
+    n.resource_type = row.resource_type
+"""
+
+MERGE_CONNECTS_TO = """
+// cryptoscan.query=merge_connects_to
+UNWIND $rows AS row
+MATCH (s:System {system_id: row.system_id})
+MATCH (n:NetworkResource {network_id: row.network_id})
+MERGE (s)-[:CONNECTS_TO]->(n)
+"""

@@ -9,7 +9,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -73,6 +73,97 @@ router = APIRouter(tags=["graph"])
 @router.get("/graph/health")
 def get_graph_health(user: str = Depends(get_current_user)):
     return graph_health()
+
+
+# --------------------------------------------------------------------------- #
+# Graph export (report 09 rec #12) - GraphML / GEXF over the same graph the
+# /graph endpoint serves. Pure serialization: no new data, no inference.
+# --------------------------------------------------------------------------- #
+
+def _xml_escape(value: Any) -> str:
+    return (
+        str(value if value is not None else "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
+def _to_graphml(vis: dict[str, Any]) -> str:
+    nodes = vis.get("nodes") or []
+    edges = vis.get("edges") or []
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<graphml xmlns="http://graphml.graphdrawing.org/xmlns">',
+        '  <key id="d0" for="node" attr.name="kind" attr.type="string"/>',
+        '  <key id="d1" for="edge" attr.name="relation" attr.type="string"/>',
+        '  <key id="d2" for="node" attr.name="label" attr.type="string"/>',
+        '  <graph id="cryptoscan-graph" edgedefault="directed">',
+    ]
+    for node in nodes:
+        kind = _xml_escape(node.get("group") or "Unknown")
+        label = _xml_escape(node.get("label") or node.get("id"))
+        lines.append(
+            f'    <node id="{_xml_escape(node.get("id"))}">'
+            f'<data key="d0">{kind}</data>'
+            f'<data key="d2">{label}</data></node>'
+        )
+    for index, edge in enumerate(edges):
+        lines.append(
+            f'    <edge id="e{index}" source="{_xml_escape(edge.get("from"))}" '
+            f'target="{_xml_escape(edge.get("to"))}">'
+            f'<data key="d1">{_xml_escape(edge.get("label") or "CALLS")}</data></edge>'
+        )
+    lines += ["  </graph>", "</graphml>", ""]
+    return "\n".join(lines)
+
+
+def _to_gexf(vis: dict[str, Any]) -> str:
+    nodes = vis.get("nodes") or []
+    edges = vis.get("edges") or []
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<gexf xmlns="http://gexf.net/1.3" version="1.3">',
+        '  <graph mode="static" defaultedgetype="directed">',
+        '    <attributes class="node">',
+        '      <attribute id="kind" title="kind" type="string"/>',
+        "    </attributes>",
+        "    <nodes>",
+    ]
+    for node in nodes:
+        lines.append(
+            f'      <node id="{_xml_escape(node.get("id"))}" '
+            f'label="{_xml_escape(node.get("label") or node.get("id"))}">'
+            f'<attvalues><attvalue for="kind" value="{_xml_escape(node.get("group") or "Unknown")}"/>'
+            f"</attvalues></node>"
+        )
+    lines.append("    </nodes>")
+    lines.append("    <edges>")
+    for index, edge in enumerate(edges):
+        lines.append(
+            f'      <edge id="e{index}" source="{_xml_escape(edge.get("from"))}" '
+            f'target="{_xml_escape(edge.get("to"))}" label="{_xml_escape(edge.get("label") or "CALLS")}"/>'
+        )
+    lines += ["    </edges>", "  </graph>", "</gexf>", ""]
+    return "\n".join(lines)
+
+
+@router.get("/graph/export")
+def export_graph(
+    format: str = Query("graphml", pattern="^(graphml|gexf)$"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Graph export for external analysis tools (Gephi, yEd, Cytoscape)."""
+    graph = graph_from_db(db)
+    vis = graph.to_vis()
+    content = _to_gexf(vis) if format == "gexf" else _to_graphml(vis)
+    return Response(
+        content=content,
+        media_type="application/xml",
+        headers={"Content-Disposition": f'attachment; filename="cryptoscan-graph.{format}"'},
+    )
 
 
 @router.post("/graph/sync")

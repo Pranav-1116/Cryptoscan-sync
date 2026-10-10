@@ -123,6 +123,10 @@ class FakeSession:
         params.update(kwargs)
         self.calls.append((query_name(query) or query[:40], params))
         name = query_name(query)
+        if name == "prune_kind":
+            match = re.search(r"MATCH \(n:(\w+)\)\s*WHERE n\.(\w+)", query)
+            params["_prune_label"] = match.group(1) if match else None
+            params["_prune_prop"] = match.group(2) if match else None
         if query.strip().upper().startswith("CREATE CONSTRAINT") or query.strip().upper().startswith("CREATE INDEX"):
             return FakeResult([])
         handler = {
@@ -134,6 +138,7 @@ class FakeSession:
             "merge_vendors": self._merge_nodes,
             "merge_certs": self._merge_nodes,
             "merge_cloud": self._merge_nodes,
+            "merge_network": self._merge_nodes,
             "merge_uses": self._merge_uses,
             "merge_calls": self._merge_calls,
             "merge_supports": self._merge_supports,
@@ -142,6 +147,8 @@ class FakeSession:
             "merge_vendor_edge": self._merge_vendor,
             "merge_secured_by": self._merge_secured,
             "merge_deployed_on": self._merge_deployed,
+            "merge_connects_to": self._merge_connects,
+            "prune_kind": self._prune_kind,
             "blast_radius": self._blast,
             "dependents": self._dependents,
             "shortest_path_downstream": self._shortest_path_downstream,
@@ -226,6 +233,39 @@ class FakeSession:
                 {"dependency_type": row.get("dependency_type")},
             )
         return []
+
+    def _merge_connects(self, params):
+        for row in params.get("rows") or []:
+            self.graph.merge_edge(
+                "System",
+                row["system_id"],
+                "CONNECTS_TO",
+                "NetworkResource",
+                row["network_id"],
+                {},
+            )
+        return []
+
+    def _prune_kind(self, params):
+        # mirror of PRUNE_KIND: DETACH DELETE nodes of one kind whose
+        # identity is not in the keep list
+        label = params.get("_prune_label")
+        prop = params.get("_prune_prop")
+        keep = {str(i) for i in params.get("ids") or []}
+        if not label or not prop:
+            return []
+        doomed = [
+            key
+            for (node_label, key), node in self.graph.nodes.items()
+            if node_label == label and str(node.get(prop) or key) not in keep
+        ]
+        for key in doomed:
+            del self.graph.nodes[(label, key)]
+            self.graph.edges = [
+                e for e in self.graph.edges
+                if (label, key) not in (e[0], e[2])
+            ]
+        return [{"pruned": len(doomed)}]
 
     def _merge_secured(self, params):
         for row in params.get("rows") or []:

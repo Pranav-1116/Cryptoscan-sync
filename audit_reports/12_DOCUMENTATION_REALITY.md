@@ -215,3 +215,10 @@
 ### P3 — Enhancement
 9. **API reference automation** — CI job to verify docs match routes
 10. **Architecture decision records (ADRs)** — For major choices (Neo4j, dual CBOM, etc.)
+## UPDATE — round 20 (2026-10-10)
+
+`docs/api-reference/rest-api.md` regenerated after round 20 (744 paths /
+824 operations / 91 groups; `GET /graph/export` added). The automation
+gap the report names (docs-vs-routes verification in CI) remains covered
+on the code side by the OpenAPI contract tests; CI wiring stays blocked
+by the standing no-workflows constraint. ADRs (P3#10) remain open.

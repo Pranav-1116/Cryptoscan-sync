@@ -294,3 +294,19 @@ The codebase is honest about its maturity (33 GA / 30 Beta / 8 Preview), documen
 - **Resource-level RBAC floor BUILT:** per-system `resource_grants`
   (migration 0076), restrictive-only-when-present, audited transitions —
   see the report-13 addendum.
+
+## UPDATE — round 20 fixes (2026-10-10)
+
+- **P1-005 ("full graph sync O(N), deletes all nodes + reloads"):
+  verified STALE and improved further.** The sync coordinator replaced
+  the delete-all rebuild rounds ago (MERGE-based batches); this round
+  added ghost-node pruning so MERGE-only staleness (deleted entities
+  lingering forever) is gone too, and NetworkResource nodes now actually
+  reach the Neo4j store (the payload key previously raised TypeError on
+  any real-driver sync).
+- **Estate truncation fixed across the graph/agility/estate/CBOM
+  surfaces** (see audit 03/05): the graph built from >500-system estates
+  no longer silently drops systems — the exact "doesn't scale" class
+  P1-005 worried about, on the collection side.
+- Open backlog unchanged: wire-capture parsing, PQC-in-binaries
+  validation, vendor fingerprinting, PKCS#11/KMIP pipeline integration.

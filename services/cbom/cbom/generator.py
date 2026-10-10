@@ -10,6 +10,18 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from cbom.mappers.oid_lookup import lookup_oid
 from cbom.mappers.primitive_mapper import map_primitive
+
+#: recorded observation confidence -> CycloneDX evidence-method confidence.
+#: Unrecorded confidence keeps the historical source-analysis default (0.9);
+#: nothing is ever rounded up (report 08 P1#6 - confidence propagation).
+_CONFIDENCE_SCORES = {
+    "HIGH": 0.9,
+    "CONFIRMED": 0.9,
+    "MEDIUM": 0.6,
+    "LIKELY": 0.6,
+    "LOW": 0.3,
+    "TENTATIVE": 0.3,
+}
 from shared_models.canonical import (
     b64url_decode,
     b64url_encode,
@@ -381,6 +393,11 @@ class CbomGenerator:
         algorithm = str(data.get("algorithm") or normalized.get("standard_name") or "UNKNOWN")
         primitive = normalized.get("algorithm_family") or map_primitive(algorithm, data.get("purpose"))
         oid = lookup_oid(algorithm)
+        # Evidence confidence (report 08 P1#6): the recorded confidence of
+        # the observation, not a hardcoded 0.9. Unrecorded stays at the
+        # source-analysis default — never fabricated upward.
+        recorded = str(data.get("confidence") or "").upper()
+        method_confidence = _CONFIDENCE_SCORES.get(recorded, 0.9)
         component: dict[str, Any] = {
             "type": normalized.get("cbom_component_type") or "cryptographic-asset",
             "name": normalized.get("standard_name") or data.get("algorithm") or "UNKNOWN",
@@ -406,7 +423,7 @@ class CbomGenerator:
                         "methods": [
                             {
                                 "technique": "source-code-analysis",
-                                "confidence": 0.9,
+                                "confidence": method_confidence,
                                 "value": f"{data.get('file_path')}:{data.get('line_number')}",
                             }
                         ],
@@ -430,6 +447,8 @@ class CbomGenerator:
             properties.append({"name": "cryptoscan:system", "value": str(data["system_name"])})
         if data.get("system_id"):
             properties.append({"name": "cryptoscan:system_id", "value": str(data["system_id"])})
+        if recorded:
+            properties.append({"name": "cryptoscan:confidence", "value": recorded})
         if properties:
             component["properties"] = properties
         return component

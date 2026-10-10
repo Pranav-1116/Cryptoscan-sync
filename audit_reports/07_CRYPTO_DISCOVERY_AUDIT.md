@@ -331,3 +331,10 @@ from the round-16 full read:
   validation, vendor fingerprinting — remain open backlog items, unchanged.
 - Clone-side hardening shipped this round (audit 10 follow-up):
   `GitClient.clone` validates the repo URL before git is imported.
+
+## UPDATE — round 20 re-verification (2026-10-10)
+
+Re-read in full; the discovery-surface description still matches the
+code. No detection engines changed this round. Open backlog unchanged:
+PKCS#11/KMIP scanner-pipeline integration, firmware/RTOS binary targets,
+vendor fingerprinting, wire-capture parsing beyond catalog input.

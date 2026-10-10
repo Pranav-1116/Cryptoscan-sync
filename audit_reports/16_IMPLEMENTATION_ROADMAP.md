@@ -307,3 +307,17 @@ WireGuard protocol analyses (report 13 §3.1), CBOM portfolio set-based
 query + bounded explicit truncation (TD-007), backup encryption (report
 15 §4), OpenAPI operationId contract tests, hypothesis property tests for
 the hashing core, and opt-in coverage tooling (`scripts/coverage.sh`).
+
+## UPDATE — round 20 (2026-10-10): correction + status
+
+**Correction to the round-17 addendum above:** it listed EVIDENCE-002
+(tenant_id on link tables) as "still open, next natural schema round".
+That was wrong — migrations 0061/0062 had already added `tenant_id` to
+`system_assets`, `system_dependencies`, `certificate_usages`, and
+`crypto_asset_evidence` (models are `TenantScoped`, the ORM guard
+enforces the filter). EVIDENCE-002 was already done before that addendum
+was written; it is closed, not open.
+
+Round-20 engineering (bounded estate walks, graph ghost-node pruning,
+Neo4j network-resource sync, CBOM confidence propagation, graph export)
+is recorded in the report-03/04/05/08/09/13/14 addenda.

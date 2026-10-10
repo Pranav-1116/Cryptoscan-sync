@@ -233,3 +233,14 @@ Open: TD-007 (portfolio streaming), TD-009 (read replicas), TD-013/014/015
   `operation_id`. A new contract test (`test_openapi_contract.py`) pins
   uniqueness so it cannot regress silently.
 - Still open: TD-009 (read replicas), TD-013/014/015 (deployment-scoped).
+
+## UPDATE — round 20 (2026-10-10)
+
+**TD-007's failure class was wider than the CBOM portfolio.** The same
+single-page silent-truncation pattern existed in the graph payload
+(`collect_graph_payload`: 500-row caps on systems, certificates, assets),
+four agility endpoints, estate due-scan planning, and two CBOM portfolio
+paths. All now use bounded full walks (`list_all_bounded`, 50k bound)
+with explicit `systems_truncated` / `collection` meta — the graph payload
+can no longer quietly drop three-quarters of a 2000-system estate.
+Unchanged: TD-009 (read replicas), TD-013/014/015 (deployment-scoped).

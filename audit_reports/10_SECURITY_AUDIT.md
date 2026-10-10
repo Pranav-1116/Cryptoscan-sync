@@ -412,3 +412,13 @@ chain_hash = SHA256(prev_chain_hash + JSON(payload))
 - Session concurrency limits, device fingerprinting, refresh-token
   rotation, SAML/LDAP, mTLS, Vault, encryption at rest — remain open,
   deployment- or product-scoped, unchanged from the report's P2/P3 ranking.
+
+## UPDATE — round 20 re-verification (2026-10-10)
+
+Re-read in full. One security-relevant correctness fix this round:
+estate-wide views that silently truncated at 500/1000 rows could
+under-report exactly the systems an operator needs to see (including
+which systems are overdue for re-scan — the due-scan planner itself was
+capped). Fixed with bounded full walks + explicit truncation flags (see
+audit 03/05 addenda). All round-16 verdicts stand; deployment-scoped
+items (session limits, mTLS, Vault, encryption at rest) unchanged.

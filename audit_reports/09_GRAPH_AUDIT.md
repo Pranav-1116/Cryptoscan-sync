@@ -304,3 +304,23 @@ def _edge_evidence(graph, edge, asset_rows):
   enhancement.
 - Graph drift (`/graph/drift`), snapshots/compare/timeline all verified
   present and tenant-versioned.
+
+## UPDATE — round 20 fixes + build (2026-10-10)
+
+1. **Ghost nodes pruned on sync (bug).** MERGE-only sync meant deleted
+   systems/assets stayed in the graph forever — blast radius and counts
+   answered for entities that no longer exist. Sync now prunes each kind
+   present in the payload whose ids are absent (full keep-set per query;
+   kinds absent from a sync are never touched). `pruned` is reported.
+2. **`network_resources` crashed the Neo4j sync path (latent bug).**
+   The store never accepted the payload key — a real driver meant
+   `TypeError` on every sync; the memory fallback masked it in tests.
+   NetworkResource nodes + CONNECTS_TO edges now merge on Neo4j too.
+3. **Graph export BUILT (rec #12):** `GET /graph/export?format=graphml|gexf`
+   serializes the same graph `/graph` serves, XML-escaped, with kind and
+   relation attributes — loadable in Gephi/yEd/Cytoscape.
+4. The bounded-walk fix (audit 03) applies to the graph payload feeding
+   this layer: >500-system estates no longer silently shrink the graph.
+
+Still open: finer node kinds beyond persisted data (CloudKMSKey,
+container images), direct EvidenceRecord FKs on edges.

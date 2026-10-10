@@ -449,3 +449,36 @@ Every DATA FLOW GAP row was re-verified against the code:
 | **drift → remediation** | 🔧 **BUILT THIS ROUND** | `POST /drift/{id}/acknowledge` with `create_remediation_tasks` auto-opens PROPOSED `RemediationTask`s (≤10) for the FAIL/WARN evidence behind the drift (`source="drift"`, `source_ref=drift_id`, migration 0074); `GET /drift/{id}/remediation-tasks` lists them. Honest no-op when the drifted algorithm has no failing evidence |
 | HBOM gap | 🕰 Stale | HBOM ships as a TechBOM layer (migration 0061-era) and the live `/live-scan/bom` HBOM; frontend page is wired to it |
 | Live-scan → evidence | 🟡 Partial (unchanged) | TD-012-era linkage stands; live observations remain a separate plane by design |
+
+## UPDATE — round 20 fixes (2026-10-10)
+
+Re-read in full. Three real defects found and fixed:
+
+1. **Estate views silently truncated at one page (correctness bug).** The
+   graph payload, agility (4 endpoints), estate due-scan planning, and two
+   CBOM portfolio paths each fetched a single `page_size=500/1000` page —
+   every system beyond it was silently dropped from the graph, blast
+   radius, snapshots, agility aggregates, and **re-scan scheduling**.
+   Fixed: `SystemRepository.list_all_bounded()` walks every page (bounded
+   at 50k, reports `truncated`), per-kind 500-row caps inside
+   `collect_graph_payload` replaced with bounded walks, and the payload
+   now carries `collection` meta (totals + truncation flags). Affected
+   endpoints report `systems_truncated`.
+2. **`network_resources` never reached the Neo4j store (latent crash).**
+   The payload key shipped rounds ago, but `Neo4jGraphStore.sync` never
+   accepted it — with a real Neo4j driver, `store.sync(**payload)` raised
+   `TypeError` on every post-scan sync (tests only exercise the memory
+   fallback, so it stayed hidden). Fixed: NetworkResource nodes +
+   `CONNECTS_TO` edges now merge on the Neo4j path (mirroring the memory
+   engine), the dead duplicate `network_rows` in the payload builder was
+   removed, and `NetworkResource` joined the prune kinds.
+3. **MERGE-only sync kept ghost nodes (accumulating staleness).** Deleted
+   systems/assets lived in the graph forever; blast radius kept answering
+   for them. Fixed: sync now prunes nodes of each kind present in the
+   payload whose ids are absent (one query per kind, full keep-set, never
+   deletes kinds not in the sync; ComplianceScope excluded). Result
+   carries `pruned`.
+
+Still open from this report: container-image graph nodes (no discovery
+source links a container scan to a system yet), live-crypto → evidence
+linkage (separate plane by design).

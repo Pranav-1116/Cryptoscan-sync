@@ -355,3 +355,11 @@
   chain-still-verifies assertion.
 - Still open (deployment scope, unchanged): DB encryption at rest, Redis
   TLS, automated backup scheduling, DR automation.
+
+## UPDATE — round 20 re-verification (2026-10-10)
+
+Re-read in full; no changes to the production-readiness posture this
+round. The round-20 fixes (bounded estate walks, graph prune, CBOM
+confidence propagation) are correctness improvements inside the already-
+shipped surface. Deployment-scoped opens unchanged: DB encryption at
+rest, Redis TLS, backup scheduling automation, DR automation.

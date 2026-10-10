@@ -70,7 +70,11 @@ class GraphEngine:
         certificates: Iterable[dict[str, Any]] = (),
         cloud_resources: Iterable[dict[str, Any]] = (),
         network_resources: Iterable[dict[str, Any]] = (),
+        collection: dict[str, Any] | None = None,
     ) -> "GraphEngine":
+        # `collection` is payload meta from the collector (bounded-walk
+        # totals + truncation flags), not a node list — carried, not built.
+        self.collection_meta: dict[str, Any] = dict(collection or {})
         for system in systems:
             sid = str(system.get("id") or system.get("system_id") or system.get("name"))
             self.add_node(

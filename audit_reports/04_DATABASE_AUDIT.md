@@ -451,3 +451,21 @@ the models and found already covered:
 | **ScanJob optimistic locking** | 🔧 **BUILT** — `scan_jobs.version` (migration 0074) + compare-and-set `JobRepository.update_status` with a terminal-state guard: a stale worker finishing a job the reaper already failed is a detected conflict (first verdict stands); the reaper counts only races it won |
 | New tables | 🔧 **BUILT** — `policy_rule_overrides` (tenant-scoped, unique per rule; see audit 05) and `remediation_tasks.source`/`source_ref` (drift auto-link provenance; see audit 03) |
 | Partitioning / replicas | 🟡 Deployment-scoped, unchanged |
+
+## UPDATE — round 20 fixes (2026-10-10)
+
+- **The silent-truncation class reached the database layer's consumers.**
+  The graph payload and six estate-wide endpoints read the inventory
+  through single 500/1000-row pages (see audit 03's addendum for the
+  blast radius of that). `SystemRepository.list_all_bounded()` now walks
+  every page, bounded at 50k rows, and returns an honest `truncated` flag.
+- **Link-table tenant isolation (P0#2) re-verified STALE:** migrations
+  0061/0062 added `tenant_id` to `system_assets`, `system_dependencies`,
+  `certificate_usages`, and `crypto_asset_evidence` long before the
+  re-reads — the models are `TenantScoped` and the ORM guard enforces the
+  filter. (Also corrects audit 16's round-17 addendum, which listed
+  EVIDENCE-002 as open.)
+- Unique-constraint asks: unchanged from the round-16 verdicts
+  (`uq_system_dep` is the stronger invariant; the evidence
+  `(scan_id, content_hash)` constraint remains deliberately not taken —
+  the chain is append-only by construction).

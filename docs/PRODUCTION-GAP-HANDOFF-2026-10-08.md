@@ -393,6 +393,32 @@ asset-level multi-owner model, 64 threat/EPSS modeling (external
 feeds), 13 §2.1/§2.3/§2.4/§3.1 (deployment/product), 82 zero-trust
 (deployment), SDKs, CI-blocked tooling.
 
+
+## Round 20 — full re-read of the 17 reports: error/bug pass (2026-10-10)
+
+All of reports 01–16 + CRYPTO_SCAN_DISCOVERY re-read in full. Fixed:
+
+1. **Silent estate truncation (9 surfaces):** `list_all_bounded()`
+   replaces single-page reads in the graph payload, agility ×4, estate
+   due-scan ×2, CBOM portfolio ×2, exposure paths — truncation now
+   bounded and reported (`collection` meta, `systems_truncated` flags).
+2. **Graph ghost nodes:** Neo4j sync prunes kinds present in the sync
+   whose ids vanished (deleted systems/assets no longer linger).
+3. **Neo4j `network_resources` TypeError:** latent crash on any
+   real-driver sync; NetworkResource + CONNECTS_TO now merge properly.
+4. **CBOM confidence:** recorded observation confidence propagates to
+   the CycloneDX evidence block + component property (was hardcoded 0.9).
+5. **Graph export:** `GET /graph/export?format=graphml|gexf`.
+6. **Doc correction:** report 16's EVIDENCE-002 "open" line was wrong
+   (migrations 0061/0062 did it) — corrected in that file.
+
+Gates: api 1396, graph_engine 58, cbom 236, worker 522, database 162,
+ruff clean, rest-api 744/824/91. All 17 files carry round-20 addenda.
+
+Remaining open: container-image graph nodes, PKCS#11/KMIP pipeline,
+wire-capture parsing, CBOM signatures/compositions/semantic diff, ADRs,
+deployment items, CI-blocked tooling, SDKs, product decisions.
+
 ## Resume order
 
 1. **Finish the evidence subsystem first:** rerun and fix full backend tests, lint and synthetic end-to-end export/verification tests; decide the legacy at-rest gate without rewriting history. If it remains broken, stop there.

@@ -77,6 +77,40 @@ class SystemRepository(BaseRepository[System]):
         stmt = stmt.order_by(System.name).offset((page - 1) * page_size).limit(page_size)
         return list(self.session.execute(stmt).scalars().all()), total
 
+    def list_all_bounded(
+        self,
+        *,
+        page_size: int = 500,
+        max_rows: int = 50_000,
+    ) -> tuple[list[System], bool]:
+        """Every system, paged — bounded by ``max_rows`` and SAYS so.
+
+        Estate-wide views (graph payload, agility, portfolio, exposure,
+        due-scan planning) previously fetched a single ``page_size=500``
+        page and silently dropped every system beyond it: re-scans were
+        never scheduled for them and aggregates under-counted (the same
+        failure class TD-007 fixed for the CBOM portfolio). This walks all
+        pages and returns ``(rows, truncated)`` so callers can report the
+        bound instead of hiding it.
+        """
+        out: list[System] = []
+        page = 1
+        total = 0
+        while True:
+            rows, total = self.list_systems(page=page, page_size=page_size)
+            if not rows:
+                break
+            out.extend(rows)
+            if len(out) >= total:
+                break  # walked every page
+            if len(out) >= max_rows:
+                break  # budget hit while total says more exist
+            page += 1
+        truncated = len(out) < total
+        if len(out) > max_rows:
+            out = out[:max_rows]
+        return out, truncated
+
     def _coverage_clause(self, coverage: str):
         token = coverage.upper().strip()
         cutoff = datetime.now(timezone.utc) - timedelta(days=STALE_DAYS)

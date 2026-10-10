@@ -327,3 +327,12 @@ def filtered_get(db, model, id):
 ## 13. VERDICT
 
 **The architecture is fundamentally sound and implements the stated principles.** The deterministic pipeline (source → evidence → normalization → policy → graph → CBOM) is real and auditable. The primary architectural risks are **operational complexity from service proliferation** and **incomplete tenant isolation in the graph layer**. The API monolith is the single largest technical debt item and should be decomposed before significant scale.
+## UPDATE — round 20 re-verification (2026-10-10)
+
+Re-read in full; the verdict stands (fundamentally sound, monolith-by-
+design). One operational-risk item from §5.2 improved: the graph layer's
+single-page reads (a scaling bottleneck that also produced wrong
+answers) are now bounded full walks — see audit 03/09. Graph-layer tenant
+isolation (§7.3) remains covered by the ORM guard + per-tenant graph
+isolation from earlier rounds. API decomposition / config service /
+API versioning remain P2/P3 decisions, unchanged.
