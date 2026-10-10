@@ -499,3 +499,31 @@
 | Normalization | `services/normalization/normalization/core/engine.py` |
 | Custom crypto | `services/universal_crypto/universal_crypto/custom_crypto.py` |
 | Unknown detector | `services/universal_crypto/universal_crypto/unknown_detector.py` |
+---
+
+## Round 26 update (2026-10-10) — "completely missing" list re-verified
+
+The report's §4.1 "completely missing" table has mostly shipped since:
+
+* **QUIC/DTLS/WireGuard — STALE** (round 17: protocol analyzers wired
+  into the enterprise network engine, `enterprise/protocols/`).
+* **Cloud HSM — STALE** (round 18: AWS CloudHSM live scanning, Azure
+  Dedicated HSM scanner, GCP `hsm_backed` marker — matrix complete).
+* **Transitive crypto — STALE** (round 18: `propagate_crypto_dependencies`
+  in `scanner/analysis/cascade.py`, crypto dependency paths in the
+  cascade graph).
+* **OCSP/CRL validation — STALE.**
+  `network_scanner/certificates/revocation_live.py` implements
+  `check_ocsp`/`check_crl` (live and offline modes), and
+  `POST /network/certificates/{id}/check-revocation` persists the
+  verdict, method, URLs and raw payloads per certificate.
+* **Vendor/supply chain "scaffolded only" — LARGELY STALE.** The
+  `universal_vendor` service is now a full subsystem (discovery,
+  detection, evidence, graph, lifecycle, normalizer, plugin interfaces,
+  hardware + live engines, 368 tests).
+* **REMAIN OPEN, product-scoped:** PKCS#11/KMIP operational key
+  detection (needs real HSM connectivity), CT-log SCT verification
+  (external log-list dependency — verified absent today), hardware
+  attestation (TPM quotes / HSM attestation), firmware/RTOS parsers,
+  mobile keystore (Keychain/Keystore) parsing, custom-crypto ML
+  classification.
