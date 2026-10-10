@@ -399,3 +399,21 @@ def simulate_migration(asset, target_algorithm, protocol, library, hardware, usa
 | Digital Twin | `services/digital_twin/` |
 | Graph Migration Waves | `services/api/api/routers/graph.py:graph_migration_waves()` |
 | Agility API | `services/api/api/routers/agility.py` |
+---
+
+## Round 26 update (2026-10-10) — agility verdict re-verified
+
+* **"Agility Simulation ❌" — STALE.** `agility/simulation.py` is a
+  what-if engine that re-runs the production scoring formula on a
+  modified world (projections cannot drift from the real formula), and
+  `twin_scenarios.py` adds ten deterministic estate scenarios with
+  honest unknowns over the live twin.
+* **"Trend Tracking ❌" — STALE.** `agility/trajectory.py` analyzes
+  score history chronologically (INSUFFICIENT_DATA below two points,
+  never a guess).
+* **"Agility Roadmap ❌ (migration waves only)" — STALE** —
+  `agility/roadmap.py` (wave assignment drives the graph's migration
+  waves).
+* **REMAIN OPEN, product-scoped:** the 14 additional coupling
+  dimensions, quantitative switch/rotation/upgrade times (need real
+  operational telemetry), industry benchmarking (external data).

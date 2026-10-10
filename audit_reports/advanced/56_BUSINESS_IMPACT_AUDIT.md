@@ -367,3 +367,22 @@ Crypto Finding (RSA-2048, quantum_vulnerable)
 | Scan report | `services/api/api/routers/scans.py:generate_report()` |
 | AssetRepository | `services/database/db/repositories/asset_repository.py` |
 | SystemRepository | `services/database/db/repositories/system_repository.py` |
+---
+
+## Round 26 update (2026-10-10) — impact-chain claims re-verified
+
+* **"CryptoAsset → System link not guaranteed" — STALE.** The pipeline
+  populates `system_assets` (worker `_link_system_assets`, CBOM-ingest
+  attach), and `stage_business_enrich` persists business_context onto
+  crypto assets after the graph is known — the crypto → business trace
+  flows CryptoAsset ← USES ← System → SUPPORTS → BusinessProcess with
+  revenue/customer counts.
+* **Direct-link asks (CryptoAsset.business_process_id FK, per-algorithm
+  revenue attribution, Certificate → BusinessProcess, DriftEvent →
+  impact) — REMAIN OPEN, product-scoped design decisions** (the
+  graph-based path exists; denormalized direct FKs are an attribution
+  model choice).
+* **Regulatory requirement entity / requirement-level mapping,
+  capability model, Monte Carlo, executive dashboard — REMAIN OPEN,
+  product-scoped.** (Unified risk with derivation signals + exposure
+  paths shipped round 19.)
