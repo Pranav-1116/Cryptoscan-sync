@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_admin
+from api.security.audit_diff import audit_detail_with_changes, field_diff
 from db.models.policy_rule_override import PolicyRuleOverride
 from policy.core.engine import PolicyEngine
 from policy.core.overrides import apply_overrides, load_override_rows
@@ -163,13 +164,17 @@ def set_rule_override(
                 detail=f"severity must be one of {sorted(allowed)} (got {body.severity!r})",
             )
 
-    row = (
+    existing = (
         db.query(PolicyRuleOverride)
         .filter(PolicyRuleOverride.rule_id == rule_id)
         .first()
     )
-    if row is None:
-        row = PolicyRuleOverride(rule_id=rule_id)
+    # config-change auditing (audit 78): before/after per field, not just
+    # the new values — this is the tenant's runtime policy configuration
+    before = ({"enabled": existing.enabled, "severity": existing.severity,
+               "note": existing.note} if existing is not None else {})
+    row = existing if existing is not None else PolicyRuleOverride(rule_id=rule_id)
+    if existing is None:
         db.add(row)
     row.enabled = bool(body.enabled)
     row.severity = str(body.severity).upper() if body.severity else None
@@ -184,7 +189,9 @@ def set_rule_override(
         user,
         "policy.rule_override_set",
         rule_id,
-        {"enabled": row.enabled, "severity": row.severity, "note": body.note},
+        audit_detail_with_changes(field_diff(
+            before,
+            {"enabled": row.enabled, "severity": row.severity, "note": row.note})),
     )
 
     engine = PolicyEngine(str(_rules_dir()))

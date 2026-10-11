@@ -1355,6 +1355,61 @@ def list_audit(
     return {"events": events, "page": page, "page_size": page_size}
 
 
+@router.get("/audit/timeline")
+def unified_timeline(
+    source: str = Query("all", pattern="^(all|audit|platform)$"),
+    actor: str | None = None,
+    action: str | None = None,
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Unified cross-system timeline (audit 78 P0#4).
+
+    One chronology across the two event histories the platform keeps: the
+    hash-chained audit log (mutations) and the platform event stream
+    (lifecycle transitions, automation, alerts). Pure merge —
+    deterministic, no clock reads; identical timestamps keep their
+    per-source order rather than an invented interleaving.
+
+    Each source is read newest-first and capped (newest 3x limit per
+    source), so this is a recent-window view, not an unbounded scan of
+    history.
+    """
+    from api.security.timeline import merge_timeline
+    from db.models.monitor import MonitorEvent
+    from db.models.user import AuditLog
+
+    fetch = max(limit * 3, 300)
+    audit_rows: list = []
+    platform_rows: list = []
+    if source in ("all", "audit"):
+        stmt = db.query(AuditLog).order_by(AuditLog.created_at.desc())
+        if actor:
+            stmt = stmt.filter(AuditLog.actor == actor)
+        if action:
+            stmt = stmt.filter(AuditLog.action == action)
+        audit_rows = stmt.limit(fetch).all()
+    if source in ("all", "platform"):
+        stmt = db.query(MonitorEvent).order_by(MonitorEvent.created_at.desc())
+        if action:
+            stmt = stmt.filter(MonitorEvent.event_type == action)
+        platform_rows = stmt.limit(fetch).all()
+    merged = merge_timeline(audit_rows, platform_rows, limit=fetch)
+    if source == "platform" and actor:
+        # platform rows only carry actor inside the payload
+        merged = [e for e in merged if e.get("actor") == actor]
+    return {
+        "model": "unified-timeline/v1",
+        "sources": {"audit": len(audit_rows), "platform": len(platform_rows)},
+        "entries": merged[offset:offset + limit],
+        "total_in_window": len(merged),
+        "limit": limit,
+        "offset": offset,
+    }
+
+
 @router.get("/audit/verify")
 def verify_audit(
     admin: str = Depends(require_admin),

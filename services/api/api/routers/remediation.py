@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_auditor
+from api.security.audit_diff import write_audited_diff
 from api.events.platform_events import emit_platform_event
 from db.models.remediation_task import RemediationTask, RemediationVerification
 from db.models.scan import Scan
@@ -309,8 +310,13 @@ def accept_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status != "PROPOSED":
         raise HTTPException(status_code=409, detail=f"Task in status {task.status}; only PROPOSED tasks can be accepted")
+    before_status = task.status
     task.status = "ACCEPTED"
     db.commit()
+    # field-level audit diff (audit 78): the transition is a data mutation
+    write_audited_diff(db, user, "remediation.task_accept",
+                       target_type="remediation_task", target_id=task.id,
+                       before={"status": before_status}, after={"status": task.status})
     emit_platform_event(
         "remediation.task_accepted",
         f"Remediation task {task.id} accepted for work by {user}",
@@ -407,12 +413,18 @@ def complete_task(
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status not in ("ACCEPTED", "PROPOSED"):
         raise HTTPException(status_code=409, detail=f"Task in status {task.status}; only ACCEPTED tasks can be completed")
+    before_snapshot = {"status": task.status, "notes": task.notes}
     task.status = "COMPLETED"
     task.completed_at = datetime.now(timezone.utc)
     task.completed_by = user
     if body.notes:
         task.notes = (task.notes or "") + f"\n{body.notes}"
     db.commit()
+    # field-level audit diff (audit 78): the transition is a data mutation
+    write_audited_diff(db, user, "remediation.task_complete",
+                       target_type="remediation_task", target_id=task.id,
+                       before=before_snapshot,
+                       after={"status": task.status, "notes": task.notes})
     emit_platform_event(
         "remediation.task_completed",
         f"Remediation task {task.id} marked completed by {user}; verifying against rescan evidence",

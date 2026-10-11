@@ -80,3 +80,34 @@ def audit_detail_with_changes(
     }
     detail.update(extra)
     return detail
+
+
+def write_audited_diff(
+    db: Any,
+    actor: str,
+    action: str,
+    *,
+    target_type: str,
+    target_id: str | None,
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    sensitive: Container[str] = DEFAULT_SENSITIVE_FIELDS,
+    commit: bool = True,
+    **extra: Any,
+) -> None:
+    """Audit one mutation as a field-level diff (audit 78 canonical shape).
+
+    Shared by the audited-write surfaces beyond the identity plane (vendor
+    profiles, migration projects/tasks, certificate renewal and ownership,
+    policy overrides, remediation task transitions). No-op safe: an empty
+    diff still writes the row — the fact that a write endpoint was called
+    is itself auditable, and the diff honestly shows nothing changed.
+    """
+    from db.repositories.user_repository import UserRepository
+
+    detail = audit_detail_with_changes(
+        field_diff(before, after, sensitive=sensitive), **extra)
+    UserRepository(db).audit(
+        actor, action, target_type=target_type, target_id=target_id, detail=detail)
+    if commit:
+        db.commit()

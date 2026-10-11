@@ -410,3 +410,42 @@ Still open, honestly: the same shape on the remaining mutation surfaces
 edits), Alembic schema-migration auditing, config-change before/after,
 and the unified cross-system timeline view — each is a bounded wiring
 task over the helper that now exists.
+
+## Round 33 addendum (2026-10-11) — the four opens closed
+
+All four items this report still carried are now built:
+
+1. **Field-level before/after on every data mutation** — the round-32
+   helper is now wired across the remaining surfaces: `vendor.update`
+   (vendor patch), `migration.update` + `migration.task_update`
+   (migration project/task patches), `certificate.renewal_update`
+   (renewal workflow — previously un-audited entirely),
+   `certificate.ownership.assign` (canonicalised from ad-hoc before/after
+   dicts), `policy.rule_override_set` (the tenant's runtime policy
+   configuration), `remediation.task_accept` / `remediation.task_complete`
+   (status transitions, previously platform-event-only). A no-op write is
+   still audited — the diff honestly shows nothing changed.
+2. **Alembic schema-migration auditing** — `db/migration_audit.py` +
+   a hook in `migrations/env.py`: one hash-chained audit row per applied
+   revision after `alembic upgrade` (actor `migrator`, action
+   `db.schema_migration`, target the revision id, detail carries script /
+   direction / from-to versions). Bootstrap revisions that ran before
+   `audit_log` existed are not back-filled; a non-linear (stamped/branched)
+   version move is recorded as one `linear_walk=false` row instead of
+   being dropped; audit-write failure never fails a committed migration.
+   The pure walk and the writes are unit-tested against the real chain.
+3. **Config-change auditing** — the policy rule-override surface (the
+   runtime config a tenant can actually change) now records before/after
+   per field; file-based deployment settings remain outside API scope
+   (deployment-scoped, unchanged).
+4. **Unified cross-system timeline** — `GET /auth/audit/timeline`
+   (`unified-timeline/v1`, admin): one newest-first chronology over
+   AuditLog + MonitorEvent platform events, normalised to
+   {source, at, actor, action, target, detail}; filters by source, actor
+   and action; platform actors are resolved from the known payload keys
+   (actor/user/accepted_by/completed_by/created_by/triggered_by).
+   Recent-window semantics are explicit (newest 3x limit per source), not
+   an unbounded history scan.
+
+Tests: `services/api/tests/unit/test_audit_field_diff_r33.py` (7),
+`services/database/tests/unit/test_migration_audit.py` (5).

@@ -27,6 +27,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from api.dependencies import get_current_user, get_db_session
+from api.security.audit_diff import audit_detail_with_changes, field_diff
 from api.security.rbac import require_permission
 from sqlalchemy.orm import Session
 
@@ -226,9 +227,9 @@ def assign_certificate_ownership(
     UserRepository(db).audit(
         user, "certificate.ownership.assign", target_type="certificate",
         target_id=row.fingerprint_sha256,
-        detail={"before": before,
-                "after": {"owner": row.owner, "technical_contact": row.technical_contact},
-                "reason": body.reason},
+        detail=audit_detail_with_changes(field_diff(
+            before, {"owner": row.owner, "technical_contact": row.technical_contact}),
+            reason=body.reason),
     )
     db.commit()
     return {

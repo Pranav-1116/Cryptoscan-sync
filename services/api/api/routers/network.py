@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
 from api.dependencies import get_current_user, get_db_session, require_auditor
+from api.security.audit_diff import write_audited_diff
 from db.repositories.certificate_repository import CertificateRepository
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.repositories.maturity_repository import MaturityRepository
@@ -171,12 +172,26 @@ def update_certificate_renewal(
     """Renewal workflow for one certificate (sha256 fingerprint)."""
     repo = CertificateRepository(db)
     try:
+        current = repo.get_by_fingerprint(fingerprint)
+        before = ({"renewal_status": current.renewal_status,
+                   "renewal_ticket": current.renewal_ticket,
+                   "renewal_note": current.renewal_note}
+                  if current is not None else {})
         row = repo.update_renewal(fingerprint, body.status, ticket=body.ticket, note=body.note)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     if row is None:
         raise HTTPException(status_code=404, detail="Certificate not found")
     db.commit()
+    # field-level audit diff (audit 78): the renewal workflow changes state,
+    # so the change is audited like every other mutation
+    write_audited_diff(
+        db, user, "certificate.renewal_update", target_type="certificate",
+        target_id=row.fingerprint_sha256, before=before,
+        after={"renewal_status": row.renewal_status,
+               "renewal_ticket": row.renewal_ticket,
+               "renewal_note": row.renewal_note},
+    )
     return {
         "fingerprint_sha256": row.fingerprint_sha256,
         "subject": row.subject,

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from api.dependencies import get_current_user, get_db_session, require_auditor
+from api.security.audit_diff import write_audited_diff
 from db.repositories.intelligence_repository import IntelligenceRepository
 from db.models.migration_project import MigrationProject
 
@@ -938,9 +939,18 @@ def patch_vendor(
     db: Session = Depends(get_db_session),
 ):
     values = {key: value for key, value in body.model_dump(exclude_unset=True).items() if value is not None}
-    vendor = IntelligenceRepository(db).update_vendor(vendor_id, **values)
-    if vendor is None:
+    intel = IntelligenceRepository(db)
+    current = intel.get_vendor(vendor_id)
+    if current is None:
         raise HTTPException(status_code=404, detail="Vendor not found")
+    # field-level audit diff (audit 78): snapshot before the mutation
+    _vendor_fields = ("name", "criticality", "vendor_type", "integration_type",
+                      "primary_contact", "security_contact", "technical_contact")
+    before = {f: getattr(current, f, None) for f in _vendor_fields}
+    vendor = intel.update_vendor(vendor_id, **values)
+    after = {f: getattr(vendor, f, None) for f in _vendor_fields}
+    write_audited_diff(db, user, "vendor.update", target_type="vendor",
+                       target_id=vendor.id, before=before, after=after)
     return vendor.to_dict()
 
 
@@ -958,9 +968,19 @@ def create_migration(body: MigrationCreate, user: str = Depends(get_current_user
 def update_migration(
     project_id: str, body: MigrationPatch, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)
 ):
-    row = IntelligenceRepository(db).update_migration(project_id, **{k: v for k, v in body.model_dump().items() if v is not None})
+    current = filtered_get(db, MigrationProject, project_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    # field-level audit diff (audit 78): snapshot before the mutation
+    _migration_fields = ("status", "progress", "notes", "owner", "algorithm_to")
+    before = {f: getattr(current, f, None) for f in _migration_fields}
+    row = IntelligenceRepository(db).update_migration(
+        project_id, **{k: v for k, v in body.model_dump().items() if v is not None})
     if row is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
+    after = {f: getattr(row, f, None) for f in _migration_fields}
+    write_audited_diff(db, user, "migration.update", target_type="migration_project",
+                       target_id=row.id, before=before, after=after)
     return row.to_dict()
 
 
@@ -1050,12 +1070,24 @@ def list_migration_tasks(project_id: str, user: str = Depends(get_current_user),
 
 @router.patch("/migrations/tasks/{task_id}")
 def update_migration_task(task_id: str, body: MigrationTaskPatch, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
+    from db.models.migration_project import MigrationTask
+
+    current = filtered_get(db, MigrationTask, task_id)
+    if current is None:
+        raise HTTPException(status_code=404, detail="Migration task not found")
+    # field-level audit diff (audit 78): snapshot before the mutation
+    _task_fields = ("title", "status", "owner", "blocked_reason",
+                    "external_ref", "due_date", "depends_on")
+    before = {f: getattr(current, f, None) for f in _task_fields}
     try:
         row = _task_repo(db).update_task(task_id, **body.model_dump())
     except ValueError as exc:
         raise _value_error(exc) from exc
     if row is None:
         raise HTTPException(status_code=404, detail="Migration task not found")
+    after = {f: getattr(row, f, None) for f in _task_fields}
+    write_audited_diff(db, user, "migration.task_update", target_type="migration_task",
+                       target_id=row.id, before=before, after=after)
     return row.to_dict()
 
 

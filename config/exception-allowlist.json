@@ -22,6 +22,20 @@
       "reviewed_by": "security-engineering",
       "reviewed_at": "2026-10-11",
       "reason": "Role-name cleaning degrades to the built-in VALID_ROLES set when the custom_roles table cannot be read (pre-migration or schema drift). Assignment of an unresolvable name then falls back to the viewer default rather than storing an unvalidated role string; the API layer still 422s unknown names first."
+    },
+    {
+      "location": "services/database/db/migration_audit.py:53",
+      "owner": "database-reliability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Revision-walk probe: an unknown revision id (stamped or pruned history) stops the linear walk instead of raising. The caller then records the version move as a single linear_walk=false audit row rather than dropping it, so the degraded result is an explicit audit entry, never a silent success."
+    },
+    {
+      "location": "services/database/migrations/env.py:134",
+      "owner": "database-reliability",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Pre-migration version probe: an unreadable/absent alembic_version state degrades to None so the post-migration audit hook records from_version=null honestly. The migration run itself is unaffected; no success is fabricated from the failed probe."
     }
   ]
 }

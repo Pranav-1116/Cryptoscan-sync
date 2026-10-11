@@ -6,6 +6,7 @@ and online (direct DB connection) migration modes.
 """
 from __future__ import annotations
 
+import logging
 import os
 from logging.config import fileConfig
 from urllib.parse import quote_plus
@@ -121,7 +122,24 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,  # Use NullPool for migrations
     )
 
+    def _current_version(connection) -> str | None:
+        """Current alembic version, or None before the version table exists."""
+        from sqlalchemy import inspect
+
+        try:
+            if not inspect(connection).has_table("alembic_version"):
+                return None
+            row = connection.exec_driver_sql("SELECT version_num FROM alembic_version").first()
+            return str(row[0]) if row else None
+        except Exception:
+            return None
+
+    def _mode() -> str:
+        cmd_opts = getattr(config, "cmd_opts", None)
+        return getattr(cmd_opts, "prog", "upgrade") or "upgrade"
+
     with connectable.connect() as connection:
+        version_before = _current_version(connection)
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
@@ -139,6 +157,30 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
+        # Schema-migration auditing (audit 78): one hash-chained audit row
+        # per applied revision. Best-effort — bootstrap revisions that ran
+        # before audit_log existed are not back-filled, and an audit-write
+        # failure never fails an already-committed migration.
+        version_after = _current_version(connection)
+        if version_after != version_before:
+            try:
+                from alembic.script import ScriptDirectory
+
+                from db.migration_audit import audit_applied_migrations
+
+                audit_applied_migrations(
+                    connection,
+                    before=version_before,
+                    after=version_after,
+                    script_dir=ScriptDirectory.from_config(config),
+                    mode=_mode(),
+                )
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "migration_audit_hook_failed: %s -> %s",
+                    version_before, version_after, exc_info=True,
+                )
 
 
 if context.is_offline_mode():
