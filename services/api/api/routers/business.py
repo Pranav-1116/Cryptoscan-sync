@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Literal
 from db.tenancy import filtered_get
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
@@ -52,6 +52,7 @@ class VendorCreate(BaseModel):
     data_classifications: list[str] | None = None
     primary_contact: str | None = None
     security_contact: str | None = None
+    technical_contact: str | None = None
     profile: dict[str, Any] | None = None
 
 
@@ -63,6 +64,7 @@ class VendorPatch(BaseModel):
     data_classifications: list[str] | None = None
     primary_contact: str | None = None
     security_contact: str | None = None
+    technical_contact: str | None = None
 
 
 class VendorProfileWrite(BaseModel):
@@ -360,6 +362,7 @@ def create_vendor(body: VendorCreate, user: str = Depends(get_current_user), db:
         data_classifications=body.data_classifications,
         primary_contact=body.primary_contact,
         security_contact=body.security_contact,
+        technical_contact=body.technical_contact,
     )
     if body.system_id:
         intel.link_vendor(body.system_id, vendor.id)
@@ -776,6 +779,48 @@ def vendor_risks(user: str = Depends(get_current_user), db: Session = Depends(ge
     return {"vendors": rows, "total_count": len(rows)}
 
 
+# ── VBOM — vendor bill of materials (advanced/46 P1#5, round 30) ─────
+
+
+@router.get("/vendor-bom")
+def vendor_bom(
+    fmt: str = Query("native", pattern="^(native|cyclonedx)$"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Estate-wide VBOM from vendors + vendor crypto inventory.
+
+    ``fmt=native`` returns the ZELNX-VBOM document; ``fmt=cyclonedx``
+    returns the CycloneDX-style export (one cryptographic-asset
+    component per vendor inventory entry, supplier = vendor).
+    """
+    from vendor_intel.vbom import build_vbom
+
+    gen = build_vbom(db)
+    if fmt == "cyclonedx":
+        return gen.to_cyclonedx()
+    return gen.to_document()
+
+
+@router.get("/vendors/{vendor_id}/vbom")
+def vendor_vbom(
+    vendor_id: str,
+    fmt: str = Query("native", pattern="^(native|cyclonedx)$"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Single-vendor VBOM slice (same shapes as /vendor-bom)."""
+    from vendor_intel.vbom import build_vbom
+
+    try:
+        gen = build_vbom(db, vendor_id=vendor_id)
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    if fmt == "cyclonedx":
+        return gen.to_cyclonedx()
+    return gen.to_document()
+
+
 @router.get("/vendors/{vendor_id}")
 def get_vendor(vendor_id: str, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     from db.repositories.vendor_profile_repository import VendorProfileRepository
@@ -851,6 +896,20 @@ class MigrationTaskPatch(BaseModel):
     blocked_reason: str | None = None
     external_ref: str | None = None
     due_date: datetime | None = None
+    depends_on: list[str] | None = None
+
+
+class TaskDependencyLink(BaseModel):
+    depends_on_task_id: str
+
+
+class TaskRollbackRequest(BaseModel):
+    reason: str
+
+
+class AdvanceRequest(BaseModel):
+    limit: int = 25
+
 
 
 class AutoProjectRequest(BaseModel):
@@ -1038,3 +1097,120 @@ def sync_migration(project_id: str, body: ExternalSyncRequest, user: str = Depen
     if filtered_get(db, MigrationProject, project_id) is None:
         raise HTTPException(status_code=404, detail="Migration project not found")
     return _task_repo(db).sync_external(project_id, body.updates)
+
+
+# ── migration execution engine (round 30, advanced/61 §4.2+§5, deep/29 §9) ──
+
+def _gate_error(exc: Exception) -> HTTPException:
+    """Start-gate refusal → 409 with the blocking chain (not a plain 400)."""
+    return HTTPException(
+        status_code=409,
+        detail={
+            "message": str(exc),
+            "blocking_tasks": getattr(exc, "blockers", []),
+        },
+    )
+
+
+@router.post("/migrations/{project_id}/tasks/{task_id}/dependencies")
+def link_task_dependency(
+    project_id: str,
+    task_id: str,
+    body: TaskDependencyLink,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Add one dependency edge (cycle-checked before persisting)."""
+    try:
+        row = _task_repo(db).link_dependency(task_id, body.depends_on_task_id)
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    return row.to_dict()
+
+
+@router.post("/migrations/{project_id}/dependencies/auto")
+def auto_derive_task_dependencies(
+    project_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Derive task ordering from system dependency edges (A CALLS B →
+    B's tasks become dependencies of A's tasks)."""
+    if filtered_get(db, MigrationProject, project_id) is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    try:
+        return _task_repo(db).auto_derive_dependencies(project_id)
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+
+
+@router.get("/migrations/{project_id}/execution-plan")
+def migration_execution_plan(
+    project_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Dependency-aware staging: parallelizable groups, critical path,
+    ready set, and per-task blockers."""
+    if filtered_get(db, MigrationProject, project_id) is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    return _task_repo(db).execution_plan(project_id)
+
+
+@router.post("/migrations/tasks/{task_id}/start")
+def start_migration_task(
+    task_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Gated start: 409 (with blockers) until every dependency is
+    DONE/SKIPPED."""
+    try:
+        row = _task_repo(db).start_task(task_id)
+    except ValueError as exc:
+        if getattr(exc, "blockers", None) is not None:
+            raise _gate_error(exc) from exc
+        raise _value_error(exc) from exc
+    return row.to_dict()
+
+
+@router.post("/migrations/tasks/{task_id}/complete")
+def complete_migration_task(
+    task_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    try:
+        row = _task_repo(db).complete_task(task_id)
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+    return row.to_dict()
+
+
+@router.post("/migrations/tasks/{task_id}/rollback")
+def rollback_migration_task(
+    task_id: str,
+    body: TaskRollbackRequest,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Rollback plan execution: finished dependents cascade to TODO,
+    in-progress dependents become BLOCKED naming the rolled-back task."""
+    try:
+        return _task_repo(db).rollback_task(task_id, body.reason)
+    except ValueError as exc:
+        raise _value_error(exc) from exc
+
+
+@router.post("/migrations/{project_id}/execute/advance")
+def advance_ready_tasks(
+    project_id: str,
+    body: AdvanceRequest | None = None,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Wave kickoff: bulk-start the current ready set."""
+    if filtered_get(db, MigrationProject, project_id) is None:
+        raise HTTPException(status_code=404, detail="Migration project not found")
+    limit = body.limit if body is not None else 25
+    return _task_repo(db).advance_ready(project_id, limit=limit)

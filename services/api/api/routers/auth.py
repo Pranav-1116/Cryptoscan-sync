@@ -23,6 +23,7 @@ from api.dependencies import (
     require_roles,
 )
 from api.events.auth import publish_auth
+from db.models.custom_role import CustomRole
 from api.security import totp
 from api.security.auth import AuthenticationError, AuthService
 from api.security.passwords import (
@@ -616,11 +617,23 @@ def me(request: Request, db: Session = Depends(get_db_session)) -> dict:
                 detail="Authentication store unavailable",
             ) from exc
         logger.warning("auth_user_lookup_failed", exc_info=True)
+    raw_roles = list(roles)
     roles = normalize_roles(roles)
+    my_permissions = permissions_for_roles(roles)
+    try:
+        from api.security.rbac import (custom_role_names,
+                                       load_custom_roles_index,
+                                       permissions_with_custom)
+
+        custom_index = load_custom_roles_index(db)
+        roles = roles + custom_role_names(raw_roles, custom_index)
+        my_permissions = permissions_with_custom(roles, custom_index)
+    except Exception:  # pragma: no cover - custom roles table unavailable
+        logger.warning("auth_me_custom_roles_unavailable", exc_info=True)
     return {
         "username": session.username,
         "roles": roles,
-        "permissions": permissions_for_roles(roles),
+        "permissions": my_permissions,
         "mfa_enabled": bool(user.mfa_enabled) if user is not None else False,
         "display_name": user.display_name if user is not None else None,
         "email": user.email if user is not None else None,
@@ -1015,6 +1028,22 @@ def mfa_disable(
 
 # ------------------------------------------------------------------ user management
 
+
+
+def _valid_role_names(db) -> set[str]:
+    """Built-in role names plus this deployment's custom role names."""
+    from db.models.user import VALID_ROLES
+
+    names = set(VALID_ROLES)
+    try:
+        from api.security.rbac import load_custom_roles_index
+
+        names.update(load_custom_roles_index(db).keys())
+    except Exception:  # noqa: BLE001 — no table yet: built-ins only
+        pass
+    return names
+
+
 @router.get("/roles")
 def list_roles(
     request: Request,
@@ -1022,6 +1051,7 @@ def list_roles(
         "admin", "auditor", "viewer", "readonly", "superadmin", "ciso",
         "security_analyst", "developer", "business_owner", "scanner",
     )),
+    db: Session = Depends(get_db_session),
 ):
     """The 8-role catalog (logic-5 W57–58) plus the permission matrix.
 
@@ -1033,7 +1063,6 @@ def list_roles(
         PERMISSION_MATRIX,
         ROLE_CATALOG,
         normalize_roles,
-        permissions_for_roles,
     )
     from api.security.session_manager import SessionManager
 
@@ -1053,12 +1082,20 @@ def list_roles(
         stored = SessionManager().get_session(token) if token else None
         roles = normalize_roles(list(getattr(stored, "roles", []) or []) if stored else [])
 
+    from api.security.rbac import (ALL_PERMISSIONS, load_custom_roles_index,
+                                    permissions_with_custom)
+
+    custom_index = load_custom_roles_index(db)
     return {
         "roles": ROLE_CATALOG,
         "permission_matrix": {
             action: sorted(allowed) for action, allowed in PERMISSION_MATRIX.items()
         },
-        "my_permissions": permissions_for_roles(roles),
+        "custom_roles": {
+            name: sorted(perms) for name, perms in sorted(custom_index.items())
+        },
+        "my_permissions": permissions_with_custom(roles, custom_index),
+        "all_permissions": sorted(ALL_PERMISSIONS),
     }
 
 
@@ -1163,7 +1200,6 @@ def create_user(
     admin: str = Depends(require_admin),
     db: Session = Depends(get_db_session),
 ):
-    from db.models.user import VALID_ROLES
 
     try:
         validate_password_policy(body.password)
@@ -1173,11 +1209,12 @@ def create_user(
     repo = _user_repo(db)
     if repo.get_by_username(body.username) is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already exists")
-    bad_roles = [r for r in body.roles if r not in VALID_ROLES]
+    valid_names = _valid_role_names(db)
+    bad_roles = [r for r in body.roles if r not in valid_names]
     if bad_roles:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Unknown roles: {bad_roles}. Valid: {list(VALID_ROLES)}",
+            detail=f"Unknown roles: {bad_roles}. Valid: {sorted(valid_names)}",
         )
     user = repo.create_user(
         body.username,
@@ -1219,9 +1256,8 @@ def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     changes: dict = {}
     if body.roles is not None:
-        from db.models.user import VALID_ROLES
 
-        bad = [r for r in body.roles if r not in VALID_ROLES]
+        bad = [r for r in body.roles if r not in _valid_role_names(db)]
         if bad:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=f"Unknown roles: {bad}")
         updated = repo.set_roles(username, body.roles)
@@ -1381,3 +1417,146 @@ def export_audit(
         media_type="application/jsonl",
         headers={"X-Audit-Export-Sha256": digest, "X-Audit-Chain-Status": chain["status"]},
     )
+
+
+# ---------------------------------------------------------- custom roles
+# Report 13 §2.2 open item (round 30): tenant-defined named permission
+# subsets of the existing matrix. A custom role is a narrower key, never
+# a bypass — it cannot grant an action the matrix does not know and
+# cannot collide with a built-in role name.
+
+
+class CustomRoleCreateRequest(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100, pattern=r"^[a-z][a-z0-9_-]*$")
+    description: str | None = Field(None, max_length=2000)
+    permissions: list[str] = Field(..., min_length=1)
+
+
+class CustomRoleUpdateRequest(BaseModel):
+    description: str | None = Field(None, max_length=2000)
+    permissions: list[str] | None = Field(None, min_length=1)
+
+
+def _validate_custom_role(db, name: str, permissions: list[str]) -> None:
+    from api.security.rbac import ALL_PERMISSIONS, ROLE_ALIASES, ROLE_CATALOG
+
+    lower = name.strip().lower()
+    if lower in ROLE_CATALOG or lower in ROLE_ALIASES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{lower!r} is a built-in role name; custom roles cannot shadow it",
+        )
+    unknown = sorted(set(permissions) - set(ALL_PERMISSIONS))
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown permissions: {unknown}. "
+                   f"Valid: {sorted(ALL_PERMISSIONS)}",
+        )
+    existing = db.query(CustomRole).filter(CustomRole.name == lower).first()
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Custom role {lower!r} already exists",
+        )
+
+
+@router.get("/custom-roles")
+def list_custom_roles(
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Every defined custom role with its declared permission subset."""
+    rows = db.query(CustomRole).order_by(CustomRole.name).all()
+    return {
+        "custom_roles": [
+            {"name": row.name, "description": row.description,
+             "permissions": sorted(row.permissions or []),
+             "created_by": row.created_by}
+            for row in rows
+        ],
+        "count": len(rows),
+    }
+
+
+@router.post("/custom-roles")
+def create_custom_role(
+    body: CustomRoleCreateRequest,
+    request: Request,
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    name = body.name.strip().lower()
+    _validate_custom_role(db, name, body.permissions)
+    row = CustomRole(name=name, description=body.description,
+                     permissions=sorted(set(body.permissions)), created_by=admin)
+    db.add(row)
+    db.flush()
+    _user_repo(db).audit(
+        admin, "custom_role.create", target_type="custom_role", target_id=name,
+        detail={"permissions": row.permissions, "description": row.description},
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    return {"name": row.name, "description": row.description,
+            "permissions": sorted(row.permissions or []), "created_by": row.created_by}
+
+
+@router.put("/custom-roles/{name}")
+def update_custom_role(
+    name: str,
+    body: CustomRoleUpdateRequest,
+    request: Request,
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    from api.security.rbac import ALL_PERMISSIONS
+
+    row = db.query(CustomRole).filter(CustomRole.name == name.strip().lower()).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Custom role not found")
+    before = {"permissions": sorted(row.permissions or []),
+              "description": row.description}
+    if body.permissions is not None:
+        unknown = sorted(set(body.permissions) - set(ALL_PERMISSIONS))
+        if unknown:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown permissions: {unknown}")
+        row.permissions = sorted(set(body.permissions))
+    if body.description is not None:
+        row.description = body.description
+    db.flush()
+    _user_repo(db).audit(
+        admin, "custom_role.update", target_type="custom_role", target_id=row.name,
+        detail={"before": before,
+                "after": {"permissions": sorted(row.permissions or []),
+                          "description": row.description}},
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    return {"name": row.name, "description": row.description,
+            "permissions": sorted(row.permissions or [])}
+
+
+@router.delete("/custom-roles/{name}")
+def delete_custom_role(
+    name: str,
+    request: Request,
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    row = db.query(CustomRole).filter(CustomRole.name == name.strip().lower()).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                            detail="Custom role not found")
+    db.delete(row)
+    _user_repo(db).audit(
+        admin, "custom_role.delete", target_type="custom_role", target_id=row.name,
+        detail={"permissions": sorted(row.permissions or [])},
+        ip=request.client.host if request.client else None,
+    )
+    db.commit()
+    return {"deleted": row.name,
+            "note": "users holding only this role lose its grants immediately"}

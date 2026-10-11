@@ -611,3 +611,17 @@ class MigrationTask:
 * **§9 execution engine, PQC X.509 certificates, CT verification,
   cost estimation, rollback/canary — REMAIN OPEN, product-scoped**
   (execution engine is the standing product-level open item).
+
+## Round 30 addendum (2026-10-11) — execution control plane BUILT
+
+§9.2's "No execution engine — tasks are tracking only" is now false for
+the control-plane half of the question: dependency-aware ordering
+(Kahn staging + cycle rejection), parallelization analysis, critical
+path, gated task starts (409 + blocking chain until dependencies are
+DONE/SKIPPED), wave kickoff of the ready set, and rollback with
+cascading dependents — see the round-30 addendum in advanced/61 for the
+full surface (`db/migration_execution.py`, migration 0082, seven new
+`/migrations/*` endpoints, 16 tests). What remains open is the actuator
+half §9.1 lists (automated refactoring, config migration, HSM firmware
+coordination, certificate re-issuance, canary deployment) — those need
+live infrastructure targets and stay deployment-scoped, unchanged.

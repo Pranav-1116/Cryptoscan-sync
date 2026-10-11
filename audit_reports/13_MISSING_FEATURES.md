@@ -362,3 +362,36 @@ Re-read in full against the code:
   predates that.
 - Still open: custom role definitions (product decision), SDKs,
   deployment-scoped items.
+
+## Round 30 addendum (2026-10-11) — custom roles BUILT
+
+§2.2 "Custom roles — Fixed roles, configurable role definitions" is no
+longer open. Built end to end this round:
+
+- Model: `custom_roles` table (migration 0081) — tenant-scoped,
+  unique `(tenant_id, name)`, `permissions` JSON.
+- API: `GET/POST/PUT/DELETE /auth/custom-roles` (admin-only, audited
+  `custom_role.create/update/delete`); builtin-name collisions 409,
+  unknown permissions 422; `GET /auth/roles` now publishes
+  `custom_roles` and `all_permissions`.
+- Enforcement: `require_permission` resolves grants through
+  `has_permission_with_custom`; role names are read fresh per request
+  (no re-login after permission changes); stale permissions in the DB
+  are dropped at read; deleting a role removes its grants immediately
+  and the name becomes unassignable (422).
+- Semantics kept deliberately narrow: a custom role is a named
+  permission SUBSET of the existing matrix — it can never grant an
+  action the matrix does not know, and it grants permissions, not role
+  names, so `require_roles`/coarse role gates are unaffected.
+- Two real bugs found by the lifecycle test and fixed: (1)
+  `UserRepository.create_user/set_roles` filtered against the static
+  `VALID_ROLES` tuple, silently replacing a custom role with `viewer`;
+  (2) the legacy empty-role fallback in `dependencies.require_roles`
+  would have upgraded ANY provisioned user whose roles all normalize
+  away — i.e. every custom-role-only user — to admin. The fallback now
+  applies only to principals that are not provisioned users.
+- Tests: `services/api/tests/unit/test_custom_roles.py` (6 pure + full
+  lifecycle through the real app, including the two regression cases).
+- `/auth/me` now reports custom role names and their permissions.
+- Still open from §2.2: resource-level grants beyond the BU→System→Asset
+  chain already built, delegated administration, SDKs.

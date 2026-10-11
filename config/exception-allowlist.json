@@ -8,6 +8,20 @@
       "reviewed_by": "security-engineering",
       "reviewed_at": "2026-09-29",
       "reason": "Rollback is best effort during a connection-loss poll. The caller records the original transient error, retries the probe, and the connection is discarded if it cannot roll back; no success is returned from this handler."
+    },
+    {
+      "location": "services/api/api/routers/auth.py:1042",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Custom-role validation degrades to built-in role names when the custom_roles table is absent (pre-migration deployments). The caller then rejects unknown role names with 422, so the degraded result is explicit rather than silent; no custom role is fabricated."
+    },
+    {
+      "location": "services/database/db/repositories/user_repository.py:298",
+      "owner": "iam",
+      "reviewed_by": "security-engineering",
+      "reviewed_at": "2026-10-11",
+      "reason": "Role-name cleaning degrades to the built-in VALID_ROLES set when the custom_roles table cannot be read (pre-migration or schema drift). Assignment of an unresolvable name then falls back to the viewer default rather than storing an unvalidated role string; the API layer still 422s unknown names first."
     }
   ]
 }

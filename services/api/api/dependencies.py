@@ -374,8 +374,26 @@ def require_roles(*allowed: str):
             )
         # roles are read fresh from the users table
         roles = normalize_roles(_user_roles(user, None, db))
-        if not roles or set(roles) & allowed_norm:
+        if set(roles) & allowed_norm:
             return user
+        if not roles:
+            # The empty-role fallback exists for legacy single-admin
+            # deployments whose env-admin token carries no role claims.
+            # It must NOT apply to provisioned users whose roles are all
+            # custom role names (round 30): normalize_roles drops those,
+            # and an empty list here would silently upgrade them to
+            # admin on every require_roles endpoint.
+            from db.repositories.user_repository import UserRepository
+
+            try:
+                provisioned = (
+                    db is not None
+                    and UserRepository(db).get_by_username(user) is not None
+                )
+            except Exception:  # pragma: no cover - store unavailable
+                provisioned = False
+            if not provisioned:
+                return user
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Requires one of roles: {', '.join(allowed)}",

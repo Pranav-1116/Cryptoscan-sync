@@ -153,6 +153,33 @@ def permissions_for_roles(roles: list[str] | None) -> list[str]:
 # ---------------------------------------------------------------- FastAPI dep
 
 
+def _request_custom_index(request: Request) -> dict[str, frozenset[str]]:
+    """Per-request cache of the custom-role index (one DB read per request)."""
+    cached = getattr(request.state, "custom_roles_index", None)
+    if cached is not None:
+        return cached
+    index: dict[str, frozenset[str]] = {}
+    try:
+        from db.connection.session import SessionLocal
+
+        session = SessionLocal()
+        try:
+            index = load_custom_roles_index(session)
+        finally:
+            session.close()
+    except Exception:  # noqa: BLE001 — DB unavailable: built-ins only
+        index = {}
+    request.state.custom_roles_index = index
+    return index
+
+
+def _with_custom_roles(request: Request, raw_roles: list[str]) -> list[str]:
+    """Normalized built-ins plus the defined custom role names (kept)."""
+    roles = normalize_roles(list(raw_roles))
+    roles.extend(custom_role_names(list(raw_roles), _request_custom_index(request)))
+    return roles
+
+
 def _caller_roles(request: Request) -> tuple[str, list[str]]:
     """Resolve (principal, normalized roles) for the current request.
 
@@ -170,7 +197,7 @@ def _caller_roles(request: Request) -> tuple[str, list[str]]:
         )
     if isinstance(api_key, tuple):
         principal, key_roles, _key_id = api_key
-        return principal, normalize_roles(list(key_roles))
+        return principal, _with_custom_roles(request, list(key_roles))
     token = _token_from_request(request)
     if not token:
         raise HTTPException(
@@ -193,7 +220,7 @@ def _caller_roles(request: Request) -> tuple[str, list[str]]:
         try:
             user = UserRepository(session).get_by_username(username)
             if user is not None:
-                return username, normalize_roles(user.role_list)
+                return username, _with_custom_roles(request, list(user.role_list))
         finally:
             session.close()
     except Exception as _handler_exc:  # pragma: no cover - DB unavailable
@@ -204,7 +231,7 @@ def _caller_roles(request: Request) -> tuple[str, list[str]]:
         pass
     session = SessionManager().get_session(token)
     if session:
-        return username, normalize_roles(list(session.roles))
+        return username, _with_custom_roles(request, list(session.roles))
     return username, []
 
 
@@ -213,8 +240,9 @@ def require_permission(*actions: str):
 
     def dependency(request: Request) -> str:
         principal, roles = _caller_roles(request)
+        custom_index = _request_custom_index(request)
         for action in actions:
-            if has_permission(roles, action):
+            if has_permission_with_custom(roles, action, custom_index):
                 return principal
         detail = (
             f"Requires one of permissions: {', '.join(actions)} "
@@ -242,3 +270,85 @@ def require_any_role(*allowed: str):
         )
 
     return dependency
+
+
+# ---------------------------------------------------------- custom roles
+#
+# Report 13 §2.2 open item (round 30): a custom role is a named permission
+# SUBSET of the matrix — a narrower key, never a bypass. The pure core
+# stays pure; the DB index is loaded by the dependency layer.
+
+
+def has_permission_with_custom(
+    roles: list[str] | None,
+    action: str,
+    custom_index: dict[str, frozenset[str]] | None = None,
+) -> bool:
+    """Permission check that also honors custom-role grants.
+
+    ``custom_index`` maps a custom role name (lowercased) to its declared
+    permission set. Built-in matrix first, then custom grants — a custom
+    role grants an action iff the action is in its declared set, and the
+    set is validated against ``ALL_PERMISSIONS`` at write time, so it can
+    never grant an action the platform does not know.
+    """
+    if has_permission(roles, action):
+        return True
+    if not custom_index:
+        return False
+    for raw in roles or []:
+        granted = custom_index.get(str(raw).strip().lower())
+        if granted and action in granted:
+            return True
+    return False
+
+
+def permissions_with_custom(
+    roles: list[str] | None,
+    custom_index: dict[str, frozenset[str]] | None = None,
+) -> list[str]:
+    """Every action the role set may perform, custom grants included."""
+    out = set(permissions_for_roles(roles))
+    for raw in roles or []:
+        granted = (custom_index or {}).get(str(raw).strip().lower())
+        if granted:
+            out |= set(granted)
+    return sorted(out)
+
+
+def load_custom_roles_index(session) -> dict[str, frozenset[str]]:
+    """DB index of custom roles: name (lower) -> declared permissions.
+
+    Unknown permission values (e.g. left over from a matrix change) are
+    dropped at read time — a stale row grants nothing it should not.
+    """
+    index: dict[str, frozenset[str]] = {}
+    try:
+        from db.models.custom_role import CustomRole
+
+        rows = session.query(CustomRole).all()
+        for row in rows:
+            declared = {
+                str(item).strip()
+                for item in (row.permissions or [])
+                if str(item).strip() in ALL_PERMISSIONS
+            }
+            index[str(row.name).strip().lower()] = frozenset(declared)
+    except Exception:  # noqa: BLE001 — no table yet / DB unavailable
+        return {}
+    return index
+
+
+def custom_role_names(raw_roles: list[str] | None,
+                      custom_index: dict[str, frozenset[str]] | None) -> list[str]:
+    """The custom role names inside a raw role list (kept, not dropped).
+
+    ``normalize_roles`` must keep dropping unknown names for legacy-token
+    safety; this companion recovers exactly the names that ARE defined
+    custom roles, so they survive into the permission check.
+    """
+    if not custom_index:
+        return []
+    return [str(raw).strip()
+            for raw in (raw_roles or [])
+            if str(raw).strip().lower() in custom_index]

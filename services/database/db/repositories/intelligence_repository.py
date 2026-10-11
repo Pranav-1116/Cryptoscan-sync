@@ -116,6 +116,7 @@ class IntelligenceRepository:
             "integration_type",
             "primary_contact",
             "security_contact",
+            "technical_contact",
             "extra",
             "extra_json",
         }

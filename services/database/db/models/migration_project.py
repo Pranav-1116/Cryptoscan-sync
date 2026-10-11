@@ -53,6 +53,10 @@ class MigrationTask(BaseModel, TenantScoped):
     external_ref: Mapped[Optional[str]] = mapped_column(String(300), nullable=True, index=True)
     due_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    # round 30 execution engine (advanced/61 §4.2): task ids that must
+    # reach DONE/SKIPPED before this task may start. Plain list, kept in
+    # sync by the repository's dependency linker (cycle-checked).
+    depends_on: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
 
 class MigrationMilestone(BaseModel, TenantScoped):

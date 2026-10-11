@@ -285,6 +285,20 @@ class UserRepository:
             select(User).where(User.username == (username or "").strip().lower())
         ).scalar_one_or_none()
 
+    def _known_role_names(self) -> set[str]:
+        """Built-in role names plus the custom roles defined in this
+        deployment (round 30): a custom role survives assignment instead
+        of silently degrading to the viewer default."""
+        names = set(VALID_ROLES)
+        try:
+            from db.models.custom_role import CustomRole
+
+            rows = self.session.query(CustomRole.name).all()
+            names.update(str(r[0]).strip().lower() for r in rows if r[0])
+        except Exception:  # noqa: BLE001 — no table / read error: built-ins
+            pass
+        return names
+
     def create_user(
         self,
         username: str,
@@ -295,7 +309,8 @@ class UserRepository:
         email: str | None = None,
         is_active: bool = True,
     ) -> User:
-        clean_roles = sorted({r for r in (roles or ["viewer"]) if r in VALID_ROLES}) or ["viewer"]
+        known = self._known_role_names()
+        clean_roles = sorted({r for r in (roles or ["viewer"]) if r in known}) or ["viewer"]
         user = User(
             username=(username or "").strip().lower(),
             password_hash=password_hash,
@@ -312,7 +327,8 @@ class UserRepository:
         user = self.get_by_username(username)
         if user is None:
             return None
-        clean = sorted({r for r in roles if r in VALID_ROLES})
+        known = self._known_role_names()
+        clean = sorted({r for r in roles if r in known})
         user.roles = ",".join(clean) if clean else user.roles
         self.session.flush()
         return user

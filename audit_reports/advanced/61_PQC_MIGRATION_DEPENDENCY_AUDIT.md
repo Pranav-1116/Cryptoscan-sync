@@ -424,3 +424,47 @@ Function/Library/Key as first-class graph nodes with CALLS/IMPLEMENTS/
 SIGNS/ENCRYPTS edges (a code-level fact graph — see advanced/48's
 addendum) and the migration execution engine (the standing product
 open).
+
+## Round 30 addendum (2026-10-11) — dependency-aware ordering + execution control plane BUILT
+
+§4.2's "No Dependency-Aware Task Ordering / No Parallelization
+Analysis / No Rollback Plan" and §5.1's "tracking only" verdict are no
+longer accurate for the control plane:
+
+- Pure engine: `services/database/db/migration_execution.py` (lives in
+  the shared db kernel so repositories import it without a db→api
+  inversion). Kahn staging groups tasks into parallelizable stages and
+  REJECTS cycles with the cycle path; critical-path = longest
+  dependency chain; ready-set = TODO tasks whose deps are all
+  DONE/SKIPPED (a SKIPPED dependency satisfies — a withdrawn task
+  cannot block the chain forever); unknown dependency references are
+  surfaced, never silently dropped; a transition matrix gates status
+  moves, with DONE/SKIPPED→TODO allowed only through the explicit
+  rollback path.
+- DB: migration 0082 adds `migration_tasks.depends_on` (JSON id list);
+  the repository's linker cycle-checks BEFORE persisting.
+- Rollback plan (executed, not just planned): rolling back a task
+  transitively reverts DONE dependents to TODO and BLOCKS in-progress
+  dependents with the reason naming the rolled-back dependency; project
+  progress recomputes from tasks automatically.
+- Auto-derivation: `POST /migrations/{id}/dependencies/auto` derives
+  task ordering from `system_dependencies` edges (parent CALLS child →
+  the callee's tasks become dependencies of the caller's tasks),
+  validated as one batch — a batch that would close a cycle is rejected
+  whole.
+- API: `GET /migrations/{id}/execution-plan` (stages, parallelization,
+  critical path with titles, ready set, per-task blockers, unknown
+  refs, cycle), `POST /migrations/tasks/{id}/start` (409 with the
+  blocking chain until deps are satisfied), `/complete` (only from
+  IN_PROGRESS), `/rollback` (reason required), `POST
+  /migrations/{id}/execute/advance` (bulk wave kickoff of the ready
+  set), `POST /migrations/{id}/tasks/{tid}/dependencies`.
+- Tests: `services/api/tests/unit/test_migration_execution.py` (14
+  pure) + `test_migration_execution_api.py` (2 end-to-end lifecycles:
+  gating/advance/rollback cascade, and system-edge auto-derivation).
+- HONESTLY STILL OPEN (deployment-scoped, as §5.2 correctly scoped):
+  automated code refactoring, config migration, library upgrade
+  orchestration, HSM firmware coordination, certificate re-issuance,
+  key rotation, canary/blue-green — these need live infrastructure
+  targets; this round built the execution control plane over
+  operator-driven state, not the actuators.

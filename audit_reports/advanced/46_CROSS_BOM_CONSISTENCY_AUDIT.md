@@ -344,3 +344,37 @@
   API, P2 unified versioning, P3 federated queries — REMAIN OPEN,
   product/architecture-scoped** (consistent with deep/26's verdict on
   the three-generator question).
+
+## Round 30 addendum (2026-10-11) — VBOM generator BUILT
+
+P1#5 "Implement VBOM Generator — From vendor_intel + vendor_crypto" is
+no longer open.
+
+- `services/vendor_intel/vendor_intel/vbom.py`: pure `VbomGenerator`
+  (native ZELNX-VBOM document + CycloneDX-style export) and
+  `build_vbom(session, vendor_id=None)` assembling from exactly the
+  surfaces this report named — `vendors` + `vendor_crypto_inventory` —
+  plus `system_vendors` links (with system names and dependency type)
+  and the latest `vendor_profile_revisions` state.
+- Native document: one entry per vendor with contacts (incl. technical),
+  contract end, data classifications, linked systems, profile revision
+  status, the full crypto inventory, per-entry provenance
+  (discovery_method/confidence/discovered_at/verified_at/source_document
+  — the §7.2 evidence cross-reference), and a per-vendor PQC coverage
+  block. Vendors without declared inventory stay visible (honestly
+  flagged `none-declared`), never silently dropped.
+- CycloneDX export: one `cryptographic-asset` component per inventory
+  entry with `supplier` = vendor, `cryptoProperties.algorithmProperties`
+  (algorithm, parameterSetIdentifier = key size, mode), and provenance
+  under `evidence.properties`.
+- API: `GET /vendor-bom?fmt=native|cyclonedx` (estate-wide) and
+  `GET /vendors/{vendor_id}/vbom?fmt=...` (single vendor, 404 unknown).
+- Bug fixed along the way (found by the endpoint test):
+  `technical_contact` (added round 27) was missing from
+  `VendorCreate`/`VendorPatch` and the repository's allowed-field set —
+  the column existed but could never be set through the API.
+- Tests: `services/vendor_intel/tests/test_vbom.py` (5 pure),
+  `services/api/tests/unit/test_vbom_api.py` (2 end-to-end: import
+  inventory via the real vendor-CBOM endpoint, then read both formats).
+- Cross-BOM identifier coherence (P0#2/#4, unified queries, unified
+  versioning) REMAINS OPEN, architecture-scoped, as round 26 recorded.
