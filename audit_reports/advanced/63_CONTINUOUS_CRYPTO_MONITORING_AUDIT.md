@@ -393,3 +393,27 @@ while True:
   push (CVE matching itself runs during SBOM/CBOM generation and the
   devsecops scans), CloudTrail webhook ingestion, lockfile watching
   (asset-level drift + inventory drift already run per scan).
+
+## Round 34 addendum (2026-10-11) — CT-log entry ingestion BUILT (deterministic layer)
+
+CT-log streaming splits honestly into code and configuration, and the
+code half now ships:
+
+- `services/network_scanner/network_scanner/certificates/ct_entries.py`:
+  RFC 6962 `get-entries` leaf parsing (version/entry-type/3-byte DER
+  length), DER certificate -> inventory payload with SHA-256 fingerprint,
+  SANs, key identity and `extra["ct"]` provenance (log URL, index).
+  Precertificate leaves are skipped with an explicit
+  `unsupported_precert` reason rather than half-parsed; every rejected
+  entry is reported with a machine-readable reason.
+- `POST /certificates/ct-entries` (`ct-entries/ingest-v1`): batch ingest
+  into the certificate inventory (upsert semantics, composite/hybrid
+  detection rides along free). A live poller or a log-monitor export
+  feeds it.
+- Tests: `services/network_scanner/tests/test_ct_entries.py` — every
+  assertion against a real cryptography-parsed certificate packed into
+  an RFC 6962 leaf.
+
+Still deployment-scoped, unchanged: the live poller pointed at a real
+log/monitor endpoint — that is configuration (which logs, which monitor,
+what credentials), not code.

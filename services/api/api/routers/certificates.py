@@ -331,6 +331,58 @@ def lifecycle_revoke(
     }
 
 
+class CtEntryIngest(BaseModel):
+    """One CT log entry — the get-entries shape (leaf_input b64, index)."""
+    leaf_input: str = Field(..., min_length=1)
+    index: int | None = None
+
+
+class CtIngestRequest(BaseModel):
+    log_url: str | None = Field(None, max_length=500)
+    entries: list[CtEntryIngest] = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/ct-entries")
+def ingest_ct_log_entries(
+    body: CtIngestRequest,
+    user: str = Depends(require_permission("certificates.manage")),
+    db: Session = Depends(get_db_session),
+):
+    """Ingest Certificate-Transparency log entries into cert inventory (audit 63).
+
+    Accepts ``get-entries`` shaped batches (``leaf_input`` base64, optional
+    index, log URL for provenance) — the deterministic layer a CT poller
+    or a log-monitor export feeds. Live log streaming itself stays
+    deployment-scoped (a real log/monitor endpoint is configuration, not
+    code). Precertificate leaves are skipped with an explicit reason
+    rather than half-parsed; every rejected entry is reported, never
+    silently dropped. Composite/hybrid detection rides along on ingest.
+    """
+    from network_scanner.certificates.ct_entries import ingest_ct_entries
+
+    batch = ingest_ct_entries(
+        [e.model_dump() for e in body.entries], log_url=body.log_url)
+    repo = CertificateRepository(db)
+    imported: list[str] = []
+    composite = 0
+    for payload in batch["payloads"]:
+        row = repo.upsert(payload)
+        db.commit()
+        imported.append(row.fingerprint_sha256)
+        if (row.extra or {}).get("composite"):
+            composite += 1
+    return {
+        "model": "ct-entries/ingest-v1",
+        "imported": len(imported),
+        "skipped": len(batch["skipped"]),
+        "skip_detail": batch["skipped"],
+        "composite_detected": composite,
+        "fingerprints": imported,
+        "note": "deterministic ingestion layer; live CT log streaming is "
+                "deployment-scoped",
+    }
+
+
 @router.get("/lifecycle/renewal-queue")
 def renewal_queue(
     lead_days: int = 30,

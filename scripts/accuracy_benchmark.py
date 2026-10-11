@@ -76,14 +76,20 @@ def run() -> dict:
                 crash = None
             predicted: set[str] = set()
             unknown = 0
+            reports: list[dict] = []  # per-detector labeled-calibration rows (audit 49)
             for f in findings:
                 fams = canonical_families(f.crypto.algorithm)
                 if not fams:
                     unknown += 1
                 predicted.update(fams)
+                for fam in fams:
+                    reports.append({"scanner": f.scanner_id, "family": fam})
                 if (f.source.language or "").upper() in {"JAVA", "KOTLIN", "SCALA"}:
                     # JCA transformation strings are algorithm specs by construction
-                    predicted.update(spec_families(f.crypto.raw_transformation))
+                    spec = spec_families(f.crypto.raw_transformation)
+                    predicted.update(spec)
+                    for fam in spec:
+                        reports.append({"scanner": f.scanner_id, "family": fam})
             tp = sorted(expected & predicted)
             fn = sorted(expected - predicted)
             fp = sorted(predicted - expected)
@@ -92,6 +98,7 @@ def run() -> dict:
                 "language": lang, "file": fname, "category": category,
                 "expected": sorted(expected), "predicted": sorted(predicted),
                 "tp": tp, "fn": fn, "fp": fp, "tn": tn, "unknown": unknown, "crash": crash,
+                "reports": reports,
             })
 
     def metrics(rows):

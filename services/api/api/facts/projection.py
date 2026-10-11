@@ -106,3 +106,72 @@ def summarize_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         "facts_with_hardcoded_keys": sum(
             1 for i in facts if i.get("hardcoded_key_observations")),
     }
+
+
+def code_graph_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """Code-level fact graph slice: file DEFINES fact OBSERVED_BY evidence.
+
+    A bounded, honest slice of the code-level fact graph (advanced/48
+    P1#11, advanced/58): file nodes link to the cryptographic facts their
+    code defines/uses, and each fact cites its exact evidence records.
+    ``CALLS`` edges need call-graph parsing the scanners do not produce
+    today, so they are absent and stated as absent — not guessed from
+    co-location. A live projection over the same evidence rows as
+    ``GET /facts/crypto``; nothing persisted, no rearchitecture.
+    """
+    facts = list(facts or ())
+    files: dict[str, dict[str, Any]] = {}
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+
+    for item in facts:
+        fact = item.get("fact") or {}
+        file_path = str(fact.get("file_path") or "") or "(unknown file)"
+        if file_path not in files:
+            files[file_path] = {"node_count": 0, "facts": []}
+        fact_id = f"fact:{fact.get('algorithm')}:{fact.get('purpose') or '-'}:{file_path}"
+        files[file_path]["node_count"] += 1
+        files[file_path]["facts"].append(fact_id)
+        nodes.append({
+            "id": fact_id,
+            "type": "fact",
+            "algorithm": fact.get("algorithm"),
+            "purpose": fact.get("purpose"),
+            "file": file_path,
+            "key_size": fact.get("key_size"),
+            "mode": fact.get("mode"),
+            "observation_count": item.get("observation_count"),
+            "hardcoded_key_observations": item.get("hardcoded_key_observations"),
+        })
+        edges.append({
+            "from": f"file:{file_path}",
+            "to": fact_id,
+            "relation": "DEFINES",
+        })
+        for evidence_id in item.get("evidence_ids") or []:
+            edges.append({
+                "from": fact_id,
+                "to": f"evidence:{evidence_id}",
+                "relation": "OBSERVED_BY",
+            })
+
+    for file_path in sorted(files):
+        nodes.append({
+            "id": f"file:{file_path}",
+            "type": "file",
+            "fact_count": files[file_path]["node_count"],
+        })
+
+    return {
+        "model": "code-fact-graph/read-projection-v1",
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "file_count": len(files),
+        "nodes": nodes,
+        "edges": edges,
+        "relations": ["DEFINES", "OBSERVED_BY"],
+        "open_relations": {
+            "CALLS": "needs call-graph parsing the scanners do not "
+                     "produce; absent, not guessed from co-location",
+        },
+    }

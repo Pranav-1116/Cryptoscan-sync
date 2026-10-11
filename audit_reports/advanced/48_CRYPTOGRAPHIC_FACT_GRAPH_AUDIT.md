@@ -503,3 +503,23 @@ The first, explicitly-scoped step of report 51's fact/risk separation:
 - STILL open, unchanged: the write-side rearchitecture (fact rows as
   the source of truth), code/function-level nodes, key hierarchy,
   runtime binding — as round 26 recorded.
+
+## Round 34 addendum (2026-10-11) — code-level fact graph, first slice BUILT
+
+The roadmap-sized "code-level fact graph" now has its honest first
+slice, projected live over the same evidence rows as `GET /facts/crypto`:
+
+- `GET /facts/code-graph` (`code-fact-graph/read-projection-v1`):
+  `file DEFINES fact OBSERVED_BY evidence` — file nodes, fact nodes
+  (algorithm/purpose/key-size identity), and every fact citing its exact
+  evidence records. Nothing persisted, no write-side change, filters by
+  algorithm / file prefix / min observations, bounded row read.
+- `CALLS` edges are absent and stated as absent: they need call-graph
+  parsing the scanners do not produce today, and file co-location is not
+  a call. The response says so under `open_relations`.
+- Tests: `services/api/tests/unit/test_facts_code_graph.py` (pure graph
+  shape + API end to end).
+
+Still open, unchanged: CALLS edges (call-graph parsing), function-level
+nodes, key hierarchy, runtime binding, build provenance, and the 51
+write-side rearchitecture.

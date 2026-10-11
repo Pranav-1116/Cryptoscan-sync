@@ -564,3 +564,15 @@ Still open from §"Binary/Firmware": control-flow analysis (angr/ghidra) — P3.
   angr/Ghidra integration is heavy external tooling with licensing and
   performance implications; current binary analysis is
   symbol/string/fingerprint based. Tracked in 00_ROUND_STATUS.
+
+## Round 34 addendum (2026-10-11) — labeled per-detector calibration BUILT
+
+Per-detector labeled TP/FP/precision over the ground-truth corpus now
+ships next to the accuracy platform's dataset metrics:
+`GET /findings/detectors/labeled-calibration`
+(`labeled-ground-truth/detector-calibration-v1`), fed by per-finding
+detector reports added to the benchmark run. Misses stay scanner-level
+(per-detector recall is not fabricated), thin data is INSUFFICIENT_DATA,
+and the surface is deliberately separate from the production proxy
+scorecards (audit 49). Binary control-flow analysis (P0#3) remains open,
+product-scoped, unchanged.

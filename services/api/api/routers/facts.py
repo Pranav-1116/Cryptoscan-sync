@@ -77,3 +77,54 @@ def crypto_facts(
         "facts_returned": min(len(facts), limit),
         "facts_matching": len(facts),
     }
+
+
+@router.get("/code-graph")
+def code_fact_graph(
+    algorithm: str | None = Query(None, description="Filter by exact algorithm name"),
+    file_prefix: str | None = Query(None, description="Filter by file path prefix"),
+    min_observations: int = Query(1, ge=1, description="Only facts observed at least this often"),
+    include_deleted: bool = Query(False, description="Include soft-deleted evidence rows"),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Code-level fact graph slice (advanced/48 P1#11, advanced/58, round 34).
+
+    ``file DEFINES fact OBSERVED_BY evidence`` — a live projection over
+    the same evidence rows as ``GET /facts/crypto``, shaped as nodes and
+    edges. ``CALLS`` edges are absent and stated as absent: they need
+    call-graph parsing the scanners do not produce, and co-location is
+    not a call. Nothing persisted; the fused write side is unchanged.
+    """
+    from api.facts.projection import code_graph_facts, project_facts
+    from db.repositories.evidence_repository import EvidenceRepository
+
+    repo = EvidenceRepository(db)
+    rows: list = []
+    page = 1
+    while len(rows) < MAX_ROWS:
+        batch, total = repo.list_all(
+            algorithm=algorithm, page=page, page_size=500,
+            include_deleted=include_deleted,
+        )
+        if not batch:
+            break
+        rows.extend(batch)
+        page += 1
+        if len(rows) >= total:
+            break
+    truncated = len(rows) > MAX_ROWS
+    if truncated:
+        rows = rows[:MAX_ROWS]
+
+    dicts = [row.to_dict() for row in rows]
+    facts = project_facts(dicts)
+    if file_prefix:
+        facts = [f for f in facts
+                 if str(f["fact"].get("file_path") or "").startswith(file_prefix)]
+    facts = [f for f in facts if f["observation_count"] >= min_observations]
+    graph = code_graph_facts(facts)
+    graph["evidence_rows_read"] = len(rows)
+    graph["truncated"] = truncated
+    graph["fact_count"] = len(facts)
+    return graph

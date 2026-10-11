@@ -488,3 +488,10 @@ topology" now has its ingestion surface:
 - STILL open, unchanged in kind: live discovery (cloud API / K8s API
   feeds), DNS/CDN/WAF inventory scans — the sources; this round built
   the sink they will write into.
+
+## Round 34 addendum (2026-10-11) — code-level DEFINES edges, first slice
+
+The "code-level DEFINES/CALLS edges" remainder now has its first half:
+`GET /facts/code-graph` projects `file DEFINES fact OBSERVED_BY evidence`
+live over evidence (advanced/48 round-34 addendum has the full surface).
+CALLS stays open — call-graph parsing, not co-location.

@@ -513,3 +513,28 @@ suite 139).
   same-instrument rule (one scanner in two scans is still one observer).
   Tests: 10 unit (`services/normalization/tests/unit/test_corroboration.py`)
   + 1 API test.
+
+## Round 34 addendum (2026-10-11) — labeled ground-truth calibration BUILT
+
+The "would need FP/FN labels, not proxies" remainder of P0#4 is closed:
+the labels already existed — the hand-labeled accuracy corpus (21 files,
+every case carrying the exact algorithm families a correct scanner must
+report, hard negatives labeling any report as a false positive).
+
+- `scripts/accuracy_benchmark.py` now carries per-finding detector
+  reports (scanner id + reported family) through every case, alongside
+  the existing TP/FN/FP family sets.
+- `services/scanner/scanner/labeled_calibration.py` — pure
+  `labeled_detector_metrics`: per-detector TP/FP/precision against the
+  labels (hard negatives count every report as FP), FN deliberately
+  scanner-level (which detector *should* have seen a family is a
+  coverage question — per-detector recall is not fabricated), thin data
+  reported as INSUFFICIENT_DATA with raw counts.
+- `GET /findings/detectors/labeled-calibration` runs the corpus once per
+  process (deterministic, hermetic) and surfaces the labeled calibration
+  — explicitly separate from the production proxy scorecards: labeled
+  metrics measure detectors on ground truth, scorecards measure them on
+  real traffic. Both views, not either alone.
+- Tests: `services/scanner/tests/unit/test_labeled_calibration.py` (5),
+  `services/api/tests/unit/test_labeled_calibration_api.py` (3, over the
+  real corpus).

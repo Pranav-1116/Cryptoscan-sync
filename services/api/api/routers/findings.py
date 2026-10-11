@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from functools import lru_cache
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -317,6 +318,48 @@ def detector_scorecards(
     result["scans_considered"] = len(scan_rows)
     result["observations"] = len(views)
     return result
+
+
+@lru_cache(maxsize=1)
+def _corpus_benchmark() -> tuple:
+    """Run the labeled accuracy corpus once per process (hermetic, deterministic)."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    bench = Path(__file__).resolve().parents[4] / "scripts" / "accuracy_benchmark.py"
+    spec = importlib.util.spec_from_file_location("accuracy_benchmark_runtime", bench)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules["accuracy_benchmark_runtime"] = mod
+    spec.loader.exec_module(mod)
+    report = mod.run()
+    return (report,)
+
+
+@router.get("/findings/detectors/labeled-calibration")
+def labeled_detector_calibration(
+    user: str = Depends(get_current_user),
+):
+    """Labeled ground-truth calibration (audits 49 P0#4 + 52, round 34).
+
+    Per-detector TP/FP/precision measured against the hand-labeled
+    accuracy corpus — every case carries the exact algorithm families a
+    correct scanner must report, and hard negatives label any report as a
+    false positive. Misses stay scanner-level (which detector *should*
+    have seen a family is a coverage question, so per-detector recall is
+    never fabricated).
+
+    Deliberately separate from `GET /findings/detectors/scorecards`:
+    that surface calibrates over production traffic through honest
+    proxies (retractions, authority losses); this one measures against
+    fixed ground truth. Both views, not either alone.
+    """
+    from scanner.labeled_calibration import labeled_detector_metrics
+
+    report = _corpus_benchmark()[0]
+    calibration = labeled_detector_metrics(report.get("cases") or [])
+    calibration["corpus_overall"] = report.get("overall")
+    return calibration
 
 
 @router.get("/findings/{evidence_id}", response_model=FindingResponse)
