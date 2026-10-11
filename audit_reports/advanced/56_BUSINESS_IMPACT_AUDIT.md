@@ -386,3 +386,24 @@ Crypto Finding (RSA-2048, quantum_vulnerable)
   capability model, Monte Carlo, executive dashboard — REMAIN OPEN,
   product-scoped.** (Unified risk with derivation signals + exposure
   paths shipped round 19.)
+
+## Round 32 addendum (2026-10-11) — per-algorithm revenue attribution BUILT (graph-derived)
+
+The "per-algorithm revenue attribution" open item now ships as a live
+read projection instead of the denormalised FK the report weighed:
+
+- `GET /business/impact/by-algorithm`
+  (model `business-impact/by-algorithm-v1`): for each algorithm, the
+  business processes reachable through the linkage graph the pipeline
+  already maintains (CryptoAsset ← USES ← System → SUPPORTS →
+  BusinessProcess), with asset/system/process counts and
+  revenue/customer sums **over distinct processes** (a process served by
+  two systems on the same algorithm counts once). Assets without a
+  system/process link honestly produce no attribution row.
+- Why not the `CryptoAsset.business_process_id` FK: derived attribution
+  cannot drift from the linkage truth, and one algorithm touching a
+  process through many assets stays a single correct row. The FK itself
+  remains an open product decision, as do Certificate→BusinessProcess
+  attribution and DriftEvent→impact edges.
+- Tests: `services/api/tests/unit/test_business_impact_api.py`
+  (distinct-process sums, unlinked assets absent, empty graph, anon 401).

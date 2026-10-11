@@ -490,3 +490,24 @@ this report found missing:
   from/to, timestamp per transition). Deriving the columns from that
   trail is straightforward if a query surface ever needs them — the
   truth source already exists.
+
+## Round 32 addendum (2026-10-11) — P0#4 lifecycle timestamps BUILT as derived projection
+
+The deliberately-open "no verified_at/deprecated_at columns" item now has
+its query surface, derived exactly the way this report anticipated
+("derive from the audited transition trail; the truth source already
+exists"):
+
+- `GET /inventory/assets/{id}/lifecycle/timeline`
+  (model `lifecycle-timeline/derived-v1`): the full audited transition
+  trail (`inventory.asset_lifecycle` platform events — from/to state,
+  reason, actor, timestamp, event id) plus
+  `derived_timestamps.{verified,active,deprecated,retired}_at` = the most
+  recent audited transition INTO each state. Re-activation moves
+  `active_at` forward; pre-trail history is honestly absent, not
+  fabricated.
+- Denormalised columns remain a deliberate non-choice: a derived
+  projection cannot drift from the trail it reads.
+- Tests: `services/api/tests/unit/test_lifecycle_timeline_api.py`
+  (empty trail → all nulls; DISCOVERED→VERIFIED→ACTIVE→DEPRECATED walk
+  with per-state derivation; per-asset isolation; 404/401).

@@ -120,6 +120,47 @@ def list_certificates(
     return {"certificates": [row.to_dict() for row in rows], "total_count": len(rows)}
 
 
+@router.get("/certificates/composite")
+def list_composite_certificates(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Composite / hybrid certificate inventory (audit 59).
+
+    Certificates that pair a post-quantum algorithm with a classical one
+    (e.g. ML-DSA-65 + ECDSA-P384) in a single identifier. Detection runs on
+    ingest against the registered composite OID arcs and algorithm-name
+    registry — a composite scheme outside both registries is NOT reported
+    here (unknown identifiers stay unknown, they are not guessed).
+    """
+    rows = CertificateRepository(db).list_composite()
+    entries = []
+    scheme_counts: dict[str, int] = {}
+    for row in rows:
+        composite = (row.extra or {}).get("composite") or {}
+        scheme_counts[composite.get("scheme") or "unknown"] = (
+            scheme_counts.get(composite.get("scheme") or "unknown", 0) + 1
+        )
+        entries.append({
+            "fingerprint_sha256": row.fingerprint_sha256,
+            "subject": row.subject,
+            "issuer": row.issuer,
+            "not_after": row.not_after.isoformat() if row.not_after else None,
+            "days_until_expiry": row.days_until_expiry,
+            "public_key_algorithm": row.public_key_algorithm,
+            "composite": composite,
+        })
+    return {
+        "model": "composite-certificates/read-projection-v1",
+        "count": len(entries),
+        "scheme_counts": scheme_counts,
+        "certificates": entries,
+        "detection": "registered composite OID arcs (2.16.840.1.114027.80/81/82) "
+                     "and the composite name registry; unknown identifiers are "
+                     "not reported as composite",
+    }
+
+
 @router.patch("/certificates/{fingerprint}/renewal")
 def update_certificate_renewal(
     fingerprint: str,

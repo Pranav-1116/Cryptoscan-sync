@@ -25,6 +25,7 @@ from api.dependencies import (
 from api.events.auth import publish_auth
 from db.models.custom_role import CustomRole
 from api.security import totp
+from api.security.audit_diff import audit_detail_with_changes, field_diff
 from api.security.auth import AuthenticationError, AuthService
 from api.security.passwords import (
     PasswordPolicyError,
@@ -664,6 +665,8 @@ def update_me(
     user = repo.get_by_username(username)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Account not found")
+    # field-level audit diff (audit 78): capture the before snapshot up front
+    before = {"display_name": user.display_name, "email": user.email}
     changes: dict = {}
     if body.display_name is not None:
         user.display_name = body.display_name.strip() or None
@@ -680,7 +683,8 @@ def update_me(
         "user.profile_update",
         target_type="user",
         target_id=username,
-        detail=changes,
+        detail=audit_detail_with_changes(field_diff(before, {
+            "display_name": user.display_name, "email": user.email})),
         ip=request.client.host if request.client else None,
     )
     db.commit()
@@ -1254,6 +1258,11 @@ def update_user(
     user = repo.get_by_username(username)
     if user is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    # field-level audit diff (audit 78): before/after per changed field
+    before = {
+        "roles": list(user.role_list or []),
+        "is_active": bool(user.is_active),
+    }
     changes: dict = {}
     if body.roles is not None:
 
@@ -1276,12 +1285,24 @@ def update_user(
         repo.set_password(username, hash_password(body.password))
         changes["password_rotated"] = True
         changes["revoked_sessions"] = repo.revoke_all_sessions(username)
+    diff = field_diff(before, {
+        "roles": list(user.role_list or []),
+        "is_active": bool(user.is_active),
+    })
+    if body.password is not None:
+        # rotation is auditable; the value never is — sentinels mask to ***
+        diff.extend(field_diff({"password": "<previous>"}, {"password": "<rotated>"}))
     repo.audit(
         admin,
         "user.update",
         target_type="user",
         target_id=username,
-        detail=changes,
+        detail=audit_detail_with_changes(
+            diff,
+            **{k: v for k, v in changes.items() if k != "revoked_sessions"},
+            **({"revoked_sessions": changes["revoked_sessions"]}
+               if "revoked_sessions" in changes else {}),
+        ),
         ip=request.client.host if request.client else None,
     )
     db.commit()
@@ -1530,9 +1551,10 @@ def update_custom_role(
     db.flush()
     _user_repo(db).audit(
         admin, "custom_role.update", target_type="custom_role", target_id=row.name,
-        detail={"before": before,
-                "after": {"permissions": sorted(row.permissions or []),
-                          "description": row.description}},
+        detail=audit_detail_with_changes(field_diff(before, {
+            "permissions": sorted(row.permissions or []),
+            "description": row.description,
+        })),
         ip=request.client.host if request.client else None,
     )
     db.commit()

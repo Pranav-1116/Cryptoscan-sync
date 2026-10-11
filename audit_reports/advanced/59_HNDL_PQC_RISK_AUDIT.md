@@ -437,3 +437,32 @@ RESTRICTED for Kyber drafts and sntrup761).
   drives migration deadlines (2y/5y horizons) in the quantum plan.
 * Remaining opens are fine-grained: composite-certificate handling and
   backup-crypto longevity propagation (product-scoped).
+
+## Round 32 addendum (2026-10-11) — composite-certificate handling BUILT
+
+The composite/hybrid certificate gap is closed end-to-end:
+
+- `shared/shared_models/shared_models/composite_certificates.py` — pure
+  detection registry: the registered composite OID arcs
+  (`2.16.840.1.114027.80/81/82` — Composite ML-DSA signatures, chameleon
+  composites, composite KEMs; arc-prefix matching because suffixes still
+  move across draft revisions) plus name pairing (a PQ marker AND a
+  classical marker — `id-ML-DSA65-RSA2048-PSS-SHA512`,
+  `ML-KEM-768+ECDH-P384`, `mldsa65_rsa2048`), with best-effort component
+  extraction. Unknown identifiers stay unknown — no heuristic guessing.
+- Ingest: `CertificateRepository.upsert` runs detection on every create
+  and merge and stores it in `extra["composite"]` (so listing stays
+  single-query); all ingest paths (scan results, CA issuance, cloud
+  provider collection) flow through it.
+- Read surface: `GET /certificates/composite`
+  (`composite-certificates/read-projection-v1`) — entries with components
+  and scheme, plus scheme counts and an explicit statement of what the
+  detection does and does not cover.
+- Tests: `shared/shared_models/tests/test_composite_certificates.py`
+  (OID arcs, name pairing, ordinary algorithms negative, unknown-OID
+  honesty), `services/api/tests/unit/test_composite_certs_api.py`
+  (ingest + listing + anon 401).
+
+Still open, product-scoped: backup-crypto longevity propagation (a
+backup format's algorithm limits how far archived material stays
+decryptable — a policy model, not just detection).

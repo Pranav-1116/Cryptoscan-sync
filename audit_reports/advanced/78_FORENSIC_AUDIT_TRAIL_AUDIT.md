@@ -384,3 +384,29 @@ third party. The governance request workflow captures before-state
 field-level before/after capture on every data mutation, Alembic
 schema-migration auditing, config-change auditing with before/after,
 and a unified cross-system timeline view.
+
+## Round 32 addendum (2026-10-11) — field-level diff on identity-plane mutations BUILT
+
+P0#1's "every mutation records only that it happened, not what changed"
+now has its canonical shape and its first wired surfaces:
+
+- `services/api/api/security/audit_diff.py` — pure `field_diff()` /
+  `audit_detail_with_changes()`: only changed fields are listed, each as
+  `{field, before, after}`; sensitive fields (password, secret, token,
+  api_key, private_key) are masked to `***` on both sides — the fact of a
+  change is auditable, the value never is; a `summary` key carries the
+  changed-field names for filtering.
+- Wired into the audited identity-plane mutations: `user.update`
+  (roles/is_active before→after, password rotation as a masked diff entry
+  plus the existing rotation marker), `user.profile_update`
+  (display_name/email), `custom_role.update` (permissions/description —
+  replacing the ad-hoc before/after dicts with the canonical shape).
+- Tests: `services/api/tests/unit/test_audit_field_diff.py` (pure diff
+  semantics incl. masking and new/removed fields, plus API round-trips
+  through `/auth/audit` for all three surfaces).
+
+Still open, honestly: the same shape on the remaining mutation surfaces
+(certificate renewal/ownership writes, vendor patches, migration-task
+edits), Alembic schema-migration auditing, config-change before/after,
+and the unified cross-system timeline view — each is a bounded wiring
+task over the helper that now exists.

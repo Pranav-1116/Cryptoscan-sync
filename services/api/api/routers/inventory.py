@@ -508,3 +508,65 @@ def transition_asset_lifecycle(
         "reason": body.reason,
         "transitions": LIFECYCLE_TRANSITIONS,
     }
+
+
+@router.get("/assets/{asset_id}/lifecycle/timeline")
+def asset_lifecycle_timeline(
+    asset_id: str,
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Lifecycle timeline for one crypto asset, derived from the event trail.
+
+    Audit 54 P0#4: the platform deliberately has no denormalised
+    ``verified_at`` / ``deprecated_at`` columns — the truth source is the
+    audited transition trail this endpoint reads (``inventory.asset_lifecycle``
+    platform events, persisted by ``emit_platform_event``). ``derived``
+    timestamps below are the time of the most recent transition INTO each
+    state, so re-activating a deprecated asset moves ``active_at`` forward
+    and re-deprecating moves ``deprecated_at`` again. Pre-trail transitions
+    (anything before a state was first recorded) are honestly absent.
+    """
+    from db.models.monitor import MonitorEvent
+
+    asset = filtered_get(db, CryptoAsset, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail="Crypto asset not found")
+    rows = (
+        db.query(MonitorEvent)
+        .filter(MonitorEvent.event_type == "inventory.asset_lifecycle")
+        .order_by(MonitorEvent.created_at.asc())
+        .all()
+    )
+    transitions = []
+    for row in rows:
+        payload = row.payload or {}
+        if payload.get("asset_id") != asset_id:
+            continue
+        transitions.append({
+            "from_state": payload.get("from_state"),
+            "to_state": payload.get("to_state"),
+            "reason": payload.get("reason"),
+            "actor": payload.get("actor"),
+            "at": row.created_at.isoformat() if row.created_at else None,
+            "event_id": row.id,
+        })
+    derived: dict[str, str | None] = {
+        f"{state.lower()}_at": None
+        for state in ("VERIFIED", "ACTIVE", "DEPRECATED", "RETIRED")
+    }
+    for entry in transitions:
+        key = f"{str(entry['to_state'] or '').lower()}_at"
+        if key in derived:
+            derived[key] = entry["at"]
+    return {
+        "model": "lifecycle-timeline/derived-v1",
+        "asset_id": asset_id,
+        "algorithm": asset.algorithm,
+        "current_state": asset.lifecycle_state or "DISCOVERED",
+        "transition_count": len(transitions),
+        "transitions": transitions,
+        "derived_timestamps": derived,
+        "derivation": "most recent audited transition into each state, from the "
+                      "inventory.asset_lifecycle event trail (no denormalised columns)",
+    }

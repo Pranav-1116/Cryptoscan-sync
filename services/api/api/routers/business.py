@@ -285,6 +285,98 @@ def list_processes(user: str = Depends(get_current_user), db: Session = Depends(
     return {"processes": rows}
 
 
+@router.get("/business/impact/by-algorithm")
+def business_impact_by_algorithm(
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+) -> dict:
+    """Per-algorithm business-impact attribution (audit 56).
+
+    For each cryptographic algorithm, the business processes reachable
+    through the linkage graph the pipeline already maintains:
+
+        CryptoAsset <- USES <- System -> SUPPORTS -> BusinessProcess
+
+    Revenue / customer figures are the *sum over distinct processes* whose
+    supporting systems use that algorithm — a process served by two systems
+    on the same algorithm counts once. This is deliberately a read
+    projection over the graph, NOT the denormalised
+    ``CryptoAsset.business_process_id`` FK the report lists as an open
+    design choice: attribution derived live cannot drift from the linkage
+    truth, and one algorithm touching a process through many assets stays a
+    single (correct) row. The FK remains an open product decision.
+    """
+    from db.models.business_process import BusinessProcess
+    from db.models.crypto_asset import CryptoAsset
+    from db.models.system import System
+    from db.models.system_asset import SystemAsset
+    from db.models.system_business_process import SystemBusinessProcess
+
+    rows = db.execute(
+        select(
+            CryptoAsset.id,
+            CryptoAsset.algorithm,
+            System.id,
+            System.name,
+            SystemBusinessProcess.process_id,
+            BusinessProcess.name,
+            BusinessProcess.revenue_daily,
+            BusinessProcess.customer_count,
+        )
+        .join(SystemAsset, SystemAsset.asset_id == CryptoAsset.id)
+        .join(System, System.id == SystemAsset.system_id)
+        .join(SystemBusinessProcess, SystemBusinessProcess.system_id == SystemAsset.system_id)
+        .join(BusinessProcess, BusinessProcess.id == SystemBusinessProcess.process_id)
+    ).all()
+
+    by_algorithm: dict[str, dict] = {}
+    for (asset_id, algorithm, system_id, system_name,
+         process_id, process_name, revenue, customers) in rows:
+        entry = by_algorithm.setdefault(algorithm, {
+            "algorithm": algorithm,
+            "asset_ids": set(),
+            "system_ids": set(),
+            "system_names": set(),
+            "processes": {},  # process_id -> {name, revenue_daily, customer_count}
+        })
+        entry["asset_ids"].add(asset_id)
+        entry["system_ids"].add(system_id)
+        entry["system_names"].add(system_name)
+        entry["processes"].setdefault(process_id, {
+            "name": process_name,
+            "revenue_daily": float(revenue or 0),
+            "customer_count": int(customers or 0),
+        })
+
+    results = []
+    for algorithm in sorted(by_algorithm):
+        entry = by_algorithm[algorithm]
+        processes = entry["processes"]
+        results.append({
+            "algorithm": algorithm,
+            "asset_count": len(entry["asset_ids"]),
+            "system_count": len(entry["system_ids"]),
+            "systems": sorted(entry["system_names"]),
+            "process_count": len(processes),
+            "processes": sorted(
+                ({"id": pid, "name": p["name"],
+                  "revenue_daily": p["revenue_daily"],
+                  "customer_count": p["customer_count"]}
+                 for pid, p in processes.items()),
+                key=lambda p: p["name"],
+            ),
+            "revenue_daily_total": round(sum(p["revenue_daily"] for p in processes.values()), 2),
+            "customer_count_total": sum(p["customer_count"] for p in processes.values()),
+        })
+    return {
+        "model": "business-impact/by-algorithm-v1",
+        "derivation": "graph-derived: CryptoAsset <- USES <- System -> SUPPORTS -> "
+                      "BusinessProcess; sums are over distinct processes per algorithm",
+        "algorithm_count": len(results),
+        "impacts": results,
+    }
+
+
 @router.post("/business/processes")
 def create_process(body: ProcessCreate, user: str = Depends(get_current_user), db: Session = Depends(get_db_session)):
     return IntelligenceRepository(db).create_process(**body.model_dump()).to_dict()
