@@ -41,6 +41,31 @@ class APISettings(BaseSettings):
 
     SECRET_KEY: str = "dev-cryptoscan-secret-key-change-in-production-32"
 
+    # Offline licensing (advanced/73 P0#1, round 31): HMAC-signed license
+    # document — inline JSON or a file path. LICENSE_REQUIRED=off keeps
+    # community/self-hosted installs fully open (the default).
+    LICENSE_REQUIRED: bool = False
+    LICENSE_SIGNING_KEY: str = ""
+    LICENSE_DOCUMENT: str = ""
+    LICENSE_SITE_ID: str = ""
+
+    # External secrets (advanced/75 P0#1, round 31): providers may be
+    # referenced from any credential setting as vault://... / file:... /
+    # env:... and are resolved at startup (see api.security.vault).
+    VAULT_ADDR: str = ""
+    VAULT_TOKEN: str = ""
+    VAULT_KV_MOUNT: str = "secret"
+    VAULT_TIMEOUT_SECONDS: float = 5.0
+    VAULT_PROVIDERS_DISABLED: bool = False  # kill-switch: inline values only
+
+    # Zero-trust policy decision point (advanced/82, round 31): external
+    # policy-as-code that can only RESTRICT (deny-wins over RBAC allow).
+    ZERO_TRUST_ENFORCED: bool = False
+    ZERO_TRUST_POLICY_FILE: str = ""
+    OPA_URL: str = ""
+    OPA_POLICY_PATH: str = "cryptoscan/allow"
+    OPA_TIMEOUT_SECONDS: float = 3.0
+
     # PKI report signing (W55-56): optional path to an RSA private key (PEM).
     # When set, /scans/{id}/report carries a real RS256 signature; when unset
     # the signature stays null — we never downgrade to HMAC-and-call-it-signed.

@@ -54,6 +54,14 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
     system_payloads = []
     edges = []
     asset_payloads = []
+    # Declared network topology (advanced/58, round 31): dns/cdn/waf/lb hops
+    # + their chain edges, honestly labeled source="declared".
+    try:
+        from db.repositories.topology_repository import TopologyRepository
+
+        topology_payload = TopologyRepository(session).graph_payload()
+    except Exception:
+        topology_payload = {"nodes": [], "edges": []}
     owner_index = {((row.email or "").lower(), (row.name or "").lower()): row for row in intel.list_owners()}
     owners_by_id: dict[str, dict[str, Any]] = {}
     for system in systems:
@@ -223,6 +231,7 @@ def collect_graph_payload(session: Session) -> dict[str, Any]:
         "cloud_resources": cloud_resources,
         "network_resources": network_resources,
         "container_images": container_images,
+        "topology": topology_payload,
         "collection": collection_meta,
     }
 

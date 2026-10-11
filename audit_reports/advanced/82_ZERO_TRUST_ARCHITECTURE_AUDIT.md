@@ -445,3 +445,36 @@ deny {
   infrastructure-layer decisions that do not live in this codebase.
   Standing deployment gap in 00_ROUND_STATUS (with mTLS/Vault from
   report 75 and the sandboxing from report 81).
+
+## Round 31 addendum (2026-10-11) — policy-as-code PDP BUILT
+
+The "Orchestration ❌ No policy-as-code" line has an in-platform answer:
+
+- `services/api/api/security/pdp.py`: a policy decision point with an
+  embedded policy engine (request-attribute rules: principals, roles,
+  methods, path globs; deny-wins; missing matcher = wildcard; NOT_
+  APPLICABLE when no rule matches) and a REAL Open Policy Agent
+  adapter (`POST {OPA_URL}/v1/data/{path}`, result mapped from
+  boolean or `{decision}`).
+- The composition rule a central PDP exists for, enforced and stated
+  on every surface: PDP DENY blocks what RBAC would allow; PDP ALLOW
+  never bypasses RBAC. The PDP can only RESTRICT.
+- `ZeroTrustMiddleware` (mirrors the ABAC deployment gate): zero-
+  overhead pass-through unless `ZERO_TRUST_ENFORCED` is set AND a
+  policy source is configured; fail-closed when an enforced engine is
+  unreachable (an enforcement layer that disappears on error is
+  decoration).
+- Policy documents are version-controlled JSON
+  (`zelnx-zero-trust/v1`, `ZERO_TRUST_POLICY_FILE`), mtime-cached,
+  structurally validated at load (unknown effects/methods, duplicate
+  rule ids rejected).
+- API: `GET /security/zero-trust/policies` (active document + engine
+  state), `POST /security/zero-trust/evaluate` (dry-run any
+  principal/roles/method/path — test policies before enforcing).
+- Tests: `services/api/tests/unit/test_site_security.py` — rule
+  matching, deny-beats-allow, document validation, file loading,
+  OPA adapter (stubbed transport, unreachable → PolicyError),
+  composed fail-closed/open, middleware enforcement end to end.
+- STILL deployment-scoped, unchanged: SPIFFE/SPIRE workload identity,
+  Calico/Cilium segmentation, service mesh, at-rest TLS — the
+  infrastructure half of the report.

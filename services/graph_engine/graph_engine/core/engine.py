@@ -71,6 +71,7 @@ class GraphEngine:
         cloud_resources: Iterable[dict[str, Any]] = (),
         network_resources: Iterable[dict[str, Any]] = (),
         container_images: Iterable[dict[str, Any]] = (),
+        topology: dict[str, Any] | None = None,
         collection: dict[str, Any] | None = None,
     ) -> "GraphEngine":
         # `collection` is payload meta from the collector (bounded-walk
@@ -167,6 +168,34 @@ class GraphEngine:
             )
             for system_id in resource.get("system_ids") or []:
                 self.add_edge(f"system:{system_id}", f"network:{rid}", "CONNECTS_TO")
+        # Declared network topology (advanced/58 P0#1–2, round 31): DNS/CDN/
+        # WAF/LB hops as first-class nodes with the declared chain edges and
+        # honest TERMINATES_AT/HOSTS system links. Every node carries
+        # source="declared" so a declared hop is never mistaken for a scan.
+        if topology:
+            from db.models.network_topology import NODE_KINDS
+
+            node_by_name: dict[str, dict[str, Any]] = {}
+            for node in topology.get("nodes") or []:
+                name = str(node.get("name") or "")
+                if not name:
+                    continue
+                node_by_name[name] = node
+                kind = NODE_KINDS.get(str(node.get("kind") or ""), "NetworkEdge")
+                self.add_node(
+                    f"edge:{name}", kind=kind, name=name,
+                    declared_source=node.get("source") or "declared",
+                    **({k: str(v) for k, v in (node.get("attrs") or {}).items()
+                        if isinstance(v, (str, int, float, bool))}
+                       or {}),
+                )
+                for system_id in node.get("system_ids") or []:
+                    relation = (node.get("system_relation") or "TERMINATES_AT")
+                    self.add_edge(f"edge:{name}", f"system:{system_id}", relation)
+            for edge in topology.get("edges") or []:
+                src, dst = str(edge.get("from") or ""), str(edge.get("to") or "")
+                if src in node_by_name and dst in node_by_name:
+                    self.add_edge(f"edge:{src}", f"edge:{dst}", edge.get("relation") or "ROUTES_TO")
         for image in container_images:
             cid = str(image.get("id") or image.get("target") or "")
             if not cid:
@@ -580,7 +609,7 @@ class GraphEngine:
     def _resolve(self, raw: str) -> str | None:
         if raw in self.nodes:
             return raw
-        for prefix in ("system:", "asset:", "process:", "cert:", "vendor:", "owner:", "scope:", "cloud:", "network:", "container:"):
+        for prefix in ("system:", "asset:", "process:", "cert:", "vendor:", "owner:", "scope:", "cloud:", "network:", "container:", "edge:"):
             if f"{prefix}{raw}" in self.nodes:
                 return f"{prefix}{raw}"
         for node_id, node in self.nodes.items():

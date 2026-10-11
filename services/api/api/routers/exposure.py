@@ -100,8 +100,33 @@ def exposure_paths(
         if matched:
             assets_by_system[s.id] = matched
 
+    # Declared topology (advanced/58 P0#1–2, round 31): a system a declared
+    # dns/cdn/waf/lb chain fronts is an entry candidate with the chain as
+    # evidence — no longer a heuristic guess for that system.
+    declared_entries: dict[str, dict[str, Any]] = {}
+    try:
+        from db.repositories.topology_repository import TopologyRepository
+
+        topology = TopologyRepository(db).graph_payload()
+        from db.topology import declared_chains_to_system
+
+        for s in systems:
+            chains = declared_chains_to_system(
+                topology["nodes"], topology["edges"], s.id)
+            if chains:
+                declared_entries[s.id] = {
+                    "chains": [
+                        [{"name": step["node"]["name"], "kind": step["node"]["kind"]}
+                         for step in chain]
+                        for chain in chains[:3]
+                    ],
+                    "chain_count": len(chains),
+                }
+    except Exception:
+        declared_entries = {}
+
     paths: list[dict[str, Any]] = []
-    entries = [s for s in systems if _is_entry_candidate(s)]
+    entries = [s for s in systems if _is_entry_candidate(s) or s.id in declared_entries]
     for entry in entries:
         # BFS over dependency edges, bounded depth
         frontier: list[tuple[str, list[str]]] = [(entry.id, [entry.id])]
@@ -118,7 +143,13 @@ def exposure_paths(
                     break
                 paths.append({
                     "entry_system": {"id": str(entry.id), "name": entry.name,
-                                     "reason": _entry_reason(entry)},
+                                     "reason": (
+                                         f"declared topology: {declared_entries[entry.id]['chains'][0][0]['kind']} {declared_entries[entry.id]['chains'][0][0]['name']}"
+                                         if entry.id in declared_entries else _entry_reason(entry)
+                                     ),
+                                     **({"declared_chains": declared_entries[entry.id]["chains"],
+                                         "declared_chain_count": declared_entries[entry.id]["chain_count"]}
+                                        if entry.id in declared_entries else {})},
                     "chain": [
                         {"id": str(c), "name": by_id[c].name, "cloud_provider": by_id[c].cloud_provider}
                         for c in chain
@@ -137,7 +168,14 @@ def exposure_paths(
         "paths": paths,
         "path_count": len(paths),
         "entry_candidates": [
-            {"id": str(s.id), "name": s.name, "reason": _entry_reason(s)} for s in entries
+            {"id": str(s.id), "name": s.name,
+             "reason": (
+                 f"declared topology: {declared_entries[s.id]['chains'][0][0]['kind']} {declared_entries[s.id]['chains'][0][0]['name']}"
+                 if s.id in declared_entries else _entry_reason(s)
+             ),
+             **({"declared_chain_count": declared_entries[s.id]["chain_count"]}
+                if s.id in declared_entries else {})}
+            for s in entries
         ],
         "entry_candidate_count": len(entries),
         "bounds": {
@@ -146,8 +184,10 @@ def exposure_paths(
             "returned": len(paths),
             "systems_truncated": systems_truncated,
         },
+        "declared_topology_entries": len(declared_entries),
         "heuristic": (
-            "entry candidates are cloud-hosted or remote-target systems; "
-            "the platform does not verify network reachability"
+            "entry candidates are cloud-hosted or remote-target systems, "
+            "plus systems a declared dns/cdn/waf/lb chain fronts; declared "
+            "chains are operator declarations, not scanned reachability"
         ),
     }

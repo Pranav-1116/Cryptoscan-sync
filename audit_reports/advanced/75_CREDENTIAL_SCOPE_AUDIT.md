@@ -621,3 +621,33 @@ class BreakGlassSystem:
   HashiCorp Vault / AWS Secrets Manager / Azure Key Vault backing,
   90-day rotation automation, and drift alerts need the external
   system and a policy decision. Standing gap in 00_ROUND_STATUS.
+
+## Round 31 addendum (2026-10-11) — external vault reference layer BUILT
+
+The buildable half of P0#1 ("Implement Credential Vault — HashiCorp
+Vault / AWS Secrets Manager / Azure Key Vault") now exists:
+
+- `services/api/api/security/vault.py`: pluggable secret resolution.
+  Any credential setting may be a reference — `env:NAME`,
+  `file:/path` (K8s/Docker secret mounts), or
+  `vault://mount/path/key` (a REAL HashiCorp Vault KV-v2 client over
+  `VAULT_ADDR` + `X-Vault-Token`; no value caching, so a rotation on
+  the vault side is picked up at the next resolution).
+- Fail-loud contract: unresolvable references raise
+  `SecretResolutionError` — `create_app()` resolves all reference-
+  valued settings at startup and REFUSES to boot a half-resolved
+  credential set. The engineering-exception inventory conventions
+  apply (no silent swallows).
+- Rotation bookkeeping (the inventory half of P0#3): every resolution
+  records provider + reference + timestamp + outcome (never the
+  value); `GET /security/secrets/status` (admin) reports which
+  credentials are external, through which provider, and whether they
+  currently resolve. Rotation itself stays with the external system.
+- Kill-switch `VAULT_PROVIDERS_DISABLED` for inline-only deployments.
+- Tests: `services/api/tests/unit/test_site_security.py` — env/file
+  providers, a stubbed Vault KV-v2 read (URL + token asserted), 404 /
+  missing-key / unconfigured failures, startup resolution in place,
+  fail-loud on an unresolvable reference, status surface leaking no
+  values.
+- REMAINS deployment-scoped: the actual Vault/AWS KMS/Azure Key Vault
+  instance, its auth method, and 90-day rotation policy.

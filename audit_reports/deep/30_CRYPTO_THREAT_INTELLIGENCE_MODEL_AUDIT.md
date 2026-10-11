@@ -438,3 +438,35 @@ actionable within the existing model shipped in earlier rounds
 (unified risk with configurable weights + derivation signals and
 calculation versioning, round 19; exposure-path queries, round 19;
 evidence-chain verification, round 25).
+
+## Round 31 addendum (2026-10-11) — crypto algorithm advisories BUILT
+
+The platform-native slice of the threat-intel roadmap now exists
+(`vendor_intel/threat_intel.py` + `routers/threat_intel.py`,
+migration 0084):
+
+- `AlgorithmAdvisory` store: deprecations, restrictions, attack-cost
+  updates, key-size minimums, implementation and disclosure
+  advisories — each with source, published/effective dates, severity,
+  URL, and a machine-readable details payload; idempotent per
+  (source, advisory_id).
+- Signed bundles (canonical JSON + SHA-256 + HMAC, the air-gap
+  transfer convention): `POST /threat-intel/advisories/bundle` builds
+  an offline-transferable bundle; `POST /threat-intel/advisories/
+  import` verifies one (tamper → 422 with NOTHING persisted — a
+  partially-invalid bundle cannot half-import) or accepts a validated
+  admin-direct list.
+- Queries: `GET /threat-intel/advisories` (algorithm/type/severity
+  filters), `GET /threat-intel/algorithms/{algorithm}`.
+- Asset overlay — `GET /threat-intel/assets/{asset_id}`: which
+  advisories name this crypto asset's algorithm, effective-date
+  aware (STANDING/CURRENT/UPCOMING). Annotation-only, per the
+  standing convention: advisories never rewrite stored scores; they
+  are reported beside them with their own provenance.
+- Tests: `services/api/tests/unit/test_threat_intel_api.py` —
+  validation/duplicates, bundle sign/verify/tamper/wrong-key/invalid-
+  entry-yields-nothing, timing semantics, import idempotency,
+  algorithm query, asset annotation (404 unknown), issuer endpoint.
+- STILL roadmap, unchanged: STIX/TAXII feeds, ATT&CK technique
+  mapping, IOCs, threat-actor modeling — external data sources and
+  modeling this round deliberately did not invent.

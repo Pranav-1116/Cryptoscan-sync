@@ -232,7 +232,7 @@ async def test_exposure_path_no_assets_is_empty_not_error(exposure_client):
     assert data["path_count"] == 0
     assert data["paths"] == []
     assert data["entry_candidate_count"] == 1  # only the cloud system
-    assert "does not verify network reachability" in data["heuristic"]
+    assert "not scanned reachability" in data["heuristic"]  # honest-boundary text (round 31 extended it to declared chains)
 
 
 @pytest.mark.asyncio

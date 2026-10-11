@@ -455,3 +455,36 @@ island exclusion).
   topology feed (cloud API / K8s API discovery). This is the same
   standing gap as 47's deployment-topology links and 57's verified
   entry surface. Tracked in 00_ROUND_STATUS.
+
+## Round 31 addendum (2026-10-11) — declared topology ingestion BUILT
+
+The round-27 note "the platform does not ingest network or Kubernetes
+topology" now has its ingestion surface:
+
+- `POST /network/topology` declares the chain the report named —
+  DNS → CDN → WAF → load balancer → system (node kinds dns/cdn/waf/
+  load_balancer/k8s_service/pod/ip_range/service; relations RESOLVES_
+  TO/PROXIES_TO/ROUTES_TO/PEERS_WITH; system links TERMINATES_AT/
+  HOSTS). Total validation before persistence: unknown kinds,
+  dangling edge endpoints, self-edges, duplicate names, and CYCLES
+  are rejected whole — a rejected document leaves the stored topology
+  untouched. Full-replace semantics (the document IS the topology).
+- Every node/edge carries `source: "declared"` — an operator
+  declaration (or a future cloud/K8s discovery job writing the same
+  surface), never presented as a scanned surface.
+- Graph: `GraphEngine.build` renders the declared hops as first-class
+  DNSRecord/CDN/WAF/LoadBalancer/... nodes with the chain edges and
+  system links, `declared_source` preserved on every node.
+- Exposure: `GET /exposure/paths` — a system a declared chain fronts
+  is an entry candidate with reason "declared topology: <kind>
+  <name>" and its chains attached (plus a `declared_topology_entries`
+  count), instead of the cloud/remote heuristic alone.
+- Queries: `GET /network/topology`, `GET /network/topology/paths?
+  system_id=` (the declared chains, hop by hop, with relations).
+- Migrations 0083 (topology_nodes/topology_edges); tests in
+  `services/api/tests/unit/test_topology_api.py` (validation, cycles,
+  chains, ingest, graph rendering, exposure integration, idempotent
+  re-declare).
+- STILL open, unchanged in kind: live discovery (cloud API / K8s API
+  feeds), DNS/CDN/WAF inventory scans — the sources; this round built
+  the sink they will write into.

@@ -197,3 +197,5 @@ from db.models.remediation_task import (  # noqa: E402,F401
 from db.models.retired_asset import RetiredAsset  # noqa: E402,F401
 from db.models.policy_rule_override import PolicyRuleOverride  # noqa: E402,F401
 from db.models.resource_grant import ResourceGrant  # noqa: E402,F401
+from db.models.network_topology import TopologyEdge, TopologyNode  # noqa: E402,F401
+from db.models.threat_advisory import AlgorithmAdvisory  # noqa: E402,F401

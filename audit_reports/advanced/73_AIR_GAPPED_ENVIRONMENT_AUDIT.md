@@ -452,3 +452,28 @@ docker run -d -p 5000:5000 \
   license-file subsystem exists; entitlement enforcement on a
   disconnected site is operational, not code. Tracked in
   00_ROUND_STATUS.
+
+## Round 31 addendum (2026-10-11) — offline license BUILT
+
+P0#1 ("no signed license-file subsystem exists") is no longer open:
+
+- `services/api/api/security/license.py`: signed license packages
+  (licensee, plan, features, issued/expires, site binding) using the
+  platform's signed-transfer convention (canonical JSON + SHA-256 +
+  HMAC-SHA256). Structured failure codes: MALFORMED / MISSING_KEY /
+  TAMPERED / NOT_YET_VALID / EXPIRED / SITE_MISMATCH — tamper checks
+  run before expiry, so the operator always learns the most specific
+  cause. Feature names and plans are validated at issue AND verify
+  time (a forged doc cannot smuggle unknown features).
+- Enforcement: `require_license(feature)` FastAPI dependency composing
+  with RBAC (expired license denies licensed routes even for admins;
+  a valid license never grants what RBAC denies). `LICENSE_REQUIRED=off`
+  (default) keeps community installs fully open.
+- API: `GET /license/status` (state, plan, features, days remaining —
+  never the key or raw doc), `POST /license/trial` (admin, offline
+  issuer for evaluation sites).
+- Tests: `services/api/tests/unit/test_site_security.py` — round trip,
+  tamper, wrong key, expiry, future-dated, site mismatch, feature-gate
+  403 with code, status endpoint.
+- Still deployment-scoped: commercial terms, real entitlement policy,
+  and a key ceremony for the issuer key.

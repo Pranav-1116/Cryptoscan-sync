@@ -477,3 +477,29 @@ System
   nodes with honest RUNS linkage since round 21; trust-store discovery
   in the scanner), but a full code-level fact graph is a roadmap
   capability, not a remediation.
+
+## Round 31 addendum (2026-10-11) — pure fact read model BUILT (51 P0#1, read side)
+
+The first, explicitly-scoped step of report 51's fact/risk separation:
+
+- `api/facts/projection.py` + `GET /facts/crypto`: cryptographic FACTS
+  as a pure read model projected live over the evidence records —
+  identity (algorithm, purpose, file, key size, mode), observation
+  count, first/last seen, scanners, confidences, hardcoded-key
+  observations, and the exact evidence ids behind every fact (bounded
+  inline with an honest truncation flag). Line numbers deliberately
+  stay on the evidence rows: the same algorithm at several lines of a
+  file is one fact, observed more often.
+- No risk scores, no asset identity, no dedup-model coupling — and
+  nothing downstream consumes it yet. The fused `crypto_assets` write
+  side is unchanged; when the full 51 rearchitecture lands, this
+  projection is the read contract it must keep.
+- Filters: algorithm, file prefix, min observations; bounded row read
+  (10k ceiling, truncation reported).
+- Tests: `services/api/tests/unit/test_facts_api.py` — identity
+  grouping across lines/scans/scanners, parameter and location
+  distinctness, truncation, summary rollups, and the API over seeded
+  evidence.
+- STILL open, unchanged: the write-side rearchitecture (fact rows as
+  the source of truth), code/function-level nodes, key hierarchy,
+  runtime binding — as round 26 recorded.

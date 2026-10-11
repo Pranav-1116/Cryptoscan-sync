@@ -46,6 +46,10 @@ from api.routers import (
     baselines,
     business,
     business_context,
+    site_security,
+    facts,
+    topology,
+    threat_intel,
     cbom,
     certificates,
     cloud,
@@ -162,6 +166,20 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         load_env()
         configure_logging(settings.LOG_LEVEL, json_output=settings.is_production)
         validate_runtime_settings(settings)
+        # External secret references (advanced/75 P0#1, round 31): resolve
+        # vault:// file: env: references in credential settings at startup.
+        # Fail-loud: a half-resolved credential set must not boot.
+        try:
+            from api.security.vault import resolve_settings_secrets
+
+            report = resolve_settings_secrets(strict=True)
+            if report.get("resolved"):
+                logger.info("secrets_resolved",
+                            extra={"count": report["resolved"],
+                                   "fields": report["resolved_fields"]})
+        except Exception as exc:
+            logger.error("secret_resolution_failed", extra={"error": str(exc)})
+            raise
         if settings.ENVIRONMENT.lower() not in {"test", "testing"}:
             init_db()
             try:
@@ -322,6 +340,12 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
     from api.middleware.abac_middleware import AbacMiddleware
 
     app.add_middleware(AbacMiddleware)
+    # Zero-trust PDP overlay (advanced/82, round 31): external policy-as-code
+    # that can only RESTRICT — deny-wins over RBAC allow, never a bypass.
+    # No-op unless ZERO_TRUST_ENFORCED is set (same deployment gate as ABAC).
+    from api.middleware.zero_trust_middleware import ZeroTrustMiddleware
+
+    app.add_middleware(ZeroTrustMiddleware)
     app.add_middleware(SecurityHeadersMiddleware)
     # Innermost: runs right after the route so every successful mutating call
     # across all services lands on the real-time bus (api.<segment>.<verb>).
@@ -381,6 +405,10 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
 
     prefix = "/api/v1"
     app.include_router(auth.router, prefix=prefix)
+    app.include_router(site_security.router, prefix=prefix)
+    app.include_router(facts.router, prefix=prefix)
+    app.include_router(topology.router, prefix=prefix)
+    app.include_router(threat_intel.router, prefix=prefix)
     app.include_router(banking.router, prefix=prefix)
     # Runtime findings MUST be registered before scans.router: scans exposes a
     # catch-all GET /scans/{scan_id} which would otherwise shadow the static

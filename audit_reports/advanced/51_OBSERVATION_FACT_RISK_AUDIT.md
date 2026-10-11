@@ -486,3 +486,12 @@ RemediationPlan:
   `crypto_assets` row and the evidence pipeline's dedup model. Splitting
   them is a data-model rearchitecture of the core inventory, tracked in
   00_ROUND_STATUS, not a weekend build.
+
+## Round 31 addendum (2026-10-11) — fact separation, read side BUILT
+
+P0#1's first step shipped: `GET /facts/crypto` exposes cryptographic
+facts as a pure read projection over evidence records (see the
+round-31 addendum in advanced/48 for the full surface and the
+deliberate scope: no scores, no asset coupling, write side
+unchanged). The full rearchitecture of the fused `crypto_assets`
+write side REMAINS OPEN as this report's round-27 addendum recorded.
