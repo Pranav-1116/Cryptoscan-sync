@@ -24,7 +24,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Iterable
 
-from sqlalchemy import func, select
+from sqlalchemy import String, cast, func, select
 from sqlalchemy.orm import Session
 
 from db.fact_projection import fact_key, identity_values, scanner_id
@@ -140,19 +140,58 @@ class FactRepository:
             stmt = stmt.where(EvidenceRecord.tenant_id == current_tenant())
         return sorted({path for path in self.session.execute(stmt).scalars() if path})
 
-    def list_current(self, *, algorithm: str | None = None,
-                     file_prefix: str | None = None,
-                     include_stale: bool = False,
-                     limit: int = 1000) -> list[CryptographicFact]:
+    @staticmethod
+    def _current_query(*, algorithm: str | None = None,
+                       file_prefix: str | None = None,
+                       include_stale: bool = False,
+                       min_observations: int = 0):
         stmt = select(CryptographicFact)
         if not include_stale:
             stmt = stmt.where(CryptographicFact.is_current.is_(True))
         if algorithm:
             stmt = stmt.where(CryptographicFact.algorithm == algorithm)
-        rows = list(self.session.execute(stmt).scalars())
         if file_prefix:
-            rows = [r for r in rows if str(r.file_path or "").startswith(file_prefix)]
-        return rows[:limit]
+            # substr equality is case-sensitive and treats %, _, and / as
+            # literal characters on both SQLite and PostgreSQL (unlike LIKE).
+            stmt = stmt.where(func.substr(
+                CryptographicFact.file_path, 1, len(file_prefix)) == file_prefix)
+        if min_observations:
+            stmt = stmt.where(CryptographicFact.observation_count >= min_observations)
+        return stmt
+
+    def count_current(self, *, algorithm: str | None = None,
+                      file_prefix: str | None = None,
+                      include_stale: bool = False,
+                      min_observations: int = 0) -> int:
+        """Exact matching count, subject to the same ORM tenant guard as reads."""
+        stmt = self._current_query(
+            algorithm=algorithm, file_prefix=file_prefix,
+            include_stale=include_stale, min_observations=min_observations,
+        ).with_only_columns(func.count(CryptographicFact.id), maintain_column_froms=True)
+        return int(self.session.execute(stmt).scalar_one())
+
+    def list_current(self, *, algorithm: str | None = None,
+                     file_prefix: str | None = None,
+                     include_stale: bool = False,
+                     limit: int = 1000,
+                     min_observations: int = 0,
+                     offset: int = 0) -> list[CryptographicFact]:
+        """Deterministic bounded read; filter before limiting, never in Python."""
+        stmt = self._current_query(
+            algorithm=algorithm, file_prefix=file_prefix,
+            include_stale=include_stale, min_observations=min_observations,
+        ).order_by(
+            # Match the live projection's stable ordering, including NULL
+            # normalization and string ordering of unknown/key-size values.
+            func.coalesce(CryptographicFact.file_path, ""),
+            CryptographicFact.algorithm,
+            func.coalesce(CryptographicFact.purpose, ""),
+            func.coalesce(cast(CryptographicFact.key_size, String), "None"),
+            func.coalesce(CryptographicFact.mode, ""),
+            func.coalesce(CryptographicFact.tenant_id, ""),
+            CryptographicFact.id,
+        ).limit(limit).offset(offset)
+        return list(self.session.execute(stmt).scalars())
 
     def latest_activity_by_file(self, files: Iterable[str]) -> dict[tuple[str | None, str], datetime]:
         """Newest evidence activity per tenant and file (including deletions).

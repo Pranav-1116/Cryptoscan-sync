@@ -132,6 +132,74 @@ def test_prefix_rebuild_retires_fact_after_last_evidence_is_retracted(sqlite_app
     assert {f["fact"]["algorithm"] for f in r.json()["facts"]} == {"RSA-2048"}
 
 
+def test_fact_store_counts_all_matches_beyond_page_and_summarizes_page_only(sqlite_app):
+    client, db_url = sqlite_app
+    admin = _login(client)
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from db.models.cryptographic_fact import CryptographicFact
+
+    eng = create_engine(db_url)
+    with sessionmaker(bind=eng)() as session:
+        session.add_all([
+            CryptographicFact(algorithm="RSA", tenant_id=None, purpose="",
+                              file_path=f"src/%_literal/{i:04d}.py", mode="",
+                              observation_count=2,
+                              rebuilt_at=datetime.now(timezone.utc))
+            for i in range(1005)
+        ])
+        session.add(CryptographicFact(
+            algorithm="AES", tenant_id=None, purpose="",
+            file_path="src/XXliteral/not-a-match.py", mode="",
+            observation_count=3,
+        ))
+        session.commit()
+    eng.dispose()
+
+    response = client.get("/api/v1/facts/store", headers=admin, params={
+        "algorithm": "RSA", "file_prefix": "src/%_literal/",
+        "min_observations": 2, "limit": 1000,
+    })
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["facts_matching"] == 1005
+    assert body["facts_returned"] == len(body["facts"]) == 1000
+    assert body["truncated"] is True
+    assert body["summary_scope"] == "returned_page"
+    assert body["summary"]["facts_total"] == 1000
+    assert body["summary"]["observations_total"] == 2000
+    assert body["facts"][0]["fact"]["file_path"].endswith("0000.py")
+    assert body["facts"][-1]["fact"]["file_path"].endswith("0999.py")
+    assert body["offset"] == 0 and body["next_offset"] == 1000
+
+    remainder_response = client.get("/api/v1/facts/store", headers=admin, params={
+        "algorithm": "RSA", "file_prefix": "src/%_literal/",
+        "min_observations": 2, "limit": 1000, "offset": body["next_offset"],
+    })
+    assert remainder_response.status_code == 200, remainder_response.text
+    remainder = remainder_response.json()
+    assert remainder["facts_matching"] == 1005
+    assert remainder["offset"] == 1000
+    assert remainder["facts_returned"] == 5
+    assert remainder["facts"][0]["fact"]["file_path"].endswith("1000.py")
+    assert remainder["facts"][-1]["fact"]["file_path"].endswith("1004.py")
+    assert remainder["summary"]["facts_total"] == 5
+    assert remainder["truncated"] is False and remainder["next_offset"] is None
+
+    page = client.get("/api/v1/facts/store", headers=admin, params={
+        "algorithm": "RSA", "file_prefix": "src/%_literal/", "limit": 5,
+    }).json()
+    assert page["facts_matching"] == 1005
+    assert page["facts_returned"] == page["summary"]["facts_total"] == 5
+    assert page["truncated"] is True
+    assert client.get("/api/v1/facts/store", headers=admin,
+                      params={"offset": -1}).status_code == 422
+
+
 def test_fact_store_rebuild_empty_is_empty(sqlite_app):
     client, _ = sqlite_app
     admin = _login(client)

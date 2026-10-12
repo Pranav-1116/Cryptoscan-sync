@@ -138,6 +138,43 @@ def test_list_current_filters(session):
     assert [r.algorithm for r in repo.list_current(algorithm="AES")] == ["AES"]
 
 
+def test_bounded_fact_read_filters_before_limit_and_counts_visible_tenants(session):
+    session.add_all([
+        CryptographicFact(tenant_id="one", algorithm="AES", purpose="",
+                          file_path=f"src/other/{i:04d}.py", mode="",
+                          observation_count=1)
+        for i in range(1100)
+    ])
+    session.add_all([
+        CryptographicFact(tenant_id=tenant, algorithm="AES", purpose="",
+                          file_path="src/%_literal.py", mode="",
+                          observation_count=2)
+        for tenant in (None, "one", "two")
+    ])
+    session.add_all([
+        CryptographicFact(tenant_id="one", algorithm="AES", purpose="",
+                          file_path="src/XXliteral.py", mode="",
+                          observation_count=2),
+        CryptographicFact(tenant_id="one", algorithm="AES", purpose="",
+                          file_path="src/%_lower.py", mode="",
+                          observation_count=1),
+        CryptographicFact(tenant_id="one", algorithm="AES", purpose="",
+                          file_path="SRC/%_upper.py", mode="",
+                          observation_count=2),
+    ])
+    session.flush()
+    repo = FactRepository(session)
+    filters = {"file_prefix": "src/%_", "min_observations": 2}
+    assert repo.count_current(**filters) == 3
+    assert len(repo.list_current(**filters, limit=1)) == 1
+    assert repo.list_current(**filters, limit=1)[0].tenant_id is None
+    install_tenant_guard()
+    with tenant_scope("one"):
+        assert repo.count_current(**filters) == 2  # platform + own, not other tenant
+        assert [f.tenant_id for f in repo.list_current(**filters)] == [None, "one"]
+        assert repo.count_current(file_prefix="src/other/") == 1100
+
+
 def test_tenant_local_identity_and_platform_row(session):
     session.add_all([
         _ev("s1", "RSA", "same.py", 1, tenant="one"),

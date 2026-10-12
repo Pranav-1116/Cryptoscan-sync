@@ -140,6 +140,7 @@ def fact_store(
     min_observations: int = Query(1, ge=1, description="Only facts observed at least this often"),
     include_stale: bool = Query(False, description="Include facts whose evidence vanished (observation_count 0)"),
     limit: int = Query(200, ge=1, le=1000),
+    offset: int = Query(0, ge=0, description="Skip this many matching facts"),
     user: str = Depends(get_current_user),
     db: Session = Depends(get_db_session),
 ):
@@ -158,8 +159,10 @@ def fact_store(
     from db.repositories.fact_repository import FactRepository
 
     repo = FactRepository(db)
-    rows = repo.list_current(algorithm=algorithm, file_prefix=file_prefix,
-                             include_stale=include_stale, limit=1000)
+    filters = dict(algorithm=algorithm, file_prefix=file_prefix,
+                   include_stale=include_stale, min_observations=min_observations)
+    matching = repo.count_current(**filters)
+    rows = repo.list_current(**filters, limit=limit, offset=offset)
     activity = repo.latest_activity_by_file(
         str(r.file_path) for r in rows if r.file_path)
 
@@ -169,11 +172,7 @@ def fact_store(
         return value.replace(tzinfo=timezone.utc)
 
     facts: list[dict] = []
-    for row in sorted(rows, key=lambda r: (str(r.file_path or ""), r.algorithm,
-                                           str(r.purpose or ""), str(r.key_size),
-                                           str(r.mode or ""), str(r.tenant_id or ""))):
-        if row.observation_count < min_observations:
-            continue
+    for row in rows:
         latest = _aware(activity.get((row.tenant_id, str(row.file_path))))
         rebuilt = _aware(row.rebuilt_at)
         fresh = bool(rebuilt is not None
@@ -208,13 +207,18 @@ def fact_store(
                 "remains the live always-correct reference (advanced/51 "
                 "P0#1 read-path step)",
         "summary": summarize_facts(facts),
+        "summary_scope": "returned_page",
         "store_rebuilt_at": rebuilt_at.isoformat() if rebuilt_at else None,
         "freshness": ("empty" if not rows
                       else "stale" if stale_rows else "current"),
+        "freshness_scope": "returned_page",
         "stale_rows": stale_rows,
-        "facts": facts[:limit],
-        "facts_returned": min(len(facts), limit),
-        "facts_matching": len(facts),
+        "facts": facts,
+        "facts_returned": len(facts),
+        "facts_matching": matching,
+        "offset": offset,
+        "truncated": matching > offset + len(facts),
+        "next_offset": offset + len(facts) if matching > offset + len(facts) else None,
     }
 
 
