@@ -8,6 +8,8 @@ question from advanced/48 is answered by reference, not by copy.
 
 from __future__ import annotations
 
+import base64
+import json
 from collections import defaultdict
 from typing import Any, Iterable, Mapping, Optional
 
@@ -43,17 +45,19 @@ def project_facts(
     """Group evidence rows into facts (deterministic order)."""
     groups: dict[tuple, list[Mapping[str, Any]]] = defaultdict(list)
     for row in rows or ():
-        groups[fact_key(row)].append(row)
+        groups[(row.get("tenant_id"), fact_key(row))].append(row)
 
     facts: list[dict[str, Any]] = []
-    for key in sorted(groups, key=lambda k: (k[2], k[0], k[1], str(k[3]), k[4])):
-        members = groups[key]
+    for tenant_id, key in sorted(groups, key=lambda k: (
+            k[1][2], k[1][0], k[1][1], str(k[1][3]), k[1][4], str(k[0] or ""))):
+        members = groups[(tenant_id, key)]
         algorithm, purpose, file_path, key_size, mode = key
         seen = sorted({_iso(m.get("created_at")) for m in members if m.get("created_at")})
         confidences = sorted({str(m.get("confidence") or "") for m in members if m.get("confidence")})
         scanners = sorted({s for s in (_scanner_id(m) for m in members) if s})
-        evidence_ids = [str(m.get("id")) for m in members]
+        evidence_ids = sorted(str(m.get("id")) for m in members)
         facts.append({
+            "tenant_id": tenant_id,
             "fact": {
                 "algorithm": algorithm,
                 "purpose": purpose or None,
@@ -97,6 +101,12 @@ def summarize_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _graph_identity(*parts: Any) -> str:
+    """Unambiguous, stable node suffix for the complete tenant-local identity."""
+    payload = json.dumps(parts, separators=(",", ":"), ensure_ascii=False)
+    return base64.urlsafe_b64encode(payload.encode("utf-8")).decode("ascii").rstrip("=")
+
+
 def code_graph_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Code-level fact graph slice: file DEFINES fact OBSERVED_BY evidence.
 
@@ -109,21 +119,30 @@ def code_graph_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     ``GET /facts/crypto``; nothing persisted, no rearchitecture.
     """
     facts = list(facts or ())
-    files: dict[str, dict[str, Any]] = {}
+    files: dict[tuple[str | None, str], dict[str, Any]] = {}
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
 
     for item in facts:
         fact = item.get("fact") or {}
+        tenant_id = item.get("tenant_id")
         file_path = str(fact.get("file_path") or "") or "(unknown file)"
-        if file_path not in files:
-            files[file_path] = {"node_count": 0, "facts": []}
-        fact_id = f"fact:{fact.get('algorithm')}:{fact.get('purpose') or '-'}:{file_path}"
-        files[file_path]["node_count"] += 1
-        files[file_path]["facts"].append(fact_id)
+        file_key = (tenant_id, file_path)
+        # Preserve the familiar platform file ID for ordinary paths. The
+        # versioned encoding keeps tenant paths (and reserved platform paths)
+        # disjoint even if a path itself contains delimiters.
+        file_id = (f"file:v2:{_graph_identity(tenant_id, file_path)}"
+                   if tenant_id is not None or file_path.startswith("v2:")
+                   else f"file:{file_path}")
+        if file_key not in files:
+            files[file_key] = {"node_count": 0, "id": file_id}
+        fact_id = (f"fact:{fact.get('algorithm')}:v2:"
+                   f"{_graph_identity(tenant_id, fact.get('algorithm'), fact.get('purpose'), file_path, fact.get('key_size'), fact.get('mode'))}")
+        files[file_key]["node_count"] += 1
         nodes.append({
             "id": fact_id,
             "type": "fact",
+            "tenant_id": tenant_id,
             "algorithm": fact.get("algorithm"),
             "purpose": fact.get("purpose"),
             "file": file_path,
@@ -133,7 +152,7 @@ def code_graph_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             "hardcoded_key_observations": item.get("hardcoded_key_observations"),
         })
         edges.append({
-            "from": f"file:{file_path}",
+            "from": file_id,
             "to": fact_id,
             "relation": "DEFINES",
         })
@@ -144,11 +163,14 @@ def code_graph_facts(facts: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                 "relation": "OBSERVED_BY",
             })
 
-    for file_path in sorted(files):
+    for tenant_id, file_path in sorted(files, key=lambda k: (k[1], str(k[0] or ""))):
+        file_info = files[(tenant_id, file_path)]
         nodes.append({
-            "id": f"file:{file_path}",
+            "id": file_info["id"],
             "type": "file",
-            "fact_count": files[file_path]["node_count"],
+            "tenant_id": tenant_id,
+            "file_path": file_path,
+            "fact_count": file_info["node_count"],
         })
 
     return {

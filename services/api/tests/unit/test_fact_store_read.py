@@ -152,6 +152,73 @@ def test_store_filters_and_empty_honesty(sqlite_app):
     assert store["facts"] == []  # AES has one observation
 
 
+def test_platform_and_tenant_fact_equivalence_and_scope(sqlite_app):
+    """Same-path facts remain separate, including their exact evidence refs."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from db.models.evidence_record import EvidenceRecord
+    from db.models.tenant import Tenant
+
+    client, db_url = sqlite_app
+    engine = create_engine(db_url)
+    with sessionmaker(bind=engine)() as session:
+        session.add_all([
+            Tenant(id=tenant, name=tenant, slug=tenant)
+            for tenant in ("tenant-one", "tenant-two")
+        ])
+        for index, (tenant, size, mode, evidence_id) in enumerate((
+            (None, 256, "GCM", "platform-ev"),
+            ("tenant-one", 256, "GCM", "one-ev"),
+            ("tenant-two", 256, "GCM", "two-ev"),
+            ("tenant-one", 128, "CBC", "one-variant-ev"),
+        )):
+            session.add(EvidenceRecord(
+                id=evidence_id, tenant_id=tenant, scan_id="scan-tenants",
+                content_hash=f"{index}" * 64, chain_hash=f"{index}" * 64,
+                chain_position=index, algorithm="AES", purpose="ENCRYPTION",
+                key_size=size, mode=mode, file_path="src/shared/Cipher.java",
+                line_number=index + 1, finding_data={"scanner_id": "ast"},
+                confidence="HIGH", compliance_status="PASS",
+                created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            ))
+        session.commit()
+    engine.dispose()
+
+    admin = _login(client)
+    assert _rebuild(client, admin)["facts_upserted"] == 4
+    exact_refs = {
+        (None, 256, "GCM"): ["platform-ev"],
+        ("tenant-one", 256, "GCM"): ["one-ev"],
+        ("tenant-two", 256, "GCM"): ["two-ev"],
+        ("tenant-one", 128, "CBC"): ["one-variant-ev"],
+    }
+    for tenant, expected in (
+        (None, {None: {"platform-ev"}, "tenant-one": {"one-ev", "one-variant-ev"},
+                "tenant-two": {"two-ev"}}),
+        ("tenant-one", {None: {"platform-ev"}, "tenant-one": {"one-ev", "one-variant-ev"}}),
+        ("tenant-two", {None: {"platform-ev"}, "tenant-two": {"two-ev"}}),
+    ):
+        headers = {**admin, **({"X-Tenant-ID": tenant} if tenant else {})}
+        live_response = client.get("/api/v1/facts/crypto", headers=headers)
+        store_response = client.get("/api/v1/facts/store", headers=headers)
+        graph_response = client.get("/api/v1/facts/code-graph", headers=headers)
+        assert live_response.status_code == store_response.status_code == graph_response.status_code == 200
+        live, store, graph = live_response.json(), store_response.json(), graph_response.json()
+        assert live["facts_matching"] == store["facts_matching"] == sum(map(len, expected.values()))
+        assert [{k: v for k, v in item.items() if k != "fresh"}
+                for item in store["facts"]] == live["facts"]
+        for item in live["facts"]:
+            fact = item["fact"]
+            identity = (item["tenant_id"], fact["key_size"], fact["mode"])
+            assert item["evidence_ids"] == exact_refs[identity]
+            assert item["evidence_count"] == len(exact_refs[identity])
+        assert {item["tenant_id"] for item in live["facts"]} == set(expected)
+        assert graph["file_count"] == len(expected)
+        assert {node["tenant_id"] for node in graph["nodes"]} == set(expected)
+        assert len({node["id"] for node in graph["nodes"]}) == graph["node_count"]
+
+
 def test_store_requires_auth(sqlite_app):
     client, _ = sqlite_app
     assert client.get("/api/v1/facts/store").status_code == 401

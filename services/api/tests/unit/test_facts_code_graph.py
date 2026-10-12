@@ -71,6 +71,37 @@ def test_code_graph_edges_and_nodes():
     assert "call-graph parsing" in graph["open_relations"]["CALLS"]
 
 
+def test_tenant_and_parameter_identities_have_distinct_graph_nodes():
+    rows = []
+    for tenant, size, mode, evidence_id in (
+        (None, 256, "GCM", "platform-ev"),
+        ("tenant-one", 256, "GCM", "one-ev"),
+        ("tenant-two", 256, "GCM", "two-ev"),
+        ("tenant-one", 128, "CBC", "one-variant-ev"),
+    ):
+        row = _row("AES", "src/shared/Cipher.java", key_size=size)
+        row.update(id=evidence_id, tenant_id=tenant, mode=mode)
+        rows.append(row)
+
+    facts = project_facts(rows)
+    assert len(facts) == 4
+    assert {f["tenant_id"] for f in facts} == {None, "tenant-one", "tenant-two"}
+    assert {f["evidence_ids"][0] for f in facts} == {r["id"] for r in rows}
+    assert all(f["observation_count"] == 1 for f in facts)
+
+    graph = code_graph_facts(facts)
+    assert graph["file_count"] == 3
+    assert len({n["id"] for n in graph["nodes"]}) == graph["node_count"] == 7
+    defines = [e for e in graph["edges"] if e["relation"] == "DEFINES"]
+    observed = [e for e in graph["edges"] if e["relation"] == "OBSERVED_BY"]
+    assert len(defines) == len(observed) == 4
+    assert len({e["to"] for e in defines}) == 4
+    expected = {(r["tenant_id"], r["key_size"], r["mode"]): r["id"] for r in rows}
+    for node in (n for n in graph["nodes"] if n["type"] == "fact"):
+        refs = [e["to"] for e in observed if e["from"] == node["id"]]
+        assert refs == [f"evidence:{expected[(node['tenant_id'], node['key_size'], node['mode'])]}"]
+
+
 def test_code_graph_empty():
     graph = code_graph_facts([])
     assert graph["file_count"] == 0 and graph["nodes"] == []

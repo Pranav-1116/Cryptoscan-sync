@@ -171,15 +171,16 @@ def fact_store(
     facts: list[dict] = []
     for row in sorted(rows, key=lambda r: (str(r.file_path or ""), r.algorithm,
                                            str(r.purpose or ""), str(r.key_size),
-                                           str(r.mode or ""))):
+                                           str(r.mode or ""), str(r.tenant_id or ""))):
         if row.observation_count < min_observations:
             continue
         latest = _aware(activity.get((row.tenant_id, str(row.file_path))))
         rebuilt = _aware(row.rebuilt_at)
         fresh = bool(rebuilt is not None
                      and (latest is None or rebuilt >= latest))
-        evidence_ids = [str(i) for i in (row.evidence_ids or [])]
+        evidence_ids = sorted(str(i) for i in (row.evidence_ids or []))
         facts.append({
+            "tenant_id": row.tenant_id,
             "fact": {
                 "algorithm": row.algorithm,
                 "purpose": row.purpose or None,
