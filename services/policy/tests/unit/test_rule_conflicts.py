@@ -8,8 +8,6 @@ stay clean of duplicates/contradictions beyond the known entries).
 
 from __future__ import annotations
 
-import pytest
-
 from policy.models.policy_rule import (AlgorithmInListParameters, Condition, Evaluation,
                                        KeySizeMinimumParameters, PolicyRule)
 from policy.rules.rule_conflicts import detect_rule_conflicts

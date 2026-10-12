@@ -9,6 +9,8 @@ the original observation (provenance survives canonicalization).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from normalization.core.engine import NormalizationEngine
@@ -17,7 +19,8 @@ from normalization.matchers.alias_canonicalizer import canonicalize
 
 @pytest.fixture(scope="module")
 def engine():
-    return NormalizationEngine("rule_definitions")
+    rules_dir = Path(__file__).resolve().parents[1] / "rule_definitions"
+    return NormalizationEngine(str(rules_dir))
 
 
 # variant family -> (canonical standard_name, family, key_size or None)
