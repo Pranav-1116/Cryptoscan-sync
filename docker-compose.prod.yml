@@ -61,13 +61,14 @@ services:
       postgres:
         condition: service_healthy
     restart: "no"
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
     networks: [cryptoscan-net]
 
   api:
+    ports: !reset []
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -128,7 +129,7 @@ services:
       - --no-access-log
     logging: *json-log
     mem_limit: 1g
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
@@ -152,7 +153,7 @@ services:
       CRYPTOSCAN_SNAPSHOT_DIR: /var/lib/cryptoscan/telecom
     logging: *json-log
     mem_limit: 2g
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
@@ -172,15 +173,16 @@ services:
       - ${TELECOM_REGISTRY_HOST_PATH:-./config/telecom_registry.json}:/var/lib/cryptoscan/telecom/telecom_registry.json:ro
     logging: *json-log
     mem_limit: 512m
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
 
   frontend:
+    ports: !reset []
     logging: *json-log
     mem_limit: 256m
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
@@ -190,7 +192,7 @@ services:
       - "${NGINX_PORT:-80}:80"
     logging: *json-log
     mem_limit: 128m
-    security_opt:
+    security_opt: !override
       - no-new-privileges:true
     cap_drop:
       - ALL
