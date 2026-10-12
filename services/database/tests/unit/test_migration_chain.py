@@ -46,7 +46,11 @@ def test_migration_chain_matches_models_table_set(tmp_path):
     command.upgrade(cfg, "head")
 
     engine = create_engine(f"sqlite:///{db_path}")
-    migrated = set(inspect(engine).get_table_names()) - {"alembic_version"}
+    # Alembic bookkeeping is intentionally outside the application ORM.
+    migrated = set(inspect(engine).get_table_names()) - {
+        "alembic_version",
+        "_alembic_0078_indexes",
+    }
     model_tables = set(Base.metadata.tables)
     assert migrated == model_tables, (
         f"migrations and models disagree: only-migrations={sorted(migrated - model_tables)} "

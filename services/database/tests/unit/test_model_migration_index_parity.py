@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect
 
 # repo-root cwd (this suite is run from the repo root)
 ROOT = Path(__file__).resolve().parents[4]
@@ -29,6 +29,86 @@ def _upgrade_head(db_path: str) -> None:
     cfg.set_main_option("script_location", str(ROOT / "services" / "database" / "migrations"))
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
     command.upgrade(cfg, "head")
+
+
+def _config(db_path: Path):
+    from alembic.config import Config
+
+    cfg = Config(str(ROOT / "services" / "database" / "migrations" / "alembic.ini"))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{db_path}")
+    return cfg
+
+
+def test_migration_0078_adopts_existing_indexes_and_only_drops_its_own(tmp_path):
+    from alembic import command
+
+    db_path = tmp_path / "mixed.db"
+    cfg = _config(db_path)
+    command.upgrade(cfg, "0077")
+    engine = create_engine(f"sqlite:///{db_path}")
+    adopted = {
+        "cbom_versions": "ix_cbom_versions_version",
+        "systems": "ix_systems_business_unit",
+    }
+    with engine.begin() as conn:
+        conn.exec_driver_sql("CREATE INDEX ix_cbom_versions_version ON cbom_versions (version)")
+        conn.exec_driver_sql("CREATE INDEX ix_systems_business_unit ON systems (business_unit)")
+
+    command.upgrade(cfg, "0078")
+    with engine.connect() as conn:
+        owned = {row[0] for row in conn.exec_driver_sql("SELECT name FROM _alembic_0078_indexes")}
+    assert len(owned) == 22
+    assert not owned.intersection(adopted.values())
+    assert "ix_vulnerabilities_scan_id" in owned
+
+    command.downgrade(cfg, "0077")
+    inspector = inspect(engine)
+    assert "_alembic_0078_indexes" not in inspector.get_table_names()
+    for table, name in adopted.items():
+        assert name in {idx["name"] for idx in inspector.get_indexes(table)}
+    assert "ix_vulnerabilities_scan_id" not in {idx["name"] for idx in inspector.get_indexes("vulnerabilities")}
+    command.upgrade(cfg, "0078")  # adopted indexes survive a second roundtrip
+
+
+@pytest.mark.parametrize(
+    "columns, unique, suffix",
+    [
+        ("id", "", ""),
+        ("scan_id", "UNIQUE ", ""),
+        ("scan_id", "", " WHERE scan_id IS NOT NULL"),
+    ],
+)
+def test_migration_0078_rejects_conflicting_index_before_any_ddl(tmp_path, columns, unique, suffix):
+    from alembic import command
+
+    db_path = tmp_path / "conflict.db"
+    cfg = _config(db_path)
+    command.upgrade(cfg, "0077")
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as conn:
+        conn.exec_driver_sql(f"CREATE {unique}INDEX ix_vulnerabilities_scan_id ON vulnerabilities ({columns}){suffix}")
+    with pytest.raises(ValueError, match="ix_vulnerabilities_scan_id conflicts"):
+        command.upgrade(cfg, "0078")
+    inspector = inspect(engine)
+    assert "_alembic_0078_indexes" not in inspector.get_table_names()
+    assert "ix_cbom_versions_version" not in {idx["name"] for idx in inspector.get_indexes("cbom_versions")}
+    with engine.connect() as conn:
+        assert conn.exec_driver_sql("SELECT version_num FROM alembic_version").scalar() == "0077"
+
+
+def test_migration_0078_legacy_downgrade_without_ownership_ledger(tmp_path):
+    from alembic import command
+
+    db_path = tmp_path / "legacy.db"
+    cfg = _config(db_path)
+    command.upgrade(cfg, "0078")
+    engine = create_engine(f"sqlite:///{db_path}")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("DROP TABLE _alembic_0078_indexes")  # old 0078 had no ledger
+    command.downgrade(cfg, "0077")
+    inspector = inspect(engine)
+    assert "ix_cbom_versions_version" not in {idx["name"] for idx in inspector.get_indexes("cbom_versions")}
+    assert "ix_vulnerabilities_scan_id" not in {idx["name"] for idx in inspector.get_indexes("vulnerabilities")}
 
 
 def _orm_indexes() -> dict[str, set[tuple[str, ...]]]:
@@ -52,9 +132,7 @@ def _chain_indexes(db_path: str) -> dict[str, list[tuple[str, ...]]]:
             continue
         cols: list[tuple[str, ...]] = []
         for row in conn.execute(f"PRAGMA index_list('{table}')"):
-            cols.append(
-                tuple(c[2] for c in conn.execute(f"PRAGMA index_info('{row[1]}')"))
-            )
+            cols.append(tuple(c[2] for c in conn.execute(f"PRAGMA index_info('{row[1]}')")))
         out[table] = cols
     return out
 
@@ -86,8 +164,7 @@ def test_migration_0078_indexes_are_prefix_minimal():
     """Nothing in 0078 duplicates coverage that already existed."""
     import re
 
-    src = (ROOT / "services" / "database" / "migrations" / "versions" /
-           "0078_model_chain_index_parity.py").read_text()
+    src = (ROOT / "services" / "database" / "migrations" / "versions" / "0078_model_chain_index_parity.py").read_text()
     created = re.findall(r'\("([a-z0-9_]+)", "[a-z0-9_]+", \(([^)]*)\)\)', src)
     assert len(created) == 24
     with tempfile.TemporaryDirectory() as tmp:

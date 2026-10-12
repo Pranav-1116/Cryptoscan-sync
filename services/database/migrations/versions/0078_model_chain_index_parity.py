@@ -18,7 +18,8 @@ Prefix-covered ones were excluded (e.g. evidence_records.scan_id is the
 leftmost prefix of ix_evidence_scan_chain; system_dependencies.parent_id is
 covered by uq_system_dep) — this migration only creates what was genuinely
 absent. A parity test (`test_model_migration_index_parity`) pins this so
-drift cannot return.
+drift cannot return. The migration-only ownership table records which indexes
+0078 actually created, so rollback leaves adopted indexes untouched.
 
 Revision ID: 0078
 Revises: 0077
@@ -63,21 +64,67 @@ _INDEXES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 
 
-def _existing_tables() -> set[str]:
-    return set(sa.inspect(op.get_bind()).get_table_names())
+_OWNERSHIP_TABLE = "_alembic_0078_indexes"
+
+
+def _matching_index(table: str, name: str, columns: tuple[str, ...], existing: dict) -> bool:
+    index = existing.get(name)
+    if index is None:
+        return False
+    options = index.get("dialect_options") or {}
+    has_predicate = any(key.endswith("_where") and value is not None for key, value in options.items())
+    has_included_columns = bool(index.get("include_columns")) or any(
+        key.endswith("_include") and bool(value) for key, value in options.items()
+    )
+    if index["column_names"] != list(columns) or bool(index["unique"]) or has_predicate or has_included_columns:
+        raise ValueError(
+            f"{table}.{name} conflicts with migration 0078: expected non-unique columns {list(columns)}, got {index}"
+        )
+    return True
 
 
 def upgrade() -> None:
-    present = _existing_tables()
+    inspector = sa.inspect(op.get_bind())
+    present = set(inspector.get_table_names())
+    missing = []
+    # Check every preexisting name before doing any DDL (important on SQLite,
+    # where a failed migration need not roll back prior CREATE INDEX statements).
     for table, name, columns in _INDEXES:
         if table not in present:
             continue  # optional-surface table not installed in this deployment
+        existing = {index["name"]: index for index in inspector.get_indexes(table)}
+        if not _matching_index(table, name, columns, existing):
+            missing.append((table, name, columns))
+
+    # Even an all-adopted migration needs this marker: an older 0078 deployment
+    # has no ledger and used to own (and drop) every index in _INDEXES.
+    op.create_table(
+        _OWNERSHIP_TABLE,
+        sa.Column("name", sa.String(128), primary_key=True),
+    )
+    for table, name, columns in missing:
         op.create_index(name, table, list(columns))
+        op.get_bind().execute(
+            sa.text(f"INSERT INTO {_OWNERSHIP_TABLE} (name) VALUES (:name)"),
+            {"name": name},
+        )
 
 
 def downgrade() -> None:
-    present = _existing_tables()
-    for table, name, _columns in reversed(_INDEXES):
-        if table not in present:
+    inspector = sa.inspect(op.get_bind())
+    present = set(inspector.get_table_names())
+    if _OWNERSHIP_TABLE in present:
+        owned = {row[0] for row in op.get_bind().execute(sa.text(f"SELECT name FROM {_OWNERSHIP_TABLE}"))}
+    else:
+        # Compatibility with databases upgraded by the original 0078, which
+        # unconditionally created all of these indexes and had no ledger.
+        owned = {name for _table, name, _columns in _INDEXES}
+
+    for table, name, columns in reversed(_INDEXES):
+        if table not in present or name not in owned:
             continue
-        op.drop_index(name, table_name=table)
+        existing = {index["name"]: index for index in inspector.get_indexes(table)}
+        if _matching_index(table, name, columns, existing):
+            op.drop_index(name, table_name=table)
+    if _OWNERSHIP_TABLE in present:
+        op.drop_table(_OWNERSHIP_TABLE)
