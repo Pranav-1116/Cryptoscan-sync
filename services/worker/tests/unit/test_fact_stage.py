@@ -12,6 +12,7 @@ import db.models  # noqa: F401 — register every table
 from db.connection.session import Base
 from db.models.cryptographic_fact import CryptographicFact
 from db.models.evidence_record import EvidenceRecord
+from db.models.scan import Scan
 from worker.pipeline import stage_facts
 
 
@@ -55,18 +56,44 @@ def test_stage_rebuilds_facts_for_the_scan_files(session):
     assert ctx.scan_id == "scan-1"
 
 
-def test_stage_is_fail_soft(session, monkeypatch):
+def test_stage_is_fail_soft_without_rolling_back_scan_or_evidence(session, monkeypatch, caplog):
+    session.add(Scan(id="scan-1", scan_start=datetime.now(timezone.utc),
+                     target_location="local-repo"))
     session.add(_ev("scan-1", "RSA", "a.py", 1))
-    session.flush()
+    # Leave the caller's scan/evidence pending: begin_nested will flush them
+    # before opening its savepoint, and its rollback must still preserve them.
 
-    def _boom(self):
+    def _boom(self, *, file_paths):
+        self.session.add(CryptographicFact(
+            algorithm="RSA", purpose="ENCRYPTION", file_path="a.py", mode="",
+        ))
+        self.session.flush()  # a partially written projection inside the savepoint
         raise RuntimeError("db exploded")
 
     monkeypatch.setattr(
         "db.repositories.fact_repository.FactRepository.rebuild", _boom)
     ctx = stage_facts.execute(_Ctx("scan-1"), session=session)  # must not raise
     assert ctx.scan_id == "scan-1"
+    assert "facts_stage_failed scan_id=scan-1 error_type=RuntimeError" in caplog.text
     assert session.execute(select(CryptographicFact)).scalars().first() is None
+    # This caller is still in charge of the transaction; a later stage can
+    # update the scan and commit the evidence without an FK violation.
+    scan = session.get(Scan, "scan-1")
+    scan.status = "COMPLETED"
+    session.commit()
+    assert session.get(Scan, "scan-1").status == "COMPLETED"
+    assert session.get(Scan, "scan-1").statistics["fact_store_status"] == "FAILED"
+    assert session.execute(select(EvidenceRecord)).scalar_one().scan_id == "scan-1"
+
+
+def test_shared_session_stage_does_not_commit(session, monkeypatch):
+    session.add(_ev("scan-1", "RSA", "a.py", 1))
+    session.flush()
+    def _commit_forbidden():
+        raise AssertionError("caller session must not be committed by fact stage")
+    monkeypatch.setattr(session, "commit", _commit_forbidden)
+    stage_facts.execute(_Ctx("scan-1"), session=session)
+    assert session.execute(select(CryptographicFact)).scalar_one().algorithm == "RSA"
 
 
 def test_stage_no_files_is_a_clean_noop(session):

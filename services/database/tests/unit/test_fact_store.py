@@ -5,8 +5,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from sqlalchemy import create_engine, select
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from alembic.script import ScriptDirectory
+from pathlib import Path
+from sqlalchemy import Column, Integer, MetaData, String, Table, UniqueConstraint, create_engine, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
+
+from db.tenancy import tenant_scope, install_tenant_guard
 
 import db.models  # noqa: F401 — register every table
 from db.connection.session import Base
@@ -27,9 +35,9 @@ def session():
 
 
 def _ev(scan, algo, path, line, purpose="ENCRYPTION", key_size=None,
-        scanner="ast", created=None, deleted=None, hardcoded=False):
+        scanner="ast", created=None, deleted=None, hardcoded=False, tenant=None):
     return EvidenceRecord(
-        scan_id=scan, content_hash=f"{scan}{algo}{path}{line}{scanner}",
+        tenant_id=tenant, scan_id=scan, content_hash=f"{scan}{algo}{path}{line}{scanner}",
         chain_hash="0" * 64, chain_position=line,
         algorithm=algo, purpose=purpose, key_size=key_size,
         file_path=path, line_number=line,
@@ -128,3 +136,118 @@ def test_list_current_filters(session):
     rows = repo.list_current(file_prefix="src/pay")
     assert [r.algorithm for r in rows] == ["RSA"]
     assert [r.algorithm for r in repo.list_current(algorithm="AES")] == ["AES"]
+
+
+def test_tenant_local_identity_and_platform_row(session):
+    session.add_all([
+        _ev("s1", "RSA", "same.py", 1, tenant="one"),
+        _ev("s2", "RSA", "same.py", 2, tenant="two"),
+        _ev("s3", "RSA", "same.py", 3),
+    ])
+    session.flush()
+    repo = FactRepository(session)
+    assert repo.rebuild()["facts_upserted"] == 3
+    assert repo.rebuild()["facts_upserted"] == 3
+    facts = {f.tenant_id: f for f in repo.list_current()}
+    assert set(facts) == {"one", "two", None}
+    assert all(f.observation_count == 1 for f in facts.values())
+    assert len({tuple(f.evidence_ids) for f in facts.values()}) == 3
+
+    install_tenant_guard()
+    with tenant_scope("one"):
+        assert {f.tenant_id for f in repo.list_current()} == {"one", None}
+        # A scoped admin may not rewrite the platform projection.
+        assert repo.rebuild()["facts_upserted"] == 1
+    assert facts[None].observation_count == 1
+
+
+def test_unknown_key_size_has_one_identity_even_across_rebuilds(session):
+    session.add(_ev("s1", "AES", "same.py", 1, tenant="one"))
+    session.flush()
+    repo = FactRepository(session)
+    repo.rebuild()
+    session.add(_ev("s2", "AES", "same.py", 2, tenant="one"))
+    session.flush()
+    repo.rebuild()
+    facts = repo.list_current()
+    assert len(facts) == 1
+    assert facts[0].key_size is None and facts[0].observation_count == 2
+    # The schema must also reject a duplicate inserted outside the repository.
+    with pytest.raises(IntegrityError), session.begin_nested():
+        session.add(CryptographicFact(
+            tenant_id="one", algorithm="AES", purpose="ENCRYPTION",
+            file_path="same.py", mode="", key_size=None,
+        ))
+        session.flush()
+
+
+def test_full_rebuild_retires_vanished_facts_and_resets_rollups(session):
+    session.add(_ev("s1", "3DES", "old.py", 1, hardcoded=True))
+    session.flush()
+    repo = FactRepository(session)
+    repo.rebuild()
+    evidence = session.execute(select(EvidenceRecord)).scalar_one()
+    evidence.deleted_at = datetime(2026, 10, 6, tzinfo=timezone.utc)
+    session.flush()
+    assert repo.rebuild() == {"facts_upserted": 0, "facts_stale": 1, "evidence_rows": 0}
+    fact = repo.list_current(include_stale=True)[0]
+    assert not fact.is_current and fact.observation_count == 0
+    assert fact.evidence_ids == [] and fact.hardcoded_key_observations == 0
+    assert fact.first_seen is None and fact.last_seen is None
+    assert repo.list_current() == []
+
+
+def test_sqlite_forward_migration_rejects_ambiguous_rows_and_enforces_identity():
+    ini = Path(__file__).resolve().parents[2] / "migrations" / "alembic.ini"
+    revision = ScriptDirectory.from_config(Config(str(ini))).get_revision("0087").module
+    engine = create_engine("sqlite:///:memory:")
+    metadata = MetaData()
+    old = Table("cryptographic_facts", metadata,
+                Column("id", String(36), primary_key=True),
+                Column("tenant_id", String(36), nullable=False),
+                Column("algorithm", String(80), nullable=False),
+                Column("purpose", String(50)), Column("file_path", String()),
+                Column("key_size", Integer), Column("mode", String(50)),
+                UniqueConstraint("algorithm", "purpose", "file_path", "key_size",
+                                 "mode", name="uq_fact_identity"))
+    metadata.create_all(engine)
+    with engine.begin() as conn:
+        conn.execute(old.insert(), [
+            {"id": "a", "tenant_id": "one", "algorithm": "RSA", "file_path": "same.py"},
+            {"id": "b", "tenant_id": "one", "algorithm": "RSA", "file_path": "same.py"},
+        ])
+        with Operations.context(MigrationContext.configure(conn)):
+            with pytest.raises(RuntimeError, match="duplicate tenant-local identities"):
+                revision.upgrade()
+        # The failed preflight leaves every derived row and all evidence untouched.
+        assert len(conn.execute(select(old)).all()) == 2
+        conn.execute(old.delete().where(old.c.id == "b"))
+        with Operations.context(MigrationContext.configure(conn)):
+            revision.upgrade()
+        conn.execute(old.insert(), [
+            {"id": "platform", "tenant_id": None, "algorithm": "RSA", "file_path": "same.py"},
+            {"id": "two", "tenant_id": "two", "algorithm": "RSA", "file_path": "same.py"},
+        ])
+        with pytest.raises(IntegrityError), conn.begin_nested():
+            conn.execute(old.insert().values(
+                id="duplicate", tenant_id=None, algorithm="RSA", file_path="same.py"))
+    engine.dispose()
+
+
+def test_staleness_is_tenant_local_on_shared_path(session):
+    session.add_all([
+        _ev("s1", "AES", "same.py", 1, tenant="one"),
+        _ev("s2", "AES", "same.py", 2, tenant="two"),
+    ])
+    session.flush()
+    repo = FactRepository(session)
+    repo.rebuild()
+    evidence = session.execute(select(EvidenceRecord).where(
+        EvidenceRecord.tenant_id == "one")).scalar_one()
+    evidence.deleted_at = datetime(2026, 10, 6, tzinfo=timezone.utc)
+    session.flush()
+    assert repo.rebuild(file_paths=["same.py"])["facts_stale"] == 1
+    facts = {f.tenant_id: f for f in repo.list_current(include_stale=True)}
+    assert not facts["one"].is_current and facts["two"].is_current
+    assert set(repo.latest_activity_by_file(["same.py"])) == {
+        ("one", "same.py"), ("two", "same.py")}

@@ -104,6 +104,34 @@ def test_fact_store_rebuild_and_read_contract(sqlite_app):
     assert all(r.is_current for r in rows)
 
 
+def test_prefix_rebuild_retires_fact_after_last_evidence_is_retracted(sqlite_app):
+    client, db_url = sqlite_app
+    _seed(db_url)
+    admin = _login(client)
+    assert client.post("/api/v1/facts/rebuild", headers=admin).status_code == 200
+
+    from datetime import datetime, timezone
+
+    from sqlalchemy import create_engine, update
+
+    from db.models.evidence_record import EvidenceRecord
+
+    eng = create_engine(db_url)
+    with eng.begin() as connection:
+        connection.execute(update(EvidenceRecord).where(
+            EvidenceRecord.file_path == "src/old/Legacy.java"
+        ).values(deleted_at=datetime.now(timezone.utc)))
+    eng.dispose()
+
+    r = client.post("/api/v1/facts/rebuild", params={"file_prefix": "src/old"},
+                    headers=admin)
+    assert r.status_code == 200, r.text
+    assert r.json()["facts_stale"] == 1
+    r = client.get("/api/v1/facts/store", headers=admin)
+    assert r.status_code == 200
+    assert {f["fact"]["algorithm"] for f in r.json()["facts"]} == {"RSA-2048"}
+
+
 def test_fact_store_rebuild_empty_is_empty(sqlite_app):
     client, _ = sqlite_app
     admin = _login(client)

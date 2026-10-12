@@ -108,6 +108,31 @@ def test_migrated_schema_matches_the_models(migrated):
     assert missing_columns == [], missing_columns
 
 
+@pytest.mark.live
+def test_fact_identity_is_tenant_local_and_null_safe_on_postgres(migrated):
+    """All inserted rows are rolled back; only the fresh migration schema is exercised."""
+    columns = {col["name"]: col for col in sa.inspect(migrated).get_columns("cryptographic_facts")}
+    assert columns["tenant_id"]["nullable"] is True
+    indexes = sa.inspect(migrated).get_indexes("cryptographic_facts")
+    assert any(index["name"] == "uq_fact_identity" and index["unique"] for index in indexes)
+
+    insert = sa.text("""
+        INSERT INTO cryptographic_facts
+            (id, tenant_id, algorithm, purpose, file_path, key_size, mode)
+        VALUES (:id, :tenant_id, 'RSA', 'ENCRYPTION', 'src/Keys.java', NULL, '')
+    """)
+    with migrated.connect() as conn, conn.begin():
+        for ident, tenant in (("fact-pg-platform", None), ("fact-pg-one", "one"),
+                              ("fact-pg-two", "two")):
+            conn.execute(insert, {"id": ident, "tenant_id": tenant})
+        for ident, tenant in (("fact-pg-duplicate-platform", None),
+                              ("fact-pg-duplicate-one", "one")):
+            with pytest.raises(sa.exc.IntegrityError), conn.begin_nested():
+                conn.execute(insert, {"id": ident, "tenant_id": tenant})
+        # The transaction is deliberately not committed, including on success.
+        conn.rollback()
+
+
 def test_downgrade_one_and_back(migrated):
     down = _alembic("downgrade", "-1")
     assert down.returncode == 0, down.stderr[-2000:]

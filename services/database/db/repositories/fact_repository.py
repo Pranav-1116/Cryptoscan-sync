@@ -28,6 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db.fact_projection import fact_key, identity_values, scanner_id
+from db.tenancy import current_tenant, isolation_active
 from db.models.cryptographic_fact import CryptographicFact
 from db.models.evidence_record import EvidenceRecord
 
@@ -45,6 +46,11 @@ class FactRepository:
         Returns counts: {"facts_upserted", "facts_stale", "evidence_rows"}.
         """
         stmt = select(EvidenceRecord)
+        # Scoped admin rebuilds may read platform evidence, but must not
+        # rewrite platform facts. The worker (unscoped) rebuilds all tenants.
+        scoped_tenant = current_tenant() if isolation_active() else None
+        if scoped_tenant is not None:
+            stmt = stmt.where(EvidenceRecord.tenant_id == scoped_tenant)
         if not include_deleted:
             stmt = stmt.where(EvidenceRecord.deleted_at.is_(None))
         if file_paths is not None:
@@ -56,19 +62,20 @@ class FactRepository:
 
         grouped: dict[tuple, list[EvidenceRecord]] = {}
         for row in rows:
-            grouped.setdefault(fact_key(row.to_dict()), []).append(row)
+            grouped.setdefault((row.tenant_id, fact_key(row.to_dict())), []).append(row)
 
         now = datetime.now(timezone.utc)
         upserted = 0
-        for key in sorted(grouped, key=lambda k: (k[2] or "", k[0], k[1], str(k[3]), k[4])):
-            members = grouped[key]
+        for tenant_id, key in sorted(grouped, key=lambda k: (
+                str(k[0] or ""), k[1][2], k[1][0], k[1][1], str(k[1][3]), k[1][4])):
+            members = grouped[(tenant_id, key)]
             seen = sorted(m.created_at for m in members if m.created_at)
             scanners = sorted({s for s in (scanner_id(m.to_dict()) for m in members) if s})
             evidence_ids = [str(m.id) for m in members]
             values = identity_values(key)
-            existing = self._by_identity(key)
+            existing = self._by_identity(tenant_id, key)
             if existing is None:
-                existing = CryptographicFact(**values)
+                existing = CryptographicFact(tenant_id=tenant_id, **values)
                 self.session.add(existing)
             existing.observation_count = len(members)
             existing.first_seen = seen[0] if seen else None
@@ -83,54 +90,55 @@ class FactRepository:
             existing.is_current = True
             upserted += 1
 
-        # facts for these files whose evidence vanished entirely
+        # Full rebuilds must also retire facts for which no live evidence
+        # remains anywhere. A file-scoped rebuild only retires its files.
         stale = 0
-        touched_paths = None if file_paths is None else sorted(
-            {p for p in file_paths if p})
-        if touched_paths:
-            previous = self.session.execute(
-                select(CryptographicFact).where(
-                    CryptographicFact.is_current.is_(True),
-                    CryptographicFact.file_path.in_(touched_paths),
-                )
-            ).scalars().all()
-            live_keys = set(grouped)
-            for row in previous:
-                key = (row.algorithm, row.purpose, row.file_path,
-                       row.key_size, row.mode)
-                if key not in live_keys:
-                    row.is_current = False
-                    row.observation_count = 0
-                    row.evidence_ids = []
-                    row.rebuilt_at = now
-                    stale += 1
+        previous_stmt = select(CryptographicFact).where(CryptographicFact.is_current.is_(True))
+        if file_paths is not None:
+            previous_stmt = previous_stmt.where(CryptographicFact.file_path.in_(paths))
+        if scoped_tenant is not None:
+            previous_stmt = previous_stmt.where(CryptographicFact.tenant_id == scoped_tenant)
+        previous = self.session.execute(previous_stmt).scalars().all()
+        live_keys = set(grouped)
+        for row in previous:
+            if (row.tenant_id, fact_key(row.to_dict())) not in live_keys:
+                row.is_current = False
+                row.observation_count = 0
+                row.first_seen = None
+                row.last_seen = None
+                row.scanners = []
+                row.confidences = []
+                row.hardcoded_key_observations = 0
+                row.evidence_ids = []
+                row.rebuilt_at = now
+                stale += 1
 
         self.session.flush()
         return {"facts_upserted": upserted, "facts_stale": stale,
                 "evidence_rows": len(rows)}
 
-    def _by_identity(self, key: tuple) -> CryptographicFact | None:
+    def _by_identity(self, tenant_id: str | None, key: tuple) -> CryptographicFact | None:
         algorithm, purpose, file_path, key_size, mode = key
         return self.session.execute(
             select(CryptographicFact).where(
+                CryptographicFact.tenant_id == tenant_id,
                 CryptographicFact.algorithm == algorithm,
-                CryptographicFact.purpose == purpose,
-                CryptographicFact.file_path == file_path,
+                func.coalesce(CryptographicFact.purpose, "") == purpose,
+                func.coalesce(CryptographicFact.file_path, "") == file_path,
                 CryptographicFact.key_size == key_size,
-                CryptographicFact.mode == mode,
+                func.coalesce(CryptographicFact.mode, "") == mode,
             )
         ).scalar_one_or_none()
 
     def files_for_scan(self, scan_id: str) -> list[str]:
         """The files a scan's evidence touched — the rebuild scope for it."""
-        return sorted({
-            path for path in self.session.execute(
-                select(EvidenceRecord.file_path).where(
-                    EvidenceRecord.scan_id == scan_id,
-                    EvidenceRecord.deleted_at.is_(None),
-                )
-            ).scalars() if path
-        })
+        stmt = select(EvidenceRecord.file_path).where(
+            EvidenceRecord.scan_id == scan_id,
+            EvidenceRecord.deleted_at.is_(None),
+        )
+        if isolation_active():
+            stmt = stmt.where(EvidenceRecord.tenant_id == current_tenant())
+        return sorted({path for path in self.session.execute(stmt).scalars() if path})
 
     def list_current(self, *, algorithm: str | None = None,
                      file_prefix: str | None = None,
@@ -146,28 +154,28 @@ class FactRepository:
             rows = [r for r in rows if str(r.file_path or "").startswith(file_prefix)]
         return rows[:limit]
 
-    def latest_activity_by_file(self, files: Iterable[str]) -> dict[str, datetime]:
-        """Per file: the newest evidence activity (created OR soft-deleted).
+    def latest_activity_by_file(self, files: Iterable[str]) -> dict[tuple[str | None, str], datetime]:
+        """Newest evidence activity per tenant and file (including deletions).
 
-        A fact row is fresh iff its ``rebuilt_at`` covers this timestamp —
-        deletion after a rebuild also makes the row stale, because a
-        rebuild would now compute different numbers for that file.
+        Activity for another tenant's same path must never make this tenant's
+        facts appear outdated. Platform evidence also has its own timeline.
         """
         paths = sorted({f for f in files if f})
         if not paths:
             return {}
-        latest: dict[str, datetime] = {}
+        latest: dict[tuple[str | None, str], datetime] = {}
         for chunk_start in range(0, len(paths), 500):
             chunk = paths[chunk_start:chunk_start + 500]
             rows = self.session.execute(
                 select(
+                    EvidenceRecord.tenant_id,
                     EvidenceRecord.file_path,
                     func.max(func.coalesce(EvidenceRecord.deleted_at,
                                            EvidenceRecord.created_at)),
                 ).where(EvidenceRecord.file_path.in_(chunk))
-                .group_by(EvidenceRecord.file_path)
+                .group_by(EvidenceRecord.tenant_id, EvidenceRecord.file_path)
             ).all()
-            for path, stamp in rows:
+            for tenant_id, path, stamp in rows:
                 if path and stamp is not None:
-                    latest[str(path)] = stamp
+                    latest[(tenant_id, str(path))] = stamp
         return latest

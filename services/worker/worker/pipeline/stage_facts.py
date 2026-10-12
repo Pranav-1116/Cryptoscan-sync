@@ -15,11 +15,32 @@ from worker.pipeline.pipeline_runner import PipelineContext
 logger = logging.getLogger(__name__)
 
 
+def _mark_failure(ctx: PipelineContext, session) -> None:
+    if isinstance(getattr(ctx, "scan_meta", None), dict):
+        ctx.scan_meta["fact_store_status"] = "FAILED"
+    if session is None:
+        return
+    try:
+        from db.models.scan import Scan
+        from db.tenancy import filtered_get
+
+        scan = filtered_get(session, Scan, ctx.scan_id)
+        if scan is not None:
+            scan.statistics = {**(scan.statistics or {}), "fact_store_status": "FAILED"}
+    except Exception:
+        # Even if the DB is unusable, the warning that caused this marker is
+        # emitted; a failed status write must not lose the evidence transaction.
+        logger.warning("facts_stage_status_update_failed scan_id=%s", ctx.scan_id,
+                       exc_info=True)
+
+
 def execute(ctx: PipelineContext, session=None) -> PipelineContext:
     try:
         from db.repositories.fact_repository import FactRepository
     except Exception:
-        logger.debug("facts_stage_imports_unavailable", exc_info=True)
+        logger.warning("facts_stage_imports_unavailable scan_id=%s", ctx.scan_id,
+                       exc_info=True)
+        _mark_failure(ctx, session)
         return ctx
 
     owns = False
@@ -30,23 +51,33 @@ def execute(ctx: PipelineContext, session=None) -> PipelineContext:
             session = SessionLocal()
             owns = True
         except Exception:
-            logger.debug("facts_stage_no_session", exc_info=True)
+            logger.warning("facts_stage_no_session scan_id=%s", ctx.scan_id,
+                           exc_info=True)
+            _mark_failure(ctx, session)
             return ctx
     try:
-        repo = FactRepository(session)
-        paths = repo.files_for_scan(ctx.scan_id)
-        if not paths:
-            return ctx
-        result = repo.rebuild(file_paths=paths)
-        session.commit()
-        logger.info("stage_facts_done", extra={
-            "files": len(paths),
-            "facts": result.get("facts_upserted"),
-            "stale": result.get("facts_stale"),
-        })
-    except Exception:
-        session.rollback()
-        logger.debug("facts_stage_failed", exc_info=True)
+        # SQLAlchemy flushes pending outer writes before a SAVEPOINT. A failed
+        # projection rolls back only its own changes, never the caller's scan
+        # and evidence transaction. Only a session created here is committed.
+        with session.begin_nested():
+            repo = FactRepository(session)
+            paths = repo.files_for_scan(ctx.scan_id)
+            result = repo.rebuild(file_paths=paths) if paths else None
+        if owns:
+            session.commit()
+        if result is not None:
+            logger.info("stage_facts_done", extra={
+                "scan_id": ctx.scan_id,
+                "files": len(paths),
+                "facts": result.get("facts_upserted"),
+                "stale": result.get("facts_stale"),
+            })
+    except Exception as exc:
+        if owns:
+            session.rollback()
+        _mark_failure(ctx, session)
+        logger.warning("facts_stage_failed scan_id=%s error_type=%s",
+                       ctx.scan_id, type(exc).__name__, exc_info=True)
     finally:
         if owns:
             session.close()

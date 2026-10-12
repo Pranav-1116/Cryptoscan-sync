@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Index, Integer, JSON, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Index, Integer, JSON, String, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.models.base import BaseModel
@@ -24,9 +24,15 @@ from db.tenancy import TenantScoped
 class CryptographicFact(TenantScoped, BaseModel):
     __tablename__ = "cryptographic_facts"
     __table_args__ = (
-        UniqueConstraint(
-            "algorithm", "purpose", "file_path", "key_size", "mode",
-            name="uq_fact_identity",
+        # SQLite and PostgreSQL normally treat NULLs as distinct in UNIQUE
+        # constraints. Include NULL markers to keep even empty tenant IDs and
+        # unknown (or zero) key sizes distinct without permitting duplicates.
+        Index(
+            "uq_fact_identity", "algorithm",
+            text("coalesce(tenant_id, '')"), text("(tenant_id IS NULL)"),
+            text("coalesce(purpose, '')"), text("coalesce(file_path, '')"),
+            text("coalesce(key_size, 0)"), text("(key_size IS NULL)"),
+            text("coalesce(mode, '')"), unique=True,
         ),
         Index("ix_facts_algorithm", "algorithm"),
         Index("ix_facts_file", "file_path"),

@@ -174,7 +174,7 @@ def fact_store(
                                            str(r.mode or ""))):
         if row.observation_count < min_observations:
             continue
-        latest = _aware(activity.get(str(row.file_path)))
+        latest = _aware(activity.get((row.tenant_id, str(row.file_path))))
         rebuilt = _aware(row.rebuilt_at)
         fresh = bool(rebuilt is not None
                      and (latest is None or rebuilt >= latest))
@@ -232,16 +232,25 @@ def rebuild_fact_store(
     scan; this is the operator path for backfills after a migration or a
     bulk evidence import. Idempotent.
     """
+    from db.models.cryptographic_fact import CryptographicFact
     from db.models.evidence_record import EvidenceRecord
     from db.repositories.fact_repository import FactRepository
+    from db.tenancy import current_tenant, isolation_active
 
     repo = FactRepository(db)
     if file_prefix:
+        evidence_stmt = select(EvidenceRecord.file_path)
+        fact_stmt = select(CryptographicFact.file_path)
+        if isolation_active():
+            # Tenant admins may read platform rows, not rebuild them.
+            evidence_stmt = evidence_stmt.where(EvidenceRecord.tenant_id == current_tenant())
+            fact_stmt = fact_stmt.where(CryptographicFact.tenant_id == current_tenant())
+        # Include paths known ONLY to stale or retracted evidence; otherwise
+        # a prefix rebuild can never retire its last vanished fact.
         paths = sorted({
-            p for p in db.execute(
-                select(EvidenceRecord.file_path).where(
-                    EvidenceRecord.deleted_at.is_(None))
-            ).scalars() if p and p.startswith(file_prefix)
+            p for p in (*db.execute(evidence_stmt).scalars(),
+                        *db.execute(fact_stmt).scalars())
+            if p and p.startswith(file_prefix)
         })
         result = repo.rebuild(file_paths=paths)
     else:
