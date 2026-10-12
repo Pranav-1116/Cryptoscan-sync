@@ -1,3 +1,5 @@
+import json
+
 from worker.pipeline.pipeline_runner import PipelineContext
 from worker.pipeline.stage_language_detect import execute as detect
 from worker.pipeline.stage_alert import execute as alert
@@ -54,6 +56,85 @@ def test_cloud_and_tls_stages(tmp_path):
     ctx = tls(ctx)
     assert ctx.scan_meta.get("cloud", {}).get("resources", 0) >= 1
     assert ctx.scan_meta.get("tls", {}).get("targets", 0) >= 1
+
+
+def test_cloud_stage_exception_excludes_provider_error_from_metadata_and_logs(tmp_path, monkeypatch, caplog):
+    from cloud_scanner.core.scanner import CloudScanner
+
+    sentinel = "[SQL: SELECT synthetic_marker FROM synthetic_table] [parameters: ('synthetic_value',)]"
+    monkeypatch.setattr(CloudScanner, "scan_live", lambda *_a, **_k: (_ for _ in ()).throw(RuntimeError(sentinel)))
+    ctx = _ctx(tmp_path)
+    ctx.target_repo = "cloud://aws/example-account"
+    ctx.job_type = "CLOUD"
+
+    cloud(ctx)
+
+    metadata = ctx.scan_meta["cloud"]
+    assert metadata["providers"] == []  # No resources were observed.
+    assert metadata["provider"] == "AWS"  # Requested provider, not a fabricated finding.
+    assert metadata["live_scan"]["status"] == "FAILED"
+    assert metadata["live_scan"]["error_count"] == 1
+    assert metadata["live_scan"]["resources_scanned"] == 0
+    assert sentinel not in json.dumps(ctx.scan_meta)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+    assert any(record.__dict__.get("error_type") == "RuntimeError" for record in caplog.records)
+
+
+def test_cloud_stage_partial_telemetry_keeps_findings_without_error_details(tmp_path, monkeypatch, caplog):
+    from cloud_scanner.core.scanner import CloudScanner
+
+    sentinel = "[SQL: SELECT synthetic_marker FROM synthetic_table] [parameters: ('synthetic_value',)]"
+    finding = {"crypto": {"algorithm": "AES"}, "source": {"type": "CLOUD_RESOURCE"}}
+    monkeypatch.setattr(CloudScanner, "scan_live", lambda *_a, **_k: {
+        "findings": [finding], "resources": 1, "issues": 0, "providers": ["AWS", sentinel],
+        "live_scan": {
+            "enabled": True, "status": "PARTIAL", "resources_scanned": 2,
+            "errors": [{"provider": "AWS", "service": "kms", "code": sentinel, "error": sentinel}],
+            "error_count": 1, "truncations": [{"reason": sentinel}], "truncation_count": 1,
+        },
+    })
+    ctx = _ctx(tmp_path)
+    ctx.target_repo = "cloud://aws/example-account"
+    ctx.job_type = "CLOUD"
+
+    cloud(ctx)
+
+    assert ctx.findings == [finding]
+    metadata = ctx.scan_meta["cloud"]
+    assert metadata["providers"] == ["AWS"]
+    assert metadata["resources"] == 1
+    assert metadata["live_scan"]["status"] == "PARTIAL"
+    assert metadata["live_scan"]["resources_scanned"] == 2
+    assert metadata["live_scan"]["error_count"] == 1
+    assert metadata["live_scan"]["truncation_count"] == 1
+    assert sentinel not in json.dumps(ctx.scan_meta)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+
+
+def test_cloud_filesystem_live_telemetry_excludes_error_details(tmp_path, monkeypatch, caplog):
+    from cloud_scanner.core.scanner import CloudScanner
+
+    sentinel = "[SQL: SELECT synthetic_marker FROM synthetic_table] [parameters: ('synthetic_value',)]"
+    monkeypatch.setenv("CRYPTOSCAN_CLOUD_LIVE", "1")
+    monkeypatch.setattr(CloudScanner, "scan_filesystem", lambda *_a, **_k: {
+        "findings": [], "resources": 0, "issues": 0, "providers": [], "live": True,
+        "live_scan": {
+            "enabled": True, "status": "FAILED", "resources_scanned": 0,
+            "errors": [{"provider": "AWS", "error": sentinel}], "error_count": 1,
+            "truncations": [], "truncation_count": 0,
+        },
+    })
+    with caplog.at_level("INFO"):
+        ctx = cloud(_ctx(tmp_path))
+
+    assert ctx.scan_meta["cloud"]["live_scan"]["status"] == "FAILED"
+    assert any(record.msg == "stage_cloud_scan_done" for record in caplog.records)
+    assert ctx.scan_meta["cloud"]["live_scan"]["error_count"] == 1
+    assert sentinel not in json.dumps(ctx.scan_meta)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
 
 
 def test_graph_sync_stage_fail_open(tmp_path):
