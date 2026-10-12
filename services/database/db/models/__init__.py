@@ -13,6 +13,7 @@ from db.models.cascade_extensions import (
 )
 from db.models.cascade_run import CascadeRun
 from db.models.certificate import Certificate
+from db.models.cryptographic_fact import CryptographicFact
 from db.models.cloud_account import CloudAccount
 from db.models.container_scan import ContainerScan
 from db.models.crypto_asset import CryptoAsset

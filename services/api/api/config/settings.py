@@ -63,6 +63,15 @@ class APISettings(BaseSettings):
     ZERO_TRUST_ENFORCED: bool = False
     ZERO_TRUST_POLICY_FILE: str = ""
     OPA_URL: str = ""
+    # threat-intel feeds (deep/30, round 35): "name=url" pairs, comma
+    # separated; empty = no feeds (community default, manual import only)
+    THREAT_INTEL_FEEDS: str = ""
+    THREAT_INTEL_FEED_SECRET: str = ""
+    THREAT_INTEL_FEED_TIMEOUT: int = 15
+    # runtime egress guard (audit 81, round 35): "off" (community default)
+    # or "enforce" — under enforce, outbound TCP must match the allowlist
+    EGRESS_GUARD: str = "off"
+    EGRESS_ALLOWLIST: str = ""
     OPA_POLICY_PATH: str = "cryptoscan/allow"
     OPA_TIMEOUT_SECONDS: float = 3.0
 

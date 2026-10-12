@@ -386,3 +386,18 @@ cpus: "1.0"
   services never call AI binaries are infrastructure decisions
   (container security profiles, host requirements), not application
   code. Tracked as a standing deployment gap in 00_ROUND_STATUS.
+
+## Round 35 addendum (2026-10-12) — deterministic-service egress guard BUILT (application layer)
+
+P0#2's code-scoped half shipped: `api/security/egress_guard.py` wraps
+`socket.create_connection` with a fail-closed host[:port] allowlist
+(`EGRESS_GUARD=enforce`, `EGRESS_ALLOWLIST`), installed in the API
+lifespan after settings validation. Blocked destinations raise
+`EgressBlocked` before any socket is opened; empty allowlist blocks
+everything; install is idempotent and uninstall restores the original
+socket. This proves at the application layer that deterministic
+services make no outbound calls outside the declared feed/export
+endpoints. seccomp/capability-drop and eBPF execve tracing stay
+deployment-scoped exactly as below — the guard is the in-code floor,
+not a replacement for kernel-level confinement. Tests:
+`services/api/tests/unit/test_egress_guard.py`.

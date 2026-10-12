@@ -79,8 +79,22 @@ class Neo4jGraphStore:
         # `collection` is collector meta (bounded-walk totals/truncation
         # flags); carried into the result, not synced as a node kind.
         collection_meta = dict(collection or {})
-        systems = list(systems)
-        assets = list(assets)
+        # Per-tenant node identity (round 35): every row — nodes and edges —
+        # carries the syncing tenant, so MERGE identities and prune scopes
+        # are tenant-partitioned. One stamping point, every batch flows
+        # through it. Standalone graph-engine deployments (no tenant plane)
+        # stamp 'platform'.
+        tenant = self._sync_tenant()
+        systems = [dict(r, tenant_id=tenant) for r in systems]
+        assets = [dict(r, tenant_id=tenant) for r in assets]
+        processes = [dict(r, tenant_id=tenant) for r in processes]
+        owners = [dict(r, tenant_id=tenant) for r in owners]
+        vendors = [dict(r, tenant_id=tenant) for r in vendors]
+        certificates = [dict(r, tenant_id=tenant) for r in certificates]
+        cloud_resources = [dict(r, tenant_id=tenant) for r in cloud_resources]
+        network_resources = [dict(r, tenant_id=tenant) for r in network_resources]
+        container_images = [dict(r, tenant_id=tenant) for r in container_images]
+        edges = [dict(r, tenant_id=tenant) for r in edges]
         process_nodes, support_edges = payload.process_rows(processes)
         owner_nodes, owned_edges = payload.owner_rows(owners)
         scope_nodes, comply_edges = payload.scope_rows(systems)
@@ -117,7 +131,7 @@ class Neo4jGraphStore:
                 continue
             self._run(query, rows=rows)
             written += len(rows)
-        pruned = self._prune_ghosts(batches)
+        pruned = self._prune_ghosts(batches, tenant=tenant)
         counts = self.counts()
         logger.info("neo4j_graph_synced", extra={"written": written, "pruned": pruned, **counts})
         return {"written": written, "pruned": pruned, **counts, "backend": self.backend,
@@ -136,7 +150,16 @@ class Neo4jGraphStore:
         ("ContainerImage", "container_id", "container_id"),
     )
 
-    def _prune_ghosts(self, batches) -> int:
+    def _sync_tenant(self) -> str:
+        """The tenant this sync writes as ('platform' without a tenant plane)."""
+        try:
+            from db.tenancy import current_tenant
+
+            return current_tenant() or "platform"
+        except Exception:
+            return "platform"
+
+    def _prune_ghosts(self, batches, tenant: str = "platform") -> int:
         """Delete nodes of kinds present in the payload whose ids are absent.
 
         MERGE-only sync left deleted systems/assets in the graph forever —
@@ -167,7 +190,7 @@ class Neo4jGraphStore:
                 continue  # kind absent from this sync — leave its nodes alone
             query = cypher_writes.PRUNE_KIND.format(label=label, prop=prop)
             try:
-                result = self._run(query, ids=keep)
+                result = self._run(query, ids=keep, tenant=tenant)
             except Exception:
                 logger.debug("neo4j_prune_failed", exc_info=True)
                 continue

@@ -561,3 +561,21 @@ All findings traceable to source files:
   (same item as deep/27 P0#1 — separate DBs or property-scoped Cypher
   is an infrastructure decision; the in-memory fallback stays scoped),
   per-tenant resource quotas, billing, data-residency enforcement.
+
+## Round 35 addendum (2026-10-12) — Neo4j per-tenant isolation, WRITE side BUILT
+
+The §6.3-adjacent infrastructure decision now has its write-side half
+in code: every node MERGE keys on `(tenant_id, business id)` and stamps
+`tenant_id` explicitly (upgrade-safe); every edge endpoint MATCH is
+tenant-scoped; `PRUNE_KIND` deletes only within the syncing tenant —
+plus un-stamped legacy nodes, and only on a platform-scope sync
+(self-migrating cleanup that cannot eat another tenant's nodes).
+One stamping point in `Neo4jGraphStore.sync()`; payload builders
+re-attach the stamp (a real bug found by the fake-driver tests: fresh
+builder dicts dropped it, which would have fed every node to the
+platform prune). Read queries are deliberately still un-filtered: under
+a tenant scope the facade serves the memory engine (the existing
+zero-Bolt isolation contract, unchanged and pinned by
+`test_tenant_isolation.py`); property-scoped read Cypher or per-tenant
+databases remain the deployment decision this report recorded. Tests:
+`services/graph_engine/tests/test_tenant_node_identity.py`.

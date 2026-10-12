@@ -618,3 +618,17 @@ round); what remains of §5.2 is only the human routing policy
 (who receives which severity — a deployment configuration concern).
 Tests: 4 SLA-sweep cases in
 `services/worker/tests/unit/test_round24_monitor_sweeps.py`.
+
+## Round 35 addendum (2026-10-12) — automation → ticket link BUILT
+
+The ticketing surface is now reachable from the platform itself: the
+automation bridge consumes `ticket.requested` events off the bus
+(special-cased ahead of the loop-prevention prefix skip; the consumer
+emits nothing back) and creates an ITSM ticket via
+`EnterpriseRepository.create_ticket` with `provider="automation"` and
+external ref `automation/{event_kind}/{asset_id or 'estate'}`.
+Redelivery is idempotent (duplicate external ref + open state → same
+ticket reported as duplicate); closed tickets may be re-opened as new.
+ChatOps routing (Slack/Mattermost destinations) remains an external
+system, as this report's standing classification records. Tests:
+`services/api/tests/unit/test_ticket_consumer.py`.

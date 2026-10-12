@@ -12,9 +12,10 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from api.dependencies import get_current_user, get_db_session
+from api.dependencies import get_current_user, get_db_session, require_admin
 
 logger = logging.getLogger(__name__)
 
@@ -128,3 +129,41 @@ def code_fact_graph(
     graph["truncated"] = truncated
     graph["fact_count"] = len(facts)
     return graph
+
+
+@router.post("/rebuild")
+def rebuild_fact_store(
+    file_prefix: str | None = Query(None, description="Rebuild only files under this prefix"),
+    user: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Rebuild the materialised fact store from evidence (51 P0#1, round 35).
+
+    Fact rows are derived — this endpoint recomputes them from the
+    evidence table (all files, or one prefix). It exists because the fact
+    store is a projection, not a second truth: drop it, rebuild it, same
+    answer. The scans pipeline maintains it automatically after each
+    scan; this is the operator path for backfills after a migration or a
+    bulk evidence import. Idempotent.
+    """
+    from db.models.evidence_record import EvidenceRecord
+    from db.repositories.fact_repository import FactRepository
+
+    repo = FactRepository(db)
+    if file_prefix:
+        paths = sorted({
+            p for p in db.execute(
+                select(EvidenceRecord.file_path).where(
+                    EvidenceRecord.deleted_at.is_(None))
+            ).scalars() if p and p.startswith(file_prefix)
+        })
+        result = repo.rebuild(file_paths=paths)
+    else:
+        result = repo.rebuild()
+    db.commit()
+    return {
+        "model": "fact-store/rebuild-v1",
+        **result,
+        "note": "fact rows are derived from evidence and fully rebuildable; "
+                "GET /facts/crypto keeps its live-projection contract",
+    }

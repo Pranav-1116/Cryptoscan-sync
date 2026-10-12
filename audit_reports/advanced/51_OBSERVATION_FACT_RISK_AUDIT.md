@@ -495,3 +495,29 @@ round-31 addendum in advanced/48 for the full surface and the
 deliberate scope: no scores, no asset coupling, write side
 unchanged). The full rearchitecture of the fused `crypto_assets`
 write side REMAINS OPEN as this report's round-27 addendum recorded.
+
+## Round 35 addendum (2026-10-12) — fact store, write side BUILT (materialised slice)
+
+P0#1's second step shipped: the cryptographic fact store now exists as a
+materialised, rebuildable projection alongside the read model.
+
+* `cryptographic_facts` table (migration 0085): one row per
+  (algorithm, purpose, mode, parameters, file) fact with observation
+  counts, hardcoded-key observations, scanner list, first/last seen,
+  exact `evidence_ids`, `is_current`/`rebuilt_at` lifecycle stamps.
+  Identity is verbatim (`""` for absent purpose/mode — never NULL) so
+  unique constraints hold under every backend.
+* `FactRepository.rebuild(file_paths=None)` recomputes rows from
+  EvidenceRecords — full or per-file scope; facts whose evidence
+  vanished in scope are marked stale (`is_current=false`,
+  `observation_count=0`), never silently deleted.
+* `POST /facts/rebuild` (admin, optional `file_prefix`) and the
+  fail-soft `stage_facts` pipeline stage (runs after dedup; the live
+  projection at `/facts/crypto` answers regardless, rebuild backfills).
+
+The fused `crypto_assets` write side is STILL the system of record for
+inventory; the full rearchitecture (single writer, asset decoupling)
+remains open exactly as the round-27 addendum recorded. Tests:
+`services/database/tests/unit/test_fact_store.py`,
+`services/api/tests/unit/test_fact_store_api.py`,
+`services/worker/tests/unit/test_fact_stage.py`.

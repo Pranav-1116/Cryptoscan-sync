@@ -13,6 +13,18 @@ def _aid(item: dict[str, Any]) -> str:
     return str(item.get("id") or item.get("asset_id") or "")
 
 
+def _tenant(item: dict[str, Any]) -> dict[str, Any]:
+    """Round 35: the tenant stamp must survive normalization.
+
+    store.sync stamps every input row before the builders run; builders
+    build fresh dicts, so they re-attach the stamp explicitly. A missing
+    stamp would drop a node out of its tenant partition (and, on a
+    platform sync, into the legacy-cleanup prune set).
+    """
+    tenant = item.get("tenant_id")
+    return {"tenant_id": tenant} if tenant else {}
+
+
 def systems_rows(systems: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for system in systems:
@@ -28,6 +40,7 @@ def systems_rows(systems: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "criticality": system.get("criticality") or extra.get("criticality"),
                 "owner": system.get("owner"),
                 "compliance_scopes": list(system.get("compliance_scopes") or []),
+                **_tenant(system),
             }
         )
     return rows
@@ -48,6 +61,7 @@ def asset_rows(assets: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                 "confidence": asset.get("confidence"),
                 "file_path": asset.get("file_path"),
                 "system_id": asset.get("system_id"),
+                **_tenant(asset),
             }
         )
     return rows
@@ -63,7 +77,7 @@ def uses_rows(assets: Iterable[dict[str, Any]], systems: Iterable[dict[str, Any]
     for asset in asset_rows(assets):
         system_id = asset.get("system_id") or by_asset.get(asset["asset_id"])
         if system_id:
-            rows.append({"system_id": str(system_id), "asset_id": asset["asset_id"], "usage_type": "DISCOVERED"})
+            rows.append({"system_id": str(system_id), "asset_id": asset["asset_id"], "usage_type": "DISCOVERED", **_tenant(asset)})
     return rows
 
 
@@ -79,6 +93,7 @@ def call_rows(edges: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                     "child_id": str(child),
                     "protocol": edge.get("protocol") or edge.get("relation") or "CALLS",
                     "frequency": edge.get("frequency"),
+                    **_tenant(edge),
                 }
             )
     return rows
@@ -96,10 +111,11 @@ def process_rows(processes: Iterable[dict[str, Any]]) -> tuple[list[dict[str, An
                 "name": process.get("name") or process.get("process_name"),
                 "revenue_daily": float(process.get("revenue_daily") or 0),
                 "customer_count": int(process.get("customer_count") or 0),
+                **_tenant(process),
             }
         )
         for system_id in process.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "process_id": pid})
+            edges.append({"system_id": str(system_id), "process_id": pid, **_tenant(process)})
     return nodes, edges
 
 
@@ -115,10 +131,11 @@ def owner_rows(owners: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]], 
                 "name": owner.get("name"),
                 "email": owner.get("email"),
                 "role": owner.get("role"),
+                **_tenant(owner),
             }
         )
         for system_id in owner.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "owner_id": oid})
+            edges.append({"system_id": str(system_id), "owner_id": oid, **_tenant(owner)})
     return nodes, edges
 
 
@@ -129,9 +146,9 @@ def scope_rows(systems: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]],
         sid = _sid(system)
         for scope in system.get("compliance_scopes") or []:
             name = str(scope)
-            nodes[name] = {"standard_name": name, "version": None}
+            nodes[name] = {"standard_name": name, "version": None, **_tenant(system)}
             if sid:
-                edges.append({"system_id": sid, "standard_name": name})
+                edges.append({"system_id": sid, "standard_name": name, **_tenant(system)})
     return list(nodes.values()), edges
 
 
@@ -141,13 +158,14 @@ def vendor_rows(vendors: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]]
         vid = str(vendor.get("id") or vendor.get("vendor_id") or vendor.get("name") or "")
         if not vid:
             continue
-        nodes.append({"vendor_id": vid, "name": vendor.get("name"), "criticality": vendor.get("criticality")})
+        nodes.append({"vendor_id": vid, "name": vendor.get("name"), "criticality": vendor.get("criticality"), **_tenant(vendor)})
         for system_id in vendor.get("system_ids") or []:
             edges.append(
                 {
                     "system_id": str(system_id),
                     "vendor_id": vid,
                     "dependency_type": vendor.get("dependency_type"),
+                    **_tenant(vendor),
                 }
             )
     return nodes, edges
@@ -166,10 +184,11 @@ def cert_rows(certificates: Iterable[dict[str, Any]]) -> tuple[list[dict[str, An
                 "issuer": cert.get("issuer"),
                 "not_after": cert.get("not_after"),
                 "expiry_status": cert.get("expiry_status"),
+                **_tenant(cert),
             }
         )
         for system_id in cert.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "cert_id": cid, "endpoint": cert.get("endpoint")})
+            edges.append({"system_id": str(system_id), "cert_id": cid, "endpoint": cert.get("endpoint"), **_tenant(cert)})
     return nodes, edges
 
 
@@ -185,10 +204,11 @@ def cloud_rows(resources: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any]
                 "cloud_provider": resource.get("cloud_provider") or resource.get("provider"),
                 "resource_type": resource.get("resource_type") or "ACCOUNT",
                 "name": resource.get("name") or resource.get("account_identifier"),
+                **_tenant(resource),
             }
         )
         for system_id in resource.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "resource_id": rid})
+            edges.append({"system_id": str(system_id), "resource_id": rid, **_tenant(resource)})
     return nodes, edges
 
 
@@ -206,10 +226,11 @@ def network_rows(resources: Iterable[dict[str, Any]]) -> tuple[list[dict[str, An
                 "name": resource.get("name") or resource.get("endpoint"),
                 "endpoint": resource.get("endpoint"),
                 "resource_type": resource.get("resource_type") or "TLS_ENDPOINT",
+                **_tenant(resource),
             }
         )
         for system_id in resource.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "network_id": rid})
+            edges.append({"system_id": str(system_id), "network_id": rid, **_tenant(resource)})
     return nodes, edges
 
 
@@ -229,8 +250,9 @@ def container_rows(images: Iterable[dict[str, Any]]) -> tuple[list[dict[str, Any
                 "package_count": image.get("package_count"),
                 "library_count": image.get("library_count"),
                 "vuln_count": image.get("vuln_count"),
+                **_tenant(image),
             }
         )
         for system_id in image.get("system_ids") or []:
-            edges.append({"system_id": str(system_id), "container_id": cid})
+            edges.append({"system_id": str(system_id), "container_id": cid, **_tenant(image)})
     return nodes, edges

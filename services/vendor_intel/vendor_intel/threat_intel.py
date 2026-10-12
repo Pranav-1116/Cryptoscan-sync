@@ -169,3 +169,81 @@ def advisory_relevance(advisory: Mapping[str, Any], *, algorithm: str,
         "timing": timing,
         "note": "annotation only — advisories never rewrite stored scores",
     }
+
+
+# --------------------------------------------------------------------------- #
+# Feed layer (audit deep/30 + 63 feeds remainder, round 35): a feed is an
+# HTTP endpoint serving the same signed bundle format the platform itself
+# exports. Fetch -> verify -> entries; a tampered or malformed feed yields
+# an error, never partial imports. The actual feed URLs/secrets are
+# deployment configuration; this code never guesses them.
+# --------------------------------------------------------------------------- #
+
+def sync_feed(
+    url: str,
+    *,
+    secret: str,
+    timeout: float = 15.0,
+    fetch=None,
+) -> dict:
+    """Fetch one signed advisory bundle from a feed and verify it.
+
+    ``fetch`` is injectable for tests (defaults to ``httpx.get``); it must
+    return an object with ``status_code`` and ``json()``. Returns
+    ``{"ok": True, "entries": [...]}`` or ``{"ok": False, "error": ...}``
+    — callers decide what to persist; nothing is persisted here.
+    """
+    if not (url or "").strip():
+        return {"ok": False, "error": "empty feed url"}
+    if not (secret or "").strip():
+        return {"ok": False, "error": "feed secret not configured"}
+    if fetch is None:
+        try:
+            import httpx
+        except ImportError:  # pragma: no cover - httpx ships with the API
+            return {"ok": False, "error": "httpx unavailable"}
+        fetch = httpx.get
+    try:
+        response = fetch(url, timeout=timeout)
+    except Exception as exc:
+        return {"ok": False, "error": f"fetch failed: {exc}"}
+    if getattr(response, "status_code", 0) != 200:
+        return {"ok": False, "error": f"feed returned {getattr(response, 'status_code', '?')}"}
+    try:
+        bundle = response.json()
+    except Exception as exc:
+        return {"ok": False, "error": f"feed body is not JSON: {exc}"}
+    try:
+        entries = verify_advisory_bundle(bundle, secret=secret)
+    except AdvisoryError as exc:
+        return {"ok": False, "error": f"bundle rejected: {exc}"}
+    return {"ok": True, "entries": entries}
+
+
+def sync_feeds(
+    feeds: list[dict],
+    *,
+    secret: str,
+    timeout: float = 15.0,
+    fetch=None,
+) -> dict:
+    """Sync every configured feed; each one independently.
+
+    ``feeds`` is ``[{"name": ..., "url": ...}]`` — names are labels for
+    the result report. One bad feed never blocks the others.
+    """
+    results = []
+    ok = 0
+    entries_total: list = []
+    for feed in feeds:
+        name = str(feed.get("name") or feed.get("url") or "feed")
+        result = sync_feed(str(feed.get("url") or ""), secret=secret,
+                           timeout=timeout, fetch=fetch)
+        if result.get("ok"):
+            ok += 1
+            entries_total.extend(result["entries"])
+            results.append({"feed": name, "ok": True, "entries": len(result["entries"])})
+        else:
+            results.append({"feed": name, "ok": False, "error": result.get("error")})
+    return {"feeds_total": len(feeds), "feeds_ok": ok, "results": results,
+            "entries": entries_total}

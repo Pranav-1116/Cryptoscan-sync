@@ -124,9 +124,13 @@ class FakeSession:
         self.calls.append((query_name(query) or query[:40], params))
         name = query_name(query)
         if name == "prune_kind":
-            match = re.search(r"MATCH \(n:(\w+)\)\s*WHERE n\.(\w+)", query)
+            match = re.search(r"MATCH \(n:(\w+)\)", query)
+            # the keep-set property is the one feeding IN $ids (round 35:
+            # tenant predicates come first in the WHERE clause, so anchor
+            # on the IN clause, not on the first n.<prop> after MATCH)
+            prop_match = re.search(r"n\.(\w+) IN \$ids", query)
             params["_prune_label"] = match.group(1) if match else None
-            params["_prune_prop"] = match.group(2) if match else None
+            params["_prune_prop"] = prop_match.group(1) if prop_match else None
         if query.strip().upper().startswith("CREATE CONSTRAINT") or query.strip().upper().startswith("CREATE INDEX"):
             return FakeResult([])
         handler = {
@@ -261,18 +265,30 @@ class FakeSession:
         return []
 
     def _prune_kind(self, params):
-        # mirror of PRUNE_KIND: DETACH DELETE nodes of one kind whose
-        # identity is not in the keep list
+        # mirror of PRUNE_KIND (tenant-aware, round 35): delete nodes of
+        # one kind whose identity is not in the keep list — within the
+        # syncing tenant only, plus un-stamped legacy nodes on a
+        # platform-scope sync. NOTE: the fake keys nodes by (label, id);
+        # per-tenant node *identity* is a real-Neo4j property (the facade
+        # never serves this store under a tenant scope), so the fake
+        # models tenancy at the property/prune level, exactly as far as
+        # its semantics go.
         label = params.get("_prune_label")
         prop = params.get("_prune_prop")
         keep = {str(i) for i in params.get("ids") or []}
+        tenant = str(params.get("tenant") or "platform")
         if not label or not prop:
             return []
-        doomed = [
-            key
-            for (node_label, key), node in self.graph.nodes.items()
-            if node_label == label and str(node.get(prop) or key) not in keep
-        ]
+        doomed = []
+        for (node_label, key), node in self.graph.nodes.items():
+            if node_label != label:
+                continue
+            node_tenant = node.get("tenant_id")
+            if node_tenant is None:
+                if tenant == "platform":
+                    doomed.append(key)
+            elif str(node_tenant) == tenant and str(node.get(prop) or key) not in keep:
+                doomed.append(key)
         for key in doomed:
             del self.graph.nodes[(label, key)]
             self.graph.edges = [

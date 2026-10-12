@@ -788,6 +788,7 @@ class PipelineRunner:
             row.compliance_status = evaluation.overall_status
         session.flush()
         self._dedup(ctx, session, rows)
+        self._facts(ctx, session)
         self._graph(ctx, session)
         self._business(ctx, session)
         self._agility(ctx, session)
@@ -1152,6 +1153,14 @@ class PipelineRunner:
             graph_sync(ctx, session=session)
         except Exception:
             logger.debug("graph_sync_skipped", exc_info=True)
+
+    def _facts(self, ctx: PipelineContext, session) -> None:
+        try:
+            from worker.pipeline.stage_facts import execute as facts_stage
+
+            facts_stage(ctx, session=session)
+        except Exception:
+            logger.debug("facts_stage_skipped", exc_info=True)
 
     def _business(self, ctx: PipelineContext, session) -> None:
         try:

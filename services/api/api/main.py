@@ -166,6 +166,18 @@ def create_app(settings: APISettings | None = None) -> FastAPI:
         load_env()
         configure_logging(settings.LOG_LEVEL, json_output=settings.is_production)
         validate_runtime_settings(settings)
+        # Runtime egress guard (audit 81, round 35): under enforce, every
+        # outbound TCP connection must match the explicit allowlist —
+        # fail-closed, fail-loud. Off by default (community installs).
+        if str(getattr(settings, "EGRESS_GUARD", "off") or "off").lower() == "enforce":
+            from api.security.egress_guard import install_egress_guard
+
+            allowlist = [
+                entry.strip()
+                for entry in str(getattr(settings, "EGRESS_ALLOWLIST", "") or "").split(",")
+                if entry.strip()
+            ]
+            install_egress_guard(allowlist)
         # External secret references (advanced/75 P0#1, round 31): resolve
         # vault:// file: env: references in credential settings at startup.
         # Fail-loud: a half-resolved credential set must not boot.

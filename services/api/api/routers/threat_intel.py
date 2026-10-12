@@ -28,6 +28,7 @@ from vendor_intel.threat_intel import (
     AdvisoryError,
     advisory_relevance,
     build_advisory_bundle,
+    sync_feeds,
     validate_advisories,
     verify_advisory_bundle,
 )
@@ -120,6 +121,76 @@ def import_advisories(
     db.commit()
     logger.info("threat_intel_imported", extra={"entries": counts["total"], "actor": admin})
     return counts | {"accepted": True}
+
+
+def _configured_feeds() -> list[dict]:
+    from api.config.settings import get_settings
+
+    raw = (get_settings().THREAT_INTEL_FEEDS or "").strip()
+    feeds = []
+    for part in raw.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        name, _, url = part.partition("=")
+        feeds.append({"name": name.strip() or url.strip(), "url": url.strip()})
+    return feeds
+
+
+@router.get("/feeds")
+def list_feeds(user: str = Depends(get_current_user)):
+    """Configured threat-intel feeds (labels + URLs; never the secret)."""
+    feeds = _configured_feeds()
+    return {
+        "model": "threat-intel-feeds/v1",
+        "feeds": feeds,
+        "feed_count": len(feeds),
+        "bundle_format": "zelnx-threat-intel/v1",
+        "note": "feed endpoints are deployment configuration; advisories "
+                "sync from the same signed-bundle format the platform exports",
+    }
+
+
+@router.post("/advisories/sync")
+def sync_advisory_feeds(
+    admin: str = Depends(require_admin),
+    db: Session = Depends(get_db_session),
+):
+    """Sync every configured threat-intel feed now (deep/30, round 35).
+
+    Each feed is fetched, verified (tampered/malformed bundles are
+    rejected whole — nothing persists from a bad feed), and upserted.
+    One failing feed never blocks the others; failures are reported
+    per feed. No feeds configured -> an explicit empty result, not an
+    error: the manual bundle import remains the community path.
+    """
+    from api.config.settings import get_settings
+
+    feeds = _configured_feeds()
+    if not feeds:
+        return {"model": "threat-intel-feeds/sync-v1", "feeds_total": 0,
+                "feeds_ok": 0, "results": [], "created": 0, "updated": 0,
+                "note": "no feeds configured (THREAT_INTEL_FEEDS is empty)"}
+
+    settings = get_settings()
+    sync = sync_feeds(
+        feeds,
+        secret=settings.THREAT_INTEL_FEED_SECRET,
+        timeout=float(settings.THREAT_INTEL_FEED_TIMEOUT or 15),
+    )
+    counts = {"created": 0, "updated": 0, "total": 0}
+    if sync["entries"]:
+        counts = _upsert(db, sync["entries"])
+        db.commit()
+    logger.info("threat_intel_feed_sync", extra={
+        "entries": counts["total"], "ok": sync["feeds_ok"], "actor": admin})
+    return {
+        "model": "threat-intel-feeds/sync-v1",
+        "feeds_total": sync["feeds_total"],
+        "feeds_ok": sync["feeds_ok"],
+        "results": sync["results"],
+        **counts,
+    }
 
 
 @router.post("/advisories/bundle")

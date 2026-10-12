@@ -470,3 +470,21 @@ migration 0084):
 - STILL roadmap, unchanged: STIX/TAXII feeds, ATT&CK technique
   mapping, IOCs, threat-actor modeling — external data sources and
   modeling this round deliberately did not invent.
+
+## Round 35 addendum (2026-10-12) — feed layer BUILT
+
+The advisory exchange now has its inbound half: `sync_feed` /
+`sync_feeds` fetch a feed URL, verify the same
+`zelnx-threat-intel/v1` signed bundle format the platform exports
+(tamper/malformed → nothing extracted, never partial imports), and the
+admin `POST /threat-intel/advisories/sync` upserts verified entries —
+one bad feed never blocks the others, per-feed failures are reported.
+`GET /threat-intel/feeds` lists configured feeds (names + URLs, never
+the secret). Feeds are deployment configuration
+(`THREAT_INTEL_FEEDS="name=url,..."` + shared secret); an empty
+configuration is an explicit empty sync, keeping manual bundle import
+the community path. Real feed endpoints remain external systems, as
+the round-31 addendum recorded. The automation bridge sweeps feeds
+when configured (per-feed failure isolation). Tests:
+`services/vendor_intel/tests/test_threat_intel_feeds.py`,
+`services/api/tests/unit/test_threat_intel_feeds_api.py`.

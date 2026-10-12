@@ -15,20 +15,9 @@ from typing import Any, Iterable, Mapping, Optional
 MAX_EVIDENCE_REFS = 50
 
 
-def fact_key(row: Mapping[str, Any]) -> tuple:
-    """Fact identity: what + why + where + parameters.
-
-    Line number is deliberately NOT part of the identity: the same
-    algorithm/purpose/parameters in the same file is one fact observed
-    at several lines (lines stay on the evidence rows).
-    """
-    return (
-        str(row.get("algorithm") or "UNKNOWN"),
-        str(row.get("purpose") or ""),
-        str(row.get("file_path") or ""),
-        row.get("key_size"),
-        str(row.get("mode") or ""),
-    )
+# fact identity lives in the database kernel (round 35): the fact store
+# and this live projection share ONE definition of what a fact is
+from db.fact_projection import fact_key  # noqa: F401 — re-exported truth
 
 
 def _scanner_id(row: Mapping[str, Any]) -> str:
