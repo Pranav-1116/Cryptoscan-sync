@@ -521,3 +521,19 @@ remains open exactly as the round-27 addendum recorded. Tests:
 `services/database/tests/unit/test_fact_store.py`,
 `services/api/tests/unit/test_fact_store_api.py`,
 `services/worker/tests/unit/test_fact_stage.py`.
+
+## Round 37 addendum (2026-10-12) — fact store read path BUILT
+
+The store is now a first-class read surface, not a derived-only side
+table: `GET /facts/store` (migration 0086 adds the last field the live
+projection carried and the store lacked — observed confidences) serves
+fact rows in the exact shape and order of the live projection, plus a
+per-row freshness verdict (`fresh`: the row's rebuild covers the newest
+evidence activity for its file — creations AND soft-deletions) and an
+estate-level freshness statement. Equivalence is pinned by tests:
+after a rebuild, store facts == live-projected facts, modulo the
+store's single added `fresh` key. `GET /facts/crypto` keeps its
+live-projection contract unchanged as the always-correct reference.
+The full `crypto_assets` write-side rearchitecture (single writer,
+asset decoupling) remains open exactly as before. Tests:
+`services/api/tests/unit/test_fact_store_read.py`.

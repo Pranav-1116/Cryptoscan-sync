@@ -24,7 +24,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Iterable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from db.fact_projection import fact_key, identity_values, scanner_id
@@ -74,6 +74,8 @@ class FactRepository:
             existing.first_seen = seen[0] if seen else None
             existing.last_seen = seen[-1] if seen else None
             existing.scanners = scanners
+            existing.confidences = sorted({
+                str(m.confidence) for m in members if m.confidence})
             existing.hardcoded_key_observations = sum(
                 1 for m in members if m.is_hardcoded_key)
             existing.evidence_ids = evidence_ids
@@ -132,11 +134,40 @@ class FactRepository:
 
     def list_current(self, *, algorithm: str | None = None,
                      file_prefix: str | None = None,
+                     include_stale: bool = False,
                      limit: int = 1000) -> list[CryptographicFact]:
-        stmt = select(CryptographicFact).where(CryptographicFact.is_current.is_(True))
+        stmt = select(CryptographicFact)
+        if not include_stale:
+            stmt = stmt.where(CryptographicFact.is_current.is_(True))
         if algorithm:
             stmt = stmt.where(CryptographicFact.algorithm == algorithm)
         rows = list(self.session.execute(stmt).scalars())
         if file_prefix:
             rows = [r for r in rows if str(r.file_path or "").startswith(file_prefix)]
         return rows[:limit]
+
+    def latest_activity_by_file(self, files: Iterable[str]) -> dict[str, datetime]:
+        """Per file: the newest evidence activity (created OR soft-deleted).
+
+        A fact row is fresh iff its ``rebuilt_at`` covers this timestamp —
+        deletion after a rebuild also makes the row stale, because a
+        rebuild would now compute different numbers for that file.
+        """
+        paths = sorted({f for f in files if f})
+        if not paths:
+            return {}
+        latest: dict[str, datetime] = {}
+        for chunk_start in range(0, len(paths), 500):
+            chunk = paths[chunk_start:chunk_start + 500]
+            rows = self.session.execute(
+                select(
+                    EvidenceRecord.file_path,
+                    func.max(func.coalesce(EvidenceRecord.deleted_at,
+                                           EvidenceRecord.created_at)),
+                ).where(EvidenceRecord.file_path.in_(chunk))
+                .group_by(EvidenceRecord.file_path)
+            ).all()
+            for path, stamp in rows:
+                if path and stamp is not None:
+                    latest[str(path)] = stamp
+        return latest

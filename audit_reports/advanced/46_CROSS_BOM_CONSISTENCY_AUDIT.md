@@ -394,3 +394,19 @@ the same live inventory and links them as they are. Still open,
 unchanged: the single-generator merge (three generators → one) and a
 unified query layer — the rearchitecture this report scoped at 6-8
 weeks. Tests: `services/cbom/tests/test_cross_bom.py`.
+
+## Round 37 addendum (2026-10-12) — unified query layer BUILT
+
+The report's last code-scoped ❌ row is closed: `cbom/bom_query.py`
+answers cross-BOM questions over any set of BOM documents —
+`GET /cbom/query` filters by canonical identity, kind, BOM, or
+algorithm (spacing/dash tolerant), restricts to linked or unlinked
+identities (coverage gaps), or to conflicts only. Every match carries
+each BOM's own ref and comparable values plus its conflicts, so
+"where does this appear / what do the BOMs say / where do they
+disagree" is one request. The endpoint builds its documents through
+the same live-inventory helper as /cbom/cross-links, so the two
+surfaces cannot disagree about what they linked. REMAINS OPEN,
+unchanged: the single-generator merge — three generators still exist;
+this layer queries their outputs as they are. Tests:
+`services/cbom/tests/test_bom_query.py`.

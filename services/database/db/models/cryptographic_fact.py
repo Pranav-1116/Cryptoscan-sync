@@ -43,6 +43,10 @@ class CryptographicFact(TenantScoped, BaseModel):
     first_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     scanners: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # observed confidence values (round 37) — the last field the live
+    # projection carried that the store lacked; with it, a store row is
+    # exactly equivalent to a live-projected fact
+    confidences: Mapped[list | None] = mapped_column(JSON, nullable=True)
     hardcoded_key_observations: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     evidence_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # rebuild bookkeeping: which evidence generation produced these numbers

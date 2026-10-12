@@ -193,11 +193,17 @@ class APISettings(BaseSettings):
     ALERT_EMAIL_FROM: str = "alerts@cryptoscan.local"
     ALERT_EMAIL_TO: str = "security@example.com"
 
-    # Live-monitor alert sinks (SIEM/webhook) — unset sinks are skipped honestly
+    # Live-monitor alert sinks (SIEM/webhook/ChatOps) — unset sinks are skipped honestly
     ALERT_CEF_HOST: str = ""
     ALERT_CEF_PORT: int = 514
     ALERT_WEBHOOK_URL: str = ""
     ALERT_WEBHOOK_SECRET: str = ""
+    # ChatOps incoming webhook (Slack/Mattermost-compatible; round 37).
+    # The workspace/webhook itself is an external system — this is the
+    # client half, signed like the generic webhook sink.
+    ALERT_CHATOPS_URL: str = ""
+    ALERT_CHATOPS_SECRET: str = ""
+    ALERT_CHATOPS_CHANNEL: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

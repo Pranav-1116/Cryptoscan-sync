@@ -267,21 +267,13 @@ def cbom_catalog(
     }
 
 
-@router.get("/cross-links")
-def cbom_cross_links(
-    limit: int = Query(2000, ge=1, le=5000),
-    user: str = Depends(get_current_user),
-    db: Session = Depends(get_db_session),
-):
-    """Cross-BOM links + conflicts over the live inventory (46, round 36).
+def _live_bom_documents(db: Session, *, limit: int = 2000) -> dict:
+    """Build the live CBOM / TechBOM / VBOM from the same inventory read.
 
-    Builds the CBOM (generator), the TechBOM (materialized layers) and
-    the VBOM from the same database, then links components by canonical
-    identity and reports disagreements. The single-generator merge stays
-    open; this surface links the generators' outputs as they are.
+    Shared by the cross-BOM surfaces (round 36 links, round 37 query
+    layer) so they can never disagree about what they linked.
     """
-    from api.routers.techbom import _gather_inventory, _environment_of
-    from cbom.cross_bom import cross_boms
+    from api.routers.techbom import _environment_of, _gather_inventory
     from cbom.technology_bom import materialize_technology_bom
     from vendor_intel.vbom import build_vbom
 
@@ -296,12 +288,59 @@ def cbom_cross_links(
         logger.info("cross_links_vbom_unavailable",
                     extra={"error_type": type(_handler_exc).__name__})
         vbom_doc = {}
+    return {"cbom": cbom_doc, "techbom": techbom_doc, "vbom": vbom_doc}
 
-    return cross_boms({"cbom": cbom_doc, "techbom": techbom_doc,
-                       "vbom": vbom_doc}) | {
+
+@router.get("/cross-links")
+def cbom_cross_links(
+    limit: int = Query(2000, ge=1, le=5000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Cross-BOM links + conflicts over the live inventory (46, round 36).
+
+    Builds the CBOM (generator), the TechBOM (materialized layers) and
+    the VBOM from the same database, then links components by canonical
+    identity and reports disagreements. The single-generator merge stays
+    open; this surface links the generators' outputs as they are.
+    """
+    from cbom.cross_bom import cross_boms
+
+    return cross_boms(_live_bom_documents(db, limit=limit)) | {
         "live": True,
         "limit": limit,
     }
+
+
+@router.get("/query")
+def cbom_query(
+    identity: str | None = Query(None, description="Canonical identity, e.g. crypto:RSA-2048"),
+    kind: str | None = Query(None, description="Component kind: crypto, vendor, application, hardware, endpoint"),
+    bom: str | None = Query(None, description="Restrict to one BOM: cbom, techbom, vbom"),
+    algorithm: str | None = Query(None, description="Crypto components by algorithm (case-insensitive)"),
+    linked_only: bool = Query(False, description="Only identities present in 2+ BOMs"),
+    unlinked_only: bool = Query(False, description="Only identities present in exactly 1 BOM (coverage gaps)"),
+    conflicts_only: bool = Query(False, description="Only disagreeing fields"),
+    limit: int = Query(2000, ge=1, le=5000),
+    user: str = Depends(get_current_user),
+    db: Session = Depends(get_db_session),
+):
+    """Unified query over every BOM (46 unified query layer, round 37).
+
+    One question, answered across the CBOM generator output, the TechBOM
+    layers and the VBOM: where does an identity appear (with each BOM's
+    own ref), what do the BOMs say about it, where do they disagree, and
+    which identities exist in only one BOM. Identities are the same
+    canonical ones /cbom/cross-links links by.
+    """
+    from cbom.bom_query import query_boms
+
+    return query_boms(
+        _live_bom_documents(db, limit=limit),
+        identity=identity, kind=kind, bom=bom, algorithm=algorithm,
+        linked_only=linked_only, unlinked_only=unlinked_only,
+        conflicts_only=conflicts_only,
+    ) | {"live": True, "limit": limit}
 
 
 @router.get("/coverage")

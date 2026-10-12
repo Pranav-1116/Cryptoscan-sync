@@ -632,3 +632,17 @@ ticket reported as duplicate); closed tickets may be re-opened as new.
 ChatOps routing (Slack/Mattermost destinations) remains an external
 system, as this report's standing classification records. Tests:
 `services/api/tests/unit/test_ticket_consumer.py`.
+
+## Round 37 addendum (2026-10-12) — ChatOps routing BUILT (client half)
+
+The ticketing/ChatOps remainder now has its code-scoped half:
+`format_chatops` + an AlertRouter sink posting Slack/Mattermost-
+compatible alert bodies (plain-text rendering + severity-colored
+attachment with structured fields; host-derived values are embedded as
+data, never interpolated into markup) to `ALERT_CHATOPS_URL`, HMAC-
+signed with `ALERT_CHATOPS_SECRET` (falling back to the webhook
+secret) with optional channel override. Fail-soft like every sink — a
+ChatOps outage never blocks CEF/webhook/email delivery, and an
+unconfigured sink is an honest skip. The workspace/webhook itself
+remains an external system, as this report's classification records.
+Tests: `services/worker/tests/unit/test_chatops_routing.py`.
