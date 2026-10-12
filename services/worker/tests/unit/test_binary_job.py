@@ -6,6 +6,7 @@ and the synchronous endpoint ever drift apart.
 """
 from __future__ import annotations
 
+import json
 import struct
 
 from worker.core.job_consumer import ScanJob
@@ -166,16 +167,17 @@ def test_the_artifact_is_keyed_by_the_job_so_a_retry_overwrites_it(monkeypatch, 
     assert all("11111111-2222-3333-4444-555555555555." in name for name in second)
 
 
-def test_binary_job_fails_closed_when_the_target_is_gone(monkeypatch, tmp_path):
-    """A missing target is a FAILED job with the reason, never an empty success."""
+def test_binary_job_fails_closed_when_the_target_is_gone(monkeypatch, tmp_path, caplog):
+    """A missing target is FAILED; the detailed path stays in worker logs."""
     writes = _wire(monkeypatch, tmp_path)
     job = ScanJob(job_id="j-binary-3", target_repo=f"binary://{tmp_path}/not-there",
                   job_type="BINARY", progress={"scan_options": {"artifact_id": "art-3"}})
     assert binary_job.run_binary_job(job) is False
     status, progress, error = writes[-1][1], writes[-1][2], writes[-1][3]
     assert status == "FAILED"
-    assert "not found" in (error or "")
-    assert progress["status"] == "FAILED" and progress["current_stage"] == "binary_scan"
+    assert error == "Binary scan failed at stage binary_target"
+    assert "binary_job_failed" in caplog.text
+    assert progress["status"] == "FAILED" and progress["current_stage"] == "binary_target"
     assert not (tmp_path / "sboms").exists() or not list((tmp_path / "sboms").iterdir())
 
 
@@ -186,7 +188,48 @@ def test_binary_job_refuses_a_target_outside_the_source_roots(monkeypatch, tmp_p
                   job_type="BINARY", progress={"scan_options": {}})
     assert binary_job.run_binary_job(job) is False
     error = writes[-1][3] or ""
-    assert "refused" in error or "not permitted" in error or "allow" in error.lower()
+    assert error == "Binary scan failed at stage binary_target"
+
+
+def test_binary_job_exception_stays_out_of_public_fields(monkeypatch, tmp_path, caplog):
+    writes = _wire(monkeypatch, tmp_path)
+    sentinel = "[SQL: SELECT sentinel_secret FROM users] [parameters: ('sentinel_key',)]"
+
+    def fail_at_store(session, job, options, report):
+        report("binary_store", note="storing artifact")
+        raise RuntimeError(sentinel)
+
+    monkeypatch.setattr(binary_job, "_run", fail_at_store)
+    job = ScanJob(job_id="j-binary-error", target_repo=f"binary://{tmp_path}",
+                  job_type="BINARY", progress={"scan_options": {"artifact_id": "art-error"}})
+    assert binary_job.run_binary_job(job) is False
+    assert writes[-1][1] == "FAILED"
+    assert writes[-1][2]["current_stage"] == "binary_store"
+    assert writes[-1][2]["stages"][3]["state"] == "FAILED"
+    assert "binary_store" in writes[-1][3]
+    assert sentinel not in json.dumps(writes)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+    assert any(record.__dict__.get("traceback_frames") for record in caplog.records)
+
+
+def test_cbom_ingest_exception_is_not_persisted_in_completed_artifact(monkeypatch, tmp_path, caplog):
+    writes = _wire(monkeypatch, tmp_path)
+    sentinel = "[SQL: SELECT sentinel_secret FROM users] [parameters: ('sentinel_key',)]"
+    target = tmp_path / "bundle"
+    target.mkdir()
+    (target / "tool.so").write_bytes(_elf64())
+    monkeypatch.setattr("api.routers.cbom.ingest_document",
+                        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError(sentinel)))
+    job = ScanJob(job_id="j-binary-ingest", target_repo=f"binary://{target}", job_type="BINARY",
+                  progress={"scan_options": {"ingest_cbom": True, "artifact_id": "art-ingest"}})
+    assert binary_job.run_binary_job(job) is True
+    assert writes[-1][1] == "COMPLETED"
+    assert writes[-1][2]["binary"]["cbom_ingested"] is False
+    assert sentinel not in json.dumps(writes)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+    assert any(record.__dict__.get("traceback_frames") for record in caplog.records)
 
 
 def test_a_cbom_ingest_failure_does_not_lose_the_artifact(monkeypatch, tmp_path):

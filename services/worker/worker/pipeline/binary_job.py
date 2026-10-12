@@ -20,6 +20,8 @@ import logging
 from pathlib import Path
 from typing import Any, Callable
 
+from worker.pipeline.public_failure import log_job_failure, public_failure
+
 logger = logging.getLogger(__name__)
 
 #: a target that names a filesystem path rather than a repository to clone
@@ -100,7 +102,7 @@ def run_binary_job(job) -> bool:
     """Run one binary scan job; returns True on success.
 
     Fail-closed: an unreadable target, a refused path, a render error, or a
-    storage failure marks the job FAILED with the reason. A walk that finds no
+    storage failure marks the job FAILED with a safe stage message. A walk that finds no
     binaries is *not* a failure — it completes, and the result says how many
     files were walked and how many were parsed, so "0 findings" cannot be
     mistaken for "0 files looked at".
@@ -111,8 +113,11 @@ def run_binary_job(job) -> bool:
     session = SessionLocal()
     jobs = JobRepository(session)
     options = scan_options(job)
+    current_stage = "binary_target"
 
     def report(stage: str, *, status: str = "RUNNING", **extra: Any) -> None:
+        nonlocal current_stage
+        current_stage = stage
         jobs.update_status(job.job_id, status if status == "FAILED" else "RUNNING",
                            progress=_stage(stage, status=status, options=options, **extra))
         session.commit()
@@ -143,19 +148,22 @@ def run_binary_job(job) -> bool:
                                              "findings": artifact["findings"]})
         return True
     except Exception as exc:  # noqa: BLE001 — the job's failure is the report
-        logger.exception("binary_job_failed", extra={"job_id": job.job_id})
+        safe_stage = current_stage if current_stage in BINARY_STAGES else "binary_scan"
+        log_job_failure(logger, "binary_job_failed", exc, job_id=job.job_id, stage=safe_stage)
+        public_error = public_failure("Binary scan", safe_stage)
         try:
             session.rollback()
             jobs.update_status(
                 job.job_id,
                 "FAILED",
-                error_message=str(exc)[:500],
-                progress=_stage("binary_scan", status="FAILED", options=options,
-                                error=f"{type(exc).__name__}: {exc}"[:500],
-                                stage_failed="binary_scan"),
+                error_message=public_error,
+                progress=_stage(safe_stage, status="FAILED", options=options,
+                                error=public_error, stage_failed=safe_stage),
             )
             session.commit()
-        except Exception:
+        except Exception as status_exc:
+            log_job_failure(logger, "binary_job_failure_status_persist_failed", status_exc,
+                            job_id=job.job_id, stage=safe_stage)
             session.rollback()
         return False
     finally:
@@ -293,9 +301,9 @@ def _ingest_cbom(session, cbom: dict, job, options: dict, resolved: str) -> dict
                 "system": (loaded.get("system") or {}).get("name")}
     except Exception as exc:  # noqa: BLE001 — inventory unavailable is reported, never faked
         session.rollback()
-        logger.warning("binary_job_cbom_ingest_failed",
-                       extra={"job_id": job.job_id, "error": str(exc)})
-        return {"ingested": False, "error": str(exc)[:300]}
+        log_job_failure(logger, "binary_job_cbom_ingest_failed", exc,
+                        job_id=job.job_id, stage="binary_ingest")
+        return {"ingested": False, "error": public_failure("CBOM ingestion", "binary_ingest")}
 
 
 def _stamp_system(session, job, manifest: dict, result: dict) -> None:
@@ -314,8 +322,8 @@ def _stamp_system(session, job, manifest: dict, result: dict) -> None:
         session.commit()
     except Exception as exc:  # noqa: BLE001 — a stamp failure must not lose the artifact
         session.rollback()
-        logger.warning("binary_job_stamp_failed",
-                       extra={"job_id": job.job_id, "error": str(exc)})
+        log_job_failure(logger, "binary_job_stamp_failed", exc,
+                        job_id=job.job_id, stage="binary_ingest")
 
 
 def _empty_scan_note(result: dict) -> str | None:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from worker.core.job_consumer import ScanJob
 from worker.core.job_executor import JobExecutor
 
@@ -147,6 +149,98 @@ def test_run_org_job_fails_closed_when_every_account_fails(monkeypatch):
     assert status == "FAILED"
     assert "accounts failed" in error_message
     assert progress["cloud"]["live_scan"]["status"] == "FAILED"
+
+
+def test_org_job_exception_stays_out_of_public_job_fields(monkeypatch, caplog):
+    from worker.pipeline import org_job
+
+    sentinel = "[SQL: SELECT sentinel_secret FROM users] [parameters: ('sentinel_key',)]"
+    statuses = []
+
+    class Session:
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Jobs:
+        def __init__(self, session):
+            pass
+
+        def update_status(self, job_id, status, progress=None, error_message=None):
+            statuses.append((status, progress, error_message))
+
+    monkeypatch.setattr("db.connection.session.SessionLocal", Session)
+    monkeypatch.setattr("db.repositories.job_repository.JobRepository", Jobs)
+    monkeypatch.setattr(org_job, "_scan_org", lambda *_: (_ for _ in ()).throw(RuntimeError(sentinel)))
+    job = ScanJob(job_id="j-org-error", target_repo="cloud://aws-org/1111", job_type="CLOUD")
+    assert org_job.run_org_job(job) is False
+    assert statuses[-1][0] == "FAILED"
+    assert "cloud_org_inventory" in statuses[-1][2]
+    assert sentinel not in json.dumps(statuses)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
+    assert any(record.__dict__.get("traceback_frames") for record in caplog.records)
+
+
+def test_org_job_malformed_status_counts_and_errors_are_not_persisted(monkeypatch, caplog):
+    from worker.pipeline import org_job
+
+    sentinel = "[SQL: SELECT sentinel_secret FROM users] [parameters: ('sentinel_key',)]"
+    statuses = []
+
+    class Session:
+        def commit(self):
+            pass
+
+        def rollback(self):
+            pass
+
+        def close(self):
+            pass
+
+    class Jobs:
+        def __init__(self, session):
+            pass
+
+        def update_status(self, job_id, status, progress=None, error_message=None):
+            statuses.append((status, progress, error_message))
+
+    monkeypatch.setattr("db.connection.session.SessionLocal", Session)
+    monkeypatch.setattr("db.repositories.job_repository.JobRepository", Jobs)
+    result = _org_result(status="FAILED", accounts=0, resources=0)
+    result["findings"] = []
+    result["accounts"] = [{"account_id": "acc0", "ok": False, "error": sentinel,
+                           "status": sentinel, "resources": sentinel}]
+    result["provider"] = sentinel
+    result["accounts_discovered"] = sentinel
+    result["resources"] = sentinel
+    result["truncated"] = sentinel
+    result["live_scan"]["errors"] = {"error": sentinel}
+    result["live_scan"]["truncations"] = {"reason": sentinel}
+    result["live_scan"]["error_count"] = 1
+    result["live_scan"]["accounts_failed"] = 1
+    monkeypatch.setattr(org_job, "_scan_org", lambda *_: result)
+    job = ScanJob(job_id="j-org-telemetry", target_repo="cloud://aws-org/1111", job_type="CLOUD")
+    assert org_job.run_org_job(job) is False
+    assert statuses[-1][0] == "FAILED"
+    cloud = statuses[-1][1]["cloud"]
+    assert cloud["live_scan"]["error_count"] == 1
+    assert cloud["live_scan"]["errors"] == []
+    assert cloud["live_scan"]["truncations"] == []
+    assert cloud["provider"] == "unknown"
+    assert cloud["accounts_discovered"] == cloud["resources"] == 0
+    assert cloud["truncated"] is False
+    assert cloud["accounts"][0]["status"] == "FAILED"
+    assert cloud["accounts"][0]["resources"] == 0
+    assert cloud["accounts"][0]["account_id"] == "acc0"
+    assert sentinel not in json.dumps(statuses)
+    assert sentinel not in caplog.text
+    assert all(sentinel not in str(record.__dict__) for record in caplog.records)
 
 
 def test_org_job_parses_gcp_folder_targets(monkeypatch):
